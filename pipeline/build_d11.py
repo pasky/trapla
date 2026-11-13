@@ -223,9 +223,120 @@ def px(xy: np.ndarray):
 LC_NONE, LC_FOREST, LC_WATER, LC_BUILDING, LC_ROAD, LC_URBAN, LC_RAIL, LC_STREAM = 0, 1, 2, 3, 4, 5, 6, 7
 
 
+# --- engine data (cost model inputs): built-up mask, building attributes, road network ---------------
+# Extra keys written to overlays.json next to buildings / places / roads (filled by build_overlays).
+ENGINE_OVERLAYS: dict = {}
+BUILTUP_BIT = 8  # land-cover byte bit 3: inside OSM landuse residential / commercial / industrial / retail
+BUILTUP_TAGS = ("residential", "commercial", "industrial", "retail")
+# building kind codes (prices and default levels per kind live in src/core/data/urban.ts)
+BK_HOUSE, BK_APARTMENTS, BK_CIVIC, BK_INDUSTRIAL, BK_MINOR = 0, 1, 2, 3, 4
+BK_BY_TAG = {
+    **{k: BK_HOUSE for k in ("house", "residential", "detached", "semidetached_house", "terrace", "bungalow",
+                             "farm", "cabin", "hotel")},
+    **{k: BK_APARTMENTS for k in ("apartments", "dormitory")},
+    **{k: BK_CIVIC for k in ("civic", "school", "church", "chapel", "kindergarten", "fire_station", "government",
+                             "office", "hospital", "public", "transportation", "university", "train_station")},
+    **{k: BK_INDUSTRIAL for k in ("industrial", "warehouse", "commercial", "retail", "supermarket", "barn",
+                                  "farm_auxiliary", "service", "greenhouse", "manufacture", "kiosk", "stable",
+                                  "cowshed", "sty", "hangar")},
+    **{k: BK_MINOR for k in ("garage", "garages", "outbuilding", "shed", "roof", "transformer_tower", "bunker",
+                             "ruins", "allotment_house", "static_caravan", "carport", "hut", "construction")},
+}
+ZONE_RES, ZONE_IND, ZONE_FARM = 1, 2, 3
+
+
+def building_info(el, xy: np.ndarray, zone: int):
+    """[area m², tagged levels (0 = none), kind, obb cx, cy, half-length, half-width, angle deg] or None.
+
+    PROVISIONAL classification of untyped buildings (building=yes, 46 % of the area's buildings): < 50 m² →
+    minor (garage/shed sized); otherwise by the land-use zone under the centroid (industrial / commercial /
+    retail / farmyard → industrial), an address or a residential zone → house; outside any zone: house below
+    300 m², industrial (barn/hall) above. Anything under 30 m² is minor whatever its tag.
+    """
+    from shapely.geometry import Polygon
+
+    t = el.get("tags", {})
+    try:
+        poly = Polygon(xy)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        area = float(poly.area)
+        rect = poly.minimum_rotated_rectangle
+        rc = np.asarray(rect.exterior.coords)[:4]
+    except Exception:
+        return None
+    if area <= 0 or len(rc) < 4:
+        return None
+    e0, e1 = rc[1] - rc[0], rc[2] - rc[1]
+    l0, l1 = float(np.hypot(*e0)), float(np.hypot(*e1))
+    if l0 < l1:
+        e0, l0, l1 = e1, l1, l0
+    ang = math.degrees(math.atan2(e0[1], e0[0])) % 180.0
+    c = rc.mean(axis=0)
+    tag = t.get("building", "yes")
+    kind = BK_BY_TAG.get(tag)
+    if kind is None:  # "yes" and rare values
+        if area < 50:
+            kind = BK_MINOR
+        elif zone in (ZONE_IND, ZONE_FARM):
+            kind = BK_INDUSTRIAL
+        elif zone == ZONE_RES or "addr:housenumber" in t or "building:flats" in t:
+            kind = BK_APARTMENTS if "building:flats" in t else BK_HOUSE
+        else:
+            kind = BK_HOUSE if area < 300 else BK_INDUSTRIAL
+    if area < 30:
+        kind = BK_MINOR
+    try:
+        levels = max(0, min(40, int(round(float(t.get("building:levels", "0").split(";")[0])))))
+    except ValueError:
+        levels = 0
+    return [round(area, 1), levels, kind, round(float(c[0]), 1), round(float(c[1]), 1),
+            round(l0 / 2, 1), round(l1 / 2, 1), round(ang, 1)]
+
+
+# existing road network for crossings: class order = index in the exported "cls" list
+NET_CLASSES = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
+               "living_street", "service", "track"]
+
+
+def road_network(lines: dict) -> dict:
+    """Existing roads as simplified integer-metre polylines [classIndex, x0, y0, x1, y1, ...].
+
+    Ways tagged bridge / tunnel / covered are left out (crossing them at ground level is free: the DMR 5G
+    ground under an existing bridge is the valley floor). Tracks and service roads come from a second
+    Overpass query (cached as osm_roads2.json).
+    """
+    from shapely.geometry import LineString
+
+    extra = overpass("roads2", 'way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];')
+    ways = []
+    w, h = X_MAX - X_MIN, Y_MAX - Y_MIN
+    for el in lines["elements"] + extra["elements"]:
+        t = el.get("tags", {})
+        if "highway" not in t or t.get("bridge", "no") != "no" or t.get("tunnel", "no") != "no" \
+                or t.get("covered", "no") != "no":
+            continue
+        hw = t["highway"].replace("_link", "")
+        if hw not in NET_CLASSES:
+            continue
+        xy = way_xy(el)
+        if len(xy) < 2:
+            continue
+        if xy[:, 0].max() < 0 or xy[:, 0].min() > w or xy[:, 1].max() < 0 or xy[:, 1].min() > h:
+            continue
+        s = np.asarray(LineString(xy).simplify(1.0).coords)
+        ways.append([NET_CLASSES.index(hw)] + [int(round(float(v))) for v in s.reshape(-1)])
+    return {"cls": NET_CLASSES, "ways": ways}
+
+
 def build_overlays():
     lc = Image.new("L", (NX, NY), LC_NONE)
     d = ImageDraw.Draw(lc)
+    # built-up mask (land-cover bit 3) and land-use zone under buildings (classification of building=yes)
+    built = Image.new("L", (NX, NY), 0)
+    dbu = ImageDraw.Draw(built)
+    zone = Image.new("L", (NX, NY), 0)
+    dz = ImageDraw.Draw(zone)
     # separate must-bridge mask (rivers, water areas, railways) so that roads painted over a river in
     # the categorical raster cannot erase a crossing
     cross_w = Image.new("L", (NX, NY), 0)
@@ -261,6 +372,11 @@ def build_overlays():
                     d.polygon(px(r), fill=want)
                     if want == LC_WATER:
                         dc.polygon(px(r), fill=1)
+                    if want == LC_URBAN:
+                        lu = el.get("tags", {}).get("landuse")
+                        if lu in BUILTUP_TAGS:
+                            dbu.polygon(px(r), fill=1)
+                        dz.polygon(px(r), fill=ZONE_RES if lu == "residential" else ZONE_FARM if lu == "farmyard" else ZONE_IND)
             for r in inners:
                 if len(r) >= 3:
                     d.polygon(px(r), fill=LC_NONE)
@@ -298,6 +414,11 @@ def build_overlays():
                 roads_out.append({"ref": t.get("ref", ""), "cls": hw,
                                   "xy": np.round(xy[::1], 1).tolist()})
 
+    ENGINE_OVERLAYS["net"] = road_network(lines)
+    zone_a = np.asarray(zone, dtype=np.uint8)
+    binfo = ENGINE_OVERLAYS.setdefault("binfo", [])
+    binfo.clear()
+
     blds = overpass("buildings", 'way["building"];')
     bout = []
     for el in blds["elements"]:
@@ -309,6 +430,9 @@ def build_overlays():
         rad = float(np.max(np.hypot(xy[:, 0] - cx, xy[:, 1] - cy)))
         if 0 <= cx <= X_MAX - X_MIN and 0 <= cy <= Y_MAX - Y_MIN:
             bout.append([round(float(cx), 1), round(float(cy), 1), round(rad, 1)])
+            zr, zc = min(NY - 1, int((Y_MAX - Y_MIN - cy) / CELL)), min(NX - 1, int(cx / CELL))
+            # parallel to `buildings`; None (unusable geometry) → the engine falls back to the circle
+            binfo.append(building_info(el, xy, int(zone_a[zr, zc])))
 
     places = overpass("places", 'node["place"~"^(town|village|hamlet|suburb|city)$"];')
     pout = []
@@ -319,6 +443,7 @@ def build_overlays():
                          "x": round(float(x), 1), "y": round(float(y), 1)})
     cross = (np.asarray(cross_w, dtype=np.uint8) > 0).astype(np.uint8) << 5
     cross |= (np.asarray(cross_r, dtype=np.uint8) > 0).astype(np.uint8) << 6
+    cross |= (np.asarray(built, dtype=np.uint8) > 0).astype(np.uint8) * BUILTUP_BIT
     return np.asarray(lc, dtype=np.uint8), cross, bout, pout, roads_out
 
 
@@ -498,7 +623,7 @@ def main():
         "heights": {"file": "height.i16.gz", "encoding": "gzip(int16 row-wise delta of uint16 q); h = base + q*scale",
                     "base": hmin, "scale": H_QUANT},
         "landcover": {"file": "landcover.u8.gz", "classes": {"0": "none", "1": "forest", "2": "water",
-                      "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "classMask": 7, "riverCrossingBit": 32, "railCrossingBit": 64, "oobBit": 128},
+                      "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "classMask": 7, "builtUpBit": BUILTUP_BIT, "riverCrossingBit": 32, "railCrossingBit": 64, "oobBit": 128},
         "texture": {"tiles": tiles, "tile": tile},
         "overview": "overview.jpg",
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],
@@ -512,7 +637,7 @@ def main():
     }
     (OUT / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
     (OUT / "overlays.json").write_text(json.dumps(
-        {"buildings": buildings, "places": places, "roads": roads}, ensure_ascii=False, separators=(",", ":")))
+        {"buildings": buildings, "places": places, "roads": roads, **ENGINE_OVERLAYS}, ensure_ascii=False, separators=(",", ":")))
     tot = sum(p.stat().st_size for p in OUT.iterdir())
     log(f"pack written to {OUT}: {tot / 1e6:.1f} MB; A={meta['A']} B={meta['B']}; "
         f"{len(buildings)} buildings, {len(places)} places")
