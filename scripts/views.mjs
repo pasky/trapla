@@ -10,7 +10,11 @@ const out = process.argv[4] ?? '/tmp/views';
 mkdirSync(out, { recursive: true });
 const server = await createServer({ server: { port: 5198, strictPort: true }, logLevel: 'warn' });
 await server.listen();
-const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+// GPU=1: use the hardware GPU (Vulkan) instead of SwiftShader
+const args = process.env.GPU
+  ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
+  : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
+const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text()); });
@@ -25,7 +29,7 @@ const settle = () => page.evaluate(() => new Promise((res) => {
   requestAnimationFrame(() => requestAnimationFrame(f));
 }));
 for (const [x, y, dist, bearing, elev, name, prefs] of views) {
-  await page.evaluate((p) => window.trapla.setView({ contours: false, slope: false, exag: 1, ...(p ?? {}) }), prefs);
+  await page.evaluate((p) => window.trapla.setView({ contours: false, slope: false, exag: 1, photo: false, ...(p ?? {}) }), prefs);
   if (x === null) await page.evaluate(() => window.trapla.resetCamera());
   else await page.evaluate((a) => window.trapla.lookAt(...a), [x, y, dist, bearing, elev]);
   await settle();

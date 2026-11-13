@@ -35,7 +35,10 @@ async function main() {
   const extras = new RouteExtras(view);
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
-  const viewBar = new ViewBar(document.getElementById('viewbar')!, view); // after the HUD: it syncs the HUD's exaggeration select
+  // after the HUD: it syncs the HUD's exaggeration select
+  const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
+    document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
+  });
 
   // station range picked for the cost breakdown: profile panel → HUD, profile, map
   const selection = new RangeSelection();

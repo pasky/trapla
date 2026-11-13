@@ -73,6 +73,8 @@ export interface TerrainUniforms {
   /** minor interval (m), major interval (m), opacity (0 = off), device pixel ratio */
   contour: { value: THREE.Vector4 };
   slopeTint: { value: number };
+  /** strength of the relief shading (1 = full; lower over the orthophoto, which has its own light) */
+  shadeAmt: { value: number };
 }
 
 export function terrainUniforms(): TerrainUniforms {
@@ -90,6 +92,7 @@ export function terrainUniforms(): TerrainUniforms {
     lcOn: { value: new Array(LC_LEVELS).fill(0) },
     contour: { value: new THREE.Vector4(10, 50, 0, 1) },
     slopeTint: { value: 0 },
+    shadeAmt: { value: 1 },
   };
 }
 
@@ -124,6 +127,7 @@ uniform vec4 lcBox[${LC_LEVELS}];
 uniform float lcOn[${LC_LEVELS}];
 uniform vec4 contour;
 uniform float slopeTint;
+uniform float shadeAmt;
 // at-grade footprint of the designed road: terrain there is discarded so cuts are visible
 uniform sampler2D maskTex;
 uniform vec4 maskBox;
@@ -174,7 +178,7 @@ void main() {
     + 0.20 * max(dot(n, vec3(-0.64279, 0.76604, 0.0)), 0.0)
     + 0.15 * max(dot(n, vec3(0.0, 0.76604, -0.64279)), 0.0)
     + 0.10 * max(dot(n, vec3(-0.35355, 0.86603, 0.35355)), 0.0);
-  float light = 0.30 + 0.90 * shade / 0.95;
+  float light = mix(1.0, 0.30 + 0.90 * shade / 0.95, shadeAmt);
 
   // albedo: hypsometric tint under the land cover (premultiplied RGBA clip levels, finest wins)
   vec3 albedo = texture2D(tintTex, vec2((elev - ${TINT_MIN.toFixed(1)}) / ${(TINT_MAX - TINT_MIN).toFixed(1)}, 0.5)).rgb;

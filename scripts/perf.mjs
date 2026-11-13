@@ -1,5 +1,5 @@
 // Rendering performance probe: load time and frame times while orbiting / panning / zooming.
-// node scripts/perf.mjs [--root DIR] [--gpu]     (--gpu: try the hardware GPU instead of SwiftShader)
+// node scripts/perf.mjs [--root DIR] [--gpu] [--photo] [--contours]   (--gpu: the hardware GPU instead of SwiftShader)
 import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
@@ -35,6 +35,8 @@ const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).desi
 await page.evaluate((d) => window.trapla.setDesign(d), design);
 await page.evaluate(() => window.trapla.whenIdle());
 await page.waitForTimeout(1500);
+if (process.argv.includes('--photo')) await page.evaluate(() => window.trapla.setView({ photo: true }));
+if (process.argv.includes('--contours')) await page.evaluate(() => window.trapla.setView({ contours: true }));
 
 // each test: a list of camera poses, one per frame; reports frame-time statistics
 const run = (name, poses) => page.evaluate(async ([name, poses]) => {

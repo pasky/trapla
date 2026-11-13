@@ -221,7 +221,24 @@ function buildingGeos(b: BuildingData, chunk: number): Geo[] {
   return out;
 }
 
-interface Slot { rt: THREE.WebGLRenderTarget; k: number; cx: number; cy: number; size: number }
+interface Slot { rt: THREE.WebGLRenderTarget; k: number; cx: number; cy: number; size: number; gen: number }
+
+/** where to get an orthophoto of a window: (x0, y0, w, h in local metres, image size in pixels) → URL (CORS-enabled) */
+export type PhotoUrl = (x0: number, y0: number, w: number, h: number, pxW: number, pxH: number) => string;
+interface PhotoJob { url: string; valid: () => boolean; apply: (tex: THREE.Texture) => void }
+
+const BG_VERT = /* glsl */ `
+uniform vec4 box;
+uniform vec4 rect;
+varying vec2 vUv;
+void main() {
+  vUv = position.xy;
+  gl_Position = vec4((rect.xy + position.xy * rect.zw - box.xy) * box.zw * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const BG_FRAG = /* glsl */ `
+uniform sampler2D map;
+varying vec2 vUv;
+void main() { gl_FragColor = vec4(texture2D(map, vUv).rgb, 1.0); }`;
 
 const R0 = 0.125; // metres per texel of the finest clip level
 const K_MAX = 5; // coarsest clip level: R0 · 2^5 = 4 m per texel (the base texture takes over beyond)
@@ -242,6 +259,17 @@ export class LandCover {
   private k0 = Infinity;
   /** number of level textures drawn so far (diagnostics) */
   renders = 0;
+  // optional orthophoto: fetched per level window (one request at a time) and drawn instead of the vectors
+  private photoUrl: PhotoUrl | null = null;
+  private photoOn = false;
+  private bg: THREE.Mesh;
+  private bgMat: THREE.ShaderMaterial;
+  private jobs = new Map<object, PhotoJob>();
+  private loading = false;
+  private baseGen = 0;
+  private warned = false;
+  /** called when a texture changed outside update() (a photo arrived) */
+  onChange: (() => void) | null = null;
 
   constructor(private renderer: THREE.WebGLRenderer, vectors: VectorPack, private width: number, private height: number,
     private uniforms: TerrainUniforms) {
@@ -289,7 +317,19 @@ export class LandCover {
     // base: the whole play area at ≈ 8.5 m per texel, drawn in scratch-sized tiles
     const bw = this.size, bh = Math.min(maxTex, Math.round((this.size * height) / width / 256) * 256);
     this.base = levelRT(bw, bh);
-    for (let i = 0; i < LC_LEVELS; i++) this.slots.push({ rt: levelRT(this.size, this.size), k: -1, cx: 0, cy: 0, size: 0 });
+    for (let i = 0; i < LC_LEVELS; i++) this.slots.push({ rt: levelRT(this.size, this.size), k: -1, cx: 0, cy: 0, size: 0, gen: 0 });
+    this.bgMat = new THREE.ShaderMaterial({
+      uniforms: { box: this.box, rect: { value: new THREE.Vector4() }, map: { value: null } },
+      vertexShader: BG_VERT, fragmentShader: BG_FRAG, blending: THREE.NoBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    });
+    const quad = new THREE.BufferGeometry();
+    quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2));
+    quad.setIndex([0, 1, 2, 1, 3, 2]);
+    this.bg = new THREE.Mesh(flat(quad), this.bgMat);
+    this.bg.frustumCulled = false;
+    this.bg.renderOrder = -1;
+    this.bg.visible = false;
+    this.scene.add(this.bg);
     this.blitMat = new THREE.ShaderMaterial({
       uniforms: { src: { value: this.scratch.texture }, uvScale: { value: new THREE.Vector2(1, 1) } },
       vertexShader: 'uniform vec2 uvScale; varying vec2 vUv; void main() { vUv = (position.xy * 0.5 + 0.5) * uvScale; gl_Position = vec4(position.xy, 0.0, 1.0); }',
@@ -304,15 +344,23 @@ export class LandCover {
     uniforms.lcBase.value = this.base.texture;
   }
 
-  /** draw the vector layers for the window (x0, y0, w, h) in local metres into the scratch target */
-  private draw(x0: number, y0: number, w: number, h: number) {
+  /**
+   * Draw the window (x0, y0, w, h) in local metres into the scratch target: the vector layers, or —
+   * given a photo of the rectangle `rect` (x0, y0, w, h) — just that photo.
+   */
+  private draw(x0: number, y0: number, w: number, h: number, photo?: THREE.Texture, rect?: [number, number, number, number]) {
     const res = w / this.size;
     this.box.value.set(x0, y0, 1 / w, 1 / h);
     this.res.value = res;
+    this.bg.visible = !!photo;
+    if (photo) {
+      this.bgMat.uniforms.map.value = photo;
+      this.bgMat.uniforms.rect.value.set(...(rect ?? [x0, y0, w, h]));
+    }
     const pad = 40 + 8 * res; // widest line half-width incl. minimum texel widths
     for (const { pass, mat, meshes } of this.passes) {
       // fades out over the octave below maxRes
-      const fade = pass.maxRes === undefined ? 1 : Math.max(0, Math.min(1, 2 - (2 * res) / pass.maxRes));
+      const fade = photo ? 0 : pass.maxRes === undefined ? 1 : Math.max(0, Math.min(1, 2 - (2 * res) / pass.maxRes));
       const a = pass.alpha * fade;
       mat.uniforms.color.value.set((pass.color[0] / 255) * a, (pass.color[1] / 255) * a, (pass.color[2] / 255) * a, a);
       for (const m of meshes) {
@@ -345,19 +393,81 @@ export class LandCover {
     r.setClearColor(color, alpha);
   }
 
-  private drawBase() {
+  private drawBase(photo?: THREE.Texture) {
     const bw = this.base.width, bh = this.base.height, S = this.size;
     const rx = this.width / bw, ry = this.height / bh;
     this.withState(() => {
       for (let ty = 0; ty < bh; ty += S) {
         const th = Math.min(S, bh - ty);
-        this.draw(0, ty * ry, S * rx, S * ry);
+        this.draw(0, ty * ry, S * rx, S * ry, photo, [0, 0, this.width, this.height]);
         this.blit(this.base, 0, ty, bw, th, false);
       }
     });
     this.base.viewport.set(0, 0, bw, bh);
     this.uniforms.lcBaseOn.value = 1;
     this.baseDone = true;
+    if (!photo && this.photoOn && this.photoUrl) {
+      const gen = ++this.baseGen;
+      this.request(this.base, this.photoUrl(0, 0, this.width, this.height, bw, bh), () => this.photoOn && gen === this.baseGen, (tex) => this.drawBase(tex));
+    }
+  }
+
+  // ---- orthophoto --------------------------------------------------------------------------
+  /** enable the orthophoto source (off until setPhoto(true)) */
+  setPhotoSource(url: PhotoUrl | null) { this.photoUrl = url; }
+  get hasPhotoSource() { return !!this.photoUrl; }
+
+  /** drape the orthophoto instead of the vector land cover; everything is redrawn */
+  setPhoto(on: boolean) {
+    on = on && !!this.photoUrl;
+    if (on === this.photoOn) return;
+    this.photoOn = on;
+    this.jobs.clear();
+    this.baseGen++;
+    this.baseDone = false;
+    for (const s of this.slots) { s.k = -1; s.gen++; }
+    this.publish();
+  }
+
+  /** true while photos are being fetched */
+  get loadingPhotos() { return this.loading || this.jobs.size > 0; }
+
+  /** queue a photo for a target; a newer request for the same target replaces a waiting one */
+  private request(key: object, url: string, valid: () => boolean, apply: (tex: THREE.Texture) => void) {
+    this.jobs.delete(key);
+    this.jobs.set(key, { url, valid, apply });
+    this.pump();
+  }
+
+  /** one request at a time, oldest target first; stale requests are dropped without fetching */
+  private pump() {
+    if (this.loading) return;
+    for (const [key, job] of this.jobs) {
+      this.jobs.delete(key);
+      if (!job.valid()) continue;
+      this.loading = true;
+      // decoded off the main thread; flipped here because WebGL ignores UNPACK_FLIP_Y for bitmaps
+      fetch(job.url, { mode: 'cors' })
+        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+        .then((b) => createImageBitmap(b, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
+        .then((bmp) => {
+          if (job.valid()) {
+            const tex = new THREE.Texture(bmp as unknown as HTMLImageElement);
+            tex.flipY = false;
+            tex.generateMipmaps = false;
+            tex.minFilter = tex.magFilter = THREE.LinearFilter;
+            tex.needsUpdate = true;
+            job.apply(tex);
+            tex.dispose();
+          }
+          bmp.close();
+        })
+        .catch((e) => {
+          if (!this.warned) { this.warned = true; console.warn('orthophoto unavailable; showing the map instead:', String(e)); }
+        })
+        .finally(() => { this.loading = false; this.onChange?.(); this.pump(); });
+      return;
+    }
   }
 
   /**
@@ -366,7 +476,7 @@ export class LandCover {
    */
   update(fx: number, fy: number, mPerPx: number): boolean {
     if (!this.baseDone) { this.drawBase(); return true; }
-    const want = Math.log2(Math.max(1e-3, mPerPx) / R0);
+    const want = Math.log2(Math.max(1e-3, mPerPx) / R0), k0 = this.k0;
     // hysteresis so a zoom hovering around a boundary does not thrash
     if (!isFinite(this.k0) || Math.abs(want - this.k0) > 0.65) this.k0 = Math.max(0, Math.round(want));
     let pending = 0, drawn = false;
@@ -383,22 +493,30 @@ export class LandCover {
       }
       const snap = 32 * r;
       const cx = Math.round(fx / snap) * snap, cy = Math.round(fy / snap) * snap;
-      const s = slot;
+      const s = slot, gen = ++slot.gen, x0 = cx - win / 2, y0 = cy - win / 2;
       this.withState(() => {
-        this.draw(cx - win / 2, cy - win / 2, win, win);
+        this.draw(x0, y0, win, win);
         this.blit(s.rt, 0, 0, this.size, this.size, true);
       });
       slot.k = k; slot.cx = cx; slot.cy = cy; slot.size = win;
       drawn = true;
+      if (this.photoOn && this.photoUrl) {
+        // the map is shown until the photo of this window arrives
+        this.request(s, this.photoUrl(x0, y0, win, win, this.size, this.size), () => this.photoOn && s.gen === gen, (tex) => this.withState(() => {
+          this.draw(x0, y0, win, win, tex);
+          this.blit(s.rt, 0, 0, this.size, this.size, true);
+        }));
+      }
     }
-    if (drawn) this.publish();
+    if (drawn || k0 !== this.k0) this.publish();
     return pending > 0;
   }
 
   /** hand the valid levels to the terrain shader, coarsest first */
   private publish() {
     const u = this.uniforms;
-    const order = this.slots.filter((s) => s.k >= 0).sort((a, b) => b.k - a.k);
+    // levels finer than the current zoom wants are dropped: they would show as sharper / busier patches
+    const order = this.slots.filter((s) => s.k >= 0 && s.k >= this.k0).sort((a, b) => b.k - a.k);
     const tex = [u.lcTex0, u.lcTex1, u.lcTex2, u.lcTex3];
     for (let i = 0; i < LC_LEVELS; i++) {
       const s = order[i];

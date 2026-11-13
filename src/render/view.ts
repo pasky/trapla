@@ -166,7 +166,15 @@ export class View {
     u.oobTex.value = oobTexture(T.lc, T.nx, T.ny, OOB_BIT);
     u.contour.value.w = this.renderer.getPixelRatio();
     const mat = makeTerrainMaterial(u, this.maskUniforms);
-    if (this.pack.vectors) this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u);
+    if (this.pack.vectors) {
+      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u);
+      lc.onChange = () => { this.dirty = true; };
+      const ortho = this.pack.meta.orthophoto, [ox, oy] = this.pack.meta.origin;
+      if (ortho) {
+        lc.setPhotoSource((x0, y0, w, h, pw, ph) => `${ortho.export}?bbox=${ox + x0},${oy + y0},${ox + x0 + w},${oy + y0 + h}`
+          + `&bboxSR=${ortho.sr}&imageSR=${ortho.sr}&size=${pw},${ph}&format=jpg&f=image`);
+      }
+    }
     // mesh chunks (for frustum culling); positions only, the shader derives everything from world x/z
     const chunk = Math.ceil(512 / step) * step;
     const indexCache = new Map<string, THREE.BufferAttribute>();
@@ -218,8 +226,15 @@ export class View {
   setContours(on: boolean) { this.contours = on; this.contourStep = 0; this.dirty = true; }
   /** tint the ground by slope class (yellow from 8 %, orange 15 %, red 25 %, purple 40 %) */
   setSlopeTint(on: boolean) { this.terrainU.slopeTint.value = on ? 1 : 0; this.dirty = true; }
-  /** true while land-cover textures for the current camera are still being drawn */
-  get busy() { return this.lcPending; }
+  /** drape the orthophoto (streamed per view from the scenario's image service) instead of the map layers */
+  setPhoto(on: boolean) {
+    this.landcover?.setPhoto(on);
+    this.terrainU.shadeAmt.value = on && this.landcover?.hasPhotoSource ? 0.45 : 1;
+    this.dirty = true;
+  }
+  get hasPhoto() { return !!this.landcover?.hasPhotoSource; }
+  /** true while land-cover textures for the current camera are still being drawn or fetched */
+  get busy() { return this.lcPending || !!this.landcover?.loadingPhotos; }
   private lcPending = false;
 
   /** per-frame upkeep of the terrain surface: land-cover clip levels, contour interval, building LOD */

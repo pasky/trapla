@@ -640,6 +640,9 @@ def main():
         "landcover": {"file": "landcover.u8.gz", "classes": {"0": "none", "1": "forest", "2": "water",
                       "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "classMask": 7, "builtUpBit": BUILTUP_BIT, "riverCrossingBit": 32, "railCrossingBit": 64, "oobBit": 128},
         "vector": vector,
+        # optional view layer, streamed by the browser per view (public ČÚZK view service, CORS enabled)
+        "orthophoto": {"export": "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer/export",
+                       "sr": 5514, "attribution": "© ČÚZK, Ortofoto ČR, CC BY 4.0"},
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],
               "note": f"on official D11 (southbound carriageway) {A_DIST_ALONG / 1000:.1f} km south of B"},
         "B": {"xy": loc(b), "latlon": [round(b_lat, 6), round(b_lon, 6)],

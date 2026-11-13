@@ -16,6 +16,8 @@ export interface PackMeta {
   landcover: { file: string };
   /** vector render data (land cover, roads, buildings); absent in packs built without OSM */
   vector?: { file: string } | null;
+  /** ArcGIS MapServer "export" endpoint serving an orthophoto in the scenario's CRS (optional view layer) */
+  orthophoto?: { export: string; sr: number; attribution: string } | null;
   A: { xy: [number, number]; latlon: [number, number]; note: string };
   B: { xy: [number, number]; latlon: [number, number]; note: string };
   official: { xy: [number, number][]; kinds: number[]; lengthM: number };
