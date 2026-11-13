@@ -115,3 +115,5 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 #viewbar button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
 #viewbar button small { opacity: .85; }
 #viewbar kbd { font-size: 10px; opacity: .6; border-color: currentColor; margin-left: 2px; }
+.contour-label { pointer-events: none; }
+.contour-label span { position: absolute; transform: translate(-50%, -50%); font-size: 10px; font-weight: 600; color: #3a2410; white-space: nowrap; padding: 0 2px; border-radius: 2px; background: rgba(255,253,244,0.78); line-height: 1.15; }

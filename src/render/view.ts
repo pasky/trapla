@@ -11,6 +11,7 @@ import { KIND } from '../core/structures';
 import { OOB_BIT, type Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import { Buildings } from './buildings';
+import { ContourLabels } from './contourLabels';
 import { buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import { makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
@@ -64,6 +65,7 @@ export class View {
   private buildings: Buildings | null = null;
   private contours = false;
   private contourStep = 0;
+  private contourLabels: ContourLabels | null = null;
   /** called when the contour interval changes with the zoom (minor, major in metres) */
   onContourInterval: ((minor: number, major: number) => void) | null = null;
   ev: ViewEvents = {};
@@ -98,6 +100,9 @@ export class View {
     this.buildTerrain();
     this.buildOfficial();
     this.buildLabels();
+    this.contourLabels = new ContourLabels(overlay, this.renderer.domElement, this.terrain, (x, y) => this.pick(x, y),
+      (x, y, z) => this.screenOf(x, y, z), () => { this.dirty = true; });
+    this.controls.addEventListener('change', () => this.contourLabels?.schedule(this.contourStep * 5));
     this.resetCamera();
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
@@ -251,7 +256,11 @@ export class View {
     const minor = dist < 2200 ? 5 : dist < 6500 ? 10 : 20;
     c.set(minor, minor * 5, this.contours ? 1 : 0, this.renderer.getPixelRatio());
     const step = this.contours ? minor : 0;
-    if (step !== this.contourStep) { this.contourStep = step; if (step) this.onContourInterval?.(minor, minor * 5); }
+    if (step !== this.contourStep) {
+      this.contourStep = step;
+      if (step) this.onContourInterval?.(minor, minor * 5);
+      this.contourLabels?.schedule(step * 5);
+    }
   }
 
   /**
@@ -570,6 +579,7 @@ export class View {
     this.exag = e;
     this.world.scale.y = e;
     this.terrainU.exag.value = e;
+    this.contourLabels?.schedule(this.contourStep * 5);
     for (const m of this.markers) m.z = this.terrain.heightAt(m.x, m.y);
     this.dirty = true;
   }
@@ -629,6 +639,7 @@ export class View {
     };
     for (const m of this.markers) place(m.el, m.x, m.y, m.z, m.minDist);
     for (const m of this.piMarkers) place(m.el, m.x, m.y, m.z);
+    this.contourLabels?.place();
     if (this.hoverPos) place(this.hoverEl, this.hoverPos.x, this.hoverPos.y, this.hoverPos.z);
     else this.hoverEl.style.display = 'none';
   }
