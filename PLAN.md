@@ -123,19 +123,20 @@ What exists (details and commands in `README.md`):
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
-- Calibration runs (`scripts/optimize.ts`, crude local search, 500 iterations each): 90 km/h starting from the
-  official corridor → 3.04 bn CZK, 20.8 km, 13.9 min; 90 km/h from the straight line → 3.46 bn CZK, 18.9 km;
-  80 km/h from the straight line → 3.69 bn CZK, 18.8 km, 14.1 min. So the slower, smaller-radius road is only
+- Calibration runs (`scripts/optimize.ts`, crude local search, 500 iterations each, final cost model):
+  90 km/h in the official corridor → 3.19 bn CZK (the reference design below), 20.8 km, 13.9 min;
+  80 km/h from the straight line → 3.49 bn CZK, 18.9 km, 14.1 min (earlier model: 90 km/h from the straight
+  line came out ≈ 0.4 bn above the corridor design). So the slower, smaller-radius road is only
   reachable on a very direct line, and that line is more expensive than a 90 km/h road that follows the
   official corridor — the intended tension. The local search is weak; re-check once players find better designs.
 
 ### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
 
-20.81 km, 13.87 min, **3.06 bn CZK = 147 M CZK/km** (road base 857 M, earthworks 833 M, bridges 197 M, other
-objects 578 M, land & penalties 599 M). Cut 2.00 M m³ / fill 1.83 M m³ (96 / 88 m³ per m; the norm assumes 40 /
-34); 15 % of cut unsuitable, 122k m³ of fill bought; avg haul 0.7 km; 4 bridges / 340 m (river and rail
+20.81 km, 13.87 min, **3.19 bn CZK = 153 M CZK/km** (road base 856 M, earthworks 910 M, bridges 220 M, other
+objects 608 M, land & penalties 599 M). Cut 1.94 M m³ / fill 1.90 M m³ (93 / 91 m³ per m; the norm assumes 40 /
+34); 15 % of cut unsuitable, 256k m³ of fill bought; avg haul 0.9 km; 4 bridges / 380 m (river and rail
 crossings), no tunnels; 18 buildings demolished; 24 ha of forest in the footprint. Bridging the Úpa valley at
-Poříčí straight across instead (manual profile, 800 m viaduct up to 41 m high) costs 3.74 bn.
+Poříčí straight across instead (manual profile, 800 m viaduct up to 41 m high) costs 3.86 bn.
 
 ### PROVISIONAL / placeholder values (all in `src/core/data/`)
 
@@ -154,6 +155,7 @@ Poříčí straight across instead (manual profile, 800 m viaduct up to 41 m hig
 
 ### Known limitations
 
+- Free haul (1 km) is credited on the pooled haul moment, not per movement.
 - Mass haul uses a single balance line: cut may be hauled the whole route length if that is still cheaper than
   tip + borrow; no intermediate tips/borrow pits.
 - Auto-profile is a grid search (1 m, or 2 m on rugged routes; knots every ~250 m): its result is checked, and
