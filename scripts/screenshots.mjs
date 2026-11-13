@@ -51,7 +51,20 @@ if (designs.overview) await page.evaluate((c) => window.trapla.lookAt(...c), des
 await page.waitForTimeout(800);
 await shot('02-design');
 
-// close-up of a bridge (and nearby cut)
+// close-up of a bridge (and nearby cut). Optional: take manual control of the profile and bridge a
+// valley straight across (the designer's choice the official D11 makes at Poříčí).
+if (designs.viaduct) {
+  const [a, b] = designs.viaduct;
+  await page.evaluate(([a, b]) => {
+    const t = window.trapla, d = t.getDesign();
+    d.vpis = t.result().vpis.filter((v) => v.s <= a || v.s >= b);
+    d.profileMode = 'manual';
+    t.setDesign(d);
+  }, [a, b]);
+  await idle();
+  const v = await page.evaluate(() => window.trapla.summary());
+  console.log('viaduct variant', JSON.stringify({ total: v.cost.total, valid: v.valid, violations: v.violations.map((x) => x.msg), runs: v.runs.map((r) => [r.kind, Math.round(r.s0), Math.round(r.length)]) }));
+}
 const r = await page.evaluate(() => {
   const res = window.trapla.result();
   // the highest bridge
@@ -66,11 +79,27 @@ const r = await page.evaluate(() => {
 });
 if (r) {
   console.log('close-up bridge', JSON.stringify(r));
-  const bearing = (Math.atan2(r.tx, r.ty) * 180) / Math.PI + 240;
-  await page.evaluate(([x, y, b, d]) => window.trapla.lookAt(x, y, d, b, 32), [r.x, r.y, bearing, Math.max(380, r.len * 2.5)]);
+  const bearing = (Math.atan2(r.tx, r.ty) * 180) / Math.PI + 245;
+  await page.evaluate(([x, y, b, d]) => window.trapla.lookAt(x, y, d, b, 22), [r.x, r.y, bearing, Math.min(700, Math.max(300, r.len * 1.3))]);
   await page.evaluate(([a, b]) => window.trapla.profileFocus(a, b), [r.s0, r.s1]);
   await page.waitForTimeout(1500);
   await shot('03-closeup-bridge-cut');
+}
+
+// close-up of the deepest cut
+const c = await page.evaluate(() => {
+  const res = window.trapla.result();
+  let bi = -1, bd = 0;
+  for (let i = 0; i < res.n; i++) { const d = res.ground[i] - res.grade[i]; if (res.kind[i] === 0 && d > bd) { bd = d; bi = i; } }
+  return bi < 0 ? null : { x: res.x[bi], y: res.y[bi], s: res.s[bi], depth: bd, tx: res.tx[bi], ty: res.ty[bi] };
+});
+if (c) {
+  console.log('close-up cut', JSON.stringify(c));
+  const bearing = (Math.atan2(c.tx, c.ty) * 180) / Math.PI + 210;
+  await page.evaluate(([x, y, b]) => window.trapla.lookAt(x, y, 420, b, 30), [c.x, c.y, bearing]);
+  await page.evaluate(([a, b]) => window.trapla.profileFocus(a, b), [c.s - 150, c.s + 150]);
+  await page.waitForTimeout(1500);
+  await shot('04-closeup-cut');
 }
 
 // drag performance: move a PI repeatedly through the real worker path
