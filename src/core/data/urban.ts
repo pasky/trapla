@@ -29,7 +29,7 @@ export const BUILDING_KINDS: BuildingKindRow[] = [
   /* apartments */ { label: 'apartment block', pricePerM2: 45_000, defaultLevels: 4, maxLevels: 12, dwelling: true },
   /* civic      */ { label: 'civic building', pricePerM2: 45_000, defaultLevels: 2, maxLevels: 6, dwelling: false },
   /* industrial */ { label: 'industrial / commercial', pricePerM2: 20_000, defaultLevels: 1, maxLevels: 3, dwelling: false },
-  /* minor      */ { label: 'garage / shed', pricePerM2: 10_000, defaultLevels: 1, maxLevels: 2, dwelling: false },
+  /* minor      */ { label: 'garage / shed', pricePerM2: 15_000, defaultLevels: 1, maxLevels: 2, dwelling: false },
 ];
 
 export const BUILDING_RULES = {
@@ -37,6 +37,9 @@ export const BUILDING_RULES = {
   purchaseMultiplier: 1.5,
   /** PROVISIONAL demolition incl. disposal, CZK per m² of floor area (≈ 1,000 CZK per m³ built volume) */
   demolitionPerM2Floor: 3_000,
+  /** PROVISIONAL working strip: a building closer than this to the footprint (slope edge at grade,
+   * deck edge under a bridge) has to go as well, m */
+  clearance: 3,
 };
 
 // ---------------------------------------------------------------------------------------------

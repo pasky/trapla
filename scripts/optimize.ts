@@ -1,32 +1,50 @@
 // Crude random local search over PI positions (calibration aid: what does a good design cost?).
-// npx tsx scripts/optimize.ts <speed> <iterations> [start.json]
+//   npx tsx scripts/optimize.ts <speed> <iterations> [start.json] [out.json] [seed]
+// Moves: shift one PI (step shrinking over the run), occasionally insert a PI in the middle of a leg
+// or delete one. Invalid designs are penalised per violation.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { evaluate, type Design } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
+import { evaluate, type Design, type EvalContext, type Result } from '../src/core/evaluate';
 import { loadPack } from './loadpack';
+import { describe } from './report';
 
-const { meta, terrain, buildings } = loadPack();
+const { meta, terrain, buildings, roads } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
-const ctx = { terrain, scenario: D11_SCENARIO, a, b, buildings };
+const ctx: EvalContext = { terrain, scenario: D11_SCENARIO, a, b, buildings, roads };
 const speed = Number(process.argv[2] ?? 90), iters = Number(process.argv[3] ?? 300);
-let d: Design = process.argv[4] ? JSON.parse(readFileSync(process.argv[4], 'utf8')).design
+const out = process.argv[5] ?? `/tmp/opt-${speed}.json`;
+let d: Design = process.argv[4] && process.argv[4] !== '-' ? JSON.parse(readFileSync(process.argv[4], 'utf8')).design
   : { category: 'S9.5', speed, pis: [], profileMode: 'auto', vpis: [] };
 d.speed = speed;
-if (!d.pis.length) for (let k = 1; k < 8; k++) d.pis.push({ x: a.x + (b.x - a.x) * k / 8, y: a.y + (b.y - a.y) * k / 8, r: null });
-const score = (r: ReturnType<typeof evaluate>) => r.cost.total + 2e8 * r.violations.length;
+d.profileMode = 'auto';
+if (!d.pis.length) for (let k = 1; k < 8; k++) d.pis.push({ x: Math.round(a.x + (b.x - a.x) * k / 8), y: Math.round(a.y + (b.y - a.y) * k / 8), r: null });
+const score = (r: Result) => r.cost.total + 2e8 * r.violations.length;
 let cur = evaluate(ctx, d), curS = score(cur);
-let rng = 12345; const rand = () => ((rng = (rng * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+let rng = Number(process.argv[6] ?? 12345);
+const rand = () => ((rng = (rng * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
 for (let it = 0; it < iters; it++) {
   const nd: Design = JSON.parse(JSON.stringify(d));
-  const k = Math.floor(rand() * nd.pis.length);
   const step = 400 * (1 - it / iters) + 50;
-  nd.pis[k].x += (rand() * 2 - 1) * step; nd.pis[k].y += (rand() * 2 - 1) * step;
+  const move = rand();
+  if (move < 0.06 && nd.pis.length < 20) {
+    const pts = [a, ...nd.pis, b];
+    const k = Math.floor(rand() * (pts.length - 1));
+    nd.pis.splice(k, 0, { x: (pts[k].x + pts[k + 1].x) / 2 + (rand() * 2 - 1) * step, y: (pts[k].y + pts[k + 1].y) / 2 + (rand() * 2 - 1) * step, r: null });
+  } else if (move < 0.1 && nd.pis.length > 3) {
+    nd.pis.splice(Math.floor(rand() * nd.pis.length), 1);
+  } else {
+    const k = Math.floor(rand() * nd.pis.length);
+    nd.pis[k].x += (rand() * 2 - 1) * step; nd.pis[k].y += (rand() * 2 - 1) * step;
+  }
+  // whole metres, so that the saved design is exactly what was evaluated (a building can hinge on 0.1 m)
+  for (const p of nd.pis) { p.x = Math.round(p.x); p.y = Math.round(p.y); }
   const r = evaluate(ctx, nd), s = score(r);
   if (s < curS) { d = nd; cur = r; curS = s; }
-  if (it % 50 === 0) console.log(it, (cur.cost.total / 1e6).toFixed(0), cur.violations.length, (cur.length / 1000).toFixed(2), cur.travelMin.toFixed(2));
+  if (it % 100 === 0) console.log(it, (cur.cost.total / 1e6).toFixed(0), cur.violations.length, (cur.length / 1000).toFixed(2), cur.travelMin.toFixed(2), d.pis.length);
 }
-const q = cur.quantities;
-console.log(`final ${(cur.cost.total / 1e6).toFixed(0)} M CZK, ${(cur.length / 1000).toFixed(2)} km, ${cur.travelMin.toFixed(2)} min, viol ${cur.violations.length}, bridges ${q.bridges}/${q.bridgeLength.toFixed(0)} m tunnels ${q.tunnels}/${q.tunnelLength.toFixed(0)} m, buildings ${q.buildingsHit}`);
-console.log(cur.violations.map((v) => v.msg));
-d.pis = d.pis.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y), r: p.r }));
-writeFileSync(`/tmp/opt-${speed}.json`, JSON.stringify({ design: d }));
+console.log(`final: ${(cur.length / 1000).toFixed(2)} km, ${cur.travelMin.toFixed(2)} min, ${d.pis.length} PIs`);
+for (const l of describe(cur)) console.log(l);
+if (cur.violations.length) console.log(cur.violations.map((v) => v.msg));
+d.vpis = [];
+writeFileSync(out, JSON.stringify({ design: d }));
+console.log('written', out);

@@ -13,7 +13,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { speedNorms } from './data/norms';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
+import { BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import { dwellingExposure, noiseDistance, wallFlags, wallStretches, type WallStretch } from './noise';
@@ -360,7 +360,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
   lap('earthworks');
 
-  // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges) ---
+  // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges), plus a
+  // working strip on either side ---
   const buildingCost = new Float64Array(n);
   const demolished: Result['demolished'] = [];
   const bld = ctx.buildings;
@@ -372,9 +373,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (kind[i] === KIND.tunnel) continue;
       const left = kind[i] === KIND.earth ? sec.dayL[i] : w, right = kind[i] === KIND.earth ? sec.dayR[i] : w;
       const x = st.x[i], y = st.y[i], tx = st.tx[i], ty = st.ty[i];
-      const off = (left - right) / 2, half = (left + right) / 2;
+      const off = (left - right) / 2, half = (left + right) / 2 + BUILDING_RULES.clearance;
       const cx = x - ty * off, cy = y + tx * off;
-      bld.near(x, y, Math.max(left, right) + ds, (j) => {
+      bld.near(x, y, Math.max(left, right) + BUILDING_RULES.clearance + ds, (j) => {
         if (!bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) return;
         const along = Math.abs((items[j][0] - x) * tx + (items[j][1] - y) * ty);
         const p = best.get(j);
