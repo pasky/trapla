@@ -95,3 +95,71 @@ functions (road radius from speed and superelevation, rail radius from cant); co
 
 Implementation and iterations run in `smart` mode; reviews are done in `deep` mode, called by the
 implementing agent.
+
+## First playable prototype (built 2026-11-13)
+
+What exists (details and commands in `README.md`):
+- **Data pack** (`pipeline/build_d11.py`, `npm run data`): DMR 5G at 5 m for a 17.5 × 22.5 km EPSG:5514
+  rectangle (13 % of it is Poland = no data = out of bounds), OSM land cover / buildings / water / roads /
+  places, drape texture (hillshade × hypsometric tint × overlays), official D11 line. ≈ 14 MB.
+- **Endpoints**: B = northern end of D11 where OSM switches ref D11 → S3 at the border (50.6887 N, 15.9774 E,
+  first node of southbound carriageway way 896584498). The southbound carriageway is chained from B through
+  connecting D11 ways; A = the point 21.0 km along it (50.5253 N, 15.9222 E, just south of Trutnov near the
+  Trutnov-jih junction). Straight-line A–B distance 18.59 km.
+- **Game** (Vite + TypeScript + three.js; pure core in `src/core/`, recompute in a Web Worker): 3D terrain,
+  PI editor with radii, auto/manual profile, live checks, cross-section earthworks, automatic bridges and
+  tunnels, cost roll-up, HUD with VALID state, best design, undo/redo, persistence, naive start.
+- **Rules added during the build** (game rules, not norm values): river / water-area / railway crossings are
+  always bridged (≥ 30 m), streams are assumed culverted (in the norm). Bridges are only considered ≥ 4 m above
+  ground and bored tunnels with ≥ 14 m of cover; minimum bridge 30 m, tunnel 150 m; earthwork gaps shorter than
+  60 m (bridges) / 150 m (tunnels) are merged. Road base price is charged on at-grade length only.
+
+### Travel-time target X and traffic Y
+
+- Y = 9,000 vehicles/day → minimum S 9.5 by the placeholder thresholds (S 7.5 < 5,000 ≤ S 9.5 < 12,000 ≤ S 11.5).
+- **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
+  at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
+  < 18.59 km, i.e. impossible.
+- Calibration runs (`scripts/optimize.ts`, crude local search): 90 km/h starting from the official corridor →
+  2.60 bn CZK, 20.8 km, 13.9 min; 80 km/h from the straight line → 2.73 bn CZK, 18.8 km, 14.1 min; 90 km/h from
+  the straight line → 2.91 bn CZK. So the slower, smaller-radius road is only reachable on a very direct line and
+  came out more expensive than the best 90 km/h design found — the intended tension — but the margin is thin and
+  the local search is weak; re-check once players find better designs.
+
+### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
+
+20.77 km, 13.85 min, **2.61 bn CZK = 125 M CZK/km** (road base 885 M, earthworks 671 M, bridges 122 M, other
+objects 513 M, land 415 M). Cut 1.81 M m³ / fill 1.81 M m³ (87 m³ per m; the norm assumes 40), balanced, avg
+haul 0.6 km; 4 bridges / 210 m (river and rail crossings), no tunnels; 7 buildings demolished; 21 ha of forest.
+Bridging the Úpa valley at Poříčí straight across (manual profile, 730 m viaduct up to 42 m high) costs 3.61 bn.
+
+### PROVISIONAL / placeholder values (all in `src/core/data/`)
+
+- Max gradient 6 % (older ČSN edition, S 9.5/S 11.5 hilly); vertical-curve minima crest 6000/3000/2500 m and
+  sag 3400/2100/1500 m for 90/80/70 km/h (older edition; 90 uses the 100 km/h column).
+- Side slopes fill 1:2, cut 1:1.75 (pending geology).
+- Topsoil depth 0.3 m; topsoil allowance in the norm assumed over crown + 12 m.
+- Land 8 × 50 CZK/m²; forest surcharge 250 CZK/m²; 15 M CZK per demolished building.
+- Traffic → category thresholds.
+- Decision prices for the auto-profile and structure choice (cut = excavation + ½ surplus haul, fill = placing +
+  0.3 × bought fill), tuned so auto-profiles come out roughly balanced.
+- Purchased fill is charged 636 CZK/m³ on top of 100 CZK/m³ placing (OTSKP 17180 may already include placing).
+
+### Known limitations
+
+- Mass haul uses a single balance line: cut may be hauled the whole route length if that is still cheaper than
+  tip + borrow; no intermediate tips/borrow pits.
+- Auto-profile cost uses a flat-ground section estimate; the bill uses the real cross-sections.
+- Cross-sections ignore crossfall/superelevation and curvature correction; transition curves are not drawn.
+- Building hits use OSM centroids; crossing existing roads is free (no junctions or overpasses yet).
+- Drape texture is 5 m/px, so close-ups look blocky; the render mesh is 20 m (ribbon kept visible by a
+  footprint mask that cuts the terrain).
+
+### Next steps
+
+1. Player-marked bridges/tunnels and a max embankment/cut height rule; overpasses for crossed roads.
+2. Better mass haul (multiple balance lines, tips and borrow pits by distance).
+3. Superelevation and crossfall in sections; transition curves drawn; sight-distance checks.
+4. Land cost by land type (BPEJ / cadastre), protection areas, geology ground classes and hazards.
+5. Official-line comparison (digitise its profile), motorway category row, scenarios #2 and #3.
+6. Sharper drape near the route (2 m texture / orthophoto), LOD terrain mesh.
