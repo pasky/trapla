@@ -54,14 +54,20 @@ await shot('02-design');
 // close-up of a bridge (and nearby cut)
 const r = await page.evaluate(() => {
   const res = window.trapla.result();
-  const br = res.runs.find((x) => x.kind === 1);
-  if (!br) return null;
-  const i = Math.round((br.i0 + br.i1) / 2);
-  return { x: res.x[i], y: res.y[i], s0: br.s0, s1: br.s1, len: br.length, tx: res.tx[i], ty: res.ty[i] };
+  // the highest bridge
+  let best = null, bh = -1;
+  for (const br of res.runs) {
+    if (br.kind !== 1) continue;
+    for (let i = br.i0; i <= br.i1; i++) { const h = res.grade[i] - res.ground[i]; if (h > bh) { bh = h; best = { br, i }; } }
+  }
+  if (!best) return null;
+  const { br, i } = best;
+  return { x: res.x[i], y: res.y[i], s0: br.s0, s1: br.s1, len: br.length, h: bh, tx: res.tx[i], ty: res.ty[i] };
 });
 if (r) {
-  const bearing = (Math.atan2(r.tx, r.ty) * 180) / Math.PI + 70;
-  await page.evaluate(([x, y, b]) => window.trapla.lookAt(x, y, 900, b, 30), [r.x, r.y, bearing]);
+  console.log('close-up bridge', JSON.stringify(r));
+  const bearing = (Math.atan2(r.tx, r.ty) * 180) / Math.PI + 240;
+  await page.evaluate(([x, y, b, d]) => window.trapla.lookAt(x, y, d, b, 32), [r.x, r.y, bearing, Math.max(380, r.len * 2.5)]);
   await page.evaluate(([a, b]) => window.trapla.profileFocus(a, b), [r.s0, r.s1]);
   await page.waitForTimeout(1500);
   await shot('03-closeup-bridge-cut');

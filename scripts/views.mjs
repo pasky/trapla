@@ -1,0 +1,31 @@
+// Debug helper: render arbitrary camera views of a design.
+// node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name"],...]' [outdir]
+import { readFileSync, mkdirSync } from 'node:fs';
+import { chromium } from 'playwright-core';
+import { createServer } from 'vite';
+
+const design = JSON.parse(readFileSync(process.argv[2], 'utf8')).design;
+const views = JSON.parse(process.argv[3]);
+const out = process.argv[4] ?? '/tmp/views';
+mkdirSync(out, { recursive: true });
+const server = await createServer({ server: { port: 5198, strictPort: true }, logLevel: 'warn' });
+await server.listen();
+const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+page.on('pageerror', (e) => console.log('pageerror', e.message));
+page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text()); });
+await page.goto('http://localhost:5198/');
+await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
+await page.evaluate((d) => window.trapla.setDesign(d), design);
+await page.evaluate(() => window.trapla.whenIdle());
+await page.waitForLoadState('networkidle');
+for (const [x, y, dist, bearing, elev, name] of views) {
+  if (x === null) await page.evaluate(() => window.trapla.resetCamera());
+  else await page.evaluate((a) => window.trapla.lookAt(...a), [x, y, dist, bearing, elev]);
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: `${out}/${name}.png` });
+  console.log('saved', `${out}/${name}.png`);
+}
+const s = await page.evaluate(() => { const r = window.trapla.result(); return r.curves.map((c) => [c.index, Math.round(c.x), Math.round(c.y), Math.round(c.r), Math.round(c.sStart)]); });
+console.log(JSON.stringify(s));
+await browser.close(); await server.close();

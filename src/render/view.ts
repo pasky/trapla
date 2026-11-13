@@ -45,6 +45,15 @@ export class View {
   private selected: number | null = null;
   private meshStep: number;
   private dragging: number | null = null;
+  // footprint mask: terrain fragments inside the at-grade footprint are discarded so cuts show
+  private maskRT: THREE.WebGLRenderTarget | null = null;
+  private maskScene = new THREE.Scene();
+  private maskCam = new THREE.Camera();
+  private maskUniforms = {
+    maskTex: { value: null as THREE.Texture | null },
+    maskBox: { value: new THREE.Vector4(0, 0, 1, 1) },
+    maskOn: { value: 0 },
+  };
   ev: ViewEvents = {};
 
   constructor(private container: HTMLElement, private overlay: HTMLElement, private pack: Pack) {
@@ -60,6 +69,10 @@ export class View {
     this.scene.add(this.world);
     this.scene.fog = new THREE.Fog(0xc9d6e2, 30000, 90000);
     this.world.add(this.routeGroup);
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8470, 1.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    sun.position.set(-1, 1.6, -0.8);
+    this.scene.add(sun);
     this.controls = new MapControls(this.camera, this.renderer.domElement);
     this.controls.maxPolarAngle = Math.PI * 0.47;
     this.controls.minDistance = 80;
@@ -162,7 +175,19 @@ export class View {
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
       tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-      const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex }));
+      const mat = new THREE.MeshBasicMaterial({ map: tex });
+      mat.onBeforeCompile = (sh) => {
+        Object.assign(sh.uniforms, this.maskUniforms);
+        sh.vertexShader = 'varying vec2 vMaskXZ;\n' + sh.vertexShader.replace('#include <project_vertex>',
+          '#include <project_vertex>\n  vMaskXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+        sh.fragmentShader = 'varying vec2 vMaskXZ;\nuniform sampler2D maskTex;\nuniform vec4 maskBox;\nuniform float maskOn;\n'
+          + sh.fragmentShader.replace('void main() {', `void main() {
+  if (maskOn > 0.5) {
+    vec2 muv = (vMaskXZ - maskBox.xy) / maskBox.zw;
+    if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0 && texture2D(maskTex, muv).r > 0.5) discard;
+  }`);
+      };
+      const m = new THREE.Mesh(g, mat);
       m.name = 'terrain';
       this.world.add(m);
     }
@@ -293,7 +318,7 @@ export class View {
       this.local(x, y, z, v); pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); return pos.length / 3 - 1;
     };
     const asphalt = new THREE.Color(0x3b3b42), asphaltBad = new THREE.Color(0x8a2020);
-    const fillC = new THREE.Color(0x9fb36a), cutC = new THREE.Color(0xd2a15c), concrete = new THREE.Color(0xc4c2ba);
+    const fillC = new THREE.Color(0xe3d27e), cutC = new THREE.Color(0xbf6a32), concrete = new THREE.Color(0xc4c2ba);
     const lift = 0.35;
     type SV = { dl: number; el: number; er: number; dr: number; cl: number; cr: number };
     const sv: SV[] = [];
@@ -374,7 +399,9 @@ export class View {
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.setIndex(idx);
     g.computeBoundingSphere();
-    const ribbon = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    g.computeVertexNormals();
+    this.buildMask(r);
+    const ribbon = new THREE.Mesh(g, new THREE.MeshLambertMaterial({
       vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     }));
     ribbon.name = 'ribbon';
@@ -391,8 +418,10 @@ export class View {
       cc.push(c.r, c.g, c.b);
     }
     const line = this.makeLine(cp, cc, 3.5, { order: 4 });
+    line.name = 'centre';
     this.routeGroup.add(line);
     const ghost = this.makeLine(cp, cc, 2, { opacity: 0.35, depthTest: false, order: 2 });
+    ghost.name = 'ghost';
     this.routeGroup.add(ghost);
 
     // ---- demolished buildings ----
@@ -412,6 +441,64 @@ export class View {
     this.dirty = true;
   }
 
+  /** render the at-grade footprint (slightly inset) top-down into the terrain discard mask */
+  private buildMask(r: Result) {
+    const n = r.n;
+    const pos: number[] = [];
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    const P: [number, number][] = [];
+    for (let i = 0; i < n; i++) {
+      const nx = -r.ty[i], ny = r.tx[i];
+      const il = Math.min(2.5, 0.3 * r.dayL[i]), ir = Math.min(2.5, 0.3 * r.dayR[i]);
+      const L = r.dayL[i] - il, R = r.dayR[i] - ir;
+      const a: [number, number] = [r.x[i] + nx * L - this.cx, -(r.y[i] + ny * L - this.cy)];
+      const b: [number, number] = [r.x[i] - nx * R - this.cx, -(r.y[i] - ny * R - this.cy)];
+      P.push(a, b);
+      for (const p of [a, b]) { minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); minZ = Math.min(minZ, p[1]); maxZ = Math.max(maxZ, p[1]); }
+    }
+    for (let i = 0; i < n - 1; i++) {
+      if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
+      const a0 = P[2 * i], b0 = P[2 * i + 1], a1 = P[2 * i + 2], b1 = P[2 * i + 3];
+      pos.push(a0[0], 0, a0[1], b0[0], 0, b0[1], a1[0], 0, a1[1], b0[0], 0, b0[1], b1[0], 0, b1[1], a1[0], 0, a1[1]);
+    }
+    minX -= 20; minZ -= 20; maxX += 20; maxZ += 20;
+    const maxTex = Math.min(8192, this.renderer.capabilities.maxTextureSize);
+    const w = Math.min(maxTex, Math.ceil((maxX - minX) / 2.5 / 256) * 256);
+    const h = Math.min(maxTex, Math.ceil((maxZ - minZ) / 2.5 / 256) * 256);
+    if (!this.maskRT || this.maskRT.width < w || this.maskRT.height < h) {
+      this.maskRT?.dispose();
+      this.maskRT = new THREE.WebGLRenderTarget(Math.max(w, this.maskRT?.width ?? 0), Math.max(h, this.maskRT?.height ?? 0), {
+        format: THREE.RedFormat, type: THREE.UnsignedByteType, depthBuffer: false,
+        minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false,
+      });
+    }
+    const rt = this.maskRT;
+    const box = this.maskUniforms.maskBox.value.set(minX, minZ, maxX - minX, maxZ - minZ);
+    for (const c of [...this.maskScene.children]) { this.maskScene.remove(c); (c as THREE.Mesh).geometry.dispose(); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { box: { value: box } },
+      vertexShader: 'uniform vec4 box; void main() { vec2 p = (position.xz - box.xy) / box.zw; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }',
+      fragmentShader: 'void main() { gl_FragColor = vec4(1.0); }',
+      side: THREE.DoubleSide, depthTest: false, depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.frustumCulled = false;
+    this.maskScene.add(mesh);
+    const prevTarget = this.renderer.getRenderTarget();
+    const prevClear = this.renderer.getClearColor(new THREE.Color()), prevAlpha = this.renderer.getClearAlpha();
+    this.renderer.setRenderTarget(rt);
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.clear();
+    this.renderer.render(this.maskScene, this.maskCam);
+    this.renderer.setRenderTarget(prevTarget);
+    this.renderer.setClearColor(prevClear, prevAlpha);
+    mat.dispose();
+    this.maskUniforms.maskTex.value = rt.texture;
+    this.maskUniforms.maskOn.value = pos.length ? 1 : 0;
+  }
+
   setHover(p: { x: number; y: number; z: number } | null) { this.hoverPos = p; this.dirty = true; }
 
   setExaggeration(e: number) {
@@ -424,10 +511,10 @@ export class View {
   // ---- camera --------------------------------------------------------------------------------
   resetCamera() {
     const A = this.pack.meta.A.xy, B = this.pack.meta.B.xy;
-    const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+    const mx = A[0] + (B[0] - A[0]) * 0.45, my = A[1] + (B[1] - A[1]) * 0.45;
     const t = this.local(mx, my, 500);
     this.controls.target.copy(t);
-    this.camera.position.set(t.x + 2500, t.y + 17000, t.z + 13000);
+    this.camera.position.set(t.x + 2500, t.y + 17500, t.z + 14000);
     this.controls.update();
     this.dirty = true;
   }
@@ -460,6 +547,12 @@ export class View {
   private render() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     this.world.traverse((o) => { if ((o as Line2).isLine2) ((o as Line2).material as LineMaterial).resolution.set(w, h); });
+    // the screen-space centreline is for orientation; close up it would hide the ribbon
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    const centre = this.routeGroup.getObjectByName('centre') as Line2 | undefined;
+    const ghost = this.routeGroup.getObjectByName('ghost') as Line2 | undefined;
+    if (centre) (centre.material as LineMaterial).linewidth = dist < 1200 ? 1 : dist < 4000 ? 2.5 : 3.5;
+    if (ghost) ghost.visible = dist > 1200;
     this.renderer.render(this.scene, this.camera);
     const place = (el: HTMLElement, x: number, y: number, z: number, minDist?: number) => {
       const s = this.screenOf(x, y, z);

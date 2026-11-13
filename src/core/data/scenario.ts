@@ -30,7 +30,7 @@ export const D11_SCENARIO: ScenarioParams = {
   id: 'd11',
   title: 'Trutnov → Polish border',
   traffic: 9_000,
-  maxTravelMin: 15.0,
+  maxTravelMin: 14.5,
   terrainClass: 'hilly',
   maxGradient: 0.06,
 };
