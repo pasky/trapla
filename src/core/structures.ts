@@ -13,9 +13,10 @@ export interface StructureInput {
   h: ArrayLike<number>;
   /** cost per metre of the earthwork option at each station */
   earthPerM: ArrayLike<number>;
-  bridgePerM: number;
-  /** tunnel cost per m (short-tunnel rate; long rate applied in the bill) */
-  tunnelPerM: number;
+  /** bridge cost per m: one number, or per station (urban rates and land differ along the route) */
+  bridgePerM: number | ArrayLike<number>;
+  /** tunnel cost per m (short-tunnel rate; long rate applied in the bill), number or per station */
+  tunnelPerM: number | ArrayLike<number>;
   /** stations that must be bridged (river / railway crossings), unless deep in cut */
   forced?: ArrayLike<number>;
 }
@@ -24,10 +25,13 @@ export interface StructureInput {
 export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[] } {
   const n = inp.h.length;
   const kind = new Uint8Array(n);
+  const bp = inp.bridgePerM, tp = inp.tunnelPerM;
+  const bridgeAt = typeof bp === 'number' ? () => bp : (i: number) => bp[i];
+  const tunnelAt = typeof tp === 'number' ? () => tp : (i: number) => tp[i];
   for (let i = 0; i < n; i++) {
     const h = inp.h[i];
-    if (h >= rules.bridgeMinHeight && inp.bridgePerM < inp.earthPerM[i]) kind[i] = KIND.bridge;
-    else if (-h >= rules.tunnelMinDepth && inp.tunnelPerM < inp.earthPerM[i]) kind[i] = KIND.tunnel;
+    if (h >= rules.bridgeMinHeight && bridgeAt(i) < inp.earthPerM[i]) kind[i] = KIND.bridge;
+    else if (-h >= rules.tunnelMinDepth && tunnelAt(i) < inp.earthPerM[i]) kind[i] = KIND.tunnel;
   }
   const locked = new Uint8Array(n);
   if (inp.forced) {
@@ -50,9 +54,11 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
   const runs: Run[] = [];
   for (const r of findRuns(kind)) {
     const len = (r.i1 - r.i0 + 1) * inp.ds;
-    let earth = 0;
-    for (let i = r.i0; i <= r.i1; i++) earth += inp.earthPerM[i] * inp.ds;
-    const struct = (r.kind === KIND.bridge ? inp.bridgePerM : inp.tunnelPerM) * len;
+    let earth = 0, struct = 0;
+    for (let i = r.i0; i <= r.i1; i++) {
+      earth += inp.earthPerM[i] * inp.ds;
+      struct += (r.kind === KIND.bridge ? bridgeAt(i) : tunnelAt(i)) * inp.ds;
+    }
     const minLen = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
     let isLocked = false;
     for (let i = r.i0; i <= r.i1; i++) if (locked[i]) { isLocked = true; break; }

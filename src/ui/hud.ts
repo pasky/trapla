@@ -119,7 +119,7 @@ export class Hud {
       row('Earthworks', c.earthworks, `excavation ${czk(ed.excavation)}, fill ${czk(ed.fillPlacing)}, haul ${czk(ed.haul)}, surplus to tip ${czk(ed.surplusHaul)}, unsuitable 15 % to tip ${czk(ed.unsuitable)}, bought fill ${czk(ed.borrow)}, topsoil ${czk(ed.topsoil)}`) +
       row('Bridges', c.bridges) + row('Tunnels', c.tunnels) +
       row(`Other objects +${(PRICES.otherObjectsSurcharge * 100).toFixed(1)} %`, c.surcharge) +
-      row('Land & penalties*', c.land, `land ${czk(c.landDetail.land)} (provisional ${LAND.perM2} CZK/m²), forest ${czk(c.landDetail.forest)}, buildings ${czk(c.landDetail.buildings)} (provisional ${czk(LAND.perBuilding)} each)`);
+      row('Land & penalties*', c.land, `land ${czk(c.landDetail.land)} (provisional ${LAND.perM2} CZK/m²), forest ${czk(c.landDetail.forest)}, buildings ${czk(c.landDetail.buildings)}`);
     const q = r.quantities;
     const tOk = r.travelMin <= this.sc.maxTravelMin;
     this.$('stats').innerHTML = `

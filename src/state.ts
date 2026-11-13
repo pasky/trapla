@@ -1,8 +1,6 @@
 // Design store: current design, undo/redo history, localStorage persistence, best valid design.
 
 import type { Design } from './core/evaluate';
-import type { Vec2 } from './core/horizontal';
-import type { VPI } from './core/vertical';
 
 export interface Best { cost: number; design: Design; at: string }
 
@@ -10,7 +8,6 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
 export class Store {
   design: Design;
-  /** true while the profile shown is the naive terrain-hugging start profile */
   private history: Design[] = [];
   private idx = -1;
   private listeners: ((d: Design, committed: boolean) => void)[] = [];
@@ -24,7 +21,8 @@ export class Store {
       const b = localStorage.getItem(key + '.best');
       if (b) this.best = JSON.parse(b);
     } catch { d = null; }
-    this.design = d && Array.isArray(d.pis) ? d : initial();
+    // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
+    this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
     this.push();
   }
 
@@ -67,14 +65,24 @@ export class Store {
   }
 }
 
-/** The deliberately naive start: straight A→B, grade line drawn on the terrain every 250 m. */
-export function naiveDesign(a: Vec2, b: Vec2, groundAt: (x: number, y: number) => number): Design {
-  const L = Math.hypot(b.x - a.x, b.y - a.y);
-  const n = Math.max(2, Math.round(L / 250));
-  const vpis: VPI[] = [];
-  for (let k = 0; k <= n; k++) {
-    const t = k / n;
-    vpis.push({ s: t * L, z: Math.round(groundAt(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t) * 10) / 10, r: null });
+/** The start: straight A→B with the automatic (norm-abiding) grade line — an honest, if expensive, bill. */
+export function startDesign(): Design {
+  return { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] };
+}
+
+/** a stretch of the route picked for the cost breakdown (stations in metres), or null = whole route */
+export interface StationRange { s0: number; s1: number }
+
+/**
+ * UI state shared between the profile panel, the HUD and the map: the selected station range.
+ * The renderer only needs `range` and `on()` (see render/extras.ts).
+ */
+export class RangeSelection {
+  range: StationRange | null = null;
+  private listeners: ((r: StationRange | null) => void)[] = [];
+  on(fn: (r: StationRange | null) => void) { this.listeners.push(fn); }
+  set(r: StationRange | null) {
+    this.range = r && r.s1 > r.s0 ? { s0: r.s0, s1: r.s1 } : null;
+    for (const l of this.listeners) l(this.range);
   }
-  return { category: 'S9.5', speed: 90, pis: [], profileMode: 'manual', vpis, naive: true } as Design;
 }

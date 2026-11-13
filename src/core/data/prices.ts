@@ -5,6 +5,12 @@
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
 /** SPK CN excavability mix assumed by the norm: 75 % class I, 20 % class II, 5 % class III */
 export const EXCAVATION_MIX = { I: 0.75, II: 0.2, III: 0.05 };
+/**
+ * PROVISIONAL stand-in for geology: the excavation class of the design's cuts depends on the depth
+ * below the original ground — class I down to `classIto` metres, class II down to `classIIto`,
+ * class III (rock) below. The norm allowance stays valued at the 75/20/5 mix.
+ */
+export const EXCAVATION_DEPTH_BANDS = { classIto: 3, classIIto: 8 };
 
 export const PRICES = {
   /** weighted excavation price, CZK/m³ (≈ 248) */
@@ -33,6 +39,14 @@ export const PRICES = {
   tunnelLongThreshold: 500,
 };
 
+/**
+ * Value of a m³ of fill material used for decisions (auto-profile, bridge vs embankment), CZK/m³.
+ * The auto-profile searches [lo, hi] for the value at which its grade line neither buys fill nor tips
+ * a surplus; `start` (PROVISIONAL, typical for the D11 terrain) is where the search begins and what
+ * manual profiles use. Bounds: tipping a surplus costs surplusHaulKm × haulPerM3Km, bought fill borrowFill.
+ */
+export const MATERIAL_VALUE = { start: 200, lo: -150, hi: 600, /** m³ of imbalance per m of route tolerated */ tolerancePerM: 1.5 };
+
 /** Earthworks the SFDI road norm already includes per km (research/00 §3.1) */
 export const NORM_EARTHWORK_ALLOWANCE = {
   cutPerKm: { motorway: 70_000, I: 40_000, II: 20_000 } as Record<string, number>,
@@ -50,8 +64,6 @@ export const LAND = {
   perM2: 8 * 50,
   /** PROVISIONAL: extra per m² of forest footprint (clearing + forest-land removal fee) */
   forestExtraPerM2: 250,
-  /** PROVISIONAL: lump sum per building in the footprint (purchase at 1.5× + demolition) */
-  perBuilding: 15_000_000,
 };
 
 /** Structure selection parameters (game rules, not norm values) */

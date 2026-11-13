@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { BuildingIndex } from '../src/core/buildings';
+import { RoadNet } from '../src/core/roadnet';
 import { decodeHeights, Terrain } from '../src/core/terrain';
 
 export function loadPack(dir = 'public/scenarios/d11') {
@@ -12,5 +13,8 @@ export function loadPack(dir = 'public/scenarios/d11') {
   const lc = new Uint8Array(gunzipSync(readFileSync(`${dir}/${meta.landcover.file}`)));
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc });
   const ov = JSON.parse(readFileSync(`${dir}/overlays.json`, 'utf8'));
-  return { meta, terrain, overlays: ov, buildings: new BuildingIndex(ov.buildings) };
+  return {
+    meta, terrain, overlays: ov, buildings: new BuildingIndex(ov.buildings, ov.binfo),
+    roads: ov.net ? new RoadNet(ov.net) : undefined,
+  };
 }

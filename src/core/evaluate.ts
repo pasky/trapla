@@ -1,19 +1,26 @@
 // The full recompute path: design → alignment → stations → profile → sections → structures →
-// earthworks → cost → checks. Pure (no DOM); runs in a Web Worker in the app.
+// earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
+// a Web Worker in the app.
 
 import { autoProfile } from './autoprofile';
 import type { BuildingIndex } from './buildings';
 import { ROAD_CHECKS, type Violation } from './checks';
-import { basePerKm, DECISION, rollup, tunnelPerKm, type CostBreakdown } from './cost';
+import {
+  basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
+  type CostBreakdown, type CostParts,
+} from './cost';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { speedNorms } from './data/norms';
-import { LAND, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
+import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
+import { CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
-import { computeSections, DEFAULT_SLOPES } from './sections';
+import { dwellingExposure, noiseDistance, wallFlags, wallStretches, type WallStretch } from './noise';
+import { mergeCrossings, type RoadNet } from './roadnet';
+import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
-import { LC, type Terrain } from './terrain';
+import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 
 export interface Design {
@@ -23,8 +30,6 @@ export interface Design {
   profileMode: 'auto' | 'manual';
   /** full VPI list incl. endpoints; used in manual mode, refreshed from auto-profile otherwise */
   vpis: VPI[];
-  /** the naive start profile (terrain-hugging): the first horizontal edit switches to auto */
-  naive?: boolean;
 }
 
 export interface EvalContext {
@@ -33,6 +38,29 @@ export interface EvalContext {
   a: Vec2;
   b: Vec2;
   buildings?: BuildingIndex;
+  /** existing road network (crossings) */
+  roads?: RoadNet;
+}
+
+/** a crossing of an existing road and how it is resolved */
+export interface CrossingResult {
+  /** station, m, and its station index */
+  s: number;
+  i: number;
+  x: number;
+  y: number;
+  /** key into ROAD_CLASSES */
+  cls: string;
+  /** grade minus the crossed road's ground, m */
+  h: number;
+  /**
+   * 'bridge': the road passes under a bridge of the new road (paid as bridge); 'tunnel': the new road
+   * is in a tunnel below it (free); 'overbridge': carried across the cut; 'atGrade': junction,
+   * reconnection or diversion lump sum
+   */
+  type: 'bridge' | 'tunnel' | 'overbridge' | 'atGrade';
+  /** CZK attributed to the crossing itself (0 for 'bridge' / 'tunnel'), excl. surcharge */
+  cost: number;
 }
 
 export interface Result {
@@ -54,10 +82,30 @@ export interface Result {
   violations: Violation[];
   geomViolations: number;
   cost: CostBreakdown;
+  /** CZK per station cell and component; each array sums to the matching line of `cost` */
+  parts: CostParts;
+  /** per station cell: land-take width (m), built-up and forest share of it (0…1), noise walls
+   * (bit 0 = left of travel, bit 1 = right) */
+  cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array };
+  crossings: CrossingResult[];
+  walls: WallStretch[];
+  /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
+  demolished: { j: number; i: number; cost: number }[];
   quantities: {
     cut: number; fill: number; reused: number; surplus: number; deficit: number; avgHaul: number;
+    /** cut volume by PROVISIONAL depth class I / II / III, m³ */
+    cutByClass: [number, number, number];
     footprint: number; forestArea: number; buildingsHit: number; hitBuildings: number[];
     bridgeLength: number; tunnelLength: number; bridges: number; tunnels: number; massHaul: Float64Array;
+    /** at-grade + bridge length inside built-up areas, m */
+    urbanLength: number;
+    wallLength: number;
+    /** crossings of existing roads that cost something here (overbridges, junctions, reconnections) */
+    crossingsPaid: number;
+    /** screening distance used by the noise rule, m */
+    noiseDistance: number;
+    /** value of a m³ of fill material the auto-profile / structure choice settled on, CZK/m³ */
+    materialValue: number;
   };
   travelMin: number;
   minCategory: CategoryId;
@@ -67,6 +115,8 @@ export interface Result {
 }
 
 const STEP = 10;
+/** the auto-profile's mass-balance search measures candidates on every n-th station's cross-section */
+const BALANCE_STRIDE = 2;
 
 /** manual grade line: ends pinned to the tie-ins, interior VPIs sorted, ≥ MIN_VPI_GAP apart and from the ends */
 export function normalizeVpis(v: VPI[], L: number, zA: number, zB: number): VPI[] {
@@ -102,7 +152,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // `clearance[i]` = minimum grade-minus-ground at station i that puts the grade `need` metres above
   // the crossing's own ground; the crossing samples themselves are kept for the final check
   const clearance = new Float64Array(n).fill(NaN);
-  const crossings: { s: number; g: number; need: number }[] = [];
+  const mustBridge: { s: number; g: number; need: number }[] = [];
   for (let i = 0; i < n; i++) {
     for (const f of [0, 0.25, 0.5, 0.75]) {
       if (f > 0 && i + 1 >= n) break;
@@ -112,54 +162,121 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (!c) continue;
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
       const gc = terrain.heightAt(x, y);
-      crossings.push({ s: st.s[i] + f * ds, g: gc, need });
+      mustBridge.push({ s: st.s[i] + f * ds, g: gc, need });
       for (const j of f === 0 ? [i] : [i, i + 1]) {
         const req = need + gc - ground[j];
         if (!(clearance[j] >= req)) clearance[j] = req;
       }
     }
   }
+
+  // existing roads crossed by the route (geometry only; resolved once the grade is known)
+  const roadX = ctx.roads ? mergeCrossings(ctx.roads.intersections(n, st.s, st.x, st.y), al.length) : [];
   lap('stations');
 
-  // --- per-metre costs (construction parts incl. the other-objects surcharge) ---
+  // --- per-metre costs for the auto-profile: rural rates on flat ground, incl. the surcharge ---
   const sur = 1 + PRICES.otherObjectsSurcharge;
-  const basePerM = (basePerKm(d.category, scenario.terrainClass) / 1000) * sur;
-  const bridgePerM = (cat.bridgePerKm / 1000) * sur + cat.crownWidth * LAND.perM2;
+  const baseRural = basePerKm(d.category, scenario.terrainClass) / 1000;
+  const baseUrban = basePerKmUrban(d.category, scenario.terrainClass) / 1000;
   const tunnelPerM = (cat.tunnelTubes * tunnelPerKm(0) / 1000) * sur;
-  const cutP = DECISION.cutPerM3 * sur, fillP = DECISION.fillPerM3 * sur;
+  const bridgeRural = (cat.bridgePerKm / 1000) * sur + cat.crownWidth * LAND.perM2;
   const { fillSlope, cutSlope } = DEFAULT_SLOPES;
   const b = cat.crownWidth;
-  const costPerM = (h: number) => {
-    let earth: number;
-    if (h >= 0) earth = basePerM + (b * h + fillSlope * h * h) * fillP + (b + 2 * fillSlope * h) * DECISION.landPerM2;
-    else { const c = -h; earth = basePerM + (b * c + cutSlope * c * c) * cutP + (b + 2 * cutSlope * c) * DECISION.landPerM2; }
-    let best = earth;
-    if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgePerM);
-    if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
-    return best;
+  const landFlat = LAND.perM2 + PRICES.topsoilDepth * PRICES.topsoil;
+  /** cost per metre against grade-minus-ground h for a given value of a m³ of fill material */
+  const costFor = (materialValue: number) => {
+    const dp = decisionPrices(materialValue);
+    return (h: number) => {
+      let earth: number;
+      if (h >= 0) earth = (baseRural + (b * h + fillSlope * h * h) * dp.fillPerM3) * sur + (b + 2 * fillSlope * h) * landFlat;
+      else {
+        const c = -h;
+        const [a1, a2, a3] = flatCutBands(c, b, cutSlope);
+        earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III) * sur + (b + 2 * cutSlope * c) * landFlat;
+      }
+      let best = earth;
+      if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural);
+      if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
+      return best;
+    };
+  };
+  const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
+  const tpl = { crownWidth: b, fillSlope, cutSlope };
+  // Mass balance of a candidate grade line: the same steps as the bill below (cross-sections,
+  // structure choice incl. forced crossings, volumes), on every BALANCE_STRIDE-th station and with the
+  // built-up share taken at the centreline only.
+  const sub = Math.floor((n - 1) / BALANCE_STRIDE) + 1, subDs = ds * BALANCE_STRIDE;
+  const subS = new Float64Array(sub), subX = new Float64Array(sub), subY = new Float64Array(sub);
+  const subTx = new Float64Array(sub), subTy = new Float64Array(sub);
+  const subMust = new Uint8Array(sub), subUrban = new Uint8Array(sub);
+  for (let k = 0; k < sub; k++) {
+    const i = k * BALANCE_STRIDE;
+    subS[k] = st.s[i]; subX[k] = st.x[i]; subY[k] = st.y[i]; subTx[k] = st.tx[i]; subTy[k] = st.ty[i];
+    subUrban[k] = terrain.cover(st.x[i], st.y[i]) & BUILTUP_BIT ? 1 : 0;
+    for (let j = i; j < Math.min(n, i + BALANCE_STRIDE); j++) if (clearance[j] > -Infinity) subMust[k] = 1;
+  }
+  const roadS = roadX.map((c) => c.s);
+  const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
+  const balanceOf = (v: VPI[], materialValue: number) => {
+    const p = buildProfile(v, norms.minCrestRadius, norms.minSagRadius);
+    const z = elevations(p, subS);
+    const sc = computeSections(terrain, sub, subX, subY, subTx, subTy, z, tpl);
+    const dp = decisionPrices(materialValue);
+    const hh = new Float64Array(sub), earth = new Float64Array(sub), bridge = new Float64Array(sub), tunnel = new Float64Array(sub);
+    const must = new Uint8Array(sub);
+    for (let k = 0; k < sub; k++) {
+      hh[k] = z[k] - ground[k * BALANCE_STRIDE];
+      const u = subUrban[k], su = 1 + surchargeRate(u), land = landPerM2(u);
+      earth[k] = (baseRural + (baseUrban - baseRural) * u + sc.cutI[k] * dp.cutPerM3.I + sc.cutII[k] * dp.cutPerM3.II
+        + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3) * su + (sc.dayL[k] + sc.dayR[k]) * (land + dp.topsoilPerM2);
+      bridge[k] = (cat.bridgePerKm / 1000) * su + b * land;
+      tunnel[k] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
+      if (subMust[k] && hh[k] > 0) must[k] = 1;
+    }
+    if (roadS.length) {
+      const rz = elevations(p, roadS);
+      roadX.forEach((c, j) => {
+        const k = Math.min(sub - 1, Math.round(c.s / subDs));
+        if (ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0) must[k] = 1;
+      });
+    }
+    const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bridge, tunnelPerM: tunnel, forced: must });
+    let bal = 0;
+    for (let k = 0; k < sub; k++) {
+      if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * (k === 0 || k === sub - 1 ? 0.5 : 1);
+    }
+    return bal * subDs;
   };
 
   // --- vertical alignment ---
   let vpis: VPI[];
   let profileFeasible = true;
+  let materialValue = MATERIAL_VALUE.start;
   const zA = ground[0], zB = ground[n - 1];
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
     const apOpt = {
-      maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius, costPerM,
-      minH: clearance,
+      maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
+      costPerM: costFor(MATERIAL_VALUE.start), minH: clearance,
+      balance: {
+        costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
+        tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
+      },
     };
     let ap = autoProfile(st.s, ground, apOpt);
     // vertical curves can shave the clearance the polyline search provided: retry asking for more
-    for (let attempt = 0; attempt < 2 && crossings.length; attempt++) {
+    for (let attempt = 0; attempt < 2 && mustBridge.length; attempt++) {
       const prof0 = buildProfile(ap.vpis, norms.minCrestRadius, norms.minSagRadius);
-      const z0 = elevations(prof0, crossings.map((c) => c.s));
+      const z0 = elevations(prof0, mustBridge.map((c) => c.s));
       let short = 0;
-      crossings.forEach((c, k) => { short = Math.max(short, c.g + c.need - z0[k]); });
+      mustBridge.forEach((c, k) => { short = Math.max(short, c.g + c.need - z0[k]); });
       if (short <= 1e-6) break;
       const minH = Float64Array.from(clearance, (v) => (v > -Infinity ? v + short + 0.5 : NaN));
-      ap = autoProfile(st.s, ground, { ...apOpt, minH });
+      // same material value: only the clearance changes
+      const mv = ap.materialValue ?? MATERIAL_VALUE.start;
+      ap = autoProfile(st.s, ground, { ...apOpt, minH, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
     }
     vpis = ap.vpis;
+    materialValue = ap.materialValue ?? MATERIAL_VALUE.start;
     profileFeasible = ap.feasible;
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
@@ -171,69 +288,160 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const grade = elevations(prof, st.s);
 
   // --- cross-sections ---
-  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, { crownWidth: b, fillSlope, cutSlope });
+  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl);
+  const dec = decisionPrices(materialValue);
+  const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
   lap('sections');
 
-  // --- structures ---
+  // --- land cover under each station: built-up and forest share of the at-grade footprint ---
+  const urban = new Float32Array(n), forest = new Float32Array(n);
+  const coverShares = (i: number, left: number, right: number) => {
+    const nx = -st.ty[i], ny = st.tx[i];
+    let u = 0, f = 0, cnt = 0;
+    for (let o = -right; o <= left + 1e-6; o += 2.5) {
+      const v = terrain.cover(st.x[i] + nx * o, st.y[i] + ny * o);
+      cnt++;
+      if (v & BUILTUP_BIT) u++;
+      if ((v & CLASS_BITS) === LC.forest) f++;
+      if (v & OOB_BIT) oob[i] = 1;
+    }
+    urban[i] = cnt ? u / cnt : 0;
+    forest[i] = cnt ? f / cnt : 0;
+  };
+  for (let i = 0; i < n; i++) coverShares(i, sec.dayL[i], sec.dayR[i]);
+
+  // --- structures: the earthwork option against a bridge / tunnel, at each station's own rates ---
   const h = new Float64Array(n);
-  const earthPerM = new Float64Array(n);
+  const earthPerM = new Float64Array(n), bridgePerM = new Float64Array(n), tunnelPerMAt = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
-    earthPerM[i] = basePerM + sec.cut[i] * cutP + sec.fill[i] * fillP + (sec.dayL[i] + sec.dayR[i]) * DECISION.landPerM2;
+    const u = urban[i], su = 1 + surchargeRate(u), land = landPerM2(u);
+    earthPerM[i] = (baseRural + (baseUrban - baseRural) * u + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
+      + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP) * su
+      + (sec.dayL[i] + sec.dayR[i]) * (land + dec.topsoilPerM2 + forest[i] * LAND.forestExtraPerM2);
+    bridgePerM[i] = (cat.bridgePerKm / 1000) * su + b * land;
+    tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
   }
   // river / water / railway crossings must be bridged (streams get culverts, included in the norm);
   // a crossing below the required clearance is a violation (and gets no fake buried bridge)
   const forced = new Uint8Array(n);
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
-  const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM, forced });
+  // an existing road clearly below the grade passes under a (short) bridge instead of being buried
+  const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
+  const crossings: CrossingResult[] = roadX.map((c, k) => ({
+    s: c.s, i: Math.min(n - 1, Math.round(c.s / ds)), x: c.x, y: c.y, cls: c.cls,
+    h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0,
+  }));
+  for (const c of crossings) {
+    if (ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
+  }
+  const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced });
+  // land under structures: the deck strip on bridges, nothing in tunnels (centreline decides the rates)
+  const width = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    if (kind[i] === KIND.earth) width[i] = sec.dayL[i] + sec.dayR[i];
+    else if (kind[i] === KIND.bridge) { width[i] = b; coverShares(i, w, w); forest[i] = 0; }
+    else { coverShares(i, 0, 0); forest[i] = 0; }
+  }
+  lap('structures');
 
   // --- earthworks ---
-  const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
   const vol = volumes(ds, sec.cut, sec.fill, kind, usable);
   const mh = massHaul(ds, vol.mass, vol.cut * usable, vol.fill);
-  let footprint = 0, forestArea = 0;
-  const hit = new Set<number>();
+  let footprint = 0, forestArea = 0, urbanLength = 0;
+  const cutByClass: [number, number, number] = [0, 0, 0];
   for (let i = 0; i < n; i++) {
+    const len = cellLength(i, n, ds);
+    if (kind[i] !== KIND.tunnel) urbanLength += urban[i] * len;
     if (kind[i] !== KIND.earth) continue;
-    const wgt = i === 0 || i === n - 1 ? 0.5 : 1;
-    const fw = sec.dayL[i] + sec.dayR[i];
-    footprint += fw * ds * wgt;
-    const nx = -st.ty[i], ny = st.tx[i];
-    let forest = 0, cnt = 0;
-    for (let o = -sec.dayR[i]; o <= sec.dayL[i] + 1e-6; o += 2.5) {
-      cnt++;
-      const px = st.x[i] + nx * o, py = st.y[i] + ny * o;
-      if (terrain.landcover(px, py) === LC.forest) forest++;
-      if (terrain.isOob(px, py)) oob[i] = 1;
-    }
-    forestArea += (cnt ? forest / cnt : 0) * fw * ds * wgt;
-    if (ctx.buildings) {
-      const items = ctx.buildings.items;
-      const x = st.x[i], y = st.y[i];
-      // building = circle (centroid, max vertex distance) against this station's footprint strip
-      ctx.buildings.near(x, y, Math.max(sec.dayL[i], sec.dayR[i]) + ds, (j) => {
-        const bx = items[j][0] - x, by = items[j][1] - y, br = items[j][2];
-        const along = bx * st.tx[i] + by * st.ty[i];
-        const across = bx * nx + by * ny;
-        if (Math.abs(along) <= ds / 2 + br && across <= sec.dayL[i] + br && across >= -sec.dayR[i] - br) hit.add(j);
-      });
-    }
+    footprint += width[i] * len;
+    forestArea += forest[i] * width[i] * len;
+    cutByClass[0] += sec.cutI[i] * len; cutByClass[1] += sec.cutII[i] * len; cutByClass[2] += sec.cutIII[i] * len;
   }
   lap('earthworks');
+
+  // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges) ---
+  const buildingCost = new Float64Array(n);
+  const demolished: Result['demolished'] = [];
+  const bld = ctx.buildings;
+  const gone = new Uint8Array(bld ? bld.n : 0);
+  if (bld) {
+    const items = bld.items;
+    const best = new Map<number, { i: number; along: number }>();
+    for (let i = 0; i < n; i++) {
+      if (kind[i] === KIND.tunnel) continue;
+      const left = kind[i] === KIND.earth ? sec.dayL[i] : w, right = kind[i] === KIND.earth ? sec.dayR[i] : w;
+      const x = st.x[i], y = st.y[i], tx = st.tx[i], ty = st.ty[i];
+      const off = (left - right) / 2, half = (left + right) / 2;
+      const cx = x - ty * off, cy = y + tx * off;
+      bld.near(x, y, Math.max(left, right) + ds, (j) => {
+        if (!bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) return;
+        const along = Math.abs((items[j][0] - x) * tx + (items[j][1] - y) * ty);
+        const p = best.get(j);
+        if (!p) best.set(j, { i, along }); else if (along < p.along) { p.i = i; p.along = along; }
+      });
+    }
+    for (const [j, p] of best) {
+      gone[j] = 1;
+      buildingCost[p.i] += bld.cost[j];
+      demolished.push({ j, i: p.i, cost: bld.cost[j] });
+    }
+    demolished.sort((p, q) => p.i - q.i);
+  }
+
+  // --- crossings of existing roads ---
+  const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
+  let crossingsPaid = 0;
+  for (const c of crossings) {
+    const row = ROAD_CLASSES[c.cls];
+    if (kind[c.i] === KIND.bridge) c.type = 'bridge';
+    else if (kind[c.i] === KIND.tunnel) c.type = 'tunnel';
+    else if (row.separable && c.h <= -CROSSING_RULES.underDepth) {
+      // overbridge spanning the cut (slope edge to slope edge), as wide as the crossed road
+      c.type = 'overbridge';
+      c.cost = ((sec.dayL[c.i] + sec.dayR[c.i]) / 1000) * row.bridgePerKm;
+      crossingStructure[c.i] += c.cost;
+    } else {
+      c.cost = row.atGrade;
+      crossingLump[c.i] += c.cost;
+    }
+    if (c.cost > 0) crossingsPaid++;
+  }
+
+  // --- noise walls ---
+  const wall = new Uint8Array(n), wallLength = new Float64Array(n);
+  let walls: WallStretch[] = [];
+  const noiseD = noiseDistance(scenario.traffic, d.speed);
+  if (bld) {
+    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseD, gone);
+    const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      if (kind[i] === KIND.tunnel) { shieldL[i] = shieldR[i] = 1; continue; }
+      if (kind[i] !== KIND.earth) continue;
+      if (sec.zDayL[i] - grade[i] >= NOISE.cutShield) shieldL[i] = 1;
+      if (sec.zDayR[i] - grade[i] >= NOISE.cutShield) shieldR[i] = 1;
+    }
+    const fl = wallFlags(ds, ex.L, shieldL), fr = wallFlags(ds, ex.R, shieldR);
+    for (let i = 0; i < n; i++) {
+      wall[i] = fl[i] | (fr[i] << 1);
+      wallLength[i] = (fl[i] + fr[i]) * cellLength(i, n, ds);
+    }
+    walls = [...wallStretches(ds, al.length, fl, 'L'), ...wallStretches(ds, al.length, fr, 'R')];
+  }
+  lap('town');
 
   const bridges = runs.filter((r) => r.kind === KIND.bridge).map((r) => r.length);
   const tunnels = runs.filter((r) => r.kind === KIND.tunnel).map((r) => r.length);
   const bridgeLength = bridges.reduce((a, v) => a + v, 0);
   const tunnelLength = tunnels.reduce((a, v) => a + v, 0);
-  const cost = rollup({
-    category: d.category, terrainClass: scenario.terrainClass,
-    atGradeLength: Math.max(0, al.length - bridgeLength - tunnelLength),
-    earth: {
-      cut: vol.cut, fill: vol.fill, unsuitable: vol.cut * (1 - usable), haulMoment: mh.moment, reused: mh.reused,
-      surplus: mh.surplus, deficit: mh.deficit, footprint,
-    },
-    bridges, tunnels, bridgeLand: bridgeLength * b, forestArea, buildingsHit: hit.size,
+  const parts = costParts({
+    category: d.category, terrainClass: scenario.terrainClass, n, ds, kind, urban,
+    cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
+    haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
+    width, forest, runs, buildings: buildingCost, crossingLump, crossingStructure, wallLength,
   });
+  const cost = sumParts(parts);
+  lap('cost');
 
   // --- checks ---
   const violations: Violation[] = [
@@ -260,10 +468,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     kind: 'section', s0: st.s[i0], s1: st.s[i1],
     msg: 'side slope does not reach the ground within 150 m — change the grade line here',
   }));
-  if (crossings.length) {
-    const zc = elevations(prof, crossings.map((c) => c.s));
+  if (mustBridge.length) {
+    const zc = elevations(prof, mustBridge.map((c) => c.s));
     let last = -Infinity;
-    crossings.forEach((c, k) => {
+    mustBridge.forEach((c, k) => {
       const ic = Math.min(n - 1, Math.round(c.s / ds));
       const above = zc[k] - c.g;
       if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6 || c.s - last < 50) return;
@@ -300,11 +508,12 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t })),
-    violations, geomViolations, cost,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished,
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
-      footprint, forestArea, buildingsHit: hit.size, hitBuildings: [...hit],
+      cutByClass, footprint, forestArea, buildingsHit: demolished.length, hitBuildings: demolished.map((p) => p.j),
       bridgeLength, tunnelLength, bridges: bridges.length, tunnels: tunnels.length, massHaul: vol.mass,
+      urbanLength, wallLength: wallLength.reduce((a, v) => a + v, 0), crossingsPaid, noiseDistance: noiseD, materialValue,
     },
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing,
   };

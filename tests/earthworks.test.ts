@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
 import { ROAD_CHECKS } from '../src/core/checks';
-import { allowanceValuePerKm, rollup } from '../src/core/cost';
+import { allowanceValuePerKm, costParts, PART_KEYS, sumParts } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { speedNorms } from '../src/core/data/norms';
-import { NORM_EARTHWORK_ALLOWANCE, PRICES } from '../src/core/data/prices';
+import { EXCAVATION_MIX, NORM_EARTHWORK_ALLOWANCE, PRICES } from '../src/core/data/prices';
+import { URBAN_RATES } from '../src/core/data/urban';
 import { massHaul, volumes } from '../src/core/earthworks';
 import { buildAlignment, station } from '../src/core/horizontal';
-import { computeSections, sideSection } from '../src/core/sections';
+import { computeSections, flatCutBands, sideSection } from '../src/core/sections';
+import { KIND } from '../src/core/structures';
 import { syntheticTerrain } from '../src/core/terrain';
 import { buildProfile, elevations } from '../src/core/vertical';
 
@@ -90,31 +92,81 @@ describe('mass haul', () => {
 });
 
 describe('cost roll-up', () => {
+  /** n stations of uniform at-grade road with the given section areas */
+  const uniform = (n: number, ds: number, cut: number, fill: number, width: number) => ({
+    category: 'S9.5' as const, terrainClass: 'hilly' as const, n, ds, kind: new Uint8Array(n),
+    cutI: new Float64Array(n).fill(cut * EXCAVATION_MIX.I), cutII: new Float64Array(n).fill(cut * EXCAVATION_MIX.II),
+    cutIII: new Float64Array(n).fill(cut * EXCAVATION_MIX.III), fill: new Float64Array(n).fill(fill),
+    usable: 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare, width: new Float64Array(n).fill(width), runs: [],
+    haul: { moment: 0, reused: 0, surplus: 0, deficit: 0 },
+  });
+
   it('earthworks exactly at the norm allowance reproduce the SFDI norm price (+ surcharge, + land)', () => {
-    const cat = 'S9.5' as const;
-    const c = CATEGORIES[cat];
-    const km = 3;
-    const cutKm = NORM_EARTHWORK_ALLOWANCE.cutPerKm.I;
-    const footprint = km * 1000 * (c.crownWidth + NORM_EARTHWORK_ALLOWANCE.topsoilExtraWidth);
-    const r = rollup({
-      category: cat, terrainClass: 'hilly', atGradeLength: km * 1000,
-      earth: { cut: km * cutKm, fill: km * cutKm * 0.85, unsuitable: km * cutKm * NORM_EARTHWORK_ALLOWANCE.unsuitableShare, haulMoment: 0, reused: km * cutKm * 0.85, surplus: 0, deficit: 0, footprint },
-      bridges: [], tunnels: [], bridgeLand: 0, forestArea: 0, buildingsHit: 0,
-    });
+    const c = CATEGORIES['S9.5'];
+    const km = 3, n = 301, ds = 10;
+    const cut = NORM_EARTHWORK_ALLOWANCE.cutPerKm.I / 1000; // m² of cut = m³ per m
+    const inp = uniform(n, ds, cut, cut * NORM_EARTHWORK_ALLOWANCE.fillShareOfCut, c.crownWidth + NORM_EARTHWORK_ALLOWANCE.topsoilExtraWidth);
+    const r = sumParts(costParts(inp));
     expect(r.construction).toBeCloseTo(km * c.normPerKm.hilly, 0);
     expect(r.surcharge).toBeCloseTo(r.construction * PRICES.otherObjectsSurcharge, 3);
     expect(r.total).toBeCloseTo(r.construction + r.surcharge + r.land, 3);
-    expect(allowanceValuePerKm(cat)).toBeGreaterThan(0);
+    expect(allowanceValuePerKm('S9.5')).toBeGreaterThan(0);
   });
 
-  it('long tunnels use the long-tunnel rate, short ones the short rate', () => {
-    const base = {
-      category: 'S9.5' as const, terrainClass: 'hilly' as const, atGradeLength: 0,
-      earth: { cut: 0, fill: 0, unsuitable: 0, haulMoment: 0, reused: 0, surplus: 0, deficit: 0, footprint: 0 },
-      bridges: [], bridgeLand: 0, forestArea: 0, buildingsHit: 0,
+  it('long tunnels use the long-tunnel rate, short ones the short rate; built-up ones the urban rows', () => {
+    const tunnel = (len: number, urban = 0) => {
+      const n = len / 10 + 21, i0 = 10, i1 = i0 + len / 10 - 1;
+      const inp = uniform(n, 10, 0, 0, 0);
+      inp.kind.fill(KIND.tunnel, i0, i1 + 1);
+      return sumParts(costParts({
+        ...inp, urban: new Float64Array(n).fill(urban),
+        runs: [{ kind: KIND.tunnel, i0, i1, s0: (i0 - 0.5) * 10, s1: (i1 + 0.5) * 10, length: len }],
+      }));
     };
-    expect(rollup({ ...base, tunnels: [400] }).tunnels).toBeCloseTo(0.4 * PRICES.tunnelShortPerKm, 0);
-    expect(rollup({ ...base, tunnels: [600] }).tunnels).toBeCloseTo(0.6 * PRICES.tunnelLongPerKm, 0);
+    expect(tunnel(400).tunnels).toBeCloseTo(0.4 * PRICES.tunnelShortPerKm, 0);
+    expect(tunnel(600).tunnels).toBeCloseTo(0.6 * PRICES.tunnelLongPerKm, 0);
+    expect(tunnel(600, 1).tunnels).toBeCloseTo(0.6 * URBAN_RATES.tunnelLongPerKm, 0);
+  });
+
+  it('global mass-balance items are spread over the cells that cause them and add up exactly', () => {
+    const n = 101, ds = 10;
+    const inp = uniform(n, ds, 0, 0, 20);
+    // cut in the first third, fill in the last third, a bridge in the middle
+    for (let i = 0; i < 33; i++) inp.cutI[i] = 60;
+    for (let i = 67; i < n; i++) inp.fill[i] = 80;
+    inp.kind.fill(KIND.bridge, 45, 55);
+    const haul = { moment: 4e7, reused: 15_000, surplus: 1_000, deficit: 12_000 };
+    const parts = costParts({ ...inp, haul, runs: [{ kind: KIND.bridge, i0: 45, i1: 54, s0: 445, s1: 545, length: 100 }] });
+    const t = sumParts(parts);
+    expect(t.earthDetail.borrow).toBeCloseTo(haul.deficit * PRICES.borrowFill, 3);
+    expect(t.earthDetail.surplusHaul).toBeCloseTo(haul.surplus * PRICES.surplusHaulKm * PRICES.haulPerM3Km, 3);
+    expect(t.earthDetail.haul).toBeCloseTo(((haul.moment - haul.reused * PRICES.freeHaul) / 1000) * PRICES.haulPerM3Km, 3);
+    // bought fill is billed only where there is fill, surplus haul only where there is cut
+    expect(parts.borrow.slice(0, 67).reduce((a, v) => a + v, 0)).toBe(0);
+    expect(parts.surplusHaul.slice(33).reduce((a, v) => a + v, 0)).toBe(0);
+    // ranges add up to the whole, and the whole to the sum of all components
+    const a = sumParts(parts, 0, 49), b = sumParts(parts, 50, n - 1);
+    expect(a.total + b.total).toBeCloseTo(t.total, 3);
+    let all = 0;
+    for (const k of PART_KEYS) for (const v of parts[k]) all += v;
+    expect(all).toBeCloseTo(t.total, 3);
+  });
+});
+
+describe('excavation depth classes', () => {
+  it('a section in a flat-ground cut splits into depth bands that add up to the cut', () => {
+    for (const c of [2, 5, 12]) {
+      const s = sideSection(-c, 5, tpl, () => 0);
+      const [a1, a2, a3] = flatCutBands(c, 10, tpl.cutSlope);
+      expect(2 * s.cutI).toBeCloseTo(a1, 6);
+      expect(2 * s.cutII).toBeCloseTo(a2, 6);
+      expect(2 * (s.cut - s.cutI - s.cutII)).toBeCloseTo(a3, 6);
+      expect(a1 + a2 + a3).toBeCloseTo(10 * c + tpl.cutSlope * c * c, 6);
+    }
+    // 12 m deep: 3 m of class I over the whole top width minus the slope wedges, class III only below 8 m
+    const [a1, , a3] = flatCutBands(12, 10, 1.75);
+    expect(a1).toBeCloseTo(10 * 3 + 2 * 1.75 * 3 * (12 - 1.5), 6);
+    expect(a3).toBeCloseTo(10 * 4 + 1.75 * 16, 6);
   });
 });
 

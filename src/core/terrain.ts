@@ -3,6 +3,9 @@
 
 export const LC = { none: 0, forest: 1, water: 2, building: 3, road: 4, urban: 5, rail: 6, stream: 7 } as const;
 export const OOB_BIT = 128;
+/** inside a built-up area (OSM landuse residential / commercial / industrial / retail) */
+export const BUILTUP_BIT = 8;
+export const CLASS_BITS = 7;
 export const RIVER_CROSSING_BIT = 32;
 export const RAIL_CROSSING_BIT = 64;
 const CLASS_MASK = 7;
@@ -83,6 +86,13 @@ export class Terrain {
   landcover(x: number, y: number): number {
     const i = this.cellIndex(x, y);
     return i < 0 ? -1 : this.lc[i] & CLASS_MASK;
+  }
+
+  /** raw land-cover byte at (x,y): class (& CLASS_BITS) | BUILTUP_BIT | crossing bits | OOB_BIT;
+   * OOB_BIT alone outside the grid */
+  cover(x: number, y: number): number {
+    const i = this.cellIndex(x, y);
+    return i < 0 ? OOB_BIT : this.lc[i];
   }
 
   /** must-bridge crossing at (x,y): 0 none, 1 river / water area, 2 railway */

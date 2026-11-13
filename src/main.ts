@@ -5,7 +5,7 @@ import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/eva
 import { nearestLeg } from './core/horizontal';
 import { View } from './render/view';
 import { loadPack } from './scenario';
-import { naiveDesign, Store } from './state';
+import { startDesign, Store } from './state';
 import { Hud } from './ui/hud';
 import { ProfilePanel } from './ui/profile';
 import type { WorkerIn } from './worker';
@@ -15,15 +15,16 @@ const setStatus = (s: string) => { status.textContent = s; status.style.display 
 
 async function main() {
   const pack = await loadPack(`${import.meta.env.BASE_URL}scenarios/d11`, setStatus);
-  const { meta, terrain } = pack;
+  const { meta } = pack;
   const A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
   document.getElementById('attrib')!.innerHTML = meta.attribution.join(' · ');
 
-  const store = new Store('trapla.d11', () => naiveDesign(A, B, (x, y) => terrain.heightAt(x, y)));
+  const store = new Store('trapla.d11', startDesign);
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), a: A, b: B, buildings: pack.overlays.buildings,
+    binfo: pack.overlays.binfo, net: pack.overlays.net,
   };
   worker.postMessage(init, [init.q.buffer, init.lc.buffer]);
 
@@ -67,7 +68,6 @@ async function main() {
     if (received === posted) { const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
   };
 
-  const unnaive = (d: Design) => { if (d.naive) { d.naive = false; d.profileMode = 'auto'; } };
   const selectPi = (i: number | null) => {
     selectedPi = i;
     view.setDesign(store.design, i);
@@ -85,20 +85,19 @@ async function main() {
   view.ev = {
     onPickTerrain: (x, y) => {
       const k = nearestLeg(A, B, store.design.pis, { x, y });
-      store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); unnaive(d); });
+      store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); });
       selectPi(k);
     },
     onPiSelect: (i) => selectPi(i),
-    onPiDrag: (i, x, y) => store.update((d) => { d.pis[i].x = x; d.pis[i].y = y; unnaive(d); }, false),
+    onPiDrag: (i, x, y) => store.update((d) => { d.pis[i].x = x; d.pis[i].y = y; }, false),
     onPiDragEnd: () => store.commit(),
-    onPiDelete: (i) => { store.update((d) => { d.pis.splice(i, 1); unnaive(d); }); selectPi(null); },
+    onPiDelete: (i) => { store.update((d) => { d.pis.splice(i, 1); }); selectPi(null); },
   };
 
   // ---- profile interactions ----
   const takeProfile = (d: Design) => {
     if (d.profileMode === 'auto' && last) d.vpis = last.vpis.map((v) => ({ ...v }));
     d.profileMode = 'manual';
-    d.naive = false;
     // keep the stored list identical to what the evaluator uses, so panel indices match the design
     if (last) d.vpis = normalizeVpis(d.vpis, last.length, last.vpis[0].z, last.vpis[last.vpis.length - 1].z);
   };
@@ -127,13 +126,13 @@ async function main() {
   hud.ev = {
     onCategory: (c) => store.update((d) => { d.category = c as CategoryId; }),
     onSpeed: (s) => store.update((d) => { d.speed = s; }),
-    onAutoProfile: () => store.update((d) => { d.profileMode = 'auto'; d.naive = false; }),
+    onAutoProfile: () => store.update((d) => { d.profileMode = 'auto'; }),
     onUndo: () => store.undo(),
     onRedo: () => store.redo(),
     onReset: () => { selectPi(null); store.reset(); view.resetCamera(); },
     onLoadBest: () => { if (store.best) store.replace(store.best.design); },
-    onRadius: (i, r) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; unnaive(d); }),
-    onDeletePi: (i) => { store.update((d) => { d.pis.splice(i, 1); unnaive(d); }); selectPi(null); },
+    onRadius: (i, r) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }),
+    onDeletePi: (i) => { store.update((d) => { d.pis.splice(i, 1); }); selectPi(null); },
     onVpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
     onDeleteVpi: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; hud.setSelectedVpi(null, last); },
     onExaggeration: (e) => view.setExaggeration(e),
@@ -153,7 +152,7 @@ async function main() {
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); store.redo(); }
     else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPi !== null) {
       const i = selectedPi;
-      store.update((d) => { d.pis.splice(i, 1); unnaive(d); });
+      store.update((d) => { d.pis.splice(i, 1); });
       selectPi(null);
     } else if (e.key === 'Escape') selectPi(null);
   });

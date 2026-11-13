@@ -1,5 +1,7 @@
 // Browser-side loading of a scenario pack (see README.md for the format).
 
+import type { BuildingInfo } from './core/buildings';
+import type { RoadNetData } from './core/roadnet';
 import { decodeHeights, Terrain } from './core/terrain';
 
 export interface PackMeta {
@@ -20,6 +22,10 @@ export interface PackMeta {
 
 export interface Overlays {
   buildings: [number, number, number][];
+  /** per building (parallel to `buildings`): area, levels, kind, oriented bbox — see core/buildings.ts */
+  binfo?: (BuildingInfo | null)[];
+  /** existing road network for crossings — see core/roadnet.ts */
+  net?: RoadNetData;
   places: { name: string; kind: string; x: number; y: number }[];
   roads: { ref: string; cls: string; xy: [number, number][] }[];
 }

@@ -1,7 +1,13 @@
 // Cost model (2026 prices, CZK excl. VAT). All numbers come from data/*.ts.
+//
+// The bill is built per station cell (cell i = the stretch nearest to station i: ds long, half that
+// at the two ends), one array per component, so every koruna is attributable along the route and the
+// totals are simply the sums of the arrays (`costParts` → `sumParts`).
 
 import { CATEGORIES, type CategoryId, type TerrainClass } from './data/categories';
-import { LAND, NORM_EARTHWORK_ALLOWANCE, PRICES } from './data/prices';
+import { EXCAVATION_BY_CLASS, LAND, NORM_EARTHWORK_ALLOWANCE, PRICES } from './data/prices';
+import { NOISE, URBAN_LAND, URBAN_NORM_PER_KM, URBAN_RATES } from './data/urban';
+import { KIND, type Run } from './structures';
 
 /** value of the earthworks already included in the SFDI per-km norm, CZK per km */
 export function allowanceValuePerKm(cat: CategoryId): number {
@@ -21,52 +27,61 @@ export function basePerKm(cat: CategoryId, terrain: TerrainClass): number {
   return CATEGORIES[cat].normPerKm[terrain] - allowanceValuePerKm(cat);
 }
 
-export function tunnelPerKm(length: number): number {
-  return length > PRICES.tunnelLongThreshold ? PRICES.tunnelLongPerKm : PRICES.tunnelShortPerKm;
+/** the same inside built-up areas (SPK CN "intravilán" rows) */
+export function basePerKmUrban(cat: CategoryId, terrain: TerrainClass): number {
+  return URBAN_NORM_PER_KM[cat][terrain] - allowanceValuePerKm(cat);
 }
+
+/** bored tunnel tube price per km for a tunnel of the given length; `urban` = built-up share 0…1 */
+export function tunnelPerKm(length: number, urban = 0): number {
+  const long = length > PRICES.tunnelLongThreshold;
+  const rural = long ? PRICES.tunnelLongPerKm : PRICES.tunnelShortPerKm;
+  const town = long ? URBAN_RATES.tunnelLongPerKm : URBAN_RATES.tunnelShortPerKm;
+  return rural + (town - rural) * urban;
+}
+
+/** "other objects" surcharge rate for a built-up share 0…1 */
+export function surchargeRate(urban: number): number {
+  return PRICES.otherObjectsSurcharge + (URBAN_RATES.otherObjectsSurcharge - PRICES.otherObjectsSurcharge) * urban;
+}
+
+/** land price per m² for a built-up share 0…1 (statutory multiples included) */
+export function landPerM2(urban: number): number {
+  const town = URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier;
+  return LAND.perM2 + (town - LAND.perM2) * urban;
+}
+
+export const NOISE_WALL_PER_M = NOISE.wallHeight * NOISE.wallPerM2;
+
+const SURPLUS_PER_M3 = PRICES.surplusHaulKm * PRICES.haulPerM3Km;
 
 /**
- * Marginal prices used for *decisions* (auto-profile, bridge vs embankment) before the global
- * mass balance is known: cut is assumed to be surplus half of the time (hauled 10 km), fill is
- * assumed to be bought 30 % of the time (tuned so auto-profiles come out roughly balanced on the
- * D11 terrain). The final bill uses the real mass balance.
+ * Marginal prices used for *decisions* (auto-profile, bridge vs embankment) before the global mass
+ * balance is known. One shadow price values a m³ of fill material: a m³ of fill consumes one, a m³
+ * of cut yields the usable share of one (and sends the unsuitable share to a tip). Its true value is
+ * the price of bought fill when the route is short of material and minus the haul to a tip when it
+ * has a surplus; the auto-profile searches for the value in between at which the grade line balances
+ * (MATERIAL_VALUE in data/prices.ts). The final bill uses the real mass balance.
  */
-export const DECISION = {
-  cutPerM3: PRICES.excavation + 0.5 * PRICES.surplusHaulKm * PRICES.haulPerM3Km,
-  fillPerM3: PRICES.fillPlacing + 0.3 * PRICES.borrowFill,
-  landPerM2: LAND.perM2 + PRICES.topsoilDepth * PRICES.topsoil,
-};
-
-export interface EarthworkQuantities {
-  cut: number; // m³
-  fill: number; // m³
-  /** haul moment along the route (mass-haul diagram), m³·m */
-  haulMoment: number;
-  /** volume reused as fill (each m³ gets the free haul included in the excavation price), m³ */
-  reused: number;
-  /** unsuitable cut hauled to a tip (fixed share of all cut), m³ */
-  unsuitable: number;
-  /** usable cut that is not reused and is hauled to a tip, m³ */
-  surplus: number;
-  /** fill that must be bought, m³ */
-  deficit: number;
-  /** footprint of at-grade road incl. slopes, m² */
-  footprint: number;
+export function decisionPrices(materialValue: number) {
+  const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
+  const cut = (excavation: number) => excavation + (1 - usable) * SURPLUS_PER_M3 - usable * materialValue;
+  return {
+    cutPerM3: { I: cut(EXCAVATION_BY_CLASS.I), II: cut(EXCAVATION_BY_CLASS.II), III: cut(EXCAVATION_BY_CLASS.III) },
+    fillPerM3: PRICES.fillPlacing + materialValue,
+    topsoilPerM2: PRICES.topsoilDepth * PRICES.topsoil,
+  };
 }
 
-export interface CostInput {
-  category: CategoryId;
-  terrainClass: TerrainClass;
-  /** length of at-grade road (not on bridges / in tunnels), m */
-  atGradeLength: number;
-  earth: EarthworkQuantities;
-  bridges: number[]; // lengths, m
-  tunnels: number[]; // lengths, m
-  /** extra land: bridge deck area, m² */
-  bridgeLand: number;
-  forestArea: number; // m² of at-grade footprint in forest
-  buildingsHit: number;
-}
+export const PART_KEYS = [
+  'roadBase', 'excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil',
+  'bridges', 'tunnels', 'crossings', 'noiseWalls', 'surcharge', 'land', 'forest', 'buildings',
+] as const;
+export type PartKey = (typeof PART_KEYS)[number];
+/** CZK per station cell, one array per cost component; the bill is their sum */
+export type CostParts = Record<PartKey, Float64Array>;
+
+const EARTH_KEYS = ['excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil'] as const;
 
 export interface CostBreakdown {
   roadBase: number;
@@ -74,39 +89,141 @@ export interface CostBreakdown {
   earthDetail: { excavation: number; fillPlacing: number; haul: number; surplusHaul: number; unsuitable: number; borrow: number; topsoil: number };
   bridges: number;
   tunnels: number;
+  /** crossings of existing roads: junction / reconnection lump sums and overbridges */
+  crossings: number;
+  noiseWalls: number;
+  /** road base + earthworks + structures + crossings + noise walls */
   construction: number;
+  /** "other objects" on road base, earthworks, bridges, tunnels and overbridges */
   surcharge: number;
+  /** land + forest + buildings */
   land: number;
   landDetail: { land: number; forest: number; buildings: number };
   total: number;
 }
 
-export function rollup(i: CostInput): CostBreakdown {
-  const roadBase = (i.atGradeLength / 1000) * basePerKm(i.category, i.terrainClass);
-  const e = i.earth;
+/** length of station cell i, m */
+export function cellLength(i: number, n: number, ds: number): number {
+  return i === 0 || i === n - 1 ? ds / 2 : ds;
+}
+
+export interface StationCostInput {
+  category: CategoryId;
+  terrainClass: TerrainClass;
+  n: number;
+  ds: number;
+  /** KIND per station */
+  kind: ArrayLike<number>;
+  /** built-up share of each cell, 0…1 (urban norm row, urban surcharge, building-land price) */
+  urban?: ArrayLike<number>;
+  /** section areas at each station, m² (ignored where the station is a structure) */
+  cutI: ArrayLike<number>;
+  cutII: ArrayLike<number>;
+  cutIII: ArrayLike<number>;
+  fill: ArrayLike<number>;
+  /** usable share of cut (the rest is unsuitable and goes to a tip) */
+  usable: number;
+  /** global mass balance: haul moment along the route (m³·m), reused cut, usable surplus to a tip,
+   * fill that must be bought (m³) */
+  haul: { moment: number; reused: number; surplus: number; deficit: number };
+  /** land-take width, m: slope to slope at grade, deck width on bridges, 0 in tunnels */
+  width: ArrayLike<number>;
+  /** forest share of the at-grade footprint, 0…1 */
+  forest?: ArrayLike<number>;
+  runs: Run[];
+  /** purchase + demolition of buildings assigned to each cell, CZK */
+  buildings?: ArrayLike<number>;
+  /** crossings of existing roads: all-in lump sums, CZK per cell */
+  crossingLump?: ArrayLike<number>;
+  /** crossings of existing roads: overbridges (get the other-objects surcharge), CZK per cell */
+  crossingStructure?: ArrayLike<number>;
+  /** noise wall length in each cell (both sides added), m */
+  wallLength?: ArrayLike<number>;
+}
+
+/**
+ * The bill, per station cell. Global mass-balance items are spread over the cells that cause them:
+ * bought fill over the fill volumes, surplus and unsuitable haul over the cut volumes, haul along the
+ * route over all volume moved; the surcharge follows the construction cost of each cell.
+ */
+export function costParts(inp: StationCostInput): CostParts {
+  const { n, ds } = inp;
+  const parts = Object.fromEntries(PART_KEYS.map((k) => [k, new Float64Array(n)])) as CostParts;
+  const cat = CATEGORIES[inp.category];
+  const baseRural = basePerKm(inp.category, inp.terrainClass) / 1000;
+  const baseUrban = basePerKmUrban(inp.category, inp.terrainClass) / 1000;
+  const runLen = new Float64Array(n);
+  for (const r of inp.runs) if (r.kind === KIND.tunnel) for (let i = r.i0; i <= r.i1; i++) runLen[i] = r.length;
+  // volumes per cell
+  const cutV = new Float64Array(n), fillV = new Float64Array(n);
+  let cut = 0, fill = 0;
+  for (let i = 0; i < n; i++) {
+    if (inp.kind[i] !== KIND.earth) continue;
+    const len = cellLength(i, n, ds);
+    cutV[i] = (inp.cutI[i] + inp.cutII[i] + inp.cutIII[i]) * len;
+    fillV[i] = inp.fill[i] * len;
+    cut += cutV[i]; fill += fillV[i];
+  }
+  const h = inp.haul;
+  const haulCost = (Math.max(0, h.moment - h.reused * PRICES.freeHaul) / 1000) * PRICES.haulPerM3Km;
+  const moved = inp.usable * cut + fill;
+  const perCut = cut > 0 ? (h.surplus * SURPLUS_PER_M3) / cut : 0;
+  const perFill = fill > 0 ? (h.deficit * PRICES.borrowFill) / fill : 0;
+  const perMoved = moved > 0 ? haulCost / moved : 0;
+  const unsuitablePerCut = (1 - inp.usable) * SURPLUS_PER_M3;
+  for (let i = 0; i < n; i++) {
+    const len = cellLength(i, n, ds);
+    const u = inp.urban ? inp.urban[i] : 0;
+    const k = inp.kind[i];
+    let construction = 0;
+    if (k === KIND.earth) {
+      parts.roadBase[i] = len * (baseRural + (baseUrban - baseRural) * u);
+      parts.excavation[i] = len * (inp.cutI[i] * EXCAVATION_BY_CLASS.I + inp.cutII[i] * EXCAVATION_BY_CLASS.II
+        + inp.cutIII[i] * EXCAVATION_BY_CLASS.III);
+      parts.fillPlacing[i] = fillV[i] * PRICES.fillPlacing;
+      parts.haul[i] = (inp.usable * cutV[i] + fillV[i]) * perMoved;
+      parts.surplusHaul[i] = cutV[i] * perCut;
+      parts.unsuitable[i] = cutV[i] * unsuitablePerCut;
+      parts.borrow[i] = fillV[i] * perFill;
+      parts.topsoil[i] = len * inp.width[i] * PRICES.topsoilDepth * PRICES.topsoil;
+      parts.forest[i] = len * inp.width[i] * (inp.forest ? inp.forest[i] : 0) * LAND.forestExtraPerM2;
+      construction = parts.roadBase[i];
+      for (const key of EARTH_KEYS) construction += parts[key][i];
+    } else if (k === KIND.bridge) {
+      construction = parts.bridges[i] = (len / 1000) * cat.bridgePerKm;
+    } else {
+      construction = parts.tunnels[i] = cat.tunnelTubes * (len / 1000) * tunnelPerKm(runLen[i], u);
+    }
+    const structure = inp.crossingStructure ? inp.crossingStructure[i] : 0;
+    parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
+    parts.noiseWalls[i] = (inp.wallLength ? inp.wallLength[i] : 0) * NOISE_WALL_PER_M;
+    parts.surcharge[i] = (construction + structure) * surchargeRate(u);
+    parts.land[i] = len * inp.width[i] * landPerM2(u);
+    parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
+  }
+  return parts;
+}
+
+/** totals of the cells i0…i1 (default: the whole route) */
+export function sumParts(parts: CostParts, i0 = 0, i1 = parts.roadBase.length - 1): CostBreakdown {
+  const t = {} as Record<PartKey, number>;
+  for (const k of PART_KEYS) {
+    const a = parts[k];
+    let v = 0;
+    for (let i = i0; i <= i1; i++) v += a[i];
+    t[k] = v;
+  }
   const earthDetail = {
-    excavation: e.cut * PRICES.excavation,
-    fillPlacing: e.fill * PRICES.fillPlacing,
-    haul: (Math.max(0, e.haulMoment - e.reused * PRICES.freeHaul) / 1000) * PRICES.haulPerM3Km,
-    surplusHaul: e.surplus * PRICES.surplusHaulKm * PRICES.haulPerM3Km,
-    unsuitable: e.unsuitable * PRICES.surplusHaulKm * PRICES.haulPerM3Km,
-    borrow: e.deficit * PRICES.borrowFill,
-    topsoil: e.footprint * PRICES.topsoilDepth * PRICES.topsoil,
+    excavation: t.excavation, fillPlacing: t.fillPlacing, haul: t.haul, surplusHaul: t.surplusHaul,
+    unsuitable: t.unsuitable, borrow: t.borrow, topsoil: t.topsoil,
   };
-  const earthworks = Object.values(earthDetail).reduce((a, b) => a + b, 0);
-  const bridges = i.bridges.reduce((a, L) => a + (L / 1000) * CATEGORIES[i.category].bridgePerKm, 0);
-  const tubes = CATEGORIES[i.category].tunnelTubes;
-  const tunnels = i.tunnels.reduce((a, L) => a + tubes * (L / 1000) * tunnelPerKm(L), 0);
-  const construction = roadBase + earthworks + bridges + tunnels;
-  const surcharge = construction * PRICES.otherObjectsSurcharge;
-  const landDetail = {
-    land: (e.footprint + i.bridgeLand) * LAND.perM2,
-    forest: i.forestArea * LAND.forestExtraPerM2,
-    buildings: i.buildingsHit * LAND.perBuilding,
-  };
-  const land = landDetail.land + landDetail.forest + landDetail.buildings;
+  const earthworks = EARTH_KEYS.reduce((a, k) => a + t[k], 0);
+  const construction = t.roadBase + earthworks + t.bridges + t.tunnels + t.crossings + t.noiseWalls;
+  const land = t.land + t.forest + t.buildings;
   return {
-    roadBase, earthworks, earthDetail, bridges, tunnels, construction, surcharge, land, landDetail,
-    total: construction + surcharge + land,
+    roadBase: t.roadBase, earthworks, earthDetail, bridges: t.bridges, tunnels: t.tunnels, crossings: t.crossings,
+    noiseWalls: t.noiseWalls, construction, surcharge: t.surcharge, land,
+    landDetail: { land: t.land, forest: t.forest, buildings: t.buildings },
+    total: construction + t.surcharge + land,
   };
 }
