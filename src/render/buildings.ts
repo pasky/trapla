@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { BUILDING_COLOR } from './landcover';
 import type { BuildingData } from './vectorPack';
 
-const WALL: [number, number, number] = [232, 224, 208];
+const WALL: [number, number, number] = [246, 240, 228];
 const BIG_ROOF: [number, number, number] = [146, 134, 126];
 /** chunks further than this from the camera (horizontally, metres) are not drawn */
 const MAX_DIST = 7000;
@@ -32,7 +32,8 @@ export class Buildings {
       if (!g) groups.set(key, g = []);
       g.push(i);
     }
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    // a little self-light keeps the shaded walls from going muddy
+    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0x38332c });
     const col = new THREE.Color();
     const lin = (c: [number, number, number], f: number): [number, number, number] => {
       col.setRGB(Math.min(1, (c[0] / 255) * f), Math.min(1, (c[1] / 255) * f), Math.min(1, (c[2] / 255) * f), THREE.SRGBColorSpace);

@@ -10,9 +10,12 @@ const PORT = Number(process.env.PORT ?? 5199); // set PORT when several checkout
 const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
 await server.listen();
 const url = `http://localhost:${PORT}/`;
+// GPU=1: use the hardware GPU (Vulkan) instead of SwiftShader — much faster where one is available
 const browser = await chromium.launch({
   executablePath: process.env.CHROME ?? '/usr/bin/chromium',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  args: process.env.GPU
+    ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
+    : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const errors = [];
@@ -25,10 +28,21 @@ const idle = async () => {
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
 };
+// wait until the land-cover textures for the current camera are drawn (and photos fetched)
+const settle = async () => {
+  await page.evaluate(() => new Promise((res) => {
+    const f = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? f() : res()));
+    requestAnimationFrame(() => requestAnimationFrame(f));
+  }));
+  await page.waitForTimeout(500); // contour labels are laid out once the camera rests
+};
 const shot = async (name) => {
+  await settle();
   await page.screenshot({ path: `${OUT}/${name}.png` });
   console.log('saved', name);
 };
+const view = (prefs) => page.evaluate((p) => window.trapla.setView({ contours: false, slope: false, exag: 1, photo: false, ...p }), prefs);
+const look = (...a) => page.evaluate((a) => window.trapla.lookAt(...a), a);
 
 await page.goto(url);
 await page.evaluate(() => localStorage.clear());
@@ -117,6 +131,9 @@ if (r) {
   await page.evaluate(([a, b]) => window.trapla.profileFocus(a, b), [r.s0, r.s1]);
   await page.waitForTimeout(1500);
   await shot('03-closeup-bridge-cut');
+  await view({ contours: true });
+  await shot('09-bridge-contours');
+  await view({});
 }
 
 // close-up of the deepest cut
@@ -133,7 +150,37 @@ if (c) {
   await page.evaluate(([a, b]) => window.trapla.profileFocus(a, b), [c.s - 150, c.s + 150]);
   await page.waitForTimeout(1500);
   await shot('04-closeup-cut');
+  await view({ contours: true });
+  await shot('10-cut-contours');
+  await view({});
 }
+
+// terrain legibility and close-up quality: contours, slope tint, exaggeration, town, forest edge, photo
+await page.evaluate(() => { window.trapla.resetCamera(); window.trapla.profileFit(); });
+await view({ contours: true });
+await shot('05-overview-contours');
+await look(9700, 8591, 5000, 20, 45);
+await shot('06-mid-contours');
+await view({ slope: true });
+await shot('11-mid-slope-tint');
+await view({});
+await look(6713, 7282, 700, 30, 28);
+await shot('07-town-buildings');
+await look(10500, 12500, 600, 200, 28);
+await shot('08-forest-edge');
+await view({ contours: true });
+await shot('08-forest-edge-contours');
+await view({ contours: true, exag: 2 });
+await look(9400, 9300, 900, 40, 30);
+await shot('12-relief-2x-contours');
+if (await page.evaluate(() => !!window.trapla.meta.orthophoto && navigator.onLine)) {
+  await view({ photo: true, contours: true });
+  await look(9400, 9300, 450, 40, 30);
+  await shot('13-photo-contours');
+}
+await view({});
+await page.evaluate((c) => (c ? window.trapla.lookAt(...c) : window.trapla.resetCamera()), designs.overview ?? null);
+
 
 // drag performance: move a PI repeatedly through the real worker path
 const perf = await page.evaluate(async () => {

@@ -10,7 +10,7 @@ Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.
 
 ```sh
 npm install
-npm run data      # builds public/scenarios/d11/ (≈ 14 MB; needs uv; ~10 min on first run, cached afterwards)
+npm run data      # builds public/scenarios/d11/ (≈ 16 MB; needs uv; ~10 min on first run, ~20 s once cached)
 npm run dev       # → http://localhost:5173/
 ```
 
@@ -21,9 +21,11 @@ Other commands:
 | `npm test` | vitest unit tests of the pure maths (geometry, earthworks, cost, auto-profile) |
 | `npm run typecheck` / `npm run build` | TypeScript check / production build into `dist/` |
 | `npm run bench [design.json]` | recompute timing + realism numbers in Node (default: straight line and an official-line-like design) |
-| `npm run shots` | drives the app headlessly (Chromium + SwiftShader) and writes `docs/screenshots/*.png` |
+| `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
 | `npm run smoke` | interaction smoke test with real mouse events (add/drag/delete PI, profile takeover, undo, persistence) |
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json]` | crude local search over PI positions (calibration aid) |
+| `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
+| `node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name",{"contours":true}],…]' [outdir]` | debug renders of arbitrary camera views (`GPU=1` as above) |
 
 The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHROME=...`).
 
@@ -33,6 +35,12 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   to move it; **right-click** it or press <kbd>Del</kbd> to delete. Select a PI to edit its radius (auto = the
   smallest radius that satisfies the norm, incl. room for transition curves).
 - Map: left-drag pans, right-drag rotates, wheel zooms.
+- View options (buttons at the top right of the map, remembered between sessions):
+  **Contours** <kbd>C</kbd> — contour lines with elevation labels; the interval follows the zoom (5 / 25 m close,
+  10 / 50 m mid, 20 / 100 m far, thick lines = major); **Slope** <kbd>S</kbd> — tints the ground by slope (yellow
+  from 8 %, orange from 15 %, red from 25 %, purple from 40 %); **Relief** <kbd>E</kbd> — vertical exaggeration
+  1× / 1.5× / 2× / 3× of the whole scene; **Photo** <kbd>O</kbd> — aerial photo instead of the map layers
+  (needs a network connection, see below).
 - The grade line is computed automatically (dynamic programming, see below) whenever the horizontal
   alignment changes. Dragging a VPI in the profile panel takes manual control; **Auto profile** gives it back.
   Profile: double-click adds a VPI, right-click deletes, wheel zooms, drag pans.
@@ -59,9 +67,47 @@ src/core/               pure, tested modules (no DOM)
   cost.ts, checks.ts    cost roll-up; norm checks as per-family functions (roads now)
   evaluate.ts           the whole recompute path design → result
 src/worker.ts           runs evaluate() off the main thread, latest request only
-src/render/view.ts      three.js: draped terrain chunks, route ribbon, markers, picking
-src/ui/                 HUD and profile panel
+src/render/             three.js view
+  view.ts               scene, camera, route ribbon, markers, heightfield picking
+  heightTexture.ts      the 5 m height grid as a filterable GPU texture (RG16F + hand-built mipmaps)
+  terrainMaterial.ts    terrain shader: relief shading, hypsometric tint, contours, slope tint, OOB hatch
+  landcover.ts          land cover / roads / rails / water / footprints rasterised from vectors into
+                        camera-centred clip levels (and the optional orthophoto)
+  buildings.ts          extruded buildings, merged per chunk
+  contourLabels.ts      elevation labels on major contours
+  vectorPack.ts         decoder of vector.bin.gz
+src/ui/                 HUD, profile panel, view options bar
 ```
+
+### How the terrain is drawn
+
+Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overview.
+
+- **Relief**: the height grid is a GPU texture. The terrain shader takes the gradient per pixel (step = half a
+  cell close up, the pixel footprint when zoomed out), shades it from four light directions and adds the
+  hypsometric tint. The mesh itself stays at 20 m (1 M vertices); the shading carries the 5 m detail.
+- **Contours and slope tint** come from the same height and gradient: line width is constant in screen pixels
+  (distance to the contour = elevation difference ÷ elevation change per pixel), lines fade where they would be
+  closer than ~4–9 px, are dark on light ground and light on forest, and are not drawn out of bounds.
+- **Land cover, existing roads, railways, water, building footprints** are vectors (`vector.bin.gz`), rasterised
+  on the GPU with 4× MSAA into one base texture of the whole area (≈ 8.5 m/texel, drawn once) and four 2048²
+  *clip levels* around the camera focus at 0.125 … 4 m/texel, each twice as coarse as the previous. A level is
+  redrawn — at most one per frame — only when the focus leaves the middle of its window or the zoom changes by
+  an octave, so orbiting costs nothing and panning / zooming redraws a level now and then (≈ 1–2 ms on a laptop
+  GPU). Roads keep their real width with a minimum width in texels, so they stay visible from afar.
+- **Buildings** (26,660) are flat-roofed boxes extruded from the OSM footprints with heights from
+  `height` / `building:levels` or a guess by type and area, merged into ≈ 60 meshes; chunks beyond 7 km are
+  hidden (the footprints in the land-cover texture have the roof colour).
+- **Photo**: with <kbd>O</kbd> each clip-level window is fetched as one JPEG from ČÚZK's public Ortofoto ČR
+  view service (ArcGIS `MapServer/export`, EPSG:5514, CORS enabled; one request at a time, stale ones dropped)
+  and drawn into the same levels; the map is shown until a photo arrives. Nothing is stored in the pack.
+- GPU memory: height texture ≈ 85 MB, land-cover textures ≈ 110 MB, MSAA scratch target ≈ 80 MB, meshes ≈ 60 MB.
+  Needs WebGL2 with 4096 px textures (no optional extensions).
+
+Measured on a Radeon 890M laptop GPU (headless Chromium, 1600 × 1000, `node scripts/perf.mjs --gpu`): 2.5–5 ms
+per frame while orbiting, panning and zooming through all levels (worst frame ≈ 25–30 ms), with or without
+contours and photo; the same before this renderer was 2.2–3.7 ms. Load to first result ≈ 1.1 s (was ≈ 0.6 s:
+the height texture, vector geometry and buildings are built at start-up).
 
 Recompute for a ~21 km route takes ≈ 40 ms in Node (≈ 30 ms of it the auto-profile DP); ≈ 100 ms in the
 headless SwiftShader browser where the CPU is shared with software WebGL.
@@ -70,19 +116,22 @@ headless SwiftShader browser where the CPU is shared with software WebGL.
 
 | file | content |
 |---|---|
-| `meta.json` | grid (3500 × 4500 at 5 m, row 0 = north), origin in EPSG:5514, A/B, official line, texture tiles, attribution |
+| `meta.json` | grid (3500 × 4500 at 5 m, row 0 = north), origin in EPSG:5514, A/B, official line, attribution, `vector` file, `orthophoto` service (export URL, CRS, attribution) |
 | `height.i16.gz` | gzip of row-wise int16 deltas of uint16 heights; h = base + q · 0.1 m (display-filled where no data) |
 | `landcover.u8.gz` | gzip uint8 per cell: bits 0–2 class (0 none, 1 forest, 2 water/river, 3 building, 4 road, 5 urban, 6 rail, 7 stream); bit 3 built-up area; bit 5 river/water crossing, bit 6 railway crossing (must-bridge masks); bit 7 out of bounds |
-| `tex_R_C.jpg` | 1024 px drape tiles: multi-directional hillshade × hypsometric tint + OSM overlays; OOB greyed and hatched |
 | `overlays.json` | building centroids + radius, `binfo` (area, levels, kind, oriented rectangle per building), place names, main roads, `net` (existing road network for crossings) |
+| `vector.bin.gz` | render-only vectors (`pipeline/vectors.py`, format described there): land-cover polygons dissolved per class and triangulated (forest, water, urban, farmland, grass), polylines (roads by class, tracks, railways, rivers, streams; waterways and rails smoothed), building rings + roof triangles + heights; local metres, split into 2.5 km chunks |
 
 Game coordinates are local metres: `x = X_5514 − origin.x` (east), `y = Y_5514 − origin.y` (north).
 The play area is the axis-aligned EPSG:5514 rectangle x ∈ [−637 500, −620 000], y ∈ [−1 011 500, −989 000]
 (≈ 50.50–50.70 N, 15.82–16.06 E). Terrain is fetched in five 3500 × 900 px requests from the ČÚZK DMR 5G
-ImageServer (raw responses cached in `pipeline/cache/`); OSM via Overpass (cached likewise).
+ImageServer (raw responses cached in `pipeline/cache/`); OSM via Overpass (cached likewise; `osm_cover2` and
+`osm_lines2` hold the render-only extras: fields, meadows, parks, tracks and service roads). The engine reads only
+`height`, `landcover` and `overlays.json`; `vector.bin.gz` and the orthophoto are for display.
 
 ## Data attribution
 
 - Terrain: © ČÚZK, DMR 5G, CC BY 4.0.
-- Overlays and the official D11 line: © OpenStreetMap contributors, ODbL.
+- Overlays, vector map layers, buildings and the official D11 line: © OpenStreetMap contributors, ODbL.
+- Aerial photo (optional view layer, streamed, not redistributed): © ČÚZK, Ortofoto ČR, CC BY 4.0.
 - Prices: SFDI SPK CN 2026 and OTSKP 2026 (see `research/00-feasibility-map.md` §3).
