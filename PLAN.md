@@ -110,9 +110,12 @@ What exists (details and commands in `README.md`):
   PI editor with radii, auto/manual profile, live checks, cross-section earthworks, automatic bridges and
   tunnels, cost roll-up, HUD with VALID state, best design, undo/redo, persistence, naive start.
 - **Rules added during the build** (game rules, not norm values): river / water-area / railway crossings are
-  always bridged (≥ 30 m), streams are assumed culverted (in the norm). Bridges are only considered ≥ 4 m above
-  ground and bored tunnels with ≥ 14 m of cover; minimum bridge 30 m, tunnel 150 m; earthwork gaps shorter than
-  60 m (bridges) / 150 m (tunnels) are merged. Road base price is charged on at-grade length only.
+  always bridged (≥ 30 m) and need the grade ≥ 3 m above a river and ≥ 7.5 m above a railway (otherwise a
+  violation; the auto-profile respects it); streams are assumed culverted (in the norm). Bridges are only
+  considered ≥ 4 m above ground and bored tunnels with ≥ 14 m of cover; minimum bridge 30 m, tunnel 150 m;
+  earthwork gaps shorter than 60 m (bridges) / 150 m (tunnels) are merged. Road base price is charged on at-grade
+  length only. Slopes that do not reach the ground within 150 m and footprints leaving the terrain data are
+  violations.
 
 ### Travel-time target X and traffic Y
 
@@ -120,18 +123,19 @@ What exists (details and commands in `README.md`):
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
-- Calibration runs (`scripts/optimize.ts`, crude local search): 90 km/h starting from the official corridor →
-  2.60 bn CZK, 20.8 km, 13.9 min; 80 km/h from the straight line → 2.73 bn CZK, 18.8 km, 14.1 min; 90 km/h from
-  the straight line → 2.91 bn CZK. So the slower, smaller-radius road is only reachable on a very direct line and
-  came out more expensive than the best 90 km/h design found — the intended tension — but the margin is thin and
-  the local search is weak; re-check once players find better designs.
+- Calibration runs (`scripts/optimize.ts`, crude local search, 500 iterations each): 90 km/h starting from the
+  official corridor → 3.04 bn CZK, 20.8 km, 13.9 min; 90 km/h from the straight line → 3.46 bn CZK, 18.9 km;
+  80 km/h from the straight line → 3.69 bn CZK, 18.8 km, 14.1 min. So the slower, smaller-radius road is only
+  reachable on a very direct line, and that line is more expensive than a 90 km/h road that follows the
+  official corridor — the intended tension. The local search is weak; re-check once players find better designs.
 
 ### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
 
-20.77 km, 13.85 min, **2.61 bn CZK = 125 M CZK/km** (road base 885 M, earthworks 671 M, bridges 122 M, other
-objects 513 M, land 415 M). Cut 1.81 M m³ / fill 1.81 M m³ (87 m³ per m; the norm assumes 40), balanced, avg
-haul 0.6 km; 4 bridges / 210 m (river and rail crossings), no tunnels; 7 buildings demolished; 21 ha of forest.
-Bridging the Úpa valley at Poříčí straight across (manual profile, 730 m viaduct up to 42 m high) costs 3.61 bn.
+20.81 km, 13.87 min, **3.06 bn CZK = 147 M CZK/km** (road base 857 M, earthworks 833 M, bridges 197 M, other
+objects 578 M, land & penalties 599 M). Cut 2.00 M m³ / fill 1.83 M m³ (96 / 88 m³ per m; the norm assumes 40 /
+34); 15 % of cut unsuitable, 122k m³ of fill bought; avg haul 0.7 km; 4 bridges / 340 m (river and rail
+crossings), no tunnels; 18 buildings demolished; 24 ha of forest in the footprint. Bridging the Úpa valley at
+Poříčí straight across instead (manual profile, 800 m viaduct up to 41 m high) costs 3.74 bn.
 
 ### PROVISIONAL / placeholder values (all in `src/core/data/`)
 
@@ -144,11 +148,17 @@ Bridging the Úpa valley at Poříčí straight across (manual profile, 730 m vi
 - Decision prices for the auto-profile and structure choice (cut = excavation + ½ surplus haul, fill = placing +
   0.3 × bought fill), tuned so auto-profiles come out roughly balanced.
 - Purchased fill is charged 636 CZK/m³ on top of 100 CZK/m³ placing (OTSKP 17180 may already include placing).
+- 15 % of all cut is unsuitable (hauled 10 km, replaced by bought fill) — the norm's own assumption, applied
+  identically to the allowance and to the design; the first 1 km of haul is free (included in excavation).
+- Crossing clearances 3 m (river) / 7.5 m (railway); building = circle of its max vertex distance.
 
 ### Known limitations
 
 - Mass haul uses a single balance line: cut may be hauled the whole route length if that is still cheaper than
   tip + borrow; no intermediate tips/borrow pits.
+- Auto-profile is a grid search (1 m, or 2 m on rugged routes; knots every ~250 m): its result is checked, and
+  a failed search is reported, but a compliant line may exist that it did not find. Rugged synthetic 25 km
+  routes take 20–30 ms in the DP; the D11 reference design recomputes in ≈ 40 ms (Node).
 - Auto-profile cost uses a flat-ground section estimate; the bill uses the real cross-sections.
 - Cross-sections ignore crossfall/superelevation and curvature correction; transition curves are not drawn.
 - Building hits use OSM centroids; crossing existing roads is free (no junctions or overpasses yet).
