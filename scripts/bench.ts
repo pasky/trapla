@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // Bench + sanity: evaluate the naive straight design and a design following the official line.
 import { evaluate, type Design } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
@@ -22,6 +23,10 @@ function report(name: string, d: Design) {
   return r;
 }
 
+if (process.argv[2]) {
+  report(process.argv[2], JSON.parse(readFileSync(process.argv[2], 'utf8')).design);
+  process.exit(0);
+}
 report('straight', { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] });
 
 // follow the official line: take points every ~1.5 km between A and B

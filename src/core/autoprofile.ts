@@ -63,42 +63,46 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     last[nK - 1] = n - 1;
   }
-  // ground envelope per knot
+  // ground envelope per knot (min/max ground within ±3 knot spacings)
   const win = 3 * D;
-  const lo = new Int32Array(nK + 1), hi = new Int32Array(nK + 1);
+  const gmin = new Float64Array(nK + 1), gmaxEnv = new Float64Array(nK + 1);
   for (let k = 0; k <= nK; k++) {
     const sk = k * D;
     let mn = Infinity, mx = -Infinity;
     const i0 = Math.max(0, Math.floor((sk - win) / ds)), i1 = Math.min(n - 1, Math.ceil((sk + win) / ds));
     for (let i = i0; i <= i1; i++) { const v = g[i]; if (v < mn) mn = v; if (v > mx) mx = v; }
-    lo[k] = Math.floor(mn - pad);
-    hi[k] = Math.ceil(mx + pad);
+    gmin[k] = mn; gmaxEnv[k] = mx;
   }
 
-  for (const gmax of [opt.maxGradient, opt.maxGradient * 1.5, opt.maxGradient * 2.5]) {
-    const res = solve(gmax, gmax > opt.maxGradient);
+  // attempts: normal band; wide band (deep tunnels / high viaducts) at a 2 m grid; then relaxed grades
+  const attempts: [number, number, number][] = [
+    [opt.maxGradient, pad, 1], [opt.maxGradient, pad * 5, 2],
+    [opt.maxGradient * 1.5, pad, 1], [opt.maxGradient * 2.5, pad, 2],
+  ];
+  for (const [gm, pd, u] of attempts) {
+    const res = solve(gm, pd, u, gm > opt.maxGradient);
     if (res) return res;
   }
   // give up: straight grade A→B
   return { vpis: [{ s: 0, z: zA, r: null }, { s: L, z: zB, r: null }], feasible: false, cost: Infinity };
 
-  function solve(gmax: number, relaxed: boolean): AutoProfileResult | null {
-    const dzMax = Math.max(1, Math.floor(gmax * D + 1e-9));
-    const crestLim = Math.max(1, Math.floor((D * D) / opt.minCrest + 1e-9));
-    const sagLim = Math.max(1, Math.floor((D * D) / opt.minSag + 1e-9));
+  /** DP with elevations on a grid of u metres; dz values are in grid units */
+  function solve(gmax: number, padM: number, u: number, relaxed: boolean): AutoProfileResult | null {
+    const dzMax = Math.max(1, Math.floor((gmax * D) / u + 1e-9));
+    const crestLim = Math.max(1, Math.floor((D * D) / opt.minCrest / u + 1e-9));
+    const sagLim = Math.max(1, Math.floor((D * D) / opt.minSag / u + 1e-9));
     const ND = 2 * dzMax + 1;
+    const uA = Math.round(zA / u), uB = Math.round(zB / u);
     const zlo = new Int32Array(nK + 1), zhi = new Int32Array(nK + 1);
     for (let k = 0; k <= nK; k++) {
-      let a = Math.max(lo[k], zA - dzMax * k, zB - dzMax * (nK - k));
-      let b = Math.min(hi[k], zA + dzMax * k, zB + dzMax * (nK - k));
-      if (k === 0) { a = zA; b = zA; }
-      if (k === nK) { a = zB; b = zB; }
-      if (a > b) {
-        // the ground band is unreachable under the grade limit: widen to the reachable set
-        a = Math.max(zA - dzMax * k, zB - dzMax * (nK - k));
-        b = Math.min(zA + dzMax * k, zB + dzMax * (nK - k));
-        if (a > b) return null;
-      }
+      const rlo = Math.max(uA - dzMax * k, uB - dzMax * (nK - k));
+      const rhi = Math.min(uA + dzMax * k, uB + dzMax * (nK - k));
+      if (rlo > rhi) return null;
+      let a = Math.max(Math.floor((gmin[k] - padM) / u), rlo);
+      let b = Math.min(Math.ceil((gmaxEnv[k] + padM) / u), rhi);
+      if (k === 0) { a = uA; b = uA; }
+      if (k === nK) { a = uB; b = uB; }
+      if (a > b) { a = rlo; b = rhi; } // ground band unreachable: use the reachable set
       zlo[k] = a; zhi[k] = b;
     }
     let cur = new Float64Array(ND).fill(0); // knot 0: any incoming grade, cost 0
@@ -116,14 +120,16 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         for (let d = 0; d < ND; d++) if (cur[zi * ND + d] < Infinity) { any = true; break; }
         if (!any) continue;
         const z = zlo[k] + zi;
+        const zm = z * u;
         // segment costs for each outgoing dz'
         for (let d2 = 0; d2 < ND; d2++) {
           const dz2 = d2 - dzMax;
           const z2 = z + dz2;
           if (z2 < zlo[k + 1] || z2 > zhi[k + 1]) { seg[d2] = Infinity; continue; }
           let c = 0;
+          const slope = (dz2 * u) / D;
           for (let i = fi; i <= la; i++) {
-            const h = z + (dz2 * (s[i] - sk)) / D - g[i];
+            const h = zm + slope * (s[i] - sk) - g[i];
             let x = (h + H_MAX) / H_STEP;
             if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
             const j = x | 0;
@@ -154,20 +160,20 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     let best = Infinity, bi = -1;
     for (let d = 0; d < ND; d++) if (cur[d] < best) { best = cur[d]; bi = d; }
     if (bi < 0) return null;
-    const zs = new Int32Array(nK + 1);
+    const zs = new Float64Array(nK + 1);
     const dzs = new Int32Array(nK + 1);
     let st = bi; // at knot nK, zi = 0
     for (let k = nK; k >= 1; k--) {
       const ND_ = ND;
       const zi = Math.floor(st / ND_), d = st % ND_;
-      zs[k] = zlo[k] + zi;
+      zs[k] = (zlo[k] + zi) * u;
       dzs[k] = d - dzMax;
       st = parents[k - 1][st];
     }
-    zs[0] = zA;
-    const vpis: VPI[] = [{ s: 0, z: zA, r: null }];
+    zs[0] = uA * u;
+    const vpis: VPI[] = [{ s: 0, z: uA * u, r: null }];
     for (let k = 1; k < nK; k++) if (dzs[k + 1] !== dzs[k]) vpis.push({ s: k * D, z: zs[k], r: null });
-    vpis.push({ s: L, z: zB, r: null });
+    vpis.push({ s: L, z: uB * u, r: null });
     return { vpis, feasible: !relaxed, cost: best };
   }
 }
