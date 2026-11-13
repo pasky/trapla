@@ -1,0 +1,121 @@
+section,code,item,unit,min_czk,standard_czk,max_czk
+KOMUNIKACE,"A.1.D.33,5.NER","dálnice (D 33,5), extravilán, novostavba, rovinaté a pahorkovité území",km,201827000,228570000,334626000
+KOMUNIKACE,"A.1.D.33,5.NEH","dálnice (D 33,5), extravilán, novostavba, hornaté území",km,231196000,261830000,383319000
+KOMUNIKACE,"A.1.D.27,5.NER","dálnice (D 27,5), extravilán, novostavba, rovinaté a pahorkovité území",km,159862000,187632000,294395000
+KOMUNIKACE,"A.1.D.27,5.NEH","dálnice (D 27,5), extravilán, novostavba, hornaté území",km,182764000,214512000,336569000
+KOMUNIKACE,"A.1.D.25,5.NER","dálnice (D 25,5), extravilán, novostavba, rovinaté a pahorkovité území",km,144060000,173986000,290035000
+KOMUNIKACE,"A.1.D.25,5.NEH","dálnice (D 25,5), extravilán, novostavba,  hornaté území",km,164493000,198663000,331171000
+KOMUNIKACE,"A.1.D.21,5.NER","dálnice (D 21,5), extravilán, novostavba, rovinaté a pahorkovité území",km,121463000,146694000,244539000
+KOMUNIKACE,"A.1.D.21,5.NEH","dálnice (D 21,5), extravilán, novostavba,  hornaté území",km,138299000,167028000,278436000
+KOMUNIKACE,"A.1.S1.24,5.NER","silnice I. třídy (S 24,5), extravilán, novostavba, rovinaté a pahorkovité území",km,127861000,160831000,288370000
+KOMUNIKACE,"A.1.S1.24,5.NEH","silnice I. třídy (S 24,5), extravilán, novostavba, hornaté území",km,149579000,188150000,337353000
+KOMUNIKACE,"A.1.S1.24,5.NIR","silnice I. třídy (S 24,5), intravilán, novostavba, rovinaté a pahorkovité území",km,150163000,188884000,338669000
+KOMUNIKACE,"A.1.S1.20,75.NER","silnice I. třídy (S 20,75), extravilán, novostavba, rovinaté a pahorkovité území",km,105021000,136214000,256491000
+KOMUNIKACE,"A.1.S1.20,75.NEH","silnice I. třídy (S 20,75), extravilán, novostavba, hornaté území",km,122964000,159486000,300312000
+KOMUNIKACE,"A.1.S1.20,75.NIR","silnice I. třídy (S 20,75), intravilán, novostavba, rovinaté a pahorkovité území",km,123386000,160034000,301344000
+KOMUNIKACE,"A.1.S1.15,25.NER","silnice I. třídy (S 15,25) - (2+1), extravilán, novostavba, rovinaté a pahorkovité území",km,71260000,91359000,180617000
+KOMUNIKACE,"A.1.S1.15,25.NEH","silnice I. třídy (S 15,25) - (2+1), extravilán, novostavba, hornaté území",km,84352000,108143000,213799000
+KOMUNIKACE,"A.1.S1.13,5.NER","silnice I. třídy (S 13,5) - (2+1), extravilán, novostavba, rovinaté a pahorkovité území",km,63083000,80876000,159892000
+KOMUNIKACE,"A.1.S1.13,5.NEH","silnice I. třídy (S 13,5) - (2+1), extravilán, novostavba, hornaté území",km,74698000,95767000,189331000
+KOMUNIKACE,"A.1.S1.11,5.NER","silnice I. třídy (S 11,5), extravilán, novostavba, rovinaté a pahorkovité území",km,53737000,68894000,136203000
+KOMUNIKACE,"A.1.S1.11,5.NEH","silnice I. třídy (S 11,5), extravilán, novostavba, hornaté území",km,64087000,82163000,162436000
+KOMUNIKACE,"A.1.S1.11,5.NIR","silnice I. třídy (S 11,5), intravilán, novostavba, rovinaté a pahorkovité území",km,63987000,82035000,162183000
+KOMUNIKACE,"A.1.S1.11,5.NIH","silnice I. třídy (S 11,5), intravilán, novostavba, hornaté území",km,73839000,94666000,187155000
+KOMUNIKACE,"A.1.S1.9,5.NER","silnice I. třídy (S 9,5), extravilán, novostavba, rovinaté a pahorkovité území",km,41432000,56912000,125434000
+KOMUNIKACE,"A.1.S1.9,5.NEH","silnice I. třídy (S 9,5), extravilán, novostavba, hornaté území",km,49491000,67982000,149832000
+KOMUNIKACE,"A.1.S1.9,5.NIR","silnice I. třídy (S 9,5), intravilán, novostavba, rovinaté a pahorkovité území",km,49396000,67852000,149546000
+KOMUNIKACE,"A.1.S1.9,5.NIH","silnice I. třídy (S 9,5), intravilán, novostavba, hornaté území",km,56981000,78271000,172509000
+KOMUNIKACE,"A.1.S2.9,5.NER","silnice II. třídy (S 9,5), extravilán, novostavba, rovinaté a pahorkovité území",km,34564000,45780000,79566000
+KOMUNIKACE,"A.1.S2.9,5.NEH","silnice II. třídy (S 9,5), extravilán, novostavba, hornaté území",km,39832000,52758000,91693000
+KOMUNIKACE,"A.1.S2.9,5.NIR","silnice II. třídy (S 9,5), intravilán, novostavba, rovinaté a pahorkovité území",km,41097000,54433000,94605000
+KOMUNIKACE,"A.1.S2.9,5.NIH","silnice II. třídy (S 9,5), intravilán, novostavba, hornaté území",km,46155000,61133000,106249000
+KOMUNIKACE,"A.1.S2.7,5.NER","silnice II. třídy (S 7,5), extravilán, novostavba, rovinaté a pahorkovité území",km,24432000,36142000,70947000
+KOMUNIKACE,"A.1.S2.7,5.NEH","silnice II. třídy (S 7,5), extravilán, novostavba, hornaté území",km,28019000,41448000,81362000
+KOMUNIKACE,"A.1.S2.7,5.NIR","silnice II. třídy (S 7,5), intravilán, novostavba, rovinaté a pahorkovité území",km,28989000,42883000,84179000
+KOMUNIKACE,"A.1.S2.7,5.NIH","silnice II. třídy (S 7,5), intravilán, novostavba, hornaté území",km,32479000,48046000,94314000
+KOMUNIKACE,"A.1.S3.7,5.NER","silnice III. třídy (S 7,5), extravilán, novostavba, rovinaté a pahorkovité území",km,30711000,30711000,30711000
+KOMUNIKACE,"A.1.S3.7,5.NEH","silnice III. třídy (S 7,5), extravilán, novostavba, hornaté území",km,41311000,41311000,41311000
+KOMUNIKACE,"A.1.S3.7,5.NIR","silnice III. třídy (S 7,5), intravilán, novostavba, rovinaté a pahorkovité území",km,40220000,40220000,40220000
+KOMUNIKACE,"A.1.S3.7,5.NIH","silnice III. třídy (S 7,5), intravilán, novostavba, hornaté území",km,46767000,46767000,46767000
+KOMUNIKACE,"A.1.S3.6,5.NER","silnice III. třídy (S 6,5), extravilán, novostavba, rovinaté a pahorkovité území",km,26616000,26616000,26616000
+KOMUNIKACE,"A.1.S3.6,5.NEH","silnice III. třídy (S 6,5), extravilán, novostavba, hornaté území",km,35860000,35860000,35860000
+KOMUNIKACE,"A.1.S3.6,5.NIR","silnice III. třídy (S 6,5), intravilán, novostavba, rovinaté a pahorkovité území",km,34903000,34903000,34903000
+KOMUNIKACE,"A.1.S3.6,5.NIH","silnice III. třídy (S 6,5), intravilán, novostavba, hornaté území",km,40641000,40641000,40641000
+KOMUNIKACE,"A.1.S3.4,0.NER","silnice III. třídy (S 4,0), extravilán, novostavba, rovinaté a pahorkovité území",km,16379000,16379000,16379000
+KOMUNIKACE,"A.1.S3.4,0.NEH","silnice III. třídy (S 4,0), extravilán, novostavba, hornaté území",km,21959000,21959000,21959000
+KOMUNIKACE,"A.1.S3.4,0.NIR","silnice III. třídy (S 4,0), intravilán, novostavba, rovinaté a pahorkovité území",km,21599000,21599000,21599000
+KOMUNIKACE,"A.1.S3.4,0.NIH","silnice III. třídy (S 4,0), intravilán, novostavba, hornaté území",km,25018000,25018000,25018000
+KOMUNIKACE,"A.1.M.7,5.NER","místní komunikace (M 7,5/7,5), extravilán, novostavba, rovinaté a pahorkovité území",km,24133000,24133000,24133000
+KOMUNIKACE,"A.1.M.7,5.NEH","místní komunikace (M 7,5/7,5), extravilán, novostavba, hornaté území",km,32079000,32079000,32079000
+KOMUNIKACE,"A.1.M.11,5.NIR","místní komunikace (M 11,5/7,5), intravilán, novostavba, rovinaté a pahorkovité území",km,32930000,32930000,32930000
+KOMUNIKACE,"A.1.M.11,5.NIH","místní komunikace (M 11,5/7,5), intravilán, novostavba, hornaté území",km,43906000,43906000,43906000
+KOMUNIKACE,A.1.P6.NE,"polní cesty (P6), extravilán, novostavba",km,20978526.749999996,20978526.749999996,20978526.749999996
+KOMUNIKACE,A.1.P5.NE,"polní cesty (P5), extravilán, novostavba",km,17482105.624999996,17482105.624999996,17482105.624999996
+KOMUNIKACE,A.1.P4.NE,"polní cesty (P4), extravilán, novostavba",km,13985684.499999998,13985684.499999998,13985684.499999998
+KOMUNIKACE,"A.1.SPC.3,0.N","stezky pro pěší a cyklisty, novostavba (šíře 2,5m)",km,6623299.169999999,6623299.169999999,6623299.169999999
+MOSTY,"A.2.D.33,5.N","dálniční D 33,5, novostavba",km,1744130000,1796220000,2491357000
+MOSTY,"A.2.D.27,5.N","dálniční D 27,5, novostavba",km,1442847000,1495178000,2100725000
+MOSTY,"A.2.D.25,5.N","dálniční D 25,5, novostavba",km,1343221000,1394830000,1968105000
+MOSTY,"A.2.D.21,5.N","dálniční D 21,5, novostavba",km,1149952000,1194135000,1684924000
+MOSTY,"A.2.S.24,5.N","silniční S 24,5, novostavba",km,1293559000,1344656000,1901344000
+MOSTY,"A.2.S.20,75.N","silniční S 20,75, novostavba",km,1109088000,1156505000,1645707000
+MOSTY,"A.2.S.15,25.N","silniční S 15,25, novostavba",km,829037000,880549000,1298810000
+MOSTY,"A.2.S.13,5.N","silniční S 13,5, novostavba",km,736619000,792745000,1198630000
+MOSTY,"A.2.S.11,5.N","silniční S 11,5, novostavba",km,637699000,692398000,1064216000
+MOSTY,"A.2.S.9,5.N","silniční S 9,5, novostavba",km,525399000,579911000,917419000
+MOSTY,"A.2.S.7,5.N","silniční S 7,5, novostavba",km,425753000,481621000,793711000
+MOSTY,"A.2.S.6,5.N","silniční S 6,5, novostavba",km,375389000,432476000,619306000
+MOSTY,"A.2.S.4,0.N","silniční S 4, novostavba",km,248929000,309613000,463181000
+MOSTY,A.2.P.6.N,"silniční P 6, novostavba",km,344869000,401477427.54659534,578529000
+MOSTY,A.2.P.5.N,"silniční P 5, novostavba",km,295197000,353106653.1433911,516948000
+MOSTY,A.2.P.4.N,"silniční P 4, novostavba",km,245008000,304735878.7401868,455885000
+MOSTY,A.2.Ž.1.N,"železniční, jednokolejné, novostavba",m2,SPOŽES,,
+MOSTY,A.2.Ž.2.N,"železniční, dvoukolejné, novostavba",m2,SPOŽES,,
+MOSTY,A.2.P.N,"přesypané mosty, novostavba",m2,48235.17750303398,48235.17750303398,48235.17750303398
+MOSTY,A.2.B.N,"biomosty, novostavba",m2,48235.17750303398,48235.17750303398,48235.17750303398
+MOSTY,A.2.L.N,"lávky pro pěší a cyklisty, novostavba (šíře 3,0m)",km,92523000,138715000,318906000
+TUNELY,A.3.R.2.NE.K,"dvoupruhové, ražené, extravilán, krátké tunely (do 500 m)",km,1119044000,1487547000,1966985000
+TUNELY,A.3.R.2.NE.D,"dvoupruhové, ražené, extravilán, dlouhé tunely (nad 500 m)",km,1165950000,1549899000,2049434000
+TUNELY,A.3.R.2.NI.K,"dvoupruhové, ražené, intravilán, krátké tunely (do 500 m)",km,1657783000,2203693000,2913946000
+TUNELY,A.3.R.2.NI.D,"dvoupruhové, ražené, intravilán, dlouhé tunely (nad 500 m)",km,1727284000,2296081000,3036112000
+TUNELY,A.3.H.2.NE.K,"dvoupruhové, hloubené, extravilán, krátké tunely (do 500 m)",km,1191330000,1598997000,1966034000
+TUNELY,A.3.H.2.NE.D,"dvoupruhové, hloubené, extravilán, dlouhé tunely (nad 500 m)",km,1241266000,1666020000,2048442000
+TUNELY,A.3.H.2.NI.K,"dvoupruhové, hloubené, intravilán, krátké tunely (do 500 m)",km,individuálně,,
+TUNELY,A.3.H.2.NI.D,"dvoupruhové, hloubené, intravilán, dlouhé tunely (nad 500 m)",km,individuálně,,
+TUNELY,A.3.R.3.NE.K,"třípruhové, ražené, extravilán, krátké tunely (do 500 m)",km,1286806000,1710553000,2261866000
+TUNELY,A.3.R.3.NE.D,"třípruhové, ražené, extravilán, dlouhé tunely (nad 500 m)",km,1340548000,1781992000,2356332000
+TUNELY,A.3.R.3.NI.K,"třípruhové, ražené, intravilán, krátké tunely (do 500 m)",km,1827990000,2429949000,3213124000
+TUNELY,A.3.R.3.NI.D,"třípruhové, ražené, intravilán, dlouhé tunely (nad 500 m)",km,1904826000,2532088000,3348185000
+TUNELY,A.3.H.3.NE.K,"třípruhové, hloubené, extravilán, krátké tunely (do 500 m)",km,1429769000,1919029000,2359527000
+TUNELY,A.3.H.3.NE.D,"třípruhové, hloubené, extravilán, dlouhé tunely (nad 500 m)",km,1494969000,2006539000,2467124000
+TUNELY,A.3.H.3.NI.K,"třípruhové, hloubené, intravilán, krátké tunely (do 500 m)",km,individuálně,,
+TUNELY,A.3.H.3.NI.D,"třípruhové, hloubené, intravilán, dlouhé tunely (nad 500 m)",km,individuálně,,
+MUK,A.4.N,"mimoúrovňová křižovatka novostavba -  pouze pro silnice I. třídy nižší kategorie než S 20,75.",kus,76700900,76700900,76700900
+KOMUNIKACE - REKONSTRUKCE,A.5.O.R,Výměna obrusné vrstvy vozovky,m2,523.1999999999999,872,1308
+KOMUNIKACE - REKONSTRUKCE,A.5.K.DS1.R,"Výměna celé konstrukce vozovky - dálnice, silnice I. třídy",m2,2131.09,2197,2306.85
+KOMUNIKACE - REKONSTRUKCE,A.5.K.S2.R,Výměna celé konstrukce vozovky - silnice II. a III. třídy,m2,2030.21,2093,2197.65
+KOMUNIKACE - REKONSTRUKCE,A.5.R.D.R,Rozšíření komunikace - dálnice,m2,6822.972904347827,6822.972904347827,6822.972904347827
+KOMUNIKACE - REKONSTRUKCE,A.5.R.S1.R,Rozšíření komunikace - silnice I. třídy,m2,6277.648877293845,6277.648877293845,6277.648877293845
+KOMUNIKACE - REKONSTRUKCE,A.5.R.S2.R,Rozšíření komunikace - silnice II. a III. třídy,m2,4456.826966968325,4456.826966968325,4456.826966968325
+MOSTY - REKONSTRUKCE,A.6.S.C,Částečná výměna spodní stavby,m2,5197.459468800001,5197.459468800001,5197.459468800001
+MOSTY - REKONSTRUKCE,A.6.S.U,Úplná výměna spodní stavby,m2,7984.049184000001,7984.049184000001,7984.049184000001
+MOSTY - REKONSTRUKCE,A.6.V.C,Výměna části vrchní stavby,m2,14051.958828740888,14051.958828740888,14051.958828740888
+MOSTY - REKONSTRUKCE,A.6.V.NK,Výměna celé nosné konstrukce,m2,38318.03725218332,38318.03725218332,38318.03725218332
+ODPOČÍVKY,A.7.OM.N,malá odpočívka *,ks,86499100,86499100,86499100
+ODPOČÍVKY,A.7.OS.N,střední odpočívka *,ks,138866100,138866100,138866100
+ODPOČÍVKY,A.7.OV.N,velká odpočívka *,ks,265575600,265575600,265575600
+OSTATNÍ,B.1.1,všeobecné položky - extravilán,%,,0.06,
+OSTATNÍ,B.1.2,všeobecné položky - intravilán,%,,0.06,
+OSTATNÍ,B.2.1,přípravné práce - extravilán,%,,0.05,
+OSTATNÍ,B.2.2,přípravné práce - intravilán,%,,0.075,
+OSTATNÍ,B.3.1,vodohospodářské objekty - extravilán,%,,0.06,
+OSTATNÍ,B.3.2,vodohospodářské objekty - intravilán,%,,0.1,
+OSTATNÍ,B.4.1,inženýrské sítě - extravilán,%,,0.037,
+OSTATNÍ,B.4.2,inženýrské sítě - intravilán,%,,0.1,
+OSTATNÍ,B.5.1,zabezpečovací a ochranná opatření - extravilán,%,,0.037,
+OSTATNÍ,B.5.2,zabezpečovací a ochranná opatření - intravilán,%,,0.1,
+OSTATNÍ,B.6.1,technologická zařízení - extravilán,%,,0.012,
+OSTATNÍ,B.6.2,technologická zařízení - intravilán,%,,0.012,
+OSTATNÍ,B.7.1,úpravy ploch - extravilán,%,,0.05,
+OSTATNÍ,B.7.2,úpravy ploch - intravilán,%,,0.046,
+OSTATNÍ,B.8,objekty drah,Kč,,"individuálně, dle SPOŽES",
