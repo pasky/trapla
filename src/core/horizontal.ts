@@ -267,7 +267,7 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
   }
   let tr = 0;
   for (let a = 0; a < N; a++) tr += H0[a * N + a];
-  const ridge = 1e-12 * (tr / N + 1e-6);
+  const ridge = 1e-15 * (tr / N + 1e-6); // keeps the system solvable when a radius is left undetermined
 
   const floorR = Math.max(1, 0.02 * rules.minRadius);
   const tauMean = tau.reduce((v, t) => v + t, 0) / m;
@@ -536,10 +536,12 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
         const u = units[q], i = u.i0;
         if (manual[i] !== null || d[i] === 0 || lt <= 0 || lt / d[i] <= plain) continue;
         if (!((legKind(i) === 'reverse' && slack(q) < -EPS_LEN) || (legKind(i + 1) === 'reverse' && slack(q + 1) < -EPS_LEN))) continue;
-        const old = Rv[i];
+        const old = Rv[i], was = [slack(q), slack(q + 1)];
         Rv[i] = Math.ceil(lt / d[i] / 5 - 1e-9) * 5;
         u.sIn = u.sOut = Rv[i] * tau[i];
-        if (slack(q) < -EPS_LEN || slack(q + 1) < -EPS_LEN) { Rv[i] = old; u.sIn = u.sOut = old * tau[i]; }
+        // kept unless it makes a leg worse that is (still) short of room; the neighbour may yet do the same
+        const now = [slack(q), slack(q + 1)];
+        if ((now[0] < -EPS_LEN && now[0] < was[0]) || (now[1] < -EPS_LEN && now[1] < was[1])) { Rv[i] = old; u.sIn = u.sOut = old * tau[i]; }
       }
       /** join same-direction neighbours that have no room for a straight with their transitions */
       const link = () => {
