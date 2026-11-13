@@ -1,7 +1,7 @@
 // Terrain grid: 5 m heights (quantised Uint16) + land-cover byte, local metric coordinates
 // (x east, y north, origin = SW corner of the play area in EPSG:5514).
 
-export const LC = { none: 0, forest: 1, water: 2, building: 3, road: 4, urban: 5, rail: 6 } as const;
+export const LC = { none: 0, forest: 1, water: 2, building: 3, road: 4, urban: 5, rail: 6, stream: 7 } as const;
 export const OOB_BIT = 128;
 
 export interface TerrainData {

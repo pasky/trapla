@@ -5,7 +5,7 @@ import { STRUCTURE_RULES } from './data/prices';
 
 export const KIND = { earth: 0, bridge: 1, tunnel: 2 } as const;
 
-export interface Run { kind: 1 | 2; i0: number; i1: number; s0: number; s1: number; length: number }
+export interface Run { kind: 1 | 2; i0: number; i1: number; s0: number; s1: number; length: number; forced?: boolean }
 
 export interface StructureInput {
   ds: number;
@@ -16,7 +16,12 @@ export interface StructureInput {
   bridgePerM: number;
   /** tunnel cost per m (short-tunnel rate; long rate applied in the bill) */
   tunnelPerM: number;
+  /** stations that must be bridged (river / railway crossings), unless deep in cut */
+  forced?: ArrayLike<number>;
 }
+
+/** stations either side of a forced crossing that are bridged too */
+const FORCED_PAD = 1;
 
 export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[] } {
   const n = inp.h.length;
@@ -25,6 +30,15 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     const h = inp.h[i];
     if (h >= rules.bridgeMinHeight && inp.bridgePerM < inp.earthPerM[i]) kind[i] = KIND.bridge;
     else if (-h >= rules.tunnelMinDepth && inp.tunnelPerM < inp.earthPerM[i]) kind[i] = KIND.tunnel;
+  }
+  const locked = new Uint8Array(n);
+  if (inp.forced) {
+    for (let i = 0; i < n; i++) {
+      if (!inp.forced[i] || inp.h[i] < -3) continue;
+      for (let j = Math.max(1, i - FORCED_PAD); j <= Math.min(n - 2, i + FORCED_PAD); j++) {
+        if (kind[j] !== KIND.tunnel) { kind[j] = KIND.bridge; locked[j] = 1; }
+      }
+    }
   }
   // endpoints stay at grade
   kind[0] = 0; kind[n - 1] = 0;
@@ -39,11 +53,13 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     for (let i = r.i0; i <= r.i1; i++) earth += inp.earthPerM[i] * inp.ds;
     const struct = (r.kind === KIND.bridge ? inp.bridgePerM : inp.tunnelPerM) * len;
     const minLen = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
-    if (len < minLen || struct >= earth) {
+    let isLocked = false;
+    for (let i = r.i0; i <= r.i1; i++) if (locked[i]) { isLocked = true; break; }
+    if (!isLocked && (len < minLen || struct >= earth)) {
       for (let i = r.i0; i <= r.i1; i++) kind[i] = 0;
       continue;
     }
-    runs.push({ kind: r.kind as 1 | 2, i0: r.i0, i1: r.i1, s0: (r.i0 - 0.5) * inp.ds, s1: (r.i1 + 0.5) * inp.ds, length: len });
+    runs.push({ kind: r.kind as 1 | 2, i0: r.i0, i1: r.i1, s0: (r.i0 - 0.5) * inp.ds, s1: (r.i1 + 0.5) * inp.ds, length: len, forced: isLocked });
   }
   return { kind, runs };
 }

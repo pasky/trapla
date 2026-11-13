@@ -40,7 +40,7 @@ function buildLut(f: (h: number) => number): Float64Array {
 export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions): AutoProfileResult {
   const n = s.length;
   const L = s[n - 1];
-  const spacing = opt.knotSpacing ?? 200;
+  const spacing = opt.knotSpacing ?? 250;
   const nK = Math.max(2, Math.round(L / spacing));
   const D = L / nK;
   const ds = n > 1 ? s[1] - s[0] : L;
@@ -49,7 +49,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   const lut = buildLut(opt.costPerM);
   const lutMax = lut.length - 1;
   const pad = opt.pad ?? 25;
-  const penalty = opt.vpiPenalty ?? 2e5;
+  const penalty = opt.vpiPenalty ?? 1e6;
 
   // interval station ranges: stations with s in (s_k, s_{k+1}]
   const first = new Int32Array(nK), last = new Int32Array(nK);

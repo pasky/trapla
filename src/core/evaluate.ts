@@ -23,6 +23,8 @@ export interface Design {
   profileMode: 'auto' | 'manual';
   /** full VPI list incl. endpoints; used in manual mode, refreshed from auto-profile otherwise */
   vpis: VPI[];
+  /** the naive start profile (terrain-hugging): the first horizontal edit switches to auto */
+  naive?: boolean;
 }
 
 export interface EvalContext {
@@ -136,7 +138,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     h[i] = grade[i] - ground[i];
     earthPerM[i] = basePerM + sec.cut[i] * cutP + sec.fill[i] * fillP + (sec.dayL[i] + sec.dayR[i]) * DECISION.landPerM2;
   }
-  const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM });
+  // river / water / railway crossings must be bridged (streams get culverts, included in the norm)
+  const forced = new Uint8Array(n);
+  const crossing = (x: number, y: number) => { const c = terrain.landcover(x, y); return c === LC.water || c === LC.rail; };
+  for (let i = 0; i < n; i++) {
+    if (crossing(st.x[i], st.y[i])) forced[i] = 1;
+    else if (i + 1 < n && crossing((st.x[i] + st.x[i + 1]) / 2, (st.y[i] + st.y[i + 1]) / 2)) forced[i] = 1;
+  }
+  const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM, forced });
 
   // --- earthworks ---
   const vol = volumes(ds, sec.cut, sec.fill, kind);

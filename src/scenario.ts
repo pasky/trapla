@@ -1,0 +1,60 @@
+// Browser-side loading of a scenario pack (see README.md for the format).
+
+import { decodeHeights, Terrain } from './core/terrain';
+
+export interface PackMeta {
+  id: string;
+  name: string;
+  origin: [number, number];
+  cell: number;
+  nx: number;
+  ny: number;
+  heights: { file: string; base: number; scale: number };
+  landcover: { file: string };
+  texture: { tiles: { file: string; col0: number; row0: number; w: number; h: number }[] };
+  A: { xy: [number, number]; latlon: [number, number]; note: string };
+  B: { xy: [number, number]; latlon: [number, number]; note: string };
+  official: { xy: [number, number][]; kinds: number[]; lengthM: number };
+  attribution: string[];
+}
+
+export interface Overlays {
+  buildings: [number, number, number][];
+  places: { name: string; kind: string; x: number; y: number }[];
+  roads: { ref: string; cls: string; xy: [number, number][] }[];
+}
+
+export interface Pack {
+  base: string;
+  meta: PackMeta;
+  terrain: Terrain;
+  q: Uint16Array;
+  lc: Uint8Array;
+  overlays: Overlays;
+}
+
+/** fetch a gzip file; some servers (e.g. Vite dev) already send it with Content-Encoding: gzip */
+async function gunzip(url: string): Promise<ArrayBuffer> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  const buf = await r.arrayBuffer();
+  const b = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+  if (b[0] !== 0x1f || b[1] !== 0x8b) return buf;
+  const ds = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Response(ds).arrayBuffer();
+}
+
+export async function loadPack(base: string, progress?: (msg: string) => void): Promise<Pack> {
+  progress?.('loading scenario…');
+  const meta: PackMeta = await (await fetch(`${base}/meta.json`)).json();
+  progress?.('loading terrain (DMR 5G, 5 m)…');
+  const [hb, lb, overlays] = await Promise.all([
+    gunzip(`${base}/${meta.heights.file}`),
+    gunzip(`${base}/${meta.landcover.file}`),
+    fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
+  ]);
+  const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
+  const lc = new Uint8Array(lb);
+  const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc });
+  return { base, meta, terrain, q, lc, overlays };
+}

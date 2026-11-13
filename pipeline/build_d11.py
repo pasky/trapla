@@ -220,7 +220,7 @@ def px(xy: np.ndarray):
 
 
 # Land-cover classes (Uint8 raster in the pack)
-LC_NONE, LC_FOREST, LC_WATER, LC_BUILDING, LC_ROAD, LC_URBAN, LC_RAIL = 0, 1, 2, 3, 4, 5, 6
+LC_NONE, LC_FOREST, LC_WATER, LC_BUILDING, LC_ROAD, LC_URBAN, LC_RAIL, LC_STREAM = 0, 1, 2, 3, 4, 5, 6, 7
 
 
 def build_overlays():
@@ -257,6 +257,7 @@ def build_overlays():
                 if len(r) >= 3:
                     d.polygon(px(r), fill=LC_NONE)
 
+    # draw order matters: later classes win (roads/rail over streams over cover)
     lines = overpass("lines", """(
   way["waterway"~"^(river|stream|canal)$"];
   way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link)$"];
@@ -271,7 +272,11 @@ def build_overlays():
         if len(xy) < 2:
             continue
         if "waterway" in t:
-            d.line(px(xy), fill=LC_WATER, width=3 if t["waterway"] == "river" else 1)
+            # rivers (and water areas) force a bridge in the game; streams get culverts (in the norm)
+            if t["waterway"] == "river":
+                d.line(px(xy), fill=LC_WATER, width=3)
+            else:
+                d.line(px(xy), fill=LC_STREAM, width=1)
         elif t.get("railway") == "rail":
             d.line(px(xy), fill=LC_RAIL, width=1)
         else:
@@ -401,6 +406,7 @@ def drape(h_disp: np.ndarray, oob: np.ndarray, lc: np.ndarray) -> np.ndarray:
     blend(lc == LC_URBAN, (205, 190, 185), 0.45)
     blend(lc == LC_FOREST, (58, 104, 58), 0.62)
     blend(lc == LC_WATER, (80, 140, 200), 0.85)
+    blend(lc == LC_STREAM, (90, 150, 205), 0.7)
     blend(lc == LC_RAIL, (90, 80, 90), 0.8)
     blend(lc == LC_ROAD, (252, 246, 230), 0.9)
     shade_f = (0.35 + 0.8 * shade)[..., None]
@@ -478,7 +484,7 @@ def main():
         "heights": {"file": "height.i16.gz", "encoding": "gzip(int16 row-wise delta of uint16 q); h = base + q*scale",
                     "base": hmin, "scale": H_QUANT},
         "landcover": {"file": "landcover.u8.gz", "classes": {"0": "none", "1": "forest", "2": "water",
-                      "3": "building", "4": "road", "5": "urban", "6": "rail"}, "oobBit": 128},
+                      "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "oobBit": 128},
         "texture": {"tiles": tiles, "tile": tile},
         "overview": "overview.jpg",
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],
