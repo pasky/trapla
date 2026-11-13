@@ -39,7 +39,9 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - The HUD shows total cost, breakdown, quantities, travel time vs target, all violations (click to fly there),
   VALID / NOT VALID, and the best valid design so far. Undo/redo (Ctrl+Z / Ctrl+Y), reset; the design persists in
   localStorage.
-- The game starts deliberately naive: a straight line with a grade line drawn on the terrain → red violations.
+- The game starts from the straight line with the automatic grade line; the cost of a design that is not valid is
+  struck through. Hover the profile for the cost split at a station; drag in the cost strip under it (or click a
+  curve / tangent in the band above it) to get the breakdown of that stretch, <kbd>Esc</kbd> for the whole route.
 
 ## Architecture
 
@@ -70,9 +72,9 @@ headless SwiftShader browser where the CPU is shared with software WebGL.
 |---|---|
 | `meta.json` | grid (3500 × 4500 at 5 m, row 0 = north), origin in EPSG:5514, A/B, official line, texture tiles, attribution |
 | `height.i16.gz` | gzip of row-wise int16 deltas of uint16 heights; h = base + q · 0.1 m (display-filled where no data) |
-| `landcover.u8.gz` | gzip uint8 per cell: bits 0–2 class (0 none, 1 forest, 2 water/river, 3 building, 4 road, 5 urban, 6 rail, 7 stream); bit 5 river/water crossing, bit 6 railway crossing (must-bridge masks); bit 7 out of bounds |
+| `landcover.u8.gz` | gzip uint8 per cell: bits 0–2 class (0 none, 1 forest, 2 water/river, 3 building, 4 road, 5 urban, 6 rail, 7 stream); bit 3 built-up area; bit 5 river/water crossing, bit 6 railway crossing (must-bridge masks); bit 7 out of bounds |
 | `tex_R_C.jpg` | 1024 px drape tiles: multi-directional hillshade × hypsometric tint + OSM overlays; OOB greyed and hatched |
-| `overlays.json` | building centroids + radius (footprint hit test), place names, main roads |
+| `overlays.json` | building centroids + radius, `binfo` (area, levels, kind, oriented rectangle per building), place names, main roads, `net` (existing road network for crossings) |
 
 Game coordinates are local metres: `x = X_5514 − origin.x` (east), `y = Y_5514 − origin.y` (north).
 The play area is the axis-aligned EPSG:5514 rectangle x ∈ [−637 500, −620 000], y ∈ [−1 011 500, −989 000]
