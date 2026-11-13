@@ -110,3 +110,8 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 .profile-tip small { display: block; color: #889; margin-left: 15px; font-size: 11px; }
 .profile-tip tr.tip-total td { border-top: 1px solid #e3e6ea; font-weight: 700; padding-top: 3px; }
 .profile-tip tr.tip-total small { margin-left: 0; font-weight: 400; }
+#viewbar { position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; }
+#viewbar button { background: rgba(255,255,255,0.9); border-color: rgba(0,0,0,0.25); font-size: 12px; padding: 3px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+#viewbar button.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+#viewbar button small { opacity: .85; }
+#viewbar kbd { font-size: 10px; opacity: .6; border-color: currentColor; margin-left: 2px; }

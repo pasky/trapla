@@ -1,5 +1,5 @@
 // Debug helper: render arbitrary camera views of a design.
-// node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name"],...]' [outdir]
+// node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name",{"contours":true}?],...]' [outdir]   (x = null: default camera)
 import { readFileSync, mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
@@ -19,10 +19,17 @@ await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 1
 await page.evaluate((d) => window.trapla.setDesign(d), design);
 await page.evaluate(() => window.trapla.whenIdle());
 await page.waitForLoadState('networkidle');
-for (const [x, y, dist, bearing, elev, name] of views) {
+// wait until the land-cover clip levels for the current camera are drawn
+const settle = () => page.evaluate(() => new Promise((res) => {
+  const f = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? f() : res()));
+  requestAnimationFrame(() => requestAnimationFrame(f));
+}));
+for (const [x, y, dist, bearing, elev, name, prefs] of views) {
+  await page.evaluate((p) => window.trapla.setView({ contours: false, slope: false, exag: 1, ...(p ?? {}) }), prefs);
   if (x === null) await page.evaluate(() => window.trapla.resetCamera());
   else await page.evaluate((a) => window.trapla.lookAt(...a), [x, y, dist, bearing, elev]);
-  await page.waitForTimeout(1200);
+  await settle();
+  await page.waitForTimeout(400);
   await page.screenshot({ path: `${out}/${name}.png` });
   console.log('saved', `${out}/${name}.png`);
 }

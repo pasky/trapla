@@ -49,19 +49,18 @@ export function buildHeightTexture(q: Uint16Array, nx: number, ny: number, scale
     const out = new Uint16Array(cw * ch * 2);
     for (let r = 0; r < ch; r++) {
       const r0 = Math.min(2 * r, ph - 1), r1 = Math.min(2 * r + 1, ph - 1);
+      // rows of the level above (level 1 reads the quantised grid, with the padding rows replicated)
+      const a0 = prev ? r0 * pw : Math.min(r0, ny - 1) * nx, a1 = prev ? r1 * pw : Math.min(r1, ny - 1) * nx;
+      const lim = prev ? pw - 1 : nx - 1;
+      const src: ArrayLike<number> = prev ?? q;
+      let o = 2 * r * cw;
       for (let c = 0; c < cw; c++) {
-        const c0 = Math.min(2 * c, pw - 1), c1 = Math.min(2 * c + 1, pw - 1);
-        let v: number;
-        if (prev) v = 0.25 * (prev[r0 * pw + c0] + prev[r0 * pw + c1] + prev[r1 * pw + c0] + prev[r1 * pw + c1]);
-        else {
-          const a0 = Math.min(r0, ny - 1) * nx, a1 = Math.min(r1, ny - 1) * nx;
-          const b0 = Math.min(c0, nx - 1), b1 = Math.min(c1, nx - 1);
-          v = 0.25 * (q[a0 + b0] + q[a0 + b1] + q[a1 + b0] + q[a1 + b1]);
-        }
+        const c0 = 2 * c < lim ? 2 * c : lim, c1 = 2 * c + 1 < lim ? 2 * c + 1 : lim;
+        const v = 0.25 * (src[a0 + c0] + src[a0 + c1] + src[a1 + c0] + src[a1 + c1]);
         cur[r * cw + c] = v;
-        const k = Math.floor(v / U);
-        out[2 * (r * cw + c)] = lutR[k];
-        out[2 * (r * cw + c) + 1] = toHalf((v - k * U) * scale);
+        const k = (v / U) | 0;
+        out[o++] = lutR[k];
+        out[o++] = toHalf((v - k * U) * scale);
       }
     }
     mipmaps.push({ data: out, width: cw, height: ch });

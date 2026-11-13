@@ -9,6 +9,7 @@ import { loadPack } from './scenario';
 import { RangeSelection, startDesign, Store } from './state';
 import { Hud } from './ui/hud';
 import { ProfilePanel } from './ui/profile';
+import { ViewBar, type ViewPrefs } from './ui/viewbar';
 import type { WorkerIn } from './worker';
 
 const status = document.getElementById('status')!;
@@ -34,6 +35,7 @@ async function main() {
   const extras = new RouteExtras(view);
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
+  const viewBar = new ViewBar(document.getElementById('viewbar')!, view); // after the HUD: it syncs the HUD's exaggeration select
 
   // station range picked for the cost breakdown: profile panel → HUD, profile, map
   const selection = new RangeSelection();
@@ -145,8 +147,8 @@ async function main() {
     onDeletePi: (i) => { store.update((d) => { d.pis.splice(i, 1); }); selectPi(null); },
     onVpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
     onDeleteVpi: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; hud.setSelectedVpi(null, last); },
-    onExaggeration: (e) => view.setExaggeration(e),
     onClearRange: () => selection.set(null),
+    onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {
       const v = last?.violations[k];
       if (!v || !last) return;
@@ -192,7 +194,9 @@ async function main() {
     profileFit: () => profile.fit(),
     selectRange: (s0: number | null, s1?: number) => selection.set(s0 === null || s1 === undefined ? null : { s0, s1 }),
     range: () => selection.range,
-    setExaggeration: (e: number) => view.setExaggeration(e),
+    setExaggeration: (e: number) => viewBar.set({ exag: e }),
+    setView: (p: Partial<ViewPrefs>) => viewBar.set(p),
+    viewBusy: () => view.busy,
     meta,
     official: meta.official.xy,
     A, B,

@@ -216,7 +216,7 @@ export class View {
   // ---- view options --------------------------------------------------------------------------
   /** contour lines drawn in the terrain shader; the interval follows the zoom */
   setContours(on: boolean) { this.contours = on; this.contourStep = 0; this.dirty = true; }
-  /** tint the ground by slope class (5 / 8 / 15 / 25 / 35 %) */
+  /** tint the ground by slope class (yellow from 8 %, orange 15 %, red 25 %, purple 40 %) */
   setSlopeTint(on: boolean) { this.terrainU.slopeTint.value = on ? 1 : 0; this.dirty = true; }
   /** true while land-cover textures for the current camera are still being drawn */
   get busy() { return this.lcPending; }
@@ -231,9 +231,9 @@ export class View {
     this.lcPending = this.landcover ? this.landcover.update(t.x + this.cx, this.cy - t.z, mPerPx) : false;
     if (this.lcPending) this.dirty = true;
     this.buildings?.update(cam.position.x + this.cx, this.cy - cam.position.z);
-    // contour interval by zoom: 5/25 m close, 10/50 m mid, 20/100 m far, 50/250 m for the whole area
+    // contour interval by zoom: 5/25 m close, 10/50 m mid, 20/100 m far
     const c = this.terrainU.contour.value;
-    const minor = dist < 2200 ? 5 : dist < 6500 ? 10 : dist < 16000 ? 20 : 50;
+    const minor = dist < 2200 ? 5 : dist < 6500 ? 10 : 20;
     c.set(minor, minor * 5, this.contours ? 1 : 0, this.renderer.getPixelRatio());
     const step = this.contours ? minor : 0;
     if (step !== this.contourStep) { this.contourStep = step; if (step) this.onContourInterval?.(minor, minor * 5); }

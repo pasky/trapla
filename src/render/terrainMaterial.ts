@@ -32,13 +32,14 @@ function tintTexture(): THREE.DataTexture {
 export function oobTexture(lc: Uint8Array, nx: number, ny: number, oobBit: number): THREE.DataTexture {
   const f = 4, w = Math.ceil(nx / f), h = Math.ceil(ny / f);
   const d = new Uint8Array(w * h);
-  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
-    let s = 0, n = 0;
-    for (let j = 0; j < f; j++) for (let i = 0; i < f; i++) {
-      const rr = r * f + j, cc = c * f + i;
-      if (rr < ny && cc < nx) { n++; if (lc[rr * nx + cc] & oobBit) s++; }
+  // 4 of the 16 cells per texel are enough for a smooth edge after linear filtering
+  const at = (r: number, c: number) => (lc[Math.min(r, ny - 1) * nx + Math.min(c, nx - 1)] & oobBit ? 64 : 0);
+  for (let r = 0; r < h; r++) {
+    const o = (h - 1 - r) * w, r0 = r * f;
+    for (let c = 0; c < w; c++) {
+      const c0 = c * f;
+      d[o + c] = Math.min(255, at(r0, c0 + 1) + at(r0 + 1, c0 + 3) + at(r0 + 2, c0) + at(r0 + 3, c0 + 2));
     }
-    d[(h - 1 - r) * w + c] = Math.round((255 * s) / Math.max(1, n));
   }
   const tex = new THREE.DataTexture(d, w, h, THREE.RedFormat, THREE.UnsignedByteType);
   tex.minFilter = tex.magFilter = THREE.LinearFilter;
@@ -143,7 +144,7 @@ vec4 lcLevel(sampler2D tex, vec4 box, float on, vec2 loc, vec4 under) {
 float contourLine(float h, float interval, float mPerPx, float width) {
   float d = abs(fract(h / interval + 0.5) - 0.5) * interval / mPerPx;
   float spacing = interval / mPerPx;
-  return (1.0 - smoothstep(width * 0.5 - 0.5, width * 0.5 + 0.5, d)) * smoothstep(3.0, 7.0, spacing);
+  return (1.0 - smoothstep(width * 0.5 - 0.5, width * 0.5 + 0.5, d)) * smoothstep(4.0, 9.0, spacing);
 }
 
 void main() {
@@ -189,11 +190,11 @@ void main() {
   float slope = length(grad);
 
   if (slopeTint > 0.0) {
-    // ground slope classes: < 5 % clear, then yellow → orange → red → purple
-    vec3 sc = mix(vec3(1.0, 0.92, 0.35), vec3(1.0, 0.6, 0.15), smoothstep(0.08, 0.14, slope));
-    sc = mix(sc, vec3(0.9, 0.2, 0.15), smoothstep(0.17, 0.25, slope));
-    sc = mix(sc, vec3(0.5, 0.15, 0.55), smoothstep(0.32, 0.45, slope));
-    float sa = smoothstep(0.04, 0.07, slope) * 0.55 * slopeTint * (1.0 - oob);
+    // ground slope classes: clear below ~8 %, yellow to 15 %, orange to 25 %, red to 40 %, purple above
+    vec3 sc = mix(vec3(1.0, 0.9, 0.3), vec3(1.0, 0.58, 0.12), smoothstep(0.13, 0.17, slope));
+    sc = mix(sc, vec3(0.88, 0.18, 0.12), smoothstep(0.22, 0.28, slope));
+    sc = mix(sc, vec3(0.48, 0.14, 0.55), smoothstep(0.36, 0.44, slope));
+    float sa = smoothstep(0.07, 0.09, slope) * 0.5 * slopeTint * (1.0 - oob);
     col = mix(col, sc * (0.55 + 0.45 * light), sa);
   }
 
@@ -201,13 +202,13 @@ void main() {
     // elevation change per screen pixel, from the analytic gradient and the pixel footprint
     float mPerPx = max(length(vec2(dot(grad, dFdx(vWorld.xz)), dot(grad, dFdy(vWorld.xz)))), 1e-6);
     float pr = contour.w;
-    float minor = contourLine(elev, contour.x, mPerPx, 1.0 * pr) * 0.5;
+    float minor = contourLine(elev, contour.x, mPerPx, 1.0 * pr) * 0.42;
     float major = contourLine(elev, contour.y, mPerPx, 1.7 * pr) * 0.9;
     float a = max(minor, major) * contour.z * (1.0 - oob) * smoothstep(0.0015, 0.005, slope);
     // dark lines on light ground, light lines on dark ground (forest, water)
-    float lum = dot(albedo, vec3(0.299, 0.587, 0.114));
-    vec3 lineCol = mix(vec3(1.0, 0.97, 0.85), vec3(0.23, 0.13, 0.05), smoothstep(0.50, 0.58, lum));
-    col = mix(col, lineCol, a);
+    float dark = smoothstep(0.50, 0.58, dot(albedo, vec3(0.299, 0.587, 0.114)));
+    vec3 lineCol = mix(vec3(0.97, 0.96, 0.84), vec3(0.23, 0.13, 0.05), dark);
+    col = mix(col, lineCol, a * mix(0.8, 1.0, dark));
   }
 
   if (oob > 0.0) {
