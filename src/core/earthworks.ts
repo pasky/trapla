@@ -1,0 +1,75 @@
+// Volumes by average-end-area and a single-balance-line mass-haul estimate.
+
+import { PRICES } from './data/prices';
+
+export interface Volumes {
+  cut: number;
+  fill: number;
+  /** mass ordinate at each station: cumulative (cut - fill), m³ */
+  mass: Float64Array;
+}
+
+/** average-end-area volumes; areas of stations where `skip[i]` is set (structures) count as zero */
+export function volumes(ds: number, cutA: ArrayLike<number>, fillA: ArrayLike<number>, skip?: ArrayLike<number>): Volumes {
+  const n = cutA.length;
+  const mass = new Float64Array(n);
+  let cut = 0, fill = 0;
+  const ca = (i: number) => (skip && skip[i] ? 0 : cutA[i]);
+  const fa = (i: number) => (skip && skip[i] ? 0 : fillA[i]);
+  for (let i = 1; i < n; i++) {
+    const vc = 0.5 * (ca(i - 1) + ca(i)) * ds;
+    const vf = 0.5 * (fa(i - 1) + fa(i)) * ds;
+    cut += vc; fill += vf;
+    mass[i] = mass[i - 1] + vc - vf;
+  }
+  return { cut, fill, mass };
+}
+
+export interface MassHaul {
+  /** balance line height chosen, m³ */
+  balance: number;
+  /** m³·m of material moved along the route (incl. moving surplus to / deficit from the ends) */
+  moment: number;
+  /** cut reused as fill, m³ */
+  reused: number;
+  surplus: number;
+  deficit: number;
+  /** average internal haul distance, m */
+  avgHaul: number;
+}
+
+/**
+ * Mass-haul with one balance line c: material crossing station s is M(s) - c, so the haul moment is
+ * ∫|M - c| ds; c also decides how much leaves / enters at the ends (surplus to a tip, borrow).
+ * c is chosen to minimise haul + surplus + borrow cost (convex in c, ternary search).
+ */
+export function massHaul(ds: number, mass: Float64Array, cut: number, fill: number): MassHaul {
+  const n = mass.length;
+  const mEnd = mass[n - 1];
+  const haulC = PRICES.haulPerM3Km / 1000;
+  const surplusC = PRICES.surplusHaulKm * PRICES.haulPerM3Km;
+  const borrowC = PRICES.borrowFill;
+  const evalC = (c: number) => {
+    let mom = 0;
+    for (let i = 1; i < n; i++) {
+      // trapezoid of |M - c| over the interval (approximate across sign changes)
+      mom += 0.5 * (Math.abs(mass[i - 1] - c) + Math.abs(mass[i] - c)) * ds;
+    }
+    const exported = Math.max(c, 0) + Math.max(mEnd - c, 0);
+    const imported = Math.max(-c, 0) + Math.max(c - mEnd, 0);
+    return { mom, exported, imported, cost: mom * haulC + exported * surplusC + imported * borrowC };
+  };
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) { if (mass[i] < lo) lo = mass[i]; if (mass[i] > hi) hi = mass[i]; }
+  if (!(hi > lo)) { lo -= 1; hi += 1; }
+  for (let it = 0; it < 60 && hi - lo > 1; it++) {
+    const a = lo + (hi - lo) / 3, b = hi - (hi - lo) / 3;
+    if (evalC(a).cost <= evalC(b).cost) hi = b; else lo = a;
+  }
+  const c = 0.5 * (lo + hi);
+  const r = evalC(c);
+  const surplus = Math.min(cut, r.exported);
+  const deficit = Math.min(fill, r.imported);
+  const reused = Math.max(0, cut - surplus);
+  return { balance: c, moment: r.mom, reused, surplus, deficit, avgHaul: reused > 0 ? r.mom / Math.max(reused, 1) : 0 };
+}
