@@ -32,3 +32,37 @@ export function speedNorms(speed: number): SpeedNorms {
   if (!n) throw new Error(`no norms for design speed ${speed}`);
   return n;
 }
+
+// ---- horizontal curve rules (table-driven; rail / motorway rows can differ later) ----------------
+// Source: ČSN 73 6101 as reproduced in the VUT teaching text "Aplikace ČSN 73 6101"
+// (fce.vutbr.cz/pko/sad/pdf/aplikace.pdf, chapters "Směrové oblouky" and "Přechodnice").
+import type { HorizontalRules } from '../horizontal';
+
+export interface HorizontalNormRow {
+  /** a circular arc needs no transition when the transition would shift it by at most this: ΔR = L²/(24·R), m */
+  maxShiftWithoutTransition: number;
+  /** compound curve of same-direction arcs without intermediate transitions: larger / smaller neighbouring radius */
+  maxCompoundRatio: number;
+  /** straight between two opposite arcs that have no transitions, m ("2·vn") */
+  minReverseStraight: number;
+}
+
+export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
+  90: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 180 },
+  80: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 160 },
+  70: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 140 },
+};
+
+/** Everything the horizontal geometry and its checks need for a design speed. */
+export function horizontalRules(speed: number): HorizontalRules {
+  const n = speedNorms(speed), h = HORIZONTAL_NORMS[speed];
+  if (!h) throw new Error(`no horizontal rules for design speed ${speed}`);
+  return {
+    minRadius: n.minRadius,
+    transition: n.minTransition,
+    // ΔR = L²/(24·R) ≤ limit  ⇔  R ≥ L²/(24·limit): 1,350 / 1,067 / 817 m for 90 / 80 / 70 km/h
+    plainRadius: (n.minTransition * n.minTransition) / (24 * h.maxShiftWithoutTransition),
+    compoundRatio: h.maxCompoundRatio,
+    reverseStraight: h.minReverseStraight,
+  };
+}

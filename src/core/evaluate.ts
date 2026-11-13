@@ -10,7 +10,7 @@ import {
   type CostBreakdown, type CostParts,
 } from './cost';
 import { CATEGORIES, type CategoryId } from './data/categories';
-import { speedNorms } from './data/norms';
+import { horizontalRules, speedNorms } from './data/norms';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
@@ -135,7 +135,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const { terrain, scenario } = ctx;
   const cat = CATEGORIES[d.category];
   const norms = speedNorms(d.speed);
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, norms.minRadius, norms.minTransition);
+  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed));
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
   const ground = new Float64Array(n);
