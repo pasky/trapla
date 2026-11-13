@@ -1,19 +1,17 @@
 // Right-hand HUD: scenario card, controls, cost, stats, violations, selected PI, best design.
 
+import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
-import { LAND, PRICES } from '../core/data/prices';
+import { EXCAVATION_DEPTH_BANDS, LAND, PRICES } from '../core/data/prices';
 import { minCategoryForTraffic, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
-import type { Best } from '../state';
+import { BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
+import { rangeSummary } from '../core/range';
+import type { Best, StationRange } from '../state';
+import { COST_GROUPS, czk } from './costgroups';
 
-export function czk(v: number): string {
-  if (!isFinite(v)) return '—';
-  const a = Math.abs(v);
-  if (a >= 1e9) return `${(v / 1e9).toFixed(2)} bn CZK`;
-  if (a >= 1e7) return `${(v / 1e6).toFixed(0)} M CZK`;
-  return `${(v / 1e6).toFixed(1)} M CZK`;
-}
+export { czk };
 const num = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
 const km = (m: number) => `${num(m / 1000, 2)} km`;
 const kvol = (m3: number) => `${num(m3 / 1000, 0)}k m³`;
@@ -32,10 +30,33 @@ export interface HudEvents {
   onExaggeration?: (e: number) => void;
   onVpiRadius?: (i: number, r: number | null) => void;
   onDeleteVpi?: (i: number) => void;
+  /** back to the whole-route breakdown */
+  onClearRange?: () => void;
 }
+
+const pct = (v: number) => `${(v * 100).toFixed(1)} %`;
+
+/** what each line of the breakdown contains (shown as a tooltip) */
+const ROW_HELP: Record<string, (c: CostBreakdown) => string> = {
+  roadBase: () => `SFDI per-km norm minus the value of its built-in earthworks allowance, at-grade length only; inside built-up areas the "intravilán" norm row`,
+  earthworks: (c) => {
+    const e = c.earthDetail;
+    return `excavation ${czk(e.excavation)} (class by depth: I to ${EXCAVATION_DEPTH_BANDS.classIto} m, II to ${EXCAVATION_DEPTH_BANDS.classIIto} m, III below — provisional), fill ${czk(e.fillPlacing)}, haul ${czk(e.haul)}, surplus to tip ${czk(e.surplusHaul)}, unsuitable 15 % to tip ${czk(e.unsuitable)}, bought fill ${czk(e.borrow)}, topsoil ${czk(e.topsoil)}`;
+  },
+  bridges: () => 'SFDI bridge norm per km of bridge; includes the short bridges forced over rivers, railways and roads clearly below the grade',
+  tunnels: () => 'SFDI bored-tunnel norm per km of tube (urban rows under built-up areas)',
+  crossings: () => `existing roads crossed: an overbridge where the road is ≥ ${CROSSING_RULES.underDepth} m above the grade, otherwise a junction (${czk(ROAD_CLASSES.primary.atGrade)}), side-road reconnection (${czk(ROAD_CLASSES.residential.atGrade)}), access (${czk(ROAD_CLASSES.service.atGrade)}) or track diversion (${czk(ROAD_CLASSES.track.atGrade)}) — provisional lump sums. Roads ≥ ${CROSSING_RULES.overHeight} m below the grade get a bridge (counted under Bridges).`,
+  noiseWalls: () => `provisional: ${NOISE.wallHeight} m wall at ${NOISE.wallPerM2.toLocaleString('en-US')} CZK/m² wherever a dwelling is within the screening distance (${NOISE.refDistance} m at ${NOISE.refTraffic.toLocaleString('en-US')} veh/day and ${NOISE.refSpeed} km/h), unless a cut ≥ ${NOISE.cutShield} m screens it`,
+  surcharge: () => `SFDI "other objects" (utilities, drainage, safety, preparation…): +${pct(PRICES.otherObjectsSurcharge)} of construction, +${pct(URBAN_RATES.otherObjectsSurcharge)} inside built-up areas`,
+  land: () => `provisional: ${LAND.perM2} CZK/m² (8 × 50) outside, ${(URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier).toLocaleString('en-US')} CZK/m² (1.5 × ${URBAN_LAND.buildingLandPerM2.toLocaleString('en-US')}) inside built-up areas`,
+  forest: () => `provisional: +${LAND.forestExtraPerM2} CZK/m² of forest in the footprint (clearing, removal fee)`,
+  buildings: () => `floor area × market price × ${BUILDING_RULES.purchaseMultiplier} + demolition — provisional prices: ${BUILDING_KINDS.map((k) => `${k.label} ${k.pricePerM2.toLocaleString('en-US')}`).join(', ')} CZK/m²`,
+};
 
 export class Hud {
   ev: HudEvents = {};
+  private last: { r: Result; d: Design } | null = null;
+  private range: StationRange | null = null;
   private $ = <T extends HTMLElement = HTMLElement>(id: string) => this.root.querySelector<T>(`#${id}`)!;
 
   constructor(private root: HTMLElement, private sc: ScenarioParams) {
@@ -57,12 +78,14 @@ export class Hud {
         <div class="btns">
           <button id="undo" title="Ctrl+Z">↶ Undo</button><button id="redo" title="Ctrl+Y">↷ Redo</button>
           <button id="auto" title="Recompute the grade line automatically">Auto profile</button>
-          <button id="reset" title="Back to the naive straight line">Reset</button>
+          <button id="reset" title="Back to the straight line">Reset</button>
         </div>
       </section>
       <section class="card cost">
         <div class="total-row"><div id="total" class="total">—</div><div id="valid" class="badge">…</div></div>
+        <div id="invalid-note" class="invalid-note" style="display:none">invalid — fix the violations; this cost does not count</div>
         <div id="perkm" class="sub"></div>
+        <div id="range" class="range" style="display:none"></div>
         <table id="breakdown"></table>
       </section>
       <section class="card" id="pi-card" style="display:none"></section>
@@ -77,6 +100,7 @@ export class Hud {
           <li><b>Drag</b> a numbered PI to move it, <b>right-click</b> or <kbd>Del</kbd> to delete</li>
           <li>Map: <b>left-drag</b> pan · <b>right-drag</b> rotate · <b>wheel</b> zoom</li>
           <li>Profile: drag VPIs (takes manual control), <b>double-click</b> adds, <b>right-click</b> deletes, wheel zooms</li>
+          <li>Why is a stretch expensive? <b>Hover</b> the profile for the cost split there; <b>drag</b> in the cost strip (or <kbd>Shift</kbd>+drag) to select a stretch, <b>click</b> a curve / tangent in the band above it; <kbd>Esc</kbd> = whole route</li>
         </ul>
         <label class="exag">Vertical exaggeration <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>
       </section>`;
@@ -86,7 +110,8 @@ export class Hud {
     this.$('undo').onclick = () => this.ev.onUndo?.();
     this.$('redo').onclick = () => this.ev.onRedo?.();
     this.$('auto').onclick = () => this.ev.onAutoProfile?.();
-    this.$('reset').onclick = () => { if (confirm('Reset to the naive straight design?')) this.ev.onReset?.(); };
+    this.$('reset').onclick = () => { if (confirm('Reset to the straight line?')) this.ev.onReset?.(); };
+    this.$('range').onclick = (e) => { if ((e.target as HTMLElement).closest('button')) this.ev.onClearRange?.(); };
     this.$('viol').onclick = (e) => {
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;
       if (li?.dataset.k) this.ev.onViolation?.(Number(li.dataset.k));
@@ -105,33 +130,67 @@ export class Hud {
     auto.textContent = d.profileMode === 'auto' ? 'Auto profile ✓' : 'Auto profile';
   }
 
-  setResult(r: Result, d: Design, best: Best | null) {
-    const c = r.cost;
-    this.$('total').textContent = czk(c.total);
+  /** switch the breakdown and quantities to a station range (null = whole route) */
+  setRange(range: StationRange | null) {
+    this.range = range;
+    if (this.last) this.renderCost(this.last.r, this.last.d);
+  }
+
+  private renderCost(r: Result, d: Design) {
+    const whole = r.cost;
+    const total = this.$('total');
+    total.textContent = czk(whole.total);
+    total.classList.toggle('invalid', !r.valid);
+    this.$('invalid-note').style.display = r.valid ? 'none' : '';
     const valid = this.$('valid');
     valid.textContent = r.valid ? 'VALID' : 'NOT VALID';
     valid.className = 'badge ' + (r.valid ? 'ok' : 'bad');
-    this.$('perkm').textContent = `${czk(c.total / (r.length / 1000))} per km · ${CATEGORIES[d.category].label} · ${d.speed} km/h`;
-    const ed = c.earthDetail;
-    const row = (k: string, v: number, title = '') => `<tr title="${title}"><td>${k}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%"></span></td></tr>`;
-    this.$('breakdown').innerHTML =
-      row('Road (base)', c.roadBase, 'SFDI per-km norm minus the value of its built-in earthworks allowance, at-grade length only') +
-      row('Earthworks', c.earthworks, `excavation ${czk(ed.excavation)}, fill ${czk(ed.fillPlacing)}, haul ${czk(ed.haul)}, surplus to tip ${czk(ed.surplusHaul)}, unsuitable 15 % to tip ${czk(ed.unsuitable)}, bought fill ${czk(ed.borrow)}, topsoil ${czk(ed.topsoil)}`) +
-      row('Bridges', c.bridges) + row('Tunnels', c.tunnels) +
-      row(`Other objects +${(PRICES.otherObjectsSurcharge * 100).toFixed(1)} %`, c.surcharge) +
-      row('Land & penalties*', c.land, `land ${czk(c.landDetail.land)} (provisional ${LAND.perM2} CZK/m²), forest ${czk(c.landDetail.forest)}, buildings ${czk(c.landDetail.buildings)}`);
+    this.$('perkm').textContent = `${czk(whole.total / (r.length / 1000))} per km · ${CATEGORIES[d.category].label} · ${d.speed} km/h`;
+    const sel = this.range && this.range.s0 < r.length ? rangeSummary(r, this.range.s0, Math.min(this.range.s1, r.length)) : null;
+    const box = this.$('range');
+    box.style.display = sel ? '' : 'none';
+    if (sel) {
+      box.innerHTML = `<div class="range-h"><b>Selected km ${num(sel.s0 / 1000, 2)} – ${num(sel.s1 / 1000, 2)}</b><button title="Esc">✕ Whole route</button></div>
+        <div class="range-cost"><b>${czk(sel.cost.total)}</b> · ${km(sel.length)} · ${czk(sel.cost.total / (sel.length / 1000))} per km <small>(${num((100 * sel.cost.total) / Math.max(1, whole.total), 0)} % of the route's cost on ${num((100 * sel.length) / r.length, 0)} % of its length)</small></div>`;
+    }
+    const c = sel ? sel.cost : whole;
+    this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
+      const v = g.of(c);
+      const label = g.id === 'surcharge' ? `Other objects <small>+${(PRICES.otherObjectsSurcharge * 100).toFixed(0)} / ${(URBAN_RATES.otherObjectsSurcharge * 100).toFixed(0)} %</small>` : g.label;
+      return `<tr title="${ROW_HELP[g.id](c).replace(/"/g, '&quot;')}" class="${v > 0 ? '' : 'zero'}"><td><i class="sw" style="background:${g.color}"></i>${label}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%;background:${g.color}"></span></td></tr>`;
+    }).join('');
     const q = r.quantities;
     const tOk = r.travelMin <= this.sc.maxTravelMin;
-    this.$('stats').innerHTML = `
+    const x = { bridge: 0, tunnel: 0, overbridge: 0, atGrade: 0 };
+    for (const cr of r.crossings) if (!sel || (cr.i >= sel.i0 && cr.i <= sel.i1)) x[cr.type]++;
+    const xing = `${x.bridge + x.tunnel + x.overbridge + x.atGrade} <small>(${[x.atGrade ? `${x.atGrade} at grade` : '', x.overbridge ? `${x.overbridge} overbridge${x.overbridge > 1 ? 's' : ''}` : '', x.bridge ? `${x.bridge} under our bridges` : '', x.tunnel ? `${x.tunnel} above tunnels` : ''].filter(Boolean).join(', ') || 'none'})</small>`;
+    const cls = q.cutByClass.map((v) => num((100 * v) / Math.max(1, q.cut), 0)).join(' / ');
+    const common = (cut: number, fill: number, len: number, fp: number, forest: number, urban: number, bld: number, walls: number) => `
+      <tr><td>Cut / fill</td><td>${kvol(cut)} / ${kvol(fill)} <small>(${num(cut / len, 0)} / ${num(fill / len, 0)} m³/m)</small></td></tr>
+      <tr><td>Footprint</td><td>${num(fp / 1e4, 1)} ha <small>(forest ${num(forest / 1e4, 1)} ha)</small></td></tr>
+      <tr><td>In built-up area</td><td>${km(urban)}</td></tr>
+      <tr class="${bld ? 'warn' : ''}"><td>Buildings demolished</td><td>${bld}</td></tr>
+      <tr><td>Roads crossed</td><td>${xing}</td></tr>
+      <tr><td>Noise walls</td><td>${num(walls, 0)} m</td></tr>`;
+    this.$('stats').innerHTML = sel ? `
+      <tr class="head"><td colspan="2">Selected stretch</td></tr>
+      <tr><td>Length</td><td>${km(sel.length)} <small>of ${km(r.length)}</small></td></tr>
+      <tr><td>Bridges / tunnels</td><td>${num(sel.quantities.bridgeLength, 0)} m / ${num(sel.quantities.tunnelLength, 0)} m</td></tr>
+      ${common(sel.quantities.cut, sel.quantities.fill, sel.length, sel.quantities.footprint, sel.quantities.forestArea, sel.quantities.urbanLength, sel.quantities.buildings, sel.quantities.wallLength)}
+      <tr class="${tOk ? '' : 'bad'}"><td>Travel time <small>(route)</small></td><td>${num(r.travelMin, 2)} min <small>/ ≤ ${this.sc.maxTravelMin.toFixed(1)}</small></td></tr>` : `
       <tr><td>Length</td><td>${km(r.length)}</td></tr>
       <tr class="${tOk ? '' : 'bad'}"><td>Travel time</td><td>${num(r.travelMin, 2)} min <small>/ ≤ ${this.sc.maxTravelMin.toFixed(1)}</small></td></tr>
-      <tr><td>Cut / fill</td><td>${kvol(q.cut)} / ${kvol(q.fill)} <small>(${num(q.cut / r.length, 0)} / ${num(q.fill / r.length, 0)} m³/m)</small></td></tr>
-      <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km, 15 % of cut unsuitable</small></td></tr>
       <tr><td>Bridges</td><td>${q.bridges} · ${num(q.bridgeLength, 0)} m</td></tr>
       <tr><td>Tunnels</td><td>${q.tunnels} · ${num(q.tunnelLength, 0)} m</td></tr>
-      <tr><td>Footprint</td><td>${num(q.footprint / 1e4, 1)} ha <small>(forest ${num(q.forestArea / 1e4, 1)} ha)</small></td></tr>
-      <tr class="${q.buildingsHit ? 'warn' : ''}"><td>Buildings demolished</td><td>${q.buildingsHit}</td></tr>
+      ${common(q.cut, q.fill, r.length, q.footprint, q.forestArea, q.urbanLength, q.buildingsHit, q.wallLength)}
+      <tr title="provisional stand-in for geology: class I to ${EXCAVATION_DEPTH_BANDS.classIto} m below the ground, II to ${EXCAVATION_DEPTH_BANDS.classIIto} m, III deeper"><td>Excavation class</td><td>${cls} % <small>I / II / III</small></td></tr>
+      <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km, 15 % of cut unsuitable</small></td></tr>
       <tr><td><small>recompute</small></td><td><small>${num(r.timing.total ?? 0, 0)} ms</small></td></tr>`;
+  }
+
+  setResult(r: Result, d: Design, best: Best | null) {
+    this.last = { r, d };
+    this.renderCost(r, d);
     const v = r.violations;
     this.$('viol-h').innerHTML = v.length ? `Violations <span class="count">${v.length}</span>` : 'Violations <span class="count ok">0</span>';
     this.$('viol').innerHTML = v.length

@@ -6,9 +6,10 @@ import { createServer } from 'vite';
 
 const OUT = 'docs/screenshots';
 mkdirSync(OUT, { recursive: true });
-const server = await createServer({ server: { port: 5199, strictPort: true }, logLevel: 'warn' });
+const PORT = Number(process.env.PORT ?? 5199); // set PORT when several checkouts run at once
+const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
 await server.listen();
-const url = 'http://localhost:5199/';
+const url = `http://localhost:${PORT}/`;
 const browser = await chromium.launch({
   executablePath: process.env.CHROME ?? '/usr/bin/chromium',
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
@@ -33,11 +34,42 @@ await page.goto(url);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await idle();
-console.log('naive', JSON.stringify(await page.evaluate(() => {
+console.log('start', JSON.stringify(await page.evaluate(() => {
   const s = window.trapla.summary();
   return { length: s.length, total: s.cost.total, violations: s.violations.length, timing: s.timing };
 })));
-await shot('01-overview-naive');
+await shot('01-overview-start');
+
+// cost breakdown of a stretch: the most expensive kilometre of the given design, selected in the
+// profile (highlighted on the map, HUD switched to the range) with the hover tooltip open
+const stretchShot = async (name, dist, elev) => {
+  const k = await page.evaluate(() => {
+    const r = window.trapla.result();
+    const per = Math.round(1000 / r.ds);
+    let best = 0, bi = 0, acc = 0;
+    const tot = new Float64Array(r.n);
+    for (const key of Object.keys(r.parts)) for (let i = 0; i < r.n; i++) tot[i] += r.parts[key][i];
+    for (let i = 0; i < r.n; i++) {
+      acc += tot[i] - (i >= per ? tot[i - per] : 0);
+      if (i >= per - 1 && acc > best) { best = acc; bi = i - per + 1; }
+    }
+    let hi = bi;
+    for (let i = bi; i < bi + per; i++) if (tot[i] > tot[hi]) hi = i;
+    const m = bi + Math.floor(per / 2);
+    window.trapla.profileFit();
+    window.trapla.selectRange(r.s[bi], r.s[bi + per - 1]);
+    return { s0: r.s[bi], s1: r.s[bi + per - 1], sHover: r.s[hi], x: r.x[m], y: r.y[m], tx: r.tx[m], ty: r.ty[m], length: r.length, cost: best };
+  });
+  console.log(name, JSON.stringify(k));
+  await page.evaluate(([x, y, b, d, e]) => window.trapla.lookAt(x, y, d, b, e), [k.x, k.y, (Math.atan2(k.tx, k.ty) * 180) / Math.PI + 300, dist, elev]);
+  const cb = await page.locator('#profile-canvas').boundingBox();
+  await page.mouse.move(cb.x + 52 + (k.sHover / k.length) * (cb.width - 66), cb.y + 70);
+  await page.waitForTimeout(1500);
+  await shot(name);
+  await page.mouse.move(300, 300);
+  await page.evaluate(() => window.trapla.selectRange(null));
+};
+await stretchShot('06-town-stretch', 2600, 50);
 
 const designs = JSON.parse(readFileSync(process.argv[2] ?? 'scripts/demo-design.json', 'utf8'));
 await page.evaluate((d) => window.trapla.setDesign(d), designs.design);
@@ -50,6 +82,8 @@ console.log('design', JSON.stringify({
 if (designs.overview) await page.evaluate((c) => window.trapla.lookAt(...c), designs.overview);
 await page.waitForTimeout(800);
 await shot('02-design');
+await stretchShot('05-selected-range', 2600, 42);
+if (designs.overview) await page.evaluate((c) => window.trapla.lookAt(...c), designs.overview); else await page.evaluate(() => window.trapla.resetCamera());
 
 // close-up of a bridge (and nearby cut). Optional: take manual control of the profile and bridge a
 // valley straight across (the designer's choice the official D11 makes at Poříčí).

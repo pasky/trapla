@@ -10,7 +10,7 @@ export type BuildingInfo = [number, number, number, number, number, number, numb
 /** storeys used for the valuation: the OSM tag when sane, otherwise the kind's default */
 export function buildingLevels(levels: number, kind: number): number {
   const row = BUILDING_KINDS[kind] ?? BUILDING_KINDS[BUILDING_KIND.house];
-  return levels >= 1 ? Math.min(levels, BUILDING_RULES.maxLevels) : row.defaultLevels;
+  return levels >= 1 ? Math.min(levels, row.maxLevels) : row.defaultLevels;
 }
 
 /** purchase at the statutory multiple of the market value plus demolition, CZK */

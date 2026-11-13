@@ -17,16 +17,19 @@ export interface BuildingKindRow {
   pricePerM2: number;
   /** PROVISIONAL number of storeys when OSM has no building:levels */
   defaultLevels: number;
+  /** PROVISIONAL cap on tagged building:levels (halls are valued by footprint; a few OSM values such
+   * as 25 levels on a 400 m² industrial building are towers, silos or errors) */
+  maxLevels: number;
   /** people live here: counts for the noise rule */
   dwelling: boolean;
 }
 
 export const BUILDING_KINDS: BuildingKindRow[] = [
-  /* house      */ { label: 'house', pricePerM2: 45_000, defaultLevels: 2, dwelling: true },
-  /* apartments */ { label: 'apartment block', pricePerM2: 45_000, defaultLevels: 4, dwelling: true },
-  /* civic      */ { label: 'civic building', pricePerM2: 45_000, defaultLevels: 2, dwelling: false },
-  /* industrial */ { label: 'industrial / commercial', pricePerM2: 20_000, defaultLevels: 1, dwelling: false },
-  /* minor      */ { label: 'garage / shed', pricePerM2: 10_000, defaultLevels: 1, dwelling: false },
+  /* house      */ { label: 'house', pricePerM2: 45_000, defaultLevels: 2, maxLevels: 12, dwelling: true },
+  /* apartments */ { label: 'apartment block', pricePerM2: 45_000, defaultLevels: 4, maxLevels: 12, dwelling: true },
+  /* civic      */ { label: 'civic building', pricePerM2: 45_000, defaultLevels: 2, maxLevels: 6, dwelling: false },
+  /* industrial */ { label: 'industrial / commercial', pricePerM2: 20_000, defaultLevels: 1, maxLevels: 3, dwelling: false },
+  /* minor      */ { label: 'garage / shed', pricePerM2: 10_000, defaultLevels: 1, maxLevels: 2, dwelling: false },
 ];
 
 export const BUILDING_RULES = {
@@ -34,8 +37,6 @@ export const BUILDING_RULES = {
   purchaseMultiplier: 1.5,
   /** PROVISIONAL demolition incl. disposal, CZK per m² of floor area (≈ 1,000 CZK per m³ built volume) */
   demolitionPerM2Floor: 3_000,
-  /** tagged building:levels above this are treated as tagging errors (towers, chimneys) */
-  maxLevels: 12,
 };
 
 // ---------------------------------------------------------------------------------------------

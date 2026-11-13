@@ -3,9 +3,10 @@ import { CATEGORIES, type CategoryId } from './core/data/categories';
 import { D11_SCENARIO } from './core/data/scenario';
 import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
+import { RouteExtras } from './render/extras';
 import { View } from './render/view';
 import { loadPack } from './scenario';
-import { startDesign, Store } from './state';
+import { RangeSelection, startDesign, Store } from './state';
 import { Hud } from './ui/hud';
 import { ProfilePanel } from './ui/profile';
 import type { WorkerIn } from './worker';
@@ -30,8 +31,13 @@ async function main() {
 
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack);
+  const extras = new RouteExtras(view);
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
+
+  // station range picked for the cost breakdown: profile panel → HUD, profile, map
+  const selection = new RangeSelection();
+  selection.on((range) => { profile.setSelection(range); hud.setRange(range); extras.setRange(range); });
 
   let selectedPi: number | null = null;
   let selectedVpi: number | null = null;
@@ -59,6 +65,9 @@ async function main() {
     for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
     last = r;
     view.setResult(r, CATEGORIES[rd.category].crownWidth);
+    extras.setResult(r, CATEGORIES[rd.category].crownWidth);
+    // a range beyond the end of a shortened route is gone
+    if (selection.range && selection.range.s0 >= r.length) selection.set(null);
     profile.setResult(r, r.vpis);
     if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
     hud.setResult(r, rd, store.best);
@@ -115,6 +124,7 @@ async function main() {
     },
     onVpiDelete: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; },
     onVpiSelect: (i) => { selectedVpi = i; hud.setSelectedVpi(i, last); },
+    onSelect: (range) => selection.set(range),
     onHover: (s) => {
       if (s === null || !last) { view.setHover(null); return; }
       const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
@@ -136,6 +146,7 @@ async function main() {
     onVpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
     onDeleteVpi: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; hud.setSelectedVpi(null, last); },
     onExaggeration: (e) => view.setExaggeration(e),
+    onClearRange: () => selection.set(null),
     onViolation: (k) => {
       const v = last?.violations[k];
       if (!v || !last) return;
@@ -154,7 +165,7 @@ async function main() {
       const i = selectedPi;
       store.update((d) => { d.pis.splice(i, 1); });
       selectPi(null);
-    } else if (e.key === 'Escape') selectPi(null);
+    } else if (e.key === 'Escape') { if (selection.range) selection.set(null); else selectPi(null); }
   });
   document.getElementById('fit')!.onclick = () => profile.fit();
 
@@ -171,7 +182,7 @@ async function main() {
     summary: () => last && {
       length: last.length, travelMin: last.travelMin, valid: last.valid, cost: last.cost, violations: last.violations,
       quantities: { ...last.quantities, massHaul: undefined, hitBuildings: last.quantities.hitBuildings.length },
-      runs: last.runs, timing: last.timing, vpis: last.vpis.length,
+      runs: last.runs, timing: last.timing, vpis: last.vpis.length, crossings: last.crossings, walls: last.walls,
     },
     whenIdle: () => new Promise<void>((res) => { if (received === posted) res(); else idleWaiters.push(res); }),
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
@@ -179,6 +190,8 @@ async function main() {
     selectPi,
     profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
     profileFit: () => profile.fit(),
+    selectRange: (s0: number | null, s1?: number) => selection.set(s0 === null || s1 === undefined ? null : { s0, s1 }),
+    range: () => selection.range,
     setExaggeration: (e: number) => view.setExaggeration(e),
     meta,
     official: meta.official.xy,

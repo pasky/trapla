@@ -1,6 +1,6 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; font: 13px/1.35 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1d232a; background: #e9edf1; }
-#app { display: grid; grid-template-columns: 1fr 360px; grid-template-rows: 1fr 240px; height: 100vh; }
+#app { display: grid; grid-template-columns: 1fr 360px; grid-template-rows: 1fr 300px; height: 100vh; }
 #view { grid-column: 1; grid-row: 1; position: relative; overflow: hidden; }
 #view canvas { display: block; width: 100%; height: 100%; }
 #overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -85,3 +85,28 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 #legend i.dash { background: repeating-linear-gradient(90deg, #888 0 5px, transparent 5px 8px); }
 #attrib { position: absolute; right: 6px; bottom: 4px; font-size: 10px; color: #222; background: rgba(255,255,255,0.75); padding: 1px 6px; border-radius: 3px; }
 #status { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); background: rgba(20,24,30,0.85); color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 14px; }
+
+/* cost breakdown: invalid total, selected range, component swatches, profile tooltip */
+.total.invalid { color: #9aa1ab; text-decoration: line-through; text-decoration-thickness: 2px; }
+.invalid-note { color: #d7301f; font-weight: 600; font-size: 12px; margin: -2px 0 4px; }
+.range { background: #fff7cc; border: 1px solid #e6c200; border-radius: 6px; padding: 6px 8px; margin: 2px 0 8px; }
+.range-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.range-h button { padding: 2px 7px; font-size: 12px; }
+.range-cost { margin-top: 3px; } .range-cost b { font-size: 16px; } .range-cost small { color: #667; display: block; }
+#breakdown i.sw, .profile-tip i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 6px 0 0; vertical-align: 0; }
+#breakdown tr.zero td { color: #a4abb5; }
+#breakdown small { color: #889; }
+.stats tr.head td { font-weight: 700; color: #8a6d00; padding-bottom: 3px; }
+.profile-bar { white-space: nowrap; overflow: hidden; }
+.profile-bar > * { flex: none; }
+.cost-legend { font-size: 11px; color: #555; border-left: 1px solid #d5d0c4; padding-left: 12px; }
+.cost-legend .sw { margin: 0 3px 0 7px; }
+.profile-tip { position: fixed; z-index: 20; pointer-events: none; background: rgba(255,255,255,0.97); border: 1px solid #c8ccd2; border-radius: 7px; box-shadow: 0 3px 12px rgba(0,0,0,0.25); padding: 7px 9px; font-size: 12px; width: 290px; }
+.profile-tip .tip-sub { color: #667; margin-bottom: 3px; }
+.profile-tip .tip-fact { color: #7a4a00; }
+.profile-tip table { margin-top: 5px; border-top: 1px solid #e3e6ea; }
+.profile-tip td { padding: 1px 0; }
+.profile-tip td:nth-child(2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.profile-tip small { display: block; color: #889; margin-left: 15px; font-size: 11px; }
+.profile-tip tr.tip-total td { border-top: 1px solid #e3e6ea; font-weight: 700; padding-top: 3px; }
+.profile-tip tr.tip-total small { margin-left: 0; font-weight: 400; }
