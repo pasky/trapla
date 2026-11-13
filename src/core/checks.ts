@@ -6,7 +6,7 @@ import type { SpeedNorms } from './data/norms';
 
 export type ViolationKind =
   | 'radius' | 'transition' | 'arcShort' | 'gradient' | 'crest' | 'sag' | 'vcOverlap' | 'oob'
-  | 'category' | 'time' | 'profile';
+  | 'category' | 'time' | 'profile' | 'section' | 'crossing';
 
 export interface Violation {
   kind: ViolationKind;
@@ -35,6 +35,10 @@ export const ROAD_CHECKS: CheckFamily = {
     for (const c of al.curves) {
       if (c.delta < 1e-6) continue;
       const where = { s0: c.sStart, s1: Math.max(c.sEnd, c.sStart), pi: c.index };
+      if (c.tooSharp) {
+        out.push({ kind: 'radius', msg: `PI ${c.index + 1}: deflection ${fmt((c.delta * 180) / Math.PI)}° is a near U-turn — no curve possible`, ...where });
+        continue;
+      }
       if (c.r < norms.minRadius - 1e-6) {
         out.push({ kind: 'radius', msg: `PI ${c.index + 1}: radius ${fmt(c.r)} m < minimum ${norms.minRadius} m`, ...where });
       }
@@ -78,7 +82,7 @@ export const ROAD_CHECKS: CheckFamily = {
       if (c.r < min - 1e-6) {
         out.push({ kind: c.type, ...where, msg: `${c.type} radius ${fmt(c.r)} m < ${fmt(min)} m` });
       }
-      if (c.lenEff < c.len - 0.5) {
+      if (c.lenEff < c.len - 1e-3) {
         out.push({ kind: 'vcOverlap', ...where, msg: `vertical curve (${fmt(c.len)} m) overlaps its neighbour — move VPIs apart` });
       }
     }

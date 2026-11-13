@@ -20,8 +20,6 @@ export interface StructureInput {
   forced?: ArrayLike<number>;
 }
 
-/** stations either side of a forced crossing that are bridged too */
-const FORCED_PAD = 1;
 
 export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[] } {
   const n = inp.h.length;
@@ -33,9 +31,11 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
   }
   const locked = new Uint8Array(n);
   if (inp.forced) {
+    // a forced crossing is bridged over at least the minimum bridge length, centred on it
+    const pad = Math.max(1, Math.ceil((rules.minBridgeLength / inp.ds - 1) / 2));
     for (let i = 0; i < n; i++) {
-      if (!inp.forced[i] || inp.h[i] < -3) continue;
-      for (let j = Math.max(1, i - FORCED_PAD); j <= Math.min(n - 2, i + FORCED_PAD); j++) {
+      if (!inp.forced[i]) continue;
+      for (let j = Math.max(1, i - pad); j <= Math.min(n - 2, i + pad); j++) {
         if (kind[j] !== KIND.tunnel) { kind[j] = KIND.bridge; locked[j] = 1; }
       }
     }

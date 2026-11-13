@@ -9,8 +9,11 @@ export interface Volumes {
   mass: Float64Array;
 }
 
-/** average-end-area volumes; areas of stations where `skip[i]` is set (structures) count as zero */
-export function volumes(ds: number, cutA: ArrayLike<number>, fillA: ArrayLike<number>, skip?: ArrayLike<number>): Volumes {
+/**
+ * Average-end-area volumes; areas of stations where `skip[i]` is set (structures) count as zero.
+ * The mass ordinate counts only the usable share of cut (`usable`, e.g. 0.85).
+ */
+export function volumes(ds: number, cutA: ArrayLike<number>, fillA: ArrayLike<number>, skip?: ArrayLike<number>, usable = 1): Volumes {
   const n = cutA.length;
   const mass = new Float64Array(n);
   let cut = 0, fill = 0;
@@ -20,7 +23,7 @@ export function volumes(ds: number, cutA: ArrayLike<number>, fillA: ArrayLike<nu
     const vc = 0.5 * (ca(i - 1) + ca(i)) * ds;
     const vf = 0.5 * (fa(i - 1) + fa(i)) * ds;
     cut += vc; fill += vf;
-    mass[i] = mass[i - 1] + vc - vf;
+    mass[i] = mass[i - 1] + usable * vc - vf;
   }
   return { cut, fill, mass };
 }
@@ -34,7 +37,7 @@ export interface MassHaul {
   reused: number;
   surplus: number;
   deficit: number;
-  /** average internal haul distance, m */
+  /** average haul distance of all material moved along the route (incl. to/from the ends), m */
   avgHaul: number;
 }
 
@@ -42,6 +45,7 @@ export interface MassHaul {
  * Mass-haul with one balance line c: material crossing station s is M(s) - c, so the haul moment is
  * ∫|M - c| ds; c also decides how much leaves / enters at the ends (surplus to a tip, borrow).
  * c is chosen to minimise haul + surplus + borrow cost (convex in c, ternary search).
+ * `cut` is the usable cut (the mass ordinate must have been built with the same share).
  */
 export function massHaul(ds: number, mass: Float64Array, cut: number, fill: number): MassHaul {
   const n = mass.length;
@@ -71,5 +75,6 @@ export function massHaul(ds: number, mass: Float64Array, cut: number, fill: numb
   const surplus = Math.min(cut, r.exported);
   const deficit = Math.min(fill, r.imported);
   const reused = Math.max(0, cut - surplus);
-  return { balance: c, moment: r.mom, reused, surplus, deficit, avgHaul: reused > 0 ? r.mom / Math.max(reused, 1) : 0 };
+  const moved = reused + surplus + deficit;
+  return { balance: c, moment: r.mom, reused, surplus, deficit, avgHaul: moved > 0 ? r.mom / moved : 0 };
 }

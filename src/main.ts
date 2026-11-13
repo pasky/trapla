@@ -1,7 +1,7 @@
 import './style.css';
 import { CATEGORIES, type CategoryId } from './core/data/categories';
 import { D11_SCENARIO } from './core/data/scenario';
-import type { Design, Result } from './core/evaluate';
+import { MIN_VPI_GAP, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
 import { View } from './render/view';
 import { loadPack } from './scenario';
@@ -38,8 +38,12 @@ async function main() {
   let posted = 0, received = 0;
   let idleWaiters: (() => void)[] = [];
 
+  // designs of in-flight requests: intermediate results are shown (live feedback while dragging), but
+  // always rendered with the design they were computed for
+  const inflight = new Map<number, Design>();
   const requestEval = () => {
     posted++;
+    inflight.set(posted, JSON.parse(JSON.stringify(store.design)));
     worker.postMessage({ type: 'eval', id: posted, design: store.design } satisfies WorkerIn);
   };
 
@@ -47,12 +51,15 @@ async function main() {
     const m = ev.data;
     if (m.type === 'error') { console.error('worker error', m.message); received = m.id; return; }
     if (m.type !== 'result') return;
+    if (m.id < received) return; // older than what is shown
     received = m.id;
     const r: Result = m.result;
+    const rd = inflight.get(m.id) ?? store.design;
+    for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
     last = r;
-    view.setResult(r, CATEGORIES[store.design.category].crownWidth);
+    view.setResult(r, CATEGORIES[rd.category].crownWidth);
     profile.setResult(r, r.vpis);
-    if (r.valid && received === posted) store.offerBest(r.cost.total, store.design);
+    if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
     hud.setResult(r, store.design, store.best);
     hud.setSelectedPi(selectedPi, r, store.design);
     hud.setSelectedVpi(selectedVpi, r);
@@ -96,11 +103,15 @@ async function main() {
   profile.ev = {
     onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
     onVpiDragEnd: () => store.commit(),
-    onVpiAdd: (s, z) => store.update((d) => {
-      takeProfile(d);
-      const k = d.vpis.findIndex((v) => v.s > s);
-      d.vpis.splice(k < 0 ? d.vpis.length - 1 : k, 0, { s, z, r: null });
-    }),
+    onVpiAdd: (s, z) => {
+      const vp = store.design.profileMode === 'auto' && last ? last.vpis : store.design.vpis;
+      if (vp.some((v) => Math.abs(v.s - s) < MIN_VPI_GAP)) return;
+      store.update((d) => {
+        takeProfile(d);
+        const k = d.vpis.findIndex((v) => v.s > s);
+        d.vpis.splice(k < 0 ? d.vpis.length - 1 : k, 0, { s, z, r: null });
+      });
+    },
     onVpiDelete: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; },
     onVpiSelect: (i) => { selectedVpi = i; hud.setSelectedVpi(i, last); },
     onHover: (s) => {

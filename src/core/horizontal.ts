@@ -12,6 +12,9 @@ export type Element =
   | { kind: 'line'; s0: number; len: number; x0: number; y0: number; dx: number; dy: number }
   | { kind: 'arc'; s0: number; len: number; cx: number; cy: number; r: number; a0: number; dir: 1 | -1; pi: number };
 
+/** deflections sharper than this (near U-turns) get no arc: a kink that the checks reject */
+export const MAX_DEFLECTION = (170 * Math.PI) / 180;
+
 export interface CurveInfo {
   /** index into the interior PI list */
   index: number;
@@ -34,6 +37,8 @@ export interface CurveInfo {
   sStart: number;
   sEnd: number;
   auto: boolean;
+  /** deflection above MAX_DEFLECTION: no arc was built */
+  tooSharp: boolean;
 }
 
 export interface LegInfo {
@@ -79,18 +84,20 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], minRadius: number, l
   }
   // per interior PI: deflection, radius, tangent lengths
   const m = pis.length;
-  const delta: number[] = [], dir: (1 | -1)[] = [], R: number[] = [], T: number[] = [], Tt: number[] = [];
+  const delta: number[] = [], rawDelta: number[] = [], dir: (1 | -1)[] = [], R: number[] = [], T: number[] = [], Tt: number[] = [];
   for (let k = 0; k < m; k++) {
     const i = k + 1;
     const cross = ux[i - 1] * uy[i] - uy[i - 1] * ux[i];
     const dot = ux[i - 1] * ux[i] + uy[i - 1] * uy[i];
-    const d = Math.abs(Math.atan2(cross, dot));
+    const raw = Math.abs(Math.atan2(cross, dot));
+    const d = raw > MAX_DEFLECTION ? 0 : raw; // near-reversal: no arc (geometry stays continuous)
     delta.push(d);
+    rawDelta.push(raw);
     dir.push(cross >= 0 ? 1 : -1);
     const r = pis[k].r ?? autoRadius(d, minRadius, lt);
     R.push(r);
-    T.push(d > 1e-9 ? r * Math.tan(Math.min(d, 3.1) / 2) : 0);
-    Tt.push(transitionTangent(r, Math.min(d, 3.1), lt));
+    T.push(d > 1e-9 ? r * Math.tan(d / 2) : 0);
+    Tt.push(transitionTangent(r, d, lt));
   }
   // reduce tangents so that neighbouring arcs never overlap (geometry stays continuous; the
   // violation itself is reported by the checks using the unreduced values)
@@ -124,7 +131,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], minRadius: number, l
       const P = pts[k + 1];
       const tc = end;
       const ct = { x: P.x + ux[i + 1] * Teff[k], y: P.y + uy[i + 1] * Teff[k] };
-      const rEff = d > 1e-9 ? Teff[k] / Math.tan(Math.min(d, 3.1) / 2) : R[k];
+      const rEff = d > 1e-9 ? Teff[k] / Math.tan(d / 2) : R[k];
       const sStart = s;
       if (d > 1e-9 && rEff > 1e-6) {
         // left normal of incoming direction
@@ -136,8 +143,8 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], minRadius: number, l
         s += len;
       }
       curves.push({
-        index: k, x: P.x, y: P.y, delta: d, dir: dir[k], r: R[k], rEff, t: T[k], tTransition: Tt[k],
-        arcLen: d > 1e-9 ? rEff * d : 0, sStart, sEnd: s, auto: pis[k].r === null,
+        index: k, x: P.x, y: P.y, delta: rawDelta[k], dir: dir[k], r: R[k], rEff, t: T[k], tTransition: Tt[k],
+        arcLen: d > 1e-9 ? rEff * d : 0, sStart, sEnd: s, auto: pis[k].r === null, tooSharp: rawDelta[k] > MAX_DEFLECTION,
       });
       cur = ct;
     }

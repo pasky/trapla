@@ -3,6 +3,9 @@
 
 export const LC = { none: 0, forest: 1, water: 2, building: 3, road: 4, urban: 5, rail: 6, stream: 7 } as const;
 export const OOB_BIT = 128;
+export const RIVER_CROSSING_BIT = 32;
+export const RAIL_CROSSING_BIT = 64;
+const CLASS_MASK = 7;
 
 export interface TerrainData {
   nx: number;
@@ -79,7 +82,15 @@ export class Terrain {
   /** land-cover class at (x,y), or -1 outside the grid */
   landcover(x: number, y: number): number {
     const i = this.cellIndex(x, y);
-    return i < 0 ? -1 : this.lc[i] & 127;
+    return i < 0 ? -1 : this.lc[i] & CLASS_MASK;
+  }
+
+  /** must-bridge crossing at (x,y): 0 none, 1 river / water area, 2 railway */
+  crossing(x: number, y: number): 0 | 1 | 2 {
+    const i = this.cellIndex(x, y);
+    if (i < 0) return 0;
+    const v = this.lc[i];
+    return v & RAIL_CROSSING_BIT ? 2 : v & RIVER_CROSSING_BIT ? 1 : 0;
   }
 }
 

@@ -9,7 +9,11 @@ export function allowanceValuePerKm(cat: CategoryId): number {
   const cut = NORM_EARTHWORK_ALLOWANCE.cutPerKm[c.roadClass];
   const fill = cut * NORM_EARTHWORK_ALLOWANCE.fillShareOfCut;
   const topsoilArea = 1000 * (c.crownWidth + NORM_EARTHWORK_ALLOWANCE.topsoilExtraWidth);
-  return cut * PRICES.excavation + fill * PRICES.fillPlacing + topsoilArea * PRICES.topsoilDepth * PRICES.topsoil;
+  // unsuitable share goes to a tip; fill (85 % of cut) then equals the usable cut, so no borrow
+  const unsuitable = cut * NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
+  return cut * PRICES.excavation + fill * PRICES.fillPlacing
+    + unsuitable * PRICES.surplusHaulKm * PRICES.haulPerM3Km
+    + topsoilArea * PRICES.topsoilDepth * PRICES.topsoil;
 }
 
 /** road base price per km: the norm minus the value of its built-in earthworks allowance */
@@ -36,9 +40,13 @@ export const DECISION = {
 export interface EarthworkQuantities {
   cut: number; // m³
   fill: number; // m³
-  /** haul moment of the internally reused material, m³·m */
+  /** haul moment along the route (mass-haul diagram), m³·m */
   haulMoment: number;
-  /** cut that is not reused and is hauled to a tip, m³ */
+  /** volume reused as fill (each m³ gets the free haul included in the excavation price), m³ */
+  reused: number;
+  /** unsuitable cut hauled to a tip (fixed share of all cut), m³ */
+  unsuitable: number;
+  /** usable cut that is not reused and is hauled to a tip, m³ */
   surplus: number;
   /** fill that must be bought, m³ */
   deficit: number;
@@ -63,7 +71,7 @@ export interface CostInput {
 export interface CostBreakdown {
   roadBase: number;
   earthworks: number;
-  earthDetail: { excavation: number; fillPlacing: number; haul: number; surplusHaul: number; borrow: number; topsoil: number };
+  earthDetail: { excavation: number; fillPlacing: number; haul: number; surplusHaul: number; unsuitable: number; borrow: number; topsoil: number };
   bridges: number;
   tunnels: number;
   construction: number;
@@ -79,8 +87,9 @@ export function rollup(i: CostInput): CostBreakdown {
   const earthDetail = {
     excavation: e.cut * PRICES.excavation,
     fillPlacing: e.fill * PRICES.fillPlacing,
-    haul: (e.haulMoment / 1000) * PRICES.haulPerM3Km,
+    haul: (Math.max(0, e.haulMoment - e.reused * PRICES.freeHaul) / 1000) * PRICES.haulPerM3Km,
     surplusHaul: e.surplus * PRICES.surplusHaulKm * PRICES.haulPerM3Km,
+    unsuitable: e.unsuitable * PRICES.surplusHaulKm * PRICES.haulPerM3Km,
     borrow: e.deficit * PRICES.borrowFill,
     topsoil: e.footprint * PRICES.topsoilDepth * PRICES.topsoil,
   };

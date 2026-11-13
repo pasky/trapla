@@ -193,14 +193,18 @@ export class View {
     }
   }
 
-  /** height of the rendered (decimated) terrain surface — used to keep the ribbon visible */
+  /**
+   * Height of the rendered (decimated) terrain surface — used to keep the ribbon visible. Uses the
+   * same triangulation as the chunks (diagonal b–c). Exact where meshStep divides the tile size
+   * (the default 4 does); tile edges clamp to the last row/column like the chunks do.
+   */
   private meshHeight(x: number, y: number): number {
     const T = this.terrain, s = this.meshStep;
     const fc = (x / T.cell - 0.5) / s, fr = ((T.height - y) / T.cell - 0.5) / s;
     const c0 = Math.floor(fc), r0 = Math.floor(fr), tx = fc - c0, ty = fr - r0;
     const h = (c: number, r: number) => T.sample(Math.min(c * s, T.nx - 1), Math.min(r * s, T.ny - 1));
     const a = h(c0, r0), b = h(c0 + 1, r0), c = h(c0, r0 + 1), d = h(c0 + 1, r0 + 1);
-    return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
+    return tx + ty <= 1 ? a + (b - a) * tx + (c - a) * ty : d + (c - d) * (1 - tx) + (b - d) * (1 - ty);
   }
 
   private drapeHeight(x: number, y: number) { return Math.max(this.terrain.heightAt(x, y), this.meshHeight(x, y)); }

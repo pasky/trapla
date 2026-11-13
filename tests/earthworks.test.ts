@@ -73,6 +73,7 @@ describe('mass haul', () => {
     const m = massHaul(ds, v.mass, v.cut, v.fill);
     expect(m.surplus).toBeLessThan(1);
     expect(m.deficit).toBeLessThan(1);
+    expect(Math.abs(m.reused - v.cut)).toBeLessThan(1);
     expect(m.avgHaul).toBeGreaterThan(1050);
     expect(m.avgHaul).toBeLessThan(1150);
   });
@@ -97,7 +98,7 @@ describe('cost roll-up', () => {
     const footprint = km * 1000 * (c.crownWidth + NORM_EARTHWORK_ALLOWANCE.topsoilExtraWidth);
     const r = rollup({
       category: cat, terrainClass: 'hilly', atGradeLength: km * 1000,
-      earth: { cut: km * cutKm, fill: km * cutKm * 0.85, haulMoment: 0, surplus: 0, deficit: 0, footprint },
+      earth: { cut: km * cutKm, fill: km * cutKm * 0.85, unsuitable: km * cutKm * NORM_EARTHWORK_ALLOWANCE.unsuitableShare, haulMoment: 0, reused: km * cutKm * 0.85, surplus: 0, deficit: 0, footprint },
       bridges: [], tunnels: [], bridgeLand: 0, forestArea: 0, buildingsHit: 0,
     });
     expect(r.construction).toBeCloseTo(km * c.normPerKm.hilly, 0);
@@ -109,7 +110,7 @@ describe('cost roll-up', () => {
   it('long tunnels use the long-tunnel rate, short ones the short rate', () => {
     const base = {
       category: 'S9.5' as const, terrainClass: 'hilly' as const, atGradeLength: 0,
-      earth: { cut: 0, fill: 0, haulMoment: 0, surplus: 0, deficit: 0, footprint: 0 },
+      earth: { cut: 0, fill: 0, unsuitable: 0, haulMoment: 0, reused: 0, surplus: 0, deficit: 0, footprint: 0 },
       bridges: [], bridgeLand: 0, forestArea: 0, buildingsHit: 0,
     };
     expect(rollup({ ...base, tunnels: [400] }).tunnels).toBeCloseTo(0.4 * PRICES.tunnelShortPerKm, 0);

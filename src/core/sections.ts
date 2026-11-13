@@ -62,7 +62,7 @@ export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: 
     const d = tmpl(o) - g;
     const crossed = isFill ? d <= 0 : d >= 0;
     if (crossed) {
-      const t = d0 / (d0 - d);
+      const t = d0 === d ? 0 : d0 / (d0 - d); // d0 = d = 0: slope lies on the ground
       const od = o0 + t * (o - o0);
       // triangle from o0 to daylight
       if (isFill) fill += 0.5 * d0 * (od - o0); else cut -= 0.5 * d0 * (od - o0);

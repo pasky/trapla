@@ -7,7 +7,7 @@ import { ROAD_CHECKS, type Violation } from './checks';
 import { basePerKm, DECISION, rollup, tunnelPerKm, type CostBreakdown } from './cost';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { speedNorms } from './data/norms';
-import { LAND, PRICES, STRUCTURE_RULES } from './data/prices';
+import { LAND, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
@@ -67,6 +67,8 @@ export interface Result {
 }
 
 const STEP = 10;
+/** minimum distance between VPIs (and from the ends), m */
+export const MIN_VPI_GAP = 20;
 
 export function evaluate(ctx: EvalContext, d: Design): Result {
   const t0 = performance.now();
@@ -86,6 +88,21 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const nx = -st.ty[i], ny = st.tx[i];
     oob[i] = terrain.isOob(st.x[i], st.y[i]) || terrain.isOob(st.x[i] + nx * w, st.y[i] + ny * w)
       || terrain.isOob(st.x[i] - nx * w, st.y[i] - ny * w) ? 1 : 0;
+  }
+  // river / water-area / railway crossings: sample between stations too so diagonal crossings of a
+  // 5 m raster line are not missed; each crossing is assigned to the nearest station
+  const clearance = new Float64Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    for (const f of [0, 0.25, 0.5, 0.75]) {
+      if (f > 0 && i + 1 >= n) break;
+      const x = st.x[i] + (i + 1 < n ? (st.x[i + 1] - st.x[i]) * f : 0);
+      const y = st.y[i] + (i + 1 < n ? (st.y[i + 1] - st.y[i]) * f : 0);
+      const c = terrain.crossing(x, y);
+      if (!c) continue;
+      const j = f > 0.5 ? i + 1 : i;
+      const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
+      if (!(clearance[j] >= need)) clearance[j] = need;
+    }
   }
   lap('stations');
 
@@ -110,18 +127,21 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // --- vertical alignment ---
   let vpis: VPI[];
   let profileFeasible = true;
-  const zA = Math.round(ground[0]), zB = Math.round(ground[n - 1]);
+  const zA = ground[0], zB = ground[n - 1];
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
     const ap = autoProfile(st.s, ground, {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius, costPerM,
+      minH: clearance,
     });
     vpis = ap.vpis;
     profileFeasible = ap.feasible;
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
     const L = al.length;
-    const inner = d.vpis.slice(1, -1).filter((v) => v.s > 1 && v.s < L - 1).sort((p, q) => p.s - q.s);
-    vpis = [{ s: 0, z: zA, r: null }, ...inner.map((v) => ({ ...v })), { s: L, z: zB, r: null }];
+    const sorted = d.vpis.slice(1, -1).filter((v) => v.s >= MIN_VPI_GAP && v.s <= L - MIN_VPI_GAP).sort((p, q) => p.s - q.s);
+    const inner: VPI[] = [];
+    for (const v of sorted) if (!inner.length || v.s - inner[inner.length - 1].s >= MIN_VPI_GAP) inner.push({ ...v });
+    vpis = [{ s: 0, z: zA, r: null }, ...inner, { s: L, z: zB, r: null }];
   }
   lap('profile');
   const prof = buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius);
@@ -138,18 +158,16 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     h[i] = grade[i] - ground[i];
     earthPerM[i] = basePerM + sec.cut[i] * cutP + sec.fill[i] * fillP + (sec.dayL[i] + sec.dayR[i]) * DECISION.landPerM2;
   }
-  // river / water / railway crossings must be bridged (streams get culverts, included in the norm)
+  // river / water / railway crossings must be bridged (streams get culverts, included in the norm);
+  // a crossing below the required clearance is a violation (and gets no fake buried bridge)
   const forced = new Uint8Array(n);
-  const crossing = (x: number, y: number) => { const c = terrain.landcover(x, y); return c === LC.water || c === LC.rail; };
-  for (let i = 0; i < n; i++) {
-    if (crossing(st.x[i], st.y[i])) forced[i] = 1;
-    else if (i + 1 < n && crossing((st.x[i] + st.x[i + 1]) / 2, (st.y[i] + st.y[i + 1]) / 2)) forced[i] = 1;
-  }
+  for (let i = 0; i < n; i++) if (clearance[i] > 0 && h[i] > 0) forced[i] = 1;
   const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM, forced });
 
   // --- earthworks ---
-  const vol = volumes(ds, sec.cut, sec.fill, kind);
-  const mh = massHaul(ds, vol.mass, vol.cut, vol.fill);
+  const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
+  const vol = volumes(ds, sec.cut, sec.fill, kind, usable);
+  const mh = massHaul(ds, vol.mass, vol.cut * usable, vol.fill);
   let footprint = 0, forestArea = 0;
   const hit = new Set<number>();
   for (let i = 0; i < n; i++) {
@@ -167,11 +185,12 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     if (ctx.buildings) {
       const items = ctx.buildings.items;
       const x = st.x[i], y = st.y[i];
-      ctx.buildings.near(x, y, Math.max(sec.dayL[i], sec.dayR[i]) + ds + 20, (j) => {
+      // building = circle (centroid, max vertex distance) against this station's footprint strip
+      ctx.buildings.near(x, y, Math.max(sec.dayL[i], sec.dayR[i]) + ds + 60, (j) => {
         const bx = items[j][0] - x, by = items[j][1] - y, br = items[j][2];
         const along = bx * st.tx[i] + by * st.ty[i];
         const across = bx * nx + by * ny;
-        if (Math.abs(along) <= ds / 2 && across <= sec.dayL[i] + 0.5 * br && across >= -sec.dayR[i] - 0.5 * br) hit.add(j);
+        if (Math.abs(along) <= ds / 2 + br && across <= sec.dayL[i] + br && across >= -sec.dayR[i] - br) hit.add(j);
       });
     }
   }
@@ -184,7 +203,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const cost = rollup({
     category: d.category, terrainClass: scenario.terrainClass,
     atGradeLength: Math.max(0, al.length - bridgeLength - tunnelLength),
-    earth: { cut: vol.cut, fill: vol.fill, haulMoment: mh.moment, surplus: mh.surplus, deficit: mh.deficit, footprint },
+    earth: {
+      cut: vol.cut, fill: vol.fill, unsuitable: vol.cut * (1 - usable), haulMoment: mh.moment, reused: mh.reused,
+      surplus: mh.surplus, deficit: mh.deficit, footprint,
+    },
     bridges, tunnels, bridgeLand: bridgeLength * b, forestArea, buildingsHit: hit.size,
   });
 
@@ -193,6 +215,30 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     ...ROAD_CHECKS.horizontal(al, norms),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];
+  // the whole at-grade footprint must be on terrain data, and every slope must reach the ground
+  for (let i = 0; i < n; i++) {
+    if (kind[i] !== KIND.earth) continue;
+    const nx = -st.ty[i], ny = st.tx[i];
+    if (terrain.isOob(st.x[i] + nx * sec.dayL[i], st.y[i] + ny * sec.dayL[i])
+      || terrain.isOob(st.x[i] - nx * sec.dayR[i], st.y[i] - ny * sec.dayR[i])) oob[i] = 1;
+  }
+  const ranges = (flag: (i: number) => boolean, fn: (i0: number, i1: number) => void) => {
+    for (let i = 0; i < n; i++) {
+      if (!flag(i)) continue;
+      let j = i;
+      while (j + 1 < n && flag(j + 1)) j++;
+      fn(i, j);
+      i = j;
+    }
+  };
+  ranges((i) => kind[i] === KIND.earth && sec.open[i] === 1, (i0, i1) => violations.push({
+    kind: 'section', s0: st.s[i0], s1: st.s[i1],
+    msg: 'side slope does not reach the ground within 150 m — change the grade line here',
+  }));
+  ranges((i) => kind[i] !== KIND.tunnel && h[i] < clearance[i] - 1e-6, (i0, i1) => violations.push({
+    kind: 'crossing', s0: st.s[i0], s1: st.s[i1],
+    msg: `river/railway crossing needs the grade ≥ ${Math.max(...Array.from(clearance.subarray(i0, i1 + 1)).filter((v) => v > 0))} m above it (now ${h[i0].toFixed(1)} m)`,
+  }));
   for (let i = 0; i < n; i++) {
     if (!oob[i]) continue;
     let j = i;
@@ -201,7 +247,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     i = j;
   }
   if (!profileFeasible && d.profileMode === 'auto') {
-    violations.push({ kind: 'profile', s0: 0, s1: al.length, msg: `no grade line within ${(scenario.maxGradient * 100).toFixed(0)} % exists for this route — make it longer or reroute` });
+    violations.push({ kind: 'profile', s0: 0, s1: al.length, msg: `auto-profile found no grade line within ${(scenario.maxGradient * 100).toFixed(0)} % and the vertical-curve minima — reroute or edit the profile` });
   }
   const geomViolations = violations.length;
   const travelMin = al.length / (d.speed / 3.6) / 60;

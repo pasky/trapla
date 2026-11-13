@@ -226,6 +226,12 @@ LC_NONE, LC_FOREST, LC_WATER, LC_BUILDING, LC_ROAD, LC_URBAN, LC_RAIL, LC_STREAM
 def build_overlays():
     lc = Image.new("L", (NX, NY), LC_NONE)
     d = ImageDraw.Draw(lc)
+    # separate must-bridge mask (rivers, water areas, railways) so that roads painted over a river in
+    # the categorical raster cannot erase a crossing
+    cross_w = Image.new("L", (NX, NY), 0)
+    dc = ImageDraw.Draw(cross_w)
+    cross_r = Image.new("L", (NX, NY), 0)
+    dr = ImageDraw.Draw(cross_r)
     cover = overpass("cover", """(
   way["landuse"~"^(forest|residential|industrial|commercial|retail|farmyard)$"];
   relation["landuse"~"^(forest|residential|industrial|commercial|retail)$"];
@@ -253,6 +259,8 @@ def build_overlays():
             for r in outers:
                 if len(r) >= 3:
                     d.polygon(px(r), fill=want)
+                    if want == LC_WATER:
+                        dc.polygon(px(r), fill=1)
             for r in inners:
                 if len(r) >= 3:
                     d.polygon(px(r), fill=LC_NONE)
@@ -275,10 +283,12 @@ def build_overlays():
             # rivers (and water areas) force a bridge in the game; streams get culverts (in the norm)
             if t["waterway"] == "river":
                 d.line(px(xy), fill=LC_WATER, width=3)
+                dc.line(px(xy), fill=1, width=3)
             else:
                 d.line(px(xy), fill=LC_STREAM, width=1)
         elif t.get("railway") == "rail":
             d.line(px(xy), fill=LC_RAIL, width=1)
+            dr.line(px(xy), fill=1, width=2)
         else:
             hw = t["highway"].replace("_link", "")
             d.line(px(xy), fill=LC_ROAD, width=road_w.get(hw, 1))
@@ -305,7 +315,9 @@ def build_overlays():
         if 0 <= x <= X_MAX - X_MIN and 0 <= y <= Y_MAX - Y_MIN:
             pout.append({"name": el.get("tags", {}).get("name", "?"), "kind": el["tags"]["place"],
                          "x": round(float(x), 1), "y": round(float(y), 1)})
-    return np.asarray(lc, dtype=np.uint8), bout, pout, roads_out
+    cross = (np.asarray(cross_w, dtype=np.uint8) > 0).astype(np.uint8) << 5
+    cross |= (np.asarray(cross_r, dtype=np.uint8) > 0).astype(np.uint8) << 6
+    return np.asarray(lc, dtype=np.uint8), cross, bout, pout, roads_out
 
 
 # ------------------------------------------------------------------------------------------------
@@ -445,13 +457,13 @@ def main():
 
     pts, kinds, cum, a, b = official_line()
     try:
-        lc, buildings, places, roads = build_overlays()
+        lc, cross, buildings, places, roads = build_overlays()
         have_osm = True
     except Exception as ex:  # overlays are optional; core game works without
         log("OSM overlays failed:", ex)
-        lc, buildings, places, roads = np.zeros((NY, NX), np.uint8), [], [], []
+        lc, cross, buildings, places, roads = np.zeros((NY, NX), np.uint8), np.zeros((NY, NX), np.uint8), [], [], []
         have_osm = False
-    lc_pack = lc | (oob.astype(np.uint8) << 7)
+    lc_pack = lc | cross | (oob.astype(np.uint8) << 7)
     (OUT / "landcover.u8.gz").write_bytes(gzip.compress(lc_pack.tobytes(), 9))
 
     img = Image.fromarray(drape(h_disp, oob, lc))
@@ -484,7 +496,7 @@ def main():
         "heights": {"file": "height.i16.gz", "encoding": "gzip(int16 row-wise delta of uint16 q); h = base + q*scale",
                     "base": hmin, "scale": H_QUANT},
         "landcover": {"file": "landcover.u8.gz", "classes": {"0": "none", "1": "forest", "2": "water",
-                      "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "oobBit": 128},
+                      "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "classMask": 7, "riverCrossingBit": 32, "railCrossingBit": 64, "oobBit": 128},
         "texture": {"tiles": tiles, "tile": tile},
         "overview": "overview.jpg",
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],

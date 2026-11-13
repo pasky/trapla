@@ -116,7 +116,7 @@ export class Hud {
     const row = (k: string, v: number, title = '') => `<tr title="${title}"><td>${k}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%"></span></td></tr>`;
     this.$('breakdown').innerHTML =
       row('Road (base)', c.roadBase, 'SFDI per-km norm minus the value of its built-in earthworks allowance, at-grade length only') +
-      row('Earthworks', c.earthworks, `excavation ${czk(ed.excavation)}, fill ${czk(ed.fillPlacing)}, haul ${czk(ed.haul)}, surplus to tip ${czk(ed.surplusHaul)}, bought fill ${czk(ed.borrow)}, topsoil ${czk(ed.topsoil)}`) +
+      row('Earthworks', c.earthworks, `excavation ${czk(ed.excavation)}, fill ${czk(ed.fillPlacing)}, haul ${czk(ed.haul)}, surplus to tip ${czk(ed.surplusHaul)}, unsuitable 15 % to tip ${czk(ed.unsuitable)}, bought fill ${czk(ed.borrow)}, topsoil ${czk(ed.topsoil)}`) +
       row('Bridges', c.bridges) + row('Tunnels', c.tunnels) +
       row(`Other objects +${(PRICES.otherObjectsSurcharge * 100).toFixed(1)} %`, c.surcharge) +
       row('Land & penalties*', c.land, `land ${czk(c.landDetail.land)} (provisional ${LAND.perM2} CZK/m²), forest ${czk(c.landDetail.forest)}, buildings ${czk(c.landDetail.buildings)} (provisional ${czk(LAND.perBuilding)} each)`);
@@ -126,7 +126,7 @@ export class Hud {
       <tr><td>Length</td><td>${km(r.length)}</td></tr>
       <tr class="${tOk ? '' : 'bad'}"><td>Travel time</td><td>${num(r.travelMin, 2)} min <small>/ ≤ ${this.sc.maxTravelMin.toFixed(1)}</small></td></tr>
       <tr><td>Cut / fill</td><td>${kvol(q.cut)} / ${kvol(q.fill)} <small>(${num(q.cut / r.length, 0)} / ${num(q.fill / r.length, 0)} m³/m)</small></td></tr>
-      <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km</small></td></tr>
+      <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km, 15 % of cut unsuitable</small></td></tr>
       <tr><td>Bridges</td><td>${q.bridges} · ${num(q.bridgeLength, 0)} m</td></tr>
       <tr><td>Tunnels</td><td>${q.tunnels} · ${num(q.tunnelLength, 0)} m</td></tr>
       <tr><td>Footprint</td><td>${num(q.footprint / 1e4, 1)} ha <small>(forest ${num(q.forestArea / 1e4, 1)} ha)</small></td></tr>

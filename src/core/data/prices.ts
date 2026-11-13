@@ -18,6 +18,8 @@ export const PRICES = {
   surplusHaulKm: 10,
   /** OTSKP 17180 fill from purchased material, CZK/m³ (charged on top of placing) */
   borrowFill: 636,
+  /** excavation items include haul ≤ 1 km: only the haul beyond this is charged, m */
+  freeHaul: 1000,
   /** OTSKP 12110 topsoil stripping, CZK/m³ */
   topsoil: 83,
   /** PROVISIONAL: topsoil depth stripped over the footprint, m */
@@ -35,6 +37,9 @@ export const PRICES = {
 export const NORM_EARTHWORK_ALLOWANCE = {
   cutPerKm: { motorway: 70_000, I: 40_000, II: 20_000 } as Record<string, number>,
   fillShareOfCut: 0.85,
+  /** share of cut that is unsuitable: hauled to a tip ≤ 10 km and replaced from a borrow pit (norm
+   * assumption; applied identically to the allowance and to the player's design) */
+  unsuitableShare: 0.15,
   /** PROVISIONAL: footprint width beyond the crown assumed for the norm's topsoil allowance, m */
   topsoilExtraWidth: 12,
 };
@@ -57,6 +62,9 @@ export const STRUCTURE_RULES = {
   tunnelMinDepth: 14,
   minBridgeLength: 30,
   minTunnelLength: 150,
+  /** grade must be at least this far above a river / railway the road crosses, m (deck + clearance) */
+  riverClearance: 3,
+  railClearance: 7.5,
   /** earthwork gaps shorter than this between two bridges / tunnels are merged into the structure */
   bridgeGapMerge: 60,
   tunnelGapMerge: 150,
