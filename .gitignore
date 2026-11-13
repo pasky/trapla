@@ -1,3 +1,9 @@
 # large terrain binaries (SRTM tile from the 2019 prototype)
 *.hgt
 *.hgt.zip
+pipeline/cache/
+public/scenarios/
+node_modules/
+dist/
+*.tsbuildinfo
+test-results/
