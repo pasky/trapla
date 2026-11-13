@@ -61,7 +61,7 @@ src/render/view.ts      three.js: draped terrain chunks, route ribbon, markers, 
 src/ui/                 HUD and profile panel
 ```
 
-Recompute for a ~21 km route takes ≈ 50 ms in Node (≈ 45 ms of it the auto-profile DP); 80–130 ms in the
+Recompute for a ~21 km route takes ≈ 40 ms in Node (≈ 30 ms of it the auto-profile DP); ≈ 100 ms in the
 headless SwiftShader browser where the CPU is shared with software WebGL.
 
 ## Scenario pack format (`public/scenarios/d11/`, generated, not committed)
@@ -70,7 +70,7 @@ headless SwiftShader browser where the CPU is shared with software WebGL.
 |---|---|
 | `meta.json` | grid (3500 × 4500 at 5 m, row 0 = north), origin in EPSG:5514, A/B, official line, texture tiles, attribution |
 | `height.i16.gz` | gzip of row-wise int16 deltas of uint16 heights; h = base + q · 0.1 m (display-filled where no data) |
-| `landcover.u8.gz` | gzip uint8 per cell: class (0 none, 1 forest, 2 water/river, 3 building, 4 road, 5 urban, 6 rail, 7 stream) + bit 7 = out of bounds |
+| `landcover.u8.gz` | gzip uint8 per cell: bits 0–2 class (0 none, 1 forest, 2 water/river, 3 building, 4 road, 5 urban, 6 rail, 7 stream); bit 5 river/water crossing, bit 6 railway crossing (must-bridge masks); bit 7 out of bounds |
 | `tex_R_C.jpg` | 1024 px drape tiles: multi-directional hillshade × hypsometric tint + OSM overlays; OOB greyed and hatched |
 | `overlays.json` | building centroids + radius (footprint hit test), place names, main roads |
 
