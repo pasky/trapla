@@ -36,7 +36,8 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     for (let i = 0; i < n; i++) {
       if (!inp.forced[i]) continue;
       for (let j = Math.max(1, i - pad); j <= Math.min(n - 2, i + pad); j++) {
-        if (kind[j] !== KIND.tunnel) { kind[j] = KIND.bridge; locked[j] = 1; }
+        // never lock a "bridge" below ground: the span ends where the terrain rises above the grade
+        if (kind[j] !== KIND.tunnel && inp.h[j] > 0) { kind[j] = KIND.bridge; locked[j] = 1; }
       }
     }
   }

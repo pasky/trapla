@@ -264,6 +264,8 @@ def build_overlays():
             for r in inners:
                 if len(r) >= 3:
                     d.polygon(px(r), fill=LC_NONE)
+                    if want == LC_WATER:
+                        dc.polygon(px(r), fill=0)  # islands are not crossings
 
     # draw order matters: later classes win (roads/rail over streams over cover)
     lines = overpass("lines", """(

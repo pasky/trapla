@@ -67,6 +67,14 @@ export interface Result {
 }
 
 const STEP = 10;
+
+/** manual grade line: ends pinned to the tie-ins, interior VPIs sorted, ≥ MIN_VPI_GAP apart and from the ends */
+export function normalizeVpis(v: VPI[], L: number, zA: number, zB: number): VPI[] {
+  const sorted = v.slice(1, -1).filter((p) => p.s >= MIN_VPI_GAP && p.s <= L - MIN_VPI_GAP).sort((p, q) => p.s - q.s);
+  const inner: VPI[] = [];
+  for (const p of sorted) if (!inner.length || p.s - inner[inner.length - 1].s >= MIN_VPI_GAP) inner.push({ ...p });
+  return [{ s: 0, z: zA, r: null }, ...inner, { s: L, z: zB, r: null }];
+}
 /** minimum distance between VPIs (and from the ends), m */
 export const MIN_VPI_GAP = 20;
 
@@ -91,7 +99,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
   // river / water-area / railway crossings: sample between stations too so diagonal crossings of a
   // 5 m raster line are not missed; each crossing is assigned to the nearest station
+  // `clearance[i]` = minimum grade-minus-ground at station i that puts the grade `need` metres above
+  // the crossing's own ground; the crossing samples themselves are kept for the final check
   const clearance = new Float64Array(n).fill(NaN);
+  const crossings: { s: number; g: number; need: number }[] = [];
   for (let i = 0; i < n; i++) {
     for (const f of [0, 0.25, 0.5, 0.75]) {
       if (f > 0 && i + 1 >= n) break;
@@ -99,9 +110,13 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       const y = st.y[i] + (i + 1 < n ? (st.y[i + 1] - st.y[i]) * f : 0);
       const c = terrain.crossing(x, y);
       if (!c) continue;
-      const j = f > 0.5 ? i + 1 : i;
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
-      if (!(clearance[j] >= need)) clearance[j] = need;
+      const gc = terrain.heightAt(x, y);
+      crossings.push({ s: st.s[i] + f * ds, g: gc, need });
+      for (const j of f === 0 ? [i] : [i, i + 1]) {
+        const req = need + gc - ground[j];
+        if (!(clearance[j] >= req)) clearance[j] = req;
+      }
     }
   }
   lap('stations');
@@ -129,19 +144,27 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   let profileFeasible = true;
   const zA = ground[0], zB = ground[n - 1];
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
-    const ap = autoProfile(st.s, ground, {
+    const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius, costPerM,
       minH: clearance,
-    });
+    };
+    let ap = autoProfile(st.s, ground, apOpt);
+    // vertical curves can shave the clearance the polyline search provided: retry asking for more
+    for (let attempt = 0; attempt < 2 && crossings.length; attempt++) {
+      const prof0 = buildProfile(ap.vpis, norms.minCrestRadius, norms.minSagRadius);
+      const z0 = elevations(prof0, crossings.map((c) => c.s));
+      let short = 0;
+      crossings.forEach((c, k) => { short = Math.max(short, c.g + c.need - z0[k]); });
+      if (short <= 1e-6) break;
+      const minH = Float64Array.from(clearance, (v) => (v > -Infinity ? v + short + 0.5 : NaN));
+      ap = autoProfile(st.s, ground, { ...apOpt, minH });
+    }
     vpis = ap.vpis;
     profileFeasible = ap.feasible;
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
     const L = al.length;
-    const sorted = d.vpis.slice(1, -1).filter((v) => v.s >= MIN_VPI_GAP && v.s <= L - MIN_VPI_GAP).sort((p, q) => p.s - q.s);
-    const inner: VPI[] = [];
-    for (const v of sorted) if (!inner.length || v.s - inner[inner.length - 1].s >= MIN_VPI_GAP) inner.push({ ...v });
-    vpis = [{ s: 0, z: zA, r: null }, ...inner, { s: L, z: zB, r: null }];
+    vpis = normalizeVpis(d.vpis, L, zA, zB);
   }
   lap('profile');
   const prof = buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius);
@@ -161,7 +184,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // river / water / railway crossings must be bridged (streams get culverts, included in the norm);
   // a crossing below the required clearance is a violation (and gets no fake buried bridge)
   const forced = new Uint8Array(n);
-  for (let i = 0; i < n; i++) if (clearance[i] > 0 && h[i] > 0) forced[i] = 1;
+  for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
   const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM, forced });
 
   // --- earthworks ---
@@ -177,16 +200,18 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     footprint += fw * ds * wgt;
     const nx = -st.ty[i], ny = st.tx[i];
     let forest = 0, cnt = 0;
-    for (let o = -sec.dayR[i]; o <= sec.dayL[i] + 1e-6; o += 5) {
+    for (let o = -sec.dayR[i]; o <= sec.dayL[i] + 1e-6; o += 2.5) {
       cnt++;
-      if (terrain.landcover(st.x[i] + nx * o, st.y[i] + ny * o) === LC.forest) forest++;
+      const px = st.x[i] + nx * o, py = st.y[i] + ny * o;
+      if (terrain.landcover(px, py) === LC.forest) forest++;
+      if (terrain.isOob(px, py)) oob[i] = 1;
     }
     forestArea += (cnt ? forest / cnt : 0) * fw * ds * wgt;
     if (ctx.buildings) {
       const items = ctx.buildings.items;
       const x = st.x[i], y = st.y[i];
       // building = circle (centroid, max vertex distance) against this station's footprint strip
-      ctx.buildings.near(x, y, Math.max(sec.dayL[i], sec.dayR[i]) + ds + 60, (j) => {
+      ctx.buildings.near(x, y, Math.max(sec.dayL[i], sec.dayR[i]) + ds, (j) => {
         const bx = items[j][0] - x, by = items[j][1] - y, br = items[j][2];
         const along = bx * st.tx[i] + by * st.ty[i];
         const across = bx * nx + by * ny;
@@ -235,10 +260,20 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     kind: 'section', s0: st.s[i0], s1: st.s[i1],
     msg: 'side slope does not reach the ground within 150 m — change the grade line here',
   }));
-  ranges((i) => kind[i] !== KIND.tunnel && h[i] < clearance[i] - 1e-6, (i0, i1) => violations.push({
-    kind: 'crossing', s0: st.s[i0], s1: st.s[i1],
-    msg: `river/railway crossing needs the grade ≥ ${Math.max(...Array.from(clearance.subarray(i0, i1 + 1)).filter((v) => v > 0))} m above it (now ${h[i0].toFixed(1)} m)`,
-  }));
+  if (crossings.length) {
+    const zc = elevations(prof, crossings.map((c) => c.s));
+    let last = -Infinity;
+    crossings.forEach((c, k) => {
+      const ic = Math.min(n - 1, Math.round(c.s / ds));
+      const above = zc[k] - c.g;
+      if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6 || c.s - last < 50) return;
+      last = c.s;
+      violations.push({
+        kind: 'crossing', s0: c.s, s1: c.s,
+        msg: `river/railway crossing needs the grade ≥ ${c.need} m above it (now ${above.toFixed(1)} m)`,
+      });
+    });
+  }
   for (let i = 0; i < n; i++) {
     if (!oob[i]) continue;
     let j = i;

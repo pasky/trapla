@@ -177,9 +177,10 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             let x = (h + H_MAX) / H_STEP;
             if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
             const j = x | 0;
-            c += j >= lutMax ? lut[lutMax] : lut[j] + (lut[j + 1] - lut[j]) * (x - j);
+            // each sample stands for `stride` stations (fewer in the interval's last block)
+            const wi = i + stride <= la + 1 ? w : (la + 1 - i) * ds;
+            c += (j >= lutMax ? lut[lutMax] : lut[j] + (lut[j + 1] - lut[j]) * (x - j)) * wi;
           }
-          c *= w;
           for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
             const i = clrIdx[q];
             if (zm + slope * (s[i] - sk) - g[i] < minH![i] + CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;

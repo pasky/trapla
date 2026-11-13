@@ -1,7 +1,7 @@
 import './style.css';
 import { CATEGORIES, type CategoryId } from './core/data/categories';
 import { D11_SCENARIO } from './core/data/scenario';
-import { MIN_VPI_GAP, type Design, type Result } from './core/evaluate';
+import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
 import { View } from './render/view';
 import { loadPack } from './scenario';
@@ -60,7 +60,7 @@ async function main() {
     view.setResult(r, CATEGORIES[rd.category].crownWidth);
     profile.setResult(r, r.vpis);
     if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
-    hud.setResult(r, store.design, store.best);
+    hud.setResult(r, rd, store.best);
     hud.setSelectedPi(selectedPi, r, store.design);
     hud.setSelectedVpi(selectedVpi, r);
     setStatus('');
@@ -99,6 +99,8 @@ async function main() {
     if (d.profileMode === 'auto' && last) d.vpis = last.vpis.map((v) => ({ ...v }));
     d.profileMode = 'manual';
     d.naive = false;
+    // keep the stored list identical to what the evaluator uses, so panel indices match the design
+    if (last) d.vpis = normalizeVpis(d.vpis, last.length, last.vpis[0].z, last.vpis[last.vpis.length - 1].z);
   };
   profile.ev = {
     onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
