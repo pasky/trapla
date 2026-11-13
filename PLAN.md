@@ -10,6 +10,20 @@ Background and all data sources: `research/00-feasibility-map.md`.
 3. **Scenarios:** #1 D11 Trutnov – Polish border, #2 D3 through Posázaví, #3 D35 Opatovec – Mohelnice.
 4. **Geology:** both a simple ground-category heuristic and the hazard layers (landslides, undermining).
 
+## Game framing (pasky, 2026-11-13)
+
+"Build the cheapest norm-abiding road from A to B, so that travel time is at most X and it handles
+traffic Y." The three defaults below (category as data row, simple tunnels, browser platform) are accepted.
+Comparison against the official line's price is not a priority for now; the official line is context only.
+
+How the prototype interprets it:
+- **Score:** total construction cost. Lower is better.
+- **Hard constraints:** every geometric norm check passes; travel time ≤ X; the category fits traffic Y.
+- **Travel time:** route length divided by the design speed the player picks for the road (90, 80 or
+  70 km/h). A lower design speed permits tighter curves, so it is cheaper to build but slower.
+- **Traffic Y:** selects the minimum road category. The thresholds are placeholders, not norm values.
+- **Structures:** bridges and simple tunnels appear where they are cheaper than the embankment or cut.
+
 ## Scenario #1 as OpenStreetMap has it today
 
 Overpass query on 2026-11-13, box 50.47–50.72 N, 15.80–16.12 E; raw result in
