@@ -8,8 +8,12 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { Design, Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
-import type { Terrain } from '../core/terrain';
+import { OOB_BIT, type Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
+import { Buildings } from './buildings';
+import { buildHeightTexture } from './heightTexture';
+import { LandCover } from './landcover';
+import { makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
 export interface ViewEvents {
   onPickTerrain?: (x: number, y: number) => void;
@@ -54,6 +58,14 @@ export class View {
     maskBox: { value: new THREE.Vector4(0, 0, 1, 1) },
     maskOn: { value: 0 },
   };
+  // terrain surface: shaded per pixel from the height texture, land cover from GPU-rasterised vectors
+  private terrainU = terrainUniforms();
+  private landcover: LandCover | null = null;
+  private buildings: Buildings | null = null;
+  private contours = false;
+  private contourStep = 0;
+  /** called when the contour interval changes with the zoom (minor, major in metres) */
+  onContourInterval: ((minor: number, major: number) => void) | null = null;
   ev: ViewEvents = {};
 
   constructor(private container: HTMLElement, private overlay: HTMLElement, private pack: Pack) {
@@ -143,54 +155,88 @@ export class View {
   // ---- terrain -------------------------------------------------------------------------------
   private buildTerrain() {
     const T = this.terrain, step = this.meshStep;
-    const loader = new THREE.TextureLoader();
-    for (const tile of this.pack.meta.texture.tiles) {
+    // per-pixel inputs of the terrain shader
+    const u = this.terrainU;
+    const ht = buildHeightTexture(this.pack.q, T.nx, T.ny, this.pack.meta.heights.scale, this.renderer.capabilities.maxTextureSize);
+    // the texel data lives on the GPU from the first frame on; drop the CPU copies (~85 MB)
+    ht.tex.onUpdate = () => { for (const m of ht.tex.mipmaps as unknown as { data: unknown }[]) m.data = null; (ht.tex.image as { data: unknown }).data = null; };
+    u.hTex.value = ht.tex;
+    u.hInfo.value.set(ht.w, ht.h, T.cell, this.pack.meta.heights.base);
+    u.areaSize.value.set(T.width, T.height);
+    u.oobTex.value = oobTexture(T.lc, T.nx, T.ny, OOB_BIT);
+    u.contour.value.w = this.renderer.getPixelRatio();
+    const mat = makeTerrainMaterial(u, this.maskUniforms);
+    if (this.pack.vectors) this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u);
+    // mesh chunks (for frustum culling); positions only, the shader derives everything from world x/z
+    const chunk = Math.ceil(512 / step) * step;
+    const indexCache = new Map<string, THREE.BufferAttribute>();
+    for (let row0 = 0; row0 < T.ny - 1; row0 += chunk) for (let col0 = 0; col0 < T.nx - 1; col0 += chunk) {
       const cols: number[] = [], rows: number[] = [];
-      for (let c = tile.col0; c < tile.col0 + tile.w; c += step) cols.push(c);
-      cols.push(Math.min(T.nx - 1, tile.col0 + tile.w));
-      for (let r = tile.row0; r < tile.row0 + tile.h; r += step) rows.push(r);
-      rows.push(Math.min(T.ny - 1, tile.row0 + tile.h));
+      for (let c = col0; c < Math.min(T.nx - 1, col0 + chunk); c += step) cols.push(c);
+      cols.push(Math.min(T.nx - 1, col0 + chunk));
+      for (let r = row0; r < Math.min(T.ny - 1, row0 + chunk); r += step) rows.push(r);
+      rows.push(Math.min(T.ny - 1, row0 + chunk));
       const nc = cols.length, nr = rows.length;
-      const pos = new Float32Array(nc * nr * 3), uv = new Float32Array(nc * nr * 2);
+      const pos = new Float32Array(nc * nr * 3);
       for (let j = 0; j < nr; j++) for (let i = 0; i < nc; i++) {
         const c = cols[i], r = rows[j];
         const x = (c + 0.5) * T.cell, y = T.height - (r + 0.5) * T.cell;
         const k = j * nc + i;
         pos[3 * k] = x - this.cx; pos[3 * k + 1] = T.sample(c, r); pos[3 * k + 2] = -(y - this.cy);
-        uv[2 * k] = (c + 0.5 - tile.col0) / tile.w;
-        uv[2 * k + 1] = 1 - (r + 0.5 - tile.row0) / tile.h;
       }
-      const idx = new Uint32Array((nc - 1) * (nr - 1) * 6);
-      let p = 0;
-      for (let j = 0; j < nr - 1; j++) for (let i = 0; i < nc - 1; i++) {
-        const a = j * nc + i, b = a + 1, c = a + nc, d = c + 1;
-        idx[p++] = a; idx[p++] = c; idx[p++] = b; idx[p++] = b; idx[p++] = c; idx[p++] = d;
+      let index = indexCache.get(`${nc}x${nr}`);
+      if (!index) {
+        const idx = new Uint32Array((nc - 1) * (nr - 1) * 6);
+        let p = 0;
+        for (let j = 0; j < nr - 1; j++) for (let i = 0; i < nc - 1; i++) {
+          const a = j * nc + i, b = a + 1, c = a + nc, d = c + 1;
+          idx[p++] = a; idx[p++] = c; idx[p++] = b; idx[p++] = b; idx[p++] = c; idx[p++] = d;
+        }
+        indexCache.set(`${nc}x${nr}`, index = new THREE.BufferAttribute(idx, 1));
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-      g.setIndex(new THREE.BufferAttribute(idx, 1));
+      g.setIndex(index);
       g.computeBoundingSphere();
-      const tex = loader.load(`${this.pack.base}/${tile.file}`, () => { this.dirty = true; });
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 8;
-      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-      const mat = new THREE.MeshBasicMaterial({ map: tex });
-      mat.onBeforeCompile = (sh) => {
-        Object.assign(sh.uniforms, this.maskUniforms);
-        sh.vertexShader = 'varying vec2 vMaskXZ;\n' + sh.vertexShader.replace('#include <project_vertex>',
-          '#include <project_vertex>\n  vMaskXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
-        sh.fragmentShader = 'varying vec2 vMaskXZ;\nuniform sampler2D maskTex;\nuniform vec4 maskBox;\nuniform float maskOn;\n'
-          + sh.fragmentShader.replace('void main() {', `void main() {
-  if (maskOn > 0.5) {
-    vec2 muv = (vMaskXZ - maskBox.xy) / maskBox.zw;
-    if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0 && texture2D(maskTex, muv).r > 0.5) discard;
-  }`);
-      };
       const m = new THREE.Mesh(g, mat);
       m.name = 'terrain';
+      m.matrixAutoUpdate = false;
       this.world.add(m);
     }
+    const b = this.pack.vectors?.buildings;
+    if (b && new URLSearchParams(location.search).get('buildings') !== '0') {
+      this.buildings = new Buildings(b, this.pack.vectors!.chunk, {
+        top: (x, y) => T.heightAt(x, y),
+        bottom: (x, y) => Math.min(T.heightAt(x, y), this.meshHeight(x, y)),
+      }, this.cx, this.cy);
+      this.world.add(this.buildings.group);
+    }
+  }
+
+  // ---- view options --------------------------------------------------------------------------
+  /** contour lines drawn in the terrain shader; the interval follows the zoom */
+  setContours(on: boolean) { this.contours = on; this.contourStep = 0; this.dirty = true; }
+  /** tint the ground by slope class (5 / 8 / 15 / 25 / 35 %) */
+  setSlopeTint(on: boolean) { this.terrainU.slopeTint.value = on ? 1 : 0; this.dirty = true; }
+  /** true while land-cover textures for the current camera are still being drawn */
+  get busy() { return this.lcPending; }
+  private lcPending = false;
+
+  /** per-frame upkeep of the terrain surface: land-cover clip levels, contour interval, building LOD */
+  private updateSurface() {
+    const t = this.controls.target, cam = this.camera;
+    const dist = cam.position.distanceTo(t);
+    const bufH = this.renderer.domElement.height || 1;
+    const mPerPx = (2 * dist * Math.tan((cam.fov * Math.PI) / 360)) / bufH;
+    this.lcPending = this.landcover ? this.landcover.update(t.x + this.cx, this.cy - t.z, mPerPx) : false;
+    if (this.lcPending) this.dirty = true;
+    this.buildings?.update(cam.position.x + this.cx, this.cy - cam.position.z);
+    // contour interval by zoom: 5/25 m close, 10/50 m mid, 20/100 m far, 50/250 m for the whole area
+    const c = this.terrainU.contour.value;
+    const minor = dist < 2200 ? 5 : dist < 6500 ? 10 : dist < 16000 ? 20 : 50;
+    c.set(minor, minor * 5, this.contours ? 1 : 0, this.renderer.getPixelRatio());
+    const step = this.contours ? minor : 0;
+    if (step !== this.contourStep) { this.contourStep = step; if (step) this.onContourInterval?.(minor, minor * 5); }
   }
 
   /**
@@ -508,6 +554,7 @@ export class View {
   setExaggeration(e: number) {
     this.exag = e;
     this.world.scale.y = e;
+    this.terrainU.exag.value = e;
     for (const m of this.markers) m.z = this.terrain.heightAt(m.x, m.y);
     this.dirty = true;
   }
@@ -557,6 +604,7 @@ export class View {
     const ghost = this.routeGroup.getObjectByName('ghost') as Line2 | undefined;
     if (centre) (centre.material as LineMaterial).linewidth = dist < 1200 ? 1 : dist < 4000 ? 2.5 : 3.5;
     if (ghost) ghost.visible = dist > 1200;
+    this.updateSurface();
     this.renderer.render(this.scene, this.camera);
     const place = (el: HTMLElement, x: number, y: number, z: number, minDist?: number) => {
       const s = this.screenOf(x, y, z);

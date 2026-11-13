@@ -3,6 +3,7 @@
 import type { BuildingInfo } from './core/buildings';
 import type { RoadNetData } from './core/roadnet';
 import { decodeHeights, Terrain } from './core/terrain';
+import { parseVectorPack, type VectorPack } from './render/vectorPack';
 
 export interface PackMeta {
   id: string;
@@ -13,7 +14,8 @@ export interface PackMeta {
   ny: number;
   heights: { file: string; base: number; scale: number };
   landcover: { file: string };
-  texture: { tiles: { file: string; col0: number; row0: number; w: number; h: number }[] };
+  /** vector render data (land cover, roads, buildings); absent in packs built without OSM */
+  vector?: { file: string } | null;
   A: { xy: [number, number]; latlon: [number, number]; note: string };
   B: { xy: [number, number]; latlon: [number, number]; note: string };
   official: { xy: [number, number][]; kinds: number[]; lengthM: number };
@@ -37,6 +39,7 @@ export interface Pack {
   q: Uint16Array;
   lc: Uint8Array;
   overlays: Overlays;
+  vectors: VectorPack | null;
 }
 
 /** fetch a gzip file; some servers (e.g. Vite dev) already send it with Content-Encoding: gzip */
@@ -54,13 +57,17 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   progress?.('loading scenario…');
   const meta: PackMeta = await (await fetch(`${base}/meta.json`)).json();
   progress?.('loading terrain (DMR 5G, 5 m)…');
-  const [hb, lb, overlays] = await Promise.all([
+  const [hb, lb, overlays, vectors] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
+    // render-only: without it the view falls back to plain shaded relief
+    meta.vector?.file
+      ? gunzip(`${base}/${meta.vector.file}`).then(parseVectorPack).catch((e) => { console.warn('vector render data unavailable', e); return null; })
+      : Promise.resolve(null),
   ]);
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc });
-  return { base, meta, terrain, q, lc, overlays };
+  return { base, meta, terrain, q, lc, overlays, vectors };
 }

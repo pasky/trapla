@@ -1,7 +1,7 @@
 """Build the scenario data pack for scenario #1 (D11 Trutnov - Polish border).
 
 Usage (from repo root):
-    uv run --with numpy --with tifffile --with pyproj --with pillow --with shapely \
+    uv run --with numpy --with tifffile --with pyproj --with pillow --with shapely --with mapbox-earcut \
         python pipeline/build_d11.py
 
 Writes public/scenarios/d11/. Raw downloads are cached in pipeline/cache/ so reruns are offline.
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import tifffile
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 from pyproj import Transformer
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -547,62 +547,39 @@ def official_line():
 
 
 # ------------------------------------------------------------------------------------------------
-# Drape texture: hillshade + hypsometric tint + overlays
+# Vector render data (pipeline/vectors.py): the browser shades the relief from the height grid and
+# rasterises land cover / roads / buildings from vectors, so no drape texture is baked any more.
 # ------------------------------------------------------------------------------------------------
-TINT = [  # metres -> rgb
-    (250, (122, 158, 104)), (350, (150, 180, 112)), (450, (190, 196, 132)), (550, (214, 202, 150)),
-    (650, (204, 178, 134)), (800, (186, 160, 128)), (1000, (196, 186, 176)), (1300, (236, 234, 230)),
-]
+def cached_osm(name: str) -> dict:
+    """Raw Overpass result fetched earlier by build_overlays()."""
+    f = CACHE / f"osm_{name}.json"
+    if not f.exists():
+        raise RuntimeError(f"{f} missing: run the full pipeline (npm run data) first")
+    return json.loads(f.read_text())
 
 
-def hillshade(h: np.ndarray) -> np.ndarray:
-    gy, gx = np.gradient(h, CELL)  # gy: along rows (southwards), gx: eastwards
-    dzdx = gx
-    dzdy = -gy  # northwards
-    shade = np.zeros_like(h)
-    weights = [(315, 45, 0.55), (270, 50, 0.2), (0, 50, 0.15), (225, 60, 0.1)]
-    for az, alt, w in weights:
-        azr = math.radians(az)
-        altr = math.radians(alt)
-        # light direction (east, north, up)
-        lx, ly, lz = math.sin(azr) * math.cos(altr), math.cos(azr) * math.cos(altr), math.sin(altr)
-        # normal = (-dzdx, -dzdy, 1)/|.|
-        n = np.sqrt(dzdx ** 2 + dzdy ** 2 + 1)
-        s = (-dzdx * lx - dzdy * ly + lz) / n
-        shade += w * np.clip(s, 0, 1)
-    return shade
+def extra_cover() -> list:
+    """Render-only OSM extras (not used by the game rules): fields / meadows / parks, minor ways."""
+    cover2 = overpass("cover2", """(
+  way["landuse"~"^(meadow|farmland|grass|orchard|cemetery|allotments|village_green|recreation_ground|reservoir|basin)$"];
+  relation["landuse"~"^(meadow|farmland|grass|orchard)$"];
+  way["leisure"~"^(park|garden|pitch|golf_course|playground)$"];
+  way["natural"~"^(grassland|heath|scrub)$"];
+);""")
+    return [cover2["elements"]]
 
 
-def drape(h_disp: np.ndarray, oob: np.ndarray, lc: np.ndarray) -> np.ndarray:
-    shade = hillshade(h_disp)
-    shade = shade / max(1e-6, np.percentile(shade, 99.5))
-    elev = [e for e, _ in TINT]
-    rgb = np.zeros(h_disp.shape + (3,), dtype=np.float32)
-    for c in range(3):
-        rgb[..., c] = np.interp(h_disp, elev, [col[c] for _, col in TINT])
-    def blend(mask, col, a):
-        for c in range(3):
-            rgb[..., c] = np.where(mask, rgb[..., c] * (1 - a) + col[c] * a, rgb[..., c])
-    blend(lc == LC_URBAN, (205, 190, 185), 0.45)
-    blend(lc == LC_FOREST, (58, 104, 58), 0.62)
-    blend(lc == LC_WATER, (80, 140, 200), 0.85)
-    blend(lc == LC_STREAM, (90, 150, 205), 0.7)
-    blend(lc == LC_RAIL, (90, 80, 90), 0.8)
-    blend(lc == LC_ROAD, (252, 246, 230), 0.9)
-    shade_f = (0.35 + 0.8 * shade)[..., None]
-    out = rgb * shade_f
-    # buildings drawn after shading so they read clearly
-    bm = lc == LC_BUILDING
-    for c, v in enumerate((150, 70, 60)):
-        out[..., c] = np.where(bm, v * (0.7 + 0.3 * shade), out[..., c])
-    # out of bounds: desaturate and darken + hatch
-    grey = out.mean(axis=2, keepdims=True)
-    yy, xx = np.mgrid[0:h_disp.shape[0], 0:h_disp.shape[1]]
-    hatch = ((xx + yy) % 24) < 2
-    oobc = grey * 0.55 + 40
-    oobc = np.where(hatch[..., None], oobc * 0.75, oobc)
-    out = np.where(oob[..., None], oobc, out)
-    return np.clip(out, 0, 255).astype(np.uint8)
+def extra_lines() -> list:
+    lines2 = overpass("lines2", """(
+  way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];
+);""")
+    return [lines2["elements"]]
+
+
+def build_vectors() -> dict:
+    import vectors
+    return vectors.build(OUT, cached_osm, way_xy, rings_of, X_MAX - X_MIN, Y_MAX - Y_MIN,
+                         extra_polys=extra_cover(), extra_lines=extra_lines())
 
 
 def main():
@@ -634,16 +611,13 @@ def main():
     lc_pack = lc | cross | (oob.astype(np.uint8) << 7)
     (OUT / "landcover.u8.gz").write_bytes(gzip.compress(lc_pack.tobytes(), 9))
 
-    img = Image.fromarray(drape(h_disp, oob, lc))
-    tile = 1024
-    tiles = []
-    for ty in range(0, NY, tile):
-        for tx in range(0, NX, tile):
-            t = img.crop((tx, ty, min(NX, tx + tile), min(NY, ty + tile)))
-            name = f"tex_{ty // tile}_{tx // tile}.jpg"
-            t.save(OUT / name, quality=86, optimize=True)
-            tiles.append({"file": name, "col0": tx, "row0": ty, "w": t.width, "h": t.height})
-    img.resize((NX // 8, NY // 8), Image.LANCZOS).save(OUT / "overview.jpg", quality=85)
+    for stale in list(OUT.glob("tex_*.jpg")) + [OUT / "overview.jpg"]:  # baked drape of older packs
+        stale.unlink(missing_ok=True)
+    try:
+        vector = build_vectors() if have_osm else None
+    except Exception as ex:  # the game runs without them (plain shaded relief)
+        log("vector render data failed:", ex)
+        vector = None
 
     loc = lambda p: [round(float(p[0] - X_MIN), 1), round(float(p[1] - Y_MIN), 1)]
     a_lon, a_lat = TO_WGS.transform(a[0], a[1])
@@ -665,8 +639,7 @@ def main():
                     "base": hmin, "scale": H_QUANT},
         "landcover": {"file": "landcover.u8.gz", "classes": {"0": "none", "1": "forest", "2": "water",
                       "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "classMask": 7, "builtUpBit": BUILTUP_BIT, "riverCrossingBit": 32, "railCrossingBit": 64, "oobBit": 128},
-        "texture": {"tiles": tiles, "tile": tile},
-        "overview": "overview.jpg",
+        "vector": vector,
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],
               "note": f"on official D11 (southbound carriageway) {A_DIST_ALONG / 1000:.1f} km south of B"},
         "B": {"xy": loc(b), "latlon": [round(b_lat, 6), round(b_lon, 6)],
