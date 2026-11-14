@@ -201,14 +201,18 @@ async function main() {
   });
 
   // ---- map interactions ----
+  // From afar a click near the road means "a bend here": buildings are pickable only once they are
+  // a few pixels big, and crossed roads need a closer click
+  const buildingsPickable = () => view.metresPerPixel < 2.5;
+  const crossingPickPx = () => (view.metresPerPixel < 4 ? 12 : 6);
   view.ev = {
     onPickTerrain: (x, y, clientX, clientY, forceBend) => {
       intro.hide();
-      const building = forceBend ? null : buildingPicker.at(clientX, clientY, { x, y, z: pack.terrain.heightAt(x, y) });
+      const building = forceBend || !buildingsPickable() ? null : buildingPicker.at(clientX, clientY, { x, y, z: pack.terrain.heightAt(x, y) });
       if (building !== null) { selectBuilding(building); return; }
       const rect = view.renderer.domElement.getBoundingClientRect();
       const mx = clientX - rect.left, my = clientY - rect.top;
-      let picked: number | null = null, distance = 12;
+      let picked: number | null = null, distance = crossingPickPx();
       for (const c of last?.crossings ?? []) {
         const p = view.project(c.x, c.y, Math.max(last!.grade[c.i], last!.grade[c.i] - c.h) + 2);
         const gap = Math.hypot(p.sx - mx, p.sy - my);
@@ -353,7 +357,7 @@ async function main() {
     let cross: Result['crossings'][number] | null = null, building: number | null = null;
     if (at && r) {
       const box = canvas.getBoundingClientRect();
-      let best = 12;
+      let best = crossingPickPx();
       for (const c of r.crossings) {
         if (c.roadId === undefined) continue;
         const p = view.project(c.x, c.y, Math.max(r.grade[c.i], r.grade[c.i] - c.h) + 2);
@@ -362,7 +366,7 @@ async function main() {
       }
       if (!cross) {
         const g = view.pick(at.x, at.y);
-        if (g) building = buildingPicker.at(at.x, at.y, { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) });
+        if (g && buildingsPickable()) building = buildingPicker.at(at.x, at.y, { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) });
       }
     }
     const cursor = cross || building !== null ? 'pointer' : '';

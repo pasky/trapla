@@ -608,7 +608,7 @@ export class ProfilePanel {
     // numbered like the map markers; a marker crowding the previous numbered one shrinks to a dot
     const full = new Set<number>();
     let lastX = -Infinity;
-    for (const b of vis) { const x = this.X(b.s); if (x - lastX >= 17) { full.add(b.i); lastX = x; } }
+    for (const b of [...vis].sort((p, q) => p.s - q.s)) { const x = this.X(b.s); if (x - lastX >= 17) { full.add(b.i); lastX = x; } }
     // the hovered / selected ones last, on top
     const order = [...vis].sort((a, b) => Number(a.i === this.hoverBend || a.i === this.selectedBend) - Number(b.i === this.hoverBend || b.i === this.selectedBend));
     for (const b of order) {

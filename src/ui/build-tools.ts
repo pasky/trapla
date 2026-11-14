@@ -111,7 +111,7 @@ export class BuildTools {
         <label title="Wall height, 2–6 m"><input id="wall-height" type="number" min="2" max="6" step="0.5" value="${this.wallHeight}"> m high</label>
       </div>
       <div class="ctx-grid three"><button type="button" id="wall-add" title="A wall of this height along the whole selected stretch (none inside tunnels)">Build wall</button><button type="button" id="wall-remove" title="No wall here. Houses left too loud become a violation; they are not bought out silently.">No wall</button><button type="button" id="wall-auto" title="Let the game decide again: 3 / 4 / 5 m walls where they help, otherwise it buys out the houses it cannot protect (unless you keep them)">Automatic</button></div>
-      <div class="sub">${existing.length ? `Your walls here: ${existing.map((o) => `${o.side === 'L' ? 'left' : 'right'}: ${o.height ? `${o.height} m wall` : 'no wall'} (km ${km(o.s0)}–${km(o.s1)})`).join(' · ')}.` : autoWalls.length ? `Automatic walls here: ${autoWalls.map((w) => `${w.side === 'L' ? 'left' : 'right'} ${w.height} m`).join(', ')}.` : 'No walls here now.'} Sides as seen driving from A to B.</div>`;
+      <div class="sub">${existing.length ? `Your walls here: ${existing.map((o) => `${o.side === 'L' ? 'left' : 'right'}: ${o.height ? `${o.height} m wall` : 'no wall'} (km ${km(o.s0)}–${km(o.s1)})`).join(' · ')}.` : autoWalls.length ? `Automatic walls here: ${wallSummary(autoWalls)}.` : 'No walls here now.'} Sides as seen driving from A to B.</div>`;
     const height = card.querySelector<HTMLInputElement>('#wall-height')!;
     height.onchange = () => { if (Number.isFinite(height.valueAsNumber)) this.wallHeight = Math.max(2, Math.min(6, height.valueAsNumber)); };
     const sides = (): ('L' | 'R')[] => (this.wallSide === 'both' ? ['L', 'R'] : [this.wallSide]);
@@ -244,4 +244,11 @@ export class BuildTools {
 export function buildingKind(info: ArrayLike<number> | undefined, levels: number): string {
   const kind = BUILDING_KINDS[info ? info[2] : 0]?.label ?? 'building';
   return `${kind} · ${levels} storey${levels === 1 ? '' : 's'}`;
+}
+
+/** "left 3 m ×2, right 4 m" */
+function wallSummary(walls: readonly { side: 'L' | 'R'; height: number }[]): string {
+  const n = new Map<string, number>();
+  for (const w of walls) { const k = `${w.side === 'L' ? 'left' : 'right'} ${w.height} m`; n.set(k, (n.get(k) ?? 0) + 1); }
+  return [...n].map(([k, c]) => (c > 1 ? `${k} ×${c}` : k)).join(', ');
 }

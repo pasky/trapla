@@ -288,7 +288,7 @@ p.warn { color: #8a4a00; background: #fff4dc; border-radius: 5px; padding: 5px 7
 #toast button { background: transparent; color: #ffd400; border-color: rgba(255,255,255,0.3); font-weight: 600; padding: 2px 9px; }
 #toast button:hover { background: rgba(255,255,255,0.12) !important; }
 #toast button.x { color: #aab; border: 0; }
-#intro { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); z-index: 11; width: min(440px, calc(100% - 24px)); background: rgba(255,255,255,0.97); border-radius: 10px; padding: 14px 16px 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+#intro { position: absolute; right: 12px; top: 48px; z-index: 11; width: min(400px, calc(100% - 24px)); background: rgba(255,255,255,0.97); border-radius: 10px; padding: 14px 16px 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
 #intro[hidden] { display: none; }
 #intro .intro-h { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
 #intro ol { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
@@ -346,3 +346,11 @@ button.primary:hover:not(:disabled) { background: #1a5fd0 !important; }
 #overlay[data-zoom=far] .build-annotation.grade-pin { font-size: 9px; padding: 0 3px; }
 .build-annotation { cursor: pointer; }
 .build-annotation:hover { filter: brightness(1.08); box-shadow: 0 0 0 3px rgba(255,212,0,0.8); }
+
+/* a chosen option stays blue under the mouse (the generic hover would wash its white label out) */
+button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choice button.on:hover:not(:disabled), .seg.mini button.on:hover:not(:disabled) { background: #1a5fd0; color: #fff; }
+/* map overlay symbols stay under the map's own controls */
+#overlay { z-index: 1; }
+#brand, #editbar, #viewbar, #legend, #attrib, #status, #noise-legend { z-index: 2; }
+#overlay[data-zoom=far] .build-annotation.kept-building, #overlay[data-zoom=far] .build-annotation.bought-building,
+#overlay[data-zoom=far] .build-annotation.selected-building { font-size: 0; width: 10px; height: 10px; padding: 0; }

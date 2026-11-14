@@ -186,7 +186,8 @@ export class RouteExtras {
       const world: number[] = [];
       for (let j = 0; j < pts.length; j += 3) { this.view.local(pts[j], pts[j + 1], pts[j + 2], v); world.push(v.x, v.y, v.z); }
       // both opaque: renderOrder then keeps the teal core over its casing
-      this.symbols.add(this.line(world, 0x0e4a4a, overview ? 3.5 : 6.5, 1, 5), this.line(world, WALL, overview ? 2 : 3.5, 1, 6));
+      if (overview) this.symbols.add(this.line(world, WALL, 2, 1, 6));
+      else this.symbols.add(this.line(world, 0x0e4a4a, 6.5, 1, 5), this.line(world, WALL, 3.5, 1, 6));
     }
     this.view.requestRender();
   }
