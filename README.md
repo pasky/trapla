@@ -33,13 +33,14 @@ Other commands:
 | `npm run typecheck` / `npm run build` | TypeScript check / production build into `dist/` |
 | `npm run bench [design.json]` | recompute timing + realism numbers in Node (default: straight line and an official-line-like design) |
 | `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
-| `npm run smoke` | interaction smoke test with real mouse events (add/drag/delete a bend, road height By hand, undo, persistence) |
+| `npm run smoke` | interaction smoke test with real mouse events (first-run intro, add/drag/delete a bend, road height By hand, undo, persistence) |
+| `node scripts/playtest.mjs [--docs] [--size=1280x800]` | a new player's whole session with real mouse / keyboard (intro, bends, drag, profile hover, stretch → bridge, noise wall, pin, crossing, building, undo / redo, map views, profile key, Start over, overview, demolitions), a screenshot per step into `/tmp/trapla-playtest`; `--docs` writes the gallery 49–59 |
 | `node scripts/ux.mjs [--docs]` | UX checks with real mouse/keyboard events: road-height switch, pins, height points, stretch bar, Undo/Redo bar, bends in the profile, map ↔ profile hover, click-to-zoom; `--docs` writes screenshots 36–41 |
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
 | `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
-| `node scripts/build-tools.mjs [--docs]` | real HUD/map checks for pins, crossings, building buy/keep, wall add/remove/Auto, undo and reload; `--docs` writes screenshots 30–35 |
+| `node scripts/build-tools.mjs [--docs]` | real HUD/map checks for click-to-pin, the crossing / building / stretch cards (buy / keep, wall add / remove / Auto), undo and reload; `--docs` writes screenshots 30–35 |
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
 | `node --max-old-space-size=2048 --import tsx scripts/crossing-audit.ts` | audits every saved design: terrain tie-ins ≤0.3 m, unsupported segment flotation ≤0.5 m, rendered road edges/side slopes, clearance and measured quantities; `--strict` also fails blocked designs |
 | `node scripts/noise-view.mjs [--gpu] [--docs] [outdir]` | noise view on a town-fringe and the town-centre design: hovers a walled / bought-out dwelling and a wall, prints the tooltips; `--docs` writes `docs/screenshots/28…29-*.png` |
@@ -55,9 +56,10 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   bend there anyway. Click a bend to change its curve radius (◇ grips, mouse wheel, <kbd>+</kbd> / <kbd>−</kbd>,
   **max**; "smallest allowed" = the smallest radius the rules allow, incl. room for transition curves).
 - Map: left-drag pans, right-drag rotates, wheel zooms.
+- **First run:** a three-step intro over the map (click to add a bend, drag a bend, watch the cost); *Got it*,
+  <kbd>Esc</kbd> or the first click on the map dismiss it for good; *How to play → Show the intro again* brings it back.
 - **Undo / Redo** sit at the top left of the map (tooltips say what they undo); <kbd>Ctrl+Z</kbd> /
-  <kbd>Ctrl+Shift+Z</kbd> (or <kbd>Ctrl+Y</kbd>) work for every edit, including the build tools (also right after
-  choosing in one of their drop-downs).
+  <kbd>Ctrl+Shift+Z</kbd> (or <kbd>Ctrl+Y</kbd>) work for every edit, including the build cards.
 - View options (buttons at the top right of the map, remembered between sessions):
   **Contours** <kbd>C</kbd> — contour lines with elevation labels; the interval follows the zoom (5 / 25 m close,
   10 / 50 m mid, 20 / 100 m far, thick lines = major); **Slope** <kbd>S</kbd> — tints the ground by slope (yellow
@@ -70,7 +72,9 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   marks that spot in the profile. No modifier keys anywhere:
   **click** = zoom in there (the map glides to the same spot), **drag** = select a stretch, **click a curve /
   straight** in the band under the chart = select it, wheel = zoom, sideways scroll or right-drag = scroll along
-  the route; **−** / **+** and **Whole route** (shown only while zoomed in) in the profile's title bar.
+  the route; **−** / **+** and **Whole route** (shown only while zoomed in) in the profile's title bar. **Key ▾**
+  there opens the full legend: every mark in the profile (bends, pins, crossed roads, culverts, buildings, your
+  structures) and the cost-strip colours.
 - **Road height: Automatic | By hand** (HUD). *Automatic*: the game sets the road's height along the route for the
   lowest cost and updates it whenever you move the route (an approximate search; it can miss a legal solution).
   The computed height points are not drawn; to force a height, **click the road line** — that pins it there — then
@@ -91,15 +95,23 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   of free cut material. Excess stream-culvert length is billed beyond ordinary norm drainage. This moves the
   flat S9.5 bridge break-even from ~26.9 to ~16.6 m at the default material value, not a legal height cap;
   see `research/15-bridge-vs-embankment.md` for assumptions, uncertainty and sensitivity.
-- The HUD shows total cost, breakdown, quantities, travel time vs target, all violations (click to fly there),
-  VALID / NOT VALID, and the best valid design so far; **Start over** returns to the straight line. The design
-  persists in localStorage.
+- **The HUD** (right): the **score** stays at the top while it scrolls — total cost, ✓ VALID / ✗ NOT VALID, travel
+  time against the goal, the number of violations (click: show them) and your best valid design (**Load**). Below
+  it, the **card of whatever you picked** (a bend, a height point, a stretch, a crossed road, a building) with its
+  options as buttons; ✕ or <kbd>Esc</kbd> closes it. Then foldable sections (remembered): scenario goals, design
+  (category, speed, road height — one line, the **?** has the long explanation), violations (click one to fly
+  there), cost breakdown (of the selected stretch while one is selected), quantities, **Your decisions** (every
+  choice you made — forced structures, walls, pins, crossings, buildings — each a link to it, plus a picker of all
+  crossed roads) and how to play. **Start over** returns to the straight line at once; the toast that follows
+  offers Undo (so does **Load**). The design persists in localStorage.
 - The game starts from the straight line with Automatic road height; the cost of a design that is not valid is
   struck through. Hover the profile for the cost split at that spot; a selected stretch shows its own bill in the
   HUD, <kbd>Esc</kbd> returns to the whole route.
-- **Crossing tools:** click a crossing on the map/profile, or choose a crossed road in **Build tools**
-  (filtered by the selected stretch). Choose **Junction / Our bridge over it / Its bridge over us / Close it +
-  reconnect / Automatic**. The choice follows the existing road's pack ID, including every intersection of that way.
+- **Crossing tools:** click a crossed road on the map (pointer cursor and a label when the mouse is on one; from
+  afar a click near the road adds a bend instead) or its ▪ mark in the profile; its card opens under the score
+  (‹ › step to the previous / next crossed road; *Your decisions* lists them all). Choose **Automatic / Junction /
+  Our bridge over it / Its bridge over us / Close + reconnect**; the chosen one is highlighted and a ring marks
+  the road on the map. The choice follows the existing road's pack ID, including every intersection of that way.
   Our bridge overrides overlapping structure paint locally; Auto seeks its clearance. Ordinary-road
   overbridges use the same priced raised approaches as Auto; fixed-level motorways/expressways require
   our road in a ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
@@ -123,17 +135,20 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   class determinations. Permian/Carboniferous profiles are calibrated to D11 1109 reported excavation
   quantities (official-line surrogate 42.6/18.0/39.4% I/II/III, not an as-built reconstruction).
   Unmapped ground uses the norm's 75/20/5 mix; see `research/10-geology-excavation.md`.
-- **Building tools:** click any building on the map → **Buy out + demolish / Keep / Automatic** in Build tools.
+- **Building tools:** click any building on the map (once buildings are a few pixels big) → its card offers
+  **Automatic / Buy out / Keep** and says what happens to it now.
   An explicit buyout works even away from the road; off-corridor acquisitions include the existing
   provisional whole-plot allowance. Footprint acquisitions are billed once with corridor land instead.
   **Keep** forbids both demolition and noise buyout: a footprint/working-strip hit or remaining noise
   excess becomes a blocking violation, with the dB shortfall shown. Green KEEP / magenta BUY map labels,
-  green profile squares and magenta diamonds show decisions; use the saved-building list to revisit them.
+  green profile squares and magenta diamonds show decisions; *Your decisions* lists them to revisit.
+  Demolished buildings disappear from the 3D map (their footprint stays painted on the ground, a red square marks
+  each); bought-out buildings stay standing with a magenta diamond.
   Clearing the decision restores the automatic policy. Building/road IDs are scoped to the scenario
   object-pack fingerprint: a changed pack clears those positional choices with a HUD notice, keeping
   station-based edits. Unstamped imported designs are assumed to refer to the current pack.
-- **Wall tools:** select a profile stretch (or **Noise wall…** in its bar), choose **Left / Right (driving A → B)**
-  and **2–6 m** in Build tools, then **Build wall / No wall / Automatic**. Repainting changes only that side and subrange; undo restores it.
+- **Wall tools:** select a profile stretch (or **Noise wall…** in its bar); in the stretch card choose **left /
+  right / both sides** (driving A → B) and **2–6 m**, then **Build wall / No wall / Automatic**. Repainting changes only that side and subrange; undo restores it.
   Player walls retain their exact selected extent (no automatic end margins); tunnels suppress built walls.
   Teal walls show the actual height, dotted marks show manual intent, and pink dashed marks show removals
   on map/profile. Nearby retained dwellings are grouped by side/stretch in the violation list.
@@ -147,7 +162,7 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
   the bill includes its acquisition and
   demolition, separately from buildings in the road footprint. Teal walls show their actual height (from afar,
-  where a 3–5 m wall is under a pixel, as a teal line with a dark outline just outside the road; hover it for its
+  where a 3–5 m wall is under a pixel, as a teal line just outside the road — thin at the overview; hover it for its
   height, side, extent and how many dwellings it protects); red squares mark footprint demolitions, magenta
   diamonds mark noise buyouts. The HUD and profile tooltip explain both; assumptions and limitations are in
   `PLAN.md`.
@@ -173,6 +188,23 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 Also: [map hover marks the spot in the profile](docs/screenshots/40-map-hover-in-profile.png),
 [a click zooms the profile and the map](docs/screenshots/41-profile-click-zoom.png).
 Reproduce with `node scripts/ux.mjs --docs`.
+
+### Playtest gallery (after the polish pass)
+
+A new player's session at 1280 × 800 (`node scripts/playtest.mjs --docs`):
+
+| | |
+|---|---|
+| ![First run](docs/screenshots/49-playtest-first-run.png) | ![Forced bridge](docs/screenshots/50-playtest-forced-bridge.png) |
+| ![Crossed road card](docs/screenshots/53-playtest-crossing.png) | ![Overview](docs/screenshots/58-playtest-overview.png) |
+
+Also: [noise wall on a stretch](docs/screenshots/51-playtest-noise-wall.png),
+[pinned height](docs/screenshots/52-playtest-pinned-height.png),
+[building card (Keep)](docs/screenshots/54-playtest-keep-building.png),
+[noise view](docs/screenshots/55-playtest-noise-view.png),
+[profile key](docs/screenshots/56-playtest-profile-key.png),
+[Start over with Undo](docs/screenshots/57-playtest-start-over.png),
+[demolished buildings removed from the map](docs/screenshots/59-playtest-demolished.png).
 
 ### Manual build tools
 
@@ -355,5 +387,7 @@ Pipeline geometry/cache tests: `uv run --with numpy --with shapely python -m uni
 - In the profile's curve band a compound curve is one stretch (labelled with its range of radii): a click selects
   the whole curve for the cost breakdown. Bends left out have no stretch of their own.
 - `npm run curves` replays this with real mouse events (multi-point curve, curve band, grips, wheel, keys, max, auto,
-  undo, relief 1–3× with contours / photo) and writes `docs/screenshots/18…23-*.png`; `17-long-curve-before.png` is
-  the same design on the previous rules.
+  undo, relief 1–3× with contours / photo). The bends it uses are derived from `scripts/demo-design.json` (the
+  25–50° bend with the longest legs becomes six points on its tangent circle; the radius handles go on the ≥ 30°
+  turn with the longest legs). Screenshots go to `/tmp/trapla-curves`; `--docs` writes `docs/screenshots/18…23-*.png`
+  (the committed ones predate the current demo design; `17-long-curve-before.png` is that design on older rules).
