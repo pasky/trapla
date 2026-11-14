@@ -207,6 +207,7 @@ async function main() {
     pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
     profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
     profileFit: () => profile.fit(),
+    profileView: () => profile.view,
     selectRange: (s0: number | null, s1?: number) => selection.set(s0 === null || s1 === undefined ? null : { s0, s1 }),
     range: () => selection.range,
     setExaggeration: (e: number) => viewBar.set({ exag: e }),

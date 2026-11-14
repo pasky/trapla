@@ -36,7 +36,8 @@ export class ProfilePanel {
   private vpis: VPI[] = [];
   private v0 = 0;
   private v1 = 1;
-  private fitted = false;
+  /** the view shows the whole route (and keeps doing so when the route's length changes) */
+  private whole = true;
   private hoverS: number | null = null;
   private hoverClient: { x: number; y: number } | null = null;
   private selected: number | null = null;
@@ -76,7 +77,6 @@ export class ProfilePanel {
   }
 
   setResult(r: Result, vpis: VPI[]) {
-    const lenChanged = !this.r || Math.abs(this.r.length - r.length) > 1;
     this.r = r;
     this.vpis = vpis;
     // prefix sums of the bill
@@ -109,7 +109,13 @@ export class ProfilePanel {
     }
     if (r.length > prev + 1) els.push({ s0: prev, s1: r.length, curve: false, label: '' });
     this.elements = els;
-    if (!this.fitted || lenChanged && this.v1 - this.v0 >= (this.r?.length ?? 0) * 0.98) this.fit();
+    // a fitted view follows the route's length; a zoomed one keeps its span, clamped to the new route
+    if (this.whole) { this.v0 = 0; this.v1 = r.length; } else {
+      const span = Math.min(this.v1 - this.v0, r.length);
+      this.v0 = Math.max(0, Math.min(r.length - span, this.v0));
+      this.v1 = this.v0 + span;
+      this.whole = span >= r.length;
+    }
     this.draw();
     this.updateTip();
   }
@@ -119,7 +125,10 @@ export class ProfilePanel {
   /** show the selected station range (set by the owner of the selection state) */
   setSelection(r: StationRange | null) { this.sel = r; this.draw(); }
 
-  fit() { if (this.r) { this.v0 = 0; this.v1 = this.r.length; this.fitted = true; } this.draw(); }
+  /** visible station range (diagnostics) */
+  get view() { return { v0: this.v0, v1: this.v1 }; }
+
+  fit() { this.whole = true; if (this.r) { this.v0 = 0; this.v1 = this.r.length; } this.draw(); }
 
   focus(s0: number, s1: number) {
     if (!this.r) return;
@@ -127,6 +136,7 @@ export class ProfilePanel {
     const c = (s0 + s1) / 2;
     this.v0 = Math.max(0, c - span / 2);
     this.v1 = Math.min(this.r.length, this.v0 + span);
+    this.whole = this.v1 - this.v0 >= this.r.length;
     this.flash = { s0, s1 };
     this.draw();
   }
@@ -648,6 +658,7 @@ export class ProfilePanel {
       const t = (s - this.v0) / (this.v1 - this.v0);
       this.v0 = Math.max(0, Math.min(this.r.length - span, s - t * span));
       this.v1 = this.v0 + span;
+      this.whole = span >= this.r.length;
       this.draw();
       this.updateTip();
     }, { passive: false });
