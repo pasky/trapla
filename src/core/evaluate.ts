@@ -571,7 +571,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
   let deckCoverReady = false;
   const work = (key: string, start: number) => { timing[`work.${key}`] = (timing[`work.${key}`] ?? 0) + performance.now() - start; };
-  const engineer = (candidate: VPI[], crossingWays: CrossingChainages) => {
+  const engineer = (candidate: VPI[], crossingWays: CrossingChainages, strict: boolean) => {
   timing['count.engineer'] = (timing['count.engineer'] ?? 0) + 1;
   const engineeringStart = performance.now();
   const prof = buildProfile(candidate, norms.minCrestRadius, norms.minSagRadius);
@@ -667,7 +667,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   selection = chooseStructures(structureInput);
   work('selection', selectionStart);
   const supportStart = performance.now();
-  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo);
+  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, !strict);
   work('support', supportStart);
   const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
@@ -691,10 +691,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   };
   /** Engineering through final checks. `relaxed` crossing ways leave their in-footprint stretch
    * to the crossing remedy (see retaining.ts); evaluate() retries strictly where that fails. */
-  const finish = (relaxed: CrossingChainages): Result => {
+  const finish = (relaxed: CrossingChainages, strict = false): Result => {
   const oob = oobInput.slice();
   let vpis = autoVpis;
-  let engineering = engineer(vpis, relaxed);
+  let engineering = engineer(vpis, relaxed, strict);
   const repairTargets = new Map<number, number>();
   let usedProfileRetry = false;
   for (let attempt = 0; attempt < 5 && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
@@ -721,7 +721,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     }
     if (!lifted) break;
     vpis = lifted;
-    engineering = engineer(vpis, relaxed);
+    engineering = engineer(vpis, relaxed, strict);
   }
   const { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings, selection, supported } = engineering;
@@ -834,7 +834,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
 
   lap('crossings');
-  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo }, terrain, ctx.roads, crossings, rawRoadX, water,
+  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, relocateMinorRoads: !strict }, terrain, ctx.roads, crossings, rawRoadX, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
@@ -1032,15 +1032,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   };
   };
   const result = finish(crossingWays);
-  // A relaxed crossing stretch whose crossing remedy could not absorb it (no ownership, and its
-  // residual relocation failed) falls back to ordinary retaining walls/structures nearby.
+  // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
+  // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
   const blocked = result.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
   if (!blocked.length) return result;
   const strict = new Map(crossingWays);
   for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) strict.delete(c.way);
-  if (strict.size === crossingWays.size) return result;
   timing['count.strictRetry'] = 1;
-  const retry = finish(strict);
+  const retry = finish(strict, true);
   return retry.violations.length < result.violations.length ? retry : result;
 }
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */

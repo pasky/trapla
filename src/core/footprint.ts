@@ -46,6 +46,8 @@ export interface FootprintRoute {
   crownWidth: number; runs: Run[];
   channelRelocations?: readonly ChannelRelocation[];
   featureCache?: RetainingFeatureCache;
+  /** See remedyBridgeSupports: minor roads at abutments/portals are relocated, not blocked. */
+  relocateMinorRoads?: boolean;
 }
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
@@ -189,11 +191,14 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const visitRoad = (segment: RoadSegment) => {
       const hit = clipFootprint(segment, cell, existingHalfWidth(segment.cls));
       if (!hit) return;
-      const key = `${segment.way}:${cell.structure ?? 'earth'}`;
+      // A minor road under an automatic abutment/portal is relocated with the adjoining earthwork
+      // hits (support-layout leaves it in place unless strict); piers are always moved instead.
+      const structure = cell.structure && !(r.relocateMinorRoads && cell.structure !== 'pier' && !ROAD_CLASSES[segment.cls].separable) ? cell.structure : undefined;
+      const key = `${segment.way}:${structure ?? 'earth'}`;
       let group = roadHits.get(key);
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });
-      for (const [a, b] of subtract(hit, cell.structure ? [] : screened(segment.way)))
-        group.hits.push({ a, b, i: cell.i, j: cell.i, structure: cell.structure });
+      for (const [a, b] of subtract(hit, structure ? [] : screened(segment.way)))
+        group.hits.push({ a, b, i: cell.i, j: cell.i, structure });
     };
     if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);
     const visitWater = (segment: WaterSegment) => {
