@@ -79,6 +79,14 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - The game starts from the straight line with the automatic grade line; the cost of a design that is not valid is
   struck through. Hover the profile for the cost split at a station; drag in the cost strip under it (or click a
   curve / tangent in the band above it) to get the breakdown of that stretch, <kbd>Esc</kbd> for the whole route.
+- **Crossing tools:** click a crossing on the map/profile, or choose a crossed road in **Build tools**
+  (filtered by the selected stretch). Choose **Junction / Our bridge / Its overbridge / Close + reconnect /
+  Auto**. The choice follows the existing road's pack ID, including every intersection of that way.
+  Our bridge overrides overlapping structure paint locally; Auto seeks its clearance or the requested
+  overbridge's ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
+  Gold rings mark junctions, crossed-road ribbons show the under/overpass, and ochre side links show
+  reconnections/diversions. Links are schematic terrain-draped geometry; their bill remains the documented
+  two-sided station-gap proxy, not surveyed link earthworks/land. Red rings identify invalid choices.
 - Through-road junctions keep **1.5 km spacing**, including A/B tie-ins (also in town: a scenario assumption).
   Other crossings use overbridges or parallel reconnections/diversions priced by measured route gaps × SPK
   road rates. Profile tooltips show the resolution and link/approach metres; HUD counts and sums them.

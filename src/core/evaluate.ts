@@ -9,7 +9,7 @@ import {
   basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
   type CostBreakdown, type CostParts,
 } from './cost';
-import { resolveCrossings, type CrossingResult } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
@@ -43,6 +43,8 @@ export interface Design {
   structureOverrides?: StructureOverride[];
   /** Auto-grade constraints in absolute chainage; retained but inactive in Manual. */
   gradePins?: { s: number; z: number }[];
+  /** Per existing-road way (scenario-pack index), not a transient crossing station. */
+  crossingOverrides?: CrossingOverride[];
 }
 
 export interface EvalContext {
@@ -139,7 +141,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed));
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
-  const manualStructures = overrideMask(st.s, d.structureOverrides);
+  let manualStructures = overrideMask(st.s, d.structureOverrides);
+  const crossingOverrides = normalizeCrossingOverrides(d.crossingOverrides);
   const ground = new Float64Array(n);
   const groundIds = new Uint8Array(n), groundProfiles: GroundProfile[] = [];
   const groundClasses = new Map<number, number>();
@@ -202,7 +205,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const rawRoadX = ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [];
   // Billing may merge carriageways / omit tie-in-area objects; safety must see every raw crossing.
-  const roadX = mergeCrossings(rawRoadX, al.length);
+  const roadX = mergeCrossings(rawRoadX, al.length, undefined, new Set(crossingOverrides.map((o) => o.roadId)));
+  manualStructures = crossingBridgeMask(st.s, rawRoadX, crossingOverrides, manualStructures);
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
   // auto-profile requests an overpass) or pass far enough below for an overbridge
@@ -213,6 +217,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     if (c.s <= CROSSING_RULES.endpointTolerance || al.length - c.s <= CROSSING_RULES.endpointTolerance) return;
     const need = STRUCTURE_RULES.railClearance, g = terrain.heightAt(c.x, c.y);
     mustBridge.push({ s: c.s, g, need, what: ROAD_CLASSES[c.cls].label, below: CROSSING_RULES.underDepth });
+    // A requested overbridge asks Auto for a cut, not the automatic motorway-overpass option.
+    if (crossingChoice(c.way, crossingOverrides) === 'overbridge') return;
     const i0 = Math.min(n - 1, Math.floor(c.s / ds));
     for (const j of c.s > st.s[i0] && i0 + 1 < n ? [i0, i0 + 1] : [i0]) {
       const req = need + g - ground[j];
@@ -278,7 +284,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
   const subStreamCount = new Uint8Array(sub);
   for (const s of streamS) subStreamCount[Math.min(sub - 1, Math.round(s / subDs))]++;
-  const subOverrides = overrideMask(subS, d.structureOverrides);
+  const subOverrides = crossingBridgeMask(subS, rawRoadX, crossingOverrides, overrideMask(subS, d.structureOverrides));
   const roadS = roadX.map((c) => c.s);
   const balanceOf = (v: VPI[], materialValue: number) => {
     const p = buildProfile(v, norms.minCrestRadius, norms.minSagRadius);
@@ -302,7 +308,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       const rz = elevations(p, roadS);
       roadX.forEach((c, j) => {
         const k = Math.min(sub - 1, Math.round(c.s / subDs));
-        if (ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0) must[k] = 1;
+        const choice = crossingChoice(c.way, crossingOverrides);
+        if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0) must[k] = 1;
       });
     }
     const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bridge, tunnelPerM: tunnel, forced: must, overrides: subOverrides });
@@ -323,6 +330,17 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (manualStructures[i] === KIND.bridge) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
       if (manualStructures[i] === KIND.tunnel) maxH[i] = -STRUCTURE_RULES.tunnelMinDepth;
     }
+    for (const c of rawRoadX) {
+      const choice = crossingChoice(c.way, crossingOverrides);
+      if (choice !== 'bridge' && choice !== 'overbridge') continue;
+      const g = terrain.heightAt(c.x, c.y), i0 = Math.min(n - 1, Math.floor(c.s / ds));
+      for (const i of [i0, Math.min(n - 1, i0 + 1)]) {
+        if (choice === 'bridge') {
+          const need = ROAD_CLASSES[c.cls].noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight;
+          minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + need - ground[i]);
+        } else maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
+      }
+    }
     const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, structureKind: manualStructures, pins: d.gradePins,
@@ -338,7 +356,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       const prof0 = buildProfile(ap.vpis, norms.minCrestRadius, norms.minSagRadius);
       const z0 = elevations(prof0, mustBridge.map((c) => c.s));
       let short = 0;
-      mustBridge.forEach((c, k) => { short = Math.max(short, c.g + c.need - z0[k]); });
+      mustBridge.forEach((c, k) => {
+        // Do not retry the opposite separation direction chosen explicitly by the player.
+        if (c.below !== undefined && rawRoadX.some((road) => Math.abs(road.s - c.s) < 1e-6 && crossingChoice(road.way, crossingOverrides) === 'overbridge')) return;
+        short = Math.max(short, c.g + c.need - z0[k]);
+      });
       if (short <= 1e-6) break;
       const minH = Float64Array.from(apOpt.minH, (v, i) => (clearance[i] > -Infinity ? v + short + 0.5 : v));
       // same material value: only the clearance changes
@@ -414,11 +436,12 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // an existing road clearly below the grade passes under a (short) bridge instead of being buried
   const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
   const crossings: CrossingResult[] = roadX.map((c, k) => ({
-    s: c.s, i: Math.min(n - 1, Math.round(c.s / ds)), x: c.x, y: c.y, cls: c.cls,
+    s: c.s, i: Math.min(n - 1, Math.round(c.s / ds)), x: c.x, y: c.y, cls: c.cls, roadId: c.way,
     h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0,
   }));
   for (const c of crossings) {
-    if (ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
+    const choice = crossingChoice(c.roadId!, crossingOverrides);
+    if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
   }
   const { kind, runs, violations: structureViolations } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, overrides: manualStructures });
   // what is actually built decides the land take, the rates and whether the terrain data suffice
@@ -482,7 +505,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // --- crossings of existing roads ---
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
-  resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban);
+  const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides);
+  buildCrossingGeometry(crossings, { ...st, grade, width }, (x, y) => terrain.heightAt(x, y), ctx.roads);
   for (const c of crossings) {
     // SPK links/approaches/bridges receive other-objects surcharge; all-in junction/access do not.
     const lump = c.type === 'junction' ? c.cost : c.type === 'reconnection' && c.cls === 'service' ? ACCESS : 0;
@@ -542,6 +566,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const violations: Violation[] = [
     ...structureViolations,
     ...pinViolations,
+    ...crossingIssues,
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];

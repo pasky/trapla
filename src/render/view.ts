@@ -17,7 +17,7 @@ import { LandCover } from './landcover';
 import { makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
 export interface ViewEvents {
-  onPickTerrain?: (x: number, y: number) => void;
+  onPickTerrain?: (x: number, y: number, clientX: number, clientY: number) => void;
   onPiDragStart?: (i: number) => void;
   onPiDrag?: (i: number, x: number, y: number) => void;
   onPiDragEnd?: (i: number) => void;
@@ -747,7 +747,7 @@ export class View {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       if (down.btn === 0 && moved < 5) {
         const p = this.pick(e.clientX, e.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY);
       }
       down = null;
     });

@@ -7,6 +7,7 @@ import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
+import { CrossingRenderer } from './render/crossings';
 import { BuildTools } from './ui/build-tools';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -40,6 +41,7 @@ async function main() {
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack);
   const extras = new RouteExtras(view);
+  const crossingRenderer = new CrossingRenderer(view);
   const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
@@ -65,6 +67,16 @@ async function main() {
   let selectedPi: number | null = null;
   let selectedVpi: number | null = null;
   let last: Result | null = null;
+  const selectCrossing = (roadId: number) => {
+    tools.selectCrossing(roadId);
+    const c = last?.crossings.find((c) => c.roadId === roadId);
+    if (c) { profile.selectStation(c.s); view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] }); }
+  };
+  tools.ev.selectCrossing = selectCrossing;
+  tools.ev.crossing = (roadId, type) => store.update((d) => {
+    d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
+    if (type !== null) d.crossingOverrides.push({ roadId, type });
+  });
   let posted = 0, received = 0;
   let idleWaiters: (() => void)[] = [];
 
@@ -90,6 +102,7 @@ async function main() {
     last = r;
     view.setResult(r, CATEGORIES[rd.category].crownWidth);
     extras.setResult(r, CATEGORIES[rd.category].crownWidth, rd.structureOverrides);
+    crossingRenderer.setResult(r);
     noise.setResult(r, CATEGORIES[rd.category].crownWidth);
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
@@ -128,7 +141,16 @@ async function main() {
 
   // ---- map interactions ----
   view.ev = {
-    onPickTerrain: (x, y) => {
+    onPickTerrain: (x, y, clientX, clientY) => {
+      const rect = view.renderer.domElement.getBoundingClientRect();
+      const mx = clientX - rect.left, my = clientY - rect.top;
+      let picked: number | null = null, distance = 12;
+      for (const c of last?.crossings ?? []) {
+        const p = view.project(c.x, c.y, Math.max(last!.grade[c.i], last!.grade[c.i] - c.h) + 2);
+        const gap = Math.hypot(p.sx - mx, p.sy - my);
+        if (p.vis && gap < distance && c.roadId !== undefined) { picked = c.roadId; distance = gap; }
+      }
+      if (picked !== null) { selectCrossing(picked); return; }
       const k = nearestLeg(A, B, store.design.pis, { x, y });
       store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); });
       selectPi(k);
@@ -148,6 +170,7 @@ async function main() {
   };
   profile.ev = {
     onStationSelect: selectStation,
+    onCrossingSelect: selectCrossing,
     onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
     onVpiDragEnd: () => store.commit(),
     onVpiAdd: (s, z) => {
@@ -249,6 +272,7 @@ async function main() {
     resetCamera: () => view.resetCamera(),
     selectPi,
     selectStation,
+    selectCrossing,
     maxRadius: (i: number) => curveEdit.maxRadius(i),
     pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
     project: (x: number, y: number, z: number) => view.project(x, y, z),

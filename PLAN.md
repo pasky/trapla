@@ -564,6 +564,12 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   persistence, map/profile marks. Fixed tie-ins and hard gradient/curve checks remain; failures show
   gradient-only bounds or the displayed fallback height, explicitly not a feasibility proof. Pins are
   inactive in Manual or beyond a shortened route. No-pin search/pricing is unchanged (model stays 11).
+- **Crossing choices** persist by existing-way pack ID: junction / our bridge / its overbridge /
+  close-and-reconnect / Auto, with all raw intersections retained for chosen ways. Shared prices and
+  explicit clearance, depth, spacing, structure and reachable-link checks; invalid choices cannot serve
+  as resolved link anchors. Auto receives requested bridge clearance / overbridge cut bounds. Map shows
+  junction rings, continuous crossed roads/decks and schematic two-sided links; pricing remains the
+  documented station-gap proxy (not a surveyed diversion). Default scoring is unchanged.
 - **Grade line: Auto | Manual** replaces the ambiguous button. Auto seeks a low-cost legal vertical line;
   Manual freezes it for vertical-point edits. Auto replaces manual vertical edits but keeps structure paint.
 - KHK regional/nadregional ÚSES is available and cached (47 polygons, ~0.49 MB) by

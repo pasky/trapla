@@ -4,11 +4,17 @@ import { COST_MODEL_VERSION } from './core/data/prices';
 import type { Design } from './core/evaluate';
 import { normalizeOverrides } from './core/overrides';
 import { normalizeGradePins } from './core/grade-pins';
+import { normalizeCrossingOverrides } from './core/crossings';
 
 /** Score compatibility includes both code rules and the ground pack used to price the design. */
 export interface Best { cost: number; design: Design; at: string; model?: number; pricingData?: string }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
+const normalizeDesign = (d: Design) => {
+  d.structureOverrides = normalizeOverrides(d.structureOverrides);
+  d.gradePins = normalizeGradePins(d.gradePins);
+  d.crossingOverrides = normalizeCrossingOverrides(d.crossingOverrides);
+};
 
 export class Store {
   design: Design;
@@ -29,8 +35,7 @@ export class Store {
     } catch { d = null; }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
-    this.design.structureOverrides = normalizeOverrides(this.design.structureOverrides);
-    this.design.gradePins = normalizeGradePins(this.design.gradePins);
+    normalizeDesign(this.design);
     this.push();
   }
 
@@ -57,8 +62,7 @@ export class Store {
 
   replace(d: Design) {
     this.design = clone(d);
-    this.design.structureOverrides = normalizeOverrides(this.design.structureOverrides);
-    this.design.gradePins = normalizeGradePins(this.design.gradePins);
+    normalizeDesign(this.design);
     this.push(); this.emit(true);
   }
 

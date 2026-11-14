@@ -23,6 +23,7 @@ export interface ProfileEvents {
   onVpiSelect?: (i: number | null) => void;
   onHover?: (s: number | null) => void;
   onStationSelect?: (s: number) => void;
+  onCrossingSelect?: (roadId: number) => void;
   /** a station range was picked for the cost breakdown (null = whole route) */
   onSelect?: (r: StationRange | null) => void;
 }
@@ -326,8 +327,8 @@ export class ProfilePanel {
       g.lineWidth = 1;
       g.beginPath(); g.moveTo(px, yg); g.lineTo(px, yr); g.stroke();
       g.fillStyle = x.type === 'atGrade' && ROAD_CLASSES[x.cls].noAtGrade ? '#d33' : x.cost > 0 ? '#e0a800' : '#fff';
-      g.strokeStyle = '#222';
-      g.lineWidth = 1.2;
+      g.strokeStyle = x.requestedType ? '#b45800' : '#222';
+      g.lineWidth = x.requestedType ? 2.5 : 1.2;
       const hw = minor ? 3 : 4.5, hh = minor ? 2 : 3;
       g.beginPath(); g.rect(px - hw, yr - hh, 2 * hw, 2 * hh); g.fill(); g.stroke();
       if (x.type === 'overbridge') { g.beginPath(); g.moveTo(px - 8, yr); g.lineTo(px + 8, yr); g.lineWidth = 2.5; g.stroke(); }
@@ -616,6 +617,10 @@ export class ProfilePanel {
         const existing = this.pins.find((pin) => Math.abs(this.X(pin.s) - p.x) < 8);
         this.ev.onStationSelect?.(existing?.s ?? s);
         return;
+      }
+      if (e.button === 0 && !e.shiftKey && !inCost(p.y) && k === null) {
+        const crossing = this.r.crossings.find((c) => c.roadId !== undefined && Math.hypot(this.X(c.s) - p.x, this.Y(this.r!.grade[c.i] - c.h) - p.y) < 8);
+        if (crossing) { this.ev.onCrossingSelect?.(crossing.roadId!); return; }
       }
       if (e.button === 2) {
         if (k !== null && k > 0 && k < this.vpis.length - 1) this.ev.onVpiDelete?.(k);

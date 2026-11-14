@@ -3,10 +3,42 @@ import { evaluate } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
 import { startDesign, Store } from '../src/state';
+import { RoadNet } from '../src/core/roadnet';
+import { PART_KEYS } from '../src/core/cost';
 
 const terrain = syntheticTerrain(500, 80, 5, () => 400);
 const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } };
 afterEach(() => vi.unstubAllGlobals());
+
+describe('crossing choices through the full bill', () => {
+  const roadContext = (cls: string) => ({ ...ctx,
+    terrain: syntheticTerrain(1000, 80, 5, () => 400), b: { x: 4100, y: 200 },
+    roads: new RoadNet({ cls: [cls], ways: [[0, 2100, 0, 2100, 400]] }),
+  });
+  it('Auto searches below a requested motorway overbridge rather than repeatedly asking to go above', () => {
+    const r = evaluate(roadContext('motorway'), { ...startDesign(), crossingOverrides: [{ roadId: 0, type: 'overbridge' }] });
+    expect(r.crossings[0].type).toBe('overbridge');
+    expect(r.crossings[0].h).toBeLessThanOrEqual(-6);
+    expect(r.violations).toEqual([]);
+    expect(r.crossings[0].geometry?.road?.length).toBeGreaterThan(2);
+  });
+  it('builds and bills a requested bridge, including an unsafe manual one, and clears back to the original result', () => {
+    const context = roadContext('primary'), d = startDesign(), before = evaluate(context, d);
+    d.crossingOverrides = [{ roadId: 0, type: 'bridge' }];
+    const bridged = evaluate(context, d);
+    expect(bridged.crossings[0].h).toBeGreaterThanOrEqual(6);
+    expect(bridged.kind[bridged.crossings[0].i]).toBe(1);
+    expect(bridged.cost.bridges).toBeGreaterThan(0);
+    const sum = PART_KEYS.reduce((sum, k) => sum + bridged.parts[k].reduce((a, b) => a + b, 0), 0);
+    expect(sum).toBeCloseTo(bridged.cost.total, 3);
+    d.profileMode = 'manual'; d.vpis = [{ s: 0, z: 400, r: null }, { s: 4000, z: 400, r: null }];
+    const unsafe = evaluate(context, d);
+    expect(unsafe.cost.bridges).toBeGreaterThan(0);
+    expect(unsafe.violations.some((v) => v.title === 'Bridge has insufficient road clearance')).toBe(true);
+    d.profileMode = 'auto'; d.crossingOverrides = [];
+    expect(evaluate(context, d).cost).toEqual(before.cost);
+  });
+});
 
 describe('saved Auto pins in evaluation', () => {
   it('uses the smoothed pinned grade for quantities, reports impossible heights, and restores auto on clear', () => {
