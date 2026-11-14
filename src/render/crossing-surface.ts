@@ -40,9 +40,9 @@ export interface SurfaceSection {
   edge: [CrossingPoint, CrossingPoint]; toe: [CrossingPoint, CrossingPoint];
   outer: [CrossingPoint, CrossingPoint];
 }
-export interface CrossingSurface { crossing: CrossingResult; path: CrossingPoint[]; sections: SurfaceSection[]; link: boolean; deck?: { start: number; end: number } }
+export interface CrossingSurface { crossing: CrossingResult; path: CrossingPoint[]; sections: SurfaceSection[]; link: boolean; retainingSupport: boolean; deck?: { start: number; end: number } }
 export function crossingSurfaces(crossings: CrossingResult[], height: (x: number, y: number) => number,
-  formation = height): CrossingSurface[] {
+  formation = height, retainingSupport = false): CrossingSurface[] {
   const out: CrossingSurface[] = [];
   for (const crossing of crossings) {
     const g = crossing.geometry;
@@ -66,7 +66,8 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
           const terrain = a.surface === 'terrain' && b.surface === 'terrain';
           // Retaining support continues to an unraised tie-in too: inventing a sloped
           // shoulder between samples would widen the planner's checked, paid ribbon.
-          const support = a.support === 'retaining' || b.support === 'retaining' ? 'retaining' : 'embankment';
+          const support = (a.support === 'retaining' || b.support === 'retaining') &&
+            a.support !== 'embankment' && b.support !== 'embankment' ? 'retaining' : 'embankment';
           path.push({ x, y, ground, z: terrain ? ground : a.z+(b.z-a.z)*t,
             ...(a.d !== undefined && b.d !== undefined ? { d: a.d+(b.d-a.d)*t } : {}),
             surface: terrain ? 'terrain' : 'ramp', ...(terrain && support !== 'retaining' ? {} : { support }) });
@@ -90,7 +91,7 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
           // Paid retaining faces meet ground directly beneath the paved edge; their
           // natural collars must start here, not at an unpriced embankment daylight.
           // Deck boundary sections are also the ends of the adjoining embankments.
-          if (p.support === 'retaining' || Math.abs(delta) < .15) return { ...e, z: ground };
+          if ((retainingSupport && p.support === 'retaining') || Math.abs(delta) < .15) return { ...e, z: ground };
           // 1:1.5 fill / cut daylight search. Bounded even for impossible manual grades.
           let off = .5;
           for (; off < 300; off += 1) {
@@ -102,7 +103,7 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
         const outer = toe.map((q, k) => point((k ? 1 : -1) * (Math.hypot(q.x - p.x, q.y - p.y) + GROUND_COLLAR))) as SurfaceSection['outer'];
         return { p, nx, ny, edge, toe, outer };
       });
-      out.push({ crossing, path, sections, link, deck });
+      out.push({ crossing, path, sections, link, deck, retainingSupport });
     }
   }
   return out;
@@ -113,10 +114,12 @@ export function hasCrossingPath(g?: CrossingGeometry): boolean {
 /** Relocations reuse the physical road surface without entering the centreline crossing list.
  * They sit on natural ground, with explicit link-end turnarounds when supplied by the planner. */
 export function footprintSurfaces(conflicts: readonly FootprintConflict[], height: (x: number, y: number) => number): CrossingSurface[] {
+  // Only footprint relocation support is priced as retaining faces. Ordinary crossing
+  // cut approaches also carry support tags, but retain their existing daylight rendering.
   return crossingSurfaces(conflicts.filter(c => c.feature === 'road' && c.action === 'relocation' && hasCrossingPath(c.geometry)).map(c => ({
     s: (c.s0 + c.s1) / 2, i: c.i, x: c.x, y: c.y, h: 0, cost: c.cost,
     cls: c.cls ?? 'unclassified', roadId: c.roadId, type: 'diversion', geometry: c.geometry,
-  })), height);
+  })), height, height, true);
 }
 
 export interface TurnaroundSurface {

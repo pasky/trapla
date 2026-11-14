@@ -41,6 +41,19 @@ describe('physical crossing surfaces', () => {
     }
     expect(formation(100, 15)).toBeCloseTo(100 + 10/3);
   });
+  it.each(['junction','overbridge'] as const)('preserves ordinary %s cut daylight despite legacy retaining tags', type => {
+    const c = crossing(type);
+    c.geometry = { width: 6, schematic: false, road: [0,20].map(x => ({
+      x, y: 0, z: 97, ground: 100, surface: 'ramp', support: 'retaining',
+    })) };
+    const [surface] = crossingSurfaces([c],() => 100);
+    expect(surface.sections.length).toBeGreaterThan(2);
+    for (const section of surface.sections) for (const k of [0,1]) {
+      expect(section.edge[k].z).toBe(97);
+      expect(section.toe[k].z).toBe(100);
+      expect(Math.abs(section.toe[k].y)).toBe(7.5); // 3 m half-width plus 1:1.5 cut daylight.
+    }
+  });
   it('supports raised approaches with daylighting side slopes but leaves the deck gap clear', () => {
     const height = (x: number) => 100 + .03 * (x - 100);
     const c = crossing('overbridge'); buildCrossingGeometry([c], route, height, road);

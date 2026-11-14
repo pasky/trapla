@@ -167,8 +167,9 @@ export class CrossingRenderer {
         }
       }
       if (ground) for (const k of [0, 1] as const) {
-        if (a.p.support === 'retaining' || b.p.support === 'retaining') {
-          // Match the pavement/collar lifts so the supported face closes both seams.
+        if (s.retainingSupport && (a.p.support === 'retaining' || b.p.support === 'retaining') &&
+          a.p.support !== 'embankment' && b.p.support !== 'embankment') {
+          // Close the supported face up to the pavement and down to the natural collar.
           const raised = (p: CrossingPoint, lift: number) => ({ ...p, z: p.z+lift });
           structure.quad(raised(a.edge[k],.10),raised(a.toe[k],.015),
             raised(b.edge[k],.10),raised(b.toe[k],.015),0xb7b4a9,0,0);
