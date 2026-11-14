@@ -10,6 +10,7 @@ import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
 import { groundDescription } from '../core/ground';
 import { KIND } from '../core/structures';
+import type { StructureOverride } from '../core/overrides';
 import type { VPI } from '../core/vertical';
 import type { StationRange } from '../state';
 import { COST_GROUPS, czk, perM } from './costgroups';
@@ -35,6 +36,7 @@ export class ProfilePanel {
   private ctx: CanvasRenderingContext2D;
   private r: Result | null = null;
   private vpis: VPI[] = [];
+  private overrides: readonly StructureOverride[] = [];
   private v0 = 0;
   private v1 = 1;
   /** the view shows the whole route (and keeps doing so when the route's length changes) */
@@ -77,7 +79,8 @@ export class ProfilePanel {
     this.install();
   }
 
-  setResult(r: Result, vpis: VPI[]) {
+  setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = []) {
+    this.overrides = overrides;
     this.r = r;
     this.vpis = vpis;
     // prefix sums of the bill
@@ -296,6 +299,19 @@ export class ProfilePanel {
       g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(r.grade[i])); g.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1])); g.stroke();
     }
     g.setLineDash([]);
+    // Manual ranges are marked separately from the resulting structures (including invalid paint).
+    g.save();
+    for (const o of this.overrides) {
+      const a = this.X(Math.max(this.v0, o.s0)), b = this.X(Math.min(this.v1, r.length, o.s1));
+      if (b <= a) continue;
+      const y = this.pad.t + 5;
+      g.strokeStyle = g.fillStyle = ['#976025', '#2f6fcf', '#7a4fc0'][o.kind];
+      g.lineWidth = 3; g.setLineDash([3, 3]);
+      g.beginPath(); g.moveTo(a, y + 5); g.lineTo(a, y); g.lineTo(b, y); g.lineTo(b, y + 5); g.stroke();
+      g.font = 'bold 10px system-ui'; g.textAlign = 'left';
+      if (b - a > 24) g.fillText(['E', 'B', 'T'][o.kind] + ' manual', a + 3, y + 15, b - a - 5);
+    }
+    g.restore();
     // crossed roads: a mark at the crossed road's level, linked to the grade line
     for (const x of r.crossings) {
       if (x.s < this.v0 || x.s > this.v1) continue;
@@ -529,8 +545,9 @@ export class ProfilePanel {
       if (!(v > 0.5)) return '';
       let detail = '';
       if (gr.id === 'earthworks') {
-        const names: [PartKey, string][] = [['excavation', 'excavation'], ['fillPlacing', 'fill'], ['borrow', 'bought fill'], ['haul', 'haul'], ['surplusHaul', 'surplus to tip'], ['unsuitable', 'unsuitable to tip'], ['topsoil', 'topsoil']];
-        detail = names.map(([key, name]) => [name, (this.cumKey[key][b + 1] - this.cumKey[key][a]) / len] as [string, number])
+        const names: [string, string][] = [['excavation', 'excavation'], ['fillPlacing', 'fill'], ['borrow', 'bought fill'], ['haul', 'haul'], ['surplusHaul', 'surplus to tip'], ['unsuitable', 'unsuitable to tip'], ['topsoil', 'topsoil'], ['geotechnical', 'geotechnical'], ['culverts', 'culverts']];
+        // New earth-detail components may arrive independently of this UI change.
+        detail = names.filter(([key]) => key in this.cumKey).map(([key, name]) => [name, (this.cumKey[key as PartKey][b + 1] - this.cumKey[key as PartKey][a]) / len] as [string, number])
           .filter((p) => p[1] > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 3).map((p) => `${p[0]} ${perM(p[1])}`).join(', ');
       }
       return `<tr><td><i style="background:${gr.color}"></i>${gr.label}${detail ? `<small>${detail}</small>` : ''}</td><td>${perM(v)}</td></tr>`;

@@ -2,6 +2,7 @@
 
 import { COST_MODEL_VERSION } from './core/data/prices';
 import type { Design } from './core/evaluate';
+import { normalizeOverrides } from './core/overrides';
 
 /** Score compatibility includes both code rules and the ground pack used to price the design. */
 export interface Best { cost: number; design: Design; at: string; model?: number; pricingData?: string }
@@ -27,6 +28,7 @@ export class Store {
     } catch { d = null; }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
+    this.design.structureOverrides = normalizeOverrides(this.design.structureOverrides);
     this.push();
   }
 
@@ -51,7 +53,7 @@ export class Store {
 
   commit() { this.push(); this.emit(true); }
 
-  replace(d: Design) { this.design = clone(d); this.push(); this.emit(true); }
+  replace(d: Design) { this.design = clone(d); this.design.structureOverrides = normalizeOverrides(this.design.structureOverrides); this.push(); this.emit(true); }
 
   canUndo() { return this.idx > 0; }
   canRedo() { return this.idx < this.history.length - 1; }
@@ -71,7 +73,7 @@ export class Store {
 
 /** The start: straight A→B with the automatic (norm-abiding) grade line — an honest, if expensive, bill. */
 export function startDesign(): Design {
-  return { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] };
+  return { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [], structureOverrides: [] };
 }
 
 /** a stretch of the route picked for the cost breakdown (stations in metres), or null = whole route */

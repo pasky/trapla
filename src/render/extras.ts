@@ -12,6 +12,7 @@ import { NOISE } from '../core/data/urban';
 import type { WallStretch } from '../core/noise';
 import { cellsInRange } from '../core/range';
 import { KIND } from '../core/structures';
+import type { StructureOverride } from '../core/overrides';
 import type { StationRange } from '../state';
 import type { View } from './view';
 
@@ -25,6 +26,7 @@ export class RouteExtras {
   private symbolScale = -1;
   private wallHits: { w: WallStretch; pts: number[] }[] = [];
   private highlight = new THREE.Group();
+  private manual = new THREE.Group();
   private r: Result | null = null;
   private crown = 9.5;
   private range: StationRange | null = null;
@@ -33,12 +35,42 @@ export class RouteExtras {
     this.walls.name = 'noise-walls';
     this.symbols.name = 'noise-wall-symbols';
     this.highlight.name = 'range-highlight';
-    view.world.add(this.walls, this.symbols, this.highlight);
+    this.manual.name = 'manual-structures';
+    view.world.add(this.walls, this.symbols, this.highlight, this.manual);
     const prev = view.onRender;
     view.onRender = () => { prev?.(); this.updateSymbols(); };
   }
 
-  setResult(r: Result, crownWidth: number) { this.r = r; this.crown = crownWidth; this.buildWalls(); this.buildHighlight(); }
+  setResult(r: Result, crownWidth: number, overrides: readonly StructureOverride[] = []) {
+    this.r = r; this.crown = crownWidth; this.buildWalls(); this.buildManual(overrides); this.buildHighlight();
+  }
+
+  /** Dotted surface overlay distinguishes manual earth/bridge/tunnel ranges, even if invalid. */
+  private buildManual(overrides: readonly StructureOverride[]) {
+    this.clear(this.manual);
+    const r = this.r;
+    if (!r) return;
+    const v = new THREE.Vector3();
+    for (const o of overrides) {
+      const a = Math.max(0, o.s0), b = Math.min(r.length, o.s1);
+      if (b <= a) continue;
+      const pos: number[] = [];
+      const stations = [a];
+      for (let i = Math.floor(a / r.ds) + 1; i < r.n && r.s[i] < b; i++) stations.push(r.s[i]);
+      stations.push(b);
+      for (const s of stations) {
+        const i = Math.min(r.n - 2, Math.floor(s / r.ds)), t = (s - r.s[i]) / r.ds;
+        const at = (z: Float64Array) => z[i] + t * (z[i + 1] - z[i]);
+        this.view.local(at(r.x), at(r.y), Math.max(at(r.ground), at(r.grade)) + 3, v);
+        pos.push(v.x, v.y, v.z);
+      }
+      const line = this.line(pos, [0x976025, 0x2f6fcf, 0x7a4fc0][o.kind], 6, 1, 6);
+      line.material.dashed = true; line.material.dashSize = 12; line.material.gapSize = 12;
+      line.computeLineDistances();
+      this.manual.add(line);
+    }
+    this.view.requestRender();
+  }
 
   /** highlight a station range on the map (null = none) */
   setRange(range: StationRange | null) { this.range = range; this.buildHighlight(); }

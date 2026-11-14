@@ -3,6 +3,8 @@ import { CATEGORIES, type CategoryId } from './core/data/categories';
 import { D11_SCENARIO } from './core/data/scenario';
 import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
+import { paintOverride, type StructureKind } from './core/overrides';
+import { cellsInRange } from './core/range';
 import { RouteExtras } from './render/extras';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -74,11 +76,11 @@ async function main() {
     for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
     last = r;
     view.setResult(r, CATEGORIES[rd.category].crownWidth);
-    extras.setResult(r, CATEGORIES[rd.category].crownWidth);
+    extras.setResult(r, CATEGORIES[rd.category].crownWidth, rd.structureOverrides);
     noise.setResult(r, CATEGORIES[rd.category].crownWidth);
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
-    profile.setResult(r, r.vpis);
+    profile.setResult(r, r.vpis, rd.structureOverrides);
     if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
     hud.setResult(r, rd, store.best);
     hud.setSelectedPi(selectedPi, r, store.design);
@@ -151,11 +153,23 @@ async function main() {
     },
   };
 
+  const setStructure = (kind: StructureKind | null) => {
+    const range = selection.range;
+    if (!range || !last) return;
+    const [i0, i1] = cellsInRange(last, range.s0, Math.min(range.s1, last.length));
+    const s0 = Math.max(0, (i0 - 0.5) * last.ds), s1 = Math.min(last.length, (i1 + 0.5) * last.ds);
+    store.update((d) => { d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, kind); });
+  };
+
   // ---- HUD ----
   hud.ev = {
     onCategory: (c) => store.update((d) => { d.category = c as CategoryId; }),
     onSpeed: (s) => store.update((d) => { d.speed = s; }),
-    onAutoProfile: () => store.update((d) => { d.profileMode = 'auto'; }),
+    onProfileMode: (mode) => {
+      if (mode === store.design.profileMode || (mode === 'manual' && (!last || received !== posted))) return;
+      store.update((d) => { if (mode === 'manual') takeProfile(d); else d.profileMode = 'auto'; });
+    },
+    onStructure: setStructure,
     onUndo: () => store.undo(),
     onRedo: () => store.redo(),
     onReset: () => { selectPi(null); store.reset(); view.resetCamera(); },
@@ -177,7 +191,15 @@ async function main() {
   };
 
   window.addEventListener('keydown', (e) => {
-    if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return;
+    if ((e.target as HTMLElement).closest('input, select, textarea, [contenteditable="true"]')) return;
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && selection.range) {
+      const key = e.key.toLowerCase();
+      if (['b', 't', 'e', 'c'].includes(key)) {
+        e.preventDefault();
+        setStructure(key === 'b' ? 1 : key === 't' ? 2 : key === 'e' ? 0 : null);
+        return;
+      }
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) store.redo(); else store.undo(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); store.redo(); }
     else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPi !== null) {

@@ -28,6 +28,7 @@ import { mergeCrossings, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
+import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 
@@ -38,6 +39,8 @@ export interface Design {
   profileMode: 'auto' | 'manual';
   /** full VPI list incl. endpoints; used in manual mode, refreshed from auto-profile otherwise */
   vpis: VPI[];
+  /** Manual construction ranges in absolute chainage; omitted in older saved designs. */
+  structureOverrides?: StructureOverride[];
 }
 
 export interface EvalContext {
@@ -134,6 +137,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed));
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
+  const manualStructures = overrideMask(st.s, d.structureOverrides);
   const ground = new Float64Array(n);
   const groundIds = new Uint8Array(n), groundProfiles: GroundProfile[] = [];
   const groundClasses = new Map<number, number>();
@@ -227,7 +231,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   /** cost per metre against grade-minus-ground h for a given value of a m³ of fill material */
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
-    return (h: number, costClass: number) => {
+    return (h: number, kind = -1, costClass = 0) => {
       let earth: number;
       if (h >= 0) {
         const { area, width: wd } = flatEarthGeometry(h, b, fillSlope, true);
@@ -238,6 +242,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
           + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       }
+      if (kind === KIND.earth) return earth;
+      if (kind === KIND.bridge) return bridgeRural;
+      if (kind === KIND.tunnel) return tunnelPerM;
       let best = earth;
       if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural);
       if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
@@ -266,6 +273,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
   const subStreamCount = new Uint8Array(sub);
   for (const s of streamS) subStreamCount[Math.min(sub - 1, Math.round(s / subDs))]++;
+  const subOverrides = overrideMask(subS, d.structureOverrides);
   const roadS = roadX.map((c) => c.s);
   const balanceOf = (v: VPI[], materialValue: number) => {
     const p = buildProfile(v, norms.minCrestRadius, norms.minSagRadius);
@@ -292,7 +300,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         if (ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0) must[k] = 1;
       });
     }
-    const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bridge, tunnelPerM: tunnel, forced: must });
+    const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bridge, tunnelPerM: tunnel, forced: must, overrides: subOverrides });
     let bal = 0;
     for (let k = 0; k < sub; k++) if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * subW[k];
     return bal;
@@ -304,9 +312,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   let materialValue = MATERIAL_VALUE.start;
   const zA = ground[0], zB = ground[n - 1];
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
+    const minH = clearance.slice(), maxH = new Float64Array(n).fill(NaN);
+    for (let i = 0; i < n; i++) {
+      if (manualStructures[i] === KIND.bridge) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
+      if (manualStructures[i] === KIND.tunnel) maxH[i] = -STRUCTURE_RULES.tunnelMinDepth;
+    }
     const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
-      costPerM: costFor(MATERIAL_VALUE.start), costClasses: groundIds, minH: clearance,
+      costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, structureKind: manualStructures,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
@@ -320,7 +333,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       let short = 0;
       mustBridge.forEach((c, k) => { short = Math.max(short, c.g + c.need - z0[k]); });
       if (short <= 1e-6) break;
-      const minH = Float64Array.from(clearance, (v) => (v > -Infinity ? v + short + 0.5 : NaN));
+      const minH = Float64Array.from(apOpt.minH, (v, i) => (clearance[i] > -Infinity ? v + short + 0.5 : v));
       // same material value: only the clearance changes
       const mv = ap.materialValue ?? MATERIAL_VALUE.start;
       ap = autoProfile(st.s, ground, { ...apOpt, minH, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
@@ -399,7 +412,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   for (const c of crossings) {
     if (ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
   }
-  const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced });
+  const { kind, runs, violations: structureViolations } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, overrides: manualStructures });
   // what is actually built decides the land take, the rates and whether the terrain data suffice
   const width = new Float64Array(n), urban = new Float32Array(n), forest = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -519,6 +532,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
 
   // --- checks ---
   const violations: Violation[] = [
+    ...structureViolations,
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];

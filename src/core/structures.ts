@@ -2,6 +2,7 @@
 // gap merging and a run-level cost comparison so the result is not confetti.
 
 import { STRUCTURE_RULES } from './data/prices';
+import type { Violation } from './checks';
 
 export const KIND = { earth: 0, bridge: 1, tunnel: 2 } as const;
 
@@ -19,10 +20,12 @@ export interface StructureInput {
   tunnelPerM: number | ArrayLike<number>;
   /** stations that must be bridged (river / railway crossings), unless deep in cut */
   forced?: ArrayLike<number>;
+  /** −1 = automatic; otherwise KIND. Applied after automatic run decisions, even when invalid. */
+  overrides?: ArrayLike<number>;
 }
 
 
-export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[] } {
+export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[]; violations: Violation[] } {
   const n = inp.h.length;
   const kind = new Uint8Array(n);
   const bp = inp.bridgePerM, tp = inp.tunnelPerM;
@@ -68,7 +71,41 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     }
     runs.push({ kind: r.kind as 1 | 2, i0: r.i0, i1: r.i1, s0: (r.i0 - 0.5) * inp.ds, s1: (r.i1 + 0.5) * inp.ds, length: len, forced: isLocked });
   }
-  return { kind, runs };
+  // Manual paint is authoritative: never optimise away or silently extend an invalid request.
+  // Rebuild runs for billing, then report the safety constraints rather than repairing the design.
+  const violations: Violation[] = [];
+  if (inp.overrides && Array.from(inp.overrides).some((k) => k >= 0)) {
+    for (let i = 0; i < n; i++) if (inp.overrides[i] >= 0) kind[i] = inp.overrides[i];
+    runs.length = 0;
+    for (const r of findRuns(kind)) {
+      const length = (r.i1 - r.i0 + 1 - (r.i0 === 0 ? 0.5 : 0) - (r.i1 === n - 1 ? 0.5 : 0)) * inp.ds;
+      let manual = false, forced = false;
+      for (let i = r.i0; i <= r.i1; i++) {
+        manual ||= inp.overrides[i] >= 0;
+        forced ||= !!locked[i];
+      }
+      runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced });
+      const min = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
+      if (length < min) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
+        msg: `${manual ? 'manual' : 'remaining'} ${r.kind === KIND.bridge ? 'bridge' : 'tunnel'} is ${length.toFixed(0)} m long; minimum ${min} m` });
+    }
+    const flagRanges = (bad: (i: number) => boolean, msg: string) => {
+      for (let i = 0; i < n; i++) {
+        if (!bad(i)) continue;
+        let j = i;
+        while (j + 1 < n && bad(j + 1)) j++;
+        violations.push({ kind: 'structure', s0: i * inp.ds, s1: j * inp.ds, msg });
+        i = j;
+      }
+    };
+    flagRanges((i) => inp.overrides![i] === KIND.bridge && inp.h[i] < rules.bridgeMinHeight,
+      `manual bridge needs at least ${rules.bridgeMinHeight} m above ground`);
+    flagRanges((i) => inp.overrides![i] === KIND.tunnel && -inp.h[i] < rules.tunnelMinDepth,
+      `manual tunnel needs at least ${rules.tunnelMinDepth} m below ground`);
+    flagRanges((i) => !!inp.forced?.[i] && kind[i] !== KIND.bridge,
+      'crossing requires a bridge — clear or change the manual structure override');
+  }
+  return { kind, runs, violations };
 }
 
 function mergeGaps(kind: Uint8Array, k: number, maxGap: number, ok: (i: number) => boolean) {

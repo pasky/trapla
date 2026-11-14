@@ -9,6 +9,7 @@ import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
+import type { StructureKind } from '../core/overrides';
 import type { Best, StationRange } from '../state';
 import { COST_GROUPS, czk } from './costgroups';
 
@@ -20,7 +21,8 @@ const kvol = (m3: number) => `${num(m3 / 1000, 0)}k m³`;
 export interface HudEvents {
   onCategory?: (c: string) => void;
   onSpeed?: (s: number) => void;
-  onAutoProfile?: () => void;
+  onProfileMode?: (mode: 'auto' | 'manual') => void;
+  onStructure?: (kind: StructureKind | null) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   onReset?: () => void;
@@ -82,9 +84,11 @@ export class Hud {
         <label>Category <select id="cat">${PLAYABLE_CATEGORIES.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('')}</select></label>
         <label>Design speed <select id="speed">${[90, 80, 70].map((s) => `<option value="${s}">${s} km/h</option>`).join('')}</select></label>
         <div class="norms" id="norms"></div>
+        <div class="btns" role="group" aria-label="Grade line" title="Auto: coarse-to-fine dynamic programming on ~250 m knots minimises approximate earthwork/structure cost, with gradient/curve limits, crossing clearance and a cut/fill balance search. Manual: freezes the current grade line; drag VPIs to edit. Dragging or adding a VPI also switches to Manual. Structure overrides apply in both modes.">
+          <b>Grade line</b><button id="grade-auto">Auto</button><button id="grade-manual">Manual</button>
+        </div>
         <div class="btns">
           <button id="undo" title="Ctrl+Z">↶ Undo</button><button id="redo" title="Ctrl+Y">↷ Redo</button>
-          <button id="auto" title="Recompute the grade line automatically">Auto profile</button>
           <button id="reset" title="Back to the straight line">Reset</button>
         </div>
       </section>
@@ -107,7 +111,8 @@ export class Hud {
           <li><b>Drag</b> a numbered PI to move it, <b>right-click</b> or <kbd>Del</kbd> to delete</li>
           <li>Bends are corners of the dashed polygon; the selected one shows its radius on the map: drag a <b>◇ grip</b> along the leg, <b>wheel</b> over the bend or <kbd>+</kbd> / <kbd>−</kbd>, <b>max</b> / <b>auto</b>. Close bends turning the same way become one long curve</li>
           <li>Map: <b>left-drag</b> pan · <b>right-drag</b> rotate · <b>wheel</b> zoom</li>
-          <li>Profile: drag the profile points (takes manual control), <b>double-click</b> adds, <b>right-click</b> deletes, wheel zooms</li>
+          <li><b>Grade line Auto</b>: coarse-to-fine dynamic programming on ~250 m knots seeks a low-cost profile with gradient/curve limits, crossing clearances and cut/fill balancing; it is an approximation, not a guaranteed global optimum. <b>Manual</b> freezes the current grade line. Dragging a profile point or double-clicking to add one also switches to Manual; right-click deletes, wheel zooms. Auto replaces manual vertical edits but keeps structure overrides.</li>
+          <li>Select a profile stretch, then <kbd>B</kbd> bridge, <kbd>T</kbd> tunnel, <kbd>E</kbd> earthwork, <kbd>C</kbd> clear override (automatic choice). Repaint any subrange to edit or erase it; Undo restores it. Manual ranges stay at the same kilometre positions when you reroute. Coloured dotted map overlays and labelled profile marks show them; invalid choices remain visible and produce violations.</li>
           <li>Why is a stretch expensive? <b>Hover</b> the profile for the cost split there; <b>drag</b> in the cost strip (or <kbd>Shift</kbd>+drag) to select a stretch, <b>click</b> a curve / tangent in the band above it; <kbd>Esc</kbd> = whole route</li>
           <li>Who gets a wall, who is bought out? <kbd>N</kbd> = noise view: the road's noise over the limit, dwellings coloured by outcome; <b>hover</b> a building or wall for the levels and the reason</li>
         </ul>
@@ -118,9 +123,15 @@ export class Hud {
     this.$<HTMLSelectElement>('exag').onchange = (e) => this.ev.onExaggeration?.(Number((e.target as HTMLSelectElement).value));
     this.$('undo').onclick = () => this.ev.onUndo?.();
     this.$('redo').onclick = () => this.ev.onRedo?.();
-    this.$('auto').onclick = () => this.ev.onAutoProfile?.();
+    this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
+    this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => { if (confirm('Reset to the straight line?')) this.ev.onReset?.(); };
-    this.$('range').onclick = (e) => { if ((e.target as HTMLElement).closest('button')) this.ev.onClearRange?.(); };
+    this.$('range').onclick = (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (!b) return;
+      if (b.dataset.structure !== undefined) this.ev.onStructure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind);
+      else this.ev.onClearRange?.();
+    };
     this.$('viol').onclick = (e) => {
       const why = (e.target as HTMLElement).closest('.why') as HTMLElement | null;
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;
@@ -144,9 +155,11 @@ export class Hud {
     this.$('norms').innerHTML = `min R <b>${n.minRadius} m</b> (6 % superelev.) · no-superelev. R ${n.noSuperelevationRadius} m · transitions ≥ ${n.minTransition} m · max grade ${(this.sc.maxGradient * 100).toFixed(0)} %* · crest ≥ ${num(n.minCrestRadius)} m* · sag ≥ ${num(n.minSagRadius)} m* <span class="prov" title="older edition of ČSN 73 6101, not confirmed for 2018">*provisional</span>`;
     (this.$('undo') as HTMLButtonElement).disabled = !canUndo;
     (this.$('redo') as HTMLButtonElement).disabled = !canRedo;
-    const auto = this.$('auto');
-    auto.classList.toggle('on', d.profileMode === 'auto');
-    auto.textContent = d.profileMode === 'auto' ? 'Auto profile ✓' : 'Auto profile';
+    for (const mode of ['auto', 'manual'] as const) {
+      const b = this.$(`grade-${mode}`);
+      b.classList.toggle('on', d.profileMode === mode);
+      b.setAttribute('aria-pressed', String(d.profileMode === mode));
+    }
   }
 
   /** switch the breakdown and quantities to a station range (null = whole route) */
@@ -170,7 +183,11 @@ export class Hud {
     box.style.display = sel ? '' : 'none';
     if (sel) {
       box.innerHTML = `<div class="range-h"><b>Selected km ${num(sel.s0 / 1000, 2)} – ${num(sel.s1 / 1000, 2)}</b><button title="Esc">✕ Whole route</button></div>
-        <div class="range-cost"><b>${czk(sel.cost.total)}</b> · ${km(sel.length)} · ${czk(sel.cost.total / (sel.length / 1000))} per km <small>(${num((100 * sel.cost.total) / Math.max(1, whole.total), 0)} % of the route's cost on ${num((100 * sel.length) / r.length, 0)} % of its length)</small></div>`;
+        <div class="range-cost"><b>${czk(sel.cost.total)}</b> · ${km(sel.length)} · ${czk(sel.cost.total / (sel.length / 1000))} per km <small>(${num((100 * sel.cost.total) / Math.max(1, whole.total), 0)} % of the route's cost on ${num((100 * sel.length) / r.length, 0)} % of its length)</small></div>
+        <div class="btns" role="group" aria-label="Structure override">
+          <button data-structure="1" title="B — force a bridge">Bridge (B)</button><button data-structure="2" title="T — force a tunnel">Tunnel (T)</button>
+          <button data-structure="0" title="E — force earthwork, even if a structure would be cheaper">Earthwork (E)</button><button data-structure="clear" title="C — remove manual choices in this range">Clear (C)</button>
+        </div><small>Manual structure override · repaint or clear any subrange · Undo supported</small>`;
     }
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
