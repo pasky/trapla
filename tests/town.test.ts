@@ -363,12 +363,12 @@ describe('motorway crossings', () => {
     expect(r.valid).toBe(false);
   });
 
-  it('checks raw crossings inside the billing end margin, exempting only the actual endpoint', () => {
+  it('checks crossings inside the ordinary-road billing margin, exempting only the actual endpoint', () => {
     for (const cls of ['motorway', 'trunk']) for (const x of [300, 2100]) {
       const roads = new RoadNet({ cls: [cls], ways: [[0, x, 0, x, 500]] });
       const ctx = { ...mctx, roads };
       const r = evaluate(ctx, manual(400));
-      expect(r.crossings).toEqual([]); // billing tie-in margin is deliberately separate
+      expect(r.crossings).toHaveLength(1); // motorway structures cannot disappear into the tie-in bill
       expect(crossingViolations(r)).toHaveLength(1);
       expect(r.valid).toBe(false);
       expect(evaluate(ctx, { ...manual(400), profileMode: 'auto' }).valid).toBe(false); // too close to climb 7.5 m
@@ -378,6 +378,19 @@ describe('motorway crossings', () => {
     // Joining B's carriageway never exempts the other carriageway 20 m before it.
     const dual = new RoadNet({ cls: ['motorway'], ways: [[0, 2180, 0, 2180, 500], [0, 2200, 0, 2200, 500]] });
     expect(crossingViolations(evaluate({ ...mctx, roads: dual }, manual(400)))).toHaveLength(1);
+  });
+
+  it('bills a motorway overbridge inside the ordinary-road tie-in margin', () => {
+    const terrain = syntheticTerrain(500, 100, 5,
+      x => 400 + 8 * Math.max(0, Math.min(1, (100 - Math.abs(x - 300)) / 50)));
+    const roads = new RoadNet({ cls: ['motorway'], ways: [[0, 300, 0, 300, 500]] });
+    const r = evaluate({ ...mctx, terrain, roads }, manual(400));
+    expect(r.valid).toBe(true);
+    expect(r.crossings).toHaveLength(1);
+    expect(r.crossings[0].type).toBe('overbridge');
+    expect(r.crossings[0].cost).toBeGreaterThan(0);
+    expect(r.cost.crossings).toBeCloseTo(r.crossings[0].cost, 3);
+    expect(r.parts.crossings.reduce((sum, cost) => sum + cost, 0)).toBeCloseTo(r.cost.crossings, 3);
   });
 
   it('checks and auto-clears both carriageways even when only one is billed', () => {

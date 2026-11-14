@@ -109,14 +109,18 @@ export class RoadNet {
 /**
  * Collapse raw intersections (in station order) into crossings: hits within `mergeDistance` of each
  * other, or of the same way within `sameWayMergeDistance`, are one crossing, of the most important
- * class among them and located at that member; hits near the route ends belong to the tie-in BILL.
+ * class among them and located at that member. Ordinary-road hits near the ends belong to the tie-in
+ * BILL; motorway/trunk structures remain payable except at the actual endpoint intersection.
  * Cost representation only: hard clearance constraints must use raw intersections, not this list.
  */
 export function mergeCrossings(raw: RoadCrossing[], length: number,
   rules: Pick<typeof CROSSING_RULES, 'endMargin' | 'mergeDistance' | 'sameWayMergeDistance'> = CROSSING_RULES): RoadCrossing[] {
   const out: (RoadCrossing & { last: number; ways: number[] })[] = [];
   for (const c of raw) {
-    if (c.s < rules.endMargin || c.s > length - rules.endMargin) continue;
+    if (c.s < rules.endMargin || c.s > length - rules.endMargin) {
+      if (!ROAD_CLASSES[c.cls].noAtGrade || c.s <= CROSSING_RULES.endpointTolerance
+        || length - c.s <= CROSSING_RULES.endpointTolerance) continue;
+    }
     let hit = -1;
     for (let k = out.length - 1; k >= Math.max(0, out.length - 16); k--) {
       const gap = c.s - out[k].last;

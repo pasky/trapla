@@ -253,11 +253,14 @@ whole-route ratios alone do not measure the cost of building through town.
   (OSM motorway / trunk; cost model 3) are never crossed at grade: like a railway, the grade must clear them by
   7.5 m (forced bridge; the auto-profile requests this) or pass ≥ 6 m below them (overbridge); anything in
   between is a violation. Hard constraints and auto-profile clearance use **every raw crossing**, sorted
-  with river/rail samples before profile sampling. Only an intersection within **1 m along the route of
-  A or B** is exempt, a coordinate-tolerance allowance for joining the road the endpoint itself lies on
-  (B sits on D11). No 150 m safety exemption, and no exemption for the other carriageway 20 m away.
-  The saved designs have no interior motorway/trunk intersections. **Billing only** merges crossings
-  within 30 m, or the same OSM way within 150 m, and assigns objects within 150 m of A/B to the tie-in.
+  together with river/rail samples in station order before profile sampling. Only an intersection within
+  **1 m along the route of A or B** is exempt, a coordinate-tolerance allowance for joining the road the
+  endpoint itself lies on (B is on D11, ≈ 0.31 m from its mapped centreline). This narrow tolerance can
+  flag shallow-angle approaches; it is not an exemption for arbitrary crossings of the endpoint's way.
+  No 150 m safety exemption, and none for another carriageway 20 m away. The saved designs approach B
+  without intersecting either motorway centreline. **Billing only** merges crossings within 30 m, or
+  the same OSM way within 150 m. Ordinary-road objects within 150 m of A/B belong to the tie-in allowance;
+  motorway/trunk overbridges still pay there, except at the actual endpoint intersection.
   A crossing under a new bridge or above its tunnel is free. Billing representatives are shown in the profile/HUD.
 - **Excavation class by depth** (gameplay heuristic standing in for geology; OTSKP classes are defined by
   excavability, not depth, and route-specific class shares are unknown — research/09 §3): each cross-section's cut area is split by depth below
@@ -270,6 +273,8 @@ whole-route ratios alone do not measure the cost of building through town.
   At each nearby station, horizontal receiver position is axis-to-**nearest oriented-rectangle façade**
   distance minus 2 m (clamped to 1 m). Excess E = 15·log₁₀(D/d) dB uses the **slant source–receiver distance**
   d (also clamped to 1 m), not horizontal distance; tall viaducts do not force a horizontal buyout radius.
+  D keeps its numerical calibration but is now a source-based slant contour, not an axis-based horizontal
+  contour: near grade level this also moves the contour outward by about the 1.75 m source offset.
   The highest occupied receiver is 1.5 + 3 × (storeys − 1) m above building ground, using tagged levels or
   kind defaults. Each pair uses an equivalent 2D section: source at 1.75 m from the axis towards the receiver,
   0.5 m above road grade; wall at crown/2 + 1.5 m, based at road grade (shoulder-side allowance, **not the
@@ -282,6 +287,7 @@ whole-route ratios alone do not measure the cost of building through town.
   difficult”; sources and caveats in research/09 §5. A distant fourth-floor receiver can lie well inside the
   barrier's shadow; height above the wall alone does not imply failure. Contiguous walls take the worst
   protected dwelling's required height, with 50 m end margins; billed surface is length × height.
+  Margins can extend into cuts even where the local earth edge suffices (only tunnels break a wall).
   A positive cut edge uses the **same diffraction formula**, top = daylight elevation relative to grade,
   offset = daylight distance. Take the better of earth edge and wall, never add their attenuation. Upper
   floors seeing over a 4 m cut remain exposed. Only tunnels fully shield; no terrain shield under bridges
@@ -290,7 +296,8 @@ whole-route ratios alone do not measure the cost of building through town.
   the whole building at 1.5× its building-only estimate **plus demolition**, as for footprint removals,
   **plus a PROVISIONAL plot**: max(3 × footprint, 400 m²) × building-land price (1,500) × 1.5 CZK.
   This is an additional-land allowance, not a cadastral parcel model; plot overlap/severance is unresolved.
-  Footprint buildings do not pay this allowance: corridor land is already billed separately.
+  Footprint buildings do not pay this allowance: only corridor land is billed separately, not whole plots.
+  Working-strip removals / partial footprint takes therefore remain approximate and may underprice acquisition.
   Demolition prevents continued residential exposure; retaining it for another use is not modelled.
   `Result.boughtOut`, `parts.noiseBuyouts` and the HUD/profile distinguish these from footprint demolitions.
   Windows are not a substitute: they address indoor noise, not the protected outdoor façade receiver.

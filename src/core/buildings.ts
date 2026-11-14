@@ -20,8 +20,9 @@ export function buildingCost(area: number, levels: number, kind: number): number
   return floor * (row.pricePerM2 * BUILDING_RULES.purchaseMultiplier + row.demolitionPerM2);
 }
 
-/** Noise acquisition includes a separate PROVISIONAL plot, unlike footprint takes whose land is
- * already billed by corridor area. No cadastral parcels: allowance is additional to corridor land. */
+/** Noise acquisition includes a separate PROVISIONAL plot. Footprint takes pay only corridor land,
+ * not a whole plot (working-strip removals / partial takes remain approximate). No cadastral parcels:
+ * the noise allowance is additional to corridor land, with no parcel-overlap calculation. */
 export function noiseBuyoutCost(building: number, footprint: number): number {
   const plot = Math.max(BUILDING_RULES.buyoutPlotMinimum, footprint * BUILDING_RULES.buyoutPlotMultiple);
   return building + plot * URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier;

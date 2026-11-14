@@ -103,8 +103,8 @@ export const CROSSING_RULES = {
   overHeight: 6,
   /** heuristic: grade this far below the crossed road → an overbridge carries it across our cut, m */
   underDepth: 6,
-  /** Billing only: crossings this close to A / B belong to the tie-in cost allowance, m.
-   * NEVER suppress motorway / trunk clearance checks using this margin. */
+  /** Billing only: ordinary-road crossings this close to A / B belong to the tie-in allowance, m.
+   * Motorway/trunk structures still pay; NEVER suppress their clearance checks with this margin. */
   endMargin: 150,
   /** Hard-constraint exemption ONLY at an actual endpoint intersection (coordinate tolerance, m).
    * Allows joining the motorway at B; no exemption for another carriageway 20 m away. */
