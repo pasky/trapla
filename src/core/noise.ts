@@ -49,6 +49,14 @@ export function barrierAttenuation(distance: number, height: number, k: number, 
   return attenuation(pathDifference(distance, height, barrier.wallOffset, NOISE.wallHeights[k], barrier.sourceLeg[k], direct));
 }
 
+/** Attenuation of the actual player-built height (not an index into the automatic 3/4/5 m menu). */
+export function wallAttenuation(distance: number, height: number, wallHeight: number, barrier = DEFAULT_BARRIER): number {
+  if (!(wallHeight > 0)) return 0;
+  const direct = Math.hypot(distance - NOISE.sourceOffset, height - NOISE.sourceHeight);
+  return attenuation(pathDifference(distance, height, barrier.wallOffset, wallHeight,
+    Math.hypot(barrier.sourceToWall, wallHeight - NOISE.sourceHeight), direct));
+}
+
 /** Minimum feasible wall height, 0 if unexposed or earth-screened, Infinity if neither edge nor wall suffices.
  * Invert the IL expression once per pair instead of computing logarithms for all three heights. */
 export function requiredWall(distance: number, excess: number, height: number, barrier = DEFAULT_BARRIER, edge?: EarthEdge): number {
@@ -66,6 +74,19 @@ export function requiredWall(distance: number, excess: number, height: number, b
   return Infinity;
 }
 
+/** Explicit purchases are handled by the caller's demolished mask, before exposure. */
+export interface NoisePolicy {
+  keptBuildingIds?: ReadonlySet<number>;
+  /** Station-indexed actual wall decisions: NaN/absent = auto, 0 = removed, 2…6 = built. */
+  wallL?: ArrayLike<number>;
+  wallR?: ArrayLike<number>;
+}
+
+function manualWall(policy: NoisePolicy | undefined, left: boolean, i: number): number | undefined {
+  const h = (left ? policy?.wallL : policy?.wallR)?.[i];
+  return h !== undefined && Number.isFinite(h) && (h === 0 || (h >= 2 && h <= 6)) ? h : undefined;
+}
+
 /** Query only nearby rectangles, de-duplicate hash hits per station. Two phases ensure a building
  * bought at ANY exposed station never leaves redundant walls elsewhere. Memory O(n + buildings +
  * actual exposed pairs), not a station × building matrix. Shield flags are for tunnels only; earth
@@ -73,7 +94,7 @@ export function requiredWall(distance: number, excess: number, height: number, b
 export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<number>, tx: ArrayLike<number>,
   ty: ArrayLike<number>, buildings: BuildingIndex, model: NoiseModel, demolished: ArrayLike<number>,
   grade: ArrayLike<number>, groundAt: (x: number, y: number) => number,
-  shieldL: ArrayLike<number>, shieldR: ArrayLike<number>, barrier = DEFAULT_BARRIER, edges?: EarthEdges): {
+  shieldL: ArrayLike<number>, shieldR: ArrayLike<number>, barrier = DEFAULT_BARRIER, edges?: EarthEdges, policy?: NoisePolicy): {
     L: Uint8Array; R: Uint8Array; boughtOut: { j: number; i: number; cost: number }[]; scratch: ExposureScratch;
   } {
   const L = new Uint8Array(n), R = new Uint8Array(n);
@@ -82,6 +103,7 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
   const seen = new Int32Array(buildings.n), receiver = new Float64Array(buildings.n);
   receiver.fill(NaN);
   const failed = new Map<number, { i: number; deficit: number }>();
+  const retained = new Set(policy?.keptBuildingIds);
   const stations: number[] = [], indices: number[] = [], heights: number[] = [], sides: boolean[] = [];
   // Per-dwelling diagnostics for the noise view (worst unmitigated pair, every exposed pair).
   const visited: number[] = [], raw = new Float64Array(buildings.n), rawI = new Int32Array(buildings.n);
@@ -107,8 +129,12 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       const excess = noiseExcess(direct, height, model);
       if (excess > raw[j]) { raw[j] = excess; rawI[j] = i; rawD[j] = d; rawH[j] = height; rawLeft[j] = left ? 1 : 0; }
       const h = requiredWall(d, excess, height, barrier, edge);
-      if (excess > 0) pairs.push({ i, j, left, d, height, excess, need: h });
-      else if (excess > quiet[j]) quiet[j] = excess;
+      if (excess > 0) {
+        pairs.push({ i, j, left, d, height, excess, need: h });
+        // A manual decision at ANY exposing station retains the whole dwelling, even when the
+        // automatic failure is at another station visited earlier or later.
+        if (manualWall(policy, left, i) !== undefined) retained.add(j);
+      } else if (excess > quiet[j]) quiet[j] = excess;
       if (h === Infinity) {
         const k = NOISE.wallHeights.length - 1;
         const loss = Math.max(barrierAttenuation(d, height, k, barrier), attenuation(earthDelta(d, height, edge, direct)));
@@ -120,13 +146,14 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       }
     });
   }
+  for (const j of retained) failed.delete(j);
   for (let k = 0; k < stations.length; k++) {
     if (failed.has(indices[k])) continue;
     const side = sides[k] ? L : R, i = stations[k];
     side[i] = Math.max(side[i], heights[k]);
   }
   const boughtOut = [...failed].map(([j, { i }]) => ({ j, i, cost: noiseBuyoutCost(buildings.cost[j], buildings.area[j]) })).sort((a, b) => a.i - b.i);
-  return { L, R, boughtOut, scratch: { visited, raw, quiet, rawI, rawD, rawH, rawLeft, pairs, failed } };
+  return { L, R, boughtOut, scratch: { visited, raw, quiet, rawI, rawD, rawH, rawLeft, pairs, failed, ...(policy ? { policy } : {}) } };
 }
 
 interface ExposedPair { i: number; j: number; left: boolean; d: number; height: number; excess: number; need: number }
@@ -136,6 +163,17 @@ export interface ExposureScratch {
   /** highest excess at stations where the dwelling is not exposed (≤ 0), −Infinity if none */
   quiet: Float64Array; rawI: Int32Array; rawD: Float64Array; rawH: Float64Array; rawLeft: Uint8Array;
   pairs: ExposedPair[]; failed: Map<number, { i: number; deficit: number }>;
+  /** Same decisions used to suppress buyouts must also paint the final walls. */
+  policy?: NoisePolicy;
+}
+
+/** Retained dwelling's worst remaining failure after all actual walls and cut edges. */
+export interface NoiseUnresolved {
+  j: number; i: number; side: 'L' | 'R';
+  /** Remaining excess above the controlling limit, dB, at the worst actual exposed pair. */
+  excess: number;
+  /** Actual built height at that pair, m. */
+  wall: number;
 }
 
 /** Noise outcome of one dwelling within the search radius (the noise view's colours and hover). */
@@ -143,7 +181,8 @@ export interface NoiseReceiver {
   /** building index */
   j: number;
   /** wall = protected by a wall; cut = screened by a cut edge (no wall needed); ok = within the limit
-   * unmitigated; bought = no wall / edge suffices, acquired and demolished */
+   * unmitigated; bought = no wall / edge suffices, acquired and demolished.
+   * Check unresolved FIRST: a retained dwelling may still require a wall / have excess. */
   status: 'wall' | 'cut' | 'ok' | 'bought';
   /** station of the worst unmitigated exposure, its side, façade distance from the axis (m) and
    * top-floor receiver height above grade (m) */
@@ -151,39 +190,66 @@ export interface NoiseReceiver {
   /** controlling-period level minus its limit at the top-floor receiver, dB: unmitigated, and with the
    * built walls / cut edges (bought: with the best available, i.e. the shortfall) — max over stations */
   raw: number; mitigated: number;
-  /** highest wall the receiver needs (0 = none) and the height actually built there, m */
+  /** Highest automatic wall requirement (0 = none, Infinity = beyond the 3/4/5 m menu), and
+   * height actually built there, m. A manual 6 m wall can succeed even when need is Infinity. */
   need: number; wall: number;
   /** station of the binding wall requirement / buyout (−1 = none) */
   at: number;
+  /** Manual decisions prevent fallback acquisition: expose the remaining failure to checks/UI. */
+  unresolved?: NoiseUnresolved;
 }
 
 /** Per-dwelling status after the walls are chosen: residual = excess − max(built wall, cut edge) at
  * every exposed station (the same alternatives as requiredWall), raw elsewhere. */
 export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wallR: ArrayLike<number>,
   barrier = DEFAULT_BARRIER, edges?: EarthEdges): NoiseReceiver[] {
-  const res = new Map<number, { mitigated: number; need: number; wall: number; at: number; cut: boolean }>();
+  const res = new Map<number, { mitigated: number; need: number; wall: number; at: number; cut: boolean; worst?: NoiseUnresolved }>();
   for (const j of ex.visited) res.set(j, { mitigated: ex.raw[j] > 0 ? ex.quiet[j] : ex.raw[j], need: 0, wall: 0, at: -1, cut: false });
   for (const p of ex.pairs) {
     const r = res.get(p.j)!;
-    const built = (p.left ? wallL : wallR)[p.i], k = NOISE.wallHeights.indexOf(built);
+    const built = (p.left ? wallL : wallR)[p.i];
     const direct = Math.hypot(p.d - NOISE.sourceOffset, p.height - NOISE.sourceHeight);
     const edge = p.left ? edges?.L[p.i] : edges?.R[p.i];
     const earth = attenuation(earthDelta(p.d, p.height, edge, direct));
-    const loss = Math.max(earth, k >= 0 ? barrierAttenuation(p.d, p.height, k, barrier) : 0);
-    r.mitigated = Math.max(r.mitigated, p.excess - loss);
+    const loss = Math.max(earth, wallAttenuation(p.d, p.height, built, barrier));
+    const residual = p.excess - loss;
+    if (residual > r.mitigated) r.worst = { j: p.j, i: p.i, side: p.left ? 'L' : 'R', excess: residual, wall: built };
+    r.mitigated = Math.max(r.mitigated, residual);
     if (p.need === 0) r.cut = true;
     else if (p.need > r.need || (p.need === r.need && built > r.wall)) { r.need = p.need; r.wall = built; r.at = p.i; }
   }
   const out: NoiseReceiver[] = [];
   for (const j of ex.visited) {
     const r = res.get(j)!, f = ex.failed.get(j);
-    const status = f ? 'bought' : r.need > 0 && r.need !== Infinity ? 'wall' : r.cut ? 'cut' : 'ok';
+    const status = f ? 'bought' : r.need > 0 ? 'wall' : r.cut ? 'cut' : 'ok';
     out.push({
       j, status, i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], raw: ex.raw[j],
       mitigated: f ? f.deficit : r.mitigated, need: f ? Infinity : r.need, wall: f ? 0 : r.wall, at: f ? f.i : r.at,
+      ...(!f && r.mitigated > 1e-7 && r.worst ? { unresolved: r.worst } : {}),
     });
   }
   return out;
+}
+
+/** Finish exposure with automatic margins first, then exact manual heights/removals (no rounding,
+ * padding or connected-run height promotion of manual paint). Tunnels never get walls.
+ * Pass these L/R arrays to pricing, wall rendering AND noiseFootprint; append unresolved to checks.
+ * Barrier/edges must be the same as in dwellingExposure. Explicit buys belong in its demolished mask. */
+export function resolveNoiseWalls(ex: ReturnType<typeof dwellingExposure>, ds: number, length: number,
+  shieldL: ArrayLike<number>, shieldR: ArrayLike<number>, barrier = DEFAULT_BARRIER, edges?: EarthEdges): {
+    L: Float64Array; R: Float64Array; walls: WallStretch[]; receivers: NoiseReceiver[];
+    boughtOut: ReturnType<typeof dwellingExposure>['boughtOut']; unresolved: NoiseUnresolved[];
+  } {
+  const L = Float64Array.from(wallFlags(ds, ex.L, shieldL)), R = Float64Array.from(wallFlags(ds, ex.R, shieldR));
+  for (let i = 0; i < L.length; i++) {
+    L[i] = shieldL[i] ? 0 : (manualWall(ex.scratch.policy, true, i) ?? L[i]);
+    R[i] = shieldR[i] ? 0 : (manualWall(ex.scratch.policy, false, i) ?? R[i]);
+  }
+  const receivers = noiseReceivers(ex.scratch, L, R, barrier, edges);
+  return { L, R, boughtOut: ex.boughtOut, receivers,
+    walls: [...wallStretches(ds, length, L, 'L'), ...wallStretches(ds, length, R, 'R')],
+    unresolved: receivers.flatMap(r => r.unresolved ? [r.unresolved] : []),
+  };
 }
 
 /** Ground-floor noise map along the route: excess (dB over the limit) at receivers NOISE.receiverHeight
@@ -228,7 +294,6 @@ export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<num
   const offsets = new Float32Array(samples);
   for (let o = 0; o < samples; o++) offsets[o] = span * (o / (samples - 1)) ** 1.7;
   const start = new Float32Array(2 * m), excess = new Float32Array(2 * m * samples);
-  const sourceLegs = NOISE.wallHeights.map((_, k) => barrier.sourceLeg[k]);
   for (let k = 0; k < m; k++) {
     const i = stations[k], nx = -ty[i], ny = tx[i];
     for (let s = 0; s < 2; s++) {
@@ -236,7 +301,8 @@ export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<num
       if (left ? shieldL[i] : shieldR[i]) { start[2 * k + s] = NaN; continue; }
       const a = Math.max(barrier.wallOffset + 0.5, inner(i, left)), sgn = left ? 1 : -1;
       start[2 * k + s] = a;
-      const wk = NOISE.wallHeights.indexOf((left ? wallL : wallR)[i]);
+      const built = (left ? wallL : wallR)[i];
+      const sourceLeg = Math.hypot(barrier.sourceToWall, built - NOISE.sourceHeight);
       const edge = left ? edges?.L[i] : edges?.R[i];
       const base = (2 * k + s) * samples;
       for (let o = 0; o < samples; o++) {
@@ -244,7 +310,7 @@ export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<num
         const height = groundAt(x[i] + nx * d * sgn, y[i] + ny * d * sgn) + NOISE.receiverHeight - grade[i];
         const direct = Math.hypot(d - NOISE.sourceOffset, height - NOISE.sourceHeight);
         const earth = attenuation(earthDelta(d, height, edge, direct));
-        const wall = wk >= 0 ? attenuation(pathDifference(d, height, barrier.wallOffset, NOISE.wallHeights[wk], sourceLegs[wk], direct)) : 0;
+        const wall = built > 0 ? attenuation(pathDifference(d, height, barrier.wallOffset, built, sourceLeg, direct)) : 0;
         excess[base + o] = noiseExcess(direct, height, model) - Math.max(earth, wall);
       }
     }
