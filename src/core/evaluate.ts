@@ -691,9 +691,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   };
   /** Engineering through final checks. `relaxed` crossing ways leave their in-footprint stretch
    * to the crossing remedy (see retaining.ts); evaluate() retries strictly where that fails. */
-  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set()): Result => {
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): Result => {
   const oob = oobInput.slice();
-  let vpis = autoVpis;
+  let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
   const repairTargets = new Map<number, number>();
   let usedProfileRetry = false;
@@ -1039,7 +1039,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const relaxed = new Map(crossingWays), strict = new Set(blocked.map(b => b.roadId!));
   for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) { relaxed.delete(c.way); strict.add(c.way); }
   timing['count.strictRetry'] = 1;
-  const retry = finish(relaxed, strict);
+  // Continue from the already repaired (lifted) Auto grade: its clearances still apply.
+  const retry = finish(relaxed, strict, result.vpis);
   return retry.violations.length < result.violations.length ? retry : result;
 }
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
