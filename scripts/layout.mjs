@@ -12,6 +12,8 @@ const server = await createServer({ server: { port: PORT, strictPort: true }, lo
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// the first-run intro would cover the map in the screenshots
+await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
 page.on('pageerror', (e) => { console.log('pageerror', e.message); process.exitCode = 1; });
 await page.goto(`http://localhost:${PORT}/`);
 await page.evaluate(() => localStorage.clear());

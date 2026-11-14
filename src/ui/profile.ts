@@ -75,6 +75,7 @@ export class ProfilePanel {
   private pins: readonly { s: number; z: number }[] = [];
   private wallOverrides: readonly WallOverride[] = [];
   private pinStation: number | null = null;
+  private selCrossing: number | null = null;
   private v0 = 0;
   private v1 = 1;
   /** the view shows the whole route (and keeps doing so when the route's length changes) */
@@ -116,14 +117,9 @@ export class ProfilePanel {
     this.tip.className = 'profile-tip';
     this.tip.style.display = 'none';
     document.body.appendChild(this.tip);
-    // legend of the cost strip, next to the profile legend
-    const bar = canvas.parentElement?.querySelector('.profile-bar');
-    if (bar && !bar.querySelector('.cost-legend')) {
-      const el = document.createElement('span');
-      el.className = 'cost-legend';
-      el.innerHTML = '<b>Cost per metre</b>' + COST_GROUPS.map((g) => `<span class="sw" style="background:${g.color}"></span>${g.short}`).join('');
-      bar.insertBefore(el, bar.querySelector('.zoom'));
-    }
+    // the cost strip's colours in the profile's key
+    const key = document.getElementById('cost-key');
+    if (key) key.innerHTML = COST_GROUPS.map((g) => `<div><i class="sw" style="background:${g.color}"></i>${g.label}</div>`).join('');
     this.install();
   }
 
@@ -181,6 +177,8 @@ export class ProfilePanel {
 
   select(i: number | null) { this.selected = i; this.draw(); }
   selectStation(s: number | null) { this.pinStation = s; this.draw(); }
+  /** the crossed road whose options are open (highlighted) */
+  selectCrossing(roadId: number | null) { this.selCrossing = roadId; this.draw(); }
 
   /** show the selected station range (set by the owner of the selection state) */
   setSelection(r: StationRange | null) { this.sel = r; this.draw(); }
@@ -431,6 +429,13 @@ export class ProfilePanel {
       g.strokeStyle = x.requestedType ? '#b45800' : '#222';
       g.lineWidth = x.requestedType ? 2.5 : 1.2;
       const hw = minor ? 3 : 4.5, hh = minor ? 2 : 3;
+      if (x.roadId !== undefined && x.roadId === this.selCrossing) {
+        g.save(); g.fillStyle = 'rgba(255,212,0,0.85)'; g.strokeStyle = '#1d232a'; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(px, yr, 9, 0, 2 * Math.PI); g.fill(); g.stroke(); g.restore();
+        g.fillStyle = x.type === 'atGrade' && ROAD_CLASSES[x.cls].noAtGrade ? '#d33' : x.cost > 0 ? '#e0a800' : '#fff';
+        g.strokeStyle = x.requestedType ? '#b45800' : '#222';
+        g.lineWidth = x.requestedType ? 2.5 : 1.2;
+      }
       g.beginPath(); g.rect(px - hw, yr - hh, 2 * hw, 2 * hh); g.fill(); g.stroke();
       if (x.type === 'overbridge') { g.beginPath(); g.moveTo(px - 8, yr); g.lineTo(px + 8, yr); g.lineWidth = 2.5; g.stroke(); }
     }

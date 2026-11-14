@@ -13,6 +13,8 @@ const server = await createServer({ server: { port: PORT, strictPort: true }, lo
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// the first-run intro would cover the map in the screenshots
+await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -42,9 +44,9 @@ try {
   // 1. road height: a segmented control with a sentence; Automatic draws no height points
   const mode = await T(() => ({
     on: document.querySelector('.seg button.on')?.textContent, explain: document.getElementById('mode-explain').textContent,
-    help: document.querySelector('.help').textContent, hud: document.getElementById('hud').textContent,
+    help: document.getElementById('sec-help').textContent, hud: document.getElementById('hud').textContent,
   }));
-  ok(mode.on === 'Automatic' && /lowest cost/.test(mode.explain), `road height switch: "${mode.on}" — ${mode.explain.slice(0, 70)}…`);
+  ok(mode.on === 'Automatic' && /lowest.cost/.test(mode.explain), `road height switch: "${mode.on}" — ${mode.explain.slice(0, 70)}…`);
   ok(!/grade line|VPI|dynamic programming|\bDP\b|PI\b/.test(mode.hud), 'no "grade line" / VPI / DP / PI jargon in the HUD');
 
   // 2. a click on the road line pins its height (Automatic); dragging the pin moves it; Undo / Redo buttons
@@ -193,16 +195,18 @@ try {
   await page.click('#zoom-in');
   ok((await T(() => window.trapla.profileView())).v1 - (await T(() => window.trapla.profileView())).v0 < w.L * 0.6, '+ zooms in');
 
-  // 7. Undo right after a build-tools select (focus still in it)
+  // 7. a building's options are buttons in its card; Undo right after a click (focus still on the button)
   await T(() => window.trapla.profileFit());
   const j = await T(() => window.trapla.result().noise.receivers[0]?.j ?? 0);
   await T((j) => window.trapla.selectBuilding(j), j);
-  await page.focus('#building-choice');
-  await page.selectOption('#building-choice', 'keep'); await idle();
-  ok(await T(() => document.activeElement?.id) === 'building-choice', 'the select keeps the focus');
+  ok(await page.locator('#building-card').isVisible(), 'selecting a building opens its card at the top of the HUD');
+  await page.click('#building-choice [data-building="keep"]'); await idle();
   ok((await get()).buildingOverrides.some((o) => o.j === j && o.action === 'keep'), 'building Keep chosen');
+  ok(await page.locator('#building-choice [data-building="keep"].on').count() === 1, 'the Keep button shows as chosen');
   await page.keyboard.press('Control+z'); await idle(100);
-  ok(!(await get()).buildingOverrides.some((o) => o.j === j), 'Ctrl+Z undoes it while the select still has focus');
-  ok(await page.locator('#building-choice').inputValue() === '', 'and the select shows Automatic again');
+  ok(!(await get()).buildingOverrides.some((o) => o.j === j), 'Ctrl+Z undoes it');
+  ok(await page.locator('#building-choice [data-building=""].on').count() === 1, 'and the card shows Automatic again');
+  await page.keyboard.press('Escape');
+  ok(await page.locator('#building-card').isHidden(), 'Esc closes the building card');
   ok(errors.length === 0, `no browser errors ${errors.join(' | ')}`);
 } finally { await browser.close(); await server.close(); }

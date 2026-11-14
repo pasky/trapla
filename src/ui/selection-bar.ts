@@ -53,7 +53,12 @@ export class SelectionBar {
       (e.target as HTMLInputElement).blur(); // before the click, so the result redraws the bar
       set?.click();
     });
-    this.el.addEventListener('focusout', (e) => { if ((e.target as HTMLElement).matches('input')) queueMicrotask(() => this.ev.refresh?.()); });
+    // leaving the height field redraws the bar with the design, unless the focus moves to one of the bar's
+    // buttons ("Pin this height" right after typing must still read the typed value)
+    this.el.addEventListener('focusout', (e) => {
+      if (!(e.target as HTMLElement).matches('input') || this.el.contains(e.relatedTarget as Node | null)) return;
+      queueMicrotask(() => this.ev.refresh?.());
+    });
   }
 
   showRange(range: StationRange, overrides: readonly StructureOverride[] = []) {

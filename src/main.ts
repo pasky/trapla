@@ -5,12 +5,14 @@ import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/eva
 import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
+import { ROAD_CLASSES } from './core/data/urban';
 import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
 import { CrossingRenderer } from './render/crossings';
 import { BuildingPicker } from './render/building-pick';
 import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
-import { BuildTools } from './ui/build-tools';
+import { BuildTools, buildingKind } from './ui/build-tools';
+import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
 import { loadPack } from './scenario';
@@ -22,6 +24,8 @@ import { ViewBar, type ViewPrefs } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
 import { SelectionBar } from './ui/selection-bar';
 import type { WorkerIn } from './worker';
+import { toast } from './ui/toast';
+import { Intro } from './ui/intro';
 
 const status = document.getElementById('status')!;
 const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
@@ -56,11 +60,15 @@ async function main() {
   const selBar = new SelectionBar(document.getElementById('profile')!, profileCanvas, profile);
   const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo());
   const hud = new Hud(document.getElementById('hud')!, scenario);
-  const tools = new BuildTools(document.getElementById('hud')!);
+  const intro = new Intro(document.getElementById('view')!);
+  const tools = new BuildTools(hud.context, hud.decisions, (n) => { document.getElementById('decisions-count')!.textContent = n ? String(n) : ''; });
   tools.objectDataChanged = store.objectDataChanged;
+  tools.describeBuilding = (j) => { const f = pack.overlays.binfo?.[j]; return buildingKind(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0)); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
   const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); closeStation(); };
+  const closeBuilding = () => { tools.selectBuilding(null); annotations.selectBuilding(null); };
+  tools.ev.closeBuilding = closeBuilding;
   annotations.onBuilding = selectBuilding;
   tools.ev.selectBuilding = selectBuilding;
   tools.ev.building = (j, action) => store.update((d) => { d.buildingOverrides = setBuildingOverride(d.buildingOverrides ?? [], j, action); });
@@ -71,9 +79,10 @@ async function main() {
     const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
     selBar.showStation(s, pin?.z ?? last.grade[i], !!pin, store.design.profileMode === 'auto');
   };
-  const selectStation = (s: number) => { station = s; tools.selectStation(s); profile.selectStation(s); showStation(); };
+  const selectStation = (s: number) => { station = s; tools.selectStation(s); annotations.selectBuilding(null); profile.selectStation(s); showStation(); };
   const closeStation = () => { station = null; profile.selectStation(null); selBar.hide('station'); };
   annotations.onPin = selectStation;
+  annotations.onCulvert = (s) => { profile.focus(s - 250, s + 250); };
   tools.ev.selectStation = selectStation;
   tools.ev.pin = (s, z) => store.update((d) => {
     d.gradePins = (d.gradePins ?? []).filter((p) => Math.abs(p.s - s) >= 0.1);
@@ -97,11 +106,23 @@ async function main() {
   let last: Result | null = null;
   const selectCrossing = (roadId: number) => {
     tools.selectCrossing(roadId);
+    annotations.selectBuilding(null);
+    profile.selectCrossing(roadId);
     const c = last?.crossings.find((c) => c.roadId === roadId);
     closeStation();
-    if (c) view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] });
+    if (c) view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] }, 'crossed road');
   };
-  tools.ev.selectCrossing = selectCrossing;
+  const closeCrossing = () => { tools.selectCrossing(null); profile.selectCrossing(null); view.setHover(null); };
+  tools.ev.selectCrossing = (roadId) => {
+    selectCrossing(roadId);
+    // from the list / ‹ › buttons: bring the crossing into view
+    const c = last?.crossings.find((c) => c.roadId === roadId);
+    if (c && last) { view.flyTo(c.x, c.y, 900); profile.focus(c.s - 300, c.s + 300); }
+  };
+  tools.ev.closeCrossing = closeCrossing;
+  tools.ev.structure = (kind) => setStructure(kind);
+  tools.ev.clearRange = () => selection.set(null);
+  tools.ev.selectRange = (s0, s1) => { selection.set({ s0, s1 }); profile.focus(s0, s1); };
   tools.ev.crossing = (roadId, type) => store.update((d) => {
     d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
     if (type !== null) d.crossingOverrides.push({ roadId, type });
@@ -182,6 +203,7 @@ async function main() {
   // ---- map interactions ----
   view.ev = {
     onPickTerrain: (x, y, clientX, clientY, forceBend) => {
+      intro.hide();
       const building = forceBend ? null : buildingPicker.at(clientX, clientY, { x, y, z: pack.terrain.heightAt(x, y) });
       if (building !== null) { selectBuilding(building); return; }
       const rect = view.renderer.domElement.getBoundingClientRect();
@@ -262,6 +284,12 @@ async function main() {
     selectStation(s);
   };
 
+  // ---- the profile's key (legend) ----
+  const keyB = document.getElementById('key-toggle')!, keyBox = document.getElementById('profile-key')!;
+  const showKey = (on: boolean) => { keyBox.hidden = !on; keyB.setAttribute('aria-expanded', String(on)); keyB.classList.toggle('on', on); };
+  keyB.onclick = () => showKey(!keyB.classList.contains('on'));
+  document.addEventListener('pointerdown', (e) => { if (!keyBox.hidden && !keyBox.contains(e.target as Node) && e.target !== keyB) showKey(false); });
+
   // ---- profile zoom buttons ----
   const zoomOut = document.getElementById('zoom-out') as HTMLButtonElement;
   const fitB = document.getElementById('fit') as HTMLButtonElement;
@@ -276,10 +304,8 @@ async function main() {
     structure: (kind) => setStructure(kind),
     close: (what) => { if (what === 'range') selection.set(null); else if (what === 'bend') selBar.hide('bend'); else closeStation(); },
     walls: () => {
-      const w = document.getElementById('wall-side')?.closest('div');
-      if (!w) return;
-      w.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      w.classList.remove('flash'); void w.offsetWidth; w.classList.add('flash');
+      const w = document.getElementById('wall-tools');
+      if (w) hud.scrollTo(w);
     },
     pin: (s, z) => tools.ev.pin?.(s, z),
     heightAt: (s) => { selBar.hide('bend'); addHeightAt(Math.round(s)); },
@@ -321,6 +347,33 @@ async function main() {
         const d = (p.sx - mx) ** 2 + (p.sy - my) ** 2;
         if (d < bd) { bd = d; k = i; }
       }
+    }
+    // what a click would pick: a crossed road or a building (pointer cursor, a label / tooltip), else a bend
+    const canvas = view.renderer.domElement;
+    let cross: Result['crossings'][number] | null = null, building: number | null = null;
+    if (at && r) {
+      const box = canvas.getBoundingClientRect();
+      let best = 12;
+      for (const c of r.crossings) {
+        if (c.roadId === undefined) continue;
+        const p = view.project(c.x, c.y, Math.max(r.grade[c.i], r.grade[c.i] - c.h) + 2);
+        const gap = Math.hypot(p.sx - (at.x - box.left), p.sy - (at.y - box.top));
+        if (p.vis && gap < best) { best = gap; cross = c; }
+      }
+      if (!cross) {
+        const g = view.pick(at.x, at.y);
+        if (g) building = buildingPicker.at(at.x, at.y, { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) });
+      }
+    }
+    const cursor = cross || building !== null ? 'pointer' : '';
+    if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
+    const title = cross ? '' : building !== null ? 'Building: click for its options (Shift+click adds a bend here instead)' : '';
+    if (canvas.title !== title) canvas.title = title;
+    if (cross && r) {
+      mapHoverK = -2;
+      view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, `${ROAD_CLASSES[cross.cls].label} — click for options`);
+      profile.setHover(cross.s, true);
+      return;
     }
     if (k === mapHoverK) return; // nothing new to draw
     mapHoverK = k;
@@ -369,15 +422,20 @@ async function main() {
       if (mode === store.design.profileMode || (mode === 'manual' && (!last || received !== posted))) return;
       store.update((d) => { if (mode === 'manual') takeProfile(d); else d.profileMode = 'auto'; });
     },
-    onStructure: setStructure,
-    onReset: () => { selectPi(null); store.reset(); view.resetCamera(); },
-    onLoadBest: () => { if (store.best) store.replace(store.best.design); },
+    onReset: () => {
+      selectPi(null); selection.set(null); closeStation(); closeCrossing(); closeBuilding(); selectedVpi = null; hud.setSelectedVpi(null, last);
+      store.reset(); view.resetCamera(); profile.fit();
+      toast('Started over from the straight line.', 'Undo', () => store.undo());
+    },
+    onClosePi: () => selectPi(null),
+    onCloseVpi: () => { selectedVpi = null; hud.setSelectedVpi(null, last); },
+    onIntro: () => intro.show(),
+    onLoadBest: () => { if (store.best) { store.replace(store.best.design); toast('Loaded your best valid design.', 'Undo', () => store.undo()); } },
     onRadius: (i, r) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }),
     onDeletePi: (i) => { store.update((d) => { d.pis.splice(i, 1); }); selectPi(null); },
     onBendHeight: (i) => { const b = last && bendStations(last, store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     onVpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
     onDeleteVpi: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; hud.setSelectedVpi(null, last); },
-    onClearRange: () => selection.set(null),
     onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {
       const v = last?.violations[k];
@@ -424,7 +482,15 @@ async function main() {
       const i = selectedPi;
       store.update((d) => { d.pis.splice(i, 1); });
       selectPi(null);
-    } else if (e.key === 'Escape') { if (selection.range) selection.set(null); else if (station !== null) closeStation(); else selectPi(null); }
+    } else if (e.key === 'Escape') {
+      if (intro.visible) intro.hide();
+      else if (!keyBox.hidden) showKey(false);
+      else if (selection.range) selection.set(null);
+      else if (station !== null) closeStation();
+      else if (tools.crossing !== null) closeCrossing();
+      else if (tools.building !== null) closeBuilding();
+      else selectPi(null);
+    }
   }, { capture: true }); // range shortcuts take precedence over the map's E/C shortcuts
 
   view.setDesign(store.design, null);

@@ -1,4 +1,6 @@
-// Real HUD/map interaction checks and reproducible build-tool screenshots (30–35).
+// Real HUD/map interaction checks and reproducible build-tool screenshots (30–35): a pinned height from a
+// click on the road line in the profile, and the contextual cards (crossed road, building, stretch with
+// noise walls) with their option buttons.
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -8,6 +10,8 @@ const server = await createServer({ server: { port: PORT, strictPort: true }, lo
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// the first-run intro would cover the map in the screenshots
+await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
@@ -17,7 +21,7 @@ const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); 
 const get = () => page.evaluate(() => window.trapla.getDesign());
 const load = async () => { await page.evaluate((d) => { window.trapla.setDesign(d); window.trapla.selectRange(null); }, design); await idle(); };
 const shot = async (name) => {
-  await page.evaluate(() => { document.getElementById('hud').scrollTop = document.getElementById('build-tools').offsetTop - 12; });
+  await page.evaluate(() => { document.getElementById('hud').scrollTop = 0; });
   await page.mouse.move(15, 15); await page.waitForTimeout(200);
   await page.screenshot({ path: `${out}/${name}.png` }); console.log(`SHOT ${name}`);
 };
@@ -30,8 +34,13 @@ try {
     window.trapla.lookAt(r.x[i], r.y[i], 2400, 20, 50); window.trapla.profileFocus(s - 400, s + 400);
     return { s, z: Math.round((r.grade[i] + 1) * 10) / 10 };
   });
-  await page.fill('#station-value', String(pin.s)); await page.click('#station-select');
-  await page.fill('#pin-height', String(pin.z)); await page.click('#pin-set'); await idle();
+  // a click on the road line pins the road's height there; the bar over the profile takes a typed height
+  const at = await page.evaluate((s) => window.trapla.profilePoint(s), pin.s);
+  await page.mouse.click(at.x, at.y); await idle();
+  assert.equal((await get()).gradePins.length, 1, 'a click on the road line pins it');
+  pin.s = (await get()).gradePins[0].s;
+  assert(Math.abs(pin.s - 17500) < 25, `pinned near the click (${pin.s})`);
+  await page.fill('.sel-bar.station input', String(pin.z)); await page.click('.sel-bar .pin-set'); await idle();
   assert.equal((await get()).profileMode, 'auto'); assert.deepEqual((await get()).gradePins, [pin]);
   const pinError = await page.evaluate(({ s, z }) => {
     const r = window.trapla.result(), i = Math.floor(s / r.ds), t = (s - r.s[i]) / r.ds;
@@ -39,9 +48,9 @@ try {
   }, pin);
   assert(pinError < 0.51, `pin error ${pinError}`);
   await shot('30-build-grade-pin');
-  await page.click('#pin-clear'); await idle(); assert.equal((await get()).gradePins.length, 0);
+  await page.click('.sel-bar .pin-clear'); await idle(); assert.equal((await get()).gradePins.length, 0);
   await page.keyboard.press('Control+z'); await idle(); assert.deepEqual((await get()).gradePins, [pin]);
-  console.log('PASS typed station, Auto pin, realised height, clear and undo');
+  console.log('PASS click-to-pin on the road line, typed height, realised height, unpin and undo');
 
   await load();
   const roadId = await page.evaluate(() => {
@@ -50,11 +59,13 @@ try {
     window.trapla.selectCrossing(c.roadId); window.trapla.lookAt(c.x, c.y, Math.max(900, c.linkLength * 1.2), 15, 65);
     window.trapla.profileFocus(c.s - 200, c.s + 200); return c.roadId;
   });
-  await page.selectOption('#crossing-choice', 'reconnection'); await page.locator('#crossing-choice').blur(); await idle();
+  assert(await page.locator('#crossing-card').isVisible(), 'the crossing card opens');
+  await page.click('#crossing-choice [data-crossing="reconnection"]'); await idle();
+  assert.equal(await page.locator('#crossing-choice [data-crossing="reconnection"].on').count(), 1, 'the chosen option is highlighted');
   const links = await page.evaluate((id) => window.trapla.result().crossings.filter((c) => c.roadId === id), roadId);
   assert(links.every((c) => c.type === 'reconnection' && c.cost > 0 && c.geometry.links.length === 2));
   await shot('31-build-crossing-links');
-  await page.selectOption('#crossing-choice', ''); await page.locator('#crossing-choice').blur(); await idle();
+  await page.click('#crossing-choice [data-crossing=""]'); await idle();
   assert.equal((await get()).crossingOverrides.length, 0);
   await page.keyboard.press('Control+z'); await idle();
   assert.equal((await get()).crossingOverrides[0].type, 'reconnection');
@@ -69,7 +80,7 @@ try {
     if (!c) throw new Error('no demo crossing for manual overbridge');
     window.trapla.selectCrossing(c.roadId); window.trapla.lookAt(c.x, c.y, 700, 30, 55); window.trapla.profileFocus(c.s, c.s);
   });
-  await page.selectOption('#crossing-choice', 'overbridge'); await page.locator('#crossing-choice').blur(); await idle();
+  await page.click('#crossing-choice [data-crossing="overbridge"]'); await idle();
   await shot('32-build-crossing-overbridge');
 
   await load();
@@ -83,14 +94,14 @@ try {
   const screen = await page.evaluate((j) => window.trapla.buildingScreen(j, 3), building);
   const vb = await page.locator('#view').boundingBox();
   await page.mouse.click(vb.x + screen.sx, vb.y + screen.sy); await page.waitForTimeout(100);
-  assert.equal(await page.locator('#building-choice').count(), 1, 'actual building click opens its choices');
+  assert(await page.locator('#building-card').isVisible(), 'actual building click opens its choices');
   const beforePi = (await get()).pis.length;
   // A modifier still places a bend at an object; undo returns to exactly the original plan.
   await page.keyboard.down('Shift'); await page.mouse.click(vb.x + screen.sx, vb.y + screen.sy); await page.keyboard.up('Shift'); await idle();
   assert.equal((await get()).pis.length, beforePi + 1); await page.keyboard.press('Control+z'); await idle();
-  await page.selectOption('#building-choice', 'buy'); await page.locator('#building-choice').blur(); await idle();
+  await page.click('#building-choice [data-building="buy"]'); await idle();
   assert(await page.evaluate((j) => window.trapla.result().boughtOut.some((p) => p.j === j && p.reason === 'manual'), building));
-  await page.selectOption('#building-choice', 'keep'); await page.locator('#building-choice').blur(); await idle();
+  await page.click('#building-choice [data-building="keep"]'); await idle();
   assert(await page.evaluate((j) => window.trapla.result().kept.some((p) => p.j === j), building));
   await shot('33-build-building-keep');
   console.log('PASS building ray pick, Shift+click bend, voluntary acquisition and Keep');
@@ -102,8 +113,9 @@ try {
     window.trapla.selectRange(w.s0, w.s1); window.trapla.lookAt(r.x[rec.i], r.y[rec.i], 950, 20, 65);
     window.trapla.profileFocus(w.s0, w.s1); window.trapla.setView({ noise: true }); return { ...w, j: rec.j };
   });
-  await page.selectOption('#wall-side', wall.side); await page.fill('#wall-height', '4'); await page.click('#wall-add'); await idle();
+  await page.click(`#range [data-side="${wall.side}"]`); await page.fill('#wall-height', '4'); await page.click('#wall-add'); await idle();
   assert((await get()).wallOverrides.some((w) => w.side === wall.side && w.height === 4));
+  assert((await get()).wallOverrides.every((w) => w.side === wall.side), 'only the chosen side');
   await shot('34-build-noise-wall');
   await page.click('#wall-remove'); await idle();
   const removed = await page.evaluate((j) => ({ bought: window.trapla.result().boughtOut.some((p) => p.j === j),

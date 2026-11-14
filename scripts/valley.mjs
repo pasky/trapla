@@ -8,6 +8,8 @@ await server.listen();
 const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  // the first-run intro would cover the map in the screenshots
+  await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
   await page.goto(server.resolvedUrls.local[0]);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 });
   const design = JSON.parse(readFileSync(process.argv[3] ?? 'scripts/best-design.json', 'utf8')).design;

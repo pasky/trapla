@@ -8,6 +8,8 @@ const server = await createServer({ server: { port, strictPort: true }, logLevel
 await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// the first-run intro would cover the map in the screenshots
+await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
 const errors = []; page.on('pageerror', e => errors.push(e.message));
 const out = process.argv.includes('--before') ? '/tmp/trapla-crossings-before' : 'docs/screenshots';
 mkdirSync(out, { recursive: true });
@@ -22,7 +24,7 @@ try {
     // Exercise the real crossing choice tool rather than fabricating render-only geometry.
     if (type === 'diversion') {
       await page.evaluate(() => window.trapla.selectCrossing(2704));
-      await page.selectOption('#crossing-choice', 'reconnection'); await page.locator('#crossing-choice').blur(); await idle();
+      await page.click('#crossing-choice [data-crossing="reconnection"]'); await idle();
     }
     const selected = await page.evaluate(type => {
       const r = window.trapla.result();

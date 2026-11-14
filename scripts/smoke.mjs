@@ -24,11 +24,15 @@ const st = () => page.evaluate(() => ({ d: window.trapla.getDesign(), s: window.
 let s = await st();
 ok(s.d.pis.length === 0 && s.d.profileMode === 'auto', `starts from the straight line with the auto profile (${s.d.profileMode})`);
 ok(s.s.violations.every((v) => v.goal || v.kind !== 'gradient'), 'the start profile has no gradient violations');
-const struck = () => page.evaluate(() => ({ invalid: document.getElementById('total').classList.contains('invalid'), note: document.getElementById('invalid-note').style.display !== 'none' }));
+const struck = () => page.evaluate(() => ({ invalid: document.getElementById('total').classList.contains('invalid'), note: !document.getElementById('invalid-note').hidden }));
 let inv = await struck();
 ok(inv.invalid === !s.s.valid && inv.note === !s.s.valid, `cost is struck through exactly when the design is not valid (valid: ${s.s.valid})`);
+// 0b. first run: the three-step intro shows over the map; it does not block the map and goes away on
+//     the first click there (remembered across reloads)
+ok(await page.locator('#intro').isVisible(), 'the first-run intro is shown');
 // 1. click on terrain near the middle of the view → PI added
 await page.mouse.click(600, 420);
+ok(await page.locator('#intro').isHidden(), 'the first click on the map dismisses the intro');
 await page.waitForTimeout(300);
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
@@ -130,7 +134,7 @@ s = await st();
 ok(s.d.profileMode === 'manual' && await page.getAttribute('#grade-manual', 'aria-checked') === 'true', '"By hand" starts from the current automatic heights');
 await page.keyboard.press('Escape');
 sel = await page.evaluate(() => ({ r: window.trapla.range(), visible: document.getElementById('range').style.display !== 'none' }));
-ok(sel.r === null && !sel.visible, 'Esc returns to the whole route');
+ok(sel.r === null && !sel.visible, 'Esc returns to the whole route (the stretch card closes)');
 await page.mouse.click(cb.x + 500, cb.y + cb.height - 22 - 54 - 3 - 5);
 sel = await page.evaluate(() => window.trapla.range());
 ok(sel !== null, `clicking the alignment band selects a tangent / curve (${sel && (sel.s0 / 1000).toFixed(2)}–${sel && (sel.s1 / 1000).toFixed(2)} km)`);
@@ -149,5 +153,6 @@ await page.reload();
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
 s = await st();
 ok(s.d.pis.length === 0 && s.d.profileMode === 'manual' && s.d.structureOverrides[0]?.kind === 0, 'design and manual structure paint persisted across reload');
+ok(await page.locator('#intro').isHidden(), 'the dismissed intro stays away after a reload');
 ok(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close(); await server.close();

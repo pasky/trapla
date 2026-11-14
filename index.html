@@ -28,8 +28,30 @@
         <div id="status">loading…</div>
       </div>
       <div id="profile">
-        <div class="profile-bar"><b>Longitudinal profile</b> <span class="legend"><span class="sw bendmk">1</span>bend (as on the map) <span class="lg-hp"><span class="sw hp"></span>height point</span> <span class="sw pinmk"></span>pinned height <span class="sw ground"></span>ground <span class="sw road"></span>road height <span class="sw fill"></span>embankment <span class="sw cut"></span>cut <span class="sw br"></span>bridge <span class="sw tn"></span>tunnel</span>
+        <div class="profile-bar"><b title="The road's height along the route (left = A, right = B) over the ground, with the cost per metre below">Longitudinal profile</b>
+          <span class="legend"><span><i class="sw ground"></i>ground</span><span><i class="sw road"></i>road height</span><span class="lg-hp"><i class="sw hp"></i>height point</span><span><i class="sw fill"></i>embankment</span><span><i class="sw cut"></i>cut</span><span><i class="sw br"></i>bridge</span><span><i class="sw tn"></i>tunnel</span></span>
+          <button id="key-toggle" class="key-toggle" aria-expanded="false" aria-controls="profile-key" title="What every mark and colour in the profile means">Key ▾</button>
           <span class="zoom" role="group" aria-label="Profile zoom"><button id="fit" title="Zoom out to the whole route" hidden>⤢ Whole route</button><button id="zoom-out" title="Zoom out (or turn the mouse wheel over the profile)">−</button><button id="zoom-in" title="Zoom in (or click the profile where you want to look closer)">+</button></span></div>
+        <div id="profile-key" class="profile-key" hidden>
+          <div class="key-col"><h3>Route</h3>
+            <div><i class="sw bendmk">1</i>bend of the route (as on the map)</div>
+            <div><i class="sw pinmk"></i>pinned road height (Automatic)</div>
+            <div><i class="sw hp"></i>height point (By hand)</div>
+            <div><i class="sw ground"></i>ground · <i class="sw road"></i>road height</div>
+            <div><i class="sw fill"></i>embankment · <i class="sw cut"></i>cut</div>
+            <div><i class="sw br"></i>bridge · <i class="sw tn"></i>tunnel</div>
+            <div><i class="sw yours"></i>your bridge / tunnel / earthwork (dashed bracket)</div>
+          </div>
+          <div class="key-col"><h3>Along the road</h3>
+            <div><i class="sw xing paid"></i>crossed road, priced <small>(click for options)</small></div>
+            <div><i class="sw xing"></i>crossed road under a bridge / over a tunnel</div>
+            <div><i class="sw xing yours"></i>crossed road with your choice</div>
+            <div><i class="sw xing bad"></i>crossing not allowed</div>
+            <div><i class="sw culvert"></i>watercourse culvert</div>
+            <div><i class="sw demo"></i>demolished building · <i class="sw buy"></i>bought out · <i class="sw keep"></i>kept</div>
+          </div>
+          <div class="key-col"><h3>Cost per metre <small>(the strip at the bottom)</small></h3><div class="cost-key" id="cost-key"></div></div>
+        </div>
         <canvas id="profile-canvas"></canvas>
       </div>
       <aside id="hud"></aside>

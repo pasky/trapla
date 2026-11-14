@@ -16,6 +16,8 @@ const args = gpu
   : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+// the first-run intro would cover the map in the screenshots
+await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
 page.on('pageerror', (e) => { console.log('pageerror', e.message); process.exitCode = 1; });
 page.on('console', (m) => { if (m.type() === 'error') { console.log('console error', m.text().slice(0, 300)); process.exitCode = 1; } });
 let started = 0, done = 0, failed = 0;
