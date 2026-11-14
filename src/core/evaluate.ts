@@ -194,6 +194,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
   const streamCount = new Uint8Array(n);
   for (const s of streamS) streamCount[Math.min(n - 1, Math.round(s / ds))]++;
+  // Compose the mapped ground category with the sparse stream flag into one bounded LUT index.
+  const profileCostClass = Uint8Array.from(groundIds, (g, i) => 2 * g + (streamCount[i] ? 1 : 0));
 
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const rawRoadX = ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [];
@@ -232,20 +234,20 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
     return (h: number, kind = -1, costClass = 0) => {
+      if (kind === KIND.bridge) return bridgeRural;
+      if (kind === KIND.tunnel) return tunnelPerM;
       let earth: number;
       if (h >= 0) {
         const { area, width: wd } = flatEarthGeometry(h, b, fillSlope, true);
         earth = (baseRural + area * dp.fillPerM3 + earthEngineeringPerM(h, 0, area) + wd * topsoilPerM2
-          + (costClass === 1 && h > 0 ? culvertExtra(wd, b) / ds : 0)) * sur + wd * LAND.perM2;
+          + ((costClass & 1) !== 0 && h > 0 ? culvertExtra(wd, b) / ds : 0)) * sur + wd * LAND.perM2;
       } else {
         const c = -h, wd = flatEarthGeometry(c, b, cutSlope, false).width;
-        const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClass]);
+        const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClass >> 1]);
         earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
           + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       }
       if (kind === KIND.earth) return earth;
-      if (kind === KIND.bridge) return bridgeRural;
-      if (kind === KIND.tunnel) return tunnelPerM;
       let best = earth;
       if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural);
       if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
@@ -321,7 +323,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, structureKind: manualStructures,
-      costClass: streamS.length ? streamCount : undefined, costClassCount: streamS.length ? 2 : 1,
+      costClass: profileCostClass, costClassCount: 2 * groundProfiles.length,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,

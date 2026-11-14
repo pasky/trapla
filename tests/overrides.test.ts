@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
+import { violationText } from '../src/core/checks';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { STRUCTURE_RULES } from '../src/core/data/prices';
 import { evaluate } from '../src/core/evaluate';
@@ -74,8 +75,8 @@ describe('manual structure decisions', () => {
     for (const kind of [1, 2] as const) {
       const r = chooseStructures({ ...input(0), overrides: overrideMask(s, [{ s0: 300, s1: 310, kind }]) });
       expect(r.kind[30]).toBe(kind);
-      expect(r.violations.some((v) => v.msg.includes('minimum'))).toBe(true);
-      expect(r.violations.some((v) => v.msg.includes('ground'))).toBe(true);
+      expect(r.violations.some((v) => violationText(v).includes('minimum'))).toBe(true);
+      expect(r.violations.some((v) => violationText(v).includes('ground'))).toBe(true);
     }
   });
 
@@ -83,7 +84,7 @@ describe('manual structure decisions', () => {
     const forced = new Uint8Array(101); forced[40] = 1;
     const r = chooseStructures({ ...input(10), forced, overrides: overrideMask(s, [{ s0: 300, s1: 600, kind: 0 }]) });
     expect(r.kind[40]).toBe(0);
-    expect(r.violations.some((v) => v.msg.includes('crossing requires a bridge'))).toBe(true);
+    expect(r.violations.some((v) => v.title === 'Crossing requires a bridge')).toBe(true);
   });
 
   it('evaluation exposes crossing conflicts and bills the requested earthwork', () => {
@@ -95,7 +96,7 @@ describe('manual structure decisions', () => {
     const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } }, d);
     expect(r.kind[Math.round(1000 / r.ds)]).toBe(0);
     expect(r.valid).toBe(false);
-    expect(r.violations.some((v) => v.kind === 'structure' && v.msg.includes('crossing'))).toBe(true);
+    expect(r.violations.some((v) => v.kind === 'structure' && v.title === 'Crossing requires a bridge')).toBe(true);
     expect(r.cost.earthworks).toBeGreaterThan(0);
   });
 });

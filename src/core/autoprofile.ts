@@ -79,10 +79,10 @@ const FINE_BAND = 6;
 /** fine passes spent on the mass-balance search (incl. the first) */
 const BALANCE_EVALS = 4;
 
-function buildLut(f: (h: number, kind?: number, costClass?: number) => number, classes = 1): Float64Array {
+function buildLut(f: (h: number, kind?: number, costClass?: number) => number, classes: number, kinds: readonly number[]): Float64Array {
   const m = Math.round((2 * H_MAX) / H_STEP) + 1;
   const lut = new Float64Array(classes * 4 * m);
-  for (let c = 0; c < classes; c++) for (let k = -1; k <= 2; k++) for (let i = 0; i < m; i++) {
+  for (let c = 0; c < classes; c++) for (const k of kinds) for (let i = 0; i < m; i++) {
     lut[(c * 4 + k + 1) * m + i] = f(-H_MAX + i * H_STEP, k, c);
   }
   return lut;
@@ -113,6 +113,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   const ds = n > 1 ? s[1] - s[0] : L;
   const stride = Math.max(1, Math.round(DP_STATION_STEP / ds));
   const classes = opt.costClassCount ?? 1;
+  // Most edits have no manual structures; don't recompute three unused LUT blocks per geology.
+  const lutKinds = [...new Set([-1, ...Array.from(opt.structureKind ?? []).filter((k) => k >= 0)])];
   const lutMax = Math.round((2 * H_MAX) / H_STEP);
   const pad = opt.pad ?? 25;
   const penalty = opt.vpiPenalty ?? 1e6;
@@ -132,22 +134,23 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     last[nK - 1] = n - 1;
   }
-  // Preserve the ordinary ~20 m quadrature, but remove special stations from its weight and
-  // cost them individually. Sparse streams must not double the work on the entire route, nor
-  // disappear between samples; manual ranges likewise retain their exact kind/cost.
+  // Preserve ~20 m quadrature within each cost category, splitting a block at geology/stream
+  // changes. Sparse streams must not double the work on the entire route or disappear between
+  // samples. Manual ranges retain individual samples, with exactly the same total weight.
   const costStart = new Int32Array(nK + 1), costIdx: number[] = [], costWeight: number[] = [], costOffset: number[] = [];
   const kinds = opt.structureKind, costClasses = opt.costClass;
   for (let k = 0; k < nK; k++) {
     costStart[k] = costIdx.length;
     for (let i = first[k]; i <= last[k]; i += stride) {
-      let ordinary = -1, count = 0;
+      const blockStart = costIdx.length;
       for (let j = i; j < Math.min(i + stride, last[k] + 1); j++) {
         const kind = kinds?.[j] ?? -1, cls = costClasses?.[j] ?? 0;
-        if (kind >= 0 || cls !== 0) {
-          costIdx.push(j); costWeight.push(ds); costOffset.push((cls * 4 + kind + 1) * (lutMax + 1));
-        } else { if (ordinary < 0) ordinary = j; count++; }
+        const off = (cls * 4 + kind + 1) * (lutMax + 1);
+        let same = -1;
+        if (kind < 0) for (let q = blockStart; q < costIdx.length; q++) if (costOffset[q] === off) { same = q; break; }
+        if (same >= 0) costWeight[same] += ds;
+        else { costIdx.push(j); costWeight.push(ds); costOffset.push(off); }
       }
-      if (count) { costIdx.push(ordinary); costWeight.push(count * ds); costOffset.push(0); }
     }
   }
   costStart[nK] = costIdx.length;
@@ -200,7 +203,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
 
   const bal = opt.balance;
   if (!bal) {
-    const lut = buildLut(opt.costPerM, classes);
+    const lut = buildLut(opt.costPerM, classes, lutKinds);
     const c = coarse(lut);
     if (!c) return relaxed(lut);
     const f = refine(lut, c);
@@ -211,7 +214,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   // root is bracketed and interpolated. (The coarse line's own balance is no proxy for the fine one's.)
   const clampV = (v: number) => Math.max(bal.lo, Math.min(bal.hi, v));
   let v = clampV(bal.start);
-  let lut = buildLut(bal.costFor(v), classes);
+  let lut = buildLut(bal.costFor(v), classes, lutKinds);
   const c = coarse(lut);
   if (!c) return { ...relaxed(lut), materialValue: v };
   let best = refine(lut, c);
@@ -231,7 +234,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     if (Math.abs(next - v) < 1e-6) break;
     v = next;
-    lut = buildLut(bal.costFor(v), classes);
+    lut = buildLut(bal.costFor(v), classes, lutKinds);
     const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z);
     if (!ok(f)) break;
     const b = bal.balanceOf(f.vpis, v);

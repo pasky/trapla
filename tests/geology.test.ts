@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
+import { flatEarthGeometry } from '../src/core/earthengineering';
 import { UNKNOWN_GROUND, type GroundData } from '../src/core/ground';
 import { computeSections, flatCutBands } from '../src/core/sections';
 import { Terrain } from '../src/core/terrain';
@@ -24,7 +25,7 @@ describe('ground grid', () => {
     expect(t.groundAt(100, 201).normMix).toBe(true);
     const tpl = { crownWidth: 10, cutSlope: 1.75, fillSlope: 2 };
     const s = computeSections(t, 1, [100], [100], [1], [0], [90], tpl);
-    const total = 10 * 10 + 1.75 * 100;
+    const total = flatEarthGeometry(10, 10, 1.75, false).area;
     expect(s.cut[0]).toBeCloseTo(total, 8);
     expect(s.cutI[0]).toBeCloseTo(total / 2, 8);
     expect(s.cutII[0]).toBe(0);
@@ -50,8 +51,8 @@ it('auto-profile applies the local cost category, not a route-wide average', () 
   const solve = (reverse: boolean) => {
     const r = autoProfile(s, g, {
       maxGradient: 0.06, minCrest: 6000, minSag: 3400, vpiPenalty: 0,
-      costClasses: Uint8Array.from(s, (v) => Number((v > 2000) !== reverse)),
-      costPerM: (h, cls) => 10000 * (h - (cls ? 6 : -6)) ** 2,
+      costClass: Uint8Array.from(s, (v) => Number((v > 2000) !== reverse)), costClassCount: 2,
+      costPerM: (h, _kind, cls) => 10000 * (h - (cls ? 6 : -6)) ** 2,
     });
     expect(r.feasible).toBe(true);
     return elevations(buildProfile(r.vpis, 6000, 3400), s);

@@ -100,23 +100,29 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       }
       runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced });
       if (length < min) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
-        msg: `${manual ? 'manual' : 'remaining'} ${r.kind === KIND.bridge ? 'bridge' : 'tunnel'} is ${length.toFixed(0)} m long; minimum ${min} m` });
+        title: `${manual ? 'Manual' : 'Remaining'} ${r.kind === KIND.bridge ? 'bridge' : 'tunnel'} is too short`,
+        fix: `Extend it to the ${min} m minimum (now ${length.toFixed(0)} m), or clear the override`,
+        basis: 'game', rule: `Structure runs must be at least ${min} m long (game simplification)`,
+        detail: 'The requested structure stays visible and is priced; automatic choice does not silently extend it.' });
     }
-    const flagRanges = (bad: (i: number) => boolean, msg: string) => {
+    const flagRanges = (bad: (i: number) => boolean, title: string, fix: string, rule: string) => {
       for (let i = 0; i < n; i++) {
         if (!bad(i)) continue;
         let j = i;
         while (j + 1 < n && bad(j + 1)) j++;
-        violations.push({ kind: 'structure', s0: i * inp.ds, s1: j * inp.ds, msg });
+        violations.push({ kind: 'structure', s0: i * inp.ds, s1: j * inp.ds, title, fix, rule, basis: 'game' });
         i = j;
       }
     };
     flagRanges((i) => inp.overrides![i] === KIND.bridge && inp.h[i] < rules.bridgeMinHeight,
-      `manual bridge needs at least ${rules.bridgeMinHeight} m above ground`);
+      'Manual bridge is too close to the ground', `Raise the road to at least ${rules.bridgeMinHeight} m above ground, or shorten/clear the bridge range`,
+      `Manual bridge cells need ${rules.bridgeMinHeight} m of height (game simplification)`);
     flagRanges((i) => inp.overrides![i] === KIND.tunnel && -inp.h[i] < rules.tunnelMinDepth,
-      `manual tunnel needs at least ${rules.tunnelMinDepth} m below ground`);
+      'Manual tunnel has too little cover', `Lower the road to at least ${rules.tunnelMinDepth} m below ground, or shorten/clear the tunnel range`,
+      `Manual bored-tunnel cells need ${rules.tunnelMinDepth} m of depth (game simplification)`);
     flagRanges((i) => !!inp.forced?.[i] && kind[i] !== KIND.bridge,
-      'crossing requires a bridge — clear or change the manual structure override');
+      'Crossing requires a bridge', 'Clear the manual structure override here, or mark this crossing as a bridge',
+      'River, railway and separated-road crossings cannot be buried under earthwork (game crossing rule)');
   }
   return { kind, runs, violations };
 }
