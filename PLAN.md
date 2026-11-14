@@ -139,18 +139,18 @@ What exists (details and commands in `README.md`):
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
-- Cost model 8 repricing of saved local-search designs (2,500 seeded + 3,500 fresh trials per strategy under
-  model 4, whole-metre PIs): official-corridor bypass at 90 km/h → **3.276 bn CZK**, 21.03 km, 14.02 min;
-  direct eastern fringe at 80 → **3.617 bn**, 19.08 km, 14.31 min; direct fringe at 90 → **3.774 bn**, 19.59 km, 13.06 min. The slower
+- Cost model 9 repricing of saved local-search designs (2,500 seeded + 3,500 fresh trials per strategy under
+  model 4, whole-metre PIs): official-corridor bypass at 90 km/h → **3.303 bn CZK**, 21.03 km, 14.02 min;
+  direct eastern fringe at 80 → **3.661 bn**, 19.08 km, 14.31 min; direct fringe at 90 → **3.799 bn**, 19.59 km, 13.06 min. The slower
   direct route uses 98.7% of the time allowance; 70 remains impossible. Keep X = 14.5 min: it allows bypass vs
-  short/fringe strategies without making the slower road dominant. The 10% / 15% whole-route premiums are
+  short/fringe strategies without making the slower road dominant. The 11% / 15% whole-route premiums are
   explained by length/topography and mostly-open fringe routing, not a cheap dense-city corridor; the actual
-  centre route is 8.930 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
+  centre route is 8.957 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
   are local-search results, not proven minima; re-check as players find better designs.
 
 ### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
 
-Cost model 8: 20.81 km, 13.87 min, **4.078 bn CZK = 196 M CZK/km**; includes one noise buyout
+Cost model 9: 20.81 km, 13.87 min, **4.105 bn CZK = 197 M CZK/km**; includes one noise buyout
 (29 M, including plot allowance). This reference is not the cheapest bypass; the saved-design comparison is below.
 
 ### PROVISIONAL / placeholder values (all in `src/core/data/`)
@@ -205,7 +205,7 @@ Cost model 8: 20.81 km, 13.87 min, **4.078 bn CZK = 196 M CZK/km**; includes one
 
 ## Town cost model and cost breakdown (2026-11-14)
 
-Cost model 8 adds Czech vehicle-category emissions and day/night mixed-ground propagation to model 7's
+Cost model 9 adds Czech vehicle-category emissions and day/night propagation with calibrated hard ground to model 7's
 spaced junctions and geometry-priced crossing links/approaches. Geometric wall/cut diffraction and
 building-only valuations with plot allowances remain. Noise sources and validation caveats: research/11.
 The model distinguishes a dense urban cut-through from a shorter route skirting the eastern settlement edge;
@@ -312,14 +312,16 @@ whole-route ratios alone do not measure the cost of building through town.
   heavy speed is capped at 80 km/h. At 9,000/day, 9.2% of OA and 15.4% of NA traffic falls at night.
   NV272/2011 §12 + annex3 A gives **60/50 dB** for this new road: 50 base +10 road correction, −10 at night;
   55/45 is not the new-class-I rule (legal text in research/11). Compute 16h day and 8h night LAeq separately;
-  E = max(Lday−60, Lnight−50). Mixed-ground line-source attenuation follows the manual's Uo/Up formulas,
-  blending to hard ground for high receivers. The **explicit terrain approximation** substitutes slant range
-  and an effective ray height for flat-ground distance/height; tall viaducts lose soft-ground credit.
-  At 80/90 km/h the night contour is **35.7/37.5 m** for a 1.5 m receiver, **45.1/47.5 m** at 4.5 m,
+  E = max(Lday−60, Lnight−50). **Ground class is fitted hard (Uo)**: across eight day/night/height
+  observations in two studies, RMSE falls **2.823→1.372 dB**, mean residual **−2.720→+0.720 dB**.
+  The manual specifies discrete ground classes, not a continuous G or source-side split; hard is the
+  least-squares class with conservative mean bias. No emission correction. Residuals remain −0.42…+2.57 dB;
+  incomplete site inputs and use as calibration data preclude an independent accuracy claim (research/11 §4).
+  Optional mixed Uo/Up remains for sensitivity. The **explicit terrain approximation** substitutes slant range
+  for flat-ground distance (mixed mode also uses effective ray height); no porous credit in the hard default.
+  At 80/90 km/h the night contour is **90.0/97.0 m** for a 1.5 m receiver, **89.9/96.9 m** at 4.5 m,
   **89.4/96.5 m** at 10.5 m (axis-to-receiver, add 2 m for façade). No guessed D scaling remains.
-  Queries use the conservative hard-ground bound, never just the low contour. EIA comparisons show
-  2–4 dB underprediction for flat mixed assumptions; hard-ground predictions bracket the studies much
-  better, but missing local inputs prevent a clean validation claim (research/11 §4).
+  Queries use the all-height hard-ground bound, including when mixed is selected.
   Horizontal receiver position is axis-to-**nearest oriented-rectangle façade** distance minus 2 m
   (clamped to 1 m). Source/propagation terms are tabulated once per design.
   The highest occupied receiver is 1.5 + 3 × (storeys − 1) m above building ground, using tagged levels or
@@ -388,9 +390,9 @@ price cannot be determined (research/07 §1).
 | Raised overbridge approaches | total 2 × max(0, 6 + h) / 6% metres × SPK road row | heuristic gradient; includes standard earthworks, no separate fill lump sum |
 | Crossed-road widths for overbridges | 27.5 / 11.5 / 9.5 / 7.5 / 6.5 / 4 m by class | priced by the SPK CN bridge row of that width |
 | Excavation class depth bands | I to 3 m, II to 8 m, III below | gameplay heuristic, not geology: OTSKP classes are by excavability (research/09 §3) |
-| Noise source / traffic | Czech 2018/2020 OA/NA equations; 15% acoustic heavy share, heavy speed ≤80 | Emissions and TP219 time distribution sourced; heavy share, design-speed proxy and mixed ground are assumptions (research/11) |
+| Noise source / traffic | Czech 2018/2020 OA/NA equations; 15% acoustic heavy share, heavy speed ≤80 | Emissions and TP219 time distribution sourced; heavy share/design-speed proxy are assumptions; hard ground is the conservative categorical EIA fit (research/11) |
 | Noise wall | 3 / 4 / 5 m, 10,000 CZK/m²; 50 m margins | PROVISIONAL calibrated recommendation (8–14k); only project datapoint assumes 3 m height (research/09 §1). Cut edges use diffraction, not a depth exemption |
-| Excess and attenuation | E = max(Lday−60, Lnight−50); IL = clamp(10·log₁₀(3 + 40δ/0.68) − 5, 0, 13) | Czech mixed-ground Uo/Up with approximate slant/effective-height extension; Maekawa best of cut edge / wall, correction/cap still PROVISIONAL (research/09 §5, research/11) |
+| Excess and attenuation | E = max(Lday−60, Lnight−50); IL = clamp(10·log₁₀(3 + 40δ/0.68) − 5, 0, 13) | Czech Uo for calibrated hard ground (mixed Uo/Up optional), approximate slant geometry; Maekawa best of cut edge / wall, correction/cap still PROVISIONAL (research/09 §5, research/11) |
 | Source / wall position | source +0.5 m high, 1.75 m off axis; wall at crown/2 + 1.5 m | PROVISIONAL equivalent 2D section at road grade, not slope toe |
 | Upper-floor receiver | 1.5 + 3 × (levels − 1) m above building ground | PROVISIONAL; geometric sightline and path difference, not a height-only penalty |
 | Noise-infeasible dwelling | 1.5× building-only value + demolition + plot max(3 × footprint, 400 m²) at 1,500 × 1.5 | acquisition and additional-plot rule PROVISIONAL; no window-only outdoor compliance |
@@ -398,7 +400,7 @@ price cannot be determined (research/07 §1).
 
 ### Numbers with the new model (S 9.5, auto profile, `npx tsx scripts/bench.ts <design.json>`)
 
-Cost model **8**, with Czech day/night noise and model 7's junction spacing/geometric crossing costs.
+Cost model **9**, with calibrated hard-ground Czech day/night noise and model 7's junction spacing/geometric crossing costs.
 All five saved alignments stay fixed from model 4; all remain valid, no tunnel. Per-cell parts sum to
 every total. Historical short reoptimisation results are recorded separately below; not global optima.
 
@@ -408,20 +410,21 @@ every total. Historical short reoptimisation results are recorded separately bel
 | length km / min | 20.81 / 13.87 | 21.03 / 14.02 | 19.08 / 14.31 | 19.59 / 13.06 | 18.94 / 12.62 |
 | model 6 total (same geometry) | 3,949 | 3,038 | 3,470 | 3,626 | 9,024 |
 | model 7 total (same geometry, old noise) | 4,158 | 3,305 | 3,690 | 3,807 | 9,182 |
-| **total** | **4,078** | **3,276** | **3,617** | **3,774** | **8,930** |
-| per km | 196 | 156 | 190 | 193 | 472 |
+| model 8 total (mixed ground) | 4,078 | 3,276 | 3,617 | 3,774 | 8,930 |
+| **total** | **4,105** | **3,303** | **3,661** | **3,799** | **8,957** |
+| per km | 197 | 157 | 192 | 194 | 473 |
 | road base | 864 | 862 | 769 | 782 | 722 |
 | earthworks | 1,043 | 700 | 580 | 816 | 1,575 |
 | bridges | 278 | 319 | 609 | 614 | 1,160 |
 | road crossings | 328 | 290 | 269 | 226 | 180 |
-| noise walls | 91 | 43 | 143 | 102 | 261 |
+| noise walls | 119 | 71 | 188 | 128 | 288 |
 | other objects | 767 | 659 | 737 | 779 | 1,251 |
 | land / forest | 270 / 12 | 229 / 8 | 247 / 9 | 235 / 13 | 324 / 15 |
 | footprint buildings (count) | 397 (18) | 166 (11) | 253 (35) | 206 (27) | 3,358 (116) |
 | noise buyouts incl. plots (count) | 29 (1) | 0 (0) | 0 (0) | 0 (0) | 83 (2) |
 | in built-up area km | 1.21 | 0.44 | 1.69 | 1.00 | 2.17 |
 | bridges: count / m | 6 / 480 | 7 / 550 | 9 / 1,050 | 9 / 1,060 | 11 / 2,000 |
-| noise walls m / m² | 2,669 / 9,136 | 1,450 / 4,349 | 4,378 / 14,344 | 3,269 / 10,246 | 6,969 / 26,056 |
+| noise walls m / m² | 3,539 / 11,885 | 2,359 / 7,078 | 5,568 / 18,772 | 4,068 / 12,805 | 7,729 / 28,766 |
 | crossings (paid) | 31 (28) | 28 (24) | 31 (24) | 35 (23) | 40 (24) |
 | junction / overbridge / reconnection / diversion | 4 / 10 / 3 / 11 | 3 / 12 / 2 / 7 | 2 / 13 / 4 / 5 | 3 / 6 / 2 / 12 | 0 / 6 / 10 / 8 |
 | cut / fill k m³ | 2,079 / 1,763 | 1,542 / 1,310 | 1,302 / 1,106 | 1,705 / 1,452 | 2,727 / 2,440 |
@@ -449,8 +452,8 @@ seeds 20261121 / 20261122 / 20261123, yield **3,226 / 3,653 / 3,796 M**, all VAL
 geometries during concurrent geology/noise calibration. Reproduce with model-7 code and
 `npx tsx scripts/optimize.ts <90|80|90> 500 scripts/<design>.json /tmp/candidate.json <seed>`.
 
-**Calibration and spatial check:** current direct80 / bypass = **1.104×**, direct90 / bypass = **1.152×**,
-centre / bypass = **2.726×**. The modest fringe premium warranted inspecting the mask, roads and oriented building
+**Calibration and spatial check:** current direct80 / bypass = **1.108×**, direct90 / bypass = **1.150×**,
+centre / bypass = **2.712×**. The modest fringe premium warranted inspecting the mask, roads and oriented building
 rectangles (`scripts/town-audit.ts design.json map.svg`), not adding a multiplier to force a preferred ratio.
 The 80 km/h line skirts eastern Kryblice / garage rows at km 3–4, crosses the narrow developed valley at the
 western edge of Poříčí's industrial strip around km 5, and skirts / crosses Voletiny at km 6–7. It does not
@@ -460,18 +463,18 @@ substantially overstate the developed corridor.
 
 | Audit metric | Bypass 90 | Direct fringe 80 | Direct fringe 90 |
 |---|---:|---:|---:|
-| Within 300 m of any built-up cell: km / M CZK per km | 7.43 / 189 | 13.38 / 218 | 12.27 / 228 |
-| Outside 300 m: M CZK per km | 137 | 124 | 133 |
-| At grade, ≥ 50% built-up footprint: km / M CZK per km | 0.36 / 704 | 1.26 / 391 | 0.54 / 411 |
-| Same urban cells, before explicit property: M CZK per km | 234 | 221 | 207 |
+| Within 300 m of any built-up cell: km / M CZK per km | 7.43 / 193 | 13.38 / 221 | 12.27 / 231 |
+| Outside 300 m: M CZK per km | 138 | 124 | 133 |
+| At grade, ≥ 50% built-up footprint: km / M CZK per km | 0.36 / 721 | 1.26 / 397 | 0.54 / 413 |
+| Same urban cells, before explicit property: M CZK per km | 251 | 227 | 208 |
 | Rural at grade, outside 300 m: M CZK per km | 134 | 118 | 128 |
 | Same rural cells, before explicit property: M CZK per km | 124 | 110 | 119 |
 
 The 300 m audit tests **all 5 m mask-cell centres**, so it includes open land near villages; it is not the
 same quantity as built-up footprint share. Property here means land, forest, footprint buildings and noise
 buyouts; walls and crossings remain in construction. The direct routes' urban at-grade construction rates
-are 2.00× / 1.74× their rural rates before property (research/09's broad 1.2–2.5× planning range), although
-terrain is not controlled. For direct80, extra bridges/walls/crossings cost +369 M versus the bypass, while
+are 2.06× / 1.75× their rural rates before property (research/09's broad 1.2–2.5× planning range), although
+terrain is not controlled. For direct80, extra bridges/walls/crossings cost +386 M versus the bypass, while
 road base/earthworks save 213 M on a route 1.95 km shorter; the bypass also has its own expensive valley
 crossing and acquisitions. These are plausible reasons for a modest whole-route difference, not evidence
 that building through dense fabric is cheap. The centre design's km 4–5 alone costs **3,163 M** with 82
@@ -479,13 +482,13 @@ footprint removals and 1 additional noise buyout. No urban multiplier or widened
 to hit a ratio; incomplete yard masks, plot/access severance and acoustic uncertainty remain limitations.
 
 The former 70/100/150 m contour sensitivity is superseded: D is now an output, not a tunable input.
-Research/11 records the five-design before/after and mixed-vs-hard-ground EIA comparisons.
+Research/11 records the five-design before/after and the conservative hard-ground EIA fit.
 Heavy share, ground and operating speed remain uncertain; a smaller low-floor contour is not evidence
 that upper floors or reflective urban streets are safe. No route was reoptimised for the new noise model.
 
 ### Performance
 
-`evaluate()` model 8: about 30–40 ms in Node across the five saved designs (five-run bench means).
+`evaluate()` model 9: 32–45 ms in Node across the five saved designs (five-run bench means on a shared host).
 The entire town step (footprint buildings + crossings + noise) is about 2–3.5 ms, cost arrays 0.2–0.4 ms.
 Noise queries use the building spatial hash, deduplicate candidates per station, and cache actual exposed
 pairs; no station × building matrix. Source emissions and a bounded 0.5 m range/height propagation table,
@@ -513,9 +516,9 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   estimate takes the built-up share at the centreline only.
 - Buildings: only OSM ways (no multipolygon buildings); the rectangle over-covers L-shaped footprints; no
   severance cost for plots cut off from their access.
-- Noise: category emissions and day/night traffic are now explicit, but the 15% heavy share, fixed mixed
-  ground and slant/effective-height terrain extension remain assumptions. Flat mixed-ground EIA comparisons
-  underpredict by up to 4 dB; missing site inputs prevent matched validation. The 500 Hz barrier source,
+- Noise: category emissions and day/night traffic are explicit, but 15% heavy share and the terrain
+  extension remain assumptions. Hard ground is a conservative categorical fit to two EIA cases, not
+  independent validation; residuals −0.42…+2.57 dB and missing inputs prevent a universal accuracy claim. The 500 Hz barrier source,
   traffic allowance and practical cap remain provisional. Pairwise 2D geometry uses radial façade distance,
   not true oblique rays or finite-line integration; no heavy-vehicle spectrum, reflections, intervening
   buildings, or terrain screening beyond the road's own cut (embankment edges remain unmodelled).

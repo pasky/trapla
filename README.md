@@ -171,8 +171,8 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
   Building values exclude land; noise buyouts add a provisional plot allowance. Crossings also use
   `research/12-csn-norm-values.md` §2 and `13-crossing-items-tenders.md`: SPK unit prices are sourced,
   link/ramp geometry remains a study-stage heuristic. Noise uses Czech Manuál 2018/2020 vehicle emissions,
-  TP219 day/night traffic and mixed-ground propagation, with approximate terrain/barrier geometry
-  (`research/11-noise-calculation.md`; EIA comparison limitations are explicit). See `PLAN.md` for model-8
+  TP219 day/night traffic and an EIA-calibrated hard-ground class, with approximate terrain/barrier geometry
+  (`research/11-noise-calculation.md`; EIA comparison limitations are explicit). See `PLAN.md` for model-9
   comparisons, junction spacing, raw-crossing clearance and geometric wall/cut screening.
 
 ## Long curves and radius handles (horizontal editing)

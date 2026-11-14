@@ -206,13 +206,13 @@ describe('noise rule', () => {
     // The closest station is in a tunnel; more distant unscreened sources need walls.
     const cut = run([20, 100, 180], [0, 1, 0]);
     expect(cut.boughtOut).toEqual([]);
-    expect([...cut.L]).toEqual([3, 0, 3]);
+    expect([...cut.L]).toEqual([4, 0, 4]); // hard ground requires the next wall height
   });
 
   it('queries an isolated upper floor beyond the low-receiver contour', () => {
     const info: BuildingInfo = [100, 4, BUILDING_KIND.apartments, 0, 70, 5, 5, 0];
     const b = new BuildingIndex([[0, 70, 8]], [info]);
-    const model = createNoiseModel(9000, 90);
+    const model = createNoiseModel(9000, 90, { ground: 'mixed' });
     const d = b.facadeDistance(0, 0, 0) - NOISE.facadeOffset;
     expect(d).toBeGreaterThan(model.contour);
     expect(noiseLevels(d, 10.5, model).excessDb).toBeGreaterThan(0);

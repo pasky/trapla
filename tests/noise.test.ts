@@ -33,26 +33,35 @@ describe('Czech road-traffic source and propagation', () => {
     expect(noiseDistance(18000, 90)).toBeGreaterThan(model.contour);
     expect(createNoiseModel(9000, 90, { heavyShare: 0.25 }).contour).toBeGreaterThan(model.contour);
     // Upper floors lose ground absorption: the low contour must NOT be the spatial-query bound.
-    expect(noiseLevels(model.contour + 20, 10.5, model).excessDb).toBeGreaterThan(0);
-    expect(model.radius).toBeGreaterThan(model.contour + 20);
+    const mixed = createNoiseModel(9000, 90, { ground: 'mixed' });
+    expect(noiseLevels(mixed.contour + 20, 10.5, mixed).excessDb).toBeGreaterThan(0);
+    expect(mixed.radius).toBeGreaterThan(mixed.contour + 20);
+    // Ground changes propagation, not emissions; hard ground cannot credit porous absorption.
+    expect(model.dayDb).toBe(mixed.dayDb);
+    expect(model.nightDb).toBe(mixed.nightDb);
+    expect(model.contour).toBeGreaterThan(mixed.contour);
+    expect(noiseLevels(50, 1.5, model).nightDb).toBeGreaterThan(noiseLevels(50, 1.5, mixed).nightDb);
     // At low traffic a hard-ground crossing can exist without any low mixed-ground exposure.
-    const quiet = createNoiseModel(375, 90);
+    const quiet = createNoiseModel(375, 90, { ground: 'mixed' });
     expect(quiet.radius).toBeGreaterThan(0);
     expect(noiseLevels(1.75, 1.5, quiet).excessDb).toBeLessThan(0);
     expect(quiet.contour).toBe(0);
   });
 
-  it('tabulates the empirical mixed-ground model accurately across height and near-distance transitions', () => {
-    const model = createNoiseModel(9000, 90);
-    for (const h of [1.5, 2.23, 4.5, 4.99, 5, 5.01, 7.31, 9.99, 10, 25]) {
-      for (const r of [1, 3.75, 7.9, 8, 8.1, 20.23, 47.3, 80, 99, 1000, 1100]) {
-        expect(Math.abs(model.loss(r, h) - propagationLoss(r, h))).toBeLessThan(0.035);
+  it('tabulates both ground classes accurately across height and near-distance transitions', () => {
+    for (const ground of ['hard', 'mixed'] as const) {
+      const model = createNoiseModel(9000, 90, { ground });
+      for (const h of [1.5, 2.23, 4.5, 4.99, 5, 5.01, 7.31, 9.99, 10, 25]) {
+        for (const r of [1, 3.75, 7.9, 8, 8.1, 20.23, 47.3, 80, 99, 1000, 1100]) {
+          expect(Math.abs(model.loss(r, h) - propagationLoss(r, h, ground))).toBeLessThan(0.035);
+        }
       }
     }
     // Manual worked propagation values: Uo(100)=11.0384; Up(100,1.5)=18.5892 dB.
-    expect(propagationLoss(100, 10)).toBeCloseTo(11.0384, 3);
-    expect(propagationLoss(100, 1.5)).toBeCloseTo(18.5892, 3);
+    expect(propagationLoss(100, 10, 'hard')).toBeCloseTo(11.0384, 3);
+    expect(propagationLoss(100, 1.5, 'mixed')).toBeCloseTo(18.5892, 3);
     expect(propagationLoss(200, 1.5)).toBeGreaterThan(propagationLoss(100, 1.5));
-    expect(propagationLoss(100, 1.5)).toBeGreaterThan(propagationLoss(100, 10));
+    expect(propagationLoss(100, 1.5, 'mixed')).toBeGreaterThan(propagationLoss(100, 10, 'mixed'));
+    expect(propagationLoss(100, 1.5, 'hard')).toBe(propagationLoss(100, 10, 'hard'));
   });
 });

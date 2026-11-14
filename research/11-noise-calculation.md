@@ -1,4 +1,4 @@
-# Czech road-noise calculation (cost model 8)
+# Czech road-noise calculation (cost model 9)
 
 Research and implementation: 2026-11-14. Replaces research/09 §2's **guessed 100 m contour**.
 This is a compact planning calculation, **not an acoustic study or a compliance certificate**.
@@ -105,10 +105,12 @@ Uo(d) = 50.2 − sqrt(3357.23 − 911.8·log10(d))                  8…1000 m
 Up(d,h) = 8.78·log10((d² + h² + 6h + 9)/(17h + 51))          8…1000 m, h=1.5…<10 m
 ```
 
-For **mixed ground (40–60% porous)**, U=Up below 5 m; between 5 and 10 m blend
+The calibrated default is **hard ground**, U=Uo: no porous-ground credit, no emission change (§4).
+For optional **mixed ground (40–60% porous)**, U=Up below 5 m; between 5 and 10 m blend
 `U=Up·(10−h)/5 + Uo·(h−5)/5`; above 10 m use Uo. Pure porous ground uses a different height transition
-(10–20 m); we deliberately do not label our mixed choice “all soft”. At 100 m, Uo=11.0384 dB and
-Up(h=1.5)=18.5892 dB. Consequently **there is no single contour for all floors**.
+(10–20 m). At 100 m, Uo=11.0384 dB and Up(h=1.5)=18.5892 dB. In mixed mode there is no single
+contour for all floors; in hard mode loss depends only on slant range, so horizontal contours vary slightly
+with height. A higher receiver does not receive an invented extra hard-ground attenuation.
 The manual's 3.75…8 m near-distance branch continues with 10 log(d/8), using Up(8,h) for its soft term.
 Below 3.75 m clamp rather than extrapolate the empirical fit; beyond 1 km continue at 10 log(r/1000).
 The small mismatch of the empirical near-distance fits is retained; exact evaluation below 8.5 m avoids
@@ -140,25 +142,62 @@ Maekawa-style `IL=clamp(10log10(3+40δ/0.68)−5,0,13)` dB, best of cut edge and
 whole-dwelling acquisition when neither works. The 500 Hz surrogate, −5 dB allowance, 13 dB cap,
 50 m end margin, highest-floor receiver and property/plot costs remain **provisional** (research/09 §5).
 
-At Q=9,000, p=15%, flat mixed ground; distances are **road axis to protected receiver**, not façade:
+At Q=9,000, p=15%, calibrated **hard ground**; distances are **road axis to protected receiver**, not façade:
 
 | light speed | h=1.5 m contour | h=4.5 m contour | h=10.5 m contour | all-height hard bound, source slant |
 |---|---:|---:|---:|---:|
-| 80 km/h | 35.68 m | 45.14 m | 89.39 m | 88.21 m |
-| 90 km/h | 37.47 m | 47.46 m | 96.46 m | 95.24 m |
+| 80 km/h | 89.95 m | 89.87 m | 89.39 m | 88.21 m |
+| 90 km/h | 96.98 m | 96.91 m | 96.46 m | 95.24 m |
+
+For comparison, former model-8 mixed contours at heights 1.5/4.5/10.5 m were
+35.68/45.14/89.39 m at 80 km/h and 37.47/47.46/96.46 m at 90 km/h. High-floor contours do not
+change because mixed propagation already used Uo there.
 
 Add 2 m to obtain the corresponding façade distance. `quantities.noiseDistance` now reports the
-**1.5 m mixed-ground axis contour**, not the old source-slant surrogate. Default untagged two-storey
+**1.5 m selected-ground axis contour**, not the old source-slant surrogate. Default untagged two-storey
 houses use the 4.5 m receiver. Old “82/100 m” values therefore are not an apples-to-apples single-height
 comparison. Both calculations are night-controlled at the default traffic split.
 
-## 4. Published-study comparison — qualified, not a calibration
+## 4. Ground-class calibration and qualified study comparison
 
-Reproduce all numbers with **`npx tsx scripts/noise-check.ts`**. None of the visited EIA PDFs provides
-a completely specified, flat, isolated, unshielded class-I benchmark with all link speeds/elevations.
-The following checks are useful **partial validation**, not evidence for ±1–2 dB predictive accuracy.
-In particular, using a generic flat mixed surface systematically underpredicts these façade cases;
-do not conceal that by fitting an unexplained emission correction.
+Reproduce the fit and all receiver residuals with **`npx tsx scripts/noise-check.ts`**. None of the visited
+EIA PDFs provides a completely specified, flat, isolated, unshielded class-I benchmark with all link
+speeds/elevations. These data now select a ground class; they are **calibration data, not independent
+validation**. No emission, traffic, speed, receiver height or extra dB offset is fitted.
+
+### Fitted parameter and objective
+
+**Fitted value: `NOISE.ground = 'hard'` (U=Uo, zero additional porous-ground credit).** The Czech manual's
+§1.10.1.1 p.51 and §2 pp.63–64 define discrete hard/mixed/porous classes. They do **not** prescribe a
+continuous G parameter or a source-side/receiver-side split. Thus we minimize error over the supported
+classes rather than invent a fractional Uo/Up interpolation or borrow a split from a different method.
+Paved source-side surfaces make a harder effective treatment plausible, but neither the hard-area
+fraction nor verge impedance was measured here; the selected class is a planning calibration, not a
+claim that every square metre of countryside is acoustically hard.
+
+The objective is mean squared residual over **8 observations**: both day/night levels at both heights
+in each of the two studies below. Each observation has equal weight, so each study also has equal weight.
+Conservative selection requires **mean residual ≥0** (prediction minus study); among eligible classes,
+choose minimum RMSE. Hard also wins without this constraint. Porous is dominated: at these heights it
+has at least as much loss as mixed, whose eight residuals are all negative, so it cannot improve the fit.
+There is no supported continuous-ground search hidden behind the word “fit”.
+
+| ground class | mean residual dB | RMSE dB | residual range dB |
+|---|---:|---:|---:|
+| Mixed (former default) | −2.720 | 2.823 | −4.009 … −2.026 |
+| **Hard (selected)** | **+0.720** | **1.372** | **−0.422 … +2.571** |
+
+The bias changes from systematically low to mildly high. Conservative **on average** does not mean
+an upper bound at every window: the remaining ~0.4 dB upper-floor underpredictions are reported rather
+than erased with an emission correction. Treating these correlated day/night observations as eight
+independent measurements would overstate confidence; no confidence interval or universal accuracy is claimed.
+
+| receiver | selected hard day/night dB | residual day/night dB |
+|---|---:|---:|
+| Třebíč RKB1, 2 m | 55.6 / 47.9 | +2.6 / +2.3 |
+| Třebíč RKB1, 5 m | 55.6 / 47.9 | −0.1 / −0.4 |
+| Jaroměřice point17, 2.5 m assumption | 56.3 / 47.6 | +1.1 / +1.1 |
+| Jaroměřice point17, 5.5 m assumption | 56.3 / 47.6 | −0.4 / −0.4 |
 
 ### I/23 Třebíč southwest bypass
 
@@ -180,7 +219,7 @@ asphalt. No numeric speed or pavement input is stated for RKB1. Comparing, rathe
 | 5 m | 55.7 / 48.3 | 52.0 / 44.3 | −3.7 / −4.0 | 55.6 / 47.9 |
 
 Agreement is only at the **ground-assumption envelope** level, within about 0.4 dB at the upper-floor
-hard-ground endpoint; the default mixed case is **not within** the study's uncertainty. The day/night
+hard-ground endpoint; the former mixed default is **not within** the study's uncertainty. The day/night
 difference is reproduced within ~0.3 dB. More exact agreement needs the original link/terrain model,
 not a guessed extra façade correction or doubled traffic.
 
@@ -224,31 +263,32 @@ the broad class-I operating/traffic assumptions, not the former 100 m radius.
 
 ## 5. Costs, performance and remaining uncertainty
 
-Rebased onto `main` at `428cd0d`, which adds model-7 crossing links/approaches. Noise is model **8**
-so saved model-7 scores are invalidated. Saved geometries/profiles stay fixed; M CZK rounded independently:
+Rebased onto `main` at `428cd0d`, which adds model-7 crossing links/approaches. Ground calibration is
+model **9**, invalidating earlier saved scores. Saved geometries/profiles stay fixed; M CZK rounded independently:
 
-| design | initial model 6 | main model 7 → noise model 8 | buyouts before → after | wall area before → after m² |
+| design | main model 7, old surrogate | mixed model 8 → hard model 9 | buyouts 8 → 9 | wall area 8 → 9 m² |
 |---|---:|---:|---:|---:|
-| Reference bypass | 3,949 | 4,158 → 4,078 | 3 → 1 | 12,115 → 9,136 |
-| Optimised bypass 90 | 3,038 | 3,305 → 3,276 | 0 → 0 | 7,318 → 4,349 |
-| Direct fringe 80 | 3,470 | 3,690 → 3,617 | 1 → 0 | 20,372 → 14,344 |
-| Direct fringe 90 | 3,626 | 3,807 → 3,774 | 0 → 0 | 13,574 → 10,246 |
-| Town centre 90 | 9,024 | 9,182 → 8,930 | 10 → 2 | 29,835 → 26,056 |
+| Reference bypass | 4,158 | 4,078 → 4,105 | 1 → 1 | 9,136 → 11,885 |
+| Optimised bypass 90 | 3,305 | 3,276 → 3,303 | 0 → 0 | 4,349 → 7,078 |
+| Direct fringe 80 | 3,690 | 3,617 → 3,661 | 0 → 0 | 14,344 → 18,772 |
+| Direct fringe 90 | 3,807 | 3,774 → 3,799 | 0 → 0 | 10,246 → 12,805 |
+| Town centre 90 | 9,182 | 8,930 → 8,957 | 2 → 2 | 26,056 → 28,766 |
 
-The main-7 → noise-8 pair isolates this change. Before rebasing, applying noise alone to model 6 gave
-3,868 / 3,008 / 3,397 / 3,593 / 8,771 M in the same order; the difference is concurrent crossing pricing,
-not changed acoustics. No excavation/geology implementation is changed here.
+The 8→9 pair isolates ground calibration. Buyouts are unchanged; additional loss of ground credit requires
+longer/higher walls but does not exceed the available walls' capacity at additional buildings.
+No excavation/geology implementation is changed here.
 
 All five remain **VALID**, with matching per-station cost sums. Noise does not alter the auto-profile.
 `npx vitest run` covers period-energy conservation, zero/day-only traffic, controlling period,
 traffic/speed/heavy-share effects, contour inversion, table accuracy, absent low-traffic contours, isolated upper-floor spatial queries and existing geometric walls,
 cut edges, buyouts, attribution and range sums. `npx tsc --noEmit` passes.
-Five-run `bench.ts scripts/*.json` means after rebase: **30–38 ms**, town work ~2–3.5 ms. Shared-host
-runs can be slower; an earlier same-session old-main comparison gave 32–42 ms, so there is no material
-noise-path regression.
+Five-run `bench.ts scripts/*.json` means with hard ground: **32–45 ms** on this shared-host run;
+noise retains the same bounded lookup table and spatial-query radius. Earlier mixed runs were 30–38 ms,
+with heavily loaded runs >50 ms; those timings are not controlled evidence of a model regression.
 
-Unresolved: no local traffic survey or acoustic validation set; a fixed mixed surface can underpredict
-hard/reflective surroundings; uneven-ground extension is approximate; highest-floor-only evaluation
+Unresolved: no local traffic survey or independent acoustic validation set; fitted hard ground may
+overshoot genuinely porous surroundings and is not guaranteed conservative everywhere; uneven-ground
+extension is approximate; highest-floor-only evaluation
 is not a search over every occupied window; no curved finite-line integration, multiple-route
 aggregation, wind, building screening or detailed meteorology. The EIA comparisons expose rather than
 resolve those gaps. The wall model and buyout fallback remain deliberately separate provisional game

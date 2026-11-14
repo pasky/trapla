@@ -176,7 +176,7 @@ export const ROAD_CLASSES: Record<string, RoadClassRow> = {
 };
 
 // ---------------------------------------------------------------------------------------------
-// Czech source + mixed-ground propagation, with PROVISIONAL geometric mitigation.
+// Czech source + calibrated ground class, with PROVISIONAL geometric mitigation.
 // Manuál 2018 (2020 revision), TP 219 (2019), NV 272/2011; research/11-noise-calculation.md.
 // Compact planning calculation, NOT a full acoustic study / legal assessment.
 // ---------------------------------------------------------------------------------------------
@@ -195,6 +195,10 @@ export const NOISE = {
   heavyShare: 0.15,
   /** Heavy vehicles capped at 80 km/h; light flow uses design speed (operating-speed assumption). */
   heavySpeed: 80,
+  /** Manual §1.10/§2 categorical ground choice. Hard minimizes equal-weight EIA receiver
+   * squared error versus mixed and has positive mean residual; no emission adjustment.
+   * No continuous G or source-side split is prescribed here. Calibration caveats: research/11 §4. */
+  ground: 'hard' as 'hard' | 'mixed',
   /** wall extends this far beyond the exposed stretch, m */
   margin: 50,
   /** Protected outdoor receiver: 2 m in front of the nearest façade, towards the source. */

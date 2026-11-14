@@ -13,7 +13,7 @@ export interface NoiseTraffic {
 }
 
 export interface NoiseOptions extends NoiseTraffic {
-  /** Default mixed (40–60% porous); hard is useful for paved-ground sensitivity checks. */
+  /** Default calibrated hard class; mixed (40–60% porous) remains available for sensitivity. */
   ground?: 'mixed' | 'hard';
 }
 
@@ -49,12 +49,12 @@ function hardGround(d: number): number {
   return u + (r > 1000 ? 10 * Math.log10(r / 1000) : 0);
 }
 
-/** Mixed ground (40–60% porous), Manual §2 pp.63–64. Height blends Up→Uo from 5 to 10 m.
+/** Manual §2 pp.63–64: hard Uo by default; mixed (40–60% porous) blends Up→Uo from 5 to 10 m.
  * For uneven sections d is slant range and h is effective ray height (absolute road-relative
  * receiver elevation, mirrored below grade). This bridge/cut extension is NOT prescribed by
  * the manual; it suppresses ground credit, but is not a proven upper bound on real-terrain levels. No extra
  * façade reflection, vegetation, terrain or meteorological credit. */
-export function propagationLoss(slant: number, height: number, ground: 'mixed' | 'hard' = 'mixed'): number {
+export function propagationLoss(slant: number, height: number, ground: 'mixed' | 'hard' = NOISE.ground): number {
   const r = Math.max(3.75, slant), h = Math.max(1.5, height);
   const hard = hardGround(r);
   if (h >= 10 || ground === 'hard') return hard;
@@ -68,7 +68,7 @@ export function propagationLoss(slant: number, height: number, ground: 'mixed' |
 export interface NoiseModel extends ReturnType<typeof noiseSource> {
   /** Conservative all-height search bound, slant metres from near-lane source. */
   radius: number;
-  /** Mixed-ground contour, axis-to-receiver metres, at NOISE.receiverHeight above grade. */
+  /** Selected-ground contour, axis-to-receiver metres, at NOISE.receiverHeight above grade. */
   contour: number;
   /** Interpolated loss table (0.5 m range × 0.5 m height); built once per evaluation. */
   loss: (slant: number, height: number) => number;
@@ -92,6 +92,7 @@ export function noiseExcess(slant: number, height: number, model: NoiseModel): n
 
 export function createNoiseModel(traffic: number, speed: number, options: NoiseOptions = {}): NoiseModel {
   const source = noiseSource(traffic, speed, options);
+  const ground = options.ground ?? NOISE.ground;
   let low = 0, high = 1000;
   while (hardGround(high) < source.excessDb) high *= 2;
   for (let k = 0; k < 40; k++) {
@@ -103,13 +104,13 @@ export function createNoiseModel(traffic: number, speed: number, options: NoiseO
   const step = 0.5, columns = Math.ceil(Math.min(radius + 1, 1000) / step) + 1, rows = 18;
   const table = new Float64Array(columns * rows);
   for (let j = 0; j < rows; j++) for (let i = 0; i < columns; i++) {
-    table[j * columns + i] = propagationLoss(i * step, 1.5 + j * step, options.ground);
+    table[j * columns + i] = propagationLoss(i * step, 1.5 + j * step, ground);
   }
   const loss = (slant: number, height: number): number => {
     const x = Math.max(0, slant / step), y = Math.max(0, Math.min(rows - 1, (height - 1.5) / step));
     const i = Math.floor(x), j = Math.min(rows - 2, Math.floor(y));
     // Do not interpolate across the 3.75 m clamp or the empirical fits' small jump at 8 m.
-    if (slant < 8.5 || i >= columns - 1) return propagationLoss(slant, height, options.ground);
+    if (slant < 8.5 || i >= columns - 1) return propagationLoss(slant, height, ground);
     const a = j * columns + i, b = a + columns, t = x - i, u = y - j;
     return (table[a] * (1 - t) + table[a + 1] * t) * (1 - u)
       + (table[b] * (1 - t) + table[b + 1] * t) * u;
@@ -126,7 +127,7 @@ export function createNoiseModel(traffic: number, speed: number, options: NoiseO
   return model;
 }
 
-/** Unmitigated mixed-ground contour at the default low receiver, axis-to-receiver m. */
+/** Unmitigated contour for the calibrated ground class at the low receiver, axis-to-receiver m. */
 export function noiseDistance(traffic: number, speed: number): number {
   return createNoiseModel(traffic, speed).contour;
 }
