@@ -361,12 +361,12 @@ Rules now (`src/core/horizontal.ts`, `HORIZONTAL_NORMS` in `src/core/data/norms.
 | rule | source |
 |---|---|
 | arc with R ≥ L²/(24 · 0.25 m) needs no transition (1,350 / 1,067 / 817 m) | ČSN 73 6101 (VUT "Aplikace ČSN 73 6101") |
-| same-direction arcs may meet directly (compound curve) if neighbouring radii differ ≤ 2× and the smallest ≥ R min | ČSN, the "exceptional" variant without intermediate transitions — used freely here |
+| same-direction arcs may meet directly (compound curve) if neighbouring radii differ ≤ 2× and the smallest ≥ R min; no ratio limit between two transition-free arcs | ČSN, the "exceptional" variant without intermediate transitions — used freely here; the 0.25 m rule also covers intermediate transitions |
 | opposite curves: transitions may touch; ends without a transition need a 2·vn straight between them | ČSN (the recommended R2/R1 ≤ 2 for reverse curves is not checked) |
 | a transition takes ≈ L/2 of the tangent and L/2 of the curve; a compound curve needs them only at its two ends | game simplification (transitions are still not drawn) |
 | a large-radius arc facing an opposite curve may carry a transition if long enough (asks 45 m instead of 90 m) | game simplification |
 | straight between same-direction arcs: allowed whenever the required transitions fit, no minimum length; otherwise the arcs are joined | game simplification (the norm only discourages short straights) |
-| 5 m editor tolerance (`EDIT_TOLERANCE`): arc junctions off the polygon legs, wiggling bends left out, arcs moved by joining | game rule, not a norm value |
+| 5 m editor tolerance (`EDIT_TOLERANCE`): arc junctions off the polygon legs; a bend turning against its neighbour where no S-curve fits is dropped from the tangent polygon if within 5 m of the line between its neighbours; arcs moved by joining | game rule, not a norm value |
 
 Compound solve: arc j turns from leg j−1's direction to leg j's, so any radii give a G1 curve; unknowns are the radii
 and the start point. The classic solution (arcs meet on the legs, T[k] + T[k+1] = leg) has one degree of freedom,

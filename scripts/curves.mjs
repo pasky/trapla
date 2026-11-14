@@ -129,5 +129,45 @@ await shot('08-radius-max');
 await page.click('.rlabel .rauto');
 await idle(300);
 ok((await state()).d.pis[I].r === null, '"auto" returns to the automatic radius');
+
+// ---- 3. history stays intact around uncommitted wheel steps, and a drag gives way to outside changes
+await page.evaluate(() => window.trapla.lookAt(7454, 5258, 1700, 0, 65));
+await idle(300);
+await page.keyboard.press('+');
+await idle(700); // committed: 375 m
+const notch = () => page.evaluate(() => document.querySelector('.pi.sel').dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })));
+await notch();
+const rT = (await state()).d.pis[I].r;
+await page.keyboard.press('Control+z'); // within the 500 ms debounce
+ok((await state()).d.pis[I].r === 373, `undo right after a wheel step takes back just that step (${rT} → ${(await state()).d.pis[I].r} m)`);
+await page.waitForTimeout(800);
+await page.keyboard.press('Control+y');
+ok((await state()).d.pis[I].r === rT, `… and redo still brings it back (${(await state()).d.pis[I].r} m)`);
+await notch();
+await page.evaluate(() => { const t = window.trapla, d = t.getDesign(); d.pis[1].r = 600; t.setDesign(d); }); // replaced from outside
+await page.waitForTimeout(800);
+await page.keyboard.press('Control+z');
+ok((await state()).d.pis[I].r === rT, 'a design replaced from outside is not committed a second time by the pending wheel step');
+await page.keyboard.press('Control+y');
+await idle(300);
+const gA = await centre('.rgrip'), pA = await centre('.pi.sel');
+const vx = (gA.x - pA.x) / Math.hypot(gA.x - pA.x, gA.y - pA.y), vy = (gA.y - pA.y) / Math.hypot(gA.x - pA.x, gA.y - pA.y);
+await page.mouse.move(gA.x, gA.y);
+await page.mouse.down();
+await page.mouse.move(gA.x + vx * 20, gA.y + vy * 20);
+await page.mouse.move(gA.x + vx * 40, gA.y + vy * 40);
+ok((await state()).d.pis[I].r > 600, `grip drag in progress (${(await state()).d.pis[I].r} m)`);
+await page.evaluate(() => { const t = window.trapla, d = t.getDesign(); d.pis[1].r = 900; t.setDesign(d); });
+await page.mouse.move(gA.x + vx * 60, gA.y + vy * 60);
+await page.mouse.move(gA.x + vx * 80, gA.y + vy * 80);
+await page.mouse.up();
+await idle(300);
+ok((await state()).d.pis[I].r === 900, `a design replaced during the drag ends the drag (${(await state()).d.pis[I].r} m)`);
+await page.mouse.move(pA.x + 200, pA.y + 200);
+await page.mouse.down();
+await page.mouse.move(pA.x + 230, pA.y + 215);
+await page.mouse.up();
+await idle(300);
+ok((await state()).d.pis[I].r === 900 && (await state()).d.pis.length === 18, 'map controls work again after the aborted drag (pan, no stray edit)');
 ok(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close(); await server.close();

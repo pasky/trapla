@@ -1,6 +1,6 @@
 // Norm checks as per-family functions (roads now; rail would add its own family using cant).
 
-import { MAX_DEFLECTION, type Alignment } from './horizontal';
+import { MAX_DEFLECTION, ratioExcess, type Alignment } from './horizontal';
 import type { Profile } from './vertical';
 import type { SpeedNorms } from './data/norms';
 
@@ -35,6 +35,8 @@ const fmt = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDig
 
 const bend = (k: number) => `bend ${k + 1}`;
 const bends = (a: number, b: number) => (a === b ? bend(a) : b === a + 1 ? `bends ${a + 1} and ${b + 1}` : `bends ${a + 1}–${b + 1}`);
+/** two neighbours (points between them that carry no curve are not counted) */
+const pair = (a: number, b: number) => `bends ${a + 1} and ${b + 1}`;
 const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
 export function horizontalViolations(al: Alignment, speed: number): Violation[] {
@@ -101,14 +103,14 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
     if (j.kind === 'compound') {
       if (!a || !b) continue;
       const lo = Math.min(a.rEff, b.rEff), hi = Math.max(a.rEff, b.rEff);
-      if (hi <= lo * R.compoundRatio * (1 + 1e-9)) continue;
+      if (ratioExcess(lo, hi, R) === 0) continue;
       const big = a.rEff > b.rEff ? a : b, small = big === a ? b : a;
       const fix = !big.auto ? `reduce the radius of ${bend(big.index)} (to ≤ ${fmt(Math.floor(lo * R.compoundRatio))} m, or far enough that the two no longer touch) or set it back to auto`
         : !small.auto ? `set the radius of ${bend(small.index)} to ≥ ${fmt(Math.ceil(hi / R.compoundRatio))} m or back to auto`
           : 'move the bends so that the turn is spread more evenly, or delete one of them';
       out.push({
         kind: 'compound', ...where,
-        msg: `${bends(j.from, j.to)} are joined as one curve, but their radii ${fmt(a.rEff)} m and ${fmt(b.rEff)} m differ by more than ${fmt(R.compoundRatio)}× — ${fix}`,
+        msg: `${pair(j.from, j.to)} are joined as one curve, but their radii ${fmt(a.rEff)} m and ${fmt(b.rEff)} m differ by more than ${fmt(R.compoundRatio)}× — ${fix}`,
       });
       continue;
     }
@@ -132,7 +134,7 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
           : `the transition of ${bend(j.plainFrom ? j.to : j.from)} ${fmt(j.plainFrom ? j.needTo : j.needFrom)} m and the straight before the plain arc of ${bend(j.plainFrom ? j.from : j.to)} ${fmt(j.plainFrom ? j.needFrom : j.needTo)} m`;
       out.push({
         kind: 'transition', ...where,
-        msg: `${bends(j.from, j.to)} turn opposite ways ${fmt(j.length)} m apart: the curves take ${fmt(tf)} + ${fmt(tt)} m of that leg and ${between}, ${fmt(used)} m in all — move them ${more} further apart, reduce a radius, or delete one of them`,
+        msg: `${pair(j.from, j.to)} turn opposite ways ${fmt(j.length)} m apart: the curves take ${fmt(tf)} + ${fmt(tt)} m of that leg and ${between}, ${fmt(used)} m in all — move them ${more} further apart, reduce a radius, or delete one of them`,
       });
     } else {
       // same direction, too close for a straight; normally such bends are joined into one curve
@@ -142,7 +144,7 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
           : `, and they could not be joined into one curve that fits between its neighbours — move them ${more} further apart, or delete one of them`;
       out.push({
         kind: 'transition', ...where,
-        msg: `${bends(j.from, j.to)} turn the same way ${fmt(j.length)} m apart: their curves take ${fmt(tf)} + ${fmt(tt)} m of that leg${j.needFrom + j.needTo > 0 ? ` and transitions ${fmt(j.needFrom + j.needTo)} m more` : ''}, too much for a straight between them${tail}`,
+        msg: `${pair(j.from, j.to)} turn the same way ${fmt(j.length)} m apart: their curves take ${fmt(tf)} + ${fmt(tt)} m of that leg${j.needFrom + j.needTo > 0 ? ` and transitions ${fmt(j.needFrom + j.needTo)} m more` : ''}, too much for a straight between them${tail}`,
       });
     }
   }

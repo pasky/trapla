@@ -4,12 +4,12 @@
 // all changes go through the store, so the HUD radius field, undo/redo and persistence stay in sync.
 
 import './curve-edit.css';
-import { horizontalViolations } from '../core/checks';
 import { horizontalRules } from '../core/data/norms';
 import type { Design, Result } from '../core/evaluate';
-import { buildAlignment, pointAt, type Alignment, type PI, type Vec2 } from '../core/horizontal';
+import { buildAlignment, pointAt, type Alignment, type Vec2 } from '../core/horizontal';
 import type { Terrain } from '../core/terrain';
 import type { View } from '../render/view';
+import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
 
 export interface CurveEditHost {
   a: Vec2;
@@ -22,37 +22,7 @@ export interface CurveEditHost {
   commit(): void;
 }
 
-const R_MIN = 20, R_MAX = 30000;
 const num = (v: number) => Math.round(v).toLocaleString('en-US');
-const snap = (r: number) => Math.min(R_MAX, Math.max(R_MIN, r >= 400 ? Math.round(r / 5) * 5 : Math.round(r)));
-
-/**
- * Largest radius for bend i that adds no horizontal violation (none involving the bend, and no more in
- * total than with its automatic radius); null if even the automatic radius does not fit.
- */
-export function maxRadiusThatFits(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number): number | null {
-  const rules = horizontalRules(speed);
-  const viol = (r: number | null) => {
-    const al = buildAlignment(a, b, pis.map((p, k) => (k === i ? { ...p, r } : p)), rules);
-    return { al, v: horizontalViolations(al, speed) };
-  };
-  const base = viol(null);
-  const c0 = base.al.curves[i];
-  if (!c0 || c0.unit < 0 || base.v.some((x) => x.pis?.includes(i))) return null;
-  const fits = (r: number) => { const { v } = viol(r); return v.length <= base.v.length && !v.some((x) => x.pis?.includes(i)); };
-  let lo = Math.max(c0.rEff, rules.minRadius);
-  if (!fits(lo)) return null;
-  let hi = lo;
-  while (hi < R_MAX) {
-    hi = Math.min(R_MAX, hi * 1.12);
-    if (!fits(hi)) break;
-    lo = hi;
-  }
-  if (lo >= R_MAX) return R_MAX;
-  for (let it = 0; it < 24 && hi - lo > 0.5; it++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
-  const r = lo >= 400 ? Math.floor(lo / 5) * 5 : Math.floor(lo);
-  return fits(r) ? r : Math.floor(lo);
-}
 
 export class CurveEditor {
   private grips: HTMLElement[] = [];
@@ -66,8 +36,12 @@ export class CurveEditor {
   private anchors: { x: number; y: number; z: number }[] = [];
   private inward: { x: number; y: number } = { x: 0, y: 1 };
   private shown = false;
-  private dragging = false;
-  private commitTimer: number | null = null;
+  /** grip drag in progress: the design as the drag last left it, and how to call it off */
+  private drag: { design: string; abort: () => void } | null = null;
+  /** wheel / key steps not yet committed as an undo step: the design they left behind */
+  private pending: { timer: number; design: string } | null = null;
+  /** true while this editor itself is changing the design */
+  private own = false;
 
   constructor(private view: View, overlay: HTMLElement, private terrain: Terrain, private host: CurveEditHost) {
     for (const side of [0, 1]) {
@@ -97,14 +71,21 @@ export class CurveEditor {
       e.preventDefault();
       this.scale(Math.exp(-Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 120) * 0.0005));
     }, { passive: false });
-    window.addEventListener('keydown', (e) => {
+    const radiusKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey || !this.curve()) return;
-      if (e.key === '+' || e.key === '=') this.scale(1.05);
-      else if (e.key === '-' || e.key === '_') this.scale(1 / 1.05);
-      else return;
+      if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey || !this.curve()) return 0;
+      return e.key === '+' || e.key === '=' ? 1.05 : e.key === '-' || e.key === '_' ? 1 / 1.05 : 0;
+    };
+    window.addEventListener('keydown', (e) => {
+      const f = radiusKey(e);
+      if (!f) return;
+      this.scale(f);
       e.preventDefault();
     });
+    // anything else the player does (undo, a click, another key) first turns the pending steps into
+    // their undo step, so that history is never rewritten behind an uncommitted change
+    window.addEventListener('keydown', (e) => { if (!radiusKey(e) && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) this.flushCommit(); }, true);
+    window.addEventListener('pointerdown', () => this.flushCommit(), true);
     const prev = view.onRender;
     view.onRender = () => { prev?.(); this.place(); };
   }
@@ -129,6 +110,12 @@ export class CurveEditor {
   /** call whenever the design, the selection or the result changed */
   refresh() {
     const d = this.host.design(), i = this.host.selected();
+    // changes from elsewhere (undo, another edit, a replaced design) end what was in progress here
+    if (!this.own && (this.pending || this.drag)) {
+      const now = JSON.stringify(d);
+      if (this.pending && now !== this.pending.design) { clearTimeout(this.pending.timer); this.pending = null; }
+      if (this.drag && (now !== this.drag.design || i === null)) this.drag.abort();
+    }
     this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed));
     const info = i === null || !this.al ? undefined : this.al.curves[i];
     this.shown = !!info;
@@ -155,7 +142,7 @@ export class CurveEditor {
       this.inward = { x: 0, y: 1 };
       this.text.textContent = info.tooSharp ? 'U-turn' : info.ignored ? 'left out' : 'no bend';
       this.sub.textContent = info.tooSharp ? 'no curve fits a turn this sharp'
-        : info.ignored ? `it only wiggles against its neighbours and no S-curve fits here: the road passes ${info.offset.toFixed(1)} m beside it`
+        : info.ignored ? `it turns against its neighbour where no S-curve fits, and is only ${info.offset.toFixed(1)} m off the straight line between its neighbours: the tangent polygon skips it`
           : 'the point lies on a straight line';
       this.maxBtn.style.display = this.autoBtn.style.display = 'none';
     }
@@ -173,7 +160,7 @@ export class CurveEditor {
       const a = c ? this.anchors[k] : null;
       const s = a ? this.view.project(a.x, a.y, a.z) : null;
       // too close to the bend's own marker they would only get in the way of dragging it
-      const show = !!s && s.vis && (this.dragging || !pi || Math.hypot(s.sx - pi.sx, s.sy - pi.sy) > 17);
+      const show = !!s && s.vis && (!!this.drag || !pi || Math.hypot(s.sx - pi.sx, s.sy - pi.sy) > 17);
       g.style.display = show ? '' : 'none';
       if (show && s) g.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px) rotate(45deg)`;
     });
@@ -206,50 +193,63 @@ export class CurveEditor {
     const a0 = along(e);
     if (a0 === null) return;
     this.flushCommit();
-    this.dragging = true;
     g.classList.add('drag');
     this.view.controls.enabled = false;
     g.setPointerCapture(e.pointerId);
     let moved = false;
     const move = (ev: PointerEvent) => {
       const a1 = along(ev);
-      if (a1 === null) return;
+      if (a1 === null || !this.drag) return;
       const r = snap(Math.max(1, t0 + a1 - a0) / tan);
       if (r === this.host.design().pis[i]?.r) return;
       moved = true;
-      this.host.setRadius(i, r, false);
+      this.setRadius(i, r);
+      this.drag.design = JSON.stringify(this.host.design());
     };
-    const up = () => {
+    const end = (commit: boolean) => {
+      if (!this.drag) return;
+      this.drag = null;
       g.removeEventListener('pointermove', move);
       g.removeEventListener('pointerup', up);
       g.removeEventListener('pointercancel', up);
+      if (g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId);
       g.classList.remove('drag');
       this.view.controls.enabled = true;
-      this.dragging = false;
-      if (moved) this.host.commit();
+      if (commit && moved) this.host.commit();
       this.place();
     };
+    const up = () => end(true);
+    // (refresh() calls abort when the design is changed from elsewhere while the grip is held)
+    this.drag = { design: JSON.stringify(this.host.design()), abort: () => end(false) };
     g.addEventListener('pointermove', move);
     g.addEventListener('pointerup', up);
     g.addEventListener('pointercancel', up);
   }
 
+  /** a transient (not yet committed) radius change made by this editor */
+  private setRadius(i: number, r: number) {
+    this.own = true;
+    try { this.host.setRadius(i, r, false); } finally { this.own = false; }
+  }
+
   /** wheel / keys: scale the radius; a burst of steps becomes one undo step */
   private scale(f: number) {
     const c = this.curve(), i = this.host.selected();
-    if (!c || i === null) return;
+    if (!c || i === null || this.drag) return;
     let r = snap(c.rEff * f);
     if (r === snap(c.rEff)) r = snap(c.rEff + (f > 1 ? 5 : -5));
-    this.host.setRadius(i, r, false);
-    if (this.commitTimer !== null) clearTimeout(this.commitTimer);
-    this.commitTimer = window.setTimeout(() => this.flushCommit(), 500);
+    this.setRadius(i, r);
+    if (this.pending) clearTimeout(this.pending.timer);
+    this.pending = { timer: window.setTimeout(() => this.flushCommit(), 500), design: JSON.stringify(this.host.design()) };
   }
 
+  /** commit the pending wheel / key steps now — unless the design has since been changed from elsewhere */
   private flushCommit() {
-    if (this.commitTimer === null) return;
-    clearTimeout(this.commitTimer);
-    this.commitTimer = null;
-    this.host.commit();
+    const p = this.pending;
+    if (!p) return;
+    clearTimeout(p.timer);
+    this.pending = null;
+    if (JSON.stringify(this.host.design()) === p.design) this.host.commit();
   }
 
   /** largest radius that fits, for the selected bend (also on the debug API) */

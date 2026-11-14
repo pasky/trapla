@@ -6,6 +6,7 @@ import {
   type Alignment, type Element, type PI, type Vec2,
 } from '../src/core/horizontal';
 import { buildProfile, elevations } from '../src/core/vertical';
+import { maxRadiusThatFits } from '../src/ui/curve-fit';
 
 const R90 = horizontalRules(90);
 const deg = (d: number) => (d * Math.PI) / 180;
@@ -352,7 +353,7 @@ describe('compound curves', () => {
     expect(al.curves).toHaveLength(5);
     expect(msgs(al)).toEqual([]);
     expectG1(al, a, b);
-    // the road passes the ignored point at the reported distance
+    // the offset is the point's distance from the line between its neighbours (here the road runs about there too)
     const p = pointAt(al, al.curves[2].sStart);
     expect(Math.hypot(p.x - moved[2].x, p.y - moved[2].y)).toBeLessThan(al.curves[2].offset + 0.5);
     // 30 m is no wiggle: it stays an S-curve that does not fit, and is reported
@@ -383,9 +384,78 @@ describe('compound curves', () => {
     expect(al.curves[3].sStart).toBeCloseTo(al.curves[1].sEnd, 9);
     expect(msgs(al)).toEqual([]);
     expectG1(al, base.a, base.b);
-    // degenerate inputs do not throw
-    expect(buildAlignment({ x: 0, y: 0 }, { x: 0, y: 0 }, [], R90).length).toBe(0);
+    // degenerate inputs do not throw, and a route of no length still knows where it is
+    const zero = buildAlignment({ x: 300, y: 300 }, { x: 300, y: 300 }, [], R90);
+    expect(zero.length).toBe(0);
+    expect(pointAt(zero, 0)).toMatchObject({ x: 300, y: 300 });
+    expect(station(zero, 10).x[0]).toBe(300);
     expect(buildAlignment({ x: 0, y: 0 }, { x: 100, y: 0 }, [auto({ x: 0, y: 0 }), auto({ x: 100, y: 0 })], R90).length).toBeCloseTo(100, 9);
+    // absurd radii are taken as "very large" / "automatic", never as NaN
+    for (const r of [1e308, Infinity, NaN, -5, 0]) {
+      const odd = buildAlignment({ x: 0, y: 0 }, { x: 1000, y: 2000 }, [{ x: 1000, y: 0, r }, { x: 0, y: 1000, r }], R90);
+      expect(Number.isFinite(odd.length)).toBe(true);
+      for (const c of odd.curves) expect(Number.isFinite(c.rEff) && Number.isFinite(c.sStart)).toBe(true);
+      const end = pointAt(odd, odd.length);
+      expect(Math.hypot(end.x - 1000, end.y - 2000)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('points left out of a route that is in violation anyway keep their stations in order', () => {
+    const pis: PI[] = [{ x: -168, y: 696, r: null }, { x: -482, y: 555, r: null }, { x: -481, y: 557, r: null }, { x: -485, y: 557, r: 3924 }, { x: -485, y: 556, r: null }];
+    const al = buildAlignment({ x: 300, y: 300 }, { x: -474, y: 541 }, pis, R90);
+    expect(al.curves).toHaveLength(5);
+    for (let i = 1; i < 5; i++) expect(al.curves[i].sStart).toBeGreaterThanOrEqual(al.curves[i - 1].sEnd);
+    // joints name the two bends they are between, not a range through the points left out
+    for (const m of msgs(al)) expect(m).not.toMatch(/bends \d+–\d+ turn/);
+  });
+
+  it('transition-free arcs may meet whatever their ratio, with or without being joined', () => {
+    const t = (r: number) => r * Math.tan(deg(20));
+    const build = (r1: number, r2: number, leg: number) => {
+      const { a, b, pis } = route([[0, 3000], [40, leg], [40, 6000]]);
+      pis[0].r = r1; pis[1].r = r2;
+      return { a, b, al: buildAlignment(a, b, pis, R90) };
+    };
+    // R = 1,400 and 4,000 m whose tangent points coincide: no straight between the arcs, not joined by the solver
+    const touching = build(1400, 4000, t(1400) + t(4000));
+    expect(touching.al.elements.map((e) => e.kind)).toEqual(['line', 'arc', 'arc', 'line']);
+    expect(touching.al.units).toHaveLength(2);
+    expect(msgs(touching.al)).toEqual([]);
+    // 2 m closer they overlap and are joined — just as fine (both ≥ 1,350 m)
+    const joined = build(1400, 4000, t(1400) + t(4000) - 2);
+    expect(joined.al.units).toHaveLength(1);
+    expect(msgs(joined.al)).toEqual([]);
+    expectG1(joined.al, joined.a, joined.b);
+    // below the transition-free radius the ratio rule applies
+    const mixed = build(1300, 4000, t(1300) + t(4000) - 2);
+    expect(mixed.al.units).toHaveLength(1);
+    expect(msgs(mixed.al).some((m) => m.includes('differ by more than 2×'))).toBe(true);
+  });
+
+  it('given radii that already close the curve are accepted (a 180° turn leaves the solver nothing to adjust)', () => {
+    const a = { x: 0, y: 0 }, b = { x: 0, y: 1000 };
+    const al = buildAlignment(a, b, [{ x: 1000, y: 0, r: 500 }, { x: 1000, y: 1000, r: 500 }], R90);
+    expect(msgs(al)).toEqual([]);
+    expect(al.units).toHaveLength(1);
+    expect(al.units[0].arcLen).toBeCloseTo(Math.PI * 500, 6);
+    expectG1(al, a, b);
+    // radii that do not close it are a violation that names the cause
+    const off = buildAlignment(a, b, [{ x: 1000, y: 0, r: 500 }, { x: 1000, y: 1000, r: 520 }], R90);
+    expect(msgs(off)[0]).toMatch(/^bends 1 and 2 turn the same way 1,000 m apart: .* with the radius set on bend 1 and bend 2 they cannot be joined into one curve either/);
+    expectG1(off, a, b);
+  });
+
+  it('a long run of fixed radii that cannot be joined is still solved quickly', () => {
+    const pis: PI[] = [{ x: 800, y: 0, r: 500 }];
+    let x = 800, y = 0, h = 0;
+    for (let i = 1; i < 80; i++) { h += 0.1; x += 20 * Math.cos(h); y += 20 * Math.sin(h); pis.push({ x, y, r: 500 }); }
+    const b = { x: x + 800 * Math.cos(h + 0.1), y: y + 800 * Math.sin(h + 0.1) };
+    const t0 = performance.now();
+    const al = buildAlignment({ x: 0, y: 0 }, b, pis, R90);
+    expect(performance.now() - t0).toBeLessThan(500); // was 2.5 s when every shorter prefix was tried in turn
+    expect(msgs(al).length).toBeGreaterThan(0);
+    const end = pointAt(al, al.length);
+    expect(Math.hypot(end.x - b.x, end.y - b.y)).toBeLessThan(1e-6);
   });
 
   it('near U-turns next to a compound curve: flagged, geometry continuous in position', () => {
@@ -449,6 +519,31 @@ describe('compound curves', () => {
     const legacy = buildAlignment(a, b, pis, 355, 90);
     expect(legacy.rules).toEqual(roadRules(355, 90));
     expect(legacy.length).toBeCloseTo(al.length, 9);
+  });
+});
+
+describe('largest radius that fits', () => {
+  it('is limited by the neighbouring curves and their transitions', () => {
+    const { a, b, pis } = route([[0, 600], [30, 800], [-25, 700]]);
+    const r = maxRadiusThatFits(a, b, pis, 0, 90)!;
+    // bend 2 keeps its automatic 355 m: T = 78.7 m + 45.2 m transition on the shared 800 m leg
+    const fits = (rr: number) => msgs(buildAlignment(a, b, [{ ...pis[0], r: rr }, pis[1]], R90)).length === 0;
+    expect(fits(r)).toBe(true);
+    expect(fits(r + 10)).toBe(false);
+    expect(r).toBeGreaterThan(2000);
+  });
+
+  it('looks beyond the first radius that does not fit: the transition-free range can fit again', () => {
+    // an 8° bend 100 m from A: with transitions up to ≈ 785 m, then again from 1,350 m (no transitions) to 1,430 m
+    const { a, b, pis } = route([[0, 100], [8, 900]]);
+    const ok = (r: number) => msgs(buildAlignment(a, b, [{ ...pis[0], r }], R90)).length === 0;
+    expect([645, 800, 1300, 1350, 1430, 1440].map(ok)).toEqual([true, false, false, true, true, false]);
+    expect(maxRadiusThatFits(a, b, pis, 0, 90)).toBe(1430);
+  });
+
+  it('is null when even the automatic radius is in violation', () => {
+    const { a, b, pis } = route([[0, 40], [30, 900]]);
+    expect(maxRadiusThatFits(a, b, pis, 0, 90)).toBeNull();
   });
 });
 

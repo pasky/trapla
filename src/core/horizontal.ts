@@ -70,7 +70,10 @@ export interface CurveInfo {
   tooSharp: boolean;
   /** index into Alignment.units of the curve this arc belongs to; -1 if the bend has no arc */
   unit: number;
-  /** the bend only wiggles against its neighbours where no S-curve fits: the road passes `offset` m beside it */
+  /**
+   * The bend turns against its neighbour where no S-curve fits, and lies within EDIT_TOLERANCE of the
+   * straight line between its neighbours: it is left out, i.e. the tangent polygon runs `offset` m beside it.
+   */
   ignored: boolean;
   offset: number;
 }
@@ -242,32 +245,50 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
   for (let i = 1; i <= m; i++) aOut[i] = tau[i - 1] * ((ux[i - 1] + ux[i]) * ux[m] + (uy[i - 1] + uy[i]) * uy[m]);
   const cOut = (px[0] - px[m - 1]) * ux[m] + (py[0] - py[m - 1]) * uy[m];
 
-  // constraints C·x = d
-  const cons: { row: Float64Array; d: number }[] = [];
-  cons.push({ row: aW.subarray((m - 1) * N, m * N), d: -cW[m - 1] });
-  for (let i = 0; i < m; i++) {
-    if (manual[i] === null) continue;
-    const row = new Float64Array(N); row[i + 1] = 1;
-    cons.push({ row, d: manual[i]! });
+  // the player's radii (and a pinned start) are known: only the rest, y, is solved for
+  const known = new Float64Array(N), col = new Int32Array(N).fill(-1);
+  const free: number[] = [];
+  for (let k = 0; k < N; k++) {
+    const v = k === 0 ? fixIn : manual[k - 1];
+    if (v !== null) known[k] = v; else { col[k] = free.length; free.push(k); }
   }
-  if (fixIn !== null) { const row = new Float64Array(N); row[0] = 1; cons.push({ row, d: fixIn }); }
-  if (fixOut !== null) cons.push({ row: aOut, d: fixOut - cOut });
-  const K = cons.length, S = N + K;
-  if (K > N) return null;
+  const F = free.length;
+  const freeRadii = free.some((k) => k > 0);
+  const reduce = (row: ArrayLike<number>, off: number, c: number) => {
+    const r = new Float64Array(F);
+    for (let k = 0; k < N; k++) { if (col[k] < 0) c += row[off + k] * known[k]; else r[col[k]] = row[off + k]; }
+    return { r, c };
+  };
+  const W = Array.from({ length: m }, (_, j) => reduce(aW, j * N, cW[j])); // w_j = W[j].r·y + W[j].c
+  const O = reduce(aOut, 0, cOut); // sOut = O.r·y + O.c
+  // hard conditions: the curve ends on the outgoing leg's line, and a pinned end tangent. A condition
+  // that no unknown can influence (e.g. a 180° turn of given radii) either holds already or never will.
+  const cons: { row: Float64Array; d: number }[] = [];
+  const require = (row: Float64Array, d: number): boolean => {
+    let big = 0;
+    for (let f = 0; f < F; f++) big = Math.max(big, Math.abs(row[f]));
+    if (big < 1e-9) return Math.abs(d) < 1e-6;
+    cons.push({ row, d });
+    return true;
+  };
+  if (!require(W[m - 1].r, -W[m - 1].c)) return null;
+  if (fixOut !== null && !require(O.r, fixOut - O.c)) return null;
+  const K = cons.length, S = F + K;
+  if (K > F) return null;
 
   // tangency part of the normal equations (independent of λ)
-  const H0 = new Float64Array(N * N), g0 = new Float64Array(N);
+  const H0 = new Float64Array(F * F), g0 = new Float64Array(F);
   for (let j = 0; j < m - 1; j++) {
-    for (let a = 0; a <= j + 1; a++) {
-      const va = aW[j * N + a];
-      if (va === 0) continue;
-      g0[a] -= va * cW[j];
-      for (let b = 0; b <= j + 1; b++) H0[a * N + b] += va * aW[j * N + b];
+    const { r, c } = W[j];
+    for (let a = 0; a < F; a++) {
+      if (r[a] === 0) continue;
+      g0[a] -= r[a] * c;
+      for (let b = 0; b < F; b++) H0[a * F + b] += r[a] * r[b];
     }
   }
   let tr = 0;
-  for (let a = 0; a < N; a++) tr += H0[a * N + a];
-  const ridge = 1e-15 * (tr / N + 1e-6); // keeps the system solvable when a radius is left undetermined
+  for (let a = 0; a < F; a++) tr += H0[a * F + a];
+  const ridge = 1e-15 * (tr / Math.max(1, F) + 1e-6); // keeps the system solvable when a radius is left undetermined
 
   const floorR = Math.max(1, 0.02 * rules.minRadius);
   const tauMean = tau.reduce((v, t) => v + t, 0) / m;
@@ -276,24 +297,31 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
   const sMinIn = 0.5 * Math.hypot(px[1] - px[0], py[1] - py[0]) + 1e-9;
   const sMinOut = 0.5 * Math.hypot(px[m - 1] - px[m - 2], py[m - 1] - py[m - 2]) + 1e-9;
   type Sol = ChainSol & { bad: number };
+  /** x = [s, R_1..R_m] for the evenness weight λ and the pair weights wt */
   const solveOnce = (lam: number, wt: Float64Array): Float64Array | null => {
+    const x = Float64Array.from(known);
+    if (F === 0) return x;
     const M = new Float64Array(S * S), rhs = new Float64Array(S);
-    for (let a = 0; a < N; a++) {
-      for (let b = 0; b < N; b++) M[a * S + b] = H0[a * N + b];
+    for (let a = 0; a < F; a++) {
+      for (let b = 0; b < F; b++) M[a * S + b] = H0[a * F + b];
       M[a * S + a] += ridge;
       rhs[a] = g0[a];
     }
     for (let j = 1; j < m; j++) {
-      // evenness of neighbouring radii; tauMean turns a radius difference into metres of tangent length
-      const q = lam * tauMean * tauMean * wt[j - 1];
-      M[j * S + j] += q; M[(j + 1) * S + j + 1] += q; M[j * S + j + 1] -= q; M[(j + 1) * S + j] -= q;
+      // evenness of the neighbouring radii j, j+1; tauMean turns a radius difference into metres of tangent length
+      const q = lam * tauMean * tauMean * wt[j - 1], fa = col[j], fb = col[j + 1];
+      if (fa >= 0) { M[fa * S + fa] += q; if (fb < 0) rhs[fa] += q * known[j + 1]; }
+      if (fb >= 0) { M[fb * S + fb] += q; if (fa < 0) rhs[fb] += q * known[j]; }
+      if (fa >= 0 && fb >= 0) { M[fa * S + fb] -= q; M[fb * S + fa] -= q; }
     }
     for (let k = 0; k < K; k++) {
       const { row, d } = cons[k];
-      for (let a = 0; a < N; a++) { M[(N + k) * S + a] = row[a]; M[a * S + N + k] = row[a]; }
-      rhs[N + k] = d;
+      for (let a = 0; a < F; a++) { M[(F + k) * S + a] = row[a]; M[a * S + F + k] = row[a]; }
+      rhs[F + k] = d;
     }
-    return solveLinear(M, rhs, S) ? rhs : null;
+    if (!solveLinear(M, rhs, S)) return null;
+    for (let f = 0; f < F; f++) x[free[f]] = rhs[f];
+    return x;
   };
   const run = (lam: number): Sol | null => {
     // the rule is about radius ratios, so the evenness term is reweighted to measure relative differences
@@ -303,6 +331,7 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
       const xi = solveOnce(lam, wt);
       if (!xi) break;
       x = xi;
+      if (!freeRadii) break;
       let lg = 0, positive = true;
       for (let i = 1; i <= m; i++) { if (xi[i] >= floorR) lg += Math.log(xi[i]); else positive = false; }
       if (!positive) break;
@@ -334,10 +363,7 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
     for (let i = 0; i < m; i++) {
       if (!(R[i] >= floorR) || !Number.isFinite(R[i])) return null;
       if (manual[i] === null && R[i] < rules.minRadius) bad = Math.max(bad, rules.minRadius / R[i] - 1);
-      if (i > 0 && (manual[i] === null || manual[i - 1] === null)) {
-        const ratio = Math.max(R[i], R[i - 1]) / Math.min(R[i], R[i - 1]);
-        if (ratio > rules.compoundRatio) bad = Math.max(bad, ratio / rules.compoundRatio - 1);
-      }
+      if (i > 0 && (manual[i] === null || manual[i - 1] === null)) bad = Math.max(bad, ratioExcess(R[i], R[i - 1], rules));
     }
     return { R, sIn, sOut, w, lam, offset: off, ok: bad === 0 && off <= tolerance, bad };
   };
@@ -350,6 +376,10 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
     return good;
   };
 
+  if (!freeRadii) { // nothing to trade: the given radii fit within the tolerance or they do not
+    const sol = run(1);
+    return sol && sol.offset <= tolerance ? sol : null;
+  }
   const ladder = [1e-8, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1e3, 1e4, 1e6];
   let best: Sol | null = null; // least rule-breaking solution that stays within the tolerance
   let nearLam = 0; // largest relaxation tried that stayed within the tolerance (rules still broken)
@@ -374,6 +404,17 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
   return best;
 }
 
+/**
+ * How far two neighbouring radii of a compound curve exceed the ratio rule (0 = fine). Two arcs that
+ * both need no transition against a straight need none between them either (the same 0.25 m shift
+ * rule covers the intermediate transition), whatever their ratio.
+ */
+export function ratioExcess(r1: number, r2: number, rules: HorizontalRules): number {
+  const lo = Math.min(r1, r2), hi = Math.max(r1, r2);
+  if (lo >= rules.plainRadius - 1e-9) return 0;
+  return hi > lo * rules.compoundRatio * (1 + 1e-9) ? hi / (lo * rules.compoundRatio) - 1 : 0;
+}
+
 // ---- alignment -----------------------------------------------------------------------------------
 
 const EPS_ANG = 1e-9;
@@ -384,6 +425,8 @@ const EPS_LEN = 1e-6;
  * road passing a bend that only wiggles against its neighbours, arcs moved by joining them.
  */
 export const EDIT_TOLERANCE = 5;
+/** larger manual radii are taken as this (keeps the arithmetic finite), m */
+const MAX_RADIUS = 1e7;
 
 interface Unit {
   /** range of effective vertices */
@@ -418,7 +461,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     });
   }
   // ---- layout for the current set of bends; bends that only wiggle are then left out and it is redone ----
-  const ignored = new Map<number, number>(); // PI index → distance of the point from the road's tangent
+  const ignored = new Map<number, number>(); // PI index → distance of the point from the line between its neighbours
   let L = layout();
   for (let it = 0; it < m && L.drop >= 0; it++) {
     ignored.set(keep[L.drop], L.chordOffset(L.drop));
@@ -448,7 +491,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       dir.push(cross >= 0 ? 1 : -1);
       tau.push(Math.tan(d[i] / 2));
       const r = pis[keep[i]].r;
-      manual.push(r !== null && Number.isFinite(r) && r > 0 ? r : null);
+      manual.push(r !== null && Number.isFinite(r) && r > 0 ? Math.min(r, MAX_RADIUS) : null);
       Rreq.push(manual[i] ?? autoRadius(d[i], rules));
     }
     /** what the leg e joins: the two curves next to it */
@@ -551,9 +594,10 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
           let qe = q;
           while (qe + 1 < units.length && short(qe + 1)) qe++;
           let sol: ChainSol | null = null;
-          for (; qe >= q; qe--) {
+          for (;;) { // if the whole run cannot be one curve, try half of it, and so on
             sol = solveChain(chainInput(units[q - 1].i0, units[qe].i1), rules, null, null, EDIT_TOLERANCE);
             if (sol || qe === q) break;
+            qe = q + ((qe - q) >> 1);
           }
           if (!sol) { noChain[e] = 1; continue; }
           const u: Unit = { i0: units[q - 1].i0, i1: units[qe].i1, sIn: 0, sOut: 0, w: null, lam: 0 };
@@ -725,18 +769,22 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     }
   });
   line(nv, b);
-  // bends without geometry of their own (collinear or duplicate points): station of the point on its leg
+  // a route of no length still has a place
+  if (!elements.length) elements.push({ kind: 'line', s0: 0, len: 0, x0: a.x, y0: a.y, dx: U[0].x, dy: U[0].y });
+  // bends without geometry of their own (collinear, duplicate or left-out points): station of the point
+  // on its leg, never before the bend listed before it
   {
-    let e = 0;
+    let e = 0, last = 0;
     for (let k = 0; k < m; k++) {
       while (e < nv && keep[e] < k) e++;
-      if (e < nv && keep[e] === k) { curves.push(curveOf[k]!); continue; }
+      if (e < nv && keep[e] === k) { curves.push(curveOf[k]!); last = curveOf[k]!.sEnd; continue; }
       const ls = lineStart[e];
       const along = Math.min(Math.max((pis[k].x - ls.x) * U[e].x + (pis[k].y - ls.y) * U[e].y, 0), ls.len);
       const r = pis[k].r ?? rules.minRadius;
+      last = Math.max(last, ls.s + along);
       curves.push({
         index: k, x: pis[k].x, y: pis[k].y, delta: 0, dir: 1, r, rEff: r, t: 0, tTransition: 0, arcLen: 0,
-        sStart: ls.s + along, sEnd: ls.s + along, auto: pis[k].r === null, tooSharp: false, unit: -1,
+        sStart: last, sEnd: last, auto: pis[k].r === null, tooSharp: false, unit: -1,
         ignored: ignored.has(k), offset: ignored.get(k) ?? 0,
       });
     }

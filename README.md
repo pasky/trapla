@@ -160,8 +160,8 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
 - **Several bends, long curve**: bends that turn the same way and are too close for a straight between them are
   joined into one compound curve automatically (the label says "one curve with bends …"). Uneven spacing is fine: the
   solver keeps the minimum radius and a radius ratio ≤ 2 between neighbouring arcs, moving the arc junctions off the
-  dashed legs by up to 5 m if it has to. A bend that only wiggles against its neighbours (within 5 m of the line
-  between them, no room for an S-curve) is left out and labelled so.
+  dashed legs by up to 5 m if it has to. A bend that turns against its neighbour where no S-curve fits, and lies
+  within 5 m of the straight line between its neighbours, is left out of the tangent polygon and labelled so.
 - Rules (ČSN 73 6101 via the VUT text "Aplikace ČSN 73 6101"; table in `src/core/data/norms.ts`, details in `PLAN.md`):
   no transition needed from R ≥ L²/6 (1,350 / 1,067 / 817 m at 90 / 80 / 70 km/h); opposite curves may touch with
   their transitions, plain arcs need a 2·vn straight between them; every horizontal violation names the bends, the
