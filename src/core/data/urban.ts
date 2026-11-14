@@ -176,26 +176,27 @@ export const ROAD_CLASSES: Record<string, RoadClassRow> = {
 };
 
 // ---------------------------------------------------------------------------------------------
-// Noise feasibility — PROVISIONAL planning surrogate, NOT an acoustic study / legal assessment
+// Czech source + mixed-ground propagation, with PROVISIONAL geometric mitigation.
+// Manuál 2018 (2020 revision), TP 219 (2019), NV 272/2011; research/11-noise-calculation.md.
+// Compact planning calculation, NOT a full acoustic study / legal assessment.
 // ---------------------------------------------------------------------------------------------
 export const NOISE = {
-  /** Chosen new-main-road limits (NV 272/2011): 60 dB day, 50 dB night. D below represents the
-   * controlling limit's contour; day/night traffic and absolute levels are not separately modelled. */
+  /** NV 272/2011 §12(3), annex 3 A: 50 base +10 for roads permitted after 2000, −10 at night.
+   * Ordinary residential protected outdoor receivers; no old-road burden correction. */
   limitDayDb: 60,
   limitNightDb: 50,
-  /** PROVISIONAL unmitigated limit contour at reference traffic/speed, slant source–receiver m */
-  refDistance: 100,
-  refTraffic: 9_000,
-  refSpeed: 90,
-  /** PROVISIONAL scaling D = refDistance · (Q/Q₀)^(2/3) · (v/v₀)^(5/3): +3 dB per doubling of traffic,
-   * ≈ 25·log₁₀(v) dB with speed, −4.5 dB per doubling of distance (line source over soft ground) */
-  trafficExponent: 2 / 3,
-  speedExponent: 5 / 3,
+  /** Manuál 2018 / verze 2020, table 21, class I, 2020 and subsequent forecast years.
+   * Reference emission constants used with category speed factors, NOT individual sound powers. */
+  lightEmissionDb: 74.1,
+  heavyEmissionDb: 81.1,
+  /** PROVISIONAL acoustic NA share (including buses/combinations and allocated light goods).
+   * 15% scenario prior, not a local count: comparable studies vary substantially (research/11).
+   * Night fractions are calculated per category by TP 219 table 3-2, non-E class I. */
+  heavyShare: 0.15,
+  /** Heavy vehicles capped at 80 km/h; light flow uses design speed (operating-speed assumption). */
+  heavySpeed: 80,
   /** wall extends this far beyond the exposed stretch, m */
   margin: 50,
-  /** PROVISIONAL E = distanceDb * log10(D/d), d = slant source–receiver distance;
-   * ≈ −4.5 dB per doubling. Cut edges use the same diffraction as walls, not a depth exemption. */
-  distanceDb: 15,
   /** Protected outdoor receiver: 2 m in front of the nearest façade, towards the source. */
   facadeOffset: 2,
   /** PROVISIONAL practical wall choices; no arbitrarily tall wall to save an infeasible route. */

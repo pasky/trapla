@@ -18,7 +18,8 @@ import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './dat
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
-import { dwellingExposure, noiseBarrier, noiseDistance, wallFlags, wallStretches, type EarthEdges, type WallStretch } from './noise';
+import { dwellingExposure, noiseBarrier, wallFlags, wallStretches, type EarthEdges, type WallStretch } from './noise';
+import { createNoiseModel } from './road-noise';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
@@ -431,7 +432,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
   const noiseBuyouts = new Float64Array(n);
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
-  const noiseD = noiseDistance(scenario.traffic, d.speed);
+  const noiseModel = createNoiseModel(scenario.traffic, d.speed);
   if (bld) {
     const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
     const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
@@ -442,7 +443,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (sec.zDayL[i] > grade[i]) edges.L[i] = { offset: sec.dayL[i], height: sec.zDayL[i] - grade[i] };
       if (sec.zDayR[i] > grade[i]) edges.R[i] = { offset: sec.dayR[i], height: sec.zDayR[i] - grade[i] };
     }
-    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseD, gone,
+    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseModel, gone,
       grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, noiseBarrier(cat.crownWidth), edges);
     boughtOut = ex.boughtOut;
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;
@@ -545,7 +546,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       bridgeLength, tunnelLength, bridges: bridges.length, tunnels: tunnels.length, massHaul: vol.mass,
       urbanLength, wallLength: wallLength.reduce((a, v) => a + v, 0),
       wallArea: wallArea.reduce((a, v) => a + v, 0), noiseBuyouts: boughtOut.length,
-      crossingsPaid, noiseDistance: noiseD, materialValue,
+      crossingsPaid, noiseDistance: noiseModel.contour, materialValue,
     },
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing,
   };

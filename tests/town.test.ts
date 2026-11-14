@@ -8,7 +8,8 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
 import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
-import { barrierAttenuation, dwellingExposure, noiseBarrier, noiseDistance, requiredWall, wallFlags } from '../src/core/noise';
+import { barrierAttenuation, dwellingExposure, noiseBarrier, requiredWall, wallFlags } from '../src/core/noise';
+import { createNoiseModel, noiseLevels } from '../src/core/road-noise';
 import { rangeSummary } from '../src/core/range';
 import { mergeCrossings, RoadNet } from '../src/core/roadnet';
 import { KIND } from '../src/core/structures';
@@ -136,51 +137,42 @@ describe('junction spacing and geometric reconnections', () => {
 });
 
 describe('noise rule', () => {
-  it('screening distance shrinks with design speed and grows with traffic', () => {
-    expect(noiseDistance(NOISE.refTraffic, NOISE.refSpeed)).toBeCloseTo(NOISE.refDistance, 9);
-    expect(noiseDistance(NOISE.refTraffic, 70)).toBeLessThan(NOISE.refDistance * 0.75);
-    expect(noiseDistance(2 * NOISE.refTraffic, NOISE.refSpeed)).toBeGreaterThan(NOISE.refDistance * 1.4);
-  });
-
   it('shadows distant upper floors geometrically, but buys close receivers no available wall can protect', () => {
-    expect(requiredWall(50, 100, 4.5)).toBe(3);
-    expect(requiredWall(20, 100, 4.5)).toBe(4);
-    expect(requiredWall(16, 100, 4.5)).toBe(5);
-    expect(requiredWall(10, 100, 1.5)).toBe(Infinity);
+    expect(requiredWall(50, 5, 4.5)).toBe(3);
+    expect(requiredWall(20, 11, 4.5)).toBe(4);
+    expect(requiredWall(16, 12.5, 4.5)).toBe(5);
+    expect(requiredWall(10, 14, 1.5)).toBe(Infinity);
     // A fourth-floor receiver is NOT unshielded merely because it is higher than the wall.
-    expect(requiredWall(80, 100, 10.5)).toBe(3);
-    expect(requiredWall(20, 100, 10.5)).toBe(Infinity);
+    expect(requiredWall(80, 2, 10.5)).toBe(3);
+    expect(requiredWall(20, 10, 10.5)).toBe(Infinity);
     // The path via the wall top is longer even in the illuminated zone: explicit LoS matters.
     expect(barrierAttenuation(20, 30, 2)).toBe(0);
     expect(barrierAttenuation(80, 10.5, 2)).toBeGreaterThan(barrierAttenuation(20, 10.5, 2));
     expect(barrierAttenuation(4, 1.5, 2)).toBe(0); // receiver on road side of barrier
     // A bridge 8 m above the building ground brings the wall above the top receiver.
-    expect(requiredWall(50, 100, 10.5 - 8)).toBe(3);
-    expect(requiredWall(101, 100, 20)).toBe(0);
+    expect(requiredWall(50, 5, 10.5 - 8)).toBe(3);
+    expect(requiredWall(101, -0.1, 20)).toBe(0);
   });
 
   it('selects the next height across the geometric attenuation threshold for different road widths', () => {
     for (const width of [7.5, 9.5, 11.5]) {
       const barrier = noiseBarrier(width), distance = 30, receiverHeight = 10.5;
       const loss = barrierAttenuation(distance, receiverHeight, 1, barrier);
-      const slant = Math.hypot(distance - NOISE.sourceOffset, receiverHeight - NOISE.sourceHeight);
-      const contour = (excess: number) => slant * 10 ** (excess / NOISE.distanceDb);
       // Just below the 4 m wall's capacity it suffices; just above it requires the 5 m wall.
       // Exercises the inverted hot-path formula against the forward calculation, not fixed prices.
-      expect(requiredWall(distance, contour(loss - 0.01), receiverHeight, barrier)).toBe(4);
-      expect(requiredWall(distance, contour(loss + 0.01), receiverHeight, barrier)).toBe(5);
+      expect(requiredWall(distance, loss - 0.01, receiverHeight, barrier)).toBe(4);
+      expect(requiredWall(distance, loss + 0.01, receiverHeight, barrier)).toBe(5);
     }
   });
 
   it('uses slant distance for excess beside a viaduct, including the unexposed limit', () => {
     const d = 12, height = -18.5;
-    const slant = Math.hypot(d - NOISE.sourceOffset, height - NOISE.sourceHeight);
-    const excess = NOISE.distanceDb * Math.log10(100 / slant);
-    expect(excess).toBeCloseTo(10, 0);
+    const model = createNoiseModel(9000, 90);
+    const excess = noiseLevels(d, height, model).excessDb;
+    expect(excess).toBeLessThan(noiseLevels(d, 10.5, model).excessDb);
     expect(barrierAttenuation(d, height, 0)).toBeGreaterThan(excess);
-    expect(requiredWall(d, 100, height)).toBe(3); // horizontal distance alone forced a buyout
-    expect(requiredWall(d, slant - 0.01, height)).toBe(0);
-    expect(requiredWall(d, slant + 0.01, height)).toBe(3);
+    expect(requiredWall(d, excess, height)).toBe(3);
+    expect(requiredWall(d, noiseLevels(d, -200, model).excessDb, -200)).toBe(0);
   });
 
   it('uses earth-edge diffraction as an alternative to a wall, never an additive credit', () => {
@@ -188,11 +180,10 @@ describe('noise rule', () => {
     // Earth and the tallest wall have identical tops: counting both would falsely make this feasible.
     const edge = { offset: barrier.wallOffset, height: 5 };
     const loss = barrierAttenuation(30, 10.5, 2, barrier);
-    const slant = Math.hypot(30 - NOISE.sourceOffset, 10.5 - NOISE.sourceHeight);
-    expect(requiredWall(30, slant * 10 ** ((loss + 0.1) / NOISE.distanceDb), 10.5, barrier, edge)).toBe(Infinity);
-    expect(requiredWall(30, slant * 10 ** ((loss - 0.1) / NOISE.distanceDb), 10.5, barrier, edge)).toBe(0);
-    expect(requiredWall(25, 100, 14.5, barrier, { offset: 11.75, height: 4 })).toBe(Infinity);
-    expect(requiredWall(40, 100, 5.5, barrier, { offset: 11.75, height: 4 })).toBe(0);
+    expect(requiredWall(30, loss + 0.1, 10.5, barrier, edge)).toBe(Infinity);
+    expect(requiredWall(30, loss - 0.1, 10.5, barrier, edge)).toBe(0);
+    expect(requiredWall(25, 9, 14.5, barrier, { offset: 11.75, height: 4 })).toBe(Infinity);
+    expect(requiredWall(40, 6, 5.5, barrier, { offset: 11.75, height: 4 })).toBe(0);
   });
 
   it('uses the worst height over a connected stretch, without bridging a shielded gap', () => {
@@ -204,7 +195,7 @@ describe('noise rule', () => {
     const info: BuildingInfo = [100, 1, BUILDING_KIND.house, 100, 20, 5, 5, 0];
     const b = new BuildingIndex([[100, 20, 8]], [info]);
     const run = (x: number[], shield = [0, 0, 0], gone = [0]) => dwellingExposure(3, x, [0, 0, 0],
-      [1, 1, 1], [0, 0, 0], b, 100, gone, [0, 0, 0], () => 0, shield, shield);
+      [1, 1, 1], [0, 0, 0], b, createNoiseModel(90_000, 90), gone, [0, 0, 0], () => 0, shield, shield);
     for (const x of [[0, 100, 200], [200, 100, 0]]) {
       const r = run(x);
       expect(r.boughtOut).toEqual([{ j: 0, i: 1, cost: noiseBuyoutCost(b.cost[0], b.area[0]) }]);
@@ -277,7 +268,7 @@ describe('evaluate on a synthetic town', () => {
     sq(4000, 1045, 5, BUILDING_KIND.house), // beside the 12 m cut → screened by it
     sq(2000, 1000, 3, BUILDING_KIND.minor), // under the bridge deck → demolished
     sq(2000, 1012, 3, BUILDING_KIND.minor), // beside the deck, where an embankment would have buried it
-    sq(1000, 1016, 5, BUILDING_KIND.house), // outside working strip but too close for any wall
+    [100, 4, BUILDING_KIND.apartments, 1000, 1016, 5, 5, 0] as BuildingInfo, // outside working strip, upper floor sees over every wall
     [100, 4, BUILDING_KIND.apartments, 1000, 1070, 5, 5, 0] as BuildingInfo, // distant upper floor is shadowed
     [100, 4, BUILDING_KIND.apartments, 2000, 1040, 5, 5, 0] as BuildingInfo, // top floor below elevated road: wall feasible
   ];
@@ -398,7 +389,7 @@ describe('cut-edge receivers', () => {
     for (const depth of [3.99, 4]) {
       const terrain = syntheticTerrain(500, 100, 5, x => 400 + depth * Math.max(0, Math.min(1, (300 - Math.abs(x - 1200)) / 100)));
       const info: BuildingInfo[] = [
-        [100, 4, BUILDING_KIND.apartments, 1200, 282, 5, 5, 0],
+        [100, 6, BUILDING_KIND.apartments, 1200, 282, 5, 5, 0],
         [100, 1, BUILDING_KIND.house, 1200, 300, 5, 5, 0],
       ];
       const buildings = new BuildingIndex(info.map(f => [f[3], f[4], 8]), info);
