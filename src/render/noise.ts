@@ -42,8 +42,6 @@ export class NoiseLayer {
   private legend: HTMLElement;
   private tip: HTMLElement;
   private labels: { el: HTMLElement; x: number; y: number; z: number }[] = [];
-  /** engine building index → render mesh index (−1: none), filled lazily */
-  private meshOf = new Map<number, number>();
   private pending: { x: number; y: number } | null = null;
   private terrain: Terrain;
 
@@ -174,16 +172,7 @@ export class NoiseLayer {
   }
 
   // ---- buildings ---------------------------------------------------------------------------
-  private mesh(j: number): number {
-    let k = this.meshOf.get(j);
-    if (k === undefined) {
-      const b = this.pack.overlays.buildings[j], f = this.pack.overlays.binfo?.[j];
-      k = this.view.buildingMeshes?.find(f ? f[3] : b[0], f ? f[4] : b[1]) ?? -1;
-      if (k < 0 && f) k = this.view.buildingMeshes?.find(b[0], b[1]) ?? -1;
-      this.meshOf.set(j, k);
-    }
-    return k;
-  }
+  private mesh(j: number): number { return this.view.buildingMesh(j); }
 
   private tintBuildings() {
     const bm = this.view.buildingMeshes;

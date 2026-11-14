@@ -164,6 +164,19 @@ export class View {
   /** extruded buildings, if shown (noise view tints them) */
   get buildingMeshes() { return this.buildings; }
 
+  private meshOf = new Map<number, number>();
+  /** render mesh index of the engine's building j (−1: none), cached */
+  buildingMesh(j: number): number {
+    let k = this.meshOf.get(j);
+    if (k === undefined) {
+      const b = this.pack.overlays.buildings[j], f = this.pack.overlays.binfo?.[j];
+      k = b ? this.buildings?.find(f ? f[3] : b[0], f ? f[4] : b[1]) ?? -1 : -1;
+      if (k < 0 && f && b) k = this.buildings?.find(b[0], b[1]) ?? -1;
+      this.meshOf.set(j, k);
+    }
+    return k;
+  }
+
   /** ray-march the heightfield under a screen point; returns local (x,y) or null */
   pick(clientX: number, clientY: number): { x: number; y: number } | null {
     const r = this.renderer.domElement.getBoundingClientRect();
@@ -448,6 +461,7 @@ export class View {
       const m = this.piMarkers[i];
       m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y);
       m.el.textContent = String(i + 1);
+      m.el.title = `Bend ${i + 1}: drag to move it, click to select it (radius grips), right-click to delete`;
       m.el.classList.toggle('sel', selected === i);
     });
     this.selected = selected;
@@ -635,6 +649,8 @@ export class View {
     ghost.name = 'ghost';
     this.routeGroup.add(ghost);
 
+    // demolished buildings are gone from the map (their red squares mark the spots)
+    if (this.buildings) this.buildings.hide(new Set(r.demolished.map((p) => this.buildingMesh(p.j)).filter((k) => k >= 0)));
     // ---- footprint demolitions (red squares) / noise buyouts (magenta diamonds) ----
     for (const [buildings, buyout] of [[r.demolished, false], [r.boughtOut, true]] as const) {
       if (!buildings.length) continue;
@@ -856,7 +872,25 @@ export class View {
       if (show) el.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px)`;
     };
     for (const m of this.markers) place(m.el, m.x, m.y, m.z, m.minDist);
-    for (const m of this.piMarkers) place(m.el, m.x, m.y, m.z);
+    // zoom class for the overlay's CSS (small symbols from afar)
+    const mpp = this.metresPerPixel;
+    const zoom = mpp > 12 ? 'far' : mpp > 3 ? 'mid' : 'near';
+    if (this.overlay.dataset.zoom !== zoom) this.overlay.dataset.zoom = zoom;
+    // bends: one too close to an already drawn one (or to A / B) shrinks to a dot, its number in the
+    // tooltip; the selected bend is drawn first, so it always keeps its number
+    const taken: { sx: number; sy: number }[] = [];
+    for (const e of [this.pack.meta.A.xy, this.pack.meta.B.xy]) { const s = this.screenOf(e[0], e[1], this.terrain.heightAt(e[0], e[1])); if (s.vis) taken.push(s); }
+    const order = this.piMarkers.map((_, i) => i);
+    if (this.selected !== null && this.selected < order.length) { order.splice(this.selected, 1); order.unshift(this.selected); }
+    for (const i of order) {
+      const m = this.piMarkers[i];
+      place(m.el, m.x, m.y, m.z);
+      const s = this.screenOf(m.x, m.y, m.z);
+      if (!s.vis) continue;
+      const crowded = i !== this.selected && i !== this.dragging && taken.some((t) => Math.abs(t.sx - s.sx) < 21 && Math.abs(t.sy - s.sy) < 21);
+      if (m.el.classList.contains('mini') !== crowded) m.el.classList.toggle('mini', crowded);
+      if (!crowded) taken.push(s);
+    }
     this.contourLabels?.place();
     if (this.hoverPos) place(this.hoverEl, this.hoverPos.x, this.hoverPos.y, this.hoverPos.z);
     else this.hoverEl.style.display = 'none';

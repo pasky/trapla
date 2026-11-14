@@ -19,7 +19,7 @@ import type { View } from './view';
 
 const HIGHLIGHT = 0xffe000, WALL = 0x18b0b0;
 /** wall symbols from this many metres per pixel on (a 3 m wall is then under ~5 px), offset ≥ this many px */
-const SYMBOL_FROM = 0.6, SYMBOL_PX = 7;
+const SYMBOL_FROM = 1, SYMBOL_PX = 7;
 
 export class RouteExtras {
   private walls = new THREE.Group();
@@ -174,7 +174,10 @@ export class RouteExtras {
     this.wallHits = [];
     if (!r) return;
     const off = this.crown / 2 + NOISE.wallEdgeOffset, far = mpp > SYMBOL_FROM;
-    const symOff = Math.max(off, SYMBOL_PX * 2 ** (scale / 4)), v = new THREE.Vector3();
+    // at the overview (≥ 6 m per pixel) thin lines close to the road: walls are a detail there, the
+    // route itself must stay the most visible thing
+    const overview = mpp > 6, px = overview ? 4 : SYMBOL_PX;
+    const symOff = Math.max(off, px * 2 ** (scale / 4)), v = new THREE.Vector3();
     for (const w of r.walls) {
       // hover target: the symbol from afar, the wall top close up
       const pts = far ? this.wallPath(w, symOff, w.height) : this.wallPath(w, off, w.height);
@@ -183,7 +186,7 @@ export class RouteExtras {
       const world: number[] = [];
       for (let j = 0; j < pts.length; j += 3) { this.view.local(pts[j], pts[j + 1], pts[j + 2], v); world.push(v.x, v.y, v.z); }
       // both opaque: renderOrder then keeps the teal core over its casing
-      this.symbols.add(this.line(world, 0x0e4a4a, 6.5, 1, 5), this.line(world, WALL, 3.5, 1, 6));
+      this.symbols.add(this.line(world, 0x0e4a4a, overview ? 3.5 : 6.5, 1, 5), this.line(world, WALL, overview ? 2 : 3.5, 1, 6));
     }
     this.view.requestRender();
   }
