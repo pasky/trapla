@@ -10,7 +10,8 @@ export function smoothLink<T extends XY>(points: T[], clearance: (p: XY) => numb
     const count = Math.max(1, Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/2.5));
     // Reject obvious corner cuts first, before the fine clearance walk.
     if (clearance(lerp(a,b,.5)) < minimumClearance) return false;
-    for (let k = 0; k <= count; k++) if (clearance(lerp(a,b,k/count)) < minimumClearance) return false;
+    // k/count === .5 exactly when 2k === count: that sample already passed above.
+    for (let k = 0; k <= count; k++) if (2 * k !== count && clearance(lerp(a,b,k/count)) < minimumClearance) return false;
     return true;
   };
   const simple = [points[0]];

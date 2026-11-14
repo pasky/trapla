@@ -128,8 +128,22 @@ function routeGeometry(route: CrossingRoute) {
     return result;
   };
   const margin = (q: XY, extra: number, cache = true) => {
+    if (!cache) return marginOnce(q, extra);
     const p = project(q, cache);
     return Math.abs(p.lateral) - (p.lateral >= 0 ? p.left : p.right) - extra;
+  };
+  /** One-off probe (e.g. link chord clearance): project/at arithmetic without allocating. */
+  const marginOnce = (q: XY, extra: number) => {
+    nearest(q);
+    let lo = 0, hi = n - 1;
+    while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (route.s[m] <= station) lo = m; else hi = m; }
+    const t = Math.max(0, Math.min(1, (station - route.s[lo]) / (route.s[hi] - route.s[lo] || 1)));
+    const tx = lerpAt(route.tx, lo, hi, t), ty = lerpAt(route.ty, lo, hi, t), norm = Math.hypot(tx, ty) || 1;
+    const lateral = (q.x - lerpAt(route.x, lo, hi, t)) * -(ty / norm) + (q.y - lerpAt(route.y, lo, hi, t)) * (tx / norm);
+    const edge = lateral >= 0
+      ? route.left ? lerpAt(route.left, lo, hi, t) : lerpAt(route.width, lo, hi, t) / 2
+      : route.right ? lerpAt(route.right, lo, hi, t) : lerpAt(route.width, lo, hi, t) / 2;
+    return Math.abs(lateral) - edge - extra;
   };
   return { at, project, margin };
 }
