@@ -129,7 +129,7 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
 
 function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
   heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
-  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>): CrossingIssue[] {
+  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>): CrossingIssue[] {
   const { at, project, margin } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => v.crossing.code !== 'geometry');
   const terrainPoint = (q: XY & { d?: number }): CrossingPoint => {
@@ -359,9 +359,17 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         stations.splice(0, stations.length, ...reduced);
       }
       if (s1 < s0) stations.reverse();
-      const controls = smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
-        // One-off chord probes must not evict reusable anchor/bisection projections.
-        q => margin(q, g.width / 2, false), terrainPoint, SETBACK - 1e-5);
+      // Candidate treatments rebuild the same link between the same anchors; within one call the
+      // route and terrain are immutable, so reuse the smoothed controls (copied, never shared).
+      const key = `${a.x},${a.y},${b.x},${b.y},${side},${g.width},${stations.length}`;
+      let cached = smoothed.get(key);
+      if (!cached) {
+        cached = smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
+          // One-off chord probes must not evict reusable anchor/bisection projections.
+          q => margin(q, g.width / 2, false), terrainPoint, SETBACK - 1e-5);
+        smoothed.set(key, cached);
+      }
+      const controls = cached.map((p, i) => i === 0 ? a : i === cached!.length - 1 ? b : { ...p });
       const link: CrossingPoint[] = [a];
       const length = crossingPlanLength(controls), budget = Math.max(0, MAX_POINTS - controls.length);
       for (let i = 1; i < controls.length; i++) {
@@ -437,8 +445,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const spatial = routeGeometry(route);
   // Candidate treatments and the final rebuild use the same immutable OSM alignment. Share only
   // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
-  const paths = new Map<string, CachedPath>();
-  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths);
+  const paths = new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>();
+  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed);
   build(crossings);
   const clone = (c: CrossingResult): CrossingResult => ({ ...c, geometry: undefined,
     issues: c.issues?.filter(v => v.crossing.code !== 'geometry') });
