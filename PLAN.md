@@ -575,6 +575,13 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   actual residual noise produce blocking violations. Off-corridor manual buys share the noise-buyout
   plot allowance; footprint buys pay once under the original corridor-land rule. Map labels, profile
   markers, contextual HUD, undo and clear are shared with the other tools. No default bill changes.
+- **Noise wall paint** shares the profile range selection: left/right, actual height 2–6 m (including
+  fractional heights), explicit no-wall, or clear to Auto. Actual heights drive bill, receiver checks and
+  noise map; manual cells do not seed automatic margins or join height-promotion runs. A manual wall
+  decision at any exposed pair prevents implicit acquisition of that whole dwelling; residual excess is
+  a blocking violation with a computed wall/extent suggestion or explicit-buyout fix. Keep also blocks
+  fallback. Unrelated automatic buyouts retain the original policy. Player walls have exact extents,
+  tunnels suppress them, and map/profile marks include removals. No default score/version change.
 - **Grade line: Auto | Manual** replaces the ambiguous button. Auto seeks a low-cost legal vertical line;
   Manual freezes it for vertical-point edits. Auto replaces manual vertical edits but keeps structure paint.
 - KHK regional/nadregional ÚSES is available and cached (47 polygons, ~0.49 MB) by

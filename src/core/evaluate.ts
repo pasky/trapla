@@ -3,8 +3,8 @@
 // a Web Worker in the app.
 
 import { autoProfile } from './autoprofile';
-import { noiseBuyoutCost, type BuildingIndex } from './buildings';
-import { normalizeBuildingOverrides, type BuildingOverride } from './build-controls';
+import { noiseBuyoutCost, BuildingIndex } from './buildings';
+import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
 import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, type Violation } from './checks';
 import {
@@ -49,6 +49,8 @@ export interface Design {
   crossingOverrides?: CrossingOverride[];
   /** Building indices are stable within the scenario pack. Omission restores Auto. */
   buildingOverrides?: BuildingOverride[];
+  /** Side-specific wall paint; height 0 removes Auto's wall, omitted ranges remain automatic. */
+  wallOverrides?: WallOverride[];
 }
 
 export interface EvalContext {
@@ -556,7 +558,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
   const noiseModel = createNoiseModel(scenario.traffic, d.speed);
-  if (bld) {
+  const wallOverrides = normalizeWallOverrides(d.wallOverrides);
+  const wallMasks = wallOverrideMasks(st.s, wallOverrides);
+  // Explicit walls are construction even when there are no nearby buildings (or no building layer).
+  const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
+  if (noiseBuildings) {
     const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
     const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
     for (let i = 0; i < n; i++) {
@@ -567,8 +573,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (sec.zDayR[i] > grade[i]) edges.R[i] = { offset: sec.dayR[i], height: sec.zDayR[i] - grade[i] };
     }
     const barrier = noiseBarrier(cat.crownWidth);
-    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseModel, gone,
-      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, barrier, edges, { keptBuildingIds: keptIds });
+    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, noiseBuildings, noiseModel, gone,
+      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, barrier, edges,
+      { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R });
     const resolved = resolveNoiseWalls(ex, ds, al.length, shieldL, shieldR, barrier, edges);
     boughtOut = [...manualBuys, ...resolved.boughtOut].sort((a, b) => a.i - b.i);
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;

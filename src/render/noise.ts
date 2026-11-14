@@ -233,7 +233,7 @@ export class NoiseLayer {
     const n = (r.noise?.receivers ?? []).filter((p) => p.status === 'wall' && p.side === w.side && p.at >= w.i0 && p.at <= w.i1).length;
     return `<b>Noise wall ${w.height} m high</b>
       <div class="tip-sub">${w.side === 'L' ? 'left' : 'right'} of travel, ${km(w.s0)}–${(w.s1 / 1000).toFixed(2)} (${Math.round(w.s1 - w.s0)} m)</div>
-      ${n ? `protects ${n} dwelling${n > 1 ? 's' : ''}; ` : ''}height = the tallest any of them needs (3 / 4 / 5 m), extended ${NOISE.margin} m past the last exposed station`;
+      ${n ? `protects ${n} dwelling${n > 1 ? 's' : ''}; ` : ''}actual built height. Auto uses 3 / 4 / 5 m with ${NOISE.margin} m margins; player walls can be 2–6 m and keep their exact selected extent`;
   }
 
   /** building hit by the camera ray under the cursor: oriented footprint box, ground to roof */

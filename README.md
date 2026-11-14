@@ -103,6 +103,15 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   excess becomes a blocking violation, with the dB shortfall shown. Green KEEP / magenta BUY map labels,
   green profile squares and magenta diamonds show decisions; use the saved-building list to revisit them.
   Clearing the decision restores the automatic policy. Building and road IDs refer to this scenario pack.
+- **Wall tools:** select a profile stretch, choose **Left / Right (A → B)** and **2–6 m** in Build tools,
+  then **Add wall / No wall / Auto wall**. Repainting changes only that side and subrange; undo restores it.
+  Player walls retain their exact selected extent (no automatic end margins); tunnels suppress built walls.
+  Teal walls show the actual height, dotted marks show manual intent, and pink dashed marks show removals
+  on map/profile. **Any manual wall decision at an exposed receiver prevents silent noise buyout** for
+  that dwelling: residual noise becomes a blocking dB violation with a computed sufficient wall height
+  and extent where possible, otherwise a buyout/route-change fix. Explicitly buy out the building to
+  accept acquisition. Clearing all relevant wall decisions restores automatic 3/4/5 m walls and the
+  existing fallback-buyout rule; **Keep** still forbids acquisition.
 - Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
   floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
   shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,

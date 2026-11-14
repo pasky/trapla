@@ -9,7 +9,7 @@ import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
 import { CrossingRenderer } from './render/crossings';
 import { BuildingPicker } from './render/building-pick';
-import { setBuildingOverride } from './core/build-controls';
+import { paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { BuildTools } from './ui/build-tools';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -108,12 +108,12 @@ async function main() {
     for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
     last = r;
     view.setResult(r, CATEGORIES[rd.category].crownWidth);
-    extras.setResult(r, CATEGORIES[rd.category].crownWidth, rd.structureOverrides);
+    extras.setResult(r, CATEGORIES[rd.category].crownWidth, rd.structureOverrides, rd.wallOverrides);
     crossingRenderer.setResult(r);
     noise.setResult(r, CATEGORIES[rd.category].crownWidth);
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
-    profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins);
+    profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
     tools.setResult(r, rd);
     annotations.setResult(r, rd);
     if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
@@ -201,11 +201,23 @@ async function main() {
     },
   };
 
-  const setStructure = (kind: StructureKind | null) => {
+  const paintRange = () => {
     const range = selection.range;
-    if (!range || !last) return;
+    if (!range || !last) return null;
     const [i0, i1] = cellsInRange(last, range.s0, Math.min(range.s1, last.length));
-    const s0 = Math.max(0, (i0 - 0.5) * last.ds), s1 = Math.min(last.length, (i1 + 0.5) * last.ds);
+    return { s0: Math.max(0, (i0 - 0.5) * last.ds), s1: Math.min(last.length, (i1 + 0.5) * last.ds) };
+  };
+  tools.ev.wall = (side, height) => {
+    const range = paintRange();
+    if (!range) return;
+    const previous = store.design.wallOverrides ?? [];
+    const next = paintWallOverride(previous, range.s0, range.s1, side, height);
+    if (JSON.stringify(previous) !== JSON.stringify(next)) store.update((d) => { d.wallOverrides = next; });
+  };
+  const setStructure = (kind: StructureKind | null) => {
+    const range = paintRange();
+    if (!range) return;
+    const { s0, s1 } = range;
     const previous = store.design.structureOverrides ?? [];
     const next = paintOverride(previous, s0, s1, kind);
     if (next.length === previous.length && next.every((r, i) => r.s0 === previous[i].s0 && r.s1 === previous[i].s1 && r.kind === previous[i].kind)) return;

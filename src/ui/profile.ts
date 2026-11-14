@@ -11,6 +11,7 @@ import { crossingLabel } from '../core/crossings';
 import { groundDescription } from '../core/ground';
 import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
+import type { WallOverride } from '../core/build-controls';
 import type { VPI } from '../core/vertical';
 import type { StationRange } from '../state';
 import { COST_GROUPS, czk, perM } from './costgroups';
@@ -40,6 +41,7 @@ export class ProfilePanel {
   private vpis: VPI[] = [];
   private overrides: readonly StructureOverride[] = [];
   private pins: readonly { s: number; z: number }[] = [];
+  private wallOverrides: readonly WallOverride[] = [];
   private pinStation: number | null = null;
   private v0 = 0;
   private v1 = 1;
@@ -83,9 +85,10 @@ export class ProfilePanel {
     this.install();
   }
 
-  setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = [], pins: readonly { s: number; z: number }[] = []) {
+  setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = [], pins: readonly { s: number; z: number }[] = [], walls: readonly WallOverride[] = []) {
     this.overrides = overrides;
     this.pins = pins;
+    this.wallOverrides = walls;
     this.r = r;
     this.vpis = vpis;
     // prefix sums of the bill
@@ -316,6 +319,16 @@ export class ProfilePanel {
       g.beginPath(); g.moveTo(a, y + 5); g.lineTo(a, y); g.lineTo(b, y); g.lineTo(b, y + 5); g.stroke();
       g.font = 'bold 10px system-ui'; g.textAlign = 'left';
       if (b - a > 24) g.fillText(['E', 'B', 'T'][o.kind] + ' manual', a + 3, y + 15, b - a - 5);
+    }
+    for (const o of this.wallOverrides) {
+      const a = this.X(Math.max(this.v0, o.s0)), b = this.X(Math.min(this.v1, r.length, o.s1));
+      if (b <= a) continue;
+      const y = this.pad.t + (o.side === 'L' ? 30 : 46);
+      g.strokeStyle = g.fillStyle = o.height ? '#087575' : '#c12d80';
+      g.lineWidth = 2; g.setLineDash([3, 3]);
+      g.beginPath(); g.moveTo(a, y); g.lineTo(b, y); g.stroke();
+      g.font = 'bold 10px system-ui'; g.textAlign = 'left';
+      if (b - a > 20) g.fillText(`${o.side} ${o.height ? `wall ${o.height} m` : 'no wall'}`, a + 2, y + 11, b - a - 4);
     }
     g.restore();
     // crossed roads: a mark at the crossed road's level, linked to the grade line
@@ -551,6 +564,7 @@ export class ProfilePanel {
     const geology = groundDescription(r.geology.profiles[r.geology.ids[i]]);
     // Pack names can come from service attributes; do not interpolate them as HTML.
     const escapedGeology = geology.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    for (const o of this.wallOverrides) if (s >= o.s0 && s <= o.s1) facts.push(`player ${o.side === 'L' ? 'left' : 'right'} wall: ${o.height ? `${o.height} m` : 'removed'} (clear to restore Auto)`);
     for (const w of r.walls) {
       if (i >= w.i0 && i <= w.i1) facts.push(`noise wall: ${w.side === 'L' ? 'left' : 'right'}, ${w.height} m high (provisional)`);
     }

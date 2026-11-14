@@ -13,6 +13,7 @@ import type { WallStretch } from '../core/noise';
 import { cellsInRange } from '../core/range';
 import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
+import type { WallOverride } from '../core/build-controls';
 import type { StationRange } from '../state';
 import type { View } from './view';
 
@@ -41,12 +42,12 @@ export class RouteExtras {
     view.onRender = () => { prev?.(); this.updateSymbols(); };
   }
 
-  setResult(r: Result, crownWidth: number, overrides: readonly StructureOverride[] = []) {
-    this.r = r; this.crown = crownWidth; this.buildWalls(); this.buildManual(overrides); this.buildHighlight();
+  setResult(r: Result, crownWidth: number, overrides: readonly StructureOverride[] = [], wallOverrides: readonly WallOverride[] = []) {
+    this.r = r; this.crown = crownWidth; this.buildWalls(); this.buildManual(overrides, wallOverrides); this.buildHighlight();
   }
 
   /** Dotted surface overlay distinguishes manual earth/bridge/tunnel ranges, even if invalid. */
-  private buildManual(overrides: readonly StructureOverride[]) {
+  private buildManual(overrides: readonly StructureOverride[], wallOverrides: readonly WallOverride[]) {
     this.clear(this.manual);
     const r = this.r;
     if (!r) return;
@@ -68,6 +69,17 @@ export class RouteExtras {
       line.material.dashed = true; line.material.dashSize = 12; line.material.gapSize = 12;
       line.computeLineDistances();
       this.manual.add(line);
+    }
+    for (const o of wallOverrides) {
+      const s0 = Math.max(0, o.s0), s1 = Math.min(r.length, o.s1);
+      if (s1 <= s0) continue;
+      const [i0, i1] = cellsInRange(r, s0, s1);
+      const path = this.wallPath({ ...o, s0, s1, i0, i1 }, this.crown / 2 + NOISE.wallEdgeOffset + 2, o.height + 2);
+      const pos: number[] = [];
+      for (let k = 0; k < path.length; k += 3) { this.view.local(path[k], path[k + 1], path[k + 2], v); pos.push(v.x, v.y, v.z); }
+      const line = this.line(pos, o.height ? 0x046767 : 0xd6338a, 3, 1, 7);
+      line.material.dashed = true; line.material.dashSize = 6; line.material.gapSize = 8;
+      line.computeLineDistances(); this.manual.add(line);
     }
     this.view.requestRender();
   }

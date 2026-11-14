@@ -14,6 +14,7 @@ export interface BuildToolEvents {
   selectCrossing?: (roadId: number) => void;
   building?: (j: number, action: BuildingOverride['action'] | null) => void;
   selectBuilding?: (j: number) => void;
+  wall?: (side: 'L' | 'R', height: number | null) => void;
 }
 
 export class BuildTools {
@@ -22,6 +23,8 @@ export class BuildTools {
   crossing: number | null = null;
   building: number | null = null;
   private range: StationRange | null = null;
+  private wallSide: 'L' | 'R' = 'L';
+  private wallHeight = 4;
   private r: Result | null = null;
   private d: Design | null = null;
   private root: HTMLElement;
@@ -37,6 +40,27 @@ export class BuildTools {
   selectCrossing(roadId: number) { this.crossing = roadId; this.station = this.building = null; this.render(); }
   selectBuilding(j: number) { this.building = j; this.station = this.crossing = null; this.render(); }
   setRange(range: StationRange | null) { this.range = range; this.render(); }
+  private renderWalls(r: Result, d: Design) {
+    const range = this.range;
+    if (!range) return;
+    const box = document.createElement('div');
+    const existing = (d.wallOverrides ?? []).filter((o) => o.s1 > range.s0 && o.s0 < range.s1);
+    box.innerHTML = `<p><b>Noise walls · km ${(range.s0 / 1000).toFixed(2)}–${(Math.min(r.length, range.s1) / 1000).toFixed(2)}</b></p>
+      <label>Side <select id="wall-side"><option value="L">Left A → B</option><option value="R">Right A → B</option></select>Height <input id="wall-height" type="number" min="2" max="6" step="0.5" value="${this.wallHeight}"> m</label>
+      <div class="btns"><button id="wall-add" title="Build the specified height on this side throughout the selected stretch. Actual height is priced and evaluated for noise; no wall is built inside tunnels.">Add wall</button><button id="wall-remove" title="Explicitly remove the wall on this side. Remaining noise excess is a violation, not silent acquisition.">No wall</button><button id="wall-auto" title="Clear this side's wall decision in the selected stretch. Auto chooses 3/4/5 m walls with 50 m end margins, or buys out unprotectable dwellings unless you keep them.">Auto wall</button></div>
+      <div class="sub">${existing.length ? existing.map((o) => `${o.side === 'L' ? 'Left' : 'Right'}: ${o.height ? `${o.height} m wall` : 'no wall'} ${(o.s0 / 1000).toFixed(2)}–${(o.s1 / 1000).toFixed(2)} km`).join(' · ') : 'No wall overrides here.'} Manual walls never silently buy out exposed dwellings; add adequate walls or explicitly buy them out.</div>`;
+    const select = box.querySelector<HTMLSelectElement>('#wall-side')!;
+    select.value = this.wallSide;
+    select.onchange = () => { this.wallSide = select.value as 'L' | 'R'; };
+    const side = () => this.wallSide;
+    box.querySelector<HTMLButtonElement>('#wall-add')!.onclick = () => {
+      const height = box.querySelector<HTMLInputElement>('#wall-height')!.valueAsNumber;
+      if (Number.isFinite(height) && height >= 2 && height <= 6) { this.wallHeight = height; this.ev.wall?.(side(), height); }
+    };
+    box.querySelector<HTMLButtonElement>('#wall-remove')!.onclick = () => this.ev.wall?.(side(), 0);
+    box.querySelector<HTMLButtonElement>('#wall-auto')!.onclick = () => this.ev.wall?.(side(), null);
+    this.root.appendChild(box);
+  }
   private renderBuilding(r: Result, d: Design) {
     const j = this.building;
     if (d.buildingOverrides?.length) {
@@ -81,8 +105,9 @@ export class BuildTools {
   }
   private render() {
     const r = this.r, d = this.d, s = this.station;
-    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a building or crossing on the map; choose its action here. Select a cost-strip stretch for B/T/E/C structures. All choices are undoable.</div>`;
+    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a building or crossing on the map; choose its action here. Select a cost-strip stretch for B/T/E/C structures and left/right noise walls. All choices are undoable.</div>`;
     if (!r || !d) return;
+    this.renderWalls(r, d);
     this.renderBuilding(r, d);
     this.renderCrossings(r, d);
     if (d.gradePins?.length) {

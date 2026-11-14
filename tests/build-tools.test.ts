@@ -11,6 +11,38 @@ const terrain = syntheticTerrain(500, 80, 5, () => 400);
 const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } };
 afterEach(() => vi.unstubAllGlobals());
 
+describe('wall decisions through the full bill', () => {
+  it('builds/prices player walls without a building layer and uses their actual fractional height', () => {
+    const d = startDesign();
+    d.wallOverrides = [{ s0: 800, s1: 1200, side: 'L', height: 2.5 }];
+    const low = evaluate(ctx, d);
+    expect(low.walls).toHaveLength(1);
+    expect(low.walls[0].height).toBe(2.5);
+    d.wallOverrides[0].height = 5;
+    const high = evaluate(ctx, d);
+    expect(high.quantities.wallLength).toBe(low.quantities.wallLength);
+    expect(high.cost.noiseWalls).toBeCloseTo(2 * low.cost.noiseWalls);
+    expect(high.quantities.wallArea).toBeCloseTo(2 * low.quantities.wallArea);
+  });
+  it('does not silently buy out after wall removal; clearing restores Auto and an explicit buyout resolves the failure', () => {
+    const buildings = new BuildingIndex([[1100, 250, 7]], [[100, 2, 0, 1100, 250, 5, 5, 0]]);
+    const context = { ...ctx, buildings }, d = startDesign(), base = evaluate(context, d);
+    expect(base.walls.length).toBeGreaterThan(0);
+    expect(base.boughtOut).toEqual([]);
+    d.wallOverrides = [{ s0: 0, s1: 2000, side: 'L', height: 0 }];
+    const removed = evaluate(context, d);
+    expect(removed.boughtOut).toEqual([]);
+    expect(removed.walls.filter((w) => w.side === 'L')).toEqual([]);
+    expect(removed.violations.some((v) => v.kind === 'noise' && /Add \d m walls/.test(v.fix))).toBe(true);
+    d.buildingOverrides = [{ j: 0, action: 'buy' }];
+    const bought = evaluate(context, d);
+    expect(bought.boughtOut[0].reason).toBe('manual');
+    expect(bought.violations.some((v) => v.kind === 'noise')).toBe(false);
+    d.buildingOverrides = []; d.wallOverrides = [];
+    expect(evaluate(context, d).cost).toEqual(base.cost);
+  });
+});
+
 describe('building decisions through the full bill', () => {
   const buildings = new BuildingIndex([[1100, 200, 7], [1200, 350, 7], [1100, 230, 7]],
     [[100, 2, 0, 1100, 200, 5, 5, 0], [100, 2, 0, 1200, 350, 5, 5, 0], [100, 12, 1, 1100, 230, 5, 5, 0]]);
