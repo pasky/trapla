@@ -1,7 +1,7 @@
 // Regression tests for issues found in the deep review.
 import { describe, expect, it } from 'vitest';
 import { autoProfile, profileOk } from '../src/core/autoprofile';
-import { ROAD_CHECKS } from '../src/core/checks';
+import { crossingViolation, mergeNearby, ROAD_CHECKS } from '../src/core/checks';
 import { speedNorms } from '../src/core/data/norms';
 import { buildAlignment, station } from '../src/core/horizontal';
 import { sideSection } from '../src/core/sections';
@@ -48,13 +48,26 @@ describe('review regressions', () => {
     expect(ROAD_CHECKS.vertical(p, speedNorms(90), 0.06).some((v) => v.kind === 'vcOverlap')).toBe(true);
   });
 
-  it('a too steep grade says which VPI to move and by how much, and that is enough', () => {
+  it('a too steep grade says which profile point to move and by how much, and that is enough', () => {
     const pts = [{ s: 0, z: 0, r: null }, { s: 500, z: 40, r: null }, { s: 1000, z: 45, r: null }];
     const grades = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06).filter((v) => v.kind === 'gradient');
     const [v] = grades(pts);
-    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower VPI 1 by 10.0 m' });
+    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower profile point 1 (km 0.50) by 10.0 m' });
     pts[1].z -= 10;
     expect(grades(pts)).toEqual([]);
+  });
+
+  it('nearby violations of the same cause become one entry with the largest fix', () => {
+    const v = mergeNearby([
+      crossingViolation(7310, 'railway', 3.2, 7.5), crossingViolation(7380, 'railway', 0.6, 7.5),
+      crossingViolation(7430, 'railway', 3.8, 7.5), crossingViolation(7800, 'railway', 3, 7.5),
+      crossingViolation(7850, 'river', 1, 3),
+    ]);
+    expect(v.map((x) => [x.s0, x.s1, x.fix])).toEqual([
+      [7310, 7430, 'Raise the grade line here by 6.9 m'],
+      [7800, 7800, 'Raise the grade line here by 4.5 m'],
+      [7850, 7850, 'Raise the grade line here by 2.0 m'],
+    ]);
   });
 
   it('section whose slope lies exactly on the ground has finite areas', () => {

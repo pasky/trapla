@@ -107,7 +107,7 @@ export class Hud {
           <li><b>Drag</b> a numbered PI to move it, <b>right-click</b> or <kbd>Del</kbd> to delete</li>
           <li>Bends are corners of the dashed polygon; the selected one shows its radius on the map: drag a <b>◇ grip</b> along the leg, <b>wheel</b> over the bend or <kbd>+</kbd> / <kbd>−</kbd>, <b>max</b> / <b>auto</b>. Close bends turning the same way become one long curve</li>
           <li>Map: <b>left-drag</b> pan · <b>right-drag</b> rotate · <b>wheel</b> zoom</li>
-          <li>Profile: drag VPIs (takes manual control), <b>double-click</b> adds, <b>right-click</b> deletes, wheel zooms</li>
+          <li>Profile: drag the profile points (takes manual control), <b>double-click</b> adds, <b>right-click</b> deletes, wheel zooms</li>
           <li>Why is a stretch expensive? <b>Hover</b> the profile for the cost split there; <b>drag</b> in the cost strip (or <kbd>Shift</kbd>+drag) to select a stretch, <b>click</b> a curve / tangent in the band above it; <kbd>Esc</kbd> = whole route</li>
         </ul>
         <label class="exag">Vertical exaggeration <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>
@@ -266,7 +266,7 @@ export class Hud {
     card.style.display = '';
     const vc = r.vcurves[i - 1];
     const v = r.vpis[i];
-    card.innerHTML = `<h2>VPI ${i} <small>km ${num(v.s / 1000, 2)} · ${num(v.z, 1)} m</small></h2>
+    card.innerHTML = `<h2>Profile point ${i} <small>km ${num(v.s / 1000, 2)} · ${num(v.z, 1)} m</small></h2>
       <div class="pi-row">
         <label>${vc?.type ?? ''} radius <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
         <label><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> min</label>

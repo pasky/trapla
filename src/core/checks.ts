@@ -38,6 +38,8 @@ export interface Violation {
   vpi?: number;
   /** horizontal violations: every bend (PI index) involved */
   pis?: number[];
+  /** how much the fix asks for (m); of nearby entries merged into one, the largest is kept */
+  size?: number;
 }
 
 /** one-line form for logs and scripts */
@@ -319,7 +321,8 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
 export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number): Violation[] {
   const out: Violation[] = [];
   const last = p.pts.length - 1;
-  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `VPI ${k}`);
+  // "profile point k (km …)": the points carry no numbers in the profile, the station finds them
+  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `profile point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
   const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
   const gradeRule = `ČSN 73 6101 (older edition, provisional): at most ${fmt(maxGradient * 100, 0)} % gradient for this road in hilly terrain`;
   for (let i = 0; i < p.grades.length; i++) {
@@ -345,7 +348,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     out.push({
       kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
-      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : `Add a VPI (double-click the profile) or make the route longer here`,
+      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : `Add a profile point here (double-click the profile) or make the route longer here`,
       detail: `Between ${vpi(i)} and ${vpi(i + 1)} the grade line ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Auto profile finds a grade line within the limit when one exists.`,
       basis: 'norm', rule: gradeRule,
     });
@@ -360,7 +363,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     if (c.r < min - 1e-6) {
       out.push({
         kind: c.type, ...where,
-        title: `${word} at ${vpi(c.index)} is too sharp`,
+        title: `${word} too sharp`,
         fix: `Set the ${crest ? 'crest' : 'sag'} radius at ${vpi(c.index)} to at least ${fmt(min)} m (tick "min" in its card)`,
         detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
         basis: 'norm', rule: `ČSN 73 6101 (older edition, provisional): ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
@@ -382,9 +385,9 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
       const both = !!w.nb && w.nb.type !== 'none' && w.nb.len > 0;
       out.push({
         kind: 'vcOverlap', ...where,
-        title: both ? `Vertical curves at ${vpi(Math.min(w.j, c.index))} and ${vpi(Math.max(w.j, c.index))} overlap` : `Vertical curve at ${vpi(c.index)} does not fit`,
+        title: both ? 'Two vertical curves overlap' : 'Vertical curve does not fit',
         fix: `Move ${vpi(c.index)} at least ${fmt(up(w.short))} m further from ${vpi(w.j)}`,
-        detail: `The ${crest ? 'crest' : 'dip'} at ${vpi(c.index)} needs ${fmt(c.len)} m (radius × change of grade)${both ? ` and the one at ${vpi(w.j)} ${fmt(w.nb!.len)} m; half of each must fit between the two VPIs` : `; half of it must fit before ${vpi(w.j)}`}, but they are only ${fmt(Math.abs(p.pts[w.j].s - c.s))} m apart. A smaller radius (not below the minimum) or a smaller change of grade also helps.`,
+        detail: `The ${crest ? 'crest' : 'dip'} at ${vpi(c.index)} needs ${fmt(c.len)} m (radius × change of grade)${both ? ` and the one at ${vpi(w.j)} ${fmt(w.nb!.len)} m; half of each must fit between the two points` : `; half of it must fit before ${vpi(w.j)}`}, but they are only ${fmt(Math.abs(p.pts[w.j].s - c.s))} m apart. A smaller radius (not below the minimum) or a smaller change of grade also helps.`,
         basis: 'game', rule: 'Game rule: every vertical curve must fit whole between its neighbours — a squeezed curve would be sharper than its radius says',
       });
     }
@@ -413,6 +416,7 @@ export function slopeViolation(s0: number, s1: number, above: number, below: num
       : `Raise the grade line here (now up to ${fmt(below, 1)} m below the ground), or move the road off the steep hillside`,
     detail: `The hillside is about as steep as the ${fill ? 'embankment' : 'cutting'} slope, so the side slope runs on for more than ${fmt(width)} m without meeting the ground.`,
     basis: 'game', rule: `Game limit: side slopes are modelled only ${fmt(width)} m to each side of the road`,
+    size: Math.max(above, below),
   };
 }
 
@@ -427,6 +431,7 @@ export function crossingViolation(s: number, what: string, above: number, need: 
       fix: `Raise the grade line here by ${fmt(raise, 1)} m`,
       detail: `To bridge the ${what} the road must be at least ${fmt(need, 1)} m above it; it is ${h(above)}.`,
       basis: 'game', rule: `Game assumption: a bridge needs the road at least ${fmt(need, 1)} m above a ${what} (deck plus clearance)`,
+      size: raise,
     };
   }
   const lower = Math.ceil((above + below) * 10 - 1e-6) / 10;
@@ -437,7 +442,41 @@ export function crossingViolation(s: number, what: string, above: number, need: 
     fix: raise <= lower ? `${r} (or ${l})` : `${cap(l)} (or ${r.charAt(0).toLowerCase()}${r.slice(1)})`,
     detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (an overbridge carries it over our cutting); it is ${h(above)}.`,
     basis: 'norm', rule: `ČSN 73 6101: motorways and expressways are crossed only at a different level (research/08). The ${fmt(need, 1)} m / ${fmt(below, 1)} m heights are game estimates`,
+    size: Math.min(raise, lower),
   };
+}
+
+const MERGEABLE = new Set<ViolationKind>(['crossing', 'section', 'oob']);
+
+/**
+ * Entries of the same kind and cause (same headline) less than `gap` m apart become one: it spans them
+ * all and keeps the text of the one whose fix asks for most. Bend / profile-point violations stay
+ * separate (each names its own point). Expects each kind in station order.
+ */
+export function mergeNearby(vs: Violation[], gap = 100): Violation[] {
+  const out: Violation[] = [];
+  const last = new Map<string, { v: Violation; n: number; s0: number }>();
+  const groups: { v: Violation; n: number; s0: number }[] = [];
+  for (const v of vs) {
+    if (!MERGEABLE.has(v.kind)) { out.push(v); continue; }
+    const key = `${v.kind}|${v.title}`;
+    const g = last.get(key);
+    if (g && v.s0 - g.v.s1 <= gap) {
+      const s1 = Math.max(g.v.s1, v.s1);
+      if ((v.size ?? 0) > (g.v.size ?? 0)) Object.assign(g.v, v);
+      g.v.s0 = g.s0; g.v.s1 = s1;
+      g.n++;
+      continue;
+    }
+    const e = { v: { ...v }, n: 1, s0: v.s0 };
+    last.set(key, e);
+    groups.push(e);
+    out.push(e.v);
+  }
+  for (const g of groups) {
+    if (g.n > 1) g.v.detail = `${g.v.detail ?? ''} (${g.n} places between km ${fmt(g.v.s0 / 1000, 2)} and km ${fmt(g.v.s1 / 1000, 2)}; the numbers are for the worst.)`.trim();
+  }
+  return out;
 }
 
 export function oobViolation(s0: number, s1: number, length: number): Violation {
@@ -447,6 +486,7 @@ export function oobViolation(s0: number, s1: number, length: number): Violation 
     fix: 'Move the route back inside the play area',
     detail: `${fmt(length)} m of the road or its side slopes lie outside the terrain data.`,
     basis: 'game', rule: 'Game limit: the road and its slopes must stay on the terrain data',
+    size: length,
   };
 }
 
@@ -454,7 +494,7 @@ export function profileViolation(length: number, maxGradient: number): Violation
   return {
     kind: 'profile', s0: 0, s1: length,
     title: 'Auto profile found no valid grade line',
-    fix: 'Make the route climb more gently (longer, or along the hillside), or drag the VPIs in the profile yourself',
+    fix: 'Make the route climb more gently (longer, or along the hillside), or drag the profile points yourself',
     detail: `No grade line it tried stays within ${fmt(maxGradient * 100, 0)} % with the minimum crest and dip radii and the required clearances. The other messages show where it fails.`,
     basis: 'engine', rule: 'Engine limitation: the auto profile searches a limited set of grade lines; a valid one may still exist',
   };

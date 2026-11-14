@@ -4,7 +4,7 @@
 
 import { autoProfile } from './autoprofile';
 import type { BuildingIndex } from './buildings';
-import { categoryViolation, crossingViolation, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, type Violation } from './checks';
+import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, type Violation } from './checks';
 import {
   basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
   type CostBreakdown, type CostParts,
@@ -534,6 +534,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   if (!profileFeasible && d.profileMode === 'auto') {
     violations.push(profileViolation(al.length, scenario.maxGradient));
   }
+  violations.splice(0, violations.length, ...mergeNearby(violations));
   const geomViolations = violations.length;
   const travelMin = al.length / (d.speed / 3.6) / 60;
   const minCategory = minCategoryForTraffic(scenario.traffic);
