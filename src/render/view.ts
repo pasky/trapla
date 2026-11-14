@@ -455,7 +455,7 @@ export class View {
     const kinds: number[] = [], geo: number[] = [];
     const v = new THREE.Vector3();
     // `e` = true elevation for the contour lines (the surface itself may be lifted), `k` = contour strength,
-    // `kind` = EW_KIND, `g` = [depth below the original ground, class II top, class III top] (cut slopes)
+    // `kind` = EW_KIND, `g` = [depth below the class II top, below the class III top, station] (slopes)
     const noGeo = [0, 0, 0];
     const push = (x: number, y: number, z: number, c: THREE.Color, e = z, k = 0, kind: number = EW_KIND.structure, g = noGeo) => {
       this.local(x, y, z, v); pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); elev.push(e); ink.push(k);
@@ -475,18 +475,19 @@ export class View {
       const xl = x + nx * r.dayL[i], yl = y + ny * r.dayL[i], xr = x - nx * r.dayR[i], yr = y - ny * r.dayR[i];
       const fillL = r.zDayL[i] < z, fillR = r.zDayR[i] < z;
       const crown = bad[i] ? asphaltBad : asphalt;
-      // weathering class tops of the station's ground (unmapped ground: no fictitious rock)
+      // depth below the station's estimated class II / III tops (linear across the slope, so it
+      // interpolates); unmapped ground: a finite "above the tops" (soil, fading in over one station)
       const gp = r.geology.profiles[r.geology.ids[i]];
-      const cI = gp.normMix ? 1e4 : gp.classIto, cII = gp.normMix ? 1e4 : gp.classIIto;
+      const geoAt = (depth: number) => (gp.normMix ? [-3, -3, r.s[i]] : [depth - gp.classIto, depth - gp.classIIto, r.s[i]]);
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
       const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
       sv.push({
-        dl: push(xl, yl, Math.max(r.zDayL[i], this.meshHeight(xl, yl)) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, [0, cI, cII]),
-        el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, [this.terrain.heightAt(xel, yel) - z, cI, cII]),
+        dl: push(xl, yl, Math.max(r.zDayL[i], this.meshHeight(xl, yl)) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
+        el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
         cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
-        er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, [this.terrain.heightAt(xer, yer) - z, cI, cII]),
-        dr: push(xr, yr, Math.max(r.zDayR[i], this.meshHeight(xr, yr)) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, [0, cI, cII]),
+        er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
+        dr: push(xr, yr, Math.max(r.zDayR[i], this.meshHeight(xr, yr)) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
       });
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };

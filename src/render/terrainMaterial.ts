@@ -298,15 +298,15 @@ float ewOctave(vec3 p, float lambda, float fw) {
   return a > 0.0 ? (ewNoise(p / lambda) - 0.5) * a : 0.0;
 }
 // display-referred albedo of a slope; n = surface normal (unexaggerated), fillW = 0 cut … 1 fill,
-// geo = depth below the original ground (m), depth of the class II and class III tops (m)
-vec3 earthAlbedo(vec3 p, vec3 n, float fillW, vec3 geo, float fw) {
+// geo = depth below the class II top, below the class III top (m; negative above it), station (m);
+// fs = pixel footprint in station metres
+vec3 earthAlbedo(vec3 p, float fillW, vec3 geo, float fw, float fs) {
   float big = ewOctave(p, 7.0, fw), mid = ewOctave(p + 31.7, 1.7, fw), fine = ewOctave(p + 57.3, 0.45, fw);
   vec3 cut = vec3(0.0), fill = vec3(0.0);
   if (fillW < 0.999) {
-    float wII = smoothstep(geo.y - 0.5, geo.y + 0.5, geo.x), wIII = smoothstep(geo.z - 0.5, geo.z + 1.0, geo.x);
-    // rills: fine across the slope (along the contour direction t), long down the fall line
-    vec2 t = n.xz / max(length(n.xz), 1e-3);
-    float rill = (ewNoise(vec3(dot(p.xz, vec2(-t.y, t.x)) / 0.8, p.y / 6.0, 13.1)) - 0.5) * (1.0 - smoothstep(0.15, 0.45, fw / 0.8));
+    float wII = smoothstep(-0.5, 0.5, geo.x), wIII = smoothstep(-0.5, 1.0, geo.y);
+    // rills: fine along the road (station), long down the slope (elevation)
+    float rill = (ewNoise(vec3(geo.z / 0.8, p.y / 6.0, 13.1)) - 0.5) * (1.0 - smoothstep(0.15, 0.45, fs / 0.8));
     // strata: bands of near-constant elevation, wavy over a few metres
     float strata = ewOctave(vec3(p.x / 40.0, p.y + 3.0 * big, p.z / 40.0), 1.3, fw);
     vec3 base = mix(mix(vec3(0.62, 0.47, 0.35), vec3(0.60, 0.50, 0.40), wII), vec3(0.57, 0.51, 0.44), wIII);
@@ -325,7 +325,7 @@ vec3 earthAlbedo(vec3 p, vec3 n, float fillW, vec3 geo, float fw) {
  * (same hillshade and strength, normals of the exaggerated surface) and the slopes get a procedural
  * texture; structures (bridge sides, piers, portals: `ewKind` 0) are vertex-coloured Lambert. The
  * terrain's contour lines are drawn on top. Per vertex: `ewKind` (EW_KIND; interpolates between cut and
- * fill), `ewGeo` (depth below the original ground and the class II / III tops, m), `elev` = true elevation
+ * fill), `ewGeo` (depth below the estimated class II and class III tops, m, and the station), `elev` = true elevation
  * (m; the drawn surface is lifted a little above the terrain, and scaled by the relief exaggeration), `ink`
  * = contour strength (1 on cut / fill slopes, less on the carriageway, 0 on structures). The uniforms are
  * the terrain's, shared so the contour interval, exaggeration and shading strength follow it.
@@ -355,13 +355,13 @@ export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLamb
       .replace('#include <opaque_fragment>', /* glsl */ `
         // derivatives outside the branches (the varyings vary per fragment)
         float ewPx = max(length(vec2(dFdx(vElev), dFdy(vElev))), 1e-6);
-        float ewFw = length(fwidth(vObj));
+        float ewFw = length(fwidth(vObj)), ewFs = fwidth(vGeo.z);
         // display-referred sRGB, like the terrain (which mixes its colours and lines there)
         vec3 ewAlb = pow(max(diffuseColor.rgb, 0.0), vec3(1.0 / 2.2));
         if (vKind > 0.5) {
           vec3 ewN = normalize(vNrm);
           ewN *= sign(ewN.y + 1e-6); // double-sided: the upward face
-          if (vKind > 1.5) ewAlb = earthAlbedo(vObj, ewN, clamp(vKind - 2.0, 0.0, 1.0), vGeo, ewFw);
+          if (vKind > 1.5) ewAlb = earthAlbedo(vObj, clamp(vKind - 2.0, 0.0, 1.0), vGeo, ewFw, ewFs);
           // the world is scaled by the exaggeration in y: normals by its inverse
           float ewLight = reliefLight(normalize(vec3(ewN.x, ewN.y / exag, ewN.z)), shadeAmt);
           outgoingLight = pow(ewAlb * ewLight, vec3(2.2));
