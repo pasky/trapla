@@ -61,7 +61,7 @@ For codes `9181F`–`9181J`, the specification says the item is a complete concr
 
 ## Otter-standard dimensions
 
-The [AOPK SPPK E 02 003 otter standard PDF](https://aopk.gov.cz/documents/20121/4254509/E02003-Standard_vydra_Itechnicka_uprava_podpis.pdf/a5a045b5-7930-c89c-a156-f6d58d10336d?t=1690191452001) was downloaded and checked with `pdftotext`; it yields **zero text lines** (image/scanned PDF). No numeric dry-ledge or clear-height dimension can therefore be verified from text extraction in this pass; none is asserted here.
+The [AOPK SPPK E 02 003 otter standard PDF](https://aopk.gov.cz/documents/20121/4254509/E02003-Standard_vydra_Itechnicka_uprava_podpis.pdf/a5a045b5-7930-c89c-a156-f6d58d10336d?t=1690191452001) yields zero `pdftotext` lines (scanned PDF). **Follow-up:** the implementation author OCRed and visually inspected pages 9–10; verified dry-tunnel 40×40 cm minimum and ledge/berm 40 cm recommended width (25 cm justified minimum), ideally 10 cm above ordinary water. See [17-stream-crossings.md §2](17-stream-crossings.md) for scope: the dry tunnel is not the hydraulic barrel.
 
 ### Source and extraction notes
 

@@ -126,7 +126,7 @@ export interface StationCostInput {
   fill: ArrayLike<number>;
   /** High-earthwork engineering reserve, CZK/m before surcharge; earthwork cells only. */
   geotechnicalPerM?: ArrayLike<number>;
-  /** Excess stream-culvert barrel cost, CZK/cell before surcharge; earthwork cells only. */
+  /** Full watercourse culvert assembly (barrel + two ends), CZK/cell before surcharge; earthwork cells only. */
   culverts?: ArrayLike<number>;
   /** usable share of cut (the rest is unsuitable and goes to a tip) */
   usable: number;

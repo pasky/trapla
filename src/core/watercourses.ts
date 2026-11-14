@@ -1,0 +1,120 @@
+// Independent watercourse geometry: roads/land-cover drawing order cannot erase a stream.
+import { BOX_SIZES, CULVERT_RULES as R, PIPE_SIZES } from './data/culverts';
+
+export interface WaterReach {
+  id: number;
+  kind: 'stream' | 'river' | 'ditch' | 'canal';
+  width: number | null;
+  points: number[][];
+  catchmentKm2: number[];
+  truncated: boolean[];
+}
+export interface WaterData { version: 1; method: string; reaches: WaterReach[] }
+export interface WaterCrossing {
+  s: number; x: number; y: number; id: number; waterKind: WaterReach['kind'];
+  width: number; catchmentKm2: number; truncated: boolean;
+  /** Absolute sine of road/channel angle. Length = road footprint / sine. */
+  sine: number;
+}
+export interface WaterSize {
+  type: 'pipe' | 'box' | 'bridge'; width: number; height: number;
+  q100: number; capacity: number; perM: number; head: number; minHeight: number;
+  naturalBed: boolean;
+}
+export interface WaterResult extends WaterCrossing {
+  i: number; q100: number; structure: 'pipe' | 'box' | 'bridge' | 'tunnel' | 'blocked';
+  opening: string; length: number; cost: number; requiredBridge: boolean;
+}
+
+/** No area-only law is a validated Czech Q100 estimator. Keep this explicitly provisional. */
+export function estimateQ100(c: Pick<WaterCrossing, 'catchmentKm2' | 'truncated'>): number {
+  return R.runoff * Math.max(R.unknownArea, c.catchmentKm2) ** R.areaExponent
+    * (c.truncated ? R.truncatedFlowFactor : 1);
+}
+export function barrelLength(c: Pick<WaterCrossing, 'sine'>, footprint: number): number {
+  return footprint / Math.max(0.01, c.sine);
+}
+/** An assembly includes TWO ends, not an arbitrary "excess" beyond an unmeasured norm allowance. */
+export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
+  const q100 = estimateQ100(c), length = barrelLength(c, footprint);
+  const naturalBed = c.waterKind === 'stream' && (c.catchmentKm2 >= R.naturalBedArea || c.width >= 1.5);
+  if (c.waterKind !== 'river' && !naturalBed && length <= R.maxPipeLength) {
+    for (const p of PIPE_SIZES) {
+      const capacity = Math.PI * p.width ** 2 / 4 * R.pipeFlowShare * R.velocity;
+      // DN1000 minimum for long barrels is our conservative class-I game floor.
+      if (p.width < c.width || (length > 15 && p.width < 1) || capacity < q100) continue;
+      return { type: 'pipe', ...p, height: p.width, capacity, q100, minHeight: p.width + R.cover, naturalBed };
+    }
+  }
+  if (c.waterKind !== 'river' && length <= R.maxBoxLength) {
+    for (const p of BOX_SIZES) {
+      const bank = naturalBed ? R.dryBank : 0;
+      const capacity = (p.width - bank) * p.height * R.boxDepthShare * R.velocity;
+      if (p.width < c.width + bank || capacity < q100) continue;
+      return { type: 'box', ...p, capacity, q100, minHeight: p.height + R.cover, naturalBed };
+    }
+  }
+  const width = Math.max(c.width + 2 * R.bridgeBanks, q100 / (R.velocity * 2) + 2 * R.bridgeBanks);
+  return { type: 'bridge', width, height: 2, q100, capacity: Infinity, perM: 0, head: 0, minHeight: 3, naturalBed };
+}
+export function culvertCost(c: WaterCrossing, footprint: number): number {
+  const size = waterSize(c, footprint);
+  return size.type === 'bridge' ? 0 : barrelLength(c, footprint) * size.perM + 2 * size.head;
+}
+export function waterOpening(size: WaterSize): string {
+  return size.type === 'pipe' ? `DN${Math.round(size.width * 1000)}` : `${size.width.toFixed(1)} × ${size.height.toFixed(1)} m`;
+}
+
+/** Bounded segment buckets; no road × network Cartesian-product arrays. */
+export class WaterNet {
+  private buckets = new Map<string, { reach: WaterReach; j: number }[]>();
+  constructor(readonly data: WaterData) {
+    if (data.version !== 1) throw new Error('Unsupported watercourse pack');
+    for (const reach of data.reaches) for (let j = 0; j + 1 < reach.points.length; j++) {
+      const a = reach.points[j], b = reach.points[j + 1];
+      for (let x = Math.floor(Math.min(a[0], b[0]) / 100); x <= Math.floor(Math.max(a[0], b[0]) / 100); x++)
+        for (let y = Math.floor(Math.min(a[1], b[1]) / 100); y <= Math.floor(Math.max(a[1], b[1]) / 100); y++) {
+          const key = `${x},${y}`, bucket = this.buckets.get(key) ?? [];
+          bucket.push({ reach, j }); this.buckets.set(key, bucket);
+        }
+    }
+  }
+  intersections(n: number, s: ArrayLike<number>, x: ArrayLike<number>, y: ArrayLike<number>): WaterCrossing[] {
+    const out: WaterCrossing[] = [];
+    for (let i = 0; i + 1 < n; i++) {
+      const dx = x[i + 1] - x[i], dy = y[i + 1] - y[i], seen = new Set<string>();
+      for (let cx = Math.floor(Math.min(x[i], x[i + 1]) / 100); cx <= Math.floor(Math.max(x[i], x[i + 1]) / 100); cx++)
+        for (let cy = Math.floor(Math.min(y[i], y[i + 1]) / 100); cy <= Math.floor(Math.max(y[i], y[i + 1]) / 100); cy++) {
+          for (const { reach: w, j } of this.buckets.get(`${cx},${cy}`) ?? []) {
+            const key = `${w.id}:${j}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const a = w.points[j], b = w.points[j + 1], wx = b[0] - a[0], wy = b[1] - a[1];
+            const den = dx * wy - dy * wx;
+            if (Math.abs(den) < 1e-9) continue;
+            const ex = a[0] - x[i], ey = a[1] - y[i];
+            const t = (ex * wy - ey * wx) / den, u = (ex * dy - ey * dx) / den;
+            if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) continue;
+            // Neighbour max avoids false precision at a resampled catchment jump.
+            out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: x[i] + t * dx, y: y[i] + t * dy,
+              id: w.id, waterKind: w.kind, width: w.width ?? (w.kind === 'river' ? 5 : 0.5),
+              catchmentKm2: Math.max(w.catchmentKm2[j], w.catchmentKm2[j + 1]),
+              truncated: w.truncated[j] || w.truncated[j + 1], sine: Math.abs(den) / (Math.hypot(dx, dy) * Math.hypot(wx, wy)) });
+          }
+        }
+    }
+    out.sort((a, b) => a.s - b.s);
+    // Coincident OSM way endpoints share one physical crossing, not two heads/assemblies.
+    const unique: WaterCrossing[] = [];
+    for (const c of out) {
+      const prev = unique[unique.length - 1];
+      if (prev && Math.abs(prev.s - c.s) < 0.1) {
+        prev.catchmentKm2 = Math.max(prev.catchmentKm2, c.catchmentKm2);
+        prev.truncated ||= c.truncated;
+        prev.width = Math.max(prev.width, c.width);
+        if (c.waterKind === 'river') prev.waterKind = 'river';
+      } else unique.push(c);
+    }
+    return unique;
+  }
+}

@@ -1,6 +1,7 @@
 // Terrain grid: 5 m heights (quantised Uint16) + land-cover byte, local metric coordinates
 // (x east, y north, origin = SW corner of the play area in EPSG:5514).
 
+import { WaterNet, type WaterData } from './watercourses';
 import { UNKNOWN_GROUND, type GroundData, type GroundProfile } from './ground';
 
 export const LC = { none: 0, forest: 1, water: 2, building: 3, road: 4, urban: 5, rail: 6, stream: 7 } as const;
@@ -23,6 +24,7 @@ export interface TerrainData {
   /** land-cover class | OOB_BIT */
   lc: Uint8Array;
   ground?: GroundData;
+  watercourses?: WaterData;
 }
 
 export class Terrain {
@@ -36,6 +38,7 @@ export class Terrain {
   private readonly q: Uint16Array;
   readonly lc: Uint8Array;
   readonly ground: GroundData | undefined;
+  readonly watercourses: WaterNet | undefined;
 
   constructor(d: TerrainData) {
     this.nx = d.nx;
@@ -48,6 +51,7 @@ export class Terrain {
     this.width = d.nx * d.cell;
     this.height = d.ny * d.cell;
     this.ground = d.ground;
+    this.watercourses = d.watercourses ? new WaterNet(d.watercourses) : undefined;
     if (d.ground) {
       const g = d.ground;
       if (g.nx * g.cell !== this.width || g.ny * g.cell !== this.height || g.ids.length !== g.nx * g.ny

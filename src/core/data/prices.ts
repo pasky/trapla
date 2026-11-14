@@ -96,14 +96,6 @@ export const STRUCTURE_RULES = {
   engineeringFromHeight: 6,
   highFillPerM3PerM: 35,
   highCutPerM3PerM: 20,
-  /** Only extra barrel beyond crown + 12 m is charged (ordinary drainage is in the road norm).
-   * OTSKP Apr 2026 9183E2 DN800: 9450.93/m + 899524 concrete 4366.36/m³.
-   * PROVISIONAL assembly: 0.6 m³ encasement/m + 3000/m bedding, excavation and drainage.
-   * No hydraulic sizing inferred from the stream raster; not valid for major rivers. */
-  culvertIncludedExtraWidth: 12,
-  culvertExtraPerM: 9450.93 + 0.6 * 4366.36 + 3000,
-  /** Raster cells of one stream within this distance count as one crossing (PROVISIONAL). */
-  streamCrossingMerge: 30,
   /** a bridge is only considered where the grade is at least this high above ground, m */
   bridgeMinHeight: 4,
   /** a bored tunnel needs at least this much cover above the crown, m (tunnel crown ≈ 8 m) */

@@ -36,12 +36,12 @@ async function main() {
   document.getElementById('legend-official')!.textContent = scenario.labels.official;
 
   const store = new Store(`trapla.${scenario.id}`, startDesign,
-    meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'),
+    [meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'), meta.watercourses?.sha256 ?? 'raster-water'].join(':'),
     objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net));
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
-    q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, a: A, b: B, buildings: pack.overlays.buildings,
+    q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
     binfo: pack.overlays.binfo, net: pack.overlays.net, scenario,
   };
   worker.postMessage(init, [init.q.buffer, init.lc.buffer]);

@@ -14,7 +14,8 @@ export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAU
   const q = decodeHeights(delta, meta.nx, meta.ny);
   const lc = new Uint8Array(gunzipSync(readFileSync(`${dir}/${meta.landcover.file}`)));
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
-    ground: meta.ground ? { ...meta.ground, ids: new Uint8Array(gunzipSync(readFileSync(`${dir}/${meta.ground.file}`))) } : undefined });
+    ground: meta.ground ? { ...meta.ground, ids: new Uint8Array(gunzipSync(readFileSync(`${dir}/${meta.ground.file}`))) } : undefined,
+    watercourses: meta.watercourses ? JSON.parse(gunzipSync(readFileSync(`${dir}/${meta.watercourses.file}`)).toString()) : undefined });
   const ov = JSON.parse(readFileSync(`${dir}/overlays.json`, 'utf8'));
   return {
     meta, scenario: scenarioParams(meta.id), terrain, overlays: ov, buildings: new BuildingIndex(ov.buildings, ov.binfo),

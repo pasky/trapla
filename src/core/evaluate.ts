@@ -20,7 +20,7 @@ import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
-import { culvertExtra, earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
+import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import {
   dwellingExposure, noiseBarrier, noiseFootprint, resolveNoiseWalls,
@@ -34,6 +34,8 @@ import { chooseStructures, KIND, type Run } from './structures';
 import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
+import { CULVERT_RULES } from './data/culverts';
+import { barrelLength, culvertCost, waterOpening, waterSize, type WaterCrossing, type WaterResult } from './watercourses';
 
 export interface Design {
   category: CategoryId;
@@ -94,6 +96,7 @@ export interface Result {
    * (bit 0 = left of travel, bit 1 = right) */
   cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array };
   crossings: CrossingResult[];
+  waterCrossings: WaterResult[];
   walls: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   demolished: { j: number; i: number; cost: number }[];
@@ -188,7 +191,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (f > 0 && i + 1 >= n) break;
       const x = st.x[i] + (i + 1 < n ? (st.x[i + 1] - st.x[i]) * f : 0);
       const y = st.y[i] + (i + 1 < n ? (st.y[i + 1] - st.y[i]) * f : 0);
-      if (terrain.landcover(x, y) === LC.stream) streamSamples.push(st.s[i] + f * ds);
+      if (!terrain.watercourses && terrain.landcover(x, y) === LC.stream) streamSamples.push(st.s[i] + f * ds);
       const c = terrain.crossing(x, y);
       if (!c) continue;
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
@@ -205,13 +208,44 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const streamS: number[] = [];
   for (let k = 0; k < streamSamples.length; k++) {
     const start = k;
-    while (k + 1 < streamSamples.length && streamSamples[k + 1] - streamSamples[k] <= STRUCTURE_RULES.streamCrossingMerge) k++;
+    while (k + 1 < streamSamples.length && streamSamples[k + 1] - streamSamples[k] <= CULVERT_RULES.rasterMerge) k++;
     streamS.push((streamSamples[start] + streamSamples[k]) / 2);
   }
-  const streamCount = new Uint8Array(n);
-  for (const s of streamS) streamCount[Math.min(n - 1, Math.round(s / ds))]++;
-  // Compose the mapped ground category with the sparse stream flag into one bounded LUT index.
-  const profileCostClass = Uint8Array.from(groundIds, (g, i) => 2 * g + (streamCount[i] ? 1 : 0));
+  const water = terrain.watercourses?.intersections(n, st.s, st.x, st.y) ?? streamS.map((s, id): WaterCrossing => {
+    const i = Math.min(n - 1, Math.round(s / ds));
+    return { s, id: -id - 1, x: st.x[i], y: st.y[i], waterKind: 'stream', width: 0.5,
+      catchmentKm2: 0, truncated: true, sine: 1 };
+  });
+  const waterAt: WaterCrossing[][] = Array.from({ length: n }, () => []);
+  const waterMin = new Float64Array(n).fill(NaN);
+  for (const c of water) {
+    const i = Math.min(n - 1, Math.round(c.s / ds));
+    waterAt[i].push(c);
+    const size = waterSize(c, cat.crownWidth + 12), g = terrain.heightAt(c.x, c.y);
+    // Keep streams out of cuts: no unpriced diversion. A sufficiently deep bored tunnel is
+    // checked separately below. 3 m also leaves room for a box/bridge upgrade on a long footprint.
+    const need = Math.max(3, size.minHeight);
+    const i0 = Math.min(n - 2, Math.floor(c.s / ds));
+    for (const j of [i0, i0 + 1]) waterMin[j] = Math.max(Number.isNaN(waterMin[j]) ? -Infinity : waterMin[j], g + need - ground[j]);
+    mustBridge.push({ s: c.s, g, need, what: 'watercourse' });
+  }
+  // Distinct sparse crossing classes retain their actual size, skew and multiplicity in the DP.
+  const costClasses = groundProfiles.map((_, ground) => ({ ground, water: [] as WaterCrossing[] }));
+  const profileCostClass = Uint16Array.from(groundIds);
+  for (let i = 0; i < n; i++) if (waterAt[i].length) {
+    profileCostClass[i] = costClasses.length;
+    costClasses.push({ ground: groundIds[i], water: waterAt[i] });
+  }
+  const crossingCost = (cs: WaterCrossing[], width: number) => cs.reduce((v, c) => v + culvertCost(c, width), 0);
+  const forceWater = (mask: Uint8Array, ss: ArrayLike<number>, heights: ArrayLike<number>, widths: ArrayLike<number>) => {
+    for (const c of water) {
+      const i = Math.min(ss.length - 1, Math.round(c.s / (ss[1] - ss[0])));
+      const size = waterSize(c, widths[i]);
+      if (size.type !== 'bridge') continue;
+      const halfSpan = size.width / Math.max(0.01, c.sine) / 2;
+      for (let j = 0; j < ss.length; j++) if (Math.abs(ss[j] - c.s) <= halfSpan + ds / 2 && heights[j] > 0) mask[j] = 1;
+    }
+  };
 
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const rawRoadX = ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [];
@@ -260,14 +294,17 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (h >= 0) {
         const { area, width: wd } = flatEarthGeometry(h, b, fillSlope, true);
         earth = (baseRural + area * dp.fillPerM3 + earthEngineeringPerM(h, 0, area) + wd * topsoilPerM2
-          + ((costClass & 1) !== 0 && h > 0 ? culvertExtra(wd, b) / ds : 0)) * sur + wd * LAND.perM2;
+          + crossingCost(costClasses[costClass].water, wd) / ds) * sur + wd * LAND.perM2;
       } else {
         const c = -h, wd = flatEarthGeometry(c, b, cutSlope, false).width;
-        const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClass >> 1]);
+        const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClasses[costClass].ground]);
         earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
           + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       }
+      const waterBridge = h >= 0 && costClasses[costClass].water.some(c => waterSize(c, flatEarthGeometry(h, b, fillSlope, true).width).type === 'bridge');
+      if (waterBridge) earth = bridgeRural + 1e7; // unavailable earthwork, not a free zero-price culvert
       if (kind === KIND.earth) return earth;
+      if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return bridgeRural;
       let best = earth;
       if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural(h));
       if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
@@ -294,8 +331,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     subW[k] = (st.s[subI[Math.min(sub - 1, k + 1)]] - st.s[subI[Math.max(0, k - 1)]]) / 2;
     for (let j = i; j < (k + 1 < sub ? subI[k + 1] : n); j++) if (clearance[j] > -Infinity) subMust[k] = 1;
   }
-  const subStreamCount = new Uint8Array(sub);
-  for (const s of streamS) subStreamCount[Math.min(sub - 1, Math.round(s / subDs))]++;
+  const subWater: WaterCrossing[][] = Array.from({ length: sub }, () => []);
+  for (const c of water) subWater[Math.min(sub - 1, Math.round(c.s / subDs))].push(c);
   const subOverrides = crossingBridgeMask(subS, rawRoadX, crossingOverrides, overrideMask(subS, d.structureOverrides));
   const roadS = roadX.map((c) => c.s);
   const balanceOf = (v: VPI[], materialValue: number) => {
@@ -311,11 +348,12 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       earth[k] = (baseRural + (baseUrban - baseRural) * u + sc.cutI[k] * dp.cutPerM3.I + sc.cutII[k] * dp.cutPerM3.II
         + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2
         + earthEngineeringPerM(hh[k], sc.cut[k], sc.fill[k])
-        + (hh[k] > 0 ? subStreamCount[k] * culvertExtra(wd, b) / subW[k] : 0)) * su + wd * land;
+        + (hh[k] > 0 ? crossingCost(subWater[k], wd) / subW[k] : 0)) * su + wd * land;
       bp[k] = bridge.perM(hh[k]) * su + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
       if (subMust[k] && hh[k] > 0) must[k] = 1;
     }
+    forceWater(must, subS, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]));
     if (roadS.length) {
       const rz = elevations(p, roadS);
       roadX.forEach((c, j) => {
@@ -338,7 +376,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   let materialValue = MATERIAL_VALUE.start;
   const zA = ground[0], zB = ground[n - 1];
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
-    const minH = clearance.slice(), maxH = new Float64Array(n).fill(NaN);
+    const minH = Float64Array.from(clearance, (v, i) => Number.isNaN(waterMin[i]) ? v : Math.max(Number.isNaN(v) ? -Infinity : v, waterMin[i]));
+    const maxH = new Float64Array(n).fill(NaN);
     for (let i = 0; i < n; i++) {
       if (manualStructures[i] === KIND.bridge) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
       if (manualStructures[i] === KIND.tunnel) maxH[i] = -STRUCTURE_RULES.tunnelMinDepth;
@@ -357,7 +396,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, structureKind: manualStructures, pins: d.gradePins,
-      costClass: profileCostClass, costClassCount: 2 * groundProfiles.length,
+      costClass: profileCostClass, costClassCount: costClasses.length,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
@@ -375,7 +414,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         short = Math.max(short, c.g + c.need - z0[k]);
       });
       if (short <= 1e-6) break;
-      const minH = Float64Array.from(apOpt.minH, (v, i) => (clearance[i] > -Infinity ? v + short + 0.5 : v));
+      const minH = Float64Array.from(apOpt.minH, (v, i) => (clearance[i] > -Infinity || waterMin[i] > -Infinity ? v + short + 0.5 : v));
       // same material value: only the clearance changes
       const mv = ap.materialValue ?? MATERIAL_VALUE.start;
       const retry = autoProfile(st.s, ground, { ...apOpt, minH, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
@@ -436,7 +475,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
     geotechnicalPerM[i] = earthEngineeringPerM(h[i], sec.cut[i], sec.fill[i]);
-    if (h[i] > 0) culverts[i] = streamCount[i] * culvertExtra(sec.dayL[i] + sec.dayR[i], b);
+    if (h[i] > 0) culverts[i] = crossingCost(waterAt[i], sec.dayL[i] + sec.dayR[i]);
     const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
     earthPerM[i] = (baseRural + (baseUrban - baseRural) * ue + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
       + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2
@@ -445,11 +484,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     bridgePerM[i] = bridge.perM(h[i]) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, ut) / 1000) * (1 + surchargeRate(ut));
   }
-  // river / water / railway crossings (and motorways the grade passes over) must be bridged (streams
-  // get culverts, included in the norm); a crossing below the required clearance is a violation (and
-  // gets no fake buried bridge)
+  // Rivers / water / railways and watercourses exceeding practical culvert limits need bridges.
+  // Inadequate clearance stays a violation, never a fake buried bridge.
   const forced = new Uint8Array(n);
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
+  forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]));
   // an existing road clearly below the grade passes under a (short) bridge instead of being buried
   const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
   const crossings: CrossingResult[] = roadX.map((c, k) => ({
@@ -625,6 +664,29 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];
+  const waterZ = elevations(prof, water.map(c => c.s));
+  const waterCrossings: WaterResult[] = water.map((c, k) => {
+    const i = Math.min(n - 1, Math.round(c.s / ds));
+    const wd = sec.dayL[i] + sec.dayR[i], size = waterSize(c, wd);
+    const above = waterZ[k] - terrain.heightAt(c.x, c.y);
+    const isTunnel = kind[i] === KIND.tunnel && above <= -STRUCTURE_RULES.tunnelMinDepth;
+    const run = runs.find(r => r.kind === KIND.bridge && i >= r.i0 && i <= r.i1);
+    const bridgeSpan = size.type === 'bridge' ? size.width / Math.max(0.01, c.sine) : c.width / Math.max(0.01, c.sine);
+    const clearBridge = !!run && c.s - bridgeSpan / 2 >= run.s0 && c.s + bridgeSpan / 2 <= run.s1;
+    const need = kind[i] === KIND.bridge ? STRUCTURE_RULES.riverClearance : size.minHeight;
+    const ok = isTunnel || (above >= need - 1e-6 && (kind[i] === KIND.bridge ? clearBridge : kind[i] === KIND.earth && size.type !== 'bridge'));
+    if (!ok) violations.push({ kind: 'crossing', s0: c.s, s1: c.s,
+      title: above < 0 ? 'Cut intercepts a watercourse' : 'Watercourse crossing is obstructed',
+      fix: size.type === 'bridge' || kind[i] === KIND.bridge ? `Provide a bridge clearing the channel and banks (${bridgeSpan.toFixed(1)} m opening along the road), at least ${need.toFixed(1)} m above the bed`
+        : `Raise the road to at least ${need.toFixed(1)} m over the stream for ${waterOpening(size)}, or use a bridge`,
+      detail: `Estimated Q100 ${size.q100.toFixed(2)} m³/s, DEM catchment ${c.catchmentKm2.toFixed(2)} km²${c.truncated ? ' (incomplete/uncertain)' : ''}. No automatic channel diversion is included. A deep bored tunnel can retain the surface watercourse.`,
+      basis: 'game', rule: 'Provisional flood-capacity, cover and ecological screening; not a hydraulic design (research/17)',
+    });
+    let cost = kind[i] === KIND.earth && above > 0 ? culvertCost(c, wd) : 0;
+    if (run) for (let j = run.i0; j <= run.i1; j++) cost += parts.bridges[j];
+    return { ...c, i, q100: size.q100, structure: !ok ? 'blocked' : isTunnel ? 'tunnel' : kind[i] === KIND.bridge ? 'bridge' : size.type,
+      opening: waterOpening(size), length: run?.length ?? barrelLength(c, wd), cost, requiredBridge: size.type === 'bridge' };
+  });
   // the whole at-grade footprint must be on terrain data, and every slope must reach the ground
   for (let i = 0; i < n; i++) {
     if (kind[i] !== KIND.earth) continue;
@@ -650,6 +712,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const zc = elevations(prof, mustBridge.map((c) => c.s));
     const last = new Map<string, number>();
     mustBridge.forEach((c, k) => {
+      if (c.what === 'watercourse') return; // sized opening / actual structure checked above
       const ic = Math.min(n - 1, Math.round(c.s / ds));
       const above = zc[k] - c.g;
       if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6) return;
@@ -688,7 +751,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished, boughtOut, kept,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, walls, demolished, boughtOut, kept,
     noise: { receivers, footprint: footprintMap },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,

@@ -434,6 +434,11 @@ export class ProfilePanel {
       g.beginPath(); g.rect(px - hw, yr - hh, 2 * hw, 2 * hh); g.fill(); g.stroke();
       if (x.type === 'overbridge') { g.beginPath(); g.moveTo(px - 8, yr); g.lineTo(px + 8, yr); g.lineWidth = 2.5; g.stroke(); }
     }
+    // Watercourse culverts: blue rings at stream-bed elevation (not a second road crossing).
+    g.strokeStyle = '#167d9a'; g.lineWidth = 2;
+    for (const c of r.waterCrossings) if ((c.structure === 'pipe' || c.structure === 'box') && c.s >= this.v0 && c.s <= this.v1) {
+      g.beginPath(); g.arc(this.X(c.s), this.Y(r.ground[c.i]) - 4, 4, 0, 2 * Math.PI); g.stroke();
+    }
     // demolished buildings: red squares on the ground
     g.fillStyle = '#d7301f';
     for (const b of r.demolished) {
@@ -759,6 +764,9 @@ export class ProfilePanel {
       const row = ROAD_CLASSES[x.cls];
       facts.push(`crosses a ${row.label} (${x.h >= 0 ? '+' : '−'}${Math.abs(x.h).toFixed(1)} m): ${crossingLabel(x)}${x.cost > 0 ? ` — ${czk(x.cost)}` : ''}`);
     }
+    for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) {
+      facts.push(`${c.waterKind}: ${c.structure} ${c.opening}, ${c.length.toFixed(0)} m long; catchment ${c.catchmentKm2.toFixed(2)} km²${c.truncated ? ' (incomplete)' : ''}, estimated Q100 ${c.q100.toFixed(2)} m³/s`);
+    }
     let nb = 0, cb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) { nb++; cb += d.cost; }
     if (nb) facts.push(`${nb} footprint demolition${nb > 1 ? 's' : ''} — ${czk(cb)}`);
@@ -773,7 +781,7 @@ export class ProfilePanel {
       if (!(v > 0.5)) return '';
       let detail = '';
       if (gr.id === 'earthworks') {
-        const names: [PartKey, string][] = [['excavation', 'excavation'], ['fillPlacing', 'fill'], ['borrow', 'bought fill'], ['haul', 'haul'], ['surplusHaul', 'surplus to tip'], ['unsuitable', 'unsuitable to tip'], ['topsoil', 'topsoil'], ['geotechnical', 'geotechnical'], ['culverts', 'culverts']];
+        const names: [PartKey, string][] = [['excavation', 'excavation'], ['fillPlacing', 'fill'], ['borrow', 'bought fill'], ['haul', 'haul'], ['surplusHaul', 'surplus to tip'], ['unsuitable', 'unsuitable to tip'], ['topsoil', 'topsoil'], ['geotechnical', 'geotechnical']];
         detail = names.map(([key, name]) => [name, (this.cumKey[key][b + 1] - this.cumKey[key][a]) / len] as [string, number])
           .filter((p) => p[1] > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 3).map((p) => `${p[0]} ${perM(p[1])}`).join(', ');
       }

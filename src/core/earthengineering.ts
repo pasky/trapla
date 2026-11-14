@@ -47,8 +47,3 @@ export function earthEngineeringPerM(h: number, cut: number, fill: number): numb
     + cut * Math.max(0, -h - r.engineeringFromHeight) * r.highCutPerM3PerM;
 }
 
-/** Excess barrel length beyond drainage already represented by the SPK road norm. */
-export function culvertExtra(width: number, crown: number): number {
-  const r = STRUCTURE_RULES;
-  return Math.max(0, width - crown - r.culvertIncludedExtraWidth) * r.culvertExtraPerM;
-}

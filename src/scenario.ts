@@ -16,6 +16,7 @@ export interface PackMeta {
   heights: { file: string; base: number; scale: number };
   landcover: { file: string };
   ground?: GroundMeta;
+  watercourses?: { file: string; version: number; method: string; sha256: string };
   /** vector render data (land cover, roads, buildings); absent in packs built without OSM */
   vector?: { file: string } | null;
   /** ArcGIS MapServer "export" endpoint serving an orthophoto in the scenario's CRS (optional view layer) */
@@ -61,7 +62,7 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   progress?.('loading scenario…');
   const meta: PackMeta = await (await fetch(`${base}/meta.json`)).json();
   progress?.('loading terrain (DMR 5G, 5 m)…');
-  const [hb, lb, overlays, vectors, gb] = await Promise.all([
+  const [hb, lb, overlays, vectors, gb, wb] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
@@ -70,10 +71,12 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
       ? gunzip(`${base}/${meta.vector.file}`).then(parseVectorPack).catch((e) => { console.warn('vector render data unavailable', e); return null; })
       : Promise.resolve(null),
     meta.ground ? gunzip(`${base}/${meta.ground.file}`) : Promise.resolve(null),
+    meta.watercourses ? gunzip(`${base}/${meta.watercourses.file}`) : Promise.resolve(null),
   ]);
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
-    ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined });
+    ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
+    watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined });
   return { base, meta, terrain, q, lc, overlays, vectors };
 }
