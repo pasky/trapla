@@ -150,7 +150,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     // graze the toe within half a width plus setback beyond the exact removed end. Screening
     // tolerance only; planning and ownership keep the exact interval.
     for (const interval of severedCrossingIntervals(crossings, roads)) {
-      const tieIn = process.env.NOTIE ? 0 : ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
+      const tieIn = ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
       const graze = tieInCovered.get(interval.way) ?? [];
       graze.push([interval.a - tieIn, interval.a], [interval.b, interval.b + tieIn]); tieInCovered.set(interval.way, graze);
     }
