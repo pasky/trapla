@@ -118,10 +118,12 @@ await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
 ok(s.d.structureOverrides.length === 0, 'C clears the override, not the selection');
 ok(await page.locator('#viewbar').innerHTML() === viewBeforePaint, 'E/C range shortcuts do not change map exaggeration or contours');
+await page.keyboard.press('c'); // clearing an already automatic range must not add undo history
+await page.evaluate(() => window.trapla.whenIdle());
 await page.keyboard.press('Control+z');
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
-ok(s.d.structureOverrides[0].kind === 0, 'Undo restores cleared override');
+ok(s.d.structureOverrides[0].kind === 0, 'Undo restores cleared override despite repeated Clear');
 await page.click('#grade-auto');
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();

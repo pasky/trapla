@@ -159,7 +159,10 @@ async function main() {
     if (!range || !last) return;
     const [i0, i1] = cellsInRange(last, range.s0, Math.min(range.s1, last.length));
     const s0 = Math.max(0, (i0 - 0.5) * last.ds), s1 = Math.min(last.length, (i1 + 0.5) * last.ds);
-    store.update((d) => { d.structureOverrides = paintOverride(d.structureOverrides ?? [], s0, s1, kind); });
+    const previous = store.design.structureOverrides ?? [];
+    const next = paintOverride(previous, s0, s1, kind);
+    if (next.length === previous.length && next.every((r, i) => r.s0 === previous[i].s0 && r.s1 === previous[i].s1 && r.kind === previous[i].kind)) return;
+    store.update((d) => { d.structureOverrides = next; });
   };
 
   // ---- HUD ----
@@ -197,7 +200,7 @@ async function main() {
       const key = e.key.toLowerCase();
       if (['b', 't', 'e', 'c'].includes(key)) {
         e.preventDefault();
-        setStructure(key === 'b' ? 1 : key === 't' ? 2 : key === 'e' ? 0 : null);
+        if (!e.repeat) setStructure(key === 'b' ? 1 : key === 't' ? 2 : key === 'e' ? 0 : null);
         return;
       }
     }

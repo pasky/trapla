@@ -22,7 +22,8 @@ def main():
     if len(raw) > 8_000_000:
         raise ValueError('Unexpectedly large response; inspect service before retrying')
     data = json.loads(raw)
-    if data.get('type') != 'FeatureCollection' or 'error' in data or data.get('exceededTransferLimit'):
+    truncated = data.get('exceededTransferLimit') or data.get('properties', {}).get('exceededTransferLimit')
+    if data.get('type') != 'FeatureCollection' or 'error' in data or truncated:
         raise ValueError(f'Invalid or truncated service result: {str(data)[:300]}')
     path = Path(__file__).parent / 'cache' / 'uses-khk.geojson'
     path.parent.mkdir(exist_ok=True)

@@ -111,11 +111,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   const nK = Math.max(2, Math.round(L / spacing));
   const D = L / nK;
   const ds = n > 1 ? s[1] - s[0] : L;
-  // Manual ranges must not disappear between the usual ~20 m cost samples.
-  const hasOverrides = opt.structureKind && Array.from(opt.structureKind).some((k) => k >= 0);
-  // A single stream station must not be skipped by the ordinary cost-sampling stride either.
-  const hasClasses = opt.costClass && Array.from(opt.costClass).some((c) => c !== 0);
-  const stride = hasOverrides || hasClasses ? 1 : Math.max(1, Math.round(DP_STATION_STEP / ds));
+  const stride = Math.max(1, Math.round(DP_STATION_STEP / ds));
   const classes = opt.costClassCount ?? 1;
   const lutMax = Math.round((2 * H_MAX) / H_STEP);
   const pad = opt.pad ?? 25;
@@ -136,6 +132,25 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     last[nK - 1] = n - 1;
   }
+  // Preserve the ordinary ~20 m quadrature, but remove special stations from its weight and
+  // cost them individually. Sparse streams must not double the work on the entire route, nor
+  // disappear between samples; manual ranges likewise retain their exact kind/cost.
+  const costStart = new Int32Array(nK + 1), costIdx: number[] = [], costWeight: number[] = [], costOffset: number[] = [];
+  const kinds = opt.structureKind, costClasses = opt.costClass;
+  for (let k = 0; k < nK; k++) {
+    costStart[k] = costIdx.length;
+    for (let i = first[k]; i <= last[k]; i += stride) {
+      let ordinary = -1, count = 0;
+      for (let j = i; j < Math.min(i + stride, last[k] + 1); j++) {
+        const kind = kinds?.[j] ?? -1, cls = costClasses?.[j] ?? 0;
+        if (kind >= 0 || cls !== 0) {
+          costIdx.push(j); costWeight.push(ds); costOffset.push((cls * 4 + kind + 1) * (lutMax + 1));
+        } else { if (ordinary < 0) ordinary = j; count++; }
+      }
+      if (count) { costIdx.push(ordinary); costWeight.push(count * ds); costOffset.push(0); }
+    }
+  }
+  costStart[nK] = costIdx.length;
   for (let k = 0; k < nK; k++) {
     clrStart[k] = clrIdx.length;
     for (let i = first[k]; i <= last[k]; i++) {
@@ -257,9 +272,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const Z0 = zhi[k] - zlo[k] + 1, Z1 = zhi[k + 1] - zlo[k + 1] + 1;
       const next = new Float64Array(Z1 * ND).fill(Infinity);
       const par = new Int32Array(Z1 * ND).fill(-1);
-      const fi = first[k], la = last[k];
       const sk = k * D;
-      const w = ds * stride;
+      const c0 = costStart[k], c1 = costStart[k + 1];
       for (let zi = 0; zi < Z0; zi++) {
         let any = false;
         for (let d = 0; d < ND; d++) if (cur[zi * ND + d] < Infinity) { any = true; break; }
@@ -272,15 +286,14 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           if (z2 < zlo[k + 1] || z2 > zhi[k + 1]) { seg[d2] = Infinity; continue; }
           let c = 0;
           const slope = (dz2 * u) / D;
-          for (let i = fi; i <= la; i += stride) {
+          for (let q = c0; q < c1; q++) {
+            const i = costIdx[q];
             const h = zm + slope * (s[i] - sk) - g[i];
             let x = (h + H_MAX) / H_STEP;
             if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
             const j = x | 0;
-            // each sample stands for `stride` stations (fewer in the interval's last block)
-            const wi = i + stride <= la + 1 ? w : (la + 1 - i) * ds;
-            const off = ((opt.costClass?.[i] ?? 0) * 4 + (opt.structureKind?.[i] ?? -1) + 1) * (lutMax + 1);
-            c += (j >= lutMax ? lut[off + lutMax] : lut[off + j] + (lut[off + j + 1] - lut[off + j]) * (x - j)) * wi;
+            const off = costOffset[q];
+            c += (j >= lutMax ? lut[off + lutMax] : lut[off + j] + (lut[off + j + 1] - lut[off + j]) * (x - j)) * costWeight[q];
           }
           for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
             const i = clrIdx[q];

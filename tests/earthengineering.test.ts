@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
+import { PRICES } from '../src/core/data/prices';
 import { flatEarthGeometry } from '../src/core/earthengineering';
 import { sideSection } from '../src/core/sections';
 import { LC, syntheticTerrain } from '../src/core/terrain';
@@ -35,7 +36,7 @@ describe('high-earthwork engineering', () => {
     expect(wet.cost.earthDetail.culverts).toBeGreaterThan(100_000);
     expect(wet.parts.culverts.filter((v) => v > 0)).toHaveLength(1);
     expect(wet.cost.earthDetail.geotechnical).toBeGreaterThan(0);
-    expect(wet.cost.total - dry.cost.total).toBeCloseTo(wet.cost.earthDetail.culverts * 1.306, 2);
+    expect(wet.cost.total - dry.cost.total).toBeCloseTo(wet.cost.earthDetail.culverts * (1 + PRICES.otherObjectsSurcharge), 2);
     const tall = valley(30);
     tall.lc.set(terrain.lc);
     const bridge = evaluate(context(tall), design);

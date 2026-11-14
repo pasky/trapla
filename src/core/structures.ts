@@ -82,7 +82,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       let manual = false, forced = false;
       for (let i = r.i0; i <= r.i1; i++) {
         manual ||= inp.overrides[i] >= 0;
-        forced ||= !!locked[i];
+        forced ||= r.kind === KIND.bridge && !!locked[i];
       }
       const min = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
       // Paint may split a formerly viable automatic run. Unrequested, unlocked remnants remain
