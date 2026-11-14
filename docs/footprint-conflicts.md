@@ -37,11 +37,14 @@ invalid: a clear deck is not proof that its foundations or adjacent slopes are c
   fill cover inside the barrel (excluding its exposed headwall zones), its hydraulic opening/length
   limits, and open outlets; no buried
   headwall at an internal OSM endpoint. Existing centreline barrel neighbourhoods are excluded
-  using the actual channel-aligned barrel corridor, not a circle that would hide a connected
-  dog-leg. Structure selection and final checking share its half-station sampling margins. A
+  using a channel-aligned corridor offset toward the wider toe of asymmetric fill, not a circle
+  that would hide a connected dog-leg. A **provisional 20° flared chord allowance** handles modest
+  OSM vertex bends without promoting each bend to a bridge; it is not hydraulic bend design.
+  Structure selection and final checking share this corridor and its half-station sampling margins. A
   genuine adjoining compatible barrel extension bills the end-margin gap too and reuses its ends,
   not two more heads. Resizing/merging incompatible assemblies is a violation, not free.
-  Legacy raster-stream crossings are excluded too. Long/large channels, cuts and missing cover
+  Legacy raster-stream crossings have no direction and retain the explicitly uncertain circular
+  neighbourhood fallback; vector channels never use that fallback. Long/large channels, cuts and missing cover
   or outlets require moving away or a clear bridge. See `research/17-culvert-prices.md` and
   `research/17-stream-crossings.md` for sourced rates and provisional hydraulics.
 - The rail/water raster screens only footprint cells, retaining independent crossing bits even
@@ -90,11 +93,11 @@ grade VPIs and material values for the ten saved/edited designs.
 
 | Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Stream spans / m | Footprint violations |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| best | 2 / 9 | 206.5 | 1,239.6 | 26.095 | 4 / 40.0 | 1 / 10.0 | 16 / 449.9 | 30 |
-| demo | 6 / 17 | 355.4 | 1,658.3 | 36.414 | 4 / 40.0 | 1 / 10.0 | 22 / 669.8 | 44 |
-| direct-80 | 1 / 25 | 403.3 | 1,618.7 | 64.955 | 5 / 70.0 | 4 / 60.0 | 12 / 160.0 | 46 |
-| direct-90 | 0 / 33 | 570.7 | 2,379.4 | 74.838 | 5 / 60.0 | 4 / 60.0 | 16 / 549.8 | 58 |
-| town-centre | 3 / 29 | 529.4 | 1,685.4 | 56.007 | 9 / 140.0 | 1 / 10.0 | 16 / 489.9 | 55 |
+| best | 2 / 9 | 206.5 | 1,239.6 | 26.095 | 4 / 40.0 | 1 / 10.0 | 13 / 280.0 | 27 |
+| demo | 6 / 17 | 355.4 | 1,658.3 | 36.414 | 4 / 40.0 | 1 / 10.0 | 16 / 359.9 | 38 |
+| direct-80 | 1 / 25 | 403.3 | 1,618.7 | 64.955 | 5 / 70.0 | 4 / 60.0 | 8 / 80.0 | 42 |
+| direct-90 | 0 / 33 | 570.7 | 2,379.4 | 74.838 | 5 / 60.0 | 4 / 60.0 | 13 / 369.9 | 55 |
+| town-centre | 3 / 29 | 529.4 | 1,685.4 | 56.007 | 9 / 140.0 | 1 / 10.0 | 11 / 409.9 | 50 |
 
 No additional longitudinal culverts qualify in this legacy raster-only pack. All five designs
 were VALID under the old centreline checks; all now require footprint/support fixes.
@@ -106,19 +109,35 @@ This table is a separate evaluation, not a replacement fingerprint/baseline.
 
 | Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Blocked channel spans / m | Footprint violations |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| best | 1 / 13 | 154.4 | 877.2 | 19.939 | 4 / 40.0 | 1 / 10.0 | 4 / 46.1 | 22 |
-| demo | 3 / 16 | 378.1 | 1,432.4 | 29.044 | 4 / 40.0 | 1 / 10.0 | 9 / 64.3 | 30 |
-| direct-80 | 2 / 23 | 355.9 | 1,478.1 | 57.515 | 5 / 70.0 | 4 / 60.0 | 3 / 82.3 | 35 |
-| direct-90 | 1 / 31 | 514.0 | 2,012.8 | 54.730 | 5 / 70.0 | 3 / 50.0 | 13 / 82.7 | 52 |
+| best | 1 / 13 | 154.4 | 877.2 | 19.939 | 4 / 40.0 | 1 / 10.0 | 5 / 48.6 | 23 |
+| demo | 3 / 15 | 368.1 | 1,432.4 | 29.044 | 4 / 40.0 | 1 / 10.0 | 7 / 101.6 | 27 |
+| direct-80 | 2 / 22 | 339.7 | 1,478.1 | 57.518 | 5 / 70.0 | 4 / 60.0 | 4 / 83.2 | 35 |
+| direct-90 | 1 / 33 | 543.7 | 2,269.0 | 67.543 | 5 / 70.0 | 3 / 50.0 | 13 / 102.4 | 54 |
 | town-centre | 3 / 32 | 594.7 | 1,913.3 | 64.097 | 9 / 140.0 | 1 / 10.0 | 4 / 41.2 | 46 |
 
 No additional longitudinal assembly in these five designs clears every cover/outlet/support check;
-all five still require footprint fixes. The shared barrel-neighbourhood rule also changes some Auto structure choices on
-this updated vector-water pack; these totals are not directly comparable with old-pack bills.
+all five still require footprint fixes. The shared oriented barrel rule also changes Auto structure
+choices on this updated vector-water pack. This is an **intentional conservative model change**,
+not an optimization-only rebaseline: unlike the old generous circular exclusion, it does not excuse
+parallel channel excursions merely because they are close to a centreline crossing. Modest vertex
+bends have a 20° allowance; larger deviations need an explicit water-management design.
+
+Whole-route impact versus unchanged `17dac0a`, evaluated on this **same updated pack**:
+
+| Design | Before, bn CZK | Model 14, bn CZK | Increase, M CZK | Additional bridge m |
+|---|---:|---:|---:|---:|
+| best | 4.172658 | 4.288885 | 116.226 | 220.0 |
+| demo | 4.851775 | 4.998425 | 146.651 | 299.9 |
+| direct-80 | 4.684462 | 4.763695 | 79.234 | 0 |
+| direct-90 | 5.023884 | 5.112855 | 88.971 | 0 |
+| town-centre | 11.330497 | 11.479324 | 148.827 | 150.0 |
+
+These increases include surcharges and changed bridge/earthwork decisions, not just the relocation
+rows. They must be reviewed as cost-model changes; the original-pack frozen bills remain intact.
 
 ## Performance
 
-Final warmed runs on the original pack (15 warmups, 30 evaluations, `17dac0a` versus model 14 in
+A quiet warmed validation run on the original pack (15 warmups, 30 evaluations, `17dac0a` versus model 14 in
 separate consecutive processes) measured **2.5–2.9 ms** for the isolated footprint phase:
 
 | Design | Baseline ms | Model 14 ms | Footprint phase ms |
@@ -134,4 +153,7 @@ reached 53 ms. An earlier alternating same-process run during heavy shared-host 
 versions at 86–109 ms, with 4.6–5.8 ms for the isolated footprint phase. These measurements do not
 justify claiming a fresh strict ≤50 ms result. See `docs/evaluate-performance.md` for the earlier
 quiet-host 43–49 ms baseline and its CPU/GC controls. `evaluate()` exposes separate `crossings` and
-`footprint` cumulative timing marks so the added work is measurable.
+`footprint` cumulative timing marks so the added work is measurable. A later final-code rerun under
+variable load measured 51–68 ms on the original pack (footprint 2.5–4.4 ms), and 47–64 ms on the
+updated vector pack (footprint 3.3–5.8 ms). Barrel ownership is cached per crossing/reach and road
+chainage projection no longer constructs full throwaway paths; no strict ≤50 ms claim is made.

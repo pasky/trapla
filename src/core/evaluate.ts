@@ -4,7 +4,6 @@
 
 import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
-import { insideFootprint } from './footprint-geometry';
 import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
@@ -38,7 +37,7 @@ import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { CULVERT_RULES } from './data/culverts';
-import { barrelLength, barrelEnvelope, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
+import { barrelLength, barrelEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
 
 export interface Design {
   category: CategoryId;
@@ -262,7 +261,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const gridDs = indices.length > 1 ? st.s[indices[1]] - st.s[indices[0]] : ds;
     const barrels = water.map(c => {
       const k = Math.min(indices.length - 1, Math.round(c.s / gridDs)), i = indices[k];
-      return barrelEnvelope(c, left[k] + right[k], ds, st.tx[i], st.ty[i]);
+      return barrelEnvelope(c, left[k], right[k], ds, st.tx[i], st.ty[i]);
     });
     for (let k = 0; k < indices.length; k++) {
       const i = indices[k];
@@ -270,7 +269,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (waterSide[i].some(hit => hit.offset <= left[k] && hit.offset >= -right[k]
         && z[k] - hit.ground >= STRUCTURE_RULES.riverClearance
         && !water.some((c, j) => terrain.watercourses!.connected(c.id, hit.id)
-          && insideFootprint(hit, barrels[j])))) mask[k] = 1;
+          && barrelContains(hit, barrels[j])))) mask[k] = 1;
     }
   };
   const tunnelWater = (ss: ArrayLike<number>, z: ArrayLike<number>) => {

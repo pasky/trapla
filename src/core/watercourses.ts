@@ -42,11 +42,43 @@ export function barrelLength(c: Pick<WaterCrossing, 'sine'>, footprint: number):
 /** Oriented barrel corridor, not a circle: a connected dog-leg is not part of a straight
  * priced culvert. Half-station margins are sampling heuristics; real extensions bill the end gap.
  * Legacy raster crossings lack a tangent and assume the same perpendicular crossing as pricing. */
-export function barrelEnvelope(c: WaterCrossing, footprint: number, ds: number, routeTx: number, routeTy: number): FootprintCell {
+export interface BarrelEnvelope extends FootprintCell { flare: number; raster: boolean }
+export function barrelEnvelope(c: WaterCrossing, left: number, right: number, ds: number, routeTx: number, routeTy: number): BarrelEnvelope {
   const cos = Math.sqrt(Math.max(0, 1 - c.sine ** 2));
   const tx = c.channelTx ?? routeTx * cos - routeTy * c.sine;
   const ty = c.channelTy ?? routeTy * cos + routeTx * c.sine;
-  return { x: c.x, y: c.y, s: c.s, i: 0, tx, ty, along: (barrelLength(c, footprint) + ds) / 2, left: ds / 2, right: ds / 2 };
+  const sign = -tx * routeTy + ty * routeTx >= 0 ? 1 : -1;
+  const offset = (left - right) / 2 / Math.max(0.01, c.sine) * sign;
+  return { x: c.x + tx * offset, y: c.y + ty * offset, s: c.s, i: 0, tx, ty,
+    along: (barrelLength(c, left + right) + ds) / 2, left: ds / 2, right: ds / 2,
+    // PROVISIONAL chord tolerance for modest OSM channel bends; still rejects side dog-legs.
+    flare: Math.tan(20 * Math.PI / 180), raster: c.id < 0 };
+}
+export function barrelContains(p: { x: number; y: number }, b: BarrelEnvelope, pad = 0): boolean {
+  const dx = p.x - b.x, dy = p.y - b.y;
+  if (b.raster) return Math.hypot(dx, dy) <= b.along + pad; // no channel tangent in legacy pixels
+  const along = Math.abs(dx * b.tx + dy * b.ty), across = Math.abs(-dx * b.ty + dy * b.tx);
+  return along <= b.along + pad && across <= b.left + pad + along * b.flare;
+}
+/** Clip against the two convex halves of the flared corridor. Return separate intervals:
+ * taking their hull would silently own a dog-leg crossing the narrow waist. */
+export function barrelIntervals(segment: Segment2, b: BarrelEnvelope): [number, number][] {
+  const dx = segment.ax - b.x, dy = segment.ay - b.y;
+  const u = dx * b.tx + dy * b.ty, v = -dx * b.ty + dy * b.tx;
+  const du = (segment.bx - segment.ax) * b.tx + (segment.by - segment.ay) * b.ty;
+  const dv = -(segment.bx - segment.ax) * b.ty + (segment.by - segment.ay) * b.tx;
+  const out: [number, number][] = [];
+  for (const side of [-1, 1]) {
+    let lo = 0, hi = 1;
+    for (const [value, slope, max] of [[-side * u, -side * du, 0], [side * u, side * du, b.along],
+      [v - side * u * b.flare, dv - side * du * b.flare, b.left], [-v - side * u * b.flare, -dv - side * du * b.flare, b.right]]) {
+      if (Math.abs(slope) < 1e-10) { if (value > max) { hi = -1; break; } }
+      else if (slope > 0) hi = Math.min(hi, (max - value) / slope);
+      else lo = Math.max(lo, (max - value) / slope);
+    }
+    if (hi > lo + 1e-9) out.push([segment.d + lo * segment.length, segment.d + hi * segment.length]);
+  }
+  return out;
 }
 /** An assembly includes TWO ends, not an arbitrary "excess" beyond an unmeasured norm allowance. */
 export function waterSize(c: WaterCrossing, footprint: number): WaterSize {

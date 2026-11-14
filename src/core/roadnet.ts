@@ -91,19 +91,32 @@ export class RoadNet {
 
   /** Absolute distance along a way at its nearest point, for interval subtraction and real tie-ins. */
   wayStation(way: number, x: number, y: number): number {
-    const path = this.crossingPath(way, x, y, Number.MAX_VALUE);
-    return path.length ? -path[0].d : 0;
+    const w = this.ways[way];
+    if (!w) return 0;
+    let d = 0, centre = 0, best = Infinity;
+    for (let j = 1; j + 3 < w.length; j += 2) {
+      const dx = w[j + 2] - w[j], dy = w[j + 3] - w[j + 1], len = Math.hypot(dx, dy);
+      const t = len ? Math.max(0, Math.min(1, ((x - w[j]) * dx + (y - w[j + 1]) * dy) / (len * len))) : 0;
+      const distance = (x - w[j] - t * dx) ** 2 + (y - w[j + 1] - t * dy) ** 2;
+      if (distance < best) { best = distance; centre = d + t * len; }
+      d += len;
+    }
+    return centre;
   }
   wayPath(way: number, start: number, end: number): { x: number; y: number; d: number }[] {
     const w = this.ways[way];
     if (!w) return [];
-    const path = this.crossingPath(way, w[1], w[2], Number.MAX_VALUE), out: typeof path = [];
-    for (let j = 1; j < path.length; j++) {
-      const a = path[j - 1], b = path[j], lo = Math.max(start, a.d), hi = Math.min(end, b.d);
-      if (hi < lo || b.d <= a.d) continue;
-      const point = (d: number) => { const t = (d - a.d) / (b.d - a.d); return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), d }; };
-      if (!out.length) out.push(point(lo));
-      out.push(point(hi));
+    const out: { x: number; y: number; d: number }[] = [];
+    let distance = 0;
+    for (let j = 1; j + 3 < w.length && distance <= end; j += 2) {
+      const dx = w[j + 2] - w[j], dy = w[j + 3] - w[j + 1], len = Math.hypot(dx, dy);
+      const lo = Math.max(start, distance), hi = Math.min(end, distance + len);
+      if (hi >= lo && len > 0) {
+        const point = (d: number) => { const t = (d - distance) / len; return { x: w[j] + t * dx, y: w[j + 1] + t * dy, d }; };
+        if (!out.length) out.push(point(lo));
+        out.push(point(hi));
+      }
+      distance += len;
     }
     return out;
   }

@@ -47,6 +47,15 @@ describe('watercourse crossing assemblies', () => {
       expect(r.violations.filter(v => v.kind === 'crossing' || v.kind === 'footprint')).toHaveLength(0);
     }
   });
+  it('does not force a bridge just because a channel turns modestly at a nearby OSM vertex', () => {
+    const angle = Math.PI / 6;
+    const vertex = [1250 + 0.7 * Math.cos(angle), 250 + 0.7 * Math.sin(angle)];
+    const bent = data(0.1, [[1250 - 400 * Math.cos(angle), 50], vertex,
+      [vertex[0] + 300 / Math.SQRT2, vertex[1] + 300 / Math.SQRT2]]);
+    const r = evaluate(context(0.1, 7, bent), design);
+    expect(['pipe', 'box']).toContain(r.waterCrossings[0].structure);
+    expect(r.violations.filter(v => v.kind === 'footprint')).toEqual([]);
+  });
   it('sizes up with runoff and width, reserves natural bed/bank, and rejects impractical length', () => {
     const small = waterSize(crossing, 40);
     const medium = waterSize({ ...crossing, catchmentKm2: 2 }, 40);

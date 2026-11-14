@@ -147,8 +147,9 @@ What exists (details and commands in `README.md`):
 - The five saved designs now expose previously unchecked conflicts and need fixes; they are not
   claimed VALID. Counts, lengths, costs, assumptions, water-law source and paired timing measurements:
   `docs/footprint-conflicts.md`; reproduce with `scripts/footprint-audit.ts`. Frozen cost fixtures and
-  original pack fingerprint remain intact. Final footprint phase adds 2.5–2.9 ms; warmed totals
-  are 44–53 ms versus 43–53 ms unchanged baseline, so strict ≤50 ms still needs a quiet-host recheck.
+  original pack fingerprint remain intact. Footprint work is roughly 3 ms (up to 6 ms with vector
+  water/host contention); a quiet run was 44–53 ms versus 43–53 ms baseline. Strict ≤50 ms is not
+  consistently verified. Updated-pack Auto bridge/cost increases are explicitly tabulated for review.
 
 ### Travel-time target X and traffic Y
 

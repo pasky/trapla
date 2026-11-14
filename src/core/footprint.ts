@@ -7,7 +7,7 @@ import { ROAD_CLASSES, CROSSING_RULES } from './data/urban';
 import { KIND, type Run } from './structures';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
 import type { RoadCrossing, RoadNet } from './roadnet';
-import { barrelLength, barrelEnvelope, waterOpening, waterSize, type WaterCrossing, type WaterSegment } from './watercourses';
+import { barrelLength, barrelEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, type WaterCrossing, type WaterSegment } from './watercourses';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
@@ -95,6 +95,17 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   }
   cells.push(...structureFootprints(r));
   const grid = new FootprintGrid(cells);
+  const earthWater = water.filter(c => r.kind[Math.min(r.n - 1, Math.round(c.s / r.ds))] === KIND.earth);
+  const barrels = new Map(earthWater.map(c => {
+    const i = Math.min(r.n - 1, Math.round(c.s / r.ds));
+    return [c, barrelEnvelope(c, r.dayL[i], r.dayR[i], r.ds, r.tx[i], r.ty[i])] as const;
+  }));
+  const byReach = new Map<number, WaterCrossing[]>();
+  const connectedWater = (id: number) => {
+    let list = byReach.get(id);
+    if (!list) { list = earthWater.filter(c => terrain.watercourses!.connected(c.id, id)); byReach.set(id, list); }
+    return list;
+  };
   const point = (p: Point2): CrossingPoint => ({ ...p, z: terrain.heightAt(p.x, p.y), ground: terrain.heightAt(p.x, p.y), surface: 'terrain' });
   const block = (c: FootprintConflict, title: string, fix: string, rule: string) => {
     conflicts.push(c);
@@ -116,8 +127,12 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       if (ends.length === 1) {
         // A missing anchor can also produce one link; that is NOT evidence that the other
         // branch was removed. Only an issue-free geometry can own the one-sided old-way stub.
-        if (c.issues?.some(v => v.crossing.code === 'geometry') || g.clipped) continue;
-        const d = distance(ends[0]), way = roads.wayPath(c.roadId, 0, Number.MAX_VALUE);
+        const d = distance(ends[0]);
+        if (c.issues?.some(v => v.crossing.code === 'geometry') || g.clipped) {
+          coverRoad(c.roadId, d, centre); // the surviving branch's actual link is still paid
+          continue;
+        }
+        const way = roads.wayPath(c.roadId, 0, Number.MAX_VALUE);
         if (way.length) coverRoad(c.roadId, d <= centre ? d : 0, d <= centre ? way[way.length - 1].d : d);
         continue;
       }
@@ -167,14 +182,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const hit = clipFootprint(segment, cell, cell.structure ? (segment.reach.width ?? 0.5) / 2 : 0);
       if (!hit) return;
       const covered: [number, number][] = [];
-      if (!cell.structure) for (const c of water) {
-        if (!terrain.watercourses!.connected(c.id, segment.reach.id)) continue;
-        const i = Math.max(0, Math.min(r.n - 1, Math.round(c.s / r.ds)));
-        if (r.kind[i] !== KIND.earth) continue;
-        const barrel = barrelEnvelope(c, r.dayL[i] + r.dayR[i], r.ds, r.tx[i], r.ty[i]);
-        const owned = clipFootprint(segment, barrel);
-        if (owned) covered.push(owned);
-      }
+      if (!cell.structure) for (const c of connectedWater(segment.reach.id)) covered.push(...barrelIntervals(segment, barrels.get(c)!));
       const key = `${segment.reach.id}:${cell.structure ?? 'earth'}`;
       let group = streamHits.get(key);
       if (!group) streamHits.set(key, group = { segment, hits: [] });
@@ -191,10 +199,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const x = (col + 0.5) * step, y = terrain.height - (row + 0.5) * step;
       // Conservative raster-cell overlap; at most half a pixel uncertainty at the toe.
       if (!insideFootprint({ x, y }, cell, step / 2)) continue;
-      if (feature === 'stream' && !cell.structure && water.some(c => {
-        const i = Math.min(r.n - 1, Math.round(c.s / r.ds));
-        return r.kind[i] === KIND.earth && insideFootprint({ x, y }, barrelEnvelope(c, r.dayL[i] + r.dayR[i], r.ds, r.tx[i], r.ty[i]), step / 2);
-      })) continue; // legacy raster stream already owned by a priced crossing assembly
+      if (feature === 'stream' && !cell.structure && earthWater.some(c => barrelContains({ x, y }, barrels.get(c)!, step / 2))) continue; // legacy raster stream already owned by a priced crossing assembly
       const key = `${feature}:${cell.structure ?? 'earth'}`, seenKey = `${key}:${index}`;
       if (rasterSeen.has(seenKey)) continue;
       rasterSeen.add(seenKey);
@@ -341,14 +346,11 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const c: WaterCrossing = { s: r.s[h.i], x: p.x, y: p.y, id: w.id, waterKind: w.kind, width: w.width ?? 0.5, catchmentKm2: area, truncated, sine: 1 };
     // An extension next to an already-priced barrel reuses its ends, not another two heads.
     // Resizing/merging multiple existing assemblies is deliberately not an automatic free fix.
-    const adjoining = water.filter(other => {
-      if (!terrain.watercourses!.connected(w.id, other.id)) return false;
-      const i = Math.min(r.n - 1, Math.round(other.s / r.ds));
-      if (r.kind[i] !== KIND.earth) return false;
-      const barrel = barrelEnvelope(other, r.dayL[i] + r.dayR[i], r.ds, r.tx[i], r.ty[i]);
+    const adjoining = connectedWater(w.id).filter(other => {
+      const barrel = barrels.get(other)!;
       return [original[0], original[original.length - 1]].some(p => {
         const along = Math.abs((p.x - barrel.x) * barrel.tx + (p.y - barrel.y) * barrel.ty);
-        return along >= barrel.along - r.ds && insideFootprint(p, barrel, 0.05);
+        return along >= barrel.along - r.ds && barrelContains(p, barrel, 0.05);
       });
     });
     const existing = adjoining.map(other => {
@@ -360,10 +362,9 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     if (adjoining.length === 1) {
       const other = adjoining[0], half = existing[0].length / 2;
       for (const p of [original[0], original[original.length - 1]]) {
-        const i = Math.min(r.n - 1, Math.round(other.s / r.ds));
-        const barrel = barrelEnvelope(other, r.dayL[i] + r.dayR[i], r.ds, r.tx[i], r.ty[i]);
-        const gap = Math.abs((p.x - other.x) * barrel.tx + (p.y - other.y) * barrel.ty) - half;
-        if (gap >= 0 && gap <= r.ds + 1e-6 && insideFootprint(p, barrel, 0.05)) length += Math.min(gap, r.ds / 2);
+        const barrel = barrels.get(other)!;
+        const gap = Math.abs((p.x - barrel.x) * barrel.tx + (p.y - barrel.y) * barrel.ty) - half;
+        if (gap >= 0 && gap <= r.ds + 1e-6 && barrelContains(p, barrel, 0.05)) length += Math.min(gap, r.ds / 2);
       }
     }
     const size = waterSize(c, length + existing.reduce((sum, e) => sum + e.length, 0));
@@ -373,10 +374,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const barrelCovers = covers.filter(p => p.d >= h.a + headZone && p.d <= h.b - headZone);
     const minCover = barrelCovers.length ? Math.min(...barrelCovers.map(p => p.cover)) : covers[Math.floor(covers.length / 2)].cover;
     const compatible = existing.length <= 1 && existing.every(e => e.size.perM === size.perM);
-    const outlets = [original[0], original[original.length - 1]].every(p => !grid.interior(p) || adjoining.some(other => {
-      const i = Math.min(r.n - 1, Math.round(other.s / r.ds));
-      return insideFootprint(p, barrelEnvelope(other, r.dayL[i] + r.dayR[i], r.ds, r.tx[i], r.ty[i]), 0.05);
-    }));
+    const outlets = [original[0], original[original.length - 1]].every(p => !grid.interior(p) || adjoining.some(other => barrelContains(p, barrels.get(other)!, 0.05)));
     const reasons = [h.structure ? `${h.structure} intersects the channel` : '', size.type === 'bridge' ? 'exceeds practical culvert opening/length limits' : '',
       !compatible ? 'incompatible existing barrel' : '', !outlets ? 'no clear outlet' : '', minCover < size.minHeight ? `barrel cover ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'missing'} m, needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
     const ok = reasons.length === 0;

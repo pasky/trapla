@@ -53,7 +53,7 @@ describe('constructed footprint conflicts', () => {
     crossings[0].type = 'reconnection'; crossings[0].geometry!.turnarounds = [crossings[0].geometry!.road![0]];
     expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(197, 4);
     crossings[0].issues![0].crossing.code = 'geometry'; // second required branch has no anchor
-    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(1004, 4);
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(694, 4);
   });
   it('motorways cannot use the cheap road-reconnection fallback', () => {
     const r = check(route(), road('motorway'));
@@ -92,17 +92,34 @@ describe('constructed footprint conflicts', () => {
       points: [[500, 150], [500, 400]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] };
     const t = new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses });
     const r = route();
-    // A real perpendicular crossing through an asymmetric fill: the straight 40 m barrel
-    // estimate leaves a 5 m residual at the wider toe, plus the 5 m sampling ownership gap.
+    // A straight channel through asymmetric fill is already paid by the 40 m barrel: its
+    // corridor must be offset toward the wider toe, not spuriously extended about the axis.
     r.dayL = new Float64Array(r.n).fill(30); r.dayR = new Float64Array(r.n).fill(10);
-    r.grade = new Float64Array(r.n).fill(120);
     const c: WaterCrossing = { s: 400, x: 500, y: 250, id: 1, waterKind: 'ditch', width: 0.5, catchmentKm2: 0.1, truncated: false, sine: 1, channelTx: 0, channelTy: 1 };
-    const result = footprintConflicts(r, t, undefined, [], [], [c]);
+    expect(footprintConflicts(r, t, undefined, [], [], [c]).conflicts).toEqual([]);
+
+    // A skew channel genuinely needs more barrel where the footprint grows beyond the
+    // crossing station. This uses a real vector intersection, not a contradictory sine value.
+    watercourses.reaches[0].points = [[400, 150], [650, 400]];
+    const skewTerrain = new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses });
+    r.dayL = Float64Array.from(r.x, x => x > 510 ? 35 : 20); r.dayR = new Float64Array(r.n).fill(20);
+    r.grade = new Float64Array(r.n).fill(130);
+    const water = skewTerrain.watercourses!.intersections(r.n, r.s, r.x, r.y);
+    const result = footprintConflicts(r, skewTerrain, undefined, [], [], water);
     expect(result.violations).toEqual([]);
     expect(result.conflicts).toHaveLength(1);
-    expect(result.conflicts[0].affectedLength).toBeCloseTo(5, 5);
-    expect(result.conflicts[0].length).toBeCloseTo(10, 5);
-    expect(result.conflicts[0].cost).toBeCloseTo(10 * waterSize(c, 40).perM, 4);
+    expect(result.conflicts[0].length).toBeCloseTo(15 * Math.SQRT2, 5);
+    expect(result.conflicts[0].cost).toBeCloseTo(15 * Math.SQRT2 * waterSize(water[0], 40).perM, 4);
+  });
+  it('checks vector water under displaced realignment chords, not untouched existing-road tails', () => {
+    const withChannel = (points: number[][]) => new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1,
+      q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses: { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
+        points, catchmentKm2: [0.1, 0.1], truncated: [false, false] }] } });
+    const displaced = check(route(), road(), withChannel([[600, 272], [600, 290]]));
+    expect(displaced.conflicts.some(c => c.feature === 'road' && c.action === 'blocked' && c.detail.includes('water/rail'))).toBe(true);
+    const tail = check(route(), road(), withChannel([[50, 250], [50, 270]]));
+    expect(tail.conflicts.find(c => c.feature === 'road')!.action).toBe('relocation');
+    expect(tail.violations).toEqual([]);
   });
   it('does not hide a buried dog-leg inside a crossing’s circular neighbourhood', () => {
     const watercourses: WaterData = { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
