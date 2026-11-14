@@ -199,6 +199,27 @@ describe('structures and the play-area boundary', () => {
   });
 });
 
+describe('structure choice', () => {
+  it('prices a bridge at the rates of its own deck strip, not of the embankment it replaces', () => {
+    // 23 m deep valley; built-up land on both sides of a 20 m wide open strip along the route: the
+    // embankment (≈ 100 m wide) would take mostly building land, the 9.5 m deck none
+    const ter = syntheticTerrain(600, 80, 5, (x) => 400 - 23 * Math.max(0, Math.min(1, (400 - Math.abs(x - 1500)) / 100)));
+    for (let r = 0; r < ter.ny; r++) {
+      const y = ter.height - (r + 0.5) * ter.cell;
+      if (Math.abs(y - 200) > 10) for (let c = 0; c < ter.nx; c++) ter.lc[r * ter.nx + c] |= BUILTUP_BIT;
+    }
+    const r2 = evaluate({ terrain: ter, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2900, y: 200 } }, {
+      category: 'S9.5', speed: 90, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 2800, z: 400, r: null }],
+    });
+    // on the valley side, 10 m of fill: an embankment whose slopes reach into the building land
+    expect(r2.kind[104]).toBe(KIND.earth);
+    expect(r2.cell.urban[104]).toBeGreaterThan(0.4);
+    expect(r2.kind[140]).toBe(KIND.bridge);
+    expect(r2.cell.urban[140]).toBe(0);
+    expect(r2.parts.land[140]).toBeCloseTo(r2.ds * 9.5 * 400, 6);
+  });
+});
+
 describe('auto-profile mass-balance search', () => {
   it('finds the material value at which the grade line balances', () => {
     const s = Float64Array.from({ length: 401 }, (_, i) => i * 10);

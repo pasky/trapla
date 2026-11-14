@@ -67,7 +67,7 @@ const stretchShot = async (name, dist, elev) => {
   await page.waitForTimeout(1500);
   await shot(name);
   await page.mouse.move(300, 300);
-  await page.evaluate(() => window.trapla.selectRange(null));
+  await page.evaluate(() => { window.trapla.selectRange(null); window.trapla.resetCamera(); });
 };
 await stretchShot('06-town-stretch', 2600, 50);
 
@@ -83,7 +83,6 @@ if (designs.overview) await page.evaluate((c) => window.trapla.lookAt(...c), des
 await page.waitForTimeout(800);
 await shot('02-design');
 await stretchShot('05-selected-range', 2600, 42);
-if (designs.overview) await page.evaluate((c) => window.trapla.lookAt(...c), designs.overview); else await page.evaluate(() => window.trapla.resetCamera());
 
 // close-up of a bridge (and nearby cut). Optional: take manual control of the profile and bridge a
 // valley straight across (the designer's choice the official D11 makes at Poříčí).
