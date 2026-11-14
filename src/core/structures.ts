@@ -16,6 +16,9 @@ export interface StructureInput {
   earthPerM: ArrayLike<number>;
   /** bridge cost per m: one number, or per station (urban rates and land differ along the route) */
   bridgePerM: number | ArrayLike<number>;
+  /** Exact whole-run bridge cost incl. abutments, surcharge and land. Initial station costs only
+   * seed candidate runs; this callback also rechecks automatic remnants after manual paint. */
+  bridgeRunCost?: (i0: number, i1: number, length: number) => number;
   /** tunnel cost per m (short-tunnel rate; long rate applied in the bill), number or per station */
   tunnelPerM: number | ArrayLike<number>;
   /** stations that must be bridged (river / railway crossings), unless deep in cut */
@@ -62,6 +65,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       earth += inp.earthPerM[i] * inp.ds;
       struct += (r.kind === KIND.bridge ? bridgeAt(i) : tunnelAt(i)) * inp.ds;
     }
+    if (r.kind === KIND.bridge && inp.bridgeRunCost) struct = inp.bridgeRunCost(r.i0, r.i1, len);
     const minLen = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
     let isLocked = false;
     for (let i = r.i0; i <= r.i1; i++) if (locked[i]) { isLocked = true; break; }
@@ -91,9 +95,11 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       if (!manual && !forced) {
         let earth = 0, structure = 0;
         for (let i = r.i0; i <= r.i1; i++) {
-          earth += inp.earthPerM[i];
-          structure += r.kind === KIND.bridge ? bridgeAt(i) : tunnelAt(i);
+          const cell = (i === 0 || i === n - 1 ? 0.5 : 1) * inp.ds;
+          earth += inp.earthPerM[i] * cell;
+          structure += (r.kind === KIND.bridge ? bridgeAt(i) : tunnelAt(i)) * cell;
         }
+        if (r.kind === KIND.bridge && inp.bridgeRunCost) structure = inp.bridgeRunCost(r.i0, r.i1, length);
         if (length < min || structure >= earth) {
           for (let i = r.i0; i <= r.i1; i++) kind[i] = KIND.earth;
           continue;

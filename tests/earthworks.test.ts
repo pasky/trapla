@@ -114,7 +114,7 @@ describe('mass haul', () => {
 describe('cost roll-up', () => {
   /** n stations of uniform at-grade road with the given section areas */
   const uniform = (n: number, ds: number, cut: number, fill: number, width: number) => ({
-    category: 'S9.5' as const, terrainClass: 'hilly' as const, n, ds, kind: new Uint8Array(n),
+    category: 'S9.5' as const, terrainClass: 'hilly' as const, n, ds, kind: new Uint8Array(n), h: new Float64Array(n).fill(10),
     cutI: new Float64Array(n).fill(cut * EXCAVATION_MIX.I), cutII: new Float64Array(n).fill(cut * EXCAVATION_MIX.II),
     cutIII: new Float64Array(n).fill(cut * EXCAVATION_MIX.III), fill: new Float64Array(n).fill(fill),
     usable: 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare, width: new Float64Array(n).fill(width), runs: [],

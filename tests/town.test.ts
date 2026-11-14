@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
 import { BuildingIndex, noiseBuyoutCost, type BuildingInfo } from '../src/core/buildings';
 import { PART_KEYS } from '../src/core/cost';
+import { bridgeLayout, bridgeModel } from '../src/core/bridge';
+import { CATEGORIES } from '../src/core/data/categories';
 import { resolveCrossings, type CrossingResult } from '../src/core/crossings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
@@ -305,7 +307,7 @@ describe('evaluate on a synthetic town', () => {
     // the overbridge spans the cut from edge to edge: crown + two 1:1.75 slopes 12 m high
     const span = r.dayL[r.crossings[3].i] + r.dayR[r.crossings[3].i];
     const over = r.crossings[3];
-    expect(over.cost).toBeCloseTo((span / 1000) * ROAD_CLASSES.residential.bridgePerKm, -4);
+    expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(span, 0, { span, pierDensity: 0 }), -4);
     // The plain street now needs raised approaches; the neighbouring track shares its crossing.
     expect(r.crossings[1].approachLength).toBeGreaterThan(0);
     expect(r.crossings[2].targetS).toBe(r.crossings[1].s);
@@ -406,7 +408,13 @@ describe('evaluate on a synthetic town', () => {
     expect(c.total).toBeGreaterThan(0);
     // the bill agrees with the independently computed quantities
     expect(c.earthDetail.borrow).toBeCloseTo(r.quantities.deficit * 636, 0);
-    expect(c.bridges).toBeCloseTo((r.quantities.bridgeLength / 1000) * 579_911_000, 0);
+    const model = bridgeModel(CATEGORIES[design.category]);
+    let bridgeCost = 0;
+    for (const run of r.runs) if (run.kind === KIND.bridge) {
+      bridgeCost += model.abutments;
+      for (let i = run.i0; i <= run.i1; i++) bridgeCost += r.ds * model.perM(r.grade[i] - r.ground[i], bridgeLayout(run.length));
+    }
+    expect(c.bridges).toBeCloseTo(bridgeCost, 0);
     // two halves of the route
     const whole = rangeSummary(r), a = rangeSummary(r, 0, 2995), b = rangeSummary(r, 3000, r.length);
     expect(whole.cost.total).toBeCloseTo(c.total, 3);

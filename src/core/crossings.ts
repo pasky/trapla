@@ -1,5 +1,6 @@
 // Study-stage network resolution. Connections are geometrical proxies, not an OSM routing solution.
 import { surchargeRate } from './cost';
+import { bridgeModel } from './bridge';
 import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
 import { KIND } from './structures';
@@ -89,7 +90,10 @@ export function overbridgePrice(c: CrossingResult, footprint: number, urban: num
   const row = ROAD_CLASSES[c.cls], u = urban >= 0.5 ? 1 : 0;
   const approachLength = 2 * Math.max(0, CROSSING_RULES.underDepth + c.h) / CROSSING_RULES.approachGradient;
   const span = footprint, roadPerKm = row.roadPerKm[u];
-  return { span, approachLength, roadPerKm, roadCode: row.roadCodes[u], cost: (span * row.bridgePerKm + approachLength * roadPerKm) / 1000 };
+  // The cut/road corridor stays unobstructed: one clear span, bank-top abutments, no fictitious
+  // piers on the main road. Depth below the banks is not a pier height. Raised approaches stay separate.
+  const deck = bridgeModel(row).total(span, 0, { span, pierDensity: 0 });
+  return { span, approachLength, roadPerKm, roadCode: row.roadCodes[u], cost: deck + approachLength * roadPerKm / 1000 };
 }
 export function reconnectionPrice(c: CrossingResult, gap: number, urban: number) {
   const row = ROAD_CLASSES[c.cls], u = urban >= 0.5 ? 1 : 0;

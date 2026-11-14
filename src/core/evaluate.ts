@@ -3,6 +3,7 @@
 // a Web Worker in the app.
 
 import { autoProfile } from './autoprofile';
+import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
@@ -244,7 +245,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const baseRural = basePerKm(d.category, scenario.terrainClass) / 1000;
   const baseUrban = basePerKmUrban(d.category, scenario.terrainClass) / 1000;
   const tunnelPerM = (cat.tunnelTubes * tunnelPerKm(0) / 1000) * sur;
-  const bridgeRural = (cat.bridgePerKm / 1000) * sur + cat.crownWidth * LAND.perM2;
+  const bridge = bridgeModel(cat);
+  const bridgeRural = (h: number) => bridge.estimatePerM(h) * sur + cat.crownWidth * LAND.perM2;
   const { fillSlope, cutSlope } = DEFAULT_SLOPES;
   const b = cat.crownWidth;
   const topsoilPerM2 = PRICES.topsoilDepth * PRICES.topsoil;
@@ -252,7 +254,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
     return (h: number, kind = -1, costClass = 0) => {
-      if (kind === KIND.bridge) return bridgeRural;
+      if (kind === KIND.bridge) return bridgeRural(h);
       if (kind === KIND.tunnel) return tunnelPerM;
       let earth: number;
       if (h >= 0) {
@@ -267,7 +269,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       }
       if (kind === KIND.earth) return earth;
       let best = earth;
-      if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural);
+      if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural(h));
       if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
       return best;
     };
@@ -301,7 +303,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const z = elevations(p, subS);
     const sc = computeSections(terrain, sub, subX, subY, subTx, subTy, z, tpl);
     const dp = decisionPrices(materialValue);
-    const hh = new Float64Array(sub), earth = new Float64Array(sub), bridge = new Float64Array(sub), tunnel = new Float64Array(sub);
+    const hh = new Float64Array(sub), earth = new Float64Array(sub), bp = new Float64Array(sub), tunnel = new Float64Array(sub);
     const must = new Uint8Array(sub);
     for (let k = 0; k < sub; k++) {
       hh[k] = z[k] - ground[subI[k]];
@@ -310,7 +312,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2
         + earthEngineeringPerM(hh[k], sc.cut[k], sc.fill[k])
         + (hh[k] > 0 ? subStreamCount[k] * culvertExtra(wd, b) / subW[k] : 0)) * su + wd * land;
-      bridge[k] = (cat.bridgePerKm / 1000) * su + b * land;
+      bp[k] = bridge.perM(hh[k]) * su + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
       if (subMust[k] && hh[k] > 0) must[k] = 1;
     }
@@ -322,7 +324,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0) must[k] = 1;
       });
     }
-    const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bridge, tunnelPerM: tunnel, forced: must, overrides: subOverrides });
+    const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, forced: must, overrides: subOverrides,
+      bridgeRunCost: bridgeRunCost(bridge, hh, subDs, i => surchargeRate(subUrban[i]), i => landPerM2(subUrban[i])) });
     let bal = 0;
     for (let k = 0; k < sub; k++) if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * subW[k];
     return bal;
@@ -439,7 +442,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2
       + geotechnicalPerM[i] + culverts[i] / cellLength(i, n, ds)) * (1 + surchargeRate(ue))
       + wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2);
-    bridgePerM[i] = (cat.bridgePerKm / 1000) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
+    bridgePerM[i] = bridge.perM(h[i]) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, ut) / 1000) * (1 + surchargeRate(ut));
   }
   // river / water / railway crossings (and motorways the grade passes over) must be bridged (streams
@@ -457,7 +460,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const choice = crossingChoice(c.roadId!, crossingOverrides);
     if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
   }
-  const { kind, runs, violations: structureViolations } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, overrides: manualStructures });
+  const { kind, runs, violations: structureViolations } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, overrides: manualStructures,
+    bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surchargeRate(urbanDeck[i]), i => landPerM2(urbanDeck[i])) });
   // what is actually built decides the land take, the rates and whether the terrain data suffice
   const width = new Float64Array(n), urban = new Float32Array(n), forest = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -604,7 +608,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const bridgeLength = bridges.reduce((a, v) => a + v, 0);
   const tunnelLength = tunnels.reduce((a, v) => a + v, 0);
   const parts = costParts({
-    category: d.category, terrainClass: scenario.terrainClass, n, ds, kind, urban,
+    category: d.category, terrainClass: scenario.terrainClass, n, ds, kind, urban, h,
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
     width, forest, runs, geotechnicalPerM, culverts, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea,

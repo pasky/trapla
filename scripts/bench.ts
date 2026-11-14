@@ -12,11 +12,13 @@ const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B
 const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads };
 function report(name: string, d: Design) {
   let r = evaluate(ctx, d);
-  const t0 = performance.now();
-  const N = 5;
+  for (let i = 1; i < Number(process.env.BENCH_WARMUP ?? 1); i++) r = evaluate(ctx, d);
+  const t0 = performance.now(), cpu0 = process.cpuUsage();
+  const N = Number(process.env.BENCH_N ?? 5);
   for (let i = 0; i < N; i++) r = evaluate(ctx, d);
-  const ms = (performance.now() - t0) / N;
-  console.log(`\n== ${name}: ${(r.length / 1000).toFixed(2)} km, ${r.travelMin.toFixed(2)} min, eval ${ms.toFixed(0)} ms`,
+  const ms = (performance.now() - t0) / N, cpu = process.cpuUsage(cpu0);
+  const cpuMs = (cpu.user + cpu.system) / 1000 / N;
+  console.log(`\n== ${name}: ${(r.length / 1000).toFixed(2)} km, ${r.travelMin.toFixed(2)} min, eval ${ms.toFixed(0)} ms (CPU ${cpuMs.toFixed(0)} ms)`,
     Object.entries(r.timing).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(' '));
   for (const l of describe(r)) console.log(l);
   // every component array must sum to its line of the bill

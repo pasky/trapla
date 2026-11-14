@@ -9,6 +9,7 @@ import { CATEGORIES, type CategoryId, type TerrainClass } from './data/categorie
 import { EXCAVATION_BY_CLASS, LAND, NORM_EARTHWORK_ALLOWANCE, PRICES } from './data/prices';
 import { NOISE, URBAN_LAND, URBAN_NORM_PER_KM, URBAN_RATES } from './data/urban';
 import { KIND, type Run } from './structures';
+import { bridgeLayout, bridgeModel } from './bridge';
 
 /** value of the earthworks already included in the SFDI per-km norm, CZK per km */
 export function allowanceValuePerKm(cat: CategoryId): number {
@@ -114,6 +115,8 @@ export interface StationCostInput {
   ds: number;
   /** KIND per station */
   kind: ArrayLike<number>;
+  /** Grade minus ground, m; required for geometry-based bridge pricing. */
+  h: ArrayLike<number>;
   /** built-up share of each cell, 0…1 (urban norm row, urban surcharge, building-land price) */
   urban?: ArrayLike<number>;
   /** section areas at each station, m² (ignored where the station is a structure) */
@@ -159,7 +162,17 @@ export function costParts(inp: StationCostInput): CostParts {
   const baseRural = basePerKm(inp.category, inp.terrainClass) / 1000;
   const baseUrban = basePerKmUrban(inp.category, inp.terrainClass) / 1000;
   const runLen = new Float64Array(n);
-  for (const r of inp.runs) if (r.kind === KIND.tunnel) for (let i = r.i0; i <= r.i1; i++) runLen[i] = r.length;
+  const bridge = bridgeModel(cat);
+  for (const r of inp.runs) {
+    if (r.kind === KIND.tunnel) {
+      for (let i = r.i0; i <= r.i1; i++) runLen[i] = r.length;
+    } else {
+      const layout = bridgeLayout(r.length);
+      for (let i = r.i0; i <= r.i1; i++) parts.bridges[i] = cellLength(i, n, ds) * bridge.perM(inp.h[i], layout);
+      parts.bridges[r.i0] += bridge.abutments / 2;
+      parts.bridges[r.i1] += bridge.abutments / 2;
+    }
+  }
   // volumes per cell
   const cutV = new Float64Array(n), fillV = new Float64Array(n);
   let cut = 0, fill = 0;
@@ -201,7 +214,7 @@ export function costParts(inp: StationCostInput): CostParts {
       construction = parts.roadBase[i];
       for (const key of EARTH_KEYS) construction += parts[key][i];
     } else if (k === KIND.bridge) {
-      construction = parts.bridges[i] = (len / 1000) * cat.bridgePerKm;
+      construction = parts.bridges[i];
     } else {
       construction = parts.tunnels[i] = cat.tunnelTubes * (len / 1000) * tunnelPerKm(runLen[i], u);
     }

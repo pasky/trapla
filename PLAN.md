@@ -398,7 +398,11 @@ price cannot be determined (research/07 §1).
 | Local/service reconnection | 24.133 / 32.930 M CZK/km rural / urban | SPK A.1.M.7,5.NER / M.11,5.NIR; mask at crossing, flat+hilly rows |
 | Service sjezd / track diversion | +0.5 M per service reconnection / 13.986 M/km | research/13 sjezd very low confidence; SPK A.1.P4.NE paved field road, not gravel |
 | Raised overbridge approaches | total 2 × max(0, 6 + h) / 6% metres × SPK road row | heuristic gradient; includes standard earthworks, no separate fill lump sum |
-| Crossed-road widths for overbridges | 27.5 / 11.5 / 9.5 / 7.5 / 6.5 / 4 m by class | priced by the SPK CN bridge row of that width |
+| Crossed-road widths for overbridges | 27.5 / 11.5 / 9.5 / 7.5 / 6.5 / 4 m by class | SPK-normalized geometry model: one clear span across footprint, bank-top abutments, no piers on our road (research/16) |
+| Bridge height calibration | SPK free height 8 m standard; +30% at 35 m | **SOURCED** SPK CN 2026 appendices 1/5; linear interpolation recommended; not an empirical award fit |
+| Bridge span / supports | equal mainline spans ≤30 m; reference 120 m / 3 piers; surface-to-soffit depth span/20 | **PROVISIONAL layout**; local-height integration and below-8/above-35 m extrapolation differ from SPK whole-object maximum |
+| Bridge foundations / abutments | S9.5: 6 Ø0.8 m ×15 m piles/support; 2 abutments ≈7.009 M before surcharge | OTSKP unit prices **sourced**, quantities **PROVISIONAL**; standard pile length, not inferred from surface geology; fixed cost once per run |
+| Bridge deck span term | equivalent concrete 0.45 m³/m² ≤20 m; linear increase through ordinary/long spans | **PROVISIONAL** quantity proxy; not a certified span/design choice; calibrated residual prevents double-counting SPK work |
 | Excavation weathering profiles | ČGS lithology + estimated local I/II bottom depths, III below; unknown = 75/20/5 | `pipeline/ground_profiles.json`; local D11 aggregate fit, not measured strata (research/10 §6) |
 | Noise source / traffic | Czech 2018/2020 OA/NA equations; 15% acoustic heavy share, heavy speed ≤80 | Emissions and TP219 time distribution sourced; heavy share/design-speed proxy are assumptions; hard ground is the conservative categorical EIA fit (research/11) |
 | Noise wall | 3 / 4 / 5 m, 10,000 CZK/m²; 50 m margins | PROVISIONAL calibrated recommendation (8–14k); only project datapoint assumes 3 m height (research/09 §1). Cut edges use diffraction, not a depth exemption |
@@ -555,7 +559,7 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 - Flat rural S9.5 bridge break-even at material value λ=200: **26.85 → 16.62 m**; at λ=0:
   **47.03 → 18.62 m**; at λ=−196.4: no old economic crossing → **21.03 m**. Reproduce with
   `npx tsx scripts/bridge-break-even.ts`. This is mostly the provisional engineering reserve, not a newly
-  discovered ČSN limit. No unsupported hard height cap or bridge-height price curve was introduced.
+  discovered ČSN limit. No hard height cap was introduced. **Model 12 below supersedes the flat bridge rate** after recovering the SPK height attributes.
 - Profile range **B/T/E/C** paints bridge/tunnel/earthwork/automatic; persisted, undoable, partial repaint/
   erase, visible on map/profile, and respected by Auto. Invalid height/cover, short runs and forced crossings
   produce explicit game-rule violations. Ranges retain absolute chainage when the plan changes.
@@ -622,6 +626,47 @@ On the original best plan, maximum fill **27.1 → 19.5 m**, bridges **550 → 9
 [after](docs/screenshots/valley-after.png). Captures keep the original horizontal plan, not the refreshed
 optimised route; owner-view centre is km 17.5 (near old PI 15). `CHAINAGE=17500 node scripts/valley.mjs`
 reproduces that framing. The map ribbon still simplifies benches to the crown/daylight surface.
+
+## Geometry-priced bridges (cost model 12)
+
+Source correction: SPK CN 2026 appendix 1 §A.2 defines **maximum free height ≤8 m**; appendix 5
+`A.2.S.9,5.N` D5:E6 gives **+30% at 35 m** and the methodology recommends linear interpolation.
+The original research/15 claim that no quantitative bridge-height dependence was found was incomplete.
+Research/16 documents exact sources, 11 Czech project geometry records, the failed search for eight
+scope/year-comparable bridge-only awards, OTSKP quantities, normative fit and residuals. No invented
+empirical tender regression: the reference bridge matches both official height anchors exactly.
+
+Shared `bridgeModel()` prices span/deck, local height-sensitive internal supports and standard pile
+foundations. Two fixed abutments are charged once/run, split into endpoint cells. Final selection,
+coarse balance and bill share run geometry; DP uses the same formula with 120 m reference amortization
+because it has no run state. Painted remnants reprice their own abutments; forced bridges stay forced.
+Crossed-road overbridges use one clear span with no fictitious piers in our road. Per-cell sums remain exact.
+
+Flat rural S9.5 break-even, **same engineered fill**, model 11 → model 12 (120 m uniform run):
+λ=−196.4 **21.03→21.89 m**, λ=0 **18.62→19.33 m**, λ=200 **16.62→17.19 m**.
+At λ=200: 30 m run **17.61 m**, 300 m run **17.10 m**. No legal fill-height limit is implied.
+Reproduce with `npx tsx scripts/bridge-break-even.ts` and `scripts/bridge-calibration.ts`.
+
+| Unchanged saved plan | Model 11 total, M | Model 12 total, M | Bridges count / m | 50-trial candidate total, M |
+|---|---:|---:|---|---:|
+| demo | 4,099 | **4,231** | 8 / 1,040 | 4,170 |
+| best bypass | 3,738 | **3,908** | 7 / 900 | 3,875 |
+| direct80 | 4,062 | **4,344** | 13 / 1,390 | 4,319 |
+| direct90 | 4,382 | **4,615** | 10 / 1,400 | 4,580 |
+| town-centre reference | 10,580 | **11,031** | 15 / 2,720 | 7,723 |
+
+All VALID; town-centre also has one 160 m tunnel. Candidate runs use seed1612, 50 trials and the saved
+speed (90 except direct80). Saved JSON geometry/metadata is deliberately unchanged for clean model
+comparison. The town candidate leaves the centre and must not replace that reference. Other quantities,
+source-data limitations and full component numbers are in research/16. Prior model tables above are historical.
+
+Validation: **182 tests**, typecheck/build; added bridge calibration/height/span/foundation, exact
+selector-vs-cell-bill, fixed-abutment rejection/forced/manual/split-remnant tests (existing summation and
+crossing tests updated, not duplicated). Warm 20+20-evaluation bench on a loaded shared host:
+baseline wall **56/72/77/70/62 ms**, model12 **81/60/72/65/82 ms** (demo/best/80/90/town).
+Last-evaluation new timings included **54/70/57/53/84 ms**; process CPU and wall are reported separately.
+Bridge work remains linear; warmed structure+bill stages are roughly 1–3 ms combined. **40–60 ms
+wall time is not established for every design under concurrent Chromium/hydrology load**. No UI changes.
 
 ## Horizontal curve rules and long curves (2026-11-14)
 
