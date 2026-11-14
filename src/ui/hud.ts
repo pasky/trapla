@@ -46,7 +46,8 @@ const ROW_HELP: Record<string, (c: CostBreakdown) => string> = {
   bridges: () => 'SFDI bridge norm per km of bridge; includes the short bridges forced over rivers, railways and roads clearly below the grade',
   tunnels: () => 'SFDI bored-tunnel norm per km of tube (urban rows under built-up areas)',
   crossings: () => `existing roads crossed: an overbridge where the road is ≥ ${CROSSING_RULES.underDepth} m above the grade, otherwise a junction (${czk(ROAD_CLASSES.primary.atGrade)}), side-road reconnection (${czk(ROAD_CLASSES.residential.atGrade)}), access (${czk(ROAD_CLASSES.service.atGrade)}) or track diversion (${czk(ROAD_CLASSES.track.atGrade)}) — lump sums (the junction from ŘSD awards, the rest unverified allowances). Roads ≥ ${CROSSING_RULES.overHeight} m below the grade get a bridge (counted under Bridges). Motorways and expressways cannot be crossed at grade: bridge ≥ ${STRUCTURE_RULES.railClearance} m above or overbridge ≥ ${CROSSING_RULES.underDepth} m below.`,
-  noiseWalls: () => `provisional: ${NOISE.wallHeight} m wall at ${NOISE.wallPerM2.toLocaleString('en-US')} CZK/m² wherever a dwelling is within the screening distance (${NOISE.refDistance} m at ${NOISE.refTraffic.toLocaleString('en-US')} veh/day and ${NOISE.refSpeed} km/h), unless a cut ≥ ${NOISE.cutShield} m screens it`,
+  noiseWalls: () => `PROVISIONAL screening model, not an acoustic assessment: ${NOISE.wallHeights.join(' / ')} m walls at ${NOISE.wallPerM2.toLocaleString('en-US')} CZK/m²; low-receiver attenuation ${NOISE.lowAttenuationDb.join(' / ')} dB. Receiver ${NOISE.facadeOffset} m in front of the facade, top floor ${NOISE.receiverHeight} + ${NOISE.storeyHeight} × (levels − 1) m above building ground; attenuation reduced by ${NOISE.upperPenaltyDbPerM} dB per metre above wall top. A cut ≥ ${NOISE.cutShield} m screens the road.`,
+  noiseBuyouts: () => `Dwellings bought out for noise, separate from footprint demolitions; statutory ${BUILDING_RULES.purchaseMultiplier}× market purchase price + demolition. Bought out when even the tallest available wall cannot protect the top-floor receiver in the PROVISIONAL model; not an acoustic assessment.`,
   surcharge: () => `SFDI "other objects" (utilities, drainage, safety, preparation…): +${pct(PRICES.otherObjectsSurcharge)} of construction, +${pct(URBAN_RATES.otherObjectsSurcharge)} inside built-up areas`,
   land: () => `statutory purchase (Act 416/2009 §3b): ${LAND.perM2} CZK/m² (8 × ${LAND.perM2 / 8} market price) outside, ${(URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier).toLocaleString('en-US')} CZK/m² (1.5 × ${URBAN_LAND.buildingLandPerM2.toLocaleString('en-US')}) inside built-up areas`,
   forest: () => `+${LAND.forestExtraPerM2} CZK/m² of forest in the footprint (clearing, forest-land removal levy; rough estimate)`,
@@ -90,7 +91,7 @@ export class Hud {
       </section>
       <section class="card" id="pi-card" style="display:none"></section>
       <section class="card" id="vpi-card" style="display:none"></section>
-      <section class="card stats"><table id="stats"></table></section>
+      <section class="card stats"><table id="stats"></table><div class="sub">Noise: provisional screening, not an acoustic assessment. Teal = walls; red squares = footprint demolitions; magenta diamonds = noise buyouts (purchase + demolition).</div></section>
       <section class="card viol"><h2 id="viol-h">Violations</h2><ol id="viol"></ol></section>
       <section class="card best" id="best"></section>
       <section class="card help">
@@ -166,24 +167,25 @@ export class Hud {
     for (const cr of r.crossings) if (!sel || (cr.i >= sel.i0 && cr.i <= sel.i1)) x[cr.type]++;
     const xing = `${x.bridge + x.tunnel + x.overbridge + x.atGrade} <small>(${[x.atGrade ? `${x.atGrade} at grade` : '', x.overbridge ? `${x.overbridge} overbridge${x.overbridge > 1 ? 's' : ''}` : '', x.bridge ? `${x.bridge} under our bridges` : '', x.tunnel ? `${x.tunnel} above tunnels` : ''].filter(Boolean).join(', ') || 'none'})</small>`;
     const cls = q.cutByClass.map((v) => num((100 * v) / Math.max(1, q.cut), 0)).join(' / ');
-    const common = (cut: number, fill: number, len: number, fp: number, forest: number, urban: number, bld: number, walls: number) => `
+    const common = (cut: number, fill: number, len: number, fp: number, forest: number, urban: number, bld: number, buyouts: number, walls: number, wallArea: number) => `
       <tr><td>Cut / fill</td><td>${kvol(cut)} / ${kvol(fill)} <small>(${num(cut / len, 0)} / ${num(fill / len, 0)} m³/m)</small></td></tr>
       <tr><td>Footprint</td><td>${num(fp / 1e4, 1)} ha <small>(forest ${num(forest / 1e4, 1)} ha)</small></td></tr>
       <tr><td>In built-up area</td><td>${km(urban)}</td></tr>
-      <tr class="${bld ? 'warn' : ''}"><td>Buildings demolished</td><td>${bld}</td></tr>
+      <tr class="${bld ? 'warn' : ''}"><td>Footprint demolitions</td><td>${bld}</td></tr>
+      <tr class="${buyouts ? 'warn' : ''}" title="Separate from footprint demolitions; purchase + demolition"><td>Noise buyouts</td><td>${buyouts}</td></tr>
       <tr><td>Roads crossed</td><td>${xing}</td></tr>
-      <tr><td>Noise walls</td><td>${num(walls, 0)} m</td></tr>`;
+      <tr><td>Noise walls</td><td>${num(walls, 0)} m / ${num(wallArea, 0)} m²</td></tr>`;
     this.$('stats').innerHTML = sel ? `
       <tr class="head"><td colspan="2">Selected stretch</td></tr>
       <tr><td>Length</td><td>${km(sel.length)} <small>of ${km(r.length)}</small></td></tr>
       <tr><td>Bridges / tunnels</td><td>${num(sel.quantities.bridgeLength, 0)} m / ${num(sel.quantities.tunnelLength, 0)} m</td></tr>
-      ${common(sel.quantities.cut, sel.quantities.fill, sel.length, sel.quantities.footprint, sel.quantities.forestArea, sel.quantities.urbanLength, sel.quantities.buildings, sel.quantities.wallLength)}
+      ${common(sel.quantities.cut, sel.quantities.fill, sel.length, sel.quantities.footprint, sel.quantities.forestArea, sel.quantities.urbanLength, sel.quantities.buildings, sel.quantities.noiseBuyouts, sel.quantities.wallLength, sel.quantities.wallArea)}
       <tr class="${tOk ? '' : 'bad'}"><td>Travel time <small>(route)</small></td><td>${num(r.travelMin, 2)} min <small>/ ≤ ${this.sc.maxTravelMin.toFixed(1)}</small></td></tr>` : `
       <tr><td>Length</td><td>${km(r.length)}</td></tr>
       <tr class="${tOk ? '' : 'bad'}"><td>Travel time</td><td>${num(r.travelMin, 2)} min <small>/ ≤ ${this.sc.maxTravelMin.toFixed(1)}</small></td></tr>
       <tr><td>Bridges</td><td>${q.bridges} · ${num(q.bridgeLength, 0)} m</td></tr>
       <tr><td>Tunnels</td><td>${q.tunnels} · ${num(q.tunnelLength, 0)} m</td></tr>
-      ${common(q.cut, q.fill, r.length, q.footprint, q.forestArea, q.urbanLength, q.buildingsHit, q.wallLength)}
+      ${common(q.cut, q.fill, r.length, q.footprint, q.forestArea, q.urbanLength, q.buildingsHit, q.noiseBuyouts, q.wallLength, q.wallArea)}
       <tr title="provisional stand-in for geology: class I to ${EXCAVATION_DEPTH_BANDS.classIto} m below the ground, II to ${EXCAVATION_DEPTH_BANDS.classIIto} m, III deeper"><td>Excavation class</td><td>${cls} % <small>I / II / III</small></td></tr>
       <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km, 15 % of cut unsuitable</small></td></tr>
       <tr><td><small>recompute</small></td><td><small>${num(r.timing.total ?? 0, 0)} ms</small></td></tr>`;

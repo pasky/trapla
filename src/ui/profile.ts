@@ -260,16 +260,23 @@ export class ProfilePanel {
     this.vpis.forEach((v, k) => { const x = this.X(v.s), y = this.Y(v.z); if (k === 0) g.moveTo(x, y); else g.lineTo(x, y); });
     g.stroke();
     g.setLineDash([]);
-    // noise walls: a teal line just above the grade line
+    // Noise walls at their actual top elevation; dashed = right side.
     g.strokeStyle = '#14a3a3';
     g.lineWidth = 2;
     for (const w of r.walls) {
       if (w.s1 < this.v0 || w.s0 > this.v1) continue;
-      const off = w.side === 'L' ? 5 : 8;
+      g.setLineDash(w.side === 'R' ? [3, 2] : []);
       g.beginPath();
-      for (let i = w.i0; i <= w.i1; i++) { const x = this.X(r.s[i]), y = this.Y(r.grade[i]) - off; if (i === w.i0) g.moveTo(x, y); else g.lineTo(x, y); }
+      const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1];
+      for (const [k, s] of stations.entries()) {
+        const a = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[a]) / r.ds;
+        const z = r.grade[a] + t * (r.grade[a + 1] - r.grade[a]);
+        const x = this.X(s), y = this.Y(z + w.height);
+        if (k === 0) g.moveTo(x, y); else g.lineTo(x, y);
+      }
       g.stroke();
     }
+    g.setLineDash([]);
     // grade line coloured by kind / violation
     const bad = new Uint8Array(r.n);
     for (const v of r.violations) if (!v.goal) for (let i = Math.max(0, Math.floor(v.s0 / r.ds)); i <= Math.min(r.n - 1, Math.ceil(v.s1 / r.ds)); i++) bad[i] = 1;
@@ -300,6 +307,13 @@ export class ProfilePanel {
     for (const b of r.demolished) {
       if (b.i < i0 || b.i > i1) continue;
       g.fillRect(this.X(r.s[b.i]) - 2, this.Y(r.ground[b.i]) - 7, 4, 4);
+    }
+    // Noise buyouts: magenta diamonds, offset above the footprint-demolition squares.
+    g.fillStyle = '#c43c9b';
+    for (const b of r.boughtOut) {
+      if (b.i < i0 || b.i > i1) continue;
+      const x = this.X(r.s[b.i]), y = this.Y(r.ground[b.i]) - 12;
+      g.beginPath(); g.moveTo(x, y - 4); g.lineTo(x + 4, y); g.lineTo(x, y + 4); g.lineTo(x - 4, y); g.closePath(); g.fill();
     }
     // grade labels
     g.font = '11px system-ui, sans-serif';
@@ -482,8 +496,9 @@ export class ProfilePanel {
     const [a, b] = this.window(s, wPx);
     const len = this.cumLen[b + 1] - this.cumLen[a];
     const facts: string[] = [];
-    const w = r.cell.wall[i];
-    if (w) facts.push(`noise wall: ${w === 3 ? 'both sides' : w === 1 ? 'left' : 'right'}`);
+    for (const w of r.walls) {
+      if (i >= w.i0 && i <= w.i1) facts.push(`noise wall: ${w.side === 'L' ? 'left' : 'right'}, ${w.height} m high (provisional)`);
+    }
     for (const x of r.crossings) {
       if (x.i < a || x.i > b) continue;
       const row = ROAD_CLASSES[x.cls];
@@ -491,7 +506,10 @@ export class ProfilePanel {
     }
     let nb = 0, cb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) { nb++; cb += d.cost; }
-    if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} demolished — ${czk(cb)}`);
+    if (nb) facts.push(`${nb} footprint demolition${nb > 1 ? 's' : ''} — ${czk(cb)}`);
+    let nBuy = 0, cBuy = 0;
+    for (const d of r.boughtOut) if (d.i >= a && d.i <= b) { nBuy++; cBuy += d.cost; }
+    if (nBuy) facts.push(`${nBuy} noise buyout${nBuy > 1 ? 's' : ''} — ${czk(cBuy)} (purchase + demolition)`);
     let total = 0;
     const rows = COST_GROUPS.map((gr, gi) => {
       const v = (this.cum[gi][b + 1] - this.cum[gi][a]) / len;

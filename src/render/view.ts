@@ -542,17 +542,27 @@ export class View {
     ghost.name = 'ghost';
     this.routeGroup.add(ghost);
 
-    // ---- demolished buildings ----
-    if (r.quantities.hitBuildings.length) {
+    // ---- footprint demolitions (red squares) / noise buyouts (magenta diamonds) ----
+    for (const [buildings, buyout] of [[r.demolished, false], [r.boughtOut, true]] as const) {
+      if (!buildings.length) continue;
       const bp: number[] = [];
-      for (const j of r.quantities.hitBuildings) {
+      for (const { j } of buildings) {
         const b = this.pack.overlays.buildings[j];
         this.local(b[0], b[1], this.drapeHeight(b[0], b[1]) + 6, v);
         bp.push(v.x, v.y, v.z);
       }
       const pg = new THREE.BufferGeometry();
       pg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
-      const pts = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xff00c8, size: 8, sizeAttenuation: false, depthTest: false }));
+      const material = new THREE.PointsMaterial({ color: buyout ? 0xc43c9b : 0xd7301f, size: buyout ? 11 : 8, sizeAttenuation: false, depthTest: false, depthWrite: false });
+      if (buyout) {
+        material.onBeforeCompile = (shader) => {
+          shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>',
+            '#include <clipping_planes_fragment>\nif (abs(gl_PointCoord.x - 0.5) + abs(gl_PointCoord.y - 0.5) > 0.5) discard;');
+        };
+        material.customProgramCacheKey = () => 'noise-buyout-diamond';
+      }
+      const pts = new THREE.Points(pg, material);
+      pts.name = buyout ? 'noise-buyouts' : 'footprint-demolitions';
       pts.renderOrder = 5;
       this.routeGroup.add(pts);
     }

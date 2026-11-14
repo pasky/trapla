@@ -25,7 +25,8 @@ export const COST_GROUPS: CostGroup[] = [
   { id: 'surcharge', label: 'Other objects', short: 'other', color: '#b3bcc8', keys: ['surcharge'], of: (c) => c.surcharge },
   { id: 'land', label: 'Land', short: 'land', color: '#8fbf5a', keys: ['land'], of: (c) => c.landDetail.land },
   { id: 'forest', label: 'Forest', short: 'forest', color: '#3f8f4f', keys: ['forest'], of: (c) => c.landDetail.forest },
-  { id: 'buildings', label: 'Buildings', short: 'buildings', color: '#d7301f', keys: ['buildings'], of: (c) => c.landDetail.buildings },
+  { id: 'buildings', label: 'Footprint demolitions', short: 'buildings', color: '#d7301f', keys: ['buildings'], of: (c) => c.landDetail.buildings },
+  { id: 'noiseBuyouts', label: 'Noise buyouts', short: 'buyouts', color: '#c43c9b', keys: ['noiseBuyouts'], of: (c) => c.landDetail.noiseBuyouts },
 ];
 
 export function czk(v: number): string {

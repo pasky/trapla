@@ -20,8 +20,11 @@ export interface RangeSummary {
     bridgeLength: number; tunnelLength: number;
     /** length inside built-up areas (not in tunnel), m */
     urbanLength: number;
+    /** buildings removed for the footprint, excluding noise buyouts */
     buildings: number;
+    noiseBuyouts: number;
     wallLength: number;
+    wallArea: number;
     /** crossings of existing roads in the range / those that cost something */
     crossings: number;
     crossingsPaid: number;
@@ -37,7 +40,8 @@ export function cellsInRange(r: { n: number; ds: number }, s0: number, s1: numbe
 
 export function rangeSummary(r: Result, s0 = 0, s1 = r.length): RangeSummary {
   const [i0, i1] = cellsInRange(r, s0, s1);
-  const q = { cut: 0, fill: 0, footprint: 0, forestArea: 0, bridgeLength: 0, tunnelLength: 0, urbanLength: 0, buildings: 0, wallLength: 0, crossings: 0, crossingsPaid: 0 };
+  const start = Math.max(0, (i0 - 0.5) * r.ds), end = Math.min(r.length, (i1 + 0.5) * r.ds);
+  const q = { cut: 0, fill: 0, footprint: 0, forestArea: 0, bridgeLength: 0, tunnelLength: 0, urbanLength: 0, buildings: 0, noiseBuyouts: 0, wallLength: 0, wallArea: 0, crossings: 0, crossingsPaid: 0 };
   let length = 0;
   for (let i = i0; i <= i1; i++) {
     const len = cellLength(i, r.n, r.ds);
@@ -54,10 +58,12 @@ export function rangeSummary(r: Result, s0 = 0, s1 = r.length): RangeSummary {
     const w = r.cell.wall[i];
     q.wallLength += ((w & 1) + ((w >> 1) & 1)) * len;
   }
+  for (const w of r.walls) q.wallArea += Math.max(0, Math.min(end, w.s1) - Math.max(start, w.s0)) * w.height;
   for (const b of r.demolished) if (b.i >= i0 && b.i <= i1) q.buildings++;
+  for (const b of r.boughtOut) if (b.i >= i0 && b.i <= i1) q.noiseBuyouts++;
   for (const c of r.crossings) if (c.i >= i0 && c.i <= i1) { q.crossings++; if (c.cost > 0) q.crossingsPaid++; }
   return {
-    i0, i1, s0: Math.max(0, (i0 - 0.5) * r.ds), s1: Math.min(r.length, (i1 + 0.5) * r.ds), length,
+    i0, i1, s0: start, s1: end, length,
     cost: sumParts(r.parts, i0, i1), quantities: q,
   };
 }

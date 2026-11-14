@@ -6,7 +6,6 @@ import * as THREE from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import { NOISE } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { cellsInRange } from '../core/range';
 import { KIND } from '../core/structures';
@@ -63,12 +62,18 @@ export class RouteExtras {
     for (const w of r.walls) {
       const sgn = w.side === 'L' ? 1 : -1;
       const top: number[] = [];
-      for (let i = w.i0; i <= w.i1; i++) {
-        const x = r.x[i] - r.ty[i] * off * sgn, y = r.y[i] + r.tx[i] * off * sgn;
-        this.view.local(x, y, r.grade[i] + 0.3, v); pos.push(v.x, v.y, v.z);
-        this.view.local(x, y, r.grade[i] + NOISE.wallHeight, v); pos.push(v.x, v.y, v.z);
+      // Include cell boundaries so even a single-cell wall has a visible, full-length face.
+      const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1];
+      for (const [j, s] of stations.entries()) {
+        const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[i]) / r.ds;
+        const at = (a: Float64Array) => a[i] + t * (a[i + 1] - a[i]);
+        const tx = at(r.tx), ty = at(r.ty), norm = Math.hypot(tx, ty) || 1;
+        const x = at(r.x) - ty / norm * off * sgn, y = at(r.y) + tx / norm * off * sgn;
+        const z = at(r.grade);
+        this.view.local(x, y, z, v); pos.push(v.x, v.y, v.z);
+        this.view.local(x, y, z + w.height, v); pos.push(v.x, v.y, v.z);
         top.push(v.x, v.y, v.z);
-        if (i > w.i0) { const k = pos.length / 3 - 4; idx.push(k, k + 2, k + 1, k + 2, k + 3, k + 1); }
+        if (j > 0) { const k = pos.length / 3 - 4; idx.push(k, k + 2, k + 1, k + 2, k + 3, k + 1); }
       }
       if (top.length >= 6) this.walls.add(this.line(top, WALL, 2, 0.9, 5));
     }
