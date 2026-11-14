@@ -159,7 +159,7 @@ def tagged_width(value) -> float | None:
     return width if math.isfinite(width) and width > 0 else None
 
 
-def fetch_waterways(cache: Path, overpass) -> list[dict]:
+def fetch_waterways(cache_path, overpass) -> list[dict]:
     """Reuse the historic line cache; supplement its missing ditch/drain query.
 
     The presence of one drainage way is not proof a legacy query covered them.
@@ -167,13 +167,13 @@ def fetch_waterways(cache: Path, overpass) -> list[dict]:
     """
     # Freeze one independent snapshot, including when bootstrapped from legacy
     # caches. A later overlay build creating osm_lines must not switch sources.
-    snapshot = cache / "osm_watercourses_v1.json"
+    snapshot = cache_path("watercourses_v1")
     if snapshot.exists():
         elements = json.loads(snapshot.read_text())["elements"]
         by_id = {el["id"]: el for el in elements
                  if el.get("type") == "way" and el.get("tags", {}).get("waterway") in KINDS}
         return [by_id[i] for i in sorted(by_id)]
-    cached = cache / "osm_lines.json"
+    cached = cache_path("lines")
     elements = json.loads(cached.read_text())["elements"] if cached.exists() else []
     waterways = [el for el in elements
                  if el.get("type") == "way" and el.get("tags", {}).get("waterway") in KINDS]

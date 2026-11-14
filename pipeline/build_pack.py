@@ -600,7 +600,7 @@ def main():
     h = fetch_terrain()
     # Hydrology uses raw DMR nodata, never the display fill or painted land cover.
     import hydrology
-    watercourses = hydrology.build(h, CELL, hydrology.fetch_waterways(CACHE, overpass),
+    watercourses = hydrology.build(h, CELL, hydrology.fetch_waterways(osm_cache, overpass),
                                    way_xy, OUT, log)
     oob = np.isnan(h)
     import geology

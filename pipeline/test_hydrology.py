@@ -135,23 +135,30 @@ class HydrologyTests(unittest.TestCase):
         drain = {"id": 3, "type": "way", "tags": {"waterway": "drain"}}
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory)
+            cache_path = lambda name: cache / f"osm_{name}.json"
             (cache / "osm_lines.json").write_text(json.dumps({"elements": [stream, ditch]}))
             calls = []
             def overpass(name, query):
                 calls.append((name, query))
                 return {"elements": [ditch, drain]}
-            self.assertEqual(fetch_waterways(cache, overpass), [stream, ditch, drain])
+            self.assertEqual(fetch_waterways(cache_path, overpass), [stream, ditch, drain])
             self.assertEqual(len(calls), 1)
             self.assertIn("ditch|drain", calls[0][1])
             (cache / "osm_lines.json").write_text('{"elements":[]}')
-            self.assertEqual(fetch_waterways(cache, overpass), [stream, ditch, drain])
+            self.assertEqual(fetch_waterways(cache_path, overpass), [stream, ditch, drain])
             self.assertEqual(len(calls), 1)  # snapshot is independent of subsequent overlay changes
             (cache / "osm_watercourses_v1.json").unlink()
-            fresh = fetch_waterways(cache, overpass)
+            fresh = fetch_waterways(cache_path, overpass)
             self.assertIn("river|stream|canal|ditch|drain", calls[-1][1])
             (cache / "osm_lines.json").write_text(json.dumps({"elements": [stream]}))
-            self.assertEqual(fetch_waterways(cache, overpass), fresh)
+            self.assertEqual(fetch_waterways(cache_path, overpass), fresh)
             self.assertEqual(len(calls), 2)  # fresh-build source must not flip on second build
+            # A different scenario pattern cannot reuse D11's snapshot or lines.
+            other_path = lambda name: cache / f"osm_other_{name}.json"
+            fetch_waterways(other_path, overpass)
+            self.assertEqual(len(calls), 3)
+            self.assertIn("river|stream|canal|ditch|drain", calls[-1][1])
+            self.assertTrue(other_path("watercourses_v1").exists())
 
     def test_pack_roundtrip_preserves_identity_and_parallel_point_arrays(self):
         h = np.tile(np.arange(25, 0, -1)[:, None], (1, 25)).astype(float)
