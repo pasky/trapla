@@ -95,7 +95,7 @@ function routeGeometry(route: CrossingRoute) {
   return { at, project, margin };
 }
 
-function along(path: readonly WayPoint[], d: number): WayPoint {
+function along(path: readonly Readonly<WayPoint>[], d: number): WayPoint {
   let i = 0;
   while (i + 2 < path.length && path[i + 1].d < d) i++;
   const a = path[i], b = path[i + 1], t = Math.max(0, Math.min(1, (d - a.d) / (b.d - a.d || 1)));
@@ -183,7 +183,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     survivingSides.set(c, sides);
     const isRaised = c.type === 'overbridge', adjusted = isRaised || c.type === 'junction';
-    let road: CrossingPoint[] = c.type === 'bridge' || c.type === 'tunnel' ? path.map(terrainPoint) : [];
+    let road: CrossingPoint[] = [];
     if (adjusted) {
       // Find the connected interval of the *whole road ribbon* over the actual earthwork footprint.
       // This handles skew, bends and varying/asymmetric widths, unlike width/sin(angle) alone.
@@ -269,10 +269,10 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       }
     } else if (['bridge', 'tunnel'].includes(c.type)) {
       // Only show the vicinity of the crossing; its existing road is unchanged at terrain level.
-      let centre = road.findIndex(q => q.d! >= 0), lo = centre, hi = centre;
-      while (lo > 0 && margin(road[lo], maxLinkWidth(c) / 2 + SETBACK + STEP) < 0) lo--;
-      while (hi + 1 < road.length && margin(road[hi], maxLinkWidth(c) / 2 + SETBACK + STEP) < 0) hi++;
-      road = road.slice(Math.max(0, lo - 1), Math.min(road.length, hi + 2));
+      let centre = path.findIndex(q => q.d >= 0), lo = centre, hi = centre;
+      while (lo > 0 && margin(path[lo], corridor + STEP) < 0) lo--;
+      while (hi + 1 < path.length && margin(path[hi], corridor + STEP) < 0) hi++;
+      road = path.slice(Math.max(0, lo - 1), Math.min(path.length, hi + 2)).map(terrainPoint);
     }
     rawPaths.set(c, adjusted ? road : path);
     if (['bridge', 'overbridge', 'tunnel', 'junction'].includes(c.type)) g.road = road;
