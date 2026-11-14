@@ -8,6 +8,7 @@ const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SET
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
+type CachedPath = { path: readonly Readonly<WayPoint>[]; diagnostics: readonly string[] };
 // Match the main bridge model's clear-span overbridge layout: abutments on the banks, no
 // piers in our traffic corridor. Raised earth approaches are billed separately below.
 const deckPrice = (c: CrossingResult, span: number) => bridgeModel(ROAD_CLASSES[c.cls]).total(span, 0, { span, pierDensity: 0 });
@@ -57,6 +58,7 @@ function routeGeometry(route: CrossingRoute) {
   // to this build, so edited grades and footprints never reuse an earlier design's projection.
   const projected = new Map<number, Map<number, Projection>>();
   let projectedCount = 0;
+  // Each synchronous tree walk finishes before another project call can reuse this scratch state.
   let best = Infinity, station = route.s[0];
   const distance = (node: Node, q: XY) => Math.max(node.x0 - q.x, 0, q.x - node.x1) ** 2 + Math.max(node.y0 - q.y, 0, q.y - node.y1) ** 2;
   const visit = (node: Node, q: XY) => {
@@ -78,7 +80,8 @@ function routeGeometry(route: CrossingRoute) {
     if (cached) return cached;
     best = Infinity; station = route.s[0];
     visit(root, q);
-    const p = at(station), result = { ...p, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
+    const p = at(station), result = { s: p.s, x: p.x, y: p.y, tx: p.tx, ty: p.ty, z: p.z,
+      left: p.left, right: p.right, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
     if (projectedCount < 50000) {
       if (!column) projected.set(q.x, column = new Map());
       column.set(q.y, result); projectedCount++;
@@ -125,18 +128,24 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
 
 function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
   heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
-  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, { path: WayPoint[]; diagnostics: string[] }>): CrossingIssue[] {
+  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>): CrossingIssue[] {
   const { at, project, margin } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => v.crossing.code !== 'geometry');
   const terrainPoint = (q: XY & { d?: number }): CrossingPoint => {
     const ground = heightAt(q.x, q.y);
-    return { ...q, z: ground, ground, surface: 'terrain' };
+    // All callers supply XY or way samples. Explicit shapes avoid a generic object spread for
+    // every terrain point, while retaining the optional station's presence and property order.
+    return 'd' in q ? { x: q.x, y: q.y, d: q.d, z: ground, ground, surface: 'terrain' }
+      : { x: q.x, y: q.y, z: ground, ground, surface: 'terrain' };
   };
   const diagnose = (g: CrossingGeometry, message: string) => {
     g.clipped = true;
     if (!g.diagnostics?.includes(message)) (g.diagnostics ??= []).push(message);
   };
-  const rawPaths = new Map<CrossingResult, CrossingPoint[]>();
+  // Terrain-only source samples need elevations only at the selected anchors, not along the
+  // entire bounded way. Engineered paths retain their full surface/support metadata.
+  type AnchorSample = Readonly<WayPoint> | CrossingPoint;
+  const rawPaths = new Map<CrossingResult, readonly AnchorSample[]>();
   const survivingSides = new Map<CrossingResult, [boolean, boolean]>();
   const anchors = new Map<CrossingResult, [CrossingPoint | undefined, CrossingPoint | undefined]>();
   const maxLinkWidth = (c: CrossingResult) => Math.max(ROAD_CLASSES[c.cls].width,
@@ -174,7 +183,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     survivingSides.set(c, sides);
     const isRaised = c.type === 'overbridge', adjusted = isRaised || c.type === 'junction';
-    let road = path.map(terrainPoint);
+    let road: CrossingPoint[] = c.type === 'bridge' || c.type === 'tunnel' ? path.map(terrainPoint) : [];
     if (adjusted) {
       // Find the connected interval of the *whole road ribbon* over the actual earthwork footprint.
       // This handles skew, bends and varying/asymmetric widths, unlike width/sin(angle) alone.
@@ -265,25 +274,26 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       while (hi + 1 < road.length && margin(road[hi], maxLinkWidth(c) / 2 + SETBACK + STEP) < 0) hi++;
       road = road.slice(Math.max(0, lo - 1), Math.min(road.length, hi + 2));
     }
-    rawPaths.set(c, adjusted ? road : path.map(terrainPoint));
+    rawPaths.set(c, adjusted ? road : path);
     if (['bridge', 'overbridge', 'tunnel', 'junction'].includes(c.type)) g.road = road;
   }
 
   // A ground anchor must actually lie on the crossed alignment, beyond every engineered approach
   // and beyond the footprint plus half the incoming road width and a physical setback.
-  const groundAnchors = (path: CrossingPoint[], width: number): [CrossingPoint | undefined, CrossingPoint | undefined] => {
+  const isTerrain = (q: AnchorSample) => !('surface' in q) || q.surface === 'terrain';
+  const groundAnchors = (path: readonly AnchorSample[], width: number): [CrossingPoint | undefined, CrossingPoint | undefined] => {
     const out: [CrossingPoint | undefined, CrossingPoint | undefined] = [undefined, undefined];
     const order = Array.from({ length: path.length }, (_, i) => i).sort((a, b) => Math.abs(path[a].d ?? 0) - Math.abs(path[b].d ?? 0));
     for (const side of [-1, 1]) {
       for (const i of order) {
         const q = path[i], p = project(q);
-        if (side * p.lateral <= 0 || q.surface !== 'terrain') continue;
+        if (side * p.lateral <= 0 || !isTerrain(q)) continue;
         const off = (side > 0 ? p.left : p.right) + width / 2 + SETBACK;
         if (Math.abs(p.lateral) < off - 1e-6) continue;
         // Interpolate an exact crossing of the side corridor when the previous point is ground too.
-        let candidate = q;
+        let candidate = 'surface' in q ? q : terrainPoint(q);
         for (const j of [i - 1, i + 1]) {
-          if (!path[j] || path[j].surface !== 'terrain' || margin(path[j], width / 2 + SETBACK) >= 0) continue;
+          if (!path[j] || !isTerrain(path[j]) || margin(path[j], width / 2 + SETBACK) >= 0) continue;
           let lo = 0, hi = 1;
           for (let k = 0; k < 24; k++) {
             const t = (lo + hi) / 2, a = path[j];
@@ -310,7 +320,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       const key = `${c.targetS}:${g.width}`, p = at(c.targetS);
       if (!endAnchors.has(key)) {
         const way = roads?.nearestWay(p.x, p.y);
-        endAnchors.set(key, groundAnchors(getPath(way, p.x, p.y, g).map(terrainPoint), g.width));
+        endAnchors.set(key, groundAnchors(getPath(way, p.x, p.y, g), g.width));
       }
       finish = endAnchors.get(key);
     }
@@ -415,7 +425,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const spatial = routeGeometry(route);
   // Candidate treatments and the final rebuild use the same immutable OSM alignment. Share only
   // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
-  const paths = new Map<string, { path: WayPoint[]; diagnostics: string[] }>();
+  const paths = new Map<string, CachedPath>();
   const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths);
   build(crossings);
   const clone = (c: CrossingResult): CrossingResult => ({ ...c, geometry: undefined,
