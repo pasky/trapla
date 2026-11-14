@@ -33,6 +33,7 @@ Other commands:
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
 | `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
+| `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
 | `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
 | `node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name",{"contours":true}],…]' [outdir]` | debug renders of arbitrary camera views (`GPU=1` as above) |
 
@@ -116,18 +117,22 @@ Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overvie
   (`docs/screenshots/24…27-*.png`).
 - **Land cover, existing roads, railways, water, building footprints** are vectors (`vector.bin.gz`), rasterised
   on the GPU with 4× MSAA into one base texture of the whole area (≈ 8.5 m/texel, drawn once) and four 2048²
-  *clip levels* around the camera focus at 0.125 … 4 m/texel, each twice as coarse as the previous. A level is
-  redrawn — at most one per frame — only when the focus leaves the middle of its window or the zoom changes by
-  an octave, so orbiting costs nothing and panning / zooming redraws a level now and then (≈ 1–2 ms on a laptop
-  GPU). Roads keep their real width with a minimum width in texels, so they stay visible from afar.
+  *clip levels* around the camera focus at 0.125 … 4 m/texel, each twice as coarse as the previous. The levels
+  are toroidal: when the focus leaves the middle of a window, the window moves and only the strips it uncovers
+  are drawn (at most one level per frame); a zoom by an octave redraws one level. Orbiting costs nothing and
+  panning / zooming redraws a little now and then (≈ 1–2 ms on a laptop GPU). Roads keep their real width with a minimum width in texels, so they stay visible from afar.
 - **Buildings** (26,660) are flat-roofed boxes extruded from the OSM footprints with heights from
   `height` / `building:levels` or a guess by type and area, merged into ≈ 60 meshes; chunks beyond 7 km are
   hidden (the footprints in the land-cover texture have the roof colour).
-- **Photo**: with <kbd>O</kbd> each clip-level window is fetched as one JPEG from ČÚZK's public Ortofoto ČR
-  view service (ArcGIS `MapServer/export`, EPSG:5514, CORS enabled; one request at a time, stale ones dropped)
-  and drawn into the same levels; the map is shown until a photo arrives (or if it does not: 20 s time-out,
-  offline). Nothing is stored in the pack.
-- GPU memory: height texture ≈ 85 MB, land-cover textures ≈ 110 MB, MSAA scratch target ≈ 80 MB, meshes ≈ 60 MB.
+- **Photo**: with <kbd>O</kbd> the clip levels hold 512 px JPEG tiles of a fixed grid per level from ČÚZK's
+  public Ortofoto ČR view service (ArcGIS `MapServer/export`, EPSG:5514, CORS enabled; up to 6 requests at a
+  time, nearest the focus first, 20 s time-out) and the base texture one photo of the whole area. Photo already
+  drawn stays while panning; tiles are kept in memory (64 decoded on the GPU, 64 MB of JPEG), so revisited
+  ground is not fetched again (the service sends `max-age=0`). A tile that has not arrived is transparent: the
+  coarser level shows through, ultimately the base photo or, before that arrives / offline, the map. Nothing is
+  stored in the pack. `node scripts/photo-pan.mjs` pans across and back and counts the requests.
+- GPU memory: height texture ≈ 85 MB, land-cover textures ≈ 110 MB, MSAA scratch target ≈ 80 MB, meshes ≈ 60 MB,
+  photo tiles ≤ 64 MB.
   Needs WebGL2 and no optional extensions; on GPUs limited to 4096 px textures the height texture uses every
   second sample (try it with `?maxtex=4096`). After a lost WebGL context the GPU-only data is rebuilt.
 

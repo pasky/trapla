@@ -67,9 +67,15 @@ export interface TerrainUniforms {
   lcTex1: { value: THREE.Texture | null };
   lcTex2: { value: THREE.Texture | null };
   lcTex3: { value: THREE.Texture | null };
-  /** per clip level: x0, y0 (local metres), 1/width, 1/height; coarsest first */
+  /**
+   * per clip level: x0, y0 (local metres), 1/width, 1/height of its window; coarsest first. The level
+   * textures are toroidal (local position p is stored at texel (p / texel size) mod texture size, so a
+   * moving window only redraws what it uncovers): they are sampled at p · (1/width) with repeat wrapping.
+   */
   lcBox: { value: THREE.Vector4[] };
   lcOn: { value: number[] };
+  /** 1 = the levels hold the orthophoto (opaque where loaded, transparent where not: the coarser level shows) */
+  lcPhoto: { value: number };
   /** minor interval (m), major interval (m), opacity (0 = off), device pixel ratio */
   contour: { value: THREE.Vector4 };
   slopeTint: { value: number };
@@ -90,6 +96,7 @@ export function terrainUniforms(): TerrainUniforms {
     lcTex0: { value: null }, lcTex1: { value: null }, lcTex2: { value: null }, lcTex3: { value: null },
     lcBox: { value: Array.from({ length: LC_LEVELS }, () => new THREE.Vector4(0, 0, 1, 1)) },
     lcOn: { value: new Array(LC_LEVELS).fill(0) },
+    lcPhoto: { value: 0 },
     contour: { value: new THREE.Vector4(10, 50, 0, 1) },
     slopeTint: { value: 0 },
     shadeAmt: { value: 1 },
@@ -149,6 +156,7 @@ uniform sampler2D lcTex2;
 uniform sampler2D lcTex3;
 uniform vec4 lcBox[${LC_LEVELS}];
 uniform float lcOn[${LC_LEVELS}];
+uniform float lcPhoto;
 uniform float slopeTint;
 uniform float shadeAmt;
 // at-grade footprint of the designed road: terrain there is discarded so cuts are visible
@@ -164,7 +172,9 @@ vec4 lcLevel(sampler2D tex, vec4 box, float on, vec2 loc, vec4 under) {
   vec2 u = (loc - box.xy) * box.zw;
   vec2 m = min(u, 1.0 - u);
   float w = clamp(min(m.x, m.y) * 25.0, 0.0, 1.0) * on;
-  return mix(under, texture2D(tex, u), w);
+  vec4 t = texture2D(tex, loc * box.zw);
+  // map: each level holds all layers and replaces the coarser one; photo: premultiplied "over"
+  return lcPhoto > 0.5 ? t * w + under * (1.0 - w * t.a) : mix(under, t, w);
 }
 
 ${CONTOUR_GLSL}

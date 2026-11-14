@@ -2,8 +2,12 @@
 // the pack's vector data into anti-aliased textures:
 //   - one base texture of the whole play area (drawn once), and
 //   - LC_LEVELS "clip levels": square windows around the camera focus at 0.125 … 4 m per texel, each twice
-//     as coarse as the previous, re-drawn (one per frame at most) only when the focus leaves the middle of
-//     a window or the zoom changes by an octave.
+//     as coarse as the previous. They are toroidal: when the focus leaves the middle of a window, the window
+//     moves and only the strips it uncovers are drawn (one level per frame at most); a zoom by an octave
+//     takes over the level furthest from the new range.
+// With the orthophoto on, the levels hold photo tiles of a fixed grid per level (the same requests every
+// time, cached compressed and as textures) instead of the vectors; a tile that has not arrived is left
+// transparent, so the coarser level — ultimately the base photo — shows through.
 // The terrain shader blends them, finest first, so the ground is about as sharp as the screen at any
 // zoom while memory stays bounded. Textures hold premultiplied RGBA (alpha = how much the layer covers the
 // hypsometric tint); layers are drawn without blending in painter's order, so overlapping OSM polygons
@@ -12,6 +16,7 @@
 import * as THREE from 'three';
 import { LC_LEVELS, type TerrainUniforms } from './terrainMaterial';
 import type { BuildingData, LineLayer, VectorPack } from './vectorPack';
+import { clip, exposed, Lru, tilesIn, wrapPieces, type Rect } from './photoTiles';
 
 type RGB = [number, number, number];
 
@@ -221,12 +226,31 @@ function buildingGeos(b: BuildingData, chunk: number): Geo[] {
   return out;
 }
 
-interface Slot { rt: THREE.WebGLRenderTarget; k: number; cx: number; cy: number; size: number; gen: number }
+/**
+ * A clip level: the window of LC_LEVELS… texels whose lower-left texel is (ix, iy) at level k (texel size
+ * R0 · 2^k). The texture is toroidal — texel (x, y) lives at (x mod size, y mod size) — so when the focus
+ * moves only the uncovered strips are drawn and everything else stays. `have`: the photo tiles drawn in
+ * full (as far as they reach into the window).
+ */
+interface Slot { rt: THREE.WebGLRenderTarget; k: number; ix: number; iy: number; have: Set<string> }
 
 /** where to get an orthophoto of a window: (x0, y0, w, h in local metres, image size in pixels) → URL (CORS-enabled) */
 export type PhotoUrl = (x0: number, y0: number, w: number, h: number, pxW: number, pxH: number) => string;
-interface PhotoJob { url: string; valid: () => boolean; apply: (tex: THREE.Texture) => void }
+type Source = 'map' | 'blank' | { tex: THREE.Texture; rect: [number, number, number, number] };
+
 const PHOTO_TIMEOUT_MS = 20000;
+/** photo tiles: a fixed grid per level, TILE texels (= image pixels) square, so requests repeat exactly */
+const TILE = 512;
+const MAX_FETCHES = 6;
+/** decoded tiles kept on the GPU (1 MB each) to redraw uncovered strips without waiting */
+const TEX_CACHE = 64;
+/** compressed tiles (and the base photo) kept in memory, in bytes: revisited ground is decoded, not refetched */
+const BLOB_CACHE = 64 << 20;
+/** a tile that failed is not asked for again for this long */
+const RETRY_MS = 30000;
+/** window origins move in steps of SNAP texels, once the focus is RECENTRE of the window off its centre */
+const SNAP = 32;
+const RECENTRE = 0.22;
 
 const BG_VERT = /* glsl */ `
 uniform vec4 box;
@@ -238,11 +262,13 @@ void main() {
 }`;
 const BG_FRAG = /* glsl */ `
 uniform sampler2D map;
+uniform float blank;
 varying vec2 vUv;
-void main() { gl_FragColor = vec4(texture2D(map, vUv).rgb, 1.0); }`;
+void main() { gl_FragColor = blank > 0.5 ? vec4(0.0) : vec4(texture2D(map, vUv).rgb, 1.0); }`;
 
 const R0 = 0.125; // metres per texel of the finest clip level
 const K_MAX = 5; // coarsest clip level: R0 · 2^5 = 4 m per texel (the base texture takes over beyond)
+const tileKey = (k: number, i: number, j: number) => `${k}/${i}/${j}`;
 
 export class LandCover {
   private scene = new THREE.Scene();
@@ -256,17 +282,29 @@ export class LandCover {
   private baseDone = false;
   private slots: Slot[] = [];
   private blitScene = new THREE.Scene();
+  private emptyScene = new THREE.Scene();
   private blitMat: THREE.ShaderMaterial;
   private k0 = Infinity;
+  private fx = 0;
+  private fy = 0;
   /** number of level textures drawn so far (diagnostics) */
   renders = 0;
-  // optional orthophoto: fetched per level window (one request at a time) and drawn instead of the vectors
+  // optional orthophoto, fetched in tiles of a fixed grid per level and drawn instead of the vectors
   private photoUrl: PhotoUrl | null = null;
   private photoOn = false;
-  private bg: THREE.Mesh;
+  private photoScene = new THREE.Scene();
   private bgMat: THREE.ShaderMaterial;
-  private jobs = new Map<object, PhotoJob>();
-  private active: { job: PhotoJob; ctrl: AbortController } | null = null;
+  private texCache = new Lru<THREE.Texture>(TEX_CACHE, (t) => t.dispose());
+  private blobCache = new Lru<Blob>(BLOB_CACHE);
+  /** requests under way (tile keys, 'base') */
+  private inflight = new Map<string, AbortController>();
+  private failed = new Map<string, number>();
+  /** tiles wanted by the current windows, most important first */
+  private queue: { k: number; i: number; j: number; key: string; d: number }[] = [];
+  private basePhoto = false;
+  /** no photo has arrived yet and a request failed (offline?): the map is drawn, the base photo is retried */
+  private down = false;
+  private loadedAny = false;
   private baseGen = 0;
   private warned = false;
   /** called when a texture changed outside update() (a photo arrived) */
@@ -318,22 +356,24 @@ export class LandCover {
     // base: the whole play area at ≈ 8.5 m per texel, drawn in scratch-sized tiles
     const bw = this.size, bh = Math.min(maxTex, Math.round((this.size * height) / width / 256) * 256);
     this.base = levelRT(bw, bh);
-    for (let i = 0; i < LC_LEVELS; i++) this.slots.push({ rt: levelRT(this.size, this.size), k: -1, cx: 0, cy: 0, size: 0, gen: 0 });
+    for (let i = 0; i < LC_LEVELS; i++) {
+      const rt = levelRT(this.size, this.size);
+      rt.texture.wrapS = rt.texture.wrapT = THREE.RepeatWrapping;
+      this.slots.push({ rt, k: -1, ix: 0, iy: 0, have: new Set() });
+    }
     this.bgMat = new THREE.ShaderMaterial({
-      uniforms: { box: this.box, rect: { value: new THREE.Vector4() }, map: { value: null } },
+      uniforms: { box: this.box, rect: { value: new THREE.Vector4() }, map: { value: null }, blank: { value: 0 } },
       vertexShader: BG_VERT, fragmentShader: BG_FRAG, blending: THREE.NoBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
     });
     const quad = new THREE.BufferGeometry();
     quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2));
     quad.setIndex([0, 1, 2, 1, 3, 2]);
-    this.bg = new THREE.Mesh(flat(quad), this.bgMat);
-    this.bg.frustumCulled = false;
-    this.bg.renderOrder = -1;
-    this.bg.visible = false;
-    this.scene.add(this.bg);
+    const bg = new THREE.Mesh(flat(quad), this.bgMat);
+    bg.frustumCulled = false;
+    this.photoScene.add(bg);
     this.blitMat = new THREE.ShaderMaterial({
-      uniforms: { src: { value: this.scratch.texture }, uvScale: { value: new THREE.Vector2(1, 1) } },
-      vertexShader: 'uniform vec2 uvScale; varying vec2 vUv; void main() { vUv = (position.xy * 0.5 + 0.5) * uvScale; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      uniforms: { src: { value: this.scratch.texture }, srcRect: { value: new THREE.Vector4(0, 0, 1, 1) } },
+      vertexShader: 'uniform vec4 srcRect; varying vec2 vUv; void main() { vUv = srcRect.xy + (position.xy * 0.5 + 0.5) * srcRect.zw; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: 'uniform sampler2D src; varying vec2 vUv; void main() { gl_FragColor = texture2D(src, vUv); }',
       blending: THREE.NoBlending, depthTest: false, depthWrite: false,
     });
@@ -345,23 +385,15 @@ export class LandCover {
     uniforms.lcBase.value = this.base.texture;
   }
 
-  /**
-   * Draw the window (x0, y0, w, h) in local metres into the scratch target: the vector layers, or —
-   * given a photo of the rectangle `rect` (x0, y0, w, h) — just that photo.
-   */
-  private draw(x0: number, y0: number, w: number, h: number, photo?: THREE.Texture, rect?: [number, number, number, number]) {
-    const res = w / this.size;
+  /** draw the vector layers of the window (x0, y0, w, h) in local metres into the lower-left vw × vh texels of the scratch target */
+  private drawVectors(x0: number, y0: number, w: number, h: number, vw: number, vh: number) {
+    const res = w / vw;
     this.box.value.set(x0, y0, 1 / w, 1 / h);
     this.res.value = res;
-    this.bg.visible = !!photo;
-    if (photo) {
-      this.bgMat.uniforms.map.value = photo;
-      this.bgMat.uniforms.rect.value.set(...(rect ?? [x0, y0, w, h]));
-    }
     const pad = 40 + 8 * res; // widest line half-width incl. minimum texel widths
     for (const { pass, mat, meshes } of this.passes) {
       // fades out over the octave below maxRes
-      const fade = photo ? 0 : pass.maxRes === undefined ? 1 : Math.max(0, Math.min(1, 2 - (2 * res) / pass.maxRes));
+      const fade = pass.maxRes === undefined ? 1 : Math.max(0, Math.min(1, 2 - (2 * res) / pass.maxRes));
       const a = pass.alpha * fade;
       mat.uniforms.color.value.set((pass.color[0] / 255) * a, (pass.color[1] / 255) * a, (pass.color[2] / 255) * a, a);
       for (const m of meshes) {
@@ -369,20 +401,64 @@ export class LandCover {
         m.visible = fade > 0 && b[2] + pad >= x0 && b[0] - pad <= x0 + w && b[3] + pad >= y0 && b[1] - pad <= y0 + h;
       }
     }
+    this.scratch.viewport.set(0, 0, vw, vh);
     this.renderer.setRenderTarget(this.scratch);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.autoClear = true;
     this.renderer.render(this.scene, this.cam);
   }
 
-  /** copy (the lower-left uvScale part of) the resolved scratch target into a level texture */
-  private blit(rt: THREE.WebGLRenderTarget, vx: number, vy: number, vw: number, vh: number, clear: boolean) {
-    this.blitMat.uniforms.uvScale.value.set(vw / this.size, vh / this.size);
+  /** copy the vw × vh texels at (sx, sy) of the resolved scratch target into a texture at (vx, vy) */
+  private blit(rt: THREE.WebGLRenderTarget, sx: number, sy: number, vx: number, vy: number, vw: number, vh: number, mips: boolean) {
+    const S = this.size;
+    this.blitMat.uniforms.srcRect.value.set(sx / S, sy / S, vw / S, vh / S);
     rt.viewport.set(vx, vy, vw, vh);
+    rt.texture.mipmapsAutoUpdate = mips;
     this.renderer.setRenderTarget(rt);
-    this.renderer.autoClear = clear;
+    this.renderer.autoClear = false;
     this.renderer.render(this.blitScene, this.cam);
     this.renders++;
+  }
+
+  /**
+   * Draw the part `win` (x0, y0, w, h in local metres) of a photo covering `src.rect` — or transparency —
+   * straight into the vw × vh texels at (vx, vy) of a texture (no anti-aliasing needed: texels match).
+   */
+  private drawPhoto(rt: THREE.WebGLRenderTarget, vx: number, vy: number, vw: number, vh: number,
+    win: [number, number, number, number], src: Exclude<Source, 'map'>, mips: boolean) {
+    this.box.value.set(win[0], win[1], 1 / win[2], 1 / win[3]);
+    const blank = src === 'blank';
+    this.bgMat.uniforms.blank.value = blank ? 1 : 0;
+    this.bgMat.uniforms.rect.value.set(...(blank ? win : src.rect));
+    this.bgMat.uniforms.map.value = blank ? null : src.tex;
+    rt.viewport.set(vx, vy, vw, vh);
+    rt.texture.mipmapsAutoUpdate = mips;
+    this.renderer.setRenderTarget(rt);
+    this.renderer.autoClear = false;
+    this.renderer.render(this.photoScene, this.cam);
+    this.renders++;
+  }
+
+  /** draw `src` into the part of the rectangle r (texels of the slot's level) inside its window; no mipmaps yet */
+  private paint(s: Slot, r: Rect, src: Source) {
+    const c = clip(r, [s.ix, s.iy, this.size, this.size]);
+    if (!c) return;
+    const t = R0 * 2 ** s.k, pieces = wrapPieces(c, this.size);
+    if (src === 'map') {
+      // drawn once, copied where the pieces live in the toroidal texture
+      this.drawVectors(c[0] * t, c[1] * t, c[2] * t, c[3] * t, c[2], c[3]);
+      for (const [x, y, w, h, tx, ty] of pieces) this.blit(s.rt, x - c[0], y - c[1], tx, ty, w, h, false);
+    } else {
+      for (const [x, y, w, h, tx, ty] of pieces) this.drawPhoto(s.rt, tx, ty, w, h, [x * t, y * t, w * t, h * t], src, false);
+    }
+  }
+
+  /** regenerate a level's mipmaps once after a batch of paints */
+  private finish(s: Slot) {
+    s.rt.texture.mipmapsAutoUpdate = true;
+    this.renderer.setRenderTarget(s.rt);
+    this.renderer.autoClear = false;
+    this.renderer.render(this.emptyScene, this.cam);
   }
 
   private withState(f: () => void) {
@@ -395,39 +471,38 @@ export class LandCover {
     }
   }
 
-  /** `photo` covers the rectangle `rect` (local metres), which may be larger than the play area */
+  /** the map, or a photo covering the rectangle `rect` (local metres; may be larger than the play area) */
   private drawBase(photo?: THREE.Texture, rect?: [number, number, number, number]) {
     const bw = this.base.width, bh = this.base.height, S = this.size;
     const rx = this.width / bw, ry = this.height / bh;
     this.withState(() => {
-      for (let ty = 0; ty < bh; ty += S) {
+      if (photo && rect) this.drawPhoto(this.base, 0, 0, bw, bh, [0, 0, this.width, this.height], { tex: photo, rect }, true);
+      else for (let ty = 0; ty < bh; ty += S) {
         const th = Math.min(S, bh - ty);
-        this.draw(0, ty * ry, S * rx, S * ry, photo, rect);
-        this.blit(this.base, 0, ty, bw, th, false);
+        this.drawVectors(0, ty * ry, S * rx, S * ry, S, S);
+        this.blit(this.base, 0, 0, 0, ty, bw, th, true);
       }
     });
     this.base.viewport.set(0, 0, bw, bh);
     this.uniforms.lcBaseOn.value = 1;
     this.baseDone = true;
-    if (!photo && this.photoOn && this.photoUrl) {
-      // image services return square pixels: ask for a box with exactly the image's aspect ratio (it
-      // overhangs the play area a little) instead of letting the server adjust the extent
-      const gen = ++this.baseGen, res = Math.max(rx, ry);
-      const box: [number, number, number, number] = [0, 0, bw * res, bh * res];
-      this.request(this.base, this.photoUrl(...box, bw, bh), () => this.photoOn && gen === this.baseGen, (tex) => this.drawBase(tex, box));
-    }
+    this.basePhoto = !!photo;
   }
 
-  /** forget everything drawn so far (the GPU lost it, or the layer set changed); redrawn by update() */
-  invalidate() {
-    this.jobs.clear();
-    this.active?.ctrl.abort();
-    this.active = null;
+  /** forget everything drawn so far; redrawn by update() (photos come from the cache when they can) */
+  private reset() {
+    this.queue = [];
     this.baseGen++;
-    this.baseDone = false;
+    this.baseDone = this.basePhoto = false;
     this.uniforms.lcBaseOn.value = 0;
-    for (const s of this.slots) { s.k = -1; s.gen++; }
+    for (const s of this.slots) { s.k = -1; s.have.clear(); }
     this.publish();
+  }
+
+  /** the GPU lost everything (WebGL context loss): redraw, and do not trust the cached photo textures */
+  invalidate() {
+    this.texCache.clear();
+    this.reset();
   }
 
   // ---- orthophoto --------------------------------------------------------------------------
@@ -440,72 +515,121 @@ export class LandCover {
     on = on && !!this.photoUrl;
     if (on === this.photoOn) return;
     this.photoOn = on;
-    this.invalidate();
+    this.uniforms.lcPhoto.value = this.showPhoto ? 1 : 0;
+    this.reset();
   }
 
-  /** true while photos are being fetched */
-  get loadingPhotos() { return !!this.active || this.jobs.size > 0; }
+  /** the levels hold photo tiles (else the map) */
+  private get showPhoto() { return this.photoOn && !!this.photoUrl && !this.down; }
 
-  /** queue a photo for a target; a newer request for the same target replaces a waiting one */
-  private request(key: object, url: string, valid: () => boolean, apply: (tex: THREE.Texture) => void) {
-    this.jobs.delete(key);
-    this.jobs.set(key, { url, valid, apply });
-    // a fetch for a window that is no longer wanted only holds up the queue
-    if (this.active && !this.active.job.valid()) this.active.ctrl.abort();
+  private setDown(down: boolean) {
+    if (down === this.down) return;
+    this.down = down;
+    this.uniforms.lcPhoto.value = this.showPhoto ? 1 : 0;
+    this.reset();
+    this.onChange?.();
+  }
+
+  /** true while photos for the current view are being fetched or wait to be */
+  get loadingPhotos() { return this.inflight.size > 0 || this.queue.length > 0; }
+
+  /** the levels the terrain shows (finer stale ones are not) */
+  private live() {
+    return this.slots.filter((s) => s.k >= this.k0 && s.k < this.k0 + LC_LEVELS && s.k <= K_MAX);
+  }
+
+  /** rebuild the list of wanted tiles (nearest the focus first, coarse levels a little earlier) and start fetches */
+  private schedule() {
+    this.queue = [];
+    if (!this.photoOn || !this.photoUrl) return;
+    if (this.down) { this.pump(); return; }
+    const now = performance.now(), live = this.live(), S = this.size;
+    const top = Math.max(...live.map((s) => s.k));
+    for (const s of live) {
+      const t = R0 * 2 ** s.k, T = TILE * t;
+      for (const [i, j] of tilesIn([s.ix, s.iy, S, S], TILE)) {
+        const key = tileKey(s.k, i, j);
+        if (s.have.has(key) || this.inflight.has(key) || (this.failed.get(key) ?? 0) > now) continue;
+        // nothing to see outside the play area
+        if (i * T >= this.width || (i + 1) * T <= 0 || j * T >= this.height || (j + 1) * T <= 0) continue;
+        const d = Math.hypot((i + 0.5) * T - this.fx, (j + 0.5) * T - this.fy) / (S * t);
+        this.queue.push({ k: s.k, i, j, key, d: d + 0.15 * (top - s.k) });
+      }
+    }
+    this.queue.sort((a, b) => a.d - b.d);
     this.pump();
   }
 
-  /** one request at a time, oldest target first; stale requests are dropped, slow ones time out */
   private pump() {
-    if (this.active) return;
-    for (const [key, job] of this.jobs) {
-      this.jobs.delete(key);
-      if (!job.valid()) continue;
-      const ctrl = new AbortController();
-      const me = this.active = { job, ctrl };
-      const warn = (why: string) => {
-        if (!this.warned) { this.warned = true; console.warn('orthophoto unavailable; showing the map instead:', why); }
-      };
-      // the deadline also covers decoding, which an abort cannot interrupt: give the queue to the next job
-      const timer = setTimeout(() => {
-        ctrl.abort();
-        if (this.active !== me) return;
-        this.active = null;
-        warn('timed out');
-        this.onChange?.();
-        this.pump();
-      }, PHOTO_TIMEOUT_MS);
-      // decoded off the main thread; flipped here because WebGL ignores UNPACK_FLIP_Y for bitmaps
-      fetch(job.url, { mode: 'cors', signal: ctrl.signal })
-        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
-        .then((b) => createImageBitmap(b, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
-        .then((bmp) => {
-          try {
-            // a late arrival (timed out or superseded while decoding) is dropped
-            if (this.active !== me || !job.valid()) return;
-            const tex = new THREE.Texture(bmp as unknown as HTMLImageElement);
-            tex.flipY = false;
-            tex.generateMipmaps = false;
-            tex.minFilter = tex.magFilter = THREE.LinearFilter;
-            tex.needsUpdate = true;
-            try { job.apply(tex); } finally { tex.dispose(); }
-          } finally {
-            bmp.close();
-          }
-        })
-        .catch((e) => {
-          if (!ctrl.signal.aborted) warn(String(e)); // aborted = superseded or timed out (reported there)
-        })
-        .finally(() => {
-          clearTimeout(timer);
-          // a request cancelled by invalidate() no longer owns the queue
-          if (this.active !== me) return;
-          this.active = null;
-          this.onChange?.();
-          this.pump();
-        });
-      return;
+    if (!this.photoOn || !this.photoUrl) return;
+    if (this.baseDone && !this.basePhoto && !this.inflight.has('base') && (this.failed.get('base') ?? 0) <= performance.now()) {
+      // image services return square pixels: ask for a box with exactly the image's aspect ratio (it
+      // overhangs the play area a little) instead of letting the server adjust the extent
+      const bw = this.base.width, bh = this.base.height, res = Math.max(this.width / bw, this.height / bh), gen = this.baseGen;
+      const box: [number, number, number, number] = [0, 0, bw * res, bh * res];
+      this.load('base', this.photoUrl(...box, bw, bh), (tex) => {
+        if (gen === this.baseGen && this.showPhoto) this.drawBase(tex, box);
+        tex.dispose();
+      });
     }
+    while (this.inflight.size < MAX_FETCHES && this.queue.length) {
+      const { k, i, j, key } = this.queue.shift()!;
+      const T = TILE * R0 * 2 ** k, rect: [number, number, number, number] = [i * T, j * T, T, T];
+      this.load(key, this.photoUrl(...rect, TILE, TILE), (tex) => this.placeTile(k, i, j, key, tex, rect));
+    }
+  }
+
+  /** a tile arrived: cache it and draw it into its level, if that level still covers it */
+  private placeTile(k: number, i: number, j: number, key: string, tex: THREE.Texture, rect: [number, number, number, number]) {
+    this.texCache.set(key, tex);
+    if (!this.showPhoto) return;
+    for (const s of this.slots) {
+      if (s.k !== k || !clip([i * TILE, j * TILE, TILE, TILE], [s.ix, s.iy, this.size, this.size])) continue;
+      this.withState(() => {
+        this.paint(s, [i * TILE, j * TILE, TILE, TILE], { tex, rect });
+        this.finish(s);
+      });
+      s.have.add(key);
+    }
+  }
+
+  /** fetch (or take from the cache) and decode an image; `use` gets a texture already on the GPU */
+  private load(key: string, url: string, use: (tex: THREE.Texture) => void) {
+    const ctrl = new AbortController();
+    this.inflight.set(key, ctrl);
+    const mine = () => this.inflight.get(key) === ctrl;
+    const fail = (why: string) => {
+      this.failed.set(key, performance.now() + RETRY_MS);
+      if (!this.loadedAny) this.setDown(true);
+      if (!this.warned) { this.warned = true; console.warn('orthophoto unavailable; showing the map instead:', why); }
+    };
+    const done = () => { this.inflight.delete(key); this.onChange?.(); this.schedule(); };
+    // the deadline also covers decoding, which an abort cannot interrupt: the slot goes to the next request
+    const timer = setTimeout(() => { ctrl.abort(); if (mine()) { fail('timed out'); done(); } }, PHOTO_TIMEOUT_MS);
+    const cached = this.blobCache.get(url);
+    (cached ? Promise.resolve(cached) : fetch(url, { mode: 'cors', signal: ctrl.signal })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+      .then((b) => { this.blobCache.set(url, b, b.size); return b; }))
+      // decoded off the main thread; flipped here because WebGL ignores UNPACK_FLIP_Y for bitmaps
+      .then((b) => createImageBitmap(b, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
+      .then((bmp) => {
+        try {
+          if (!mine()) return; // timed out while decoding
+          const tex = new THREE.Texture(bmp as unknown as HTMLImageElement);
+          tex.flipY = false;
+          tex.generateMipmaps = false;
+          tex.minFilter = tex.magFilter = THREE.LinearFilter;
+          tex.needsUpdate = true;
+          this.renderer.initTexture(tex); // uploaded now: the bitmap is released below
+          this.loadedAny = true;
+          this.setDown(false);
+          use(tex);
+        } finally {
+          bmp.close();
+        }
+      })
+      .catch((e) => { if (mine()) fail(String(e)); })
+      .finally(() => { clearTimeout(timer); if (mine()) done(); });
   }
 
   /**
@@ -513,41 +637,60 @@ export class LandCover {
    * Draws at most one level per call; returns true while more are pending (call again next frame).
    */
   update(fx: number, fy: number, mPerPx: number): boolean {
-    if (!this.baseDone) { this.drawBase(); return true; }
-    const want = Math.log2(Math.max(1e-3, mPerPx) / R0), k0 = this.k0;
+    if (!this.baseDone) { this.drawBase(); this.pump(); return true; }
+    this.fx = fx; this.fy = fy;
+    const want = Math.log2(Math.max(1e-3, mPerPx) / R0), k0 = this.k0, S = this.size;
     // hysteresis so a zoom hovering around a boundary does not thrash
     if (!isFinite(this.k0) || Math.abs(want - this.k0) > 0.65) this.k0 = Math.max(0, Math.round(want));
     let pending = 0, drawn = false;
     for (let k = this.k0; k < this.k0 + LC_LEVELS && k <= K_MAX; k++) {
-      const r = R0 * 2 ** k, win = this.size * r;
+      const t = R0 * 2 ** k;
       let slot = this.slots.find((s) => s.k === k);
-      if (slot && Math.abs(fx - slot.cx) < 0.22 * win && Math.abs(fy - slot.cy) < 0.22 * win) continue;
+      if (slot && Math.abs(fx / t - slot.ix - S / 2) < RECENTRE * S && Math.abs(fy / t - slot.iy - S / 2) < RECENTRE * S) continue;
       if (drawn) { pending++; continue; }
-      // recentre this level, or take over the slot that is furthest from the wanted range
+      // move this level, or take over the slot that is furthest from the wanted range
+      const moved = !!slot;
       if (!slot) {
         slot = this.slots.find((s) => s.k < 0)
           ?? this.slots.filter((s) => s.k < this.k0 || s.k >= this.k0 + LC_LEVELS || s.k > K_MAX).sort((a, b) => Math.abs(b.k - this.k0) - Math.abs(a.k - this.k0))[0];
         if (!slot) continue;
       }
-      const snap = 32 * r;
-      const cx = Math.round(fx / snap) * snap, cy = Math.round(fy / snap) * snap;
-      const s = slot, gen = ++slot.gen, x0 = cx - win / 2, y0 = cy - win / 2;
-      this.withState(() => {
-        this.draw(x0, y0, win, win);
-        this.blit(s.rt, 0, 0, this.size, this.size, true);
-      });
-      slot.k = k; slot.cx = cx; slot.cy = cy; slot.size = win;
+      const old: [number, number] | null = moved ? [slot.ix, slot.iy] : null;
+      slot.k = k;
+      slot.ix = Math.round((fx / t - S / 2) / SNAP) * SNAP;
+      slot.iy = Math.round((fy / t - S / 2) / SNAP) * SNAP;
+      const s = slot;
+      this.withState(() => this.redraw(s, old));
       drawn = true;
-      if (this.photoOn && this.photoUrl) {
-        // the map is shown until the photo of this window arrives
-        this.request(s, this.photoUrl(x0, y0, win, win, this.size, this.size), () => this.photoOn && s.gen === gen, (tex) => this.withState(() => {
-          this.draw(x0, y0, win, win, tex);
-          this.blit(s.rt, 0, 0, this.size, this.size, true);
-        }));
-      }
     }
     if (drawn || k0 !== this.k0) this.publish();
+    if (drawn || k0 !== this.k0 || this.queue.length) this.schedule();
     return pending > 0;
+  }
+
+  /**
+   * Bring a level up to date after its window moved from `old` (null: it was showing something else):
+   * the uncovered strips get the map (or, with the photo, nothing until their tiles are drawn — the coarser
+   * level shows through), then whatever tiles of them are in the cache.
+   */
+  private redraw(s: Slot, old: [number, number] | null) {
+    const S = this.size, win: Rect = [s.ix, s.iy, S, S];
+    const fresh = old ? exposed(old, [s.ix, s.iy], S) : [win];
+    const photo = this.showPhoto;
+    if (!old) s.have.clear();
+    for (const r of fresh) this.paint(s, r, photo ? 'blank' : 'map');
+    if (photo) {
+      const T = TILE * R0 * 2 ** s.k, inWin = new Set<string>();
+      for (const [i, j] of tilesIn(win, TILE)) {
+        const key = tileKey(s.k, i, j), tr: Rect = [i * TILE, j * TILE, TILE, TILE];
+        inWin.add(key);
+        if (s.have.has(key) && !fresh.some((r) => clip(r, tr))) continue;
+        const tex = this.texCache.get(key);
+        if (tex) { this.paint(s, tr, { tex, rect: [i * T, j * T, T, T] }); s.have.add(key); } else s.have.delete(key);
+      }
+      for (const key of s.have) if (!inWin.has(key)) s.have.delete(key);
+    }
+    this.finish(s);
   }
 
   /** hand the valid levels to the terrain shader, coarsest first */
@@ -560,7 +703,10 @@ export class LandCover {
       const s = order[i];
       tex[i].value = s ? s.rt.texture : null;
       u.lcOn.value[i] = s ? 1 : 0;
-      if (s) u.lcBox.value[i].set(s.cx - s.size / 2, s.cy - s.size / 2, 1 / s.size, 1 / s.size);
+      if (s) {
+        const t = R0 * 2 ** s.k, win = this.size * t;
+        u.lcBox.value[i].set(s.ix * t, s.iy * t, 1 / win, 1 / win);
+      }
     }
   }
 }

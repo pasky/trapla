@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { decodeHeights, LC, Terrain } from '../src/core/terrain';
 import { buildHeightLevels } from '../src/render/heightTexture';
 import { parseVectorPack, type VectorPack } from '../src/render/vectorPack';
+import { clip, exposed, Lru, tilesIn, wrapPieces, type Rect } from '../src/render/photoTiles';
 
 describe('height texture', () => {
   // an odd-sized grid with heights up to 1,200 m at 0.1 m steps, i.e. beyond half-float precision in one channel
@@ -141,5 +142,61 @@ describe.skipIf(!['vector.bin.gz', 'meta.json', 'height.i16.gz', 'landcover.u8.g
     }
     expect(rn).toBeGreaterThan(500);
     expect(rh / rn).toBeGreaterThan(0.9);
+  });
+});
+
+describe('toroidal clip levels and the photo tile cache', () => {
+  const S = 64;
+  // texel coverage counts of a list of rectangles
+  const cover = (rects: Rect[]) => {
+    const m = new Map<string, number>();
+    for (const [x, y, w, h] of rects) for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) m.set(`${i},${j}`, (m.get(`${i},${j}`) ?? 0) + 1);
+    return m;
+  };
+  it('a moved window redraws exactly the texels it uncovers, each once', () => {
+    for (const [dx, dy] of [[8, 0], [0, -8], [24, 40], [-40, 16], [-8, -56], [64, 0], [-100, 7]]) {
+      const old: [number, number] = [96, -32], now: [number, number] = [96 + dx, -32 + dy];
+      const got = cover(exposed(old, now, S));
+      const inOld = (i: number, j: number) => i >= old[0] && i < old[0] + S && j >= old[1] && j < old[1] + S;
+      let want = 0;
+      for (let j = now[1]; j < now[1] + S; j++) for (let i = now[0]; i < now[0] + S; i++) {
+        if (inOld(i, j)) { expect(got.has(`${i},${j}`)).toBe(false); continue; }
+        want++;
+        expect(got.get(`${i},${j}`)).toBe(1);
+      }
+      expect(got.size).toBe(want);
+    }
+  });
+  it('wrapped pieces cover a rectangle once and land at its texels modulo the size', () => {
+    for (const r of [[-70, 5, 64, 64], [60, 120, 10, 30], [0, 0, 64, 64], [-1, -1, 2, 2]] as Rect[]) {
+      const pieces = wrapPieces(r, S);
+      expect(pieces.length).toBeLessThanOrEqual(4);
+      const got = cover(pieces.map((p) => [p[0], p[1], p[2], p[3]] as Rect));
+      expect(got.size).toBe(r[2] * r[3]);
+      expect([...got.values()].every((n) => n === 1)).toBe(true);
+      for (const [x, y, w, h, tx, ty] of pieces) {
+        expect(tx).toBe(((x % S) + S) % S); expect(ty).toBe(((y % S) + S) % S);
+        expect(tx + w).toBeLessThanOrEqual(S); expect(ty + h).toBeLessThanOrEqual(S);
+      }
+    }
+  });
+  it('tiles of a fixed grid: the same requests whatever the window origin', () => {
+    expect(tilesIn([-32, 0, 64, 32], 32)).toEqual([[-1, 0], [0, 0]]);
+    expect(tilesIn([-31, 0, 64, 33], 32)).toEqual([[-1, 0], [0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]);
+    expect(tilesIn([1, 1, 30, 30], 32)).toEqual([[0, 0]]);
+    expect(clip([0, 0, 10, 10], [10, 0, 5, 5])).toBeNull();
+    expect(clip([0, 0, 10, 10], [5, -5, 10, 10])).toEqual([5, 0, 5, 5]);
+  });
+  it('the cache is bounded by cost and evicts the least recently used', () => {
+    const gone: string[] = [];
+    const c = new Lru<number>(10, (_, k) => gone.push(k));
+    c.set('a', 1, 4); c.set('b', 2, 4);
+    c.get('a'); // b is now the oldest
+    c.set('c', 3, 4);
+    expect(gone).toEqual(['b']);
+    expect(c.has('a') && c.has('c') && c.total === 8).toBe(true);
+    c.set('big', 4, 20); // alone over the cap: kept, everything else goes
+    expect(c.size).toBe(1);
+    expect(c.get('big')).toBe(4);
   });
 });
