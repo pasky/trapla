@@ -489,8 +489,6 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       for (let e = i0; e <= i1 + 1; e++) { inp.ux.push(U[e].x); inp.uy.push(U[e].y); }
       return inp;
     };
-    /** automatic radii may leave the polygon legs only by the editor tolerance; the player's radii are taken as given */
-    const tolOf = (i0: number, i1: number) => { for (let i = i0; i <= i1; i++) if (manual[i] !== null) return Infinity; return EDIT_TOLERANCE; };
     const applyChain = (u: Unit, sol: ChainSol) => {
       for (let i = u.i0; i <= u.i1; i++) Rv[i] = sol.R[i - u.i0];
       u.sIn = sol.sIn; u.sOut = sol.sOut; u.w = sol.w; u.lam = sol.lam;
@@ -547,13 +545,20 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       const link = () => {
         for (let q = 1; q < units.length; q++) {
           const e = units[q].i0;
-          if (legKind(e) !== 'same' || noChain[e] || slack(q) >= -EPS_LEN) continue;
-          const i0 = units[q - 1].i0, i1 = units[q].i1;
-          const sol = solveChain(chainInput(i0, i1), rules, null, null, tolOf(i0, i1));
+          const short = (qq: number) => legKind(units[qq].i0) === 'same' && !noChain[units[qq].i0] && slack(qq) < -EPS_LEN;
+          if (!short(q)) continue;
+          // take the whole run of neighbours that are short of room in one go (one solve instead of one per bend)
+          let qe = q;
+          while (qe + 1 < units.length && short(qe + 1)) qe++;
+          let sol: ChainSol | null = null;
+          for (; qe >= q; qe--) {
+            sol = solveChain(chainInput(units[q - 1].i0, units[qe].i1), rules, null, null, EDIT_TOLERANCE);
+            if (sol || qe === q) break;
+          }
           if (!sol) { noChain[e] = 1; continue; }
-          const u: Unit = { i0, i1, sIn: 0, sOut: 0, w: null, lam: 0 };
+          const u: Unit = { i0: units[q - 1].i0, i1: units[qe].i1, sIn: 0, sOut: 0, w: null, lam: 0 };
           applyChain(u, sol);
-          units.splice(q - 1, 2, u);
+          units.splice(q - 1, qe - q + 2, u);
           q = Math.max(0, q - 2); // the grown curve may now reach its predecessor
         }
       };
@@ -584,7 +589,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
             let u = units[q];
             if (qa !== qb) {
               u = { i0: units[qa].i0, i1: units[qb].i1, sIn: 0, sOut: 0, w: null, lam: 0 };
-              const sol = solveChain(chainInput(u.i0, u.i1), rules, null, null, tolOf(u.i0, u.i1));
+              const sol = solveChain(chainInput(u.i0, u.i1), rules, null, null, EDIT_TOLERANCE);
               if (sol) { applyChain(u, sol); units.splice(qa, 2, u); } else good = false;
             }
             let fixIn: number | null = null, fixOut: number | null = null;
@@ -593,7 +598,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
               if (dIn <= EPS_LEN && dOut <= EPS_LEN) break;
               if (dIn > EPS_LEN) fixIn = u.sIn - dIn - 0.05; else if (pin && fixIn === null) fixIn = u.sIn;
               if (dOut > EPS_LEN) fixOut = u.sOut - dOut - 0.05; else if (pin && fixOut === null) fixOut = u.sOut;
-              const sol = solveChain(chainInput(u.i0, u.i1), rules, fixIn, fixOut, tolOf(u.i0, u.i1));
+              const sol = solveChain(chainInput(u.i0, u.i1), rules, fixIn, fixOut, EDIT_TOLERANCE);
               if (sol && sol.ok) applyChain(u, sol); else good = false;
             }
             if (good && (fails(qa, u.i0) || fails(qa + 1, u.i1 + 1) || arcLenOf(u) < (mandatory(u) * lt) / 2 - EPS_LEN)) good = false;
@@ -637,6 +642,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
         const cutIn = te.in < u.sIn, cutOut = te.out < u.sOut;
         if (!cutIn && !cutOut) continue;
         if (!isChain(u)) { te.in = te.out = Math.min(te.in, te.out); continue; }
+        // (no tolerance here: this only keeps the line continuous where the checks already complain)
         // the other end stays where it is if possible, so that the squeeze cannot start an overlap there
         const sol = solveChain(chainInput(u.i0, u.i1), rules, te.in, te.out)
           ?? solveChain(chainInput(u.i0, u.i1), rules, cutIn ? te.in : null, cutOut ? te.out : null);

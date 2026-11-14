@@ -103,7 +103,7 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
       const lo = Math.min(a.rEff, b.rEff), hi = Math.max(a.rEff, b.rEff);
       if (hi <= lo * R.compoundRatio * (1 + 1e-9)) continue;
       const big = a.rEff > b.rEff ? a : b, small = big === a ? b : a;
-      const fix = !big.auto ? `set the radius of ${bend(big.index)} to ≤ ${fmt(Math.floor(lo * R.compoundRatio))} m or back to auto`
+      const fix = !big.auto ? `reduce the radius of ${bend(big.index)} (to ≤ ${fmt(Math.floor(lo * R.compoundRatio))} m, or far enough that the two no longer touch) or set it back to auto`
         : !small.auto ? `set the radius of ${bend(small.index)} to ≥ ${fmt(Math.ceil(hi / R.compoundRatio))} m or back to auto`
           : 'move the bends so that the turn is spread more evenly, or delete one of them';
       out.push({
@@ -115,12 +115,13 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
     const used = j.tFrom + j.needFrom + j.tTo + j.needTo;
     const short = used - j.length;
     if (short <= tol) continue;
+    const tf = Math.max(0, j.tFrom), tt = Math.max(0, j.tTo); // (a joined curve may begin past its first bend)
     const more = `≥ ${fmt(Math.ceil(short))} m`;
     if (j.kind === 'end') {
       const c = (a && a.unit >= 0 ? a : b)!;
       const atStart = c === b;
       const other = atStart ? (j.from < 0 ? 'A' : `the U-turn at ${bend(j.from)}`) : j.to < 0 ? 'B' : `the U-turn at ${bend(j.to)}`;
-      const t = atStart ? j.tTo : j.tFrom, need = atStart ? j.needTo : j.needFrom;
+      const t = atStart ? tt : tf, need = atStart ? j.needTo : j.needFrom;
       out.push({
         kind: 'transition', ...where, pi: c.index,
         msg: `${bend(c.index)} is too close to ${other}: its curve takes ${fmt(t)} m of that leg${need > 0 ? ` and its transition ${fmt(need)} m more` : ''}, but the leg is only ${fmt(j.length)} m — move it ${more} away from ${other}, or reduce its radius or turn`,
@@ -131,12 +132,17 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
           : `the transition of ${bend(j.plainFrom ? j.to : j.from)} ${fmt(j.plainFrom ? j.needTo : j.needFrom)} m and the straight before the plain arc of ${bend(j.plainFrom ? j.from : j.to)} ${fmt(j.plainFrom ? j.needFrom : j.needTo)} m`;
       out.push({
         kind: 'transition', ...where,
-        msg: `${bends(j.from, j.to)} turn opposite ways ${fmt(j.length)} m apart: the curves take ${fmt(j.tFrom)} + ${fmt(j.tTo)} m of that leg and ${between}, ${fmt(used)} m in all — move them ${more} further apart, reduce a radius, or delete one of them`,
+        msg: `${bends(j.from, j.to)} turn opposite ways ${fmt(j.length)} m apart: the curves take ${fmt(tf)} + ${fmt(tt)} m of that leg and ${between}, ${fmt(used)} m in all — move them ${more} further apart, reduce a radius, or delete one of them`,
       });
     } else {
+      // same direction, too close for a straight; normally such bends are joined into one curve
+      const manual = [a, b].filter((c) => c && !c.auto).map((c) => bend(c!.index));
+      const tail = !j.joinFailed ? ` — move them ${more} further apart, reduce a radius, or delete one of them`
+        : manual.length ? `, and with the radius set on ${manual.join(' and ')} they cannot be joined into one curve either — set it back to auto or reduce it, or move them ${more} further apart`
+          : `, and they could not be joined into one curve that fits between its neighbours — move them ${more} further apart, or delete one of them`;
       out.push({
         kind: 'transition', ...where,
-        msg: `${bends(j.from, j.to)} turn the same way ${fmt(j.length)} m apart: a straight between them needs ${fmt(used)} m (curves ${fmt(j.tFrom)} + ${fmt(j.tTo)} m, transitions ${fmt(j.needFrom + j.needTo)} m)${j.joinFailed ? ', and they could not be joined into one curve that fits between its neighbours' : ''} — move them ${more} further apart, reduce a radius, or delete one of them`,
+        msg: `${bends(j.from, j.to)} turn the same way ${fmt(j.length)} m apart: their curves take ${fmt(tf)} + ${fmt(tt)} m of that leg${j.needFrom + j.needTo > 0 ? ` and transitions ${fmt(j.needFrom + j.needTo)} m more` : ''}, too much for a straight between them${tail}`,
       });
     }
   }

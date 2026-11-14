@@ -327,7 +327,7 @@ describe('compound curves', () => {
     pis[0].r = 500; pis[1].r = 1200;
     const al = buildAlignment(a, b, pis, R90);
     const v = horizontalViolations(al, 90);
-    expect(v.map((x) => x.msg)).toEqual(['bends 1 and 2 are joined as one curve, but their radii 500 m and 1,200 m differ by more than 2× — set the radius of bend 2 to ≤ 1,000 m or back to auto']);
+    expect(v.map((x) => x.msg)).toEqual(['bends 1 and 2 are joined as one curve, but their radii 500 m and 1,200 m differ by more than 2× — reduce the radius of bend 2 (to ≤ 1,000 m, or far enough that the two no longer touch) or set it back to auto']);
     expect(v[0]).toMatchObject({ kind: 'compound', pis: [0, 1] });
     expect(v[0].s1).toBeGreaterThan(v[0].s0);
     expectG1(al, a, b); // the player's radii are kept; the curve leaves the shared leg instead

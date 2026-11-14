@@ -147,3 +147,24 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
 - Overlays, vector map layers, buildings and the official D11 line: © OpenStreetMap contributors, ODbL.
 - Aerial photo (optional view layer, streamed, not redistributed): © ČÚZK, Ortofoto ČR, CC BY 4.0.
 - Prices: SFDI SPK CN 2026 and OTSKP 2026 (see `research/00-feasibility-map.md` §3).
+
+## Long curves and radius handles (horizontal editing)
+
+![long curve](docs/screenshots/05-long-curve.png)
+
+- **Bends are corners of the dashed tangent polygon, not waypoints**: the road cuts each corner with a circular arc.
+- **One bend, long curve**: select a bend and drag one of the two diamond grips along its leg, turn the mouse wheel over
+  the bend (or its grips / label), or press <kbd>+</kbd> / <kbd>−</kbd>. The radius is shown next to the curve;
+  **max** sets the largest radius that fits between the neighbours, **auto** returns to the smallest the rules allow.
+  The HUD radius field shows the same value; a drag or a burst of wheel steps is one undo step.
+- **Several bends, long curve**: bends that turn the same way and are too close for a straight between them are
+  joined into one compound curve automatically (the label says "one curve with bends …"). Uneven spacing is fine: the
+  solver keeps the minimum radius and a radius ratio ≤ 2 between neighbouring arcs, moving the arc junctions off the
+  dashed legs by up to 5 m if it has to. A bend that only wiggles against its neighbours (within 5 m of the line
+  between them, no room for an S-curve) is left out and labelled so.
+- Rules (ČSN 73 6101 via the VUT text "Aplikace ČSN 73 6101"; table in `src/core/data/norms.ts`, details in `PLAN.md`):
+  no transition needed from R ≥ L²/6 (1,350 / 1,067 / 817 m at 90 / 80 / 70 km/h); opposite curves may touch with
+  their transitions, plain arcs need a 2·vn straight between them; every horizontal violation names the bends, the
+  room required and available, and a fix.
+- `npm run curves` replays this with real mouse events (multi-point curve, grips, wheel, keys, max, auto, undo) and
+  writes `docs/screenshots/05…08-*.png`; `05-long-curve-before.png` is the same design on the previous rules.

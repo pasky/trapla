@@ -7,6 +7,7 @@ import { RouteExtras } from './render/extras';
 import { View } from './render/view';
 import { loadPack } from './scenario';
 import { RangeSelection, startDesign, Store } from './state';
+import { CurveEditor } from './ui/curve-edit';
 import { Hud } from './ui/hud';
 import { ProfilePanel } from './ui/profile';
 import { ViewBar, type ViewPrefs } from './ui/viewbar';
@@ -78,20 +79,29 @@ async function main() {
     hud.setResult(r, rd, store.best);
     hud.setSelectedPi(selectedPi, r, store.design);
     hud.setSelectedVpi(selectedVpi, r);
+    curveEdit.refresh();
     setStatus('');
     if (received === posted) { const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
   };
 
+  // on-map radius handles for the selected bend (grips, wheel, + / −, max, auto)
+  const curveEdit = new CurveEditor(view, document.getElementById('overlay')!, pack.terrain, {
+    a: A, b: B, design: () => store.design, selected: () => selectedPi, result: () => last,
+    setRadius: (i, r, commit) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
+    commit: () => store.commit(),
+  });
   const selectPi = (i: number | null) => {
     selectedPi = i;
     view.setDesign(store.design, i);
     hud.setSelectedPi(i, last, store.design);
+    curveEdit.refresh();
   };
 
   store.on((d) => {
     if (selectedPi !== null && selectedPi >= d.pis.length) selectedPi = null;
     view.setDesign(d, selectedPi);
     hud.setDesign(d, store.canUndo(), store.canRedo());
+    curveEdit.refresh();
     requestEval();
   });
 
@@ -193,6 +203,7 @@ async function main() {
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
     resetCamera: () => view.resetCamera(),
     selectPi,
+    maxRadius: (i: number) => curveEdit.maxRadius(i),
     profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
     profileFit: () => profile.fit(),
     selectRange: (s0: number | null, s1?: number) => selection.set(s0 === null || s1 === undefined ? null : { s0, s1 }),

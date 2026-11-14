@@ -76,6 +76,8 @@ export class View {
   /** called when the contour interval changes with the zoom (minor, major in metres) */
   onContourInterval: ((minor: number, major: number) => void) | null = null;
   ev: ViewEvents = {};
+  /** called after every render, for overlays managed outside the view (curve handles) */
+  onRender: (() => void) | null = null;
 
   constructor(private container: HTMLElement, private overlay: HTMLElement, private pack: Pack) {
     this.terrain = pack.terrain;
@@ -133,6 +135,9 @@ export class View {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     return { sx: (v.x * 0.5 + 0.5) * w, sy: (-v.y * 0.5 + 0.5) * h, vis: v.z < 1 && v.z > -1, dist };
   }
+
+  /** screen position (px inside the view) of a local point; `vis` = in front of the camera */
+  project(x: number, y: number, z: number) { return this.screenOf(x, y, z); }
 
   /** ray-march the heightfield under a screen point; returns local (x,y) or null */
   pick(clientX: number, clientY: number): { x: number; y: number } | null {
@@ -693,6 +698,7 @@ export class View {
     this.contourLabels?.place();
     if (this.hoverPos) place(this.hoverEl, this.hoverPos.x, this.hoverPos.y, this.hoverPos.z);
     else this.hoverEl.style.display = 'none';
+    this.onRender?.();
   }
 
   // ---- pointer -------------------------------------------------------------------------------

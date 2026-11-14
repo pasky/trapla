@@ -350,3 +350,31 @@ room for the balance search (the first prototype needed ≈ 36 ms, 28 ms of it o
   cut, none by other buildings; a bridge gets the same wall as an embankment. SPK CN's urban surcharge already
   contains 10 % "protective measures", so walls in built-up areas are partly counted twice.
 - Motorway / expressway crossings at grade are priced as an interchange instead of being forbidden.
+
+## Horizontal curve rules and long curves (2026-11-14)
+
+Why: every bend used to need room for two full transitions on each leg, so bends closer than ≈ 2 × 90 m could
+never be valid — stricter than the norm, and it made multi-point long curves impossible.
+
+Rules now (`src/core/horizontal.ts`, `HORIZONTAL_NORMS` in `src/core/data/norms.ts`, messages in `checks.ts`):
+
+| rule | source |
+|---|---|
+| arc with R ≥ L²/(24 · 0.25 m) needs no transition (1,350 / 1,067 / 817 m) | ČSN 73 6101 (VUT "Aplikace ČSN 73 6101") |
+| same-direction arcs may meet directly (compound curve) if neighbouring radii differ ≤ 2× and the smallest ≥ R min | ČSN, the "exceptional" variant without intermediate transitions — used freely here |
+| opposite curves: transitions may touch; ends without a transition need a 2·vn straight between them | ČSN (the recommended R2/R1 ≤ 2 for reverse curves is not checked) |
+| a transition takes ≈ L/2 of the tangent and L/2 of the curve; a compound curve needs them only at its two ends | game simplification (transitions are still not drawn) |
+| a large-radius arc facing an opposite curve may carry a transition if long enough (asks 45 m instead of 90 m) | game simplification |
+| straight between same-direction arcs: allowed whenever the required transitions fit, no minimum length; otherwise the arcs are joined | game simplification (the norm only discourages short straights) |
+| 5 m editor tolerance (`EDIT_TOLERANCE`): arc junctions off the polygon legs, wiggling bends left out, arcs moved by joining | game rule, not a norm value |
+
+Compound solve: arc j turns from leg j−1's direction to leg j's, so any radii give a G1 curve; unknowns are the radii
+and the start point. The classic solution (arcs meet on the legs, T[k] + T[k+1] = leg) has one degree of freedom,
+spent on even radii. Where it breaks R min or the ratio rule (uneven spacing), tangency to the inner legs is relaxed
+by least squares only as far as needed, at most 5 m. Next to an opposite curve or A/B the outer tangents are pulled
+in (a single arc may first be joined with a close same-direction neighbour). Fallbacks, in order: violation with the
+least-bad curve; squeeze into the leg when tangents physically overlap (always G1); dissolve into single arcs.
+
+Known issues: junction offsets and "left out" bends are only explained in the on-map label, not in the HUD; the
+solver is a heuristic ladder, not a proven optimum (a valid curve may exist that it does not find); a compound curve
+can change shape abruptly when a drag crosses the join / no-join threshold (a few metres).
