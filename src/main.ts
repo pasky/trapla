@@ -60,6 +60,7 @@ async function main() {
   // always rendered with the design they were computed for
   const inflight = new Map<number, Design>();
   const requestEval = () => {
+    hud.setProfileBusy(true);
     posted++;
     inflight.set(posted, JSON.parse(JSON.stringify(store.design)));
     worker.postMessage({ type: 'eval', id: posted, design: store.design } satisfies WorkerIn);
@@ -87,7 +88,7 @@ async function main() {
     hud.setSelectedVpi(selectedVpi, r);
     curveEdit.refresh();
     setStatus('');
-    if (received === posted) { const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
+    if (received === posted) { hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
   };
 
   // on-map radius handles for the selected bend (grips, wheel, + / −, max, auto)
@@ -207,7 +208,7 @@ async function main() {
       store.update((d) => { d.pis.splice(i, 1); });
       selectPi(null);
     } else if (e.key === 'Escape') { if (selection.range) selection.set(null); else selectPi(null); }
-  });
+  }, { capture: true }); // range shortcuts take precedence over the map's E/C shortcuts
   document.getElementById('fit')!.onclick = () => profile.fit();
 
   view.setDesign(store.design, null);

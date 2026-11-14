@@ -39,7 +39,7 @@ export class ViewBar {
     view.onContourInterval = (minor, major) => { this.interval = `${minor} / ${major} m`; this.paint(); };
     window.addEventListener('keydown', (e) => {
       const t = e.target as HTMLElement;
-      if (e.ctrlKey || e.metaKey || e.altKey || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA') return;
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA') return;
       const k = e.key.toLowerCase();
       if (k === 'c') this.bContours.click();
       else if (k === 's') this.bSlope.click();

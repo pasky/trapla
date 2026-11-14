@@ -162,6 +162,12 @@ export class Hud {
     }
   }
 
+  setProfileBusy(busy: boolean) {
+    const manual = this.$<HTMLButtonElement>('grade-manual');
+    manual.disabled = busy;
+    manual.title = busy ? 'Wait for the current grade line to finish computing before freezing it' : 'Freeze the current grade line for manual editing';
+  }
+
   /** switch the breakdown and quantities to a station range (null = whole route) */
   setRange(range: StationRange | null) {
     this.range = range;

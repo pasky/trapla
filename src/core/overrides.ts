@@ -39,7 +39,7 @@ export function normalizeOverrides(value: unknown): StructureOverride[] {
 export function overrideMask(s: ArrayLike<number>, ranges: readonly StructureOverride[] = []): Int8Array {
   const mask = new Int8Array(s.length).fill(-1);
   for (const r of ranges) for (let i = 0; i < s.length; i++) {
-    if (s[i] >= r.s0 && (s[i] < r.s1 || (i === s.length - 1 && s[i] === r.s1))) mask[i] = r.kind;
+    if (s[i] >= r.s0 && (s[i] < r.s1 || (i === s.length - 1 && Math.abs(s[i] - r.s1) < 1e-7))) mask[i] = r.kind;
   }
   return mask;
 }

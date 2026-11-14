@@ -84,8 +84,21 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
         manual ||= inp.overrides[i] >= 0;
         forced ||= !!locked[i];
       }
-      runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced });
       const min = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
+      // Paint may split a formerly viable automatic run. Unrequested, unlocked remnants remain
+      // automatic: reconsider them rather than forcing the player to repair our leftover pieces.
+      if (!manual && !forced) {
+        let earth = 0, structure = 0;
+        for (let i = r.i0; i <= r.i1; i++) {
+          earth += inp.earthPerM[i];
+          structure += r.kind === KIND.bridge ? bridgeAt(i) : tunnelAt(i);
+        }
+        if (length < min || structure >= earth) {
+          for (let i = r.i0; i <= r.i1; i++) kind[i] = KIND.earth;
+          continue;
+        }
+      }
+      runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced });
       if (length < min) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
         msg: `${manual ? 'manual' : 'remaining'} ${r.kind === KIND.bridge ? 'bridge' : 'tunnel'} is ${length.toFixed(0)} m long; minimum ${min} m` });
     }

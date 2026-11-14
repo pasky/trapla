@@ -62,6 +62,14 @@ describe('manual structure decisions', () => {
     expect(r.kind[20]).toBe(1);
   });
 
+  it('reconsiders unrequested short automatic remnants after earthwork splits a run', () => {
+    const earthPerM = new Float64Array(101).fill(1); earthPerM.fill(1e9, 20, 41);
+    const r = chooseStructures({ ...input(20), earthPerM, overrides: overrideMask(s, [{ s0: 220, s1: 410, kind: 0 }]) });
+    expect(r.kind[20]).toBe(0);
+    expect(r.runs).toEqual([]);
+    expect(r.violations).toEqual([]);
+  });
+
   it('keeps too-short and buried/exposed manual structures and flags them', () => {
     for (const kind of [1, 2] as const) {
       const r = chooseStructures({ ...input(0), overrides: overrideMask(s, [{ s0: 300, s1: 310, kind }]) });
@@ -93,6 +101,19 @@ describe('manual structure decisions', () => {
 });
 
 describe('override-aware automatic grade line', () => {
+  it('samples isolated cost-class stations and selects the matching kind/class LUT', () => {
+    const s = Float64Array.from({ length: 201 }, (_, i) => i * 10), g = new Float64Array(201);
+    const costClass = new Uint8Array(201); costClass[102] = 1; // skipped by the ordinary stride
+    for (const kind of [-1, 0, 1, 2]) {
+      const structureKind = new Int8Array(201).fill(-1); structureKind[102] = kind;
+      const r = autoProfile(s, g, {
+        maxGradient: 0.06, minCrest: 6000, minSag: 3400, costClass, costClassCount: 2, structureKind, vpiPenalty: 0,
+        costPerM: (_h, k = -1, c = 0) => c === 1 ? [17, 7, 11, 13][k + 1] : 0,
+      });
+      expect(r.cost).toBeCloseTo([17, 7, 11, 13][kind + 1] * 10);
+    }
+  });
+
   it('optimises bridge/tunnel ranges with their own costs and height/cover bounds', () => {
     const s = Float64Array.from({ length: 201 }, (_, i) => i * 10), g = new Float64Array(201);
     const opt = { maxGradient: 0.06, minCrest: 6000, minSag: 3400,
