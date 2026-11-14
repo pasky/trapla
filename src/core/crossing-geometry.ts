@@ -18,17 +18,20 @@ export function crossingPlanLength(path: readonly XY[]): number {
   return length;
 }
 
+function lerpAt(v: ArrayLike<number>, lo: number, hi: number, t: number): number {
+  return v[lo] + (v[hi] - v[lo]) * t;
+}
+
 function routeGeometry(route: CrossingRoute) {
   const n = route.s.length;
   const at = (s: number) => {
     let lo = 0, hi = n - 1;
     while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (route.s[m] <= s) lo = m; else hi = m; }
     const t = Math.max(0, Math.min(1, (s - route.s[lo]) / (route.s[hi] - route.s[lo] || 1)));
-    const lerp = (v: ArrayLike<number>) => v[lo] + (v[hi] - v[lo]) * t;
-    const tx = lerp(route.tx), ty = lerp(route.ty), norm = Math.hypot(tx, ty) || 1;
-    return { s, x: lerp(route.x), y: lerp(route.y), tx: tx / norm, ty: ty / norm, z: lerp(route.grade),
-      left: route.left ? lerp(route.left) : lerp(route.width) / 2,
-      right: route.right ? lerp(route.right) : lerp(route.width) / 2 };
+    const tx = lerpAt(route.tx, lo, hi, t), ty = lerpAt(route.ty, lo, hi, t), norm = Math.hypot(tx, ty) || 1;
+    return { s, x: lerpAt(route.x, lo, hi, t), y: lerpAt(route.y, lo, hi, t), tx: tx / norm, ty: ty / norm, z: lerpAt(route.grade, lo, hi, t),
+      left: route.left ? lerpAt(route.left, lo, hi, t) : lerpAt(route.width, lo, hi, t) / 2,
+      right: route.right ? lerpAt(route.right, lo, hi, t) : lerpAt(route.width, lo, hi, t) / 2 };
   };
   // Exact segment AABB tree: unlike a station window it remains correct beside hairpins, while
   // avoiding a full-route scan for every footprint bisection and every terrain sample.
@@ -49,28 +52,37 @@ function routeGeometry(route: CrossingRoute) {
     return node;
   };
   const root = tree(Array.from({ length: n - 1 }, (_, i) => i));
-  const projected = new Map<string, ReturnType<typeof at> & { lateral: number }>();
+  type Projection = ReturnType<typeof at> & { lateral: number };
+  // Numeric coordinate keys avoid formatting every terrain/bisection sample. The cache is local
+  // to this build, so edited grades and footprints never reuse an earlier design's projection.
+  const projected = new Map<number, Map<number, Projection>>();
+  let projectedCount = 0;
+  let best = Infinity, station = route.s[0];
+  const distance = (node: Node, q: XY) => Math.max(node.x0 - q.x, 0, q.x - node.x1) ** 2 + Math.max(node.y0 - q.y, 0, q.y - node.y1) ** 2;
+  const visit = (node: Node, q: XY) => {
+    if (distance(node, q) > best) return;
+    if (node.indices) for (const i of node.indices) {
+      const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
+      const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
+      const d2 = (q.x - route.x[i] - t * dx) ** 2 + (q.y - route.y[i] - t * dy) ** 2;
+      const s = route.s[i] + t * (route.s[i + 1] - route.s[i]);
+      if (d2 < best || (d2 === best && s < station)) { best = d2; station = s; }
+    } else {
+      const a = node.left!, b = node.right!;
+      if (distance(a, q) <= distance(b, q)) { visit(a, q); visit(b, q); } else { visit(b, q); visit(a, q); }
+    }
+  };
   const project = (q: XY) => {
-    const key = `${q.x},${q.y}`, cached = projected.get(key);
+    let column = projected.get(q.x);
+    const cached = column?.get(q.y);
     if (cached) return cached;
-    let best = Infinity, station = route.s[0];
-    const distance = (node: Node) => Math.max(node.x0 - q.x, 0, q.x - node.x1) ** 2 + Math.max(node.y0 - q.y, 0, q.y - node.y1) ** 2;
-    const visit = (node: Node) => {
-      if (distance(node) > best) return;
-      if (node.indices) for (const i of node.indices) {
-        const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
-        const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
-        const d2 = (q.x - route.x[i] - t * dx) ** 2 + (q.y - route.y[i] - t * dy) ** 2;
-        const s = route.s[i] + t * (route.s[i + 1] - route.s[i]);
-        if (d2 < best || (d2 === best && s < station)) { best = d2; station = s; }
-      } else {
-        const a = node.left!, b = node.right!;
-        if (distance(a) <= distance(b)) { visit(a); visit(b); } else { visit(b); visit(a); }
-      }
-    };
-    visit(root);
+    best = Infinity; station = route.s[0];
+    visit(root, q);
     const p = at(station), result = { ...p, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
-    if (projected.size < 50000) projected.set(key, result);
+    if (projectedCount < 50000) {
+      if (!column) projected.set(q.x, column = new Map());
+      column.set(q.y, result); projectedCount++;
+    }
     return result;
   };
   const margin = (q: XY, extra: number) => {
@@ -113,7 +125,7 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
 
 function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
   heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
-  spatial: ReturnType<typeof routeGeometry>): CrossingIssue[] {
+  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, { path: WayPoint[]; diagnostics: string[] }>): CrossingIssue[] {
   const { at, project, margin } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => v.crossing.code !== 'geometry');
   const terrainPoint = (q: XY & { d?: number }): CrossingPoint => {
@@ -131,7 +143,15 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     ...crossings.filter(t => t.targetS === c.s && t.targetRoadId === c.roadId).map(t => ROAD_CLASSES[t.cls].width));
   const getPath = (roadId: number | undefined, x: number, y: number, g: CrossingGeometry) => {
     if (roadId === undefined || !roads) { diagnose(g, 'No real crossed-way alignment is available'); return []; }
-    return denseWay(roads.connectedCrossingPath(roadId, x, y, MAX_REACH), message => diagnose(g, message));
+    const key = `${roadId}:${x},${y}`;
+    let cached = paths.get(key);
+    if (!cached) {
+      const diagnostics: string[] = [];
+      cached = { path: denseWay(roads.connectedCrossingPath(roadId, x, y, MAX_REACH), message => diagnostics.push(message)), diagnostics };
+      paths.set(key, cached);
+    }
+    for (const message of cached.diagnostics) diagnose(g, message);
+    return cached.path;
   };
 
   for (const c of crossings) {
@@ -393,7 +413,10 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   heightAt: (x: number, y: number) => number, roads?: RoadNet): CrossingIssue[] {
   if (route.s.length < 2) return [];
   const spatial = routeGeometry(route);
-  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial);
+  // Candidate treatments and the final rebuild use the same immutable OSM alignment. Share only
+  // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
+  const paths = new Map<string, { path: WayPoint[]; diagnostics: string[] }>();
+  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths);
   build(crossings);
   const clone = (c: CrossingResult): CrossingResult => ({ ...c, geometry: undefined,
     issues: c.issues?.filter(v => v.crossing.code !== 'geometry') });

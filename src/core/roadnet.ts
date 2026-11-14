@@ -18,6 +18,7 @@ export interface RoadCrossing {
 
 /** tolerance on segment parameters (round-off at end points) */
 const EPS = 1e-9;
+const pointKey = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`;
 
 const RANK: Record<string, number> = Object.fromEntries(Object.keys(ROAD_CLASSES).map((k, i) => [k, i]));
 
@@ -31,6 +32,8 @@ export class RoadNet {
   private readonly way: Int32Array;
   private readonly stamp: Int32Array;
   private readonly wayCls: string[];
+  // Segment endpoints are immutable; lazily retain their cycle-detection keys across traversals.
+  private readonly endpointKeys: string[] = [];
   private readonly ways: readonly number[][];
   readonly segments: number;
 
@@ -99,8 +102,8 @@ export class RoadNet {
       const start = Math.max(0, Math.min(path.length - maxPoints, centre - Math.floor(maxPoints / 2)));
       path = path.slice(start, start + maxPoints);
     }
-    const key = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`;
-    const visited = new Set(path.map(p => key(p.x, p.y)));
+    const visited = new Set(path.map(p => pointKey(p.x, p.y)));
+    const cls = this.wayCls[roadId];
     for (const side of [-1, 1]) {
       let p = side < 0 ? path[0] : path[path.length - 1];
       let prev = side < 0 ? path[1] : path[path.length - 2];
@@ -109,23 +112,26 @@ export class RoadNet {
         const candidates = this.map.get(Math.floor(p.x / this.cell) * 100003 + Math.floor(p.y / this.cell)) ?? [];
         let best: { x: number; y: number; d: number } | undefined, score = -Infinity;
         const dx = p.x - prev.x, dy = p.y - prev.y, len = Math.hypot(dx, dy) || 1;
-        for (const k of candidates) for (const reverse of [false, true]) {
+        for (const k of candidates) for (let reverse = 0; reverse < 2; reverse++) {
           const ax = reverse ? this.x1[k] : this.x0[k], ay = reverse ? this.y1[k] : this.y0[k];
-          if (Math.hypot(ax - p.x, ay - p.y) > 0.02) continue;
+          // Most segments in a 100 m cell do not touch this endpoint. Reject those without a
+          // hypot, retaining the original radial test (and candidate order) at the boundary.
+          if (Math.abs(ax - p.x) > 0.02 || Math.abs(ay - p.y) > 0.02 || Math.hypot(ax - p.x, ay - p.y) > 0.02) continue;
           const bx = reverse ? this.x0[k] : this.x1[k], by = reverse ? this.y0[k] : this.y1[k];
           const step = Math.hypot(bx - p.x, by - p.y);
-          if (step < 1e-6 || visited.has(key(bx, by))) continue;
+          if (step < 1e-6 || visited.has(this.endpointKeys[2 * k + reverse] ??= pointKey(bx, by))) continue;
           const dot = ((bx - p.x) * dx + (by - p.y) * dy) / (step * len);
           if (dot < -0.5) continue; // never prefer a same-class U-turn over the through alignment
-          if (!ROAD_CLASSES[this.wayCls[roadId]].noAtGrade && ROAD_CLASSES[this.wayCls[this.way[k]]].noAtGrade) continue;
-          const value = dot + (this.wayCls[this.way[k]] === this.wayCls[roadId] ? 0.25 : 0);
+          const nextCls = this.wayCls[this.way[k]];
+          if (!ROAD_CLASSES[cls].noAtGrade && ROAD_CLASSES[nextCls].noAtGrade) continue;
+          const value = dot + (nextCls === cls ? 0.25 : 0);
           if (value <= score) continue;
           score = value;
           const fraction = Math.min(1, (reach - Math.abs(p.d)) / step);
           best = { x: p.x + (bx - p.x) * fraction, y: p.y + (by - p.y) * fraction, d: p.d + side * step * fraction };
         }
         if (!best) break;
-        visited.add(key(best.x, best.y)); extension.push(best); prev = p; p = best;
+        visited.add(pointKey(best.x, best.y)); extension.push(best); prev = p; p = best;
       }
       if (side < 0) path.unshift(...extension.reverse()); else path.push(...extension);
     }

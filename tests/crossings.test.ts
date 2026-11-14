@@ -151,6 +151,47 @@ describe('crossing geometry and map overlay', () => {
     expect(split.crossingPath(0, 100, 0, 60).at(-1)!.d).toBe(10); // original way stays intact
   });
 
+  it('preserves radial endpoint tolerance and first-candidate ties across repeated network traversals', () => {
+    const net = new RoadNet({ cls: ['residential'], ways: [
+      [0, 0, -20, 0, 0],
+      [0, 0.019, 0.019, 0, 20], // within the endpoint box, but outside the 2 cm radius
+      [0, 0.02, 0, 0, 30], // exactly at the radius; first equally straight continuation
+      [0, 0, 0, 0, 40],
+    ] });
+    const expected = [
+      { x: 0, y: -20, d: -10 }, { x: 0, y: -10, d: 0 },
+      { x: 0, y: 0, d: 10 }, { x: 0, y: 30, d: 40 },
+    ];
+    expect(net.connectedCrossingPath(0, 0, -10, 60)).toEqual(expected);
+    const other = net.connectedCrossingPath(0, 0, -5, 15);
+    expect(other.at(-1)).toEqual({ x: 0, y: 10, d: 15 });
+    other[0].y = 999; // returned paths must remain independent of future calls
+    expect(net.connectedCrossingPath(0, 0, -10, 60)).toEqual(expected);
+  });
+
+  it('shares candidate alignments within a build but refreshes mutable route and terrain inputs on the next build', () => {
+    const net = new RoadNet({ cls: ['primary', 'residential'], ways: [
+      [0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 2],
+    ] });
+    const path = vi.spyOn(net, 'connectedCrossingPath');
+    const edited = { ...route, grade: Float64Array.from(route.grade), width: Float64Array.from(route.width) };
+    let height = 400;
+    const run = () => {
+      const cs = [cross(0, 3000), cross(1, 3800, 'residential')];
+      resolve(cs); buildCrossingGeometry(cs, edited, () => height, net);
+      return cs;
+    };
+    const first = run(), saved = structuredClone(first);
+    expect(first[1].type).toBe('reconnection'); // candidate trial and final rebuild both run
+    expect(path).toHaveBeenCalledTimes(2); // each source alignment is traversed only once
+    edited.grade.fill(402); edited.width.fill(24); height = 401;
+    const second = run();
+    expect(path).toHaveBeenCalledTimes(4);
+    expect(second).not.toEqual(first);
+    expect(first).toEqual(saved); // no mutable geometry shared with subsequent builds
+    expect(run()).toEqual(second);
+  });
+
   it('keeps roads at terrain under bridges and prices the actual overbridge deck and approaches', () => {
     const cs = [cross(0, 3000, 'primary', 8), cross(1, 3100, 'residential', -8, 1)];
     resolve(cs, [{ roadId: 1, type: 'overbridge' }], [KIND.bridge, KIND.earth], [0, 0]);
