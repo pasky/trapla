@@ -1,6 +1,30 @@
 # High embankments vs bridges: Czech evidence for Trapla
 
-Research snapshot: 2026-11-16. Costs are CZK excluding VAT unless noted. This is an evidence note, not a design check or calibration recommendation. **Sourced** means the cited public source states the fact; **derived** marks arithmetic; **unknown/provisional** flags limits. No general legal maximum embankment height was found or inferred.
+Research snapshot: 2026-11-14. Costs are CZK excluding VAT unless noted. Evidence and implemented study-stage calibration; not a geotechnical design check. **Sourced** means the cited public source states the fact; **derived** marks arithmetic; **unknown/provisional** flags limits. No general legal maximum embankment height was found or inferred.
+
+**Follow-up evidence:** [`15-followup.md`](15-followup.md) extracts the actual April 2026 OTSKP culvert rows, a project-specific cut bench, and a public KHK ÚSES feature service. It supersedes the initial price/data gaps below. The implementation author independently checked the SFDI publication page, workbook rows 9183E2/899524, and the D11 1107 ground-treatment article.
+
+## Implemented calibration
+
+- **Benches:** 2 m-wide fill benches / 1 m-wide cut benches every 6 m of vertical rise/drop. The 1 m cut bench above 6 m has a project precedent in I/27 Klatovy; repeated intervals and fill dimensions are **PROVISIONAL**, not a ČSN rule. Actual sampled sections integrate their extra material and footprint. Flat DP sections use the same geometry and depth-class volumes. For height `h`, each bench at `k×6 < h` adds `2×width×(h−k×6)` m² to the prism and `2×width` metres to land take. The map ribbon still simplifies each side to its crown/daylight surface.
+- **Engineering reserve:** fill volume × `35×max(0,h−6)` CZK/m³ and cut volume × `20×max(0,depth−6)` CZK/m³, before the normal surcharge. These are **PROVISIONAL sensitivity coefficients, not sourced tender rates**. They represent reinforcement, drainage, foundation treatment and stability measures missing from simple placement/excavation. At 10/20/30 m fill the reserve is 140/490/840 CZK/m³. D11 demonstrates the work exists, but does not price this formula. It stays payable even when mass balance values extra fill material negatively. It is shown separately in Earthworks and applies identically to bill, structure selector, balance estimate and DP.
+- **Small streams:** one crossing per contiguous raster cluster (30 m merge, provisional); excess barrel length beyond crown + 12 m is charged, since ordinary drainage is already in the SPK norm. Per extra metre: OTSKP 9183E2 DN800 pipe 9,450.93 + 0.6 m³ of 899524 encasement at 4,366.36 + provisional 3,000 for bedding/excavation/drainage = **15,070.75 CZK/m**, before surcharge. The assumed assembly/diameter and norm-included width are not hydraulic design. A 70 m footprint on S9.5 therefore adds 48.5 m × 15,070.75 = **0.731m CZK**, or **0.955m incl. rural surcharge**, beyond ordinary drainage. Length uses cross-sectional footprint (no surveyed channel/skew correction); raster streams hidden by another landcover class can be missed. Large rivers/railways retain forced bridges, not these pipes.
+- **No invented legal cap / height-discounted bridge rate:** sources do not support a universal maximum fill height or a quantitative bridge-height price curve. SPK bridge averages are retained; unusual viaduct foundations remain an uncertainty. A high-fill engineering reserve is a price, not a declaration that the earthwork is actually buildable. Overrides let players choose a bridge for unmodelled environmental/geotechnical reasons.
+- **ÚSES:** `uv run pipeline/fetch_uses.py` caches 47 regional/nadregional polygons intersecting the play rectangle in `pipeline/cache/uses-khk.geojson` (~0.49 MB, EPSG:5514). Service metadata is CC0; inspected features cite ZÚR changes 1–5 / 2021, so this is not proof of current plan status or complete local ÚSES coverage. No forced-bridge raster is derived: corridor presence alone does not prescribe a bridge, nor its span. Flood-zone hydraulics, wildlife passage dimensions and ecological review are unresolved.
+
+### Flat-ground bridge break-even
+
+Reproduce with `npx tsx scripts/bridge-break-even.ts`. S9.5, hilly rural road base, 1:2 fill, 320 CZK/m² land, 30.6% surcharge; bridge = **760,404 CZK/m** including deck-width land. This is a local uniform cross-section comparison, not the final run-level decision (30 m minimum and merging) or an environmental rule.
+
+| Material shadow value λ, CZK/m³ | Previous fill (no reserve/benches) | New fill | New, one stream per 30 m |
+|---:|---:|---:|---:|
+| −196.4 (surplus-disposal saving) | no crossing below 100 m | 21.03 m | 20.55 m |
+| 0 (free material) | 47.03 m | 18.62 m | 18.19 m |
+| 100 | 33.14 m | 17.58 m | 17.19 m |
+| 200 (manual default) | 26.85 m | 16.62 m | 16.25 m |
+| 536 (borrow replacement) | 17.96 m | 14.04 m | 13.75 m |
+
+The original owner's 25–28 m estimate describes λ≈200. At true free-material λ=0 the old threshold was ~47 m, and at negative λ it could fail to bridge altogether. The new reserve removes that pathological dependence while keeping the calibration explicitly provisional. Run boundaries, cross-slope, land cover and short isolated cells still produce different route-specific maxima.
 
 ## Findings in brief
 

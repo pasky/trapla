@@ -1,6 +1,6 @@
 # Follow-up: berms, OTSKP 2026 culverts, KHK ÚSES
 
-Research snapshot: 2026-11-17. Prices are CZK excluding VAT. This note fills evidence gaps in [`15-bridge-vs-embankment.md`](15-bridge-vs-embankment.md); it reports sourced facts and limits, not recommendations.
+Research snapshot: 2026-11-14. Prices are CZK excluding VAT. This note fills evidence gaps in [`15-bridge-vs-embankment.md`](15-bridge-vs-embankment.md); it reports sourced facts and limits, not recommendations.
 
 ## Earthwork benches (“lavičky”)
 
@@ -28,4 +28,4 @@ The matching item specification in the workbook says pipe items include **supply
 
 ## KHK ÚSES GIS endpoint
 
-The [ArcGIS Online item “Nadregionální a regionální ÚSES vymezený v ZÚR”](https://www.arcgis.com/home/item.html?id=89646c784a05469eb7afda20b42c44d3) identifies a public, single-layer polygon Feature Service, sourced from the KHK planning authority’s ZÚR/DMG ÚAP data, in S-JTSK. Its metadata gives **CC0** reuse, layer coverage in Královéhradecký kraj, and the live [FeatureServer endpoint](https://services6.arcgis.com/ogJAiK65nXL1mXAW/arcgis/rest/services/Nadregion%C3%A1ln%C3%AD_a_region%C3%A1ln%C3%AD_%C3%9ASES_vymezen%C3%BD_v_Z%C3%9AR_KHK/FeatureServer). The layer supports query/export (including GeoJSON); a count query returned **526 features**. Thus there is a machine-accessible regional/nadregional ÚSES source, unlike the dashboard-only evidence noted earlier. A full GeoJSON query was about 6.1 MB, so no cache was added; no smaller route/area-specific export was defined for this research request.
+The [ArcGIS Online item “Nadregionální a regionální ÚSES vymezený v ZÚR”](https://www.arcgis.com/home/item.html?id=89646c784a05469eb7afda20b42c44d3) identifies a public, single-layer polygon Feature Service, sourced from the KHK planning authority’s ZÚR/DMG ÚAP data, in S-JTSK. Its metadata gives **CC0** reuse, layer coverage in Královéhradecký kraj, and the live [FeatureServer endpoint](https://services6.arcgis.com/ogJAiK65nXL1mXAW/arcgis/rest/services/Nadregion%C3%A1ln%C3%AD_a_region%C3%A1ln%C3%AD_%C3%9ASES_vymezen%C3%BD_v_Z%C3%9AR_KHK/FeatureServer). The layer supports query/export (including GeoJSON); a count query returned **526 features**. Thus there is a machine-accessible regional/nadregional ÚSES source, unlike the dashboard-only evidence noted earlier. A full GeoJSON query was about 6.1 MB. The implementation subsequently exported the play rectangle only: 47 intersecting polygons, ~0.49 MB, via `pipeline/fetch_uses.py`; see the main note for its limits.

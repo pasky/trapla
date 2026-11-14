@@ -196,8 +196,9 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
 
 ### Next steps
 
-1. Player-marked bridges/tunnels and a max embankment/cut height rule; let the auto-profile price ordinary-road
-   crossings, buildings and urban rates (per-station cost terms), beyond its existing clearance requirements.
+1. Auto-profile: price ordinary-road crossings, buildings and urban rates beyond clearance requirements.
+   Player-marked structures and high-earthwork reserves are implemented (research/15); replace provisional
+   stabilization allowances with site-specific geotechnical/hydraulic evidence, not an invented height cap.
 2. Better mass haul (multiple balance lines, tips and borrow pits by distance).
 3. Superelevation and crossfall in sections; transition curves drawn; sight-distance checks.
 4. Land cost by BPEJ / cadastre, protection areas, geology hazards (active landslides / undermining),

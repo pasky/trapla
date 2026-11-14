@@ -52,9 +52,20 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   from 8 %, orange from 15 %, red from 25 %, purple from 40 %); **Relief** <kbd>E</kbd> — vertical exaggeration
   1× / 1.5× / 2× / 3× of the whole scene; **Photo** <kbd>O</kbd> — aerial photo instead of the map layers
   (needs a network connection, see below); **Noise** <kbd>N</kbd> — the noise view (see Noise below).
-- The grade line is computed automatically (dynamic programming, see below) whenever the horizontal
-  alignment changes. Dragging a VPI in the profile panel takes manual control; **Auto profile** gives it back.
-  Profile: double-click adds a VPI, right-click deletes, wheel zooms, drag pans.
+- **Grade line: Auto | Manual** controls the vertical alignment, not the plan. Auto recomputes a low-cost
+  legal grade line with the coarse-to-fine dynamic program after edits (an approximate search, not a global
+  optimum). Manual keeps the current vertical points and lets you drag/edit them; dragging a point also
+  switches to Manual. Returning to Auto replaces manual vertical edits. Profile: double-click adds a VPI,
+  right-click deletes, wheel zooms, drag pans.
+- Select a stretch in the profile's cost strip, then **Bridge / Tunnel / Earthwork / Clear** (B/T/E/C).
+  These saved, undoable station-range overrides affect Auto's grade search and show on profile and map;
+  Clear restores automatic structure choice. Invalid clearance, cover or minimum lengths remain visible
+  violations, not silently corrected requests. E/C edit the selected range; without a selection they retain
+  their map-view shortcuts. Station ranges stay at their chainages when the horizontal plan changes.
+- High fills/cuts include benches and a separately visible **provisional engineering reserve**, independent
+  of free cut material. Excess stream-culvert length is billed beyond ordinary norm drainage. This moves the
+  flat S9.5 bridge break-even from ~26.9 to ~16.6 m at the default material value, not a legal height cap;
+  see `research/15-bridge-vs-embankment.md` for assumptions, uncertainty and sensitivity.
 - The HUD shows total cost, breakdown, quantities, travel time vs target, all violations (click to fly there),
   VALID / NOT VALID, and the best valid design so far. Undo/redo (Ctrl+Z / Ctrl+Y), reset; the design persists in
   localStorage.
