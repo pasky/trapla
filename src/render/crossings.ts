@@ -167,7 +167,12 @@ export class CrossingRenderer {
         }
       }
       if (ground) for (const k of [0, 1] as const) {
-        earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
+        if (a.p.support === 'retaining' || b.p.support === 'retaining') {
+          // Match the pavement/collar lifts so the supported face closes both seams.
+          const raised = (p: CrossingPoint, lift: number) => ({ ...p, z: p.z+lift });
+          structure.quad(raised(a.edge[k],.10),raised(a.toe[k],.015),
+            raised(b.edge[k],.10),raised(b.toe[k],.015),0xb7b4a9,0,0);
+        } else earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
         // Natural ground collar replaces the coarse mesh locally. At its outside edge it meets
         // that mesh, while the actual road/earthwork tie-in remains at the real terrain height.
         const collarAt = (section: typeof a, t: number): CrossingPoint => ({ ...section.p,

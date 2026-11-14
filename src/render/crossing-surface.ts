@@ -64,9 +64,12 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
         for (let k = 1; k < count; k++) {
           const t = k/count, x = a.x+(b.x-a.x)*t, y = a.y+(b.y-a.y)*t, ground = height(x,y);
           const terrain = a.surface === 'terrain' && b.surface === 'terrain';
+          // Retaining support continues to an unraised tie-in too: inventing a sloped
+          // shoulder between samples would widen the planner's checked, paid ribbon.
+          const support = a.support === 'retaining' || b.support === 'retaining' ? 'retaining' : 'embankment';
           path.push({ x, y, ground, z: terrain ? ground : a.z+(b.z-a.z)*t,
             ...(a.d !== undefined && b.d !== undefined ? { d: a.d+(b.d-a.d)*t } : {}),
-            surface: terrain ? 'terrain' : 'ramp', ...(terrain ? {} : { support: 'embankment' as const }) });
+            surface: terrain ? 'terrain' : 'ramp', ...(terrain && support !== 'retaining' ? {} : { support }) });
         }
       }
       const deck = !link && g.deck ? { start: mapping[g.deck.start], end: mapping[g.deck.end] } : undefined;
@@ -84,8 +87,10 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
         }) as SurfaceSection['edge'];
         const toe = edge.map((e, k) => {
           const side = k ? 1 : -1, ground = base(e.x, e.y), delta = e.z - ground;
+          // Paid retaining faces meet ground directly beneath the paved edge; their
+          // natural collars must start here, not at an unpriced embankment daylight.
           // Deck boundary sections are also the ends of the adjoining embankments.
-          if (Math.abs(delta) < .15) return { ...e, z: ground };
+          if (p.support === 'retaining' || Math.abs(delta) < .15) return { ...e, z: ground };
           // 1:1.5 fill / cut daylight search. Bounded even for impossible manual grades.
           let off = .5;
           for (; off < 300; off += 1) {

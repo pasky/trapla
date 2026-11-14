@@ -5,6 +5,8 @@ import type { View } from '../src/render/view';
 import { footprintSurfaces, groundSegment } from '../src/render/crossing-surface';
 import { CrossingRenderer } from '../src/render/crossings';
 import { footprintConflictsInRange, footprintConflictText } from '../src/ui/footprint';
+import { COLLAR_OVERLAP, GROUND_COLLAR } from '../src/render/earthwork-surface';
+import { EW_KIND } from '../src/render/terrainMaterial';
 
 const height = (x: number, y: number) => 100 + x * .02 + y * .1;
 const path = (y: number) => [0, 20, 40].map(x => ({ x, y, z: height(x, y), ground: height(x, y), surface: 'terrain' as const }));
@@ -67,6 +69,83 @@ describe('footprint conflict presentation', () => {
     expect(surfaces.every(s => s.link)).toBe(true);
     expect(surfaces.map(s => s.path[0].y)).toEqual([30,50]);
     expect(surfaces.every(s => s.crossing.geometry?.turnarounds === c.geometry!.turnarounds)).toBe(true);
+  });
+
+  it.each([
+    { link: false, z: 105 }, { link: true, z: 105 }, { link: false, z: 95 }, { link: true, z: 95 },
+  ])('keeps a paid retaining connector at its checked 4 m width ($link link, $z elevation)', ({ link, z }) => {
+    const natural = () => 100, coarse = () => 103;
+    const road = [0,20].map(x => ({ x, y: 0, z, ground: 100, surface: 'ramp' as const, support: 'retaining' as const }));
+    const c = conflict({ geometry: { ...(link ? { links: [road,[]] as [typeof road,typeof road] } : { road }),
+      width: 4, turnarounds: [], schematic: false } });
+    const [surface] = footprintSurfaces([c],natural);
+    expect(surface.sections.length).toBeGreaterThan(road.length); // Exercise inserted samples, not just the original metadata.
+    for (const section of surface.sections) {
+      expect(section.p.support).toBe('retaining');
+      for (const k of [0,1]) {
+        const edge = section.edge[k], toe = section.toe[k], outer = section.outer[k];
+        expect(Math.abs(edge.y)).toBe(2); expect(edge.z).toBe(z);
+        expect(toe.x).toBe(edge.x); expect(toe.y).toBe(edge.y); expect(toe.z).toBe(100);
+        expect(Math.abs(outer.y)).toBe(2+GROUND_COLLAR);
+        // The terrain-mask inset remains wholly within the natural replacement collar.
+        expect(Math.abs(outer.y)-COLLAR_OVERLAP).toBeGreaterThan(Math.abs(toe.y));
+      }
+    }
+    const mock = { world: new THREE.Group(), crossingSurfaces: [surface],
+      local: (x: number, y: number, z: number) => new THREE.Vector3(x,z,-y),
+      drape: natural, groundHeight: natural, replacementHeight: coarse, requestRender: vi.fn(),
+      crossingEarthMaterial: () => new THREE.MeshBasicMaterial(), crossingGroundMaterial: () => new THREE.MeshBasicMaterial(),
+      retire: (m: THREE.Material) => m.dispose(),
+    };
+    const renderer = new CrossingRenderer(mock as unknown as View);
+    renderer.setResult({ crossings: [], grade: Float64Array.of(z), ground: Float64Array.of(100), footprintConflicts: [c] });
+    let faces = 0, innerCollar = 0, outerCollar = 0, pavement = 0;
+    mock.world.traverse(object => {
+      const mesh = object as THREE.Mesh<THREE.BufferGeometry>;
+      if (!mesh.geometry?.index) return;
+      const p = mesh.geometry.getAttribute('position'), kinds = mesh.geometry.getAttribute('ewKind'), ink = mesh.geometry.getAttribute('ink');
+      for (let j = 0; j < p.count; j++) {
+        const offset = Math.abs(p.getZ(j));
+        if (mesh.name === 'crossing-earthworks') {
+          pavement++;
+          expect(offset).toBeLessThanOrEqual(2); expect(p.getY(j)).toBeCloseTo(z+.1,1);
+          expect(ink.getX(j)).toBe(0); // No fill/cut slopes anywhere outside the checked ribbon.
+        }
+        if (mesh.name === 'crossing-terrain' && p.getX(j) > 0 && p.getX(j) < 20) {
+          expect(offset).toBeGreaterThanOrEqual(2); expect(offset).toBeLessThanOrEqual(2+GROUND_COLLAR);
+          if (offset <= 12) { innerCollar++; expect(p.getY(j)).toBeCloseTo(100.015,4); }
+          if (offset === 2+GROUND_COLLAR) { outerCollar++; expect(p.getY(j)).toBeCloseTo(103.015,4); }
+        }
+      }
+      if (mesh.name !== 'crossing-decks') return;
+      const indices = mesh.geometry.index.array;
+      for (let j = 0; j < indices.length; j += 3) {
+        const ids = [indices[j],indices[j+1],indices[j+2]];
+        faces++;
+        expect(new Set(ids.map(i => p.getZ(i))).size).toBe(1); // Vertical face, never a concrete-coloured slope.
+        for (const i of ids) {
+          expect(Math.abs(p.getZ(i))).toBe(2); expect(kinds.getX(i)).toBe(EW_KIND.structure); expect(ink.getX(i)).toBe(0);
+        }
+        expect(ids.some(i => Math.abs(p.getY(i)-(z+.1))<1e-4)).toBe(true);
+        expect(ids.some(i => Math.abs(p.getY(i)-100.015)<1e-4)).toBe(true);
+      }
+    });
+    expect(faces).toBe(4*(surface.sections.length-1));
+    expect(pavement).toBeGreaterThan(0); expect(innerCollar).toBeGreaterThan(0); expect(outerCollar).toBeGreaterThan(0);
+    renderer.dispose();
+  });
+
+  it('continues retaining support through refined samples to the natural-ground tie-in', () => {
+    const c = conflict({ geometry: { width: 4, schematic: false, road: [
+      { x: 0, y: 0, z: 105, ground: 100, surface: 'ramp', support: 'retaining' },
+      { x: 20, y: 0, z: 100, ground: 100, surface: 'terrain' },
+    ] } });
+    const [surface] = footprintSurfaces([c],() => 100);
+    for (const section of surface.sections) for (const k of [0,1]) {
+      expect(section.toe[k].x).toBe(section.edge[k].x);
+      expect(section.toe[k].y).toBe(section.edge[k].y);
+      expect(section.toe[k].z).toBe(100);
+    }
   });
 
   it.each([false,true])('marks removed originals and disposes annotations (shared originals: %s)', shared => {
