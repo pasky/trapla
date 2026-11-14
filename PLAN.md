@@ -259,19 +259,22 @@ whole-route ratios alone do not measure the cost of building through town.
 - **Crossing existing roads**: the pipeline exports the OSM road network (motorway … residential, service,
   track; bridges/tunnels left out). Each crossing is resolved by the grade's height above the crossed road's
   ground: ≥ 6 m above → a forced short bridge on the new road (the same mechanism as rivers/railways; the
-  owner's "street buried next to a bridged railway" case); ≤ −6 m → an overbridge carrying the crossed road,
-  span = cut width there × the SPK CN bridge row of the crossed road's width (+ surcharge). Otherwise,
+  owner's "street buried next to a bridged railway" case); ≤ −6 m → candidate overbridge carrying the
+  crossed road, span = cut width × its SPK bridge-width row (+ surcharge), or a cheaper parallel link. Otherwise,
   class I–III roads are junction candidates: deterministic greedy class I before II before III, then station
   order, **≥ 1.5 km from other junctions including A/B tie-ins** (already paid in BILL). Research/12 §2
   supports ČSN 73 6101:2018 at medium-high confidence; the same spacing in built-up areas is our conservative
   scenario assumption, not a sourced ČSN 73 6110 value. A retained junction stays 25 M (low-confidence
   roundabout-based allowance, research/13); streets, accesses and tracks never become direct junctions.
   Rejected through roads and local/service roads get the cheaper of a parallel reconnection or overbridge;
-  tracks get a diversion or shared overbridge. Existing separation is retained first. Resolve remaining
-  crossings in class/station order, linking to the nearest **already resolved** compatible road or A/B.
+  tracks get a diversion or shared overbridge. Existing main-road bridges/tunnels are retained first.
+  Resolve remaining crossings in tiers (through roads, local roads, services, tracks), nearest to an
+  **already resolved** compatible road first, with station order breaking ties. Link to that road or A/B.
   This creates acyclic connections, not two severed roads pretending to connect only to each other; close
-  tracks share a crossing via a chain. Through/local roads cannot discharge into tracks or service roads;
-  motorway/trunk crossings are never link targets. This is a local greedy, not optimal network routing.
+  tracks share a crossing via a chain. Expanding outward avoids station-order overlapping links.
+  Through/local roads cannot discharge into tracks or service roads;
+  motorway/trunk crossings are never link targets. A/B allowances are assumed to include local collector
+  connections, **not direct accesses onto D11**. This is a local greedy, not optimal network routing.
   Link quantity = **2 × max(25 m, actual station gap)** (one link on each side); maximum reach 750 m per
   side. Beyond that, build an overbridge rather than cap an unreachable link's price. Bounds are heuristics.
   SPK CN 2026 standard flat+hilly road rows price the total length: class I/II/III by corresponding width;
@@ -395,14 +398,14 @@ every total. Short reoptimisation results are recorded separately below; these a
 | design file (`scripts/`) | `demo-design.json` | `best-design.json` | `direct-80-design.json` | `direct-90-design.json` | `town-centre-design.json` |
 | length km / min | 20.81 / 13.87 | 21.03 / 14.02 | 19.08 / 14.31 | 19.59 / 13.06 | 18.94 / 12.62 |
 | model 6 total (same geometry) | 3,949 | 3,038 | 3,470 | 3,626 | 9,024 |
-| **total** | **4,195** | **3,289** | **3,690** | **3,839** | **9,281** |
-| per km | 202 | 156 | 193 | 196 | 490 |
+| **total** | **4,158** | **3,305** | **3,690** | **3,807** | **9,182** |
+| per km | 200 | 157 | 193 | 194 | 485 |
 | road base | 864 | 862 | 769 | 782 | 722 |
 | earthworks | 1,043 | 700 | 580 | 816 | 1,575 |
 | bridges | 278 | 319 | 609 | 614 | 1,160 |
-| road crossings | 355 | 277 | 269 | 250 | 256 |
+| road crossings | 328 | 290 | 269 | 226 | 180 |
 | noise walls | 121 | 73 | 204 | 136 | 298 |
-| other objects | 776 | 655 | 737 | 786 | 1,275 |
+| other objects | 767 | 659 | 737 | 779 | 1,251 |
 | land / forest | 270 / 12 | 229 / 8 | 247 / 9 | 235 / 13 | 324 / 15 |
 | footprint buildings (count) | 397 (18) | 166 (11) | 253 (35) | 206 (27) | 3,358 (116) |
 | noise buyouts incl. plots (count) | 79 (3) | 0 (0) | 13 (1) | 0 (0) | 298 (10) |
@@ -410,7 +413,7 @@ every total. Short reoptimisation results are recorded separately below; these a
 | bridges: count / m | 6 / 480 | 7 / 550 | 9 / 1,050 | 9 / 1,060 | 11 / 2,000 |
 | noise walls m / m² | 3,409 / 12,115 | 2,439 / 7,318 | 5,288 / 20,372 | 4,218 / 13,574 | 7,939 / 29,835 |
 | crossings (paid) | 31 (28) | 28 (24) | 31 (24) | 35 (23) | 40 (24) |
-| junction / overbridge / reconnection / diversion | 4 / 12 / 2 / 10 | 3 / 12 / 2 / 7 | 2 / 13 / 4 / 5 | 3 / 9 / 2 / 9 | 0 / 11 / 9 / 4 |
+| junction / overbridge / reconnection / diversion | 4 / 10 / 3 / 11 | 3 / 12 / 2 / 7 | 2 / 13 / 4 / 5 | 3 / 6 / 2 / 12 | 0 / 6 / 10 / 8 |
 | cut / fill k m³ | 2,079 / 1,763 | 1,542 / 1,310 | 1,302 / 1,106 | 1,705 / 1,452 | 2,727 / 2,440 |
 
 Search provenance: the saved bypass/direct80 are seeded-search outputs, direct90 the fresh-search output
@@ -431,13 +434,13 @@ npx tsx scripts/optimize.ts 90 3500 - /tmp/direct90-fresh.json 20261119
 ```
 
 Short model-7 continuation searches: 500 iterations each from the saved bypass/direct80/direct90,
-seeds 20261121 / 20261122 / 20261123, yield **3,234 / 3,597 / 3,828 M**, all VALID (21.05 / 19.32 /
-19.59 km, 14.03 / 14.49 / 13.06 min). Kept as experiments, not substituted into the five saved comparison
+seeds 20261121 / 20261122 / 20261123, yield **3,226 / 3,653 / 3,796 M**, all VALID (21.07 / 19.12 /
+19.61 km, 14.05 / 14.34 / 13.07 min). Kept as experiments, not substituted into the five saved comparison
 geometries during concurrent geology/noise calibration. Reproduce with
 `npx tsx scripts/optimize.ts <90|80|90> 500 scripts/<design>.json /tmp/candidate.json <seed>`.
 
-**Calibration and spatial check:** current fixed-geometry direct80 / bypass = **1.122×**, direct90 / bypass =
-**1.167×**, actual centre / bypass = **2.822×**. The following spatial audit and noise sensitivity are
+**Calibration and spatial check:** current fixed-geometry direct80 / bypass = **1.116×**, direct90 / bypass =
+**1.152×**, actual centre / bypass = **2.778×**. The following spatial audit and noise sensitivity are
 **historical model-6 figures**, not recalculated model-7 bills. The modest fringe premium warranted inspecting the mask, roads and oriented building
 rectangles (`scripts/town-audit.ts design.json map.svg`), not adding a multiplier to force a preferred ratio.
 The 80 km/h line skirts eastern Kryblice / garage rows at km 3–4, crosses the narrow developed valley at the
@@ -480,8 +483,8 @@ buyouts vary from 7 to 27. These figures demonstrate sensitivity, not validation
 
 ### Performance
 
-`evaluate()` model 7: 30–38 ms in Node across the five saved designs (five-run bench means).
-The entire town step (footprint buildings + crossings + noise) is about 2–3 ms, cost arrays 0.2–0.4 ms.
+`evaluate()` model 7: 30–41 ms in Node across the five saved designs (five-run bench means).
+The entire town step (footprint buildings + crossings + noise) is about 2–3.5 ms, cost arrays 0.2–0.4 ms.
 Noise queries use the building spatial hash, deduplicate candidates per station, and cache actual exposed
 pairs; no station × building matrix. Source-to-wall legs are precomputed per evaluation; the required path
 difference is calculated once per pair, avoiding three attenuation logarithms. The auto-profile / mass-balance search still dominates.
@@ -498,7 +501,11 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   utility, land or building-footprint model, and reuse of a chain is not globally optimised. Approaches use
   standard flat+hilly road norms, not detailed ramp earthwork volumes/vertical curves. Existing bridges are
   ignored. No junction geometry or main-road connection requirement (an overbridge is not an interchange).
+  Mandatory eligible 25 M junctions may cost more than a nearby separation; crossing just inside the spacing
+  boundary can therefore save money. This discontinuity is not a network-connectivity optimisation.
   Skew is ignored: span is the footprint width square to the new road; a forced bridge is the 30 m minimum.
+  For 0 < h < 6, the conservative overbridge spans the whole embankment footprint and raises the crossed road
+  by 6 + h; lowering it into an underpass / inserting our own bridge is not an additional cost option.
 - The structure choice compares each option at the rates of its own footprint, but the balance search's
   estimate takes the built-up share at the centreline only.
 - Buildings: only OSM ways (no multipolygon buildings); the rectangle over-covers L-shaped footprints; no

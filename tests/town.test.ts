@@ -88,8 +88,11 @@ describe('junction spacing and geometric reconnections', () => {
     expect(isolated.type).toBe('overbridge');
     expect(isolated.linkLength).toBeUndefined(); // no capped link pretending to reach the junction
     expect(isolated.approachLength).toBeGreaterThan(0);
-    expect(isolated.cost).toBeCloseTo((isolated.span! * ROAD_CLASSES.residential.bridgePerKm
-      + isolated.approachLength! * isolated.roadPerKm!) / 1000, 6);
+    expect(run(600).type).toBe('overbridge'); // within reach, but the bridge is cheaper
+    // Grow a link tree outward from the junction, not in station order (no overlapping links).
+    const mirrored = resolve([crossing(3300, 'primary'), crossing(3200, 'residential'), crossing(3100, 'residential')]);
+    const forward = resolve([crossing(3000, 'primary'), crossing(3100, 'residential'), crossing(3200, 'residential')]);
+    expect(mirrored.reduce((sum, c) => sum + c.cost, 0)).toBe(forward.reduce((sum, c) => sum + c.cost, 0));
   });
 
   it('consolidates nearby tracks into one crossing with an acyclic chain; services use the local network', () => {
@@ -97,10 +100,30 @@ describe('junction spacing and geometric reconnections', () => {
     expect(cs.map(c => c.type)).toEqual(['overbridge', 'diversion', 'diversion']);
     expect(cs.map(c => c.targetS)).toEqual([undefined, 4000, 4050]);
     expect(cs[1].linkLength).toBe(100);
+    // Deep cuts do not force separate bridges for tracks/accesses beside an existing crossing.
+    const deep = [crossing(4000, 'residential', -12), crossing(4100, 'track', -12), crossing(4050, 'service', -12)];
+    resolveCrossings(deep, 9000, [KIND.earth], [51.5], [0]);
+    expect(deep.map(c => c.type)).toEqual(['overbridge', 'diversion', 'reconnection']);
+    expect(deep[1].targetS).toBe(4050);
     const services = resolve([crossing(3000, 'primary'), crossing(3050, 'service'), crossing(3100, 'service')]);
     expect(services.slice(1).map(c => c.type)).toEqual(['reconnection', 'reconnection']);
     expect(services[2].targetS).toBe(3050);
     expect(services[2].cost).toBe(services[1].cost);
+  });
+
+  it('bills service access once without surcharging it or the all-in junction', () => {
+    const terrain = syntheticTerrain(1400, 100, 5, () => 400);
+    const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 500, y: 250 }, b: { x: 6500, y: 250 } };
+    const d: Design = { category: 'S9.5', speed: 90, pis: [], profileMode: 'manual',
+      vpis: [{ s: 0, z: 400, r: null }, { s: 6000, z: 400, r: null }] };
+    const run = (cls: string) => evaluate({ ...ctx, roads: new RoadNet({ cls: ['primary', cls],
+      ways: [[0, 3500, 0, 3500, 500], [1, 3550, 0, 3550, 500]] }) }, d);
+    const street = run('residential'), service = run('service'), plain = evaluate(ctx, d);
+    expect(service.crossings[1].type).toBe('reconnection');
+    expect(service.cost.total - street.cost.total).toBeCloseTo(500_000, 3);
+    expect(service.cost.surcharge).toBeCloseTo(street.cost.surcharge, 3);
+    expect(service.cost.surcharge).toBeGreaterThan(plain.cost.surcharge); // SPK link does get surcharge
+    expect(service.parts.surcharge[300]).toBe(plain.parts.surcharge[300]); // junction does not
   });
 
   it('preserves grade separation without consuming junction spacing or making motorway access', () => {

@@ -133,7 +133,8 @@ export interface RoadClassRow {
   /** SPK CN bridge row used for the overbridge deck: CZK per km of bridge of that width */
   bridgePerKm: number;
   bridgeCode: string;
-  /** can be grade-separated (forced bridge on our road when clearly above, overbridge when clearly below) */
+  /** Forces a bridge on our road when clearly above; minor tracks/accesses can instead divert.
+   * All classes may use an overbridge if cheaper than a link. */
   separable: boolean;
   /** must be grade-separated (motorways, expressways): the grade has to clear it like a railway
    * (STRUCTURE_RULES.railClearance) or pass ≥ CROSSING_RULES.underDepth below it; anything in between
