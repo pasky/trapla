@@ -33,7 +33,8 @@ Other commands:
 | `npm run typecheck` / `npm run build` | TypeScript check / production build into `dist/` |
 | `npm run bench [design.json]` | recompute timing + realism numbers in Node (default: straight line and an official-line-like design) |
 | `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
-| `npm run smoke` | interaction smoke test with real mouse events (add/drag/delete PI, profile takeover, undo, persistence) |
+| `npm run smoke` | interaction smoke test with real mouse events (add/drag/delete a bend, road height By hand, undo, persistence) |
+| `node scripts/ux.mjs [--docs]` | UX checks with real mouse/keyboard events: road-height switch, pins, height points, stretch bar, Undo/Redo bar, bends in the profile, map ↔ profile hover, click-to-zoom; `--docs` writes screenshots 36–41 |
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
 | `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
@@ -47,49 +48,56 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 
 ## How to play
 
-- **Click** bare terrain to add a bend (tangent intersection point, PI) to the nearest leg;
-  **Shift+click** adds a bend instead of selecting a building/crossing (existing numbered PI markers
-  retain their selection/drag behaviour); **drag** a numbered PI
-  to move it; **right-click** it or press <kbd>Del</kbd> to delete. Select a PI to edit its radius (auto = the
-  smallest radius that satisfies the norm, incl. room for transition curves).
+- **Move the route:** click the map to add a bend, drag a numbered bend to move it, right-click it (or
+  <kbd>Del</kbd>) to delete it. Clicking a building or crossed road selects it instead; **Shift+click** adds a
+  bend there anyway. Click a bend to change its curve radius (◇ grips, mouse wheel, <kbd>+</kbd> / <kbd>−</kbd>,
+  **max**; "smallest allowed" = the smallest radius the rules allow, incl. room for transition curves).
 - Map: left-drag pans, right-drag rotates, wheel zooms.
+- **Undo / Redo** sit at the top left of the map (tooltips say what they undo); <kbd>Ctrl+Z</kbd> /
+  <kbd>Ctrl+Shift+Z</kbd> (or <kbd>Ctrl+Y</kbd>) work for every edit, including the build tools (also right after
+  choosing in one of their drop-downs).
 - View options (buttons at the top right of the map, remembered between sessions):
   **Contours** <kbd>C</kbd> — contour lines with elevation labels; the interval follows the zoom (5 / 25 m close,
   10 / 50 m mid, 20 / 100 m far, thick lines = major); **Slope** <kbd>S</kbd> — tints the ground by slope (yellow
   from 8 %, orange from 15 %, red from 25 %, purple from 40 %); **Relief** <kbd>E</kbd> — vertical exaggeration
   1× / 1.5× / 2× / 3× of the whole scene; **Photo** <kbd>O</kbd> — aerial photo instead of the map layers
   (needs a network connection, see below); **Noise** <kbd>N</kbd> — the noise view (see Noise below).
-- **Grade line: Auto | Manual** controls the vertical alignment, not the plan. Auto recomputes a low-cost
-  legal grade line with the coarse-to-fine dynamic program after edits (an approximate search, not a global
-  optimum). Manual keeps the current vertical points and lets you drag/edit them; dragging a point also
-  switches to Manual. Returning to Auto replaces manual vertical edits. Profile: double-click adds a VPI,
-  right-click deletes, wheel zooms, drag pans.
-- **Pinned Auto heights:** Alt+click the profile to select a station, or enter a station in Build tools
-  and click **Select / pin** (no modifier needed), then enter its elevation and click
-  **Pin height** in the HUD's **Build tools**. Auto optimises the rest while passing within ±0.5 m of the
-  requested height on the finished curved grade. Orange pins show on map/profile; click a map pin or use
-  the saved-pin list to edit it. **Auto / unpin** removes it. Pins retain absolute chainage, remain saved but
-  inactive in Manual, and become inactive beyond the end of a shortened route. Fixed endpoint elevations,
-  maximum gradients and vertical-curve limits still apply; failed searches report a computed fix, not a
-  silently moved pin. The bounded grid search can miss a feasible solution.
-- Select a stretch in the profile's cost strip, then **Bridge / Tunnel / Earthwork / Clear** (B/T/E/C).
-  These saved, undoable station-range overrides affect Auto's grade search and show on profile and map;
-  Clear restores automatic structure choice. Invalid clearance, cover or minimum lengths remain visible
-  violations, not silently corrected requests. E/C edit the selected range; without a selection they retain
-  their map-view shortcuts. Station ranges stay at their chainages when the horizontal plan changes.
+- **The longitudinal profile** (bottom) shows the ground, the **road height** (black line, with slope %), and the
+  plan's **bends** as numbered circles above it — the same numbers as on the map, with thin guides down to their
+  curves in the curve band. Hovering a bend highlights it on the map and vice versa; hovering the road on the map
+  marks that spot in the profile. No modifier keys anywhere:
+  **click** = zoom in there (the map glides to the same spot), **drag** = select a stretch, **click a curve /
+  straight** in the band under the chart = select it, wheel = zoom, sideways scroll or right-drag = scroll along
+  the route; **−** / **+** and **Whole route** (shown only while zoomed in) in the profile's title bar.
+- **Road height: Automatic | By hand** (HUD). *Automatic*: the game sets the road's height along the route for the
+  lowest cost and updates it whenever you move the route (an approximate search; it can miss a legal solution).
+  The computed height points are not drawn; to force a height, **click the road line** — that pins it there — then
+  drag the orange pin up / down or type the height in the bar that pops up (**Unpin** removes it). A bend's bar /
+  HUD card also offers *Pin road height here*. The finished road passes within ±0.5 m of every pin; slope and
+  rounding rules still apply, and an unreachable pin is a violation with a suggested height, never silently moved.
+  Pins keep their km position when you move the route (they are kept, inactive, By hand and beyond the end of a
+  shortened route). *By hand*: the current automatic heights become your starting point, shown as **◆ height
+  points**: drag one to raise / lower the road, **double-click** the line to add one, right-click one to delete it.
+  Hovering a height point names it on the map. Going back to Automatic replaces them (Undo brings them back).
+- **Bridge / tunnel / earthwork on a stretch:** drag across the profile; a bar pops up over the selection with
+  **Bridge**, **Tunnel**, **Earthwork** and **Automatic** (keys <kbd>B</kbd> / <kbd>T</kbd> / <kbd>E</kbd> /
+  <kbd>C</kbd>) and **Noise wall…**. Your choice affects the automatic road height, shows as "your bridge" etc. on
+  profile and map, and stays at its km position when you reroute; choose again on any part of it to change or
+  erase that part. Impossible choices (too low a bridge, too little tunnel cover, too short) stay as you made them
+  and show as violations. <kbd>Esc</kbd> or ✕ deselects; without a selection E / C keep their map-view meaning.
 - High fills/cuts include benches and a separately visible **provisional engineering reserve**, independent
   of free cut material. Excess stream-culvert length is billed beyond ordinary norm drainage. This moves the
   flat S9.5 bridge break-even from ~26.9 to ~16.6 m at the default material value, not a legal height cap;
   see `research/15-bridge-vs-embankment.md` for assumptions, uncertainty and sensitivity.
 - The HUD shows total cost, breakdown, quantities, travel time vs target, all violations (click to fly there),
-  VALID / NOT VALID, and the best valid design so far. Undo/redo (Ctrl+Z / Ctrl+Y), reset; the design persists in
-  localStorage.
-- The game starts from the straight line with the automatic grade line; the cost of a design that is not valid is
-  struck through. Hover the profile for the cost split at a station; drag in the cost strip under it (or click a
-  curve / tangent in the band above it) to get the breakdown of that stretch, <kbd>Esc</kbd> for the whole route.
+  VALID / NOT VALID, and the best valid design so far; **Start over** returns to the straight line. The design
+  persists in localStorage.
+- The game starts from the straight line with Automatic road height; the cost of a design that is not valid is
+  struck through. Hover the profile for the cost split at that spot; a selected stretch shows its own bill in the
+  HUD, <kbd>Esc</kbd> returns to the whole route.
 - **Crossing tools:** click a crossing on the map/profile, or choose a crossed road in **Build tools**
-  (filtered by the selected stretch). Choose **Junction / Our bridge / Its overbridge / Close + reconnect /
-  Auto**. The choice follows the existing road's pack ID, including every intersection of that way.
+  (filtered by the selected stretch). Choose **Junction / Our bridge over it / Its bridge over us / Close it +
+  reconnect / Automatic**. The choice follows the existing road's pack ID, including every intersection of that way.
   Our bridge overrides overlapping structure paint locally; Auto seeks its clearance. Ordinary-road
   overbridges use the same priced raised approaches as Auto; fixed-level motorways/expressways require
   our road in a ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
@@ -105,7 +113,7 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   class determinations. Permian/Carboniferous profiles are calibrated to D11 1109 reported excavation
   quantities (official-line surrogate 42.6/18.0/39.4% I/II/III, not an as-built reconstruction).
   Unmapped ground uses the norm's 75/20/5 mix; see `research/10-geology-excavation.md`.
-- **Building tools:** click any building on the map → **Buy out + demolish / Keep / Auto** in Build tools.
+- **Building tools:** click any building on the map → **Buy out + demolish / Keep / Automatic** in Build tools.
   An explicit buyout works even away from the road; off-corridor acquisitions include the existing
   provisional whole-plot allowance. Footprint acquisitions are billed once with corridor land instead.
   **Keep** forbids both demolition and noise buyout: a footprint/working-strip hit or remaining noise
@@ -114,8 +122,8 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   Clearing the decision restores the automatic policy. Building/road IDs are scoped to the scenario
   object-pack fingerprint: a changed pack clears those positional choices with a HUD notice, keeping
   station-based edits. Unstamped imported designs are assumed to refer to the current pack.
-- **Wall tools:** select a profile stretch, choose **Left / Right (A → B)** and **2–6 m** in Build tools,
-  then **Add wall / No wall / Auto wall**. Repainting changes only that side and subrange; undo restores it.
+- **Wall tools:** select a profile stretch (or **Noise wall…** in its bar), choose **Left / Right (driving A → B)**
+  and **2–6 m** in Build tools, then **Build wall / No wall / Automatic**. Repainting changes only that side and subrange; undo restores it.
   Player walls retain their exact selected extent (no automatic end margins); tunnels suppress built walls.
   Teal walls show the actual height, dotted marks show manual intent, and pink dashed marks show removals
   on map/profile. Nearby retained dwellings are grouped by side/stretch in the violation list.
@@ -144,9 +152,21 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   the limit and why it was walled or bought out. Walls and buyouts are decided at the top floor, so a dwelling
   can be walled although the ground-floor band beside it is already under the limit.
 
+### Profile and editing (UX)
+
+| Automatic road height: click the line to pin, drag the pin | By hand: ◆ height points, hover names one on the map |
+|---|---|
+| ![Pinned height](docs/screenshots/36-road-height-auto-pin.png) | ![By hand](docs/screenshots/37-road-height-by-hand.png) |
+| Drag a stretch → Bridge / Tunnel / Earthwork / Automatic | Bends in the profile, hover-linked to the map |
+| ![Stretch bar](docs/screenshots/38-stretch-action-bar.png) | ![Bends](docs/screenshots/39-bends-in-profile.png) |
+
+Also: [map hover marks the spot in the profile](docs/screenshots/40-map-hover-in-profile.png),
+[a click zooms the profile and the map](docs/screenshots/41-profile-click-zoom.png).
+Reproduce with `node scripts/ux.mjs --docs`.
+
 ### Manual build tools
 
-| Pinned Auto grade | Crossed-road reconnection |
+| Pinned road height | Crossed-road reconnection |
 |---|---|
 | ![Pinned grade](docs/screenshots/30-build-grade-pin.png) | ![Crossing links](docs/screenshots/31-build-crossing-links.png) |
 | Keep a building | Player-built noise wall |
@@ -166,8 +186,8 @@ src/core/               pure, tested modules (no DOM)
   data/                 categories, norms, prices, scenario — all numbers live here, with source notes
   terrain.ts, ground.ts  5 m heights (bilinear), land cover, OOB mask, categorical ground/weathering profiles
   horizontal.ts         tangents + circular arcs, transition room, stationing
-  vertical.ts           grade line, parabolic vertical curves
-  autoprofile.ts        DP grade line (knots every ~250 m; state = elevation × incoming grade)
+  vertical.ts           road height (grade line), parabolic vertical curves
+  autoprofile.ts        Automatic road height: DP over knots every ~250 m; state = elevation × incoming grade
   sections.ts           cross-sections (crown + cut/fill slopes to daylight) against the terrain
   structures.ts         bridge / tunnel choice per station, gap merging, run-level cost check
   earthworks.ts         average-end-area volumes, mass haul with one balance line
@@ -185,7 +205,7 @@ src/render/             three.js view
   buildings.ts          extruded buildings, merged per chunk
   contourLabels.ts      elevation labels on major contours
   vectorPack.ts         decoder of vector.bin.gz
-src/ui/                 HUD, profile panel, view options bar
+src/ui/                 HUD, profile panel (+ floating stretch / pin bar), Undo/Redo bar, view options bar
 ```
 
 ### How the terrain is drawn

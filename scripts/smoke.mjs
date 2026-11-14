@@ -45,34 +45,30 @@ await page.waitForTimeout(300);
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
 ok(Math.hypot(s.d.pis[0].x - p0.x, s.d.pis[0].y - p0.y) > 20, `drag moves the PI (${(s.d.pis[0].x - p0.x).toFixed(0)}, ${(s.d.pis[0].y - p0.y).toFixed(0)})`);
-// 3. profile: drag a VPI → manual
 const cb = await page.locator('#profile-canvas').boundingBox();
+// 3. profile: "By hand", then drag a height point (Automatic draws none: its points are the game's)
 await page.evaluate(() => window.trapla.profileFit());
+await page.click('#grade-manual');
+await page.evaluate(() => window.trapla.whenIdle());
 const hit = await page.evaluate(() => {
-  const r = window.trapla.result();
-  const c = document.getElementById('profile-canvas');
-  const W = c.clientWidth, H = c.clientHeight;
-  let lo = Infinity, hi = -Infinity;
-  for (let i = 0; i < r.n; i++) { lo = Math.min(lo, r.ground[i], r.grade[i]); hi = Math.max(hi, r.ground[i], r.grade[i]); }
-  for (const v of r.vpis) { lo = Math.min(lo, v.z); hi = Math.max(hi, v.z); }
-  const m = Math.max(8, (hi - lo) * 0.08); lo -= m; hi += m;
-  const k = Math.floor(r.vpis.length / 2), v = r.vpis[k];
-  // layout of ui/profile.ts: chart from y = 26 to H − 96 (alignment band and cost strip below it)
-  return { k, x: 52 + (v.s / r.length) * (W - 66), y: 26 + (1 - (v.z - lo) / (hi - lo)) * (H - 122) };
+  const r = window.trapla.result(), k = Math.floor(r.vpis.length / 2), v = r.vpis[k];
+  window.trapla.profileFocus(v.s - 300, v.s + 300);
+  return { k, z: v.z, ...window.trapla.profilePoint(v.s, v.z) };
 });
-await page.mouse.move(cb.x + hit.x, cb.y + hit.y);
+await page.mouse.move(hit.x, hit.y);
 await page.mouse.down();
-for (let k = 1; k <= 5; k++) await page.mouse.move(cb.x + hit.x, cb.y + hit.y - 6 * k);
+for (let k = 1; k <= 5; k++) await page.mouse.move(hit.x, hit.y - 6 * k);
 await page.mouse.up();
 await page.waitForTimeout(300);
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
-ok(s.d.profileMode === 'manual', `dragging a VPI takes manual control (${s.d.profileMode})`);
+ok(s.d.profileMode === 'manual' && s.d.vpis[hit.k].z > hit.z + 1, `By hand: dragging a height point raises it (${hit.z} → ${s.d.vpis[hit.k].z})`);
+await page.evaluate(() => window.trapla.profileFit());
 // 4. auto button, undo
 await page.click('#grade-auto');
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
-ok(s.d.profileMode === 'auto', 'Auto profile button restores auto mode');
+ok(s.d.profileMode === 'auto', '"Automatic" restores the automatic road height');
 await page.keyboard.press('Control+z');
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
@@ -131,7 +127,7 @@ ok(s.d.profileMode === 'auto' && s.d.structureOverrides[0].kind === 0, 'Auto ret
 await page.click('#grade-manual');
 await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
-ok(s.d.profileMode === 'manual' && await page.getAttribute('#grade-manual', 'aria-pressed') === 'true', 'Manual button freezes the current profile');
+ok(s.d.profileMode === 'manual' && await page.getAttribute('#grade-manual', 'aria-checked') === 'true', '"By hand" starts from the current automatic heights');
 await page.keyboard.press('Escape');
 sel = await page.evaluate(() => ({ r: window.trapla.range(), visible: document.getElementById('range').style.display !== 'none' }));
 ok(sel.r === null && !sel.visible, 'Esc returns to the whole route');
@@ -140,7 +136,7 @@ sel = await page.evaluate(() => window.trapla.range());
 ok(sel !== null, `clicking the alignment band selects a tangent / curve (${sel && (sel.s0 / 1000).toFixed(2)}–${sel && (sel.s1 / 1000).toFixed(2)} km)`);
 await page.click('#range button');
 sel = await page.evaluate(() => window.trapla.range());
-ok(sel === null, '"Whole route" button clears the selection');
+ok(sel === null, '"✕ Deselect" clears the selection');
 // 5. right-click deletes the PI
 await frames();
 const b2 = await page.locator('.pi').first().boundingBox();
