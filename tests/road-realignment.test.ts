@@ -203,6 +203,27 @@ describe('bounded real road relocation', () => {
     expect(duplicate.sourceInterval({ x: 50, y: 0 }, { x: 51, y: 0 }, 1)?.way).toBe(1);
   });
 
+  it('treats simplification-displaced junctions conservatively without inventing a connected source', () => {
+    const input = setup([[0, 500, 240, 500, 450], [0, 450, 241, 550, 241]]);
+    input.hit = { a: 0, b: 32, i: 40, j: 40 };
+    expect(input.roads.isDeadEnd({ x: 500, y: 240 })).toBe(false);
+    const plan = planRoadRealignment(input);
+    expect(plan.problems.length).toBeGreaterThan(0);
+    expect(plan.geometry.turnarounds).toBeUndefined();
+    const side = setup([[0, 500, 240, 500, 450], [0, 501.2, 275, 650, 275]]);
+    side.hit = input.hit;
+    expect(planRoadRealignment(side).problems).toContain('realignment would sever an unhandled road branch');
+  });
+
+  it('blocks new pavement over parallel or crossing expressways and unrelated ordinary roads', () => {
+    for (const obstacle of [[1, 20, 280, 1250, 280], [1, 600, 220, 600, 300]]) {
+      const input = setup([[0, 20, 260, 1250, 260], obstacle], ['service', 'trunk']);
+      expect(planRoadRealignment(input).problems).toContain('new pavement intersects a grade-separated road');
+    }
+    const ordinary = setup([[0, 20, 260, 1250, 260], [0, 20, 278, 1250, 278]]);
+    expect(planRoadRealignment(ordinary).problems).toContain('new pavement intersects an unhandled road');
+  });
+
   it('protects ribbon edges and turning aprons, while leaving old drainage on unchanged tails alone', () => {
     const input = setup([[0, 500, 260, 1250, 260]]);
     input.hit = { a: 0, b: 607, i: 40, j: 100 };

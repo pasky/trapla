@@ -461,6 +461,27 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
       if (prev?.way === interval.way && interval.a <= prev.b + 1e-5 && interval.b >= prev.a - 1e-5) { prev.a = Math.min(prev.a, interval.a); prev.b = Math.max(prev.b, interval.b); }
       else sourceIntervals.push(interval);
     }
+    const roadObstacles = (cell: FootprintCell) => roads.nearSegments(cellBounds(cell, 14), segment => {
+      const other = ROAD_CLASSES[segment.cls], otherHalf = other.width / (segment.cls === 'motorway' ? 4 : 2);
+      const overlap = clipFootprint(segment, cell, otherHalf);
+      if (!overlap) return;
+      if (other.noAtGrade) { problems.add('new pavement intersects a grade-separated road'); return; }
+      const margin = (half + otherHalf) * Math.SQRT2 + 0.05; // rotated ribbon end-cap at an actual source tie-in
+      const contains = (a: number, b: number) => overlap[0] >= a - margin && overlap[1] <= b + margin;
+      if (sourceIntervals.some(s => s.way === segment.way && contains(s.a, s.b))
+        || (covered?.get(segment.way) ?? []).some(([a, b]) => contains(a, b))) return;
+      // A deliberate join onto a complete paid crossing is already an engineered surface.
+      if ((input.crossings ?? []).some(c => crossingSource(c, roads)?.intervals.some(s => s.way === segment.way && contains(s.a, s.b)))) return;
+      problems.add('new pavement intersects an unhandled road');
+    });
+    for (let i = 1; i < path.length; i++) {
+      if (i === gap) continue;
+      const p = path[i - 1], q = path[i], len = distance(p, q);
+      if (len < 1e-6 || (distance(p, along(raw, p.d!)) <= 0.01 && distance(q, along(raw, q.d!)) <= 0.01
+        && Math.abs(p.z - p.ground) <= 0.01 && Math.abs(q.z - q.ground) <= 0.01)) continue;
+      roadObstacles({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half });
+    }
+    if (turn) roadObstacles({ ...turn, i: h.i, s: r.s[h.i], tx: 1, ty: 0, along: radius, left: radius, right: radius });
     const checkedJunctions = new Set<string>();
     for (const span of spans) {
       if (span.hi < ownLo || span.lo > ownHi) continue;
@@ -487,7 +508,7 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
           if (i === gap) continue;
           const a = path[i - 1], b = path[i], dx = b.x - a.x, dy = b.y - a.y;
           const t = Math.max(0, Math.min(1, ((junction.x - a.x) * dx + (junction.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
-          preserved = Math.hypot(junction.x - a.x - t * dx, junction.y - a.y - t * dy) < 0.02
+          preserved = Math.hypot(junction.x - a.x - t * dx, junction.y - a.y - t * dy) < 2
             && Math.abs(ground - a.z - t * (b.z - a.z)) < 0.1;
         }
         if (!preserved) problems.add('realignment would sever an unhandled road branch');
@@ -505,7 +526,8 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
     // untouched tails. Keep adaptive retries where a different paid approach can be reached.
     if (problems.has('path intersects water/rail') && !anchors.some(Boolean) && !linkA && !linkB
       && !problems.has('tie-in inside the footprint')) break;
-    if (![...problems].some(p => /tie-in|grade|footprint/.test(p))) break;
+    if (problems.has('new pavement intersects a grade-separated road') || problems.has('new pavement intersects an unhandled road')) break;
+    if (![...problems].some(p => /tie-in|grade|footprint|support/.test(p))) break;
     if (a === lo && b === hi) break;
   }
   return best!;

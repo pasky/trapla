@@ -23,6 +23,9 @@ export interface RoadCrossing {
 
 /** tolerance on segment parameters (round-off at end points) */
 const EPS = 1e-9;
+/** Conservative uncertainty only: pack ways are simplified by 1 m then rounded to metres.
+ * Never use this to invent connected traversal segments or a usable crossing anchor. */
+const JUNCTION_UNCERTAINTY = 2;
 const pointKey = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`;
 
 const RANK: Record<string, number> = Object.fromEntries(Object.keys(ROAD_CLASSES).map((k, i) => [k, i]));
@@ -220,17 +223,17 @@ export class RoadNet {
    * sharp junction, point budget or cycle. Only a single incident graph ray is a true end.
    * Interior points of another segment count as two rays (an unsplit T-junction). */
   isDeadEnd(p: { x: number; y: number }): boolean {
-    return new Set(this.connections(p).map(c => `${c.dx.toFixed(5)},${c.dy.toFixed(5)}`)).size === 1;
+    return new Set(this.connections(p, JUNCTION_UNCERTAINTY).map(c => `${c.dx.toFixed(5)},${c.dy.toFixed(5)}`)).size === 1;
   }
 
   /** Incident graph rays. d is 1 cm into each ray on its own way, so an interval ending at
    * the junction cannot accidentally claim the untouched continuation beyond that boundary. */
-  connections(p: { x: number; y: number }): RoadConnection[] {
+  connections(p: { x: number; y: number }, tolerance = 0.02): RoadConnection[] {
     const out: RoadConnection[] = [];
-    this.nearSegments([p.x - 0.02, p.y - 0.02, p.x + 0.02, p.y + 0.02], s => {
+    this.nearSegments([p.x - tolerance, p.y - tolerance, p.x + tolerance, p.y + tolerance], s => {
       const dx = s.bx - s.ax, dy = s.by - s.ay;
       const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / (s.length * s.length || 1)));
-      if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > 0.02) return;
+      if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > tolerance) return;
       for (const [x, y, direction] of [[s.ax, s.ay, -1], [s.bx, s.by, 1]]) {
         const len = Math.hypot(x - p.x, y - p.y);
         if (len > 0.02) out.push({ way: s.way, cls: s.cls, d: s.d + t * s.length + direction * Math.min(0.01, len / 2), dx: (x - p.x) / len, dy: (y - p.y) / len });
@@ -245,15 +248,15 @@ export class RoadNet {
     const candidates = new Map<string, { x: number; y: number }>(), dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy;
     const add = (p: { x: number; y: number }) => {
       const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (length2 || 1)));
-      if (Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 0.02) candidates.set(pointKey(p.x, p.y), p);
+      if (Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < JUNCTION_UNCERTAINTY) candidates.set(pointKey(p.x, p.y), p);
     };
     add(a); add(b);
-    this.nearSegments([Math.min(a.x, b.x) - 0.02, Math.min(a.y, b.y) - 0.02, Math.max(a.x, b.x) + 0.02, Math.max(a.y, b.y) + 0.02], s => {
+    this.nearSegments([Math.min(a.x, b.x) - JUNCTION_UNCERTAINTY, Math.min(a.y, b.y) - JUNCTION_UNCERTAINTY, Math.max(a.x, b.x) + JUNCTION_UNCERTAINTY, Math.max(a.y, b.y) + JUNCTION_UNCERTAINTY], s => {
       add({ x: s.ax, y: s.ay }); add({ x: s.bx, y: s.by });
     });
     const out: RoadJunction[] = [];
     for (const p of candidates.values()) {
-      const connections = this.connections(p);
+      const connections = this.connections(p, JUNCTION_UNCERTAINTY);
       if (new Set(connections.map(c => `${c.dx.toFixed(5)},${c.dy.toFixed(5)}`)).size > 2) out.push({ ...p, connections });
     }
     return out;
