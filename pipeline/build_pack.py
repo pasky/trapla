@@ -598,6 +598,10 @@ def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     h = fetch_terrain()
+    # Hydrology uses raw DMR nodata, never the display fill or painted land cover.
+    import hydrology
+    watercourses = hydrology.build(h, CELL, hydrology.fetch_waterways(CACHE, overpass),
+                                   way_xy, OUT, log)
     oob = np.isnan(h)
     import geology
     ground = geology.build(CACHE, OUT, (X_MIN, Y_MIN, X_MAX, Y_MAX), http_get, log, oob)
@@ -655,6 +659,7 @@ def main():
                       "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "classMask": 7, "builtUpBit": BUILTUP_BIT, "riverCrossingBit": 32, "railCrossingBit": 64, "oobBit": 128},
         "vector": vector,
         "ground": ground,
+        "watercourses": watercourses,
         # optional view layer, streamed by the browser per view (public ČÚZK view service, CORS enabled)
         "orthophoto": {"export": "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer/export",
                        "sr": 5514, "attribution": "© ČÚZK, Ortofoto ČR, CC BY 4.0"},
