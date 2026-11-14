@@ -8,9 +8,10 @@ import type { RoadNet } from './roadnet';
 import { findRuns, KIND, type Run } from './structures';
 import { CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
 
-/** Provisional automatic-search envelope, not engineering feasibility limits. Exceptional
- * spans/long approach changes require a new alignment/profile rather than unbounded repair. */
-export const SUPPORT_LIMITS = { extensionM: 300, spanM: 120 } as const;
+/** Provisional automatic-search envelope, not a norm-proven span feasibility limit. Clear
+ * spans up to 180 m use the existing bridge model's long-span extrapolation (as overbridges
+ * already do), fully priced per span. Larger changes still require a new alignment/profile. */
+export const SUPPORT_LIMITS = { extensionM: 300, spanM: 180 } as const;
 
 export interface SupportRoute {
   n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
@@ -26,6 +27,8 @@ export interface SupportDiagnostic {
   extensionM: number;
   raiseM: number;
   requiredSpanM?: number;
+  /** Required deck elevation at s for a span-depth failure; s is the worst failing station. */
+  requiredZ?: number;
   lowerM?: number;
   structure?: 'abutment' | 'portal';
 }
@@ -49,7 +52,8 @@ function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet): nu
     const hit = clipFootprint(segment, c, half);
     if (!hit) return;
     const t = ((hit[0] + hit[1]) / 2 - segment.d) / segment.length;
-    height = Math.max(height, terrain.heightAt(segment.ax + t * (segment.bx - segment.ax), segment.ay + t * (segment.by - segment.ay)) + CROSSING_RULES.overHeight);
+    height = Math.max(height, terrain.heightAt(segment.ax + t * (segment.bx - segment.ax), segment.ay + t * (segment.by - segment.ay))
+      + (ROAD_CLASSES[segment.cls].noAtGrade ? R.railClearance : CROSSING_RULES.overHeight));
   });
   terrain.watercourses?.nearSegments(cellBounds(c, terrain.watercourses.maxHalfWidth), segment => {
     const hit = clipFootprint(segment, c, (segment.reach.width ?? (segment.reach.kind === 'river' ? 5 : 0.5)) / 2);
@@ -77,9 +81,13 @@ function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet): nu
  * screened downstream; diagnostics explain a measured extension/elevation rather than hiding it. */
 export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>): {
   kind: Uint8Array; runs: Run[]; diagnostics: SupportDiagnostic[]; violations: Violation[];
+  /** Only failing cells, deduplicated at shared spans. Caller may lift AUTO profiles; this
+   * routine never changes grade, profile controls, or any explicitly requested structure. */
+  clearanceRequirements: { s: number; z: number }[];
 } {
   const kind = Uint8Array.from(r.kind), diagnostics: SupportDiagnostic[] = [], violations: Violation[] = [];
-  if (r.n < 2) return { kind, runs: r.runs.map(run => ({ ...run })), diagnostics, violations };
+  const requiredElevations = new Map<number, number>();
+  if (r.n < 2) return { kind, runs: r.runs.map(run => ({ ...run })), diagnostics, violations, clearanceRequirements: [] };
   const manual = new Uint8Array(r.n);
   for (let i = 0; i < r.n; i++) manual[i] = overrides && overrides[i] >= 0 ? 1 : 0;
   const manualRuns = new Set<Run>();
@@ -207,7 +215,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     // additional depth against actual terrain and protected features under the deck. These
     // are clearance queries, NOT solid-deck footprint conflicts or relocation charges.
     const supports = [run.s0, ...piers, run.s1];
-    let raiseM = 0;
+    let raiseM = 0, worstI = run.i0, requiredZ = r.grade[run.i0];
     for (let k = 0; k + 1 < supports.length; k++) {
       const a = supports[k], b = supports[k + 1], span = b - a;
       const extraDepth = Math.max(0, span / 20 - 1.2);
@@ -217,11 +225,13 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         if (right <= left) continue;
         const cell = cellAt(r, (left + right) / 2, (right - left) / 2, r.crownWidth / 2);
         const required = Math.max(r.ground[i] + span / 20, obstacleHeight(cell, terrain, roads) + extraDepth);
-        raiseM = Math.max(raiseM, required - r.grade[i]);
+        const shortfall = required - r.grade[i];
+        if (shortfall > 0.01) requiredElevations.set(r.s[i], Math.max(required, requiredElevations.get(r.s[i]) ?? -Infinity));
+        if (shortfall > raiseM) { raiseM = shortfall; worstI = i; requiredZ = required; }
       }
     }
     if (raiseM > 0.01) {
-      diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-depth', extensionM: 0, raiseM });
+      diagnostics.push({ s: r.s[worstI], reason: 'span-depth', extensionM: 0, raiseM, requiredZ });
       violations.push({ kind: 'structure', basis: 'game', s0: run.s0, s1: run.s1,
         title: 'Obstacle-clearing bridge span needs more height',
         fix: `Raise this bridge by at least ${raiseM.toFixed(1)} m, or move the alignment to shorten its ${run.layout.span.toFixed(1)} m clear span`,
@@ -229,5 +239,6 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         detail: 'The obstacle-free support arrangement and each local span’s deck section remain fully priced; no colliding pier is hidden.' });
     }
   }
-  return { kind, runs, diagnostics, violations };
+  return { kind, runs, diagnostics, violations,
+    clearanceRequirements: Array.from(requiredElevations, ([s, z]) => ({ s, z })) };
 }

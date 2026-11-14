@@ -139,6 +139,36 @@ describe('automatic bridge support remedies', () => {
     expect(forced.diagnostics[0]).toMatchObject({ structure: 'portal', reason: 'terrain', extensionM: 10, lowerM: 9 });
   });
 
+  it('uses separated-road clearance before adding local span depth, without changing the supplied profile', () => {
+    const r = route(); (r.grade as Float64Array).fill(107);
+    const before = Float64Array.from(r.grade);
+    expect(remedyBridgeSupports(r, terrain(), roadAt(255)).clearanceRequirements).toEqual([]);
+    const result = remedyBridgeSupports(r, terrain(), roadAt(255, 'motorway'));
+    expect(result.clearanceRequirements.length).toBeGreaterThan(0);
+    expect(result.clearanceRequirements.every(c => c.z > 107.5)).toBe(true);
+    expect(r.grade).toEqual(before);
+    const manual = new Int8Array(r.n).fill(-1); manual[15] = KIND.bridge;
+    expect(remedyBridgeSupports(r, terrain(), roadAt(255, 'motorway'), manual).clearanceRequirements).toEqual([]);
+  });
+
+  it('prices a provisional >120 m clear span locally instead of retaining blocked intermediate piers', () => {
+    const t = new Terrain({ nx: 150, ny: 60, cell: 5, base: 100, scale: 1,
+      q: new Uint16Array(9000), lc: new Uint8Array(9000), watercourses: { version: 1, method: 'test', reaches: [
+        { id: 1, kind: 'river', width: 130, points: [[285, 50], [285, 150]], catchmentKm2: [10, 10], truncated: [false, false] },
+      ] } });
+    const r = route(); (r.kind as Uint8Array).fill(KIND.bridge, 10, 28);
+    r.runs = [{ kind: KIND.bridge, i0: 10, i1: 27, s0: 95, s1: 275, length: 180 }];
+    const result = remedyBridgeSupports(r, t), run = result.runs[0];
+    expect(run.layout!.span).toBeGreaterThan(120);
+    expect(run.pierStations).toHaveLength(2);
+    expect(result.diagnostics).toEqual([]);
+    const model = bridgeModel(CATEGORIES['S9.5']), h = Float64Array.from(r.grade, (z, i) => z - r.ground[i]);
+    const bill = bridgeRunCost(model, h, r.ds, () => 0, () => 0);
+    const price = bill(run.i0, run.i1, run.length, run.layout, run.pierStations);
+    expect(Number.isFinite(price)).toBe(true);
+    expect(price).toBeGreaterThan(bill(run.i0, run.i1, run.length));
+  });
+
   it('spans a broad watercourse with explicit fewer piers and reports insufficient long-span clearance', () => {
     const t = new Terrain({ nx: 150, ny: 60, cell: 5, base: 100, scale: 1,
       q: new Uint16Array(9000), lc: new Uint8Array(9000), watercourses: { version: 1, method: 'test', reaches: [
@@ -149,7 +179,18 @@ describe('automatic bridge support remedies', () => {
     expect(run.pierStations!.length).toBeLessThan(3);
     expect(run.layout!.pierDensity).toBe(run.pierStations!.length / run.length);
     expect(run.layout!.span).toBeGreaterThan(50);
-    expect(result.diagnostics.some(d => d.reason === 'span-depth' && d.raiseM > 0)).toBe(true);
+    const failure = result.diagnostics.find(d => d.reason === 'span-depth')!;
+    expect(failure.raiseM).toBeGreaterThan(0);
+    expect(result.clearanceRequirements.length).toBeGreaterThan(0);
+    expect(result.clearanceRequirements).toContainEqual({ s: failure.s, z: failure.requiredZ });
+    expect(new Set(result.clearanceRequirements.map(c => c.s)).size).toBe(result.clearanceRequirements.length);
+    expect(failure.requiredZ! - r.grade[Math.round(failure.s / r.ds)]).toBeCloseTo(failure.raiseM);
+    for (const { s, z } of result.clearanceRequirements) {
+      const i = Math.round(s / r.ds);
+      expect(z).toBeGreaterThan(r.grade[i] + .01);
+      (r.grade as Float64Array)[i] = z;
+    }
+    expect(remedyBridgeSupports(r, t).clearanceRequirements).toEqual([]);
     expect(result.violations[0].fix).toMatch(/Raise.*m/);
   });
 });
