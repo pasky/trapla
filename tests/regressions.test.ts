@@ -42,6 +42,18 @@ describe('review regressions', () => {
     expect(r.cost).toBeLessThan(2e7);
   });
 
+  it('deep tunnel costs stay finite below the profile lookup grid, including its zero-weight neighbour', () => {
+    const s = Float64Array.from({ length: 201 }, (_, i) => i * 10);
+    const g = Float64Array.from(s, s => s > 500 && s < 1500 ? 300 : s > 100 && s < 400 ? 20 : 0);
+    const kinds = Int8Array.from(s, s => s >= 900 && s <= 1100 ? KIND.tunnel : -1);
+    const r = autoProfile(s, g, { maxGradient: 0.06, minCrest: 3000, minSag: 2000, structureKind: kinds,
+      costPerM: (h, k = -1) => k === KIND.tunnel ? 5e5 : 1e3 + h * h * 100 });
+    // Result of the original eager, full-height lookup. Unfilled j+1 at clamped x=0 used to
+    // turn a finite tunnel price into NaN and silently fall back to the straight profile.
+    expect(r).toMatchObject({ feasible: true, cost: 892125720,
+      vpis: [{ s: 0, z: 0, r: null }, { s: 250, z: 14, r: null }, { s: 2000, z: 0, r: null }] });
+  });
+
   it('a slightly shrunk vertical curve (effective radius below minimum) is a violation', () => {
     // crest Δg = 0.02 needs 120 m at R = 6000 but only ~119.6 m fit between the VPIs
     const p = buildProfile([{ s: 0, z: 0, r: null }, { s: 59.8, z: 0.598, r: null }, { s: 119.6, z: 0, r: null }], 6000, 3400);

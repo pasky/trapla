@@ -91,8 +91,8 @@ const BALANCE_EVALS = 4;
 interface CostLut { values: Float64Array; cost: AutoProfileOptions['costPerM'] }
 function buildLut(cost: AutoProfileOptions['costPerM'], classes: number): CostLut {
   const m = Math.round((2 * H_MAX) / H_STEP) + 1;
-  // Sparse crossings used to price all 4,001 heights, even when the search visits only a few.
-  // Fill entries on first use, retaining the identical grid, interpolation and arithmetic.
+  // Sparse crossing classes used to price all 4,001 heights, even for narrow search bands.
+  // Each solve fills its required envelope, retaining the identical grid and interpolation.
   return { values: new Float64Array(classes * 4 * m).fill(NaN), cost };
 }
 
@@ -328,7 +328,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (states > 4_000_000 || work > 60_000_000) return null;
     }
     // Fill only the height envelope this pass can visit, outside the DP's candidate loop.
-    // Bounds are deliberately conservative (one extra grid entry for roundoff).
+    // Bounds include interpolation's j+1 read and an extra entry for roundoff. Even below
+    // -H_MAX, interpolation reads entry 1 (with zero weight): it must not remain NaN.
     const low = new Int32Array(classes * 4).fill(lutMax + 1), high = new Int32Array(classes * 4).fill(-1);
     for (let k = 0; k < nK; k++) {
       const sk = k * D;
@@ -337,7 +338,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         const h0 = zA + zlo[k] * u + (-dzMax * u) / D * (s[i] - sk) - g[i];
         const h1 = zA + zhi[k] * u + (dzMax * u) / D * (s[i] - sk) - g[i];
         low[block] = Math.min(low[block], Math.max(0, Math.min(lutMax, Math.floor((h0 + H_MAX) / H_STEP) - 1)));
-        high[block] = Math.max(high[block], Math.max(0, Math.min(lutMax, Math.ceil((h1 + H_MAX) / H_STEP) + 1)));
+        high[block] = Math.max(high[block], Math.max(1, Math.min(lutMax, Math.ceil((h1 + H_MAX) / H_STEP) + 1)));
       }
     }
     for (let block = 0; block < low.length; block++) {

@@ -1,14 +1,28 @@
 /// <reference types="node" />
 // Freeze BEFORE an optimization; verify afterwards (never regenerate to accept a changed bill).
 // npx tsx scripts/eval-regression.ts --capture | npx tsx scripts/eval-regression.ts
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
 import { PART_KEYS } from '../src/core/cost';
 import { loadPack } from './loadpack';
 
 export const fixturePath = 'tests/fixtures/evaluate-costs.json';
-export function regressionContext(): EvalContext {
-  const { meta, terrain, scenario, buildings, roads } = loadPack('public/scenarios/d11');
+const packPath = 'public/scenarios/d11', fingerprintPath = 'tests/fixtures/evaluate-pack.json';
+export function packFingerprint(): Record<string, string> {
+  const meta = JSON.parse(readFileSync(`${packPath}/meta.json`, 'utf8'));
+  const files = ['meta.json', 'overlays.json', meta.heights.file, meta.landcover.file, meta.ground?.file, meta.watercourses?.file].filter(Boolean);
+  return Object.fromEntries(files.map(file => [file, createHash('sha256').update(readFileSync(`${packPath}/${file}`)).digest('hex')]));
+}
+export function regressionPackAvailable() {
+  const files = JSON.parse(readFileSync(fingerprintPath, 'utf8'));
+  return Object.keys(files).every(file => existsSync(`${packPath}/${file}`));
+}
+export function regressionContext(checkPack = true): EvalContext {
+  if (checkPack && JSON.stringify(packFingerprint()) !== JSON.stringify(JSON.parse(readFileSync(fingerprintPath, 'utf8')))) {
+    throw new Error('Regression scenario pack changed: compare against the original pack or capture a new reviewed baseline before optimizing.');
+  }
+  const { meta, terrain, scenario, buildings, roads } = loadPack(packPath);
   return { terrain, scenario, buildings, roads, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
 }
 export function bill(r: ReturnType<typeof evaluate>) {
@@ -23,7 +37,7 @@ export function numericLeaves(value: object, prefix = ''): [string, number][] {
   });
 }
 if (process.argv[1]?.endsWith('/eval-regression.ts')) {
-  const ctx = regressionContext();
+  const ctx = regressionContext(!process.argv.includes('--capture'));
   if (process.argv.includes('--capture')) {
     const fixtures: CostFixture[] = [];
     const add = (name: string, design: Design) => {
@@ -49,6 +63,7 @@ if (process.argv[1]?.endsWith('/eval-regression.ts')) {
       }
     }
     writeFileSync(fixturePath, JSON.stringify(fixtures, null, 2) + '\n');
+    writeFileSync(fingerprintPath, JSON.stringify(packFingerprint(), null, 2) + '\n');
     console.log(`Captured ${fixtures.length} pre-optimization bills`);
   } else {
     const fixtures: CostFixture[] = JSON.parse(readFileSync(fixturePath, 'utf8'));
@@ -61,6 +76,7 @@ if (process.argv[1]?.endsWith('/eval-regression.ts')) {
         }
       }
       if (JSON.stringify(actual.vpis) !== JSON.stringify(f.expected.vpis)) throw new Error(`${f.name}: grade changed`);
+      if (actual.materialValue !== f.expected.materialValue) throw new Error(`${f.name}: material value changed`);
       console.log(`PASS ${f.name}: ${actual.cost.total.toFixed(2)} CZK`);
     }
   }
