@@ -199,7 +199,9 @@ Reproduce the build-tool interactions with `node scripts/build-tools.mjs --docs`
 Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall
-openings use the same masks for rendering, billing and acoustic checks. Auto tries bounded, real-road
+openings use the same masks for rendering, billing and acoustic checks. The existing worst-station noise
+model treats these openings conservatively (including automatic buyouts or Keep violations); finite-opening
+leakage and return-wall design are not modelled. Auto tries bounded, real-road
 alternatives when a provisional crossing is infeasible. Approach fill/cut beyond 10 m is flagged for
 redesign rather than presented as a normal local road. The 1.2 m decks and abutments remain study-stage
 representations, not structural designs for long spans.

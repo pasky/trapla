@@ -394,6 +394,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const clone = (c: CrossingResult): CrossingResult => ({ ...c, geometry: undefined,
     issues: c.issues?.filter(v => v.crossing.code !== 'geometry') });
   const feasible = (c: CrossingResult) => !c.issues?.length && !c.geometry?.diagnostics?.length;
+  const baseline = crossings.map(c => ({ state: { ...c }, feasible: feasible(c) }));
   const dependsOn = (target: CrossingResult, source: CrossingResult): boolean => {
     const visited = new Set<CrossingResult>();
     let next: CrossingResult | undefined = target;
@@ -422,11 +423,12 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       }
       continue;
     }
-    // Reconnections may exceed the old 750 m economic shortcut when it is the only real feasible
-    // alternative. Their actual lengths are billed; the existing 2 km geometry reach remains bounded.
+    // Long detours are a feasibility fallback, not a way to shave a tiny amount off an already
+    // workable overbridge. Keep ordinary economic swaps within the 750 m shortlist.
+    const reach = feasible(best) ? CROSSING_RULES.linkMaxReach : CROSSING_RULES.linkHardReach;
     const targets = crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && !ROAD_CLASSES[t.cls].noAtGrade
       && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
-      && Math.abs(t.s - c.s) <= MAX_REACH && !dependsOn(t, c))
+      && Math.abs(t.s - c.s) <= reach && !dependsOn(t, c))
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
     for (const target of targets.slice(0, originalFeasible ? 1 : 3)) {
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
@@ -444,7 +446,18 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       Object.assign(c, best); changed = true;
     }
   }
-  return changed ? build(crossings) : crossings.flatMap(c => c.issues?.filter(v => v.crossing.code === 'geometry') ?? []);
+  if (!changed) return crossings.flatMap(c => c.issues?.filter(v => v.crossing.code === 'geometry') ?? []);
+  const issues = build(crossings);
+  // A new target treatment can move the ground anchor of a dependent link. Do not buy a cheaper
+  // local option by breaking a previously feasible connection elsewhere in the network.
+  if (crossings.some((c,i) => baseline[i].feasible && !feasible(c))) {
+    crossings.forEach((c,i) => {
+      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId'] as const) delete c[key];
+      Object.assign(c, baseline[i].state);
+    });
+    return build(crossings);
+  }
+  return issues;
 }
 
 export interface CrossingAuditIssue { roadId?: number; s: number; message: string; severity: 'error' | 'infeasible' }

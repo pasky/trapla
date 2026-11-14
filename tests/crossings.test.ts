@@ -284,6 +284,20 @@ describe('crossing geometry and map overlay', () => {
     expect(manual[1].cost).toBeCloseTo(c.cost, 6); // choosing the same >750 m link explicitly stays valid
   });
 
+  it('keeps a feasible overbridge instead of buying a cheaper long detour outside the economic shortlist', () => {
+    const net = new RoadNet({ cls: ['primary', 'residential'], ways: [
+      [0,3000,-600,3000,600], [1,3800,-600,3800,600],
+    ] });
+    const wide = { ...route, width: new Float64Array(s.length).fill(500) };
+    const automatic = [cross(0,3000), cross(1,3800,'residential')];
+    resolve(automatic); expect(buildCrossingGeometry(automatic,wide,()=>400,net)).toEqual([]);
+    expect(automatic[1].type).toBe('overbridge');
+    const explicit = [cross(0,3000), cross(1,3800,'residential')];
+    resolve(explicit,[{ roadId: 1,type: 'reconnection' }]);
+    expect(buildCrossingGeometry(explicit,wide,()=>400,net)).toEqual([]);
+    expect(explicit[1].cost).toBeLessThan(automatic[1].cost);
+  });
+
   it('consumes tiny dead-end remnants in connection works but still requires anchors for surviving branches', () => {
     const run = (lo: number, hi: number, cls = 'residential') => {
       const net = new RoadNet({ cls: ['primary', cls], ways: [[0, 3000, -200, 3000, 0], [1, 3100, lo, 3100, hi]] });
