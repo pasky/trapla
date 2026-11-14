@@ -1,159 +1,223 @@
-# Earthwork and support footprint conflicts (cost model 14)
+# Automatic footprint engineering (cost model 15)
 
-`src/core/footprint.ts` supplements centreline road/water crossings. It does not change the
-Auto grade or the economic structure selection. Consequently, an old VALID design can now be
-invalid: a clear deck is not proof that its foundations or adjacent slopes are clear.
+The evaluator now **builds and prices remedies**, rather than simply invalidating every design
+whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
+published designs pass on the current D11 pack. A clear deck alone still does not excuse a
+colliding pier, abutment, portal or embankment.
 
-## Geometry, mitigation and pricing
+## Evaluation sequence
 
-- Each 10 m station cell screens its rotated slope-to-slope rectangle, including cuts. Roads
-  include their class half-width (OSM motorway ways use one carriageway, not the whole D27.5
-  divided-road width). Segment clipping and union in original-way chainage measure
-  affected length without charging the same segment once per station. Queries reuse the road
-  and water segment grids; proposed paths query an indexed footprint. No full-map/network scan.
-- Ordinary roads use a proposed outer-toe realignment, 3 m provisional setback, real OSM tie-ins,
-  and the class's SPK CN 2026 rural/urban row sampled along the new path. The bill uses the
-  measured full path including tie-ins, under **Road crossings**, plus other-objects surcharge.
-  Ordinary grading is already in that SPK rate; a bounded 6% profile draws supported ramps,
-  rejecting support heights above 10 m. Sources and limitations of the rows: `research/08` and
-  `research/13`; track uses paved P4, not an invented cheap gravel rate.
-- A proposed path which cannot tie to the real way, still enters the footprint, crosses mapped
-  rail/water, leaves terrain data or exceeds those engineering limits remains **blocked**, with
-  its measured proposal priced and its specific diagnostics visible. It is not drawn as a built
-  road. Motorways/trunks and support collisions are blocked without a cheap relocation rate.
-- Crossing-owned original-way intervals are subtracted using actual approach/turnaround geometry,
-  including confirmed one-sided removed stubs, already-priced invalid choices, and nearby ways
-  merged for billing. A provisional half-station tolerance absorbs stepped/continuous sampling
-  slivers; it is not a proven geometric bound. Missing-anchor geometries cannot claim an entire
-  branch. New tie-ins cannot rebill those intervals or another relocation of the same way. Endpoint exemptions require a real crossing, or a collinear way
-  actually within the existing 1 m endpoint tolerance—not any road within 150 m.
-- Free bridge spans and tunnel interiors do not displace surface features. Abutment screens are
-  6 m along × (crown + 4 m) across; piers 2.4 m along × 0.55 crown; portals use the abutment-sized
-  screen. These dimensions are **provisional study assumptions**, not foundation design. Piers
-  follow the same equal-span ≤30 m layout as bridge pricing and rendering. Colliding piers are
-  no longer silently omitted from the picture. Automatic span redesign is not implemented.
-- Short longitudinal channels can use the sourced `watercourses.ts` pipe/frame assemblies:
-  measured clipped channel length × per-metre assembly rate + two ends. The check uses actual
-  fill cover inside the barrel (excluding its exposed headwall zones), its hydraulic opening/length
-  limits, and open outlets; no buried
-  headwall at an internal OSM endpoint. Existing centreline barrel neighbourhoods are excluded
-  using a channel-aligned corridor offset toward the wider toe of asymmetric fill, not a circle
-  that would hide a connected dog-leg. A **provisional 20° flared chord allowance** handles modest
-  OSM vertex bends without promoting each bend to a bridge; it is not hydraulic bend design.
-  Structure selection and final checking share this corridor and its half-station sampling margins. A
-  genuine adjoining compatible barrel extension bills the end-margin gap too and reuses its ends,
-  not two more heads. Resizing/merging incompatible assemblies is a violation, not free.
-  Legacy raster-stream crossings have no direction and retain the explicitly uncertain circular
-  neighbourhood fallback; vector channels never use that fallback. Long/large channels, cuts and missing cover
-  or outlets require moving away or a clear bridge. See `research/17-culvert-prices.md` and
-  `research/17-stream-crossings.md` for sourced rates and provisional hydraulics.
-- The rail/water raster screens only footprint cells, retaining independent crossing bits even
-  where a road overwrote the visible land-cover class. Raster overlap is conservative at 5 m
-  resolution (half-pixel toe uncertainty). Pond filling and unmodelled water works are blocked;
-  there is no invented universal compensation tariff.
+1. Compute the alignment and initial Auto profile, retaining the player's pins and structure choices.
+2. Compute real sections; compare retaining walls with feasible minor-channel relocations.
+   Truncate retained sections before computing earthwork, land, structure choices and buildings.
+3. Move automatic bridge/tunnel ends and bridge supports onto clear sites; use longer, priced
+   spans where necessary. Check their actual deck depth and clearance.
+4. Apply bounded, norm-compliant Auto lifts when required. There are at most three engineering
+   refinements and one fixed-material-value DP retry when the existing knots cannot fit a lift.
+   This does not repeat the full mass-balance search, building analysis, crossing meshes or noise.
+5. Resolve remaining ordinary-road footprints through real network connections, then screen the
+   final geometry. Unresolved cases retain explicit violations and measured diagnostics.
 
-Water-policy source checked 2026-11-14: [Water Act 254/2001](https://www.zakonyprolidi.cz/cs/2001-254),
-§5(1) water protection, §8 permitted water uses, and §17 consent for works affecting water conditions.
-This supports requiring a water-management solution, **not a claim that every pond filling or
-river pier is legally prohibited**. The game disallows unmodelled approvals/compensation. §15 in
-that consolidated text is repealed and is not used as a source.
+Manual grades are not lifted, pins remain constraints, and manual structure ranges are not
+silently moved. Retaining walls can protect a manually specified earthwork without changing its
+specified grade or structure kind. Infeasible overrides remain visibly invalid.
 
-## Presentation and boundaries
+## Physical and financial rules
 
-`Result.footprintConflicts` exposes each affected range, feature, action, original and proposed
-geometry, lengths, rate code and pre-surcharge amount. Amounts are already in the per-cell bill.
-The HUD expands individual conflicts; profile tooltips match the whole affected range rather than
-only its booking station. Built relocations reuse physical crossing surfaces; removed originals
-are red dashed annotations, blocked proposals amber dashed, and blocked locations red ×. The
-original terrain is not cut out merely to hide a road (that would leave holes).
+### Retaining walls
 
-This is screening and provisional mitigation, not a routing/engineering solver. Realignments do
-not traverse arbitrary OSM junctions to invent anchors beyond their source way; a truncated way
-inside the footprint is explicitly blocked. Channel reach boundaries without usable outlets are
-also unresolved. The culvert head-zone allowance uses the provisional 1:2 fill slope; oblique exits
-and gentler slopes can conservatively need a separate hydraulic/earthwork design. Lateral roads' secondary earthworks, utilities, property acquisition and new
-intersections are not comprehensively redesigned. Road half-widths/support dimensions and raster
-rail/water masks are approximate. These limitations must not be hidden by marking a design VALID.
+`src/core/retaining.ts` limits the actual daylight offsets and recomputes the affected cut/fill
+areas and excavation bands. It does not merely hide collisions. The resulting quantities feed
+structure selection, acquisition, demolition and noise calculations. The renderer ends the slope
+at `wallSurfaceL/R`, draws a vertical concrete face to natural ground, and preserves the fine
+daylight collar and structure-transition caps.
 
-## Saved designs
+Walls use a height-dependent RC/foundation/drainage assembly from
+[`research/18-footprint-remedies-rates.md`](../research/18-footprint-remedies-rates.md), not an
+invented universal CZK/m² tariff. Principal OTSKP 2026 items are 327325 concrete, 327365 reinforcement,
+13173 foundation excavation, 17411 backfill, 212625 complete rear drainage and 214613 filtration.
+The reported face area is measured; the effective price/m² varies with wall height.
 
-Run `npx tsx scripts/footprint-audit.ts scripts/*-design.json`; set `PACK=/path/to/d11` to compare
-data snapshots and `DETAIL=1` for individual conflicts. Counts are conflict spans, not distinct
-OSM objects; the same object may have separate earthwork and support collisions. Rail/water/raster
-stream lengths are affected route lengths, whereas vector channel/road lengths follow the feature.
-Blocked road proposals are included in proposed length/cost but are not constructible mitigations.
-All amounts below are **M CZK before surcharge**, already in the bill. Every component sum matches.
+The preferred setback is 1.5 m outside the protected feature and the preferred face is at least
+0.75 m outside the crown. A constrained vertical face can instead stand at the crown edge,
+leaving the complete mapped road ribbon/protected pixel envelope outside it. Its 0.1 m positive
+screen margin is **not** a surveyed railway safety distance or a construction working-strip norm.
+The footing points into the acquired corridor; an assembly wider than that corridor is rejected.
+The 15 m height cap and all footing/stem dimensions are provisional study assumptions.
 
-### Original regression pack
+A wall retaining water beside an open cut uses a larger RC section, provisional cutoff embedment,
+and pressure-water membrane/protection (711122 + 711519), not the ordinary drain that would draw
+down a pond. This is not a seepage calculation, proof of impermeable geology or construction permit.
+Foundation excavation uses the declared 13173 allowance, not a site-specific rock/foundation
+estimate. Ground conditions and detailed structural/hydraulic design remain unverified.
 
-Unchanged pack fingerprint in `tests/fixtures/evaluate-pack.json`, available in the performance
-agent's original worktree. The frozen model-13 fixtures are **not recaptured**: regression checks
-subtract only explicit model-14 footprint works and their surcharge, preserving all old cost parts,
-grade VPIs and material values for the ten saved/edited designs.
+### Minor-channel relocation
 
-| Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Stream spans / m | Footprint violations |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| best | 2 / 9 | 206.5 | 1,239.6 | 26.095 | 4 / 40.0 | 1 / 10.0 | 13 / 280.0 | 27 |
-| demo | 6 / 17 | 355.4 | 1,658.3 | 36.414 | 4 / 40.0 | 1 / 10.0 | 16 / 359.9 | 38 |
-| direct-80 | 1 / 25 | 403.3 | 1,618.7 | 64.955 | 5 / 70.0 | 4 / 60.0 | 8 / 80.0 | 42 |
-| direct-90 | 0 / 33 | 570.7 | 2,379.4 | 74.838 | 5 / 60.0 | 4 / 60.0 | 13 / 369.9 | 55 |
-| town-centre | 3 / 29 | 529.4 | 1,685.4 | 56.007 | 9 / 140.0 | 1 / 10.0 | 11 / 409.9 | 50 |
+`src/core/channel-relocation.ts` can move a small stream/ditch outside the full bank footprint,
+with real reach tie-ins and compatible bed levels. The bounded concept allows Q100 ≤10 m³/s,
+additional bank cut ≤5 m and channel grade ≤3%. Larger rivers and unsupported flow-management
+schemes do not receive a cheap generic relocation price.
 
-No additional longitudinal culverts qualify in this legacy raster-only pack. All five designs
-were VALID under the old centreline checks; all now require footprint/support fixes.
+The BOQ measures trapezoidal excavation, stone lining, filter, bank restoration, old-channel
+backfill and land. It uses OTSKP 124731/831/931, 17120, 46451, 28997, 18221 and 18242; excavation
+includes haul up to 1 km. Reused backfill is not also charged for stockpiling. The trapezoid area is
+`depth × (bottom + sideSlope × depth)`, not the area of its bounding rectangle.
 
-### Updated main pack (independent vector watercourses)
+New road/rail/water interceptions reject the proposal unless an existing water tie-in is actually
+preserved. Continuous old-reach checks prevent backfilling a confluence and stranding a tributary
+between samples. Centreline assemblies are not also billed as channel relocations. Accepted source
+intervals alone are removed from the final footprint screen. Construction is under **Road crossings**;
+land is under **Land**, without construction surcharge.
 
-Main's ignored `meta.json` and `watercourses.json.gz` changed after the performance baseline.
-This table is a separate evaluation, not a replacement fingerprint/baseline.
+Channel plans are deliberately conservative about reach boundaries, outlets and confluences;
+there is no general watershed-routing solver. The six published examples currently choose walls
+and structures rather than channel diversion. Synthetic integration tests exercise a selected,
+priced diversion and rejection of lost tributaries/new unpriced confluences.
 
-| Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Blocked channel spans / m | Footprint violations |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| best | 1 / 13 | 154.4 | 877.2 | 19.939 | 4 / 40.0 | 1 / 10.0 | 5 / 48.6 | 23 |
-| demo | 3 / 15 | 368.1 | 1,432.4 | 29.044 | 4 / 40.0 | 1 / 10.0 | 7 / 101.6 | 27 |
-| direct-80 | 2 / 22 | 339.7 | 1,478.1 | 57.518 | 5 / 70.0 | 4 / 60.0 | 4 / 83.2 | 35 |
-| direct-90 | 1 / 33 | 543.7 | 2,269.0 | 67.543 | 5 / 70.0 | 3 / 50.0 | 13 / 102.4 | 54 |
-| town-centre | 3 / 32 | 594.7 | 1,913.3 | 64.097 | 9 / 140.0 | 1 / 10.0 | 4 / 41.2 | 46 |
+### Bridges, portals and supports
 
-No additional longitudinal assembly in these five designs clears every cover/outlet/support check;
-all five still require footprint fixes. The shared oriented barrel rule also changes Auto structure
-choices on this updated vector-water pack. This is an **intentional conservative model change**,
-not an optimization-only rebaseline: unlike the old generous circular exclusion, it does not excuse
-parallel channel excursions merely because they are close to a centreline crossing. Modest vertex
-bends have a 20° allowance; larger deviations need an explicit water-management design.
+`src/core/support-layout.ts` searches local clear sites for automatic abutments, portals and piers.
+A run containing a manual structure override is not silently redesigned. The bounded search allows
+end movement up to 300 m and clear spans up to 180 m. These are game engineering limits, not norms.
 
-Whole-route impact versus unchanged `17dac0a`, evaluated on this **same updated pack**:
+Abutments/portals screen 6 m along × (crown + 4 m) across; piers screen 2.4 m along × 0.55 crown.
+Ordinary main-road layouts use equal spans ≤30 m. Modified layouts expose their actual
+`Run.pierStations`; billing integrates each actual span and support density through the existing
+sourced bridge model. A long span does not impose its rate over the entire viaduct, and obstructed
+piers are never omitted for free. Rendered soffits use `max(1.2, span/20)` depth per span; unequal
+spans meet supported pier tops. Clearance failures identify the station and required raise.
 
-| Design | Before, bn CZK | Model 14, bn CZK | Increase, M CZK | Additional bridge m |
-|---|---:|---:|---:|---:|
-| best | 4.172658 | 4.288885 | 116.226 | 220.0 |
-| demo | 4.851775 | 4.998425 | 146.651 | 299.9 |
-| direct-80 | 4.684462 | 4.763695 | 79.234 | 0 |
-| direct-90 | 5.023884 | 5.112855 | 88.971 | 0 |
-| town-centre | 11.330497 | 11.479324 | 148.827 | 150.0 |
+### Existing roads
 
-These increases include surcharges and changed bridge/earthwork decisions, not just the relocation
-rows. They must be reviewed as cost-model changes; the original-pack frozen bills remain intact.
+`src/core/road-realignment.ts` follows real source-way chainages and connected ways. It first tries
+a 25 m collar, then larger footprint-derived collars up to the configured 2 km reach. A short
+collar can avoid an unnecessary high supported ramp; a longer one can satisfy the 6% grade limit.
+Additional retaining faces and turning aprons are measured and priced. Supported approach height
+is bounded to 10 m. The additional retaining assembly is charged in full without an unsupported
+credit for possible overlap with the SPK standard-structure quota.
+
+New/regraded pavement and complete turning disks screen existing road ribbons, rail and water.
+Motorways/trunks cannot become cheap at-grade anchors. Existing outside junctions must survive;
+a failed shortcut can retry at the nearest **actual** clear junction. The 2 m simplified-data
+uncertainty guard only prevents losing branches—it does not invent source topology or anchors.
+
+Only exact built/removed source intervals are reserved. There is no blanket half-station pad or
+translation of one crossing's ownership onto another nearby road. Failed geometry cannot claim
+removed roads. Complete, physically usable crossing approaches can still be used when an unrelated
+spacing rule makes the player's choice invalid.
+
+At a common outside junction, companion source roads are independently checked **before** ownership
+is committed. Identical accepted connectors share one physical work item. `road-remedy-ledger.ts`
+uses the higher tariff at each matching physical segment, one set of support/apron works and unique
+ACCESS allowances; it retains every removed original and exact source interval. Later plans must
+preserve accepted connector endpoints, not treat them as merely deleted old road branches.
+
+Straight-line Automatic demonstrates this: service ways 5549 and 5548 share a 37.465 m connector
+costing **1,733,722.74 CZK**, including one 500,000 CZK ACCESS allowance. Removed ownership is
+5549 `[0, 52.1964614090]` and 5548 `[0, 21.8409498829]`; the continuation beyond their real junction
+is untouched. There is neither a duplicate connector bill nor free ownership of the continuation.
+
+Road construction uses the appropriate measured-path SPK CN 2026 class and rural/urban rows
+([research/08](../research/08-junctions-crossings.md), [research/13](../research/13-crossing-items-tenders.md)). Track uses sourced P4, not a made-up gravel
+rate. The 500,000 CZK ACCESS item is the existing **very-low-confidence provisional service-access
+estimate**, not a sourced class-I through-junction tariff. Its all-in allowance is included in
+crossings but excluded from construction surcharge.
+
+### Final screen and remaining limits
+
+Each station's rotated slope-to-slope footprint includes cuts. Road ribbons include class width
+(OSM motorway ways use one carriageway, not a full divided-road width). Local road/water segment
+indexes, an indexed footprint and row-wise raster bounds avoid route × whole-network scans.
+Protected rail/water bits remain active where road paint overwrites the visible raster class;
+5 m raster pixels retain their half-cell screening uncertainty.
+
+Short longitudinal culverts still require a sourced opening/length assembly, real cover and clear
+outlets. Compatible adjoining extensions reuse existing heads and charge their actual extra length.
+Vector ownership follows the asymmetric, channel-aligned barrel envelope, including its provisional
+20° chord flare—not a circle concealing a connected dog-leg. The directionless raster fallback is
+explicitly uncertain. See [research/17](../research/17-culvert-prices.md).
+
+This remains study-stage engineering, not survey/geotechnical/hydraulic certification or a global
+network optimizer. Auxiliary-road utilities, property effects and secondary grading are not a
+complete civil design. An unresolved bounded search is not proof that no engineer could solve the
+site. It must not, however, be converted into VALID by suppressing the remaining footprint hit.
+
+Water-policy basis: [Water Act 254/2001](https://www.zakonyprolidi.cz/cs/2001-254), §§5(1), 8 and 17
+(water protection, permitted uses and consent). This calls for an engineered/permitted solution;
+it does **not** establish a universal legal prohibition on every pond filling or river pier.
+
+## Presentation
+
+`Result.footprintConflicts` exposes action, affected ranges, source/constructed geometry, measured
+length, rate code and already-booked amount. The HUD and profile tooltips distinguish retaining,
+relocation, culvert and blocked works. Built road connectors use physical crossing surfaces and
+full priced turning disks/rim supports. All removed originals of a shared connector receive red
+dashed annotations; blocked proposals remain amber. Channel beds are blue annotations at designed
+levels, not a claim that a full excavated channel mesh has been rendered. Land and lump allowances
+are not added to the bill again by the UI.
+
+## Published designs and review baseline
+
+The four repairs use bounded local PI refinement, preserving category, speed, controls and PI count.
+Maximum PI displacement is 15.0 m for demo, 81.4 m for direct-80, 7.6 m for direct-90 and 131.1 m for
+town-centre. Best is unchanged horizontally; straight remains **zero PIs, Automatic, zero pins**.
+The validity-first runs took 74, 253, 1 and 68 evaluations respectively. `scripts/repair-designs.ts`
+never writes an invalid result and requires `--write` to replace a published input.
+
+Current vector-watercourse pack; money below is **M CZK before surcharge**, except whole-route totals:
+
+| Design | Wall length m / face m² | Wall M CZK | Road works: count / m / M CZK | Adjusted support runs / max span m | Total bn CZK | Violations |
+|---|---:|---:|---:|---:|---:|---:|
+| straight | 1,729.6 / 7,057.6 | 96.546 | 1 / 37.5 / 1.734 | 16 / 142.0 | 10.265487 | 0 |
+| best | 1,349.8 / 6,241.7 | 99.916 | 1 / 59.9 / 3.083 | 7 / 49.0 | 4.743266 | 0 |
+| demo | 1,809.4 / 8,937.8 | 146.182 | 3 / 200.3 / 4.363 | 7 / 56.6 | 5.292406 | 0 |
+| direct-80 | 1,389.7 / 5,488.8 | 84.108 | 4 / 406.6 / 27.814 | 11 / 79.7 | 5.212337 | 0 |
+| direct-90 | 1,299.7 / 6,459.8 | 106.388 | 1 / 94.7 / 13.201 | 12 / 69.0 | 5.665303 | 0 |
+| town-centre | 1,430.0 / 7,079.5 | 114.591 | 2 / 112.0 / 3.416 | 10 / 120.0 | 11.640221 | 0 |
+
+No blocked road costs or selected channel relocations are hidden in this table. Component-array
+sums differ from total bills by at most 0.000002 CZK (floating-point summation).
+
+Same **current pack and same repaired inputs**, main `3dccc23` (model 13) versus model 15:
+
+| Design | Model 13 bn CZK | Model 15 bn CZK | Change M CZK |
+|---|---:|---:|---:|
+| straight | 8.806911 | 10.265487 | +1,458.575 |
+| best | 4.162396 | 4.743266 | +580.870 |
+| demo | 4.855298 | 5.292406 | +437.107 |
+| direct-80 | 4.787410 | 5.212337 | +424.927 |
+| direct-90 | 5.015213 | 5.665303 | +650.090 |
+| town-centre | 11.738640 | 11.640221 | −98.419 |
+
+These are intentional engineering changes, not just additive remedy rows: profiles, structures,
+earthwork and acquisitions change. For example straight adds 1,255.934 M in bridges before
+surcharge; town reduces building acquisition by 781.902 M while adding bridge/tunnel work.
+Subtracting the new footprint bill lines cannot reproduce the old designs.
+
+The original ten model-13 bills were first reproduced exactly with unchanged main on their
+original fingerprinted pack. `evaluate-costs.json` and `evaluate-pack.json` remain untouched.
+Separate model-15 fixtures preserve ten historical-input cases on that pack and eleven current-pack
+cases (six published routes plus drag/pin/structure/manual/property-control variants). They check
+all bill leaves and per-part sums below half a cent, exact VPIs/material value, validity/violations,
+and a canonical hash of the built geometry. Unknown or partial installed packs fail loudly;
+only an absent optional pack skips integration tests. Never recapture these to hide an optimization
+regression. See `scripts/eval-regression.ts` for explicit reviewed-model-change capture commands.
 
 ## Performance
 
-A quiet warmed validation run on the original pack (15 warmups, 30 evaluations, `17dac0a` versus model 14 in
-separate consecutive processes) measured **2.5–2.9 ms** for the isolated footprint phase:
+Correct-tree warmed measurements before the final performance pass put model 15 at roughly
+75–115 ms versus 62–88 ms for unchanged main on the same updated pack and repaired inputs.
+The main added work is repeated section/retaining/support engineering. The `sections` cumulative
+checkpoint is overwritten on each engineering refinement; its delta from `profile` includes
+previous engineering passes and Auto lifts, not just the final section calculation.
 
-| Design | Baseline ms | Model 14 ms | Footprint phase ms |
-|---|---:|---:|---:|
-| best | 51 | 53 | 2.7 |
-| demo | 43 | 44 | 2.8 |
-| direct-80 | 48 | 53 | 2.5 |
-| direct-90 | 53 | 53 | 2.9 |
-| town-centre | 50 | 49 | 2.6 |
+**The ≤3 ms added-work and ≤50 ms total targets are not yet met by these measurements.** Do not
+reuse the earlier detection-only model-14 timing claim for the automatic engineering model.
+Performance work must preserve the frozen bills, geometry and validity on both recognized packs.
 
-The absolute ≤50 ms target is near, but not consistently reverified: the unchanged baseline also
-reached 53 ms. An earlier alternating same-process run during heavy shared-host load put both
-versions at 86–109 ms, with 4.6–5.8 ms for the isolated footprint phase. These measurements do not
-justify claiming a fresh strict ≤50 ms result. See `docs/evaluate-performance.md` for the earlier
-quiet-host 43–49 ms baseline and its CPU/GC controls. `evaluate()` exposes separate `crossings` and
-`footprint` cumulative timing marks so the added work is measurable. A later final-code rerun under
-variable load measured 51–68 ms on the original pack (footprint 2.5–4.4 ms), and 47–64 ms on the
-updated vector pack (footprint 3.3–5.8 ms). Barrel ownership is cached per crossing/reach and road
-chainage projection no longer constructs full throwaway paths; no strict ≤50 ms claim is made.
+Reproduce audits with:
+
+```sh
+PACK=/path/to/current/d11 DETAIL=1 npx tsx scripts/footprint-audit.ts --straight scripts/*-design.json
+PACK=/path/to/current/d11 npx tsx scripts/eval-regression.ts
+```

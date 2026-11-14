@@ -135,21 +135,30 @@ What exists (details and commands in `README.md`):
 - Sources/assumptions: `research/17-stream-crossings.md`; saved-design results and the ~12.2 km case:
   `research/17-stream-validation.md`, reproducible with `scripts/stream-report.ts`.
 
-### Footprint conflicts (cost model 14)
+### Automatic footprint engineering (cost model 15)
 
-- Indexed slope-to-slope and support screens now catch side/parallel roads, rail and water beyond
-  handled centreline crossings. Ordinary-road realignments use measured outer-toe paths + tie-ins
-  × SPK rural/urban class rows, under Road crossings; short feasible longitudinal barrels use the
-  existing sourced culvert assemblies. No double billing of handled approach/barrel neighbourhoods.
-- Motorways, unresolved rail/water/pond impacts, abutment/pier/portal collisions and infeasible
-  realignment proposals are explicit violations, not free disappearance. Bridge piers share the
-  priced equal-span layout. Map annotations, profile range facts and the bill list every conflict.
-- The five saved designs now expose previously unchecked conflicts and need fixes; they are not
-  claimed VALID. Counts, lengths, costs, assumptions, water-law source and paired timing measurements:
-  `docs/footprint-conflicts.md`; reproduce with `scripts/footprint-audit.ts`. Frozen cost fixtures and
-  original pack fingerprint remain intact. Footprint work is roughly 3 ms (up to 6 ms with vector
-  water/host contention); a quiet run was 44–53 ms versus 43–53 ms baseline. Strict ≤50 ms is not
-  consistently verified. Updated-pack Auto bridge/cost increases are explicitly tabulated for review.
+- Indexed slope/support screens now drive priced retaining walls, minor-channel relocation,
+  support/end movement, longer spans and bounded norm-compliant Auto profile refinement.
+  Retained sections change actual cut/fill, land and building quantities—not just collision masks.
+  Height-dependent wall/channel component assemblies are sourced in research/18; geometry limits
+  remain provisional. Manual grades, pins and structure ranges remain constraints.
+- Ordinary-road remedies retain real source chainages, branches and feasible tie-ins. A 25 m
+  collar is tried before larger collars; outside junctions can cap failed shortcuts. Identical
+  independently accepted connectors share pavement/support costs and unique ACCESS allowances,
+  without claiming unbuilt source intervals or deleting surviving continuations.
+- Bridge piers, per-span pricing and per-span rendered soffits use the same actual layout.
+  Vertical retaining faces, full turning disks and removed-road/channel annotations show the
+  construction; final unresolved constraints remain explicit violations with measured diagnostics.
+- Straight-line Automatic and all five refreshed saves are VALID on the current vector-water pack.
+  Whole totals in bn CZK: straight 10.265487; best 4.743266; demo 5.292406; direct80 5.212337;
+  direct90 5.665303; town 11.640221. Four saves received small bounded PI refinements, not new routes.
+  Counts, face areas, lengths, sources, paired cost changes and limits: `docs/footprint-conflicts.md`.
+- Model-13 fixtures and their pack fingerprint remain untouched. Separate model-15 fixtures freeze
+  bills, validity and built geometry on both known packs; no subtract-new-rows workaround remains.
+  Reproduce with `scripts/footprint-audit.ts` and `scripts/eval-regression.ts` (`PACK=` selects data).
+- Automatic engineering is not covered by the old detection-only ~3 ms claim. Before the final
+  performance pass, warmed totals were roughly 75–115 ms versus 62–88 ms for unchanged main on the
+  same inputs. The ≤3 ms added / ≤50 ms total targets are not yet demonstrated.
 
 ### Travel-time target X and traffic Y
 
@@ -177,7 +186,7 @@ What exists (details and commands in `README.md`):
   centre route is 9.035 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
   are local-search results, not proven minima; re-check as players find better designs.
 
-### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
+### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
 (29 M, including plot allowance). This reference is not the cheapest bypass; the saved-design comparison is below.
@@ -213,7 +222,8 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   tip + borrow; no intermediate tips/borrow pits.
 - Auto-profile is a grid search (2 m grid over the whole band, then 1 m within ± 6 m of that line; knots every
   ~250 m): its result is checked, and a failed search is reported, but a compliant line may exist that it did
-  not find. The D11 reference design recomputes in ≈ 32 ms (Node), ≈ 24 ms of it the auto-profile.
+  not find. An early D11 measurement was ≈32 ms (Node), ≈24 ms of it Auto profile; it predates
+  footprint engineering. Current timings and unmet targets are in `docs/footprint-conflicts.md`.
 - Auto-profile cost uses a flat-ground section estimate at rural rates, without buildings, local land-use
   costs, ordinary-road junction costs or noise. It does receive raw motorway/trunk clearance requirements
   (as well as river/rail crossings); final validation rejects missed clearances. The bill uses real sections.
@@ -445,7 +455,7 @@ price cannot be determined (research/07 §1).
 | Noise-infeasible dwelling | 1.5× building-only value + demolition + plot max(3 × footprint, 400 m²) at 1,500 × 1.5 | acquisition and additional-plot rule PROVISIONAL; no window-only outdoor compliance |
 | Material value for decisions | search in −196 … 536 CZK/m³ from 200; tolerance 1.5 m³/m | bounds = haul to a tip / bought fill less placing |
 
-### Numbers with the new model (S 9.5, auto profile, `npx tsx scripts/bench.ts <design.json>`)
+### Historical model-10 comparison (S 9.5, auto profile)
 
 Cost model **10**, adding mapped/calibrated geology to model 9's Czech day/night noise and geometric crossing costs.
 All five saved alignments stay fixed from model 4; all remain valid, no tunnel. Per-cell parts sum to
@@ -481,8 +491,9 @@ every total. Historical short reoptimisation results are recorded separately bel
 Search provenance: the saved bypass/direct80 are seeded-search outputs, direct90 the fresh-search output
 (the cheapest valid result of each strategy under model 4). Bypass searches start in the official corridor
 but are not constrained to it. No global-optimality claim. Reproduce those searches with model-4 code
-(commit `cecb3e9`); original inputs remain in commit `a6a93b6`. Evaluate the saved outputs with current code
-for the fixed-geometry numbers above:
+(commit `cecb3e9`); original inputs remain in commit `a6a93b6`. The table above requires its historical
+model-10 code/data/inputs; current code and refreshed saves produce the model-15 report in
+`docs/footprint-conflicts.md`. Original search commands:
 
 ```sh
 git show a6a93b6:scripts/best-design.json > /tmp/start-bypass.json
@@ -501,7 +512,7 @@ seeds 20261121 / 20261122 / 20261123, yield **3,226 / 3,653 / 3,796 M**, all VAL
 geometries during concurrent geology/noise calibration. Reproduce with model-7 code and
 `npx tsx scripts/optimize.ts <90|80|90> 500 scripts/<design>.json /tmp/candidate.json <seed>`.
 
-**Calibration and spatial check:** current direct80 / bypass = **1.111×**, direct90 / bypass = **1.165×**,
+**Historical model-10 calibration and spatial check:** direct80 / bypass = **1.111×**, direct90 / bypass = **1.165×**,
 centre / bypass = **2.717×**. The modest fringe premium warranted inspecting the mask, roads and oriented building
 rectangles (`scripts/town-audit.ts design.json map.svg`), not adding a multiplier to force a preferred ratio.
 The 80 km/h line skirts eastern Kryblice / garage rows at km 3–4, crosses the narrow developed valley at the
