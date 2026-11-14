@@ -437,7 +437,7 @@ export class ProfilePanel {
     // Watercourse culverts: blue rings at stream-bed elevation (not a second road crossing).
     g.strokeStyle = '#167d9a'; g.lineWidth = 2;
     for (const c of r.waterCrossings) if ((c.structure === 'pipe' || c.structure === 'box') && c.s >= this.v0 && c.s <= this.v1) {
-      g.beginPath(); g.arc(this.X(c.s), this.Y(r.ground[c.i]) - 4, 4, 0, 2 * Math.PI); g.stroke();
+      g.beginPath(); g.arc(this.X(c.s), this.Y(c.bed) - 4, 4, 0, 2 * Math.PI); g.stroke();
     }
     // demolished buildings: red squares on the ground
     g.fillStyle = '#d7301f';

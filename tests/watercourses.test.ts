@@ -10,14 +10,14 @@ const crossing: WaterCrossing = { s: 1000, x: 1250, y: 250, id: 1, waterKind: 's
 const data = (area: number, points = [[1250, 0], [1250, 250], [1250, 500]]): WaterData => ({ version: 1, method: 'synthetic',
   reaches: [{ id: 1, kind: 'stream', width: null, points,
     catchmentKm2: points.map(() => area), truncated: points.map(() => false) }] });
-function context(area: number, depth = 7) {
+function context(area: number, depth = 7, watercourses = data(area)) {
   const source = syntheticTerrain(500, 100, 5,
     x => 400 - depth * Math.min(1, Math.max(0, Math.min(x - 250, 2250 - x)) / 300));
   const q = new Uint16Array(500 * 100);
   for (let r = 0; r < 100; r++) for (let c = 0; c < 500; c++) q[r * 500 + c] = Math.round(source.sample(c, r) * 100);
   // Road land-cover deliberately overwrites the stream. Vector hydrology must still see it.
   const terrain = new Terrain({ nx: 500, ny: 100, cell: 5, base: 0, scale: 0.01, q,
-    lc: new Uint8Array(q.length).fill(LC.road), watercourses: data(area) });
+    lc: new Uint8Array(q.length).fill(LC.road), watercourses });
   return { terrain, scenario: D11_SCENARIO, a: { x: 250, y: 250 }, b: { x: 2250, y: 250 } };
 }
 const design: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual',
@@ -32,6 +32,20 @@ describe('watercourse crossing assemblies', () => {
     expect(hits[0].sine).toBe(1);
     const back = new WaterNet(data(1)).intersections(3, [0, 2000, 4000], [250, 2250, 250], [250, 250, 250]);
     expect(back.map(c => c.s)).toEqual([1000, 3000]);
+  });
+  it('OSM splits at or near a skew crossing do not invent a parallel channel or another structure', () => {
+    const full = data(0.1, [[1000, 0], [1500, 500]]);
+    const baseline = evaluate(context(0.1, 7, full), design);
+    expect(baseline.waterCrossings[0].structure).toBe('pipe');
+    for (const split of [[1250, 250], [1260, 260]]) {
+      const divided = data(0.1, [[1000, 0], split]);
+      divided.reaches.push({ ...divided.reaches[0], id: 2, points: [split, [1500, 500]] });
+      const r = evaluate(context(0.1, 7, divided), design);
+      expect(r.waterCrossings).toHaveLength(1);
+      expect(r.waterCrossings[0].structure).toBe('pipe');
+      expect(r.cost.total).toBeCloseTo(baseline.cost.total, 4);
+      expect(r.violations.filter(v => v.kind === 'crossing')).toHaveLength(0);
+    }
   });
   it('sizes up with runoff and width, reserves natural bed/bank, and rejects impractical length', () => {
     const small = waterSize(crossing, 40);
@@ -92,6 +106,13 @@ describe('watercourse crossing assemblies', () => {
     expect(['pipe', 'box', 'bridge']).toContain(r.waterCrossings[0].structure);
     expect(r.waterCrossings[1].structure).toBe('tunnel');
     expect(r.violations.filter(v => v.kind === 'crossing')).toHaveLength(0);
+    // A narrow cover pocket cannot waive the minimum tunnel length just because water forces it.
+    q.fill(40000);
+    for (let row = 0; row < ny; row++) for (let col = 247; col <= 252; col++) q[row * nx + col] = 41800;
+    const thin = new Terrain({ nx, ny, cell: 5, base: 0, scale: 0.01, q, lc: new Uint8Array(q.length), watercourses: data(0.1) });
+    const short = evaluate({ ...context(0.1), terrain: thin }, design);
+    expect(short.waterCrossings[0].structure).toBe('blocked');
+    expect(short.violations.some(v => v.title === 'Watercourse tunnel is too short')).toBe(true);
   });
   it('detects a parallel channel in the earthwork footprint without a centreline crossing', () => {
     const water = data(0.1, [[750, 260], [1750, 260]]);

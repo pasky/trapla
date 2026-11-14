@@ -1,4 +1,5 @@
 // Independent watercourse geometry: roads/land-cover drawing order cannot erase a stream.
+import { STRUCTURE_RULES } from './data/prices';
 import { BOX_SIZES, CULVERT_RULES as R, PIPE_SIZES } from './data/culverts';
 
 export interface WaterReach {
@@ -22,7 +23,7 @@ export interface WaterSize {
   naturalBed: boolean;
 }
 export interface WaterResult extends WaterCrossing {
-  i: number; q100: number; structure: 'pipe' | 'box' | 'bridge' | 'tunnel' | 'blocked';
+  i: number; bed: number; h: number; q100: number; structure: 'pipe' | 'box' | 'bridge' | 'tunnel' | 'blocked';
   opening: string; length: number; cost: number; requiredBridge: boolean;
 }
 
@@ -55,7 +56,7 @@ export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
     }
   }
   const width = Math.max(c.width + 2 * R.bridgeBanks, q100 / (R.velocity * 2) + 2 * R.bridgeBanks);
-  return { type: 'bridge', width, height: 2, q100, capacity: Infinity, perM: 0, head: 0, minHeight: 3, naturalBed };
+  return { type: 'bridge', width, height: 2, q100, capacity: Infinity, perM: 0, head: 0, minHeight: STRUCTURE_RULES.riverClearance, naturalBed };
 }
 export function culvertCost(c: WaterCrossing, footprint: number): number {
   const size = waterSize(c, footprint);
@@ -68,8 +69,24 @@ export function waterOpening(size: WaterSize): string {
 /** Bounded segment buckets; no road × network Cartesian-product arrays. */
 export class WaterNet {
   private buckets = new Map<string, { reach: WaterReach; j: number }[]>();
+  private components = new Map<number, number>();
   constructor(readonly data: WaterData) {
     if (data.version !== 1) throw new Error('Unsupported watercourse pack');
+    // OSM way IDs are editing boundaries, not distinct physical channels. Shared vertices join
+    // split ways/confluences, including an endpoint meeting another way's interior vertex.
+    const parent = data.reaches.map((_, i) => i), vertices = new Map<string, number>();
+    const root = (i: number): number => {
+      while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+      return i;
+    };
+    data.reaches.forEach((w, i) => {
+      for (const p of w.points) {
+        const key = `${p[0].toFixed(3)},${p[1].toFixed(3)}`, other = vertices.get(key);
+        if (other !== undefined) parent[root(i)] = root(other);
+        else vertices.set(key, i);
+      }
+    });
+    data.reaches.forEach((w, i) => this.components.set(w.id, root(i)));
     for (const reach of data.reaches) for (let j = 0; j + 1 < reach.points.length; j++) {
       const a = reach.points[j], b = reach.points[j + 1];
       for (let x = Math.floor(Math.min(a[0], b[0]) / 100); x <= Math.floor(Math.max(a[0], b[0]) / 100); x++)
@@ -78,6 +95,9 @@ export class WaterNet {
           bucket.push({ reach, j }); this.buckets.set(key, bucket);
         }
     }
+  }
+  connected(a: number, b: number): boolean {
+    return a === b || (this.components.has(a) && this.components.get(a) === this.components.get(b));
   }
   /** Channels intercepted by a station's normal section, including parallel channels that never
    * cross the centreline. Bounded local buckets, not a full route×network product. */

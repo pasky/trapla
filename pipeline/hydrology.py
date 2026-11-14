@@ -24,7 +24,7 @@ CELL = 25.0
 BURN_DEPTH = 5.0
 METHOD = ("DMR 5G mean-resampled 25m (any nodata block excluded); OSM waterways burned 5m; "
           "priority-flood depression fill + steepest D8, flood-parent flat routing; "
-          "25m maximum nearby same-reach burned-cell upstream area; boundary/nodata contributions "
+          "25m maximum nearby same-reach burned-cell upstream area (prefer non-junction cells); boundary/nodata contributions "
           "propagate truncated=true (known area only); unsampled points=0,truncated=true")
 KINDS = {"stream", "river", "ditch", "drain", "canal"}
 # Fixed order makes both flood ties and D8 ties deterministic.
@@ -211,7 +211,7 @@ def line_cells(points: np.ndarray, shape: tuple[int, int], cell: float = CELL) -
 
 
 def sample_catchments(points: np.ndarray, flow: FlowGrid, burned: np.ndarray,
-                      cell: float = CELL, reach_cells: set[int] | None = None
+                      cell: float = CELL, reach_cells: set[int] | None = None, owners: np.ndarray | None = None
                       ) -> tuple[list[float], list[bool]]:
     """Snap to the largest upstream area on a burned cell centre within one cell.
 
@@ -238,7 +238,10 @@ def sample_catchments(points: np.ndarray, flow: FlowGrid, burned: np.ndarray,
             areas.append(0.0)
             flags.append(True)
             continue
-        rr, cc = max(candidates, key=lambda rc: flow.catchment_km2[rc])
+        # A tributary owns its junction pixel too, but that pixel carries main-stem flow.
+        # Prefer unshared cells when available; an exact unresolved junction stays conservative.
+        exclusive = [rc for rc in candidates if owners is not None and owners[rc] == 1]
+        rr, cc = max(exclusive or candidates, key=lambda rc: flow.catchment_km2[rc])
         areas.append(round(float(flow.catchment_km2[rr, cc]), 6))
         # Snapping must not turn a boundary/nodata-adjacent point into a claim
         # of completeness by choosing a nearby interior cell with a larger area.
@@ -270,9 +273,13 @@ def build(heights: np.ndarray, source_cell: float, elements: list[dict], way_xy,
                         "_cells": cells})
     log(f"hydrology: {nx}x{ny} cells, {len(reaches)} mapped reaches, {burned.sum()} burned cells")
     flow = flow_grid(terrain, burned=burned)
+    owners = np.zeros((ny, nx), dtype=np.uint16)
+    for reach in reaches:
+        if reach["_cells"]:
+            owners.ravel()[list(reach["_cells"])] += 1
     for reach in reaches:
         reach["catchmentKm2"], reach["truncated"] = sample_catchments(
-            reach["points"], flow, burned, reach_cells=reach.pop("_cells"))
+            reach["points"], flow, burned, reach_cells=reach.pop("_cells"), owners=owners)
         reach["points"] = np.round(reach["points"], 3).tolist()
     pack = {"version": 1, "method": METHOD, "reaches": reaches}
     filename = "watercourses.json.gz"

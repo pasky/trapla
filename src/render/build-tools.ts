@@ -28,7 +28,7 @@ export class BuildAnnotations {
         () => this.onPin?.(pin.s));
     }
     for (const c of r.waterCrossings) if (c.structure === 'pipe' || c.structure === 'box') {
-      this.add(c.x, c.y, Math.max(r.grade[c.i], r.ground[c.i]) + 3, '○', 'culvert',
+      this.add(c.x, c.y, c.bed + Math.max(c.h, 0) + 3, '○', 'culvert',
         `Culvert ${c.opening} at km ${(c.s / 1000).toFixed(3)}; ${c.length.toFixed(0)} m barrel; estimated Q100 ${c.q100.toFixed(2)} m³/s${c.truncated ? ' (incomplete catchment)' : ''}`, () => {});
     }
     const buildings = new Map<number, 'buy' | 'keep' | undefined>((d.buildingOverrides ?? []).map((o) => [o.j, o.action]));

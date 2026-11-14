@@ -14,7 +14,7 @@ for (const f of process.argv.slice(2)) {
   console.log(`\n## ${f}: ${r.valid ? 'VALID' : 'INVALID'}, ${(r.cost.total / 1e9).toFixed(4)} bn CZK; parts Δ ${(sum - r.cost.total).toFixed(6)} CZK`);
   console.log('| km | OSM way / type | local x,y m | catchment km² | est. Q100 m³/s | choice / opening | length m | item M CZK | fill m |');
   console.log('|---:|---|---|---:|---:|---|---:|---:|---:|');
-  for (const c of r.waterCrossings) console.log(`| ${(c.s / 1000).toFixed(3)} | ${c.id} / ${c.waterKind} | ${c.x.toFixed(0)},${c.y.toFixed(0)} | ${c.catchmentKm2.toFixed(3)}${c.truncated ? '*' : ''} | ${c.q100.toFixed(2)} | ${c.structure} / ${c.opening} | ${c.length.toFixed(1)} | ${(c.cost / 1e6).toFixed(3)} | ${(r.grade[c.i] - r.ground[c.i]).toFixed(1)} |`);
+  for (const c of r.waterCrossings) console.log(`| ${(c.s / 1000).toFixed(3)} | ${c.id} / ${c.waterKind} | ${c.x.toFixed(0)},${c.y.toFixed(0)} | ${c.catchmentKm2.toFixed(3)}${c.truncated ? '*' : ''} | ${c.q100.toFixed(2)} | ${c.structure} / ${c.opening} | ${c.length.toFixed(1)} | ${(c.cost / 1e6).toFixed(3)} | ${c.h.toFixed(1)} |`);
   console.log('\n* incomplete catchment; Q proxy doubled, not a statistical bound. Costs before surcharge; bridge cost = associated run divided equally among its watercourse crossings (not an extra charge). Opening is the required screening opening, not the priced bridge span.');
   for (const v of r.violations) console.log(`- km ${(v.s0 / 1000).toFixed(3)}: ${v.title} — ${v.fix}`);
 }

@@ -114,6 +114,13 @@ class HydrologyTests(unittest.TestCase):
         areas, _ = sample_catchments(point, flow, burned, reach_cells=own_cells)
         self.assertAlmostEqual(areas[0], flow.catchment_km2[2, 2])
         self.assertEqual(sample_catchments(point, flow, burned, reach_cells=set())[0], [0])
+        # At a confluence the junction pixel belongs to both reaches. Prefer the tributary's
+        # exclusive upstream pixel rather than attributing main-stem flow to the tributary.
+        own_cells.add(2 * 5 + 3)
+        owners = np.ones_like(burned, dtype=np.uint16)
+        owners[2, 3] = 2
+        areas, _ = sample_catchments(point, flow, burned, reach_cells=own_cells, owners=owners)
+        self.assertAlmostEqual(areas[0], flow.catchment_km2[2, 2])
 
     def test_line_rasterization_clips_negative_edge_without_burning_inside(self):
         self.assertEqual(line_cells(np.array([[-1, 20], [-1, 100]]), (5, 5)), set())

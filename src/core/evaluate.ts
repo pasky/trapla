@@ -254,7 +254,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const waterSide = Array.from({ length: n }, (_, i) => (terrain.watercourses?.section(st.x[i], st.y[i], st.tx[i], st.ty[i], 150, 150) ?? []).map(hit => ({ ...hit,
     offset: -(hit.x - st.x[i]) * st.ty[i] + (hit.y - st.y[i]) * st.tx[i], ground: terrain.heightAt(hit.x, hit.y) })));
   const exposedWater = (i: number, left: number, right: number) => waterSide[i].filter(hit => hit.offset <= left && hit.offset >= -right
-    && !water.some(c => c.id === hit.id && Math.abs(c.s - st.s[i]) <= barrelLength(c, left + right) / 2 + ds));
+    && !water.some(c => terrain.watercourses!.connected(c.id, hit.id)
+      && Math.abs(c.s - st.s[i]) <= barrelLength(c, left + right) / 2 + ds
+      && Math.hypot(c.x - hit.x, c.y - hit.y) <= barrelLength(c, left + right) + ds));
   const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>) => {
     for (let k = 0; k < indices.length; k++) {
       const i = indices[k];
@@ -466,7 +468,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         short = Math.max(short, deficit);
         const target = c.what === 'watercourse' ? waterAbove : minH;
         const i0 = Math.min(n - 2, Math.floor(c.s / ds));
-        for (const i of [i0, i0 + 1]) target[i] = Math.max(Number.isNaN(target[i]) ? -Infinity : target[i], c.g + c.need - ground[i]) + deficit + 0.5;
+        for (const i of [i0, i0 + 1]) target[i] = Math.max(Number.isNaN(target[i]) ? -Infinity : target[i], c.g + c.need - ground[i] + deficit + 0.5);
       });
       if (short <= 1e-6) break;
       apOpt.minH = minH; apOpt.eitherH.above = waterAbove;
@@ -732,15 +734,17 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const i = Math.min(n - 1, Math.round(c.s / ds));
     const wd = sec.dayL[i] + sec.dayR[i], size = waterSize(c, wd);
     const above = waterZ[k] - terrain.heightAt(c.x, c.y);
-    const isTunnel = kind[i] === KIND.tunnel && above <= -STRUCTURE_RULES.tunnelMinDepth;
+    const tunnelRun = runs.find(r => r.kind === KIND.tunnel && i >= r.i0 && i <= r.i1);
+    const shortTunnel = !!tunnelRun && tunnelRun.length < STRUCTURE_RULES.minTunnelLength;
+    const isTunnel = kind[i] === KIND.tunnel && above <= -STRUCTURE_RULES.tunnelMinDepth && !shortTunnel;
     const run = runs.find(r => r.kind === KIND.bridge && i >= r.i0 && i <= r.i1);
     const bridgeSpan = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, size.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks) / Math.max(0.01, c.sine);
     const clearBridge = !!run && c.s - bridgeSpan / 2 >= run.s0 && c.s + bridgeSpan / 2 <= run.s1;
     const need = kind[i] === KIND.bridge ? STRUCTURE_RULES.riverClearance : size.minHeight;
     const ok = isTunnel || (above >= need - 1e-6 && (kind[i] === KIND.bridge ? clearBridge : kind[i] === KIND.earth && size.type !== 'bridge'));
     if (!ok) violations.push({ kind: 'crossing', s0: c.s, s1: c.s,
-      title: above < 0 ? 'Cut intercepts a watercourse' : 'Watercourse crossing is obstructed',
-      fix: size.type === 'bridge' || kind[i] === KIND.bridge ? `Provide a bridge clearing the channel and banks (${bridgeSpan.toFixed(1)} m opening along the road), at least ${need.toFixed(1)} m above the bed`
+      title: shortTunnel ? 'Watercourse tunnel is too short' : above < 0 ? 'Cut intercepts a watercourse' : 'Watercourse crossing is obstructed',
+      fix: shortTunnel ? `Provide at least ${STRUCTURE_RULES.minTunnelLength} m of bored tunnel with sufficient cover, or pass above the channel` : size.type === 'bridge' || kind[i] === KIND.bridge ? `Provide a bridge clearing the channel and banks (${bridgeSpan.toFixed(1)} m opening along the road), at least ${need.toFixed(1)} m above the bed`
         : `Raise the road to at least ${need.toFixed(1)} m over the stream for ${waterOpening(size)}, or use a bridge`,
       detail: `Estimated Q100 ${size.q100.toFixed(2)} m³/s, DEM catchment ${c.catchmentKm2.toFixed(2)} km²${c.truncated ? ' (incomplete/uncertain)' : ''}. No automatic channel diversion is included. A deep bored tunnel can retain the surface watercourse.`,
       basis: 'game', rule: 'Provisional flood-capacity, cover and ecological screening; not a hydraulic design (research/17)',
@@ -750,9 +754,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       for (let j = run.i0; j <= run.i1; j++) cost += parts.bridges[j];
       cost /= water.filter(other => other.s >= run.s0 && other.s <= run.s1).length;
     }
-    return { ...c, i, q100: size.q100, structure: !ok ? 'blocked' : isTunnel ? 'tunnel' : kind[i] === KIND.bridge ? 'bridge' : size.type,
+    return { ...c, i, bed: waterGround.get(c)!, h: above, q100: size.q100, structure: !ok ? 'blocked' : isTunnel ? 'tunnel' : kind[i] === KIND.bridge ? 'bridge' : size.type,
       opening: kind[i] === KIND.bridge ? `≥${bridgeSpan.toFixed(1)} m clear` : isTunnel ? 'surface channel retained' : waterOpening(size),
-      length: run?.length ?? barrelLength(c, wd), cost, requiredBridge: size.type === 'bridge' };
+      length: run?.length ?? tunnelRun?.length ?? barrelLength(c, wd), cost, requiredBridge: size.type === 'bridge' };
   });
   // A channel parallel to the alignment can be buried without any centreline intersection.
   // No silent channel relocation: expose it as a conflict outside a priced crossing's barrel.
