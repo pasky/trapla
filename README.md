@@ -130,8 +130,9 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   diamonds mark noise buyouts. The HUD and profile tooltip explain both; assumptions and limitations are in
   `PLAN.md`.
 - **Noise view** <kbd>N</kbd>: a band along the road shows the controlling-period level (night, for the scenario
-  traffic) over its limit at ground-floor receivers (1.5 m above the real ground) in steps of ≥ +10, +5…+10,
-  0…+5 dB, a dark line on the limit itself and a pale fade 0…−6 dB below it — computed in the worker by the
+  traffic) relative to its limit at ground-floor receivers (1.5 m above the real ground), continuously shaded
+  (transparent 6 dB below the limit → yellow at the limit → orange → deep red at +15 dB and above, interpolated
+  per pixel), with one thin dark line on the limit itself — computed in the worker by the
   same calculator as the bill, with the chosen walls and the cut-edge screening (per 30 m station and side, a
   12-sample profile across the road; ≈ +1.5 ms per recompute). Dwellings are coloured by outcome: behind a wall,
   screened by a cut, within the limit, bought out for noise, demolished in the footprint (other buildings turn

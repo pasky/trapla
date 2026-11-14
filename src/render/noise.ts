@@ -1,5 +1,5 @@
-// Noise view (key N): the road's ground-floor noise footprint as a translucent band in steps over the
-// limit, dwellings coloured by their noise outcome, wall height labels, a legend, and hover details.
+// Noise view (key N): the road's ground-floor noise footprint as a translucent band, continuously shaded
+// by the level relative to the limit (with one crisp contour on the limit itself), dwellings coloured by their noise outcome, wall height labels, a legend, and hover details.
 // Everything comes from Result.noise (computed in the worker by the cost model's own calculator);
 // the main thread only draws. Hover over a noise wall works with the view off too.
 
@@ -15,9 +15,15 @@ import type { View } from './view';
 
 /** building colours (sRGB) by noise outcome; walls / buyouts / demolitions match their map symbols */
 export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: 0xc43c9b, demolished: 0xd7301f };
-/** band steps, dB over the limit (ground-floor receivers), and how far below the limit it fades out */
-const STEPS: [number, string][] = [[10, '#9e0142'], [5, '#e8501e'], [0, '#f8c22c']];
-const FADE = { db: 6, color: '#fff4c2' };
+/** band colour ramp: [dB relative to the limit (ground-floor receivers), colour, opacity], interpolated
+ * per pixel; transparent at the first stop (where the worker's footprint fades out), clamped past the last */
+const RAMP: [number, string, number][] = [
+  [-6, '#fff4c2', 0], [-2, '#fbe27a', 0.32], [0, '#f8c22c', 0.48], [5, '#ee7a1c', 0.56], [10, '#d0281e', 0.62], [15, '#6e0026', 0.7],
+];
+/** limit contour colour */
+const LIMIT_LINE = '#590019';
+/** legend tick positions, dB relative to the limit */
+const TICKS = [-5, 0, 5, 10, 15];
 
 // raw sRGB numbers: the ShaderMaterial writes them to the canvas without colour management
 const glsl = (c: string) => { const k = new THREE.Color().setStyle(c, THREE.LinearSRGBColorSpace); return `vec3(${k.r.toFixed(3)}, ${k.g.toFixed(3)}, ${k.b.toFixed(3)})`; };
@@ -121,19 +127,23 @@ export class NoiseLayer {
     g.setAttribute('db', new THREE.BufferAttribute(db, 1));
     g.setIndex(idx);
     g.computeBoundingSphere();
-    const steps = STEPS.map(([t, c]) => `if (vDb >= ${t.toFixed(1)}) c = vec4(${glsl(c)}, 0.55);`).join('\n        else ');
+    const stop = (k: number) => `vec4(${glsl(RAMP[k][1])}, ${RAMP[k][2].toFixed(3)})`;
+    const ramp = RAMP.slice(1).map(([t], k) => `if (d < ${t.toFixed(1)}) return mix(${stop(k)}, ${stop(k + 1)}, (d - ${RAMP[k][0].toFixed(1)}) / ${(t - RAMP[k][0]).toFixed(1)});`)
+      .join('\n          ');
     const mat = new THREE.ShaderMaterial({
       vertexShader: `attribute float db; varying float vDb;
         void main() { vDb = db; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      // colour steps of the interpolated level; a dark line on the limit itself
+      // continuous ramp of the per-pixel interpolated level; one anti-aliased dark line on the limit itself
       fragmentShader: `varying float vDb;
+        vec4 ramp(float d) {
+          ${ramp}
+          return ${stop(RAMP.length - 1)};
+        }
         void main() {
-          vec4 c;
-          ${steps}
-          else if (vDb >= -${FADE.db.toFixed(1)}) c = vec4(${glsl(FADE.color)}, 0.5 * (1.0 + vDb / ${FADE.db.toFixed(1)}));
-          else discard;
+          if (vDb < ${RAMP[0][0].toFixed(1)}) discard;
+          vec4 c = ramp(vDb);
           float w = abs(vDb) / max(fwidth(vDb), 1e-4);
-          if (w < 1.2) c = vec4(0.35, 0.0, 0.1, 0.9);
+          c = mix(c, vec4(${glsl(LIMIT_LINE)}, 0.9), 1.0 - smoothstep(0.7, 1.4, w));
           gl_FragColor = c;
         }`,
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
@@ -150,10 +160,14 @@ export class NoiseLayer {
     const period = fp?.controlling ?? 'night', limit = fp?.limit ?? NOISE.limitNightDb;
     const sw = (c: string, extra = '') => `<i style="background:${c};${extra}"></i>`;
     const b = (c: number, label: string) => `<span>${sw(`#${c.toString(16).padStart(6, '0')}`, 'width:10px;height:10px')}${label}</span>`;
+    // the bar shows the ramp as drawn over a light map: colour at its opacity over white
+    const lo = RAMP[0][0], hi = RAMP[RAMP.length - 1][0], at = (t: number) => ((t - lo) / (hi - lo)) * 100;
+    const rgba = (c: string, a: number) => { const k = new THREE.Color().setStyle(c, THREE.LinearSRGBColorSpace); return `rgba(${Math.round(k.r * 255)},${Math.round(k.g * 255)},${Math.round(k.b * 255)},${a})`; };
+    const bar = `linear-gradient(to right, ${RAMP.map(([t, c, a]) => `${rgba(c, Math.min(1, a * 1.35))} ${at(t).toFixed(1)}%`).join(', ')})`;
+    const ticks = TICKS.map((t) => `<em style="left:${at(t).toFixed(1)}%"${t === 0 ? ' class="lim"' : ''}>${t === 0 ? `${limit} dB limit` : `${t > 0 ? '+' : '−'}${Math.abs(t)}${t === hi ? ' dB' : ''}`}</em>`).join('');
     this.legend.innerHTML = `
-      <div><b>Noise</b> — ${period} L<sub>Aeq</sub> over the ${limit} dB limit, ground floor (1.5 m), walls and cuts included</div>
-      <div>${STEPS.map(([t, c], k) => `<span>${sw(c)}${k ? `+${t}…+${STEPS[k - 1][0]}` : `≥ +${t}`} dB</span>`).join('')}
-        <span>${sw(FADE.color, 'box-shadow:inset 0 0 0 1px #d8cf9c')}just below the limit</span><span><i class="lim"></i>limit</span></div>
+      <div><b>Noise</b> — ${period} L<sub>Aeq</sub> relative to the ${limit} dB limit, ground floor (1.5 m), walls and cuts included</div>
+      <div class="ramp"><div class="bar" style="background:${bar}"><u style="left:${at(0).toFixed(1)}%"></u></div><div class="ticks">${ticks}</div></div>
       <div>Dwellings: ${b(NOISE_COLORS.wall, 'behind a wall')}${b(NOISE_COLORS.cut, 'screened by a cut')}${b(NOISE_COLORS.ok, 'within limit')}
         ${b(NOISE_COLORS.bought, 'bought out')}${b(NOISE_COLORS.demolished, 'demolished (footprint)')}${b(0xe87718, 'retained, over limit')}</div>
       <div class="hint">Top-floor façade decides walls and buyouts. Hover a building or a wall for details.</div>`;
