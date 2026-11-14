@@ -12,6 +12,17 @@ const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 21
 afterEach(() => vi.unstubAllGlobals());
 
 describe('wall decisions through the full bill', () => {
+  it('groups a street of retained noise failures after geometric/goal checks rather than flooding the HUD', () => {
+    const buildings = new BuildingIndex(Array.from({ length: 20 }, (_, k) => [700 + 20 * k, 250, 7]));
+    const r = evaluate({ ...ctx, buildings, scenario: { ...D11_SCENARIO, maxTravelMin: 0.1 } },
+      { ...startDesign(), wallOverrides: [{ s0: 0, s1: 2000, side: 'L', height: 0 }] });
+    expect(r.noise.receivers.filter((p) => p.unresolved)).toHaveLength(20);
+    expect(r.boughtOut).toEqual([]);
+    const issues = r.violations.filter((v) => v.kind === 'noise');
+    expect(issues).toHaveLength(1);
+    expect(issues[0].fix).toContain('20 dwellings');
+    expect(r.violations.findIndex((v) => v.kind === 'time')).toBeLessThan(r.violations.findIndex((v) => v.kind === 'noise'));
+  });
   it('builds/prices player walls without a building layer and uses their actual fractional height', () => {
     const d = startDesign();
     d.wallOverrides = [{ s0: 800, s1: 1200, side: 'L', height: 2.5 }];
@@ -106,6 +117,21 @@ describe('crossing choices through the full bill', () => {
 });
 
 describe('saved Auto pins in evaluation', () => {
+  it('clears positional object choices after a pack change without discarding station-based edits', () => {
+    const data = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => data.set(k, v) });
+    const store = new Store('pack', startDesign, 'ground', 'old-objects');
+    store.update((d) => {
+      d.buildingOverrides = [{ j: 2, action: 'keep' }]; d.crossingOverrides = [{ roadId: 3, type: 'junction' }];
+      d.gradePins = [{ s: 1000, z: 408 }]; d.wallOverrides = [{ s0: 800, s1: 1200, side: 'L', height: 4 }];
+    });
+    const same = new Store('pack', startDesign, 'ground', 'old-objects');
+    expect(same.design.buildingOverrides).toHaveLength(1);
+    const changed = new Store('pack', startDesign, 'ground', 'new-objects');
+    expect(changed.objectDataChanged).toBe(true);
+    expect(changed.design.buildingOverrides).toEqual([]); expect(changed.design.crossingOverrides).toEqual([]);
+    expect(changed.design.gradePins).toEqual(store.design.gradePins); expect(changed.design.wallOverrides).toEqual(store.design.wallOverrides);
+  });
   it('uses the smoothed pinned grade for quantities, reports impossible heights, and restores auto on clear', () => {
     const d = startDesign(), base = evaluate(ctx, d);
     d.gradePins = [{ s: 1000, z: 408 }];

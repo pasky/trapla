@@ -89,6 +89,19 @@ export class CrossingRenderer {
     if (!this.r) return;
     const radius = Math.max(7, 6 * 2 ** (scale / 4)), v = new THREE.Vector3();
     for (const c of this.r.crossings) {
+      // Thin road ribbons disappear beside the route/wall symbols at overview scales. Keep the
+      // schematic diversion legible as a cased dashed line, distinct from solid teal noise walls.
+      for (const path of c.geometry?.links ?? []) {
+        const pos: number[] = [];
+        for (const p of path) { this.view.local(p.x, p.y, p.z + 1, v); pos.push(v.x, v.y, v.z); }
+        for (const [color, width] of [[0x62431c, 5], [c.issues?.length ? 0xe34432 : 0xf5c15b, 3]]) {
+          const geometry = new LineGeometry(); geometry.setPositions(pos);
+          const material = new LineMaterial({ color, linewidth: width, depthTest: false, depthWrite: false });
+          material.dashed = true; material.dashSize = 10; material.gapSize = 5;
+          const line = new Line2(geometry, material); line.computeLineDistances();
+          line.renderOrder = width === 5 ? 6 : 7; line.frustumCulled = false; this.symbols.add(line);
+        }
+      }
       if (c.type !== 'junction' && !c.issues?.length) continue;
       const pos: number[] = [], z = Math.max(this.r.grade[c.i], this.r.ground[c.i]) + 2;
       for (let k = 0; k <= 32; k++) {

@@ -151,9 +151,9 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         'Apply the crossing bridge mask before structure selection and billing');
     } else if (choice === 'overbridge') {
       Object.assign(c, separated(c));
-      // Explicit overbridge = our road below the existing one. Auto may buy raised approaches.
-      // Retain those approach costs even for an invalid manual request: no fictitious flat deck.
-      if (c.h > -CROSSING_RULES.underDepth + 1e-6) issue(c, 'depth', 'Overbridge needs a deeper cut',
+      // Ordinary roads can be raised on the same priced approaches as Auto. Motorways/trunks
+      // retain their fixed level and require our road to provide the full depth.
+      if (row.noAtGrade && c.h > -CROSSING_RULES.underDepth + 1e-6) issue(c, 'depth', 'Overbridge needs a deeper cut',
         `Lower the new road by ${(c.h + CROSSING_RULES.underDepth).toFixed(1)} m to ${CROSSING_RULES.underDepth} m below the crossed road`, -c.h, CROSSING_RULES.underDepth);
     } else if (choice === 'junction') {
       c.cost = JUNCTION;

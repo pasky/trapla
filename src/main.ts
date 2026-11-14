@@ -9,7 +9,7 @@ import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
 import { CrossingRenderer } from './render/crossings';
 import { BuildingPicker } from './render/building-pick';
-import { paintWallOverride, setBuildingOverride } from './core/build-controls';
+import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { BuildTools } from './ui/build-tools';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -31,7 +31,8 @@ async function main() {
   document.getElementById('attrib')!.innerHTML = meta.attribution.join(' · ');
 
   const store = new Store('trapla.d11', startDesign,
-    meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'));
+    meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'),
+    objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net));
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
@@ -48,9 +49,10 @@ async function main() {
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
   const tools = new BuildTools(document.getElementById('hud')!);
+  tools.objectDataChanged = store.objectDataChanged;
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); };
+  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); profile.selectStation(null); };
   annotations.onBuilding = selectBuilding;
   tools.ev.selectBuilding = selectBuilding;
   tools.ev.building = (j, action) => store.update((d) => { d.buildingOverrides = setBuildingOverride(d.buildingOverrides ?? [], j, action); });
@@ -77,7 +79,8 @@ async function main() {
   const selectCrossing = (roadId: number) => {
     tools.selectCrossing(roadId);
     const c = last?.crossings.find((c) => c.roadId === roadId);
-    if (c) { profile.selectStation(c.s); view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] }); }
+    profile.selectStation(null);
+    if (c) view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] });
   };
   tools.ev.selectCrossing = selectCrossing;
   tools.ev.crossing = (roadId, type) => store.update((d) => {
@@ -114,6 +117,7 @@ async function main() {
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
     profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+    tools.objectDataChanged = store.objectDataChanged;
     tools.setResult(r, rd);
     annotations.setResult(r, rd);
     if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
@@ -148,8 +152,8 @@ async function main() {
 
   // ---- map interactions ----
   view.ev = {
-    onPickTerrain: (x, y, clientX, clientY) => {
-      const building = buildingPicker.at(clientX, clientY, { x, y, z: pack.terrain.heightAt(x, y) });
+    onPickTerrain: (x, y, clientX, clientY, forceBend) => {
+      const building = forceBend ? null : buildingPicker.at(clientX, clientY, { x, y, z: pack.terrain.heightAt(x, y) });
       if (building !== null) { selectBuilding(building); return; }
       const rect = view.renderer.domElement.getBoundingClientRect();
       const mx = clientX - rect.left, my = clientY - rect.top;
@@ -159,7 +163,7 @@ async function main() {
         const gap = Math.hypot(p.sx - mx, p.sy - my);
         if (p.vis && gap < distance && c.roadId !== undefined) { picked = c.roadId; distance = gap; }
       }
-      if (picked !== null) { selectCrossing(picked); return; }
+      if (!forceBend && picked !== null) { selectCrossing(picked); return; }
       const k = nearestLeg(A, B, store.design.pis, { x, y });
       store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); });
       selectPi(k);

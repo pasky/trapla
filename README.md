@@ -34,6 +34,7 @@ Other commands:
 | `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
+| `node scripts/build-tools.mjs [--docs]` | real HUD/map checks for pins, crossings, building buy/keep, wall add/remove/Auto, undo and reload; `--docs` writes screenshots 30–35 |
 | `node scripts/noise-view.mjs [--gpu] [--docs] [outdir]` | noise view on a town-fringe and the town-centre design: hovers a walled / bought-out dwelling and a wall, prints the tooltips; `--docs` writes `docs/screenshots/28…29-*.png` |
 | `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
 | `node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name",{"contours":true}],…]' [outdir]` | debug renders of arbitrary camera views (`GPU=1` as above) |
@@ -42,7 +43,8 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 
 ## How to play
 
-- **Click** the terrain to add a bend (tangent intersection point, PI) to the nearest leg; **drag** a numbered PI
+- **Click** bare terrain to add a bend (tangent intersection point, PI) to the nearest leg;
+  **Shift+click** always adds a bend, including on buildings/crossings (plain clicks select those objects); **drag** a numbered PI
   to move it; **right-click** it or press <kbd>Del</kbd> to delete. Select a PI to edit its radius (auto = the
   smallest radius that satisfies the norm, incl. room for transition curves).
 - Map: left-drag pans, right-drag rotates, wheel zooms.
@@ -57,7 +59,8 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   optimum). Manual keeps the current vertical points and lets you drag/edit them; dragging a point also
   switches to Manual. Returning to Auto replaces manual vertical edits. Profile: double-click adds a VPI,
   right-click deletes, wheel zooms, drag pans.
-- **Pinned Auto heights:** Alt+click the profile to select a station, then enter its elevation and click
+- **Pinned Auto heights:** Alt+click the profile to select a station, or enter a station in Build tools
+  and click **Select / pin** (no modifier needed), then enter its elevation and click
   **Pin height** in the HUD's **Build tools**. Auto optimises the rest while passing within ±0.5 m of the
   requested height on the finished curved grade. Orange pins show on map/profile; click a map pin or use
   the saved-pin list to edit it. **Auto / unpin** removes it. Pins retain absolute chainage, remain saved but
@@ -82,8 +85,9 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - **Crossing tools:** click a crossing on the map/profile, or choose a crossed road in **Build tools**
   (filtered by the selected stretch). Choose **Junction / Our bridge / Its overbridge / Close + reconnect /
   Auto**. The choice follows the existing road's pack ID, including every intersection of that way.
-  Our bridge overrides overlapping structure paint locally; Auto seeks its clearance or the requested
-  overbridge's ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
+  Our bridge overrides overlapping structure paint locally; Auto seeks its clearance. Ordinary-road
+  overbridges use the same priced raised approaches as Auto; fixed-level motorways/expressways require
+  our road in a ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
   Gold rings mark junctions, crossed-road ribbons show the under/overpass, and ochre side links show
   reconnections/diversions. Links are schematic terrain-draped geometry; their bill remains the documented
   two-sided station-gap proxy, not surveyed link earthworks/land. Red rings identify invalid choices.
@@ -102,12 +106,15 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   **Keep** forbids both demolition and noise buyout: a footprint/working-strip hit or remaining noise
   excess becomes a blocking violation, with the dB shortfall shown. Green KEEP / magenta BUY map labels,
   green profile squares and magenta diamonds show decisions; use the saved-building list to revisit them.
-  Clearing the decision restores the automatic policy. Building and road IDs refer to this scenario pack.
+  Clearing the decision restores the automatic policy. Building/road IDs are scoped to the scenario
+  object-pack fingerprint: a changed pack clears those positional choices with a HUD notice, keeping
+  station-based edits. Unstamped imported designs are assumed to refer to the current pack.
 - **Wall tools:** select a profile stretch, choose **Left / Right (A → B)** and **2–6 m** in Build tools,
   then **Add wall / No wall / Auto wall**. Repainting changes only that side and subrange; undo restores it.
   Player walls retain their exact selected extent (no automatic end margins); tunnels suppress built walls.
   Teal walls show the actual height, dotted marks show manual intent, and pink dashed marks show removals
-  on map/profile. **Any manual wall decision at an exposed receiver prevents silent noise buyout** for
+  on map/profile. Nearby retained dwellings are grouped by side/stretch in the violation list.
+  **Any manual wall decision at an exposed receiver prevents silent noise buyout** for
   that dwelling: residual noise becomes a blocking dB violation with a computed sufficient wall height
   and extent where possible, otherwise a buyout/route-change fix. Explicitly buy out the building to
   accept acquisition. Clearing all relevant wall decisions restores automatic 3/4/5 m walls and the
@@ -130,6 +137,18 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   grey); walls get height labels. Hover a building for its top-floor level without and with mitigation against
   the limit and why it was walled or bought out. Walls and buyouts are decided at the top floor, so a dwelling
   can be walled although the ground-floor band beside it is already under the limit.
+
+### Manual build tools
+
+| Pinned Auto grade | Crossed-road reconnection |
+|---|---|
+| ![Pinned grade](docs/screenshots/30-build-grade-pin.png) | ![Crossing links](docs/screenshots/31-build-crossing-links.png) |
+| Keep a building | Player-built noise wall |
+| ![Keep building](docs/screenshots/33-build-building-keep.png) | ![Manual wall](docs/screenshots/34-build-noise-wall.png) |
+
+Also: [overbridge and its approaches](docs/screenshots/32-build-crossing-overbridge.png),
+[wall removal produces a violation, not a buyout](docs/screenshots/35-build-no-wall-conflict.png).
+Reproduce with `node scripts/build-tools.mjs --docs`.
 
 ## Architecture
 

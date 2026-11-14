@@ -1,4 +1,15 @@
 // Persisted manual building/wall decisions. Chainage ranges survive station resampling.
+/** Non-cryptographic pack identity: prevents persisted positional object IDs from silently referring
+ * to different buildings/roads after a data rebuild. Computed once at load, never in evaluate(). */
+export function objectDataKey(buildings: unknown, info: unknown, roads: unknown): string {
+  const text = JSON.stringify([buildings, info, roads]);
+  let a = 2166136261, b = 0x9e3779b9;
+  for (let i = 0; i < text.length; i++) {
+    a = Math.imul(a ^ text.charCodeAt(i), 16777619);
+    b = Math.imul(b ^ text.charCodeAt(i), 0x5bd1e995);
+  }
+  return `${text.length}:${a >>> 0}:${b >>> 0}`;
+}
 export interface BuildingOverride { j: number; action: 'buy' | 'keep' }
 export interface WallOverride { s0: number; s1: number; side: 'L' | 'R'; height: number }
 

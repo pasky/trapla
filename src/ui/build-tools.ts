@@ -19,6 +19,7 @@ export interface BuildToolEvents {
 
 export class BuildTools {
   ev: BuildToolEvents = {};
+  objectDataChanged = false;
   station: number | null = null;
   crossing: number | null = null;
   building: number | null = null;
@@ -28,14 +29,25 @@ export class BuildTools {
   private r: Result | null = null;
   private d: Design | null = null;
   private root: HTMLElement;
+  private pendingRender = false;
   constructor(hud: HTMLElement) {
     this.root = document.createElement('section');
     this.root.className = 'card build-tools';
     this.root.id = 'build-tools';
     hud.insertBefore(this.root, hud.querySelector('.cost'));
+    this.root.addEventListener('focusout', () => queueMicrotask(() => {
+      if (this.pendingRender && !this.root.contains(document.activeElement)) this.render();
+    }));
+    this.root.addEventListener('click', () => queueMicrotask(() => {
+      if (this.pendingRender && !document.activeElement?.matches('input, select')) this.render();
+    }));
     this.render();
   }
-  setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
+  setResult(r: Result, d: Design) {
+    this.r = r; this.d = d;
+    if (this.root.contains(document.activeElement) && document.activeElement?.matches('input, select')) this.pendingRender = true;
+    else this.render();
+  }
   selectStation(s: number) { this.station = s; this.crossing = this.building = null; this.render(); }
   selectCrossing(roadId: number) { this.crossing = roadId; this.station = this.building = null; this.render(); }
   selectBuilding(j: number) { this.building = j; this.station = this.crossing = null; this.render(); }
@@ -92,21 +104,42 @@ export class BuildTools {
       const value = (e.target as HTMLSelectElement).value;
       if (value !== '') this.ev.selectCrossing?.(Number(value));
     };
+    const inactive = (d.crossingOverrides ?? []).filter((o) => !r.crossings.some((c) => c.roadId === o.roadId));
+    for (const o of inactive) {
+      const clear = document.createElement('button');
+      clear.textContent = `Clear inactive road #${o.roadId} (${o.type})`;
+      clear.title = 'This road is no longer crossed. Its saved decision would apply again if you reroute across it.';
+      clear.onclick = () => this.ev.crossing?.(o.roadId, null);
+      box.appendChild(clear);
+    }
     const c = r.crossings.find((c) => c.roadId === this.crossing);
     if (c) {
       const choice = crossingChoice(c.roadId!, d.crossingOverrides ?? []);
       const options: [string, string][] = [['', 'Auto'], ['junction', 'Junction'], ['bridge', 'Our bridge over it'], ['overbridge', 'Its overbridge over us'], ['reconnection', 'Close + reconnect']];
       const detail = document.createElement('div');
-      detail.innerHTML = `<div class="sub">${crossingLabel(c)} · grade ${c.h >= 0 ? '+' : ''}${c.h.toFixed(1)} m above crossed road</div><label>Resolution <select id="crossing-choice" title="Auto retains grade separations, spaces through-road junctions at least 1.5 km apart, then chooses a priced overbridge or a link to an already resolved compatible road.">${options.map(([value, label]) => `<option value="${value}" ${(choice ?? '') === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="sub">Applies to every crossing of this road. Unsafe clearance, spacing or links remain violations. Our bridge takes priority over overlapping structure paint.</div>`;
+      detail.innerHTML = `<div class="sub">${crossingLabel(c)} · grade ${c.h >= 0 ? '+' : ''}${c.h.toFixed(1)} m above crossed road</div><label>Resolution <select id="crossing-choice" title="Auto retains grade separations, spaces through-road junctions at least 1.5 km apart, then chooses a priced overbridge or a link to an already resolved compatible road.">${options.map(([value, label]) => `<option value="${value}" ${(choice ?? '') === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><div class="sub">Affects this road at km ${r.crossings.filter((x) => x.roadId === c.roadId).map((x) => (x.s / 1000).toFixed(3)).join(', ')}. Explicit choices keep separate safety/billing objects rather than merged Auto allowances. Ordinary overbridges include raised approaches; motorways require a ≥6 m cut. Unsafe choices remain violations. Our bridge takes priority over structure paint.</div>`;
       detail.querySelector<HTMLSelectElement>('select')!.onchange = (e) => this.ev.crossing?.(c.roadId!, (e.target as HTMLSelectElement).value as CrossingChoice || null);
       box.appendChild(detail);
     }
     this.root.appendChild(box);
   }
   private render() {
+    this.pendingRender = false;
     const r = this.r, d = this.d, s = this.station;
-    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a building or crossing on the map; choose its action here. Select a cost-strip stretch for B/T/E/C structures and left/right noise walls. All choices are undoable.</div>`;
+    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a building or crossing on the map; choose its action here. Shift+click always adds a bend. Select a cost-strip stretch for B/T/E/C structures and left/right noise walls. All choices are undoable.</div>`;
+    if (this.objectDataChanged) {
+      const notice = document.createElement('p'); notice.className = 'warn';
+      notice.textContent = 'Scenario objects changed: saved building/crossing choices were cleared to avoid selecting different objects. Station-based decisions are retained.';
+      this.root.appendChild(notice);
+    }
     if (!r || !d) return;
+    const station = document.createElement('div');
+    station.innerHTML = `<label>Station <input id="station-value" type="number" min="0" max="${r.length}" step="1" value="${Math.round(this.station ?? (this.range ? (this.range.s0 + this.range.s1) / 2 : r.length / 2))}"> m <button id="station-select" title="Select a station for pinning without Alt+click">Select / pin</button></label>`;
+    station.querySelector<HTMLButtonElement>('button')!.onclick = () => {
+      const s = station.querySelector<HTMLInputElement>('input')!.valueAsNumber;
+      if (Number.isFinite(s) && s >= 0 && s <= r.length) this.ev.selectStation?.(s);
+    };
+    this.root.appendChild(station);
     this.renderWalls(r, d);
     this.renderBuilding(r, d);
     this.renderCrossings(r, d);

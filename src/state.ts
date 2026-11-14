@@ -25,8 +25,9 @@ export class Store {
   private idx = -1;
   private listeners: ((d: Design, committed: boolean) => void)[] = [];
   best: Best | null = null;
+  objectDataChanged = false;
 
-  constructor(private key: string, private initial: () => Design, private pricingData = 'unmapped') {
+  constructor(private key: string, private initial: () => Design, private pricingData = 'unmapped', private objectData = '') {
     let d: Design | null = null;
     try {
       const raw = localStorage.getItem(key + '.design');
@@ -34,12 +35,23 @@ export class Store {
       const b = localStorage.getItem(key + '.best');
       if (b) this.best = JSON.parse(b);
       // a best score from an older cost model is not comparable with today's bills: forget it
-      if (this.best && (this.best.model !== COST_MODEL_VERSION || this.best.pricingData !== pricingData)) this.best = null;
+      if (this.best && (this.best.model !== COST_MODEL_VERSION || this.best.pricingData !== pricingData
+        || (objectData && this.best.design.objectData && this.best.design.objectData !== objectData))) this.best = null;
     } catch { d = null; }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
-    normalizeDesign(this.design);
+    this.prepare(this.design);
     this.push();
+  }
+
+  private prepare(d: Design) {
+    normalizeDesign(d);
+    if (!this.objectData) return;
+    if (d.objectData && d.objectData !== this.objectData) {
+      this.objectDataChanged = true;
+      d.buildingOverrides = []; d.crossingOverrides = [];
+    }
+    d.objectData = this.objectData;
   }
 
   on(fn: (d: Design, committed: boolean) => void) { this.listeners.push(fn); }
@@ -65,7 +77,7 @@ export class Store {
 
   replace(d: Design) {
     this.design = clone(d);
-    normalizeDesign(this.design);
+    this.prepare(this.design);
     this.push(); this.emit(true);
   }
 

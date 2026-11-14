@@ -43,7 +43,13 @@ export class BuildAnnotations {
     const el = document.createElement('button');
     el.className = `build-annotation ${cls}`; el.textContent = text; el.title = title;
     el.onpointerdown = (e) => e.stopPropagation();
-    el.onclick = (e) => { e.stopPropagation(); click(); };
+    el.onclick = (e) => {
+      e.stopPropagation();
+      if (e.shiftKey) {
+        const p = this.view.pick(e.clientX, e.clientY);
+        if (p) this.view.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY, true);
+      } else click();
+    };
     this.overlay.appendChild(el); this.points.push({ el, x, y, z });
   }
   private position() {

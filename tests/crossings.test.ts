@@ -75,12 +75,14 @@ describe('explicit crossing choices (automatic policy already covered in town.te
     expect(cs.every(c => c.type === 'bridge' && c.cost === 0)).toBe(true);
   });
 
-  it('uses the same overbridge price as Auto and retains priced approaches for an insufficient cut', () => {
+  it('uses Auto overbridge approaches for ordinary roads but requires depth below fixed-level motorways', () => {
     const auto = cross(1, 4000, 'residential', -8), manual = { ...auto };
     resolve([auto]); expect(resolve([manual], [{ roadId: 1, type: 'overbridge' }])).toEqual([]);
     expect(manual.cost).toBe(auto.cost); expect(manual.span).toBe(auto.span);
     const shallow = cross(2, 4000, 'residential', -2);
-    expect(resolve([shallow], [{ roadId: 2, type: 'overbridge' }]).map(v => v.crossing.code)).toEqual(['depth']);
+    expect(resolve([shallow], [{ roadId: 2, type: 'overbridge' }])).toEqual([]);
+    const motorway = cross(3, 4000, 'motorway', -2);
+    expect(resolve([motorway], [{ roadId: 3, type: 'overbridge' }]).map(v => v.crossing.code)).toEqual(['depth']);
     expect(shallow.approachLength).toBeGreaterThan(0); expect(shallow.cost).toBeGreaterThan(manual.cost);
   });
 

@@ -51,6 +51,8 @@ export interface Design {
   buildingOverrides?: BuildingOverride[];
   /** Side-specific wall paint; height 0 removes Auto's wall, omitted ranges remain automatic. */
   wallOverrides?: WallOverride[];
+  /** Scenario object-pack identity for positional building/road IDs; not a scoring version. */
+  objectData?: string;
 }
 
 export interface EvalContext {
@@ -346,7 +348,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         if (choice === 'bridge') {
           const need = ROAD_CLASSES[c.cls].noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight;
           minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + need - ground[i]);
-        } else maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
+        } else if (ROAD_CLASSES[c.cls].noAtGrade) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
       }
     }
     const apOpt = {
@@ -373,7 +375,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       const minH = Float64Array.from(apOpt.minH, (v, i) => (clearance[i] > -Infinity ? v + short + 0.5 : v));
       // same material value: only the clearance changes
       const mv = ap.materialValue ?? MATERIAL_VALUE.start;
-      ap = autoProfile(st.s, ground, { ...apOpt, minH, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
+      const retry = autoProfile(st.s, ground, { ...apOpt, minH, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
+      // A clearance refinement must not replace an already pin-compliant solution by its straight
+      // fallback. Keep the useful grade and report its clearance shortfall instead.
+      if (d.gradePins?.length && !retry.feasible) break;
+      ap = retry;
     }
     vpis = ap.vpis;
     materialValue = ap.materialValue ?? MATERIAL_VALUE.start;
@@ -612,7 +618,6 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     ...pinViolations,
     ...crossingIssues,
     ...buildingViolations,
-    ...noiseViolations,
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];
@@ -661,7 +666,6 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     violations.push(profileViolation(al.length, scenario.maxGradient));
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
-  const geomViolations = violations.length;
   const travelMin = al.length / (d.speed / 3.6) / 60;
   const minCategory = minCategoryForTraffic(scenario.traffic);
   if (CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
@@ -670,6 +674,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   if (travelMin > scenario.maxTravelMin + 1e-9) {
     violations.push(timeViolation(al.length, d.speed, travelMin, scenario.maxTravelMin));
   }
+  violations.push(...noiseViolations); // grouped noise issues never hide geometric/goal constraints
+  const geomViolations = violations.filter((v) => !v.goal).length;
   lap('total');
 
   return {

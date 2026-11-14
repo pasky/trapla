@@ -133,7 +133,7 @@ export class ProfilePanel {
   }
 
   select(i: number | null) { this.selected = i; this.draw(); }
-  selectStation(s: number) { this.pinStation = s; this.draw(); }
+  selectStation(s: number | null) { this.pinStation = s; this.draw(); }
 
   /** show the selected station range (set by the owner of the selection state) */
   setSelection(r: StationRange | null) { this.sel = r; this.draw(); }

@@ -567,7 +567,9 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 - **Crossing choices** persist by existing-way pack ID: junction / our bridge / its overbridge /
   close-and-reconnect / Auto, with all raw intersections retained for chosen ways. Shared prices and
   explicit clearance, depth, spacing, structure and reachable-link checks; invalid choices cannot serve
-  as resolved link anchors. Auto receives requested bridge clearance / overbridge cut bounds. Map shows
+  as resolved link anchors. Auto receives requested bridge clearance / motorway-overbridge cut bounds;
+  ordinary overbridges use the same priced raised approaches as Auto. The HUD lists all affected
+  intersections and can clear inactive saved road choices. Shift+map-click always places a bend. Map shows
   junction rings, continuous crossed roads/decks and schematic two-sided links; pricing remains the
   documented station-gap proxy (not a surveyed diversion). Default scoring is unchanged.
 - **Building choices** persist by pack building index: explicit buyout/demolition anywhere, keep, or
@@ -579,11 +581,20 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   fractional heights), explicit no-wall, or clear to Auto. Actual heights drive bill, receiver checks and
   noise map; manual cells do not seed automatic margins or join height-promotion runs. A manual wall
   decision at any exposed pair prevents implicit acquisition of that whole dwelling; residual excess is
-  a blocking violation with a computed wall/extent suggestion or explicit-buyout fix. Keep also blocks
+  a blocking violation with a computed wall/extent suggestion or explicit-buyout fix. Nearby failures
+  are grouped by side/stretch and listed after geometric and goal constraints. Keep also blocks
   fallback. Unrelated automatic buyouts retain the original policy. Player walls have exact extents,
   tunnels suppress them, and map/profile marks include removals. No default score/version change.
 - **Grade line: Auto | Manual** replaces the ambiguous button. Auto seeks a low-cost legal vertical line;
   Manual freezes it for vertical-point edits. Auto replaces manual vertical edits but keeps structure paint.
+- Manual-tool verification: 178 tests, typecheck/build, original mouse smoke and
+  `scripts/build-tools.mjs` (real controls, map building pick, Shift+click, clear/undo/reload).
+  Screenshots [30–35](docs/screenshots/30-build-grade-pin.png); README has the full gallery.
+  All five saved designs retain **exactly** their baseline bills and VALID state, including per-cell
+  sums. Shared-host five-run means: **43–62 ms**, versus **41–64 ms** before the tools; a demo pin takes
+  ~64 ms after warm-up. Pin search can take longer on a tight constrained grid; drag computation stays
+  in the latest-request worker. Town-wide wall removal groups 301 retained receivers into 17 issues,
+  with zero implicit buyouts. Pack fingerprints guard stored object IDs after a data rebuild.
 - KHK regional/nadregional ÚSES is available and cached (47 polygons, ~0.49 MB) by
   `uv run pipeline/fetch_uses.py`. No automatic ecological bridge mandates: current plan status, local
   corridors, flood hydraulics and suitable passage dimensions need further work.
