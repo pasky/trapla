@@ -31,6 +31,19 @@ function assertClear(plan: ReturnType<typeof planRoadRealignment>, cells: Footpr
   }
   }
 }
+function preservesJunctionOrBlocks(plan: ReturnType<typeof planRoadRealignment>, x: number, y: number, sourceD: number, thirdWay: number) {
+  if (plan.problems.length) { expect(plan.geometry.clipped).toBe(true); return; }
+  expect(plan.sourceIntervals.some(s => s.way === thirdWay)).toBe(false);
+  // A shorter collar may now leave the original junction entirely unchanged.
+  if (!plan.sourceIntervals.some(s => s.way === 0 && s.a <= sourceD + 0.01 && s.b >= sourceD - 0.01)) return;
+  const paths = plan.geometry.links ?? [plan.geometry.road!];
+  expect(paths.some(path => path.slice(1).some((b, i) => {
+    const a = path[i], dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(x - a.x - t * dx, y - a.y - t * dy) < 2 && Math.abs(a.z + t * (b.z - a.z) - 100) < 0.1;
+  }))).toBe(true);
+  expect(plan.sourceIntervals.some(s => s.way === thirdWay)).toBe(false);
+}
 function crossing(roadId: number): CrossingResult {
   return { s: 400, i: 40, x: 500, y: 250, cls: 'service', roadId, h: 0, type: 'overbridge', cost: 1,
     geometry: { width: 4, schematic: false, road: [100, 200, 230, 250, 280, 320, 400].map(y => ({ x: 500, y,
@@ -135,6 +148,9 @@ describe('bounded real road relocation', () => {
     const input = setup([[0, 500, 260, 700, 310], [0, 500, 100, 500, 400]]);
     input.hit = { a: 0, b: 50, i: 40, j: 42 };
     const c = crossing(1); input.crossings = [c];
+    // Only the ramp is an available anchor on this side; a shorter collar must not
+    // make this engineered-elevation test vacuous by choosing an alternate ground point.
+    for (const p of c.geometry!.road!) if (p.y >= 320) p.surface = 'deck';
     const owned = roadRealignmentCrossingIntervals([c], input.roads);
     expect(owned).toEqual([{ way: 1, a: 0, b: 300 }]); // the different T-arm is NOT free
     input.covered = new Map([[1, owned.map(s => [s.a, s.b] as const)]]);
@@ -172,11 +188,11 @@ describe('bounded real road relocation', () => {
   it('never severs outside-grid third arms when removing a dead-end stub or straightening a connector', () => {
     const dead = setup([[0, 500, 240, 500, 450], [0, 500, 275, 650, 275]]);
     dead.hit = { a: 0, b: 32, i: 40, j: 40 };
-    expect(planRoadRealignment(dead).problems).toContain('realignment would sever an unhandled road branch');
+    preservesJunctionOrBlocks(planRoadRealignment(dead), 500, 275, 35, 1);
 
     const split = setup([[0, 700, 100, 700, 400], [0, 700, 100, 500, 100], [0, 500, 100, 500, 400], [0, 700, 200, 850, 200]]);
     split.hit = { a: 128, b: 172, i: 60, j: 60 }; split.crossings = [crossing(2)];
-    expect(planRoadRealignment(split).problems).toContain('realignment would sever an unhandled road branch');
+    preservesJunctionOrBlocks(planRoadRealignment(split), 700, 200, 100, 3);
     split.roads = new RoadNet({ cls: ['service'], ways: [[0, 700, 100, 700, 400], [0, 700, 100, 500, 100], [0, 500, 100, 500, 400], [0, 700, 250, 850, 350]] });
     const pending = planRoadRealignment(split);
     expect(pending.problems).toEqual([]); // inside-grid third arm has an independent caller hit
@@ -185,7 +201,7 @@ describe('bounded real road relocation', () => {
     const arm = setup([[0, 500, 260, 700, 310], [0, 500, 100, 500, 400], [0, 580, 280, 580, 400]]);
     arm.hit = { a: 0, b: 50, i: 40, j: 42 }; arm.crossings = [crossing(1)];
     arm.covered = new Map([[1, [[0, 300]]]]);
-    expect(planRoadRealignment(arm).problems).toContain('realignment would sever an unhandled road branch');
+    preservesJunctionOrBlocks(planRoadRealignment(arm), 580, 280, Math.hypot(80, 20), 2);
   });
 
   it('does not rebuild a wider through road at a narrow access-road price', () => {

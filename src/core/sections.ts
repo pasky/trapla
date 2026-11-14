@@ -77,7 +77,7 @@ function addBands(out: SideResult, bands: Bands | ((o: number) => Bands), o0: nu
  * One side of a section. `ground(o)` gives terrain elevation at offset o (m) on this side.
  */
 export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: (o: number) => number,
-  bands: Bands | ((o: number) => Bands) = UNKNOWN_GROUND): SideResult {
+  bands: Bands | ((o: number) => Bands) = UNKNOWN_GROUND, maxOffset = Infinity): SideResult {
   let cut = 0, fill = 0;
   const out: SideResult = { cut: 0, cutI: 0, cutII: 0, fill: 0, day: 0, zDay: 0, open: false };
   // Under the crown: integrate (z - G) with sign split. No per-section helper closures:
@@ -102,8 +102,9 @@ export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: 
   const n = isFill ? tpl.fillSlope : tpl.cutSlope;
   const sign = isFill ? -1 : 1;
   let o0 = w, d0 = dPrev;
-  while (o0 < w + MAX_OFF - 1e-8) {
-    const o = Math.min(o0 + STEP, w + nextSlopeKink(o0 - w, n, isFill), w + MAX_OFF);
+  const limit = Math.min(w + MAX_OFF, Math.max(w, maxOffset));
+  while (o0 < limit - 1e-8) {
+    const o = Math.min(o0 + STEP, w + nextSlopeKink(o0 - w, n, isFill), limit);
     const g = ground(o);
     const d = z + sign * slopeHeight(o - w, n, isFill) - g;
     const crossed = isFill ? d <= 0 : d >= 0;
@@ -120,7 +121,7 @@ export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: 
     o0 = o; d0 = d;
   }
   out.cut = cut; out.fill = fill; out.cutII -= out.cutI;
-  out.day = o0; out.zDay = ground(o0); out.open = true;
+  out.day = o0; out.zDay = ground(o0); out.open = limit >= w + MAX_OFF - 1e-8;
   return out;
 }
 
@@ -136,15 +137,18 @@ export interface Sections {
   zDayL: Float64Array;
   zDayR: Float64Array;
   open: Uint8Array;
+  /** Optional final-engineering cache; omitted from DP/balance sampling and from Result. */
+  sideL?: SideResult[]; sideR?: SideResult[];
 }
 
 /** compute sections at all stations; normal = left of travel direction */
 export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number>, y: ArrayLike<number>,
-  tx: ArrayLike<number>, ty: ArrayLike<number>, z: ArrayLike<number>, tpl: SectionTemplate): Sections {
+  tx: ArrayLike<number>, ty: ArrayLike<number>, z: ArrayLike<number>, tpl: SectionTemplate, keepSides = false): Sections {
   const out: Sections = {
     cut: new Float64Array(n), cutI: new Float64Array(n), cutII: new Float64Array(n), cutIII: new Float64Array(n),
     fill: new Float64Array(n), dayL: new Float64Array(n), dayR: new Float64Array(n),
     zDayL: new Float64Array(n), zDayR: new Float64Array(n), open: new Uint8Array(n),
+    ...(keepSides ? { sideL: new Array<SideResult>(n), sideR: new Array<SideResult>(n) } : {}),
   };
   const w = tpl.crownWidth / 2;
   for (let i = 0; i < n; i++) {
@@ -154,6 +158,7 @@ export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number
       (o) => terrain.groundAt(cx + nx * o, cy + ny * o));
     const R = sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx - nx * o, cy - ny * o),
       (o) => terrain.groundAt(cx - nx * o, cy - ny * o));
+    if (out.sideL && out.sideR) { out.sideL[i] = L; out.sideR[i] = R; }
     out.cut[i] = L.cut + R.cut;
     out.cutI[i] = L.cutI + R.cutI;
     out.cutII[i] = L.cutII + R.cutII;

@@ -35,6 +35,8 @@ export interface CrossingGeometry {
   approaches?: [{ start: number; end: number }, { start: number; end: number }];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
+  /** Explicit priced turning disk, distinct from legacy small severed-end heads. */
+  turnaroundRadius?: number;
   schematic: false;
   /** Incomplete source topology / bounded geometry, never silently invented extensions. */
   clipped?: boolean;

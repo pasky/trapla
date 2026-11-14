@@ -321,7 +321,9 @@ describe('evaluate on a synthetic town', () => {
     const separated = evaluate(ctx, { ...design, crossingOverrides: [{ roadId: 3, type: 'overbridge' }] });
     expect(r.crossings[2].cost).toBeLessThan(separated.crossings.find(c => c.roadId === 3)!.cost);
     expect(r.crossings[2].linkLength).toBeCloseTo(r.crossings[2].geometry!.links!.reduce((sum,path) => sum+crossingPlanLength(path),0),6);
-    expect(r.cost.crossings).toBeCloseTo(r.crossings.reduce((sum, c) => sum + c.cost, 0), 0);
+    // Retained slope faces and auxiliary relocations are separately measured works in this bucket.
+    const footprintWorks = r.footprintConflicts.filter(c => c.action !== 'culvert').reduce((sum, c) => sum + c.cost - (c.landCost ?? 0), 0);
+    expect(r.cost.crossings).toBeCloseTo(r.crossings.reduce((sum, c) => sum + c.cost, 0) + footprintWorks, 0);
   });
 
   it('demolishes what is in the footprint or under a bridge deck, and nothing else', () => {

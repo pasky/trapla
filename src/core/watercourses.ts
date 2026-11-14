@@ -174,6 +174,7 @@ export class WaterNet {
           visit(segment);
         }
   }
+  reachDistances(id: number): readonly number[] | undefined { return this.distances.get(id); }
   connected(a: number, b: number): boolean {
     return a === b || (this.components.has(a) && this.components.get(a) === this.components.get(b));
   }

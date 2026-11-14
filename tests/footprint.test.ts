@@ -42,18 +42,18 @@ describe('constructed footprint conflicts', () => {
   });
   it('subtracts a crossing’s handled original-road interval, not its entire way', () => {
     const crossings: CrossingResult[] = [{ s: 500, i: 50, x: 600, y: 260, cls: 'service', roadId: 0, h: 0, type: 'junction', cost: 25e6,
-      geometry: { width: 4, schematic: false, road: [300, 900].map(x => ({ x, y: 260, z: 100, ground: 100, surface: 'terrain' })) } }];
+      geometry: { width: 4, schematic: false, road: [300, 900].map(x => ({ x, y: 260, z: 100, ground: 100, surface: 'terrain', d: x - 600 })) } }];
     const result = check(route(), road(), terrain(), crossings);
-    expect(result.conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(394, 4); // half-station geometric tolerance
+    expect(result.conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(404, 4); // exact 600 m ownership, no extra half-cell padding
     expect(result.conflicts.every(c => c.original!.every(p => p.x <= 300 || p.x >= 900))).toBe(true);
     // A spacing-invalid manual choice still pays its approaches; don't charge them again.
     crossings[0].issues = [{ kind: 'crossing', basis: 'game', s0: 500, s1: 500, title: 'spacing', fix: 'move', rule: 'spacing', crossing: { requested: 'junction', code: 'spacing' } }];
-    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(394, 4);
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(404, 4);
     // A one-sided reconnection already removes the old-way stub beyond its sole turnaround.
     crossings[0].type = 'reconnection'; crossings[0].geometry!.turnarounds = [crossings[0].geometry!.road![0]];
-    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(197, 4);
-    crossings[0].issues![0].crossing.code = 'geometry'; // second required branch has no anchor
-    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(694, 4);
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(202, 4);
+    crossings[0].issues![0].crossing.code = 'geometry'; // the unbuildable choice cannot claim removed roads
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(1004, 4);
   });
   it('motorways cannot use the cheap road-reconnection fallback', () => {
     const r = check(route(), road('motorway'));

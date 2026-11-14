@@ -1,38 +1,51 @@
 // Conflicts beyond centreline intersections. Network segments are queried through their existing
 // spatial grids; raster work visits only cells in the constructed footprint (never the whole map).
 import { bridgeLayout } from './bridge';
+import { planRoadRealignment, roadRealignmentCrossingIntervals, type RoadSourceInterval, type RoadRealignmentPlan, type PreservedRoadConnection } from './road-realignment';
+import { RoadRemedyLedger } from './road-remedy-ledger';
 import type { Violation } from './checks';
+import type { ChannelRelocation } from './channel-relocation';
+import type { RetainingFeatureCache } from './retaining';
 import type { CrossingGeometry, CrossingPoint, CrossingResult } from './crossings';
 import { ROAD_CLASSES, CROSSING_RULES } from './data/urban';
 import { KIND, type Run } from './structures';
-import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
-import type { RoadCrossing, RoadNet } from './roadnet';
+import type { Terrain } from './terrain';
+import { protectedRasterCells } from './protected-raster';
+import type { RoadCrossing, RoadNet, RoadSegment } from './roadnet';
 import { barrelLength, barrelEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, type WaterCrossing, type WaterSegment } from './watercourses';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
   id: string;
   feature: 'road' | 'railway' | 'water' | 'stream';
-  action: 'relocation' | 'culvert' | 'blocked';
+  action: 'relocation' | 'culvert' | 'retaining-wall' | 'channel-relocation' | 'blocked';
   i: number; s0: number; s1: number; x: number; y: number;
   /** Constructed path/barrel length (affected length for blocked features), m. */
   length: number;
   affectedLength?: number;
   /** Pre-surcharge CZK, already in crossings/culverts; never add this again to the bill. */
   cost: number;
+  /** Included in cost, booked as land without construction surcharge. */
+  landCost?: number;
+  /** Included all-in access/junction allowance, exempt from construction surcharge. */
+  lumpCost?: number;
   detail: string;
   roadId?: number; cls?: string; roadCode?: string;
   geometry?: CrossingGeometry;
   original?: CrossingPoint[];
+  /** Multiple removed old roads can share one independently accepted, priced connector. */
+  originals?: CrossingPoint[][];
+  sourceIntervals?: RoadSourceInterval[];
 }
 export interface FootprintRoute {
   n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
   tx: ArrayLike<number>; ty: ArrayLike<number>; kind: ArrayLike<number>; grade: ArrayLike<number>;
   dayL: ArrayLike<number>; dayR: ArrayLike<number>; zDayL: ArrayLike<number>; zDayR: ArrayLike<number>;
   crownWidth: number; runs: Run[];
+  channelRelocations?: readonly ChannelRelocation[];
+  featureCache?: RetainingFeatureCache;
 }
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
-const SETBACK = 3; // Same provisional construction clearance as crossing side links.
 const SAMPLE = 5;
 /** OSM motorways are separate one-direction carriageways; D27.5 is the whole divided road. */
 const existingHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
@@ -48,7 +61,7 @@ function union(hits: Hit[]): Hit[] {
   }
   return out;
 }
-function subtract(range: [number, number], covered: readonly [number, number][]): [number, number][] {
+export function subtract(range: [number, number], covered: readonly [number, number][]): [number, number][] {
   let pieces = [range];
   for (const [lo, hi] of covered) {
     const next: typeof pieces = [];
@@ -76,7 +89,8 @@ export function structureFootprints(r: FootprintRoute): FootprintCell[] {
     if (run.kind === KIND.bridge) {
       add(run.s0, 'abutment', 3, w + 2); add(run.s1, 'abutment', 3, w + 2);
       const spans = Math.max(1, Math.round(run.length / bridgeLayout(run.length).span));
-      for (let k = 1; k < spans; k++) add(run.s0 + run.length * k / spans, 'pier', 1.2, w * 0.55);
+      if (run.pierStations) for (const s of run.pierStations) add(s, 'pier', 1.2, w * 0.55);
+      else for (let k = 1; k < spans; k++) add(run.s0 + run.length * k / spans, 'pier', 1.2, w * 0.55);
     } else { add(run.s0, 'portal', 3, w + 2); add(run.s1, 'portal', 3, w + 2); }
   }
   return out;
@@ -111,40 +125,15 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     conflicts.push(c);
     violations.push({ kind: 'footprint', basis: 'game', s0: c.s0, s1: c.s1, title, fix, detail: c.detail, rule });
   };
-  const roadCovered = new Map<number, [number, number][]>();
-  const coverRoad = (id: number, a: number, b: number) => { const list = roadCovered.get(id) ?? []; list.push([Math.min(a, b) - r.ds / 2, Math.max(a, b) + r.ds / 2]); roadCovered.set(id, list); };
+  const roadCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
+  const fixedConnections: PreservedRoadConnection[] = [];
+  const coverRoad = (id: number, a: number, b: number) => { const list = roadCovered.get(id) ?? []; list.push([Math.min(a, b), Math.max(a, b)]); roadCovered.set(id, list); };
   if (roads) {
-    for (const c of crossings) {
-      if (c.roadId === undefined || !c.geometry) continue;
-      const g = c.geometry;
-      // Only the actually engineered/removed old-road stretch, not an arbitrary station radius.
-      // Bridge/tunnel roads are unchanged and cannot excuse an adjacent abutment collision.
-      const ends = c.type === 'reconnection' || c.type === 'diversion' ? g.turnarounds
-        : c.type === 'overbridge' || c.type === 'junction' ? g.road : undefined;
-      if (!ends?.length) continue;
-      const centre = roads.wayStation(c.roadId, c.x, c.y);
-      const distance = (p: CrossingPoint) => p.d === undefined ? roads.wayStation(c.roadId!, p.x, p.y) : centre + p.d;
-      if (ends.length === 1) {
-        // A missing anchor can also produce one link; that is NOT evidence that the other
-        // branch was removed. Only an issue-free geometry can own the one-sided old-way stub.
-        const d = distance(ends[0]);
-        if (c.issues?.some(v => v.crossing.code === 'geometry') || g.clipped) {
-          coverRoad(c.roadId, d, centre); // the surviving branch's actual link is still paid
-          continue;
-        }
-        const way = roads.wayPath(c.roadId, 0, Number.MAX_VALUE);
-        if (way.length) coverRoad(c.roadId, d <= centre ? d : 0, d <= centre ? way[way.length - 1].d : d);
-        continue;
-      }
-      const stations = [distance(ends[0]), distance(ends[ends.length - 1])];
-      coverRoad(c.roadId, Math.min(...stations), Math.max(...stations));
-      // Billing merges adjacent carriageways/junction ways. Transfer only the engineered
-      // neighbourhood onto their own chainages, not the entire neighbouring way.
-      for (const raw of rawRoads) if (raw.way !== c.roadId && Math.abs(raw.s - c.s) <= CROSSING_RULES.mergeDistance) {
-        const offsetX = raw.x - c.x, offsetY = raw.y - c.y;
-        const ds = [ends[0], ends[ends.length - 1]].map(p => roads.wayStation(raw.way, p.x + offsetX, p.y + offsetY));
-        coverRoad(raw.way, Math.min(...ds), Math.max(...ds));
-      }
+    // Exact built/removed source ownership only. Neither a half-cell pad nor translating
+    // one crossing's approach onto another nearby way proves that the other road was rebuilt.
+    for (const interval of roadRealignmentCrossingIntervals(crossings, roads)) {
+      const list = roadCovered.get(interval.way) ?? [];
+      list.push([interval.a, interval.b]); roadCovered.set(interval.way, list);
     }
     // An endpoint joining an existing road can be collinear and have no segment intersection.
     // Exempt only ways actually within the 1 m tie-in tolerance, never the other carriageway.
@@ -168,8 +157,9 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   const rasterHits = new Map<string, { feature: 'railway' | 'water' | 'stream'; structure?: FootprintCell['structure']; hits: Map<number, { x: number; y: number; count: number }> }>();
   const rasterSeen = new Set<string>();
   for (const cell of cells) {
-    const bounds = cellBounds(cell, 14); // largest existing road half-width (D27.5)
-    roads?.nearSegments(bounds, segment => {
+    const stored = !cell.structure ? r.featureCache?.get(cell.i) : undefined;
+    const cached = stored && stored.left >= cell.left && stored.right >= cell.right ? stored : undefined;
+    const visitRoad = (segment: RoadSegment) => {
       const hit = clipFootprint(segment, cell, existingHalfWidth(segment.cls));
       if (!hit) return;
       const key = `${segment.way}:${cell.structure ?? 'earth'}`;
@@ -177,42 +167,47 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });
       for (const [a, b] of subtract(hit, cell.structure ? [] : roadCovered.get(segment.way) ?? []))
         group.hits.push({ a, b, i: cell.i, j: cell.i, structure: cell.structure });
-    });
-    terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), segment => {
+    };
+    if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);
+    const visitWater = (segment: WaterSegment) => {
       const hit = clipFootprint(segment, cell, cell.structure ? (segment.reach.width ?? 0.5) / 2 : 0);
       if (!hit) return;
-      const covered: [number, number][] = [];
+      const covered: [number, number][] = (r.channelRelocations ?? []).filter(c => c.id === segment.reach.id).map(c => [c.a, c.b]);
       if (!cell.structure) for (const c of connectedWater(segment.reach.id)) covered.push(...barrelIntervals(segment, barrels.get(c)!));
       const key = `${segment.reach.id}:${cell.structure ?? 'earth'}`;
       let group = streamHits.get(key);
       if (!group) streamHits.set(key, group = { segment, hits: [] });
       for (const [a, b] of subtract(hit, covered)) group.hits.push({ a, b, i: cell.i, j: cell.i, structure: cell.structure });
-    });
-    const [x0, y0, x1, y1] = cellBounds(cell), step = terrain.cell;
-    const c0 = Math.max(0, Math.floor(x0 / step)), c1 = Math.min(terrain.nx - 1, Math.floor(x1 / step));
-    const r0 = Math.max(0, Math.floor((terrain.height - y1) / step)), r1 = Math.min(terrain.ny - 1, Math.floor((terrain.height - y0) / step));
-    for (let row = r0; row <= r1; row++) for (let col = c0; col <= c1; col++) {
-      const index = row * terrain.nx + col, v = terrain.lc[index], cls = v & CLASS_BITS;
-      const feature = (v & RAIL_CROSSING_BIT) || cls === LC.rail ? 'railway'
-        : (v & RIVER_CROSSING_BIT) || cls === LC.water ? 'water' : cls === LC.stream && !terrain.watercourses ? 'stream' : undefined;
-      if (!feature) continue;
-      const x = (col + 0.5) * step, y = terrain.height - (row + 0.5) * step;
+    };
+    if (cached) cached.water.forEach(visitWater); else terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), visitWater);
+    const step = terrain.cell;
+    const visitRaster = ({ x, y, index, feature }: { x: number; y: number; index: number; feature: 'water' | 'stream' | 'railway' }) => {
       // Conservative raster-cell overlap; at most half a pixel uncertainty at the toe.
-      if (!insideFootprint({ x, y }, cell, step / 2)) continue;
-      if (feature === 'stream' && !cell.structure && earthWater.some(c => barrelContains({ x, y }, barrels.get(c)!, step / 2))) continue; // legacy raster stream already owned by a priced crossing assembly
+      if (!insideFootprint({ x, y }, cell, step / 2)) return;
+      if (feature === 'stream' && !cell.structure && earthWater.some(c => barrelContains({ x, y }, barrels.get(c)!, step / 2))) return;
       const key = `${feature}:${cell.structure ?? 'earth'}`, seenKey = `${key}:${index}`;
-      if (rasterSeen.has(seenKey)) continue;
+      if (rasterSeen.has(seenKey)) return;
       rasterSeen.add(seenKey);
       let group = rasterHits.get(key);
       if (!group) rasterHits.set(key, group = { feature, structure: cell.structure, hits: new Map() });
       const prev = group.hits.get(cell.i);
       if (prev) prev.count++; else group.hits.set(cell.i, { x, y, count: 1 });
-    }
+    };
+    if (cached) cached.raster.forEach(visitRaster);
+    else protectedRasterCells(terrain, cell, visitRaster);
   }
   for (const { way, cls, hits } of roadHits.values()) {
     const merged = union(hits);
     for (let index = 0; index < merged.length; index++) {
-    const h = merged[index];
+    const sourceHit = merged[index];
+    const remaining = sourceHit.structure ? [[sourceHit.a, sourceHit.b]] : subtract([sourceHit.a, sourceHit.b], roadCovered.get(way) ?? []);
+    for (let piece = 0; piece < remaining.length; piece++) {
+    const [a, b] = remaining[piece];
+    const unpaid = sourceHit.structure ? [[a, b]] : subtract([a, b], roadCovered.get(way) ?? []);
+    if (unpaid.length !== 1 || unpaid[0][0] !== a || unpaid[0][1] !== b) {
+      remaining.splice(piece, 1, ...unpaid); piece--; continue;
+    }
+    const h = { ...sourceHit, a, b };
     if (h.b - h.a < 0.1) continue; // sub-decimetre clipping/way-projection roundoff, not a new road
     const original = roads!.wayPath(way, h.a, h.b).map(point), p = original[Math.floor(original.length / 2)];
     if (!p) continue;
@@ -224,93 +219,64 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       block(base, `${h.structure ?? 'Earthwork'} conflicts with ${row.label}`, 'Move the alignment/support clear, or provide a clear bridge span', 'Motorways and structure foundations cannot be silently displaced by the footprint');
       continue;
     }
-    const pad = row.width / 2 + SETBACK;
-    const reach = CROSSING_RULES.linkMinLength + 2 * Math.max(...hits.filter(v => v.b >= h.a && v.a <= h.b).map(v => Math.max(r.dayL[v.i], r.dayR[v.i])));
-    let start = Math.max(0, h.a - reach, index ? (merged[index - 1].b + h.a) / 2 : 0);
-    let end = Math.min(h.b + reach, index + 1 < merged.length ? (h.b + merged[index + 1].a) / 2 : Infinity);
-    // Tie-ins cannot rebill another relocation or run into an already-engineered approach.
-    for (const [a, b] of roadCovered.get(way) ?? []) {
-      if (b <= h.a) start = Math.max(start, b);
-      if (a >= h.b) end = Math.min(end, a);
-    }
-    const oldPath = roads!.wayPath(way, start, end);
-    const path: CrossingPoint[] = [], source: Point2[] = [];
-    // Retain the real OSM endpoints, sample bends/terrain, and push only intersecting samples to
-    // the outer toe. Bounded relaxation resolves neighbouring rotated station rectangles.
-    for (let j = 1; j < oldPath.length; j++) {
-      const a = oldPath[j - 1], b = oldPath[j], len = Math.hypot(b.x - a.x, b.y - a.y);
-      const count = Math.max(1, Math.ceil(len / SAMPLE));
-      for (let k = j === 1 ? 0 : 1; k <= count; k++) {
-        const t = k / count, q = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-        source.push({ ...q });
-        for (let attempt = 0; attempt < 8; attempt++) {
-          const hit = grid.near(q).find(c => insideFootprint(q, c, pad));
-          if (!hit) break;
-          const dx = q.x - hit.x, dy = q.y - hit.y, lateral = -dx * hit.ty + dy * hit.tx;
-          const target = lateral >= 0 ? hit.left + pad + 0.2 : -hit.right - pad - 0.2;
-          q.x -= hit.ty * (target - lateral); q.y += hit.tx * (target - lateral);
-        }
-        path.push(point(q));
-      }
-    }
-    const problems = new Set<string>();
-    if (path.length < 2 || oldPath.length < 2) problems.add('missing real-way tie-ins');
+    const planned = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way, cls, hit: h, covered: roadCovered, crossings, fixedConnections,
+      bounds: [index ? (merged[index - 1].b + h.a) / 2 : -Infinity, index + 1 < merged.length ? (h.b + merged[index + 1].a) / 2 : Infinity] });
+    base.length = planned.length; base.cost = planned.cost; base.roadCode = planned.roadCode;
+    base.geometry = planned.geometry; base.geometry.turnaroundRadius = planned.turnaroundRadius;
+    base.original = planned.original ?? original; base.lumpCost = planned.lumpCost;
+    const invalid = planned.problems.length > 0;
+    base.detail = `${row.label}: ${base.affectedLength!.toFixed(1)} m affected; ${planned.length.toFixed(1)} m realignment × SPK ${planned.roadCode}`
+      + (planned.retainingArea ? `; ${planned.retainingArea.toFixed(1)} m² additional retaining faces` : '')
+      + (planned.turnaroundArea ? `; ${planned.turnaroundArea.toFixed(1)} m² turning apron` : '')
+      + (planned.lumpCost ? '; existing service-access tie-in rebuilt (all-in allowance)' : '')
+      + `. ${invalid ? `Proposed path needs engineering: ${planned.problems.join('; ')}.` : 'Real-network tie-ins and any surviving branches are retained outside the footprint.'}`;
+    if (invalid) block(base, 'Road realignment needs engineering', `Move the alignment at km ${(base.s0 / 1000).toFixed(2)} clear of this ${base.affectedLength!.toFixed(1)} m road stretch, or bridge it; ${planned.problems[0]}`,
+      'A priced realignment must preserve network connections, clear other features and meet real roads at feasible grades');
     else {
-      if (grid.hits(oldPath[0], row.width / 2) || grid.hits(oldPath[oldPath.length - 1], row.width / 2)) problems.add('tie-in inside the footprint');
-      // Tie-ins are actual old-road ground points, never invented extensions beyond OSM endpoints.
-      path[0] = point(oldPath[0]); path[path.length - 1] = point(oldPath[oldPath.length - 1]);
-      // Standard SPK road rates include ordinary grading. Smooth the terrain profile to the same
-      // 6% approach rule, pinning both real tie-ins; draw engineered fill/retaining faces, not a
-      // floating terrain ribbon. Viaduct-scale (>10 m) supports still need explicit engineering.
-      const clampFrom = (p: CrossingPoint, anchor: CrossingPoint) => {
-        const dz = Math.hypot(p.x - anchor.x, p.y - anchor.y) * CROSSING_RULES.approachGradient;
-        p.z = Math.max(anchor.z - dz, Math.min(anchor.z + dz, p.z));
-      };
-      for (let j = 1; j < path.length; j++) clampFrom(path[j], path[j - 1]);
-      path[path.length - 1].z = path[path.length - 1].ground;
-      for (let j = path.length - 2; j >= 0; j--) clampFrom(path[j], path[j + 1]);
-      if (Math.abs(path[0].z - path[0].ground) > 0.1) problems.add('tie-in heights exceed 6% gradient');
-      path[0].z = path[0].ground;
-      for (const p of path) if (Math.abs(p.z - p.ground) > 0.1) {
-        p.surface = 'ramp'; p.support = p.z > p.ground ? 'embankment' : 'retaining';
-        if (Math.abs(p.z - p.ground) > 10) problems.add('approach earthwork exceeds 10 m');
+      // At a shared outside junction, independently validate companion source roads BEFORE
+      // reserving either plan. Otherwise the second plan can incorrectly treat the first
+      // connector's surviving endpoint as a removed old branch and bypass it.
+      const accepted: { conflict: FootprintConflict; plan: RoadRealignmentPlan }[] = [{ conflict: base, plan: planned }];
+      const candidateWays = new Set<number>();
+      for (const path of planned.geometry.links ?? [planned.geometry.road ?? []]) if (path.length) {
+        for (const end of [path[0], path[path.length - 1]]) for (const connection of roads!.connections(end))
+          if (connection.way !== way) candidateWays.add(connection.way);
       }
-    }
-    let length = 0, cost = 0;
-    const codes = new Set<string>();
-    for (let j = 1; j < path.length; j++) {
-      const a = path[j - 1], b = path[j], len = Math.hypot(b.x - a.x, b.y - a.y);
-      length += len;
-      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      const u = terrain.cover(mid.x, mid.y) & BUILTUP_BIT ? 1 : 0;
-      cost += len * row.roadPerKm[u] / 1000; codes.add(row.roadCodes[u]);
-      // Check chords as well as vertices; a ribbon jumping through a slope is not mitigation.
-      for (let k = 0, count = Math.max(1, Math.ceil(len / 2.5)); k <= count; k++) {
-        const t = k / count, p = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-        if (grid.hits(p, row.width / 2)) problems.add('path intersects the footprint');
-        if (terrain.isOob(p.x, p.y)) problems.add('path leaves terrain data');
-        const old = { x: source[j - 1].x + t * (source[j].x - source[j - 1].x), y: source[j - 1].y + t * (source[j].y - source[j - 1].y) };
-        if (Math.hypot(p.x - old.x, p.y - old.y) > 0.25) {
-          const cover = terrain.cover(p.x, p.y), cls = cover & CLASS_BITS;
-          if ((cover & (RAIL_CROSSING_BIT | RIVER_CROSSING_BIT)) || cls === LC.rail || cls === LC.water || (!terrain.watercourses && cls === LC.stream)) problems.add('path intersects water/rail');
+      for (const otherWay of [...candidateWays].slice(0, 12)) {
+        const group = roadHits.get(`${otherWay}:earth`);
+        if (!group || ROAD_CLASSES[group.cls].noAtGrade) continue;
+        const otherHits = union(group.hits);
+        for (let k = 0; k < otherHits.length; k++) {
+          const other = otherHits[k];
+          const prior = [...(roadCovered.get(otherWay) ?? []), ...planned.sourceIntervals.filter(s => s.way === otherWay).map(s => [s.a, s.b] as [number, number])];
+          for (const [a, b] of subtract([other.a, other.b], prior)) {
+            if (b - a < 0.1) continue;
+            const hit = { ...other, a, b };
+            const plan = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way: otherWay, cls: group.cls, hit,
+              covered: roadCovered, crossings, fixedConnections,
+              bounds: [k ? (otherHits[k - 1].b + a) / 2 : -Infinity, k + 1 < otherHits.length ? (b + otherHits[k + 1].a) / 2 : Infinity] });
+            if (plan.problems.length || !RoadRemedyLedger.sameGeometry(planned, plan)) continue;
+            accepted.push({ plan, conflict: { ...base, id: `road:${otherWay}:${a.toFixed(2)}:earth`, roadId: otherWay, cls: group.cls,
+              i: hit.i, s0: Math.max(0, r.s[hit.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[hit.j] + r.ds / 2),
+              affectedLength: b - a, original: plan.original, geometry: plan.geometry, cost: plan.cost, lumpCost: plan.lumpCost, roadCode: plan.roadCode } });
+          }
         }
       }
-      // Only new/displaced chords need new water crossings; untouched real-way tails retain
-      // their existing drainage. Vectors also catch channels masked by a road raster pixel.
-      if (len > 0 && (Math.hypot(a.x - source[j - 1].x, a.y - source[j - 1].y) > 0.25 || Math.hypot(b.x - source[j].x, b.y - source[j].y) > 0.25)) {
-        const cell: FootprintCell = { ...mid, i: h.i, s: r.s[h.i], tx: (b.x - a.x) / len, ty: (b.y - a.y) / len, along: len / 2, left: row.width / 2, right: row.width / 2 };
-        terrain.watercourses?.nearSegments(cellBounds(cell), channel => {
-          if (clipFootprint(channel, cell)) problems.add('path intersects water/rail');
-        });
+      for (const entry of accepted) {
+        entry.conflict.action = 'relocation';
+        if (roadLedger.accept(entry.conflict, entry.plan) === entry.conflict) conflicts.push(entry.conflict);
       }
-      if (Math.abs(b.z - a.z) > len * CROSSING_RULES.approachGradient + 0.1) problems.add('tie-in heights exceed 6% gradient');
+      // Commit exact ownership only after every shared source has passed its own checks.
+      for (const entry of accepted) for (const interval of entry.plan.sourceIntervals) {
+        const list = roadCovered.get(interval.way) ?? [];
+        list.push([interval.a, interval.b]); roadCovered.set(interval.way, list);
+      }
+      for (const path of planned.geometry.links ?? [planned.geometry.road ?? []]) if (path.length) {
+        for (const point of [path[0], path[path.length - 1]]) for (const connection of roads!.connections(point))
+          fixedConnections.push({ way: connection.way, d: connection.d, point });
+      }
     }
-    const invalid = problems.size > 0;
-    base.length = length; base.cost = cost; base.roadCode = [...codes].join(' / ');
-    base.geometry = { road: path, width: row.width, schematic: false, ...(invalid ? { clipped: true, diagnostics: [...problems] } : {}) };
-    base.detail = `${row.label}: ${base.affectedLength!.toFixed(1)} m affected; ${length.toFixed(1)} m realignment including real-way tie-ins × SPK ${base.roadCode}. ${invalid ? `Proposed path needs engineering: ${[...problems].join('; ')}.` : 'Outside the slope toe; standard road earthworks included in the SPK row.'}`;
-    if (invalid) block(base, 'Road realignment needs engineering', 'Move the alignment clear or provide a bridge; the proposed realignment cannot safely tie in', 'A priced realignment must clear the footprint and meet real roads at feasible terrain grades');
-    else { base.action = 'relocation'; conflicts.push(base); }
+    }
     }
   }
   for (const { segment, hits } of streamHits.values()) for (const h of union(hits)) {
@@ -381,7 +347,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,
       s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length, affectedLength,
       cost: ok ? length * size.perM + (existing.length ? 0 : 2 * size.head) : 0, original,
-      detail: `${length.toFixed(1)} m channel outside priced centreline barrels; ${ok ? `${waterOpening(size)} longitudinal culvert (research/17)` : reasons.join('; ')}. No automatic channel diversion.` };
+      detail: `${length.toFixed(1)} m channel outside priced centreline barrels; ${ok ? `${waterOpening(size)} longitudinal culvert (research/17)` : reasons.join('; ')}. No feasible priced channel diversion was found.` };
     if (ok) conflicts.push(conflict);
     else block(conflict, h.structure ? `${h.structure} obstructs a watercourse` : 'Earthwork footprint intercepts a watercourse',
       'Move the alignment/support clear of the channel, or provide a clear bridge span', 'No unpriced channel diversion; sourced culvert assemblies must meet their cover and length limits (research/17)');

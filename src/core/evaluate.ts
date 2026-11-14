@@ -2,8 +2,11 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP } from './autoprofile';
+import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
+import { planRetainingWalls, retainingConflicts, type RetainingWall, type RetainingFeatureCache } from './retaining';
+import { remedyBridgeSupports } from './support-layout';
+import { liftAutoProfile } from './profile-remedies';
 import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
@@ -101,6 +104,9 @@ export interface Result {
   waterCrossings: WaterResult[];
   /** Footprint conflicts beyond the handled centreline crossings; costs already in the bill. */
   footprintConflicts: FootprintConflict[];
+  retainingWalls: RetainingWall[];
+  /** Engineering surface at a retained slope edge; NaN means natural daylight. */
+  wallSurfaceL: Float64Array; wallSurfaceR: Float64Array;
   walls: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   demolished: { j: number; i: number; cost: number }[];
@@ -257,7 +263,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
 
   const waterSide = Array.from({ length: n }, (_, i) => (terrain.watercourses?.section(st.x[i], st.y[i], st.tx[i], st.ty[i], 150, 150) ?? []).map(hit => ({ ...hit,
     offset: -(hit.x - st.x[i]) * st.ty[i] + (hit.y - st.y[i]) * st.tx[i], ground: terrain.heightAt(hit.x, hit.y) })));
-  const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>) => {
+  const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>, diverted?: ReadonlySet<number>) => {
     const gridDs = indices.length > 1 ? st.s[indices[1]] - st.s[indices[0]] : ds;
     const barrels = water.map(c => {
       const k = Math.min(indices.length - 1, Math.round(c.s / gridDs)), i = indices[k];
@@ -266,7 +272,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     for (let k = 0; k < indices.length; k++) {
       const i = indices[k];
       if (z[k] <= ground[i]) continue;
-      if (waterSide[i].some(hit => hit.offset <= left[k] && hit.offset >= -right[k]
+      if (waterSide[i].some(hit => !diverted?.has(hit.id) && hit.offset <= left[k] && hit.offset >= -right[k]
         && z[k] - hit.ground >= STRUCTURE_RULES.riverClearance
         && !water.some((c, j) => terrain.watercourses!.connected(c.id, hit.id)
           && barrelContains(hit, barrels[j])))) mask[k] = 1;
@@ -461,6 +467,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // --- vertical alignment ---
   let vpis: VPI[];
   let profileFeasible = true;
+  let autoOptions: AutoProfileOptions | undefined;
   let pinViolations: Violation[] = [];
   let materialValue = MATERIAL_VALUE.start;
   const zA = ground[0], zB = ground[n - 1];
@@ -491,6 +498,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
       },
     };
+    autoOptions = apOpt;
     let ap = autoProfile(st.s, ground, apOpt);
     // vertical curves can shave the clearance the polyline search provided: retry asking for more
     for (let attempt = 0; attempt < 2 && mustBridge.length; attempt++) {
@@ -530,13 +538,18 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     vpis = normalizeVpis(d.vpis, L, zA, zB);
   }
   lap('profile');
-  const prof = buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius);
+  // Grade repair reuses alignment, feature queries and the completed DP search. Only engineering
+  // quantities are rebuilt; buildings, crossing meshes, noise and final billing run once.
+  const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
+  const engineer = (candidate: VPI[]) => {
+  const prof = buildProfile(candidate, norms.minCrestRadius, norms.minSagRadius);
   const grade = elevations(prof, st.s);
   const waterZ = elevations(prof, water.map(c => c.s));
   const waterElevation = new Map(water.map((c, i) => [c, waterZ[i]]));
 
   // --- cross-sections ---
-  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl);
+  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true);
+  const retention = planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo);
   const dec = decisionPrices(materialValue);
   const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
   lap('sections');
@@ -578,17 +591,18 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
     earthPerM[i] = (baseRural + (baseUrban - baseRural) * ue + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
       + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2
-      + geotechnicalPerM[i] + culverts[i] / cellLength(i, n, ds)) * (1 + surchargeRate(ue))
-      + wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2);
+      + geotechnicalPerM[i] + (culverts[i] + retention.perCell[i]) / cellLength(i, n, ds)) * (1 + surchargeRate(ue))
+      + wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2) + retention.landPerCell[i] / cellLength(i, n, ds);
     bridgePerM[i] = bridge.perM(h[i]) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, ut) / 1000) * (1 + surchargeRate(ut));
   }
   // Rivers / water / railways and watercourses exceeding practical culvert limits need bridges.
   // Inadequate clearance stays a violation, never a fake buried bridge.
-  const forced = new Uint8Array(n);
+  const forced = retention.forcedBridge.slice();
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]));
-  forceParallelWater(forced, Array.from({ length: n }, (_, i) => i), grade, sec.dayL, sec.dayR);
+  forceParallelWater(forced, Array.from({ length: n }, (_, i) => i), grade, sec.dayL, sec.dayR,
+    new Set(retention.channelRelocations.map(c => c.id)));
   // an existing road clearly below the grade passes under a (short) bridge instead of being buried
   const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
   const crossings: CrossingResult[] = roadX.map((c, k) => ({
@@ -599,14 +613,59 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const choice = crossingChoice(c.roadId!, crossingOverrides);
     if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
   }
-  const structureInput = { ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel: tunnelWater(st.s, grade), overrides: manualStructures,
+  const forcedTunnel = tunnelWater(st.s, grade);
+  for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
+  const structureInput = { ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel, overrides: manualStructures,
     bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surchargeRate(urbanDeck[i]), i => landPerM2(urbanDeck[i])) };
   let selection = chooseStructures(structureInput);
   // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
   // was hydraulically possible. Extend crossing spans, retaining manual overrides and checks.
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]), selection.kind);
   selection = chooseStructures(structureInput);
-  const { kind, runs, violations: structureViolations } = selection;
+  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo);
+  const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
+    supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
+  for (const issue of supported.diagnostics) if (issue.structure === 'abutment' && issue.reason === 'terrain' && issue.targetS !== undefined && issue.raiseM > 0) {
+    const a = Math.max(1, Math.floor(Math.min(issue.s, issue.targetS) / ds)), b = Math.min(n - 2, Math.ceil(Math.max(issue.s, issue.targetS) / ds));
+    if (manualStructures.subarray(a, b + 1).some(v => v >= 0)) continue;
+    for (let i = a; i <= b; i++) supportHeights.push({ s: st.s[i], z: ground[i] + STRUCTURE_RULES.bridgeMinHeight + 0.15 });
+  }
+  return { prof, grade, waterZ, sec, retention, urbanEarth, forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck,
+    h, geotechnicalPerM, culverts, crossings, selection, supported, supportHeights };
+  };
+  let engineering = engineer(vpis);
+  const repairTargets = new Map<number, number>();
+  let usedProfileRetry = false;
+  for (let attempt = 0; attempt < 3 && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
+    for (const q of engineering.supportHeights) repairTargets.set(q.s, Math.max(q.z, repairTargets.get(q.s) ?? -Infinity));
+    const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
+    let lifted = liftAutoProfile(vpis, targets, d.speed, scenario.maxGradient, d.gradePins);
+    if (!lifted && autoOptions && !usedProfileRetry) {
+      // If the existing knots cannot accommodate the lift, let the same DP place new knots.
+      // Material value is already settled: one fixed-price solve, no repeat mass-balance search.
+      const minH = autoOptions.minH ? Float64Array.from(autoOptions.minH) : new Float64Array(n).fill(NaN);
+      for (const q of targets) {
+        const i = Math.min(n - 1, Math.round(q.s / ds));
+        minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], q.z - ground[i] + 0.25);
+      }
+      const retry = autoProfile(st.s, ground, { ...autoOptions, minH, costPerM: costFor(materialValue), balance: undefined });
+      usedProfileRetry = true;
+      if (retry.feasible) {
+        const profile = buildProfile(retry.vpis, norms.minCrestRadius, norms.minSagRadius), z = elevations(profile, targets.map(q => q.s));
+        lifted = targets.every((q, i) => z[i] >= q.z - 0.01) ? retry.vpis : liftAutoProfile(retry.vpis, targets, d.speed, scenario.maxGradient, d.gradePins);
+      }
+    }
+    if (!lifted) break;
+    vpis = lifted;
+    engineering = engineer(vpis);
+  }
+  const { prof, grade, waterZ, sec, retention, urbanEarth, forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck,
+    h, geotechnicalPerM, culverts, crossings, selection, supported } = engineering;
+  const { kind, runs } = supported;
+  const structureViolations = [...selection.violations, ...supported.violations];
+  const retainingWalls = retention.walls.filter(wall => kind[wall.i] === KIND.earth);
+  const channelRelocations = retention.channelRelocations.filter(channel => kind.subarray(channel.i0, channel.i1 + 1).some(k => k === KIND.earth));
+  for (let i = 0; i < n; i++) if (kind[i] !== KIND.earth) { retention.wallSurfaceL[i] = NaN; retention.wallSurfaceR[i] = NaN; }
   // what is actually built decides the land take, the rates and whether the terrain data suffice
   const width = new Float64Array(n), urban = new Float32Array(n), forest = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -711,10 +770,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
 
   lap('crossings');
-  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs }, terrain, ctx.roads, crossings, rawRoadX, water);
+  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo }, terrain, ctx.roads, crossings, rawRoadX, water);
+  footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
+  const remedyLand = new Float64Array(n);
   for (const c of footprintCheck.conflicts) {
-    if (c.feature === 'road') crossingStructure[c.i] += c.cost;
+    if (c.feature === 'road' || c.action === 'retaining-wall' || c.action === 'channel-relocation') crossingStructure[c.i] += c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0);
     else if (c.action === 'culvert') culverts[c.i] += c.cost;
+    remedyLand[c.i] += c.landCost ?? 0;
+    crossingLump[c.i] += c.lumpCost ?? 0;
   }
   lap('footprint');
 
@@ -768,7 +831,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     category: d.category, terrainClass: scenario.terrainClass, n, ds, kind, urban, h,
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
-    width, forest, runs, geotechnicalPerM, culverts, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea,
+    width, forest, runs, geotechnicalPerM, culverts, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea, additionalLand: remedyLand,
   });
   const cost = sumParts(parts);
   lap('cost');
@@ -877,6 +940,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
+    retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
     noise: { receivers, footprint: footprintMap },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,

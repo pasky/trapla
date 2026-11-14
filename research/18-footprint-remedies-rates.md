@@ -35,6 +35,23 @@ The catalogue has no universal wall rate in CZK/m² of exposed face; relevant co
 
 For a transparent 1 m-high, 1 m-long wall sketch, one 212625 drain metre corresponds to 368.45 CZK per running wall metre. If a separate vertical filter blanket is specified, its measured area is wall height × length (1 m² in that sketch), at 214613's 77.11 CZK/m²; add filter aggregate only for a separate layer/rib not already included as the 212625 trench filling. The illustrative wall subtotal plus one drain metre and one square metre of filter blanket is therefore **9,794.61 CZK per m² face** for this 1 m-high sketch (unrounded sum 9,794.607); this is still not a designed/scalable tariff. OTSKP 212625 already includes the pipe and its granular bed/fill/surround, so the pipe/trench and those same materials must not be double-counted with 211* rows. Whether a separate filter blanket is needed, how it terminates/outlets, and whether the drainage detail is suitable are project-specific.
 
+### Pressure-water bank-wall additions (implementation follow-up)
+
+Independently rechecked in the same official workbook, with bounded `openpyxl` streaming:
+
+| Code | Official item | Unit | CZK/unit |
+|---|---|---:|---:|
+| 711122 | IZOLACE BĚŽNÝCH KONSTRUKCÍ PROTI TLAKOVÉ VODĚ ASFALTOVÝMI PÁSY | m² | 325.93 |
+| 711519 | OCHRANA IZOLACE PODZEMNÍCH OBJEKTŮ TEXTILIÍ | m² | 204.64 |
+
+These are the pressure-water membrane and its buried-side protection, not the **bridge-deck**
+waterproofing row 711412 (678.06/m²), which is not used as a bank-wall tariff. The implementation's
+wall retaining water beside an open cut receives a larger RC section/base, a provisional cutoff
+embedment and membrane/protection around the retained face/base; it does **not** receive the
+ordinary rear drain that would draw down the pond. Geometry and cutoff depth remain study-stage
+assumptions, not a seepage calculation or proof of impermeable geology. Permits, ground investigation
+and detailed hydrostatic/foundation design remain necessary; no universal legal permission is implied.
+
 ### Transparent provisional RC face-area conversion
 
 One illustrative, **not designed or catalogue-tariff** conversion: 1.0 m exposed wall height × 1.0 m wall length (thus 1 m² exposed face), cantilever section with 0.25 m stem and a 1.50 m-wide × 0.25 m-thick base. Concrete volume is 0.25 + (1.50 × 0.25) = **0.625 m³ per m² face**. Assume 0.12 t reinforcing steel per m³ concrete (= **0.075 t/m² face**); this is a provisional quantity, not a sourced reinforcement ratio. Assume a 1.50 m × 0.60 m trench (=0.90 m³/m) and return 0.525 m³/m soil around the base as compacted backfill.

@@ -140,6 +140,8 @@ export interface StationCostInput {
   runs: Run[];
   /** purchase + demolition of buildings assigned to each cell, CZK */
   buildings?: ArrayLike<number>;
+  /** Acquisition outside the main footprint for priced relocations, not construction surcharge. */
+  additionalLand?: ArrayLike<number>;
   /** purchase + demolition of noise-infeasible dwellings outside the footprint, CZK per cell */
   noiseBuyouts?: ArrayLike<number>;
   /** crossings of existing roads: all-in lump sums, CZK per cell */
@@ -221,7 +223,7 @@ export function costParts(inp: StationCostInput): CostParts {
     parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
     parts.noiseWalls[i] = (inp.wallArea ? inp.wallArea[i] : 0) * NOISE.wallPerM2;
     parts.surcharge[i] = (construction + structure) * surchargeRate(u);
-    parts.land[i] = len * inp.width[i] * landPerM2(u);
+    parts.land[i] = len * inp.width[i] * landPerM2(u) + (inp.additionalLand?.[i] ?? 0);
     parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
     parts.noiseBuyouts[i] = inp.noiseBuyouts ? inp.noiseBuyouts[i] : 0;
   }
