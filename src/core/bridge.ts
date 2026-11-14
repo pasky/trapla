@@ -5,6 +5,14 @@ import { BRIDGE_GEOMETRY as G, BRIDGE_HEIGHT as H, BRIDGE_ITEMS as P } from './d
 export type BridgeRow = { bridgePerKm: number } & ({ crownWidth: number } | { width: number });
 export interface BridgeLayout { span: number; pierDensity: number }
 
+/** Nonuniform layouts use their longest clear span for the whole deck's section allowance.
+ * Conservative study-stage sizing, not an unpriced deletion of obstructed supports. */
+export function supportBridgeLayout(s0: number, s1: number, piers: readonly number[]): BridgeLayout {
+  let previous = s0, span = 0;
+  for (const s of piers) { span = Math.max(span, s - previous); previous = s; }
+  return { span: Math.max(span, s1 - previous), pierDensity: piers.length / (s1 - s0) };
+}
+
 /** Equal spans ≤30 m on the main road. No invented pier in a single-span bridge. */
 export function bridgeLayout(length: number): BridgeLayout {
   const spans = Math.max(1, Math.ceil(length / G.preferredSpan - 1e-9));
@@ -59,8 +67,7 @@ export type BridgeModel = ReturnType<typeof bridgeModel>;
  * Fixed abutments split equally over first/last cells (both halves on a one-cell bridge). */
 export function bridgeRunCost(model: BridgeModel, h: ArrayLike<number>, ds: number,
   surcharge: (i: number) => number, land: (i: number) => number) {
-  return (i0: number, i1: number, length: number) => {
-    const layout = bridgeLayout(length);
+  return (i0: number, i1: number, length: number, layout = bridgeLayout(length)) => {
     let cost = model.abutments / 2 * (2 + surcharge(i0) + surcharge(i1));
     for (let i = i0; i <= i1; i++) {
       const len = i === 0 || i === h.length - 1 ? ds / 2 : ds;

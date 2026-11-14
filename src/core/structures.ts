@@ -3,10 +3,17 @@
 
 import { STRUCTURE_RULES } from './data/prices';
 import type { Violation } from './checks';
+import type { BridgeLayout } from './bridge';
 
 export const KIND = { earth: 0, bridge: 1, tunnel: 2 } as const;
 
-export interface Run { kind: 1 | 2; i0: number; i1: number; s0: number; s1: number; length: number; forced?: boolean }
+export interface Run {
+  kind: 1 | 2; i0: number; i1: number; s0: number; s1: number; length: number; forced?: boolean;
+  /** Obstacle-adjusted support layout; absent means the ordinary equal-span arrangement. */
+  layout?: BridgeLayout;
+  /** Absolute route chainages of all internal piers, shared by pricing and rendering. */
+  pierStations?: number[];
+}
 
 export interface StructureInput {
   ds: number;

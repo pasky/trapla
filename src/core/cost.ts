@@ -167,7 +167,7 @@ export function costParts(inp: StationCostInput): CostParts {
     if (r.kind === KIND.tunnel) {
       for (let i = r.i0; i <= r.i1; i++) runLen[i] = r.length;
     } else if (r.kind === KIND.bridge) {
-      const layout = bridgeLayout(r.length);
+      const layout = r.layout ?? bridgeLayout(r.length);
       for (let i = r.i0; i <= r.i1; i++) parts.bridges[i] = cellLength(i, n, ds) * bridge.perM(inp.h[i], layout);
       parts.bridges[r.i0] += bridge.abutments / 2;
       parts.bridges[r.i1] += bridge.abutments / 2;
