@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import type { FootprintConflict } from '../src/core/footprint';
 import type { View } from '../src/render/view';
-import { footprintSurfaces, groundSegment } from '../src/render/crossing-surface';
+import { crossingSurfaces, footprintSurfaces, groundSegment } from '../src/render/crossing-surface';
 import { CrossingRenderer } from '../src/render/crossings';
 import { footprintConflictsInRange, footprintConflictText } from '../src/ui/footprint';
 import { COLLAR_OVERLAP, GROUND_COLLAR } from '../src/render/earthwork-surface';
@@ -113,6 +113,7 @@ describe('footprint conflict presentation', () => {
         }
         if (mesh.name === 'crossing-terrain' && p.getX(j) > 0 && p.getX(j) < 20) {
           expect(offset).toBeGreaterThanOrEqual(2); expect(offset).toBeLessThanOrEqual(2+GROUND_COLLAR);
+          // collarPoint keeps the first 10 m beyond the 2 m paved edge at natural ground.
           if (offset <= 12) { innerCollar++; expect(p.getY(j)).toBeCloseTo(100.015,4); }
           if (offset === 2+GROUND_COLLAR) { outerCollar++; expect(p.getY(j)).toBeCloseTo(103.015,4); }
         }
@@ -132,6 +133,34 @@ describe('footprint conflict presentation', () => {
     });
     expect(faces).toBe(4*(surface.sections.length-1));
     expect(pavement).toBeGreaterThan(0); expect(innerCollar).toBeGreaterThan(0); expect(outerCollar).toBeGreaterThan(0);
+    renderer.dispose();
+  });
+
+  it('renders ordinary cut approaches as earth slopes, not unpriced concrete faces', () => {
+    const natural = () => 100;
+    const surfaces = crossingSurfaces([{ s: 0, i: 0, x: 0, y: 0, h: 0, cost: 0, cls: 'tertiary', type: 'overbridge',
+      geometry: { width: 6, schematic: false, road: [0,20].map(x => ({
+        x, y: 0, z: 97, ground: 100, surface: 'ramp', support: 'retaining',
+      })) },
+    }],natural);
+    const mock = { world: new THREE.Group(), crossingSurfaces: surfaces,
+      local: (x: number, y: number, z: number) => new THREE.Vector3(x,z,-y),
+      groundHeight: natural, replacementHeight: natural, requestRender: vi.fn(),
+      crossingEarthMaterial: () => new THREE.MeshBasicMaterial(), crossingGroundMaterial: () => new THREE.MeshBasicMaterial(),
+      retire: (m: THREE.Material) => m.dispose(),
+    };
+    const renderer = new CrossingRenderer(mock as unknown as View);
+    renderer.setResult({ crossings: [], grade: Float64Array.of(97), ground: Float64Array.of(100) });
+    expect(mock.world.getObjectByName('crossing-decks')).toBeUndefined();
+    const mesh = mock.world.getObjectByName('crossing-earthworks') as THREE.Mesh<THREE.BufferGeometry>;
+    const p = mesh.geometry.getAttribute('position'), kinds = mesh.geometry.getAttribute('ewKind');
+    let daylight = 0;
+    for (let i = 0; i < p.count; i++) if (Math.abs(p.getZ(i)) > 3) {
+      daylight++;
+      expect(kinds.getX(i)).toBe(EW_KIND.cut);
+      expect(p.getY(i)).toBeCloseTo(100.08,4);
+    }
+    expect(daylight).toBeGreaterThan(0);
     renderer.dispose();
   });
 

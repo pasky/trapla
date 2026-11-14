@@ -41,7 +41,7 @@ describe('physical crossing surfaces', () => {
     }
     expect(formation(100, 15)).toBeCloseTo(100 + 10/3);
   });
-  it.each(['junction','overbridge'] as const)('preserves ordinary %s cut daylight despite legacy retaining tags', type => {
+  it.each(['junction','overbridge'] as const)('preserves ordinary %s cut daylight despite retaining tags', type => {
     const c = crossing(type);
     c.geometry = { width: 6, schematic: false, road: [0,20].map(x => ({
       x, y: 0, z: 97, ground: 100, surface: 'ramp', support: 'retaining',

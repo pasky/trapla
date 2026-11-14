@@ -66,6 +66,8 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
           const terrain = a.surface === 'terrain' && b.surface === 'terrain';
           // Retaining support continues to an unraised tie-in too: inventing a sloped
           // shoulder between samples would widen the planner's checked, paid ribbon.
+          // Preserve tags for all callers; only priced relocations use them for walls.
+          // Defensive: the relocation planner currently never emits embankment endpoints.
           const support = (a.support === 'retaining' || b.support === 'retaining') &&
             a.support !== 'embankment' && b.support !== 'embankment' ? 'retaining' : 'embankment';
           path.push({ x, y, ground, z: terrain ? ground : a.z+(b.z-a.z)*t,
