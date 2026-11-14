@@ -72,7 +72,8 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
   if (!barrels.length) return retainingPass(r, terrain, roads, overrides, water, cache, barrels);
   // Road/water walls can shorten a crossing's barrel footprint. Re-screen its ownership
   // against the shortened sections, rebuilding from the untouched input so quantities and
-  // wall costs are never applied twice. Ownership only shrinks; local query caches are reused.
+  // wall costs are never applied twice. Side-width limits only shrink; the final screen
+  // validates the actual envelope. Local query caches are reused.
   const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open'] as const;
   const original = fields.map(key => r[key].slice()), sideL = r.sideL?.slice(), sideR = r.sideR?.slice();
   const restore = () => {
