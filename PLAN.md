@@ -154,8 +154,8 @@ What exists (details and commands in `README.md`):
   minor roads under abutments are relocated; abutments may stand in a ≤5 m cut with a priced regrade
   instead of a grade lift. A failed relaxed relocation triggers one strict re-engineering pass.
 - Straight-line Automatic and all five refreshed saves are VALID on the current vector-water pack.
-  Whole totals in bn CZK: straight 10.053891; best 4.309409; demo 4.986588; direct80 5.018385;
-  direct90 5.621990; town 11.444059 (model 15: 10.27 / 4.76 / 5.38 / 5.24 / 5.73 / 11.69).
+  Whole totals in bn CZK: straight 10.051833; best 4.325765; demo 4.986752; direct80 5.018385;
+  direct90 5.575139; town 11.447356 (model 15: 10.27 / 4.76 / 5.38 / 5.24 / 5.73 / 11.69).
   Four saves received small bounded PI refinements, not new routes.
   Counts, face areas, lengths, sources, paired cost changes and limits: `docs/footprint-conflicts.md`.
 - Model-13 fixtures and their pack fingerprint remain untouched. Separate model-16 fixtures freeze
