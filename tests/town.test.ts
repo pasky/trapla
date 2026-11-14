@@ -7,7 +7,7 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
 import { BUILDING_KIND, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
-import { barrierAttenuation, dwellingExposure, noiseDistance, requiredWall, wallFlags } from '../src/core/noise';
+import { barrierAttenuation, dwellingExposure, noiseBarrier, noiseDistance, requiredWall, wallFlags } from '../src/core/noise';
 import { rangeSummary } from '../src/core/range';
 import { mergeCrossings, RoadNet } from '../src/core/roadnet';
 import { KIND } from '../src/core/structures';
@@ -79,6 +79,18 @@ describe('noise rule', () => {
     // A bridge 8 m above the building ground brings the wall above the top receiver.
     expect(requiredWall(50, 100, 10.5 - 8)).toBe(3);
     expect(requiredWall(101, 100, 20)).toBe(0);
+  });
+
+  it('selects the next height across the geometric attenuation threshold for different road widths', () => {
+    for (const width of [7.5, 9.5, 11.5]) {
+      const barrier = noiseBarrier(width), distance = 30, receiverHeight = 10.5;
+      const loss = barrierAttenuation(distance, receiverHeight, 1, barrier);
+      const contour = (excess: number) => distance * 10 ** (excess / NOISE.distanceDb);
+      // Just below the 4 m wall's capacity it suffices; just above it requires the 5 m wall.
+      // Exercises the inverted hot-path formula against the forward calculation, not fixed prices.
+      expect(requiredWall(distance, contour(loss - 0.01), receiverHeight, barrier)).toBe(4);
+      expect(requiredWall(distance, contour(loss + 0.01), receiverHeight, barrier)).toBe(5);
+    }
   });
 
   it('uses the worst height over a connected stretch, without bridging a shielded gap', () => {
