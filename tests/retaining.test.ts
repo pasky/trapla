@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeSections, DEFAULT_SLOPES } from '../src/core/sections';
+import { computeSections, DEFAULT_SLOPES, type SectionCache } from '../src/core/sections';
 import { planRetainingWalls, retainingConflicts } from '../src/core/retaining';
 import { footprintConflicts } from '../src/core/footprint';
 import { RoadNet } from '../src/core/roadnet';
@@ -67,6 +67,26 @@ describe('automatic slope retention', () => {
     expect(second.walls).toEqual(first.walls);
     const checked = footprintConflicts({ ...b.route, kind: new Uint8Array(b.route.n), runs: [], featureCache: cache }, a.terrain, a.roads, [], [], []);
     expect(checked).toEqual(footprintConflicts({ ...b.route, kind: new Uint8Array(b.route.n), runs: [] }, a.terrain, a.roads, [], [], []));
+  });
+  it('reuses raw sections across local grade repairs without reusing wall-truncated quantities', () => {
+    const { terrain, roads, route } = setup(), cache: SectionCache = [];
+    const template = { crownWidth: route.crownWidth, ...DEFAULT_SLOPES };
+    for (const grade of [108, 108, 109, 108]) {
+      route.grade[40] = grade;
+      const cached = computeSections(terrain, route.n, route.x, route.y, route.tx, route.ty, route.grade, template, true, cache);
+      const fresh = computeSections(terrain, route.n, route.x, route.y, route.tx, route.ty, route.grade, template, true);
+      expect(cached).toEqual(fresh);
+      const rawLeft = cached.sideL![40], unchanged = cache[20];
+      const plan = planRetainingWalls({ ...route, ...cached }, terrain, roads);
+      expect(plan.walls.length).toBeGreaterThan(0);
+      expect(cached.sideL![40]).not.toBe(rawLeft);
+      expect(cache[40].left).toBe(rawLeft);
+      expect(plan).toEqual(planRetainingWalls({ ...route, ...fresh }, terrain, roads));
+      expect(cached).toEqual(fresh);
+      const again = computeSections(terrain, route.n, route.x, route.y, route.tx, route.ty, route.grade, template, true, cache);
+      expect(again.sideL![40]).toBe(rawLeft);
+      expect(cache[20]).toBe(unchanged);
+    }
   });
   it('requests a bridge instead of inventing an unlimited wall, while preserving explicit earthwork', () => {
     const auto = setup(140), manual = setup(140);

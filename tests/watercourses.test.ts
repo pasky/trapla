@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { culvertCost, WaterNet, waterSize, waterSizer, type WaterCrossing, type WaterData } from '../src/core/watercourses';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
-import { Terrain, syntheticTerrain, LC } from '../src/core/terrain';
+import { Terrain, syntheticTerrain, LC, BUILTUP_BIT } from '../src/core/terrain';
 import { PART_KEYS } from '../src/core/cost';
 
 const crossing: WaterCrossing = { s: 1000, x: 1250, y: 250, id: 1, waterKind: 'stream', width: 0.5,
@@ -98,6 +98,19 @@ describe('watercourse crossing assemblies', () => {
     const blocked = evaluate(context(30), { ...design, structureOverrides: [{ s0: 900, s1: 1100, kind: 0 }] });
     expect(blocked.waterCrossings[0].structure).toBe('blocked');
     expect(blocked.violations.some(v => v.kind === 'crossing')).toBe(true);
+  });
+  it('does not carry engineering cover caches across evaluations of mutable terrain', () => {
+    const ctx = context(0.1), rural = evaluate(ctx, design);
+    ctx.terrain.lc.fill(LC.road | BUILTUP_BIT);
+    const urban = evaluate(ctx, design);
+    expect(urban.quantities.urbanLength).toBeGreaterThan(rural.quantities.urbanLength);
+    expect(urban.cost.total).toBeGreaterThan(rural.cost.total);
+    expect(urban.cell.urban.some(v => v > 0)).toBe(true);
+    ctx.terrain.lc.fill(LC.road);
+    const restored = evaluate(ctx, design);
+    expect(restored.cost).toEqual(rural.cost);
+    expect(restored.cell).toEqual(rural.cell);
+    expect(restored.violations).toEqual(rural.violations);
   });
   it('charges an incised between-station gully from the crossing elevation, not the higher station', () => {
     const d = data(0.1, [[1255, 0], [1255, 500]]);

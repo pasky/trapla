@@ -14,11 +14,20 @@ export function clipFootprint(a: Segment2, c: FootprintCell, pad = 0): [number, 
   const du = (a.bx - a.ax) * c.tx + (a.by - a.ay) * c.ty;
   const dv = -(a.bx - a.ax) * c.ty + (a.by - a.ay) * c.tx;
   let lo = 0, hi = 1;
-  for (const [p, q, min, max] of [[u, du, -c.along - pad, c.along + pad], [v, dv, -c.right - pad, c.left + pad]]) {
-    if (Math.abs(q) < 1e-10) { if (p < min || p > max) return; }
-    else { const t0 = (min - p) / q, t1 = (max - p) / q; lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1)); }
-    if (hi <= lo + 1e-9) return;
+  // Keep the two clipping steps in their original order without allocating three arrays for
+  // every road/channel candidate in every engineering pass.
+  if (Math.abs(du) < 1e-10) { if (u < -c.along - pad || u > c.along + pad) return; }
+  else {
+    const t0 = (-c.along - pad - u) / du, t1 = (c.along + pad - u) / du;
+    lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1));
   }
+  if (hi <= lo + 1e-9) return;
+  if (Math.abs(dv) < 1e-10) { if (v < -c.right - pad || v > c.left + pad) return; }
+  else {
+    const t0 = (-c.right - pad - v) / dv, t1 = (c.left + pad - v) / dv;
+    lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1));
+  }
+  if (hi <= lo + 1e-9) return;
   return [a.d + lo * a.length, a.d + hi * a.length];
 }
 export function cellBounds(c: FootprintCell, pad = 0): [number, number, number, number] {

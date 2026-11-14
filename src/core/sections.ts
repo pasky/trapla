@@ -141,9 +141,14 @@ export interface Sections {
   sideL?: SideResult[]; sideR?: SideResult[];
 }
 
+/** Evaluation-local raw sections for profile-only retries. Discard when terrain, horizontal
+ * geometry or template changes; never keep across evaluate calls (terrain arrays are mutable).
+ * Entries are separate from the mutable Sections arrays subsequently truncated by retaining walls. */
+export type SectionCache = { z: number; left: SideResult; right: SideResult }[];
+
 /** compute sections at all stations; normal = left of travel direction */
 export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number>, y: ArrayLike<number>,
-  tx: ArrayLike<number>, ty: ArrayLike<number>, z: ArrayLike<number>, tpl: SectionTemplate, keepSides = false): Sections {
+  tx: ArrayLike<number>, ty: ArrayLike<number>, z: ArrayLike<number>, tpl: SectionTemplate, keepSides = false, cache?: SectionCache): Sections {
   const out: Sections = {
     cut: new Float64Array(n), cutI: new Float64Array(n), cutII: new Float64Array(n), cutIII: new Float64Array(n),
     fill: new Float64Array(n), dayL: new Float64Array(n), dayR: new Float64Array(n),
@@ -154,10 +159,12 @@ export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number
   for (let i = 0; i < n; i++) {
     const nx = -ty[i], ny = tx[i];
     const cx = x[i], cy = y[i];
-    const L = sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx + nx * o, cy + ny * o),
+    const previous = cache?.[i], reuse = previous?.z === z[i];
+    const L = reuse ? previous.left : sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx + nx * o, cy + ny * o),
       (o) => terrain.groundAt(cx + nx * o, cy + ny * o));
-    const R = sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx - nx * o, cy - ny * o),
+    const R = reuse ? previous.right : sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx - nx * o, cy - ny * o),
       (o) => terrain.groundAt(cx - nx * o, cy - ny * o));
+    if (cache && !reuse) cache[i] = { z: z[i], left: L, right: R };
     if (out.sideL && out.sideR) { out.sideL[i] = L; out.sideR[i] = R; }
     out.cut[i] = L.cut + R.cut;
     out.cutI[i] = L.cutI + R.cutI;

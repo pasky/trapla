@@ -34,7 +34,7 @@ import { createNoiseModel } from './road-noise';
 import { crossingWallGaps } from './crossing-walls';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
-import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
+import { computeSections, DEFAULT_SLOPES, flatCutBands, type SectionCache } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
 import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
@@ -138,6 +138,9 @@ export interface Result {
   minCategory: CategoryId;
   valid: boolean;
   profileFeasible: boolean;
+  /** Unprefixed keys are cumulative checkpoints; sections is the last engineering pass.
+   * work.* are elapsed milliseconds summed across all passes (engineering includes its substeps).
+   * count.* count calls, not milliseconds. Missing work/count keys mean that path did not run. */
   timing: Record<string, number>;
 }
 
@@ -541,21 +544,38 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // Grade repair reuses alignment, feature queries and the completed DP search. Only engineering
   // quantities are rebuilt; buildings, crossing meshes, noise and final billing run once.
   const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
+  const sectionMemo: SectionCache = [];
+  // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
+  // or daylight changes the two widths; deck/centre cover never changes within this evaluation.
+  // These buffers describe the last engineer() call, which is always the accepted engineering;
+  // do not reuse them for speculative candidates unless that ownership rule is preserved.
+  const coverLeft = new Float64Array(n).fill(NaN), coverRight = new Float64Array(n).fill(NaN);
+  const urbanEarth = new Float32Array(n), forestEarth = new Float32Array(n), urbanDeck = new Float32Array(n);
+  const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
+  let deckCoverReady = false;
+  const work = (key: string, start: number) => { timing[`work.${key}`] = (timing[`work.${key}`] ?? 0) + performance.now() - start; };
   const engineer = (candidate: VPI[]) => {
+  timing['count.engineer'] = (timing['count.engineer'] ?? 0) + 1;
+  const engineeringStart = performance.now();
   const prof = buildProfile(candidate, norms.minCrestRadius, norms.minSagRadius);
   const grade = elevations(prof, st.s);
   const waterZ = elevations(prof, water.map(c => c.s));
   const waterElevation = new Map(water.map((c, i) => [c, waterZ[i]]));
 
   // --- cross-sections ---
-  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true);
+  const sectionsStart = performance.now();
+  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo);
+  work('sections', sectionsStart);
+  const retainingStart = performance.now();
   const retention = planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo);
+  work('retaining', retainingStart);
   const dec = decisionPrices(materialValue);
   const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
   lap('sections');
 
   // --- land cover under each station, for each way of building it: the slope-to-slope footprint of
   // the earthwork, the deck strip of a bridge, the centreline of a tunnel ---
+  const coverStart = performance.now();
   const cover = { urban: 0, forest: 0, oob: 0 };
   const sampleCover = (i: number, left: number, right: number) => {
     const nx = -st.ty[i], ny = st.tx[i];
@@ -569,18 +589,24 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     }
     cover.urban = cnt ? u / cnt : 0; cover.forest = cnt ? f / cnt : 0; cover.oob = out;
   };
-  const urbanEarth = new Float32Array(n), forestEarth = new Float32Array(n), urbanDeck = new Float32Array(n);
-  const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    sampleCover(i, sec.dayL[i], sec.dayR[i]);
-    urbanEarth[i] = cover.urban; forestEarth[i] = cover.forest; oobEarth[i] = cover.oob;
-    sampleCover(i, w, w);
-    urbanDeck[i] = cover.urban; oobDeck[i] = cover.oob;
-    urbanCentre[i] = terrain.cover(st.x[i], st.y[i]) & BUILTUP_BIT ? 1 : 0;
+    if (coverLeft[i] !== sec.dayL[i] || coverRight[i] !== sec.dayR[i]) {
+      sampleCover(i, sec.dayL[i], sec.dayR[i]);
+      urbanEarth[i] = cover.urban; forestEarth[i] = cover.forest; oobEarth[i] = cover.oob;
+      coverLeft[i] = sec.dayL[i]; coverRight[i] = sec.dayR[i];
+    }
+    if (!deckCoverReady) {
+      sampleCover(i, w, w);
+      urbanDeck[i] = cover.urban; oobDeck[i] = cover.oob;
+      urbanCentre[i] = terrain.cover(st.x[i], st.y[i]) & BUILTUP_BIT ? 1 : 0;
+    }
   }
+  deckCoverReady = true;
 
   // --- structures: the earthwork option against a bridge / tunnel, each at the rates of its own
   // footprint (as the bill will charge it) ---
+  work('cover', coverStart);
+  const selectionStart = performance.now();
   const h = new Float64Array(n);
   const geotechnicalPerM = new Float64Array(n), culverts = new Float64Array(n);
   const earthPerM = new Float64Array(n), bridgePerM = new Float64Array(n), tunnelPerMAt = new Float64Array(n);
@@ -622,7 +648,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // was hydraulically possible. Extend crossing spans, retaining manual overrides and checks.
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]), selection.kind);
   selection = chooseStructures(structureInput);
+  work('selection', selectionStart);
+  const supportStart = performance.now();
   const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo);
+  work('support', supportStart);
   const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
   for (const issue of supported.diagnostics) if (issue.structure === 'abutment' && issue.reason === 'terrain' && issue.targetS !== undefined && issue.raiseM > 0) {
@@ -630,8 +659,16 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     if (manualStructures.subarray(a, b + 1).some(v => v >= 0)) continue;
     for (let i = a; i <= b; i++) supportHeights.push({ s: st.s[i], z: ground[i] + STRUCTURE_RULES.bridgeMinHeight + 0.15 });
   }
-  return { prof, grade, waterZ, sec, retention, urbanEarth, forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck,
+  work('engineering', engineeringStart);
+  return { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings, selection, supported, supportHeights };
+  };
+  const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[]) => {
+    const start = performance.now();
+    const lifted = liftAutoProfile(candidate, targets, d.speed, scenario.maxGradient, d.gradePins);
+    work('lift', start);
+    timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
+    return lifted;
   };
   let engineering = engineer(vpis);
   const repairTargets = new Map<number, number>();
@@ -639,7 +676,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   for (let attempt = 0; attempt < 3 && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
     for (const q of engineering.supportHeights) repairTargets.set(q.s, Math.max(q.z, repairTargets.get(q.s) ?? -Infinity));
     const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
-    let lifted = liftAutoProfile(vpis, targets, d.speed, scenario.maxGradient, d.gradePins);
+    let lifted = liftProfile(vpis, targets);
     if (!lifted && autoOptions && !usedProfileRetry) {
       // If the existing knots cannot accommodate the lift, let the same DP place new knots.
       // Material value is already settled: one fixed-price solve, no repeat mass-balance search.
@@ -648,18 +685,21 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         const i = Math.min(n - 1, Math.round(q.s / ds));
         minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], q.z - ground[i] + 0.25);
       }
+      const retryStart = performance.now();
       const retry = autoProfile(st.s, ground, { ...autoOptions, minH, costPerM: costFor(materialValue), balance: undefined });
+      work('retryDP', retryStart);
+      timing['count.retryDP'] = (timing['count.retryDP'] ?? 0) + 1;
       usedProfileRetry = true;
       if (retry.feasible) {
         const profile = buildProfile(retry.vpis, norms.minCrestRadius, norms.minSagRadius), z = elevations(profile, targets.map(q => q.s));
-        lifted = targets.every((q, i) => z[i] >= q.z - 0.01) ? retry.vpis : liftAutoProfile(retry.vpis, targets, d.speed, scenario.maxGradient, d.gradePins);
+        lifted = targets.every((q, i) => z[i] >= q.z - 0.01) ? retry.vpis : liftProfile(retry.vpis, targets);
       }
     }
     if (!lifted) break;
     vpis = lifted;
     engineering = engineer(vpis);
   }
-  const { prof, grade, waterZ, sec, retention, urbanEarth, forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck,
+  const { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings, selection, supported } = engineering;
   const { kind, runs } = supported;
   const structureViolations = [...selection.violations, ...supported.violations];

@@ -125,7 +125,9 @@ export function waterOpening(size: WaterSize): string {
 export class WaterNet {
   /** Largest channel half-width for conservative local footprint/support queries. */
   readonly maxHalfWidth: number = 0;
-  private buckets = new Map<string, WaterSegment[]>();
+  // Nested numeric keys avoid per-query coordinate strings without packing coordinates into a
+  // finite-width key (negative and widely separated synthetic coordinates remain distinct).
+  private buckets = new Map<number, Map<number, WaterSegment[]>>();
   private distances = new Map<number, number[]>();
   private components = new Map<number, number>();
   constructor(readonly data: WaterData) {
@@ -157,8 +159,10 @@ export class WaterNet {
         d: this.distances.get(reach.id)![j], length: Math.hypot(b[0] - a[0], b[1] - a[1]) };
       for (let x = Math.floor(Math.min(a[0], b[0]) / 100); x <= Math.floor(Math.max(a[0], b[0]) / 100); x++)
         for (let y = Math.floor(Math.min(a[1], b[1]) / 100); y <= Math.floor(Math.max(a[1], b[1]) / 100); y++) {
-          const key = `${x},${y}`, bucket = this.buckets.get(key) ?? [];
-          bucket.push(segment); this.buckets.set(key, bucket);
+          let column = this.buckets.get(x);
+          if (!column) this.buckets.set(x, column = new Map());
+          const bucket = column.get(y);
+          if (bucket) bucket.push(segment); else column.set(y, [segment]);
         }
     }
   }
@@ -166,7 +170,7 @@ export class WaterNet {
     const [x0, y0, x1, y1] = bounds, seen = new Set<WaterSegment>();
     for (let x = Math.floor(x0 / 100); x <= Math.floor(x1 / 100); x++)
       for (let y = Math.floor(y0 / 100); y <= Math.floor(y1 / 100); y++)
-        for (const segment of this.buckets.get(`${x},${y}`) ?? []) {
+        for (const segment of this.buckets.get(x)?.get(y) ?? []) {
           if (seen.has(segment)) continue;
           seen.add(segment);
           if (Math.max(segment.ax, segment.bx) < x0 || Math.min(segment.ax, segment.bx) > x1
@@ -184,7 +188,7 @@ export class WaterNet {
     const radius = Math.max(left, right), out: { id: number; x: number; y: number }[] = [], seen = new Set<string>();
     for (let cx = Math.floor((x - radius) / 100); cx <= Math.floor((x + radius) / 100); cx++)
       for (let cy = Math.floor((y - radius) / 100); cy <= Math.floor((y + radius) / 100); cy++)
-        for (const { reach: w, j } of this.buckets.get(`${cx},${cy}`) ?? []) {
+        for (const { reach: w, j } of this.buckets.get(cx)?.get(cy) ?? []) {
           const key = `${w.id}:${j}`;
           if (seen.has(key)) continue;
           seen.add(key);
@@ -205,7 +209,7 @@ export class WaterNet {
       const dx = x[i + 1] - x[i], dy = y[i + 1] - y[i], seen = new Set<string>();
       for (let cx = Math.floor(Math.min(x[i], x[i + 1]) / 100); cx <= Math.floor(Math.max(x[i], x[i + 1]) / 100); cx++)
         for (let cy = Math.floor(Math.min(y[i], y[i + 1]) / 100); cy <= Math.floor(Math.max(y[i], y[i + 1]) / 100); cy++) {
-          for (const { reach: w, j } of this.buckets.get(`${cx},${cy}`) ?? []) {
+          for (const { reach: w, j } of this.buckets.get(cx)?.get(cy) ?? []) {
             const key = `${w.id}:${j}`;
             if (seen.has(key)) continue;
             seen.add(key);
