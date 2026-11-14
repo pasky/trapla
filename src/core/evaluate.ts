@@ -266,13 +266,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
 
   const waterSide = Array.from({ length: n }, (_, i) => (terrain.watercourses?.section(st.x[i], st.y[i], st.tx[i], st.ty[i], 150, 150) ?? []).map(hit => ({ ...hit,
     offset: -(hit.x - st.x[i]) * st.ty[i] + (hit.y - st.y[i]) * st.tx[i], ground: terrain.heightAt(hit.x, hit.y) })));
-  const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>, diverted?: ReadonlySet<number>) => {
+  const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>, diverted?: ReadonlySet<number>,
+    waterElevation?: ReadonlyMap<WaterCrossing, number>) => {
     const gridDs = indices.length > 1 ? st.s[indices[1]] - st.s[indices[0]] : ds;
     const barrels = water.flatMap(c => {
       const k = Math.min(indices.length - 1, Math.round(c.s / gridDs)), i = indices[k];
       const j = Math.max(0, Math.min(indices.length - 2, Math.floor(c.s / gridDs)));
       const t = Math.max(0, Math.min(1, (c.s - st.s[indices[j]]) / (st.s[indices[j + 1]] - st.s[indices[j]])));
-      const cover = z[j] * (1 - t) + z[j + 1] * t - waterGround.get(c)!;
+      const cover = (waterElevation?.get(c) ?? z[j] * (1 - t) + z[j + 1] * t) - waterGround.get(c)!;
       const envelope = culvertEnvelope(c, left[k], right[k], ds, st.tx[i], st.ty[i], cover);
       return envelope ? [{ c, envelope }] : [];
     });
@@ -573,7 +574,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo);
   work('sections', sectionsStart);
   const retainingStart = performance.now();
-  const retention = planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo);
+  const retention = planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation);
   work('retaining', retainingStart);
   const dec = decisionPrices(materialValue);
   const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
@@ -634,7 +635,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]));
   forceParallelWater(forced, Array.from({ length: n }, (_, i) => i), grade, sec.dayL, sec.dayR,
-    new Set(retention.channelRelocations.map(c => c.id)));
+    new Set(retention.channelRelocations.map(c => c.id)), waterElevation);
   // an existing road clearly below the grade passes under a (short) bridge instead of being buried
   const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
   const crossings: CrossingResult[] = roadX.map((c, k) => ({
@@ -816,7 +817,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
 
   lap('crossings');
-  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo }, terrain, ctx.roads, crossings, rawRoadX, water);
+  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo }, terrain, ctx.roads, crossings, rawRoadX, water,
+    new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
   // Grouped wall annotations must not relocate their construction to the first station's

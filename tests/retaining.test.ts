@@ -4,7 +4,7 @@ import { planRetainingWalls, retainingConflicts } from '../src/core/retaining';
 import { footprintConflicts } from '../src/core/footprint';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain, Terrain, LC, RAIL_CROSSING_BIT } from '../src/core/terrain';
-import type { WaterData } from '../src/core/watercourses';
+import { waterSize, type WaterData } from '../src/core/watercourses';
 
 function setup(grade = 108, watercourses?: WaterData) {
   const n = 81, arr = (v: number) => new Float64Array(n).fill(v);
@@ -120,6 +120,24 @@ describe('automatic slope retention', () => {
     const ditch = run(false);
     expect(ditch.plan.forcedBridge.some(Boolean)).toBe(false);
     expect(ditch.check.violations).toEqual([]);
+  });
+  it('uses exact crossing elevations rather than station chords at the barrel-cover threshold', () => {
+    const run = (exact: boolean) => {
+      const { terrain, route } = setup(101.8, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
+        points: [[505, 0], [505, 200]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] });
+      const water = terrain.watercourses!.intersections(route.n, route.s, route.x, route.y), c = water[0];
+      const i = Math.round(c.s / route.ds), minHeight = waterSize(c, route.dayL[i] + route.dayR[i]).minHeight;
+      // A crest between x500/x510 can clear the minimum while its station chord does not.
+      route.grade.fill(100 + minHeight - 0.002);
+      const elevations = exact ? new Map([[c, 100 + minHeight + 0.002]]) : undefined;
+      const plan = planRetainingWalls(route, terrain, undefined, undefined, water, undefined, elevations);
+      const check = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], water, elevations);
+      return { plan, check };
+    };
+    expect(run(false).plan.clearanceRequirements.length).toBeGreaterThan(0);
+    const exact = run(true);
+    expect(exact.plan.clearanceRequirements).toEqual([]);
+    expect(exact.check.violations).toEqual([]);
   });
   it('retains the unowned part of a partly barrel-owned dog-leg independently of OSM splits', () => {
     const run = (split: boolean) => {

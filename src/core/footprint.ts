@@ -99,7 +99,8 @@ export function structureFootprints(r: FootprintRoute): FootprintCell[] {
 }
 
 export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: RoadNet | undefined,
-  crossings: readonly CrossingResult[], _rawRoads: readonly RoadCrossing[], water: readonly WaterCrossing[]): { conflicts: FootprintConflict[]; violations: Violation[] } {
+  crossings: readonly CrossingResult[], _rawRoads: readonly RoadCrossing[], water: readonly WaterCrossing[],
+  waterElevation?: ReadonlyMap<WaterCrossing, number>): { conflicts: FootprintConflict[]; violations: Violation[] } {
   const conflicts: FootprintConflict[] = [], violations: Violation[] = [];
   const cells: FootprintCell[] = [];
   for (let i = 0; i < r.n; i++) if (r.kind[i] === KIND.earth) {
@@ -115,7 +116,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const i = Math.min(r.n - 1, Math.round(c.s / r.ds)), j = Math.max(0, Math.min(r.n - 2, Math.floor(c.s / r.ds)));
     if (r.kind[i] !== KIND.earth) return [];
     const t = Math.max(0, Math.min(1, (c.s - r.s[j]) / r.ds));
-    const cover = r.grade[j] * (1 - t) + r.grade[j + 1] * t - terrain.heightAt(c.x, c.y);
+    const cover = (waterElevation?.get(c) ?? r.grade[j] * (1 - t) + r.grade[j + 1] * t) - terrain.heightAt(c.x, c.y);
     const envelope = culvertEnvelope(c, r.dayL[i], r.dayR[i], r.ds, r.tx[i], r.ty[i], cover);
     return envelope ? [[c, envelope] as const] : [];
   }));

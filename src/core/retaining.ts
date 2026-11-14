@@ -59,13 +59,13 @@ export function retainingConflicts(walls: readonly RetainingWall[]): FootprintCo
 
 interface RetainingBarrel { c: WaterCrossing; i: number; left: number; right: number; cover: number; envelope: BarrelEnvelope }
 
-export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, water: readonly WaterCrossing[] = [], cache?: RetainingFeatureCache): RetainingPlan {
+export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, water: readonly WaterCrossing[] = [], cache?: RetainingFeatureCache, waterElevation?: ReadonlyMap<WaterCrossing, number>): RetainingPlan {
   const { n, ds } = r;
   let barrels: RetainingBarrel[] = water.flatMap(c => {
     const i = Math.min(n - 1, Math.round(c.s / ds)), j = Math.max(0, Math.min(n - 2, Math.floor(c.s / ds)));
     if (overrides?.[i] === KIND.bridge || overrides?.[i] === KIND.tunnel) return [];
     const t = Math.max(0, Math.min(1, (c.s - r.s[j]) / ds));
-    const cover = r.grade[j] * (1 - t) + r.grade[j + 1] * t - terrain.heightAt(c.x, c.y);
+    const cover = (waterElevation?.get(c) ?? r.grade[j] * (1 - t) + r.grade[j + 1] * t) - terrain.heightAt(c.x, c.y);
     const envelope = culvertEnvelope(c, r.dayL[i], r.dayR[i], ds, r.tx[i], r.ty[i], cover);
     return envelope ? [{ c, i, left: r.dayL[i], right: r.dayR[i], cover, envelope }] : [];
   });
