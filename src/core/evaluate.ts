@@ -550,7 +550,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   lap('profile');
   const autoVpis = vpis;
   // Grade repair reuses alignment, feature queries and the completed DP search. Only engineering
-  // quantities are rebuilt; buildings, crossing meshes, noise and final billing run once.
+  // quantities are rebuilt; buildings, crossing meshes, noise and billing run once per finish()
+  // (twice only when the strict fallback below re-engineers; its lift loop and DP retry repeat).
   // Centreline crossings own their connected stretch inside the footprint (crossing remedy);
   // grade-separated classes cannot be diverted and stay ordinary retaining obstacles.
   // Ways merged into another crossing's billing group have no remedy of their own.

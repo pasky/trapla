@@ -46,8 +46,8 @@ export interface FootprintRoute {
   crownWidth: number; runs: Run[];
   channelRelocations?: readonly ChannelRelocation[];
   featureCache?: RetainingFeatureCache;
-  /** See remedyBridgeSupports: minor roads at abutments/portals are relocated, not blocked. */
-  /** Defined: minor roads at abutments/portals are relocated, except these strictly retried ways. */
+  /** Defined: minor roads at automatic abutments/portals are relocated (see remedyBridgeSupports),
+   * except these strictly retried ways. */
   strictWays?: ReadonlySet<number>;
 }
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
@@ -150,7 +150,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     // graze the toe within half a width plus setback beyond the exact removed end. Screening
     // tolerance only; planning and ownership keep the exact interval.
     for (const interval of severedCrossingIntervals(crossings, roads)) {
-      const tieIn = ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
+      const tieIn = process.env.NOTIE ? 0 : ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
       const graze = tieInCovered.get(interval.way) ?? [];
       graze.push([interval.a - tieIn, interval.a], [interval.b, interval.b + tieIn]); tieInCovered.set(interval.way, graze);
     }

@@ -77,17 +77,19 @@ function routeGeometry(route: CrossingRoute) {
   const GRID = 32, RINGS = 6;
   let gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
   for (let i = 0; i < n; i++) { gx0 = Math.min(gx0, route.x[i]); gx1 = Math.max(gx1, route.x[i]); gy0 = Math.min(gy0, route.y[i]); gy1 = Math.max(gy1, route.y[i]); }
-  const gnx = Math.floor((gx1 - gx0) / GRID) + 1, gny = Math.floor((gy1 - gy0) / GRID) + 1;
+  // Dense buckets only for a bounded extent (D11: ≈400 × 500 cells); otherwise the exact tree.
+  const dense = (gx1 - gx0) / GRID * (gy1 - gy0) / GRID <= 4e6;
+  const gnx = dense ? Math.floor((gx1 - gx0) / GRID) + 1 : 0, gny = dense ? Math.floor((gy1 - gy0) / GRID) + 1 : 0;
   const cellStart = new Int32Array(gnx * gny + 1);
   const cellsOf = (i: number, visit: (cell: number) => void) => {
     const c0 = Math.floor((Math.min(route.x[i], route.x[i + 1]) - gx0) / GRID), c1 = Math.floor((Math.max(route.x[i], route.x[i + 1]) - gx0) / GRID);
     const r0 = Math.floor((Math.min(route.y[i], route.y[i + 1]) - gy0) / GRID), r1 = Math.floor((Math.max(route.y[i], route.y[i + 1]) - gy0) / GRID);
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) visit(r * gnx + c);
   };
-  for (let i = 0; i + 1 < n; i++) cellsOf(i, cell => cellStart[cell + 1]++);
+  if (dense) for (let i = 0; i + 1 < n; i++) cellsOf(i, cell => cellStart[cell + 1]++);
   for (let k = 0; k < gnx * gny; k++) cellStart[k + 1] += cellStart[k];
   const cellItems = new Int32Array(cellStart[gnx * gny]), fill = cellStart.slice(0, gnx * gny);
-  for (let i = 0; i + 1 < n; i++) cellsOf(i, cell => { cellItems[fill[cell]++] = i; });
+  if (dense) for (let i = 0; i + 1 < n; i++) cellsOf(i, cell => { cellItems[fill[cell]++] = i; });
   const segment = (i: number, q: XY) => {
     const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
     const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
@@ -98,7 +100,7 @@ function routeGeometry(route: CrossingRoute) {
   const nearest = (q: XY) => {
     best = Infinity; station = route.s[0];
     const qc = Math.floor((q.x - gx0) / GRID), qr = Math.floor((q.y - gy0) / GRID);
-    for (let ring = 0; ring <= RINGS; ring++) {
+    for (let ring = 0; dense && ring <= RINGS; ring++) {
       for (let r = qr - ring; r <= qr + ring; r++) {
         if (r < 0 || r >= gny) continue;
         const edge = r === qr - ring || r === qr + ring;
@@ -322,13 +324,20 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       }
     } else if (c.type === 'reconnection' || c.type === 'diversion') {
       // The severed way is removed wherever it lies inside the footprint plus link corridor,
-      // in both directions from the crossing, even when that direction needs no new link.
-      let lo = 0;
-      for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[lo].d)) lo = i;
-      let hi = lo;
-      while (lo > 0 && margin(path[lo], corridor) < 0) lo--;
-      while (hi + 1 < path.length && margin(path[hi], corridor) < 0) hi++;
-      g.removed = [Math.min(0, path[lo].d), Math.max(0, path[hi].d)];
+      // in both directions from the crossing, even when that direction needs no new link. Each end
+      // is the interpolated corridor boundary, the same one groundAnchors() ties a link to.
+      let centre = 0;
+      for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;
+      const edge = (step: number) => {
+        let k = centre;
+        if (margin(path[k], corridor) >= 0) return path[k].d;
+        while (path[k + step] && margin(path[k + step], corridor) < 0) k += step;
+        if (!path[k + step]) return path[k].d;
+        let a = path[k].d, b = path[k + step].d;
+        for (let it = 0; it < 24; it++) { const m = (a + b) / 2; if (margin(along(path, m), corridor) < 0) a = m; else b = m; }
+        return b;
+      };
+      g.removed = [Math.min(0, edge(-1)), Math.max(0, edge(1))];
     } else if (['bridge', 'tunnel'].includes(c.type)) {
       // Only show the vicinity of the crossing; its existing road is unchanged at terrain level.
       let centre = path.findIndex(q => q.d >= 0), lo = centre, hi = centre;

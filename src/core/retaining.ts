@@ -109,8 +109,6 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
 function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | undefined, overrides: ArrayLike<number> | undefined,
   water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[], crossingWays?: CrossingChainages): RetainingPlan {
   const { n, ds } = r, w = r.crownWidth / 2;
-  const limitL = new Float64Array(n).fill(Infinity), limitR = new Float64Array(n).fill(Infinity);
-  const causeL: RetainingWall['feature'][] = [], causeR: RetainingWall['feature'][] = [];
   const forcedBridge = new Uint8Array(n), forcedTunnel = new Uint8Array(n), perCell = new Float64Array(n), landPerCell = new Float64Array(n);
   const wallSurfaceL = new Float64Array(n).fill(NaN), wallSurfaceR = new Float64Array(n).fill(NaN);
   const requests: { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean; crossing: number; cap: number }[] = [];
@@ -130,11 +128,9 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       if ((overrides?.[i] ?? -1) < 0 && r.grade[i] - terrain.heightAt(gx, gy) >= clearance) bridgeRequests.push({ i, id });
       return;
     }
-    const limits = lateral >= 0 ? limitL : limitR, cause = lateral >= 0 ? causeL : causeR;
     const day = lateral >= 0 ? r.dayL[i] : r.dayR[i];
     if (limit >= day - 0.05) return;
     requests.push({ i, side: lateral >= 0 ? 1 : -1, limit, feature, id, constrained, crossing, cap });
-    if (limit < limits[i]) { limits[i] = limit; cause[i] = feature; }
   };
   const segment = (c: FootprintCell, seg: Segment2, pad: number, feature: RetainingWall['feature'], id?: number,
     owned: readonly [number, number][] = [], ownedMode = 0, cap = Infinity) => {
@@ -244,18 +240,32 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     return channel.conflict.cost < wallPrice;
   });
   const diverted = new Set(channelRelocations.map(c => c.id));
-  limitL.fill(Infinity); limitR.fill(Infinity); causeL.length = 0; causeR.length = 0;
-  const constrainedL = new Uint8Array(n), constrainedR = new Uint8Array(n), crossingL = new Uint8Array(n), crossingR = new Uint8Array(n);
-  const capL = new Float64Array(n).fill(Infinity), capR = new Float64Array(n).fill(Infinity);
-  for (const req of requests) if (req.id === undefined || !diverted.has(req.id)) {
-    const limits = req.side > 0 ? limitL : limitR, causes = req.side > 0 ? causeL : causeR;
-    if (req.limit < limits[req.i] || (Math.abs(req.limit - limits[req.i]) < 1e-6 && protectionRank[req.feature] > (protectionRank[causes[req.i]] ?? -1))) {
-      limits[req.i] = req.limit; causes[req.i] = req.feature;
-      (req.side > 0 ? constrainedL : constrainedR)[req.i] = req.constrained ? 1 : 0;
-      (req.side > 0 ? crossingL : crossingR)[req.i] = req.crossing;
-      (req.side > 0 ? capL : capR)[req.i] = req.cap;
+  // Binding constraint per cell side, with its crossing/cap metadata. `firm` excludes optional
+  // non-separable crossing stretches, so rejecting such a wall on price/feasibility falls back to
+  // any independent obligation (rail, water, other roads) at that same side instead of erasing it.
+  type Side = { limit: Float64Array; cause: RetainingWall['feature'][]; constrained: Uint8Array; crossing: Uint8Array; cap: Float64Array };
+  const select = (keep: (req: typeof requests[number]) => boolean): [Side, Side] => {
+    const sides = [1, -1].map(() => ({ limit: new Float64Array(n).fill(Infinity), cause: [] as RetainingWall['feature'][],
+      constrained: new Uint8Array(n), crossing: new Uint8Array(n), cap: new Float64Array(n).fill(Infinity) })) as [Side, Side];
+    for (const req of requests) if ((req.id === undefined || !diverted.has(req.id)) && keep(req)) {
+      const t = sides[req.side > 0 ? 0 : 1];
+      if (req.limit < t.limit[req.i] || (Math.abs(req.limit - t.limit[req.i]) < 1e-6 && protectionRank[req.feature] > (protectionRank[t.cause[req.i]] ?? -1))) {
+        t.limit[req.i] = req.limit; t.cause[req.i] = req.feature;
+        t.constrained[req.i] = req.constrained ? 1 : 0; t.crossing[req.i] = req.crossing; t.cap[req.i] = req.cap;
+      }
     }
-  }
+    // Extend a wall by one cell either side so chords of adjoining wide slope cells do not cut
+    // across the protected feature. Never narrow a neighbour more than its own candidate section.
+    for (const t of sides) {
+      const copy = { limit: t.limit.slice(), cause: t.cause.slice(), constrained: t.constrained.slice(), crossing: t.crossing.slice(), cap: t.cap.slice() };
+      for (let i = 1; i < n - 1; i++) for (const j of [i - 1, i + 1]) if (copy.limit[j] < t.limit[i]
+        || (Math.abs(copy.limit[j] - t.limit[i]) < 1e-6 && (protectionRank[copy.cause[j]] ?? -1) > (protectionRank[t.cause[i]] ?? -1))) {
+        t.limit[i] = copy.limit[j]; t.cause[i] = copy.cause[j]; t.constrained[i] = copy.constrained[j]; t.crossing[i] = copy.crossing[j]; t.cap[i] = copy.cap[j];
+      }
+    }
+    return sides;
+  };
+  const all = select(() => true), firm = requests.some(req => req.crossing === 2) ? select(req => req.crossing !== 2) : all;
   for (const req of bridgeRequests) if (req.id === undefined || !diverted.has(req.id)) forcedBridge[req.i] = 1;
   for (const channel of channelRelocations) {
     const count = channel.i1 - channel.i0 + 1, land = channel.conflict.landCost ?? 0;
@@ -264,42 +274,35 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       landPerCell[i] += land / count;
     }
   }
-  // Extend a wall by one cell either side so chords of adjoining wide slope cells do not cut
-  // across the protected feature. Never narrow a neighbour more than its own candidate section.
-  for (const [limits, flags, crossings, caps, causes] of [[limitL, constrainedL, crossingL, capL, causeL], [limitR, constrainedR, crossingR, capR, causeR]] as const) {
-    const copy = limits.slice(), copiedFlags = flags.slice(), copiedCrossings = crossings.slice(), copiedCaps = caps.slice(), copiedCauses = causes.slice();
-    for (let i = 1; i < n - 1; i++) for (const j of [i - 1, i + 1]) if (copy[j] < limits[i]
-      || (Math.abs(copy[j] - limits[i]) < 1e-6 && (protectionRank[copiedCauses[j]] ?? -1) > (protectionRank[causes[i]] ?? -1))) {
-      limits[i] = copy[j]; flags[i] = copiedFlags[j]; crossings[i] = copiedCrossings[j]; caps[i] = copiedCaps[j]; causes[i] = copiedCauses[j];
-    }
-  }
   const walls: RetainingWall[] = [], tpl = { crownWidth: r.crownWidth, ...DEFAULT_SLOPES };
-  for (let i = 1; i < n - 1; i++) for (const side of [1, -1]) {
-    const limit = side > 0 ? limitL[i] : limitR[i], day = side > 0 ? r.dayL : r.dayR, zDay = side > 0 ? r.zDayL : r.zDayR;
-    if (!Number.isFinite(limit) || limit >= day[i] - 0.05) continue;
+  for (let i = 1; i < n - 1; i++) for (const side of [1, -1]) for (const set of all === firm ? [all] : [all, firm]) {
+    const t = set[side > 0 ? 0 : 1], other = all[side > 0 ? 1 : 0];
+    const limit = t.limit[i], day = side > 0 ? r.dayL : r.dayR, zDay = side > 0 ? r.zDayL : r.zDayR;
+    if (!Number.isFinite(limit) || limit >= day[i] - 0.05) break;
     const nx = -r.ty[i] * side, ny = r.tx[i] * side;
     const ground = (o: number) => terrain.heightAt(r.x[i] + nx * o, r.y[i] + ny * o);
     const fill = r.grade[i] >= ground(w), surface = r.grade[i] + (fill ? -1 : 1) * slopeHeight(limit - w, fill ? tpl.fillSlope : tpl.cutSlope, fill);
     const height = Math.abs(surface - ground(limit));
-    const causes = side > 0 ? causeL : causeR, feature = causes[i] ?? causes[i - 1] ?? causes[i + 1] ?? 'road';
+    const feature = t.cause[i] ?? t.cause[i - 1] ?? t.cause[i + 1] ?? 'road';
     const watertight = surface < ground(limit) && (feature === 'water' || feature === 'stream');
     const rate = retainingAssembly(height, watertight);
-    const otherFoot = Math.max(w, Math.min(side > 0 ? r.dayR[i] : r.dayL[i], side > 0 ? limitR[i] : limitL[i]));
+    const otherFoot = Math.max(w, Math.min(side > 0 ? r.dayR[i] : r.dayL[i], other.limit[i]));
     // The footing points inward, below our acquired corridor; no free foundation under a protected neighbour.
-    const crossing = (side > 0 ? crossingL : crossingR)[i];
-    if (rate.perM > (side > 0 ? capL : capR)[i]) continue;
+    const crossing = t.crossing[i];
+    if (rate.perM > t.cap[i]) continue; // dearer than relocating that track: try the firm constraints
     if (height > R.maxHeight || rate.baseWidth > limit + otherFoot) {
       // A crossing way's own stretch is left to its crossing remedy and the final screen.
-      if ((overrides?.[i] ?? -1) < 0 && crossing !== 2) {
+      if (crossing === 2) continue;
+      if ((overrides?.[i] ?? -1) < 0) {
         if (r.grade[i] - ground(0) >= STRUCTURE_RULES.bridgeMinHeight) forcedBridge[i] = 1;
         else if (!crossing && ground(0) - r.grade[i] >= STRUCTURE_RULES.tunnelMinDepth) forcedTunnel[i] = 1;
       }
-      continue;
+      break;
     }
     const geology = (o: number) => terrain.groundAt(r.x[i] + nx * o, r.y[i] + ny * o);
     const sideCache = side > 0 ? r.sideL : r.sideR;
     const before = sideCache?.[i] ?? sideSection(r.grade[i], w, tpl, ground, geology), after = sideSection(r.grade[i], w, tpl, ground, geology, limit);
-    if (after.day >= before.day - 0.05) continue;
+    if (after.day >= before.day - 0.05) break;
     r.cut[i] += after.cut - before.cut; r.fill[i] += after.fill - before.fill;
     r.cutI[i] += after.cutI - before.cutI; r.cutII[i] += after.cutII - before.cutII;
     r.cutIII[i] = Math.max(0, r.cut[i] - r.cutI[i] - r.cutII[i]);
@@ -312,7 +315,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     perCell[i] += cost;
     walls.push({ i, s0: r.s[i] - ds / 2, s1: r.s[i] + ds / 2, side: side > 0 ? 'L' : 'R', offset: after.day,
       x: r.x[i] + nx * after.day, y: r.y[i] + ny * after.day, height, top: Math.max(surface, after.zDay), bottom: Math.min(surface, after.zDay),
-      cost, feature, area: height * length, perM2: rate.perM2, watertight, constrained: !!(side > 0 ? constrainedL : constrainedR)[i] });
+      cost, feature, area: height * length, perM2: rate.perM2, watertight, constrained: !!t.constrained[i] });
+    break;
   }
   const required = new Map<number, number>();
   for (const q of clearanceRequests) if (q.id === undefined || !diverted.has(q.id)) required.set(q.i, Math.max(q.z, required.get(q.i) ?? -Infinity));

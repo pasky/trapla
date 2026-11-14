@@ -189,6 +189,15 @@ describe('automatic slope retention', () => {
       expect(owned.walls.every(w => w.cost / (w.s1 - w.s0) <= 2 * 13_985_684.5 / 1000)).toBe(true);
     }
   });
+  it('a rejected crossing-track wall falls back to the independent railway constraint on that side', () => {
+    const { terrain, route } = setup(115);
+    for (let col = 50; col < 80; col++) terrain.lc[17 * terrain.nx + col] = LC.rail;
+    // The track runs nearer than the rail (lateral ≈10.5 m over km 0.16–0.24) and crosses at x≈480.
+    const track = new RoadNet({ cls: ['track'], ways: [[0, 100, 111, 340, 110.5, 500, 99, 700, 90]] });
+    const plan = planRetainingWalls(route, terrain, track, undefined, [], undefined, undefined, new Map([[0, [track.wayStation(0, 480, 100)]]]));
+    expect(plan.walls.some(w => w.feature === 'railway' && w.i >= 16 && w.i <= 24)).toBe(true);
+    expect(plan.walls.every(w => w.feature === 'railway')).toBe(true);
+  });
   it('requests a bridge instead of inventing an unlimited wall, while preserving explicit earthwork', () => {
     const auto = setup(140), manual = setup(140);
     expect(planRetainingWalls(auto.route, auto.terrain, auto.roads).forcedBridge.some(Boolean)).toBe(true);

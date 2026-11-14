@@ -245,8 +245,13 @@ describe('bounded real road relocation', () => {
     const plan = planRoadRealignment(crossing);
     expect(plan.problems).toEqual([]);
     expect(plan.lumpCost).toBe(500_000); // one new service-road junction allowance
+    // OSM way splits neither multiply the one physical junction nor hide a long parallel overlap.
+    const split = setup([[0, 20, 260, 1250, 260], [1, 600, 274, 600, 276], [1, 600, 276, 600, 400]], ['service', 'track']);
+    expect(planRoadRealignment(split).lumpCost).toBe(500_000);
     const along = setup([[0, 20, 260, 1250, 260], [1, 20, 278, 1250, 278]], ['service', 'track']);
     expect(planRoadRealignment(along).problems).toContain('new pavement intersects an unhandled road');
+    const pieces = setup([[0, 20, 260, 1250, 260], ...Array.from({ length: 123 }, (_, k) => [1, 20 + 10 * k, 278, 30 + 10 * k, 278])], ['service', 'track']);
+    expect(planRoadRealignment(pieces).problems).toContain('new pavement intersects an unhandled road');
   });
 
   it('protects ribbon edges and turning aprons, while leaving old drainage on unchanged tails alone', () => {

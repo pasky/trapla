@@ -484,8 +484,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     }
     let lumpCost = 0;
     const rebuiltAccesses = new Set<string>();
-    const minorContacts = new Map<number, { lo: number; hi: number; reach: number; x: number; y: number; service: boolean }>();
-    const roadObstacles = (cell: FootprintCell, p?: CrossingPoint, q?: CrossingPoint) => roads.nearSegments(cellBounds(cell, 14), segment => {
+    // Contacts measured along the NEW path (part offset keeps two-link plans apart), so OSM way
+    // splits can neither hide a long parallel overlap nor multiply one physical junction.
+    const minorContacts: { lo: number; hi: number; reach: number; access: boolean; x: number; y: number }[] = [];
+    const roadObstacles = (cell: FootprintCell, p?: CrossingPoint, q?: CrossingPoint, at = 0) => roads.nearSegments(cellBounds(cell, 14), segment => {
       const other = ROAD_CLASSES[segment.cls], otherHalf = other.width / (segment.cls === 'motorway' ? 4 : 2);
       const overlap = clipFootprint(segment, cell, otherHalf);
       if (!overlap) return;
@@ -515,17 +517,21 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
             return;
           }
         }
-        // Two minor (non-separable) ways may meet in a new ordinary at-grade junction outside
-        // the acquired corridor, where the new pavement is at that road's own ground level. Only a
-        // short contact qualifies (checked over the whole path below), never pavement laid along it.
-        if (!row.separable && !other.separable) {
-          const mid = (overlap[0] + overlap[1]) / 2, u = (mid - segment.d) / (segment.length || 1);
-          const x = segment.ax + u * (segment.bx - segment.ax), y = segment.ay + u * (segment.by - segment.ay);
-          const t = Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / (len2 || 1)));
-          if (Math.abs(p.z + t * (q.z - p.z) - terrain.heightAt(x, y)) <= 0.25 && !grid.hits({ x, y }, Math.max(half, otherHalf))) {
-            const contact = minorContacts.get(segment.way);
-            if (contact) { contact.lo = Math.min(contact.lo, overlap[0]); contact.hi = Math.max(contact.hi, overlap[1]); }
-            else minorContacts.set(segment.way, { lo: overlap[0], hi: overlap[1], reach: 4 * (half + otherHalf), x, y, service: cls === 'service' || segment.cls === 'service' });
+        // A minor (non-separable) relocated way may meet another track/service road or local street
+        // in a new ordinary at-grade junction outside the acquired corridor, where the new pavement
+        // is at that road's own ground level. Only a short contact qualifies (whole path, below),
+        // never pavement laid along the other road; class I–III junctions are not invented here.
+        if (!row.separable && !other.junction) {
+          const ends = [overlap[0], overlap[1]].map(d => {
+            const u = (d - segment.d) / (segment.length || 1), x = segment.ax + u * (segment.bx - segment.ax), y = segment.ay + u * (segment.by - segment.ay);
+            return { x, y, t: Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / (len2 || 1))) };
+          });
+          const t = (ends[0].t + ends[1].t) / 2, mid = { x: p.x + t * dx, y: p.y + t * dy };
+          // The junction is on the new pavement, which is itself screened clear of the footprint.
+          if (Math.abs(p.z + t * (q.z - p.z) - terrain.heightAt(mid.x, mid.y)) <= 0.25 && !grid.hits(mid, half)) {
+            const length = Math.sqrt(len2);
+            minorContacts.push({ lo: at + Math.min(ends[0].t, ends[1].t) * length - otherHalf, hi: at + Math.max(ends[0].t, ends[1].t) * length + otherHalf,
+              reach: 4 * (half + otherHalf), access: cls === 'service' || segment.cls !== 'track', ...mid });
             return;
           }
         }
@@ -537,13 +543,21 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       const p = path[i - 1], q = path[i], len = distance(p, q);
       if (len < 1e-6 || (distance(p, along(raw, p.d!)) <= 0.01 && distance(q, along(raw, q.d!)) <= 0.01
         && Math.abs(p.z - p.ground) <= 0.01 && Math.abs(q.z - q.ground) <= 0.01)) continue;
-      roadObstacles({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half }, p, q);
+      roadObstacles({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half }, p, q,
+        chain[i - 1] + (gap > 0 && i >= gap ? 1e6 : 0));
     }
     if (turn) roadObstacles({ ...turn, i: h.i, s: r.s[h.i], tx: 1, ty: 0, along: radius, left: radius, right: radius });
-    for (const contact of minorContacts.values()) {
-      if (contact.hi - contact.lo > contact.reach) { problems.add('new pavement intersects an unhandled road'); continue; }
-      const key = `${Math.round(contact.x)},${Math.round(contact.y)}`;
-      if (contact.service && !rebuiltAccesses.has(key)) { rebuiltAccesses.add(key); lumpCost += ACCESS; }
+    minorContacts.sort((a, b) => a.lo - b.lo);
+    for (let k = 0; k < minorContacts.length;) {
+      let hi = minorContacts[k].hi, reach = minorContacts[k].reach, access = minorContacts[k].access;
+      const { lo, x, y } = minorContacts[k];
+      for (k++; k < minorContacts.length && minorContacts[k].lo <= hi + 1; k++) {
+        hi = Math.max(hi, minorContacts[k].hi); reach = Math.max(reach, minorContacts[k].reach); access ||= minorContacts[k].access;
+      }
+      if (hi - lo > reach) problems.add('new pavement intersects an unhandled road');
+      else if (access && !rebuiltAccesses.has(`${Math.round(x)},${Math.round(y)}`)) { // one per physical junction
+        rebuiltAccesses.add(`${Math.round(x)},${Math.round(y)}`); lumpCost += ACCESS;
+      }
     }
     const checkedJunctions = new Set<string>();
     for (const span of spans) {

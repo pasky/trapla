@@ -248,6 +248,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         const terrainDepth = r.ground[i] + span / 20 - r.grade[i];
         if (end && terrainDepth > 0.01 && terrainDepth <= SUPPORT_LIMITS.abutmentCutM)
           regrade[i === run.i0 ? 0 : 1] += terrainDepth / 2 * r.crownWidth * (right - left);
+        // Clearance stays demanded over a minor road even where its abutment conflict is relocated:
+        // the relocated pavement may still pass under this span (conservative; may cost a lift).
         const required = Math.max(r.ground[i] + span / 20 - (end ? SUPPORT_LIMITS.abutmentCutM : 0), obstacle(cell) + extraDepth);
         const shortfall = required - r.grade[i];
         if (shortfall > 0.01) requiredElevations.set(r.s[i], Math.max(required, requiredElevations.get(r.s[i]) ?? -Infinity));
