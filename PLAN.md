@@ -139,18 +139,18 @@ What exists (details and commands in `README.md`):
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
-- Cost model 7 repricing of saved local-search designs (2,500 seeded + 3,500 fresh trials per strategy under
-  model 4, whole-metre PIs): official-corridor bypass at 90 km/h → **3.008 bn CZK**, 21.03 km, 14.02 min;
-  direct eastern fringe at 80 → **3.397 bn**, 19.08 km, 14.31 min; direct fringe at 90 → **3.593 bn**, 19.59 km, 13.06 min. The slower
+- Cost model 8 repricing of saved local-search designs (2,500 seeded + 3,500 fresh trials per strategy under
+  model 4, whole-metre PIs): official-corridor bypass at 90 km/h → **3.276 bn CZK**, 21.03 km, 14.02 min;
+  direct eastern fringe at 80 → **3.617 bn**, 19.08 km, 14.31 min; direct fringe at 90 → **3.774 bn**, 19.59 km, 13.06 min. The slower
   direct route uses 98.7% of the time allowance; 70 remains impossible. Keep X = 14.5 min: it allows bypass vs
-  short/fringe strategies without making the slower road dominant. The 13% / 19% whole-route premiums are
+  short/fringe strategies without making the slower road dominant. The 10% / 15% whole-route premiums are
   explained by length/topography and mostly-open fringe routing, not a cheap dense-city corridor; the actual
-  centre route is 8.771 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
+  centre route is 8.930 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
   are local-search results, not proven minima; re-check as players find better designs.
 
 ### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
 
-Cost model 7: 20.81 km, 13.87 min, **3.868 bn CZK = 186 M CZK/km**; includes one noise buyout
+Cost model 8: 20.81 km, 13.87 min, **4.078 bn CZK = 196 M CZK/km**; includes one noise buyout
 (29 M, including plot allowance). This reference is not the cheapest bypass; the saved-design comparison is below.
 
 ### PROVISIONAL / placeholder values (all in `src/core/data/`)
@@ -407,8 +407,9 @@ every total. Historical short reoptimisation results are recorded separately bel
 | design file (`scripts/`) | `demo-design.json` | `best-design.json` | `direct-80-design.json` | `direct-90-design.json` | `town-centre-design.json` |
 | length km / min | 20.81 / 13.87 | 21.03 / 14.02 | 19.08 / 14.31 | 19.59 / 13.06 | 18.94 / 12.62 |
 | model 6 total (same geometry) | 3,949 | 3,038 | 3,470 | 3,626 | 9,024 |
-| **total** | **4,158** | **3,305** | **3,690** | **3,807** | **9,182** |
-| per km | 200 | 157 | 193 | 194 | 485 |
+| model 7 total (same geometry, old noise) | 4,158 | 3,305 | 3,690 | 3,807 | 9,182 |
+| **total** | **4,078** | **3,276** | **3,617** | **3,774** | **8,930** |
+| per km | 196 | 156 | 190 | 193 | 472 |
 | road base | 864 | 862 | 769 | 782 | 722 |
 | earthworks | 1,043 | 700 | 580 | 816 | 1,575 |
 | bridges | 278 | 319 | 609 | 614 | 1,160 |
@@ -448,7 +449,8 @@ seeds 20261121 / 20261122 / 20261123, yield **3,226 / 3,653 / 3,796 M**, all VAL
 geometries during concurrent geology/noise calibration. Reproduce with model-7 code and
 `npx tsx scripts/optimize.ts <90|80|90> 500 scripts/<design>.json /tmp/candidate.json <seed>`.
 
-**Calibration and spatial check:** the modest fringe premium warranted inspecting the mask, roads and oriented building
+**Calibration and spatial check:** current direct80 / bypass = **1.104×**, direct90 / bypass = **1.152×**,
+centre / bypass = **2.726×**. The modest fringe premium warranted inspecting the mask, roads and oriented building
 rectangles (`scripts/town-audit.ts design.json map.svg`), not adding a multiplier to force a preferred ratio.
 The 80 km/h line skirts eastern Kryblice / garage rows at km 3–4, crosses the narrow developed valley at the
 western edge of Poříčí's industrial strip around km 5, and skirts / crosses Voletiny at km 6–7. It does not
@@ -458,21 +460,21 @@ substantially overstate the developed corridor.
 
 | Audit metric | Bypass 90 | Direct fringe 80 | Direct fringe 90 |
 |---|---:|---:|---:|
-| Within 300 m of any built-up cell: km / M CZK per km | 7.43 / 180 | 13.38 / 205 | 12.27 / 216 |
-| Outside 300 m: M CZK per km | 123 | 115 | 129 |
-| At grade, ≥ 50% built-up footprint: km / M CZK per km | 0.36 / 628 | 1.26 / 338 | 0.54 / 403 |
-| Same urban cells, before explicit property: M CZK per km | 158 | 169 | 199 |
-| Rural at grade, outside 300 m: M CZK per km | 120 | 109 | 125 |
-| Same rural cells, before explicit property: M CZK per km | 109 | 101 | 115 |
+| Within 300 m of any built-up cell: km / M CZK per km | 7.43 / 189 | 13.38 / 218 | 12.27 / 228 |
+| Outside 300 m: M CZK per km | 137 | 124 | 133 |
+| At grade, ≥ 50% built-up footprint: km / M CZK per km | 0.36 / 704 | 1.26 / 391 | 0.54 / 411 |
+| Same urban cells, before explicit property: M CZK per km | 234 | 221 | 207 |
+| Rural at grade, outside 300 m: M CZK per km | 134 | 118 | 128 |
+| Same rural cells, before explicit property: M CZK per km | 124 | 110 | 119 |
 
 The 300 m audit tests **all 5 m mask-cell centres**, so it includes open land near villages; it is not the
 same quantity as built-up footprint share. Property here means land, forest, footprint buildings and noise
 buyouts; walls and crossings remain in construction. The direct routes' urban at-grade construction rates
-are 1.67× / 1.72× their rural rates before property (research/09's broad 1.2–2.5× planning range), although
-terrain is not controlled. For direct80, extra bridges/walls/crossings cost +423 M versus the bypass, while
+are 2.00× / 1.74× their rural rates before property (research/09's broad 1.2–2.5× planning range), although
+terrain is not controlled. For direct80, extra bridges/walls/crossings cost +369 M versus the bypass, while
 road base/earthworks save 213 M on a route 1.95 km shorter; the bypass also has its own expensive valley
 crossing and acquisitions. These are plausible reasons for a modest whole-route difference, not evidence
-that building through dense fabric is cheap. The centre design's km 4–5 alone costs **3,148 M** with 82
+that building through dense fabric is cheap. The centre design's km 4–5 alone costs **3,163 M** with 82
 footprint removals and 1 additional noise buyout. No urban multiplier or widened purchase buffer was tuned
 to hit a ratio; incomplete yard masks, plot/access severance and acoustic uncertainty remain limitations.
 

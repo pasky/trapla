@@ -29,8 +29,8 @@ Research snapshot: 2026-11-14. All construction prices are CZK, excl. VAT unless
 
 ## 2. Noise distance / limits
 
-**Superseded in cost model 7 by [11-noise-calculation.md](11-noise-calculation.md):** the text below
-records the former heuristic, not the current calculation. Model 7 uses Czech 2018/2020 source equations,
+**Superseded in cost model 8 by [11-noise-calculation.md](11-noise-calculation.md):** the text below
+records the former heuristic, not the current calculation. Model 8 uses Czech 2018/2020 source equations,
 TP219 day/night allocation and mixed-ground propagation; it confirms 60/50 dB for this new road and
 reports qualified numerical EIA comparisons rather than treating 100 m as validated.
 

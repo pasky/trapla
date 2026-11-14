@@ -1,4 +1,4 @@
-# Czech road-noise calculation (cost model 7)
+# Czech road-noise calculation (cost model 8)
 
 Research and implementation: 2026-11-14. Replaces research/09 §2's **guessed 100 m contour**.
 This is a compact planning calculation, **not an acoustic study or a compliance certificate**.
@@ -126,7 +126,7 @@ Compute **both** incident levels `Lday=Yday−U`, `Lnight=Ynight−U`; required 
 `E=max(Lday−60, Lnight−50)`. Negative E needs no mitigation. All source terms are precomputed once per
 design. A 0.5 m distance × 0.5 m height table supplies bilinear loss lookup (tested error <0.035 dB at
 representative transition/interior points); out-of-table calls use the exact expression. Allocation is
-bounded at 18 × 2,003 doubles even for extreme input traffic. Spatial queries use the **hard-ground
+bounded at 18 × 2,001 doubles even for extreme input traffic. Spatial queries use the **hard-ground
 all-height bound**, not the low-receiver contour, so high floors outside that contour are not missed.
 
 The road is treated locally as an infinite straight two-lane line with all Q assigned to its equivalent
@@ -219,22 +219,28 @@ the broad class-I operating/traffic assumptions, not the former 100 m radius.
 
 ## 5. Costs, performance and remaining uncertainty
 
-Noise-only change, saved geometries/profiles and other prices held fixed; M CZK, rounded independently:
+Rebased onto `main` at `428cd0d`, which adds model-7 crossing links/approaches. Noise is model **8**
+so saved model-7 scores are invalidated. Saved geometries/profiles stay fixed; M CZK rounded independently:
 
-| design | model 6 total → 7 total | buyouts before → after | wall area before → after m² |
-|---|---:|---:|---:|
-| Reference bypass | 3,949 → 3,868 | 3 → 1 | 12,115 → 9,136 |
-| Optimised bypass 90 | 3,038 → 3,008 | 0 → 0 | 7,318 → 4,349 |
-| Direct fringe 80 | 3,470 → 3,397 | 1 → 0 | 20,372 → 14,344 |
-| Direct fringe 90 | 3,626 → 3,593 | 0 → 0 | 13,574 → 10,246 |
-| Town centre 90 | 9,024 → 8,771 | 10 → 2 | 29,835 → 26,056 |
+| design | initial model 6 | main model 7 → noise model 8 | buyouts before → after | wall area before → after m² |
+|---|---:|---:|---:|---:|
+| Reference bypass | 3,949 | 4,158 → 4,078 | 3 → 1 | 12,115 → 9,136 |
+| Optimised bypass 90 | 3,038 | 3,305 → 3,276 | 0 → 0 | 7,318 → 4,349 |
+| Direct fringe 80 | 3,470 | 3,690 → 3,617 | 1 → 0 | 20,372 → 14,344 |
+| Direct fringe 90 | 3,626 | 3,807 → 3,774 | 0 → 0 | 13,574 → 10,246 |
+| Town centre 90 | 9,024 | 9,182 → 8,930 | 10 → 2 | 29,835 → 26,056 |
+
+The main-7 → noise-8 pair isolates this change. Before rebasing, applying noise alone to model 6 gave
+3,868 / 3,008 / 3,397 / 3,593 / 8,771 M in the same order; the difference is concurrent crossing pricing,
+not changed acoustics. No excavation/geology implementation is changed here.
 
 All five remain **VALID**, with matching per-station cost sums. Noise does not alter the auto-profile.
 `npx vitest run` covers period-energy conservation, zero/day-only traffic, controlling period,
 traffic/speed/heavy-share effects, contour inversion, table accuracy and existing geometric walls,
 cut edges, buyouts, attribution and range sums. `npx tsc --noEmit` passes.
-Five-run `bench.ts scripts/*.json` means: **30–40 ms**, town work ~2–3 ms. Shared-host runs can be slower;
-a same-session old-main comparison gave 32–42 ms, so there is no material noise-path regression.
+Five-run `bench.ts scripts/*.json` means after rebase: **30–38 ms**, town work ~2–3.5 ms. Shared-host
+runs can be slower; an earlier same-session old-main comparison gave 32–42 ms, so there is no material
+noise-path regression.
 
 Unresolved: no local traffic survey or acoustic validation set; a fixed mixed surface can underpredict
 hard/reflective surroundings; uneven-ground extension is approximate; highest-floor-only evaluation
