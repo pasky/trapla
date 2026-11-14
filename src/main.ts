@@ -6,6 +6,8 @@ import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { RouteExtras } from './render/extras';
+import { BuildAnnotations } from './render/build-tools';
+import { BuildTools } from './ui/build-tools';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
 import { loadPack } from './scenario';
@@ -41,6 +43,16 @@ async function main() {
   const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
+  const tools = new BuildTools(document.getElementById('hud')!);
+  const annotations = new BuildAnnotations(view, document.getElementById('overlay')!);
+  const selectStation = (s: number) => { tools.selectStation(s); profile.selectStation(s); };
+  annotations.onPin = selectStation;
+  tools.ev.selectStation = selectStation;
+  tools.ev.pin = (s, z) => store.update((d) => {
+    d.gradePins = (d.gradePins ?? []).filter((p) => Math.abs(p.s - s) >= 0.1);
+    if (z !== null) d.gradePins.push({ s, z });
+    d.gradePins.sort((a, b) => a.s - b.s);
+  });
   // after the HUD: it syncs the HUD's exaggeration select
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
@@ -48,7 +60,7 @@ async function main() {
 
   // station range picked for the cost breakdown: profile panel → HUD, profile, map
   const selection = new RangeSelection();
-  selection.on((range) => { profile.setSelection(range); hud.setRange(range); extras.setRange(range); });
+  selection.on((range) => { profile.setSelection(range); hud.setRange(range); extras.setRange(range); tools.setRange(range); });
 
   let selectedPi: number | null = null;
   let selectedVpi: number | null = null;
@@ -81,7 +93,9 @@ async function main() {
     noise.setResult(r, CATEGORIES[rd.category].crownWidth);
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
-    profile.setResult(r, r.vpis, rd.structureOverrides);
+    profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins);
+    tools.setResult(r, rd);
+    annotations.setResult(r, rd);
     if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
     hud.setResult(r, rd, store.best);
     hud.setSelectedPi(selectedPi, r, store.design);
@@ -133,6 +147,7 @@ async function main() {
     if (last) d.vpis = normalizeVpis(d.vpis, last.length, last.vpis[0].z, last.vpis[last.vpis.length - 1].z);
   };
   profile.ev = {
+    onStationSelect: selectStation,
     onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
     onVpiDragEnd: () => store.commit(),
     onVpiAdd: (s, z) => {
@@ -233,6 +248,7 @@ async function main() {
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
     resetCamera: () => view.resetCamera(),
     selectPi,
+    selectStation,
     maxRadius: (i: number) => curveEdit.maxRadius(i),
     pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
     project: (x: number, y: number, z: number) => view.project(x, y, z),

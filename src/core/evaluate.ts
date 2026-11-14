@@ -41,6 +41,8 @@ export interface Design {
   vpis: VPI[];
   /** Manual construction ranges in absolute chainage; omitted in older saved designs. */
   structureOverrides?: StructureOverride[];
+  /** Auto-grade constraints in absolute chainage; retained but inactive in Manual. */
+  gradePins?: { s: number; z: number }[];
 }
 
 export interface EvalContext {
@@ -312,6 +314,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // --- vertical alignment ---
   let vpis: VPI[];
   let profileFeasible = true;
+  let pinViolations: Violation[] = [];
   let materialValue = MATERIAL_VALUE.start;
   const zA = ground[0], zB = ground[n - 1];
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
@@ -322,7 +325,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     }
     const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
-      costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, structureKind: manualStructures,
+      costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, structureKind: manualStructures, pins: d.gradePins,
       costClass: profileCostClass, costClassCount: 2 * groundProfiles.length,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
@@ -345,6 +348,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     vpis = ap.vpis;
     materialValue = ap.materialValue ?? MATERIAL_VALUE.start;
     profileFeasible = ap.feasible;
+    pinViolations = ap.pinViolations ?? [];
   } else {
     // manual: keep interior VPIs inside the route, pin the ends to the tie-in elevations
     const L = al.length;
@@ -537,6 +541,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // --- checks ---
   const violations: Violation[] = [
     ...structureViolations,
+    ...pinViolations,
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];
@@ -581,7 +586,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     violations.push(oobViolation(st.s[i], st.s[j], st.s[j] - st.s[i] + ds));
     i = j;
   }
-  if (!profileFeasible && d.profileMode === 'auto') {
+  if (!profileFeasible && d.profileMode === 'auto' && pinViolations.length === 0) {
     violations.push(profileViolation(al.length, scenario.maxGradient));
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));

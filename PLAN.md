@@ -559,6 +559,11 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 - Profile range **B/T/E/C** paints bridge/tunnel/earthwork/automatic; persisted, undoable, partial repaint/
   erase, visible on map/profile, and respected by Auto. Invalid height/cover, short runs and forced crossings
   produce explicit game-rule violations. Ranges retain absolute chainage when the plan changes.
+- **Auto grade pins** constrain the finished parabolic line to ±0.5 m at absolute stations, inside DP
+  transitions rather than by post-editing VPIs. Alt+click profile → Build tools → Pin height; clear, undo,
+  persistence, map/profile marks. Fixed tie-ins and hard gradient/curve checks remain; failures show
+  gradient-only bounds or the displayed fallback height, explicitly not a feasibility proof. Pins are
+  inactive in Manual or beyond a shortened route. No-pin search/pricing is unchanged (model stays 11).
 - **Grade line: Auto | Manual** replaces the ambiguous button. Auto seeks a low-cost legal vertical line;
   Manual freezes it for vertical-point edits. Auto replaces manual vertical edits but keeps structure paint.
 - KHK regional/nadregional ÚSES is available and cached (47 polygons, ~0.49 MB) by

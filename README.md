@@ -57,6 +57,13 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   optimum). Manual keeps the current vertical points and lets you drag/edit them; dragging a point also
   switches to Manual. Returning to Auto replaces manual vertical edits. Profile: double-click adds a VPI,
   right-click deletes, wheel zooms, drag pans.
+- **Pinned Auto heights:** Alt+click the profile to select a station, then enter its elevation and click
+  **Pin height** in the HUD's **Build tools**. Auto optimises the rest while passing within ±0.5 m of the
+  requested height on the finished curved grade. Orange pins show on map/profile; click a map pin or use
+  the saved-pin list to edit it. **Auto / unpin** removes it. Pins retain absolute chainage, remain saved but
+  inactive in Manual, and become inactive beyond the end of a shortened route. Fixed endpoint elevations,
+  maximum gradients and vertical-curve limits still apply; failed searches report a computed fix, not a
+  silently moved pin. The bounded grid search can miss a feasible solution.
 - Select a stretch in the profile's cost strip, then **Bridge / Tunnel / Earthwork / Clear** (B/T/E/C).
   These saved, undoable station-range overrides affect Auto's grade search and show on profile and map;
   Clear restores automatic structure choice. Invalid clearance, cover or minimum lengths remain visible

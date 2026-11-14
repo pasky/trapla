@@ -22,6 +22,7 @@ export interface ProfileEvents {
   onVpiDelete?: (i: number) => void;
   onVpiSelect?: (i: number | null) => void;
   onHover?: (s: number | null) => void;
+  onStationSelect?: (s: number) => void;
   /** a station range was picked for the cost breakdown (null = whole route) */
   onSelect?: (r: StationRange | null) => void;
 }
@@ -37,6 +38,8 @@ export class ProfilePanel {
   private r: Result | null = null;
   private vpis: VPI[] = [];
   private overrides: readonly StructureOverride[] = [];
+  private pins: readonly { s: number; z: number }[] = [];
+  private pinStation: number | null = null;
   private v0 = 0;
   private v1 = 1;
   /** the view shows the whole route (and keeps doing so when the route's length changes) */
@@ -79,8 +82,9 @@ export class ProfilePanel {
     this.install();
   }
 
-  setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = []) {
+  setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = [], pins: readonly { s: number; z: number }[] = []) {
     this.overrides = overrides;
+    this.pins = pins;
     this.r = r;
     this.vpis = vpis;
     // prefix sums of the bill
@@ -125,6 +129,7 @@ export class ProfilePanel {
   }
 
   select(i: number | null) { this.selected = i; this.draw(); }
+  selectStation(s: number) { this.pinStation = s; this.draw(); }
 
   /** show the selected station range (set by the owner of the selection state) */
   setSelection(r: StationRange | null) { this.sel = r; this.draw(); }
@@ -192,7 +197,7 @@ export class ProfilePanel {
       lo = Math.min(lo, r.ground[i], r.grade[i]);
       hi = Math.max(hi, r.ground[i], r.grade[i]);
     }
-    for (const v of this.vpis) if (v.s >= this.v0 && v.s <= this.v1) { lo = Math.min(lo, v.z); hi = Math.max(hi, v.z); }
+    for (const v of [...this.vpis, ...this.pins]) if (v.s >= this.v0 && v.s <= this.v1) { lo = Math.min(lo, v.z); hi = Math.max(hi, v.z); }
     const m = Math.max(8, (hi - lo) * 0.08);
     this.zr = { lo: lo - m, hi: hi + m };
     const L = this.pad.l, R = W - this.pad.r, T = this.pad.t, B = this.chartB;
@@ -351,6 +356,20 @@ export class ProfilePanel {
       const ym = this.Y((this.vpis[k].z + this.vpis[k + 1].z) / 2);
       g.fillStyle = Math.abs(gr) > 0.06 + 1e-6 ? '#d00' : '#333';
       g.fillText(`${(gr * 100).toFixed(1)} %`, (a + b) / 2, ym - 8);
+    }
+    // Requested pin elevations are drawn separately from the realised grade, including failures.
+    for (const pin of this.pins) {
+      if (pin.s < this.v0 || pin.s > this.v1) continue;
+      const x = this.X(pin.s), y = this.Y(pin.z);
+      g.strokeStyle = '#b45800'; g.fillStyle = '#ffb339'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x, y + 8); g.lineTo(x, y - 5); g.stroke();
+      g.beginPath(); g.arc(x, y - 5, 4, 0, 2 * Math.PI); g.fill(); g.stroke();
+      g.fillStyle = '#864000'; g.fillText(`pin ${pin.z.toFixed(1)}`, x, y - 15);
+    }
+    if (this.pinStation !== null) {
+      g.strokeStyle = '#b45800'; g.setLineDash([3, 4]);
+      const x = this.X(this.pinStation);
+      g.beginPath(); g.moveTo(x, T); g.lineTo(x, B); g.stroke(); g.setLineDash([]);
     }
     // VPIs
     this.vpis.forEach((v, k) => {
@@ -592,6 +611,12 @@ export class ProfilePanel {
       if (!this.r) return;
       const p = rel(e);
       const k = inCost(p.y) ? null : this.hitVpi(p.x, p.y);
+      if (e.altKey && e.button === 0 && !inCost(p.y)) {
+        const s = Math.max(0, Math.min(this.r.length, Math.round(this.S(p.x))));
+        const existing = this.pins.find((pin) => Math.abs(this.X(pin.s) - p.x) < 8);
+        this.ev.onStationSelect?.(existing?.s ?? s);
+        return;
+      }
       if (e.button === 2) {
         if (k !== null && k > 0 && k < this.vpis.length - 1) this.ev.onVpiDelete?.(k);
         return;
@@ -663,7 +688,7 @@ export class ProfilePanel {
     c.addEventListener('dblclick', (e) => {
       if (!this.r) return;
       const p = rel(e);
-      if (inCost(p.y)) return;
+      if (inCost(p.y) || e.altKey) return;
       if (this.hitVpi(p.x, p.y) !== null) return;
       const s = this.S(p.x);
       if (s <= 20 || s >= this.r.length - 20) return;
