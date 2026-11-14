@@ -75,6 +75,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
   // Rebuild runs for billing, then report the safety constraints rather than repairing the design.
   const violations: Violation[] = [];
   if (inp.overrides && Array.from(inp.overrides).some((k) => k >= 0)) {
+    const automatic = kind.slice();
     for (let i = 0; i < n; i++) if (inp.overrides[i] >= 0) kind[i] = inp.overrides[i];
     runs.length = 0;
     for (const r of findRuns(kind)) {
@@ -99,7 +100,10 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
         }
       }
       runs.push({ ...r, kind: r.kind as 1 | 2, s0: Math.max(0, (r.i0 - 0.5) * inp.ds), s1: Math.min((n - 1) * inp.ds, (r.i1 + 0.5) * inp.ds), length, forced });
-      if (length < min) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
+      // Do not turn an existing clipped crossing bridge into a new violation merely because
+      // the player painted an unrelated range. Validate manual runs and fragments paint shortened.
+      const shortened = (r.i0 > 0 && automatic[r.i0 - 1] === r.kind) || (r.i1 + 1 < n && automatic[r.i1 + 1] === r.kind);
+      if (length < min && (manual || shortened)) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
         title: `${manual ? 'Manual' : 'Remaining'} ${r.kind === KIND.bridge ? 'bridge' : 'tunnel'} is too short`,
         fix: `Extend it to the ${min} m minimum (now ${length.toFixed(0)} m), or clear the override`,
         basis: 'game', rule: `Structure runs must be at least ${min} m long (game simplification)`,
@@ -120,7 +124,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     flagRanges((i) => inp.overrides![i] === KIND.tunnel && -inp.h[i] < rules.tunnelMinDepth,
       'Manual tunnel has too little cover', `Lower the road to at least ${rules.tunnelMinDepth} m below ground, or shorten/clear the tunnel range`,
       `Manual bored-tunnel cells need ${rules.tunnelMinDepth} m of depth (game simplification)`);
-    flagRanges((i) => !!inp.forced?.[i] && kind[i] !== KIND.bridge,
+    flagRanges((i) => !!inp.forced?.[i] && inp.overrides![i] >= 0 && kind[i] !== KIND.bridge,
       'Crossing requires a bridge', 'Clear the manual structure override here, or mark this crossing as a bridge',
       'River, railway and separated-road crossings cannot be buried under earthwork (game crossing rule)');
   }

@@ -71,6 +71,23 @@ describe('manual structure decisions', () => {
     expect(r.violations).toEqual([]);
   });
 
+  it('does not invalidate unrelated pre-existing clipped crossing bridges, but flags paint-shortened ones', () => {
+    for (const crossing of [0, 50]) {
+      const h = new Float64Array(101).fill(-1), forced = new Uint8Array(101);
+      h[crossing] = 3.5; if (crossing === 0) h[1] = 3.5;
+      forced[crossing] = 1;
+      const base = { ...input(-1), h, forced };
+      const before = chooseStructures(base);
+      const after = chooseStructures({ ...base, overrides: overrideMask(s, [{ s0: 900, s1: 910, kind: 0 }]) });
+      expect(after.kind).toEqual(before.kind);
+      expect(after.violations).toEqual(before.violations);
+    }
+    const forced = new Uint8Array(101); forced[50] = 1;
+    const shortened = chooseStructures({ ...input(10), forced,
+      overrides: overrideMask(s, [{ s0: 510, s1: 520, kind: 0 }]) });
+    expect(shortened.violations.some((v) => v.title === 'Remaining bridge is too short')).toBe(true);
+  });
+
   it('keeps too-short and buried/exposed manual structures and flags them', () => {
     for (const kind of [1, 2] as const) {
       const r = chooseStructures({ ...input(0), overrides: overrideMask(s, [{ s0: 300, s1: 310, kind }]) });

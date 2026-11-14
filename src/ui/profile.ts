@@ -545,9 +545,8 @@ export class ProfilePanel {
       if (!(v > 0.5)) return '';
       let detail = '';
       if (gr.id === 'earthworks') {
-        const names: [string, string][] = [['excavation', 'excavation'], ['fillPlacing', 'fill'], ['borrow', 'bought fill'], ['haul', 'haul'], ['surplusHaul', 'surplus to tip'], ['unsuitable', 'unsuitable to tip'], ['topsoil', 'topsoil'], ['geotechnical', 'geotechnical'], ['culverts', 'culverts']];
-        // New earth-detail components may arrive independently of this UI change.
-        detail = names.filter(([key]) => key in this.cumKey).map(([key, name]) => [name, (this.cumKey[key as PartKey][b + 1] - this.cumKey[key as PartKey][a]) / len] as [string, number])
+        const names: [PartKey, string][] = [['excavation', 'excavation'], ['fillPlacing', 'fill'], ['borrow', 'bought fill'], ['haul', 'haul'], ['surplusHaul', 'surplus to tip'], ['unsuitable', 'unsuitable to tip'], ['topsoil', 'topsoil'], ['geotechnical', 'geotechnical'], ['culverts', 'culverts']];
+        detail = names.map(([key, name]) => [name, (this.cumKey[key][b + 1] - this.cumKey[key][a]) / len] as [string, number])
           .filter((p) => p[1] > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 3).map((p) => `${p[0]} ${perM(p[1])}`).join(', ');
       }
       return `<tr><td><i style="background:${gr.color}"></i>${gr.label}${detail ? `<small>${detail}</small>` : ''}</td><td>${perM(v)}</td></tr>`;
