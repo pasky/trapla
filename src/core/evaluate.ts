@@ -37,7 +37,7 @@ import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { CULVERT_RULES } from './data/culverts';
-import { barrelLength, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
+import { barrelLength, barrelReach, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
 
 export interface Design {
   category: CategoryId;
@@ -257,15 +257,19 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
 
   const waterSide = Array.from({ length: n }, (_, i) => (terrain.watercourses?.section(st.x[i], st.y[i], st.tx[i], st.ty[i], 150, 150) ?? []).map(hit => ({ ...hit,
     offset: -(hit.x - st.x[i]) * st.ty[i] + (hit.y - st.y[i]) * st.tx[i], ground: terrain.heightAt(hit.x, hit.y) })));
-  const exposedWater = (i: number, left: number, right: number) => waterSide[i].filter(hit => hit.offset <= left && hit.offset >= -right
-    && !water.some(c => terrain.watercourses!.connected(c.id, hit.id)
-      && Math.abs(c.s - st.s[i]) <= barrelLength(c, left + right) / 2 + ds
-      && Math.hypot(c.x - hit.x, c.y - hit.y) <= barrelLength(c, left + right) + ds));
   const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>) => {
+    const gridDs = indices.length > 1 ? st.s[indices[1]] - st.s[indices[0]] : ds;
+    const reach = water.map(c => {
+      const k = Math.min(indices.length - 1, Math.round(c.s / gridDs));
+      return barrelReach(c, left[k] + right[k], ds);
+    });
     for (let k = 0; k < indices.length; k++) {
       const i = indices[k];
       if (z[k] <= ground[i]) continue;
-      if (exposedWater(i, left[k], right[k]).some(hit => z[k] - hit.ground >= STRUCTURE_RULES.riverClearance)) mask[k] = 1;
+      if (waterSide[i].some(hit => hit.offset <= left[k] && hit.offset >= -right[k]
+        && z[k] - hit.ground >= STRUCTURE_RULES.riverClearance
+        && !water.some((c, j) => terrain.watercourses!.connected(c.id, hit.id)
+          && Math.hypot(c.x - hit.x, c.y - hit.y) <= reach[j]))) mask[k] = 1;
     }
   };
   const tunnelWater = (ss: ArrayLike<number>, z: ArrayLike<number>) => {

@@ -147,8 +147,8 @@ What exists (details and commands in `README.md`):
 - The five saved designs now expose previously unchecked conflicts and need fixes; they are not
   claimed VALID. Counts, lengths, costs, assumptions, water-law source and paired timing measurements:
   `docs/footprint-conflicts.md`; reproduce with `scripts/footprint-audit.ts`. Frozen cost fixtures and
-  original pack fingerprint remain intact. Footprint phase adds roughly 3–6 ms; ≤50 ms total still
-  needs a quiet-host recheck (the unchanged baseline was also >50 ms during validation).
+  original pack fingerprint remain intact. Final footprint phase adds 2.5–2.9 ms; warmed totals
+  are 44–53 ms versus 43–53 ms unchanged baseline, so strict ≤50 ms still needs a quiet-host recheck.
 
 ### Travel-time target X and traffic Y
 

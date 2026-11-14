@@ -37,6 +37,11 @@ export function estimateQ100(c: Pick<WaterCrossing, 'catchmentKm2' | 'truncated'
 export function barrelLength(c: Pick<WaterCrossing, 'sine'>, footprint: number): number {
   return footprint / Math.max(0.01, c.sine);
 }
+/** Shared ownership radius of a station-sized barrel. Half a station accounts for the
+ * stepped footprint representation; genuine longitudinal extensions also bill that end gap. */
+export function barrelReach(c: Pick<WaterCrossing, 'sine'>, footprint: number, ds: number): number {
+  return (barrelLength(c, footprint) + ds) / 2;
+}
 /** An assembly includes TWO ends, not an arbitrary "excess" beyond an unmeasured norm allowance. */
 export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
   const q100 = estimateQ100(c), length = barrelLength(c, footprint);

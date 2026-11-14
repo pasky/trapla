@@ -7,7 +7,8 @@ invalid: a clear deck is not proof that its foundations or adjacent slopes are c
 ## Geometry, mitigation and pricing
 
 - Each 10 m station cell screens its rotated slope-to-slope rectangle, including cuts. Roads
-  include their class half-width. Segment clipping and union in original-way chainage measure
+  include their class half-width (OSM motorway ways use one carriageway, not the whole D27.5
+  divided-road width). Segment clipping and union in original-way chainage measure
   affected length without charging the same segment once per station. Queries reuse the road
   and water segment grids; proposed paths query an indexed footprint. No full-map/network scan.
 - Ordinary roads use a proposed outer-toe realignment, 3 m provisional setback, real OSM tie-ins,
@@ -21,7 +22,9 @@ invalid: a clear deck is not proof that its foundations or adjacent slopes are c
   its measured proposal priced and its specific diagnostics visible. It is not drawn as a built
   road. Motorways/trunks and support collisions are blocked without a cheap relocation rate.
 - Crossing-owned original-way intervals are subtracted using actual approach/turnaround geometry,
-  including nearby ways merged for billing. New tie-ins cannot rebill those intervals or another
+  including one-sided removed stubs, already-priced invalid choices, and nearby ways merged for
+  billing. A half-station tolerance absorbs stepped/continuous geometry slivers. New tie-ins cannot
+  rebill those intervals or another
   relocation of the same way. Endpoint exemptions require a real crossing, or a collinear way
   actually within the existing 1 m endpoint tolerance—not any road within 150 m.
 - Free bridge spans and tunnel interiors do not displace surface features. Abutment screens are
@@ -31,10 +34,12 @@ invalid: a clear deck is not proof that its foundations or adjacent slopes are c
   no longer silently omitted from the picture. Automatic span redesign is not implemented.
 - Short longitudinal channels can use the sourced `watercourses.ts` pipe/frame assemblies:
   measured clipped channel length × per-metre assembly rate + two ends. The check uses actual
-  fill cover at the channel, its hydraulic opening/length limits, and open outlets; no buried
+  fill cover inside the barrel (excluding its exposed headwall zones), its hydraulic opening/length
+  limits, and open outlets; no buried
   headwall at an internal OSM endpoint. Existing centreline barrel neighbourhoods are excluded
-  (half a station resolution allowance); an adjoining compatible barrel extension reuses its
-  ends, not two more heads. Resizing/merging incompatible assemblies is a violation, not free.
+  (a shared half-station resolution allowance in structure selection and final checking); a genuine
+  adjoining compatible barrel extension bills that allowance gap too and reuses its ends, not two
+  more heads. Sub-half-station remnants at an existing barrel are absorbed as sampling slivers. Resizing/merging incompatible assemblies is a violation, not free.
   Legacy raster-stream crossings are excluded too. Long/large channels, cuts and missing cover
   or outlets require moving away or a clear bridge. See `research/17-culvert-prices.md` and
   `research/17-stream-crossings.md` for sourced rates and provisional hydraulics.
@@ -83,11 +88,11 @@ grade VPIs and material values for the ten saved/edited designs.
 
 | Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Stream spans / m | Footprint violations |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| best | 3 / 13 | 411.8 | 1,819.1 | 39.268 | 4 / 40.0 | 1 / 10.0 | 11 / 270.0 | 29 |
-| demo | 6 / 19 | 386.0 | 1,917.9 | 41.587 | 4 / 40.0 | 1 / 10.0 | 15 / 379.9 | 39 |
-| direct-80 | 1 / 29 | 469.8 | 1,819.1 | 70.145 | 5 / 70.0 | 4 / 60.0 | 7 / 70.0 | 45 |
-| direct-90 | 0 / 37 | 578.1 | 2,657.6 | 78.732 | 5 / 60.0 | 4 / 60.0 | 14 / 399.9 | 60 |
-| town-centre | 3 / 34 | 714.4 | 2,237.8 | 70.166 | 9 / 140.0 | 1 / 10.0 | 12 / 419.9 | 56 |
+| best | 2 / 9 | 206.5 | 1,239.6 | 26.095 | 4 / 40.0 | 1 / 10.0 | 11 / 270.0 | 25 |
+| demo | 6 / 17 | 355.4 | 1,658.3 | 36.414 | 4 / 40.0 | 1 / 10.0 | 15 / 379.9 | 37 |
+| direct-80 | 1 / 25 | 403.3 | 1,618.7 | 64.955 | 5 / 70.0 | 4 / 60.0 | 7 / 70.0 | 41 |
+| direct-90 | 0 / 33 | 570.7 | 2,379.4 | 74.838 | 5 / 60.0 | 4 / 60.0 | 14 / 399.9 | 56 |
+| town-centre | 3 / 29 | 529.4 | 1,685.4 | 56.007 | 9 / 140.0 | 1 / 10.0 | 12 / 419.9 | 51 |
 
 No additional longitudinal culverts qualify in this legacy raster-only pack. All five designs
 were VALID under the old centreline checks; all now require footprint/support fixes.
@@ -99,31 +104,32 @@ This table is a separate evaluation, not a replacement fingerprint/baseline.
 
 | Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Blocked channel spans / m | Footprint violations |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| best | 2 / 15 | 370.9 | 1,697.6 | 33.997 | 4 / 40.0 | 1 / 10.0 | 10 / 167.2 | 30 |
-| demo | 4 / 17 | 379.7 | 1,628.7 | 32.148 | 4 / 40.0 | 1 / 10.0 | 10 / 152.6 | 32 |
-| direct-80 | 2 / 26 | 406.1 | 1,667.4 | 62.355 | 5 / 70.0 | 4 / 60.0 | 5 / 83.3 | 40 |
-| direct-90 | 1 / 37 | 548.9 | 2,561.1 | 71.633 | 5 / 70.0 | 3 / 50.0 | 16 / 105.1 | 61 |
-| town-centre | 3 / 38 | 817.6 | 2,546.0 | 80.315 | 9 / 140.0 | 1 / 10.0 | 8 / 94.9 | 56 |
+| best | 1 / 13 | 154.4 | 877.2 | 19.939 | 4 / 40.0 | 1 / 10.0 | 4 / 46.1 | 22 |
+| demo | 3 / 16 | 378.1 | 1,432.4 | 29.044 | 4 / 40.0 | 1 / 10.0 | 8 / 65.9 | 29 |
+| direct-80 | 2 / 23 | 355.9 | 1,478.1 | 57.515 | 5 / 70.0 | 4 / 60.0 | 3 / 82.3 | 35 |
+| direct-90 | 1 / 33 | 543.7 | 2,269.0 | 67.543 | 5 / 70.0 | 3 / 50.0 | 13 / 98.3 | 54 |
+| town-centre | 3 / 33 | 627.4 | 1,979.8 | 65.700 | 9 / 140.0 | 1 / 10.0 | 7 / 93.3 | 50 |
 
-Demo additionally prices **one 9.57 m compatible longitudinal barrel extension, 0.196 M CZK**,
-reusing the existing assembly's ends. All five still require footprint fixes.
+Demo additionally prices **one 23.47 m longitudinal culvert, 0.870 M CZK**. All five still require
+footprint fixes. The shared barrel-neighbourhood rule also changes some Auto structure choices on
+this updated vector-water pack; these totals are not directly comparable with old-pack bills.
 
 ## Performance
 
-A warmed initial five-design run measured **3.0–4.0 ms** for the isolated footprint phase on the
-original pack. A later alternating same-process comparison against `17dac0a` (25 warmups, 30 samples,
-median, original pack) during substantially higher shared-host load measured:
+Final warmed runs on the original pack (15 warmups, 30 evaluations, `17dac0a` versus model 14 in
+separate consecutive processes) measured **2.5–2.9 ms** for the isolated footprint phase:
 
 | Design | Baseline ms | Model 14 ms | Footprint phase ms |
 |---|---:|---:|---:|
-| best | 99.1 | 103.9 | 4.6 |
-| demo | 86.3 | 91.9 | 5.8 |
-| direct-80 | 101.1 | 108.7 | 5.2 |
-| direct-90 | 96.3 | 99.0 | 5.3 |
-| town-centre | 93.9 | 103.2 | 5.1 |
+| best | 51 | 53 | 2.7 |
+| demo | 43 | 44 | 2.8 |
+| direct-80 | 48 | 53 | 2.5 |
+| direct-90 | 53 | 53 | 2.9 |
+| town-centre | 50 | 49 | 2.6 |
 
-The absolute ≤50 ms target could not be reverified under this contention: even the unchanged
-optimized baseline was 86–101 ms. The phase remains bounded/local; these measurements do not
-justify claiming a fresh ≤50 ms result. See `docs/evaluate-performance.md` for the earlier quiet-host
-43–49 ms baseline and its CPU/GC controls. `evaluate()` exposes separate `crossings` and `footprint`
-cumulative timing marks so the added work is measurable.
+The absolute ≤50 ms target is near, but not consistently reverified: the unchanged baseline also
+reached 53 ms. An earlier alternating same-process run during heavy shared-host load put both
+versions at 86–109 ms, with 4.6–5.8 ms for the isolated footprint phase. These measurements do not
+justify claiming a fresh strict ≤50 ms result. See `docs/evaluate-performance.md` for the earlier
+quiet-host 43–49 ms baseline and its CPU/GC controls. `evaluate()` exposes separate `crossings` and
+`footprint` cumulative timing marks so the added work is measurable.

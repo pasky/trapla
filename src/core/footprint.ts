@@ -7,7 +7,7 @@ import { ROAD_CLASSES, CROSSING_RULES } from './data/urban';
 import { KIND, type Run } from './structures';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
 import type { RoadCrossing, RoadNet } from './roadnet';
-import { barrelLength, waterOpening, waterSize, type WaterCrossing, type WaterSegment } from './watercourses';
+import { barrelLength, barrelReach, waterOpening, waterSize, type WaterCrossing, type WaterSegment } from './watercourses';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
@@ -34,6 +34,8 @@ export interface FootprintRoute {
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
 const SETBACK = 3; // Same provisional construction clearance as crossing side links.
 const SAMPLE = 5;
+/** OSM motorways are separate one-direction carriageways; D27.5 is the whole divided road. */
+const existingHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
 
 function union(hits: Hit[]): Hit[] {
   hits.sort((a, b) => a.a - b.a);
@@ -99,17 +101,26 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     violations.push({ kind: 'footprint', basis: 'game', s0: c.s0, s1: c.s1, title, fix, detail: c.detail, rule });
   };
   const roadCovered = new Map<number, [number, number][]>();
-  const coverRoad = (id: number, a: number, b: number) => { const list = roadCovered.get(id) ?? []; list.push([Math.min(a, b), Math.max(a, b)]); roadCovered.set(id, list); };
+  const coverRoad = (id: number, a: number, b: number) => { const list = roadCovered.get(id) ?? []; list.push([Math.min(a, b) - r.ds / 2, Math.max(a, b) + r.ds / 2]); roadCovered.set(id, list); };
   if (roads) {
     for (const c of crossings) {
-      if (c.roadId === undefined || !c.geometry || c.issues?.length) continue;
+      if (c.roadId === undefined || !c.geometry) continue;
       const g = c.geometry;
       // Only the actually engineered/removed old-road stretch, not an arbitrary station radius.
       // Bridge/tunnel roads are unchanged and cannot excuse an adjacent abutment collision.
       const ends = c.type === 'reconnection' || c.type === 'diversion' ? g.turnarounds
         : c.type === 'overbridge' || c.type === 'junction' ? g.road : undefined;
-      if (!ends || ends.length < 2) continue;
-      const stations = [ends[0], ends[ends.length - 1]].map(p => roads.wayStation(c.roadId!, p.x, p.y));
+      if (!ends?.length) continue;
+      const centre = roads.wayStation(c.roadId, c.x, c.y);
+      const distance = (p: CrossingPoint) => p.d === undefined ? roads.wayStation(c.roadId!, p.x, p.y) : centre + p.d;
+      if (ends.length === 1) {
+        // One surviving branch: the crossing already cuts off everything beyond its single
+        // turnaround on the other side. Do not relocate that removed stub a second time.
+        const d = distance(ends[0]);
+        coverRoad(c.roadId, d <= centre ? d : 0, d <= centre ? Infinity : d);
+        continue;
+      }
+      const stations = [distance(ends[0]), distance(ends[ends.length - 1])];
       coverRoad(c.roadId, Math.min(...stations), Math.max(...stations));
       // Billing merges adjacent carriageways/junction ways. Transfer only the engineered
       // neighbourhood onto their own chainages, not the entire neighbouring way.
@@ -143,7 +154,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   for (const cell of cells) {
     const bounds = cellBounds(cell, 14); // largest existing road half-width (D27.5)
     roads?.nearSegments(bounds, segment => {
-      const hit = clipFootprint(segment, cell, ROAD_CLASSES[segment.cls].width / 2);
+      const hit = clipFootprint(segment, cell, existingHalfWidth(segment.cls));
       if (!hit) return;
       const key = `${segment.way}:${cell.structure ?? 'earth'}`;
       let group = roadHits.get(key);
@@ -161,7 +172,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         if (r.kind[i] !== KIND.earth) continue;
         // Half a station accommodates the same sampled-section resolution used by the barrel
         // model; it is not a blanket exclusion of a connected channel farther along the route.
-        const length = barrelLength(c, r.dayL[i] + r.dayR[i]) + r.ds;
+        const length = 2 * barrelReach(c, r.dayL[i] + r.dayR[i], r.ds);
         // The priced barrel owns only its geometric neighbourhood, even across OSM tag splits.
         const dx = segment.bx - segment.ax, dy = segment.by - segment.ay, len = segment.length;
         if (!len) continue;
@@ -189,7 +200,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       if (!insideFootprint({ x, y }, cell, step / 2)) continue;
       if (feature === 'stream' && !cell.structure && water.some(c => {
         const i = Math.min(r.n - 1, Math.round(c.s / r.ds));
-        return r.kind[i] === KIND.earth && Math.hypot(x - c.x, y - c.y) <= barrelLength(c, r.dayL[i] + r.dayR[i]) / 2 + r.ds / 2 + step / 2;
+        return r.kind[i] === KIND.earth && Math.hypot(x - c.x, y - c.y) <= barrelReach(c, r.dayL[i] + r.dayR[i], r.ds) + step / 2;
       })) continue; // legacy raster stream already owned by a priced crossing assembly
       const key = `${feature}:${cell.structure ?? 'earth'}`, seenKey = `${key}:${index}`;
       if (rasterSeen.has(seenKey)) continue;
@@ -216,7 +227,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       continue;
     }
     const pad = row.width / 2 + SETBACK;
-    const reach = CROSSING_RULES.linkMinLength + 2 * Math.max(...hits.map(v => Math.max(r.dayL[v.i], r.dayR[v.i])));
+    const reach = CROSSING_RULES.linkMinLength + 2 * Math.max(...hits.filter(v => v.b >= h.a && v.a <= h.b).map(v => Math.max(r.dayL[v.i], r.dayR[v.i])));
     let start = Math.max(0, h.a - reach, index ? (merged[index - 1].b + h.a) / 2 : 0);
     let end = Math.min(h.b + reach, index + 1 < merged.length ? (h.b + merged[index + 1].a) / 2 : Infinity);
     // Tie-ins cannot rebill another relocation or run into an already-engineered approach.
@@ -279,7 +290,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         const t = k / count, p = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
         if (grid.hits(p, row.width / 2)) problems.add('path intersects the footprint');
         if (terrain.isOob(p.x, p.y)) problems.add('path leaves terrain data');
-        if (terrain.crossing(p.x, p.y)) problems.add('path intersects water/rail');
+        const cover = terrain.cover(p.x, p.y), cls = cover & CLASS_BITS;
+        if ((cover & (RAIL_CROSSING_BIT | RIVER_CROSSING_BIT)) || cls === LC.rail || cls === LC.water || cls === LC.stream) problems.add('path intersects water/rail');
       }
       if (Math.abs(b.z - a.z) > len * CROSSING_RULES.approachGradient + 0.1) problems.add('tie-in heights exceed 6% gradient');
     }
@@ -294,7 +306,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   for (const { segment, hits } of streamHits.values()) for (const h of union(hits)) {
     const w = segment.reach, distances = [0];
     for (let j = 1; j < w.points.length; j++) distances.push(distances[j - 1] + Math.hypot(w.points[j][0] - w.points[j - 1][0], w.points[j][1] - w.points[j - 1][1]));
-    let area = 0, truncated = false, minCover = Infinity;
+    let area = 0, truncated = false;
+    const covers: { d: number; cover: number }[] = [];
     const original: CrossingPoint[] = [];
     for (let j = 1; j < w.points.length; j++) {
       const lo = Math.max(h.a, distances[j - 1]), hi = Math.min(h.b, distances[j]);
@@ -313,11 +326,13 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
           const t = Math.max(0, Math.min(1, (Math.abs(off) - r.crownWidth / 2) / Math.max(0.01, edge - r.crownWidth / 2)));
           surface = Math.max(surface, r.grade[c.i] + t * (z - r.grade[c.i]));
         }
-        minCover = Math.min(minCover, surface - p.ground);
+        covers.push({ d: lo + (hi - lo) * k / count, cover: surface - p.ground });
       }
     }
     if (!original.length) continue;
-    const p = original[Math.floor(original.length / 2)], length = h.b - h.a;
+    const p = original[Math.floor(original.length / 2)], affectedLength = h.b - h.a;
+    if (affectedLength < 0.1) continue;
+    let length = affectedLength;
     const c: WaterCrossing = { s: r.s[h.i], x: p.x, y: p.y, id: w.id, waterKind: w.kind, width: w.width ?? 0.5, catchmentKm2: area, truncated, sine: 1 };
     // An extension next to an already-priced barrel reuses its ends, not another two heads.
     // Resizing/merging multiple existing assemblies is deliberately not an automatic free fix.
@@ -328,21 +343,40 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const reach = barrelLength(other, r.dayL[i] + r.dayR[i]) / 2 + r.ds;
       return [original[0], original[original.length - 1]].some(p => Math.hypot(p.x - other.x, p.y - other.y) <= reach);
     });
+    // A sub-half-station remnant next to its own barrel is sampling disagreement between
+    // continuous crossing geometry and stepped earth cells, not a separate new assembly.
+    if (!h.structure && adjoining.length && affectedLength <= r.ds / 2) continue;
     const existing = adjoining.map(other => {
       const i = Math.min(r.n - 1, Math.round(other.s / r.ds)), width = r.dayL[i] + r.dayR[i];
       return { length: barrelLength(other, width), size: waterSize(other, width) };
     });
+    // Restore the half-station ownership gap to a genuine extension's billed barrel, rather
+    // than silently leaving 5 m of channel unpriced at every old/new assembly boundary.
+    if (adjoining.length === 1) {
+      const other = adjoining[0], half = existing[0].length / 2;
+      for (const p of [original[0], original[original.length - 1]]) {
+        const gap = Math.hypot(p.x - other.x, p.y - other.y) - half;
+        if (gap >= 0 && gap <= r.ds + 1e-6) length += Math.min(gap, r.ds / 2);
+      }
+    }
     const size = waterSize(c, length + existing.reduce((sum, e) => sum + e.length, 0));
+    // Headwalls retain the exposed slope at the two daylight ends. Cover is a barrel check,
+    // not a demand to bury the inlet itself; reserve up to two fill-slope lengths of opening.
+    const headZone = Math.min(affectedLength / 4, 2 * size.minHeight);
+    const barrelCovers = covers.filter(p => p.d >= h.a + headZone && p.d <= h.b - headZone);
+    const minCover = barrelCovers.length ? Math.min(...barrelCovers.map(p => p.cover)) : covers[Math.floor(covers.length / 2)].cover;
     const compatible = existing.length <= 1 && existing.every(e => e.size.perM === size.perM);
     const outlets = [original[0], original[original.length - 1]].every(p => !grid.hits(p, -0.05) || adjoining.some(other => {
       const i = Math.min(r.n - 1, Math.round(other.s / r.ds));
       return Math.hypot(p.x - other.x, p.y - other.y) <= barrelLength(other, r.dayL[i] + r.dayR[i]) / 2 + r.ds;
     }));
-    const ok = !h.structure && size.type !== 'bridge' && compatible && outlets && minCover >= size.minHeight;
+    const reasons = [h.structure ? `${h.structure} intersects the channel` : '', size.type === 'bridge' ? 'exceeds practical culvert opening/length limits' : '',
+      !compatible ? 'incompatible existing barrel' : '', !outlets ? 'no clear outlet' : '', minCover < size.minHeight ? `barrel cover ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'missing'} m, needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
+    const ok = reasons.length === 0;
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,
-      s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length,
+      s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length, affectedLength,
       cost: ok ? length * size.perM + (existing.length ? 0 : 2 * size.head) : 0, original,
-      detail: `${length.toFixed(1)} m channel outside priced centreline barrels; ${h.structure ?? (ok ? `${waterOpening(size)} longitudinal culvert (research/17)` : 'insufficient cover/outlet, incompatible existing barrel or exceeds practical culvert limits')}. No automatic channel diversion.` };
+      detail: `${length.toFixed(1)} m channel outside priced centreline barrels; ${ok ? `${waterOpening(size)} longitudinal culvert (research/17)` : reasons.join('; ')}. No automatic channel diversion.` };
     if (ok) conflicts.push(conflict);
     else block(conflict, h.structure ? `${h.structure} obstructs a watercourse` : 'Earthwork footprint intercepts a watercourse',
       'Move the alignment/support clear of the channel, or provide a clear bridge span', 'No unpriced channel diversion; sourced culvert assemblies must meet their cover and length limits (research/17)');

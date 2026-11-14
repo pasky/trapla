@@ -5,7 +5,7 @@ import { syntheticTerrain, Terrain, LC, RAIL_CROSSING_BIT, BUILTUP_BIT } from '.
 import { KIND } from '../src/core/structures';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import type { CrossingResult } from '../src/core/crossings';
-import type { WaterData } from '../src/core/watercourses';
+import { waterSize, type WaterCrossing, type WaterData } from '../src/core/watercourses';
 
 function route(): FootprintRoute {
   const n = 101, array = (v: number) => new Float64Array(n).fill(v);
@@ -44,14 +44,22 @@ describe('constructed footprint conflicts', () => {
     const crossings: CrossingResult[] = [{ s: 500, i: 50, x: 600, y: 260, cls: 'service', roadId: 0, h: 0, type: 'junction', cost: 25e6,
       geometry: { width: 4, schematic: false, road: [300, 900].map(x => ({ x, y: 260, z: 100, ground: 100, surface: 'terrain' })) } }];
     const result = check(route(), road(), terrain(), crossings);
-    expect(result.conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(404, 4);
+    expect(result.conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(394, 4); // half-station geometric tolerance
     expect(result.conflicts.every(c => c.original!.every(p => p.x <= 300 || p.x >= 900))).toBe(true);
+    // A spacing-invalid manual choice still pays its approaches; don't charge them again.
+    crossings[0].issues = [{ kind: 'crossing', basis: 'game', s0: 500, s1: 500, title: 'spacing', fix: 'move', rule: 'spacing', crossing: { requested: 'junction', code: 'spacing' } }];
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(394, 4);
+    // A one-sided reconnection already removes the old-way stub beyond its sole turnaround.
+    crossings[0].type = 'reconnection'; crossings[0].geometry!.turnarounds = [crossings[0].geometry!.road![0]];
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(197, 4);
   });
   it('motorways cannot use the cheap road-reconnection fallback', () => {
     const r = check(route(), road('motorway'));
     expect(r.conflicts[0].action).toBe('blocked');
     expect(r.conflicts[0].cost).toBe(0);
     expect(r.violations[0].fix).toMatch(/bridge/);
+    // OSM motorway ways are one carriageway, not two overlapping full-width D27.5 roads.
+    expect(check(route(), road('motorway', 280)).conflicts).toEqual([]);
   });
   it('retains roads and rail beneath free spans but screens abutments, piers and portals', () => {
     const r = route(); r.kind = new Uint8Array(r.n).fill(KIND.bridge);
@@ -76,6 +84,20 @@ describe('constructed footprint conflicts', () => {
     const r = footprintConflicts(route(), t, undefined, [], [], []);
     expect(r.conflicts.map(c => c.feature)).toEqual(['water', 'railway']);
     expect(r.conflicts.every(c => c.action === 'blocked' && c.cost === 0)).toBe(true);
+  });
+  it('extends a compatible crossing barrel without paying for another pair of heads or leaving an unpriced gap', () => {
+    const watercourses: WaterData = { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
+      points: [[400, 252], [1000, 252]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] };
+    const t = new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses });
+    const r = route();
+    r.kind = Uint8Array.from({ length: r.n }, (_, i) => i >= 40 && i < 45 ? KIND.earth : KIND.bridge);
+    const c: WaterCrossing = { s: 400, x: 500, y: 252, id: 1, waterKind: 'ditch', width: 0.5, catchmentKm2: 0.1, truncated: false, sine: 1 };
+    const result = footprintConflicts(r, t, undefined, [], [], [c]);
+    expect(result.violations).toEqual([]);
+    expect(result.conflicts).toHaveLength(1);
+    expect(result.conflicts[0].affectedLength).toBeCloseTo(20, 5);
+    expect(result.conflicts[0].length).toBeCloseTo(25, 5); // 20 m residual + 5 m ownership-resolution gap
+    expect(result.conflicts[0].cost).toBeCloseTo(25 * waterSize(c, 40).perM, 4);
   });
   it('prices a short lengthwise stream barrel once and rejects long channels or insufficient cover', () => {
     const run = (end: number, grade = 105) => {
