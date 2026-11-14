@@ -116,7 +116,9 @@ export class RoadNet {
           const step = Math.hypot(bx - p.x, by - p.y);
           if (step < 1e-6 || visited.has(key(bx, by))) continue;
           const dot = ((bx - p.x) * dx + (by - p.y) * dy) / (step * len);
-          const value = dot + (this.wayCls[this.way[k]] === this.wayCls[roadId] ? 2 : 0);
+          if (dot < -0.5) continue; // never prefer a same-class U-turn over the through alignment
+          if (!ROAD_CLASSES[this.wayCls[roadId]].noAtGrade && ROAD_CLASSES[this.wayCls[this.way[k]]].noAtGrade) continue;
+          const value = dot + (this.wayCls[this.way[k]] === this.wayCls[roadId] ? 0.25 : 0);
           if (value <= score) continue;
           score = value;
           const fraction = Math.min(1, (reach - Math.abs(p.d)) / step);

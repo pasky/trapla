@@ -26,17 +26,48 @@ function routeGeometry(route: CrossingRoute) {
       left: route.left ? lerp(route.left) : lerp(route.width) / 2,
       right: route.right ? lerp(route.right) : lerp(route.width) / 2 };
   };
-  // Streaming nearest-segment projection: no samples × route Cartesian-product allocation.
-  const project = (q: XY) => {
-    let best = Infinity, station = route.s[0];
-    for (let i = 0; i + 1 < n; i++) {
-      const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
-      const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
-      const d2 = (q.x - route.x[i] - t * dx) ** 2 + (q.y - route.y[i] - t * dy) ** 2;
-      if (d2 < best) { best = d2; station = route.s[i] + t * (route.s[i + 1] - route.s[i]); }
+  // Exact segment AABB tree: unlike a station window it remains correct beside hairpins, while
+  // avoiding a full-route scan for every footprint bisection and every terrain sample.
+  interface Node { x0: number; y0: number; x1: number; y1: number; indices?: number[]; left?: Node; right?: Node }
+  const tree = (indices: number[]): Node => {
+    const node: Node = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    for (const i of indices) for (const j of [i, i + 1]) {
+      node.x0 = Math.min(node.x0, route.x[j]); node.x1 = Math.max(node.x1, route.x[j]);
+      node.y0 = Math.min(node.y0, route.y[j]); node.y1 = Math.max(node.y1, route.y[j]);
     }
-    const p = at(station);
-    return { ...p, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
+    if (indices.length <= 12) node.indices = indices;
+    else {
+      const axis = node.x1 - node.x0 >= node.y1 - node.y0 ? route.x : route.y;
+      indices.sort((a, b) => axis[a] + axis[a + 1] - axis[b] - axis[b + 1]);
+      const middle = indices.length >> 1;
+      node.left = tree(indices.slice(0, middle)); node.right = tree(indices.slice(middle));
+    }
+    return node;
+  };
+  const root = tree(Array.from({ length: n - 1 }, (_, i) => i));
+  const projected = new Map<string, ReturnType<typeof at> & { lateral: number }>();
+  const project = (q: XY) => {
+    const key = `${q.x},${q.y}`, cached = projected.get(key);
+    if (cached) return cached;
+    let best = Infinity, station = route.s[0];
+    const distance = (node: Node) => Math.max(node.x0 - q.x, 0, q.x - node.x1) ** 2 + Math.max(node.y0 - q.y, 0, q.y - node.y1) ** 2;
+    const visit = (node: Node) => {
+      if (distance(node) > best) return;
+      if (node.indices) for (const i of node.indices) {
+        const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
+        const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
+        const d2 = (q.x - route.x[i] - t * dx) ** 2 + (q.y - route.y[i] - t * dy) ** 2;
+        const s = route.s[i] + t * (route.s[i + 1] - route.s[i]);
+        if (d2 < best || (d2 === best && s < station)) { best = d2; station = s; }
+      } else {
+        const a = node.left!, b = node.right!;
+        if (distance(a) <= distance(b)) { visit(a); visit(b); } else { visit(b); visit(a); }
+      }
+    };
+    visit(root);
+    const p = at(station), result = { ...p, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
+    if (projected.size < 50000) projected.set(key, result);
+    return result;
   };
   const margin = (q: XY, extra: number) => {
     const p = project(q);
@@ -76,10 +107,11 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
   return out;
 }
 
-export function buildCrossingGeometry(crossings: CrossingResult[], route: CrossingRoute,
-  heightAt: (x: number, y: number) => number, roads?: RoadNet): CrossingIssue[] {
-  if (route.s.length < 2) return [];
-  const { at, project, margin } = routeGeometry(route);
+function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
+  heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
+  spatial: ReturnType<typeof routeGeometry>): CrossingIssue[] {
+  const { at, project, margin } = spatial;
+  for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => v.crossing.code !== 'geometry');
   const terrainPoint = (q: XY & { d?: number }): CrossingPoint => {
     const ground = heightAt(q.x, q.y);
     return { ...q, z: ground, ground, surface: 'terrain' };
@@ -89,6 +121,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     if (!g.diagnostics?.includes(message)) (g.diagnostics ??= []).push(message);
   };
   const rawPaths = new Map<CrossingResult, CrossingPoint[]>();
+  const survivingSides = new Map<CrossingResult, [boolean, boolean]>();
   const anchors = new Map<CrossingResult, [CrossingPoint | undefined, CrossingPoint | undefined]>();
   const maxLinkWidth = (c: CrossingResult) => Math.max(ROAD_CLASSES[c.cls].width,
     ...crossings.filter(t => t.targetS === c.s && t.targetRoadId === c.roadId).map(t => ROAD_CLASSES[t.cls].width));
@@ -105,6 +138,14 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       if (c.type === 'overbridge') { c.span = 0; c.approachLength = 0; c.cost = 0; }
       continue;
     }
+    // A dead-end swallowed by the footprint has no surviving road to reconnect on that side.
+    const sides: [boolean, boolean] = [false, false];
+    for (const q of [...path].sort((a, b) => Math.abs(a.d) - Math.abs(b.d))) {
+      const p = project(q);
+      if (Math.abs(p.lateral) > (p.lateral > 0 ? p.left : p.right) + 0.1) sides[p.lateral < 0 ? 0 : 1] = true;
+      if (sides[0] && sides[1]) break;
+    }
+    survivingSides.set(c, sides);
     const isRaised = c.type === 'overbridge', adjusted = isRaised || c.type === 'junction';
     let road = path.map(terrainPoint);
     if (adjusted) {
@@ -124,8 +165,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       const d0 = first > 0 ? boundary(first, first - 1) : path[first].d;
       const d1 = last + 1 < path.length ? boundary(last, last + 1) : path[last].d;
       if (first === 0 || last === path.length - 1) {
-        diagnose(g, 'Existing way ends inside the crossing footprint');
         if (isRaised) {
+          diagnose(g, 'Existing way ends inside the crossing footprint');
           // There are not two abutments. Never display a deck dropping into our carriageway.
           c.span = 0; c.approachLength = 0; c.cost = 0;
           continue;
@@ -145,6 +186,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       // Tie to actual terrain on each side. The linear engineered approach may require fill or cut;
       // neither is silently replaced by max(terrain,ramp), which creates uncontrolled gradients.
       const foot = (edge: number, direction: number) => {
+        const endpoint = direction < 0 ? path[0] : path[path.length - 1];
+        if (c.type === 'junction' && Math.abs(edge - endpoint.d) < 1e-6 && margin(endpoint, 0) <= 0) return edge;
         const candidates = path.filter(q => direction * (q.d - edge) > 1e-4);
         if (direction < 0) candidates.reverse();
         const z = edgeZ(edge);
@@ -169,9 +212,18 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       });
       // If an actual way ends inside the footprint, do not disguise an elevated dangling end.
       // Such infeasible topology is reported, and the endpoint remains at its connected terrain road.
-      for (const q of [road[0], road[road.length - 1]]) if (Math.abs(q.z - q.ground) > 0.3) {
-        q.z = q.ground; q.surface = 'terrain'; delete q.support;
+      for (const q of [road[0], road[road.length - 1]]) {
+        if (c.type === 'junction' && margin(q, 0) <= 0) {
+          q.z = project(q).z; q.connection = 'main-road';
+          if (Math.abs(q.z - q.ground) > 1e-7) { q.surface = 'ramp'; q.support = q.z >= q.ground ? 'embankment' : 'retaining'; }
+        } else if (Math.abs(q.z - q.ground) > 0.3) {
+          q.z = q.ground; q.surface = 'terrain'; delete q.support;
+        }
       }
+      // Ordinary road-per-km rates cannot represent viaduct-scale approach earthworks. Keep
+      // explicit choices visible but reject this unpriced engineering; Auto will try real links.
+      if (road.some(q => q.surface === 'ramp' && Math.abs(q.z - q.ground) > 10))
+        diagnose(g, 'Approach earthwork exceeds the 10 m study-stage support limit');
       const start = road.findIndex(q => q.d === d0), end = road.findIndex(q => q.d === d1);
       g.approaches = [{ start: road.findIndex(q => q.d === f0), end: start }, { start: end, end: road.findIndex(q => q.d === f1) }];
       if (isRaised) {
@@ -194,9 +246,9 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // and beyond the footprint plus half the incoming road width and a physical setback.
   const groundAnchors = (path: CrossingPoint[], width: number): [CrossingPoint | undefined, CrossingPoint | undefined] => {
     const out: [CrossingPoint | undefined, CrossingPoint | undefined] = [undefined, undefined];
+    const order = Array.from({ length: path.length }, (_, i) => i).sort((a, b) => Math.abs(path[a].d ?? 0) - Math.abs(path[b].d ?? 0));
     for (const side of [-1, 1]) {
-      let best = Infinity;
-      for (let i = 0; i < path.length; i++) {
+      for (const i of order) {
         const q = path[i], p = project(q);
         if (side * p.lateral <= 0 || q.surface !== 'terrain') continue;
         const off = (side > 0 ? p.left : p.right) + width / 2 + SETBACK;
@@ -215,8 +267,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
           candidate = terrainPoint({ x: a.x + (q.x - a.x) * t, y: a.y + (q.y - a.y) * t,
             ...(a.d !== undefined && q.d !== undefined ? { d: a.d + (q.d - a.d) * t } : {}) });
         }
-        const distance = Math.abs(candidate.d ?? p.s);
-        if (distance < best) { best = distance; out[side < 0 ? 0 : 1] = candidate; }
+        out[side < 0 ? 0 : 1] = candidate;
+        break;
       }
     }
     return out;
@@ -236,8 +288,9 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       finish = endAnchors.get(key);
     }
     const start = anchors.get(c);
-    if (!start?.[0] || !start[1] || !finish?.[0] || !finish[1])
-      diagnose(g, 'No real ground-level road anchor exists on both sides');
+    const required = survivingSides.get(c) ?? [true, true];
+    if (required.some((needed, k) => needed && (!start?.[k] || !finish?.[k])))
+      diagnose(g, 'No real ground-level anchor exists for a surviving road branch');
     const sidePoint = (s: number, side: number) => {
       const p = at(s), offset = (side > 0 ? p.left : p.right) + g.width / 2 + SETBACK;
       return terrainPoint({ x: p.x - p.ty * offset * side, y: p.y + p.tx * offset * side });
@@ -245,7 +298,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     const links: CrossingPoint[][] = [];
     for (const side of [-1, 1]) {
       const k = side < 0 ? 0 : 1, a = start?.[k], b = finish?.[k];
-      if (!a || !b) { links.push([]); continue; }
+      if (!required[k] || !a || !b) { links.push([]); continue; }
       const s0 = project(a).s, s1 = project(b).s, lo = Math.min(s0, s1), hi = Math.max(s0, s1);
       const stations = [lo];
       for (let i = 0; i < route.s.length; i++) if (route.s[i] > lo && route.s[i] < hi) stations.push(route.s[i]);
@@ -325,6 +378,72 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   return issues;
 }
 
+/** Geometry-aware, bounded Auto feedback. Explicit choices are never changed. Candidate links
+ * grow only onto already connected real roads; dependency checks keep the connection graph acyclic.
+ * One final rebuild anchors every dependent link to the treatment actually selected, and remeasures
+ * its bill. This is a local feasibility/economic pass, not an unrestricted network optimizer. */
+export function buildCrossingGeometry(crossings: CrossingResult[], route: CrossingRoute,
+  heightAt: (x: number, y: number) => number, roads?: RoadNet): CrossingIssue[] {
+  if (route.s.length < 2) return [];
+  const spatial = routeGeometry(route);
+  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial);
+  build(crossings);
+  const clone = (c: CrossingResult): CrossingResult => ({ ...c, geometry: undefined,
+    issues: c.issues?.filter(v => v.crossing.code !== 'geometry') });
+  const feasible = (c: CrossingResult) => !c.issues?.length && !c.geometry?.diagnostics?.length;
+  const dependsOn = (target: CrossingResult, source: CrossingResult): boolean => {
+    const visited = new Set<CrossingResult>();
+    let next: CrossingResult | undefined = target;
+    while (next && !visited.has(next)) {
+      if (next === source) return true;
+      visited.add(next);
+      const current: CrossingResult = next;
+      next = current.targetS === undefined ? undefined : crossings.find(t => t.s === current.targetS && t.roadId === current.targetRoadId);
+    }
+    return !!next;
+  };
+  let changed = false;
+  for (const c of crossings) {
+    if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !['overbridge', 'reconnection', 'diversion'].includes(c.type)) continue;
+    let best = c;
+    const originalFeasible = feasible(c);
+    if (c.type !== 'overbridge' && (!originalFeasible || c.cost > route.width[c.i] * ROAD_CLASSES[c.cls].bridgePerKm / 1000)) {
+      const over = clone(c); over.type = 'overbridge'; delete over.targetS; delete over.targetRoadId; delete over.linkLength;
+      build([over]);
+      if (feasible(over) && (!originalFeasible || over.cost < best.cost)) best = over;
+    }
+    if (c.type !== 'overbridge' && originalFeasible) {
+      if (best !== c) {
+        delete c.linkLength; delete c.targetS; delete c.targetRoadId;
+        Object.assign(c, best); changed = true;
+      }
+      continue;
+    }
+    // Reconnections may exceed the old 750 m economic shortcut when it is the only real feasible
+    // alternative. Their actual lengths are billed; the existing 2 km geometry reach remains bounded.
+    const targets = crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && !ROAD_CLASSES[t.cls].noAtGrade
+      && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
+      && Math.abs(t.s - c.s) <= MAX_REACH && !dependsOn(t, c))
+      .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
+    for (const target of targets.slice(0, originalFeasible ? 1 : 3)) {
+      const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
+      delete link.span; delete link.approachLength;
+      link.targetS = target.s; link.targetRoadId = target.roadId;
+      const anchor = clone(target);
+      // A resolved diversion's source is a real ground-level road node; its downstream link need
+      // not be rebuilt to evaluate a new branch arriving at that source.
+      if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
+      build([anchor, link]);
+      if (feasible(link) && (!feasible(best) || link.cost < best.cost)) { best = link; break; }
+    }
+    if (best !== c) {
+      delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId;
+      Object.assign(c, best); changed = true;
+    }
+  }
+  return changed ? build(crossings) : crossings.flatMap(c => c.issues?.filter(v => v.crossing.code === 'geometry') ?? []);
+}
+
 export interface CrossingAuditIssue { roadId?: number; s: number; message: string; severity: 'error' | 'infeasible' }
 /** Independent streaming checks over final geometry, suitable for tests and saved-design audits. */
 export function auditCrossingGeometry(crossings: readonly CrossingResult[], route: CrossingRoute,
@@ -358,7 +477,11 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
           if (heightAt(x, y) - z > 0.5) report('Terrain road is buried between samples');
         }
       }
-      for (const q of [path[0], path[path.length - 1]]) if (q && Math.abs(q.z - heightAt(q.x, q.y)) > 0.3) report('Dangling endpoint');
+      for (const q of [path[0], path[path.length - 1]]) if (q) {
+        const connected = q.connection === 'main-road';
+        if (connected && margin(q, 0) > 0.3) report('Main-road endpoint lies outside its footprint');
+        if (Math.abs(q.z - (connected ? project(q).z : heightAt(q.x, q.y))) > 0.3) report('Dangling endpoint');
+      }
     }
     if (g.deck && g.road) {
       const { start, end, depth } = g.deck, road = g.road;

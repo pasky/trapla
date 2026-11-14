@@ -299,7 +299,7 @@ describe('evaluate on a synthetic town', () => {
 
   it('resolves each crossing by the height of the grade above the crossed road', () => {
     expect(r.crossings.map((c) => [Math.round(c.s), c.cls, c.type])).toEqual([
-      [1500, 'residential', 'bridge'], [2500, 'residential', 'overbridge'], [2700, 'track', 'diversion'],
+      [1500, 'residential', 'bridge'], [2500, 'residential', 'overbridge'], [2700, 'track', 'overbridge'],
       [3500, 'residential', 'overbridge'], [4500, 'primary', 'junction'],
     ]);
     // the valley street forces a short bridge into what would otherwise be an embankment
@@ -314,11 +314,13 @@ describe('evaluate on a synthetic town', () => {
     const g = over.geometry!, deck = g.deck!;
     expect(over.span).toBeCloseTo(crossingPlanLength(g.road!.slice(deck.start, deck.end + 1)), 6);
     expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(over.span!, 0, { span: over.span!, pierDensity: 0 }) + over.approachLength! * over.roadPerKm! / 1000, 3);
-    // The plain street now needs raised approaches; the neighbouring track shares its crossing.
+    // The street needs raised approaches. Actual connectors to its approach feet make the
+    // neighbouring track's own short bridge cheaper than the built reconnection alternative.
     expect(r.crossings[1].approachLength).toBeGreaterThan(0);
-    expect(r.crossings[2].targetS).toBe(r.crossings[1].s);
-    expect(r.crossings[2].linkLength).toBeGreaterThanOrEqual(400); // side corridors plus real-road connectors
-    expect(r.crossings[2].linkLength).toBeCloseTo(r.crossings[2].geometry!.links!.reduce((sum, path) => sum + crossingPlanLength(path), 0), 6);
+    expect(r.crossings[2].targetS).toBeUndefined();
+    const linked = evaluate(ctx, { ...design, crossingOverrides: [{ roadId: 3, type: 'reconnection' }] });
+    expect(r.crossings[2].cost).toBeLessThan(linked.crossings.find(c => c.roadId === 3)!.cost);
+    expect(r.crossings[2].geometry!.deck).toBeDefined();
     expect(r.cost.crossings).toBeCloseTo(r.crossings.reduce((sum, c) => sum + c.cost, 0), 0);
   });
 

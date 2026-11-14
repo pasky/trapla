@@ -247,7 +247,42 @@ describe('crossing geometry and map overlay', () => {
     expect(cs[1].linkLength).toBeCloseTo(crossingPlanLength(links[0]), 6);
     expect(cs[1].cost).toBeCloseTo(cs[1].linkLength! * cs[1].roadPerKm! / 1000, 6);
     expect(cs[1].geometry!.turnarounds).toEqual([links[0][0]]);
-    expect(auditCrossingGeometry(cs, route, () => 400, net).filter(v => v.severity === 'error')).toEqual([]);
+    expect(cs[1].issues?.length ?? 0).toBe(0); // consumed opposite stub is not an inaccessible through-road
+    expect(auditCrossingGeometry(cs, route, () => 400, net)).toEqual([]);
+  });
+
+  it('connects a real terminating T-junction to main-road grade instead of dropping its end to removed terrain', () => {
+    const net = new RoadNet({ cls: ['primary'], ways: [[0, 3000, -200, 3000, 0]] });
+    const c = cross(0, 3000, 'primary', 2);
+    resolve([c], [{ roadId: 0, type: 'junction' }]);
+    const raised = { ...route, grade: new Float64Array(s.length).fill(402) };
+    expect(buildCrossingGeometry([c], raised, () => 400, net)).toEqual([]);
+    const end = c.geometry!.road!.at(-1)!;
+    expect(end).toMatchObject({ x: 3000, y: 0, z: 402, connection: 'main-road', support: 'embankment' });
+    expect(auditCrossingGeometry([c], raised, () => 400, net)).toEqual([]);
+  });
+
+  it('replaces an infeasible Auto dead-end overbridge by a feasible measured one-sided real-road link', () => {
+    const net = new RoadNet({ cls: ['primary', 'residential'], ways: [
+      [0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 2],
+    ] });
+    const cs = [cross(0, 3000), cross(1, 3800, 'residential')];
+    resolve(cs); expect(cs[1].type).toBe('overbridge');
+    expect(buildCrossingGeometry(cs, route, () => 400, net)).toEqual([]);
+    const c = cs[1]; expect(c.type).toBe('reconnection'); expect(c.targetRoadId).toBe(0);
+    expect(c.geometry!.links![0].length).toBeGreaterThan(1); expect(c.geometry!.links![1]).toEqual([]);
+    expect(c.cost).toBeCloseTo(crossingPlanLength(c.geometry!.links![0]) * c.roadPerKm! / 1000, 6);
+    expect(auditCrossingGeometry(cs, route, () => 400, net)).toEqual([]);
+  });
+
+  it('does not treat viaduct-scale approach fill as ordinary priced road embankment', () => {
+    const net = new RoadNet({ cls: ['residential'], ways: [[0, 3000, -800, 3000, 800]] });
+    const terrain = (_x: number, y: number) => 400 - 55 * Math.exp(-(((Math.abs(y) - 250) / 100) ** 2));
+    const c = cross(0, 3000, 'residential'); resolve([c], [{ roadId: 0, type: 'overbridge' }]);
+    const issues = buildCrossingGeometry([c], route, terrain, net);
+    expect(issues.some(v => v.title.includes('10 m'))).toBe(true);
+    expect(c.type).toBe('overbridge'); // explicit choice retained, unlike Auto fallback
+    expect(auditCrossingGeometry([c], route, terrain, net).filter(v => v.severity === 'error')).toEqual([]);
   });
 
   it('bounds impossible profiles and long links without fabricating roads, and bills only constructed paths', () => {

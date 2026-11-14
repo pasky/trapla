@@ -20,6 +20,8 @@ export interface CrossingPoint {
   support?: 'embankment' | 'retaining';
   /** Signed chainage along the existing crossed way (road samples only). */
   d?: number;
+  /** A terminating T-junction meets the constructed main road, not the removed old ground. */
+  connection?: 'main-road';
 }
 export interface CrossingGeometry {
   /** Existing road, continuous under our bridge or over our cut. */
