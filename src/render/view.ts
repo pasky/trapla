@@ -519,7 +519,7 @@ export class View {
     const lift = 0.35, groundLift = .015;
     // contours on the cut / fill slopes join the terrain's at the daylight line; faint on the carriageway
     const slopeInk = 1, crownInk = 0.35;
-    type SV = { dl: number; el: number; er: number; dr: number; cl: number; cr: number };
+    type SV = { dl: number; el: number; er: number; dr: number; cl: number; cr: number; wl?: number; wr?: number };
     const sv: SV[] = [];
     for (let i = 0; i < n; i++) {
       const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
@@ -533,12 +533,14 @@ export class View {
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
       const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
       sv.push({
-        dl: push(xl, yl, (Number.isFinite(r.wallSurfaceL?.[i]) ? r.wallSurfaceL[i] : natural(xl, yl)) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
+        dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
+        wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
         cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
-        dr: push(xr, yr, (Number.isFinite(r.wallSurfaceR?.[i]) ? r.wallSurfaceR[i] : natural(xr, yr)) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
+        dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
+        wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
       });
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
@@ -566,7 +568,7 @@ export class View {
         let prev: { day: number; edge: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
         for (let j = 0; j < sections.length; j++) {
           const s = sections[j], t = j / (sections.length - 1), toe = s.slopeDay ?? s.day;
-          const fill = s.edge.z > toe.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
+          const fill = s.edge.z > s.day.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
           const gp = r.geology.profiles[r.geology.ids[i]];
           const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
           const day = push(toe.x, toe.y, toe.z+groundLift, color, toe.z, slopeInk, kind, geology(s.day.z-toe.z));
@@ -599,7 +601,12 @@ export class View {
       if (z <= Math.max(zl, zr)) continue;
       const l = push(x+nx*w, y+ny*w, zl, fillC, zl, slopeInk, EW_KIND.fill), rr = push(x-nx*w, y-ny*w, zr, fillC, zr, slopeInk, EW_KIND.fill);
       quad(sv[i].el, l, sv[i].er, rr);
-      idx.push(sv[i].dl, l, sv[i].el, sv[i].er, rr, sv[i].dr);
+      const station = sv[i];
+      idx.push(station.wl ?? station.dl, l, station.el, station.er, rr, station.wr ?? station.dr);
+      // Retained toes need the lower part of the end cap too, otherwise the bridge
+      // transition exposes a hole between the vertical wall and ground under the crown.
+      if (station.wl !== undefined) idx.push(station.dl, l, station.wl);
+      if (station.wr !== undefined) idx.push(station.wr, rr, station.dr);
     }
     // bridge deck edges and piers, tunnel portals
     // Ordinary-road crossing rule reserves 6 m = 4.8 m clear + 1.2 m study-stage deck.

@@ -25,14 +25,16 @@ describe('daylight stitching', () => {
     }
   });
   it('keeps retained fill and cut slopes vertically separate from natural ground collars on either side', () => {
-    const retained = { ...route, wallSurfaceL: f([108,112]), wallSurfaceR: f([92,94]) };
     for (const side of [-1,1]) {
+      const retained = { ...route, grade: side > 0 ? f([115,120]) : f([85,87]),
+        wallSurfaceL: f([108,112]), wallSurfaceR: f([92,94]) };
       const sections = daylightSections(retained,0,side,5,natural);
       for (const [j,s] of sections.entries()) {
         const t = j/(sections.length-1), toe = s.slopeDay!;
         expect(toe.x).toBe(s.day.x); expect(toe.y).toBe(s.day.y);
         expect(toe.z).toBeCloseTo(side > 0 ? 108+4*t : 92+2*t);
         expect((toe.z-s.day.z)*side).toBeGreaterThan(0);
+        expect((s.edge.z-toe.z)*side).toBeGreaterThan(0);
         expect(s.day.z).toBe(natural(s.day.x,s.day.y));
         expect(collarPoint(s,0,natural,coarse)).toEqual(s.day);
         // Ground outside the face cannot rise to the wall top and bury a nearby feature.
