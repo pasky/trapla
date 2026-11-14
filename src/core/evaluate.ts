@@ -4,7 +4,7 @@
 
 import { autoProfile } from './autoprofile';
 import type { BuildingIndex } from './buildings';
-import { ROAD_CHECKS, type Violation } from './checks';
+import { categoryViolation, crossingViolation, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, type Violation } from './checks';
 import {
   basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
   type CostBreakdown, type CostParts,
@@ -165,7 +165,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (!c) continue;
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
       const gc = terrain.heightAt(x, y);
-      mustBridge.push({ s: st.s[i] + f * ds, g: gc, need, what: 'river/railway' });
+      mustBridge.push({ s: st.s[i] + f * ds, g: gc, need, what: c === 2 ? 'railway' : 'river' });
       for (const j of f === 0 ? [i] : [i, i + 1]) {
         const req = need + gc - ground[j];
         if (!(clearance[j] >= req)) clearance[j] = req;
@@ -487,7 +487,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
 
   // --- checks ---
   const violations: Violation[] = [
-    ...ROAD_CHECKS.horizontal(al, norms),
+    ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];
   // the whole at-grade footprint must be on terrain data, and every slope must reach the ground
@@ -506,10 +506,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       i = j;
     }
   };
-  ranges((i) => kind[i] === KIND.earth && sec.open[i] === 1, (i0, i1) => violations.push({
-    kind: 'section', s0: st.s[i0], s1: st.s[i1],
-    msg: 'side slope does not reach the ground within 150 m — change the grade line here',
-  }));
+  ranges((i) => kind[i] === KIND.earth && sec.open[i] === 1, (i0, i1) => {
+    let above = 0, below = 0;
+    for (let i = i0; i <= i1; i++) { above = Math.max(above, h[i]); below = Math.max(below, -h[i]); }
+    violations.push(slopeViolation(st.s[i0], st.s[i1], above, below, 150));
+  });
   if (mustBridge.length) {
     const zc = elevations(prof, mustBridge.map((c) => c.s));
     const last = new Map<string, number>();
@@ -520,32 +521,27 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (c.below !== undefined && above <= -c.below + 1e-6) return;
       if (c.s - (last.get(c.what) ?? -Infinity) < 50) return;
       last.set(c.what, c.s);
-      violations.push({
-        kind: 'crossing', s0: c.s, s1: c.s,
-        msg: c.below === undefined
-          ? `${c.what} crossing needs the grade ≥ ${c.need} m above it (now ${above.toFixed(1)} m)`
-          : `${c.what} cannot be crossed at grade: the grade must be ≥ ${c.need} m above it (bridge) or ≥ ${c.below} m below it (overbridge) (now ${above >= 0 ? '+' : '−'}${Math.abs(above).toFixed(1)} m)`,
-      });
+      violations.push(crossingViolation(c.s, c.what, above, c.need, c.below));
     });
   }
   for (let i = 0; i < n; i++) {
     if (!oob[i]) continue;
     let j = i;
     while (j + 1 < n && oob[j + 1]) j++;
-    violations.push({ kind: 'oob', s0: st.s[i], s1: st.s[j], msg: `outside the play area / no terrain data (${((st.s[j] - st.s[i]) + ds).toFixed(0)} m)` });
+    violations.push(oobViolation(st.s[i], st.s[j], st.s[j] - st.s[i] + ds));
     i = j;
   }
   if (!profileFeasible && d.profileMode === 'auto') {
-    violations.push({ kind: 'profile', s0: 0, s1: al.length, msg: `auto-profile found no grade line within ${(scenario.maxGradient * 100).toFixed(0)} % and the vertical-curve minima — reroute or edit the profile` });
+    violations.push(profileViolation(al.length, scenario.maxGradient));
   }
   const geomViolations = violations.length;
   const travelMin = al.length / (d.speed / 3.6) / 60;
   const minCategory = minCategoryForTraffic(scenario.traffic);
   if (CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
-    violations.push({ kind: 'category', goal: true, s0: 0, s1: al.length, msg: `${cat.label} cannot carry ${scenario.traffic.toLocaleString('en-US')} veh/day — needs ${CATEGORIES[minCategory].label}` });
+    violations.push(categoryViolation(al.length, d.category, scenario.traffic, minCategory));
   }
   if (travelMin > scenario.maxTravelMin + 1e-9) {
-    violations.push({ kind: 'time', goal: true, s0: 0, s1: al.length, msg: `travel time ${travelMin.toFixed(2)} min > target ${scenario.maxTravelMin.toFixed(1)} min` });
+    violations.push(timeViolation(al.length, d.speed, travelMin, scenario.maxTravelMin));
   }
   lap('total');
 

@@ -69,7 +69,7 @@ function expectG1(al: Alignment, a: Vec2, b: Vec2) {
   expect(walked).toBeLessThanOrEqual(al.length + 1e-9);
   expect(walked).toBeGreaterThan(al.length * (1 - 1 / (20 * rMin * rMin)) - 1e-6);
 }
-const msgs = (al: Alignment) => horizontalViolations(al, 90).map((v) => v.msg);
+const msgs = (al: Alignment) => horizontalViolations(al, 90).map((v) => `${v.title} — ${v.fix}`);
 
 describe('horizontal alignment', () => {
   it('right-angle bend: tangent length, arc length, external distance', () => {
@@ -151,7 +151,7 @@ describe('horizontal rules (ČSN 73 6101)', () => {
     // at 1,300 m (T = 90.9 m) a 90 m transition is required and does not fit
     const m = msgs(buildAlignment(a, b, [{ ...p, r: 1300 }], R90));
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatch(/^bend 1 is too close to A: its curve takes 91 m of that leg and its transition 45 m more, but the leg is only 100 m/);
+    expect(m[0]).toBe('Bend 1 is too close to A — Move bend 1 at least 36 m further from A');
   });
 
   it('opposite arcs: transitions may touch; arcs without transitions need a 2·vn straight', () => {
@@ -161,7 +161,7 @@ describe('horizontal rules (ČSN 73 6101)', () => {
     expect(s(282).joints[1].kind).toBe('reverse');
     const m = msgs(s(270));
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatch(/^bends 1 and 2 turn opposite ways 270 m apart: the curves take 95 \+ 95 m of that leg and their two transitions 90 m, 281 m in all — move them ≥ 11 m further apart/);
+    expect(m[0]).toBe('Bends 1 and 2 are too close for an S-bend — Move bends 1 and 2 at least 11 m further apart');
     // two 1.5° bends at R = 1,350 m: T = 17.7 m each; the arcs (35 m) are too short to carry a transition → 180 m straight
     const g = (leg: number) => { const r = route([[0, 600], [1.5, leg], [-1.5, 600]]); return buildAlignment(r.a, r.b, r.pis, R90); };
     expect(g(216).joints[1]).toMatchObject({ plainFrom: true, plainTo: true, needFrom: 90, needTo: 90 });
@@ -175,17 +175,15 @@ describe('horizontal rules (ČSN 73 6101)', () => {
     // with the player's own radii nothing is left out or changed: the rule is reported
     const r = route([[0, 600], [1.5, 200], [-1.5, 600]]);
     const m2 = msgs(buildAlignment(r.a, r.b, r.pis.map((p) => ({ ...p, r: 1350 })), R90));
-    expect(m2).toEqual(['bends 1 and 2 turn opposite ways 200 m apart: the curves take 18 + 18 m of that leg and arcs without transitions (radius ≥ 1,350 m) need a 180 m straight between them, 215 m in all — move them ≥ 16 m further apart, reduce a radius, or delete one of them']);
+    expect(m2).toEqual(['Bends 1 and 2 are too close for an S-bend — Move bends 1 and 2 at least 16 m further apart']);
   });
 
   it('a too small or too short manual curve says what to do', () => {
     const { a, b } = route([[0, 900], [20, 900]]);
     const p = path(a, 0, [[0, 900]])[0];
-    expect(msgs(buildAlignment(a, b, [{ ...p, r: 300 }], R90))[0])
-      .toBe('bend 1: radius 300 m is below the 355 m minimum for 90 km/h — set it to ≥ 355 m or back to auto (or lower the design speed)');
+    expect(msgs(buildAlignment(a, b, [{ ...p, r: 300 }], R90))[0]).toBe('Bend 1 is too sharp for 90 km/h — Set bend 1 to at least R 355 m, or back to auto');
     const g = route([[0, 900], [4, 900]]);
-    expect(msgs(buildAlignment(g.a, g.b, [{ ...g.pis[0], r: 900 }], R90))[0])
-      .toBe('bend 1: at radius 900 m its arc is only 63 m long, too short for its two 90 m transitions — raise the radius to ≥ 1,290 m or set it back to auto');
+    expect(msgs(buildAlignment(g.a, g.b, [{ ...g.pis[0], r: 900 }], R90))[0]).toBe('Bend 1: curve too short for its easing curves — Set bend 1 to at least R 1,290 m, or back to auto');
   });
 });
 
@@ -311,7 +309,7 @@ describe('compound curves', () => {
     // far too short: reported on the leg between them, geometry still G1
     const bad = s(110), al3 = buildAlignment(bad.a, bad.b, bad.pis, R90);
     const m = msgs(al3);
-    expect(m.some((x) => /^bends 3 and 4 turn opposite ways 110 m apart/.test(x))).toBe(true);
+    expect(m.some((x) => x.startsWith('Bends 3 and 4 are too close for an S-bend'))).toBe(true);
     expectG1(al3, bad.a, bad.b);
   });
 
@@ -319,7 +317,10 @@ describe('compound curves', () => {
     // two 85° turns 500 m apart: one 170° curve of radius 250 / tan 42.5° = 273 m
     const { a, b, pis } = route([[0, 1500], [85, 500], [85, 1500]]);
     const al = buildAlignment(a, b, pis, R90);
-    expect(msgs(al)).toEqual(['bends 1 and 2 turn the same way 500 m apart: they are joined as one curve, but its radius 273 m < minimum 355 m — move them apart or reduce the turn']);
+    expect(msgs(al)).toEqual(['Bends 1 and 2 merge into one curve that is too sharp — Move bends 1 and 2 about 155 m further apart, or make them turn less']);
+    // the suggested spacing is enough: the joined radius grows with it
+    const far = route([[0, 1500], [85, 655], [85, 1500]]);
+    expect(msgs(buildAlignment(far.a, far.b, far.pis, R90))).toEqual([]);
     expectG1(al, a, b);
   });
 
@@ -328,8 +329,8 @@ describe('compound curves', () => {
     pis[0].r = 500; pis[1].r = 1200;
     const al = buildAlignment(a, b, pis, R90);
     const v = horizontalViolations(al, 90);
-    expect(v.map((x) => x.msg)).toEqual(['bends 1 and 2 are joined as one curve, but their radii 500 m and 1,200 m differ by more than 2× — reduce the radius of bend 2 (to ≤ 1,000 m, or far enough that the two no longer touch) or set it back to auto']);
-    expect(v[0]).toMatchObject({ kind: 'compound', pis: [0, 1] });
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({ kind: 'compound', pis: [0, 1], basis: 'norm', fix: 'Set bend 2 to at most R 1,000 m, or back to auto' });
     expect(v[0].s1).toBeGreaterThan(v[0].s0);
     expectG1(al, a, b); // the player's radii are kept; the curve leaves the shared leg instead
     expect(al.curves.map((c) => c.rEff)).toEqual([500, 1200]);
@@ -360,7 +361,7 @@ describe('compound curves', () => {
     const big = pis.map((p, i) => (i === 2 ? { ...p, x: mid.x + 30 * towards.x, y: mid.y + 30 * towards.y } : p));
     const al2 = buildAlignment(a, b, big, R90);
     expect(al2.curves[2].ignored).toBe(false);
-    expect(msgs(al2).some((x) => x.includes('turn opposite ways'))).toBe(true);
+    expect(msgs(al2).some((x) => x.includes('too close for an S-bend'))).toBe(true);
     expectG1(al2, a, b);
     // a manual radius is the player's explicit wish: never left out
     const man = moved.map((p, i) => (i === 2 ? { ...p, r: 1500 } : p));
@@ -429,7 +430,7 @@ describe('compound curves', () => {
     // below the transition-free radius the ratio rule applies
     const mixed = build(1300, 4000, t(1300) + t(4000) - 2);
     expect(mixed.al.units).toHaveLength(1);
-    expect(msgs(mixed.al).some((m) => m.includes('differ by more than 2×'))).toBe(true);
+    expect(msgs(mixed.al).some((m) => m.includes('radii too different for one curve'))).toBe(true);
   });
 
   it('given radii that already close the curve are accepted (a 180° turn leaves the solver nothing to adjust)', () => {
@@ -441,7 +442,9 @@ describe('compound curves', () => {
     expectG1(al, a, b);
     // radii that do not close it are a violation that names the cause
     const off = buildAlignment(a, b, [{ x: 1000, y: 0, r: 500 }, { x: 1000, y: 1000, r: 520 }], R90);
-    expect(msgs(off)[0]).toMatch(/^bends 1 and 2 turn the same way 1,000 m apart: .* with the radius set on bend 1 and bend 2 they cannot be joined into one curve either/);
+    const v = horizontalViolations(off, 90)[0];
+    expect(v.title).toBe('Bends 1 and 2 are too close for their radii');
+    expect(v.detail).toMatch(/not when you have set a radius by hand \(bend 1 and bend 2\)/);
     expectG1(off, a, b);
   });
 
@@ -473,7 +476,7 @@ describe('compound curves', () => {
     const { a, b, pis } = route([[0, 700], [8, 130], [8, 140], [175, 400], [10, 600]]);
     const al = buildAlignment(a, b, pis, R90);
     expect(al.curves[2].tooSharp).toBe(true);
-    expect(msgs(al).some((x) => x.startsWith('bend 3: a turn of 175° is a near U-turn'))).toBe(true);
+    expect(msgs(al).some((x) => x.startsWith('Bend 3 turns back almost on itself — Move bend 3 or its neighbours so that the road turns less than 170° there (now 175°)'))).toBe(true);
     const st = station(al, 5);
     for (let i = 1; i < st.n; i++) expect(Math.hypot(st.x[i] - st.x[i - 1], st.y[i] - st.y[i - 1])).toBeLessThanOrEqual(st.ds + 1e-6);
     const end = pointAt(al, al.length);
@@ -498,8 +501,8 @@ describe('compound curves', () => {
     const { a, b, pis } = route([[0, 30], [25, 130], [25, 140], [25, 700]]);
     const al2 = buildAlignment(a, b, pis, R90);
     const m = msgs(al2);
-    expect(m.some((x) => x.startsWith('bend 1 is too close to A'))).toBe(true);
-    expect(m.some((x) => x.startsWith('bends 1–3 turn the same way 130–140 m apart: they are joined as one curve, but its radius'))).toBe(true);
+    expect(m.some((x) => x.startsWith('Bend 1 is too close to A'))).toBe(true);
+    expect(m.some((x) => x.startsWith('Bends 1–3 merge into one curve that is too sharp — Spread bends 1–3 out'))).toBe(true);
     expect(al2.elements[0]).toMatchObject({ kind: 'arc' }); // starts right at A
     expectG1(al2, a, b);
   });
@@ -550,6 +553,22 @@ describe('largest radius that fits', () => {
     const ok = (r: number) => msgs(buildAlignment(a, b, [{ ...pis[0], r }], R90)).length === 0;
     expect([645, 800, 1300, 1350, 1430, 1440].map(ok)).toEqual([true, false, false, true, true, false]);
     expect(maxRadiusThatFits(a, b, pis, 0, 90)).toBe(1430);
+  });
+
+  it('is the fix the violation offers for a hand-set radius that is too large', () => {
+    // bend 2 set to 6,000 m between same-direction neighbours 450 m and 300 m away
+    const { a, b, pis } = route([[0, 900], [12, 450], [8, 300], [12, 900]]);
+    pis[1].r = 6000;
+    const v = horizontalViolations(buildAlignment(a, b, pis, R90), 90, { a, b, pis });
+    const max = maxRadiusThatFits(a, b, pis, 1, 90)!;
+    expect(v.length).toBeGreaterThan(0);
+    for (const x of v) {
+      expect(x).toMatchObject({ kind: 'transition', pi: 1, basis: 'norm' });
+      expect(x.fix).toBe(`Set bend 2 back to auto (R 645 m) or to at most R ${max.toLocaleString('en-US')} m`);
+      expect(x.detail).toMatch(/set a radius by hand \(bend 2\)\. Alternatively, move bends \d and \d at least \d+ m further apart\.$/);
+    }
+    pis[1].r = max;
+    expect(msgs(buildAlignment(a, b, pis, R90))).toEqual([]);
   });
 
   it('is null when even the automatic radius is in violation', () => {

@@ -1,5 +1,6 @@
 // Right-hand HUD: scenario card, controls, cost, stats, violations, selected PI, best design.
 
+import { BASIS_LABEL, type Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
@@ -34,6 +35,9 @@ export interface HudEvents {
   onClearRange?: () => void;
 }
 
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const whyKey = (v: Violation) => `${v.kind}|${v.title}`;
+
 const pct = (v: number) => `${(v * 100).toFixed(1)} %`;
 
 /** what each line of the breakdown contains (shown as a tooltip) */
@@ -58,6 +62,8 @@ export class Hud {
   ev: HudEvents = {};
   private last: { r: Result; d: Design } | null = null;
   private range: StationRange | null = null;
+  /** violations whose explanation the player unfolded */
+  private openWhy = new Set<string>();
   private $ = <T extends HTMLElement = HTMLElement>(id: string) => this.root.querySelector<T>(`#${id}`)!;
 
   constructor(private root: HTMLElement, private sc: ScenarioParams) {
@@ -115,7 +121,17 @@ export class Hud {
     this.$('reset').onclick = () => { if (confirm('Reset to the straight line?')) this.ev.onReset?.(); };
     this.$('range').onclick = (e) => { if ((e.target as HTMLElement).closest('button')) this.ev.onClearRange?.(); };
     this.$('viol').onclick = (e) => {
+      const why = (e.target as HTMLElement).closest('.why') as HTMLElement | null;
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;
+      if (why && li) {
+        // "why?" unfolds the explanation (kept open across recomputes) instead of jumping to the place
+        const x = this.last?.r.violations[Number(why.dataset.why)];
+        const box = li.querySelector<HTMLElement>('.vdetail')!;
+        box.hidden = !box.hidden;
+        why.textContent = box.hidden ? 'why?' : 'less';
+        if (x) { if (box.hidden) this.openWhy.delete(whyKey(x)); else this.openWhy.add(whyKey(x)); }
+        return;
+      }
       if (li?.dataset.k) this.ev.onViolation?.(Number(li.dataset.k));
     };
   }
@@ -202,7 +218,16 @@ export class Hud {
     const v = r.violations;
     this.$('viol-h').innerHTML = v.length ? `Violations <span class="count">${v.length}</span>` : 'Violations <span class="count ok">0</span>';
     this.$('viol').innerHTML = v.length
-      ? v.slice(0, 60).map((x, k) => `<li data-k="${k}" class="${x.goal ? 'goal' : ''}"><span class="where">${x.goal ? 'goal' : `km ${num(x.s0 / 1000, 2)}`}</span> ${x.msg}</li>`).join('')
+      ? v.slice(0, 60).map((x, k) => {
+        const open = this.openWhy.has(whyKey(x));
+        return `<li data-k="${k}" class="${x.goal ? 'goal' : ''}" title="Click to show the place">
+          <span class="where">${x.goal ? 'goal' : `km ${num(x.s0 / 1000, 2)}`}</span>
+          <div><div class="vt">${esc(x.title)}</div>
+          <div class="vfix">→ ${esc(x.fix)}</div>
+          <div class="vmeta"><span class="basis ${x.basis}" title="${esc(x.rule)}">${BASIS_LABEL[x.basis]}</span><button class="why" data-why="${k}">${open ? 'less' : 'why?'}</button></div>
+          <div class="vdetail"${open ? '' : ' hidden'}>${x.detail ? esc(x.detail) : ''}<small>${esc(x.rule)}</small></div></div>
+        </li>`;
+      }).join('')
       : '<li class="none">All norm checks pass.</li>';
     this.$('best').innerHTML = best
       ? `<h2>Best valid design</h2><div class="best-row"><b>${czk(best.cost)}</b><button id="load-best">Load</button></div>`

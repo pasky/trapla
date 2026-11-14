@@ -24,7 +24,7 @@ function report(name: string, d: Design) {
   let sum = 0;
   for (const k of PART_KEYS) for (let i = 0; i < r.n; i++) sum += r.parts[k][i];
   if (Math.abs(sum - r.cost.total) > 1) console.log(`  !! parts sum ${sum} ≠ total ${r.cost.total}`);
-  if (r.violations.length) console.log('  violations:', r.violations.slice(0, 6).map((v) => v.msg));
+  if (r.violations.length) console.log('  violations:', r.violations.slice(0, 6).map((v) => `${v.title} — ${v.fix}`));
   return r;
 }
 

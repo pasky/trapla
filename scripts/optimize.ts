@@ -59,7 +59,7 @@ for (let it = 0; it < iters; it++) {
 }
 console.log(`final: ${(cur.length / 1000).toFixed(2)} km, ${cur.travelMin.toFixed(2)} min, ${d.pis.length} PIs`);
 for (const l of describe(cur)) console.log(l);
-if (cur.violations.length) console.log(cur.violations.map((v) => v.msg));
+if (cur.violations.length) console.log(cur.violations.map((v) => `${v.title} — ${v.fix}`));
 d.vpis = [];
 writeFileSync(out, JSON.stringify({ design: d }));
 console.log('written', out);

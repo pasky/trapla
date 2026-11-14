@@ -29,6 +29,7 @@ export class CurveEditor {
   private label: HTMLElement;
   private text: HTMLElement;
   private sub: HTMLElement;
+  private warn: HTMLElement;
   private maxBtn: HTMLButtonElement;
   private autoBtn: HTMLButtonElement;
   private al: Alignment | null = null;
@@ -56,10 +57,11 @@ export class CurveEditor {
     this.label = document.createElement('div');
     this.label.className = 'rlabel';
     this.label.style.display = 'none';
-    this.label.innerHTML = '<b></b><small></small><button class="rmax" title="Largest radius that fits between the neighbouring bends">max</button><button class="rauto" title="Back to the automatic radius (the smallest the rules allow)">auto</button>';
+    this.label.innerHTML = '<b></b><small></small><em class="rviol"></em><button class="rmax" title="Largest radius that fits between the neighbouring bends">max</button><button class="rauto" title="Back to the automatic radius (the smallest the rules allow)">auto</button>';
     overlay.appendChild(this.label);
     this.text = this.label.querySelector('b')!;
     this.sub = this.label.querySelector('small')!;
+    this.warn = this.label.querySelector('em')!;
     this.maxBtn = this.label.querySelector('.rmax')!;
     this.autoBtn = this.label.querySelector('.rauto')!;
     this.maxBtn.onclick = () => this.toMax();
@@ -126,6 +128,11 @@ export class CurveEditor {
     const info = i === null || !this.al ? undefined : this.al.curves[i];
     this.shown = !!info;
     if (!info || !this.al || i === null) { this.place(); return; }
+    // the headline of the first violation the bend is involved in (as in the HUD list)
+    const v = this.host.result()?.violations.find((x) => !x.goal && x.pis?.includes(i));
+    this.warn.textContent = v ? `⚠ ${v.title}` : '';
+    this.warn.title = v ? `${v.fix}${v.detail ? `\n\n${v.detail}` : ''}` : '';
+    this.warn.style.display = v ? '' : 'none';
     const c = this.curve();
     const at = (s: number) => { const p = pointAt(this.al!, s); return { x: p.x, y: p.y, z: this.zAt(p.x, p.y, s) }; };
     if (c) {

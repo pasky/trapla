@@ -15,7 +15,7 @@ describe('review regressions', () => {
     const al = buildAlignment({ x: 0, y: 0 }, { x: 0, y: 1 }, [{ x: 1000, y: 0, r: 355 }], 355, 90);
     const st = station(al, 5);
     for (let i = 1; i < st.n; i++) expect(Math.hypot(st.x[i] - st.x[i - 1], st.y[i] - st.y[i - 1])).toBeLessThanOrEqual(st.ds + 1e-6);
-    expect(ROAD_CHECKS.horizontal(al, speedNorms(90)).some((v) => v.msg.includes('U-turn'))).toBe(true);
+    expect(ROAD_CHECKS.horizontal(al, speedNorms(90)).some((v) => v.title.includes('turns back almost on itself'))).toBe(true);
   });
 
   it('auto-profile keeps the tie-in elevations exactly and reports feasibility honestly', () => {
@@ -46,6 +46,15 @@ describe('review regressions', () => {
     // crest Δg = 0.02 needs 120 m at R = 6000 but only ~119.6 m fit between the VPIs
     const p = buildProfile([{ s: 0, z: 0, r: null }, { s: 59.8, z: 0.598, r: null }, { s: 119.6, z: 0, r: null }], 6000, 3400);
     expect(ROAD_CHECKS.vertical(p, speedNorms(90), 0.06).some((v) => v.kind === 'vcOverlap')).toBe(true);
+  });
+
+  it('a too steep grade says which VPI to move and by how much, and that is enough', () => {
+    const pts = [{ s: 0, z: 0, r: null }, { s: 500, z: 40, r: null }, { s: 1000, z: 45, r: null }];
+    const grades = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06).filter((v) => v.kind === 'gradient');
+    const [v] = grades(pts);
+    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower VPI 1 by 10.0 m' });
+    pts[1].z -= 10;
+    expect(grades(pts)).toEqual([]);
   });
 
   it('section whose slope lies exactly on the ground has finite areas', () => {

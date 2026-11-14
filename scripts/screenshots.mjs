@@ -91,7 +91,7 @@ await idle();
 const summary = await page.evaluate(() => window.trapla.summary());
 console.log('design', JSON.stringify({
   length: summary.length, travelMin: summary.travelMin, valid: summary.valid, total: summary.cost.total,
-  cost: summary.cost, q: summary.quantities, runs: summary.runs, violations: summary.violations.map((v) => v.msg), timing: summary.timing,
+  cost: summary.cost, q: summary.quantities, runs: summary.runs, violations: summary.violations.map((v) => `${v.title} — ${v.fix}`), timing: summary.timing,
 }, null, 1));
 if (designs.overview) await page.evaluate((c) => window.trapla.lookAt(...c), designs.overview);
 await page.waitForTimeout(800);
@@ -110,7 +110,7 @@ if (designs.viaduct) {
   }, [a, b]);
   await idle();
   const v = await page.evaluate(() => window.trapla.summary());
-  console.log('viaduct variant', JSON.stringify({ total: v.cost.total, valid: v.valid, violations: v.violations.map((x) => x.msg), runs: v.runs.map((r) => [r.kind, Math.round(r.s0), Math.round(r.length)]) }));
+  console.log('viaduct variant', JSON.stringify({ total: v.cost.total, valid: v.valid, violations: v.violations.map((x) => `${x.title} — ${x.fix}`), runs: v.runs.map((r) => [r.kind, Math.round(r.s0), Math.round(r.length)]) }));
 }
 const r = await page.evaluate(() => {
   const res = window.trapla.result();

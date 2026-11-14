@@ -1,16 +1,33 @@
-// Norm checks as per-family functions (roads now; rail would add its own family using cant).
+// Norm checks as per-family functions (roads now; rail would add its own family using cant), and the
+// player-facing violation messages: a short headline, ONE concrete fix with a number wherever one can be
+// computed, a plain-words explanation, and what the requirement rests on (a norm, a game rule, or a
+// limitation of the game's own solvers).
 
-import { MAX_DEFLECTION, ratioExcess, type Alignment } from './horizontal';
+import { CATEGORIES, type CategoryId } from './data/categories';
+import { horizontalRules, SPEED_NORMS, type SpeedNorms } from './data/norms';
+import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
+import { buildAlignment, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
 import type { Profile } from './vertical';
-import type { SpeedNorms } from './data/norms';
 
 export type ViolationKind =
   | 'radius' | 'transition' | 'arcShort' | 'compound' | 'gradient' | 'crest' | 'sag' | 'vcOverlap' | 'oob'
   | 'category' | 'time' | 'profile' | 'section' | 'crossing';
 
+/** what a requirement rests on: a design norm, a rule / simplification of the game, or a limitation of
+ *  the game's solvers (they found no valid shape although one may exist) */
+export type ViolationBasis = 'norm' | 'game' | 'engine';
+
 export interface Violation {
   kind: ViolationKind;
-  msg: string;
+  /** short headline in everyday words (no location: s0 / s1 give that) */
+  title: string;
+  /** one concrete fix, with the number to set / the distance to move where it can be computed */
+  fix: string;
+  /** why, in plain words (and other ways to fix it) */
+  detail?: string;
+  basis: ViolationBasis;
+  /** the requirement in plain words with its source, e.g. "ČSN 73 6101: …" */
+  rule: string;
   /** station range, m (may be equal) */
   s0: number;
   s1: number;
@@ -23,48 +40,155 @@ export interface Violation {
   pis?: number[];
 }
 
+/** one-line form for logs and scripts */
+export const violationText = (v: Violation) => `${v.title} — ${v.fix}`;
+
+export const BASIS_LABEL: Record<ViolationBasis, string> = { norm: 'norm', game: 'game rule', engine: 'engine limit' };
+
+/** the inputs of the alignment, so that fixes (e.g. the largest radius that fits) can be computed */
+export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[] }
+
 export interface CheckFamily {
-  horizontal(al: Alignment, norms: SpeedNorms): Violation[];
+  horizontal(al: Alignment, norms: SpeedNorms, input?: HorizontalInput): Violation[];
   vertical(p: Profile, norms: SpeedNorms, maxGradient: number): Violation[];
 }
 
 const fmt = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
+const up = (v: number, step = 1) => Math.ceil(v / step - 1e-9) * step;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const deg = (rad: number) => fmt((rad * 180) / Math.PI);
+
+// ---- largest radius that fits ----------------------------------------------------------------------
+
+export const R_MAX = 30000;
+
+/**
+ * For bend i: its automatic radius, and the largest radius that adds no horizontal violation (none
+ * involving the bend, and no more in total than with its automatic radius); `max` is null if even the
+ * automatic radius does not fit.
+ * Feasibility is not monotonic in the radius — e.g. room for transitions runs out, then from the
+ * transition-free radius on the curve fits again — so the whole range is sampled (12 % steps plus the
+ * transition-free boundary) and the upper edge of the last feasible stretch refined. A feasible
+ * stretch narrower than the sampling can be missed. The result is rounded down to the editing step
+ * when such a value fits, otherwise to the metre.
+ */
+export function radiusOptions(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number): { auto: number; max: number | null } | null {
+  const rules = horizontalRules(speed);
+  const viol = (r: number | null) => {
+    const al = buildAlignment(a, b, pis.map((p, k) => (k === i ? { ...p, r } : p)), rules);
+    return { al, v: horizontalViolations(al, speed) };
+  };
+  const base = viol(null);
+  const c0 = base.al.curves[i];
+  if (!c0 || c0.unit < 0) return null;
+  const auto = c0.rEff;
+  if (base.v.some((x) => x.pis?.includes(i))) return { auto, max: null };
+  const fits = (r: number) => { const { v } = viol(r); return v.length <= base.v.length && !v.some((x) => x.pis?.includes(i)); };
+  const start = Math.max(c0.rEff, rules.minRadius);
+  const samples: number[] = [];
+  for (let r = start; r < R_MAX; r *= 1.12) samples.push(r);
+  const plain = Math.ceil(rules.plainRadius);
+  if (plain > start && plain < R_MAX) samples.push(plain, plain + 5);
+  samples.push(R_MAX);
+  samples.sort((p, q) => p - q);
+  let best = -1;
+  samples.forEach((r, k) => { if (fits(r)) best = k; });
+  if (best < 0) return { auto, max: null };
+  if (best === samples.length - 1) return { auto, max: R_MAX };
+  let lo = samples[best], hi = samples[best + 1];
+  for (let it = 0; it < 24 && hi - lo > 0.5; it++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+  // a round number at the editing step if one fits just below the edge
+  const step = lo >= 400 ? 5 : 1;
+  for (const r of [Math.floor(hi / step) * step, Math.floor(lo / step) * step, Math.floor(lo)]) if (r > 0 && fits(r)) return { auto, max: r };
+  return { auto, max: lo };
+}
+
+/** largest radius for bend i that adds no horizontal violation; null if even the automatic one does not fit */
+export function maxRadiusThatFits(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number): number | null {
+  return radiusOptions(a, b, pis, i, speed)?.max ?? null;
+}
 
 // ---- horizontal (roads) --------------------------------------------------------------------------
-// Every message names the bends, says what is required against what is available, and offers a fix.
 
 const bend = (k: number) => `bend ${k + 1}`;
 const bends = (a: number, b: number) => (a === b ? bend(a) : b === a + 1 ? `bends ${a + 1} and ${b + 1}` : `bends ${a + 1}–${b + 1}`);
 /** two neighbours (points between them that carry no curve are not counted) */
 const pair = (a: number, b: number) => `bends ${a + 1} and ${b + 1}`;
 const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+const R = (r: number) => `R ${fmt(r)} m`;
+const MAX_RADIUS_SEARCHES = 4;
 
-export function horizontalViolations(al: Alignment, speed: number): Violation[] {
+export function horizontalViolations(al: Alignment, speed: number, input?: HorizontalInput): Violation[] {
   const out: Violation[] = [];
-  const R = al.rules, lt = R.transition, tol = 1e-6;
+  const RR = al.rules, lt = RR.transition, tol = 1e-6;
+  const plain = Math.ceil(RR.plainRadius);
+  const rules = {
+    minRadius: `ČSN 73 6101: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
+    easing: `ČSN 73 6101: curves need an easing curve (transition, at least ${fmt(lt)} m) at each end, and these must fit between the bends. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
+    reverse: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
+    compound: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): where two curves turning the same way meet without a straight between them, one radius may be at most ${fmt(RR.compoundRatio)}× the other`,
+    uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
+    noJoin: 'Engine limitation: the curve solver found no single curve through these bends that fits between their neighbours; one may still exist — moving a bend a little may help',
+  };
+  // fixes that need the design itself (only when the caller passed it; never in the radius search).
+  // A search costs ~25 ms on a 13-bend route, so only the first few bends get one per evaluation.
+  const cache = new Map<number, ReturnType<typeof radiusOptions>>();
+  const options = (k: number) => {
+    if (!input || !input.pis[k] || (!cache.has(k) && cache.size >= MAX_RADIUS_SEARCHES)) return null;
+    if (!cache.has(k)) cache.set(k, radiusOptions(input.a, input.b, input.pis, k, speed));
+    return cache.get(k)!;
+  };
+  /** for a hand-set radius among `cs` that is too large: "Set bend k back to auto (R …) or to at most R …" */
+  const reduceFix = (cs: (CurveInfo | null)[]) => {
+    let best: { c: CurveInfo; auto: number; max: number } | null = null;
+    for (const c of cs) {
+      if (!c || c.auto) continue;
+      const o = options(c.index);
+      if (!o || o.max === null || o.max >= c.r - 0.5) continue;
+      if (!best || o.max / c.r > best.max / best.c.r) best = { c, auto: o.auto, max: o.max };
+    }
+    if (!best) return null;
+    const auto = up(best.auto);
+    return {
+      bend: best.c.index,
+      text: best.max - auto < 5 ? `Set ${bend(best.c.index)} back to auto (${R(auto)})`
+        : `Set ${bend(best.c.index)} back to auto (${R(auto)}) or to at most ${R(best.max)}`,
+    };
+  };
+  const autoOf = (k: number) => { const o = options(k); return o ? ` (${R(up(o.auto))})` : ''; };
+
   for (const c of al.curves) {
     if (!c.tooSharp) continue;
     out.push({
       kind: 'radius', s0: c.sStart, s1: c.sEnd, pi: c.index, pis: [c.index],
-      msg: `${bend(c.index)}: a turn of ${fmt((c.delta * 180) / Math.PI)}° is a near U-turn, no curve fits (limit ${fmt((MAX_DEFLECTION * 180) / Math.PI)}°) — move it or its neighbours to open the angle, or add a bend to split the turn`,
+      title: `${cap(bend(c.index))} turns back almost on itself`,
+      fix: `Move ${bend(c.index)} or its neighbours so that the road turns less than ${deg(MAX_DEFLECTION)}° there (now ${deg(c.delta)}°)`,
+      detail: 'No curve can be built for a near U-turn. You can also add a bend next to it to split the turn in two.',
+      basis: 'game', rule: rules.uturn,
     });
   }
   for (const u of al.units) {
     const where = { s0: u.sStart, s1: Math.max(u.sEnd, u.sStart), pi: u.first, pis: range(u.first, u.last) };
-    const trans = `${u.transitions === 2 ? 'two ' : ''}${fmt(lt)} m transition${u.transitions === 2 ? 's' : ''}`;
+    const easeNeed = (u.transitions * lt) / 2;
     if (u.first === u.last) {
       const c = al.curves[u.first];
-      if (c.r < R.minRadius - tol) {
+      if (c.r < RR.minRadius - tol) {
         out.push({
           kind: 'radius', ...where,
-          msg: `${bend(c.index)}: radius ${fmt(c.r)} m is below the ${fmt(R.minRadius)} m minimum for ${speed} km/h — set it to ≥ ${fmt(R.minRadius)} m or back to auto (or lower the design speed)`,
+          title: `${cap(bend(c.index))} is too sharp for ${speed} km/h`,
+          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto${autoOf(c.index)}`,
+          detail: `Its radius is ${R(c.r)}; ${speed} km/h needs at least ${R(RR.minRadius)}. A lower design speed allows sharper curves.`,
+          basis: 'norm', rule: rules.minRadius,
         });
       }
-      if (u.transitions > 0 && c.r * c.delta < (u.transitions * lt) / 2 - tol) {
-        const need = Math.ceil(lt / c.delta);
+      if (u.transitions > 0 && c.r * c.delta < easeNeed - tol) {
+        const need = Math.min(Math.ceil(lt / c.delta), plain);
         out.push({
           kind: 'arcShort', ...where,
-          msg: `${bend(c.index)}: at radius ${fmt(c.r)} m its arc is only ${fmt(c.r * c.delta)} m long, too short for its ${trans} — raise the radius to ≥ ${fmt(Math.min(need, Math.ceil(R.plainRadius)))} m${need > R.plainRadius ? ' (no transitions needed from there)' : ''} or set it back to auto`,
+          title: `${cap(bend(c.index))}: curve too short for its easing curves`,
+          fix: `Set ${bend(c.index)} to at least ${R(need)}, or back to auto${autoOf(c.index)}`,
+          detail: `At ${R(c.r)} this gentle turn (${deg(c.delta)}°) gives a curve only ${fmt(c.r * c.delta)} m long, but its easing curves take ${fmt(easeNeed)} m of it.${need >= plain ? ` From ${R(plain)} on no easing curves are needed.` : ''}`,
+          basis: 'norm', rule: rules.easing,
         });
       }
       continue;
@@ -74,26 +198,43 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
     const gaps = al.joints.filter((j) => j.kind === 'compound' && j.from >= u.first && j.to <= u.last).map((j) => j.length);
     const apart = gaps.length === 1 || Math.round(Math.min(...gaps)) === Math.round(Math.max(...gaps))
       ? `${fmt(Math.min(...gaps))} m apart` : `${fmt(Math.min(...gaps))}–${fmt(Math.max(...gaps))} m apart`;
+    const name = bends(u.first, u.last);
+    /** joined automatically, the curve's radii and length grow about in proportion to the spacing */
+    const spread = (factor: number) => u.last === u.first + 1
+      ? `Move ${name} about ${fmt(up(gaps[0] * (factor - 1), 5))} m further apart`
+      : `Spread ${name} out so that the gaps between them grow by about ${fmt(up((factor - 1) * 100, 5))} %`;
     let worst: (typeof members)[number] | null = null;
     for (const c of members) {
-      if (c.rEff >= R.minRadius - tol) continue;
+      if (c.rEff >= RR.minRadius - tol) continue;
       if (!c.auto) {
         out.push({
           kind: 'radius', s0: c.sStart, s1: c.sEnd, pi: c.index, pis: [c.index],
-          msg: `${bend(c.index)} (part of the curve through ${bends(u.first, u.last)}): radius ${fmt(c.rEff)} m is below the ${fmt(R.minRadius)} m minimum for ${speed} km/h — set it to ≥ ${fmt(R.minRadius)} m or back to auto`,
+          title: `${cap(bend(c.index))} is too sharp for ${speed} km/h`,
+          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto${autoOf(c.index)}`,
+          detail: `It is part of one curve through ${name}; its radius is ${R(c.rEff)}, ${speed} km/h needs at least ${R(RR.minRadius)}.`,
+          basis: 'norm', rule: rules.minRadius,
         });
       } else if (!worst || c.rEff < worst.rEff) worst = c;
     }
     if (worst) {
       out.push({
         kind: 'radius', ...where, pi: worst.index,
-        msg: `${bends(u.first, u.last)} turn the same way ${apart}: they are joined as one curve, but its radius ${fmt(worst.rEff)} m${u.last > u.first + 1 ? ` at ${bend(worst.index)}` : ''} < minimum ${fmt(R.minRadius)} m — move them apart or reduce the turn`,
+        title: `${cap(name)} merge into one curve that is too sharp`,
+        fix: `${spread(RR.minRadius / worst.rEff)}, or make them turn less`,
+        detail: `${cap(name)} turn the same way only ${apart}, so they are drawn as one curve; its radius${u.last > u.first + 1 ? ` at ${bend(worst.index)}` : ''} is ${R(worst.rEff)}, but ${speed} km/h needs at least ${R(RR.minRadius)}. Further apart, the curve gets wider.`,
+        basis: 'norm', rule: rules.minRadius,
       });
     }
-    if (u.transitions > 0 && u.arcLen < (u.transitions * lt) / 2 - tol) {
+    if (u.transitions > 0 && u.arcLen < easeNeed - tol) {
+      const manual = members.filter((c) => !c.auto);
       out.push({
         kind: 'arcShort', ...where,
-        msg: `${bends(u.first, u.last)}: the curve joined from them is only ${fmt(u.arcLen)} m long, too short for its ${trans} (needs ${fmt((u.transitions * lt) / 2)} m) — move them apart, or raise the radii to ≥ ${fmt(Math.ceil(R.plainRadius))} m where no transitions are needed`,
+        title: `${cap(name)}: joined curve too short for its easing curves`,
+        fix: manual.length
+          ? `Set ${manual.map((c) => bend(c.index)).join(' and ')} to at least ${R(plain)} (no easing curves needed), or back to auto`
+          : `${spread(easeNeed / Math.max(1, u.arcLen))}, or set their radii to at least ${R(plain)}`,
+        detail: `${cap(name)} turn the same way ${apart} and are drawn as one curve, only ${fmt(u.arcLen)} m long; its easing curves take ${fmt(easeNeed)} m of it.`,
+        basis: 'norm', rule: rules.easing,
       });
     }
   }
@@ -103,14 +244,17 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
     if (j.kind === 'compound') {
       if (!a || !b) continue;
       const lo = Math.min(a.rEff, b.rEff), hi = Math.max(a.rEff, b.rEff);
-      if (ratioExcess(lo, hi, R) === 0) continue;
+      if (ratioExcess(lo, hi, RR) === 0) continue;
       const big = a.rEff > b.rEff ? a : b, small = big === a ? b : a;
-      const fix = !big.auto ? `reduce the radius of ${bend(big.index)} (to ≤ ${fmt(Math.floor(lo * R.compoundRatio))} m, or far enough that the two no longer touch) or set it back to auto`
-        : !small.auto ? `set the radius of ${bend(small.index)} to ≥ ${fmt(Math.ceil(hi / R.compoundRatio))} m or back to auto`
-          : 'move the bends so that the turn is spread more evenly, or delete one of them';
+      const fix = !big.auto ? reduceFix([big])?.text ?? `Set ${bend(big.index)} to at most ${R(Math.floor(lo * RR.compoundRatio))}, or back to auto${autoOf(big.index)}`
+        : !small.auto ? `Set ${bend(small.index)} to at least ${R(Math.ceil(hi / RR.compoundRatio))}, or back to auto${autoOf(small.index)}`
+          : `Move ${pair(j.from, j.to)} so that the turn is spread more evenly between them, or delete one`;
       out.push({
         kind: 'compound', ...where,
-        msg: `${pair(j.from, j.to)} are joined as one curve, but their radii ${fmt(a.rEff)} m and ${fmt(b.rEff)} m differ by more than ${fmt(R.compoundRatio)}× — ${fix}`,
+        title: `${cap(pair(j.from, j.to))}: radii too different for one curve`,
+        fix,
+        detail: `They turn the same way ${fmt(j.length)} m apart and are drawn as one curve, with ${R(a.rEff)} at ${bend(a.index)} and ${R(b.rEff)} at ${bend(b.index)}: more than ${fmt(RR.compoundRatio)}× apart.${!big.auto ? ` Moving the bends far enough apart for a straight between the curves also works.` : ''}`,
+        basis: 'norm', rule: rules.compound,
       });
       continue;
     }
@@ -118,33 +262,130 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
     const short = used - j.length;
     if (short <= tol) continue;
     const tf = Math.max(0, j.tFrom), tt = Math.max(0, j.tTo); // (a joined curve may begin past its first bend)
-    const more = `≥ ${fmt(Math.ceil(short))} m`;
+    const more = `${fmt(up(short))} m`;
+    const ease = j.needFrom + j.needTo;
+    const room = `${fmt(tf)} + ${fmt(tt)} m of curve${ease > 0 ? `, ${fmt(ease)} m of ${j.kind === 'reverse' && (j.plainFrom || j.plainTo) ? 'easing curve and straight' : 'easing'}` : ''}`;
+    const need = (what: string) => `${what} need ${fmt(used)} m between ${pair(j.from, j.to)} (${room}), but the bends are only ${fmt(j.length)} m apart.`;
+    const or = (t: string) => `Alternatively, ${t.charAt(0).toLowerCase()}${t.slice(1)}.`;
     if (j.kind === 'end') {
       const c = (a && a.unit >= 0 ? a : b)!;
       const atStart = c === b;
       const other = atStart ? (j.from < 0 ? 'A' : `the U-turn at ${bend(j.from)}`) : j.to < 0 ? 'B' : `the U-turn at ${bend(j.to)}`;
       const t = atStart ? tt : tf, need = atStart ? j.needTo : j.needFrom;
+      const red = reduceFix([c]);
+      const move = `Move ${bend(c.index)} at least ${more} further from ${other}`;
       out.push({
         kind: 'transition', ...where, pi: c.index,
-        msg: `${bend(c.index)} is too close to ${other}: its curve takes ${fmt(t)} m of that leg${need > 0 ? ` and its transition ${fmt(need)} m more` : ''}, but the leg is only ${fmt(j.length)} m — move it ${more} away from ${other}, or reduce its radius or turn`,
+        title: `${cap(bend(c.index))} is too close to ${other}`,
+        fix: red ? red.text : move,
+        detail: `${cap(bend(c.index))} is ${fmt(j.length)} m from ${other}, but its curve needs ${fmt(t)} m of that${need > 0 ? ` plus ${fmt(need)} m for its easing curve` : ''}. ${red ? or(move) : 'A smaller radius or a gentler turn also helps.'}`,
+        basis: 'norm', rule: need > 0 ? rules.easing : rules.minRadius,
       });
     } else if (j.kind === 'reverse') {
-      const between = !j.plainFrom && !j.plainTo ? `their two transitions ${fmt(j.needFrom + j.needTo)} m`
-        : j.plainFrom && j.plainTo ? `arcs without transitions (radius ≥ ${fmt(Math.ceil(R.plainRadius))} m) need a ${fmt(R.reverseStraight)} m straight between them`
-          : `the transition of ${bend(j.plainFrom ? j.to : j.from)} ${fmt(j.plainFrom ? j.needTo : j.needFrom)} m and the straight before the plain arc of ${bend(j.plainFrom ? j.from : j.to)} ${fmt(j.plainFrom ? j.needFrom : j.needTo)} m`;
+      const red = reduceFix([a, b]);
+      const move = `Move ${pair(j.from, j.to)} at least ${more} further apart`;
       out.push({
-        kind: 'transition', ...where,
-        msg: `${pair(j.from, j.to)} turn opposite ways ${fmt(j.length)} m apart: the curves take ${fmt(tf)} + ${fmt(tt)} m of that leg and ${between}, ${fmt(used)} m in all — move them ${more} further apart, reduce a radius, or delete one of them`,
+        kind: 'transition', ...where, pi: red?.bend ?? where.pi,
+        title: `${cap(pair(j.from, j.to))} are too close for an S-bend`,
+        fix: red ? red.text : move,
+        detail: `${need(j.plainFrom && j.plainTo ? 'The two curves and the straight they need between them' : 'The two curves and their easing curves')} ${red ? or(move) : 'Smaller radii or deleting one bend also help.'}`,
+        basis: 'norm', rule: j.plainFrom || j.plainTo ? rules.reverse : rules.easing,
       });
     } else {
       // same direction, too close for a straight; normally such bends are joined into one curve
-      const manual = [a, b].filter((c) => c && !c.auto).map((c) => bend(c!.index));
-      const tail = !j.joinFailed ? ` — move them ${more} further apart, reduce a radius, or delete one of them`
-        : manual.length ? `, and with the radius set on ${manual.join(' and ')} they cannot be joined into one curve either — set it back to auto or reduce it, or move them ${more} further apart`
-          : `, and they could not be joined into one curve that fits between its neighbours — move them ${more} further apart, or delete one of them`;
+      const manual = [a, b].filter((c): c is CurveInfo => !!c && !c.auto);
+      const red = reduceFix([a, b]);
+      const move = `Move ${pair(j.from, j.to)} at least ${more} further apart`;
+      const why = need(`The two curves turning the same way${ease > 0 ? ' plus their easing curves' : ''}`);
+      const join = !j.joinFailed ? ''
+        : manual.length ? ` Bends this close are normally drawn as one curve, but not when you have set a radius by hand (${manual.map((c) => bend(c.index)).join(' and ')}).`
+          : ' They could not be drawn as one curve that fits between their neighbours either.';
       out.push({
-        kind: 'transition', ...where,
-        msg: `${pair(j.from, j.to)} turn the same way ${fmt(j.length)} m apart: their curves take ${fmt(tf)} + ${fmt(tt)} m of that leg${j.needFrom + j.needTo > 0 ? ` and transitions ${fmt(j.needFrom + j.needTo)} m more` : ''}, too much for a straight between them${tail}`,
+        kind: 'transition', ...where, pi: red?.bend ?? manual[0]?.index ?? where.pi,
+        title: `${cap(pair(j.from, j.to))} are too close for their radii`,
+        fix: red ? red.text : `${move}${j.joinFailed && !manual.length ? ', or delete one' : ''}`,
+        detail: `${why}${join} ${red ? or(move) : manual.length ? 'Setting their radii back to auto also helps.' : ''}`.trim(),
+        basis: j.joinFailed && !manual.length ? 'engine' : 'norm',
+        rule: j.joinFailed && !manual.length ? rules.noJoin
+          : `${rules.easing}. (Game: bends closer than that are drawn as one curve instead — but not when a radius is set by hand.)`,
+      });
+    }
+  }
+  return out;
+}
+
+// ---- vertical (roads) ----------------------------------------------------------------------------
+
+export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number): Violation[] {
+  const out: Violation[] = [];
+  const last = p.pts.length - 1;
+  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `VPI ${k}`);
+  const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
+  const gradeRule = `ČSN 73 6101 (older edition, provisional): at most ${fmt(maxGradient * 100, 0)} % gradient for this road in hilly terrain`;
+  for (let i = 0; i < p.grades.length; i++) {
+    const g = p.grades[i];
+    if (Math.abs(g) <= maxGradient + 1e-6) continue;
+    const a = p.pts[i], b = p.pts[i + 1], L = b.s - a.s;
+    const dz = (Math.abs(g) - maxGradient) * L; // height to take out of this stretch
+    const rise = g > 0;
+    // move one interior end of the stretch; prefer the one whose other grade stays (more) within the limit
+    const cands: { k: number; verb: string; other: number }[] = [];
+    if (i > 0) { // move the start: raise it on a climb, lower it on a descent
+      const s = rise ? dz : -dz;
+      cands.push({ k: i, verb: rise ? 'Raise' : 'Lower', other: Math.abs((a.z + s - p.pts[i - 1].z) / (a.s - p.pts[i - 1].s)) });
+    }
+    if (i + 1 < last) {
+      const s = rise ? -dz : dz;
+      cands.push({ k: i + 1, verb: rise ? 'Lower' : 'Raise', other: Math.abs((p.pts[i + 2].z - b.z - s) / (p.pts[i + 2].s - b.s)) });
+    }
+    cands.sort((x, y) => x.other - y.other);
+    const h = Math.ceil(dz * 10 - 1e-6) / 10;
+    const needL = Math.abs(b.z - a.z) / maxGradient;
+    const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${fmt(maxGradient * 100, 0)} %; it has ${fmt(L)} m.`;
+    out.push({
+      kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
+      title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
+      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : `Add a VPI (double-click the profile) or make the route longer here`,
+      detail: `Between ${vpi(i)} and ${vpi(i + 1)} the grade line ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Auto profile finds a grade line within the limit when one exists.`,
+      basis: 'norm', rule: gradeRule,
+    });
+  }
+  const reported = new Set<string>();
+  for (const c of p.curves) {
+    if (c.type === 'none') continue;
+    const where = { s0: c.s - c.lenEff / 2, s1: c.s + c.lenEff / 2, vpi: c.index };
+    const crest = c.type === 'crest';
+    const min = crest ? norms.minCrestRadius : norms.minSagRadius;
+    const word = crest ? 'Crest' : 'Dip';
+    if (c.r < min - 1e-6) {
+      out.push({
+        kind: c.type, ...where,
+        title: `${word} at ${vpi(c.index)} is too sharp`,
+        fix: `Set the ${crest ? 'crest' : 'sag'} radius at ${vpi(c.index)} to at least ${fmt(min)} m (tick "min" in its card)`,
+        detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
+        basis: 'norm', rule: `ČSN 73 6101 (older edition, provisional): ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
+      });
+    }
+    if (c.lenEff < c.len - 1e-3) {
+      // the side where the curve and its neighbour fit worst
+      const k = p.curves.indexOf(c);
+      const side = (dir: -1 | 1) => {
+        const nb = p.curves[k + dir], j = c.index + dir;
+        const space = Math.abs(p.pts[j].s - c.s);
+        return { j, nb, short: c.len / 2 + (nb ? nb.len / 2 : 0) - space };
+      };
+      const l = side(-1), r = side(1);
+      const w = l.short >= r.short ? l : r;
+      const key = `${Math.min(w.j, c.index)}-${Math.max(w.j, c.index)}`;
+      if (reported.has(key)) continue;
+      reported.add(key);
+      const both = !!w.nb && w.nb.type !== 'none' && w.nb.len > 0;
+      out.push({
+        kind: 'vcOverlap', ...where,
+        title: both ? `Vertical curves at ${vpi(Math.min(w.j, c.index))} and ${vpi(Math.max(w.j, c.index))} overlap` : `Vertical curve at ${vpi(c.index)} does not fit`,
+        fix: `Move ${vpi(c.index)} at least ${fmt(up(w.short))} m further from ${vpi(w.j)}`,
+        detail: `The ${crest ? 'crest' : 'dip'} at ${vpi(c.index)} needs ${fmt(c.len)} m (radius × change of grade)${both ? ` and the one at ${vpi(w.j)} ${fmt(w.nb!.len)} m; half of each must fit between the two VPIs` : `; half of it must fit before ${vpi(w.j)}`}, but they are only ${fmt(Math.abs(p.pts[w.j].s - c.s))} m apart. A smaller radius (not below the minimum) or a smaller change of grade also helps.`,
+        basis: 'game', rule: 'Game rule: every vertical curve must fit whole between its neighbours — a squeezed curve would be sharper than its radius says',
       });
     }
   }
@@ -152,31 +393,93 @@ export function horizontalViolations(al: Alignment, speed: number): Violation[] 
 }
 
 export const ROAD_CHECKS: CheckFamily = {
-  horizontal(al, norms) {
-    return horizontalViolations(al, norms.speed);
+  horizontal(al, norms, input) {
+    return horizontalViolations(al, norms.speed, input);
   },
   vertical(p, norms, maxGradient) {
-    const out: Violation[] = [];
-    for (let i = 0; i < p.grades.length; i++) {
-      const g = p.grades[i];
-      if (Math.abs(g) > maxGradient + 1e-6) {
-        out.push({
-          kind: 'gradient', s0: p.pts[i].s, s1: p.pts[i + 1].s, vpi: i,
-          msg: `gradient ${fmt(Math.abs(g) * 100, 1)} % > ${fmt(maxGradient * 100, 1)} %`,
-        });
-      }
-    }
-    for (const c of p.curves) {
-      if (c.type === 'none') continue;
-      const where = { s0: c.s - c.lenEff / 2, s1: c.s + c.lenEff / 2, vpi: c.index };
-      const min = c.type === 'crest' ? norms.minCrestRadius : norms.minSagRadius;
-      if (c.r < min - 1e-6) {
-        out.push({ kind: c.type, ...where, msg: `${c.type} radius ${fmt(c.r)} m < ${fmt(min)} m` });
-      }
-      if (c.lenEff < c.len - 1e-3) {
-        out.push({ kind: 'vcOverlap', ...where, msg: `vertical curve (${fmt(c.len)} m) overlaps its neighbour — move VPIs apart` });
-      }
-    }
-    return out;
+    return verticalViolations(p, norms, maxGradient);
   },
 };
+
+// ---- other checks of the evaluation (messages only; the conditions live in evaluate.ts) --------------
+
+/** a side slope that does not reach the ground within `width` m; `above` = largest grade − ground there */
+export function slopeViolation(s0: number, s1: number, above: number, below: number, width: number): Violation {
+  const fill = above >= below;
+  return {
+    kind: 'section', s0, s1,
+    title: fill ? 'Embankment never reaches the ground' : 'Cutting never reaches the top of the slope',
+    fix: fill ? `Lower the grade line here (now up to ${fmt(above, 1)} m above the ground), or move the road off the steep hillside`
+      : `Raise the grade line here (now up to ${fmt(below, 1)} m below the ground), or move the road off the steep hillside`,
+    detail: `The hillside is about as steep as the ${fill ? 'embankment' : 'cutting'} slope, so the side slope runs on for more than ${fmt(width)} m without meeting the ground.`,
+    basis: 'game', rule: `Game limit: side slopes are modelled only ${fmt(width)} m to each side of the road`,
+  };
+}
+
+/** the grade too low over a river / railway (`below` undefined), or neither above nor below a motorway */
+export function crossingViolation(s: number, what: string, above: number, need: number, below?: number): Violation {
+  const raise = Math.ceil((need - above) * 10 - 1e-6) / 10;
+  const h = (v: number) => `${fmt(Math.abs(v), 1)} m ${v >= 0 ? 'above' : 'below'} it`;
+  if (below === undefined) {
+    return {
+      kind: 'crossing', s0: s, s1: s,
+      title: `Road too low over the ${what}`,
+      fix: `Raise the grade line here by ${fmt(raise, 1)} m`,
+      detail: `To bridge the ${what} the road must be at least ${fmt(need, 1)} m above it; it is ${h(above)}.`,
+      basis: 'game', rule: `Game assumption: a bridge needs the road at least ${fmt(need, 1)} m above a ${what} (deck plus clearance)`,
+    };
+  }
+  const lower = Math.ceil((above + below) * 10 - 1e-6) / 10;
+  const r = `Raise the grade line here by ${fmt(raise, 1)} m to bridge over it`, l = `lower it by ${fmt(lower, 1)} m to pass under it`;
+  return {
+    kind: 'crossing', s0: s, s1: s,
+    title: `The ${what} cannot be crossed on the level`,
+    fix: raise <= lower ? `${r} (or ${l})` : `${cap(l)} (or ${r.charAt(0).toLowerCase()}${r.slice(1)})`,
+    detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (an overbridge carries it over our cutting); it is ${h(above)}.`,
+    basis: 'norm', rule: `ČSN 73 6101: motorways and expressways are crossed only at a different level (research/08). The ${fmt(need, 1)} m / ${fmt(below, 1)} m heights are game estimates`,
+  };
+}
+
+export function oobViolation(s0: number, s1: number, length: number): Violation {
+  return {
+    kind: 'oob', s0, s1,
+    title: 'Road leaves the map',
+    fix: 'Move the route back inside the play area',
+    detail: `${fmt(length)} m of the road or its side slopes lie outside the terrain data.`,
+    basis: 'game', rule: 'Game limit: the road and its slopes must stay on the terrain data',
+  };
+}
+
+export function profileViolation(length: number, maxGradient: number): Violation {
+  return {
+    kind: 'profile', s0: 0, s1: length,
+    title: 'Auto profile found no valid grade line',
+    fix: 'Make the route climb more gently (longer, or along the hillside), or drag the VPIs in the profile yourself',
+    detail: `No grade line it tried stays within ${fmt(maxGradient * 100, 0)} % with the minimum crest and dip radii and the required clearances. The other messages show where it fails.`,
+    basis: 'engine', rule: 'Engine limitation: the auto profile searches a limited set of grade lines; a valid one may still exist',
+  };
+}
+
+export function categoryViolation(length: number, category: CategoryId, traffic: number, needed: CategoryId): Violation {
+  const cap = (c: CategoryId) => TRAFFIC_THRESHOLDS.find((t) => t.category === c)?.maxAadt ?? Infinity;
+  const short = (c: CategoryId) => CATEGORIES[c].label.split(' (')[0];
+  return {
+    kind: 'category', goal: true, s0: 0, s1: length,
+    title: 'Road too narrow for the traffic',
+    fix: `Switch the category to ${CATEGORIES[needed].label}`,
+    detail: `${short(category)} carries up to ${fmt(cap(category))} vehicles a day; the scenario expects ${fmt(traffic)}.${CATEGORY_RANK[needed] >= CATEGORY_RANK['D27.5'] ? ' (No playable category is wide enough.)' : ''}`,
+    basis: 'norm', rule: 'TP 188 / TP 189: the road must keep traffic flowing at level of service C in the design hour (research/14)',
+  };
+}
+
+export function timeViolation(length: number, speed: number, travelMin: number, maxMin: number): Violation {
+  const maxLen = (maxMin * 60 * speed) / 3.6;
+  const faster = Object.keys(SPEED_NORMS).map(Number).filter((v) => v > speed && (length / (v / 3.6)) / 60 <= maxMin).sort((p, q) => p - q)[0];
+  return {
+    kind: 'time', goal: true, s0: 0, s1: length,
+    title: `Too slow: ${fmt(travelMin, 2)} min`,
+    fix: `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m${faster ? ` (or raise the design speed to ${faster} km/h)` : ''}`,
+    detail: `Travel time is length ÷ design speed: ${fmt(length / 1000, 2)} km at ${speed} km/h. The target is ${fmt(maxMin, 1)} min, i.e. at most ${fmt(maxLen / 1000, 2)} km at ${speed} km/h.${faster ? ' A higher design speed needs wider curves.' : ''}`,
+    basis: 'game', rule: `Scenario goal: travel time at most ${fmt(maxMin, 1)} min`,
+  };
+}

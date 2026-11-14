@@ -53,11 +53,20 @@ td:nth-child(2) { text-align: right; padding-left: 8px; }
 tr.bad td { color: #d7301f; font-weight: 600; } tr.warn td { color: #b35a00; }
 .count { background: #d7301f; color: #fff; border-radius: 9px; padding: 0 7px; font-size: 11px; margin-left: 4px; }
 .count.ok { background: #1a9850; }
-#viol { margin: 0; padding-left: 18px; max-height: 220px; overflow-y: auto; font-size: 12px; }
-#viol li { cursor: pointer; padding: 2px 0; color: #9b1c12; }
+#viol { margin: 0; padding: 0; list-style: none; max-height: 420px; overflow-y: auto; font-size: 12px; }
+#viol li { cursor: pointer; padding: 4px 4px 5px; border-bottom: 1px solid #f0e6e4; display: grid; grid-template-columns: 58px 1fr; }
+#viol li:last-child { border-bottom: 0; }
 #viol li:hover { background: #fff2ef; }
-#viol li.goal { color: #7a4a00; }
-#viol li.none { color: #1a7a40; cursor: default; list-style: none; margin-left: -18px; }
+#viol .vt { color: #9b1c12; font-weight: 600; }
+#viol li.goal .vt { color: #7a4a00; }
+#viol .vfix { color: #223; margin-top: 1px; }
+#viol .vmeta { margin-top: 1px; font-size: 11px; color: #99a; }
+#viol .basis { border: 1px solid #ccd; border-radius: 3px; padding: 0 3px; font-size: 10px; color: #778; }
+#viol .basis.engine { border-color: #d9b56b; color: #8a6400; }
+#viol .why { border: 0; background: none; padding: 0 0 0 6px; color: #5470a0; font-size: 11px; cursor: pointer; text-decoration: underline dotted; }
+#viol .vdetail { margin-top: 3px; color: #556; }
+#viol .vdetail small { display: block; margin-top: 2px; color: #889; }
+#viol li.none { color: #1a7a40; cursor: default; display: block; }
 .where { display: inline-block; min-width: 58px; color: #888; font-variant-numeric: tabular-nums; }
 .pi-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .pi-row input[type=number] { width: 70px; }
