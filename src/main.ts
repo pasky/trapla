@@ -8,6 +8,8 @@ import { cellsInRange } from './core/range';
 import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
 import { CrossingRenderer } from './render/crossings';
+import { BuildingPicker } from './render/building-pick';
+import { setBuildingOverride } from './core/build-controls';
 import { BuildTools } from './ui/build-tools';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -46,7 +48,12 @@ async function main() {
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
   const tools = new BuildTools(document.getElementById('hud')!);
-  const annotations = new BuildAnnotations(view, document.getElementById('overlay')!);
+  const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
+  const buildingPicker = new BuildingPicker(view, pack);
+  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); };
+  annotations.onBuilding = selectBuilding;
+  tools.ev.selectBuilding = selectBuilding;
+  tools.ev.building = (j, action) => store.update((d) => { d.buildingOverrides = setBuildingOverride(d.buildingOverrides ?? [], j, action); });
   const selectStation = (s: number) => { tools.selectStation(s); profile.selectStation(s); };
   annotations.onPin = selectStation;
   tools.ev.selectStation = selectStation;
@@ -142,6 +149,8 @@ async function main() {
   // ---- map interactions ----
   view.ev = {
     onPickTerrain: (x, y, clientX, clientY) => {
+      const building = buildingPicker.at(clientX, clientY, { x, y, z: pack.terrain.heightAt(x, y) });
+      if (building !== null) { selectBuilding(building); return; }
       const rect = view.renderer.domElement.getBoundingClientRect();
       const mx = clientX - rect.left, my = clientY - rect.top;
       let picked: number | null = null, distance = 12;
@@ -273,6 +282,7 @@ async function main() {
     selectPi,
     selectStation,
     selectCrossing,
+    selectBuilding,
     maxRadius: (i: number) => curveEdit.maxRadius(i),
     pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
     project: (x: number, y: number, z: number) => view.project(x, y, z),

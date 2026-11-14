@@ -3,6 +3,8 @@ import './build-tools.css';
 import type { Design, Result } from '../core/evaluate';
 import { crossingChoice, crossingLabel, type CrossingChoice } from '../core/crossings';
 import { ROAD_CLASSES } from '../core/data/urban';
+import type { BuildingOverride } from '../core/build-controls';
+import { czk } from './costgroups';
 import type { StationRange } from '../state';
 
 export interface BuildToolEvents {
@@ -10,12 +12,15 @@ export interface BuildToolEvents {
   selectStation?: (s: number) => void;
   crossing?: (roadId: number, type: CrossingChoice | null) => void;
   selectCrossing?: (roadId: number) => void;
+  building?: (j: number, action: BuildingOverride['action'] | null) => void;
+  selectBuilding?: (j: number) => void;
 }
 
 export class BuildTools {
   ev: BuildToolEvents = {};
   station: number | null = null;
   crossing: number | null = null;
+  building: number | null = null;
   private range: StationRange | null = null;
   private r: Result | null = null;
   private d: Design | null = null;
@@ -28,9 +33,31 @@ export class BuildTools {
     this.render();
   }
   setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
-  selectStation(s: number) { this.station = s; this.render(); }
-  selectCrossing(roadId: number) { this.crossing = roadId; this.render(); }
+  selectStation(s: number) { this.station = s; this.crossing = this.building = null; this.render(); }
+  selectCrossing(roadId: number) { this.crossing = roadId; this.station = this.building = null; this.render(); }
+  selectBuilding(j: number) { this.building = j; this.station = this.crossing = null; this.render(); }
   setRange(range: StationRange | null) { this.range = range; this.render(); }
+  private renderBuilding(r: Result, d: Design) {
+    const j = this.building;
+    if (d.buildingOverrides?.length) {
+      const saved = document.createElement('select');
+      saved.id = 'building-list'; saved.title = 'Select a saved building decision';
+      saved.innerHTML = '<option value="">Building decisions…</option>' + d.buildingOverrides.map((o) => `<option value="${o.j}">#${o.j} · ${o.action === 'keep' ? 'keep' : 'buy out'}</option>`).join('');
+      saved.onchange = () => { if (saved.value !== '') this.ev.selectBuilding?.(Number(saved.value)); };
+      this.root.appendChild(saved);
+    }
+    if (j === null) return;
+    const action = d.buildingOverrides?.find((o) => o.j === j)?.action;
+    const removed = r.demolished.find((p) => p.j === j), bought = r.boughtOut.find((p) => p.j === j);
+    const kept = r.kept.find((p) => p.j === j), receiver = r.noise.receivers.find((p) => p.j === j);
+    const box = document.createElement('div');
+    const state = removed ? `Footprint demolition · ${czk(removed.cost)}` : bought ? `${bought.reason === 'manual' ? 'Player' : 'Noise'} buyout + demolition · ${czk(bought.cost)}` : kept?.hit ? 'Kept — footprint/working-strip conflict' : receiver?.unresolved ? `Retained — ${receiver.unresolved.excess.toFixed(1)} dB over limit` : 'Retained';
+    box.innerHTML = `<p><b>Building #${j}</b> · ${state}</p><label>Decision <select id="building-choice" title="Auto demolishes footprint/working-strip hits and buys out dwellings if 3–5 m automatic walls and cut edges cannot protect them. Otherwise the building stays."><option value="">Auto</option><option value="buy">Buy out + demolish</option><option value="keep">Keep — forbid acquisition</option></select></label><div class="sub">Off-corridor buyouts include the same provisional plot allowance as noise acquisitions. Keep blocks demolition and noise buyout; conflicts are violations.</div>`;
+    const select = box.querySelector<HTMLSelectElement>('select')!;
+    select.value = action ?? '';
+    select.onchange = () => this.ev.building?.(j, select.value as BuildingOverride['action'] || null);
+    this.root.appendChild(box);
+  }
   private renderCrossings(r: Result, d: Design) {
     const box = document.createElement('div');
     const range = this.range;
@@ -54,8 +81,9 @@ export class BuildTools {
   }
   private render() {
     const r = this.r, d = this.d, s = this.station;
-    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a crossing on the map or choose it here. Select a cost-strip stretch for B/T/E/C structures. All choices are undoable.</div>`;
+    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a building or crossing on the map; choose its action here. Select a cost-strip stretch for B/T/E/C structures. All choices are undoable.</div>`;
     if (!r || !d) return;
+    this.renderBuilding(r, d);
     this.renderCrossings(r, d);
     if (d.gradePins?.length) {
       const list = document.createElement('select');

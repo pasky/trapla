@@ -1,15 +1,21 @@
 // Small, pickable annotations for explicit player decisions, separate from the route meshes.
 import type { Design, Result } from '../core/evaluate';
 import type { View } from './view';
+import type { Pack } from '../scenario';
 
 export class BuildAnnotations {
   private points: { el: HTMLButtonElement; x: number; y: number; z: number }[] = [];
   onPin?: (s: number) => void;
-  constructor(private view: View, private overlay: HTMLElement) {
+  onBuilding?: (j: number) => void;
+  private selectedBuilding: number | null = null;
+  private current: { r: Result; d: Design } | null = null;
+  constructor(private view: View, private overlay: HTMLElement, private pack: Pack) {
     const prev = view.onRender;
     view.onRender = () => { prev?.(); this.position(); };
   }
+  selectBuilding(j: number) { this.selectedBuilding = j; if (this.current) this.setResult(this.current.r, this.current.d); }
   setResult(r: Result, d: Design) {
+    this.current = { r, d };
     for (const p of this.points) p.el.remove();
     this.points = [];
     for (const pin of d.gradePins ?? []) {
@@ -20,6 +26,16 @@ export class BuildAnnotations {
       this.add(x, y, Math.max(pin.z, r.ground[i]) + 5, '●', 'grade-pin',
         `Pinned grade ${pin.z.toFixed(1)} m at km ${(pin.s / 1000).toFixed(3)}${d.profileMode === 'manual' ? ' (inactive in Manual)' : ''}`,
         () => this.onPin?.(pin.s));
+    }
+    const buildings = new Map<number, 'buy' | 'keep' | undefined>((d.buildingOverrides ?? []).map((o) => [o.j, o.action]));
+    if (this.selectedBuilding !== null && !buildings.has(this.selectedBuilding)) buildings.set(this.selectedBuilding, undefined);
+    for (const [j, action] of buildings) {
+      const b = this.pack.overlays.buildings[j];
+      if (!b) continue;
+      this.add(b[0], b[1], this.pack.terrain.heightAt(b[0], b[1]) + 12,
+        action === 'keep' ? 'KEEP' : action === 'buy' ? 'BUY' : '?',
+        action === 'keep' ? 'kept-building' : action === 'buy' ? 'bought-building' : 'selected-building',
+        `Building #${j}: ${action ?? 'automatic'} — click to edit`, () => this.onBuilding?.(j));
     }
     this.position();
   }

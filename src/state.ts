@@ -5,6 +5,7 @@ import type { Design } from './core/evaluate';
 import { normalizeOverrides } from './core/overrides';
 import { normalizeGradePins } from './core/grade-pins';
 import { normalizeCrossingOverrides } from './core/crossings';
+import { normalizeBuildingOverrides } from './core/build-controls';
 
 /** Score compatibility includes both code rules and the ground pack used to price the design. */
 export interface Best { cost: number; design: Design; at: string; model?: number; pricingData?: string }
@@ -14,6 +15,7 @@ const normalizeDesign = (d: Design) => {
   d.structureOverrides = normalizeOverrides(d.structureOverrides);
   d.gradePins = normalizeGradePins(d.gradePins);
   d.crossingOverrides = normalizeCrossingOverrides(d.crossingOverrides);
+  d.buildingOverrides = normalizeBuildingOverrides(d.buildingOverrides);
 };
 
 export class Store {

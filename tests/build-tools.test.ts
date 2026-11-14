@@ -5,10 +5,43 @@ import { syntheticTerrain } from '../src/core/terrain';
 import { startDesign, Store } from '../src/state';
 import { RoadNet } from '../src/core/roadnet';
 import { PART_KEYS } from '../src/core/cost';
+import { BuildingIndex, noiseBuyoutCost } from '../src/core/buildings';
 
 const terrain = syntheticTerrain(500, 80, 5, () => 400);
 const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } };
 afterEach(() => vi.unstubAllGlobals());
+
+describe('building decisions through the full bill', () => {
+  const buildings = new BuildingIndex([[1100, 200, 7], [1200, 350, 7], [1100, 230, 7]],
+    [[100, 2, 0, 1100, 200, 5, 5, 0], [100, 2, 0, 1200, 350, 5, 5, 0], [100, 12, 1, 1100, 230, 5, 5, 0]]);
+  const context = { ...ctx, buildings };
+  it('keeps footprint collisions invalid and unbilled, buys any off-corridor building once, and restores Auto', () => {
+    const d = startDesign(), base = evaluate(context, d);
+    expect(base.demolished.some((p) => p.j === 0)).toBe(true);
+    d.buildingOverrides = [{ j: 0, action: 'keep' }, { j: 1, action: 'buy' }];
+    const r = evaluate(context, d);
+    expect(r.kept).toContainEqual({ j: 0, i: 100, hit: true });
+    expect(r.demolished.some((p) => p.j === 0)).toBe(false);
+    expect(r.boughtOut.some((p) => p.j === 0)).toBe(false);
+    expect(r.violations.some((v) => v.kind === 'building')).toBe(true);
+    expect(r.boughtOut.find((p) => p.j === 1)?.cost).toBe(noiseBuyoutCost(buildings.cost[1], buildings.area[1]));
+    d.buildingOverrides = [{ j: 0, action: 'buy' }];
+    const boughtHit = evaluate(context, d);
+    expect(boughtHit.demolished.filter((p) => p.j === 0)).toHaveLength(1);
+    expect(boughtHit.boughtOut.some((p) => p.j === 0)).toBe(false);
+    d.buildingOverrides = [];
+    expect(evaluate(context, d).cost).toEqual(base.cost);
+  });
+  it('turns a kept noise-infeasible apartment into a blocking dB violation instead of acquisition', () => {
+    const base = evaluate(context, startDesign());
+    expect(base.boughtOut.some((p) => p.j === 2)).toBe(true);
+    const r = evaluate(context, { ...startDesign(), buildingOverrides: [{ j: 2, action: 'keep' }] });
+    expect(r.boughtOut.some((p) => p.j === 2)).toBe(false);
+    expect(r.noise.receivers.find((p) => p.j === 2)?.unresolved?.excess).toBeGreaterThan(0);
+    expect(r.violations.some((v) => v.kind === 'noise' && v.title.includes('dB') && v.fix.includes('#2'))).toBe(true);
+    expect(r.valid).toBe(false);
+  });
+});
 
 describe('crossing choices through the full bill', () => {
   const roadContext = (cls: string) => ({ ...ctx,

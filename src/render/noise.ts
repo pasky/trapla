@@ -155,7 +155,7 @@ export class NoiseLayer {
       <div>${STEPS.map(([t, c], k) => `<span>${sw(c)}${k ? `+${t}…+${STEPS[k - 1][0]}` : `≥ +${t}`} dB</span>`).join('')}
         <span>${sw(FADE.color, 'box-shadow:inset 0 0 0 1px #d8cf9c')}just below the limit</span><span><i class="lim"></i>limit</span></div>
       <div>Dwellings: ${b(NOISE_COLORS.wall, 'behind a wall')}${b(NOISE_COLORS.cut, 'screened by a cut')}${b(NOISE_COLORS.ok, 'within limit')}
-        ${b(NOISE_COLORS.bought, 'bought out (noise)')}${b(NOISE_COLORS.demolished, 'demolished (footprint)')}</div>
+        ${b(NOISE_COLORS.bought, 'bought out')}${b(NOISE_COLORS.demolished, 'demolished (footprint)')}${b(0xe87718, 'retained, over limit')}</div>
       <div class="hint">Top-floor façade decides walls and buyouts. Hover a building or a wall for details.</div>`;
   }
 
@@ -177,7 +177,8 @@ export class NoiseLayer {
     const colors = new Map<number, number>();
     const r = this.r;
     if (this.on && r) {
-      for (const p of r.noise?.receivers ?? []) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS[p.status]); }
+      for (const p of r.noise?.receivers ?? []) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, p.unresolved ? 0xe87718 : NOISE_COLORS[p.status]); }
+      for (const p of r.boughtOut) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.bought); }
       for (const p of r.demolished) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.demolished); }
     }
     bm.tint(colors, this.on);
@@ -262,6 +263,8 @@ export class NoiseLayer {
     };
     for (const p of r.noise?.receivers ?? []) test(p.j, p);
     for (const p of r.demolished) test(p.j);
+    for (const p of r.boughtOut) test(p.j);
+    for (const p of r.kept) test(p.j);
     if (!best) return null;
     return this.describe((best as { j: number }).j, (best as { rec?: NoiseReceiver }).rec);
   }
@@ -272,6 +275,8 @@ export class NoiseLayer {
     const head = `<b>${kind[0].toUpperCase()}${kind.slice(1)}</b> <span class="tip-sub">${levels} storey${levels > 1 ? 's' : ''}</span>`;
     const dem = r.demolished.find((p) => p.j === j);
     if (dem) return `${head}<div class="tip-fact">In the road footprint (${km(r.s[dem.i])}): demolished, ${czk(dem.cost)}</div>`;
+    const purchase = r.boughtOut.find((p) => p.j === j);
+    if (purchase?.reason === 'manual') return `${head}<div class="tip-fact">Player buyout: acquired and demolished, ${czk(purchase.cost)} including the provisional plot allowance.</div>`;
     if (!rec) return head;
     const period = fp?.controlling ?? 'night', limit = fp?.limit ?? NOISE.limitNightDb;
     const lvl = (e: number) => `${fmt(limit + e)} dB (${signed(e)})`;
@@ -280,14 +285,14 @@ export class NoiseLayer {
       `<div class="tip-sub">top-floor receiver ${fmt(Math.abs(rec.h))} m ${rec.h >= 0 ? 'above' : 'below'} the road, ${Math.round(rec.d)} m from the axis (${km(r.s[rec.i])}, ${side(rec.side)})</div>`,
       `<div>${period[0].toUpperCase()}${period.slice(1)} L<sub>Aeq</sub> without mitigation: <b>${lvl(rec.raw)}</b>, limit ${limit} dB</div>`,
     ];
-    if (rec.status === 'ok') lines.push('<div>Within the limit — nothing needed.</div>');
+    if (rec.unresolved) lines.push(`<div>With actual mitigation: <b>${lvl(rec.mitigated)}</b></div><div class="tip-fact">Retained by your keep/wall decision: ${fmt(rec.unresolved.excess)} dB over the limit. Add adequate walls, change the route, or explicitly buy out this dwelling. This is a blocking violation, not an automatic purchase.</div>`);
+    else if (rec.status === 'ok') lines.push('<div>Within the limit — nothing needed.</div>');
     else if (rec.status === 'cut') lines.push(`<div>With mitigation: <b>${lvl(rec.mitigated)}</b></div><div class="tip-fact">Screened by the cut edge: the road runs low enough that no wall is needed.</div>`);
     else if (rec.status === 'wall') {
       const w = r.walls.find((x) => x.side === rec.side && rec.at >= x.i0 && rec.at <= x.i1)
         ?? r.walls.find((x) => rec.at >= x.i0 && rec.at <= x.i1);
-      const shorter = NOISE.wallHeights.filter((h) => h < rec.need);
       lines.push(`<div>With mitigation: <b>${lvl(rec.mitigated)}</b></div>`,
-        `<div class="tip-fact">Behind the ${rec.wall} m wall on the ${side(rec.side)}${w ? ` (${km(w.s0)}–${(w.s1 / 1000).toFixed(2)})` : ''}: needs ≥ ${rec.need} m${shorter.length ? ` (a ${shorter.join(' / ')} m wall leaves it over the limit)` : ''}${rec.wall > rec.need ? `; the stretch is ${rec.wall} m for a neighbour` : ''}.</div>`);
+        `<div class="tip-fact">Protected with the actual ${rec.wall} m wall${w ? ` (${km(w.s0)}–${(w.s1 / 1000).toFixed(2)})` : ''}. ${Number.isFinite(rec.need) ? `The automatic menu recommends ${rec.need} m at the binding receiver.` : 'The automatic 3–5 m menu was insufficient; the player wall now passes.'}</div>`);
     } else {
       const buy = r.boughtOut.find((p) => p.j === j);
       lines.push(`<div>Best mitigation (${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall or cut edge): <b>${lvl(rec.mitigated)}</b></div>`,

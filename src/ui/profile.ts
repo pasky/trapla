@@ -339,7 +339,14 @@ export class ProfilePanel {
       if (b.i < i0 || b.i > i1) continue;
       g.fillRect(this.X(r.s[b.i]) - 2, this.Y(r.ground[b.i]) - 7, 4, 4);
     }
-    // Noise buyouts: magenta diamonds, offset above the footprint-demolition squares.
+    // Kept buildings: green outlined squares; red outline means a footprint conflict.
+    for (const b of r.kept) {
+      if (b.i < i0 || b.i > i1) continue;
+      const x = this.X(r.s[b.i]), y = this.Y(r.ground[b.i]) - 20;
+      g.strokeStyle = b.hit ? '#d7301f' : '#467d19'; g.lineWidth = 2;
+      g.strokeRect(x - 4, y - 4, 8, 8);
+    }
+    // Noise / player buyouts: magenta diamonds, offset above the footprint-demolition squares.
     g.fillStyle = '#c43c9b';
     for (const b of r.boughtOut) {
       if (b.i < i0 || b.i > i1) continue;
@@ -557,7 +564,8 @@ export class ProfilePanel {
     if (nb) facts.push(`${nb} footprint demolition${nb > 1 ? 's' : ''} — ${czk(cb)}`);
     let nBuy = 0, cBuy = 0;
     for (const d of r.boughtOut) if (d.i >= a && d.i <= b) { nBuy++; cBuy += d.cost; }
-    if (nBuy) facts.push(`${nBuy} noise buyout${nBuy > 1 ? 's' : ''} — ${czk(cBuy)} (purchase + demolition)`);
+    if (nBuy) facts.push(`${nBuy} off-corridor buyout${nBuy > 1 ? 's' : ''} — ${czk(cBuy)} (noise or player acquisition + demolition)`);
+    for (const kept of r.kept) if (kept.i >= a && kept.i <= b) facts.push(`kept building #${kept.j}${kept.hit ? ': footprint conflict' : ''}`);
     let total = 0;
     const rows = COST_GROUPS.map((gr, gi) => {
       const v = (this.cum[gi][b + 1] - this.cum[gi][a]) / len;

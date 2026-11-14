@@ -3,7 +3,9 @@
 // a Web Worker in the app.
 
 import { autoProfile } from './autoprofile';
-import type { BuildingIndex } from './buildings';
+import { noiseBuyoutCost, type BuildingIndex } from './buildings';
+import { normalizeBuildingOverrides, type BuildingOverride } from './build-controls';
+import { noiseControlViolations } from './noise-control-violations';
 import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, type Violation } from './checks';
 import {
   basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
@@ -20,7 +22,7 @@ import { massHaul, volumes } from './earthworks';
 import { culvertExtra, earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import {
-  dwellingExposure, noiseBarrier, noiseFootprint, noiseReceivers, wallFlags, wallStretches,
+  dwellingExposure, noiseBarrier, noiseFootprint, resolveNoiseWalls,
   type EarthEdges, type NoiseFootprint, type NoiseReceiver, type WallStretch,
 } from './noise';
 import { createNoiseModel } from './road-noise';
@@ -45,6 +47,8 @@ export interface Design {
   gradePins?: { s: number; z: number }[];
   /** Per existing-road way (scenario-pack index), not a transient crossing station. */
   crossingOverrides?: CrossingOverride[];
+  /** Building indices are stable within the scenario pack. Omission restores Auto. */
+  buildingOverrides?: BuildingOverride[];
 }
 
 export interface EvalContext {
@@ -88,8 +92,10 @@ export interface Result {
   walls: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   demolished: { j: number; i: number; cost: number }[];
-  /** Outside the footprint: noise-infeasible dwellings acquired AND demolished, billed separately. */
-  boughtOut: { j: number; i: number; cost: number }[];
+  /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
+  boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
+  /** Kept buildings remain present; hit means footprint/working-strip conflict. */
+  kept: { j: number; i: number; hit: boolean }[];
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
   noise: { receivers: NoiseReceiver[]; footprint: NoiseFootprint | null };
   quantities: {
@@ -478,6 +484,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const demolished: Result['demolished'] = [];
   const bld = ctx.buildings;
   const gone = new Uint8Array(bld ? bld.n : 0);
+  const buildingOverrides = normalizeBuildingOverrides(d.buildingOverrides, bld?.n ?? 0);
+  const keptIds = new Set(buildingOverrides.filter((o) => o.action === 'keep').map((o) => o.j));
+  const kept: Result['kept'] = [], manualBuys: Result['boughtOut'] = [];
+  const buildingViolations: Violation[] = [], noiseViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
     const best = new Map<number, { i: number; along: number }>();
@@ -495,9 +505,34 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       });
     }
     for (const [j, p] of best) {
+      if (keptIds.has(j)) {
+        buildingViolations.push({ kind: 'building', basis: 'game', s0: st.s[p.i], s1: st.s[p.i],
+          title: 'The road runs through a building you kept',
+          fix: `Buy out building #${j}, or move the road and its working strip clear of its footprint`,
+          detail: `Building #${j} is retained: no acquisition is billed. The collision includes slopes/deck and the ${BUILDING_RULES.clearance} m working strip.`,
+          rule: 'A kept building cannot be demolished by the road footprint or working strip.' });
+        continue;
+      }
       gone[j] = 1;
       buildingCost[p.i] += bld.cost[j];
       demolished.push({ j, i: p.i, cost: bld.cost[j] });
+    }
+    for (const o of buildingOverrides) {
+      if (gone[o.j]) continue; // footprint acquisition already pays the building once
+      const hit = best.get(o.j);
+      let i = hit?.i ?? 0;
+      if (!hit) {
+        const [x, y] = items[o.j]; let distance = Infinity;
+        for (let k = 0; k < n; k++) {
+          const d2 = (x - st.x[k]) ** 2 + (y - st.y[k]) ** 2;
+          if (d2 < distance) { distance = d2; i = k; }
+        }
+      }
+      if (o.action === 'keep') kept.push({ j: o.j, i, hit: !!hit });
+      else {
+        gone[o.j] = 1;
+        manualBuys.push({ j: o.j, i, cost: noiseBuyoutCost(bld.cost[o.j], bld.area[o.j]), reason: 'manual' });
+      }
     }
     demolished.sort((p, q) => p.i - q.i);
   }
@@ -531,19 +566,21 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (sec.zDayL[i] > grade[i]) edges.L[i] = { offset: sec.dayL[i], height: sec.zDayL[i] - grade[i] };
       if (sec.zDayR[i] > grade[i]) edges.R[i] = { offset: sec.dayR[i], height: sec.zDayR[i] - grade[i] };
     }
+    const barrier = noiseBarrier(cat.crownWidth);
     const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseModel, gone,
-      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, noiseBarrier(cat.crownWidth), edges);
-    boughtOut = ex.boughtOut;
+      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, barrier, edges, { keptBuildingIds: keptIds });
+    const resolved = resolveNoiseWalls(ex, ds, al.length, shieldL, shieldR, barrier, edges);
+    boughtOut = [...manualBuys, ...resolved.boughtOut].sort((a, b) => a.i - b.i);
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;
-    const fl = wallFlags(ds, ex.L, shieldL), fr = wallFlags(ds, ex.R, shieldR);
+    const fl = resolved.L, fr = resolved.R;
     for (let i = 0; i < n; i++) {
       wall[i] = (fl[i] ? 1 : 0) | (fr[i] ? 2 : 0);
       wallLength[i] = ((fl[i] ? 1 : 0) + (fr[i] ? 1 : 0)) * cellLength(i, n, ds);
       wallArea[i] = (fl[i] + fr[i]) * cellLength(i, n, ds);
     }
-    walls = [...wallStretches(ds, al.length, fl, 'L'), ...wallStretches(ds, al.length, fr, 'R')];
-    const barrier = noiseBarrier(cat.crownWidth);
-    receivers = noiseReceivers(ex.scratch, fl, fr, barrier, edges);
+    walls = resolved.walls;
+    receivers = resolved.receivers;
+    noiseViolations.push(...noiseControlViolations(receivers, ex.scratch, st.s, cat.crownWidth));
     footprintMap = noiseFootprint(n, st.x, st.y, st.tx, st.ty, grade, (x, y) => terrain.heightAt(x, y), noiseModel,
       shieldL, shieldR, fl, fr, (i, left) => (kind[i] === KIND.earth ? (left ? sec.dayL[i] : sec.dayR[i]) : w), barrier, edges);
   }
@@ -567,6 +604,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     ...structureViolations,
     ...pinViolations,
     ...crossingIssues,
+    ...buildingViolations,
+    ...noiseViolations,
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
   ];
@@ -632,7 +671,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished, boughtOut,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished, boughtOut, kept,
     noise: { receivers, footprint: footprintMap },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,

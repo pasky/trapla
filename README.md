@@ -96,6 +96,13 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   class determinations. Permian/Carboniferous profiles are calibrated to D11 1109 reported excavation
   quantities (official-line surrogate 42.6/18.0/39.4% I/II/III, not an as-built reconstruction).
   Unmapped ground uses the norm's 75/20/5 mix; see `research/10-geology-excavation.md`.
+- **Building tools:** click any building on the map → **Buy out + demolish / Keep / Auto** in Build tools.
+  An explicit buyout works even away from the road; off-corridor acquisitions include the existing
+  provisional whole-plot allowance. Footprint acquisitions are billed once with corridor land instead.
+  **Keep** forbids both demolition and noise buyout: a footprint/working-strip hit or remaining noise
+  excess becomes a blocking violation, with the dB shortfall shown. Green KEEP / magenta BUY map labels,
+  green profile squares and magenta diamonds show decisions; use the saved-building list to revisit them.
+  Clearing the decision restores the automatic policy. Building and road IDs refer to this scenario pack.
 - Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
   floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
   shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
