@@ -8,6 +8,7 @@ import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
+import { groundDescription } from '../core/ground';
 import { KIND } from '../core/structures';
 import type { VPI } from '../core/vertical';
 import type { StationRange } from '../state';
@@ -504,6 +505,9 @@ export class ProfilePanel {
     const [a, b] = this.window(s, wPx);
     const len = this.cumLen[b + 1] - this.cumLen[a];
     const facts: string[] = [];
+    const geology = groundDescription(r.geology.profiles[r.geology.ids[i]]);
+    // Pack names can come from service attributes; do not interpolate them as HTML.
+    const escapedGeology = geology.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
     for (const w of r.walls) {
       if (i >= w.i0 && i <= w.i1) facts.push(`noise wall: ${w.side === 'L' ? 'left' : 'right'}, ${w.height} m high (provisional)`);
     }
@@ -533,6 +537,7 @@ export class ProfilePanel {
     }).join('');
     this.tip.innerHTML = `<div class="tip-h"><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
       <div class="tip-sub">ground ${r.ground[i].toFixed(1)} m · grade ${r.grade[i].toFixed(1)} m · ${land}</div>
+      <div class="tip-fact">${escapedGeology}</div>
       ${facts.map((t) => `<div class="tip-fact">${t}</div>`).join('')}
       <table>${rows}<tr class="tip-total"><td>Cost per metre <small>average over ${len.toFixed(0)} m</small></td><td>${perM(total)} CZK</td></tr></table>`;
     this.tip.style.display = '';

@@ -2,7 +2,7 @@
 
 Build the cheapest norm-abiding road from A to B on real Czech terrain, within a travel-time target
 and for a given traffic. Scenario #1: Trutnov → Polish border (the D11 corridor).
-Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.md`, `research/07`–`09` (prices).
+Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.md`, `research/07`–`10` (prices and geology).
 
 ![design](docs/screenshots/02-design.png)
 
@@ -63,6 +63,10 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - Through-road junctions keep **1.5 km spacing**, including A/B tie-ins (also in town: a scenario assumption).
   Other crossings use overbridges or parallel reconnections/diversions priced by measured route gaps × SPK
   road rates. Profile tooltips show the resolution and link/approach metres; HUD counts and sums them.
+- Cut quantities use ČGS GEOCR50 / engineering-geological rajons on a 25 m ground grid. Hover the profile
+  for the ground name and **estimated** loose/weathered depths; the HUD shows class I/II/III shares.
+  Mapped lithology is real, vertical weathering profiles are provisional—not borehole measurements or ČSN
+  class determinations. Unmapped ground uses the norm's 75/20/5 mix; see `research/10-geology-excavation.md`.
 - Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
   floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
   shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
@@ -74,10 +78,11 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 ## Architecture
 
 ```
-pipeline/build_d11.py   offline: DMR 5G terrain + OSM overlays + official line → public/scenarios/d11/
+pipeline/build_d11.py   offline: DMR 5G + OSM + ČGS geology + official line → public/scenarios/d11/
+pipeline/geology.py     cached ArcGIS queries → 25 m ground grid; estimated profiles in ground_profiles.json
 src/core/               pure, tested modules (no DOM)
   data/                 categories, norms, prices, scenario — all numbers live here, with source notes
-  terrain.ts            5 m height grid (bilinear), land cover, out-of-bounds mask
+  terrain.ts, ground.ts  5 m heights (bilinear), land cover, OOB mask, categorical ground/weathering profiles
   horizontal.ts         tangents + circular arcs, transition room, stationing
   vertical.ts           grade line, parabolic vertical curves
   autoprofile.ts        DP grade line (knots every ~250 m; state = elevation × incoming grade)
@@ -155,6 +160,7 @@ headless SwiftShader browser where the CPU is shared with software WebGL.
 | `meta.json` | grid (3500 × 4500 at 5 m, row 0 = north), origin in EPSG:5514, A/B, official line, attribution, `vector` file, `orthophoto` service (export URL, CRS, attribution) |
 | `height.i16.gz` | gzip of row-wise int16 deltas of uint16 heights; h = base + q · 0.1 m (display-filled where no data) |
 | `landcover.u8.gz` | gzip uint8 per cell: bits 0–2 class (0 none, 1 forest, 2 water/river, 3 building, 4 road, 5 urban, 6 rail, 7 stream); bit 3 built-up area; bit 5 river/water crossing, bit 6 railway crossing (must-bridge masks); bit 7 out of bounds |
+| `ground.u8.gz` | gzip uint8 profile IDs, 700 × 900 at 25 m, row 0 north; `meta.ground` supplies dimensions, profile names, estimated class-I/II bottom depths and attribution; ID 0 = unmapped, norm 75/20/5 mix |
 | `overlays.json` | building centroids + radius, `binfo` (area, levels, kind, oriented rectangle per building), place names, main roads, `net` (existing road network for crossings) |
 | `vector.bin.gz` | render-only vectors (`pipeline/vectors.py`, format described there): land-cover polygons dissolved per class and triangulated (forest, water, urban, farmland, grass), polylines (roads by class, tracks, railways, rivers, streams; waterways and rails smoothed), building rings + roof triangles + heights; local metres, split into 2.5 km chunks |
 
@@ -163,7 +169,11 @@ The play area is the axis-aligned EPSG:5514 rectangle x ∈ [−637 500, −620 
 (≈ 50.50–50.70 N, 15.82–16.06 E). Terrain is fetched in five 3500 × 900 px requests from the ČÚZK DMR 5G
 ImageServer (raw responses cached in `pipeline/cache/`); OSM via Overpass (cached likewise; `osm_cover2` holds
 render-only extras: fields, meadows, parks; tracks and service roads come from `osm_roads2`, which the crossings use too). The engine reads only
-`height`, `landcover` and `overlays.json`; `vector.bin.gz` and the orthophoto are for display.
+`height`, `landcover`, `ground` and `overlays.json`; `vector.bin.gz` and the orthophoto are for display.
+ČGS GEOCR50 and IG rajony 1:50k polygons are queried by EPSG:5514 envelope and object-ID pagination,
+with cached pages and polite pauses. The 25 m raster does not imply 25 m survey accuracy. Older packs
+without `meta.ground` use the explicitly labelled norm mix; run `npm run data` for geology-aware costs.
+Pipeline geometry/cache tests: `uv run --with numpy --with shapely python -m unittest discover -s pipeline -p 'test_*.py'`.
 
 ## Data attribution
 

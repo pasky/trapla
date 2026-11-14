@@ -4,12 +4,13 @@ import { BuildingIndex, type BuildingInfo } from './core/buildings';
 import { D11_SCENARIO } from './core/data/scenario';
 import { evaluate, type Design, type EvalContext } from './core/evaluate';
 import { RoadNet, type RoadNetData } from './core/roadnet';
+import type { GroundData } from './core/ground';
 import { Terrain } from './core/terrain';
 
 export type WorkerIn =
   | { type: 'init'; nx: number; ny: number; cell: number; base: number; scale: number; q: Uint16Array; lc: Uint8Array;
       a: { x: number; y: number }; b: { x: number; y: number }; buildings: [number, number, number][];
-      binfo?: (BuildingInfo | null)[]; net?: RoadNetData }
+      binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData }
   | { type: 'eval'; id: number; design: Design };
 
 let ctx: EvalContext | null = null;
@@ -32,7 +33,7 @@ function run() {
 self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const m = ev.data;
   if (m.type === 'init') {
-    const terrain = new Terrain({ nx: m.nx, ny: m.ny, cell: m.cell, base: m.base, scale: m.scale, q: m.q, lc: m.lc });
+    const terrain = new Terrain({ nx: m.nx, ny: m.ny, cell: m.cell, base: m.base, scale: m.scale, q: m.q, lc: m.lc, ground: m.ground });
     ctx = {
       terrain, scenario: D11_SCENARIO, a: m.a, b: m.b, buildings: new BuildingIndex(m.buildings, m.binfo),
       roads: m.net ? new RoadNet(m.net) : undefined,

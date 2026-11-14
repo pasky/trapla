@@ -1,6 +1,8 @@
 // Terrain grid: 5 m heights (quantised Uint16) + land-cover byte, local metric coordinates
 // (x east, y north, origin = SW corner of the play area in EPSG:5514).
 
+import { UNKNOWN_GROUND, type GroundData, type GroundProfile } from './ground';
+
 export const LC = { none: 0, forest: 1, water: 2, building: 3, road: 4, urban: 5, rail: 6, stream: 7 } as const;
 export const OOB_BIT = 128;
 /** inside a built-up area (OSM landuse residential / commercial / industrial / retail) */
@@ -20,6 +22,7 @@ export interface TerrainData {
   q: Uint16Array;
   /** land-cover class | OOB_BIT */
   lc: Uint8Array;
+  ground?: GroundData;
 }
 
 export class Terrain {
@@ -32,6 +35,7 @@ export class Terrain {
   private readonly scale: number;
   private readonly q: Uint16Array;
   readonly lc: Uint8Array;
+  readonly ground: GroundData | undefined;
 
   constructor(d: TerrainData) {
     this.nx = d.nx;
@@ -43,6 +47,26 @@ export class Terrain {
     this.lc = d.lc;
     this.width = d.nx * d.cell;
     this.height = d.ny * d.cell;
+    this.ground = d.ground;
+    if (d.ground) {
+      const g = d.ground;
+      if (g.nx * g.cell !== this.width || g.ny * g.cell !== this.height || g.ids.length !== g.nx * g.ny
+        || !g.profiles.length || !g.profiles[0].normMix
+        || g.profiles.some((p) => !Number.isFinite(p.classIto) || !Number.isFinite(p.classIIto)
+          || p.classIto < 0 || p.classIIto < p.classIto)
+        || g.ids.some((id) => id >= g.profiles.length)) throw new Error('Invalid ground grid');
+    }
+  }
+
+  /** Categorical nearest-cell geology; outside the map is explicitly unknown. */
+  groundIdAt(x: number, y: number): number {
+    const g = this.ground;
+    if (!g || x < 0 || y <= 0 || x >= this.width || y > this.height) return 0;
+    return g.ids[Math.floor((this.height - y) / g.cell) * g.nx + Math.floor(x / g.cell)] ?? 0;
+  }
+
+  groundAt(x: number, y: number): GroundProfile {
+    return this.ground?.profiles[this.groundIdAt(x, y)] ?? UNKNOWN_GROUND;
   }
 
   /** height of grid sample (col,row), display-filled even out of bounds */

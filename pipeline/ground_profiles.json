@@ -1,0 +1,23 @@
+{
+  "unknown": {"name": "Unmapped ground — norm prior", "classIto": 0, "classIIto": 0, "normMix": true},
+  "loam": {"name": "Quaternary loam / sandy loam", "classIto": 4, "classIIto": 8},
+  "alluvium": {"name": "Quaternary alluvium / floodplain deposits", "classIto": 5, "classIIto": 9},
+  "gravel": {"name": "Fluvial sand and gravel", "classIto": 6, "classIIto": 10},
+  "slope": {"name": "Quaternary stony slope deposits", "classIto": 2, "classIIto": 6},
+  "mixed": {"name": "Quaternary mixed slope / stream deposits", "classIto": 4, "classIIto": 8},
+  "peat": {"name": "Quaternary peat / organic deposits", "classIto": 2, "classIIto": 5},
+  "fill": {"name": "Anthropogenic fill", "classIto": 3, "classIIto": 7},
+  "perm_sand": {"name": "Permian sandstone / arkose", "classIto": 2, "classIIto": 6},
+  "perm_congl": {"name": "Permian conglomerate / breccia", "classIto": 1.5, "classIIto": 4},
+  "perm_fine": {"name": "Permian siltstone / claystone", "classIto": 3, "classIIto": 9},
+  "carb_sand": {"name": "Carboniferous sandstone / arkose / conglomerate", "classIto": 2, "classIIto": 6},
+  "carb_mixed": {"name": "Carboniferous interbedded siltstone / claystone / sandstone", "classIto": 2.5, "classIIto": 7},
+  "cret_sand": {"name": "Cretaceous / Triassic sandstone", "classIto": 3, "classIIto": 8},
+  "marl": {"name": "Cretaceous marlstone / opuka", "classIto": 3, "classIIto": 8},
+  "phyllite": {"name": "Crystalline phyllite / mica schist", "classIto": 2, "classIIto": 6},
+  "gneiss": {"name": "Crystalline gneiss / schist", "classIto": 1.5, "classIIto": 4},
+  "hard": {"name": "Quartzite / metagreywacke / calc-silicate rock", "classIto": 1, "classIIto": 3},
+  "carbonate": {"name": "Crystalline limestone / dolomite", "classIto": 1, "classIIto": 3},
+  "igneous": {"name": "Volcanic / intrusive rock or green schist", "classIto": 1, "classIIto": 3},
+  "tuff": {"name": "Volcanic tuff / tuffite", "classIto": 2, "classIIto": 5}
+}

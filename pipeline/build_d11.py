@@ -585,6 +585,8 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     h = fetch_terrain()
     oob = np.isnan(h)
+    import geology
+    ground = geology.build(CACHE, OUT, (X_MIN, Y_MIN, X_MAX, Y_MAX), http_get, log, oob)
     log(f"terrain {NX}x{NY}, nodata {oob.mean() * 100:.1f} %, range {np.nanmin(h):.1f}..{np.nanmax(h):.1f}")
     h_disp = fill_nodata_for_display(h)
 
@@ -638,6 +640,7 @@ def main():
         "landcover": {"file": "landcover.u8.gz", "classes": {"0": "none", "1": "forest", "2": "water",
                       "3": "building", "4": "road", "5": "urban", "6": "rail", "7": "stream"}, "classMask": 7, "builtUpBit": BUILTUP_BIT, "riverCrossingBit": 32, "railCrossingBit": 64, "oobBit": 128},
         "vector": vector,
+        "ground": ground,
         # optional view layer, streamed by the browser per view (public ČÚZK view service, CORS enabled)
         "orthophoto": {"export": "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer/export",
                        "sr": 5514, "attribution": "© ČÚZK, Ortofoto ČR, CC BY 4.0"},
@@ -647,7 +650,7 @@ def main():
               "note": "northern end of D11 at the Polish border (OSM ref changes D11 -> S3)"},
         "official": {"xy": [loc(pts[i]) for i in keep], "lengthM": round(float(cum[-1]), 1),
                      "kinds": [int(max(kinds[keep[j - 1]:keep[j]] or [0])) for j in range(1, len(keep))]},
-        "attribution": ["© ČÚZK, DMR 5G, CC BY 4.0", "© OpenStreetMap contributors, ODbL"],
+        "attribution": ["© ČÚZK, DMR 5G, CC BY 4.0", "© OpenStreetMap contributors, ODbL", "© ČGS, GEOCR50 + IG rajony 1:50 000"],
         "haveOsm": have_osm,
     }
     (OUT / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))

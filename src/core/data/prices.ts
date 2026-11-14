@@ -4,20 +4,14 @@
 // research/09-noise-earthworks-urban.md §3. PROVISIONAL marks a placeholder or game heuristic.
 
 /** Bump whenever prices or cost rules change: scores saved under an older model are not comparable. */
-export const COST_MODEL_VERSION = 9;
+export const COST_MODEL_VERSION = 10;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
 /** SPK CN excavability mix assumed by the norm: 75 % class I, 20 % class II, 5 % class III */
 export const EXCAVATION_MIX = { I: 0.75, II: 0.2, III: 0.05 };
-/**
- * PROVISIONAL gameplay heuristic, not geology: the excavation class of the design's cuts depends on
- * the depth below the original ground — class I down to `classIto` metres, class II down to
- * `classIIto`, class III (rock) below. OTSKP classes are defined by excavability, not depth, and no
- * route-specific class shares near Trutnov are known (research/09 §3). The norm allowance stays
- * valued at the 75/20/5 mix.
- */
-export const EXCAVATION_DEPTH_BANDS = { classIto: 3, classIIto: 8 };
+// Local excavation profiles come from the ČGS ground grid, not a universal depth rule.
+// Estimated lithology-dependent weathering: pipeline/ground_profiles.json, research/10-geology-excavation.md.
 
 export const PRICES = {
   /** weighted excavation price, CZK/m³ (≈ 248) */

@@ -1,5 +1,6 @@
 // Browser-side loading of a scenario pack (see README.md for the format).
 
+import type { GroundMeta } from './core/ground';
 import type { BuildingInfo } from './core/buildings';
 import type { RoadNetData } from './core/roadnet';
 import { decodeHeights, Terrain } from './core/terrain';
@@ -14,6 +15,7 @@ export interface PackMeta {
   ny: number;
   heights: { file: string; base: number; scale: number };
   landcover: { file: string };
+  ground?: GroundMeta;
   /** vector render data (land cover, roads, buildings); absent in packs built without OSM */
   vector?: { file: string } | null;
   /** ArcGIS MapServer "export" endpoint serving an orthophoto in the scenario's CRS (optional view layer) */
@@ -59,7 +61,7 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   progress?.('loading scenario…');
   const meta: PackMeta = await (await fetch(`${base}/meta.json`)).json();
   progress?.('loading terrain (DMR 5G, 5 m)…');
-  const [hb, lb, overlays, vectors] = await Promise.all([
+  const [hb, lb, overlays, vectors, gb] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
@@ -67,9 +69,11 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
     meta.vector?.file
       ? gunzip(`${base}/${meta.vector.file}`).then(parseVectorPack).catch((e) => { console.warn('vector render data unavailable', e); return null; })
       : Promise.resolve(null),
+    meta.ground ? gunzip(`${base}/${meta.ground.file}`) : Promise.resolve(null),
   ]);
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
-  const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc });
+  const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
+    ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined });
   return { base, meta, terrain, q, lc, overlays, vectors };
 }

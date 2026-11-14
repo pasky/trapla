@@ -172,20 +172,45 @@ describe('cost roll-up', () => {
   });
 });
 
-describe('excavation depth classes', () => {
-  it('a section in a flat-ground cut splits into depth bands that add up to the cut', () => {
+describe('excavation weathering profiles', () => {
+  it('a section in a flat-ground cut splits into local bands that add up to the cut', () => {
+    const bands = { classIto: 3, classIIto: 8 };
     for (const c of [2, 5, 12]) {
-      const s = sideSection(-c, 5, tpl, () => 0);
-      const [a1, a2, a3] = flatCutBands(c, 10, tpl.cutSlope);
+      const s = sideSection(-c, 5, tpl, () => 0, bands);
+      const [a1, a2, a3] = flatCutBands(c, 10, tpl.cutSlope, bands);
       expect(2 * s.cutI).toBeCloseTo(a1, 6);
       expect(2 * s.cutII).toBeCloseTo(a2, 6);
       expect(2 * (s.cut - s.cutI - s.cutII)).toBeCloseTo(a3, 6);
       expect(a1 + a2 + a3).toBeCloseTo(10 * c + tpl.cutSlope * c * c, 6);
     }
     // 12 m deep: 3 m of class I over the whole top width minus the slope wedges, class III only below 8 m
-    const [a1, , a3] = flatCutBands(12, 10, 1.75);
+    const [a1, , a3] = flatCutBands(12, 10, 1.75, bands);
     expect(a1).toBeCloseTo(10 * 3 + 2 * 1.75 * 3 * (12 - 1.5), 6);
     expect(a3).toBeCloseTo(10 * 4 + 1.75 * 16, 6);
+  });
+});
+
+describe('local geology integration', () => {
+  it('samples the slope as well as the crown and conserves volume at a rock/soil boundary', () => {
+    const soil = { classIto: 20, classIIto: 30 }, rock = { classIto: 0, classIIto: 0 };
+    const s = sideSection(-10, 5, tpl, () => 0, (o) => o <= 5 ? soil : rock);
+    expect(s.cutI).toBeCloseTo(50, 8); // soil only under this half-crown
+    expect(s.cutII).toBe(0);
+    expect(s.cut - s.cutI).toBeCloseTo(tpl.cutSlope * 100 / 2, 8); // all-rock slope wedge
+    const reversed = sideSection(-10, 5, tpl, () => 0, (o) => o <= 5 ? rock : soil);
+    expect(reversed.cutI + s.cutI).toBeCloseTo(s.cut, 8);
+    expect(reversed.cut).toBeCloseTo(s.cut, 8);
+  });
+
+  it('uses volumetric norm shares, not depth bands, when geology is absent', () => {
+    for (const c of [1, 7, 20]) {
+      const s = sideSection(-c, 5, tpl, () => 0);
+      const mix = flatCutBands(c, 10, tpl.cutSlope);
+      expect(s.cutI / s.cut).toBeCloseTo(0.75, 8);
+      expect(s.cutII / s.cut).toBeCloseTo(0.2, 8);
+      expect(2 * s.cutI).toBeCloseTo(mix[0], 8);
+      expect(2 * s.cutII).toBeCloseTo(mix[1], 8);
+    }
   });
 });
 

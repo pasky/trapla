@@ -21,6 +21,7 @@ import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import { dwellingExposure, noiseBarrier, wallFlags, wallStretches, type EarthEdges, type WallStretch } from './noise';
 import { createNoiseModel } from './road-noise';
 import { mergeCrossings, type RoadNet } from './roadnet';
+import type { GroundProfile } from './ground';
 import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
@@ -51,6 +52,8 @@ export interface Result {
   n: number;
   s: Float64Array; x: Float64Array; y: Float64Array; tx: Float64Array; ty: Float64Array;
   ground: Float64Array;
+  /** Centreline map priors for display / DP; sections sample geology across their entire width. */
+  geology: { ids: Uint8Array; profiles: GroundProfile[] };
   grade: Float64Array;
   kind: Uint8Array;
   cut: Float64Array; fill: Float64Array;
@@ -78,7 +81,7 @@ export interface Result {
   boughtOut: { j: number; i: number; cost: number }[];
   quantities: {
     cut: number; fill: number; reused: number; surplus: number; deficit: number; avgHaul: number;
-    /** cut volume by PROVISIONAL depth class I / II / III, m³ */
+    /** cut volume by local geology + estimated weathering class I / II / III, m³ */
     cutByClass: [number, number, number];
     footprint: number; forestArea: number; buildingsHit: number; hitBuildings: number[];
     bridgeLength: number; tunnelLength: number; bridges: number; tunnels: number; massHaul: Float64Array;
@@ -126,6 +129,18 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
   const ground = new Float64Array(n);
+  const groundIds = new Uint8Array(n), groundProfiles: GroundProfile[] = [];
+  const groundClasses = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const id = terrain.groundIdAt(st.x[i], st.y[i]);
+    let k = groundClasses.get(id);
+    if (k === undefined) {
+      k = groundProfiles.length;
+      groundClasses.set(id, k);
+      groundProfiles.push(terrain.groundAt(st.x[i], st.y[i]));
+    }
+    groundIds[i] = k;
+  }
   const oob = new Uint8Array(n);
   const w = cat.crownWidth / 2;
   for (let i = 0; i < n; i++) {
@@ -194,14 +209,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   /** cost per metre against grade-minus-ground h for a given value of a m³ of fill material */
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
-    return (h: number) => {
+    return (h: number, costClass: number) => {
       let earth: number;
       if (h >= 0) {
         const wd = b + 2 * fillSlope * h;
         earth = (baseRural + (b * h + fillSlope * h * h) * dp.fillPerM3 + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       } else {
         const c = -h, wd = b + 2 * cutSlope * c;
-        const [a1, a2, a3] = flatCutBands(c, b, cutSlope);
+        const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClass]);
         earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       }
       let best = earth;
@@ -268,7 +283,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
     const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
-      costPerM: costFor(MATERIAL_VALUE.start), minH: clearance,
+      costPerM: costFor(MATERIAL_VALUE.start), costClasses: groundIds, minH: clearance,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
@@ -536,6 +551,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
 
   return {
     length: al.length, ds, n, s: st.s, x: st.x, y: st.y, tx: st.tx, ty: st.ty, ground, grade, kind,
+    geology: { ids: groundIds, profiles: groundProfiles },
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),

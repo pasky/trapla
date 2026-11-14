@@ -26,7 +26,7 @@ async function main() {
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
-    q: pack.q.slice(), lc: pack.lc.slice(), a: A, b: B, buildings: pack.overlays.buildings,
+    q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, a: A, b: B, buildings: pack.overlays.buildings,
     binfo: pack.overlays.binfo, net: pack.overlays.net,
   };
   worker.postMessage(init, [init.q.buffer, init.lc.buffer]);

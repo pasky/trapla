@@ -2,7 +2,9 @@
 // 1:nFill and cut slopes 1:nCut down/up to the terrain (daylight point), integrated against the
 // ground sampled across the alignment.
 
-import { EXCAVATION_DEPTH_BANDS } from './data/prices';
+import { NORM_CAP_I, NORM_CAP_II, UNKNOWN_GROUND, type GroundProfile } from './ground';
+
+type Bands = Pick<GroundProfile, 'classIto' | 'classIIto' | 'normMix'>;
 import type { Terrain } from './terrain';
 
 export interface SectionTemplate {
@@ -41,27 +43,36 @@ export function bandArea(c0: number, c1: number, L: number, cap: number): number
   const dc = c1 - c0;
   if (dc < 1e-12) return Math.min(cap, c0) * L;
   const a = c0 > 0 ? c0 : 0, b = c1 < cap ? c1 : cap;
-  return (((b - a) * (a + b)) / 2 + (c1 - b) * cap) * (L / dc);
+  return (((b - a) * (a + b)) / 2 + (c1 > cap ? (c1 - b) * cap : 0)) * (L / dc);
 }
 
 /** flat ground: areas [class I, II, III] of a cut of depth c under a crown of width b with slopes 1:n */
-export function flatCutBands(c: number, b: number, n: number, bands = EXCAVATION_DEPTH_BANDS): [number, number, number] {
-  const upTo = (cap: number) => { const m = Math.min(c, cap); return b * m + 2 * n * m * (c - m / 2); };
-  const a1 = upTo(bands.classIto), a2 = upTo(bands.classIIto);
-  return [a1, a2 - a1, b * c + n * c * c - a2];
+export function flatCutBands(c: number, b: number, n: number, bands: Bands = UNKNOWN_GROUND): [number, number, number] {
+  const total = b * c + n * c * c;
+  if (bands.normMix) return [total * NORM_CAP_I, total * (NORM_CAP_II - NORM_CAP_I), total * (1 - NORM_CAP_II)];
+  // No per-call closure: the DP builds several thousand entries per local ground category.
+  const m1 = Math.min(c, bands.classIto), m2 = Math.min(c, bands.classIIto);
+  const a1 = b * m1 + 2 * n * m1 * (c - m1 / 2);
+  const a2 = b * m2 + 2 * n * m2 * (c - m2 / 2);
+  return [a1, a2 - a1, total - a2];
 }
 
 /**
  * One side of a section. `ground(o)` gives terrain elevation at offset o (m) on this side.
  */
 export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: (o: number) => number,
-  bands = EXCAVATION_DEPTH_BANDS): SideResult {
+  bands: Bands | ((o: number) => Bands) = UNKNOWN_GROUND): SideResult {
   let cut = 0, fill = 0, capI = 0, capII = 0;
-  const toI = bands.classIto, toII = bands.classIIto;
-  /** depth bands of a strip in cut (d = template − ground ≤ 0 somewhere) */
+  /** Midpoint geology on each ≤2.5 m strip, including the daylight triangle. */
   const band = (o0: number, da: number, o1: number, db: number) => {
-    capI += bandArea(-da, -db, o1 - o0, toI);
-    capII += bandArea(-da, -db, o1 - o0, toII);
+    const g = typeof bands === 'function' ? bands((o0 + o1) / 2) : bands;
+    if (g.normMix) {
+      const area = bandArea(-da, -db, o1 - o0, Infinity);
+      capI += area * NORM_CAP_I; capII += area * NORM_CAP_II;
+    } else {
+      capI += bandArea(-da, -db, o1 - o0, g.classIto);
+      capII += bandArea(-da, -db, o1 - o0, g.classIIto);
+    }
   };
   // under the crown: integrate (z - G) from 0 to w with sign split
   const nCrown = Math.max(2, Math.ceil(w / STEP));
@@ -107,7 +118,7 @@ export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: 
 
 export interface Sections {
   cut: Float64Array;
-  /** cut area by PROVISIONAL depth class (cut = cutI + cutII + cutIII) */
+  /** cut area by mapped geology + estimated weathering profile (cut = cutI + cutII + cutIII) */
   cutI: Float64Array;
   cutII: Float64Array;
   cutIII: Float64Array;
@@ -131,8 +142,10 @@ export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number
   for (let i = 0; i < n; i++) {
     const nx = -ty[i], ny = tx[i];
     const cx = x[i], cy = y[i];
-    const L = sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx + nx * o, cy + ny * o));
-    const R = sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx - nx * o, cy - ny * o));
+    const L = sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx + nx * o, cy + ny * o),
+      (o) => terrain.groundAt(cx + nx * o, cy + ny * o));
+    const R = sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx - nx * o, cy - ny * o),
+      (o) => terrain.groundAt(cx - nx * o, cy - ny * o));
     out.cut[i] = L.cut + R.cut;
     out.cutI[i] = L.cutI + R.cutI;
     out.cutII[i] = L.cutII + R.cutII;

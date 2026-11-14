@@ -4,7 +4,7 @@ import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
-import { EXCAVATION_DEPTH_BANDS, LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
+import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
@@ -41,7 +41,7 @@ const ROW_HELP: Record<string, (c: CostBreakdown) => string> = {
   roadBase: () => `SFDI per-km norm minus the value of its built-in earthworks allowance, at-grade length only; inside built-up areas the "intravilán" norm row`,
   earthworks: (c) => {
     const e = c.earthDetail;
-    return `excavation ${czk(e.excavation)} (class by depth: I to ${EXCAVATION_DEPTH_BANDS.classIto} m, II to ${EXCAVATION_DEPTH_BANDS.classIIto} m, III below — provisional), fill ${czk(e.fillPlacing)}, haul ${czk(e.haul)}, surplus to tip ${czk(e.surplusHaul)}, unsuitable 15 % to tip ${czk(e.unsuitable)}, bought fill ${czk(e.borrow)}, topsoil ${czk(e.topsoil)}`;
+    return `excavation ${czk(e.excavation)} (ČGS mapped ground + estimated weathering profiles; unmapped ground uses norm mix), fill ${czk(e.fillPlacing)}, haul ${czk(e.haul)}, surplus to tip ${czk(e.surplusHaul)}, unsuitable 15 % to tip ${czk(e.unsuitable)}, bought fill ${czk(e.borrow)}, topsoil ${czk(e.topsoil)}`;
   },
   bridges: () => 'SFDI bridge norm per km of bridge; includes the short bridges forced over rivers, railways and roads clearly below the grade',
   tunnels: () => 'SFDI bored-tunnel norm per km of tube (urban rows under built-up areas)',
@@ -191,7 +191,7 @@ export class Hud {
       <tr><td>Bridges</td><td>${q.bridges} · ${num(q.bridgeLength, 0)} m</td></tr>
       <tr><td>Tunnels</td><td>${q.tunnels} · ${num(q.tunnelLength, 0)} m</td></tr>
       ${common(q.cut, q.fill, r.length, q.footprint, q.forestArea, q.urbanLength, q.buildingsHit, q.noiseBuyouts, q.wallLength, q.wallArea)}
-      <tr title="provisional stand-in for geology: class I to ${EXCAVATION_DEPTH_BANDS.classIto} m below the ground, II to ${EXCAVATION_DEPTH_BANDS.classIIto} m, III deeper"><td>Excavation class</td><td>${cls} % <small>I / II / III</small></td></tr>
+      <tr title="ČGS GEOCR50 / IG 1:50k lithology + estimated local loose/weathered/competent layers, not measured borehole profiles. Hover the profile for ground names. Unmapped cells use norm mix 75/20/5."><td>Excavation class</td><td>${cls} % <small>I / II / III</small></td></tr>
       <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km, 15 % of cut unsuitable</small></td></tr>
       <tr><td><small>recompute</small></td><td><small>${num(r.timing.total ?? 0, 0)} ms</small></td></tr>`;
   }

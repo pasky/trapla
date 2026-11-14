@@ -18,7 +18,7 @@ import { buildProfile, type VPI } from './vertical';
 
 export interface BalanceSearch {
   /** cost per metre of road for grade-minus-ground h, given the value of a m³ of fill material */
-  costFor: (materialValue: number) => (h: number) => number;
+  costFor: (materialValue: number) => (h: number, costClass: number) => number;
   /** usable cut minus fill of a grade line, m³ (> 0 = surplus to tip, < 0 = fill to buy) */
   balanceOf: (vpis: VPI[], materialValue: number) => number;
   start: number;
@@ -33,7 +33,9 @@ export interface AutoProfileOptions {
   minCrest: number;
   minSag: number;
   /** cost per metre of road for a grade-minus-ground difference h (m); ignored when `balance` is set */
-  costPerM: (h: number) => number;
+  costPerM: (h: number, costClass: number) => number;
+  /** Categorical per-station cost model (e.g. mapped geology); one cached height LUT per class. */
+  costClasses?: ArrayLike<number>;
   /** search for the material value that balances cut and fill (see BalanceSearch) */
   balance?: BalanceSearch;
   /** optional per-station minimum h (NaN = none), e.g. bridge clearance over a river */
@@ -71,10 +73,10 @@ const FINE_BAND = 6;
 /** fine passes spent on the mass-balance search (incl. the first) */
 const BALANCE_EVALS = 4;
 
-function buildLut(f: (h: number) => number): Float64Array {
+function buildLut(f: (h: number, costClass: number) => number, classes: number): Float64Array {
   const m = Math.round((2 * H_MAX) / H_STEP) + 1;
-  const lut = new Float64Array(m);
-  for (let i = 0; i < m; i++) lut[i] = f(-H_MAX + i * H_STEP);
+  const lut = new Float64Array(m * classes);
+  for (let k = 0; k < classes; k++) for (let i = 0; i < m; i++) lut[k * m + i] = f(-H_MAX + i * H_STEP, k);
   return lut;
 }
 
@@ -103,6 +105,13 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   const ds = n > 1 ? s[1] - s[0] : L;
   const stride = Math.max(1, Math.round(DP_STATION_STEP / ds));
   const lutMax = Math.round((2 * H_MAX) / H_STEP);
+  const lutOffsets = new Int32Array(n);
+  let classes = 1;
+  for (let i = 0; i < n; i++) {
+    const k = opt.costClasses?.[i] ?? 0;
+    classes = Math.max(classes, k + 1);
+    lutOffsets[i] = k * (lutMax + 1);
+  }
   const pad = opt.pad ?? 25;
   const penalty = opt.vpiPenalty ?? 1e6;
   // clearance stations per interval (always evaluated, regardless of the DP station stride)
@@ -168,7 +177,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
 
   const bal = opt.balance;
   if (!bal) {
-    const lut = buildLut(opt.costPerM);
+    const lut = buildLut(opt.costPerM, classes);
     const c = coarse(lut);
     if (!c) return relaxed(lut);
     const f = refine(lut, c);
@@ -179,7 +188,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   // root is bracketed and interpolated. (The coarse line's own balance is no proxy for the fine one's.)
   const clampV = (v: number) => Math.max(bal.lo, Math.min(bal.hi, v));
   let v = clampV(bal.start);
-  let lut = buildLut(bal.costFor(v));
+  let lut = buildLut(bal.costFor(v), classes);
   const c = coarse(lut);
   if (!c) return { ...relaxed(lut), materialValue: v };
   let best = refine(lut, c);
@@ -199,7 +208,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     if (Math.abs(next - v) < 1e-6) break;
     v = next;
-    lut = buildLut(bal.costFor(v));
+    lut = buildLut(bal.costFor(v), classes);
     const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z);
     if (!ok(f)) break;
     const b = bal.balanceOf(f.vpis, v);
@@ -262,7 +271,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             const j = x | 0;
             // each sample stands for `stride` stations (fewer in the interval's last block)
             const wi = i + stride <= la + 1 ? w : (la + 1 - i) * ds;
-            c += (j >= lutMax ? lut[lutMax] : lut[j] + (lut[j + 1] - lut[j]) * (x - j)) * wi;
+            const q = lutOffsets[i] + j;
+            c += (j >= lutMax ? lut[q] : lut[q] + (lut[q + 1] - lut[q]) * (x - j)) * wi;
           }
           for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
             const i = clrIdx[q];
