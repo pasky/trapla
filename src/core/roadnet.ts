@@ -4,6 +4,8 @@ import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import type { Segment2 } from './footprint-geometry';
 
 export interface RoadSegment extends Segment2 { way: number; cls: string }
+export interface RoadConnection { way: number; cls: string; d: number; dx: number; dy: number }
+export interface RoadJunction { x: number; y: number; connections: RoadConnection[] }
 
 /** pack format (`overlays.net`): class names and polylines [classIndex, x0, y0, x1, y1, …] in local metres */
 export interface RoadNetData { cls: string[]; ways: number[][] }
@@ -197,18 +199,19 @@ export class RoadNet {
 
   /** Identify a real source chord, including its own way chainages (not the chainage of a
    * neighbouring way used to start a connected traversal). Both ends must lie on one segment. */
-  sourceInterval(a: { x: number; y: number }, b: { x: number; y: number }): { way: number; a: number; b: number; cls: string } | undefined {
+  sourceInterval(a: { x: number; y: number }, b: { x: number; y: number }, preferredWay?: number): { way: number; a: number; b: number; cls: string } | undefined {
     const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
-    let found: { way: number; a: number; b: number; cls: string } | undefined;
+    let found: { way: number; a: number; b: number; cls: string } | undefined, bestError = Infinity;
     this.nearSegments([x - 0.02, y - 0.02, x + 0.02, y + 0.02], s => {
-      if (found || s.length < 1e-6) return;
+      if (s.length < 1e-6) return;
       const project = (p: { x: number; y: number }) => {
-        const t = ((p.x - s.ax) * (s.bx - s.ax) + (p.y - s.ay) * (s.by - s.ay)) / (s.length * s.length);
-        if (t < -1e-6 || t > 1 + 1e-6 || Math.hypot(p.x - s.ax - t * (s.bx - s.ax), p.y - s.ay - t * (s.by - s.ay)) > 0.02) return;
-        return s.d + Math.max(0, Math.min(1, t)) * s.length;
+        const t = Math.max(0, Math.min(1, ((p.x - s.ax) * (s.bx - s.ax) + (p.y - s.ay) * (s.by - s.ay)) / (s.length * s.length)));
+        const error = Math.hypot(p.x - s.ax - t * (s.bx - s.ax), p.y - s.ay - t * (s.by - s.ay));
+        return { d: s.d + t * s.length, error };
       };
-      const da = project(a), db = project(b);
-      if (da !== undefined && db !== undefined) found = { way: s.way, a: da, b: db, cls: s.cls };
+      const da = project(a), db = project(b), error = Math.max(da.error, db.error);
+      if (error > 0.02 || error > bestError + 1e-10 || (Math.abs(error - bestError) <= 1e-10 && (found?.way === preferredWay || s.way !== preferredWay))) return;
+      bestError = error; found = { way: s.way, a: da.d, b: db.d, cls: s.cls };
     });
     return found;
   }
@@ -217,17 +220,43 @@ export class RoadNet {
    * sharp junction, point budget or cycle. Only a single incident graph ray is a true end.
    * Interior points of another segment count as two rays (an unsplit T-junction). */
   isDeadEnd(p: { x: number; y: number }): boolean {
-    const rays = new Set<string>();
+    return new Set(this.connections(p).map(c => `${c.dx.toFixed(5)},${c.dy.toFixed(5)}`)).size === 1;
+  }
+
+  /** Incident graph rays. d is 1 cm into each ray on its own way, so an interval ending at
+   * the junction cannot accidentally claim the untouched continuation beyond that boundary. */
+  connections(p: { x: number; y: number }): RoadConnection[] {
+    const out: RoadConnection[] = [];
     this.nearSegments([p.x - 0.02, p.y - 0.02, p.x + 0.02, p.y + 0.02], s => {
       const dx = s.bx - s.ax, dy = s.by - s.ay;
       const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / (s.length * s.length || 1)));
       if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > 0.02) return;
-      for (const q of [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }]) {
-        const len = Math.hypot(q.x - p.x, q.y - p.y);
-        if (len > 0.02) rays.add(`${((q.x - p.x) / len).toFixed(5)},${((q.y - p.y) / len).toFixed(5)}`);
+      for (const [x, y, direction] of [[s.ax, s.ay, -1], [s.bx, s.by, 1]]) {
+        const len = Math.hypot(x - p.x, y - p.y);
+        if (len > 0.02) out.push({ way: s.way, cls: s.cls, d: s.d + t * s.length + direction * Math.min(0.01, len / 2), dx: (x - p.x) / len, dy: (y - p.y) / len });
       }
     });
-    return rays.size === 1;
+    return out;
+  }
+
+  /** Branch junctions on a real source chord, including other ways' endpoints in its
+   * interior. Query the segment grid only; no per-plan scan of the road network. */
+  junctions(a: { x: number; y: number }, b: { x: number; y: number }): RoadJunction[] {
+    const candidates = new Map<string, { x: number; y: number }>(), dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy;
+    const add = (p: { x: number; y: number }) => {
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (length2 || 1)));
+      if (Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 0.02) candidates.set(pointKey(p.x, p.y), p);
+    };
+    add(a); add(b);
+    this.nearSegments([Math.min(a.x, b.x) - 0.02, Math.min(a.y, b.y) - 0.02, Math.max(a.x, b.x) + 0.02, Math.max(a.y, b.y) + 0.02], s => {
+      add({ x: s.ax, y: s.ay }); add({ x: s.bx, y: s.by });
+    });
+    const out: RoadJunction[] = [];
+    for (const p of candidates.values()) {
+      const connections = this.connections(p);
+      if (new Set(connections.map(c => `${c.dx.toFixed(5)},${c.dy.toFixed(5)}`)).size > 2) out.push({ ...p, connections });
+    }
+    return out;
   }
 
   /** Closest real way at a route tie-in, using the existing segment grid. */

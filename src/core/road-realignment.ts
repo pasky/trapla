@@ -2,6 +2,7 @@
 // ownership of source intervals already engineered by a crossing or another relocation.
 import type { CrossingGeometry, CrossingPoint, CrossingResult } from './crossings';
 import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
+import { retainingAssembly } from './data/remedies';
 import type { FootprintRoute } from './footprint';
 import { cellBounds, clipFootprint, insideFootprint, type FootprintCell, type FootprintGrid, type Point2 } from './footprint-geometry';
 import type { RoadNet } from './roadnet';
@@ -9,6 +10,8 @@ import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, typ
 
 export interface RoadSourceInterval { way: number; a: number; b: number }
 export interface RoadRealignmentInput {
+  /** Caller must collect every original-way footprint group before reserving any successful
+   * plan: inside-grid third arms remain independent obligations, never implicit removals. */
   route: FootprintRoute; terrain: Terrain; roads: RoadNet; grid: FootprintGrid;
   way: number; cls: string; hit: { a: number; b: number; i: number; j: number };
   /** Absolute chainages on EACH interval's own source way. Never mutate the caller's map. */
@@ -28,9 +31,14 @@ export interface RoadRealignmentPlan {
   turnaroundArea: number;
   /** Provisional study geometry: turning disk radius = 1.5 × road width, not a design standard. */
   turnaroundRadius?: number;
+  /** Measured exposed retaining faces, additional to SPK pavement/ordinary grading. No norm
+   * quota credit: conservatively charge this specific footprint support assembly in full. */
+  retainingArea: number;
+  /** Pre-surcharge CZK, already included in cost. */
+  retainingCost: number;
 }
 type WayPoint = Point2 & { d: number };
-type SourceSpan = RoadSourceInterval & { lo: number; hi: number };
+type SourceSpan = RoadSourceInterval & { lo: number; hi: number; cls: string };
 const STEP = 5, SETBACK = 3, MAX_POINTS = 1600, MAX_SUPPORT = 10;
 const distance = (a: Point2, b: Point2) => Math.hypot(b.x - a.x, b.y - a.y);
 const mix = (a: WayPoint, b: WayPoint, t: number): WayPoint => ({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), d: a.d + t * (b.d - a.d) });
@@ -110,7 +118,7 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
     return { ...q, z: ground, ground, surface: 'terrain' };
   };
   const failure = (message: string): RoadRealignmentPlan => ({ geometry: { width: row.width, schematic: false, clipped: true, diagnostics: [message] },
-    length: 0, cost: 0, roadCode: '', problems: [message], sourceIntervals: [], turnaroundArea: 0 });
+    length: 0, cost: 0, roadCode: '', problems: [message], sourceIntervals: [], turnaroundArea: 0, retainingArea: 0, retainingCost: 0 });
   if (row.noAtGrade) return failure('grade-separated road cannot use an ordinary realignment');
   const centre = (h.a + h.b) / 2, seed = roads.wayPath(way, centre, centre)[0];
   if (!seed) return failure('missing real-way tie-ins');
@@ -121,11 +129,19 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
   if (raw.length < 2) return failure('missing real-way tie-ins');
   const spans: SourceSpan[] = [];
   for (let i = 1; i < raw.length; i++) {
-    const source = roads.sourceInterval(raw[i - 1], raw[i]);
+    const source = roads.sourceInterval(raw[i - 1], raw[i], spans[spans.length - 1]?.way ?? way);
     if (!source) return failure('connected path lacks a real source segment');
     spans.push({ ...source, lo: raw[i - 1].d, hi: raw[i].d });
   }
   let lo = Math.max(raw[0].d, bounds?.[0] ?? -Infinity), hi = Math.min(raw[raw.length - 1].d, bounds?.[1] ?? Infinity);
+  // A narrow access may continue across equal/narrower tag splits, but must not take over
+  // a wider through road at its cheap width. Tie at that actual junction, or to a complete
+  // engineered crossing there; the wider road keeps its own full-width relocation group.
+  for (const span of spans) if (ROAD_CLASSES[span.cls].width > row.width) {
+    if (span.hi <= h.a + 1e-5) lo = Math.max(lo, span.hi);
+    else if (span.lo >= h.b - 1e-5) hi = Math.min(hi, span.lo);
+    else return failure('affected source is wider than the relocation class');
+  }
   // Project paid intervals back to connected arc length, respecting reversed OSM ways too.
   for (const span of spans) for (const [a, b] of covered?.get(span.way) ?? []) {
     const start = Math.max(Math.min(span.a, span.b), a), end = Math.min(Math.max(span.a, span.b), b);
@@ -190,7 +206,7 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
     if (!cell || !grid.hits(boundary, pad)) return;
     const side = Math.sign(routeSide(toward)) || Math.sign(routeSide(seed));
     for (const crossing of input.crossings ?? []) {
-      if (Math.abs(crossing.s - r.s[h.i]) > CROSSING_RULES.linkHardReach) continue;
+      if (ROAD_CLASSES[crossing.cls].noAtGrade || Math.abs(crossing.s - r.s[h.i]) > CROSSING_RULES.linkHardReach) continue;
       const existing = crossingSource(crossing, roads);
       if (!existing) continue;
       let common = connected && sharesSource(existing);
@@ -253,6 +269,7 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
   let initialReach = CROSSING_RULES.linkMinLength;
   for (let i = h.i; i <= h.j; i++) initialReach = Math.max(initialReach, CROSSING_RULES.linkMinLength + 2 * Math.max(r.dayL[i], r.dayR[i]));
   let best: RoadRealignmentPlan | undefined;
+  const junctionCache = new Map<SourceSpan, ReturnType<RoadNet['junctions']>>();
   // Expand actual-way collars only when needed for plan clearance or the 6% profile. Four
   // ordinary steps then the shared hard reach; never stop at an arbitrary OSM tag boundary.
   const reaches = [...new Set([initialReach, initialReach * 2, initialReach * 4, initialReach * 8, CROSSING_RULES.linkHardReach]
@@ -315,8 +332,8 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
     const fixed = new Map([[0, anchorA?.z ?? path[0].ground], [path.length - 1, anchorB?.z ?? path[path.length - 1].ground]]);
     if (gap > 0) { fixed.set(gap - 1, linkA!.z); fixed.set(gap, linkB!.z); }
     for (const index of fixed.keys()) if (grid.hits(path[index], half)) problems.add('tie-in inside the footprint');
-    // Solve a bounded Lipschitz profile with fixed terrain tie-ins. Ordinary SPK grading is
-    // represented by wall-supported ramps (no unmodelled embankment spilling into the grid).
+    // Solve a bounded Lipschitz profile with fixed terrain tie-ins. Explicit wall-supported
+    // ramps keep earthworks inside the checked ribbon; their measured faces are priced below.
     const chain = [0];
     for (let i = 1; i < path.length; i++) chain.push(i === gap ? 0 : chain[i - 1] + distance(path[i - 1], path[i]));
     const lower = path.map(p => p.ground - MAX_SUPPORT), upper = path.map(p => p.ground + MAX_SUPPORT);
@@ -343,11 +360,25 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
     }
     // Preserve endpoints even in a diagnosed, infeasible proposal.
     for (const [i, z] of fixed) path[i].z = z;
-    let length = 0, cost = 0;
+    let length = 0, cost = 0, retainingArea = 0, retainingCost = 0;
+    const wall = (height: number, length: number) => {
+      if (height > MAX_SUPPORT) problems.add('approach support exceeds 10 m');
+      if (height <= 0.01) return;
+      retainingArea += height * length; retainingCost += retainingAssembly(height).perM * length;
+    };
     const codes = new Set<string>();
-    const price = (p: Point2, len: number) => {
+    const price = (p: Point2, len: number, d?: number) => {
       const urban = terrain.cover(p.x, p.y) & BUILTUP_BIT ? 1 : 0;
-      cost += len * row.roadPerKm[urban] / 1000; codes.add(row.roadCodes[urban]);
+      let pricedRow = row;
+      if (d !== undefined) {
+        let lo = 0, hi = spans.length - 1;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (spans[mid].hi < d) lo = mid + 1; else hi = mid; }
+        const sourceRow = ROAD_CLASSES[spans[lo].cls];
+        // Equal-width tag changes retain their own SPK row. A narrower source rebuilt at
+        // our larger uniform ribbon width is conservatively priced as the larger class.
+        if (sourceRow.width === row.width) pricedRow = sourceRow;
+      }
+      cost += len * pricedRow.roadPerKm[urban] / 1000; codes.add(pricedRow.roadCodes[urban]);
     };
     const protectedCover = (v: number) => !!(v & (RAIL_CROSSING_BIT | RIVER_CROSSING_BIT))
       || (v & CLASS_BITS) === LC.rail || (v & CLASS_BITS) === LC.water || (!terrain.watercourses && (v & CLASS_BITS) === LC.stream);
@@ -363,16 +394,26 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
     for (let i = 1; i < path.length; i++) {
       if (i === gap) continue;
       const p = path[i - 1], q = path[i], len = distance(p, q), mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
-      length += len; price(mid, len);
+      length += len; price(mid, len, (p.d! + q.d!) / 2);
       if (chordHits(p, q)) problems.add('path intersects the footprint');
       if (Math.abs(q.z - p.z) > len * CROSSING_RULES.approachGradient + 1e-6) problems.add('tie-in heights exceed 6% gradient');
       const originalA = along(raw, p.d!), originalB = along(raw, q.d!);
-      const changed = distance(p, originalA) > 0.01 || distance(q, originalB) > 0.01;
+      const changed = distance(p, originalA) > 0.01 || distance(q, originalB) > 0.01
+        || Math.abs(p.z - p.ground) > 0.01 || Math.abs(q.z - q.ground) > 0.01;
       const count = Math.max(1, Math.ceil(len / STEP));
       for (let k = 0; k <= count; k++) {
         const t = k / count, x = p.x + (q.x - p.x) * t, y = p.y + (q.y - p.y) * t;
         const nx = len ? -(q.y - p.y) / len * half : 0, ny = len ? (q.x - p.x) / len * half : 0;
         if (terrain.isOob(x, y) || terrain.isOob(x + nx, y + ny) || terrain.isOob(x - nx, y - ny)) problems.add('path leaves terrain data');
+      }
+      if (len > 1e-6 && (p.surface === 'ramp' || q.surface === 'ramp')) {
+        // Both actual ribbon edges, not two copies of the centreline height. Midpoint
+        // integration is bounded to 5 m pieces, also on chords inserted around corners.
+        const nx = -(q.y - p.y) / len * half, ny = (q.x - p.x) / len * half;
+        for (let k = 0; k < count; k++) {
+          const t = (k + 0.5) / count, x = p.x + (q.x - p.x) * t, y = p.y + (q.y - p.y) * t, z = p.z + (q.z - p.z) * t;
+          for (const side of [-1, 1]) wall(Math.abs(z - terrain.heightAt(x + side * nx, y + side * ny)), len / count);
+        }
       }
       if (changed && len > 1e-6) {
         const cell: FootprintCell = { ...mid, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half };
@@ -395,12 +436,19 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
         if (clipFootprint(channel, diskCell, (channel.reach.width ?? 0.5) / 2)) problems.add('turnaround intersects water/rail');
       });
       const z = terrain.heightAt(turn.x, turn.y);
+      const other = dead[0] ? path[1] : path[path.length - 2], norm = distance(turn, other) || 1;
+      const tx = (other.x - turn.x) / norm, ty = (other.y - turn.y) / norm;
       for (let k = 0; k < 16; k++) {
         const x = turn.x + radius * Math.cos(k * Math.PI / 8), y = turn.y + radius * Math.sin(k * Math.PI / 8);
         if (terrain.isOob(x, y)) problems.add('turnaround leaves terrain data');
         if (Math.abs(terrain.heightAt(x, y) - z) > MAX_SUPPORT) problems.add('turnaround support exceeds 10 m');
+        const angle = (k + 0.5) * Math.PI / 8, dx = radius * Math.cos(angle), dy = radius * Math.sin(angle);
+        // The opening into the incoming ribbon is not an exposed disk face.
+        if (dx * tx + dy * ty <= 0 || Math.abs(-dx * ty + dy * tx) >= half)
+          wall(Math.abs(z - terrain.heightAt(turn.x + dx, turn.y + dy)), radius * Math.PI / 8);
       }
     }
+    cost += retainingCost;
     const sourceIntervals: RoadSourceInterval[] = [];
     const ownLo = removedLo ?? a, ownHi = removedHi ?? b;
     for (const span of spans) {
@@ -413,12 +461,44 @@ export function planRoadRealignment(input: RoadRealignmentInput): RoadRealignmen
       if (prev?.way === interval.way && interval.a <= prev.b + 1e-5 && interval.b >= prev.a - 1e-5) { prev.a = Math.min(prev.a, interval.a); prev.b = Math.max(prev.b, interval.b); }
       else sourceIntervals.push(interval);
     }
+    const checkedJunctions = new Set<string>();
+    for (const span of spans) {
+      if (span.hi < ownLo || span.lo > ownHi) continue;
+      const sourceA = along(raw, span.lo), sourceB = along(raw, span.hi);
+      let junctions = junctionCache.get(span);
+      if (!junctions) { junctions = roads.junctions(sourceA, sourceB); junctionCache.set(span, junctions); }
+      for (const junction of junctions) {
+        const dx = sourceB.x - sourceA.x, dy = sourceB.y - sourceA.y;
+        const t = ((junction.x - sourceA.x) * dx + (junction.y - sourceA.y) * dy) / (dx * dx + dy * dy || 1);
+        const d = span.lo + t * (span.hi - span.lo), key = `${junction.x},${junction.y}`;
+        if (d < ownLo - 1e-5 || d > ownHi + 1e-5 || checkedJunctions.has(key)) continue;
+        checkedJunctions.add(key);
+        const unowned = junction.connections.filter(connection => !sourceIntervals.some(interval => interval.way === connection.way
+          && connection.d >= interval.a && connection.d <= interval.b)
+          && !(covered?.get(connection.way) ?? []).some(([a, b]) => connection.d >= a && connection.d <= b));
+        if (!unowned.length) continue;
+        // Caller captures ALL original-way footprint groups before reserving any plan. An
+        // inside-grid third arm must still pass that independent screen/relocation; never
+        // reserve its source here. An outside-grid arm has no later hit, so must be preserved.
+        if (unowned.every(connection => grid.hits(junction, ROAD_CLASSES[connection.cls].width / 2))) continue;
+        const ground = terrain.heightAt(junction.x, junction.y);
+        let preserved = false;
+        for (let i = 1; !preserved && i < path.length; i++) {
+          if (i === gap) continue;
+          const a = path[i - 1], b = path[i], dx = b.x - a.x, dy = b.y - a.y;
+          const t = Math.max(0, Math.min(1, ((junction.x - a.x) * dx + (junction.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+          preserved = Math.hypot(junction.x - a.x - t * dx, junction.y - a.y - t * dy) < 0.02
+            && Math.abs(ground - a.z - t * (b.z - a.z)) < 0.1;
+        }
+        if (!preserved) problems.add('realignment would sever an unhandled road branch');
+      }
+    }
     if (length < 0.1) problems.add('replacement has no distinct surviving anchors');
     const diagnostics = [...problems];
     const plan: RoadRealignmentPlan = { geometry: { ...(gap > 0 ? { links: [path.slice(0, gap), path.slice(gap)] as [CrossingPoint[], CrossingPoint[]] } : { road: path }), width: row.width, schematic: false,
       ...(turn ? { turnarounds: [point(turn)] } : {}), ...(diagnostics.length ? { clipped: true, diagnostics } : {}) },
       original: slice(raw, ownLo, ownHi).map(point), length, cost, roadCode: [...codes].join(' / '), problems: diagnostics, sourceIntervals,
-      turnaroundArea, ...(turn ? { turnaroundRadius: radius } : {}) };
+      turnaroundArea, retainingArea, retainingCost, ...(turn ? { turnaroundRadius: radius } : {}) };
     if (!best || plan.problems.length < best.problems.length) best = plan;
     if (!problems.size) return plan;
     // Water/rail obstacles in an unchanged displaced core do not go away by billing longer

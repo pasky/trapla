@@ -52,6 +52,12 @@ describe('bounded real road relocation', () => {
     expect(plan.geometry.road!.at(-1)!.x).toBeGreaterThan(1105);
     expect(plan.geometry.turnarounds).toBeUndefined();
     for (const interval of plan.sourceIntervals) expect(interval.a).toBeGreaterThanOrEqual(0);
+    const path = plan.geometry.road!;
+    const cost = path.slice(1).reduce((sum, p, i) => {
+      const a = path[i], d = (p.d! + a.d!) / 2, row = d < 0 || d > 300 ? ROAD_CLASSES.track : ROAD_CLASSES.service;
+      return sum + Math.hypot(p.x - a.x, p.y - a.y) * row.roadPerKm[0] / 1000;
+    }, 0);
+    expect(plan.cost).toBeCloseTo(cost, 5); // equal-width tag changes retain their own class prices
   });
 
   it('removes only a true acquired dead-end stub and prices its outside turning apron by area', () => {
@@ -115,6 +121,14 @@ describe('bounded real road relocation', () => {
     expect(plan.geometry.road![0].x).toBeLessThan(415); // first 65 m collar was too short
     expect(plan.geometry.road!.filter(p => p.surface === 'ramp').length).toBeGreaterThan(0);
     expect(plan.geometry.road!.filter(p => p.surface === 'ramp').every(p => p.support === 'retaining')).toBe(true);
+    expect(plan.retainingArea).toBeGreaterThan(0);
+    expect(plan.retainingCost).toBeGreaterThan(0);
+    expect(plan.cost).toBeCloseTo(plan.length * ROAD_CLASSES.service.roadPerKm[0] / 1000 + plan.retainingCost, 5);
+    const regraded = plan.geometry.road!.find(p => Math.abs(p.y - 260) < 1e-6 && Math.abs(p.z - p.ground) > 1)!;
+    expect(regraded).toBeDefined();
+    const col = Math.floor(regraded.x / input.terrain.cell), row = Math.floor((input.terrain.height - regraded.y) / input.terrain.cell);
+    input.terrain.lc[row * input.terrain.nx + col] = LC.road | RAIL_CROSSING_BIT;
+    expect(planRoadRealignment(input).problems).toContain('path intersects water/rail'); // unchanged XY is not unchanged railway clearance
   });
 
   it('prices a distinct T-arm into a complete outside-grid crossing ramp and preserves its engineered elevation', () => {
@@ -135,6 +149,9 @@ describe('bounded real road relocation', () => {
     expect(planRoadRealignment(input).problems.length).toBeGreaterThan(0);
     c.issues = []; c.geometry!.clipped = true;
     expect(planRoadRealignment(input).problems.length).toBeGreaterThan(0);
+    c.geometry!.clipped = false; c.cls = 'trunk';
+    input.roads = new RoadNet({ cls: ['service', 'trunk'], ways: [[0, 500, 260, 700, 310], [1, 500, 100, 500, 400]] });
+    expect(planRoadRealignment(input).problems.length).toBeGreaterThan(0); // no ordinary T into a motorway/trunk ramp
   });
 
   it('preserves both surviving branches of a second crossing using separate compatible side links', () => {
@@ -150,6 +167,40 @@ describe('bounded real road relocation', () => {
     expect(a.every(p => p.y < 230)).toBe(true); expect(b.every(p => p.y > 270)).toBe(true);
     const length = [a, b].reduce((sum, path) => sum + path.slice(1).reduce((n, p, i) => n + Math.hypot(p.x - path[i].x, p.y - path[i].y), 0), 0);
     expect(plan.length).toBeCloseTo(length, 8); // no imaginary billed segment between the links
+  });
+
+  it('never severs outside-grid third arms when removing a dead-end stub or straightening a connector', () => {
+    const dead = setup([[0, 500, 240, 500, 450], [0, 500, 275, 650, 275]]);
+    dead.hit = { a: 0, b: 32, i: 40, j: 40 };
+    expect(planRoadRealignment(dead).problems).toContain('realignment would sever an unhandled road branch');
+
+    const split = setup([[0, 700, 100, 700, 400], [0, 700, 100, 500, 100], [0, 500, 100, 500, 400], [0, 700, 200, 850, 200]]);
+    split.hit = { a: 128, b: 172, i: 60, j: 60 }; split.crossings = [crossing(2)];
+    expect(planRoadRealignment(split).problems).toContain('realignment would sever an unhandled road branch');
+    split.roads = new RoadNet({ cls: ['service'], ways: [[0, 700, 100, 700, 400], [0, 700, 100, 500, 100], [0, 500, 100, 500, 400], [0, 700, 250, 850, 350]] });
+    const pending = planRoadRealignment(split);
+    expect(pending.problems).toEqual([]); // inside-grid third arm has an independent caller hit
+    expect(pending.sourceIntervals.some(s => s.way === 3)).toBe(false); // never suppress that obligation
+
+    const arm = setup([[0, 500, 260, 700, 310], [0, 500, 100, 500, 400], [0, 580, 280, 580, 400]]);
+    arm.hit = { a: 0, b: 50, i: 40, j: 42 }; arm.crossings = [crossing(1)];
+    arm.covered = new Map([[1, [[0, 300]]]]);
+    expect(planRoadRealignment(arm).problems).toContain('realignment would sever an unhandled road branch');
+  });
+
+  it('does not rebuild a wider through road at a narrow access-road price', () => {
+    const input = setup([[0, 20, 260, 500, 260], [1, 500, 260, 500, 400]], ['service', 'primary']);
+    input.hit = { a: 73, b: 480, i: 0, j: 40 };
+    const plan = planRoadRealignment(input);
+    expect(plan.problems.length).toBeGreaterThan(0); // the junction needs full-width engineering
+    expect(plan.sourceIntervals.every(s => s.way === 0)).toBe(true);
+  });
+
+  it('projects source ownership onto the closest segment, not the first near-parallel fork', () => {
+    const roads = new RoadNet({ cls: ['service'], ways: [[0, 50, 0, 150, 1], [0, 0, 0, 200, 0]] });
+    expect(roads.sourceInterval({ x: 50, y: 0 }, { x: 51, y: 0 })).toMatchObject({ way: 1, a: 50, b: 51 });
+    const duplicate = new RoadNet({ cls: ['service'], ways: [[0, 0, 0, 200, 0], [0, 0, 0, 200, 0]] });
+    expect(duplicate.sourceInterval({ x: 50, y: 0 }, { x: 51, y: 0 }, 1)?.way).toBe(1);
   });
 
   it('protects ribbon edges and turning aprons, while leaving old drainage on unchanged tails alone', () => {
