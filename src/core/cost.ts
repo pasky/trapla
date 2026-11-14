@@ -51,8 +51,6 @@ export function landPerM2(urban: number): number {
   return LAND.perM2 + (town - LAND.perM2) * urban;
 }
 
-export const NOISE_WALL_PER_M = NOISE.wallHeight * NOISE.wallPerM2;
-
 const SURPLUS_PER_M3 = PRICES.surplusHaulKm * PRICES.haulPerM3Km;
 
 /**
@@ -76,7 +74,7 @@ export function decisionPrices(materialValue: number) {
 
 export const PART_KEYS = [
   'roadBase', 'excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil',
-  'bridges', 'tunnels', 'crossings', 'noiseWalls', 'surcharge', 'land', 'forest', 'buildings',
+  'bridges', 'tunnels', 'crossings', 'noiseWalls', 'surcharge', 'land', 'forest', 'buildings', 'noiseBuyouts',
 ] as const;
 export type PartKey = (typeof PART_KEYS)[number];
 /** CZK per station cell, one array per cost component; the bill is their sum */
@@ -97,9 +95,9 @@ export interface CostBreakdown {
   construction: number;
   /** "other objects" on road base, earthworks, bridges, tunnels and overbridges */
   surcharge: number;
-  /** land + forest + buildings */
+  /** land + forest + footprint buildings + noise buyouts */
   land: number;
-  landDetail: { land: number; forest: number; buildings: number };
+  landDetail: { land: number; forest: number; buildings: number; noiseBuyouts: number };
   total: number;
 }
 
@@ -134,12 +132,14 @@ export interface StationCostInput {
   runs: Run[];
   /** purchase + demolition of buildings assigned to each cell, CZK */
   buildings?: ArrayLike<number>;
+  /** purchase + demolition of noise-infeasible dwellings outside the footprint, CZK per cell */
+  noiseBuyouts?: ArrayLike<number>;
   /** crossings of existing roads: all-in lump sums, CZK per cell */
   crossingLump?: ArrayLike<number>;
   /** crossings of existing roads: overbridges (get the other-objects surcharge), CZK per cell */
   crossingStructure?: ArrayLike<number>;
-  /** noise wall length in each cell (both sides added), m */
-  wallLength?: ArrayLike<number>;
+  /** noise wall surface in each cell (both sides added), m² */
+  wallArea?: ArrayLike<number>;
 }
 
 /**
@@ -200,10 +200,11 @@ export function costParts(inp: StationCostInput): CostParts {
     }
     const structure = inp.crossingStructure ? inp.crossingStructure[i] : 0;
     parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
-    parts.noiseWalls[i] = (inp.wallLength ? inp.wallLength[i] : 0) * NOISE_WALL_PER_M;
+    parts.noiseWalls[i] = (inp.wallArea ? inp.wallArea[i] : 0) * NOISE.wallPerM2;
     parts.surcharge[i] = (construction + structure) * surchargeRate(u);
     parts.land[i] = len * inp.width[i] * landPerM2(u);
     parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
+    parts.noiseBuyouts[i] = inp.noiseBuyouts ? inp.noiseBuyouts[i] : 0;
   }
   return parts;
 }
@@ -223,11 +224,11 @@ export function sumParts(parts: CostParts, i0 = 0, i1 = parts.roadBase.length - 
   };
   const earthworks = EARTH_KEYS.reduce((a, k) => a + t[k], 0);
   const construction = t.roadBase + earthworks + t.bridges + t.tunnels + t.crossings + t.noiseWalls;
-  const land = t.land + t.forest + t.buildings;
+  const land = t.land + t.forest + t.buildings + t.noiseBuyouts;
   return {
     roadBase: t.roadBase, earthworks, earthDetail, bridges: t.bridges, tunnels: t.tunnels, crossings: t.crossings,
     noiseWalls: t.noiseWalls, construction, surcharge: t.surcharge, land,
-    landDetail: { land: t.land, forest: t.forest, buildings: t.buildings },
+    landDetail: { land: t.land, forest: t.forest, buildings: t.buildings, noiseBuyouts: t.noiseBuyouts },
     total: construction + t.surcharge + land,
   };
 }

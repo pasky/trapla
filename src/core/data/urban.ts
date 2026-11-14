@@ -148,15 +148,14 @@ export const ROAD_CLASSES: Record<string, RoadClassRow> = {
 };
 
 // ---------------------------------------------------------------------------------------------
-// Noise walls — PROVISIONAL screening rule standing in for a real noise calculation
+// Noise feasibility — PROVISIONAL planning surrogate, NOT an acoustic study / legal assessment
 // ---------------------------------------------------------------------------------------------
 export const NOISE = {
-  /** Czech limits for main roads (Government Regulation 272/2011): 60 dB day, 50 dB night — context
-   * only, the rule below does not compute levels */
+  /** Chosen new-main-road limits (NV 272/2011): 60 dB day, 50 dB night. D below represents the
+   * controlling limit's contour; day/night traffic and absolute levels are not separately modelled. */
   limitDayDb: 60,
   limitNightDb: 50,
-  /** PROVISIONAL: dwellings within this distance of the road need a wall, at the reference traffic
-   * and design speed, m */
+  /** PROVISIONAL unmitigated limit contour at reference traffic and speed, from road axis, m */
   refDistance: 100,
   refTraffic: 9_000,
   refSpeed: 90,
@@ -168,8 +167,20 @@ export const NOISE = {
   margin: 50,
   /** no wall on a side where the cut edge is at least this far above the road (the cut screens), m */
   cutShield: 4,
-  /** PROVISIONAL wall height, m */
-  wallHeight: 3,
+  /** PROVISIONAL E = distanceDb * log10(D/d); ≈ −4.5 dB per doubling of distance. */
+  distanceDb: 15,
+  /** Protected outdoor receiver: 2 m in front of the nearest façade, towards the source. */
+  facadeOffset: 2,
+  /** PROVISIONAL practical wall choices and low-receiver insertion loss, dB (research/09).
+   * Not a diffraction calculation; no arbitrarily tall wall to save an infeasible route. */
+  wallHeights: [3, 4, 5],
+  lowAttenuationDb: [7, 10, 12],
+  /** PROVISIONAL highest occupied receiver = 1.5 + (levels − 1) * 3 m above building ground. */
+  receiverHeight: 1.5,
+  storeyHeight: 3,
+  /** PROVISIONAL loss of insertion benefit per metre the receiver is above the wall top,
+   * relative to road grade; floor at zero benefit. Includes upper floors of houses too. */
+  upperPenaltyDbPerM: 2,
   /** all-in installed price per m² of wall, range 8,000–14,000 (ŘSD Radostín 2021: 280 m for 9 M ≈
    * 10,700/m² at an assumed 3 m; OTSKP 34712 panels alone 3,265) — research/09 §1 */
   wallPerM2: 10_000,

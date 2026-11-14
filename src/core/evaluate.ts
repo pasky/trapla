@@ -92,6 +92,8 @@ export interface Result {
   walls: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   demolished: { j: number; i: number; cost: number }[];
+  /** Outside the footprint: noise-infeasible dwellings acquired AND demolished, billed separately. */
+  boughtOut: { j: number; i: number; cost: number }[];
   quantities: {
     cut: number; fill: number; reused: number; surplus: number; deficit: number; avgHaul: number;
     /** cut volume by PROVISIONAL depth class I / II / III, m³ */
@@ -101,6 +103,8 @@ export interface Result {
     /** at-grade + bridge length inside built-up areas, m */
     urbanLength: number;
     wallLength: number;
+    wallArea: number;
+    noiseBuyouts: number;
     /** crossings of existing roads that cost something here (overbridges, junctions, reconnections) */
     crossingsPaid: number;
     /** screening distance used by the noise rule, m */
@@ -443,11 +447,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
 
   // --- noise walls ---
-  const wall = new Uint8Array(n), wallLength = new Float64Array(n);
-  let walls: WallStretch[] = [];
+  const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
+  const noiseBuyouts = new Float64Array(n);
+  let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   const noiseD = noiseDistance(scenario.traffic, d.speed);
   if (bld) {
-    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseD, gone);
     const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel) { shieldL[i] = shieldR[i] = 1; continue; }
@@ -455,10 +459,15 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (sec.zDayL[i] - grade[i] >= NOISE.cutShield) shieldL[i] = 1;
       if (sec.zDayR[i] - grade[i] >= NOISE.cutShield) shieldR[i] = 1;
     }
+    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseD, gone,
+      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR);
+    boughtOut = ex.boughtOut;
+    for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;
     const fl = wallFlags(ds, ex.L, shieldL), fr = wallFlags(ds, ex.R, shieldR);
     for (let i = 0; i < n; i++) {
-      wall[i] = fl[i] | (fr[i] << 1);
-      wallLength[i] = (fl[i] + fr[i]) * cellLength(i, n, ds);
+      wall[i] = (fl[i] ? 1 : 0) | (fr[i] ? 2 : 0);
+      wallLength[i] = ((fl[i] ? 1 : 0) + (fr[i] ? 1 : 0)) * cellLength(i, n, ds);
+      wallArea[i] = (fl[i] + fr[i]) * cellLength(i, n, ds);
     }
     walls = [...wallStretches(ds, al.length, fl, 'L'), ...wallStretches(ds, al.length, fr, 'R')];
   }
@@ -472,7 +481,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     category: d.category, terrainClass: scenario.terrainClass, n, ds, kind, urban,
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
-    width, forest, runs, buildings: buildingCost, crossingLump, crossingStructure, wallLength,
+    width, forest, runs, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea,
   });
   const cost = sumParts(parts);
   lap('cost');
@@ -546,12 +555,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished, boughtOut,
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
       cutByClass, footprint, forestArea, buildingsHit: demolished.length, hitBuildings: demolished.map((p) => p.j),
       bridgeLength, tunnelLength, bridges: bridges.length, tunnels: tunnels.length, massHaul: vol.mass,
-      urbanLength, wallLength: wallLength.reduce((a, v) => a + v, 0), crossingsPaid, noiseDistance: noiseD, materialValue,
+      urbanLength, wallLength: wallLength.reduce((a, v) => a + v, 0),
+      wallArea: wallArea.reduce((a, v) => a + v, 0), noiseBuyouts: boughtOut.length,
+      crossingsPaid, noiseDistance: noiseD, materialValue,
     },
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing,
   };

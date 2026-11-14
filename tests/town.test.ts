@@ -7,7 +7,7 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
 import { BUILDING_KIND, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
-import { noiseDistance, wallFlags } from '../src/core/noise';
+import { dwellingExposure, noiseDistance, requiredWall, wallFlags } from '../src/core/noise';
 import { rangeSummary } from '../src/core/range';
 import { mergeCrossings, RoadNet } from '../src/core/roadnet';
 import { KIND } from '../src/core/structures';
@@ -64,6 +64,40 @@ describe('noise rule', () => {
     expect(noiseDistance(2 * NOISE.refTraffic, NOISE.refSpeed)).toBeGreaterThan(NOISE.refDistance * 1.4);
   });
 
+  it('increases wall height with exposure, rejects unprotectable upper floors, and respects road elevation', () => {
+    expect(requiredWall(50, 100, 1.5)).toBe(3);
+    expect(requiredWall(30, 100, 1.5)).toBe(4);
+    expect(requiredWall(20, 100, 1.5)).toBe(5);
+    expect(requiredWall(10, 100, 1.5)).toBe(Infinity);
+    expect(requiredWall(50, 100, 10.5)).toBe(Infinity);
+    // A bridge 8 m above the building ground brings the wall above the top receiver.
+    expect(requiredWall(50, 100, 10.5 - 8)).toBe(3);
+    expect(requiredWall(101, 100, 20)).toBe(0);
+  });
+
+  it('uses the worst height over a connected stretch, without bridging a shielded gap', () => {
+    expect([...wallFlags(10, [0, 3, 0, 5, 0, 3], [0, 0, 1, 0, 0, 0], 10)])
+      .toEqual([3, 3, 0, 5, 5, 5]);
+  });
+
+  it('drops every wall for a bought-out dwelling, independent of station ordering or duplicate hash hits', () => {
+    const info: BuildingInfo = [100, 1, BUILDING_KIND.house, 100, 20, 5, 5, 0];
+    const b = new BuildingIndex([[100, 20, 8]], [info]);
+    const run = (x: number[], shield = [0, 0, 0], gone = [0]) => dwellingExposure(3, x, [0, 0, 0],
+      [1, 1, 1], [0, 0, 0], b, 100, gone, [0, 0, 0], () => 0, shield, shield);
+    for (const x of [[0, 100, 200], [200, 100, 0]]) {
+      const r = run(x);
+      expect(r.boughtOut).toEqual([{ j: 0, i: 1, cost: b.cost[0] }]);
+      expect([...r.L]).toEqual([0, 0, 0]);
+    }
+    expect(run([0, 100, 200], [1, 1, 1]).boughtOut).toEqual([]);
+    expect(run([0, 100, 200], undefined, [1]).boughtOut).toEqual([]);
+    // The closest station is screened by a cut/tunnel; more distant unscreened sources need walls.
+    const cut = run([20, 100, 180], [0, 1, 0]);
+    expect(cut.boughtOut).toEqual([]);
+    expect([...cut.L]).toEqual([3, 0, 3]);
+  });
+
   it('walls cover the exposed stations plus the margin, except where shielded', () => {
     const exposed = new Uint8Array(40), shield = new Uint8Array(40);
     exposed[10] = exposed[11] = 1; exposed[30] = 1;
@@ -84,6 +118,8 @@ describe('building footprints', () => {
     expect(b.hits(0, 0, 0, 1, 0, 5, 5)).toBe(false);
     expect(b.hits(0, -14, 0, 1, 0, 5, 3)).toBe(false);
     expect(b.hits(0, -14, 0, 1, 0, 5, 5)).toBe(true);
+    expect(b.facadeDistance(0, 0, 0)).toBeCloseTo(20 / Math.SQRT2 - 3, 6);
+    expect(b.facadeDistance(0, 0, 20)).toBe(0);
   });
 });
 
@@ -110,6 +146,8 @@ describe('evaluate on a synthetic town', () => {
     sq(4000, 1045, 5, BUILDING_KIND.house), // beside the 12 m cut → screened by it
     sq(2000, 1000, 3, BUILDING_KIND.minor), // under the bridge deck → demolished
     sq(2000, 1012, 3, BUILDING_KIND.minor), // beside the deck, where an embankment would have buried it
+    sq(1000, 1016, 5, BUILDING_KIND.house), // outside working strip but too close for any wall
+    [100, 4, BUILDING_KIND.apartments, 1000, 1070, 5, 5, 0] as BuildingInfo, // upper-floor failure
   ];
   const buildings = new BuildingIndex(info.map((f) => [f[3], f[4], f[5] * Math.SQRT2]), info);
   const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 500, y: 1000 }, b: { x: 6500, y: 1000 }, buildings, roads };
@@ -142,15 +180,24 @@ describe('evaluate on a synthetic town', () => {
     expect(r.demolished[0].i).toBe(50);
   });
 
+  it('bills infeasible dwellings separately, once each and never as footprint demolitions', () => {
+    expect(r.boughtOut.map((b) => b.j).sort()).toEqual([5, 6]);
+    expect(r.quantities.noiseBuyouts).toBe(2);
+    expect(r.cost.landDetail.noiseBuyouts).toBeCloseTo(buildings.cost[5] + buildings.cost[6], 3);
+    expect(r.parts.noiseBuyouts.reduce((a, b) => a + b, 0)).toBeCloseTo(r.cost.landDetail.noiseBuyouts, 3);
+  });
+
   it('walls off dwellings within the screening distance unless a cut screens them', () => {
     expect(r.walls.length).toBe(1);
     const w = r.walls[0];
     expect(w.side).toBe('L');
-    // chord of the 100 m circle around a house 40 m away (±91.7 m) plus 50 m margins
-    expect(w.s0).toBeGreaterThan(500 - 92 - 50 - 10);
-    expect(w.s1).toBeLessThan(500 + 92 + 50 + 10);
+    // Nearest façade (not centroid), receiver 2 m in front, plus 50 m longitudinal margins.
+    expect(w.s0).toBeGreaterThan(500 - 105 - 50 - 10);
+    expect(w.s1).toBeLessThan(500 + 105 + 50 + 10);
     expect(r.quantities.wallLength).toBeCloseTo(w.s1 - w.s0, 6);
-    expect(r.cost.noiseWalls).toBeCloseTo(r.quantities.wallLength * NOISE.wallHeight * NOISE.wallPerM2, 3);
+    expect(w.height).toBe(4);
+    expect(r.quantities.wallArea).toBeCloseTo(r.quantities.wallLength * w.height, 6);
+    expect(r.cost.noiseWalls).toBeCloseTo(r.quantities.wallArea * NOISE.wallPerM2, 3);
   });
 
   it('built-up cells get the urban norm row, surcharge and land price', () => {
@@ -172,7 +219,7 @@ describe('evaluate on a synthetic town', () => {
     expect(sum('crossings')).toBeCloseTo(c.crossings, 3);
     expect(sum('noiseWalls')).toBeCloseTo(c.noiseWalls, 3);
     expect(sum('surcharge')).toBeCloseTo(c.surcharge, 3);
-    expect(sum('land') + sum('forest') + sum('buildings')).toBeCloseTo(c.land, 3);
+    expect(sum('land') + sum('forest') + sum('buildings') + sum('noiseBuyouts')).toBeCloseTo(c.land, 3);
     for (const k of ['excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil'] as const) {
       expect(sum(k)).toBeCloseTo(c.earthDetail[k], 3);
     }
@@ -189,6 +236,9 @@ describe('evaluate on a synthetic town', () => {
     expect(a.cost.total + b.cost.total).toBeCloseTo(c.total, 2);
     expect(a.length + b.length).toBeCloseTo(r.length, 6);
     expect(a.quantities.cut + b.quantities.cut).toBeCloseTo(r.quantities.cut, 3);
+    expect(whole.quantities.wallArea).toBeCloseTo(r.quantities.wallArea, 6);
+    expect(a.quantities.wallArea + b.quantities.wallArea).toBeCloseTo(r.quantities.wallArea, 6);
+    expect(a.quantities.noiseBuyouts + b.quantities.noiseBuyouts).toBe(r.quantities.noiseBuyouts);
     expect(a.quantities.crossings).toBe(3);
     expect(b.quantities.buildings).toBe(0);
   });

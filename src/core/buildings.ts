@@ -30,6 +30,8 @@ export class BuildingIndex {
   readonly area: Float64Array;
   /** 1 where people live (noise rule) */
   readonly dwelling: Uint8Array;
+  /** occupied storeys (tagged levels, otherwise the kind's default) */
+  readonly levels: Float64Array;
   // oriented bounding rectangle: centre, unit long axis, half extents
   private readonly ox: Float64Array;
   private readonly oy: Float64Array;
@@ -46,7 +48,7 @@ export class BuildingIndex {
   constructor(readonly items: [number, number, number][], info?: (BuildingInfo | null)[]) {
     const n = (this.n = items.length);
     this.cost = new Float64Array(n); this.kind = new Uint8Array(n); this.area = new Float64Array(n);
-    this.dwelling = new Uint8Array(n);
+    this.dwelling = new Uint8Array(n); this.levels = new Float64Array(n);
     this.ox = new Float64Array(n); this.oy = new Float64Array(n); this.ux = new Float64Array(n);
     this.uy = new Float64Array(n); this.hl = new Float64Array(n); this.hw = new Float64Array(n);
     items.forEach((b, i) => {
@@ -63,6 +65,7 @@ export class BuildingIndex {
         this.ox[i] = b[0]; this.oy[i] = b[1]; this.hl[i] = h; this.hw[i] = h; this.ux[i] = 1; this.uy[i] = 0;
       }
       this.cost[i] = buildingCost(this.area[i], levels, this.kind[i]);
+      this.levels[i] = buildingLevels(levels, this.kind[i]);
       this.dwelling[i] = BUILDING_KINDS[this.kind[i]]?.dwelling ? 1 : 0;
       // reach of the rectangle's corners from the centroid (they may lie outside the vertex circle)
       const reach = Math.max(b[2], Math.hypot(this.ox[i] - b[0], this.oy[i] - b[1]) + Math.hypot(this.hl[i], this.hw[i]));
@@ -87,6 +90,14 @@ export class BuildingIndex {
       const a = this.map.get(this.key(cx, cy));
       if (a) for (const i of a) fn(i);
     }
+  }
+
+  /** Horizontal distance to the nearest façade of the oriented rectangle (zero inside it). */
+  facadeDistance(j: number, x: number, y: number): number {
+    const dx = x - this.ox[j], dy = y - this.oy[j];
+    const along = Math.max(0, Math.abs(dx * this.ux[j] + dy * this.uy[j]) - this.hl[j]);
+    const across = Math.max(0, Math.abs(-dx * this.uy[j] + dy * this.ux[j]) - this.hw[j]);
+    return Math.hypot(along, across);
   }
 
   /**
