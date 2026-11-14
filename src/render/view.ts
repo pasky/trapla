@@ -14,7 +14,7 @@ import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
-import { makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
+import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
 export interface ViewEvents {
   onPickTerrain?: (x: number, y: number, clientX: number, clientY: number, forceBend: boolean) => void;
@@ -452,14 +452,19 @@ export class View {
     }
     // ---- ribbon (crown + slopes) and bridge decks ----
     const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
+    const kinds: number[] = [], geo: number[] = [];
     const v = new THREE.Vector3();
-    // `e` = true elevation for the contour lines (the surface itself may be lifted), `k` = contour strength
-    const push = (x: number, y: number, z: number, c: THREE.Color, e = z, k = 0) => {
+    // `e` = true elevation for the contour lines (the surface itself may be lifted), `k` = contour strength,
+    // `kind` = EW_KIND, `g` = [depth below the original ground, class II top, class III top] (cut slopes)
+    const noGeo = [0, 0, 0];
+    const push = (x: number, y: number, z: number, c: THREE.Color, e = z, k = 0, kind: number = EW_KIND.structure, g = noGeo) => {
       this.local(x, y, z, v); pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); elev.push(e); ink.push(k);
+      kinds.push(kind); geo.push(g[0], g[1], g[2]);
       return pos.length / 3 - 1;
     };
     const asphalt = new THREE.Color(0x3b3b42), asphaltBad = new THREE.Color(0x8a2020);
-    const fillC = new THREE.Color(0xe3d27e), cutC = new THREE.Color(0xbf6a32), concrete = new THREE.Color(0xc4c2ba);
+    // slope colours are only nominal: the earthwork shader textures cut / fill slopes itself (EW_KIND)
+    const fillC = new THREE.Color(0x8aa95a), cutC = new THREE.Color(0x9e7859), concrete = new THREE.Color(0xc4c2ba);
     const lift = 0.35;
     // contours on the cut / fill slopes join the terrain's at the daylight line; faint on the carriageway
     const slopeInk = 1, crownInk = 0.35;
@@ -470,13 +475,18 @@ export class View {
       const xl = x + nx * r.dayL[i], yl = y + ny * r.dayL[i], xr = x - nx * r.dayR[i], yr = y - ny * r.dayR[i];
       const fillL = r.zDayL[i] < z, fillR = r.zDayR[i] < z;
       const crown = bad[i] ? asphaltBad : asphalt;
+      // weathering class tops of the station's ground (unmapped ground: no fictitious rock)
+      const gp = r.geology.profiles[r.geology.ids[i]];
+      const cI = gp.normMix ? 1e4 : gp.classIto, cII = gp.normMix ? 1e4 : gp.classIIto;
+      const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
+      const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
       sv.push({
-        dl: push(xl, yl, Math.max(r.zDayL[i], this.meshHeight(xl, yl)) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk),
-        el: push(x + nx * w, y + ny * w, z + lift, fillL ? fillC : cutC, z, slopeInk),
-        cl: push(x + nx * w, y + ny * w, z + lift, crown, z, crownInk),
-        cr: push(x - nx * w, y - ny * w, z + lift, crown, z, crownInk),
-        er: push(x - nx * w, y - ny * w, z + lift, fillR ? fillC : cutC, z, slopeInk),
-        dr: push(xr, yr, Math.max(r.zDayR[i], this.meshHeight(xr, yr)) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk),
+        dl: push(xl, yl, Math.max(r.zDayL[i], this.meshHeight(xl, yl)) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, [0, cI, cII]),
+        el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, [this.terrain.heightAt(xel, yel) - z, cI, cII]),
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
+        er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, [this.terrain.heightAt(xer, yer) - z, cI, cII]),
+        dr: push(xr, yr, Math.max(r.zDayR[i], this.meshHeight(xr, yr)) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, [0, cI, cII]),
       });
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
@@ -542,11 +552,13 @@ export class View {
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.setAttribute('elev', new THREE.Float32BufferAttribute(elev, 1));
     g.setAttribute('ink', new THREE.Float32BufferAttribute(ink, 1));
+    g.setAttribute('ewKind', new THREE.Float32BufferAttribute(kinds, 1));
+    g.setAttribute('ewGeo', new THREE.Float32BufferAttribute(geo, 3));
     g.setIndex(idx);
     g.computeBoundingSphere();
     g.computeVertexNormals();
     this.buildMask(r);
-    const ribbon = new THREE.Mesh(g, makeEarthworkMaterial(this.terrainU.contour, {
+    const ribbon = new THREE.Mesh(g, makeEarthworkMaterial(this.terrainU, {
       side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     }));
     ribbon.name = 'ribbon';

@@ -201,7 +201,15 @@ Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overvie
   The road's cut and fill slopes carry the same lines (one shared GLSL function, fed with the slope's true
   elevation, so they join the terrain's at the daylight line at any relief exaggeration); the carriageway shows
   them faintly, structures not at all. The slope tint stays on the natural ground: designed slopes (1:1.5–1:2)
-  would all be purple and lose the cut / fill colours. `node scripts/earthworks.mjs [design.json] [outdir]`
+  would all be purple and lose the cut / fill colours.
+- **Earthworks** (the route ribbon's cut and fill slopes and carriageway) use the terrain's relief lighting —
+  same four lights, same strength (also in photo mode), normals of the exaggerated surface — so slopes facing
+  away from the light darken and the form reads when the camera tilts. The slopes carry a procedural
+  world-space texture (value noise in metres, each octave faded out once a pixel covers it, so it is stable
+  at any zoom): cuts are brown soil with erosion rills down the fall line, turning ochre-grey and banded
+  (strata) where they reach the ground model's estimated class II / III rock (depth below the original
+  ground, per station; unmapped ground shows soil only); fills are topsoiled and seeded embankments,
+  mottled green-yellow grass. `node scripts/earthworks.mjs [design.json] [outdir]`
   renders the deepest cut and the highest embankment with contours at 1× and 2× relief
   (`docs/screenshots/24…27-*.png`).
 - **Land cover, existing roads, railways, water, building footprints** are vectors (`vector.bin.gz`), rasterised

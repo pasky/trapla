@@ -127,6 +127,20 @@ vec4 contourInk(float h, float mPerPx, vec3 albedo) {
   return vec4(lineCol, max(minor, major) * contour.z * mix(0.8, 1.0, dark));
 }`;
 
+/**
+ * Relief lighting shared by the terrain and the earthworks: multi-directional hillshade (main light from the
+ * north-west) of a world-space normal `n` of the exaggerated surface, as a multiplier of the display-referred
+ * albedo; `amt` = strength (the terrain's `shadeAmt`).
+ */
+const RELIEF_GLSL = /* glsl */ `
+float reliefLight(vec3 n, float amt) {
+  float shade = 0.55 * max(dot(n, vec3(-0.5, 0.70711, -0.5)), 0.0)
+    + 0.20 * max(dot(n, vec3(-0.64279, 0.76604, 0.0)), 0.0)
+    + 0.15 * max(dot(n, vec3(0.0, 0.76604, -0.64279)), 0.0)
+    + 0.10 * max(dot(n, vec3(-0.35355, 0.86603, 0.35355)), 0.0);
+  return mix(1.0, 0.30 + 0.90 * shade / 0.95, amt);
+}`;
+
 const VERT = /* glsl */ `
 varying vec3 vWorld;
 #include <fog_pars_vertex>
@@ -178,6 +192,7 @@ vec4 lcLevel(sampler2D tex, vec4 box, float on, vec2 loc, vec4 under) {
 }
 
 ${CONTOUR_GLSL}
+${RELIEF_GLSL}
 
 void main() {
   if (maskOn > 0.5) {
@@ -201,12 +216,7 @@ void main() {
   vec2 grad = vec2(heightRel(uv + ex) - heightRel(uv - ex), heightRel(uv + ey) - heightRel(uv - ey)) / (2.0 * e * cell);
   vec3 n = normalize(vec3(-exag * grad.x, 1.0, -exag * grad.y));
 
-  // multi-directional hillshade (main light from the north-west)
-  float shade = 0.55 * max(dot(n, vec3(-0.5, 0.70711, -0.5)), 0.0)
-    + 0.20 * max(dot(n, vec3(-0.64279, 0.76604, 0.0)), 0.0)
-    + 0.15 * max(dot(n, vec3(0.0, 0.76604, -0.64279)), 0.0)
-    + 0.10 * max(dot(n, vec3(-0.35355, 0.86603, 0.35355)), 0.0);
-  float light = mix(1.0, 0.30 + 0.90 * shade / 0.95, shadeAmt);
+  float light = reliefLight(n, shadeAmt);
 
   // albedo: hypsometric tint under the land cover (premultiplied RGBA clip levels, finest wins)
   vec3 albedo = texture2D(tintTex, vec2((elev - ${TINT_MIN.toFixed(1)}) / ${(TINT_MAX - TINT_MIN).toFixed(1)}, 0.5)).rgb;
@@ -255,33 +265,115 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
+/** `ewKind` vertex attribute of the route ribbon: how the earthwork material draws a surface */
+export const EW_KIND = { structure: 0, crown: 1, cut: 2, fill: 3 } as const;
+
 /**
- * Lit, vertex-coloured material of the route ribbon with the terrain's contour lines on top. Per vertex:
- * `elev` = true elevation (m; the drawn surface is lifted a little above the terrain, and scaled by the
- * relief exaggeration), `ink` = contour strength (1 on cut / fill slopes, less on the carriageway, 0 on
- * structures). `contourU` is the terrain's `contour` uniform, shared so the interval follows the zoom.
+ * Earthwork surfaces: world-space procedural texture of cut and fill slopes (no texture assets). Value
+ * noise in object-space metres (x east, y elevation, z south — independent of the relief exaggeration),
+ * each octave faded to its mean once a pixel covers a good part of its wavelength, so it neither shimmers
+ * nor changes with the zoom. Cuts: brown soil with mottles and erosion rills down the fall line, turning
+ * ochre-grey in weathered rock (class II) and grey with horizontal strata in class III, by the depth below
+ * the original ground. Fills: topsoiled and seeded embankments, mottled green-yellow grass.
  */
-export function makeEarthworkMaterial(contourU: TerrainUniforms['contour'], params: THREE.MeshLambertMaterialParameters): THREE.MeshLambertMaterial {
+const EARTH_GLSL = /* glsl */ `
+varying vec3 vObj;
+varying vec3 vNrm;
+varying float vKind;
+varying vec3 vGeo;
+float ewHash(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419)) * 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float ewNoise(vec3 x) {
+  vec3 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  vec2 o = vec2(1.0, 0.0);
+  return mix(mix(mix(ewHash(i), ewHash(i + o.xyy), f.x), mix(ewHash(i + o.yxy), ewHash(i + o.xxy), f.x), f.y),
+             mix(mix(ewHash(i + o.yyx), ewHash(i + o.xyx), f.x), mix(ewHash(i + o.yxx), ewHash(i + o.xxx), f.x), f.y), f.z);
+}
+// zero-mean noise of the given wavelength (m) at a pixel footprint of fw metres
+float ewOctave(vec3 p, float lambda, float fw) {
+  float a = 1.0 - smoothstep(0.15, 0.45, fw / lambda);
+  return a > 0.0 ? (ewNoise(p / lambda) - 0.5) * a : 0.0;
+}
+// display-referred albedo of a slope; n = surface normal (unexaggerated), fillW = 0 cut … 1 fill,
+// geo = depth below the original ground (m), depth of the class II and class III tops (m)
+vec3 earthAlbedo(vec3 p, vec3 n, float fillW, vec3 geo, float fw) {
+  float big = ewOctave(p, 7.0, fw), mid = ewOctave(p + 31.7, 1.7, fw), fine = ewOctave(p + 57.3, 0.45, fw);
+  vec3 cut = vec3(0.0), fill = vec3(0.0);
+  if (fillW < 0.999) {
+    float wII = smoothstep(geo.y - 0.5, geo.y + 0.5, geo.x), wIII = smoothstep(geo.z - 0.5, geo.z + 1.0, geo.x);
+    // rills: fine across the slope (along the contour direction t), long down the fall line
+    vec2 t = n.xz / max(length(n.xz), 1e-3);
+    float rill = (ewNoise(vec3(dot(p.xz, vec2(-t.y, t.x)) / 0.8, p.y / 6.0, 13.1)) - 0.5) * (1.0 - smoothstep(0.15, 0.45, fw / 0.8));
+    // strata: bands of near-constant elevation, wavy over a few metres
+    float strata = ewOctave(vec3(p.x / 40.0, p.y + 3.0 * big, p.z / 40.0), 1.3, fw);
+    vec3 base = mix(mix(vec3(0.62, 0.47, 0.35), vec3(0.60, 0.50, 0.40), wII), vec3(0.57, 0.51, 0.44), wIII);
+    cut = base * (1.0 + 0.16 * big + 0.12 * mid + 0.14 * fine + (0.22 - 0.10 * wIII) * rill + 0.40 * wIII * strata);
+  }
+  if (fillW > 0.001) {
+    // fresh grass with drier, yellower patches and clumps
+    vec3 grass = mix(vec3(0.47, 0.66, 0.30), vec3(0.62, 0.70, 0.35), smoothstep(-0.35, 0.35, 0.8 * big + mid));
+    fill = grass * (1.0 + 0.10 * mid + 0.18 * fine);
+  }
+  return mix(cut, fill, fillW);
+}`;
+
+/**
+ * Material of the route ribbon. Cut and fill slopes and the carriageway are lit like the terrain relief
+ * (same hillshade and strength, normals of the exaggerated surface) and the slopes get a procedural
+ * texture; structures (bridge sides, piers, portals: `ewKind` 0) are vertex-coloured Lambert. The
+ * terrain's contour lines are drawn on top. Per vertex: `ewKind` (EW_KIND; interpolates between cut and
+ * fill), `ewGeo` (depth below the original ground and the class II / III tops, m), `elev` = true elevation
+ * (m; the drawn surface is lifted a little above the terrain, and scaled by the relief exaggeration), `ink`
+ * = contour strength (1 on cut / fill slopes, less on the carriageway, 0 on structures). The uniforms are
+ * the terrain's, shared so the contour interval, exaggeration and shading strength follow it.
+ */
+export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLambertMaterialParameters): THREE.MeshLambertMaterial {
   const m = new THREE.MeshLambertMaterial({ ...params, vertexColors: true });
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.contour = contourU;
+    shader.uniforms.contour = u.contour;
+    shader.uniforms.exag = u.exag;
+    shader.uniforms.shadeAmt = u.shadeAmt;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float elev;\nattribute float ink;\nvarying float vElev;\nvarying float vInk;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvElev = elev;\nvInk = ink;');
+      .replace('#include <common>', /* glsl */ `#include <common>
+        attribute float elev;
+        attribute float ink;
+        attribute float ewKind;
+        attribute vec3 ewGeo;
+        varying float vElev;
+        varying float vInk;
+        varying vec3 vObj;
+        varying vec3 vNrm;
+        varying float vKind;
+        varying vec3 vGeo;`)
+      .replace('#include <begin_vertex>', /* glsl */ `#include <begin_vertex>
+        vElev = elev; vInk = ink; vObj = position; vNrm = normal; vKind = ewKind; vGeo = ewGeo;`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying float vElev;\nvarying float vInk;\n${CONTOUR_GLSL}`)
+      .replace('#include <common>', `#include <common>\nuniform float exag;\nuniform float shadeAmt;\nvarying float vElev;\nvarying float vInk;\n${CONTOUR_GLSL}\n${RELIEF_GLSL}\n${EARTH_GLSL}`)
       .replace('#include <opaque_fragment>', /* glsl */ `
-        // derivatives outside the branch (vInk varies per fragment)
+        // derivatives outside the branches (the varyings vary per fragment)
         float ewPx = max(length(vec2(dFdx(vElev), dFdy(vElev))), 1e-6);
+        float ewFw = length(fwidth(vObj));
+        // display-referred sRGB, like the terrain (which mixes its colours and lines there)
+        vec3 ewAlb = pow(max(diffuseColor.rgb, 0.0), vec3(1.0 / 2.2));
+        if (vKind > 0.5) {
+          vec3 ewN = normalize(vNrm);
+          ewN *= sign(ewN.y + 1e-6); // double-sided: the upward face
+          if (vKind > 1.5) ewAlb = earthAlbedo(vObj, ewN, clamp(vKind - 2.0, 0.0, 1.0), vGeo, ewFw);
+          // the world is scaled by the exaggeration in y: normals by its inverse
+          float ewLight = reliefLight(normalize(vec3(ewN.x, ewN.y / exag, ewN.z)), shadeAmt);
+          outgoingLight = pow(ewAlb * ewLight, vec3(2.2));
+        }
         if (contour.z > 0.0) {
-          // the terrain mixes its lines in display-referred sRGB: do the same for identical lines
-          vec4 ewInk = contourInk(vElev, ewPx, pow(max(diffuseColor.rgb, 0.0), vec3(1.0 / 2.2)));
+          vec4 ewInk = contourInk(vElev, ewPx, ewAlb);
           vec3 ewCol = mix(pow(max(outgoingLight, 0.0), vec3(1.0 / 2.2)), ewInk.rgb, ewInk.a * vInk);
           outgoingLight = pow(ewCol, vec3(2.2));
         }
         #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'earthwork-contours';
+  m.customProgramCacheKey = () => 'earthwork-relief';
   return m;
 }
 
