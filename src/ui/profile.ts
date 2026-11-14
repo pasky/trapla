@@ -129,8 +129,12 @@ export class ProfilePanel {
   setHover(s: number | null) { this.hoverS = s; this.draw(); }
 
   // ---- coordinate transforms ----
-  private get W() { return this.canvas.clientWidth; }
-  private get H() { return this.canvas.clientHeight; }
+  // canvas CSS size, read once per draw: X() / Y() are called thousands of times per frame and every
+  // clientWidth / clientHeight read is a DOM call (≈ 20 ms per draw before this cache)
+  private cw = 0;
+  private ch = 0;
+  private get W() { return this.cw; }
+  private get H() { return this.ch; }
   /** bottom of the profile chart */
   private get chartB() { return this.H - this.pad.b - STRIP_H - GAP_BAND - BAND_H - GAP_CHART; }
   private get bandT() { return this.chartB + GAP_CHART; }
@@ -152,7 +156,7 @@ export class ProfilePanel {
 
   draw() {
     const c = this.canvas, dpr = window.devicePixelRatio || 1;
-    const W = this.W, H = this.H;
+    const W = this.cw = c.clientWidth, H = this.ch = c.clientHeight;
     if (!W || !H) return;
     if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
     const g = this.ctx;

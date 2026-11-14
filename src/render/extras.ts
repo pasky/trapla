@@ -1,6 +1,6 @@
 // Route overlays driven by the cost model, kept apart from view.ts: the highlighted station range
 // picked for the cost breakdown (state.RangeSelection) and the noise walls (Result.walls).
-// Uses only the public surface of View: `world`, `local()` and `requestRender()`.
+// Uses only the public surface of View: `world`, `local()`, `requestRender()` and `retire()`.
 
 import * as THREE from 'three';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
@@ -48,7 +48,7 @@ export class RouteExtras {
       group.remove(c);
       const m = c as THREE.Mesh;
       m.geometry?.dispose();
-      (m.material as THREE.Material | undefined)?.dispose();
+      this.view.retire(m.material as THREE.Material | undefined); // disposed after the next frame, see View.retire
     }
   }
 

@@ -15,6 +15,8 @@ await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
 await page.evaluate(() => window.trapla.whenIdle());
+// PI markers are positioned by the view's next frame, which can lag an edit under software rendering
+const frames = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 const ok = (c, m) => { console.log(c ? 'PASS' : 'FAIL', m); if (!c) process.exitCode = 1; };
 const st = () => page.evaluate(() => ({ d: window.trapla.getDesign(), s: window.trapla.summary() }));
 
@@ -32,6 +34,7 @@ await page.evaluate(() => window.trapla.whenIdle());
 s = await st();
 ok(s.d.pis.length === 1, `click adds a PI (${s.d.pis.length})`);
 // 2. drag the PI marker
+await frames();
 const box = await page.locator('.pi').first().boundingBox();
 const p0 = { ...s.d.pis[0] };
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -106,6 +109,7 @@ await page.click('#range button');
 sel = await page.evaluate(() => window.trapla.range());
 ok(sel === null, '"Whole route" button clears the selection');
 // 5. right-click deletes the PI
+await frames();
 const b2 = await page.locator('.pi').first().boundingBox();
 await page.mouse.click(b2.x + b2.width / 2, b2.y + b2.height / 2, { button: 'right' });
 await page.evaluate(() => window.trapla.whenIdle());

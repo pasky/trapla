@@ -71,6 +71,8 @@ export class View {
   private maxTex = 0;
   /** the result the footprint mask was last drawn from (to redraw it after a lost WebGL context) */
   private maskSource: Result | null = null;
+  private maskMat: THREE.ShaderMaterial | null = null;
+  private retired: THREE.Material[] = [];
   /** called when the contour interval changes with the zoom (minor, major in metres) */
   onContourInterval: ((minor: number, major: number) => void) | null = null;
   ev: ViewEvents = {};
@@ -386,7 +388,7 @@ export class View {
         arr.push(v.x, v.y, v.z);
       }
     }
-    if (this.polyLine) { this.world.remove(this.polyLine); this.polyLine.geometry.dispose(); }
+    if (this.polyLine) { this.world.remove(this.polyLine); this.polyLine.geometry.dispose(); this.retire(this.polyLine.material); }
     this.polyLine = this.makeLine(arr, null, 1.5, { color: 0xffffff, opacity: 0.8, depthTest: false, dashed: true, dashSize: 8, gapSize: 6, order: 3 });
     this.world.add(this.polyLine);
     // PI markers
@@ -414,8 +416,7 @@ export class View {
       this.routeGroup.remove(c);
       const m = c as THREE.Mesh;
       m.geometry?.dispose();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose();
+      this.retire(m.material as THREE.Material | THREE.Material[] | undefined);
     }
     const n = r.n, w = crownWidth / 2;
     const bad = new Uint8Array(n);
@@ -591,7 +592,8 @@ export class View {
     for (const c of [...this.maskScene.children]) { this.maskScene.remove(c); (c as THREE.Mesh).geometry.dispose(); }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    const mat = new THREE.ShaderMaterial({
+    // one material for the life of the view (a new one per edit would recompile its shader every time)
+    const mat = this.maskMat ??= new THREE.ShaderMaterial({
       uniforms: { box: { value: box } },
       vertexShader: 'uniform vec4 box; void main() { vec2 p = (position.xz - box.xy) / box.zw; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }',
       fragmentShader: 'void main() { gl_FragColor = vec4(1.0); }',
@@ -608,7 +610,6 @@ export class View {
     this.renderer.render(this.maskScene, this.maskCam);
     this.renderer.setRenderTarget(prevTarget);
     this.renderer.setClearColor(prevClear, prevAlpha);
-    mat.dispose();
     this.maskUniforms.maskTex.value = rt.texture;
     this.maskUniforms.maskOn.value = pos.length ? 1 : 0;
   }
@@ -660,6 +661,15 @@ export class View {
 
   requestRender() { this.dirty = true; }
 
+  /**
+   * Dispose a replaced material after the next frame. three.js deletes a shader program together with
+   * the last material using it, so disposing the old route materials before their replacements have
+   * been drawn would recompile the same programs on every edit (≈ 15 ms each time).
+   */
+  retire(m: THREE.Material | THREE.Material[] | undefined | null) {
+    if (Array.isArray(m)) this.retired.push(...m); else if (m) this.retired.push(m);
+  }
+
   private render() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     this.world.traverse((o) => { if ((o as Line2).isLine2) ((o as Line2).material as LineMaterial).resolution.set(w, h); });
@@ -671,6 +681,7 @@ export class View {
     if (ghost) ghost.visible = dist > 1200;
     this.updateSurface();
     this.renderer.render(this.scene, this.camera);
+    if (this.retired.length) { for (const m of this.retired) m.dispose(); this.retired.length = 0; }
     const place = (el: HTMLElement, x: number, y: number, z: number, minDist?: number) => {
       const s = this.screenOf(x, y, z);
       const show = s.vis && (minDist === undefined || s.dist < minDist);
