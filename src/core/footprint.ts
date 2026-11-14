@@ -119,6 +119,15 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         coverRoad(raw.way, Math.min(...ds), Math.max(...ds));
       }
     }
+    // An endpoint joining an existing road can be collinear and have no segment intersection.
+    // Exempt only ways actually within the 1 m tie-in tolerance, never the other carriageway.
+    for (const i of [0, r.n - 1]) roads.nearSegments([r.x[i] - 1, r.y[i] - 1, r.x[i] + 1, r.y[i] + 1], segment => {
+      const dx = segment.bx - segment.ax, dy = segment.by - segment.ay;
+      const t = Math.max(0, Math.min(1, ((r.x[i] - segment.ax) * dx + (r.y[i] - segment.ay) * dy) / (segment.length ** 2 || 1)));
+      if (Math.hypot(r.x[i] - segment.ax - t * dx, r.y[i] - segment.ay - t * dy) > CROSSING_RULES.endpointTolerance) return;
+      const d = segment.d + t * segment.length;
+      coverRoad(segment.way, d - CROSSING_RULES.endMargin, d + CROSSING_RULES.endMargin);
+    });
     for (const c of rawRoads) {
       if (c.s > CROSSING_RULES.endMargin && c.s < r.s[r.n - 1] - CROSSING_RULES.endMargin) continue;
       if (ROAD_CLASSES[c.cls].noAtGrade && c.s > CROSSING_RULES.endpointTolerance && c.s < r.s[r.n - 1] - CROSSING_RULES.endpointTolerance) continue;
@@ -178,6 +187,10 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const x = (col + 0.5) * step, y = terrain.height - (row + 0.5) * step;
       // Conservative raster-cell overlap; at most half a pixel uncertainty at the toe.
       if (!insideFootprint({ x, y }, cell, step / 2)) continue;
+      if (feature === 'stream' && !cell.structure && water.some(c => {
+        const i = Math.min(r.n - 1, Math.round(c.s / r.ds));
+        return r.kind[i] === KIND.earth && Math.hypot(x - c.x, y - c.y) <= barrelLength(c, r.dayL[i] + r.dayR[i]) / 2 + r.ds / 2 + step / 2;
+      })) continue; // legacy raster stream already owned by a priced crossing assembly
       const key = `${feature}:${cell.structure ?? 'earth'}`, seenKey = `${key}:${index}`;
       if (rasterSeen.has(seenKey)) continue;
       rasterSeen.add(seenKey);
@@ -191,6 +204,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const merged = union(hits);
     for (let index = 0; index < merged.length; index++) {
     const h = merged[index];
+    if (h.b - h.a < 0.1) continue; // sub-decimetre clipping/way-projection roundoff, not a new road
     const original = roads!.wayPath(way, h.a, h.b).map(point), p = original[Math.floor(original.length / 2)];
     if (!p) continue;
     const row = ROAD_CLASSES[cls], base: FootprintConflict = { id: `road:${way}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`,
@@ -229,11 +243,28 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         path.push(point(q));
       }
     }
-    let invalid = path.length < 2 || oldPath.length < 2;
-    if (!invalid) {
-      invalid = grid.hits(oldPath[0], row.width / 2) || grid.hits(oldPath[oldPath.length - 1], row.width / 2);
+    const problems = new Set<string>();
+    if (path.length < 2 || oldPath.length < 2) problems.add('missing real-way tie-ins');
+    else {
+      if (grid.hits(oldPath[0], row.width / 2) || grid.hits(oldPath[oldPath.length - 1], row.width / 2)) problems.add('tie-in inside the footprint');
       // Tie-ins are actual old-road ground points, never invented extensions beyond OSM endpoints.
       path[0] = point(oldPath[0]); path[path.length - 1] = point(oldPath[oldPath.length - 1]);
+      // Standard SPK road rates include ordinary grading. Smooth the terrain profile to the same
+      // 6% approach rule, pinning both real tie-ins; draw engineered fill/retaining faces, not a
+      // floating terrain ribbon. Viaduct-scale (>10 m) supports still need explicit engineering.
+      const clampFrom = (p: CrossingPoint, anchor: CrossingPoint) => {
+        const dz = Math.hypot(p.x - anchor.x, p.y - anchor.y) * CROSSING_RULES.approachGradient;
+        p.z = Math.max(anchor.z - dz, Math.min(anchor.z + dz, p.z));
+      };
+      for (let j = 1; j < path.length; j++) clampFrom(path[j], path[j - 1]);
+      path[path.length - 1].z = path[path.length - 1].ground;
+      for (let j = path.length - 2; j >= 0; j--) clampFrom(path[j], path[j + 1]);
+      if (Math.abs(path[0].z - path[0].ground) > 0.1) problems.add('tie-in heights exceed 6% gradient');
+      path[0].z = path[0].ground;
+      for (const p of path) if (Math.abs(p.z - p.ground) > 0.1) {
+        p.surface = 'ramp'; p.support = p.z > p.ground ? 'embankment' : 'retaining';
+        if (Math.abs(p.z - p.ground) > 10) problems.add('approach earthwork exceeds 10 m');
+      }
     }
     let length = 0, cost = 0;
     const codes = new Set<string>();
@@ -246,13 +277,16 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       // Check chords as well as vertices; a ribbon jumping through a slope is not mitigation.
       for (let k = 0, count = Math.max(1, Math.ceil(len / 2.5)); k <= count; k++) {
         const t = k / count, p = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
-        if (grid.hits(p, row.width / 2) || terrain.isOob(p.x, p.y) || terrain.crossing(p.x, p.y)) invalid = true;
+        if (grid.hits(p, row.width / 2)) problems.add('path intersects the footprint');
+        if (terrain.isOob(p.x, p.y)) problems.add('path leaves terrain data');
+        if (terrain.crossing(p.x, p.y)) problems.add('path intersects water/rail');
       }
-      if (Math.abs(b.z - a.z) > len * CROSSING_RULES.approachGradient + 0.1) invalid = true;
+      if (Math.abs(b.z - a.z) > len * CROSSING_RULES.approachGradient + 0.1) problems.add('tie-in heights exceed 6% gradient');
     }
+    const invalid = problems.size > 0;
     base.length = length; base.cost = cost; base.roadCode = [...codes].join(' / ');
-    base.geometry = { road: path, width: row.width, schematic: false, ...(invalid ? { clipped: true } : {}) };
-    base.detail = `${row.label}: ${base.affectedLength!.toFixed(1)} m affected; ${length.toFixed(1)} m realignment including real-way tie-ins × SPK ${base.roadCode}. ${invalid ? 'Proposed path needs engineering: endpoint, footprint, water/rail, terrain boundary or 6% gradient conflict.' : 'Outside the slope toe; standard road earthworks included in the SPK row.'}`;
+    base.geometry = { road: path, width: row.width, schematic: false, ...(invalid ? { clipped: true, diagnostics: [...problems] } : {}) };
+    base.detail = `${row.label}: ${base.affectedLength!.toFixed(1)} m affected; ${length.toFixed(1)} m realignment including real-way tie-ins × SPK ${base.roadCode}. ${invalid ? `Proposed path needs engineering: ${[...problems].join('; ')}.` : 'Outside the slope toe; standard road earthworks included in the SPK row.'}`;
     if (invalid) block(base, 'Road realignment needs engineering', 'Move the alignment clear or provide a bridge; the proposed realignment cannot safely tie in', 'A priced realignment must clear the footprint and meet real roads at feasible terrain grades');
     else { base.action = 'relocation'; conflicts.push(base); }
     }
@@ -285,12 +319,30 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     if (!original.length) continue;
     const p = original[Math.floor(original.length / 2)], length = h.b - h.a;
     const c: WaterCrossing = { s: r.s[h.i], x: p.x, y: p.y, id: w.id, waterKind: w.kind, width: w.width ?? 0.5, catchmentKm2: area, truncated, sine: 1 };
-    const size = waterSize(c, length);
-    const ok = !h.structure && size.type !== 'bridge' && minCover >= size.minHeight;
+    // An extension next to an already-priced barrel reuses its ends, not another two heads.
+    // Resizing/merging multiple existing assemblies is deliberately not an automatic free fix.
+    const adjoining = water.filter(other => {
+      if (!terrain.watercourses!.connected(w.id, other.id)) return false;
+      const i = Math.min(r.n - 1, Math.round(other.s / r.ds));
+      if (r.kind[i] !== KIND.earth) return false;
+      const reach = barrelLength(other, r.dayL[i] + r.dayR[i]) / 2 + r.ds;
+      return [original[0], original[original.length - 1]].some(p => Math.hypot(p.x - other.x, p.y - other.y) <= reach);
+    });
+    const existing = adjoining.map(other => {
+      const i = Math.min(r.n - 1, Math.round(other.s / r.ds)), width = r.dayL[i] + r.dayR[i];
+      return { length: barrelLength(other, width), size: waterSize(other, width) };
+    });
+    const size = waterSize(c, length + existing.reduce((sum, e) => sum + e.length, 0));
+    const compatible = existing.length <= 1 && existing.every(e => e.size.perM === size.perM);
+    const outlets = [original[0], original[original.length - 1]].every(p => !grid.hits(p, -0.05) || adjoining.some(other => {
+      const i = Math.min(r.n - 1, Math.round(other.s / r.ds));
+      return Math.hypot(p.x - other.x, p.y - other.y) <= barrelLength(other, r.dayL[i] + r.dayR[i]) / 2 + r.ds;
+    }));
+    const ok = !h.structure && size.type !== 'bridge' && compatible && outlets && minCover >= size.minHeight;
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,
       s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length,
-      cost: ok ? length * size.perM + 2 * size.head : 0, original,
-      detail: `${length.toFixed(1)} m channel outside priced centreline barrels; ${h.structure ?? (ok ? `${waterOpening(size)} longitudinal culvert (research/17)` : 'insufficient cover or exceeds practical culvert limits')}. No automatic channel diversion.` };
+      cost: ok ? length * size.perM + (existing.length ? 0 : 2 * size.head) : 0, original,
+      detail: `${length.toFixed(1)} m channel outside priced centreline barrels; ${h.structure ?? (ok ? `${waterOpening(size)} longitudinal culvert (research/17)` : 'insufficient cover/outlet, incompatible existing barrel or exceeds practical culvert limits')}. No automatic channel diversion.` };
     if (ok) conflicts.push(conflict);
     else block(conflict, h.structure ? `${h.structure} obstructs a watercourse` : 'Earthwork footprint intercepts a watercourse',
       'Move the alignment/support clear of the channel, or provide a clear bridge span', 'No unpriced channel diversion; sourced culvert assemblies must meet their cover and length limits (research/17)');

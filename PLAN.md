@@ -135,6 +135,21 @@ What exists (details and commands in `README.md`):
 - Sources/assumptions: `research/17-stream-crossings.md`; saved-design results and the ~12.2 km case:
   `research/17-stream-validation.md`, reproducible with `scripts/stream-report.ts`.
 
+### Footprint conflicts (cost model 14)
+
+- Indexed slope-to-slope and support screens now catch side/parallel roads, rail and water beyond
+  handled centreline crossings. Ordinary-road realignments use measured outer-toe paths + tie-ins
+  × SPK rural/urban class rows, under Road crossings; short feasible longitudinal barrels use the
+  existing sourced culvert assemblies. No double billing of handled approach/barrel neighbourhoods.
+- Motorways, unresolved rail/water/pond impacts, abutment/pier/portal collisions and infeasible
+  realignment proposals are explicit violations, not free disappearance. Bridge piers share the
+  priced equal-span layout. Map annotations, profile range facts and the bill list every conflict.
+- The five saved designs now expose previously unchecked conflicts and need fixes; they are not
+  claimed VALID. Counts, lengths, costs, assumptions, water-law source and paired timing measurements:
+  `docs/footprint-conflicts.md`; reproduce with `scripts/footprint-audit.ts`. Frozen cost fixtures and
+  original pack fingerprint remain intact. Footprint phase adds roughly 3–6 ms; ≤50 ms total still
+  needs a quiet-host recheck (the unchanged baseline was also >50 ms during validation).
+
 ### Travel-time target X and traffic Y
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.

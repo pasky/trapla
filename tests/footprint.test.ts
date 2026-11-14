@@ -80,9 +80,11 @@ describe('constructed footprint conflicts', () => {
   it('prices a short lengthwise stream barrel once and rejects long channels or insufficient cover', () => {
     const run = (end: number, grade = 105) => {
       const watercourses: WaterData = { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
-        points: [[500, 252], [end, 252]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] };
+        points: [[400, 252], [1000, 252]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] };
       const t = new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses });
       const r = route(); r.grade = new Float64Array(r.n).fill(grade);
+      // A finite fill block, with open channels under free spans on either side.
+      r.kind = Uint8Array.from({ length: r.n }, (_, i) => i >= 40 && i < (end - 100) / 10 ? KIND.earth : KIND.bridge);
       return footprintConflicts(r, t, undefined, [], [], []);
     };
     const short = run(530);

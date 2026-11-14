@@ -17,6 +17,7 @@ import { LandCover } from './landcover';
 import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, groundSegment, type CrossingSurface } from './crossing-surface';
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
+import { structureFootprints } from '../core/footprint';
 
 export interface ViewEvents {
   onPickTerrain?: (x: number, y: number, clientX: number, clientY: number, forceBend: boolean) => void;
@@ -611,6 +612,7 @@ export class View {
       }
     };
     const shade = (c: THREE.Color, f: number) => c.clone().multiplyScalar(f);
+    const supports = structureFootprints({ ...r, crownWidth });
     for (const run of r.runs) {
       if (run.kind === KIND.bridge) {
         for (let i = Math.max(0, run.i0 - 1); i <= Math.min(n - 2, run.i1); i++) {
@@ -630,19 +632,11 @@ export class View {
           const p3 = push(r.x[i + 1] + r.ty[i + 1] * w, r.y[i + 1] - r.tx[i + 1] * w, r.grade[i + 1] - deck, u);
           idx.push(p0, p1, p2, p1, p3, p2);
         }
-        const span = 40;
-        const nP = Math.max(1, Math.round(run.length / span));
-        for (let k = 1; k < nP; k++) {
-          const i = Math.round(run.i0 + ((run.i1 - run.i0) * k) / nP);
-          // Never put a support in the existing road preserved beneath this bridge.
-          const blocksRoad = r.crossings.some(c => c.type === 'bridge' && c.geometry?.road?.some((p, j, path) => {
-            if (!j) return false;
-            const a = path[j-1], dx = p.x-a.x, dy = p.y-a.y;
-            const t = Math.max(0, Math.min(1, ((r.x[i]-a.x)*dx+(r.y[i]-a.y)*dy)/(dx*dx+dy*dy || 1)));
-            return Math.hypot(r.x[i]-a.x-dx*t, r.y[i]-a.y-dy*t) < c.geometry!.width/2+w*.55+1.2;
-          }));
-          if (blocksRoad) continue;
-          boxAt(r.x[i], r.y[i], r.tx[i], r.ty[i], r.ground[i] - 2, r.grade[i] - deck, 1.2, w * 0.55, shade(concrete, 0.85));
+        // Same equal-span layout as pricing and footprint checks. Never silently omit a
+        // colliding pier: the blocked marker explains why the player must adjust the bridge.
+        for (const p of supports) if (p.structure === 'pier' && p.s > run.s0 && p.s < run.s1) {
+          boxAt(p.x, p.y, p.tx, p.ty, this.terrain.heightAt(p.x, p.y) - 2, r.grade[p.i] - deck,
+            p.along, p.left, shade(concrete, 0.85));
         }
       } else if (run.kind === KIND.tunnel) {
         for (const i of [Math.max(0, run.i0 - 1), Math.min(n - 1, run.i1 + 1)]) {
