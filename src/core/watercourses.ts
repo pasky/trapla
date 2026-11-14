@@ -142,6 +142,10 @@ export class WaterNet {
   private buckets = new Map<number, Map<number, WaterSegment[]>>();
   private distances = new Map<number, number[]>();
   private components = new Map<number, number>();
+  /** Per-segment visit stamps for the callback-free section/intersection scans (dedupe without
+   * allocating a key per bucket entry). Never used by nearSegments, whose callbacks may nest. */
+  private stamps = new Map<WaterSegment, number>();
+  private stamp = 0;
   constructor(readonly data: WaterData) {
     if (data.version !== 1) throw new Error('Unsupported watercourse pack');
     // OSM way IDs are editing boundaries, not distinct physical channels. Shared vertices join
@@ -197,13 +201,13 @@ export class WaterNet {
   /** Channels intercepted by a station's normal section, including parallel channels that never
    * cross the centreline. Bounded local buckets, not a full route×network product. */
   section(x: number, y: number, tx: number, ty: number, left: number, right: number): { id: number; x: number; y: number }[] {
-    const radius = Math.max(left, right), out: { id: number; x: number; y: number }[] = [], seen = new Set<string>();
+    const radius = Math.max(left, right), out: { id: number; x: number; y: number }[] = [], stamp = ++this.stamp;
     for (let cx = Math.floor((x - radius) / 100); cx <= Math.floor((x + radius) / 100); cx++)
       for (let cy = Math.floor((y - radius) / 100); cy <= Math.floor((y + radius) / 100); cy++)
-        for (const { reach: w, j } of this.buckets.get(cx)?.get(cy) ?? []) {
-          const key = `${w.id}:${j}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
+        for (const segment of this.buckets.get(cx)?.get(cy) ?? []) {
+          if (this.stamps.get(segment) === stamp) continue;
+          this.stamps.set(segment, stamp);
+          const { reach: w, j } = segment;
           const a = w.points[j], b = w.points[j + 1], dx = b[0] - a[0], dy = b[1] - a[1];
           const den = dx * tx + dy * ty;
           if (Math.abs(den) < 1e-9) continue; // channel lies along this normal; a crossing handles it
@@ -218,13 +222,13 @@ export class WaterNet {
   intersections(n: number, s: ArrayLike<number>, x: ArrayLike<number>, y: ArrayLike<number>): WaterCrossing[] {
     const out: WaterCrossing[] = [];
     for (let i = 0; i + 1 < n; i++) {
-      const dx = x[i + 1] - x[i], dy = y[i + 1] - y[i], seen = new Set<string>();
+      const dx = x[i + 1] - x[i], dy = y[i + 1] - y[i], stamp = ++this.stamp;
       for (let cx = Math.floor(Math.min(x[i], x[i + 1]) / 100); cx <= Math.floor(Math.max(x[i], x[i + 1]) / 100); cx++)
         for (let cy = Math.floor(Math.min(y[i], y[i + 1]) / 100); cy <= Math.floor(Math.max(y[i], y[i + 1]) / 100); cy++) {
-          for (const { reach: w, j } of this.buckets.get(cx)?.get(cy) ?? []) {
-            const key = `${w.id}:${j}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
+          for (const segment of this.buckets.get(cx)?.get(cy) ?? []) {
+            if (this.stamps.get(segment) === stamp) continue;
+            this.stamps.set(segment, stamp);
+            const { reach: w, j } = segment;
             const a = w.points[j], b = w.points[j + 1], wx = b[0] - a[0], wy = b[1] - a[1];
             const den = dx * wy - dy * wx;
             if (Math.abs(den) < 1e-9) continue;

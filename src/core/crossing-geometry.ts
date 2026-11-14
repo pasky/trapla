@@ -64,23 +64,61 @@ function routeGeometry(route: CrossingRoute) {
   const distance = (node: Node, q: XY) => Math.max(node.x0 - q.x, 0, q.x - node.x1) ** 2 + Math.max(node.y0 - q.y, 0, q.y - node.y1) ** 2;
   const visit = (node: Node, q: XY) => {
     if (distance(node, q) > best) return;
-    if (node.indices) for (const i of node.indices) {
-      const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
-      const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
-      const d2 = (q.x - route.x[i] - t * dx) ** 2 + (q.y - route.y[i] - t * dy) ** 2;
-      const s = route.s[i] + t * (route.s[i + 1] - route.s[i]);
-      if (d2 < best || (d2 === best && s < station)) { best = d2; station = s; }
-    } else {
+    if (node.indices) for (const i of node.indices) segment(i, q);
+    else {
       const a = node.left!, b = node.right!;
       if (distance(a, q) <= distance(b, q)) { visit(a, q); visit(b, q); } else { visit(b, q); visit(a, q); }
     }
+  };
+  // Uniform bucket grid over the segment AABBs answers the usual near-route query by a few
+  // rings; the tree remains the exact fallback for distant points. Ring r is exhaustive for
+  // every segment closer than r·GRID, so stopping once (r·GRID)² > best returns the identical
+  // minimum and tie-break.
+  const GRID = 32, RINGS = 6;
+  let gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
+  for (let i = 0; i < n; i++) { gx0 = Math.min(gx0, route.x[i]); gx1 = Math.max(gx1, route.x[i]); gy0 = Math.min(gy0, route.y[i]); gy1 = Math.max(gy1, route.y[i]); }
+  const gnx = Math.floor((gx1 - gx0) / GRID) + 1, gny = Math.floor((gy1 - gy0) / GRID) + 1;
+  const cellStart = new Int32Array(gnx * gny + 1);
+  const cellsOf = (i: number, visit: (cell: number) => void) => {
+    const c0 = Math.floor((Math.min(route.x[i], route.x[i + 1]) - gx0) / GRID), c1 = Math.floor((Math.max(route.x[i], route.x[i + 1]) - gx0) / GRID);
+    const r0 = Math.floor((Math.min(route.y[i], route.y[i + 1]) - gy0) / GRID), r1 = Math.floor((Math.max(route.y[i], route.y[i + 1]) - gy0) / GRID);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) visit(r * gnx + c);
+  };
+  for (let i = 0; i + 1 < n; i++) cellsOf(i, cell => cellStart[cell + 1]++);
+  for (let k = 0; k < gnx * gny; k++) cellStart[k + 1] += cellStart[k];
+  const cellItems = new Int32Array(cellStart[gnx * gny]), fill = cellStart.slice(0, gnx * gny);
+  for (let i = 0; i + 1 < n; i++) cellsOf(i, cell => { cellItems[fill[cell]++] = i; });
+  const segment = (i: number, q: XY) => {
+    const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
+    const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
+    const d2 = (q.x - route.x[i] - t * dx) ** 2 + (q.y - route.y[i] - t * dy) ** 2;
+    const s = route.s[i] + t * (route.s[i + 1] - route.s[i]);
+    if (d2 < best || (d2 === best && s < station)) { best = d2; station = s; }
+  };
+  const nearest = (q: XY) => {
+    best = Infinity; station = route.s[0];
+    const qc = Math.floor((q.x - gx0) / GRID), qr = Math.floor((q.y - gy0) / GRID);
+    for (let ring = 0; ring <= RINGS; ring++) {
+      for (let r = qr - ring; r <= qr + ring; r++) {
+        if (r < 0 || r >= gny) continue;
+        const edge = r === qr - ring || r === qr + ring;
+        for (let c = qc - ring; c <= qc + ring; c += edge ? 1 : 2 * ring) {
+          if (c < 0 || c >= gnx) { if (ring === 0) break; continue; }
+          const cell = r * gnx + c;
+          for (let k = cellStart[cell]; k < cellStart[cell + 1]; k++) segment(cellItems[k], q);
+          if (ring === 0) break;
+        }
+      }
+      if ((ring * GRID) ** 2 > best) return;
+    }
+    best = Infinity; station = route.s[0];
+    visit(root, q);
   };
   const project = (q: XY, cache = true) => {
     let column = cache ? projected.get(q.x) : undefined;
     const cached = column?.get(q.y);
     if (cached) return cached;
-    best = Infinity; station = route.s[0];
-    visit(root, q);
+    nearest(q);
     const p = at(station), result = { s: p.s, x: p.x, y: p.y, tx: p.tx, ty: p.ty, z: p.z,
       left: p.left, right: p.right, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
     if (cache && projectedCount < 50000) {

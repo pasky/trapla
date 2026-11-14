@@ -348,6 +348,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         values[j] = table.cost(-H_MAX + j * H_STEP, block % 4 - 1, Math.floor(block / 4));
       }
     }
+    const slopes = Float64Array.from({ length: ND }, (_, d2) => ((d2 - dzMax) * u) / D);
     let cur = new Float64Array(ND).fill(Infinity);
     cur[dzMax] = 0; // knot 0 (dz is ignored there: any first grade is allowed)
     const parents: Int32Array[] = [];
@@ -364,21 +365,26 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         if (!any) continue;
         const z = zlo[k] + zi;
         const zm = zA + z * u;
-        for (let d2 = 0; d2 < ND; d2++) {
-          const dz2 = d2 - dzMax;
-          const z2 = z + dz2;
-          if (z2 < zlo[k + 1] || z2 > zhi[k + 1]) { seg[d2] = Infinity; continue; }
-          let c = 0;
-          const slope = (dz2 * u) / D;
-          for (let q = c0; q < c1; q++) {
-            const i = costIdx[q];
-            const h = zm + slope * (s[i] - sk) - g[i];
+        // Valid next-knot grades form one contiguous range. Accumulate each cost point across
+        // that range (q outer): every seg[d2] still sums its terms in the original q order, with
+        // the identical per-term arithmetic, so results are bit-for-bit unchanged.
+        const d2lo = Math.max(0, zlo[k + 1] - z + dzMax), d2hi = Math.min(ND - 1, zhi[k + 1] - z + dzMax);
+        seg.fill(Infinity);
+        for (let d2 = d2lo; d2 <= d2hi; d2++) seg[d2] = 0;
+        for (let q = c0; q < c1; q++) {
+          const i = costIdx[q], ds = s[i] - sk, gi = g[i], weight = costWeight[q];
+          const values = lut[costOffset[q]];
+          for (let d2 = d2lo; d2 <= d2hi; d2++) {
+            const h = zm + slopes[d2] * ds - gi;
             let x = (h + H_MAX) / H_STEP;
             if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
             const j = x | 0;
-            const values = lut[costOffset[q]];
-            c += (j >= lutMax ? values[lutMax] : values[j] + (values[j + 1] - values[j]) * (x - j)) * costWeight[q];
+            seg[d2] += (j >= lutMax ? values[lutMax] : values[j] + (values[j + 1] - values[j]) * (x - j)) * weight;
           }
+        }
+        for (let d2 = d2lo; d2 <= d2hi; d2++) {
+          let c = seg[d2];
+          const slope = slopes[d2];
           for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
             const i = clrIdx[q];
             const h = zm + slope * (s[i] - sk) - g[i];
