@@ -21,8 +21,9 @@ How the prototype interprets it:
 - **Hard constraints:** every geometric norm check passes; travel time ≤ X; the category fits traffic Y.
 - **Travel time:** route length divided by the design speed the player picks for the road (90, 80 or
   70 km/h). A lower design speed permits tighter curves, so it is cheaper to build but slower.
-- **Traffic Y:** selects the minimum road category. The thresholds are placeholders, not norm values
-  (UNVERIFIED: ČSN 73 6101 selects the category from design traffic, not a daily-volume cutoff; research/08).
+- **Traffic Y:** selects the minimum road category. Thresholds are the highest design-year AADT at which the
+  category still meets the class I level of service under TP 188 for a representative hilly section
+  (research/14; ČSN 73 6101 has no daily-volume table).
 - **Structures:** bridges and simple tunnels appear where they are cheaper than the embankment or cut.
 
 ## Scenario #1 as OpenStreetMap has it today
