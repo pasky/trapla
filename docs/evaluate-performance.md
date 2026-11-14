@@ -1,6 +1,6 @@
 # Evaluate performance regression
 
-The timings below document the **historical model-13 optimization**, not current model-15
+The timings below document the **historical model-13 optimization**, not current model-16
 automatic footprint engineering. Current engineering, saved-design validity and performance limits
 are in [footprint-conflicts.md](footprint-conflicts.md). Model 15 deliberately changes profiles,
 structures and volumes; its performance work uses separate frozen bills and geometry hashes.
@@ -36,9 +36,9 @@ These are warmed full evaluations, not a whole-result/design cache. Concurrent S
 
 ## Numerical checks
 
-`tests/fixtures/evaluate-costs.json` was captured **before the historical optimization**, then explicitly reviewed for the model-13 measured-path pricing change documented in `earthwork-seams.md`. It and `evaluate-pack.json` are preserved unchanged by model 15. The old bills were reproduced with unchanged main on the identical original pack before reviewing the new engineering deltas.
+`tests/fixtures/evaluate-costs.json` was captured **before the historical optimization**, then explicitly reviewed for the model-13 measured-path pricing change documented in `earthwork-seams.md`. It and `evaluate-pack.json` are preserved unchanged by models 15–16. The old bills were reproduced with unchanged main on the identical original pack before reviewing the new engineering deltas.
 
-The active model-15 regression uses `evaluate-remedies-original.json` (the ten historical inputs) or `evaluate-remedies-current.json` (six current routes plus five control/drag variants), selected by a recognized SHA-256 pack fingerprint. It checks every bill leaf and per-part sum below half a cent, exact VPIs/material value, validity/violation ranges, and a canonical hash of retained sections, supports and crossing/remedy geometry. Unknown or incomplete installed packs fail loudly; only an absent optional pack skips. A performance optimization must not recapture these fixtures.
+The active model-16 regression uses `evaluate-remedies-original.json` (the ten historical inputs) or `evaluate-remedies-current.json` (six current routes plus five control/drag variants), selected by a recognized SHA-256 pack fingerprint. It checks every bill leaf and per-part sum below half a cent, exact VPIs/material value, validity/violation ranges, and a canonical hash of retained sections, supports and crossing/remedy geometry. Unknown or incomplete installed packs fail loudly; only an absent optional pack skips. A performance optimization must not recapture these fixtures.
 
 ```sh
 npx tsx scripts/eval-regression.ts

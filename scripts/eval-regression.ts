@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// Model-13 files remain archived unchanged. Model-15 fixtures cover both recognized packs.
+// Model-13 files remain archived unchanged. Current-model fixtures cover both recognized packs.
 // Verify: [PACK=/path/to/d11] npx tsx scripts/eval-regression.ts
 // A deliberate model change only: --capture=original|current --reviewed-model-change
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';

@@ -135,7 +135,7 @@ What exists (details and commands in `README.md`):
 - Sources/assumptions: `research/17-stream-crossings.md`; saved-design results and the ~12.2 km case:
   `research/17-stream-validation.md`, reproducible with `scripts/stream-report.ts`.
 
-### Automatic footprint engineering (cost model 15)
+### Automatic footprint engineering (cost model 16)
 
 - Indexed slope/support screens now drive priced retaining walls, minor-channel relocation,
   support/end movement, longer spans and bounded norm-compliant Auto profile refinement.
@@ -149,11 +149,16 @@ What exists (details and commands in `README.md`):
 - Bridge piers, per-span pricing and per-span rendered soffits use the same actual layout.
   Vertical retaining faces, full turning disks and removed-road/channel annotations show the
   construction; final unresolved constraints remain explicit violations with measured diagnostics.
+- Model 16: a crossing way's in-footprint stretch belongs to its crossing remedy and never forces a
+  tunnel; tracks/service roads force no structure and get walls only below their relocation cost;
+  minor roads under abutments are relocated; abutments may stand in a ≤5 m cut with a priced regrade
+  instead of a grade lift. A failed relaxed relocation triggers one strict re-engineering pass.
 - Straight-line Automatic and all five refreshed saves are VALID on the current vector-water pack.
-  Whole totals in bn CZK: straight 10.266047; best 4.758320; demo 5.375679; direct80 5.244108;
-  direct90 5.726710; town 11.690899. Four saves received small bounded PI refinements, not new routes.
+  Whole totals in bn CZK: straight 10.053891; best 4.309409; demo 4.986588; direct80 5.018385;
+  direct90 5.621990; town 11.444059 (model 15: 10.27 / 4.76 / 5.38 / 5.24 / 5.73 / 11.69).
+  Four saves received small bounded PI refinements, not new routes.
   Counts, face areas, lengths, sources, paired cost changes and limits: `docs/footprint-conflicts.md`.
-- Model-13 fixtures and their pack fingerprint remain untouched. Separate model-15 fixtures freeze
+- Model-13 fixtures and their pack fingerprint remain untouched. Separate model-16 fixtures freeze
   bills, validity and built geometry on both known packs; no subtract-new-rows workaround remains.
   Reproduce with `scripts/footprint-audit.ts` and `scripts/eval-regression.ts` (`PACK=` selects data).
 - Review regressions cover true endpoint ownership, manual bridge depth validation, full vector
@@ -496,7 +501,7 @@ Search provenance: the saved bypass/direct80 are seeded-search outputs, direct90
 (the cheapest valid result of each strategy under model 4). Bypass searches start in the official corridor
 but are not constrained to it. No global-optimality claim. Reproduce those searches with model-4 code
 (commit `cecb3e9`); original inputs remain in commit `a6a93b6`. The table above requires its historical
-model-10 code/data/inputs; current code and refreshed saves produce the model-15 report in
+model-10 code/data/inputs; current code and refreshed saves produce the model-16 report in
 `docs/footprint-conflicts.md`. Original search commands:
 
 ```sh

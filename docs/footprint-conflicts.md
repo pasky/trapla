@@ -1,4 +1,4 @@
-# Automatic footprint engineering (cost model 15)
+# Automatic footprint engineering (cost model 16)
 
 The evaluator now **builds and prices remedies**, rather than simply invalidating every design
 whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
@@ -12,11 +12,35 @@ colliding pier, abutment, portal or embankment.
    Truncate retained sections before computing earthwork, land, structure choices and buildings.
 3. Move automatic bridge/tunnel ends and bridge supports onto clear sites; use longer, priced
    spans where necessary. Check their actual deck depth and clearance.
-4. Apply bounded, norm-compliant Auto lifts when required. There are at most three engineering
+4. Apply bounded, norm-compliant Auto lifts when required. There are at most five engineering
    refinements and one fixed-material-value DP retry when the existing knots cannot fit a lift.
    This does not repeat the full mass-balance search, building analysis, crossing meshes or noise.
 5. Resolve remaining ordinary-road footprints through real network connections, then screen the
    final geometry. Unresolved cases retain explicit violations and measured diagnostics.
+6. Only if a *relaxed* road stretch (below) stays blocked, re-run steps 2–5 once from the repaired
+   grade with those ways (and crossing ways within 300 m) treated strictly: ordinary walls, forced
+   bridges/tunnels and abutment obstacles. Of the six published routes only direct-90 needs it.
+
+### Cheaper remedies first (model 16)
+
+Model 15 forced structures from any wall that could not be built. On best that produced a 140 m
+"tunnel" (below the 150 m minimum, 208 M) and three bridges (105 M) for **field tracks** meeting the
+route at shallow angles, 24 M of 12 m walls keeping a doomed track stub, and a +7.5 m grade lift over
+~1 km for one abutment (194k m³ of bought fill). Model 16 rules:
+
+- A road that crosses the centreline owns its connected stretch inside the footprint; its crossing
+  remedy (diversion, reconnection, at-grade, bridge, overbridge) engineers it. That stretch never
+  forces a tunnel. Non-separable tracks/service roads (which crossings sever, never bridge for) force
+  nothing and get a wall only if it costs ≤ twice their own SPK relocation rate per metre; separable
+  roads may still force a bridge over themselves. Severed ways own their whole in-footprint stretch in
+  both directions (`CrossingGeometry.removed`), and their link tie-in may graze the toe within half a
+  width + 3 m. The final screen validates the rest.
+- Minor roads under an automatic abutment/portal are relocated by the footprint screen instead of
+  lengthening the bridge; a relocated minor road may cross another minor way at grade at its own
+  ground level (short contact ≤ 4 × combined half-widths; one ACCESS allowance if a service road).
+- `bridgeMinHeight` is an economic threshold, not a physical limit: a clear abutment may be set into
+  a cut of up to 5 m, and the bank under an end span is regraded (`Run.regradeM3`, OTSKP class II
+  excavation) rather than lifting the grade. Deck/obstacle clearances are still enforced.
 
 Manual grades are not lifted, pins remain constraints, and manual structure ranges are not
 silently moved. Retaining walls can protect a manually specified earthwork without changing its
@@ -91,6 +115,7 @@ Ordinary main-road layouts use equal spans ≤30 m. Modified layouts expose thei
 sourced bridge model. A long span does not impose its rate over the entire viaduct, and obstructed
 piers are never omitted for free. Rendered soffits use `max(1.2, span/20)` depth per span; unequal
 spans meet supported pier tops. Clearance failures identify the station and required raise.
+Minor-road obstacles at automatic abutments/portals and the 5 m cut abutment are described above.
 
 ### Existing roads
 
@@ -179,38 +204,41 @@ never writes an invalid result and requires `--write` to replace a published inp
 
 Current vector-watercourse pack; money below is **M CZK before surcharge**, except whole-route totals:
 
-| Design | Wall length m / face m² | Wall M CZK | Road works: count / m / M CZK | Explicit support layouts / max span m | Total bn CZK | Violations |
-|---|---:|---:|---:|---:|---:|---:|
-| straight | 1,539.7 / 6,561.2 | 91.244 | 1 / 37.5 / 1.734 | 14 / 142.0 | 10.266047 | 0 |
-| best | 1,219.8 / 5,078.1 | 76.704 | 1 / 59.9 / 3.083 | 6 / 61.0 | 4.758320 | 0 |
-| demo | 1,179.6 / 4,275.7 | 58.911 | 3 / 223.2 / 5.740 | 8 / 56.6 | 5.375679 | 0 |
-| direct-80 | 909.8 / 3,498.4 | 56.895 | 4 / 406.6 / 27.814 | 11 / 92.0 | 5.244108 | 0 |
-| direct-90 | 1,069.7 / 4,780.2 | 73.275 | 1 / 94.7 / 13.201 | 12 / 64.0 | 5.726710 | 0 |
-| town-centre | 1,170.0 / 5,545.0 | 87.906 | 2 / 112.0 / 3.416 | 11 / 120.0 | 11.690899 | 0 |
+| Design | Wall length m / face m² | Wall M CZK | Road works: count / m / M CZK | Explicit support layouts / max span m | Bridge / tunnel m | Total bn CZK | Violations |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| straight | 1,429.7 / 5,882.8 | 82.010 | 3 / 132.8 / 5.711 | 13 / 142.8 | 4,339 / 180 | 10.053891 | 0 |
+| best | 779.9 / 1,674.0 | 20.827 | 1 / 59.9 / 3.083 | 5 / 58.0 | 1,570 / 0 | 4.309409 | 0 |
+| demo | 819.7 / 1,794.5 | 21.551 | 5 / 305.6 / 8.954 | 8 / 46.7 | 1,639 / 0 | 4.986588 | 0 |
+| direct-80 | 789.8 / 1,921.0 | 25.734 | 3 / 236.1 / 11.368 | 11 / 87.0 | 1,790 / 0 | 5.018385 | 0 |
+| direct-90 | 999.8 / 3,420.5 | 48.908 | 2 / 95.2 / 2.135 | 11 / 64.0 | 2,199 / 0 | 5.621990 | 0 |
+| town-centre | 980.0 / 4,233.5 | 67.888 | 4 / 404.3 / 9.319 | 10 / 120.0 | 3,730 / 0 | 11.444059 | 0 |
 
 No blocked road costs or selected channel relocations are hidden in this table. Support counts
 refer to runs with explicit pier stations, not every moved abutment/portal. Component-array sums
-match total bills (below the 0.005 CZK regression tolerance).
+match total bills (below the 0.005 CZK regression tolerance). The only tunnel (straight) is the
+economic one under a 25–43 m ridge, not a forced one; model 15's forced tunnels (best, demo,
+straight, town) are gone.
 
-Same **current pack and same repaired inputs**, main `3dccc23` (model 13) versus model 15:
+Same **current pack and same repaired inputs**, main `3dccc23` (model 13), model 15 and model 16:
 
-| Design | Model 13 bn CZK | Model 15 bn CZK | Change M CZK |
-|---|---:|---:|---:|
-| straight | 8.806911 | 10.266047 | +1,459.135 |
-| best | 4.162396 | 4.758320 | +595.923 |
-| demo | 4.855298 | 5.375679 | +520.380 |
-| direct-80 | 4.787410 | 5.244108 | +456.698 |
-| direct-90 | 5.015213 | 5.726710 | +711.497 |
-| town-centre | 11.738640 | 11.690899 | −47.741 |
+| Design | Model 13 bn CZK | Model 15 bn CZK | Model 16 bn CZK | 16 vs 15 M CZK |
+|---|---:|---:|---:|---:|
+| straight | 8.806911 | 10.266047 | 10.053891 | −212.2 |
+| best | 4.162396 | 4.758320 | 4.309409 | −448.9 |
+| demo | 4.855298 | 5.375679 | 4.986588 | −389.1 |
+| direct-80 | 4.787410 | 5.244108 | 5.018385 | −225.7 |
+| direct-90 | 5.015213 | 5.726710 | 5.621990 | −104.7 |
+| town-centre | 11.738640 | 11.690899 | 11.444059 | −246.8 |
 
-These are intentional engineering changes, not just additive remedy rows: profiles, structures,
-earthwork and acquisitions change. For example straight adds 1,245.123 M in bridges before
-surcharge; town reduces building acquisition by 781.902 M while adding bridge/tunnel work.
-Subtracting the new footprint bill lines cannot reproduce the old designs.
+Model 13 ignored footprint conflicts entirely (e.g. demo's obstructed watercourse at km 6.64 was
+invalid; parallel roads, rivers and rail under slopes were simply buried), so the remaining gap is
+mostly real work: bridge ends kept off roads/rivers, span-depth clearances, walls and relocations.
+Best (+147 M vs model 13): bridges +114 M (abutments clear of a 30 m river, a class III road and a
+service road; economic bridge choices where walls would be dearer), crossings +45 M, earthworks −39 M.
 
 The original ten model-13 bills were first reproduced exactly with unchanged main on their
 original fingerprinted pack. `evaluate-costs.json` and `evaluate-pack.json` remain untouched.
-Separate model-15 fixtures preserve ten historical-input cases on that pack and eleven current-pack
+Separate model-16 fixtures preserve ten historical-input cases on that pack and eleven current-pack
 cases (six published routes plus drag/pin/structure/manual/property-control variants). They check
 all bill leaves and per-part sums below half a cent, exact VPIs/material value, validity/violations,
 and a canonical hash of the built geometry. Unknown or partial installed packs fail loudly;
@@ -219,26 +247,30 @@ regression. See `scripts/eval-regression.ts` for explicit reviewed-model-change 
 
 ## Performance
 
-Final reviewed-run measurements at `10393cd`: 15 warmups, 30 evaluations, 2 GB Node heap,
-separate consecutive processes, the same updated pack and repaired inputs. The subsequent
-cover-tolerance normalization leaves these six route outputs unchanged.
+Warm `BENCH_WARMUP=15 BENCH_N=30 npx tsx scripts/bench.ts`, same machine, pack and inputs, consecutive
+processes (±5–10% run-to-run noise). Model 15 = `side-agent/footprint-conflicts`; model 13 = main `3dccc23`.
 
-| Design | Main model 13 ms | Model 15 ms | Retaining work ms | Support work ms | Extra profile DP ms | Final footprint screen ms |
-|---|---:|---:|---:|---:|---:|---:|
-| straight | 62.2 | 100.9 | 20.8 | 5.6 | 0 | 6.1 |
-| best | 65.3 | 75.5 | 9.4 | 1.3 | 0 | 3.7 |
-| demo | 67.4 | 82.0 | 12.1 | 1.2 | 0 | 4.9 |
-| direct-80 | 70.4 | 118.2 | 18.3 | 1.9 | 0 | 7.8 |
-| direct-90 | 61.1 | 95.2 | 10.8 | 2.6 | 14.2 | 4.3 |
-| town-centre | 71.9 | 75.5 | 8.8 | 2.8 | 0 | 4.4 |
+| Design | Main 13 ms | Main 13 + perf commits ms | Model 15 ms | Model 16 ms |
+|---|---:|---:|---:|---:|
+| straight | — | — | 101 | 88 |
+| best | 75 | 60 | 76 | 71 |
+| demo | 72 | 57 | 85 | 81 |
+| direct-80 | 80 | 63 | 104 | 87 |
+| direct-90 | 62 | 53 | 93 | 126 (strict retry) |
+| town-centre | 74 | 65 | 74 | 76 |
 
-**Neither the ≤3 ms added-work nor the ≤50 ms total target is achieved.** Net before/after
-elapsed differences are not isolated overhead: the changed engineering also alters later crossing
-work. Retaining and support columns sum all engineering passes. The semantics-preserving cache/
-allocation pass reduced engineering work by roughly 2–5 ms before the later correctness repairs;
-it did not solve the budget. Raw-section and cover caches remain evaluation-local, preserving
-mutable-terrain semantics. Further work needs to target repeated retaining passes and, for direct-90,
-the additional DP—not weaken geometry checks or republish old detection-only timing claims.
+Model 16 phases, ms (stations / Auto profile / engineering passes incl. retaining / crossings /
+footprint / noise): best 2.2 / 26.4 / 15.6 (2 passes, retaining 9.5) / 17.6 / 3.7 / 4.6;
+direct-80 2.3 / 31.7 / 18.9 / 21.4 / 5.9 / 5.4; town 2.1 / 29.6 / 17.3 / 13.6 / 6.2 / 6.4.
+direct-90 repeats engineering → footprint once (a track under a bridge at km 8.93 cannot be relocated).
+
+**The ≤50–60 ms target is not met** (best 71 ms). Main itself regressed after `8e1d884`
+(link smoothing): crossings ≈14 → ≈30 ms. Bit-identical fixes (also cherry-pick cleanly onto main,
+whose model-13 fixtures still pass): reused smoothed links across candidate builds, a bucket-grid
+route projection with tree fallback, allocation-free one-off margins, stamp-deduplicated watercourse
+scans (stations 4.5 → 2.3 ms) and a cost-point-outer DP accumulation (≈10% of the coarse pass).
+The Auto profile alone remains 26–32 ms (coarse 2 m pass ≈13 ms of which ≈6 ms LUT fill), crossings
+14–21 ms and the two engineering passes ≈16 ms; these are the remaining targets.
 
 Unprefixed timing keys are cumulative checkpoints; `sections` is overwritten each refinement.
 `work.*` measures elapsed work summed across passes (`work.engineering` includes its substeps),

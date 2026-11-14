@@ -38,7 +38,7 @@ Other commands:
 | `node scripts/ux.mjs [--docs]` | UX checks with real mouse/keyboard events: road-height switch, pins, height points, stretch bar, Undo/Redo bar, bends in the profile, map ↔ profile hover, click-to-zoom; `--docs` writes screenshots 36–41 |
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
 | `PACK=/path/to/d11 npx tsx scripts/footprint-audit.ts --straight scripts/*-design.json` | automatic footprint remedies, measured wall/road works, remaining violations and bill reconciliation; `DETAIL=1` adds individual diagnostics |
-| `PACK=/path/to/d11 npx tsx scripts/eval-regression.ts` | frozen model-15 bills, validity and built geometry on either recognized data pack |
+| `PACK=/path/to/d11 npx tsx scripts/eval-regression.ts` | frozen model-16 bills, validity and built geometry on either recognized data pack |
 | `PACK=/path/to/d11 npx tsx scripts/repair-designs.ts --budget=400 [--write] design.json` | bounded validity-first local PI refinement; preserves controls/category/speed and writes only valid designs |
 | `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
