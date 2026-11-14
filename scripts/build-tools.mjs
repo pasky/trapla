@@ -62,7 +62,11 @@ try {
 
   await load();
   await page.evaluate(() => {
-    const r = window.trapla.result(), c = r.crossings.find((c) => c.type === 'overbridge' && c.cls !== 'track');
+    // The measured bridge model can make Auto reconnect every ordinary road in this design.
+    // Keep testing the original service-road overbridge through the actual manual choice tool.
+    const r = window.trapla.result(), c = r.crossings.find((c) => c.roadId === 4742)
+      ?? r.crossings.find((c) => c.type === 'overbridge');
+    if (!c) throw new Error('no demo crossing for manual overbridge');
     window.trapla.selectCrossing(c.roadId); window.trapla.lookAt(c.x, c.y, 700, 30, 55); window.trapla.profileFocus(c.s, c.s);
   });
   await page.selectOption('#crossing-choice', 'overbridge'); await page.locator('#crossing-choice').blur(); await idle();
