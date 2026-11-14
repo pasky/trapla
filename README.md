@@ -8,15 +8,15 @@ Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.
 
 | close-up (vector map layers, extruded buildings) | contours + elevation labels | aerial photo + contours |
 |---|---|---|
-| ![close-up](docs/screenshots/03-closeup-bridge-cut.png) | ![contours](docs/screenshots/06-mid-contours.png) | ![photo](docs/screenshots/13-photo-contours.png) |
+| ![close-up](docs/screenshots/03-closeup-bridge-cut.png) | ![contours](docs/screenshots/08-mid-contours.png) | ![photo](docs/screenshots/16-photo-contours.png) |
 
-More in `docs/screenshots/` (town, forest edge, deep cut, slope tint, 2× relief).
+More in `docs/screenshots/` (cost of a selected stretch, town, forest edge, deep cut, slope tint, 2× relief with a noise wall).
 
 ## Quick start
 
 ```sh
 npm install
-npm run data      # builds public/scenarios/d11/ (≈ 16 MB; needs uv; ~10 min on first run, ~20 s once cached)
+npm run data      # builds public/scenarios/d11/ (≈ 17 MB; needs uv; ~10 min on first run, ~20 s once cached)
 npm run dev       # → http://localhost:5173/
 ```
 
@@ -116,6 +116,10 @@ Measured on a Radeon 890M laptop GPU (headless Chromium, 1600 × 1000, `node scr
 per frame while orbiting, panning and zooming through all levels (worst frame ≈ 25–30 ms), with or without
 contours and photo; the same before this renderer was 2.2–3.7 ms. Load to first result ≈ 0.9–1.1 s on
 localhost (was ≈ 0.55 s: the height texture, vector geometry and buildings are built at start-up, ≈ 0.3 s).
+Dragging a bend (recompute ≈ 13 ms in the worker, then `View.setResult` ≈ 5 ms incl. the footprint mask, profile
+and HUD): frames stay at 17 ms median, 23 ms p95. Replaced route materials are disposed one frame late
+(`View.retire`) — three.js deletes a shader program with its last material, and recompiling them on every edit
+used to cost ≈ 15 ms.
 
 Recompute for a ~21 km route takes ≈ 40 ms in Node (≈ 30 ms of it the auto-profile DP); ≈ 100 ms in the
 headless SwiftShader browser where the CPU is shared with software WebGL.
@@ -133,8 +137,8 @@ headless SwiftShader browser where the CPU is shared with software WebGL.
 Game coordinates are local metres: `x = X_5514 − origin.x` (east), `y = Y_5514 − origin.y` (north).
 The play area is the axis-aligned EPSG:5514 rectangle x ∈ [−637 500, −620 000], y ∈ [−1 011 500, −989 000]
 (≈ 50.50–50.70 N, 15.82–16.06 E). Terrain is fetched in five 3500 × 900 px requests from the ČÚZK DMR 5G
-ImageServer (raw responses cached in `pipeline/cache/`); OSM via Overpass (cached likewise; `osm_cover2` and
-`osm_lines2` hold the render-only extras: fields, meadows, parks, tracks and service roads). The engine reads only
+ImageServer (raw responses cached in `pipeline/cache/`); OSM via Overpass (cached likewise; `osm_cover2` holds
+render-only extras: fields, meadows, parks; tracks and service roads come from `osm_roads2`, which the crossings use too). The engine reads only
 `height`, `landcover` and `overlays.json`; `vector.bin.gz` and the orthophoto are for display.
 
 ## Data attribution

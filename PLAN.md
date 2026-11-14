@@ -101,7 +101,8 @@ implementing agent.
 What exists (details and commands in `README.md`):
 - **Data pack** (`pipeline/build_d11.py`, `npm run data`): DMR 5G at 5 m for a 17.5 × 22.5 km EPSG:5514
   rectangle (13 % of it is Poland = no data = out of bounds), OSM land cover / buildings / water / roads /
-  places, drape texture (hillshade × hypsometric tint × overlays), official D11 line. ≈ 14 MB.
+  places, official D11 line; since the renderer rewrite also vector map layers and building footprints
+  (`vector.bin.gz`) instead of the baked drape texture. ≈ 17 MB.
 - **Endpoints**: B = northern end of D11 where OSM switches ref D11 → S3 at the border (50.6887 N, 15.9774 E,
   first node of southbound carriageway way 896584498). The southbound carriageway is chained from B through
   connecting D11 ways; A = the point 21.0 km along it (50.5253 N, 15.9222 E, just south of Trutnov near the
@@ -166,8 +167,10 @@ First cost model (2026-11-13): 20.81 km, 13.87 min, 3.19 bn CZK = 153 M CZK/km. 
 - Auto-profile cost uses a flat-ground section estimate at rural rates and knows nothing about buildings, land
   use, road crossings or noise; the bill uses the real cross-sections.
 - Cross-sections ignore crossfall/superelevation and curvature correction; transition curves are not drawn.
-- Drape texture is 5 m/px, so close-ups look blocky; the render mesh is 20 m (ribbon kept visible by a
-  footprint mask that cuts the terrain).
+- The render mesh is 20 m (ribbon kept visible by a footprint mask that cuts the terrain); relief shading,
+  contours and the map layers are drawn per pixel from the 5 m grid and from vectors, so only silhouettes and
+  the edges of cuts show the coarse mesh. Buildings are flat-roofed boxes and stretch with the vertical
+  exaggeration. The aerial photo is streamed from ČÚZK's view service (needs a connection; see README).
 
 ### Next steps
 
@@ -178,7 +181,7 @@ First cost model (2026-11-13): 20.81 km, 13.87 min, 3.19 bn CZK = 153 M CZK/km. 
 4. Land cost by BPEJ / cadastre, protection areas, real geology ground classes and hazards (replacing the
    depth rule), a real noise calculation, junction layout instead of lump sums.
 5. Official-line comparison (digitise its profile), motorway category row, scenarios #2 and #3.
-6. Sharper drape near the route (2 m texture / orthophoto), LOD terrain mesh.
+6. LOD terrain mesh (5 m near the camera); pitched roofs; demolished buildings shown on the 3D boxes.
 
 ## Town cost model and cost breakdown (2026-11-14)
 

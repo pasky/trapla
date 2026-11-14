@@ -158,29 +158,38 @@ if (c) {
 // terrain legibility and close-up quality: contours, slope tint, exaggeration, town, forest edge, photo
 await page.evaluate(() => { window.trapla.resetCamera(); window.trapla.profileFit(); });
 await view({ contours: true });
-await shot('05-overview-contours');
+await shot('07-overview-contours');
 await look(9700, 8591, 5000, 20, 45);
-await shot('06-mid-contours');
+await shot('08-mid-contours');
 await view({ slope: true });
-await shot('11-mid-slope-tint');
+await shot('14-mid-slope-tint');
 await view({});
 await look(6713, 7282, 700, 30, 28);
-await shot('07-town-buildings');
+await shot('11-town-buildings');
 await look(10500, 12500, 600, 200, 28);
-await shot('08-forest-edge');
+await shot('12-forest-edge');
 await view({ contours: true });
-await shot('08-forest-edge-contours');
+await shot('13-forest-edge-contours');
+// 2× relief at the longest noise wall, with half of it selected: road, wall and highlight scale with the terrain
+const wall = await page.evaluate(() => {
+  const r = window.trapla.result();
+  const w = [...r.walls].sort((a, b) => (b.i1 - b.i0) - (a.i1 - a.i0))[0];
+  if (!w) return null;
+  const m = Math.round((w.i0 + w.i1) / 2);
+  window.trapla.selectRange(r.s[w.i0], r.s[m]);
+  return { x: r.x[m], y: r.y[m], bearing: (Math.atan2(r.tx[m], r.ty[m]) * 180) / Math.PI + (w.side === 'L' ? 60 : -60) };
+});
 await view({ contours: true, exag: 2 });
-await look(9400, 9300, 900, 40, 30);
-await shot('12-relief-2x-contours');
+if (wall) await look(wall.x, wall.y, 420, wall.bearing, 24); else await look(9400, 9300, 900, 40, 30);
+await shot('15-relief-2x-noise-wall');
+await page.evaluate(() => window.trapla.selectRange(null));
 if (await page.evaluate(() => !!window.trapla.meta.orthophoto && navigator.onLine)) {
   await view({ photo: true, contours: true });
   await look(9400, 9300, 450, 40, 30);
-  await shot('13-photo-contours');
+  await shot('16-photo-contours');
 }
 await view({});
 await page.evaluate((c) => (c ? window.trapla.lookAt(...c) : window.trapla.resetCamera()), designs.overview ?? null);
-
 
 // drag performance: move a PI repeatedly through the real worker path
 const perf = await page.evaluate(async () => {
@@ -197,7 +206,7 @@ const perf = await page.evaluate(async () => {
   }
   return times;
 });
-console.log('round-trip ms per edit (SwiftShader page):', perf?.map((x) => x.toFixed(0)).join(' '));
+console.log(`round-trip ms per edit (${process.env.GPU ? 'hardware GPU' : 'SwiftShader'} page):`, perf?.map((x) => x.toFixed(0)).join(' '));
 console.log('console errors/warnings:', errors.length ? errors : 'none');
 await browser.close();
 await server.close();

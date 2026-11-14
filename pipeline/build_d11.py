@@ -570,10 +570,8 @@ def extra_cover() -> list:
 
 
 def extra_lines() -> list:
-    lines2 = overpass("lines2", """(
-  way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];
-);""")
-    return [lines2["elements"]]
+    """Tracks and service roads: the same Overpass result road_network() uses for crossings."""
+    return [cached_osm("roads2")["elements"]]
 
 
 def build_vectors() -> dict:
