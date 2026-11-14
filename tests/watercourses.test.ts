@@ -153,7 +153,7 @@ describe('watercourse crossing assemblies', () => {
     expect(new WaterNet(water).section(1250, 250, 1, 0, 20, 20)).toHaveLength(1);
   });
   it.each([10, null])('rejects earthwork overlapping a parallel river bank (width %s), not just its axis', width => {
-    const water = data(0.1, [[0, 258], [2500, 258]]);
+    const water = data(0.1, [[0, 257], [2500, 257]]);
     water.reaches[0].kind = 'river'; water.reaches[0].width = width;
     const ctx = context(0.1, 0, water), groundDesign: Design = { ...design,
       vpis: [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }] };

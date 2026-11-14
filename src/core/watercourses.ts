@@ -14,7 +14,7 @@ export interface WaterReach {
 }
 /** Study-stage full ribbon width where OSM supplies no measured width. */
 export function waterWidth(reach: Pick<WaterReach, 'kind' | 'width'>): number {
-  return reach.width ?? (reach.kind === 'river' ? 8 : 0.5);
+  return reach.width ?? (reach.kind === 'river' ? 5 : 0.5);
 }
 export interface WaterData { version: 1; method: string; reaches: WaterReach[] }
 export interface WaterCrossing {
