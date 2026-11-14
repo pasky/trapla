@@ -178,7 +178,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       for (const [a, b] of subtract(hit, cell.structure ? [] : roadCovered.get(segment.way) ?? []))
         group.hits.push({ a, b, i: cell.i, j: cell.i, structure: cell.structure });
     });
-    terrain.watercourses?.nearSegments(cellBounds(cell, 10), segment => {
+    terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), segment => {
       const hit = clipFootprint(segment, cell, cell.structure ? (segment.reach.width ?? 0.5) / 2 : 0);
       if (!hit) return;
       const covered: [number, number][] = [];

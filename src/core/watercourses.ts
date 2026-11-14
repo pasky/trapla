@@ -123,6 +123,8 @@ export function waterOpening(size: WaterSize): string {
 
 /** Bounded segment buckets; no road × network Cartesian-product arrays. */
 export class WaterNet {
+  /** Largest channel half-width for conservative local footprint/support queries. */
+  readonly maxHalfWidth: number = 0;
   private buckets = new Map<string, WaterSegment[]>();
   private distances = new Map<number, number[]>();
   private components = new Map<number, number>();
@@ -144,6 +146,7 @@ export class WaterNet {
     });
     data.reaches.forEach((w, i) => this.components.set(w.id, root(i)));
     for (const reach of data.reaches) {
+      this.maxHalfWidth = Math.max(this.maxHalfWidth, (reach.width ?? (reach.kind === 'river' ? 5 : 0.5)) / 2);
       const distances = [0];
       for (let j = 1; j < reach.points.length; j++) distances.push(distances[j - 1] + Math.hypot(reach.points[j][0] - reach.points[j - 1][0], reach.points[j][1] - reach.points[j - 1][1]));
       this.distances.set(reach.id, distances);
