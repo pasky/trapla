@@ -146,6 +146,8 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       }
     });
   }
+  // Retained dwellings still request best-effort walls at their solvable stations. A failure at
+  // another station remains unresolved; it must not discard useful local protection here.
   for (const j of retained) failed.delete(j);
   for (let k = 0; k < stations.length; k++) {
     if (failed.has(indices[k])) continue;
@@ -231,8 +233,8 @@ export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wa
   return out;
 }
 
-/** Finish exposure with automatic margins first, then exact manual heights/removals (no rounding,
- * padding or connected-run height promotion of manual paint). Tunnels never get walls.
+/** Finish exposure with automatic margins/runs on undecided cells, then exact manual heights/removals.
+ * Manual cells neither seed padding nor connect automatic height-promotion runs. Tunnels get no walls.
  * Pass these L/R arrays to pricing, wall rendering AND noiseFootprint; append unresolved to checks.
  * Barrier/edges must be the same as in dwellingExposure. Explicit buys belong in its demolished mask. */
 export function resolveNoiseWalls(ex: ReturnType<typeof dwellingExposure>, ds: number, length: number,
@@ -240,7 +242,16 @@ export function resolveNoiseWalls(ex: ReturnType<typeof dwellingExposure>, ds: n
     L: Float64Array; R: Float64Array; walls: WallStretch[]; receivers: NoiseReceiver[];
     boughtOut: ReturnType<typeof dwellingExposure>['boughtOut']; unresolved: NoiseUnresolved[];
   } {
-  const L = Float64Array.from(wallFlags(ds, ex.L, shieldL)), R = Float64Array.from(wallFlags(ds, ex.R, shieldR));
+  const automatic = (demand: Uint8Array, shield: ArrayLike<number>, left: boolean) => {
+    const masked = demand.slice(), blocked = Uint8Array.from(shield);
+    for (let i = 0; i < masked.length; i++) {
+      if (manualWall(ex.scratch.policy, left, i) === undefined) continue;
+      masked[i] = 0;
+      blocked[i] = 1;
+    }
+    return Float64Array.from(wallFlags(ds, masked, blocked));
+  };
+  const L = automatic(ex.L, shieldL, true), R = automatic(ex.R, shieldR, false);
   for (let i = 0; i < L.length; i++) {
     L[i] = shieldL[i] ? 0 : (manualWall(ex.scratch.policy, true, i) ?? L[i]);
     R[i] = shieldR[i] ? 0 : (manualWall(ex.scratch.policy, false, i) ?? R[i]);

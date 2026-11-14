@@ -115,6 +115,29 @@ describe('manual noise policy', () => {
     ]);
   });
 
+  it('does not seed automatic padding from manual cells or promote heights across a manual split', () => {
+    // Isolate composition from exposure: two known demands whose 50 m margins would touch.
+    const zero = new Uint8Array(31), empty = new BuildingIndex([], []);
+    const run = (wallL: number[]) => {
+      const ex = dwellingExposure(31, zero, zero, zero, zero, empty, normal, [], zero, () => 0,
+        zero, zero, barrier, undefined, { wallL });
+      ex.L[10] = 3; ex.L[20] = 5;
+      const result = resolveNoiseWalls(ex, 10, 300, zero, zero, barrier);
+      expect(ex.L[10]).toBe(3); expect(ex.L[20]).toBe(5); // retain scratch inputs for diagnostics
+      return result;
+    };
+    const replaced = Array(31).fill(NaN); replaced[10] = 0; replaced[20] = 6;
+    const exact = run(replaced);
+    expect([...exact.L].filter(Boolean)).toEqual([6]); // no useless margin stubs from either decision
+    expect(exact.L[20]).toBe(6);
+
+    const split = Array(31).fill(NaN); split[15] = 0;
+    const independent = run(split);
+    expect([...independent.L.slice(5, 15)]).toEqual(Array(10).fill(3));
+    expect(independent.L[15]).toBe(0);
+    expect([...independent.L.slice(16, 26)]).toEqual(Array(10).fill(5));
+  });
+
   it('leaves the legacy automatic orchestration and billable geometry exactly unchanged', () => {
     for (const shield of [[0, 0, 0], [0, 1, 0]]) {
       const ex = exposure(undefined, undefined, shield);
