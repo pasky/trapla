@@ -33,6 +33,8 @@ export interface CrossingGeometry {
   deck?: { start: number; end: number; depth: number };
   /** Inclusive road-index ranges from each terrain tie-in to the adjusted footprint. */
   approaches?: [{ start: number; end: number }, { start: number; end: number }];
+  /** Reconnection/diversion: signed way chainages where the severed way leaves the footprint. */
+  removed?: [number, number];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
   /** Explicit priced turning disk, distinct from legacy small severed-end heads. */

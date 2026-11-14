@@ -172,6 +172,8 @@ export function costParts(inp: StationCostInput): CostParts {
       for (const [i, variable] of bridgeVariableCosts(bridge, inp.h, ds, r)) parts.bridges[i] = variable;
       parts.bridges[r.i0] += bridge.abutments / 2;
       parts.bridges[r.i1] += bridge.abutments / 2;
+      // Wedge excavation under an end span (class II rate incl. loading; spoil joins the haul-free surplus).
+      if (r.regradeM3) { parts.bridges[r.i0] += r.regradeM3[0] * EXCAVATION_BY_CLASS.II; parts.bridges[r.i1] += r.regradeM3[1] * EXCAVATION_BY_CLASS.II; }
     }
   }
   // volumes per cell

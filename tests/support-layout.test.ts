@@ -68,11 +68,20 @@ describe('automatic bridge support remedies', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('stops at low terrain or tunnel and computes required extension and elevation', () => {
-    const r = route(); (r.grade as Float64Array)[9] = 102;
+  it('sets a clear abutment into a shallow cut with priced regrading, not a grade lift', () => {
+    const r = route(); (r.grade as Float64Array)[9] = 97;
+    const result = remedyBridgeSupports(r, terrain(), roadAt(195));
+    expect(result.runs[0]).toMatchObject({ s0: 85, length: 130 });
+    expect(result.diagnostics.some(d => d.reason === 'terrain')).toBe(false); // the moved-past road still needs its own clearance
+    // 130 m in five 26 m spans: soffit 1.3 m below the deck in a 3 m cut → 4.3 m deep wedge.
+    expect(result.runs[0].regradeM3![0]).toBeCloseTo(4.3 / 2 * 9.5 * 10, 6);
+  });
+
+  it('stops at a deep cut or tunnel and computes required extension and elevation', () => {
+    const r = route(); (r.grade as Float64Array)[9] = 94;
     const result = remedyBridgeSupports(r, terrain(), roadAt(195));
     expect(result.runs).toEqual(r.runs);
-    expect(result.diagnostics[0]).toMatchObject({ reason: 'terrain', extensionM: 10, raiseM: 2 });
+    expect(result.diagnostics[0]).toMatchObject({ reason: 'terrain', extensionM: 10, raiseM: 1 });
     (r.kind as Uint8Array)[9] = KIND.tunnel;
     expect(remedyBridgeSupports(r, terrain(), roadAt(195)).diagnostics[0].reason).toBe('tunnel');
   });

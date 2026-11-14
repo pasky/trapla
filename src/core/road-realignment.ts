@@ -90,6 +90,7 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
       if (a < 0) b = roads.isDeadEnd(raw[raw.length - 1]) ? raw[raw.length - 1].d : 0;
       else a = roads.isDeadEnd(raw[0]) ? raw[0].d : 0;
     }
+    if (g.removed) { a = Math.min(a, g.removed[0]); b = Math.max(b, g.removed[1]); }
     path = slice(raw, Math.max(raw[0].d, a), Math.min(raw[raw.length - 1].d, b));
     targets = (g.links ?? []).flat();
   } else return;
@@ -107,6 +108,11 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
  * or subtracting relocation hits. A T-arm is not covered merely by touching this old path. */
 export function roadRealignmentCrossingIntervals(crossings: readonly CrossingResult[], roads: RoadNet): RoadSourceInterval[] {
   return mergeIntervals(crossings.flatMap(c => crossingSource(c, roads)?.intervals ?? []));
+}
+/** Exact removed intervals of severed (reconnection/diversion) ways, whose link tie-ins and
+ * turnarounds are construction transitions at each end. */
+export function severedCrossingIntervals(crossings: readonly CrossingResult[], roads: RoadNet): RoadSourceInterval[] {
+  return mergeIntervals(crossings.filter(c => c.type === 'reconnection' || c.type === 'diversion').flatMap(c => crossingSource(c, roads)?.intervals ?? []));
 }
 
 function dense(path: readonly WayPoint[]): WayPoint[] {

@@ -59,7 +59,10 @@ export function retainingConflicts(walls: readonly RetainingWall[]): FootprintCo
 
 interface RetainingBarrel { c: WaterCrossing; i: number; left: number; right: number; cover: number; envelope: BarrelEnvelope }
 
-export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, water: readonly WaterCrossing[] = [], cache?: RetainingFeatureCache, waterElevation?: ReadonlyMap<WaterCrossing, number>): RetainingPlan {
+/** Source-way chainages where an existing road crosses the route centreline. */
+export type CrossingChainages = ReadonlyMap<number, readonly number[]>;
+
+export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, water: readonly WaterCrossing[] = [], cache?: RetainingFeatureCache, waterElevation?: ReadonlyMap<WaterCrossing, number>, crossingWays?: CrossingChainages): RetainingPlan {
   const { n, ds } = r;
   let barrels: RetainingBarrel[] = water.flatMap(c => {
     const i = Math.min(n - 1, Math.round(c.s / ds)), j = Math.max(0, Math.min(n - 2, Math.floor(c.s / ds)));
@@ -69,7 +72,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
     const envelope = culvertEnvelope(c, r.dayL[i], r.dayR[i], ds, r.tx[i], r.ty[i], cover);
     return envelope ? [{ c, i, left: r.dayL[i], right: r.dayR[i], cover, envelope }] : [];
   });
-  if (!barrels.length) return retainingPass(r, terrain, roads, overrides, water, cache, barrels);
+  if (!barrels.length) return retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays);
   // Road/water walls can shorten a crossing's barrel footprint. Re-screen its ownership
   // against the shortened sections, rebuilding from the untouched input so quantities and
   // wall costs are never applied twice. Side-width limits only shrink; the final screen
@@ -84,7 +87,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
     }
   };
   for (let attempt = 0; attempt < 3; attempt++) {
-    const plan = retainingPass(r, terrain, roads, overrides, water, cache, barrels);
+    const plan = retainingPass(r, terrain, roads, overrides, water, cache, barrels, crossingWays);
     let changed = false;
     barrels = barrels.flatMap(b => {
       const left = Math.min(b.left, r.dayL[b.i]), right = Math.min(b.right, r.dayR[b.i]);
@@ -100,26 +103,27 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
   }
   // Bound coupled wall/ownership retries. If they do not settle, no hypothetical barrel
   // can waive a constraint: retain/bridge the feature and let the final screen validate it.
-  return retainingPass(r, terrain, roads, overrides, water, cache, []);
+  return retainingPass(r, terrain, roads, overrides, water, cache, [], crossingWays);
 }
 
 function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | undefined, overrides: ArrayLike<number> | undefined,
-  water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[]): RetainingPlan {
+  water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[], crossingWays?: CrossingChainages): RetainingPlan {
   const { n, ds } = r, w = r.crownWidth / 2;
   const limitL = new Float64Array(n).fill(Infinity), limitR = new Float64Array(n).fill(Infinity);
   const causeL: RetainingWall['feature'][] = [], causeR: RetainingWall['feature'][] = [];
   const forcedBridge = new Uint8Array(n), forcedTunnel = new Uint8Array(n), perCell = new Float64Array(n), landPerCell = new Float64Array(n);
   const wallSurfaceL = new Float64Array(n).fill(NaN), wallSurfaceR = new Float64Array(n).fill(NaN);
-  const requests: { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean }[] = [];
+  const requests: { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean; crossing: number; cap: number }[] = [];
   const clearanceRequests: { i: number; z: number; id?: number }[] = [];
   const bridgeRequests: { i: number; id?: number }[] = [], unretainable = new Set<number>(), channelHits = new Map<number, ChannelHit>();
-  const propose = (cell: FootprintCell, lateral: number, padding: number, feature: RetainingWall['feature'], gx: number, gy: number, id?: number) => {
+  const propose = (cell: FootprintCell, lateral: number, padding: number, feature: RetainingWall['feature'], gx: number, gy: number, id?: number, crossing = 0, cap = Infinity) => {
     const i = cell.i;
     let limit = Math.abs(lateral) - padding - R.clearance, constrained = false;
     if (limit < w + R.minimumOffset && Math.abs(lateral) - padding - R.constrainedClearance >= w) {
       limit = Math.abs(lateral) - padding - R.constrainedClearance; constrained = true;
     }
     if (limit < w) {
+      if (crossing === 2) return; // severed/diverted by its crossing remedy, never bridged for
       const clearance = feature === 'railway' ? STRUCTURE_RULES.railClearance : feature === 'road' ? 6 : STRUCTURE_RULES.riverClearance;
       if (id !== undefined) unretainable.add(id);
       if (feature !== 'road') clearanceRequests.push({ i, z: terrain.heightAt(gx, gy) + clearance, id });
@@ -129,21 +133,24 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     const limits = lateral >= 0 ? limitL : limitR, cause = lateral >= 0 ? causeL : causeR;
     const day = lateral >= 0 ? r.dayL[i] : r.dayR[i];
     if (limit >= day - 0.05) return;
-    requests.push({ i, side: lateral >= 0 ? 1 : -1, limit, feature, id, constrained });
+    requests.push({ i, side: lateral >= 0 ? 1 : -1, limit, feature, id, constrained, crossing, cap });
     if (limit < limits[i]) { limits[i] = limit; cause[i] = feature; }
   };
-  const segment = (c: FootprintCell, seg: Segment2, pad: number, feature: RetainingWall['feature'], id?: number) => {
+  const segment = (c: FootprintCell, seg: Segment2, pad: number, feature: RetainingWall['feature'], id?: number,
+    owned: readonly [number, number][] = [], ownedMode = 0, cap = Infinity) => {
     const hit = clipFootprint(seg, c, pad);
     if (!hit || seg.length <= 0) return;
     // Clip ownership BEFORE selecting constraint points: a barrel may cover only the
     // nearest part of a segment. This also makes OSM vertex/way splits immaterial.
-    const covered = id === undefined ? [] : barrels.filter(b => terrain.watercourses!.connected(id, b.c.id))
+    const covered = id === undefined ? owned : barrels.filter(b => terrain.watercourses!.connected(id, b.c.id))
       .flatMap(b => barrelIntervals(seg, b.envelope));
     const at = (d: number) => {
       const t = (d - seg.d) / seg.length;
       return { x: seg.ax + t * (seg.bx - seg.ax), y: seg.ay + t * (seg.by - seg.ay) };
     };
-    for (const [a, b] of subtract(hit, covered)) {
+    const pieces = subtract(hit, covered).map(p => [...p, 0]);
+    if (ownedMode) for (const [a, b] of owned) if (Math.min(b, hit[1]) > Math.max(a, hit[0])) pieces.push([Math.max(a, hit[0]), Math.min(b, hit[1]), ownedMode]);
+    for (const [a, b, crossing] of pieces) {
       const p = at(a), q = at(b), vp = -(p.x - c.x) * c.ty + (p.y - c.y) * c.tx, vq = -(q.x - c.x) * c.ty + (q.y - c.y) * c.tx;
       if (vp * vq <= 0) {
         if (id === undefined) continue; // existing road centreline crossings have their own remedy
@@ -151,10 +158,19 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         propose(c, 0, pad, feature, p.x + t * (q.x - p.x), p.y + t * (q.y - p.y), id);
       } else {
         const nearest = Math.abs(vp) <= Math.abs(vq) ? p : q;
-        propose(c, Math.abs(vp) <= Math.abs(vq) ? vp : vq, pad, feature, nearest.x, nearest.y, id);
+        propose(c, Math.abs(vp) <= Math.abs(vq) ? vp : vq, pad, feature, nearest.x, nearest.y, id, crossing, crossing ? cap : Infinity);
       }
     }
   };
+  // A road crossing the centreline is engineered by its crossing remedy (at-grade approach,
+  // diversion, bridge or overbridge). Its connected stretch inside the footprint never forces a
+  // tunnel here. Non-separable tracks/service roads are severed/diverted rather than bridged
+  // (crossing rules), so they never force a structure and get a wall only where it is cheaper
+  // per metre than twice their own SPK relocation rate (e.g. a low toe wall at a grazing track,
+  // not a 12 m wall keeping a doomed stub). Separable roads may still force a bridge over them.
+  // Other stretches of the same way remain ordinary obstacles; the final screen validates all.
+  const crossingHits: { c: FootprintCell; seg: RoadSegment; pad: number }[] = [];
+  const crossingIntervals = new Map<number, [number, number][]>();
   for (let i = 1; i < n - 1; i++) {
     const c: FootprintCell = { i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i], along: ds / 2,
       left: r.dayL[i], right: r.dayR[i] };
@@ -167,7 +183,15 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       protectedRasterCells(terrain, query, p => candidates!.raster.push(p));
       cache?.set(i, candidates);
     }
-    for (const seg of candidates.roads) segment(c, seg, roadHalfWidth(seg.cls), 'road');
+    for (const seg of candidates.roads) {
+      const pad = roadHalfWidth(seg.cls);
+      if (!crossingWays?.has(seg.way)) { segment(c, seg, pad, 'road'); continue; }
+      const hit = clipFootprint(seg, c, pad);
+      if (!hit) continue;
+      crossingHits.push({ c, seg, pad });
+      const list = crossingIntervals.get(seg.way);
+      if (list) list.push(hit); else crossingIntervals.set(seg.way, [hit]);
+    }
     candidates.water.forEach(seg => {
       const pad = waterWidth(seg.reach) / 2;
       const hit = clipFootprint(seg, c, pad);
@@ -188,6 +212,20 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         propose(c, off, step / 2, feature, x, y);
       }
   }
+  for (const [way, intervals] of crossingIntervals) {
+    intervals.sort((a, b) => a[0] - b[0]);
+    const merged: [number, number][] = [];
+    for (const [a, b] of intervals) {
+      const last = merged[merged.length - 1];
+      if (last && a <= last[1] + 0.5) last[1] = Math.max(last[1], b); else merged.push([a, b]);
+    }
+    const at = crossingWays!.get(way)!;
+    crossingIntervals.set(way, merged.filter(([a, b]) => at.some(d => d >= a - 0.5 && d <= b + 0.5)));
+  }
+  for (const { c, seg, pad } of crossingHits) {
+    const row = ROAD_CLASSES[seg.cls];
+    segment(c, seg, pad, 'road', undefined, crossingIntervals.get(seg.way), row.separable ? 1 : 2, row.separable ? Infinity : 2 * row.roadPerKm[0] / 1000);
+  }
   const channelRelocations = planChannelRelocations(r, terrain, roads, [...channelHits.values()], water).filter(channel => {
     if (unretainable.has(channel.id)) return true;
     let wallPrice = 0;
@@ -207,12 +245,15 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   });
   const diverted = new Set(channelRelocations.map(c => c.id));
   limitL.fill(Infinity); limitR.fill(Infinity); causeL.length = 0; causeR.length = 0;
-  const constrainedL = new Uint8Array(n), constrainedR = new Uint8Array(n);
+  const constrainedL = new Uint8Array(n), constrainedR = new Uint8Array(n), crossingL = new Uint8Array(n), crossingR = new Uint8Array(n);
+  const capL = new Float64Array(n).fill(Infinity), capR = new Float64Array(n).fill(Infinity);
   for (const req of requests) if (req.id === undefined || !diverted.has(req.id)) {
     const limits = req.side > 0 ? limitL : limitR, causes = req.side > 0 ? causeL : causeR;
     if (req.limit < limits[req.i] || (Math.abs(req.limit - limits[req.i]) < 1e-6 && protectionRank[req.feature] > (protectionRank[causes[req.i]] ?? -1))) {
       limits[req.i] = req.limit; causes[req.i] = req.feature;
       (req.side > 0 ? constrainedL : constrainedR)[req.i] = req.constrained ? 1 : 0;
+      (req.side > 0 ? crossingL : crossingR)[req.i] = req.crossing;
+      (req.side > 0 ? capL : capR)[req.i] = req.cap;
     }
   }
   for (const req of bridgeRequests) if (req.id === undefined || !diverted.has(req.id)) forcedBridge[req.i] = 1;
@@ -225,11 +266,11 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   }
   // Extend a wall by one cell either side so chords of adjoining wide slope cells do not cut
   // across the protected feature. Never narrow a neighbour more than its own candidate section.
-  for (const [limits, flags, causes] of [[limitL, constrainedL, causeL], [limitR, constrainedR, causeR]] as const) {
-    const copy = limits.slice(), copiedFlags = flags.slice(), copiedCauses = causes.slice();
+  for (const [limits, flags, crossings, caps, causes] of [[limitL, constrainedL, crossingL, capL, causeL], [limitR, constrainedR, crossingR, capR, causeR]] as const) {
+    const copy = limits.slice(), copiedFlags = flags.slice(), copiedCrossings = crossings.slice(), copiedCaps = caps.slice(), copiedCauses = causes.slice();
     for (let i = 1; i < n - 1; i++) for (const j of [i - 1, i + 1]) if (copy[j] < limits[i]
       || (Math.abs(copy[j] - limits[i]) < 1e-6 && (protectionRank[copiedCauses[j]] ?? -1) > (protectionRank[causes[i]] ?? -1))) {
-      limits[i] = copy[j]; flags[i] = copiedFlags[j]; causes[i] = copiedCauses[j];
+      limits[i] = copy[j]; flags[i] = copiedFlags[j]; crossings[i] = copiedCrossings[j]; caps[i] = copiedCaps[j]; causes[i] = copiedCauses[j];
     }
   }
   const walls: RetainingWall[] = [], tpl = { crownWidth: r.crownWidth, ...DEFAULT_SLOPES };
@@ -245,10 +286,13 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     const rate = retainingAssembly(height, watertight);
     const otherFoot = Math.max(w, Math.min(side > 0 ? r.dayR[i] : r.dayL[i], side > 0 ? limitR[i] : limitL[i]));
     // The footing points inward, below our acquired corridor; no free foundation under a protected neighbour.
+    const crossing = (side > 0 ? crossingL : crossingR)[i];
+    if (rate.perM > (side > 0 ? capL : capR)[i]) continue;
     if (height > R.maxHeight || rate.baseWidth > limit + otherFoot) {
-      if ((overrides?.[i] ?? -1) < 0) {
+      // A crossing way's own stretch is left to its crossing remedy and the final screen.
+      if ((overrides?.[i] ?? -1) < 0 && crossing !== 2) {
         if (r.grade[i] - ground(0) >= STRUCTURE_RULES.bridgeMinHeight) forcedBridge[i] = 1;
-        else if (ground(0) - r.grade[i] >= STRUCTURE_RULES.tunnelMinDepth) forcedTunnel[i] = 1;
+        else if (!crossing && ground(0) - r.grade[i] >= STRUCTURE_RULES.tunnelMinDepth) forcedTunnel[i] = 1;
       }
       continue;
     }

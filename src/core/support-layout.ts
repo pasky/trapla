@@ -13,7 +13,7 @@ import { waterWidth } from './watercourses';
 /** Provisional automatic-search envelope, not a norm-proven span feasibility limit. Clear
  * spans up to 180 m use the existing bridge model's long-span extrapolation (as overbridges
  * already do), fully priced per span. Larger changes still require a new alignment/profile. */
-export const SUPPORT_LIMITS = { extensionM: 300, spanM: 180 } as const;
+export const SUPPORT_LIMITS = { extensionM: 300, spanM: 180, abutmentCutM: 5 } as const;
 
 export interface SupportRoute {
   n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
@@ -162,9 +162,14 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         target = r.s[index] + direction * r.ds / 2;
         if (manual[index]) reason ??= 'manual';
         if (kind[index] === KIND.tunnel) reason ??= 'tunnel';
-        raiseM = Math.max(raiseM, R.bridgeMinHeight - (r.grade[index] - r.ground[index]));
-        if (raiseM > 0) reason ??= 'terrain';
-        if (!blocked(target)) {
+        // bridgeMinHeight is an economic selection threshold, not a physical limit: the deck may
+        // continue low over dry ground, priced at the model's minimum height. A clear abutment
+        // may also be set into the start of a cut (provisional ≤5 m retained cut), rather than
+        // lifting the whole grade. Only a deck below ground or a deeper cut requires a raise.
+        const h = r.grade[index] - r.ground[index], free = !blocked(target);
+        const shortfall = free ? -SUPPORT_LIMITS.abutmentCutM - h : -h;
+        if (shortfall > 0) { raiseM = Math.max(raiseM, shortfall); reason ??= 'terrain'; }
+        if (free) {
           // Filling the last earth cell would merge adjacent runs and erase the requested
           // run's endpoint/abutment, even though no painted cell itself changed kind.
           if (manual[index + direction] && kind[index + direction] === KIND.bridge) reason ??= 'manual';
@@ -221,6 +226,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     // are clearance queries, NOT solid-deck footprint conflicts or relocation charges.
     const supports = [run.s0, ...piers, run.s1];
     let raiseM = 0, worstI = run.i0, requiredZ = r.grade[run.i0];
+    const regrade = [0, 0];
     for (let k = 0; k + 1 < supports.length; k++) {
       const a = supports[k], b = supports[k + 1], span = b - a;
       const extraDepth = Math.max(0, span / 20 - 1.2);
@@ -229,12 +235,19 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         const left = Math.max(a, r.s[i] - r.ds / 2), right = Math.min(b, r.s[i] + r.ds / 2);
         if (right <= left) continue;
         const cell = cellAt(r, (left + right) / 2, (right - left) / 2, r.crownWidth / 2);
-        const required = Math.max(r.ground[i] + span / 20, obstacle(cell) + extraDepth);
+        // In an end cell the bank in front of the abutment is regraded under the first span
+        // (priced excavation, ≤ abutmentCutM), instead of lifting the whole grade line.
+        const end = !isManual && (i === run.i0 || i === run.i1) && run.i1 > run.i0;
+        const terrainDepth = r.ground[i] + span / 20 - r.grade[i];
+        if (end && terrainDepth > 0.01 && terrainDepth <= SUPPORT_LIMITS.abutmentCutM)
+          regrade[i === run.i0 ? 0 : 1] += terrainDepth / 2 * r.crownWidth * (right - left);
+        const required = Math.max(r.ground[i] + span / 20 - (end ? SUPPORT_LIMITS.abutmentCutM : 0), obstacle(cell) + extraDepth);
         const shortfall = required - r.grade[i];
         if (shortfall > 0.01) requiredElevations.set(r.s[i], Math.max(required, requiredElevations.get(r.s[i]) ?? -Infinity));
         if (shortfall > raiseM) { raiseM = shortfall; worstI = i; requiredZ = required; }
       }
     }
+    if (regrade[0] + regrade[1] > 0) run.regradeM3 = regrade as [number, number];
     if (raiseM > 0.01) {
       diagnostics.push({ s: r.s[worstI], reason: 'span-depth', extensionM: 0, raiseM, requiredZ });
       violations.push({ kind: 'structure', basis: 'game', s0: r.s[worstI], s1: r.s[worstI],

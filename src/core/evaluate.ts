@@ -4,8 +4,8 @@
 
 import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
-import { planRetainingWalls, retainingConflicts, type RetainingWall, type RetainingFeatureCache } from './retaining';
-import { remedyBridgeSupports } from './support-layout';
+import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingWall, type RetainingFeatureCache } from './retaining';
+import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
 import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
@@ -183,12 +183,12 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     }
     groundIds[i] = k;
   }
-  const oob = new Uint8Array(n);
+  const oobInput = new Uint8Array(n);
   const w = cat.crownWidth / 2;
   for (let i = 0; i < n; i++) {
     ground[i] = terrain.heightAt(st.x[i], st.y[i]);
     const nx = -st.ty[i], ny = st.tx[i];
-    oob[i] = terrain.isOob(st.x[i], st.y[i]) || terrain.isOob(st.x[i] + nx * w, st.y[i] + ny * w)
+    oobInput[i] = terrain.isOob(st.x[i], st.y[i]) || terrain.isOob(st.x[i] + nx * w, st.y[i] + ny * w)
       || terrain.isOob(st.x[i] - nx * w, st.y[i] - ny * w) ? 1 : 0;
   }
   // river / water-area / railway crossings: sample between stations too so diagonal crossings of a
@@ -548,8 +548,18 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     vpis = normalizeVpis(d.vpis, L, zA, zB);
   }
   lap('profile');
+  const autoVpis = vpis;
   // Grade repair reuses alignment, feature queries and the completed DP search. Only engineering
   // quantities are rebuilt; buildings, crossing meshes, noise and final billing run once.
+  // Centreline crossings own their connected stretch inside the footprint (crossing remedy);
+  // grade-separated classes cannot be diverted and stay ordinary retaining obstacles.
+  // Ways merged into another crossing's billing group have no remedy of their own.
+  const crossingWays = new Map<number, number[]>(), remedied = new Set(roadX.map(c => c.way));
+  if (ctx.roads) for (const c of rawRoadX) {
+    if (!remedied.has(c.way) || ROAD_CLASSES[c.cls].noAtGrade) continue;
+    const list = crossingWays.get(c.way) ?? [];
+    list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
+  }
   const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
   const sectionMemo: SectionCache = [];
   // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
@@ -561,7 +571,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
   let deckCoverReady = false;
   const work = (key: string, start: number) => { timing[`work.${key}`] = (timing[`work.${key}`] ?? 0) + performance.now() - start; };
-  const engineer = (candidate: VPI[]) => {
+  const engineer = (candidate: VPI[], crossingWays: CrossingChainages) => {
   timing['count.engineer'] = (timing['count.engineer'] ?? 0) + 1;
   const engineeringStart = performance.now();
   const prof = buildProfile(candidate, norms.minCrestRadius, norms.minSagRadius);
@@ -574,7 +584,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo);
   work('sections', sectionsStart);
   const retainingStart = performance.now();
-  const retention = planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation);
+  const retention = planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays);
   work('retaining', retainingStart);
   const dec = decisionPrices(materialValue);
   const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
@@ -664,7 +674,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   for (const issue of supported.diagnostics) if (issue.structure === 'abutment' && issue.reason === 'terrain' && issue.targetS !== undefined && issue.raiseM > 0) {
     const a = Math.max(1, Math.floor(Math.min(issue.s, issue.targetS) / ds)), b = Math.min(n - 2, Math.ceil(Math.max(issue.s, issue.targetS) / ds));
     if (manualStructures.subarray(a, b + 1).some(v => v >= 0)) continue;
-    for (let i = a; i <= b; i++) supportHeights.push({ s: st.s[i], z: ground[i] + STRUCTURE_RULES.bridgeMinHeight + 0.15 });
+    // Deck above ground; the abutment cell itself may stand in a shallow cut (support-layout).
+    const abutment = Math.round((issue.targetS + (issue.targetS < issue.s ? ds : -ds) / 2) / ds);
+    for (let i = a; i <= b; i++) supportHeights.push({ s: st.s[i], z: ground[i] + 0.15 - (i === abutment ? SUPPORT_LIMITS.abutmentCutM : 0) });
   }
   work('engineering', engineeringStart);
   return { prof, grade, waterZ, sec, retention,
@@ -677,10 +689,15 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
     return lifted;
   };
-  let engineering = engineer(vpis);
+  /** Engineering through final checks. `relaxed` crossing ways leave their in-footprint stretch
+   * to the crossing remedy (see retaining.ts); evaluate() retries strictly where that fails. */
+  const finish = (relaxed: CrossingChainages): Result => {
+  const oob = oobInput.slice();
+  let vpis = autoVpis;
+  let engineering = engineer(vpis, relaxed);
   const repairTargets = new Map<number, number>();
   let usedProfileRetry = false;
-  for (let attempt = 0; attempt < 3 && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
+  for (let attempt = 0; attempt < 5 && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
     for (const q of engineering.supportHeights) repairTargets.set(q.s, Math.max(q.z, repairTargets.get(q.s) ?? -Infinity));
     const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
     let lifted = liftProfile(vpis, targets);
@@ -704,7 +721,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     }
     if (!lifted) break;
     vpis = lifted;
-    engineering = engineer(vpis);
+    engineering = engineer(vpis, relaxed);
   }
   const { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings, selection, supported } = engineering;
@@ -1013,4 +1030,18 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     },
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing,
   };
+  };
+  const result = finish(crossingWays);
+  // A relaxed crossing stretch whose crossing remedy could not absorb it (no ownership, and its
+  // residual relocation failed) falls back to ordinary retaining walls/structures nearby.
+  const blocked = result.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
+  if (!blocked.length) return result;
+  const strict = new Map(crossingWays);
+  for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) strict.delete(c.way);
+  if (strict.size === crossingWays.size) return result;
+  timing['count.strictRetry'] = 1;
+  const retry = finish(strict);
+  return retry.violations.length < result.violations.length ? retry : result;
 }
+/** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
+const STRICT_RETRY_REACH = 300;

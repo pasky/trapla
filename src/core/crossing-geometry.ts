@@ -268,6 +268,15 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         c.span = d1 - d0; c.approachLength = d0 - f0 + f1 - d1;
         c.cost = deckPrice(c, c.span) + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
       }
+    } else if (c.type === 'reconnection' || c.type === 'diversion') {
+      // The severed way is removed wherever it lies inside the footprint plus link corridor,
+      // in both directions from the crossing, even when that direction needs no new link.
+      let lo = 0;
+      for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[lo].d)) lo = i;
+      let hi = lo;
+      while (lo > 0 && margin(path[lo], corridor) < 0) lo--;
+      while (hi + 1 < path.length && margin(path[hi], corridor) < 0) hi++;
+      g.removed = [Math.min(0, path[lo].d), Math.max(0, path[hi].d)];
     } else if (['bridge', 'tunnel'].includes(c.type)) {
       // Only show the vicinity of the crossing; its existing road is unchanged at terrain level.
       let centre = path.findIndex(q => q.d >= 0), lo = centre, hi = centre;

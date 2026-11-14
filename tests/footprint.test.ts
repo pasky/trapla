@@ -49,9 +49,10 @@ describe('constructed footprint conflicts', () => {
     // A spacing-invalid manual choice still pays its approaches; don't charge them again.
     crossings[0].issues = [{ kind: 'crossing', basis: 'game', s0: 500, s1: 500, title: 'spacing', fix: 'move', rule: 'spacing', crossing: { requested: 'junction', code: 'spacing' } }];
     expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(404, 4);
-    // A one-sided reconnection already removes the old-way stub beyond its sole turnaround.
+    // A one-sided reconnection already removes the old-way stub beyond its sole turnaround;
+    // its link tie-in may graze the toe for half the 4 m width + 3 m setback beyond that end.
     crossings[0].type = 'reconnection'; crossings[0].geometry!.turnarounds = [crossings[0].geometry!.road![0]];
-    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(202, 4);
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(197, 4);
     crossings[0].issues![0].crossing.code = 'geometry'; // the unbuildable choice cannot claim removed roads
     expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(1004, 4);
   });

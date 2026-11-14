@@ -1,7 +1,7 @@
 // Conflicts beyond centreline intersections. Network segments are queried through their existing
 // spatial grids; raster work visits only cells in the constructed footprint (never the whole map).
 import { bridgeLayout } from './bridge';
-import { planRoadRealignment, roadRealignmentCrossingIntervals, type RoadSourceInterval, type RoadRealignmentPlan, type PreservedRoadConnection } from './road-realignment';
+import { planRoadRealignment, roadRealignmentCrossingIntervals, severedCrossingIntervals, type RoadSourceInterval, type RoadRealignmentPlan, type PreservedRoadConnection } from './road-realignment';
 import { RoadRemedyLedger } from './road-remedy-ledger';
 import type { Violation } from './checks';
 import type { ChannelRelocation } from './channel-relocation';
@@ -48,7 +48,7 @@ export interface FootprintRoute {
   featureCache?: RetainingFeatureCache;
 }
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
-const SAMPLE = 5;
+const SAMPLE = 5, TIE_IN_SETBACK = 3;
 /** OSM motorways are separate one-direction carriageways; D27.5 is the whole divided road. */
 const existingHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
 
@@ -132,7 +132,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     conflicts.push(c);
     violations.push({ kind: 'footprint', basis: 'game', s0: c.s0, s1: c.s1, title, fix, detail: c.detail, rule });
   };
-  const roadCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
+  const roadCovered = new Map<number, [number, number][]>(), tieInCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
+  const screened = (way: number) => [...roadCovered.get(way) ?? [], ...tieInCovered.get(way) ?? []];
   const fixedConnections: PreservedRoadConnection[] = [];
   const coverRoad = (id: number, a: number, b: number) => { const list = roadCovered.get(id) ?? []; list.push([Math.min(a, b), Math.max(a, b)]); roadCovered.set(id, list); };
   if (roads) {
@@ -141,6 +142,14 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     for (const interval of roadRealignmentCrossingIntervals(crossings, roads)) {
       const list = roadCovered.get(interval.way) ?? [];
       list.push([interval.a, interval.b]); roadCovered.set(interval.way, list);
+    }
+    // A severed way's link/turnaround tie-in is a construction transition: its own ribbon may
+    // graze the toe within half a width plus setback beyond the exact removed end. Screening
+    // tolerance only; planning and ownership keep the exact interval.
+    for (const interval of severedCrossingIntervals(crossings, roads)) {
+      const tieIn = ROAD_CLASSES[roads.wayClass(interval.way)].width / 2 + TIE_IN_SETBACK;
+      const graze = tieInCovered.get(interval.way) ?? [];
+      graze.push([interval.a - tieIn, interval.a], [interval.b, interval.b + tieIn]); tieInCovered.set(interval.way, graze);
     }
     // The defined boundary connection may be collinear and produce no raw intersection.
     // Own only grade-compatible pavement in the actual endpoint crown cell—not ±150 m
@@ -183,7 +192,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const key = `${segment.way}:${cell.structure ?? 'earth'}`;
       let group = roadHits.get(key);
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });
-      for (const [a, b] of subtract(hit, cell.structure ? [] : roadCovered.get(segment.way) ?? []))
+      for (const [a, b] of subtract(hit, cell.structure ? [] : screened(segment.way)))
         group.hits.push({ a, b, i: cell.i, j: cell.i, structure: cell.structure });
     };
     if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);
@@ -222,10 +231,10 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const merged = union(hits);
     for (let index = 0; index < merged.length; index++) {
     const sourceHit = merged[index];
-    const remaining = sourceHit.structure ? [[sourceHit.a, sourceHit.b]] : subtract([sourceHit.a, sourceHit.b], roadCovered.get(way) ?? []);
+    const remaining = sourceHit.structure ? [[sourceHit.a, sourceHit.b]] : subtract([sourceHit.a, sourceHit.b], screened(way));
     for (let piece = 0; piece < remaining.length; piece++) {
     const [a, b] = remaining[piece];
-    const unpaid = sourceHit.structure ? [[a, b]] : subtract([a, b], roadCovered.get(way) ?? []);
+    const unpaid = sourceHit.structure ? [[a, b]] : subtract([a, b], screened(way));
     if (unpaid.length !== 1 || unpaid[0][0] !== a || unpaid[0][1] !== b) {
       remaining.splice(piece, 1, ...unpaid); piece--; continue;
     }

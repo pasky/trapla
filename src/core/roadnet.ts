@@ -94,6 +94,7 @@ export class RoadNet {
         }
   }
 
+  wayClass(way: number): string { return this.wayCls[way]; }
   /** Absolute distance along a way at its nearest point, for interval subtraction and real tie-ins. */
   wayStation(way: number, x: number, y: number): number {
     const w = this.ways[way];

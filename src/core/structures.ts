@@ -13,6 +13,8 @@ export interface Run {
   layout?: BridgeLayout;
   /** Absolute route chainages of all internal piers, shared by pricing and rendering. */
   pierStations?: number[];
+  /** Bank regraded under the first/last span in front of each abutment, m³ (support-layout). */
+  regradeM3?: [number, number];
 }
 
 export interface StructureInput {
