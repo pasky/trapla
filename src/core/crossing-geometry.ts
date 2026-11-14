@@ -3,6 +3,7 @@ import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, Cr
 import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
+import { smoothLink } from './crossing-link';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
@@ -349,7 +350,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         stations.splice(0, stations.length, ...reduced);
       }
       if (s1 < s0) stations.reverse();
-      const controls = [a, ...stations.map(s => sidePoint(s, side)), b];
+      const controls = smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
+        q => margin(q, g.width / 2), terrainPoint);
       const link: CrossingPoint[] = [a];
       const length = crossingPlanLength(controls), budget = Math.max(0, MAX_POINTS - controls.length);
       for (let i = 1; i < controls.length; i++) {

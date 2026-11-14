@@ -202,9 +202,10 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   costs, ordinary-road junction costs or noise. It does receive raw motorway/trunk clearance requirements
   (as well as river/rail crossings); final validation rejects missed clearances. The bill uses real sections.
 - Cross-sections ignore crossfall/superelevation and curvature correction; transition curves are not drawn.
-- The render mesh is 20 m (ribbon kept visible by a footprint mask that cuts the terrain); relief shading,
-  contours and the map layers are drawn per pixel from the 5 m grid and from vectors, so only silhouettes and
-  the edges of cuts show the coarse mesh. Buildings are flat-roofed boxes and stretch with the vertical
+- The general render mesh is 20 m; relief shading, contours and map layers use the 5 m grid and vectors.
+  Cut/fill daylight edges share 2.5 m samples with local ground collars; the terrain discard boundary lies
+  inside those collars, not on the cut face. Crossing collars share a ground-height blend field so their
+  overlaps do not bury adjoining roads. Distant terrain silhouettes still show the coarse mesh. Buildings are flat-roofed boxes and stretch with the vertical
   exaggeration. The aerial photo is streamed from ČÚZK's view service (needs a connection; see README).
 
 ### Next steps

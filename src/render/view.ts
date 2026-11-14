@@ -15,6 +15,7 @@ import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import { crossingBaseHeight, crossingSurfaces, endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
 export interface ViewEvents {
@@ -364,6 +365,11 @@ export class View {
   /** height that clears both the true and the rendered terrain (for draped overlays) */
   drape(x: number, y: number) { return this.drapeHeight(x, y); }
   groundHeight(x: number, y: number) { return this.terrain.heightAt(x, y); }
+  private groundBlend = (_x: number, _y: number) => 1;
+  replacementHeight(x: number, y: number) {
+    const z = this.groundHeight(x,y);
+    return z + (this.drape(x,y)-z)*this.groundBlend(x,y);
+  }
   crossingGeology(x: number, y: number, z: number) {
     const profile = this.terrain.groundAt(x,y), depth = this.terrain.heightAt(x,y)-z;
     return profile.normMix ? [-3,-3] : [depth-profile.classIto, depth-profile.classIIto];
@@ -471,6 +477,14 @@ export class View {
   setResult(r: Result, crownWidth: number) {
     const natural = (x: number, y: number) => this.terrain.heightAt(x, y);
     this.crossingSurfaces = crossingSurfaces(r.crossings, natural, crossingBaseHeight(r, crownWidth, natural));
+    const corridors: GroundCorridor[] = [];
+    for (const surface of this.crossingSurfaces) for (let i = 0; i+1 < surface.sections.length; i++) {
+      if (!groundSegment(surface,i)) continue;
+      const a = surface.sections[i], b = surface.sections[i+1];
+      const width = Math.max(...[a,b].flatMap(s => s.toe.map(p => Math.hypot(p.x-s.p.x,p.y-s.p.y))));
+      corridors.push({ a: a.p, b: b.p, width });
+    }
+    this.groundBlend = groundBlend(corridors);
     for (const c of [...this.routeGroup.children]) {
       this.routeGroup.remove(c);
       const m = c as THREE.Mesh;
@@ -498,7 +512,7 @@ export class View {
     const asphalt = new THREE.Color(0x3b3b42), asphaltBad = new THREE.Color(0x8a2020);
     // slope colours are only nominal: the earthwork shader textures cut / fill slopes itself (EW_KIND)
     const fillC = new THREE.Color(0x8aa95a), cutC = new THREE.Color(0x9e7859), concrete = new THREE.Color(0xc4c2ba);
-    const lift = 0.35;
+    const lift = 0.08;
     // contours on the cut / fill slopes join the terrain's at the daylight line; faint on the carriageway
     const slopeInk = 1, crownInk = 0.35;
     type SV = { dl: number; el: number; er: number; dr: number; cl: number; cr: number };
@@ -515,25 +529,58 @@ export class View {
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
       const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
       sv.push({
-        dl: push(xl, yl, Math.max(r.zDayL[i], this.meshHeight(xl, yl)) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
+        dl: push(xl, yl, natural(xl, yl) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
         cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
-        dr: push(xr, yr, Math.max(r.zDayR[i], this.meshHeight(xr, yr)) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
+        dr: push(xr, yr, natural(xr, yr) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
       });
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
+    const groundPos: number[] = [], groundIdx: number[] = [];
+    const coarse = (x: number, y: number) => this.replacementHeight(x, y);
+    const flushGround = () => {
+      if (!groundIdx.length) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(groundPos, 3));
+      geometry.setIndex(groundIdx); geometry.computeBoundingSphere();
+      const material = makeTerrainMaterial(this.terrainU, { maskTex: { value: null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } });
+      material.side = THREE.DoubleSide;
+      const collar = new THREE.Mesh(geometry, material);
+      collar.name = 'daylight-ground'; this.routeGroup.add(collar);
+      groundPos.length = 0; groundIdx.length = 0;
+    };
     for (let i = 0; i < n - 1; i++) {
+      if (i % 32 === 0) flushGround(); // corridor-local frustum culling, not one route-wide mesh
       const k0 = r.kind[i], k1 = r.kind[i + 1];
       if (k0 === KIND.tunnel || k1 === KIND.tunnel) continue;
       const a = sv[i], b = sv[i + 1];
       quad(a.cl, b.cl, a.cr, b.cr);
-      if (k0 === KIND.earth && k1 === KIND.earth) {
-        quad(a.dl, b.dl, a.el, b.el);
-        quad(a.er, b.er, a.dr, b.dr);
+      if (k0 === KIND.earth && k1 === KIND.earth) for (const side of [1, -1]) {
+        const sections = daylightSections(r, i, side, w, natural);
+        let prev: { day: number; edge: number; ground: number } | undefined;
+        for (let j = 0; j < sections.length; j++) {
+          const s = sections[j], t = j / (sections.length - 1);
+          const fill = s.edge.z > s.day.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
+          const gp = r.geology.profiles[r.geology.ids[i]];
+          const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
+          const day = push(s.day.x, s.day.y, s.day.z+lift, color, s.day.z, slopeInk, kind, geology(0));
+          const edge = push(s.edge.x, s.edge.y, s.edge.z+lift, color, s.edge.z, slopeInk, kind, geology(natural(s.edge.x,s.edge.y)-s.edge.z));
+          const ground = groundPos.length / 3;
+          for (let k = 0; k <= 8; k++) {
+            const p = collarPoint(s, k/8, natural, coarse);
+            this.local(p.x,p.y,p.z+lift,v); groundPos.push(v.x,v.y,v.z);
+          }
+          if (prev) {
+            quad(prev.day, day, prev.edge, edge);
+            for (let k = 0; k < 8; k++) groundIdx.push(prev.ground+k, ground+k, prev.ground+k+1, ground+k, ground+k+1, prev.ground+k+1);
+          }
+          prev = { day, edge, ground };
+        }
       }
     }
+    flushGround();
     // Close the embankment cross-section at structure transitions. Without these faces the
     // terrain cut-out is visible as a sky-coloured hole beside the first/last bridge span.
     for (let i = 0; i < n; i++) {
@@ -678,29 +725,34 @@ export class View {
     this.dirty = true;
   }
 
-  /** render the at-grade footprint (slightly inset) top-down into the terrain discard mask */
+  /** Cut out to the replacement ground collar, not into the exposed slope. */
   private buildMask(r: Result) {
     this.maskSource = r;
     this.contourLabels?.schedule(this.contourStep * 5); // labels keep off the carved footprint
     const n = r.n;
     const pos: number[] = [];
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
-    const P: [number, number][] = [];
+    const P: [number, number][] = [], exact: [number, number][] = [];
     for (let i = 0; i < n; i++) {
       const nx = -r.ty[i], ny = r.tx[i];
-      const il = Math.min(2.5, 0.3 * r.dayL[i]), ir = Math.min(2.5, 0.3 * r.dayR[i]);
-      const L = r.dayL[i] - il, R = r.dayR[i] - ir;
+      const L = r.dayL[i] + GROUND_COLLAR - COLLAR_OVERLAP, R = r.dayR[i] + GROUND_COLLAR - COLLAR_OVERLAP;
+      for (const side of [1, -1]) {
+        const p = daylightPoint(r, i, side);
+        exact.push([p.x-this.cx, this.cy-p.y]);
+      }
       const a: [number, number] = [r.x[i] + nx * L - this.cx, -(r.y[i] + ny * L - this.cy)];
       const b: [number, number] = [r.x[i] - nx * R - this.cx, -(r.y[i] - ny * R - this.cy)];
       P.push(a, b);
       for (const p of [a, b]) { minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); minZ = Math.min(minZ, p[1]); maxZ = Math.max(maxZ, p[1]); }
     }
+    const original: number[] = [], cuts: number[] = [];
     for (let i = 0; i < n - 1; i++) {
       if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
-      const a0 = P[2 * i], b0 = P[2 * i + 1], a1 = P[2 * i + 2], b1 = P[2 * i + 3];
-      pos.push(a0[0], 0, a0[1], b0[0], 0, b0[1], a1[0], 0, a1[1], b0[0], 0, b0[1], b1[0], 0, b1[1], a1[0], 0, a1[1]);
+      for (const [points, out] of [[P, pos], [exact, original]] as const) {
+        const a0 = points[2*i], b0 = points[2*i+1], a1 = points[2*i+2], b1 = points[2*i+3];
+        for (const p of [a0,b0,a1,b0,b1,a1]) out.push(p[0],0,p[1]);
+      }
     }
-    const original = [...pos], cuts: number[] = [];
     const addQuad = (out: number[], a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) => {
       for (const p of [a, b, c, b, d, c]) {
         const x = p.x - this.cx, z = this.cy - p.y;
@@ -711,13 +763,21 @@ export class View {
       if (!groundSegment(surface, i)) continue;
       const a = surface.sections[i], b = surface.sections[i + 1];
       // Inset the terrain hole into its replacement collar to hide raster-mask antialiasing.
-      const inset = (p: typeof a.p, q: typeof a.p) => ({ x: p.x + (q.x - p.x) * .92, y: p.y + (q.y - p.y) * .92 });
+      const inset = (p: typeof a.p, q: typeof a.p) => {
+        const t = Math.max(0, 1 - 2*COLLAR_OVERLAP/Math.hypot(q.x-p.x,q.y-p.y));
+        return { x: p.x+(q.x-p.x)*t, y: p.y+(q.y-p.y)*t };
+      };
       addQuad(pos, inset(a.p, a.outer[0]), inset(a.p, a.outer[1]), inset(b.p, b.outer[0]), inset(b.p, b.outer[1]));
       if (surface.crossing.type === 'junction') addQuad(cuts, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
     }
     for (const surface of this.crossingSurfaces) for (const [a, b, c, d] of endCollars(surface, (x, y) => this.terrain.heightAt(x, y))) {
-      const inset = (p: typeof a, q: typeof a) => ({ x: p.x + (q.x - p.x) * .8, y: p.y + (q.y - p.y) * .8 });
-      addQuad(pos, a, b, inset(a, c), inset(b, d));
+      const inset = (p: typeof a, q: typeof a, metres: number) => {
+        const t = Math.min(.45, metres/Math.hypot(q.x-p.x,q.y-p.y));
+        return { ...p, x: p.x+(q.x-p.x)*t, y: p.y+(q.y-p.y)*t };
+      };
+      const l = inset(a,b,2*COLLAR_OVERLAP), rr = inset(b,a,2*COLLAR_OVERLAP);
+      const endL = inset(c,d,2*COLLAR_OVERLAP), endR = inset(d,c,2*COLLAR_OVERLAP);
+      addQuad(pos, l, rr, inset(endL,l,2*COLLAR_OVERLAP), inset(endR,rr,2*COLLAR_OVERLAP));
     }
     minX -= 20; minZ -= 20; maxX += 20; maxZ += 20;
     const maxTex = Math.min(8192, this.renderer.capabilities.maxTextureSize);

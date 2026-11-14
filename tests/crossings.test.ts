@@ -401,7 +401,7 @@ describe('crossing geometry and map overlay', () => {
       local: (x: number, y: number, z: number, v = new THREE.Vector3()) => v.set(x, z, -y),
       crossingSurfaces: crossingSurfaces(cs, () => 400), groundHeight: () => 400,
       crossingEarthMaterial: () => new THREE.MeshBasicMaterial(), crossingGroundMaterial: () => new THREE.MeshBasicMaterial(),
-      drape: () => 401, requestRender: vi.fn(), retire: (m: THREE.Material) => { retired.push(m); } };
+      drape: () => 401, replacementHeight: () => 400, requestRender: vi.fn(), retire: (m: THREE.Material) => { retired.push(m); } };
     const renderer = new CrossingRenderer(mock as unknown as View);
     renderer.setResult({ crossings: cs, grade: Float64Array.of(400), ground: Float64Array.of(400) });
     const group = mock.world.getObjectByName('crossing-roads')!;

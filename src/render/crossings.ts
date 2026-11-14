@@ -6,6 +6,7 @@ import { endCollars, groundSegment, type CrossingSurface } from './crossing-surf
 import { existingRoadColor } from './landcover';
 import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
+import { collarPoint } from './earthwork-surface';
 
 class MeshBuilder {
   pos: number[] = []; col: number[] = []; elev: number[] = []; ink: number[] = []; indices: number[] = [];
@@ -22,11 +23,24 @@ class MeshBuilder {
     const v = [a, b, c, d].map(p => this.vertex(p, color, ink, lift, kind));
     this.indices.push(v[0], v[1], v[2], v[1], v[3], v[2]);
   }
-  geometry() {
-    const g = new THREE.BufferGeometry();
-    for (const [name, values, size] of [['position', this.pos, 3], ['color', this.col, 3], ['elev', this.elev, 1], ['ink', this.ink, 1], ['ewKind', this.kinds, 1], ['ewGeo', this.geo, 3]] as const)
-      g.setAttribute(name, new THREE.Float32BufferAttribute(values, size));
-    g.setIndex(this.indices); g.computeVertexNormals(); g.computeBoundingSphere(); return g;
+  *geometries() {
+    // Spatially consecutive strips: bounded chunks let close views cull distant crossings.
+    // A single route-wide ground mesh submitted every fine collar triangle at every zoom.
+    for (let start = 0; start < this.indices.length; start += 12288) {
+      const sources: number[] = [], remap = new Map<number,number>(), indices: number[] = [];
+      for (const old of this.indices.slice(start,start+12288)) {
+        let index = remap.get(old);
+        if (index === undefined) { index = sources.length; sources.push(old); remap.set(old,index); }
+        indices.push(index);
+      }
+      const g = new THREE.BufferGeometry();
+      for (const [name, values, size] of [['position', this.pos, 3], ['color', this.col, 3], ['elev', this.elev, 1], ['ink', this.ink, 1], ['ewKind', this.kinds, 1], ['ewGeo', this.geo, 3]] as const) {
+        const array = new Float32Array(sources.length*size);
+        sources.forEach((old,i) => { for (let k = 0; k < size; k++) array[i*size+k] = values[old*size+k]; });
+        g.setAttribute(name, new THREE.BufferAttribute(array,size));
+      }
+      g.setIndex(indices); g.computeVertexNormals(); g.computeBoundingSphere(); yield g;
+    }
   }
 }
 export class CrossingRenderer {
@@ -39,7 +53,9 @@ export class CrossingRenderer {
     for (const [builder, material, name] of [[terrain, this.view.crossingGroundMaterial(), 'crossing-terrain'],
       [earth, this.view.crossingEarthMaterial(), 'crossing-earthworks'], [structure, this.view.crossingEarthMaterial(), 'crossing-decks']] as const) {
       if (!builder.indices.length) { material.dispose(); continue; }
-      const mesh = new THREE.Mesh(builder.geometry(), material); mesh.name = name; this.group.add(mesh);
+      for (const geometry of builder.geometries()) {
+        const mesh = new THREE.Mesh(geometry, material); mesh.name = name; this.group.add(mesh);
+      }
     }
     this.view.requestRender();
   }
@@ -48,16 +64,37 @@ export class CrossingRenderer {
     const below = (p: CrossingPoint, dz: number) => ({ ...p, z: p.z - dz });
     for (let i = 0; i + 1 < s.sections.length; i++) {
       const a = s.sections[i], b = s.sections[i + 1], ground = groundSegment(s, i), target = ground ? earth : structure;
-      // The casing and surface occupy the same surveyed alignment, never a parallel schematic line.
-      target.quad(a.edge[0], a.edge[1], b.edge[0], b.edge[1], casing);
-      const inset = (p: CrossingPoint, q: CrossingPoint) => ({ ...q, x: q.x + (p.x - q.x) * .10, y: q.y + (p.y - q.y) * .10 });
-      target.quad(inset(a.p, a.edge[0]), inset(a.p, a.edge[1]), inset(b.p, b.edge[0]), inset(b.p, b.edge[1]), color, 0, .10, EW_KIND.crown);
+      // Tracks retain the billed formation width, but only the wheel strips are bare earth.
+      // A solid four-metre brown slab made parallel diversions look like footprint outlines.
+      if (s.link && s.crossing.cls === 'track') {
+        terrain.quad(a.edge[0], a.edge[1], b.edge[0], b.edge[1], 0xffffff, 0, .08);
+        const at = (section: typeof a, off: number) => {
+          const t = .5 + off/g.width, l = section.edge[0], r = section.edge[1];
+          return { ...section.p, x: l.x+(r.x-l.x)*t, y: l.y+(r.y-l.y)*t, z: l.z+(r.z-l.z)*t };
+        };
+        for (const off of [-.85, .85]) target.quad(at(a,off-.3), at(a,off+.3), at(b,off-.3), at(b,off+.3), 0x96856c, 0, .12, EW_KIND.crown);
+      } else {
+        // The casing and surface occupy the same surveyed alignment, never a parallel schematic line.
+        const at = (section: typeof a, t: number): CrossingPoint => {
+          const l = section.edge[0], r = section.edge[1], x = l.x+(r.x-l.x)*t, y = l.y+(r.y-l.y)*t;
+          return { ...section.p, x, y, z: section.p.surface === 'terrain' && s.crossing.type !== 'junction'
+            ? this.view.groundHeight(x,y) : l.z+(r.z-l.z)*t };
+        };
+        const strips = Math.max(1,Math.ceil(g.width/1.5));
+        for (let j = 0; j < strips; j++) {
+          const lo = j/strips, hi = (j+1)/strips;
+          target.quad(at(a,lo), at(a,hi), at(b,lo), at(b,hi), casing);
+          target.quad(at(a,.05+.9*lo), at(a,.05+.9*hi), at(b,.05+.9*lo), at(b,.05+.9*hi), color, 0, .10, EW_KIND.crown);
+        }
+      }
       if (ground) for (const k of [0, 1] as const) {
         earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
         // Natural ground collar replaces the coarse mesh locally. At its outside edge it meets
         // that mesh, while the actual road/earthwork tie-in remains at the real terrain height.
-        const outer = (p: CrossingPoint) => ({ ...p, z: this.view.drape(p.x, p.y) });
-        terrain.quad(a.toe[k], outer(a.outer[k]), b.toe[k], outer(b.outer[k]), 0xffffff, 0, .015);
+        const at = (s: typeof a, t: number): CrossingPoint => ({ ...s.p,
+          ...collarPoint({ edge: s.edge[k], day: s.toe[k], outer: s.outer[k] }, t,
+            (x,y) => this.view.groundHeight(x,y), (x,y) => this.view.replacementHeight(x,y)) });
+        for (let j = 0; j < 8; j++) terrain.quad(at(a,j/8), at(a,(j+1)/8), at(b,j/8), at(b,(j+1)/8), 0xffffff, 0, .015);
       } else {
         const depth = g.deck!.depth;
         for (const k of [0, 1] as const) {
@@ -75,8 +112,8 @@ export class CrossingRenderer {
       const point = (u: number, v: number) => {
         const x = a.x * (1-u)*(1-v) + b.x*u*(1-v) + c.x*(1-u)*v + d.x*u*v;
         const y = a.y * (1-u)*(1-v) + b.y*u*(1-v) + c.y*(1-u)*v + d.y*u*v;
-        const ground = this.view.groundHeight(x, y), blend = Math.max(v, Math.max(0, Math.abs(u-.5)*4-1));
-        return { ...a, x, y, z: ground + (this.view.drape(x, y)-ground)*blend };
+        const ground = this.view.groundHeight(x, y), blend = Math.max(Math.min(1,v/.65), Math.max(0, Math.abs(u-.5)*4-1));
+        return { ...a, x, y, z: ground + (this.view.replacementHeight(x, y)-ground)*blend };
       };
       for (let i = 0; i < across; i++) for (let j = 0; j < along; j++) terrain.quad(point(i/across,j/along), point((i+1)/across,j/along), point(i/across,(j+1)/along), point((i+1)/across,(j+1)/along), 0xffffff, 0, .015);
     }
@@ -92,7 +129,7 @@ export class CrossingRenderer {
         earth.indices.push(...v);
       }
     }
-    if (s.link && s.path.length) {
+    if (s.link && s.crossing.cls !== 'track' && s.path.length) {
       // Turning head and a transverse end cap at the severed original road end.
       const p = s.path[0], radius = g.width * .72, sections = 20;
       for (let k = 0; k < sections; k++) {
@@ -114,10 +151,13 @@ export class CrossingRenderer {
     mesh.quad({ ...corners[0], z: high }, { ...corners[1], z: high }, { ...corners[3], z: high }, { ...corners[2], z: high }, color);
   }
   private clear() {
+    const materials = new Set<THREE.Material>();
     for (const child of [...this.group.children]) {
       this.group.remove(child); const mesh = child as THREE.Mesh;
-      mesh.geometry.dispose(); this.view.retire(mesh.material);
+      mesh.geometry.dispose();
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) materials.add(material);
     }
+    for (const material of materials) this.view.retire(material);
   }
   dispose() { this.clear(); this.view.world.remove(this.group); this.view.requestRender(); }
 }

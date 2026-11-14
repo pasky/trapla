@@ -3,6 +3,7 @@
 import type { CrossingPoint, CrossingResult } from '../core/crossings';
 import type { Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
+import { GROUND_COLLAR } from './earthwork-surface';
 
 /** Existing engineered formation beneath a junction: indexed once, never scan the route per vertex. */
 export function crossingBaseHeight(r: Pick<Result, 'n' | 'x' | 'y' | 'grade' | 'kind' | 'dayL' | 'dayR' | 'zDayL' | 'zDayR'>,
@@ -91,7 +92,7 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
           }
           return point(side * (g.width / 2 + off));
         }) as SurfaceSection['toe'];
-        const outer = toe.map((q, k) => point((k ? 1 : -1) * (Math.hypot(q.x - p.x, q.y - p.y) + 12))) as SurfaceSection['outer'];
+        const outer = toe.map((q, k) => point((k ? 1 : -1) * (Math.hypot(q.x - p.x, q.y - p.y) + GROUND_COLLAR))) as SurfaceSection['outer'];
         return { p, nx, ny, edge, toe, outer };
       });
       out.push({ crossing, path, sections, link, deck });
