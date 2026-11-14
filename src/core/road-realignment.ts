@@ -484,6 +484,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     }
     let lumpCost = 0;
     const rebuiltAccesses = new Set<string>();
+    const minorContacts = new Map<number, { lo: number; hi: number; reach: number; x: number; y: number; service: boolean }>();
     const roadObstacles = (cell: FootprintCell, p?: CrossingPoint, q?: CrossingPoint) => roads.nearSegments(cellBounds(cell, 14), segment => {
       const other = ROAD_CLASSES[segment.cls], otherHalf = other.width / (segment.cls === 'motorway' ? 4 : 2);
       const overlap = clipFootprint(segment, cell, otherHalf);
@@ -514,6 +515,20 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
             return;
           }
         }
+        // Two minor (non-separable) ways may meet in a new ordinary at-grade junction outside
+        // the acquired corridor, where the new pavement is at that road's own ground level. Only a
+        // short contact qualifies (checked over the whole path below), never pavement laid along it.
+        if (!row.separable && !other.separable) {
+          const mid = (overlap[0] + overlap[1]) / 2, u = (mid - segment.d) / (segment.length || 1);
+          const x = segment.ax + u * (segment.bx - segment.ax), y = segment.ay + u * (segment.by - segment.ay);
+          const t = Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / (len2 || 1)));
+          if (Math.abs(p.z + t * (q.z - p.z) - terrain.heightAt(x, y)) <= 0.25 && !grid.hits({ x, y }, Math.max(half, otherHalf))) {
+            const contact = minorContacts.get(segment.way);
+            if (contact) { contact.lo = Math.min(contact.lo, overlap[0]); contact.hi = Math.max(contact.hi, overlap[1]); }
+            else minorContacts.set(segment.way, { lo: overlap[0], hi: overlap[1], reach: 4 * (half + otherHalf), x, y, service: cls === 'service' || segment.cls === 'service' });
+            return;
+          }
+        }
       }
       problems.add('new pavement intersects an unhandled road');
     });
@@ -525,6 +540,11 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       roadObstacles({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half }, p, q);
     }
     if (turn) roadObstacles({ ...turn, i: h.i, s: r.s[h.i], tx: 1, ty: 0, along: radius, left: radius, right: radius });
+    for (const contact of minorContacts.values()) {
+      if (contact.hi - contact.lo > contact.reach) { problems.add('new pavement intersects an unhandled road'); continue; }
+      const key = `${Math.round(contact.x)},${Math.round(contact.y)}`;
+      if (contact.service && !rebuiltAccesses.has(key)) { rebuiltAccesses.add(key); lumpCost += ACCESS; }
+    }
     const checkedJunctions = new Set<string>();
     for (const span of spans) {
       if (span.hi < ownLo || span.lo > ownHi) continue;

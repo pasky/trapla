@@ -240,6 +240,15 @@ describe('bounded real road relocation', () => {
     expect(planRoadRealignment(ordinary).problems).toContain('new pavement intersects an unhandled road');
   });
 
+  it('lets a relocated minor road cross another minor way at grade, never run along it', () => {
+    const crossing = setup([[0, 20, 260, 1250, 260], [1, 600, 274, 600, 400]], ['service', 'track']);
+    const plan = planRoadRealignment(crossing);
+    expect(plan.problems).toEqual([]);
+    expect(plan.lumpCost).toBe(500_000); // one new service-road junction allowance
+    const along = setup([[0, 20, 260, 1250, 260], [1, 20, 278, 1250, 278]], ['service', 'track']);
+    expect(planRoadRealignment(along).problems).toContain('new pavement intersects an unhandled road');
+  });
+
   it('protects ribbon edges and turning aprons, while leaving old drainage on unchanged tails alone', () => {
     const input = setup([[0, 500, 260, 1250, 260]]);
     input.hit = { a: 0, b: 607, i: 40, j: 100 };
