@@ -318,7 +318,7 @@ whole-route ratios alone do not measure the cost of building through town.
   At 80/90 km/h the night contour is **35.7/37.5 m** for a 1.5 m receiver, **45.1/47.5 m** at 4.5 m,
   **89.4/96.5 m** at 10.5 m (axis-to-receiver, add 2 m for façade). No guessed D scaling remains.
   Queries use the conservative hard-ground bound, never just the low contour. EIA comparisons show
-  2.6–4 dB underprediction for flat mixed assumptions; hard-ground predictions bracket the studies much
+  2–4 dB underprediction for flat mixed assumptions; hard-ground predictions bracket the studies much
   better, but missing local inputs prevent a clean validation claim (research/11 §4).
   Horizontal receiver position is axis-to-**nearest oriented-rectangle façade** distance minus 2 m
   (clamped to 1 m). Source/propagation terms are tabulated once per design.

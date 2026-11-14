@@ -31,8 +31,9 @@ compare('I/23 Třebíč RKB1, conditional K1-B flow', 4688, 90,
   { heavyShare: 541 / 4688, lightNightShare: 255 / 4147, heavyNightShare: 57 / 541 },
   53, [2, 5], [[53, 45.6], [55.7, 48.3]]);
 // II/360 comparator, not class I: LN allocated 40% to NA; TP219 class II night split.
-// Keep class-I emission constants: class-II heavy constant is 0.2 dB higher (small remaining bias).
+// Keep class-I constants: class-II light/heavy constants are 0.1/0.2 dB higher.
+// Heights follow the study's floor-isophone maps, not tabulated point17 window elevations.
 const p = (126 + 5 + 0.4 * 209) / 3478;
 compare('II/360 Jaroměřice point17, south-link assumption', 3478, 90,
   { heavyShare: p, lightNightShare: 0.053 + 0.1 * p, heavyNightShare: 0.075 },
-  30, [1.5, 4.5], [[55.2, 46.5], [56.7, 48]]);
+  30, [2.5, 5.5], [[55.2, 46.5], [56.7, 48]]);

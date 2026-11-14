@@ -209,6 +209,18 @@ describe('noise rule', () => {
     expect([...cut.L]).toEqual([3, 0, 3]);
   });
 
+  it('queries an isolated upper floor beyond the low-receiver contour', () => {
+    const info: BuildingInfo = [100, 4, BUILDING_KIND.apartments, 0, 70, 5, 5, 0];
+    const b = new BuildingIndex([[0, 70, 8]], [info]);
+    const model = createNoiseModel(9000, 90);
+    const d = b.facadeDistance(0, 0, 0) - NOISE.facadeOffset;
+    expect(d).toBeGreaterThan(model.contour);
+    expect(noiseLevels(d, 10.5, model).excessDb).toBeGreaterThan(0);
+    const ex = dwellingExposure(1, [0], [0], [1], [0], b, model, [0], [0], () => 0, [0], [0]);
+    expect(ex.L[0]).toBeGreaterThan(0);
+    expect(ex.boughtOut).toEqual([]);
+  });
+
   it('walls cover the exposed stations plus the margin, except where shielded', () => {
     const exposed = new Uint8Array(40), shield = new Uint8Array(40);
     exposed[10] = exposed[11] = 1; exposed[30] = 1;

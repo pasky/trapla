@@ -51,8 +51,8 @@ function hardGround(d: number): number {
 
 /** Mixed ground (40–60% porous), Manual §2 pp.63–64. Height blends Up→Uo from 5 to 10 m.
  * For uneven sections d is slant range and h is effective ray height (absolute road-relative
- * receiver elevation, mirrored below grade). This conservative bridge/cut extension is NOT
- * prescribed by the manual; it suppresses soft-ground credit for elevated paths. No extra
+ * receiver elevation, mirrored below grade). This bridge/cut extension is NOT prescribed by
+ * the manual; it suppresses ground credit, but is not a proven upper bound on real-terrain levels. No extra
  * façade reflection, vegetation, terrain or meteorological credit. */
 export function propagationLoss(slant: number, height: number, ground: 'mixed' | 'hard' = 'mixed'): number {
   const r = Math.max(3.75, slant), h = Math.max(1.5, height);
@@ -115,7 +115,8 @@ export function createNoiseModel(traffic: number, speed: number, options: NoiseO
       + (table[b] * (1 - t) + table[b + 1] * t) * u;
   };
   const model: NoiseModel = { ...source, radius, contour: 0, loss };
-  if (radius === 0) return model;
+  // A hard-ground contour can exist even when the low mixed-ground receiver is never exposed.
+  if (radius === 0 || noiseLevels(NOISE.sourceOffset, NOISE.receiverHeight, model).excessDb <= 0) return model;
   low = NOISE.sourceOffset; high = radius + NOISE.sourceOffset;
   for (let k = 0; k < 40; k++) {
     const mid = (low + high) / 2;

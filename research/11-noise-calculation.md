@@ -120,7 +120,7 @@ loss equations, and effective height `max(1.5, abs(receiverElevation−roadGrade
 This is a slant-range/elevated-ray extension, **not a clause in the Czech manual**. It removes most/all
 soft-ground credit for high paths and makes a tall viaduct decay with real separation instead of
 forcing a horizontal buyout radius. On level ground it differs slightly from the literal horizontal-d
-manual formula (at the EIA comparison points <0.03 dB). On complex terrain no accuracy bound is claimed.
+manual formula (at the class-I EIA comparison points <0.03 dB). On complex terrain no accuracy bound is claimed.
 
 Compute **both** incident levels `Lday=Yday−U`, `Lnight=Ynight−U`; required attenuation is
 `E=max(Lday−60, Lnight−50)`. Negative E needs no mitigation. All source terms are precomputed once per
@@ -193,20 +193,25 @@ Reference point 17 is **about 30 m from the axis** (§2.4 p.12). Table 13 p.25 i
 2035 contribution: floor 1 **55.2/46.5**, floor 2 **56.7/48.0 dB**.
 
 Assume the south-link table 4 p.10 flow (O=3,138, LN=209, TN=126, BUS=5; Q=3,478), 90/80 km/h,
-first/second-floor heights 1.5/4.5 m (not numerically specified in the report). Allocate 40% LN to NA
-for class II and use TP219 class-II night shares (OA 5.3+0.1PNA %, combined NA 7.5%). Retain the
-calculator's class-I source constants; class-II LNA is 0.2 dB higher, a small remaining source bias.
+first/second-floor heights **2.5/5.5 m**, following the floor-isophone maps in §5.4 (these are not exact
+point-17 window elevations). Allocate 40% LN to NA for class II and use TP219 class-II night shares
+(OA 5.3+0.1PNA %, combined NA 7.5%). Retain the calculator's class-I source constants; class-II
+LOA/LNA are **0.1/0.2 dB higher**, a small remaining source bias.
 
 | assumed height | study day/night | calculator mixed | delta calc−study | calculator hard |
 |---|---:|---:|---:|---:|
-| 1.5 m | 55.2 / 46.5 | 52.4 / 43.7 | −2.8 / −2.8 | 56.3 / 47.6 |
-| 4.5 m | 56.7 / 48.0 | 54.1 / 45.4 | −2.6 / −2.6 | 56.3 / 47.6 |
+| 2.5 m | 55.2 / 46.5 | 53.1 / 44.4 | −2.1 / −2.1 | 56.3 / 47.6 |
+| 5.5 m | 56.7 / 48.0 | 54.7 / 46.0 | −2.0 / −2.0 | 56.3 / 47.6 |
 
 Day/night separation agrees (~8.7 dB); levels are bracketed within about 0.4 dB by the two ground
 assumptions. This is still **not clean unmitigated validation**: the study includes acoustic bridge
 parapets in all results, though point 17 is not among the specifically listed beneficiaries; exact
-link speed, terrain elevation, floor heights and link assignment are missing. Its stated uncertainty
-is ±2 dB, not a tolerance the game's mixed model has demonstrated.
+link speed, terrain elevation, window heights and link assignment are missing. **§5.1 p.19 also says
+sources were optimized against measurements, then optimized for all modelled roads; it does not
+quantify these adjustments.** Differences therefore cannot be attributed just to ground/geometry.
+Its stated uncertainty is ±2 dB, not an accuracy the game has independently demonstrated. Using the
+game's default 1.5/4.5 m floor heights instead gives mixed results 52.4/43.7 and 54.1/45.4 dB: height
+assumptions alone explain part, but not all, of the difference.
 
 ### I/36 Sezemice — input cross-check, not a false distance validation
 
@@ -236,7 +241,7 @@ not changed acoustics. No excavation/geology implementation is changed here.
 
 All five remain **VALID**, with matching per-station cost sums. Noise does not alter the auto-profile.
 `npx vitest run` covers period-energy conservation, zero/day-only traffic, controlling period,
-traffic/speed/heavy-share effects, contour inversion, table accuracy and existing geometric walls,
+traffic/speed/heavy-share effects, contour inversion, table accuracy, absent low-traffic contours, isolated upper-floor spatial queries and existing geometric walls,
 cut edges, buyouts, attribution and range sums. `npx tsc --noEmit` passes.
 Five-run `bench.ts scripts/*.json` means after rebase: **30–38 ms**, town work ~2–3.5 ms. Shared-host
 runs can be slower; an earlier same-session old-main comparison gave 32–42 ms, so there is no material

@@ -35,6 +35,11 @@ describe('Czech road-traffic source and propagation', () => {
     // Upper floors lose ground absorption: the low contour must NOT be the spatial-query bound.
     expect(noiseLevels(model.contour + 20, 10.5, model).excessDb).toBeGreaterThan(0);
     expect(model.radius).toBeGreaterThan(model.contour + 20);
+    // At low traffic a hard-ground crossing can exist without any low mixed-ground exposure.
+    const quiet = createNoiseModel(375, 90);
+    expect(quiet.radius).toBeGreaterThan(0);
+    expect(noiseLevels(1.75, 1.5, quiet).excessDb).toBeLessThan(0);
+    expect(quiet.contour).toBe(0);
   });
 
   it('tabulates the empirical mixed-ground model accurately across height and near-distance transitions', () => {
