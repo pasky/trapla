@@ -47,10 +47,10 @@ function cellAt(r: SupportRoute, s: number, along: number, width: number): Footp
 
 /** Same support envelopes and raster uncertainty as structureFootprints/footprintConflicts.
  * Returns the highest required deck elevation over a protected feature, or -Infinity. */
-function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, minorRoads = true): number {
+function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, relocatable?: ReadonlySet<number>): number {
   let height = -Infinity;
   roads?.nearSegments(cellBounds(c, 14), segment => {
-    if (!minorRoads && !ROAD_CLASSES[segment.cls].separable) return;
+    if (relocatable && !ROAD_CLASSES[segment.cls].separable && !relocatable.has(segment.way)) return;
     const half = ROAD_CLASSES[segment.cls].width / (segment.cls === 'motorway' ? 4 : 2);
     const hit = clipFootprint(segment, c, half);
     if (!hit) return;
@@ -76,8 +76,9 @@ function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, min
  * screened downstream; diagnostics explain a measured extension/elevation rather than hiding it. */
 export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, memo?: Map<string, number>,
   /** Minor (non-separable) roads under an automatic abutment/portal are relocated by the
-   * footprint screen instead of lengthening the structure; strict mode keeps them obstacles. */
-  relocateMinorRoads = false): {
+   * footprint screen instead of lengthening the structure, except `strictWays` (a failed
+   * relocation retried strictly) and every road when this is undefined. */
+  strictWays?: ReadonlySet<number>): {
   kind: Uint8Array; runs: Run[]; diagnostics: SupportDiagnostic[]; violations: Violation[];
   /** Only failing cells, deduplicated at shared spans. Caller may lift AUTO profiles; this
    * routine never changes grade, profile controls, or any explicitly requested structure. */
@@ -94,14 +95,16 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     if (manualRuns.has(run)) manual.fill(1, run.i0, run.i1 + 1);
   }
   // A profile-only retry has identical horizontal geometry and protected features.
-  const obstacle = (cell: FootprintCell, minorRoads = true) => {
-    if (!memo) return obstacleHeight(cell, terrain, roads, minorRoads);
-    const key = `${cell.s.toFixed(3)}/${cell.along.toFixed(3)}/${cell.left}/${minorRoads}`;
+  // Memo keys stay valid across strict retries: `relocatable` rows are keyed by the strict set.
+  const strictKey = strictWays ? [...strictWays].join() : 'all';
+  const obstacle = (cell: FootprintCell, relocatable?: ReadonlySet<number>) => {
+    if (!memo) return obstacleHeight(cell, terrain, roads, relocatable);
+    const key = `${cell.s.toFixed(3)}/${cell.along.toFixed(3)}/${cell.left}/${relocatable ? strictKey : ''}`;
     let height = memo.get(key);
-    if (height === undefined) { height = obstacleHeight(cell, terrain, roads, minorRoads); memo.set(key, height); }
+    if (height === undefined) { height = obstacleHeight(cell, terrain, roads, relocatable); memo.set(key, height); }
     return height;
   };
-  const blocked = (s: number, pier = false) => obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier || !relocateMinorRoads) > -Infinity;
+  const blocked = (s: number, pier = false) => obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
   for (const run of r.runs) {
     if (run.kind === KIND.tunnel) {
       let i0 = run.i0, i1 = run.i1;

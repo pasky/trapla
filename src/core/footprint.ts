@@ -47,7 +47,8 @@ export interface FootprintRoute {
   channelRelocations?: readonly ChannelRelocation[];
   featureCache?: RetainingFeatureCache;
   /** See remedyBridgeSupports: minor roads at abutments/portals are relocated, not blocked. */
-  relocateMinorRoads?: boolean;
+  /** Defined: minor roads at abutments/portals are relocated, except these strictly retried ways. */
+  strictWays?: ReadonlySet<number>;
 }
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
@@ -193,7 +194,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       if (!hit) return;
       // A minor road under an automatic abutment/portal is relocated with the adjoining earthwork
       // hits (support-layout leaves it in place unless strict); piers are always moved instead.
-      const structure = cell.structure && !(r.relocateMinorRoads && cell.structure !== 'pier' && !ROAD_CLASSES[segment.cls].separable) ? cell.structure : undefined;
+      const structure = cell.structure && !(r.strictWays && cell.structure !== 'pier' && !ROAD_CLASSES[segment.cls].separable
+        && !r.strictWays.has(segment.way)) ? cell.structure : undefined;
       const key = `${segment.way}:${structure ?? 'earth'}`;
       let group = roadHits.get(key);
       if (!group) roadHits.set(key, group = { way: segment.way, cls: segment.cls, hits: [] });

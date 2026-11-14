@@ -571,7 +571,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
   let deckCoverReady = false;
   const work = (key: string, start: number) => { timing[`work.${key}`] = (timing[`work.${key}`] ?? 0) + performance.now() - start; };
-  const engineer = (candidate: VPI[], crossingWays: CrossingChainages, strict: boolean) => {
+  const engineer = (candidate: VPI[], crossingWays: CrossingChainages, strict: ReadonlySet<number>) => {
   timing['count.engineer'] = (timing['count.engineer'] ?? 0) + 1;
   const engineeringStart = performance.now();
   const prof = buildProfile(candidate, norms.minCrestRadius, norms.minSagRadius);
@@ -667,7 +667,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   selection = chooseStructures(structureInput);
   work('selection', selectionStart);
   const supportStart = performance.now();
-  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, !strict);
+  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict);
   work('support', supportStart);
   const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
@@ -691,7 +691,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   };
   /** Engineering through final checks. `relaxed` crossing ways leave their in-footprint stretch
    * to the crossing remedy (see retaining.ts); evaluate() retries strictly where that fails. */
-  const finish = (relaxed: CrossingChainages, strict = false): Result => {
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set()): Result => {
   const oob = oobInput.slice();
   let vpis = autoVpis;
   let engineering = engineer(vpis, relaxed, strict);
@@ -834,7 +834,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
 
   lap('crossings');
-  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, relocateMinorRoads: !strict }, terrain, ctx.roads, crossings, rawRoadX, water,
+  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict }, terrain, ctx.roads, crossings, rawRoadX, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
@@ -1036,10 +1036,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
   const blocked = result.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
   if (!blocked.length) return result;
-  const strict = new Map(crossingWays);
-  for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) strict.delete(c.way);
+  const relaxed = new Map(crossingWays), strict = new Set(blocked.map(b => b.roadId!));
+  for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) { relaxed.delete(c.way); strict.add(c.way); }
   timing['count.strictRetry'] = 1;
-  const retry = finish(strict, true);
+  const retry = finish(relaxed, strict);
   return retry.violations.length < result.violations.length ? retry : result;
 }
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
