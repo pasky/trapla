@@ -1,28 +1,40 @@
-// Study-stage network resolution. Connections are geometrical proxies, not an OSM routing solution.
+// Study-stage network resolution with terrain profiles on the actual OSM alignment.
 import { surchargeRate } from './cost';
 import { bridgeModel } from './bridge';
 import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
 import { KIND } from './structures';
 import type { Violation } from './checks';
-import type { RoadCrossing, RoadNet } from './roadnet';
+import type { RoadCrossing } from './roadnet';
 
 export const CROSSING_CHOICES = ['junction', 'bridge', 'overbridge', 'reconnection'] as const;
 export type CrossingChoice = typeof CROSSING_CHOICES[number];
 /** Pack way index, stable within a scenario pack, not a station or merged-list index.
  * One choice applies to every intersection of that way. Omission restores Auto. */
 export interface CrossingOverride { roadId: number; type: CrossingChoice }
-export interface CrossingPoint { x: number; y: number; z: number }
+export interface CrossingPoint {
+  x: number; y: number; z: number;
+  ground: number;
+  surface: 'terrain' | 'ramp' | 'deck';
+  /** Ramps are engineered surfaces, not unsupported ribbons. Cuts use retaining faces. */
+  support?: 'embankment' | 'retaining';
+  /** Signed chainage along the existing crossed way (road samples only). */
+  d?: number;
+}
 export interface CrossingGeometry {
   /** Existing road, continuous under our bridge or over our cut. */
   road?: CrossingPoint[];
   /** Two side links, ending on existing roads / A/B collector anchors, never on our axis. */
   links?: [CrossingPoint[], CrossingPoint[]];
   width: number;
-  /** Display geometry is a proxy; billed linkLength remains the documented station-gap quantity. */
-  schematic: true;
-  /** Visual reach / point budget was clipped; quantities and feasibility are never clipped. */
+  /** Inclusive indices in road; deck top clears our crown by 4.8 m plus this depth. */
+  deck?: { start: number; end: number; depth: number };
+  /** Severed existing-road ends at the sources of the two links. */
+  turnarounds?: CrossingPoint[];
+  schematic: false;
+  /** Incomplete source topology / bounded geometry, never silently invented extensions. */
   clipped?: boolean;
+  diagnostics?: string[];
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
@@ -42,7 +54,7 @@ export interface CrossingResult {
   type: 'bridge' | 'tunnel' | 'overbridge' | 'junction' | 'reconnection' | 'diversion' | 'atGrade';
   /** Crossing-only cost excluding surcharge. Main-road structures are billed in their own runs. */
   cost: number;
-  /** Both sides together, using the study-stage station-gap proxy, m. */
+  /** Both sides together, measured in plan from the built link geometry, m. */
   linkLength?: number;
   targetS?: number;
   /** Disambiguates independently selected roads at the same station; absent for A/B collectors. */
@@ -251,101 +263,9 @@ export interface CrossingRoute {
   tx: ArrayLike<number>; ty: ArrayLike<number>; grade: ArrayLike<number>;
   /** Actual built footprint, not the earthwork option under a bridge. */
   width: ArrayLike<number>;
+  /** Optional asymmetric built footprint distances, positive to either side. */
+  left?: ArrayLike<number>; right?: ArrayLike<number>;
+  crownWidth?: number;
 }
 
-/** Attach bounded, terrain-draped schematic geometry without changing any price or resolution.
- * Real crossed-way vertices are retained. Links follow opposite sides of the route to the actual
- * resolved crossing (or the assumed A/B collector); no fabricated third crossing is introduced. */
-export function buildCrossingGeometry(crossings: CrossingResult[], route: CrossingRoute,
-  heightAt: (x: number, y: number) => number, roads?: RoadNet): void {
-  const n = route.s.length;
-  if (n < 2) return;
-  const at = (s: number) => {
-    let lo = 0, hi = n - 1;
-    while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (route.s[m] <= s) lo = m; else hi = m; }
-    const t = Math.max(0, Math.min(1, (s - route.s[lo]) / (route.s[hi] - route.s[lo] || 1)));
-    const lerp = (v: ArrayLike<number>) => v[lo] + (v[hi] - v[lo]) * t;
-    const tx = lerp(route.tx), ty = lerp(route.ty), norm = Math.hypot(tx, ty) || 1;
-    return { x: lerp(route.x), y: lerp(route.y), tx: tx / norm, ty: ty / norm, z: lerp(route.grade), width: lerp(route.width) };
-  };
-  const sidePoint = (s: number, side: number, extra = 5): CrossingPoint => {
-    const p = at(s), off = p.width / 2 + extra;
-    const x = p.x - p.ty * off * side, y = p.y + p.tx * off * side;
-    return { x, y, z: heightAt(x, y) };
-  };
-  // Bound render-only work even for deliberately impossible manual grades / far-away link targets.
-  const MAX_POINTS = 500, MAX_REACH = 2000;
-  const anchor = new Map<CrossingResult, [CrossingPoint, CrossingPoint]>();
-  for (const c of crossings) {
-    const p = at(c.s);
-    const getPath = (reach: number) => c.roadId === undefined ? [] : roads?.crossingPath(c.roadId, c.x, c.y, reach) ?? [];
-    const near = getPath(10);
-    const a = near[0], b = near[near.length - 1];
-    const sine = a && b ? Math.max(0.05, Math.abs((b.x - a.x) * p.ty - (b.y - a.y) * p.tx) / (Math.hypot(b.x - a.x, b.y - a.y) || 1)) : 1;
-    const halfSpan = p.width / (2 * sine);
-    const wantedReach = Math.max(15, halfSpan + 8) + (c.approachLength ?? 0) / 2 + 25;
-    const reach = Math.min(MAX_REACH, wantedReach);
-    let path = getPath(reach), clipped = wantedReach > MAX_REACH;
-    if (path.length < 2) path = [-reach, 0, reach].map(d => ({ x: c.x - p.ty * d, y: c.y + p.tx * d, d }));
-    // Retain bends where possible, but never let pack detail or approach length allocate unbounded
-    // dense arrays. The centre hit is always retained even when the input way needs decimation.
-    if (path.length > MAX_POINTS / 2) {
-      const centre = path.reduce((a, b) => Math.abs(a.d) < Math.abs(b.d) ? a : b);
-      path = Array.from({ length: MAX_POINTS / 2 - 1 }, (_, k) => path[Math.round(k * (path.length - 1) / (MAX_POINTS / 2 - 2))]);
-      if (!path.includes(centre)) path.push(centre);
-      path.sort((a, b) => a.d - b.d); clipped = true;
-    }
-    const dense: typeof path = [], total = path[path.length - 1].d - path[0].d;
-    const budget = MAX_POINTS - path.length;
-    for (let j = 0; j + 1 < path.length; j++) {
-      const a = path[j], b = path[j + 1], length = b.d - a.d;
-      const steps = Math.min(Math.max(1, Math.ceil(length / 10)), 1 + Math.floor(budget * length / (total || 1)));
-      for (let k = 0; k < steps; k++) { const t = k / steps; dense.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), d: a.d + t * (b.d - a.d) }); }
-    }
-    dense.push(path[path.length - 1]);
-    const ground = heightAt(c.x, c.y), deck = Math.max(ground, ground + c.h + CROSSING_RULES.underDepth);
-    const road = dense.map(q => {
-      const z = heightAt(q.x, q.y);
-      // Ramp gradient and approach quantity are along the crossed way, not its lateral projection.
-      return { x: q.x, y: q.y, z: c.type === 'overbridge' ? Math.max(z, deck - Math.max(0, Math.abs(q.d) - halfSpan) * CROSSING_RULES.approachGradient) : z };
-    });
-    // Intersect each side's offset with the real road polyline; never attach the side link to our axis.
-    const ends = [-1, 1].map(side => {
-      const off = (p.width / 2 + 5) * side;
-      if (c.type === 'overbridge' && (c.approachLength ?? 0) > 0) {
-        // Join at the foot of the raised approach, never by a vertical jump onto the deck.
-        const feet = road.filter(q => ((q.x - c.x) * -p.ty + (q.y - c.y) * p.tx) * side >= Math.abs(off)
-          && q.z <= heightAt(q.x, q.y) + 1e-6);
-        if (feet.length) return feet.reduce((a, b) => Math.hypot(a.x - c.x, a.y - c.y) < Math.hypot(b.x - c.x, b.y - c.y) ? a : b);
-        // An impossible/clipped approach has no real visible foot. Keep a schematic ground anchor
-        // and label clipped geometry instead of fabricating an elevated link endpoint.
-        clipped = true;
-        return sidePoint(c.s, side);
-      }
-      for (let j = 0; j + 1 < road.length; j++) {
-        const a = road[j], b = road[j + 1];
-        const da = (a.x - c.x) * -p.ty + (a.y - c.y) * p.tx, db = (b.x - c.x) * -p.ty + (b.y - c.y) * p.tx;
-        if ((da <= off && db >= off) || (db <= off && da >= off)) {
-          const t = (off - da) / (db - da || 1);
-          return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), z: a.z + t * (b.z - a.z) };
-        }
-      }
-      return sidePoint(c.s, side);
-    }) as [CrossingPoint, CrossingPoint];
-    anchor.set(c, ends);
-    c.geometry = { width: ROAD_CLASSES[c.cls].width, schematic: true, ...(clipped ? { clipped: true } : {}) };
-    if (['bridge', 'overbridge', 'tunnel', 'junction'].includes(c.type)) c.geometry.road = road;
-  }
-  for (const c of crossings) if (c.targetS !== undefined && (c.type === 'reconnection' || c.type === 'diversion')) {
-    const target = crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId
-      && !t.issues?.length && !ROAD_CLASSES[t.cls].noAtGrade);
-    const lo = Math.max(route.s[0], Math.min(c.s, c.targetS)), hi = Math.min(route.s[n - 1], Math.max(c.s, c.targetS));
-    const stations: number[] = [];
-    const stride = Math.max(1, Math.ceil((hi - lo) / (route.s[1] - route.s[0]) / (MAX_POINTS - 2)));
-    for (let i = 1; i < n && stations.length < MAX_POINTS - 2; i += stride) if (route.s[i] > lo && route.s[i] < hi) stations.push(route.s[i]);
-    if (stride > 1) c.geometry!.clipped = true;
-    if (c.targetS < c.s) stations.reverse();
-    c.geometry!.links = [-1, 1].map((side, k) => [anchor.get(c)![k], ...stations.map(s => sidePoint(s, side)),
-      target ? anchor.get(target)![k] : sidePoint(c.targetS!, side)]) as [CrossingPoint[], CrossingPoint[]];
-  }
-}
+export { buildCrossingGeometry, crossingPlanLength, auditCrossingGeometry } from './crossing-geometry';

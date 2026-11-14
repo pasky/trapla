@@ -87,6 +87,59 @@ export class RoadNet {
     return out;
   }
 
+  /** Continue over real connected OSM segments when a way is split at a tag boundary or junction.
+   * Choose the straightest continuation, preferring the same class. Never extrapolate an endpoint.
+   * Both traversal and output are bounded, including malformed cyclic networks. */
+  connectedCrossingPath(roadId: number, x: number, y: number, reach: number,
+    maxPoints = 1500): { x: number; y: number; d: number }[] {
+    const path = this.crossingPath(roadId, x, y, reach);
+    if (path.length < 2 || path.length > maxPoints) return path.slice(0, maxPoints);
+    const key = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`;
+    const visited = new Set(path.map(p => key(p.x, p.y)));
+    for (const side of [-1, 1]) {
+      let p = side < 0 ? path[0] : path[path.length - 1];
+      let prev = side < 0 ? path[1] : path[path.length - 2];
+      const extension: typeof path = [];
+      while (Math.abs(p.d) < reach - 1e-6 && path.length + extension.length < maxPoints) {
+        const candidates = this.map.get(Math.floor(p.x / this.cell) * 100003 + Math.floor(p.y / this.cell)) ?? [];
+        let best: { x: number; y: number; d: number } | undefined, score = -Infinity;
+        const dx = p.x - prev.x, dy = p.y - prev.y, len = Math.hypot(dx, dy) || 1;
+        for (const k of candidates) for (const reverse of [false, true]) {
+          const ax = reverse ? this.x1[k] : this.x0[k], ay = reverse ? this.y1[k] : this.y0[k];
+          if (Math.hypot(ax - p.x, ay - p.y) > 0.02) continue;
+          const bx = reverse ? this.x0[k] : this.x1[k], by = reverse ? this.y0[k] : this.y1[k];
+          const step = Math.hypot(bx - p.x, by - p.y);
+          if (step < 1e-6 || visited.has(key(bx, by))) continue;
+          const dot = ((bx - p.x) * dx + (by - p.y) * dy) / (step * len);
+          if (dot < -0.5) continue;
+          const value = dot + (this.wayCls[this.way[k]] === this.wayCls[roadId] ? 2 : 0);
+          if (value <= score) continue;
+          score = value;
+          const fraction = Math.min(1, (reach - Math.abs(p.d)) / step);
+          best = { x: p.x + (bx - p.x) * fraction, y: p.y + (by - p.y) * fraction, d: p.d + side * step * fraction };
+        }
+        if (!best) break;
+        visited.add(key(best.x, best.y)); extension.push(best); prev = p; p = best;
+      }
+      if (side < 0) path.unshift(...extension.reverse()); else path.push(...extension);
+    }
+    return path;
+  }
+
+  /** Closest real way at a route tie-in, using the existing segment grid. */
+  nearestWay(x: number, y: number, radius = 30): number | undefined {
+    let best = radius, way: number | undefined;
+    for (let cx = Math.floor((x - radius) / this.cell); cx <= Math.floor((x + radius) / this.cell); cx++)
+      for (let cy = Math.floor((y - radius) / this.cell); cy <= Math.floor((y + radius) / this.cell); cy++)
+        for (const k of this.map.get(cx * 100003 + cy) ?? []) {
+          const dx = this.x1[k] - this.x0[k], dy = this.y1[k] - this.y0[k];
+          const t = Math.max(0, Math.min(1, ((x - this.x0[k]) * dx + (y - this.y0[k]) * dy) / (dx * dx + dy * dy || 1)));
+          const distance = Math.hypot(x - this.x0[k] - t * dx, y - this.y0[k] - t * dy);
+          if (distance < best && !ROAD_CLASSES[this.wayCls[this.way[k]]].noAtGrade) { best = distance; way = this.way[k]; }
+        }
+    return way;
+  }
+
   /**
    * Every intersection of the route polyline (stations s, x, y) with the network, in station order.
    * A hit exactly at a station belongs to the interval starting there (the last interval also
