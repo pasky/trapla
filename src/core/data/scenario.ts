@@ -41,6 +41,10 @@ export interface ScenarioParams {
   terrainClass: TerrainClass;
   /** max longitudinal gradient (PROVISIONAL, see norms.ts) */
   maxGradient: number;
+  /** acoustic heavy-vehicle (NA) share of the traffic for the noise model; default NOISE.heavyShare (15 %) */
+  heavyShare?: number;
+  /** map / HUD wording: endpoint markers, the official line's map label and legend entry, the HUD brief (HTML) */
+  labels: { a: string; b: string; official: string; brief: string };
 }
 
 export const D11_SCENARIO: ScenarioParams = {
@@ -50,4 +54,16 @@ export const D11_SCENARIO: ScenarioParams = {
   maxTravelMin: 14.5,
   terrainClass: 'hilly',
   maxGradient: 0.06,
+  labels: { a: 'Trutnov', b: 'PL border', official: 'official D11', brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border)' },
 };
+
+/** Game parameters per scenario id (= pack directory public/scenarios/<id>, pipeline/scenarios/<id>.json).
+ * Adding a scenario: docs/new-scenario.md. */
+export const SCENARIOS: Record<string, ScenarioParams> = { d11: D11_SCENARIO };
+export const DEFAULT_SCENARIO = 'd11';
+
+export function scenarioParams(id: string): ScenarioParams {
+  const sc = SCENARIOS[id];
+  if (!sc) throw new Error(`unknown scenario "${id}" (known: ${Object.keys(SCENARIOS).join(', ')})`);
+  return sc;
+}

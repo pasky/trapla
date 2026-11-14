@@ -4,14 +4,13 @@
 // Moves: shift one PI (step shrinking over the run), occasionally insert a PI in the middle of a leg
 // or delete one. Invalid designs are penalised per violation.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design, type EvalContext, type Result } from '../src/core/evaluate';
 import { loadPack } from './loadpack';
 import { describe } from './report';
 
-const { meta, terrain, buildings, roads } = loadPack();
+const { meta, scenario, terrain, buildings, roads } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
-const ctx: EvalContext = { terrain, scenario: D11_SCENARIO, a, b, buildings, roads };
+const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads };
 const speed = Number(process.argv[2] ?? 90), iters = Number(process.argv[3] ?? 300);
 const out = process.argv[5] ?? `/tmp/opt-${speed}.json`;
 const start = process.argv[4];

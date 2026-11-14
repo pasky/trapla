@@ -11,7 +11,7 @@ import type { CategoryId } from './categories';
 // Buildings in the footprint: floor area × (building-only estimate × 1.5 + demolition); land separate
 // ---------------------------------------------------------------------------------------------
 
-/** kind codes as exported by the pipeline (`binfo[j][2]`, see pipeline/build_d11.py building_info) */
+/** kind codes as exported by the pipeline (`binfo[j][2]`, see pipeline/build_pack.py building_info) */
 export const BUILDING_KIND = { house: 0, apartments: 1, civic: 2, industrial: 3, minor: 4 } as const;
 
 export interface BuildingKindRow {

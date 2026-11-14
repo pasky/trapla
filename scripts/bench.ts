@@ -3,14 +3,13 @@
 //   npx tsx scripts/bench.ts a.json [b.json…]   the given designs ({design: …} files)
 import { readFileSync } from 'node:fs';
 import { PART_KEYS } from '../src/core/cost';
-import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
 import { loadPack } from './loadpack';
 import { describe } from './report';
 
-const { meta, terrain, buildings, roads } = loadPack();
+const { meta, scenario, terrain, buildings, roads } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
-const ctx: EvalContext = { terrain, scenario: D11_SCENARIO, a, b, buildings, roads };
+const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads };
 function report(name: string, d: Design) {
   let r = evaluate(ctx, d);
   const t0 = performance.now();

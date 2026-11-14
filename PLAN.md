@@ -101,7 +101,7 @@ implementing agent.
 ## First playable prototype (built 2026-11-13)
 
 What exists (details and commands in `README.md`):
-- **Data pack** (`pipeline/build_d11.py`, `npm run data`): DMR 5G at 5 m for a 17.5 × 22.5 km EPSG:5514
+- **Data pack** (`pipeline/build_pack.py`, `npm run data`): DMR 5G at 5 m for a 17.5 × 22.5 km EPSG:5514
   rectangle (13 % of it is Poland = no data = out of bounds), OSM land cover / buildings / water / roads /
   places, official D11 line; since the renderer rewrite also vector map layers and building footprints
   (`vector.bin.gz`) instead of the baked drape texture. ≈ 17 MB.
@@ -387,7 +387,7 @@ price cannot be determined (research/07 §1).
 | Building-only price, garages / sheds / anything < 30 m² | 15,000 CZK/m² | × 1.5; PROVISIONAL simple unheated-structure replacement estimate, not the researched 650k garage sale including land |
 | Demolition, house / apartments / civic / industrial / minor | 3,000 / 4,000 / 4,000 / 1,500 / 1,500 CZK/m² floor | ≈ 1,000 CZK/m³ built volume for a house; ranges 2–5k / 3–8k / 1–4k (research/07 §5) |
 | Default storeys when untagged | house 2, apartments 4, civic 2, industrial 1, minor 1 | tagged levels capped at 12 / 12 / 6 / 3 / 2 |
-| Classification of `building=yes` (46 % of buildings) | < 50 m² minor; by land-use zone, address; ≥ 300 m² outside any zone = industrial | `pipeline/build_d11.py` `building_info` |
+| Classification of `building=yes` (46 % of buildings) | < 50 m² minor; by land-use zone, address; ≥ 300 m² outside any zone = industrial | `pipeline/build_pack.py` `building_info` |
 | Working strip for demolitions | 3 m beyond the footprint / deck edge | |
 | Building land | 1,500 CZK/m² × 1.5 | research/07 (range 600–3,500); other land 8 × 40 |
 | Grade separation thresholds | ≥ 6 m above (4.8 m clearance + deck) / ≤ −6 m below | heuristic: 4.8 m clearance is ČSN 73 6201, the deck depth unverified (research/08) |

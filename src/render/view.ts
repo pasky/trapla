@@ -79,7 +79,8 @@ export class View {
   /** called after every render, for overlays managed outside the view (curve handles) */
   onRender: (() => void) | null = null;
 
-  constructor(private container: HTMLElement, private overlay: HTMLElement, private pack: Pack) {
+  constructor(private container: HTMLElement, private overlay: HTMLElement, private pack: Pack,
+    private labels: { a: string; b: string; official: string } = { a: 'A', b: 'B', official: 'official line' }) {
     this.terrain = pack.terrain;
     this.cx = this.terrain.width / 2;
     this.cy = this.terrain.height / 2;
@@ -391,10 +392,10 @@ export class View {
       else if (p.kind === 'hamlet') add('place hamlet', p.name, p.x, p.y, 7000);
     }
     const { A, B } = this.pack.meta;
-    add('endpoint', '<b>A</b><span>Trutnov</span>', A.xy[0], A.xy[1]);
-    add('endpoint', '<b>B</b><span>PL border</span>', B.xy[0], B.xy[1]);
+    add('endpoint', `<b>A</b><span>${this.labels.a}</span>`, A.xy[0], A.xy[1]);
+    add('endpoint', `<b>B</b><span>${this.labels.b}</span>`, B.xy[0], B.xy[1]);
     const legend = this.pack.meta.official.xy[Math.floor(this.pack.meta.official.xy.length * 0.33)];
-    add('official-label', 'official D11', legend[0] + 150, legend[1], 25000);
+    add('official-label', this.labels.official, legend[0] + 150, legend[1], 25000);
   }
 
   // ---- route ---------------------------------------------------------------------------------

@@ -4,9 +4,9 @@ railways / waterways (polylines) and building footprints (rings + roof triangles
 The browser rasterises these on the GPU into anti-aliased land-cover textures at whatever resolution
 the camera needs and extrudes the buildings, so nothing here is baked at the 5 m grid.
 
-Stand-alone (uses the Overpass cache of build_d11.py, writes only vector.bin.gz):
+Stand-alone (uses the Overpass cache of build_pack.py, writes only vector.bin.gz):
     uv run --with numpy --with tifffile --with pyproj --with pillow --with shapely --with mapbox-earcut \
-        python pipeline/vectors.py
+        python pipeline/vectors.py [scenario-id]
 
 File format (vector.bin.gz, little endian): b"TRVX", u32 version, u32 json length, JSON header padded
 to 4 bytes, then the payload. The header lists typed arrays as {"type", "offset", "length"} (offset in
@@ -324,7 +324,7 @@ def build(out_dir: Path, osm, way_xy, rings_of, width: float, height: float, ext
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import build_d11 as b
+    import build_pack as b
 
     b.OUT.mkdir(parents=True, exist_ok=True)
     b.build_vectors()

@@ -1,11 +1,11 @@
-"""Build the scenario data pack for scenario #1 (D11 Trutnov - Polish border).
+"""Build the data pack of one scenario, configured by pipeline/scenarios/<id>.json (default: d11).
 
 Usage (from repo root):
     uv run --with numpy --with tifffile --with pyproj --with pillow --with shapely --with mapbox-earcut \
-        python pipeline/build_d11.py
+        python pipeline/build_pack.py [scenario-id]        # or: npm run data [-- scenario-id]
 
-Writes public/scenarios/d11/. Raw downloads are cached in pipeline/cache/ so reruns are offline.
-See README.md for the pack format.
+Writes public/scenarios/<id>/. Raw downloads are cached in pipeline/cache/ so reruns are offline.
+See README.md for the pack format and docs/new-scenario.md for adding a scenario.
 """
 
 from __future__ import annotations
@@ -27,15 +27,20 @@ from pyproj import Transformer
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / "pipeline" / "cache"
-OUT = ROOT / "public" / "scenarios" / "d11"
 UA = "trapla-pipeline/0.1 (road-design game prototype; https://github.com/pasky; contact pasky@ucw.cz)"
 
+
+def load_scenario(sid: str) -> dict:
+    return json.loads((ROOT / "pipeline" / "scenarios" / f"{sid}.json").read_text())
+
+
+# The scenario is the first command-line argument (also when imported by vectors.py stand-alone).
+SCENARIO = load_scenario(sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "d11")
+OUT = ROOT / "public" / "scenarios" / SCENARIO["id"]
+
 # --- Play area: axis-aligned rectangle in S-JTSK / Krovak East North (EPSG:5514), metres ----------
-# Roughly lat 50.50-50.70 N, lon 15.82-16.06 E (the lat/lon box is rotated ~7 deg in Krovak; this
-# rectangle is its inner part, 17.5 x 22.5 km).
-X_MIN, X_MAX = -637500.0, -620000.0
-Y_MIN, Y_MAX = -1011500.0, -989000.0
-CELL = 5.0  # metres
+X_MIN, Y_MIN, X_MAX, Y_MAX = (float(v) for v in SCENARIO["bbox5514"])
+CELL = float(SCENARIO.get("cell", 5))  # metres
 NX = int(round((X_MAX - X_MIN) / CELL))  # 3500 columns (west -> east)
 NY = int(round((Y_MAX - Y_MIN) / CELL))  # 4500 rows (row 0 = north edge)
 NODATA_U16 = 65535
@@ -44,11 +49,6 @@ H_QUANT = 0.1  # metres per height unit in the pack
 TO_SJTSK = Transformer.from_crs(4326, 5514, always_xy=True)
 TO_WGS = Transformer.from_crs(5514, 4326, always_xy=True)
 
-# Endpoint choice (documented in PLAN.md): B = northern end of D11 where OSM switches ref D11 -> S3 at
-# the Polish border (first node of the southbound carriageway way 896584498). A = point on the
-# southbound carriageway 21.0 km (along the line) south of B, near Trutnov-Poříčí.
-B_LATLON = (50.6887, 15.9774)
-A_DIST_ALONG = 21000.0
 
 
 def log(*a):
@@ -146,8 +146,13 @@ def latlon_bbox():
 OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"]
 
 
+def osm_cache(name: str) -> Path:
+    """Overpass results are keyed by query name only, so each scenario needs its own file pattern."""
+    return CACHE / SCENARIO.get("osmCache", "osm_{id}_{name}.json").format(id=SCENARIO["id"], name=name)
+
+
 def overpass(name: str, body: str) -> dict:
-    f = CACHE / f"osm_{name}.json"
+    f = osm_cache(name)
     if f.exists():
         return json.loads(f.read_text())
     s, w, n, e = latlon_bbox()
@@ -492,19 +497,21 @@ def build_overlays():
 # Official line
 # ------------------------------------------------------------------------------------------------
 def official_line():
-    d = json.loads((ROOT / "research" / "data" / "d11-osm-extract.json").read_text())
+    """The official line: a chain of OSM ways (scenario "official"), and the endpoints A / B on it."""
+    cfg = SCENARIO["official"]
+    d = json.loads((ROOT / cfg["extract"]).read_text())
     ways = []
     for el in d["elements"]:
         t = el.get("tags", {})
-        if el["type"] != "way" or t.get("ref") != "D11":
+        if el["type"] != "way" or t.get("ref") != cfg["ref"]:
             continue
-        if not (t.get("highway") == "motorway" or t.get("construction") == "motorway"):
+        if not (t.get("highway") == cfg["highway"] or t.get("construction") == cfg["highway"]):
             continue
         g = el["geometry"]
         ll = np.array([[p["lon"], p["lat"]] for p in g])
         x, y = TO_SJTSK.transform(ll[:, 0], ll[:, 1])
         ways.append({"id": el["id"], "xy": np.stack([x, y], 1), "tags": t})
-    bx, by = TO_SJTSK.transform(B_LATLON[1], B_LATLON[0])
+    bx, by = TO_SJTSK.transform(cfg["startNear"][1], cfg["startNear"][0])
     start = min(ways, key=lambda w: math.hypot(w["xy"][0, 0] - bx, w["xy"][0, 1] - by))
     chain = [start]
     used = {start["id"]}
@@ -538,12 +545,19 @@ def official_line():
     seg = np.hypot(*np.diff(pts, axis=0).T)
     cum = np.concatenate([[0], np.cumsum(seg)])
     log(f"official line chain: {len(chain)} ways, {cum[-1]:.0f} m")
-    # A at A_DIST_ALONG
-    i = int(np.searchsorted(cum, A_DIST_ALONG))
-    t = (A_DIST_ALONG - cum[i - 1]) / seg[i - 1]
-    a = pts[i - 1] + t * (pts[i] - pts[i - 1])
-    b = pts[0]
-    return pts, kinds, cum, a, b
+
+    def endpoint(e: dict):
+        """{"alongOfficial": metres from the chain start} or {"latlon": [lat, lon]}, EPSG:5514"""
+        if "latlon" in e:
+            return np.array(TO_SJTSK.transform(e["latlon"][1], e["latlon"][0]))
+        s = float(e["alongOfficial"])
+        if s <= 0:
+            return pts[0]
+        i = int(np.searchsorted(cum, s))
+        t = (s - cum[i - 1]) / seg[i - 1]
+        return pts[i - 1] + t * (pts[i] - pts[i - 1])
+
+    return pts, kinds, cum, endpoint(SCENARIO["A"]), endpoint(SCENARIO["B"])
 
 
 # ------------------------------------------------------------------------------------------------
@@ -552,7 +566,7 @@ def official_line():
 # ------------------------------------------------------------------------------------------------
 def cached_osm(name: str) -> dict:
     """Raw Overpass result fetched earlier by build_overlays()."""
-    f = CACHE / f"osm_{name}.json"
+    f = osm_cache(name)
     if not f.exists():
         raise RuntimeError(f"{f} missing: run the full pipeline (npm run data) first")
     return json.loads(f.read_text())
@@ -628,8 +642,8 @@ def main():
         if math.hypot(*(pts[i] - pts[keep[-1]])) > 10 or i == len(pts) - 1:
             keep.append(i)
     meta = {
-        "id": "d11",
-        "name": "Trutnov → Polish border",
+        "id": SCENARIO["id"],
+        "name": SCENARIO["name"],
         "crs": "EPSG:5514",
         "origin": [X_MIN, Y_MIN],
         "comment": "local x = EPSG:5514 x - origin[0] (east), local y = EPSG:5514 y - origin[1] (north)",
@@ -645,9 +659,9 @@ def main():
         "orthophoto": {"export": "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer/export",
                        "sr": 5514, "attribution": "© ČÚZK, Ortofoto ČR, CC BY 4.0"},
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],
-              "note": f"on official D11 (southbound carriageway) {A_DIST_ALONG / 1000:.1f} km south of B"},
+              "note": SCENARIO["A"]["note"]},
         "B": {"xy": loc(b), "latlon": [round(b_lat, 6), round(b_lon, 6)],
-              "note": "northern end of D11 at the Polish border (OSM ref changes D11 -> S3)"},
+              "note": SCENARIO["B"]["note"]},
         "official": {"xy": [loc(pts[i]) for i in keep], "lengthM": round(float(cum[-1]), 1),
                      "kinds": [int(max(kinds[keep[j - 1]:keep[j]] or [0])) for j in range(1, len(keep))]},
         "attribution": ["© ČÚZK, DMR 5G, CC BY 4.0", "© OpenStreetMap contributors, ODbL", "© ČGS, GEOCR50 + IG rajony 1:50 000"],

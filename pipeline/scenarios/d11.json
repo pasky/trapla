@@ -1,0 +1,22 @@
+{
+  "id": "d11",
+  "name": "Trutnov → Polish border",
+  "about": "Scenario #1. Play area = inner part of lat 50.50–50.70 N, lon 15.82–16.06 E (that box is rotated ~7° in Křovák), 17.5 × 22.5 km. Endpoints documented in PLAN.md.",
+  "bbox5514": [-637500, -1011500, -620000, -989000],
+  "cell": 5,
+  "osmCache": "osm_{name}.json",
+  "official": {
+    "extract": "research/data/d11-osm-extract.json",
+    "ref": "D11",
+    "highway": "motorway",
+    "startNear": [50.6887, 15.9774],
+    "about": "Chain of OSM ways tagged ref=D11, highway=motorway or construction=motorway, starting at the way whose first node is nearest startNear (the first node of the southbound carriageway way 896584498 at the Polish border, where OSM switches ref D11 -> S3) and following way direction."
+  },
+  "A": {"alongOfficial": 21000, "note": "on official D11 (southbound carriageway) 21.0 km south of B"},
+  "B": {"alongOfficial": 0, "note": "northern end of D11 at the Polish border (OSM ref changes D11 -> S3)"},
+  "uses": {
+    "service": "https://services6.arcgis.com/ogJAiK65nXL1mXAW/arcgis/rest/services/Nadregion%C3%A1ln%C3%AD_a_region%C3%A1ln%C3%AD_%C3%9ASES_vymezen%C3%BD_v_Z%C3%9AR_KHK/FeatureServer/0/query",
+    "cache": "uses-khk.geojson",
+    "about": "Královéhradecký kraj ZÚR ÚSES (regional + supra-regional); research/screening only, not used by the pack."
+  }
+}

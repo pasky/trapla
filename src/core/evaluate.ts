@@ -563,7 +563,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const noiseBuyouts = new Float64Array(n);
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
-  const noiseModel = createNoiseModel(scenario.traffic, d.speed);
+  const noiseModel = createNoiseModel(scenario.traffic, d.speed, { heavyShare: scenario.heavyShare });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).

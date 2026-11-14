@@ -3,15 +3,14 @@
 // Map shows built-up mask, building kinds, streets, official line, noise buyouts and demolition.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { cellLength, PART_KEYS } from '../src/core/cost';
-import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate } from '../src/core/evaluate';
 import { KIND } from '../src/core/structures';
 import { BUILTUP_BIT } from '../src/core/terrain';
 import { loadPack } from './loadpack';
 
-const { meta, terrain, buildings, roads, overlays } = loadPack();
+const { meta, scenario, terrain, buildings, roads, overlays } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
-const r = evaluate({ terrain, buildings, roads, scenario: D11_SCENARIO, a, b }, JSON.parse(readFileSync(process.argv[2], 'utf8')).design);
+const r = evaluate({ terrain, buildings, roads, scenario, a, b }, JSON.parse(readFileSync(process.argv[2], 'utf8')).design);
 // Exact test against 5 m mask cell centres in a 300 m circle. Streaming, bounded memory.
 const nearTown = (x: number, y: number) => {
   const c = terrain.cell;

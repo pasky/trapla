@@ -2,10 +2,12 @@
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { BuildingIndex } from '../src/core/buildings';
+import { DEFAULT_SCENARIO, scenarioParams } from '../src/core/data/scenario';
 import { RoadNet } from '../src/core/roadnet';
 import { decodeHeights, Terrain } from '../src/core/terrain';
 
-export function loadPack(dir = 'public/scenarios/d11') {
+/** SCENARIO=<id> selects public/scenarios/<id> (default d11); `scenario` = its game parameters */
+export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAULT_SCENARIO}`) {
   const meta = JSON.parse(readFileSync(`${dir}/meta.json`, 'utf8'));
   const hb = gunzipSync(readFileSync(`${dir}/${meta.heights.file}`));
   const delta = new Int16Array(hb.buffer, hb.byteOffset, hb.byteLength / 2);
@@ -15,7 +17,7 @@ export function loadPack(dir = 'public/scenarios/d11') {
     ground: meta.ground ? { ...meta.ground, ids: new Uint8Array(gunzipSync(readFileSync(`${dir}/${meta.ground.file}`))) } : undefined });
   const ov = JSON.parse(readFileSync(`${dir}/overlays.json`, 'utf8'));
   return {
-    meta, terrain, overlays: ov, buildings: new BuildingIndex(ov.buildings, ov.binfo),
+    meta, scenario: scenarioParams(meta.id), terrain, overlays: ov, buildings: new BuildingIndex(ov.buildings, ov.binfo),
     roads: ov.net ? new RoadNet(ov.net) : undefined,
   };
 }

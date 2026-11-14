@@ -2,14 +2,13 @@
 // Usage: npx tsx scripts/calibrate-ground.ts [initial-profile-table.json] [actual|planned] [--check]
 // Prints a candidate table; does not overwrite the pack or source table. See research/10 §6.
 import { readFileSync } from 'node:fs';
-import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
 import type { GroundProfile } from '../src/core/ground';
 import { loadPack } from './loadpack';
 
-const { meta, terrain, buildings, roads } = loadPack();
+const { meta, scenario, terrain, buildings, roads } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
-const ctx: EvalContext = { terrain, scenario: D11_SCENARIO, a, b, buildings, roads };
+const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads };
 const off = meta.official.xy as [number, number][];
 const distance = (p: number[], q: { x: number; y: number }) => Math.hypot(p[0] - q.x, p[1] - q.y);
 let ia = 0, ib = 0;

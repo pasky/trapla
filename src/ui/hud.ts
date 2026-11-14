@@ -6,7 +6,7 @@ import type { Design, Result } from '../core/evaluate';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
-import { minCategoryForTraffic, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
+import { minCategoryForTraffic, SCENARIOS, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
 import type { StructureKind } from '../core/overrides';
@@ -72,9 +72,9 @@ export class Hud {
     const minCat = minCategoryForTraffic(sc.traffic);
     root.innerHTML = `
       <section class="card scenario">
-        <div class="kicker">Scenario 1</div>
+        <div class="kicker">Scenario ${Object.keys(SCENARIOS).indexOf(sc.id) + 1}</div>
         <h1>${sc.title}</h1>
-        <p>Build the <b>cheapest</b> norm-abiding road from <b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border).</p>
+        <p>Build the <b>cheapest</b> norm-abiding road from ${sc.labels.brief}.</p>
         <div class="goals">
           <div><span>Traffic Y</span><b>${num(sc.traffic)} veh/day</b><small>needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]} <i title="Class I road at LOS C (TP 188 / TP 189, hilly, 15 % heavy; research/14): ${TRAFFIC_THRESHOLDS.filter((t) => isFinite(t.maxAadt)).map((t) => `${t.category} ≤ ${num(t.maxAadt)}`).join(', ')}">(TP 188)</i></small></div>
           <div><span>Travel time X</span><b>≤ ${sc.maxTravelMin.toFixed(1)} min</b><small>length ÷ design speed</small></div>

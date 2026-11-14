@@ -1,6 +1,6 @@
 import './style.css';
 import { CATEGORIES, type CategoryId } from './core/data/categories';
-import { D11_SCENARIO } from './core/data/scenario';
+import { DEFAULT_SCENARIO, scenarioParams } from './core/data/scenario';
 import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
@@ -25,29 +25,32 @@ const status = document.getElementById('status')!;
 const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
 
 async function main() {
-  const pack = await loadPack(`${import.meta.env.BASE_URL}scenarios/d11`, setStatus);
+  // ?scenario=<id> picks another pack (public/scenarios/<id>, game parameters in core/data/scenario.ts)
+  const scenario = scenarioParams(new URLSearchParams(location.search).get('scenario') ?? DEFAULT_SCENARIO);
+  const pack = await loadPack(`${import.meta.env.BASE_URL}scenarios/${scenario.id}`, setStatus);
   const { meta } = pack;
   const A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
   document.getElementById('attrib')!.innerHTML = meta.attribution.join(' · ');
+  document.getElementById('legend-official')!.textContent = scenario.labels.official;
 
-  const store = new Store('trapla.d11', startDesign,
+  const store = new Store(`trapla.${scenario.id}`, startDesign,
     meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'),
     objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net));
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, a: A, b: B, buildings: pack.overlays.buildings,
-    binfo: pack.overlays.binfo, net: pack.overlays.net,
+    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario,
   };
   worker.postMessage(init, [init.q.buffer, init.lc.buffer]);
 
   setStatus('building terrain…');
-  const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack);
+  const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
   const extras = new RouteExtras(view);
   const crossingRenderer = new CrossingRenderer(view);
   const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
-  const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
+  const hud = new Hud(document.getElementById('hud')!, scenario);
   const tools = new BuildTools(document.getElementById('hud')!);
   tools.objectDataChanged = store.objectDataChanged;
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);

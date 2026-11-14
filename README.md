@@ -17,9 +17,13 @@ contours over cut and fill slopes, the noise view on a town fringe and in the to
 
 ```sh
 npm install
-npm run data      # builds public/scenarios/d11/ (≈ 17 MB; needs uv; ~10 min on first run, ~20 s once cached)
+npm run data      # builds public/scenarios/d11/ (≈ 17 MB; needs uv; ~10 min on first run, ~5 min once cached)
 npm run dev       # → http://localhost:5173/
 ```
+
+Another scenario: `npm run data -- <id>` builds `pipeline/scenarios/<id>.json`, the app opens it with
+`?scenario=<id>`, Node scripts with `SCENARIO=<id>`. How to add one (area, geology, traffic, X, validation, what is
+still D11-specific): [docs/new-scenario.md](docs/new-scenario.md).
 
 Other commands:
 
@@ -155,7 +159,8 @@ Reproduce with `node scripts/build-tools.mjs --docs`.
 ## Architecture
 
 ```
-pipeline/build_d11.py   offline: DMR 5G + OSM + ČGS geology + official line → public/scenarios/d11/
+pipeline/build_pack.py  offline: DMR 5G + OSM + ČGS geology + official line → public/scenarios/<id>/,
+                        configured by pipeline/scenarios/<id>.json (d11 = Trutnov → border)
 pipeline/geology.py     cached ArcGIS queries → 25 m ground grid; estimated profiles in ground_profiles.json
 src/core/               pure, tested modules (no DOM)
   data/                 categories, norms, prices, scenario — all numbers live here, with source notes
