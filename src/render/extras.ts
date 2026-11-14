@@ -19,7 +19,7 @@ import type { View } from './view';
 
 const HIGHLIGHT = 0xffe000, WALL = 0x18b0b0;
 /** wall symbols from this many metres per pixel on (a 3 m wall is then under ~5 px), offset ≥ this many px */
-const SYMBOL_FROM = 1, SYMBOL_PX = 7;
+const SYMBOL_FROM = 1, SYMBOL_PX = 5;
 
 export class RouteExtras {
   private walls = new THREE.Group();
@@ -187,7 +187,7 @@ export class RouteExtras {
       for (let j = 0; j < pts.length; j += 3) { this.view.local(pts[j], pts[j + 1], pts[j + 2], v); world.push(v.x, v.y, v.z); }
       // both opaque: renderOrder then keeps the teal core over its casing
       if (overview) this.symbols.add(this.line(world, WALL, 2, 1, 6));
-      else this.symbols.add(this.line(world, 0x0e4a4a, 6.5, 1, 5), this.line(world, WALL, 3.5, 1, 6));
+      else this.symbols.add(this.line(world, 0x0e4a4a, 4.5, 1, 5), this.line(world, WALL, 2.5, 1, 6));
     }
     this.view.requestRender();
   }

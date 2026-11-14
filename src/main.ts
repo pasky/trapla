@@ -67,7 +67,7 @@ async function main() {
   tools.describeBuilding = (j) => { const f = pack.overlays.binfo?.[j]; return buildingKind(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0)); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); closeStation(); };
+  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); closeStation(); hud.revealContext(); };
   const closeBuilding = () => { tools.selectBuilding(null); annotations.selectBuilding(null); };
   tools.ev.closeBuilding = closeBuilding;
   annotations.onBuilding = selectBuilding;
@@ -99,7 +99,7 @@ async function main() {
   const selection = new RangeSelection();
   selection.on((range) => {
     profile.setSelection(range); hud.setRange(range); extras.setRange(range); tools.setRange(range);
-    if (range) { closeStation(); selBar.showRange(range, store.design.structureOverrides); } else selBar.hide('range');
+    if (range) { closeStation(); selBar.showRange(range, store.design.structureOverrides); hud.revealContext(); } else selBar.hide('range');
   });
 
   let selectedPi: number | null = null;
@@ -112,6 +112,7 @@ async function main() {
     const c = last?.crossings.find((c) => c.roadId === roadId);
     closeStation();
     if (c) view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] }, 'crossed road');
+    hud.revealContext();
   };
   const closeCrossing = () => { tools.selectCrossing(null); profile.selectCrossing(null); view.setHover(null); };
   tools.ev.selectCrossing = (roadId) => {
@@ -192,6 +193,7 @@ async function main() {
     selBar.hide('bend'); // a bend's bar belongs to the bend picked in the profile (re-shown there)
     view.setDesign(store.design, i);
     hud.setSelectedPi(i, last, store.design);
+    if (i !== null) hud.revealContext();
     curveEdit.refresh();
   };
 

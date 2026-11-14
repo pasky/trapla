@@ -210,6 +210,15 @@ export class Hud {
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
 
+  /** bring the contextual cards into view (just picked something) unless they already show */
+  revealContext() {
+    const score = this.$('score'), ctx = this.context;
+    requestAnimationFrame(() => {
+      const top = ctx.getBoundingClientRect().top, below = score.getBoundingClientRect().bottom;
+      if (top < below - 1 || top > this.root.getBoundingClientRect().bottom - 60) this.root.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+
   setDesign(d: Design) {
     this.$<HTMLSelectElement>('cat').value = d.category;
     this.$<HTMLSelectElement>('speed').value = String(d.speed);
