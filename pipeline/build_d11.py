@@ -295,11 +295,15 @@ def building_info(el, xy: np.ndarray, zone: int):
 
 
 def paint_feature(img, outers, inners, value: int):
-    """Paint one polygon feature (outer rings minus its own holes) into a mask image.
+    """Paint one polygon feature into a mask image: each outer ring minus the holes that lie in it.
 
-    A hole only removes what this feature would have painted, never what other features painted.
+    A hole only removes what its own outer ring would have painted — not other features, and not an
+    island (another outer ring of the same multipolygon) lying inside the hole.
     """
+    from shapely.geometry import Polygon
+
     outers = [r for r in outers if len(r) >= 3]
+    inners = [r for r in inners if len(r) >= 3]
     if not outers:
         return
     if not inners:
@@ -307,19 +311,29 @@ def paint_feature(img, outers, inners, value: int):
         for r in outers:
             d.polygon(px(r), fill=value)
         return
-    pts = [p for r in outers for p in px(r)]
-    x0, y0 = max(0, int(min(p[0] for p in pts))), max(0, int(min(p[1] for p in pts)))
-    x1, y1 = min(NX, int(max(p[0] for p in pts)) + 2), min(NY, int(max(p[1] for p in pts)) + 2)
-    if x1 <= x0 or y1 <= y0:
-        return
-    tmp = Image.new("L", (x1 - x0, y1 - y0), 0)
-    dt = ImageDraw.Draw(tmp)
-    for r in outers:
-        dt.polygon([(x - x0, y - y0) for x, y in px(r)], fill=255)
-    for r in inners:
-        if len(r) >= 3:
-            dt.polygon([(x - x0, y - y0) for x, y in px(r)], fill=0)
-    img.paste(value, (x0, y0), tmp)
+    # assign each hole to the smallest outer ring containing it
+    holes = [[] for _ in outers]
+    try:
+        polys = [Polygon(r) for r in outers]
+        for hole in inners:
+            pt = Polygon(hole).representative_point()
+            inside = [i for i, p in enumerate(polys) if p.contains(pt)]
+            if inside:
+                holes[min(inside, key=lambda i: polys[i].area)].append(hole)
+    except Exception:  # invalid geometry: paint the outers without holes
+        holes = [[] for _ in outers]
+    for ring, own in zip(outers, holes):
+        pts = px(ring)
+        x0, y0 = max(0, int(min(p[0] for p in pts))), max(0, int(min(p[1] for p in pts)))
+        x1, y1 = min(NX, int(max(p[0] for p in pts)) + 2), min(NY, int(max(p[1] for p in pts)) + 2)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        tmp = Image.new("L", (x1 - x0, y1 - y0), 0)
+        dt = ImageDraw.Draw(tmp)
+        dt.polygon([(x - x0, y - y0) for x, y in pts], fill=255)
+        for hole in own:
+            dt.polygon([(x - x0, y - y0) for x, y in px(hole)], fill=0)
+        img.paste(value, (x0, y0), tmp)
 
 
 # existing road network for crossings: class order = index in the exported "cls" list

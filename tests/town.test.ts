@@ -40,6 +40,14 @@ describe('road network crossings', () => {
       const m = mergeCrossings(net2.intersections(n, s, s, y), 1000);
       expect(m.map((c) => Math.round(c.s))).toEqual([500]);
     }
+    // the same on a skew route, where round-off puts the end point a hair outside the segment
+    const sk = Float64Array.from([485, 495, 505, 515]);
+    const sx = Float64Array.from(sk, (v) => 500 + (v - 500) * 0.42), sy = Float64Array.from(sk, (v) => 500 + (v - 500) * 0.84);
+    for (const ways of [[[0, 510, 530, 500, 500], [0, 520, 510, 500, 500]], [[0, 500, 500, 510, 530], [0, 500, 500, 520, 510]]]) {
+      const m = mergeCrossings(new RoadNet({ cls: ['primary'], ways }).intersections(4, sk, sx, sy), 1000, { endMargin: 0, mergeDistance: 30, sameWayMergeDistance: 150 });
+      expect(m.length).toBe(1);
+      expect(m[0].s).toBeCloseTo(500, 6);
+    }
   });
 
   it('merges close crossings and drops those at the route ends', () => {

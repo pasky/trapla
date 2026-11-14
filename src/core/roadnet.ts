@@ -16,6 +16,9 @@ export interface RoadCrossing {
   way: number;
 }
 
+/** tolerance on segment parameters (round-off at end points) */
+const EPS = 1e-9;
+
 const RANK: Record<string, number> = Object.fromEntries(Object.keys(ROAD_CLASSES).map((k, i) => [k, i]));
 
 export class RoadNet {
@@ -58,9 +61,10 @@ export class RoadNet {
 
   /**
    * Every intersection of the route polyline (stations s, x, y) with the network, in station order.
-   * The route parameter is half-open (a hit exactly at a station belongs to the interval starting
-   * there); the road parameter is closed, so the result does not depend on the direction in which a
-   * way was drawn, and a hit at a vertex shared by two segments of one way is reported once.
+   * A hit exactly at a station belongs to the interval starting there; the road parameter is closed,
+   * so the result does not depend on the direction in which a way was drawn. Both tests carry a
+   * tolerance for round-off at end points; a hit that this (or a vertex shared by two segments of one
+   * way) reports twice is dropped.
    */
   intersections(n: number, s: ArrayLike<number>, x: ArrayLike<number>, y: ArrayLike<number>): RoadCrossing[] {
     const out: RoadCrossing[] = [];
@@ -82,16 +86,19 @@ export class RoadNet {
           if (Math.abs(den) < 1e-9) continue; // parallel
           const ex = this.x0[k] - px, ey = this.y0[k] - py;
           const t = (ex * qy - ey * qx) / den, u = (ex * ry - ey * rx) / den;
-          if (t < 0 || t >= 1 || u < 0 || u > 1) continue;
+          if (t < -EPS || t >= 1 - EPS || u < -EPS || u > 1 + EPS) continue;
           out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: px + t * rx, y: py + t * ry, cls: this.wayCls[this.way[k]], way: this.way[k] });
         }
       }
       if (out.length - first > 1) {
         const part = out.splice(first).sort((p, q) => p.s - q.s || p.way - q.way);
-        for (const p of part) {
-          const dup = out.length > first && out.slice(first).some((q) => q.way === p.way && Math.abs(q.s - p.s) < 1e-6);
-          if (!dup) out.push(p);
-        }
+        for (const p of part) out.push(p);
+      }
+      // the same way hit again at (practically) the same station: a shared vertex or round-off
+      for (let k = first; k < out.length; k++) {
+        let dup = false;
+        for (let j = k - 1; j >= 0 && out[k].s - out[j].s < 1e-3; j--) if (out[j].way === out[k].way) { dup = true; break; }
+        if (dup) out.splice(k--, 1);
       }
     }
     return out;
@@ -103,7 +110,8 @@ export class RoadNet {
  * other, or of the same way within `sameWayMergeDistance`, are one crossing, of the most important
  * class among them and located at that member; hits near the route ends belong to the tie-in.
  */
-export function mergeCrossings(raw: RoadCrossing[], length: number, rules = CROSSING_RULES): RoadCrossing[] {
+export function mergeCrossings(raw: RoadCrossing[], length: number,
+  rules: Pick<typeof CROSSING_RULES, 'endMargin' | 'mergeDistance' | 'sameWayMergeDistance'> = CROSSING_RULES): RoadCrossing[] {
   const out: (RoadCrossing & { last: number; ways: number[] })[] = [];
   for (const c of raw) {
     if (c.s < rules.endMargin || c.s > length - rules.endMargin) continue;
