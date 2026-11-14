@@ -18,7 +18,9 @@ export class ContourLabels {
 
   constructor(private overlay: HTMLElement, private canvas: HTMLElement, private terrain: Terrain,
     private pick: (clientX: number, clientY: number) => { x: number; y: number } | null,
-    private screenOf: (x: number, y: number, z: number) => Screen, private requestRender: () => void) {}
+    private screenOf: (x: number, y: number, z: number) => Screen,
+    /** height of the rendered (decimated) surface the contour is painted on; null where there is none (road cut) */
+    private surface: (x: number, y: number) => number | null, private requestRender: () => void) {}
 
   /** lay the labels out again once the view has been still for a moment; major = 0 hides them */
   schedule(major: number) {
@@ -30,7 +32,7 @@ export class ContourLabels {
 
   private layout() {
     const T = this.terrain, major = this.major;
-    const found: { x: number; y: number; z: number; sx: number; sy: number }[] = [];
+    const found: { x: number; y: number; z: number; text: string; sx: number; sy: number }[] = [];
     if (major) {
       const r = this.canvas.getBoundingClientRect();
       for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) {
@@ -54,10 +56,13 @@ export class ContourLabels {
           x += gx * k; y += gy * k;
         }
         if (!ok || T.isOob(x, y) || Math.hypot(x - p.x, y - p.y) > MAX_SLIDE * mPerPx) continue;
-        const s = this.screenOf(x, y, target);
+        // anchored on the drawn surface, which can be a little off the true elevation between mesh vertices
+        const z = this.surface(x, y);
+        if (z === null) continue;
+        const s = this.screenOf(x, y, z);
         if (!s.vis || s.sx < 40 || s.sx > r.width - 40 || s.sy < 50 || s.sy > r.height - 50) continue;
         if (found.some((f) => Math.hypot(f.sx - s.sx, f.sy - s.sy) < MIN_GAP)) continue;
-        found.push({ x, y, z: target, sx: s.sx, sy: s.sy });
+        found.push({ x, y, z, text: String(target), sx: s.sx, sy: s.sy });
         if (found.length >= MAX_LABELS) break;
       }
     }
@@ -71,7 +76,7 @@ export class ContourLabels {
     this.labels.forEach((l, i) => {
       const f = found[i];
       l.on = !!f;
-      if (f) { l.x = f.x; l.y = f.y; l.z = f.z; l.el.firstElementChild!.textContent = String(f.z); }
+      if (f) { l.x = f.x; l.y = f.y; l.z = f.z; l.el.firstElementChild!.textContent = f.text; }
       else l.el.style.display = 'none';
     });
     this.requestRender();

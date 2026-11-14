@@ -12,7 +12,7 @@ const BIG_ROOF: [number, number, number] = [146, 134, 126];
 const MAX_DIST = 7000;
 
 export interface Ground {
-  /** terrain height the building stands on */
+  /** height of the ground the building stands on (the higher of the true and the rendered surface) */
   top(x: number, y: number): number;
   /** lowest of the true and the rendered terrain surface (walls must reach below both) */
   bottom(x: number, y: number): number;
@@ -49,17 +49,20 @@ export class Buildings {
       let pv = 0, pi = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const i of g) {
         const v0 = b.starts[i], n = b.starts[i + 1] - v0;
-        let zSum = 0, zMin = Infinity, area = 0;
+        let zSum = 0, zMin = Infinity, zMax = -Infinity, area = 0;
         for (let k = 0; k < n; k++) {
           const x = b.verts[2 * (v0 + k)], y = b.verts[2 * (v0 + k) + 1];
           const xn = b.verts[2 * (v0 + (k + 1) % n)], yn = b.verts[2 * (v0 + (k + 1) % n) + 1];
           area += x * yn - xn * y;
-          zSum += ground.top(x, y);
+          const zt = ground.top(x, y);
+          zSum += zt;
+          if (zt > zMax) zMax = zt;
           zMin = Math.min(zMin, ground.bottom(x, y));
           if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
         }
         area = Math.abs(area) / 2;
-        const zTop = zSum / n + b.heights[i] * b.heightScale, zBase = zMin - 1;
+        // on steep ground the roof must still clear the uphill corner
+        const zTop = Math.max(zSum / n + b.heights[i] * b.heightScale, zMax + 2), zBase = zMin - 1;
         // restrained variety: brightness varies per building; large flat roofs are grey
         const hash = ((i * 2654435761) >>> 0) / 4294967296;
         const roof = lin(area > 700 ? BIG_ROOF : BUILDING_COLOR, 0.9 + 0.2 * hash);

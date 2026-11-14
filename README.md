@@ -100,9 +100,11 @@ Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overvie
   hidden (the footprints in the land-cover texture have the roof colour).
 - **Photo**: with <kbd>O</kbd> each clip-level window is fetched as one JPEG from ČÚZK's public Ortofoto ČR
   view service (ArcGIS `MapServer/export`, EPSG:5514, CORS enabled; one request at a time, stale ones dropped)
-  and drawn into the same levels; the map is shown until a photo arrives. Nothing is stored in the pack.
+  and drawn into the same levels; the map is shown until a photo arrives (or if it does not: 20 s time-out,
+  offline). Nothing is stored in the pack.
 - GPU memory: height texture ≈ 85 MB, land-cover textures ≈ 110 MB, MSAA scratch target ≈ 80 MB, meshes ≈ 60 MB.
-  Needs WebGL2 with 4096 px textures (no optional extensions).
+  Needs WebGL2 and no optional extensions; on GPUs limited to 4096 px textures the height texture uses every
+  second sample (try it with `?maxtex=4096`). After a lost WebGL context the GPU-only data is rebuilt.
 
 Measured on a Radeon 890M laptop GPU (headless Chromium, 1600 × 1000, `node scripts/perf.mjs --gpu`): 2.5–5 ms
 per frame while orbiting, panning and zooming through all levels (worst frame ≈ 25–30 ms), with or without

@@ -90,11 +90,16 @@ def polygons_of(el, rings_of):
     ps = [p for p in ps if not p.is_empty]
     if not ps:
         return None
-    g = unary_union(ps)
     hs = [Polygon(r).buffer(0) for r in inners if len(r) >= 4]
     hs = [h for h in hs if not h.is_empty]
-    if hs:
-        g = g.difference(unary_union(hs))
+    if not hs:
+        return unary_union(ps)
+    # an outer ring lying inside a hole is an island: it must survive the subtraction of the holes
+    islands = [p for p in ps if any(h.contains(p) for h in hs)]
+    main = [p for p in ps if not any(p is q for q in islands)]
+    g = unary_union(main).difference(unary_union(hs)) if main else Polygon()
+    if islands:
+        g = unary_union([g] + islands)
     return None if g.is_empty else g
 
 

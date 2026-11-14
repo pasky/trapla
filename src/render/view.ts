@@ -12,7 +12,7 @@ import { OOB_BIT, type Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
-import { buildHeightTexture } from './heightTexture';
+import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import { makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
@@ -66,6 +66,9 @@ export class View {
   private contours = false;
   private contourStep = 0;
   private contourLabels: ContourLabels | null = null;
+  private maxTex = 0;
+  /** the result the footprint mask was last drawn from (to redraw it after a lost WebGL context) */
+  private maskSource: Result | null = null;
   /** called when the contour interval changes with the zoom (minor, major in metres) */
   onContourInterval: ((minor: number, major: number) => void) | null = null;
   ev: ViewEvents = {};
@@ -101,7 +104,7 @@ export class View {
     this.buildOfficial();
     this.buildLabels();
     this.contourLabels = new ContourLabels(overlay, this.renderer.domElement, this.terrain, (x, y) => this.pick(x, y),
-      (x, y, z) => this.screenOf(x, y, z), () => { this.dirty = true; });
+      (x, y, z) => this.screenOf(x, y, z), (x, y) => (this.inFootprint(x, y) ? null : this.meshHeight(x, y)), () => { this.dirty = true; });
     this.controls.addEventListener('change', () => this.contourLabels?.schedule(this.contourStep * 5));
     this.resetCamera();
     new ResizeObserver(() => this.resize()).observe(container);
@@ -162,11 +165,15 @@ export class View {
     const T = this.terrain, step = this.meshStep;
     // per-pixel inputs of the terrain shader
     const u = this.terrainU;
-    const ht = buildHeightTexture(this.pack.q, T.nx, T.ny, this.pack.meta.heights.scale, this.renderer.capabilities.maxTextureSize);
-    // the texel data lives on the GPU from the first frame on; drop the CPU copies (~85 MB)
+    // (?maxtex=4096 emulates a GPU with a small texture limit: the height texture then uses every 2nd sample)
+    this.maxTex = Math.min(this.renderer.capabilities.maxTextureSize, Number(new URLSearchParams(location.search).get('maxtex')) || Infinity);
+    const ht = buildHeightTexture(this.pack.q, T.nx, T.ny, this.pack.meta.heights.scale, this.maxTex);
+    // the texel data lives on the GPU from the first frame on; drop the CPU copies (~85 MB).
+    // restoreSurface() rebuilds them if the WebGL context is lost.
     ht.tex.onUpdate = () => { for (const m of ht.tex.mipmaps as unknown as { data: unknown }[]) m.data = null; (ht.tex.image as { data: unknown }).data = null; };
     u.hTex.value = ht.tex;
-    u.hInfo.value.set(ht.w, ht.h, T.cell, this.pack.meta.heights.base);
+    u.hInfo.value.set(ht.w, ht.h, T.cell * ht.stride, this.pack.meta.heights.base);
+    this.renderer.domElement.addEventListener('webglcontextrestored', () => this.restoreSurface());
     u.areaSize.value.set(T.width, T.height);
     u.oobTex.value = oobTexture(T.lc, T.nx, T.ny, OOB_BIT);
     u.contour.value.w = this.renderer.getPixelRatio();
@@ -219,11 +226,38 @@ export class View {
     const b = this.pack.vectors?.buildings;
     if (b && new URLSearchParams(location.search).get('buildings') !== '0') {
       this.buildings = new Buildings(b, this.pack.vectors!.chunk, {
-        top: (x, y) => T.heightAt(x, y),
+        top: (x, y) => this.drapeHeight(x, y),
         bottom: (x, y) => Math.min(T.heightAt(x, y), this.meshHeight(x, y)),
       }, this.cx, this.cy);
       this.world.add(this.buildings.group);
     }
+  }
+
+  /**
+   * After a lost WebGL context three.js re-uploads what it still has on the CPU; the height texels were
+   * dropped after the first upload and the land-cover levels and the footprint mask exist only on the GPU.
+   */
+  private restoreSurface() {
+    const T = this.terrain, tex = this.terrainU.hTex.value as THREE.DataTexture;
+    const lv = buildHeightLevels(this.pack.q, T.nx, T.ny, this.pack.meta.heights.scale, this.maxTex);
+    tex.mipmaps = lv.mipmaps as unknown as THREE.DataTexture['mipmaps'];
+    (tex.image as { data: unknown }).data = lv.mipmaps[0].data;
+    tex.needsUpdate = true;
+    this.landcover?.invalidate();
+    if (this.maskSource) this.buildMask(this.maskSource);
+    this.dirty = true;
+  }
+
+  /** inside the at-grade footprint of the designed road, where the terrain is cut away */
+  private inFootprint(x: number, y: number): boolean {
+    const r = this.maskSource;
+    if (!r) return false;
+    for (let i = 0; i < r.n; i++) {
+      if (r.kind[i] !== KIND.earth) continue;
+      const d = Math.max(r.dayL[i], r.dayR[i]) + 5;
+      if (Math.abs(x - r.x[i]) < d && Math.abs(y - r.y[i]) < d && Math.hypot(x - r.x[i], y - r.y[i]) < d) return true;
+    }
+    return false;
   }
 
   // ---- view options --------------------------------------------------------------------------
@@ -517,6 +551,8 @@ export class View {
 
   /** render the at-grade footprint (slightly inset) top-down into the terrain discard mask */
   private buildMask(r: Result) {
+    this.maskSource = r;
+    this.contourLabels?.schedule(this.contourStep * 5); // labels keep off the carved footprint
     const n = r.n;
     const pos: number[] = [];
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;

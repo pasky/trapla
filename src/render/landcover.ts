@@ -226,6 +226,7 @@ interface Slot { rt: THREE.WebGLRenderTarget; k: number; cx: number; cy: number;
 /** where to get an orthophoto of a window: (x0, y0, w, h in local metres, image size in pixels) → URL (CORS-enabled) */
 export type PhotoUrl = (x0: number, y0: number, w: number, h: number, pxW: number, pxH: number) => string;
 interface PhotoJob { url: string; valid: () => boolean; apply: (tex: THREE.Texture) => void }
+const PHOTO_TIMEOUT_MS = 20000;
 
 const BG_VERT = /* glsl */ `
 uniform vec4 box;
@@ -265,7 +266,7 @@ export class LandCover {
   private bg: THREE.Mesh;
   private bgMat: THREE.ShaderMaterial;
   private jobs = new Map<object, PhotoJob>();
-  private loading = false;
+  private active: { job: PhotoJob; ctrl: AbortController } | null = null;
   private baseGen = 0;
   private warned = false;
   /** called when a texture changed outside update() (a photo arrived) */
@@ -393,13 +394,14 @@ export class LandCover {
     r.setClearColor(color, alpha);
   }
 
-  private drawBase(photo?: THREE.Texture) {
+  /** `photo` covers the rectangle `rect` (local metres), which may be larger than the play area */
+  private drawBase(photo?: THREE.Texture, rect?: [number, number, number, number]) {
     const bw = this.base.width, bh = this.base.height, S = this.size;
     const rx = this.width / bw, ry = this.height / bh;
     this.withState(() => {
       for (let ty = 0; ty < bh; ty += S) {
         const th = Math.min(S, bh - ty);
-        this.draw(0, ty * ry, S * rx, S * ry, photo, [0, 0, this.width, this.height]);
+        this.draw(0, ty * ry, S * rx, S * ry, photo, rect);
         this.blit(this.base, 0, ty, bw, th, false);
       }
     });
@@ -407,9 +409,24 @@ export class LandCover {
     this.uniforms.lcBaseOn.value = 1;
     this.baseDone = true;
     if (!photo && this.photoOn && this.photoUrl) {
-      const gen = ++this.baseGen;
-      this.request(this.base, this.photoUrl(0, 0, this.width, this.height, bw, bh), () => this.photoOn && gen === this.baseGen, (tex) => this.drawBase(tex));
+      // image services return square pixels: ask for a box with exactly the image's aspect ratio (it
+      // overhangs the play area a little) instead of letting the server adjust the extent
+      const gen = ++this.baseGen, res = Math.max(rx, ry);
+      const box: [number, number, number, number] = [0, 0, bw * res, bh * res];
+      this.request(this.base, this.photoUrl(...box, bw, bh), () => this.photoOn && gen === this.baseGen, (tex) => this.drawBase(tex, box));
     }
+  }
+
+  /** forget everything drawn so far (the GPU lost it, or the layer set changed); redrawn by update() */
+  invalidate() {
+    this.jobs.clear();
+    this.active?.ctrl.abort();
+    this.active = null;
+    this.baseGen++;
+    this.baseDone = false;
+    this.uniforms.lcBaseOn.value = 0;
+    for (const s of this.slots) { s.k = -1; s.gen++; }
+    this.publish();
   }
 
   // ---- orthophoto --------------------------------------------------------------------------
@@ -422,36 +439,37 @@ export class LandCover {
     on = on && !!this.photoUrl;
     if (on === this.photoOn) return;
     this.photoOn = on;
-    this.jobs.clear();
-    this.baseGen++;
-    this.baseDone = false;
-    for (const s of this.slots) { s.k = -1; s.gen++; }
-    this.publish();
+    this.invalidate();
   }
 
   /** true while photos are being fetched */
-  get loadingPhotos() { return this.loading || this.jobs.size > 0; }
+  get loadingPhotos() { return !!this.active || this.jobs.size > 0; }
 
   /** queue a photo for a target; a newer request for the same target replaces a waiting one */
   private request(key: object, url: string, valid: () => boolean, apply: (tex: THREE.Texture) => void) {
     this.jobs.delete(key);
     this.jobs.set(key, { url, valid, apply });
+    // a fetch for a window that is no longer wanted only holds up the queue
+    if (this.active && !this.active.job.valid()) this.active.ctrl.abort();
     this.pump();
   }
 
-  /** one request at a time, oldest target first; stale requests are dropped without fetching */
+  /** one request at a time, oldest target first; stale requests are dropped, slow ones time out */
   private pump() {
-    if (this.loading) return;
+    if (this.active) return;
     for (const [key, job] of this.jobs) {
       this.jobs.delete(key);
       if (!job.valid()) continue;
-      this.loading = true;
+      const ctrl = new AbortController();
+      const me = this.active = { job, ctrl };
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, PHOTO_TIMEOUT_MS);
       // decoded off the main thread; flipped here because WebGL ignores UNPACK_FLIP_Y for bitmaps
-      fetch(job.url, { mode: 'cors' })
+      fetch(job.url, { mode: 'cors', signal: ctrl.signal })
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
         .then((b) => createImageBitmap(b, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
         .then((bmp) => {
-          if (job.valid()) {
+          if (this.active === me && job.valid()) {
             const tex = new THREE.Texture(bmp as unknown as HTMLImageElement);
             tex.flipY = false;
             tex.generateMipmaps = false;
@@ -463,9 +481,17 @@ export class LandCover {
           bmp.close();
         })
         .catch((e) => {
-          if (!this.warned) { this.warned = true; console.warn('orthophoto unavailable; showing the map instead:', String(e)); }
+          if (ctrl.signal.aborted && !timedOut) return; // superseded
+          if (!this.warned) { this.warned = true; console.warn('orthophoto unavailable; showing the map instead:', timedOut ? 'timed out' : String(e)); }
         })
-        .finally(() => { this.loading = false; this.onChange?.(); this.pump(); });
+        .finally(() => {
+          clearTimeout(timer);
+          // a request cancelled by invalidate() no longer owns the queue
+          if (this.active !== me) return;
+          this.active = null;
+          this.onChange?.();
+          this.pump();
+        });
       return;
     }
   }

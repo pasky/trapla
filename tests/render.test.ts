@@ -3,22 +3,23 @@ import { existsSync, readFileSync } from 'node:fs';
 // @ts-ignore
 import { gunzipSync } from 'node:zlib';
 import * as THREE from 'three';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { decodeHeights, LC, Terrain } from '../src/core/terrain';
-import { buildHeightTexture } from '../src/render/heightTexture';
-import { parseVectorPack } from '../src/render/vectorPack';
+import { buildHeightLevels } from '../src/render/heightTexture';
+import { parseVectorPack, type VectorPack } from '../src/render/vectorPack';
 
 describe('height texture', () => {
   // an odd-sized grid with heights up to 1,200 m at 0.1 m steps, i.e. beyond half-float precision in one channel
   const nx = 70, ny = 90, scale = 0.1;
   const q = new Uint16Array(nx * ny);
   for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) q[r * nx + c] = Math.round(6000 + 5900 * Math.sin(c * 0.37) * Math.cos(r * 0.21) + ((c * 7 + r * 13) % 10));
-  const { tex, w, h } = buildHeightTexture(q, nx, ny, scale, 8192);
-  const mips = tex.mipmaps as unknown as { data: Uint16Array; width: number; height: number }[];
-  const height = (level: number, c: number, r: number) => {
+  type Mips = { data: Uint16Array; width: number; height: number }[];
+  const at = (mips: Mips, level: number, c: number, r: number) => {
     const m = mips[level];
     return THREE.DataUtils.fromHalfFloat(m.data[2 * (r * m.width + c)]) + THREE.DataUtils.fromHalfFloat(m.data[2 * (r * m.width + c) + 1]);
   };
+  const { mipmaps: mips, w, h } = buildHeightLevels(q, nx, ny, scale, 8192);
+  const height = (level: number, c: number, r: number) => at(mips, level, c, r);
 
   it('level 0 reproduces every sample (R + G), padding replicates the edge', () => {
     expect(w % 64).toBe(0);
@@ -43,20 +44,48 @@ describe('height texture', () => {
       expect(worst).toBeLessThan(0.01);
     }
   });
+
+  it('odd-sized coarse levels still average the whole extent (192 → … → 3 → 1)', () => {
+    // an eastward ramp: every level must keep the mean and the ramp's position, also below 3 texels
+    const n = 192, ramp = new Uint16Array(n * n);
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) ramp[r * n + c] = c * 10;
+    const lv = buildHeightLevels(ramp, n, n, scale, 8192).mipmaps;
+    const mean = (0.5 * (n - 1) * 10) * scale;
+    for (let l = 0; l < lv.length; l++) {
+      let sum = 0;
+      for (let c = 0; c < lv[l].width; c++) {
+        const v = at(lv, l, c, 0);
+        sum += v;
+        // texel centre in source cells → the ramp value there
+        expect(Math.abs(v - ((c + 0.5) * (n / lv[l].width) - 0.5) * 10 * scale)).toBeLessThan(0.02);
+      }
+      expect(Math.abs(sum / lv[l].width - mean)).toBeLessThan(0.02);
+    }
+  });
+
+  it('halves the grid when it exceeds the texture size limit', () => {
+    const lv = buildHeightLevels(q, nx, ny, scale, 64);
+    expect(lv.stride).toBe(2);
+    expect(lv.w).toBe(64);
+    expect(Math.abs(at(lv.mipmaps, 0, 3, 5) - 0.25 * scale * (q[10 * nx + 6] + q[10 * nx + 7] + q[11 * nx + 6] + q[11 * nx + 7]))).toBeLessThan(0.003);
+  });
 });
 
 // needs the generated pack (npm run data)
 const PACK = 'public/scenarios/d11';
-describe.skipIf(!existsSync(`${PACK}/vector.bin.gz`))('vector render data vs the game grid', () => {
-  const unzip = (f: string): ArrayBuffer => {
-    const b: Uint8Array = gunzipSync(readFileSync(`${PACK}/${f}`));
-    return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
-  };
-  const v = parseVectorPack(unzip('vector.bin.gz'));
-  const meta = JSON.parse(readFileSync(`${PACK}/meta.json`, 'utf8'));
-  const T = new Terrain({
-    nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
-    q: decodeHeights(new Int16Array(unzip(meta.heights.file)), meta.nx, meta.ny), lc: new Uint8Array(unzip(meta.landcover.file)),
+describe.skipIf(!['vector.bin.gz', 'meta.json', 'height.i16.gz', 'landcover.u8.gz'].every((f) => existsSync(`${PACK}/${f}`)))('vector render data vs the game grid', () => {
+  let v: VectorPack, T: Terrain;
+  beforeAll(() => {
+    const unzip = (f: string): ArrayBuffer => {
+      const b: Uint8Array = gunzipSync(readFileSync(`${PACK}/${f}`));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    };
+    v = parseVectorPack(unzip('vector.bin.gz'));
+    const meta = JSON.parse(readFileSync(`${PACK}/meta.json`, 'utf8'));
+    T = new Terrain({
+      nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
+      q: decodeHeights(new Int16Array(unzip(meta.heights.file)), meta.nx, meta.ny), lc: new Uint8Array(unzip(meta.landcover.file)),
+    });
   });
 
   it('chunk tables and indices are consistent', () => {

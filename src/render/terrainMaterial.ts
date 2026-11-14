@@ -191,6 +191,9 @@ void main() {
   vec3 col = albedo * light;
 
   float oob = smoothstep(0.4, 0.6, texture2D(oobTex, loc / areaSize).r);
+  // hatch coordinate and its screen-space width (derivatives are taken outside of branches)
+  float s = (loc.x + loc.y) / 120.0;
+  float fw = fwidth(s);
   float slope = length(grad);
 
   if (slopeTint > 0.0) {
@@ -218,8 +221,6 @@ void main() {
   if (oob > 0.0) {
     float g = dot(col, vec3(0.3333));
     vec3 oc = vec3(g * 0.55 + 0.157);
-    float s = (loc.x + loc.y) / 120.0;
-    float fw = fwidth(s);
     float hatch = (1.0 - smoothstep(0.08 - fw, 0.08 + fw, abs(fract(s) - 0.5))) * (1.0 - smoothstep(0.15, 0.4, fw));
     oc *= 1.0 - 0.25 * hatch;
     col = mix(col, oc, oob);
