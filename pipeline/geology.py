@@ -7,6 +7,8 @@ from __future__ import annotations
 import gzip
 import json
 import math
+import hashlib
+import re
 from pathlib import Path
 import time
 import urllib.parse
@@ -90,14 +92,18 @@ def classify(a):
     if age in ("KŘÍDA", "TRIAS"):
         return "cret_sand" if "pískovce" in rock[:35] else "marl"
     if age in ("PERM", "KARBON"):
-        # The map lists the dominant rock first; mixed fine-grained beds remain a separate prior.
-        first = rock.split(",")[0]
-        fine = any(t in first for t in ("aleuropelit", "aleoropelit", "jílovce", "prachovce", "slínovce"))
+        # First named material, not first comma: commas also separate colour adjectives,
+        # and subordinate interbeds can occur before any comma ("pískovce s vložkami ...").
+        material = re.search(r"aleuropelit|aleoropelit|jílovc|prachovc|slínovc|pískovc|arkóz|arkoz|slepenc|brekci", rock)
+        if not material:
+            return "unknown"
+        first = material.group()
+        fine = first in ("aleuropelit", "aleoropelit", "jílovc", "prachovc", "slínovc")
         if age == "KARBON":
             return "carb_mixed" if fine else "carb_sand"
         if fine:
             return "perm_fine"
-        return "perm_congl" if "slepence" in first else "perm_sand"
+        return "perm_congl" if first in ("slepenc", "brekci") else "perm_sand"
     return "unknown"
 
 
@@ -168,6 +174,8 @@ def build(cache, out, bounds, http_get, log, terrain_oob):
     counts = np.bincount(grid[playable], minlength=len(keys))
     log("ČGS ground cells (playable centres):", dict(zip(keys, counts.tolist())))
     return {"file": "ground.u8.gz", "cell": cell, "nx": grid.shape[1], "ny": grid.shape[0],
-            "profiles": profiles, "model": 1, "source": "© ČGS, GEOCR50 + IG rajony 1:50 000",
+            "profiles": profiles, "model": 1,
+            "fingerprint": hashlib.sha256(grid.tobytes() + json.dumps(profiles, sort_keys=True).encode()).hexdigest(),
+            "source": "© ČGS, GEOCR50 + IG rajony 1:50 000",
             "note": "25 m cell centres, row 0 north; estimated weathering depths, not measured stratigraphy; 0 = norm mix",
             "sources": [GEOCR, IG], "playableCellCounts": counts.tolist()}

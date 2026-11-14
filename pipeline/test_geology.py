@@ -7,7 +7,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
-from geology import fetch_features, rasterize
+from geology import classify, fetch_features, rasterize
 
 
 def feature(oid, rings):
@@ -15,6 +15,12 @@ def feature(oid, rings):
 
 
 class GeologyTests(unittest.TestCase):
+    def test_dominant_lithology_not_colour_commas_or_subordinate_interbeds(self):
+        self.assertEqual(classify({"utvar": "KARBON", "hor_karto":
+            "červenohnědé řídčeji pestrobarevné, vzácně šedé aleuropelity, polohy slepenců, pískovců"}), "carb_mixed")
+        self.assertEqual(classify({"utvar": "PERM", "hor_karto":
+            "arkózovité pískovce s polohami slepenců a vložkami červenohnědých i pestrobarevných aleuropelitů"}), "perm_sand")
+
     def test_keyset_pagination_and_offline_cache(self):
         requests = []
 

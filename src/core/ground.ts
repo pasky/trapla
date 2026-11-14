@@ -17,6 +17,8 @@ export interface GroundMeta {
   ny: number;
   cell: number;
   profiles: GroundProfile[];
+  /** Hash of the categorical grid and profile table; invalidates saved scores after pack rebuilds. */
+  fingerprint?: string;
 }
 export interface GroundData extends Omit<GroundMeta, 'file'> { ids: Uint8Array }
 export const UNKNOWN_GROUND: GroundProfile = {

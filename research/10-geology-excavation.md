@@ -73,22 +73,22 @@ The mapper checks unconsolidated genesis first, then crystalline/volcanic lithol
 
 - Sections integrate the local profile through every cut strip (≤2.5 m transverse spacing, midpoint geology), under crown **and slopes**, not only at the centreline. Class parts sum to each section's cut and to billed volumes. A contact can be displaced by up to a strip width in addition to map/raster uncertainty.
 - Auto-profile flat-section costs use **centreline-local** profiles, with one compact precomputed height-cost table per encountered category; candidate mass balance and final structure decisions use real transverse sections. Final prices remain the same class prices as the search.
-- UI profile tooltip names mapped ground and both **estimated** depths; HUD retains the class quantities and explains unmapped norm fallback. Old packs load as explicitly unmapped, not as invented 3/8 m geology; rebuild with `npm run data` for mapped costs.
+- UI profile tooltip names mapped ground and both **estimated** depths; HUD retains the class quantities and explains unmapped norm fallback. Old packs load as explicitly unmapped, not as invented 3/8 m geology; rebuild with `npm run data` for mapped costs. Saved best scores include the ground-grid/profile fingerprint, so a rebuild invalidates incomparable scores without discarding the design.
 - Tests cover raster cell centres/holes/islands, cached keyset pagination, ground-grid orientation/validation, cut contacts across the crown/slope, unknown prior, and spatially varying auto-profile costs. The complete pipeline was rebuilt from copied worktree-local terrain/OSM caches.
 - Cut slopes remain 1:1.75, fill slopes 1:2 and unusable material 15%. Changing those from lithology alone would add unsupported stability/reuse claims and obscure this change's cost effect. Peat/clay suitability, groundwater, tunnel rock classes, landslides and undermining are **next steps**, not secretly priced here. In particular active-landslide excavation should eventually carry an explicit violation/risk treatment after querying activity polygons; absence of that penalty is not evidence of safety.
 
-## 5. Fixed-design comparison (model 6 → geology model 7)
+## 5. Fixed-design comparison (main model 7 → geology model 8)
 
-No alignments changed. CZK million; class shares are volume-weighted, rounded percentages (may sum to 99/101). All five VALID and every per-cell cost component sums to its bill.
+Rebased onto `428cd0d` (geometric crossing costs); the before column uses that main model, so the difference isolates geology. No alignments changed. CZK million; class shares are volume-weighted, rounded percentages (may sum to 99/101). All five VALID and every per-cell cost component sums to its bill.
 
 | Design | Before → after total | Before I/II/III % | After I/II/III % |
 |---|---:|---:|---:|
-| best bypass 90 | 3,038 → 3,195 | 49 / 36 / 15 | 37 / 39 / 24 |
-| reference/demo 90 | 3,949 → 4,068 | 39 / 34 / 26 | 30 / 34 / 36 |
-| direct fringe 80 | 3,470 → 3,563 | 50 / 36 / 13 | 38 / 39 / 23 |
-| direct fringe 90 | 3,626 → 3,784 | 44 / 36 / 21 | 32 / 37 / 32 |
-| town centre 90 | 9,024 → 9,175 | 31 / 33 / 37 | 20 / 29 / 51 |
+| best bypass 90 | 3,305 → 3,440 | 49 / 36 / 15 | 39 / 38 / 23 |
+| reference/demo 90 | 4,158 → 4,296 | 39 / 34 / 26 | 31 / 34 / 35 |
+| direct fringe 80 | 3,690 → 3,774 | 50 / 36 / 13 | 40 / 39 / 22 |
+| direct fringe 90 | 3,807 → 3,958 | 44 / 36 / 21 | 34 / 37 / 30 |
+| town centre 90 | 9,182 → 9,317 | 31 / 33 / 37 | 21 / 29 / 50 |
 
-The automatic grade line can change, affecting fill, structures and property as well as excavation. None of the profiles was fitted to these totals or to 75/20/5. Bench means after removing a LUT-building closure allocation: **33–40 ms** across the designs; simultaneous SwiftShader processes can more than double these timings.
+The automatic grade line can change, affecting fill, structures and property as well as excavation. None of the profiles was fitted to these totals or to 75/20/5. Bench means after removing a LUT-building closure allocation: **31–42 ms** across the designs; simultaneous SwiftShader processes can more than double these timings.
 
-Brief optimisation sanity check: `npx tsx scripts/optimize.ts 90 200 scripts/best-design.json /tmp/geology-opt-best.json 19421` found **3,059 M CZK**, VALID, 21.32 km / 14.21 min, classes 41/39/21. This temporary candidate is not substituted for a comparison design; no global optimum is claimed.
+Brief optimisation sanity check: `npx tsx scripts/optimize.ts 90 200 scripts/best-design.json /tmp/geology-opt-best-final.json 19421` found **3,281 M CZK**, VALID, 21.30 km / 14.20 min, classes 42/38/20. This temporary candidate is not substituted for a comparison design; no global optimum is claimed.

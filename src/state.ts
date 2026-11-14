@@ -3,8 +3,8 @@
 import { COST_MODEL_VERSION } from './core/data/prices';
 import type { Design } from './core/evaluate';
 
-/** `model` = COST_MODEL_VERSION the cost was computed with */
-export interface Best { cost: number; design: Design; at: string; model?: number }
+/** Score compatibility includes both code rules and the ground pack used to price the design. */
+export interface Best { cost: number; design: Design; at: string; model?: number; pricingData?: string }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -15,7 +15,7 @@ export class Store {
   private listeners: ((d: Design, committed: boolean) => void)[] = [];
   best: Best | null = null;
 
-  constructor(private key: string, private initial: () => Design) {
+  constructor(private key: string, private initial: () => Design, private pricingData = 'unmapped') {
     let d: Design | null = null;
     try {
       const raw = localStorage.getItem(key + '.design');
@@ -23,7 +23,7 @@ export class Store {
       const b = localStorage.getItem(key + '.best');
       if (b) this.best = JSON.parse(b);
       // a best score from an older cost model is not comparable with today's bills: forget it
-      if (this.best && this.best.model !== COST_MODEL_VERSION) this.best = null;
+      if (this.best && (this.best.model !== COST_MODEL_VERSION || this.best.pricingData !== pricingData)) this.best = null;
     } catch { d = null; }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
@@ -63,7 +63,7 @@ export class Store {
 
   offerBest(cost: number, d: Design) {
     if (this.best && this.best.cost <= cost) return false;
-    this.best = { cost, design: clone(d), at: new Date().toISOString(), model: COST_MODEL_VERSION };
+    this.best = { cost, design: clone(d), at: new Date().toISOString(), model: COST_MODEL_VERSION, pricingData: this.pricingData };
     try { localStorage.setItem(this.key + '.best', JSON.stringify(this.best)); } catch { /* */ }
     return true;
   }
