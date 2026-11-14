@@ -95,6 +95,14 @@ export function bridgeRunCost(model: BridgeModel, h: ArrayLike<number>, ds: numb
   surcharge: (i: number) => number, land: (i: number) => number) {
   return (i0: number, i1: number, length: number, layout = bridgeLayout(length), pierStations?: readonly number[]) => {
     let cost = model.abutments / 2 * (2 + surcharge(i0) + surcharge(i1));
+    // DP/balance selectors have no adjusted supports: retain their allocation-free hot loop.
+    if (pierStations === undefined) {
+      for (let i = i0; i <= i1; i++) {
+        const len = i === 0 || i === h.length - 1 ? ds / 2 : ds;
+        cost += len * (model.perM(h[i], layout) * (1 + surcharge(i)) + model.width * land(i));
+      }
+      return cost;
+    }
     for (const [i, variable] of bridgeVariableCosts(model, h, ds, { i0, i1, length, layout, pierStations })) {
       const len = i === 0 || i === h.length - 1 ? ds / 2 : ds;
       cost += variable * (1 + surcharge(i)) + len * model.width * land(i);
