@@ -115,7 +115,8 @@ What exists (details and commands in `README.md`):
   straight line with the automatic (legal) grade line; the cost of a design that is not valid is struck through.
 - **Rules added during the build** (game rules, not norm values): river / water-area / railway crossings are
   always bridged (≥ 30 m) and need the grade ≥ 3 m above a river and ≥ 7.5 m above a railway (otherwise a
-  violation; the auto-profile respects it); streams are assumed culverted (in the norm). Since cost model 3
+  violation; the auto-profile respects it); ordinary stream drainage is in the norm, with excess culvert
+  barrel length priced explicitly since model 11. Since cost model 3
   motorways / expressways are treated the same way (see "Crossing existing roads"). Bridges are only
   considered ≥ 4 m above ground and bored tunnels with ≥ 14 m of cover; minimum bridge 30 m, tunnel 150 m;
   earthwork gaps shorter than 60 m (bridges) / 150 m (tunnels) are merged. Road base price is charged on at-grade
@@ -544,6 +545,48 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 - Motorway / expressway crossings: the auto-profile requests a bridge clearance rather than optimising
   the cut-and-overbridge alternative (which manual profiles can choose); the forced bridge is the 30 m minimum whatever
   the motorway's width and the crossing angle.
+
+## Bridges vs high fills, player overrides (cost model 11)
+
+- Benched fill/cut geometry now contributes real volume and footprint; high earthworks pay a separate
+  **provisional** stability/ground-treatment reserve even with free surplus soil. Stream crossings pay
+  excess culvert length beyond norm drainage. Bill, structure selector, balance estimate and DP share these
+  terms, including the merged ČGS geology categories. Sources, uncertainties and formulas: research/15.
+- Flat rural S9.5 bridge break-even at material value λ=200: **26.85 → 16.62 m**; at λ=0:
+  **47.03 → 18.62 m**; at λ=−196.4: no old economic crossing → **21.03 m**. Reproduce with
+  `npx tsx scripts/bridge-break-even.ts`. This is mostly the provisional engineering reserve, not a newly
+  discovered ČSN limit. No unsupported hard height cap or bridge-height price curve was introduced.
+- Profile range **B/T/E/C** paints bridge/tunnel/earthwork/automatic; persisted, undoable, partial repaint/
+  erase, visible on map/profile, and respected by Auto. Invalid height/cover, short runs and forced crossings
+  produce explicit game-rule violations. Ranges retain absolute chainage when the plan changes.
+- **Grade line: Auto | Manual** replaces the ambiguous button. Auto seeks a low-cost legal vertical line;
+  Manual freezes it for vertical-point edits. Auto replaces manual vertical edits but keeps structure paint.
+- KHK regional/nadregional ÚSES is available and cached (47 polygons, ~0.49 MB) by
+  `uv run pipeline/fetch_uses.py`. No automatic ecological bridge mandates: current plan status, local
+  corridors, flood hydraulics and suitable passage dimensions need further work.
+
+Five-design comparison, **M CZK**, all VALID and per-cell parts sum correctly:
+
+| Design | Task-start model 6 | Upstream model 10, same plan | Model 11, same plan | Refreshed saved design, model 11 |
+|---|---:|---:|---:|---:|
+| best bypass | 3,038 | 3,325 | 3,871 | **3,738** |
+| demo | 3,949 | 4,144 | 5,077 | **4,099** |
+| direct 80 | 3,470 | 3,694 | 4,150 | **4,062** |
+| direct 90 | 3,626 | 3,873 | 4,588 | **4,382** |
+| town-centre reference | 9,024 | 9,035 | 10,580 | **10,580** |
+
+Original plans are recoverable at `a86f39c:scripts/*-design.json`; model-10 baseline is `15c4f92`.
+Four candidates got 100 seeded continuation trials (1510) and 50 more after geology integration (1511).
+Town-centre geometry is intentionally held fixed as a reference, not optimised out of the town; all five
+JSONs now record model 11. Final lengths/times: best 21.08 km/14.05 min, demo 21.11/14.07,
+80 19.10/14.33, 90 19.33/12.89, town 18.94/12.62. These short local searches are not global optima.
+
+On the original best plan, maximum fill **27.1 → 19.5 m**, bridges **550 → 940 m**. Comparable captures:
+[owner-valley before](docs/screenshots/valley-owner-before.png) /
+[after](docs/screenshots/valley-owner-after.png), plus [km 14–16 before](docs/screenshots/valley-before.png) /
+[after](docs/screenshots/valley-after.png). Captures keep the original horizontal plan, not the refreshed
+optimised route; owner-view centre is km 17.5 (near old PI 15). `CHAINAGE=17500 node scripts/valley.mjs`
+reproduces that framing. The map ribbon still simplifies benches to the crown/daylight surface.
 
 ## Horizontal curve rules and long curves (2026-11-14)
 
