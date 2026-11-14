@@ -15,7 +15,7 @@ function route(): FootprintRoute {
 }
 const terrain = () => syntheticTerrain(260, 100, 5, () => 100);
 const road = (cls = 'service', y = 260) => new RoadNet({ cls: [cls], ways: [[0, 0, y, 1250, y]] });
-const check = (r = route(), roads = road(), t = terrain(), crossings: CrossingResult[] = []) => footprintConflicts(r, t, roads, crossings, [], []);
+const check = (r = route(), roads = road(), t = terrain(), crossings: CrossingResult[] = []) => footprintConflicts(r, t, roads, crossings, []);
 
 describe('constructed footprint conflicts', () => {
   it('relocates a lengthwise road with real tie-ins outside the toe, using its SPK class row', () => {
@@ -74,17 +74,17 @@ describe('constructed footprint conflicts', () => {
     const abutment = supports[0], t = terrain();
     const row = Math.floor((t.height - abutment.y) / t.cell), col = Math.floor(abutment.x / t.cell);
     t.lc[row * t.nx + col] = LC.road | RAIL_CROSSING_BIT;
-    const blocked = footprintConflicts(r, t, undefined, [], [], []);
+    const blocked = footprintConflicts(r, t, undefined, [], []);
     expect(blocked.conflicts.some(c => c.feature === 'railway' && c.detail.includes('abutment'))).toBe(true);
     r.runs[0].kind = KIND.tunnel; r.kind = new Uint8Array(r.n).fill(KIND.tunnel);
     expect(structureFootprints(r).every(c => c.structure === 'portal')).toBe(true);
-    expect(footprintConflicts(r, t, undefined, [], [], []).violations[0].title).toContain('portal');
+    expect(footprintConflicts(r, t, undefined, [], []).violations[0].title).toContain('portal');
   });
   it('detects side-footprint ponds and railway cells that never intersect the centreline', () => {
     const t = terrain();
     for (let col = 80; col < 90; col++) t.lc[47 * t.nx + col] = LC.water;
     for (let col = 110; col < 120; col++) t.lc[52 * t.nx + col] = LC.road | RAIL_CROSSING_BIT;
-    const r = footprintConflicts(route(), t, undefined, [], [], []);
+    const r = footprintConflicts(route(), t, undefined, [], []);
     expect(r.conflicts.map(c => c.feature)).toEqual(['water', 'railway']);
     expect(r.conflicts.every(c => c.action === 'blocked' && c.cost === 0)).toBe(true);
   });
@@ -97,7 +97,7 @@ describe('constructed footprint conflicts', () => {
     // corridor must be offset toward the wider toe, not spuriously extended about the axis.
     r.dayL = new Float64Array(r.n).fill(30); r.dayR = new Float64Array(r.n).fill(10);
     const c: WaterCrossing = { s: 400, x: 500, y: 250, id: 1, waterKind: 'ditch', width: 0.5, catchmentKm2: 0.1, truncated: false, sine: 1, channelTx: 0, channelTy: 1 };
-    expect(footprintConflicts(r, t, undefined, [], [], [c]).conflicts).toEqual([]);
+    expect(footprintConflicts(r, t, undefined, [], [c]).conflicts).toEqual([]);
 
     // A skew channel genuinely needs more barrel where the footprint grows beyond the
     // crossing station. This uses a real vector intersection, not a contradictory sine value.
@@ -106,7 +106,7 @@ describe('constructed footprint conflicts', () => {
     r.dayL = Float64Array.from(r.x, x => x > 510 ? 35 : 20); r.dayR = new Float64Array(r.n).fill(20);
     r.grade = new Float64Array(r.n).fill(130);
     const water = skewTerrain.watercourses!.intersections(r.n, r.s, r.x, r.y);
-    const result = footprintConflicts(r, skewTerrain, undefined, [], [], water);
+    const result = footprintConflicts(r, skewTerrain, undefined, [], water);
     expect(result.violations).toEqual([]);
     expect(result.conflicts).toHaveLength(1);
     // The bank screen extends past the daylight toe, but barrel metres follow the axis.
@@ -129,7 +129,7 @@ describe('constructed footprint conflicts', () => {
     const t = new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses });
     const r = route(), water = t.watercourses!.intersections(r.n, r.s, r.x, r.y);
     expect(water).toHaveLength(1);
-    const result = footprintConflicts(r, t, undefined, [], [], water);
+    const result = footprintConflicts(r, t, undefined, [], water);
     expect(result.conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeGreaterThanOrEqual(25);
     expect(result.violations.length).toBeGreaterThan(0);
     expect(result.conflicts.some(c => c.detail.includes('no clear outlet'))).toBe(true);
@@ -142,7 +142,7 @@ describe('constructed footprint conflicts', () => {
       const r = route(); r.grade = new Float64Array(r.n).fill(grade);
       // A finite fill block, with open channels under free spans on either side.
       r.kind = Uint8Array.from({ length: r.n }, (_, i) => i >= 40 && i < (end - 100) / 10 ? KIND.earth : KIND.bridge);
-      return footprintConflicts(r, t, undefined, [], [], []);
+      return footprintConflicts(r, t, undefined, [], []);
     };
     const short = run(530);
     expect(short.conflicts).toHaveLength(1);

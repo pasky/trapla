@@ -26,7 +26,7 @@ describe('project-boundary road ownership', () => {
       x: Float64Array.from({ length: n }, (_, i) => 100 + i * 10), y: array(250), tx: array(1), ty: array(0),
       grade, kind: new Uint8Array(n), dayL, dayR, zDayL: array(100), zDayR: array(100), crownWidth: 10, runs: [] };
     const roads = new RoadNet({ cls: ['service'], ways: [[0, 100, 250, 100, 290, 180, 260, 220, 290]] });
-    const result = footprintConflicts(r, syntheticTerrain(260, 100, 5, () => 100), roads, [], [], []);
+    const result = footprintConflicts(r, syntheticTerrain(260, 100, 5, () => 100), roads, [], []);
     expect(result.conflicts.some(c => c.roadId === 0 && c.s0 > 20)).toBe(true);
   });
 });

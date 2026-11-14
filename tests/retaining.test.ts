@@ -24,7 +24,7 @@ describe('automatic slope retention', () => {
     expect(route.fill[40]).toBeLessThan(before);
     expect(route.dayL[40]).toBeLessThan(17);
     expect(result.wallSurfaceL[40]).toBeGreaterThan(route.zDayL[40]);
-    const checked = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, roads, [], [], []);
+    const checked = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, roads, [], []);
     expect(checked.violations).toEqual([]);
     const facts = retainingConflicts(result.walls);
     expect(facts).toHaveLength(1);
@@ -37,14 +37,14 @@ describe('automatic slope retention', () => {
     expect(route.cut[40]).toBeLessThan(before);
     expect(route.cutI[40] + route.cutII[40] + route.cutIII[40]).toBeCloseTo(route.cut[40], 8);
     expect(route.fill[40]).toBe(0);
-    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, roads, [], [], []).violations).toEqual([]);
+    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, roads, [], []).violations).toEqual([]);
   });
   it('pulls the toe off independent rail pixels even when road paint hides their class', () => {
     const { terrain, route } = setup();
     for (let col = 50; col < 80; col++) terrain.lc[17 * terrain.nx + col] = LC.road | RAIL_CROSSING_BIT;
     const result = planRetainingWalls(route, terrain);
     expect(result.walls.some(w => w.feature === 'railway')).toBe(true);
-    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], []).violations).toEqual([]);
+    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], []).violations).toEqual([]);
   });
   it('uses a constrained crown-edge face for a slope sliver without narrowing the crown', () => {
     const { terrain, route } = setup(); route.y.fill(104);
@@ -52,7 +52,7 @@ describe('automatic slope retention', () => {
     const plan = planRetainingWalls(route, terrain);
     expect(plan.walls.some(w => w.constrained)).toBe(true);
     expect(plan.walls.every(w => w.offset >= route.crownWidth / 2)).toBe(true);
-    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], []).violations).toEqual([]);
+    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], []).violations).toEqual([]);
   });
   it('uses a stronger watertight bank wall rather than draining a pond into an adjacent cut', () => {
     const wet = setup(92), dry = setup(92); wet.route.y.fill(104); dry.route.y.fill(104);
@@ -60,15 +60,15 @@ describe('automatic slope retention', () => {
     const bank = planRetainingWalls(wet.route, wet.terrain), ordinary = planRetainingWalls(dry.route, dry.terrain);
     expect(bank.walls.every(w => w.watertight)).toBe(true);
     expect(bank.perCell.reduce((a, b) => a + b, 0)).toBeGreaterThan(ordinary.perCell.reduce((a, b) => a + b, 0));
-    expect(footprintConflicts({ ...wet.route, kind: new Uint8Array(wet.route.n), runs: [] }, wet.terrain, undefined, [], [], []).violations).toEqual([]);
+    expect(footprintConflicts({ ...wet.route, kind: new Uint8Array(wet.route.n), runs: [] }, wet.terrain, undefined, [], []).violations).toEqual([]);
   });
   it('reuses local candidates without changing retained geometry or protection checks', () => {
     const a = setup(), b = setup(), cache = new Map();
     const first = planRetainingWalls(a.route, a.terrain, a.roads, undefined, [], cache);
     const second = planRetainingWalls(b.route, a.terrain, a.roads, undefined, [], cache);
     expect(second.walls).toEqual(first.walls);
-    const checked = footprintConflicts({ ...b.route, kind: new Uint8Array(b.route.n), runs: [], featureCache: cache }, a.terrain, a.roads, [], [], []);
-    expect(checked).toEqual(footprintConflicts({ ...b.route, kind: new Uint8Array(b.route.n), runs: [] }, a.terrain, a.roads, [], [], []));
+    const checked = footprintConflicts({ ...b.route, kind: new Uint8Array(b.route.n), runs: [], featureCache: cache }, a.terrain, a.roads, [], []);
+    expect(checked).toEqual(footprintConflicts({ ...b.route, kind: new Uint8Array(b.route.n), runs: [] }, a.terrain, a.roads, [], []));
   });
   it('reuses raw sections across local grade repairs without reusing wall-truncated quantities', () => {
     const { terrain, roads, route } = setup(), cache: SectionCache = [];
@@ -93,7 +93,7 @@ describe('automatic slope retention', () => {
   it('prices a wall for a river-bank corner beyond every station-normal probe', () => {
     const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'river', width: 30,
       points: [[518, 130], [522, 130]], catchmentKm2: [10, 10], truncated: [false, false] }] });
-    const check = () => footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], []);
+    const check = () => footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], []);
     // At x500 the ±5 m normals miss this segment; its 15 m bank still touches
     // the footprint corner. Even a one-cell extension of x520's wall misses x500.
     expect(check().conflicts.some(c => c.i === 40)).toBe(true);
@@ -110,7 +110,7 @@ describe('automatic slope retention', () => {
         points: [[400, 0], [600, 200]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] });
       const water = terrain.watercourses!.intersections(route.n, route.s, route.x, route.y);
       const plan = planRetainingWalls(route, terrain, undefined, undefined, water);
-      const check = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], water);
+      const check = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], water);
       return { plan, check };
     };
     const river = run(true);
@@ -131,7 +131,7 @@ describe('automatic slope retention', () => {
       route.grade.fill(100 + minHeight - 0.002);
       const elevations = exact ? new Map([[c, 100 + minHeight + 0.002]]) : undefined;
       const plan = planRetainingWalls(route, terrain, undefined, undefined, water, undefined, elevations);
-      const check = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], water, elevations);
+      const check = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], water, elevations);
       return { plan, check };
     };
     expect(run(false).plan.clearanceRequirements.length).toBeGreaterThan(0);
@@ -168,11 +168,25 @@ describe('automatic slope retention', () => {
     const plan = planRetainingWalls(route, terrain, roads, undefined, water, cache);
     expect(plan.walls.some(w => w.i === 40 && w.feature === 'road')).toBe(true);
     expect(plan.walls.some(w => w.i === 41 && w.feature === 'stream')).toBe(true);
-    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [], featureCache: cache }, terrain, undefined, [], [], water).violations).toEqual([]);
+    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [], featureCache: cache }, terrain, undefined, [], water).violations).toEqual([]);
     expect(plan.perCell.reduce((a, b) => a + b, 0)).toBeCloseTo(plan.walls.reduce((sum, w) => sum + w.cost, 0), 5);
     for (let i = 38; i < 46; i++) {
       expect(route.fill[i]).toBeCloseTo(route.sideL![i].fill + route.sideR![i].fill, 8);
       expect(route.cut[i]).toBeCloseTo(route.sideL![i].cut + route.sideR![i].cut, 8);
+    }
+  });
+  it('leaves a crossing track to its crossing remedy: no forced bridge/tunnel and no wall dearer than relocation', () => {
+    // A field track crossing the route at a shallow angle lies inside the crown/slopes of the
+    // neighbouring cells. As an ordinary obstacle it forces structures; as the crossing's own
+    // stretch it is severed/diverted (crossing remedy) and screened afterwards.
+    for (const grade of [140, 70]) {
+      const track = () => new RoadNet({ cls: ['track'], ways: [[0, 300, 80, 700, 120]] });
+      const plain = setup(grade), crossing = setup(grade);
+      const ordinary = planRetainingWalls(plain.route, plain.terrain, track());
+      expect([...ordinary.forcedBridge, ...ordinary.forcedTunnel].some(Boolean)).toBe(true);
+      const owned = planRetainingWalls(crossing.route, crossing.terrain, track(), undefined, [], undefined, undefined, new Map([[0, [Math.hypot(200, 20)]]]));
+      expect([...owned.forcedBridge, ...owned.forcedTunnel].some(Boolean)).toBe(false);
+      expect(owned.walls.every(w => w.cost / (w.s1 - w.s0) <= 2 * 13_985_684.5 / 1000)).toBe(true);
     }
   });
   it('requests a bridge instead of inventing an unlimited wall, while preserving explicit earthwork', () => {

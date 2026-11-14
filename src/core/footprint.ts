@@ -11,7 +11,7 @@ import { ROAD_CLASSES, CROSSING_RULES } from './data/urban';
 import { KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
-import type { RoadCrossing, RoadNet, RoadSegment } from './roadnet';
+import type { RoadNet, RoadSegment } from './roadnet';
 import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, waterCoverFits, type WaterCrossing, type WaterSegment } from './watercourses';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
@@ -102,7 +102,7 @@ export function structureFootprints(r: FootprintRoute): FootprintCell[] {
 }
 
 export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: RoadNet | undefined,
-  crossings: readonly CrossingResult[], _rawRoads: readonly RoadCrossing[], water: readonly WaterCrossing[],
+  crossings: readonly CrossingResult[], water: readonly WaterCrossing[],
   waterElevation?: ReadonlyMap<WaterCrossing, number>): { conflicts: FootprintConflict[]; violations: Violation[] } {
   const conflicts: FootprintConflict[] = [], violations: Violation[] = [];
   const cells: FootprintCell[] = [];
