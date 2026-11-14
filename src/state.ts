@@ -37,6 +37,12 @@ export class Store {
       // a best score from an older cost model is not comparable with today's bills: forget it
       if (this.best && (this.best.model !== COST_MODEL_VERSION || this.best.pricingData !== pricingData
         || (objectData && this.best.design.objectData && this.best.design.objectData !== objectData))) this.best = null;
+      // Once accepted, legacy bests must acquire the SAME identity as the current design. Leaving
+      // them unstamped would let Load best rebind old positional IDs after a later pack rebuild.
+      if (this.best && objectData && !this.best.design.objectData) {
+        this.best.design.objectData = objectData;
+        try { localStorage.setItem(key + '.best', JSON.stringify(this.best)); } catch { /* quota */ }
+      }
     } catch { d = null; }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();

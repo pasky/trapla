@@ -569,7 +569,8 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   explicit clearance, depth, spacing, structure and reachable-link checks; invalid choices cannot serve
   as resolved link anchors. Auto receives requested bridge clearance / motorway-overbridge cut bounds;
   ordinary overbridges use the same priced raised approaches as Auto. The HUD lists all affected
-  intersections and can clear inactive saved road choices. Shift+map-click always places a bend. Map shows
+  intersections and can clear inactive saved road choices. Shift+map-click places a bend instead of
+  selecting a building/crossing; existing numbered PI markers retain their drag controls. Map shows
   junction rings, continuous crossed roads/decks and schematic two-sided links; pricing remains the
   documented station-gap proxy (not a surveyed diversion). Default scoring is unchanged.
 - **Building choices** persist by pack building index: explicit buyout/demolition anywhere, keep, or

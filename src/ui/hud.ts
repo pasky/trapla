@@ -107,7 +107,7 @@ export class Hud {
       <section class="card help">
         <h2>How to play</h2>
         <ul>
-          <li><b>Click</b> bare terrain to add a bend (PI); click a building/crossing for Build tools. <b>Shift+click</b> always adds a bend, even on an object</li>
+          <li><b>Click</b> bare terrain to add a bend (PI); click a building/crossing for Build tools. <b>Shift+click</b> adds a bend instead of selecting a building/crossing</li>
           <li><b>Drag</b> a numbered PI to move it, <b>right-click</b> or <kbd>Del</kbd> to delete</li>
           <li>Bends are corners of the dashed polygon; the selected one shows its radius on the map: drag a <b>◇ grip</b> along the leg, <b>wheel</b> over the bend or <kbd>+</kbd> / <kbd>−</kbd>, <b>max</b> / <b>auto</b>. Close bends turning the same way become one long curve</li>
           <li>Map: <b>left-drag</b> pan · <b>right-drag</b> rotate · <b>wheel</b> zoom</li>

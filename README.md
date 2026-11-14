@@ -44,7 +44,8 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 ## How to play
 
 - **Click** bare terrain to add a bend (tangent intersection point, PI) to the nearest leg;
-  **Shift+click** always adds a bend, including on buildings/crossings (plain clicks select those objects); **drag** a numbered PI
+  **Shift+click** adds a bend instead of selecting a building/crossing (existing numbered PI markers
+  retain their selection/drag behaviour); **drag** a numbered PI
   to move it; **right-click** it or press <kbd>Del</kbd> to delete. Select a PI to edit its radius (auto = the
   smallest radius that satisfies the norm, incl. room for transition curves).
 - Map: left-drag pans, right-drag rotates, wheel zooms.

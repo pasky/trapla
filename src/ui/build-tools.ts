@@ -126,7 +126,7 @@ export class BuildTools {
   private render() {
     this.pendingRender = false;
     const r = this.r, d = this.d, s = this.station;
-    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a building or crossing on the map; choose its action here. Shift+click always adds a bend. Select a cost-strip stretch for B/T/E/C structures and left/right noise walls. All choices are undoable.</div>`;
+    this.root.innerHTML = `<h2>Build tools</h2><div class="sub">Alt+click the profile for grade pins. Click a building or crossing on the map; choose its action here. Shift+click adds a bend instead (numbered PIs retain their drag controls). Select a cost-strip stretch for B/T/E/C structures and left/right noise walls. All choices are undoable.</div>`;
     if (this.objectDataChanged) {
       const notice = document.createElement('p'); notice.className = 'warn';
       notice.textContent = 'Scenario objects changed: saved building/crossing choices were cleared to avoid selecting different objects. Station-based decisions are retained.';
