@@ -45,29 +45,39 @@ describe('height texture', () => {
     }
   });
 
-  it('odd-sized coarse levels still average the whole extent (192 → … → 3 → 1)', () => {
-    // an eastward ramp: every level must keep the mean and the ramp's position, also below 3 texels
-    const n = 192, ramp = new Uint16Array(n * n);
-    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) ramp[r * n + c] = c * 10;
-    const lv = buildHeightLevels(ramp, n, n, scale, 8192).mipmaps;
-    const mean = (0.5 * (n - 1) * 10) * scale;
+  it('odd-sized coarse levels still average the whole extent (320 × 448 → 5 × 7 → 2 × 3 → 1)', () => {
+    // a plane: every level must keep the mean and the plane's position, also through 5 → 2 and 7 → 3.
+    // (A box over the level above is exact for 2:1; for odd sizes it is off by a few % of a texel, whereas
+    // dropping the last row / column would shift a level by a large part of a texel.)
+    const nw = 320, nh = 448, ramp = new Uint16Array(nw * nh);
+    for (let r = 0; r < nh; r++) for (let c = 0; c < nw; c++) ramp[r * nw + c] = c * 10 + r * 4;
+    const lv = buildHeightLevels(ramp, nw, nh, scale, 8192).mipmaps;
+    expect(lv.map((m) => `${m.width}x${m.height}`).slice(-3)).toEqual(['5x7', '2x3', '1x1']);
+    const mean = (0.5 * (nw - 1) * 10 + 0.5 * (nh - 1) * 4) * scale;
     for (let l = 0; l < lv.length; l++) {
       let sum = 0;
-      for (let c = 0; c < lv[l].width; c++) {
-        const v = at(lv, l, c, 0);
+      for (let r = 0; r < lv[l].height; r++) for (let c = 0; c < lv[l].width; c++) {
+        const v = at(lv, l, c, r);
         sum += v;
-        // texel centre in source cells → the ramp value there
-        expect(Math.abs(v - ((c + 0.5) * (n / lv[l].width) - 0.5) * 10 * scale)).toBeLessThan(0.02);
+        // texel centre in source cells → the plane's value there
+        const want = (((c + 0.5) * (nw / lv[l].width) - 0.5) * 10 + ((r + 0.5) * (nh / lv[l].height) - 0.5) * 4) * scale;
+        const texelSpan = ((nw / lv[l].width) * 10 + (nh / lv[l].height) * 4) * scale;
+        expect(Math.abs(v - want)).toBeLessThan(lv[l].width % 2 === 0 && lv[l].width >= 10 ? 0.02 : 0.05 * texelSpan);
       }
-      expect(Math.abs(sum / lv[l].width - mean)).toBeLessThan(0.02);
+      expect(Math.abs(sum / (lv[l].width * lv[l].height) - mean)).toBeLessThan(0.02);
     }
   });
 
   it('halves the grid when it exceeds the texture size limit', () => {
     const lv = buildHeightLevels(q, nx, ny, scale, 64);
     expect(lv.stride).toBe(2);
-    expect(lv.w).toBe(64);
-    expect(Math.abs(at(lv.mipmaps, 0, 3, 5) - 0.25 * scale * (q[10 * nx + 6] + q[10 * nx + 7] + q[11 * nx + 6] + q[11 * nx + 7]))).toBeLessThan(0.003);
+    expect([lv.w, lv.h]).toEqual([64, 64]);
+    const cell = (c: number, r: number) => 0.25 * scale * (q[2 * r * nx + 2 * c] + q[2 * r * nx + 2 * c + 1] + q[(2 * r + 1) * nx + 2 * c] + q[(2 * r + 1) * nx + 2 * c + 1]);
+    // texel (c, r) = mean of cells (2c, 2c+1) × (2r, 2r+1); the padding repeats the last texel; level 1 on top
+    expect(Math.abs(at(lv.mipmaps, 0, 3, 5) - cell(3, 5))).toBeLessThan(0.003);
+    expect(Math.abs(at(lv.mipmaps, 0, 40, 50) - cell(34, 44))).toBeLessThan(0.003);
+    expect(Math.abs(at(lv.mipmaps, 1, 4, 6) - 0.25 * (cell(8, 12) + cell(9, 12) + cell(8, 13) + cell(9, 13)))).toBeLessThan(0.005);
+    expect(() => buildHeightLevels(q, nx, ny, scale, -1)).toThrow();
   });
 });
 

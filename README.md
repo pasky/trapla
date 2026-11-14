@@ -6,6 +6,12 @@ Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.
 
 ![design](docs/screenshots/02-design.png)
 
+| close-up (vector map layers, extruded buildings) | contours + elevation labels | aerial photo + contours |
+|---|---|---|
+| ![close-up](docs/screenshots/03-closeup-bridge-cut.png) | ![contours](docs/screenshots/06-mid-contours.png) | ![photo](docs/screenshots/13-photo-contours.png) |
+
+More in `docs/screenshots/` (town, forest edge, deep cut, slope tint, 2× relief).
+
 ## Quick start
 
 ```sh
@@ -108,8 +114,8 @@ Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overvie
 
 Measured on a Radeon 890M laptop GPU (headless Chromium, 1600 × 1000, `node scripts/perf.mjs --gpu`): 2.5–5 ms
 per frame while orbiting, panning and zooming through all levels (worst frame ≈ 25–30 ms), with or without
-contours and photo; the same before this renderer was 2.2–3.7 ms. Load to first result ≈ 1.1 s (was ≈ 0.6 s:
-the height texture, vector geometry and buildings are built at start-up).
+contours and photo; the same before this renderer was 2.2–3.7 ms. Load to first result ≈ 0.9–1.1 s on
+localhost (was ≈ 0.55 s: the height texture, vector geometry and buildings are built at start-up, ≈ 0.3 s).
 
 Recompute for a ~21 km route takes ≈ 40 ms in Node (≈ 30 ms of it the auto-profile DP); ≈ 100 ms in the
 headless SwiftShader browser where the CPU is shared with software WebGL.

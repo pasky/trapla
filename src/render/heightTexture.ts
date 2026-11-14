@@ -46,6 +46,7 @@ function boxTaps(src: number, dst: number): { i0: Int32Array; w: Float32Array; n
 /** the texel data of all mip levels (pure; also used to restore the texture after a lost WebGL context) */
 export function buildHeightLevels(q: Uint16Array, nx: number, ny: number, scale: number, maxSize: number): HeightLevels {
   // GPUs limited to 4096 px textures get every second sample (2×2 means) of a grid larger than that
+  if (!(maxSize >= PAD)) throw new Error(`texture size limit ${maxSize} is too small for the height texture`);
   let stride = 1;
   while (Math.ceil(nx / stride / PAD) * PAD > maxSize || Math.ceil(ny / stride / PAD) * PAD > maxSize) stride *= 2;
   let src: ArrayLike<number> = q, sx = nx, sy = ny;

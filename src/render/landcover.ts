@@ -388,10 +388,11 @@ export class LandCover {
   private withState(f: () => void) {
     const r = this.renderer;
     const target = r.getRenderTarget(), auto = r.autoClear, alpha = r.getClearAlpha(), color = r.getClearColor(new THREE.Color());
-    f();
-    r.setRenderTarget(target);
-    r.autoClear = auto;
-    r.setClearColor(color, alpha);
+    try { f(); } finally {
+      r.setRenderTarget(target);
+      r.autoClear = auto;
+      r.setClearColor(color, alpha);
+    }
   }
 
   /** `photo` covers the rectangle `rect` (local metres), which may be larger than the play area */
@@ -462,27 +463,38 @@ export class LandCover {
       if (!job.valid()) continue;
       const ctrl = new AbortController();
       const me = this.active = { job, ctrl };
-      let timedOut = false;
-      const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, PHOTO_TIMEOUT_MS);
+      const warn = (why: string) => {
+        if (!this.warned) { this.warned = true; console.warn('orthophoto unavailable; showing the map instead:', why); }
+      };
+      // the deadline also covers decoding, which an abort cannot interrupt: give the queue to the next job
+      const timer = setTimeout(() => {
+        ctrl.abort();
+        if (this.active !== me) return;
+        this.active = null;
+        warn('timed out');
+        this.onChange?.();
+        this.pump();
+      }, PHOTO_TIMEOUT_MS);
       // decoded off the main thread; flipped here because WebGL ignores UNPACK_FLIP_Y for bitmaps
       fetch(job.url, { mode: 'cors', signal: ctrl.signal })
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
         .then((b) => createImageBitmap(b, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
         .then((bmp) => {
-          if (this.active === me && job.valid()) {
+          try {
+            // a late arrival (timed out or superseded while decoding) is dropped
+            if (this.active !== me || !job.valid()) return;
             const tex = new THREE.Texture(bmp as unknown as HTMLImageElement);
             tex.flipY = false;
             tex.generateMipmaps = false;
             tex.minFilter = tex.magFilter = THREE.LinearFilter;
             tex.needsUpdate = true;
-            job.apply(tex);
-            tex.dispose();
+            try { job.apply(tex); } finally { tex.dispose(); }
+          } finally {
+            bmp.close();
           }
-          bmp.close();
         })
         .catch((e) => {
-          if (ctrl.signal.aborted && !timedOut) return; // superseded
-          if (!this.warned) { this.warned = true; console.warn('orthophoto unavailable; showing the map instead:', timedOut ? 'timed out' : String(e)); }
+          if (!ctrl.signal.aborted) warn(String(e)); // aborted = superseded or timed out (reported there)
         })
         .finally(() => {
           clearTimeout(timer);

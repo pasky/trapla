@@ -30,6 +30,8 @@ const COL = {
   bad: new THREE.Color(0xff2a2a),
 };
 
+const SKY = 0xc9d6e2;
+
 export class View {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -80,11 +82,11 @@ export class View {
     this.meshStep = Number(new URLSearchParams(location.search).get('mesh') ?? 4);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0xc9d6e2);
+    this.renderer.setClearColor(SKY);
     container.appendChild(this.renderer.domElement);
     this.camera = new THREE.PerspectiveCamera(45, 1, 5, 200000);
     this.scene.add(this.world);
-    this.scene.fog = new THREE.Fog(0xc9d6e2, 30000, 90000);
+    this.scene.fog = new THREE.Fog(SKY, 30000, 90000);
     this.world.add(this.routeGroup);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8470, 1.7));
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -166,7 +168,8 @@ export class View {
     // per-pixel inputs of the terrain shader
     const u = this.terrainU;
     // (?maxtex=4096 emulates a GPU with a small texture limit: the height texture then uses every 2nd sample)
-    this.maxTex = Math.min(this.renderer.capabilities.maxTextureSize, Number(new URLSearchParams(location.search).get('maxtex')) || Infinity);
+    const limit = Number(new URLSearchParams(location.search).get('maxtex'));
+    this.maxTex = Math.min(this.renderer.capabilities.maxTextureSize, limit >= 64 ? limit : Infinity);
     const ht = buildHeightTexture(this.pack.q, T.nx, T.ny, this.pack.meta.heights.scale, this.maxTex);
     // the texel data lives on the GPU from the first frame on; drop the CPU copies (~85 MB).
     // restoreSurface() rebuilds them if the WebGL context is lost.
@@ -238,6 +241,7 @@ export class View {
    * dropped after the first upload and the land-cover levels and the footprint mask exist only on the GPU.
    */
   private restoreSurface() {
+    this.renderer.setClearColor(SKY); // three.js starts over with a black background
     const T = this.terrain, tex = this.terrainU.hTex.value as THREE.DataTexture;
     const lv = buildHeightLevels(this.pack.q, T.nx, T.ny, this.pack.meta.heights.scale, this.maxTex);
     tex.mipmaps = lv.mipmaps as unknown as THREE.DataTexture['mipmaps'];

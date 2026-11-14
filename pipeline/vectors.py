@@ -94,12 +94,21 @@ def polygons_of(el, rings_of):
     hs = [h for h in hs if not h.is_empty]
     if not hs:
         return unary_union(ps)
-    # an outer ring lying inside a hole is an island: it must survive the subtraction of the holes
-    islands = [p for p in ps if any(h.contains(p) for h in hs)]
-    main = [p for p in ps if not any(p is q for q in islands)]
-    g = unary_union(main).difference(unary_union(hs)) if main else Polygon()
-    if islands:
-        g = unary_union([g] + islands)
+    # each hole belongs to the smallest outer ring around it, so islands inside holes (and their own
+    # holes) survive; a hole no outer contains (broken data) is cut from every outer
+    holes: list[list] = [[] for _ in ps]
+    stray = []
+    for h in hs:
+        owners = [i for i, p in enumerate(ps) if p.contains(h)]
+        if owners:
+            holes[min(owners, key=lambda i: ps[i].area)].append(h)
+        else:
+            stray.append(h)
+    parts = []
+    for p, mine in zip(ps, holes):
+        cut = mine + stray
+        parts.append(p.difference(unary_union(cut)) if cut else p)
+    g = unary_union(parts)
     return None if g.is_empty else g
 
 
