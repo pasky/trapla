@@ -1,4 +1,5 @@
 // Differential check against an unoptimized worktree, without duplicating the solver in tests.
+// git worktree add --detach /tmp/trapla-perf-before 2e10999
 // npx tsx scripts/check-profile-lut.ts /tmp/trapla-perf-before/src/core/autoprofile.ts
 import { deepStrictEqual } from 'node:assert';
 import { resolve } from 'node:path';

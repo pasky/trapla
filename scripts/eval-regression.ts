@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// Freeze BEFORE an optimization; verify afterwards (never regenerate to accept a changed bill).
+// Freeze BEFORE an optimization; verify afterwards (re-capture/re-baselining requires review).
 // npx tsx scripts/eval-regression.ts --capture | npx tsx scripts/eval-regression.ts
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -15,8 +15,8 @@ export function packFingerprint(): Record<string, string> {
   return Object.fromEntries(files.map(file => [file, createHash('sha256').update(readFileSync(`${packPath}/${file}`)).digest('hex')]));
 }
 export function regressionPackAvailable() {
-  const files = JSON.parse(readFileSync(fingerprintPath, 'utf8'));
-  return Object.keys(files).every(file => existsSync(`${packPath}/${file}`));
+  // An absent optional pack skips integration tests; a partial/corrupt pack must fail loudly.
+  return existsSync(`${packPath}/meta.json`);
 }
 export function regressionContext(checkPack = true): EvalContext {
   if (checkPack && JSON.stringify(packFingerprint()) !== JSON.stringify(JSON.parse(readFileSync(fingerprintPath, 'utf8')))) {

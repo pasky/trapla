@@ -88,12 +88,12 @@ const FINE_BAND = 6;
 /** fine passes spent on the mass-balance search (incl. the first) */
 const BALANCE_EVALS = 4;
 
-interface CostLut { values: Float64Array; cost: AutoProfileOptions['costPerM'] }
+interface CostLut { values: Float64Array[]; cost: AutoProfileOptions['costPerM'] }
 function buildLut(cost: AutoProfileOptions['costPerM'], classes: number): CostLut {
-  const m = Math.round((2 * H_MAX) / H_STEP) + 1;
   // Sparse crossing classes used to price all 4,001 heights, even for narrow search bands.
   // Each solve fills its required envelope, retaining the identical grid and interpolation.
-  return { values: new Float64Array(classes * 4 * m).fill(NaN), cost };
+  // Allocate only class/kind blocks actually used by stations, not four blocks per class.
+  return { values: new Array(classes * 4), cost };
 }
 
 /** does the grade line satisfy max gradient and the (effective) vertical radii? */
@@ -169,7 +169,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const blockStart = costIdx.length;
       for (let j = i; j < Math.min(i + stride, last[k] + 1); j++) {
         const kind = kinds?.[j] ?? -1, cls = costClasses?.[j] ?? 0;
-        const off = (cls * 4 + kind + 1) * (lutMax + 1);
+        const off = cls * 4 + kind + 1;
         let same = -1;
         if (kind < 0) for (let q = blockStart; q < costIdx.length; q++) if (costOffset[q] === off) { same = q; break; }
         if (same >= 0) costWeight[same] += ds;
@@ -334,7 +334,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     for (let k = 0; k < nK; k++) {
       const sk = k * D;
       for (let q = costStart[k]; q < costStart[k + 1]; q++) {
-        const i = costIdx[q], block = costOffset[q] / (lutMax + 1);
+        const i = costIdx[q], block = costOffset[q];
         const h0 = zA + zlo[k] * u + (-dzMax * u) / D * (s[i] - sk) - g[i];
         const h1 = zA + zhi[k] * u + (dzMax * u) / D * (s[i] - sk) - g[i];
         low[block] = Math.min(low[block], Math.max(0, Math.min(lutMax, Math.floor((h0 + H_MAX) / H_STEP) - 1)));
@@ -342,9 +342,10 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       }
     }
     for (let block = 0; block < low.length; block++) {
-      const off = block * (lutMax + 1);
-      for (let j = low[block]; j <= high[block]; j++) if (Number.isNaN(lut[off + j])) {
-        lut[off + j] = table.cost(-H_MAX + j * H_STEP, block % 4 - 1, Math.floor(block / 4));
+      if (high[block] < 0) continue;
+      const values = lut[block] ??= new Float64Array(lutMax + 1).fill(NaN);
+      for (let j = low[block]; j <= high[block]; j++) if (Number.isNaN(values[j])) {
+        values[j] = table.cost(-H_MAX + j * H_STEP, block % 4 - 1, Math.floor(block / 4));
       }
     }
     let cur = new Float64Array(ND).fill(Infinity);
@@ -375,8 +376,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             let x = (h + H_MAX) / H_STEP;
             if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
             const j = x | 0;
-            const off = costOffset[q];
-            c += (j >= lutMax ? lut[off + lutMax] : lut[off + j] + (lut[off + j + 1] - lut[off + j]) * (x - j)) * costWeight[q];
+            const values = lut[costOffset[q]];
+            c += (j >= lutMax ? values[lutMax] : values[j] + (values[j + 1] - values[j]) * (x - j)) * costWeight[q];
           }
           for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
             const i = clrIdx[q];

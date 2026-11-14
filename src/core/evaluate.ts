@@ -313,6 +313,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const topsoilPerM2 = PRICES.topsoilDepth * PRICES.topsoil;
   // Hydraulics does not depend on the mass-balance shadow price. Cache the sparse height LUT
   // across its iterations instead of resizing every barrel twice per entry on every iteration.
+  // costFor is called only by autoProfile's fixed, bounded height grid, never at arbitrary h.
   const heightIndex = (h: number) => Math.round((h + PROFILE_HEIGHT_MAX) / PROFILE_HEIGHT_STEP);
   const dryOption = { cost: 0, bridge: false, tunnel: false };
   const waterPrice = { ...dryOption }; // scratch: consumed immediately by the synchronous cost callback
