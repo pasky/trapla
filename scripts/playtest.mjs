@@ -131,7 +131,7 @@ try {
   // a spot on the line clear of crossed-road marks (those open the crossing instead)
   const sPin = await T(() => {
     const r = window.trapla.result();
-    for (let s = r.length * 0.8; s > r.length * 0.3; s -= 50) if (!r.crossings.some((c) => Math.abs(c.s - s) < 500) && !r.waterCrossings.some((c) => Math.abs(c.s - s) < 300)) return Math.round(s);
+    for (let s = r.length * 0.8; s > r.length * 0.3; s -= 50) if (!r.crossings.some((c) => Math.abs(c.s - s) < 150) && !r.waterCrossings.some((c) => Math.abs(c.s - s) < 150)) return Math.round(s);
     return Math.round(r.length * 0.8);
   });
   let q = await T((s) => window.trapla.profilePoint(s), sPin);

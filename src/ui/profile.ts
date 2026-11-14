@@ -866,10 +866,19 @@ export class ProfilePanel {
     if (k !== null) return { kind: 'vpi', k };
     const pin = this.pins.find((p) => Math.abs(this.X(p.s) - px) < 8 && py > this.Y(p.z) - 23 && py < this.Y(p.z) + 4);
     if (pin) return { kind: 'pin', s: pin.s };
-    const x = r.crossings.find((c) => c.roadId !== undefined && Math.hypot(this.X(c.s) - px, this.Y(r.grade[c.i] - c.h) - py) < 8);
-    if (x) return { kind: 'crossing', roadId: x.roadId! };
+    // a crossed road's mark, unless the road line is nearer: zoomed out, the marks sit densely on the line
+    // and would otherwise take every click meant for pinning (their radius shrinks there too)
     const s = this.S(px);
-    if (s > 20 && s < r.length - 20 && Math.abs(this.Y(this.gradeAt(s)) - py) < 6) return { kind: 'line', s };
+    const onLine = s > 20 && s < r.length - 20 ? Math.abs(this.Y(this.gradeAt(s)) - py) : Infinity;
+    const reach = (this.v1 - this.v0) / Math.max(1, this.W - this.pad.l - this.pad.r) > 10 ? 4 : 8;
+    let x: (typeof r.crossings)[number] | null = null, xd = reach;
+    for (const c of r.crossings) {
+      if (c.roadId === undefined) continue;
+      const d = Math.hypot(this.X(c.s) - px, this.Y(r.grade[c.i] - c.h) - py);
+      if (d < xd) { xd = d; x = c; }
+    }
+    if (x && xd <= onLine) return { kind: 'crossing', roadId: x.roadId! };
+    if (onLine < 6) return { kind: 'line', s };
     return { kind: 'chart' };
   }
 
