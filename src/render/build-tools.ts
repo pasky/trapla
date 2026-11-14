@@ -15,6 +15,9 @@ export class BuildAnnotations {
     const prev = view.onRender;
     view.onRender = () => { prev?.(); this.position(); };
   }
+  private selectedCrossing: number | null = null;
+  /** ring around the crossed road whose card is open */
+  selectCrossing(roadId: number | null) { if (roadId === this.selectedCrossing) return; this.selectedCrossing = roadId; if (this.current) this.setResult(this.current.r, this.current.d); }
   selectBuilding(j: number | null) { if (j === this.selectedBuilding) return; this.selectedBuilding = j; if (this.current) this.setResult(this.current.r, this.current.d); }
   setResult(r: Result, d: Design) {
     this.current = { r, d };
@@ -35,6 +38,8 @@ export class BuildAnnotations {
       this.add(c.x, c.y, c.bed + Math.max(c.h, 0) + 3, '○', 'culvert',
         `Watercourse culvert ${c.opening} at km ${(c.s / 1000).toFixed(2)}: ${c.length.toFixed(0)} m long, estimated Q100 ${c.q100.toFixed(2)} m³/s${c.truncated ? ' (incomplete catchment)' : ''} — click to show it in the profile`, () => this.onCulvert?.(c.s));
     }
+    const xing = this.selectedCrossing === null ? undefined : r.crossings.find((c) => c.roadId === this.selectedCrossing);
+    if (xing) this.add(xing.x, xing.y, Math.max(r.grade[xing.i], r.grade[xing.i] - xing.h) + 2, '', 'selected-crossing', 'The crossed road whose options are open on the right', () => {});
     const buildings = new Map<number, 'buy' | 'keep' | undefined>((d.buildingOverrides ?? []).map((o) => [o.j, o.action]));
     if (this.selectedBuilding !== null && !buildings.has(this.selectedBuilding)) buildings.set(this.selectedBuilding, undefined);
     for (const [j, action] of buildings) {

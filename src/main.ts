@@ -67,7 +67,7 @@ async function main() {
   tools.describeBuilding = (j) => { const f = pack.overlays.binfo?.[j]; return buildingKind(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0)); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); closeStation(); hud.revealContext(); };
+  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); annotations.selectCrossing(null); profile.selectCrossing(null); closeStation(); hud.revealContext(); };
   const closeBuilding = () => { tools.selectBuilding(null); annotations.selectBuilding(null); };
   tools.ev.closeBuilding = closeBuilding;
   annotations.onBuilding = selectBuilding;
@@ -80,7 +80,10 @@ async function main() {
     const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
     selBar.showStation(s, pin?.z ?? last.grade[i], !!pin, store.design.profileMode === 'auto');
   };
-  const selectStation = (s: number) => { station = s; tools.selectStation(s); annotations.selectBuilding(null); profile.selectStation(s); showStation(); };
+  const selectStation = (s: number) => {
+    station = s; tools.selectStation(s); annotations.selectBuilding(null); annotations.selectCrossing(null); profile.selectCrossing(null);
+    profile.selectStation(s); showStation();
+  };
   const closeStation = () => { station = null; profile.selectStation(null); selBar.hide('station'); };
   annotations.onPin = selectStation;
   annotations.onCulvert = (s) => { profile.focus(s - 250, s + 250); };
@@ -108,13 +111,14 @@ async function main() {
   const selectCrossing = (roadId: number) => {
     tools.selectCrossing(roadId);
     annotations.selectBuilding(null);
+    annotations.selectCrossing(roadId);
     profile.selectCrossing(roadId);
     const c = last?.crossings.find((c) => c.roadId === roadId);
     closeStation();
     if (c) view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] }, 'crossed road');
     hud.revealContext();
   };
-  const closeCrossing = () => { tools.selectCrossing(null); profile.selectCrossing(null); view.setHover(null); };
+  const closeCrossing = () => { tools.selectCrossing(null); profile.selectCrossing(null); annotations.selectCrossing(null); view.setHover(null); };
   tools.ev.selectCrossing = (roadId) => {
     selectCrossing(roadId);
     // from the list / ‹ › buttons: bring the crossing into view

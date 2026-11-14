@@ -4,14 +4,17 @@
 // buy a building → paint a noise wall → undo / redo → map views C / S / E / O / N → start over.
 // Checks what a player would notice (nothing overlaps the score, cards open where expected, Undo
 // works) and prints every step.
-// node scripts/playtest.mjs [--docs] [--size=1280x800]   (--docs: docs/screenshots/49…, else /tmp/trapla-playtest)
-import { mkdirSync } from 'node:fs';
+// Ends with the reference design: the map overview (decluttered symbols) and demolished buildings close up.
+// node scripts/playtest.mjs [--docs] [--size=1280x800]   (every step into /tmp/trapla-playtest; --docs writes
+// the gallery subset to docs/screenshots/49…)
+import { mkdirSync, readFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
 
 const DOCS = process.argv.includes('--docs');
 const [W, H] = (process.argv.find((a) => a.startsWith('--size='))?.slice(7) ?? '1280x800').split('x').map(Number);
 const OUT = DOCS ? 'docs/screenshots' : process.env.OUT ?? '/tmp/trapla-playtest';
+const GALLERY = ['first-run', 'forced-bridge', 'noise-wall', 'pinned-height', 'crossing', 'keep-building', 'noise-view', 'profile-key', 'start-over', 'overview', 'demolished'];
 const FIRST = 49; // docs numbering continues after the highest existing screenshot
 mkdirSync(OUT, { recursive: true });
 const PORT = Number(process.env.PORT ?? 5207);
@@ -32,7 +35,8 @@ const idle = async (ms = 150) => {
 const get = () => T(() => window.trapla.getDesign());
 let n = 0;
 const shot = async (name) => {
-  const file = DOCS ? `${OUT}/${FIRST + n}-${name}.png` : `${OUT}/${String(n).padStart(2, '0')}-${name}.png`;
+  if (DOCS && !GALLERY.includes(name)) return;
+  const file = DOCS ? `${OUT}/${FIRST + n}-playtest-${name}.png` : `${OUT}/${String(n).padStart(2, '0')}-${name}.png`;
   n++;
   await page.screenshot({ path: file });
   console.log('SHOT', file);
@@ -58,7 +62,7 @@ try {
   ok(!(await overlap('#intro', '#viewbar')) && !(await overlap('#intro', '#editbar')), 'the intro does not cover the map buttons');
   const score = await page.locator('#score').boundingBox();
   ok(score.y < 20 && score.height < 160, `the score card is at the top of the HUD (${Math.round(score.height)} px tall)`);
-  await shot('playtest-first-run');
+  await shot('first-run');
   await page.click('#intro-ok');
   ok(!(await visible('#intro')), '"Got it" dismisses the intro');
 
@@ -69,7 +73,7 @@ try {
   let d = await get();
   ok(d.pis.length === 2, `two clicks on the map add two bends (${d.pis.length})`);
   ok(await visible('#pi-card'), 'the new bend is selected and its card opens under the score');
-  await shot('playtest-two-bends');
+  await shot('two-bends');
 
   // 3. drag the first bend
   const m = await page.locator('.pi[data-i="0"]').boundingBox();
@@ -79,12 +83,12 @@ try {
   await page.mouse.up(); await idle();
   d = await get();
   ok(Math.hypot(d.pis[0].x - p0.x, d.pis[0].y - p0.y) > 50, 'dragging a bend moves it');
-  await shot('playtest-drag-bend');
+  await shot('drag-bend');
 
   // 4. hover the profile: the tooltip shows the costs there, the map marks the spot
   await page.mouse.move(cb.x + cb.width * 0.45, cb.y + cb.height * 0.4); await page.waitForTimeout(300);
   ok(await visible('.profile-tip'), 'hovering the profile shows the cost tooltip');
-  await shot('playtest-profile-hover');
+  await shot('profile-hover');
 
   // 5. select a stretch by dragging across the profile; force a bridge from the stretch card
   const y = cb.y + cb.height * 0.45;
@@ -97,14 +101,14 @@ try {
   d = await get();
   ok(d.structureOverrides.length === 1 && d.structureOverrides[0].kind === 1, 'Bridge on the stretch card forces a bridge');
   ok(await page.locator('#range [data-structure="1"].on').count() === 1, 'the Bridge button shows as chosen');
-  await shot('playtest-forced-bridge');
+  await shot('forced-bridge');
 
   // 6. noise wall on the selected stretch: right side, 5 m
   await page.click('#range [data-side="R"]');
   await page.fill('#wall-height', '5'); await page.click('#wall-add'); await idle();
   d = await get();
   ok(d.wallOverrides?.length === 1 && d.wallOverrides[0].side === 'R' && d.wallOverrides[0].height === 5, 'a 5 m wall on the right side of the stretch');
-  await shot('playtest-noise-wall');
+  await shot('noise-wall');
   await page.keyboard.press('Escape'); await idle();
   ok(!(await visible('#range')), 'Esc deselects the stretch');
 
@@ -128,12 +132,14 @@ try {
   await page.mouse.up(); await idle();
   d = await get();
   ok(d.gradePins[0].z > pin.z + 1, `dragging the pin raises the road (${pin.z} → ${d.gradePins[0].z} m)`);
-  await shot('playtest-pinned-height');
+  await shot('pinned-height');
   await page.keyboard.press('Escape');
 
   // 8. a crossed road: click it on the map, choose another solution in its card
   const xing = await T(() => {
-    const r = window.trapla.result(), c = r.crossings.find((c) => c.roadId !== undefined && c.type === 'overbridge') ?? r.crossings.find((c) => c.roadId !== undefined);
+    // away from A / B (their tie-ins have no room for links)
+    const r = window.trapla.result(), mid = r.crossings.filter((c) => c.roadId !== undefined && c.s > 2000 && c.s < r.length - 2000);
+    const c = mid.find((c) => c.type === 'overbridge') ?? mid[0];
     window.trapla.lookAt(c.x, c.y, 900, 20, 55);
     return { roadId: c.roadId, type: c.type, x: c.x, y: c.y, z: r.grade[c.i] - Math.min(0, c.h) + 2 };
   });
@@ -147,7 +153,7 @@ try {
   await page.click(`#crossing-choice [data-crossing="${other}"]`); await idle();
   d = await get();
   ok(d.crossingOverrides?.some((o) => o.roadId === xing.roadId && o.type === other), `the crossing is changed to ${other}`);
-  await shot('playtest-crossing');
+  await shot('crossing');
   await page.keyboard.press('Escape');
 
   // 9. a building: click one near the road, keep it, then buy it out
@@ -160,7 +166,7 @@ try {
   await page.mouse.click(view.x + bs.sx, view.y + bs.sy); await idle();
   ok(await visible('#building-card'), 'clicking a building on the map opens its card');
   await page.click('#building-choice [data-building="keep"]'); await idle();
-  await shot('playtest-keep-building');
+  await shot('keep-building');
   await page.click('#building-choice [data-building="buy"]'); await idle();
   ok(await T((j) => window.trapla.result().boughtOut.some((p) => p.j === j && p.reason === 'manual'), j), 'Buy out buys the building');
   await page.keyboard.press('Escape');
@@ -176,24 +182,24 @@ try {
   await T(() => window.trapla.resetCamera()); await idle(300);
   for (const k of ['c', 's']) await page.keyboard.press(k);
   await idle(300);
-  await shot('playtest-contours-slope');
+  await shot('contours-slope');
   for (const k of ['c', 's', 'e', 'e']) await page.keyboard.press(k);
   await idle(300);
-  await shot('playtest-relief');
+  await shot('relief');
   for (const k of ['e', 'e', 'n']) await page.keyboard.press(k);
   await idle(300);
   ok(await visible('#noise-legend'), 'N shows the noise view and its legend');
   ok(!(await overlap('#noise-legend', '#legend')), 'the noise legend does not cover the map legend');
-  await shot('playtest-noise-view');
+  await shot('noise-view');
   await page.keyboard.press('n');
   await page.keyboard.press('o'); await idle(800);
-  await shot('playtest-photo');
+  await shot('photo');
   await page.keyboard.press('o');
 
   // 12. the profile key and the HUD's foldable sections
   await page.click('#key-toggle'); await page.waitForTimeout(150);
   ok(await visible('#profile-key'), 'Key opens the full legend of the profile');
-  await shot('playtest-profile-key');
+  await shot('profile-key');
   await page.keyboard.press('Escape');
   ok(!(await visible('#profile-key')), 'Esc closes it');
 
@@ -201,9 +207,22 @@ try {
   await page.click('#reset'); await idle();
   d = await get();
   ok(d.pis.length === 0 && await visible('#toast'), 'Start over goes back to the straight line and offers Undo');
-  await shot('playtest-start-over');
+  await shot('start-over');
   await page.click('#toast button:not(.x)'); await idle();
   ok((await get()).pis.length === 2, 'the toast\'s Undo brings the design back');
+
+  // 14. the reference design: the overview keeps the route readable (crowded bends shrink to dots,
+  //     culverts and walls are small marks); demolished buildings are gone from the map
+  const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
+  await T((d) => { window.trapla.setDesign(d); window.trapla.resetCamera(); window.trapla.profileFit(); }, design); await idle(300);
+  await page.mouse.move(view.x + 5, view.y + view.height - 5);
+  const minis = await T(() => document.querySelectorAll('.pi.mini').length);
+  ok(minis > 0, `crowded bends at the overview shrink to dots (${minis})`);
+  await shot('overview');
+  const dem = await T(() => { const r = window.trapla.result(), b = r.demolished[0]; window.trapla.lookAt(r.x[b.i], r.y[b.i], 450, 30, 50); return r.demolished.length; });
+  await idle(500);
+  ok(dem > 0, `${dem} demolished buildings, drawn as red squares without their houses`);
+  await shot('demolished');
 
   ok(errors.length === 0, `no browser errors ${errors.join(' | ')}`);
 } finally { await browser.close(); await server.close(); }
