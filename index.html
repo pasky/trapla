@@ -11,6 +11,7 @@
       <div id="view">
         <div id="overlay"></div>
         <div id="brand">Trapla <small>prototype</small></div>
+        <div id="editbar"></div>
         <div id="viewbar"></div>
         <div id="legend">
           <span><i style="background:#ffb000"></i>road</span>
@@ -26,7 +27,8 @@
         <div id="status">loading…</div>
       </div>
       <div id="profile">
-        <div class="profile-bar"><b>Longitudinal profile</b> <span>terrain · grade line · <span class="sw fill"></span>fill <span class="sw cut"></span>cut <span class="sw br"></span>bridge <span class="sw tn"></span>tunnel</span> <button id="fit">Fit</button></div>
+        <div class="profile-bar"><b>Longitudinal profile</b> <span class="legend"><span class="sw bendmk">1</span>bend (as on the map) <span class="lg-hp"><span class="sw hp"></span>height point</span> <span class="sw pinmk"></span>pinned height <span class="sw ground"></span>ground <span class="sw road"></span>road height <span class="sw fill"></span>embankment <span class="sw cut"></span>cut <span class="sw br"></span>bridge <span class="sw tn"></span>tunnel</span>
+          <span class="zoom" role="group" aria-label="Profile zoom"><button id="fit" title="Zoom out to the whole route" hidden>⤢ Whole route</button><button id="zoom-out" title="Zoom out (or turn the mouse wheel over the profile)">−</button><button id="zoom-in" title="Zoom in (or click the profile where you want to look closer)">+</button></span></div>
         <canvas id="profile-canvas"></canvas>
       </div>
       <aside id="hud"></aside>

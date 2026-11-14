@@ -19,6 +19,8 @@ import { CurveEditor } from './ui/curve-edit';
 import { Hud } from './ui/hud';
 import { ProfilePanel } from './ui/profile';
 import { ViewBar, type ViewPrefs } from './ui/viewbar';
+import { EditBar } from './ui/editbar';
+import { SelectionBar } from './ui/selection-bar';
 import type { WorkerIn } from './worker';
 
 const status = document.getElementById('status')!;
@@ -49,17 +51,28 @@ async function main() {
   const extras = new RouteExtras(view);
   const crossingRenderer = new CrossingRenderer(view);
   const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
-  const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
+  const profileCanvas = document.getElementById('profile-canvas') as HTMLCanvasElement;
+  const profile = new ProfilePanel(profileCanvas);
+  const selBar = new SelectionBar(document.getElementById('profile')!, profileCanvas, profile);
+  const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo());
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const tools = new BuildTools(document.getElementById('hud')!);
   tools.objectDataChanged = store.objectDataChanged;
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); profile.selectStation(null); };
+  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); closeStation(); };
   annotations.onBuilding = selectBuilding;
   tools.ev.selectBuilding = selectBuilding;
   tools.ev.building = (j, action) => store.update((d) => { d.buildingOverrides = setBuildingOverride(d.buildingOverrides ?? [], j, action); });
-  const selectStation = (s: number) => { tools.selectStation(s); profile.selectStation(s); };
+  let station: number | null = null;
+  const showStation = () => {
+    if (station === null || !last) return;
+    const s = station, pin = store.design.gradePins?.find((p) => Math.abs(p.s - s) < 0.1);
+    const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
+    selBar.showStation(s, pin?.z ?? last.grade[i], !!pin, store.design.profileMode === 'auto');
+  };
+  const selectStation = (s: number) => { station = s; tools.selectStation(s); profile.selectStation(s); showStation(); };
+  const closeStation = () => { station = null; profile.selectStation(null); selBar.hide('station'); };
   annotations.onPin = selectStation;
   tools.ev.selectStation = selectStation;
   tools.ev.pin = (s, z) => store.update((d) => {
@@ -74,7 +87,10 @@ async function main() {
 
   // station range picked for the cost breakdown: profile panel → HUD, profile, map
   const selection = new RangeSelection();
-  selection.on((range) => { profile.setSelection(range); hud.setRange(range); extras.setRange(range); tools.setRange(range); });
+  selection.on((range) => {
+    profile.setSelection(range); hud.setRange(range); extras.setRange(range); tools.setRange(range);
+    if (range) { closeStation(); selBar.showRange(range, store.design.structureOverrides); } else selBar.hide('range');
+  });
 
   let selectedPi: number | null = null;
   let selectedVpi: number | null = null;
@@ -82,7 +98,7 @@ async function main() {
   const selectCrossing = (roadId: number) => {
     tools.selectCrossing(roadId);
     const c = last?.crossings.find((c) => c.roadId === roadId);
-    profile.selectStation(null);
+    closeStation();
     if (c) view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] });
   };
   tools.ev.selectCrossing = selectCrossing;
@@ -120,6 +136,11 @@ async function main() {
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
     profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+    profile.setMode(rd.profileMode);
+    document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
+    profile.setBends(bendStations(r, rd));
+    if (selection.range && selBar.showing === 'range') selBar.showRange(selection.range, rd.structureOverrides);
+    showStation();
     tools.objectDataChanged = store.objectDataChanged;
     tools.setResult(r, rd);
     annotations.setResult(r, rd);
@@ -140,6 +161,8 @@ async function main() {
   });
   const selectPi = (i: number | null) => {
     selectedPi = i;
+    profile.selectBend(i);
+    if (i === null) selBar.hide('bend');
     view.setDesign(store.design, i);
     hud.setSelectedPi(i, last, store.design);
     curveEdit.refresh();
@@ -148,7 +171,9 @@ async function main() {
   store.on((d) => {
     if (selectedPi !== null && selectedPi >= d.pis.length) selectedPi = null;
     view.setDesign(d, selectedPi);
-    hud.setDesign(d, store.canUndo(), store.canRedo());
+    hud.setDesign(d);
+    editBar.set(store.undoLabel(), store.redoLabel());
+    profile.selectBend(selectedPi);
     curveEdit.refresh();
     requestEval();
   });
@@ -201,12 +226,104 @@ async function main() {
     onVpiDelete: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; },
     onVpiSelect: (i) => { selectedVpi = i; hud.setSelectedVpi(i, last); },
     onSelect: (range) => selection.set(range),
-    onHover: (s) => {
+    onHover: (s, label) => {
       if (s === null || !last) { view.setHover(null); return; }
       const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
-      view.setHover({ x: last.x[i], y: last.y[i], z: last.grade[i] });
+      view.setHover({ x: last.x[i], y: last.y[i], z: last.grade[i] }, label);
     },
+    // a click in the profile zooms it there; the map glides to the same spot at a matching distance
+    onZoomTo: (s, span) => {
+      if (!last) return;
+      const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
+      view.flyTo(last.x[i], last.y[i], Math.max(700, Math.min(20000, span * 0.9)));
+    },
+    onView: () => updateZoomButtons(),
+    onDraw: () => selBar.place(),
+    onBendHover: (i) => highlightBend(i),
+    onBendSelect: (i) => {
+      selectPi(i);
+      const pi = store.design.pis[i], b = last && bendStations(last, store.design)[i];
+      if (pi) view.flyTo(pi.x, pi.y);
+      if (b && !selection.range) { closeStation(); selBar.showBend(i, b.s, store.design.profileMode === 'auto'); }
+    },
+    onPinAdd: (s) => addHeightAt(s),
+    onPinDrag: (s, z) => store.update((d) => { const p = d.gradePins?.find((p) => Math.abs(p.s - s) < 0.1); if (p) p.z = z; }, false),
+    onPinDragEnd: () => store.commit(),
   };
+
+  /** Automatic: pin the road's current height at station s (then drag / type it); By hand: add a height point */
+  const addHeightAt = (s: number) => {
+    if (!last) return;
+    const i = Math.max(0, Math.min(last.n - 2, Math.floor(s / last.ds))), t = (s - last.s[i]) / last.ds;
+    const z = Math.round((last.grade[i] + t * (last.grade[i + 1] - last.grade[i])) * 10) / 10;
+    if (store.design.profileMode === 'manual') { profile.ev.onVpiAdd?.(s, z); return; }
+    if (!store.design.gradePins?.some((p) => Math.abs(p.s - s) < 0.1)) tools.ev.pin?.(s, z);
+    selectStation(s);
+  };
+
+  // ---- profile zoom buttons ----
+  const zoomOut = document.getElementById('zoom-out') as HTMLButtonElement;
+  const fitB = document.getElementById('fit') as HTMLButtonElement;
+  const updateZoomButtons = () => { zoomOut.disabled = profile.isWhole; fitB.hidden = profile.isWhole; };
+  document.getElementById('zoom-in')!.onclick = () => profile.zoom(2);
+  zoomOut.onclick = () => profile.zoom(0.5);
+  fitB.onclick = () => profile.fit();
+  updateZoomButtons();
+
+  // ---- the selection bar over the profile ----
+  selBar.ev = {
+    structure: (kind) => setStructure(kind),
+    close: (what) => { if (what === 'range') selection.set(null); else if (what === 'bend') selBar.hide('bend'); else closeStation(); },
+    walls: () => {
+      const w = document.getElementById('wall-side')?.closest('div');
+      if (!w) return;
+      w.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      w.classList.remove('flash'); void w.offsetWidth; w.classList.add('flash');
+    },
+    pin: (s, z) => tools.ev.pin?.(s, z),
+    heightAt: (s) => { selBar.hide('bend'); addHeightAt(Math.round(s)); },
+  };
+
+  // ---- hover links between the map and the profile ----
+  // the bend markers: profile → map
+  const highlightBend = (i: number | null) => {
+    for (const el of document.querySelectorAll<HTMLElement>('.pi.hl')) el.classList.remove('hl');
+    if (i !== null) document.querySelector<HTMLElement>(`.pi[data-i="${i}"]`)?.classList.add('hl');
+  };
+  // map → profile: a bend marker, or the road under the mouse
+  const overlayEl = document.getElementById('overlay')!;
+  overlayEl.addEventListener('pointerover', (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>('.pi');
+    if (el) profile.setBendHover(Number(el.dataset.i));
+  });
+  overlayEl.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('.pi')) profile.setBendHover(null); });
+  let mapHoverAt: { x: number; y: number } | null = null, mapHoverFrame = 0, mapHovering = false;
+  const mapHoverTick = () => {
+    mapHoverFrame = 0;
+    const at = mapHoverAt, r = last;
+    let s: number | null = null, k = -1;
+    const p = at && r ? view.pick(at.x, at.y) : null;
+    if (p && r) {
+      let bd = Infinity;
+      for (let i = 0; i < r.n; i++) { const d = (r.x[i] - p.x) ** 2 + (r.y[i] - p.y) ** 2; if (d < bd) { bd = d; k = i; } }
+      const tol = CATEGORIES[store.design.category].crownWidth / 2 + 14 * view.metresPerPixel;
+      if (Math.sqrt(bd) < tol) s = r.s[k];
+    }
+    if (s !== null && r) {
+      mapHovering = true;
+      profile.setHover(s, true);
+      view.setHover({ x: r.x[k], y: r.y[k], z: r.grade[k] });
+    } else if (mapHovering) {
+      mapHovering = false;
+      profile.setHover(null, true);
+      view.setHover(null);
+    }
+  };
+  view.renderer.domElement.addEventListener('pointermove', (e) => {
+    mapHoverAt = e.buttons ? null : { x: e.clientX, y: e.clientY }; // not while panning / rotating
+    if (!mapHoverFrame) mapHoverFrame = requestAnimationFrame(mapHoverTick);
+  });
+  view.renderer.domElement.addEventListener('pointerleave', () => { mapHoverAt = null; if (!mapHoverFrame) mapHoverFrame = requestAnimationFrame(mapHoverTick); });
 
   const paintRange = () => {
     const range = selection.range;
@@ -240,12 +357,11 @@ async function main() {
       store.update((d) => { if (mode === 'manual') takeProfile(d); else d.profileMode = 'auto'; });
     },
     onStructure: setStructure,
-    onUndo: () => store.undo(),
-    onRedo: () => store.redo(),
     onReset: () => { selectPi(null); store.reset(); view.resetCamera(); },
     onLoadBest: () => { if (store.best) store.replace(store.best.design); },
     onRadius: (i, r) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }),
     onDeletePi: (i) => { store.update((d) => { d.pis.splice(i, 1); }); selectPi(null); },
+    onBendHeight: (i) => { const b = last && bendStations(last, store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     onVpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
     onDeleteVpi: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; hud.setSelectedVpi(null, last); },
     onClearRange: () => selection.set(null),
@@ -260,8 +376,22 @@ async function main() {
     },
   };
 
+  const undoRedo = (redo: boolean) => {
+    // a focused select / checkbox would keep the build tools from redrawing with the restored design
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    if (redo) store.redo(); else store.undo();
+  };
   window.addEventListener('keydown', (e) => {
-    if ((e.target as HTMLElement).closest('input, select, textarea, [contenteditable="true"]')) return;
+    const t = e.target as HTMLElement;
+    // Undo / Redo also right after choosing in a select or ticking a box; text fields keep their own undo
+    const typing = t.closest('textarea, [contenteditable="true"]') || (t.matches('input') && !t.matches('[type=checkbox], [type=radio], [type=range]'));
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && !typing && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+      e.preventDefault();
+      undoRedo(e.key.toLowerCase() === 'y' || e.shiftKey);
+      return;
+    }
+    if (t.closest('input, select, textarea, [contenteditable="true"]')) return;
     if (!e.ctrlKey && !e.metaKey && !e.altKey && selection.range) {
       const key = e.key.toLowerCase();
       if (['b', 't', 'e', 'c'].includes(key)) {
@@ -270,18 +400,16 @@ async function main() {
         return;
       }
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) store.redo(); else store.undo(); }
-    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); store.redo(); }
-    else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPi !== null) {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPi !== null) {
       const i = selectedPi;
       store.update((d) => { d.pis.splice(i, 1); });
       selectPi(null);
-    } else if (e.key === 'Escape') { if (selection.range) selection.set(null); else selectPi(null); }
+    } else if (e.key === 'Escape') { if (selection.range) selection.set(null); else if (station !== null) closeStation(); else selectPi(null); }
   }, { capture: true }); // range shortcuts take precedence over the map's E/C shortcuts
-  document.getElementById('fit')!.onclick = () => profile.fit();
 
   view.setDesign(store.design, null);
-  hud.setDesign(store.design, store.canUndo(), store.canRedo());
+  hud.setDesign(store.design);
+  editBar.set(store.undoLabel(), store.redoLabel());
   setStatus('computing…');
   requestEval();
 
@@ -313,6 +441,11 @@ async function main() {
     profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
     profileFit: () => profile.fit(),
     profileView: () => profile.view,
+    profileHover: () => profile.hover,
+    profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
+    bendStations: () => last && bendStations(last, store.design),
+    cameraTarget: () => view.target,
+    undoLabels: () => ({ undo: store.undoLabel(), redo: store.redoLabel() }),
     selectRange: (s0: number | null, s1?: number) => selection.set(s0 === null || s1 === undefined ? null : { s0, s1 }),
     range: () => selection.range,
     setExaggeration: (e: number) => viewBar.set({ exag: e }),
@@ -322,6 +455,17 @@ async function main() {
     official: meta.official.xy,
     A, B,
   };
+}
+
+/** the plan's bends at their stations along the route: the middle of the bend's arc, or the nearest station */
+function bendStations(r: Result, d: Design): { i: number; s: number }[] {
+  return d.pis.map((p, i) => {
+    const c = r.curves.find((c) => c.index === i);
+    if (c && c.sEnd > c.sStart + 1) return { i, s: (c.sStart + c.sEnd) / 2 };
+    let bd = Infinity, s = 0;
+    for (let k = 0; k < r.n; k++) { const dd = (r.x[k] - p.x) ** 2 + (r.y[k] - p.y) ** 2; if (dd < bd) { bd = dd; s = r.s[k]; } }
+    return { i, s };
+  });
 }
 
 main().catch((e) => { console.error(e); setStatus(`Failed to load: ${e?.message ?? e}. Did you run "npm run data"?`); });

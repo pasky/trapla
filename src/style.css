@@ -7,14 +7,17 @@ html, body { margin: 0; height: 100%; overflow: hidden; font: 13px/1.35 system-u
 #view canvas { display: block; width: 100%; height: 100%; }
 #overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 #overlay > * { position: absolute; left: 0; top: 0; will-change: transform; }
-#profile { grid-column: 1; grid-row: 2; display: flex; flex-direction: column; border-top: 1px solid #c8ccd2; background: #f7f5f0; min-height: 0; }
+#profile { grid-column: 1; grid-row: 2; position: relative; display: flex; flex-direction: column; border-top: 1px solid #c8ccd2; background: #f7f5f0; min-height: 0; }
 #profile canvas { flex: 1; width: 100%; min-height: 0; display: block; }
 .profile-bar { display: flex; align-items: center; gap: 12px; padding: 4px 10px; font-size: 12px; color: #555; border-bottom: 1px solid #e2ddd2; }
 .profile-bar b { color: #222; }
-.profile-bar button { margin-left: auto; }
+.profile-bar .zoom { margin-left: auto; display: flex; gap: 4px; }
+.profile-bar .zoom button { padding: 1px 8px; font-size: 12px; min-width: 26px; }
+.profile-bar .zoom #fit { font-weight: 600; border-color: #1f6feb; color: #1f6feb; }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin: 0 3px 0 6px; }
 .sw.fill { background: rgba(110,160,60,0.7); } .sw.cut { background: rgba(215,140,50,0.75); }
 .sw.br { background: #2f8fff; } .sw.tn { background: #a070ff; }
+.sw.ground { background: #e3d6bb; box-shadow: inset 0 -2px #8a7148; } .sw.road { background: #222; height: 3px; vertical-align: 2px; }
 #hud { grid-column: 2; grid-row: 1 / span 2; overflow-y: auto; background: #f4f6f8; border-left: 1px solid #c8ccd2; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .card { background: #fff; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
 .card h1 { font-size: 17px; margin: 2px 0 4px; }
@@ -142,3 +145,57 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 #viewbar kbd { font-size: 10px; opacity: .6; border-color: currentColor; margin-left: 2px; }
 .contour-label { pointer-events: none; }
 .contour-label span { position: absolute; transform: translate(-50%, -50%); font-size: 10px; font-weight: 600; color: #3a2410; white-space: nowrap; padding: 0 2px; border-radius: 2px; background: rgba(255,253,244,0.78); line-height: 1.15; }
+
+/* always-visible Undo / Redo over the map */
+#editbar { position: absolute; left: 132px; top: 8px; display: flex; gap: 6px; }
+#editbar button { background: rgba(255,255,255,0.95); border-color: rgba(0,0,0,0.25); box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-weight: 600; padding: 4px 10px; }
+#editbar button:disabled { opacity: .55; }
+#editbar .ico { font-size: 15px; line-height: 1; }
+#editbar kbd { font-weight: 400; font-size: 10px; opacity: .6; margin-left: 3px; border-color: currentColor; }
+
+/* road height mode: a segmented control with a one-sentence explanation */
+.mode { margin: 6px 0 10px; padding: 8px 0 0; border-top: 1px solid #e6e9ee; }
+.mode-h { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.mode-h small { color: #889; font-size: 11px; }
+.seg { display: flex; padding: 3px; gap: 3px; background: #e8ecf1; border-radius: 8px; }
+.seg button { flex: 1; border: 0; background: transparent; border-radius: 6px; padding: 5px 8px; font-weight: 600; color: #4a5260; }
+.seg button:hover:not(:disabled) { background: rgba(255,255,255,0.6); }
+.seg button.on, .seg button.on:hover:not(:disabled) { background: #fff; color: #1f6feb; box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
+.mode-explain { margin: 6px 0 0 !important; font-size: 12px; color: #445 !important; }
+
+/* what to build on a stretch: the HUD's selected-stretch box and the floating bar over the profile */
+.range-build { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 6px; }
+.range-build > span { font-size: 12px; color: #665; }
+[data-structure] kbd { margin-left: 5px; font-size: 10px; opacity: .55; border-color: currentColor; }
+[data-structure].on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+.st-1::before, .st-2::before, .st-0::before, .st-clear::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: -0.5px; }
+.st-1::before { background: #2f8fff; } .st-2::before { background: #a070ff; } .st-0::before { background: #d78c32; }
+.st-clear::before { background: repeating-linear-gradient(45deg, #2f8fff 0 3px, #d78c32 3px 6px); }
+.sel-bar { position: absolute; z-index: 5; display: flex; align-items: center; gap: 5px; padding: 5px 6px 5px 10px; background: #fff; border: 1px solid #c79a00;
+  border-radius: 8px; box-shadow: 0 3px 12px rgba(0,0,0,0.25); font-size: 12px; white-space: nowrap; }
+.sel-bar[hidden] { display: none; }
+.sel-bar .where { font-weight: 700; color: #6b5200; } .sel-bar .where small { font-weight: 400; color: #887; }
+.sel-bar .lbl { color: #665; margin-left: 4px; }
+.sel-bar button { padding: 3px 8px; font-size: 12px; }
+.sel-bar .close { border: 0; color: #667; padding: 3px 6px; }
+.sel-bar .walls { margin-left: 4px; }
+.sel-bar input { width: 72px; }
+.sel-bar label { display: flex; align-items: center; gap: 5px; }
+.sel-bar .note { color: #a05a00; }
+.sel-bar.station { border-color: #b45800; }
+.flash { animation: flash 1.2s ease-out; }
+@keyframes flash { from { background: #fff3a8; } to { background: transparent; } }
+
+/* hover links: a bend hovered in the profile, the hint line of the profile tooltip */
+.pi.hl { background: #fff3a8; transform-origin: center; box-shadow: 0 0 0 3px rgba(255,212,0,0.7), 0 1px 4px rgba(0,0,0,0.4); }
+.profile-tip .tip-hint { margin-top: 5px; padding-top: 4px; border-top: 1px solid #e3e6ea; color: #1f5fbf; font-size: 11px; }
+
+.hover-dot span { position: absolute; left: 14px; top: -9px; white-space: nowrap; font-size: 11px; font-weight: 600; background: #1d232a; color: #fff; padding: 1px 6px; border-radius: 4px; }
+/* profile legend: plan bends vs height points */
+.sw.bendmk { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 1.5px solid #1d232a; font: bold 9px/11px system-ui; text-align: center; color: #1d232a; vertical-align: -3px; }
+.sw.hp { width: 8px; height: 8px; background: #fff; border: 1.5px solid #222; border-radius: 0; transform: rotate(45deg); margin: 0 5px 0 8px; }
+.profile-bar .legend, .profile-bar .cost-legend { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.profile-bar .zoom { flex: none; }
+#profile:not(.manual) .lg-hp { display: none; }
+.sw.pinmk { width: 9px; height: 9px; border-radius: 50%; background: #ffb339; border: 1.5px solid #864000; }
+.sel-bar.bend { border-color: #1d232a; }

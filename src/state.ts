@@ -89,6 +89,9 @@ export class Store {
 
   canUndo() { return this.idx > 0; }
   canRedo() { return this.idx < this.history.length - 1; }
+  /** what Undo / Redo would change, in plain words (for the buttons' tooltips) */
+  undoLabel() { return this.canUndo() ? describeChange(this.history[this.idx - 1], this.history[this.idx]) : ''; }
+  redoLabel() { return this.canRedo() ? describeChange(this.history[this.idx], this.history[this.idx + 1]) : ''; }
   undo() { if (this.canUndo()) { this.idx--; this.design = clone(this.history[this.idx]); this.persist(); this.emit(true); } }
   redo() { if (this.canRedo()) { this.idx++; this.design = clone(this.history[this.idx]); this.persist(); this.emit(true); } }
   reset() { this.replace(this.initial()); }
@@ -101,6 +104,26 @@ export class Store {
     try { localStorage.setItem(this.key + '.best', JSON.stringify(this.best)); } catch { /* */ }
     return true;
   }
+}
+
+/** a short plain-words description of the edit that turns design `a` into `b` */
+export function describeChange(a: Design, b: Design): string {
+  const same = (k: keyof Design) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null);
+  const parts: string[] = [];
+  if (a.pis.length < b.pis.length) parts.push('add a bend');
+  else if (a.pis.length > b.pis.length) parts.push('delete a bend');
+  else if (a.pis.some((p, i) => p.x !== b.pis[i].x || p.y !== b.pis[i].y)) parts.push('move a bend');
+  else if (!same('pis')) parts.push('bend radius');
+  if (a.profileMode !== b.profileMode) parts.push(b.profileMode === 'auto' ? 'road height back to Automatic' : 'road height by hand');
+  else if (!same('vpis')) parts.push(a.vpis.length < b.vpis.length ? 'add a height point' : a.vpis.length > b.vpis.length ? 'delete a height point' : 'change a height point');
+  if (!same('structureOverrides')) parts.push('bridge / tunnel / earthwork choice');
+  if (!same('gradePins')) parts.push('pinned height');
+  if (!same('crossingOverrides')) parts.push('road crossing choice');
+  if (!same('buildingOverrides')) parts.push('building decision');
+  if (!same('wallOverrides')) parts.push('noise wall');
+  if (a.category !== b.category) parts.push('road category');
+  if (a.speed !== b.speed) parts.push('design speed');
+  return parts.join(', ') || 'last change';
 }
 
 /** The start: straight A→B with the automatic (norm-abiding) grade line — an honest, if expensive, bill. */

@@ -1,8 +1,11 @@
-// Longitudinal profile panel (2D canvas): terrain, grade line with VPIs and vertical curves,
-// cut/fill areas, bridges, tunnels, crossings, violations; below it, on the same horizontal scale,
-// the alignment elements (tangents / curves) and a stacked "cost per metre" strip. VPIs are
-// draggable; hovering shows the cost split at that station; dragging in the strip (or Shift+drag
-// anywhere) selects a station range, clicking an alignment element selects that element.
+// Longitudinal profile panel (2D canvas): ground, the road's height line with its height points (VPIs)
+// and vertical curves, cut/fill areas, bridges, tunnels, crossings, violations, the plan's bends as
+// numbered markers; below it, on the same horizontal scale, the alignment elements (straights / curves)
+// and a stacked "cost per metre" strip.
+// Mouse, no modifiers: click = zoom in there (the map follows), drag = select a stretch, click a curve /
+// straight in the band = select it, drag a height point = edit the height (switches to By hand), click
+// the road line = pin its height (Automatic) or add a height point (By hand), wheel = zoom,
+// right/middle-drag = scroll. Hovering shows the cost split at that spot and the place on the map.
 
 import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
@@ -22,12 +25,41 @@ export interface ProfileEvents {
   onVpiAdd?: (s: number, z: number) => void;
   onVpiDelete?: (i: number) => void;
   onVpiSelect?: (i: number | null) => void;
-  onHover?: (s: number | null) => void;
+  /** the station under the mouse; `label` when it is a height point (named on the map too) */
+  onHover?: (s: number | null, label?: string) => void;
   onStationSelect?: (s: number) => void;
+  /** Automatic: a click on the road line pins its current height there */
+  onPinAdd?: (s: number) => void;
+  /** a pinned height dragged up / down (transient), and released */
+  onPinDrag?: (s: number, z: number) => void;
+  onPinDragEnd?: () => void;
   onCrossingSelect?: (roadId: number) => void;
   /** a station range was picked for the cost breakdown (null = whole route) */
   onSelect?: (r: StationRange | null) => void;
+  /** a click zoomed the profile to `span` metres around station s (the map should follow) */
+  onZoomTo?: (s: number, span: number) => void;
+  /** the visible stretch changed (zoom buttons, the floating selection bar) */
+  onView?: () => void;
+  /** after every redraw (overlays that follow the profile's scale) */
+  onDraw?: () => void;
+  onBendHover?: (i: number | null) => void;
+  onBendSelect?: (i: number) => void;
 }
+
+/** what is under the mouse in the profile panel */
+type Under =
+  | { kind: 'none' | 'chart' | 'strip' }
+  | { kind: 'bend'; i: number }
+  | { kind: 'vpi'; k: number }
+  | { kind: 'pin'; s: number }
+  | { kind: 'crossing'; roadId: number }
+  | { kind: 'line'; s: number }
+  | { kind: 'band'; el: Element };
+
+/** narrowest zoom, m; a click zooms in by CLICK_ZOOM */
+const MIN_SPAN = 300, CLICK_ZOOM = 3;
+/** centre line of the bend markers, in the top padding */
+const BEND_Y = 12;
 
 /** the cost strip never averages over less than this, so lump sums (buildings, junctions) stay readable, m */
 const MIN_WINDOW = 50;
@@ -50,6 +82,16 @@ export class ProfilePanel {
   private hoverS: number | null = null;
   private hoverClient: { x: number; y: number } | null = null;
   private selected: number | null = null;
+  private mode: 'auto' | 'manual' = 'auto';
+  /** the plan's bends at their stations (i = index of the bend, label i + 1 like on the map) */
+  private bends: { i: number; s: number }[] = [];
+  private selectedBend: number | null = null;
+  private hoverBend: number | null = null;
+  /** the hover line comes from the mouse over the map (drawn with a station label) */
+  private hoverFromMap = false;
+  private under: Under = { kind: 'none' };
+  /** a height point or pin is being dragged */
+  private dragging = false;
   private flash: { s0: number; s1: number } | null = null;
   private sel: StationRange | null = null;
   private zr = { lo: 0, hi: 1 };
@@ -80,7 +122,7 @@ export class ProfilePanel {
       const el = document.createElement('span');
       el.className = 'cost-legend';
       el.innerHTML = '<b>Cost per metre</b>' + COST_GROUPS.map((g) => `<span class="sw" style="background:${g.color}"></span>${g.short}`).join('');
-      bar.insertBefore(el, bar.querySelector('button'));
+      bar.insertBefore(el, bar.querySelector('.zoom'));
     }
     this.install();
   }
@@ -141,20 +183,60 @@ export class ProfilePanel {
   /** visible station range (diagnostics) */
   get view() { return { v0: this.v0, v1: this.v1 }; }
 
-  fit() { this.whole = true; if (this.r) { this.v0 = 0; this.v1 = this.r.length; } this.draw(); }
+  /** the whole route is visible */
+  get isWhole() { return this.whole; }
+  /** the hover line (diagnostics) */
+  get hover() { return { s: this.hoverS, fromMap: this.hoverFromMap }; }
+
+  fit() { this.whole = true; if (this.r) { this.v0 = 0; this.v1 = this.r.length; } this.draw(); this.ev.onView?.(); }
 
   focus(s0: number, s1: number) {
     if (!this.r) return;
-    const span = Math.max(1500, (s1 - s0) * 3);
-    const c = (s0 + s1) / 2;
-    this.v0 = Math.max(0, c - span / 2);
-    this.v1 = Math.min(this.r.length, this.v0 + span);
-    this.whole = this.v1 - this.v0 >= this.r.length;
     this.flash = { s0, s1 };
-    this.draw();
+    this.show((s0 + s1) / 2, Math.max(1500, (s1 - s0) * 3));
   }
 
-  setHover(s: number | null) { this.hoverS = s; this.draw(); }
+  /** zoom by a factor (> 1 = in) around the middle of the view */
+  zoom(f: number) { this.show((this.v0 + this.v1) / 2, (this.v1 - this.v0) / f); }
+
+  /** show `span` metres centred on station c (clamped to the route) */
+  private show(c: number, span: number) {
+    if (!this.r) return;
+    const L = this.r.length;
+    span = Math.max(Math.min(MIN_SPAN, L), Math.min(L, span));
+    this.v0 = Math.max(0, Math.min(L - span, c - span / 2));
+    this.v1 = this.v0 + span;
+    this.whole = span >= L;
+    this.draw();
+    this.updateTip();
+    this.ev.onView?.();
+  }
+
+  /** hover line at station s; `fromMap`: the mouse is over the road on the map (labelled, off-view arrow) */
+  setHover(s: number | null, fromMap = false) {
+    if (fromMap && this.hoverClient) return; // the mouse is over the profile itself
+    this.hoverS = s; this.hoverFromMap = fromMap && s !== null; this.draw();
+  }
+
+  /** Automatic draws the height points small (they are the game's), By hand full size */
+  setMode(mode: 'auto' | 'manual') { if (mode !== this.mode) { this.mode = mode; this.draw(); } }
+
+  setBends(bends: { i: number; s: number }[]) { this.bends = bends; this.draw(); }
+  selectBend(i: number | null) { if (i !== this.selectedBend) { this.selectedBend = i; this.draw(); } }
+  setBendHover(i: number | null) { if (i !== this.hoverBend) { this.hoverBend = i; this.draw(); } }
+
+  /** x of station s in CSS px from the canvas' left edge, and the chart's top (for overlays) */
+  stationX(s: number) { return this.X(s); }
+  get chartTop() { return this.pad.t; }
+  get chartBottom() { return this.chartB; }
+  /** client (page) coordinates of station s at height z (default: on the road line); `band`: in the curve band */
+  toClient(s: number, z?: number, band = false) {
+    const b = this.canvas.getBoundingClientRect();
+    const y = band ? this.bandT + BAND_H / 2 : z === undefined ? this.Y(this.gradeAt(s)) : this.Y(z);
+    return { x: b.left + this.X(s), y: b.top + y, bendY: b.top + BEND_Y, stripY: b.top + (this.stripT + this.stripB) / 2 };
+  }
+  get plotLeft() { return this.pad.l; }
+  get plotRight() { return this.W - this.pad.r; }
 
   // ---- coordinate transforms ----
   // canvas CSS size, read once per draw: X() / Y() are called thousands of times per frame and every
@@ -203,7 +285,8 @@ export class ProfilePanel {
     }
     for (const v of [...this.vpis, ...this.pins]) if (v.s >= this.v0 && v.s <= this.v1) { lo = Math.min(lo, v.z); hi = Math.max(hi, v.z); }
     const m = Math.max(8, (hi - lo) * 0.08);
-    this.zr = { lo: lo - m, hi: hi + m };
+    // the height scale holds still while a handle is dragged (it would run away from the mouse)
+    if (!this.dragging) this.zr = { lo: lo - m, hi: hi + m };
     const L = this.pad.l, R = W - this.pad.r, T = this.pad.t, B = this.chartB;
     g.save();
     g.beginPath(); g.rect(L, T - 4, R - L, B - T + 4); g.clip();
@@ -318,7 +401,7 @@ export class ProfilePanel {
       g.lineWidth = 3; g.setLineDash([3, 3]);
       g.beginPath(); g.moveTo(a, y + 5); g.lineTo(a, y); g.lineTo(b, y); g.lineTo(b, y + 5); g.stroke();
       g.font = 'bold 10px system-ui'; g.textAlign = 'left';
-      if (b - a > 24) g.fillText(['E', 'B', 'T'][o.kind] + ' manual', a + 3, y + 15, b - a - 5);
+      if (b - a > 24) g.fillText(`your ${['earthwork', 'bridge', 'tunnel'][o.kind]}`, a + 3, y + 15, b - a - 5);
     }
     for (const o of this.wallOverrides) {
       const a = this.X(Math.max(this.v0, o.s0)), b = this.X(Math.min(this.v1, r.length, o.s1));
@@ -328,7 +411,7 @@ export class ProfilePanel {
       g.lineWidth = 2; g.setLineDash([3, 3]);
       g.beginPath(); g.moveTo(a, y); g.lineTo(b, y); g.stroke();
       g.font = 'bold 10px system-ui'; g.textAlign = 'left';
-      if (b - a > 20) g.fillText(`${o.side} ${o.height ? `wall ${o.height} m` : 'no wall'}`, a + 2, y + 11, b - a - 4);
+      if (b - a > 20) g.fillText(`${o.side === 'L' ? 'left' : 'right'}: ${o.height ? `wall ${o.height} m` : 'no wall'}`, a + 2, y + 11, b - a - 4);
     }
     g.restore();
     // crossed roads: a mark at the crossed road's level, linked to the grade line
@@ -381,24 +464,34 @@ export class ProfilePanel {
     // Requested pin elevations are drawn separately from the realised grade, including failures.
     for (const pin of this.pins) {
       if (pin.s < this.v0 || pin.s > this.v1) continue;
+      // a map pin: head above, point at the pinned height; grows under the mouse (drag it up / down)
       const x = this.X(pin.s), y = this.Y(pin.z);
-      g.strokeStyle = '#b45800'; g.fillStyle = '#ffb339'; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(x, y + 8); g.lineTo(x, y - 5); g.stroke();
-      g.beginPath(); g.arc(x, y - 5, 4, 0, 2 * Math.PI); g.fill(); g.stroke();
-      g.fillStyle = '#864000'; g.fillText(`pin ${pin.z.toFixed(1)}`, x, y - 15);
+      const hov = this.under.kind === 'pin' && Math.abs(this.under.s - pin.s) < 0.1;
+      const hr = hov ? 6.5 : 5;
+      g.strokeStyle = '#864000'; g.fillStyle = '#ffb339'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 9); g.stroke();
+      g.beginPath(); g.arc(x, y - 9 - hr, hr, 0, 2 * Math.PI); g.fill(); g.stroke();
+      g.beginPath(); g.arc(x, y, 2.5, 0, 2 * Math.PI); g.fillStyle = '#864000'; g.fill();
+      g.fillStyle = '#864000'; g.fillText(`pinned ${pin.z.toFixed(1)} m`, x, y - 12 - 2 * hr);
     }
     if (this.pinStation !== null) {
       g.strokeStyle = '#b45800'; g.setLineDash([3, 4]);
       const x = this.X(this.pinStation);
       g.beginPath(); g.moveTo(x, T); g.lineTo(x, B); g.stroke(); g.setLineDash([]);
     }
-    // VPIs
-    this.vpis.forEach((v, k) => {
+    // height points (VPIs) are handles only By hand; in Automatic they are the game's and not drawn
+    // (the player's handles there are the pins). The hovered / selected one grows.
+    const hovK = this.under.kind === 'vpi' ? this.under.k : -1;
+    if (this.mode === 'manual') this.vpis.forEach((v, k) => {
       const x = this.X(v.s), y = this.Y(v.z);
+      if (x < L - 8 || x > R + 8) return;
       const end = k === 0 || k === this.vpis.length - 1;
+      const rad = k === this.selected || k === hovK ? 6.5 : 5;
       g.beginPath();
-      if (end) g.rect(x - 4, y - 4, 8, 8); else g.arc(x, y, k === this.selected ? 6.5 : 5, 0, Math.PI * 2);
-      g.fillStyle = k === this.selected ? '#ffd400' : '#fff';
+      // diamonds: height points are not the plan's bends (numbered circles above the chart)
+      if (end) g.rect(x - 4, y - 4, 8, 8);
+      else { const d = rad * 1.25; g.moveTo(x, y - d); g.lineTo(x + d, y); g.lineTo(x, y + d); g.lineTo(x - d, y); g.closePath(); }
+      g.fillStyle = k === this.selected ? '#ffd400' : end ? '#222' : '#fff';
       g.fill();
       g.strokeStyle = '#222';
       g.lineWidth = 1.5;
@@ -408,6 +501,7 @@ export class ProfilePanel {
 
     this.drawElements(g, L, R);
     this.drawStrip(g, L, R);
+    this.drawBends(g, L, R);
 
     // selected range and hover line span the chart and the strip
     g.save();
@@ -424,11 +518,18 @@ export class ProfilePanel {
     }
     if (this.hoverS !== null && this.hoverS >= this.v0 && this.hoverS <= this.v1) {
       const x = this.X(this.hoverS);
-      g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 1;
+      g.strokeStyle = this.hoverFromMap ? '#1d232a' : 'rgba(0,0,0,0.5)';
+      g.lineWidth = this.hoverFromMap ? 1.5 : 1;
       g.beginPath(); g.moveTo(x, T); g.lineTo(x, this.stripB); g.stroke();
+      if (this.hoverFromMap) {
+        // the spot under the mouse on the map: a dot on the road line, as on the map
+        const z = this.gradeAt(this.hoverS);
+        g.fillStyle = '#ffd400'; g.strokeStyle = '#000'; g.lineWidth = 2;
+        g.beginPath(); g.arc(x, this.Y(z), 5.5, 0, 2 * Math.PI); g.fill(); g.stroke();
+      }
     }
     g.restore();
+    if (this.hoverFromMap && this.hoverS !== null) this.drawMapHoverLabel(g, this.hoverS, L, R, T);
     // axes
     g.fillStyle = '#555';
     g.font = '11px system-ui, sans-serif';
@@ -448,7 +549,77 @@ export class ProfilePanel {
       g.fillText(`${z.toFixed(0)}`, L - 6, y + 4);
       g.strokeStyle = 'rgba(0,0,0,0.07)'; g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke();
     }
-    g.save(); g.translate(12, (T + B) / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.fillText('elevation m (Bpv)', 0, 0); g.restore();
+    g.save(); g.translate(12, (T + B) / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.fillText('height above sea, m', 0, 0); g.restore();
+    // one line on how to change the road height in this mode
+    const hint = this.mode === 'manual' ? 'By hand: drag a ◆ to change the road height · double-click the line to add a point · right-click a ◆ to delete it'
+      : 'Automatic road height · click the line to pin its height there, then drag the pin';
+    g.font = '11px system-ui, sans-serif'; g.textAlign = 'right';
+    const hw = g.measureText(hint).width;
+    g.fillStyle = 'rgba(247,245,240,0.85)'; g.fillRect(R - hw - 10, T + 1, hw + 8, 15);
+    g.fillStyle = this.mode === 'manual' ? '#1f5fbf' : '#666'; g.fillText(hint, R - 6, T + 12);
+    this.ev.onDraw?.();
+  }
+
+  /** road height at station s (linear between stations) */
+  private gradeAt(s: number) {
+    const r = this.r!;
+    const a = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = Math.max(0, Math.min(1, (s - r.s[a]) / r.ds));
+    return r.grade[a] + t * (r.grade[a + 1] - r.grade[a]);
+  }
+
+  /** the plan's bends as numbered circles above the chart, like the markers on the map */
+  private drawBends(g: CanvasRenderingContext2D, L: number, R: number) {
+    const vis = this.bends.filter((b) => b.s >= this.v0 && b.s <= this.v1).sort((a, b) => a.s - b.s);
+    const bot = this.bandT + BAND_H;
+    g.save();
+    g.beginPath(); g.rect(L - 10, 0, R - L + 20, bot); g.clip();
+    // thin guides from each marker down through the chart to its curve in the band
+    g.lineWidth = 1;
+    for (const b of vis) {
+      const x = Math.round(this.X(b.s)) + 0.5;
+      const sel = b.i === this.selectedBend, hov = b.i === this.hoverBend;
+      g.strokeStyle = sel ? '#b08d00' : hov ? 'rgba(0,0,0,0.6)' : 'rgba(29,35,42,0.16)';
+      g.setLineDash(sel || hov ? [4, 3] : [2, 3]);
+      g.beginPath(); g.moveTo(x, BEND_Y + 8); g.lineTo(x, bot); g.stroke();
+    }
+    g.setLineDash([]);
+    g.font = 'bold 10px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    // numbered like the map markers; a marker crowding the previous numbered one shrinks to a dot
+    const full = new Set<number>();
+    let lastX = -Infinity;
+    for (const b of vis) { const x = this.X(b.s); if (x - lastX >= 17) { full.add(b.i); lastX = x; } }
+    // the hovered / selected ones last, on top
+    const order = [...vis].sort((a, b) => Number(a.i === this.hoverBend || a.i === this.selectedBend) - Number(b.i === this.hoverBend || b.i === this.selectedBend));
+    for (const b of order) {
+      const x = this.X(b.s);
+      const sel = b.i === this.selectedBend, hov = b.i === this.hoverBend;
+      const rad = full.has(b.i) || sel || hov ? 8 : 4;
+      g.beginPath(); g.arc(x, BEND_Y, rad, 0, 2 * Math.PI);
+      g.fillStyle = sel ? '#ffd400' : hov ? '#fff3a8' : '#fff'; g.fill();
+      g.strokeStyle = '#1d232a'; g.lineWidth = 1.8; g.stroke();
+      if (rad === 8) { g.fillStyle = '#1d232a'; g.fillText(String(b.i + 1), x, BEND_Y + 0.5); }
+    }
+    g.restore();
+    if (this.bends.length) {
+      g.fillStyle = '#777'; g.font = '9px system-ui, sans-serif'; g.textAlign = 'right';
+      g.fillText('bends', L - 6, BEND_Y + 3);
+    }
+  }
+
+  /** "km x.xx" over the hover line when the mouse is on the map; an arrow at the edge when off view */
+  private drawMapHoverLabel(g: CanvasRenderingContext2D, s: number, L: number, R: number, T: number) {
+    const off = s < this.v0 ? -1 : s > this.v1 ? 1 : 0;
+    const text = `${off < 0 ? '◀ ' : ''}km ${(s / 1000).toFixed(2)}${off > 0 ? ' ▶' : ''}`;
+    g.save();
+    g.font = 'bold 11px system-ui, sans-serif';
+    const w = g.measureText(text).width + 10;
+    const x = off < 0 ? L + 2 : off > 0 ? R - w - 2 : Math.max(L, Math.min(R - w, this.X(s) - w / 2));
+    const y = T + 2;
+    g.fillStyle = '#1d232a'; g.beginPath(); g.roundRect(x, y, w, 17, 4); g.fill();
+    g.fillStyle = '#fff'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(text, x + 5, y + 9);
+    g.restore();
   }
 
   /** band of alignment elements: tangents (light) and curves (dark, with radius) — click to select */
@@ -470,6 +641,12 @@ export class ProfilePanel {
     g.font = '9px system-ui, sans-serif';
     g.textAlign = 'right';
     g.fillText('curves', L - 6, y + BAND_H - 2);
+    // the element under the mouse is outlined: a click selects it
+    if (this.under.kind === 'band') {
+      const a = this.X(this.under.el.s0), b = this.X(this.under.el.s1);
+      g.strokeStyle = '#1d232a'; g.lineWidth = 1.5;
+      g.strokeRect(Math.max(L, a) + 0.5, y + 0.5, Math.min(R, b) - Math.max(L, a) - 1, BAND_H - 1);
+    }
   }
 
   /**
@@ -540,7 +717,7 @@ export class ProfilePanel {
     if (!this.sel) {
       g.fillStyle = 'rgba(0,0,0,0.42)';
       g.textAlign = 'right';
-      g.fillText('drag here to select a stretch · click a curve / tangent above', R - 6, top + 11);
+      g.fillText('drag across the profile to select a stretch · click a curve / straight in the band above to select it', R - 6, top + 11);
     }
   }
 
@@ -594,10 +771,11 @@ export class ProfilePanel {
       return `<tr><td><i style="background:${gr.color}"></i>${gr.label}${detail ? `<small>${detail}</small>` : ''}</td><td>${perM(v)}</td></tr>`;
     }).join('');
     this.tip.innerHTML = `<div class="tip-h"><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
-      <div class="tip-sub">ground ${r.ground[i].toFixed(1)} m · grade ${r.grade[i].toFixed(1)} m · ${land}</div>
+      <div class="tip-sub">ground ${r.ground[i].toFixed(1)} m · road ${r.grade[i].toFixed(1)} m · ${land}</div>
       <div class="tip-fact">${escapedGeology}</div>
       ${facts.map((t) => `<div class="tip-fact">${t}</div>`).join('')}
-      <table>${rows}<tr class="tip-total"><td>Cost per metre <small>average over ${len.toFixed(0)} m</small></td><td>${perM(total)} CZK</td></tr></table>`;
+      <table>${rows}<tr class="tip-total"><td>Cost per metre <small>average over ${len.toFixed(0)} m</small></td><td>${perM(total)} CZK</td></tr></table>
+      <div class="tip-hint">${this.hint()}</div>`;
     this.tip.style.display = '';
     // above the panel, next to the cursor; never over the profile itself
     const box = this.canvas.getBoundingClientRect();
@@ -608,13 +786,56 @@ export class ProfilePanel {
     this.tip.style.top = `${Math.max(4, box.top - 30 - th)}px`;
   }
 
-  private hitVpi(px: number, py: number): number | null {
-    let best: number | null = null, bd = 10;
-    this.vpis.forEach((v, k) => {
+  /** what a click / drag does at the thing under the mouse (last line of the tooltip) */
+  private hint(): string {
+    const u = this.under, manual = this.mode === 'manual';
+    switch (u.kind) {
+      case 'vpi': {
+        const v = this.vpis[u.k];
+        return `<b>◆ Height point ${u.k}</b>: the road is at ${v.z.toFixed(1)} m here (shown on the map). It is not a bend — bends are the numbered circles above.<br>`
+          + (manual ? 'Drag it to raise / lower the road · right-click deletes it' : 'Drag it to raise / lower the road (switches the road height to By hand)');
+      }
+      case 'line': return manual ? 'Double-click to add a height point here' : 'Click to pin the road height here, then drag the pin up or down';
+      case 'band': return `Click to select this ${u.el.curve ? 'curve' : 'straight'} · drag to select a stretch`;
+      case 'bend': return `<b>Bend ${u.i + 1}</b> — the numbered circle ${u.i + 1} on the map (highlighted there). Click it to select it and to ${manual ? 'add a height point' : 'pin the road height'} there`;
+      case 'pin': return manual ? 'Pinned height: only Automatic uses pins · click to change or remove it'
+        : '<b>Pinned height</b>: Automatic keeps the road at this height here. Drag it up / down · click to type a height or unpin';
+      case 'crossing': return 'Click for the options of this road crossing';
+      default: return this.v1 - this.v0 <= MIN_SPAN + 1 ? 'Click to centre here · drag to select a stretch' : 'Click to zoom in here · drag to select a stretch';
+    }
+  }
+
+  /** the thing under a point of the canvas (CSS px) */
+  private hit(px: number, py: number): Under {
+    const r = this.r;
+    if (!r || px < this.pad.l - 10 || px > this.W - this.pad.r + 10) return { kind: 'none' };
+    if (py < this.pad.t - 3) {
+      let best: number | null = null, bd = 11;
+      for (const b of this.bends) { const d = Math.abs(this.X(b.s) - px); if (d < bd) { bd = d; best = b.i; } }
+      return best !== null ? { kind: 'bend', i: best } : { kind: 'chart' };
+    }
+    if (py > this.chartB + GAP_CHART / 2) {
+      if (py <= this.bandT + BAND_H + GAP_BAND / 2) {
+        const s = this.S(px);
+        const el = this.elements.find((x) => s >= x.s0 && s <= x.s1);
+        if (el) return { kind: 'band', el };
+      }
+      return { kind: 'strip' };
+    }
+    let k: number | null = null, bd = 10;
+    if (this.mode === 'manual') this.vpis.forEach((v, j) => {
+      if (j === 0 || j === this.vpis.length - 1) return;
       const d = Math.hypot(this.X(v.s) - px, this.Y(v.z) - py);
-      if (d < bd) { bd = d; best = k; }
+      if (d < bd) { bd = d; k = j; }
     });
-    return best;
+    if (k !== null) return { kind: 'vpi', k };
+    const pin = this.pins.find((p) => Math.abs(this.X(p.s) - px) < 8 && py > this.Y(p.z) - 23 && py < this.Y(p.z) + 4);
+    if (pin) return { kind: 'pin', s: pin.s };
+    const x = r.crossings.find((c) => c.roadId !== undefined && Math.hypot(this.X(c.s) - px, this.Y(r.grade[c.i] - c.h) - py) < 8);
+    if (x) return { kind: 'crossing', roadId: x.roadId! };
+    const s = this.S(px);
+    if (s > 20 && s < r.length - 20 && Math.abs(this.Y(this.gradeAt(s)) - py) < 6) return { kind: 'line', s };
+    return { kind: 'chart' };
   }
 
   /** a range snapped to whole station cells */
@@ -625,40 +846,49 @@ export class ProfilePanel {
     return { s0: a, s1: b };
   }
 
+  private setUnder(u: Under) {
+    const prev = this.under;
+    this.under = u;
+    const bend = u.kind === 'bend' ? u.i : null;
+    if ((prev.kind === 'bend' ? prev.i : null) !== bend) { this.hoverBend = bend; this.ev.onBendHover?.(bend); }
+  }
+
   private install() {
     const c = this.canvas;
     const rel = (e: MouseEvent) => { const b = c.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
-    const inCost = (y: number) => y > this.chartB + GAP_CHART / 2;
-    let drag: { mode: 'vpi' | 'pan' | 'select'; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean } | null = null;
+    const cursor = (u: Under) => u.kind === 'vpi' || (u.kind === 'pin' && this.mode === 'auto') ? 'ns-resize' : u.kind === 'line' ? (this.mode === 'manual' ? 'copy' : 'cell')
+      : u.kind === 'bend' || u.kind === 'band' || u.kind === 'pin' || u.kind === 'crossing' ? 'pointer'
+        : u.kind === 'chart' || u.kind === 'strip' ? 'zoom-in' : 'default';
+    // 'press': a left button down on the chart / band / strip — a click if it does not move, else a range drag
+    let drag: { mode: 'vpi' | 'pin' | 'pan' | 'press' | 'select'; under: Under; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean; y0: number; dy: number } | null = null;
     c.addEventListener('pointerdown', (e) => {
       if (!this.r) return;
       const p = rel(e);
-      const k = inCost(p.y) ? null : this.hitVpi(p.x, p.y);
-      if (e.altKey && e.button === 0 && !inCost(p.y)) {
-        const s = Math.max(0, Math.min(this.r.length, Math.round(this.S(p.x))));
-        const existing = this.pins.find((pin) => Math.abs(this.X(pin.s) - p.x) < 8);
-        this.ev.onStationSelect?.(existing?.s ?? s);
-        return;
-      }
-      if (e.button === 0 && !e.shiftKey && !inCost(p.y) && k === null) {
-        const crossing = this.r.crossings.find((c) => c.roadId !== undefined && Math.hypot(this.X(c.s) - p.x, this.Y(this.r!.grade[c.i] - c.h) - p.y) < 8);
-        if (crossing) { this.ev.onCrossingSelect?.(crossing.roadId!); return; }
-      }
-      if (e.button === 2) {
-        if (k !== null && k > 0 && k < this.vpis.length - 1) this.ev.onVpiDelete?.(k);
-        return;
-      }
-      c.setPointerCapture(e.pointerId);
-      const base = { i: -1, x0: p.x, v0: this.v0, v1: this.v1, s0: this.S(p.x), moved: false };
-      if (inCost(p.y) || e.shiftKey) {
-        drag = { ...base, mode: 'select' };
-      } else if (k !== null && k > 0 && k < this.vpis.length - 1) {
-        drag = { ...base, mode: 'vpi', i: k };
-        this.selected = k;
-        this.ev.onVpiSelect?.(k);
-      } else {
+      const u = this.hit(p.x, p.y);
+      const base = { under: u, i: -1, x0: p.x, y0: p.y, dy: 0, v0: this.v0, v1: this.v1, s0: this.S(p.x), moved: false };
+      if (e.button === 2 && u.kind === 'vpi') { this.ev.onVpiDelete?.(u.k); return; }
+      if (e.button === 1 || e.button === 2) {
+        e.preventDefault();
+        c.setPointerCapture(e.pointerId);
         drag = { ...base, mode: 'pan' };
+        c.style.cursor = 'grabbing';
+        return;
       }
+      if (e.button !== 0) return;
+      if (u.kind === 'bend') { this.ev.onBendSelect?.(u.i); return; }
+      if (u.kind === 'pin' && this.mode === 'manual') { this.ev.onStationSelect?.(u.s); return; }
+      if (u.kind === 'crossing') { this.ev.onCrossingSelect?.(u.roadId); return; }
+      c.setPointerCapture(e.pointerId);
+      if (u.kind === 'pin') {
+        // keep the grab offset: the pin's point follows the mouse at the distance it was grabbed
+        const pin = this.pins.find((q) => Math.abs(q.s - u.s) < 0.1)!;
+        drag = { ...base, mode: 'pin', s0: u.s, dy: p.y - this.Y(pin.z) };
+      } else if (u.kind === 'vpi') {
+        drag = { ...base, mode: 'vpi', i: u.k };
+        this.selected = u.k;
+        this.ev.onVpiSelect?.(u.k);
+        c.style.cursor = 'grabbing';
+      } else drag = { ...base, mode: 'press' };
       this.draw();
     });
     c.addEventListener('pointermove', (e) => {
@@ -666,10 +896,21 @@ export class ProfilePanel {
       const p = rel(e);
       if (drag?.mode === 'vpi') {
         drag.moved = true;
+        this.dragging = true;
         const prev = this.vpis[drag.i - 1].s, next = this.vpis[drag.i + 1].s;
         const s = Math.max(prev + 20, Math.min(next - 20, this.S(p.x)));
         const z = Math.round(this.Z(p.y) * 10) / 10;
         this.ev.onVpiDrag?.(drag.i, s, z);
+        return;
+      }
+      if (drag?.mode === 'pin') {
+        if (!drag.moved && Math.abs(p.y - drag.y0) < 3) return;
+        drag.moved = true;
+        this.dragging = true;
+        const z = Math.round(this.Z(p.y - drag.dy) * 10) / 10, s0 = drag.s0;
+        this.pins = this.pins.map((q) => (Math.abs(q.s - s0) < 0.1 ? { s: q.s, z } : q)); // at once, before the recompute
+        this.draw();
+        this.ev.onPinDrag?.(s0, z);
         return;
       }
       if (drag?.mode === 'pan') {
@@ -680,62 +921,96 @@ export class ProfilePanel {
         this.v0 = Math.max(0, Math.min(this.r.length - span, drag.v0 + ds));
         this.v1 = this.v0 + span;
         this.draw();
+        this.ev.onView?.();
         return;
       }
       const s = this.S(p.x);
+      if (drag?.mode === 'press' && Math.abs(p.x - drag.x0) > 4) drag.mode = 'select';
       if (drag?.mode === 'select') {
-        if (Math.abs(p.x - drag.x0) > 3) drag.moved = true;
-        if (drag.moved) this.ev.onSelect?.(this.snap(drag.s0, s));
+        drag.moved = true;
+        this.ev.onSelect?.(this.snap(drag.s0, s));
+        c.style.cursor = 'col-resize';
+      } else {
+        this.setUnder(this.hit(p.x, p.y));
+        c.style.cursor = cursor(this.under);
       }
       this.hoverS = s >= 0 && s <= this.r.length ? s : null;
+      this.hoverFromMap = false;
       this.hoverClient = { x: e.clientX, y: e.clientY };
-      c.style.cursor = inCost(p.y) || e.shiftKey ? 'col-resize' : this.hitVpi(p.x, p.y) !== null ? 'grab' : 'crosshair';
-      this.ev.onHover?.(this.hoverS);
+      const u = this.under;
+      if (u.kind === 'vpi') this.ev.onHover?.(this.vpis[u.k].s, `◆ height point ${u.k} · ${this.vpis[u.k].z.toFixed(1)} m`);
+      else this.ev.onHover?.(this.hoverS);
       this.draw();
       this.updateTip();
     });
-    const end = () => {
-      if (drag?.mode === 'vpi' && drag.moved) this.ev.onVpiDragEnd?.();
-      if (drag?.mode === 'pan' && !drag.moved) { this.selected = null; this.ev.onVpiSelect?.(null); }
-      if (drag?.mode === 'select' && !drag.moved && this.r) {
-        // a click picks the tangent / curve under the cursor; clicking it again clears the selection
-        const s = drag.s0;
-        const el = this.elements.find((x) => s >= x.s0 && s <= x.s1);
-        if (el) {
-          const pick = this.snap(el.s0, el.s1);
+    const end = (e: PointerEvent) => {
+      const d = drag;
+      drag = null;
+      this.dragging = false;
+      if (!d || !this.r) return;
+      if (d.mode === 'vpi' && d.moved) this.ev.onVpiDragEnd?.();
+      if (d.mode === 'pin') { if (d.moved) this.ev.onPinDragEnd?.(); else this.ev.onStationSelect?.(d.s0); }
+      if (d.mode === 'press' && e.type === 'pointerup') {
+        const u = d.under;
+        if (u.kind === 'band') {
+          // a click picks the straight / curve; clicking it again clears the selection
+          const pick = this.snap(u.el.s0, u.el.s1);
           const same = this.sel && Math.abs(this.sel.s0 - pick.s0) < 1 && Math.abs(this.sel.s1 - pick.s1) < 1;
           this.ev.onSelect?.(same ? null : pick);
+        } else if (u.kind === 'line') {
+          // Automatic: pin the height here; By hand a double-click adds a point (a single click does nothing,
+          // so the double-click does not zoom first)
+          if (this.mode === 'auto') this.ev.onPinAdd?.(Math.round(u.s));
+        } else {
+          if (this.selected !== null) { this.selected = null; this.ev.onVpiSelect?.(null); }
+          const s = Math.max(0, Math.min(this.r.length, d.s0));
+          const span = Math.max(MIN_SPAN, (this.v1 - this.v0) / CLICK_ZOOM);
+          this.show(s, span);
+          this.ev.onZoomTo?.(s, this.v1 - this.v0);
         }
       }
-      drag = null;
+      const p = rel(e);
+      this.setUnder(this.hit(p.x, p.y));
+      c.style.cursor = cursor(this.under);
+      this.draw();
     };
     c.addEventListener('pointerup', end);
     c.addEventListener('pointercancel', end);
-    c.addEventListener('pointerleave', () => { this.hoverS = null; this.hoverClient = null; this.ev.onHover?.(null); this.draw(); this.updateTip(); });
-    c.addEventListener('dblclick', (e) => {
-      if (!this.r) return;
-      const p = rel(e);
-      if (inCost(p.y) || e.altKey) return;
-      if (this.hitVpi(p.x, p.y) !== null) return;
-      const s = this.S(p.x);
-      if (s <= 20 || s >= this.r.length - 20) return;
-      this.ev.onVpiAdd?.(s, Math.round(this.Z(p.y) * 10) / 10);
+    c.addEventListener('pointerleave', () => {
+      if (drag) return; // captured: the drag goes on
+      this.setUnder({ kind: 'none' });
+      this.hoverS = null; this.hoverClient = null; this.ev.onHover?.(null); this.draw(); this.updateTip();
     });
     c.addEventListener('wheel', (e) => {
       if (!this.r) return;
       e.preventDefault();
       const p = rel(e);
-      const s = this.S(p.x);
-      const f = Math.exp(e.deltaY * 0.0015);
-      const span = Math.max(300, Math.min(this.r.length, (this.v1 - this.v0) * f));
-      const t = (s - this.v0) / (this.v1 - this.v0);
-      this.v0 = Math.max(0, Math.min(this.r.length - span, s - t * span));
-      this.v1 = this.v0 + span;
-      this.whole = span >= this.r.length;
+      const span0 = this.v1 - this.v0;
+      // sideways scrolling (touchpad, Shift+wheel) scrolls along the route; plain wheel zooms at the mouse
+      const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
+      if (sideways) {
+        const ds = (sideways / (this.W - this.pad.l - this.pad.r)) * span0;
+        this.v0 = Math.max(0, Math.min(this.r.length - span0, this.v0 + ds));
+        this.v1 = this.v0 + span0;
+      } else {
+        const s = this.S(p.x);
+        const span = Math.max(Math.min(MIN_SPAN, this.r.length), Math.min(this.r.length, span0 * Math.exp(e.deltaY * 0.0015)));
+        const t = (s - this.v0) / span0;
+        this.v0 = Math.max(0, Math.min(this.r.length - span, s - t * span));
+        this.v1 = this.v0 + span;
+        this.whole = span >= this.r.length;
+      }
       this.draw();
       this.updateTip();
+      this.ev.onView?.();
     }, { passive: false });
+    c.addEventListener('dblclick', (e) => {
+      if (!this.r || this.mode !== 'manual') return;
+      const p = rel(e), u = this.hit(p.x, p.y);
+      if (u.kind === 'line') this.ev.onVpiAdd?.(u.s, Math.round(this.gradeAt(u.s) * 10) / 10);
+    });
     c.addEventListener('contextmenu', (e) => e.preventDefault());
+    c.addEventListener('auxclick', (e) => e.preventDefault());
   }
 }
 

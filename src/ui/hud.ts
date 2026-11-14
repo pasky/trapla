@@ -12,6 +12,7 @@ import { rangeSummary } from '../core/range';
 import type { StructureKind } from '../core/overrides';
 import type { Best, StationRange } from '../state';
 import { COST_GROUPS, czk } from './costgroups';
+import { activeStructure, structureButtons } from './structure-bar';
 
 export { czk };
 const num = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -23,12 +24,12 @@ export interface HudEvents {
   onSpeed?: (s: number) => void;
   onProfileMode?: (mode: 'auto' | 'manual') => void;
   onStructure?: (kind: StructureKind | null) => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
   onReset?: () => void;
   onLoadBest?: () => void;
   onRadius?: (i: number, r: number | null) => void;
   onDeletePi?: (i: number) => void;
+  /** pin the road height (Automatic) / add a height point (By hand) at bend i */
+  onBendHeight?: (i: number) => void;
   onViolation?: (k: number) => void;
   onExaggeration?: (e: number) => void;
   onVpiRadius?: (i: number, r: number | null) => void;
@@ -84,13 +85,14 @@ export class Hud {
         <label>Category <select id="cat">${PLAYABLE_CATEGORIES.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('')}</select></label>
         <label>Design speed <select id="speed">${[90, 80, 70].map((s) => `<option value="${s}">${s} km/h</option>`).join('')}</select></label>
         <div class="norms" id="norms"></div>
-        <div class="btns" role="group" aria-label="Grade line" title="Auto: coarse-to-fine dynamic programming on ~250 m knots minimises approximate earthwork/structure cost, with gradient/curve limits, crossing clearance and a cut/fill balance search. Manual: freezes the current grade line; drag VPIs to edit. Dragging or adding a VPI also switches to Manual. Structure overrides apply in both modes.">
-          <b>Grade line</b><button id="grade-auto">Auto</button><button id="grade-manual">Manual</button>
+        <div class="mode">
+          <div class="mode-h"><b>Road height</b><small>the black line in the profile below</small></div>
+          <div class="seg" role="radiogroup" aria-label="Road height">
+            <button id="grade-auto" role="radio" title="The game picks the cheapest legal heights and redoes them after every change of the route">Automatic</button><button id="grade-manual" role="radio" title="Start from the current automatic heights and drag the height points yourself">By hand</button>
+          </div>
+          <p id="mode-explain" class="mode-explain"></p>
         </div>
-        <div class="btns">
-          <button id="undo" title="Ctrl+Z">↶ Undo</button><button id="redo" title="Ctrl+Y">↷ Redo</button>
-          <button id="reset" title="Back to the straight line">Reset</button>
-        </div>
+        <div class="btns"><button id="reset" title="Throw the design away and start again from the straight line (Undo brings it back)">Start over</button></div>
       </section>
       <section class="card cost">
         <div class="total-row"><div id="total" class="total">—</div><div id="valid" class="badge">…</div></div>
@@ -107,25 +109,25 @@ export class Hud {
       <section class="card help">
         <h2>How to play</h2>
         <ul>
-          <li><b>Click</b> bare terrain to add a bend (PI); click a building/crossing for Build tools. <b>Shift+click</b> adds a bend instead of selecting a building/crossing</li>
-          <li><b>Drag</b> a numbered PI to move it, <b>right-click</b> or <kbd>Del</kbd> to delete</li>
-          <li>Bends are corners of the dashed polygon; the selected one shows its radius on the map: drag a <b>◇ grip</b> along the leg, <b>wheel</b> over the bend or <kbd>+</kbd> / <kbd>−</kbd>, <b>max</b> / <b>auto</b>. Close bends turning the same way become one long curve</li>
-          <li>Map: <b>left-drag</b> pan · <b>right-drag</b> rotate · <b>wheel</b> zoom</li>
-          <li><b>Grade line Auto</b>: coarse-to-fine dynamic programming on ~250 m knots seeks a low-cost profile with gradient/curve limits, crossing clearances and cut/fill balancing; it is an approximation, not a guaranteed global optimum. <b>Manual</b> freezes the current grade line. Dragging a profile point or double-clicking to add one also switches to Manual; right-click deletes, wheel zooms. Auto replaces manual vertical edits but keeps structure overrides.</li>
-          <li>Select a profile stretch, then <kbd>B</kbd> bridge, <kbd>T</kbd> tunnel, <kbd>E</kbd> earthwork, <kbd>C</kbd> clear override (automatic choice). Repaint any subrange to edit or erase it; Undo restores it. Manual ranges stay at the same kilometre positions when you reroute. Coloured dotted map overlays and labelled profile marks show them; invalid choices remain visible and produce violations.</li>
-          <li>Why is a stretch expensive? <b>Hover</b> the profile for the cost split there; <b>drag</b> in the cost strip (or <kbd>Shift</kbd>+drag) to select a stretch, <b>click</b> a curve / tangent in the band above it; <kbd>Esc</kbd> = whole route</li>
+          <li><b>Move the route:</b> click the map to add a bend, drag a numbered bend to move it, right-click it (or <kbd>Del</kbd>) to delete it.</li>
+          <li><b>Wider or tighter curve:</b> click a bend, then drag its ◇ grips or turn the mouse wheel over it.</li>
+          <li><b>Look around the map:</b> drag to pan, right-drag to rotate, wheel to zoom.</li>
+          <li><b>Look along the profile:</b> click it to zoom in there (the map follows), wheel to zoom, right-drag to scroll.</li>
+          <li><b>Bridge or tunnel somewhere:</b> drag across the profile to select a stretch, then pick <b>Bridge</b>, <b>Tunnel</b>, <b>Earthwork</b> or <b>Automatic</b> in the bar that pops up.</li>
+          <li><b>Raise or lower the road:</b> in Automatic, click the road line in the profile to pin its height there, then drag the pin. By hand, drag the height points (◆); double-click the line to add one.</li>
+          <li><b>Why so expensive?</b> Hover the profile for the costs at that spot; a selected stretch shows its own bill above.</li>
+          <li><b>Crossed roads, buildings:</b> click one on the map and choose in <b>Build tools</b> (<kbd>Shift</kbd>+click adds a bend there instead).</li>
           <li>Noise protection: <kbd>N</kbd> = noise view: the road's noise level relative to the limit, dwellings coloured by outcome (wall, cut, bought out); <b>hover</b> a building or wall for the levels and the reason</li>
+          <li><b>Made a mistake?</b> Undo / Redo at the top left of the map, <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd>.</li>
         </ul>
         <label class="exag">Vertical exaggeration <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>
       </section>`;
     this.$<HTMLSelectElement>('cat').onchange = (e) => this.ev.onCategory?.((e.target as HTMLSelectElement).value);
     this.$<HTMLSelectElement>('speed').onchange = (e) => this.ev.onSpeed?.(Number((e.target as HTMLSelectElement).value));
     this.$<HTMLSelectElement>('exag').onchange = (e) => this.ev.onExaggeration?.(Number((e.target as HTMLSelectElement).value));
-    this.$('undo').onclick = () => this.ev.onUndo?.();
-    this.$('redo').onclick = () => this.ev.onRedo?.();
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
-    this.$('reset').onclick = () => { if (confirm('Reset to the straight line?')) this.ev.onReset?.(); };
+    this.$('reset').onclick = () => { if (confirm('Start over from the straight line? (Undo brings your design back.)')) this.ev.onReset?.(); };
     this.$('range').onclick = (e) => {
       const b = (e.target as HTMLElement).closest('button');
       if (!b) return;
@@ -148,24 +150,27 @@ export class Hud {
     };
   }
 
-  setDesign(d: Design, canUndo: boolean, canRedo: boolean) {
+  setDesign(d: Design) {
     this.$<HTMLSelectElement>('cat').value = d.category;
     this.$<HTMLSelectElement>('speed').value = String(d.speed);
     const n = speedNorms(d.speed);
-    this.$('norms').innerHTML = `min R <b>${n.minRadius} m</b> (6 % superelev.) · no-superelev. R ${n.noSuperelevationRadius} m · transitions ≥ ${n.minTransition} m · max grade ${(this.sc.maxGradient * 100).toFixed(0)} %* · crest ≥ ${num(n.minCrestRadius)} m* · sag ≥ ${num(n.minSagRadius)} m* <span class="prov" title="older edition of ČSN 73 6101, not confirmed for 2018">*provisional</span>`;
-    (this.$('undo') as HTMLButtonElement).disabled = !canUndo;
-    (this.$('redo') as HTMLButtonElement).disabled = !canRedo;
+    const norms = this.$('norms');
+    norms.innerHTML = `Rules at ${d.speed} km/h: curves ≥ <b>${n.minRadius} m</b> radius · slopes ≤ <b>${(this.sc.maxGradient * 100).toFixed(0)} %</b>* · hilltops rounded ≥ ${num(n.minCrestRadius)} m*, dips ≥ ${num(n.minSagRadius)} m* <span class="prov" title="* from an older edition of ČSN 73 6101, not confirmed for 2018">*provisional</span>`;
+    norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${(this.sc.maxGradient * 100).toFixed(0)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
       b.classList.toggle('on', d.profileMode === mode);
-      b.setAttribute('aria-pressed', String(d.profileMode === mode));
+      b.setAttribute('aria-checked', String(d.profileMode === mode));
     }
+    this.$('mode-explain').innerHTML = d.profileMode === 'auto'
+      ? '<b>Automatic:</b> the game sets the road\'s height along the route for the lowest cost and updates it whenever you move the route. To force a height somewhere, click the road line in the profile: that pins it, and you can drag the pin up or down.'
+      : '<b>By hand:</b> you drag the height points (◆) in the profile yourself; double-click the road line to add one, right-click one to delete it. Moving the route keeps your points. <i>Automatic</i> would replace them (Undo brings them back).';
   }
 
   setProfileBusy(busy: boolean) {
     const manual = this.$<HTMLButtonElement>('grade-manual');
     manual.disabled = busy;
-    manual.title = busy ? 'Wait for the current grade line to finish computing before freezing it' : 'Freeze the current grade line for manual editing';
+    manual.title = busy ? 'One moment: the automatic heights are still being computed' : 'Start from the current automatic heights and drag the height points yourself';
   }
 
   /** switch the breakdown and quantities to a station range (null = whole route) */
@@ -188,12 +193,9 @@ export class Hud {
     const box = this.$('range');
     box.style.display = sel ? '' : 'none';
     if (sel) {
-      box.innerHTML = `<div class="range-h"><b>Selected km ${num(sel.s0 / 1000, 2)} – ${num(sel.s1 / 1000, 2)}</b><button title="Esc">✕ Whole route</button></div>
+      box.innerHTML = `<div class="range-h"><b>Selected km ${num(sel.s0 / 1000, 2)} – ${num(sel.s1 / 1000, 2)}</b><button title="Deselect: back to the whole route's bill (Esc)">✕ Deselect</button></div>
         <div class="range-cost"><b>${czk(sel.cost.total)}</b> · ${km(sel.length)} · ${czk(sel.cost.total / (sel.length / 1000))} per km <small>(${num((100 * sel.cost.total) / Math.max(1, whole.total), 0)} % of the route's cost on ${num((100 * sel.length) / r.length, 0)} % of its length)</small></div>
-        <div class="btns" role="group" aria-label="Structure override">
-          <button data-structure="1" title="B — force a bridge">Bridge (B)</button><button data-structure="2" title="T — force a tunnel">Tunnel (T)</button>
-          <button data-structure="0" title="E — force earthwork, even if a structure would be cheaper">Earthwork (E)</button><button data-structure="clear" title="C — remove manual choices in this range">Clear (C)</button>
-        </div><small>Manual structure override · repaint or clear any subrange · Undo supported</small>`;
+        <div class="range-build"><span>Build here:</span>${structureButtons(activeStructure(sel, d.structureOverrides))}</div>`;
     }
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
@@ -268,20 +270,22 @@ export class Hud {
     const n = speedNorms(d.speed);
     const auto = d.pis[i].r === null;
     const rv = d.pis[i].r ?? cv?.r ?? n.minRadius;
-    card.innerHTML = `<h2>PI ${i + 1}</h2>
+    card.innerHTML = `<h2>Bend ${i + 1}</h2>
       <div class="pi-row">
-        <label>Radius <input id="pi-r" type="number" min="50" step="5" value="${Math.round(rv)}" ${auto ? 'disabled' : ''}> m</label>
-        <label><input id="pi-auto" type="checkbox" ${auto ? 'checked' : ''}> auto</label>
+        <label>Curve radius <input id="pi-r" type="number" min="50" step="5" value="${Math.round(rv)}" ${auto ? 'disabled' : ''}> m</label>
+        <label title="The smallest radius the rules allow"><input id="pi-auto" type="checkbox" ${auto ? 'checked' : ''}> smallest allowed</label>
         <button id="pi-del">Delete</button>
       </div>
       <input id="pi-slider" type="range" min="${Math.round(n.minRadius * 0.5)}" max="5000" step="5" value="${Math.round(rv)}">
-      <div class="sub">deflection ${cv ? num((cv.delta * 180) / Math.PI, 1) : '—'}° · tangent ${cv ? num(cv.t, 0) : '—'} m · arc ${cv ? num(cv.delta * cv.rEff, 0) : '—'} m${cv && cv.rEff < cv.r - 1 ? ' · <span class="badtxt">overlaps neighbour</span>' : ''}</div>`;
+      <div class="btns"><button id="pi-height">${d.profileMode === 'auto' ? 'Pin road height at this bend' : 'Add a height point at this bend'}</button></div>
+      <div class="sub">turns ${cv ? num((cv.delta * 180) / Math.PI, 1) : '—'}° · curve ${cv ? num(cv.delta * cv.rEff, 0) : '—'} m long, starts ${cv ? num(cv.t, 0) : '—'} m before the bend${cv && cv.rEff < cv.r - 1 ? ' · <span class="badtxt">runs into the next curve</span>' : ''}</div>`;
     const inp = card.querySelector<HTMLInputElement>('#pi-r')!;
     const sl = card.querySelector<HTMLInputElement>('#pi-slider')!;
     inp.onchange = () => this.ev.onRadius?.(i, Math.max(10, Number(inp.value)));
     sl.oninput = () => { inp.value = sl.value; this.ev.onRadius?.(i, Number(sl.value)); };
     card.querySelector<HTMLInputElement>('#pi-auto')!.onchange = (e) => this.ev.onRadius?.(i, (e.target as HTMLInputElement).checked ? null : Math.round(rv));
     card.querySelector<HTMLButtonElement>('#pi-del')!.onclick = () => this.ev.onDeletePi?.(i);
+    card.querySelector<HTMLButtonElement>('#pi-height')!.onclick = () => this.ev.onBendHeight?.(i);
   }
 
   setSelectedVpi(i: number | null, r: Result | null) {
@@ -290,13 +294,14 @@ export class Hud {
     card.style.display = '';
     const vc = r.vcurves[i - 1];
     const v = r.vpis[i];
-    card.innerHTML = `<h2>Profile point ${i} <small>km ${num(v.s / 1000, 2)} · ${num(v.z, 1)} m</small></h2>
+    const what = vc?.type === 'crest' ? 'Hilltop' : vc?.type === 'sag' ? 'Dip' : 'Bend';
+    card.innerHTML = `<h2>Height point ${i} <small>km ${num(v.s / 1000, 2)} · ${num(v.z, 1)} m</small></h2>
       <div class="pi-row">
-        <label>${vc?.type ?? ''} radius <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
-        <label><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> min</label>
+        <label title="How gently the road rounds over this point (vertical curve radius)">${what} rounding <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
+        <label title="The smallest rounding the rules allow"><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> smallest allowed</label>
         <button id="vpi-del">Delete</button>
       </div>
-      <div class="sub">curve length ${num(vc?.len ?? 0, 0)} m</div>`;
+      <div class="sub">the rounding is ${num(vc?.len ?? 0, 0)} m long</div>`;
     const inp = card.querySelector<HTMLInputElement>('#vpi-r')!;
     inp.onchange = () => this.ev.onVpiRadius?.(i, Number(inp.value));
     card.querySelector<HTMLInputElement>('#vpi-auto')!.onchange = (e) => this.ev.onVpiRadius?.(i, (e.target as HTMLInputElement).checked ? null : Math.round(vc?.r ?? 0));

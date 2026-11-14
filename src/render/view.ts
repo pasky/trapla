@@ -669,7 +669,13 @@ export class View {
     this.maskUniforms.maskOn.value = pos.length ? 1 : 0;
   }
 
-  setHover(p: { x: number; y: number; z: number } | null) { this.hoverPos = p; this.dirty = true; }
+  /** the yellow dot linked to the profile's hover; `label` names what is hovered there (e.g. a height point) */
+  setHover(p: { x: number; y: number; z: number } | null, label = '') {
+    this.hoverPos = p;
+    if (label !== this.hoverLabel) { this.hoverLabel = label; this.hoverEl.innerHTML = label ? `<span>${label}</span>` : ''; }
+    this.dirty = true;
+  }
+  private hoverLabel = '';
 
   setExaggeration(e: number) {
     this.exag = e;
@@ -693,6 +699,7 @@ export class View {
 
   /** look at local (x,y) from `dist` metres, from the given compass bearing (deg, camera → target) */
   lookAt(x: number, y: number, dist = 2500, bearing = 0, elevationDeg = 40) {
+    this.flight++;
     const z = this.terrain.heightAt(x, y) * this.exag;
     const t = this.local(x, y, 0);
     t.y = z;
@@ -703,6 +710,30 @@ export class View {
     this.camera.position.set(t.x + dx, t.y + Math.sin(el) * dist, t.z - dy);
     this.controls.update();
     this.dirty = true;
+  }
+
+  private flight = 0;
+
+  /** glide the orbit target to local (x, y), keeping the viewing direction; `dist` = new camera distance */
+  flyTo(x: number, y: number, dist?: number, ms = 450) {
+    const id = ++this.flight;
+    const from = this.controls.target.clone();
+    const to = this.local(x, y, this.terrain.heightAt(x, y) * this.exag);
+    const off0 = this.camera.position.clone().sub(from);
+    const off1 = dist ? off0.clone().setLength(Math.max(this.controls.minDistance, Math.min(this.controls.maxDistance, dist))) : off0.clone();
+    const t0 = performance.now();
+    const cancel = () => { this.flight++; };
+    this.controls.addEventListener('start', cancel); // the player grabbed the map: stop gliding
+    const step = () => {
+      if (id !== this.flight) { this.controls.removeEventListener('start', cancel); return; }
+      const k = Math.min(1, (performance.now() - t0) / ms), e = k * k * (3 - 2 * k);
+      this.controls.target.lerpVectors(from, to, e);
+      this.camera.position.copy(this.controls.target).add(off0.clone().lerp(off1, e));
+      this.controls.update();
+      this.dirty = true;
+      if (k < 1) requestAnimationFrame(step); else this.controls.removeEventListener('start', cancel);
+    };
+    step();
   }
 
   private resize() {
@@ -801,4 +832,6 @@ export class View {
   }
 
   get selectedPi() { return this.selected; }
+  /** the orbit target in local map coordinates (diagnostics) */
+  get target() { const t = this.controls.target; return { x: t.x + this.cx, y: this.cy - t.z }; }
 }
