@@ -4,7 +4,7 @@ import type { CrossingGeometry, CrossingPoint, CrossingResult } from '../core/cr
 import type { Result } from '../core/evaluate';
 import type { FootprintConflict } from '../core/footprint';
 import { KIND } from '../core/structures';
-import { GROUND_COLLAR } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, type DaylightSection } from './earthwork-surface';
 
 /** Existing engineered formation beneath a junction: indexed once, never scan the route per vertex. */
 export function crossingBaseHeight(r: Pick<Result, 'n' | 'x' | 'y' | 'grade' | 'kind' | 'dayL' | 'dayR' | 'zDayL' | 'zDayR'>,
@@ -112,6 +112,41 @@ export function footprintSurfaces(conflicts: readonly FootprintConflict[], heigh
     s: (c.s0 + c.s1) / 2, i: c.i, x: c.x, y: c.y, h: 0, cost: c.cost,
     cls: c.cls ?? 'unclassified', roadId: c.roadId, type: 'diversion', geometry: c.geometry,
   })), height);
+}
+
+export interface TurnaroundSurface {
+  crossing: CrossingResult; center: CrossingPoint; radius: number; sections: DaylightSection[];
+}
+/** Explicit paid turning disks, once per geometry even when it has two links plus a road. */
+export function turnaroundSurfaces(surfaces: readonly CrossingSurface[], natural: (x: number, y: number) => number): TurnaroundSurface[] {
+  const seen = new Set<CrossingGeometry>(), heads: TurnaroundSurface[] = [];
+  for (const { crossing } of surfaces) {
+    const g = crossing.geometry!, radius = g.turnaroundRadius;
+    if (seen.has(g) || radius === undefined || !Number.isFinite(radius) || radius <= 0) continue;
+    seen.add(g);
+    const centers = new Set<string>();
+    for (const center of g.turnarounds ?? []) {
+      const key = `${center.x},${center.y}`;
+      if (centers.has(key)) continue;
+      centers.add(key);
+      const count = Math.max(32,Math.min(512,Math.ceil(2*Math.PI*(radius+GROUND_COLLAR)/2.5)));
+      const sections = Array.from({ length: count }, (_,j) => {
+        const angle = j/count*2*Math.PI, dx = Math.cos(angle), dy = Math.sin(angle);
+        const point = (r: number) => ({ x: center.x+dx*r, y: center.y+dy*r });
+        const day = point(radius), outer = point(radius+GROUND_COLLAR);
+        return { edge: { ...day, z: center.z }, day: { ...day, z: natural(day.x,day.y) },
+          outer: { ...outer, z: natural(outer.x,outer.y) } };
+      });
+      heads.push({ crossing, center, radius, sections });
+    }
+  }
+  return heads;
+}
+/** Discard only into the natural collar, leaving a five-metre overlap beyond the mask. */
+export function turnaroundMaskRing(head: TurnaroundSurface) {
+  const scale = (head.radius+GROUND_COLLAR-COLLAR_OVERLAP)/head.radius;
+  return head.sections.map(s => ({ x: head.center.x+(s.day.x-head.center.x)*scale,
+    y: head.center.y+(s.day.y-head.center.y)*scale }));
 }
 
 /** Ground collars beyond each endpoint let the original textured road continue at the tie-in

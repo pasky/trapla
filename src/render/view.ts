@@ -14,7 +14,7 @@ import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
-import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, groundSegment, type CrossingSurface } from './crossing-surface';
+import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, groundSegment, turnaroundSurfaces, turnaroundMaskRing, type CrossingSurface } from './crossing-surface';
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 import { structureFootprints } from '../core/footprint';
@@ -489,6 +489,7 @@ export class View {
       const width = Math.max(...[a,b].flatMap(s => s.toe.map(p => Math.hypot(p.x-s.p.x,p.y-s.p.y))));
       corridors.push({ a: a.p, b: b.p, width });
     }
+    for (const head of turnaroundSurfaces(this.crossingSurfaces,natural)) corridors.push({ a: head.center, b: head.center, width: head.radius });
     this.groundBlend = groundBlend(corridors);
     for (const c of [...this.routeGroup.children]) {
       this.routeGroup.remove(c);
@@ -810,6 +811,13 @@ export class View {
       const l = inset(a,b,2*COLLAR_OVERLAP), rr = inset(b,a,2*COLLAR_OVERLAP);
       const endL = inset(c,d,2*COLLAR_OVERLAP), endR = inset(d,c,2*COLLAR_OVERLAP);
       addQuad(pos, l, rr, inset(endL,l,2*COLLAR_OVERLAP), inset(endR,rr,2*COLLAR_OVERLAP));
+    }
+    for (const head of turnaroundSurfaces(this.crossingSurfaces,(x,y) => this.terrain.heightAt(x,y))) {
+      const ring = turnaroundMaskRing(head);
+      for (let j = 0; j < ring.length; j++) for (const p of [head.center,ring[j],ring[(j+1)%ring.length]]) {
+        const x = p.x-this.cx, z = this.cy-p.y;
+        pos.push(x,0,z); minX = Math.min(minX,x); maxX = Math.max(maxX,x); minZ = Math.min(minZ,z); maxZ = Math.max(maxZ,z);
+      }
     }
     minX -= 20; minZ -= 20; maxX += 20; maxZ += 20;
     const maxTex = Math.min(8192, this.renderer.capabilities.maxTextureSize);

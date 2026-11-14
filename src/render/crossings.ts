@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { CrossingPoint } from '../core/crossings';
 import type { Result } from '../core/evaluate';
 import type { FootprintConflict } from '../core/footprint';
-import { endCollars, groundSegment, hasCrossingPath, type CrossingSurface } from './crossing-surface';
+import { endCollars, groundSegment, hasCrossingPath, turnaroundSurfaces, type CrossingSurface } from './crossing-surface';
 import { existingRoadColor } from './landcover';
 import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
@@ -12,6 +12,7 @@ import { collarPoint } from './earthwork-surface';
 class MeshBuilder {
   pos: number[] = []; col: number[] = []; elev: number[] = []; ink: number[] = []; indices: number[] = [];
   kinds: number[] = []; geo: number[] = [];
+  groundHoles: { center: { x: number; y: number }; radius: number }[] = [];
   constructor(private view: View) {}
   vertex(p: CrossingPoint, color: number, ink = 0, lift = .08,
     kind: number = ink ? (color === 0xe3d27e ? EW_KIND.fill : EW_KIND.cut) : EW_KIND.structure) {
@@ -21,6 +22,21 @@ class MeshBuilder {
     return i;
   }
   quad(a: CrossingPoint, b: CrossingPoint, c: CrossingPoint, d: CrossingPoint, color: number, ink = 0, lift = .08, kind?: number) {
+    // Existing replacement collars must not cover a level turning disk in cut. Drop
+    // touching cells; the disk's own 20 m natural collar covers the small outside remainder.
+    const polygon = [a,b,d,c];
+    if (this.groundHoles.some(({ center: p, radius: r }) => {
+      if (p.x+r < Math.min(a.x,b.x,c.x,d.x) || p.x-r > Math.max(a.x,b.x,c.x,d.x) ||
+        p.y+r < Math.min(a.y,b.y,c.y,d.y) || p.y-r > Math.max(a.y,b.y,c.y,d.y)) return false;
+      let inside = false;
+      for (let i = 0, j = 3; i < 4; j = i++) {
+        const u = polygon[j], v = polygon[i], dx = v.x-u.x, dy = v.y-u.y;
+        const t = Math.max(0,Math.min(1,((p.x-u.x)*dx+(p.y-u.y)*dy)/(dx*dx+dy*dy || 1)));
+        if (Math.hypot(p.x-u.x-t*dx,p.y-u.y-t*dy) < r) return true;
+        if ((u.y > p.y) !== (v.y > p.y) && p.x < (v.x-u.x)*(p.y-u.y)/(v.y-u.y)+u.x) inside = !inside;
+      }
+      return inside;
+    })) return;
     const v = [a, b, c, d].map(p => this.vertex(p, color, ink, lift, kind));
     this.indices.push(v[0], v[1], v[2], v[1], v[3], v[2]);
   }
@@ -50,7 +66,24 @@ export class CrossingRenderer {
   setResult(r: Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[] }) {
     this.clear();
     const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view), structure = new MeshBuilder(this.view);
+    const heads = turnaroundSurfaces(this.view.crossingSurfaces,(x,y) => this.view.groundHeight(x,y));
+    terrain.groundHoles = heads;
     for (const surface of this.view.crossingSurfaces) this.surface(surface, earth, terrain, structure);
+    for (const head of heads) {
+      terrain.groundHoles = heads.filter(other => other !== head);
+      const color = existingRoadColor(head.crossing.cls), center = earth.vertex(head.center,color,0,.12,EW_KIND.crown);
+      for (let j = 0; j < head.sections.length; j++) {
+        const a = head.sections[j], b = head.sections[(j+1)%head.sections.length];
+        const roadPoint = (p: typeof a.day): CrossingPoint => ({ ...head.center, ...p });
+        earth.indices.push(center,earth.vertex(roadPoint(a.edge),color,0,.12,EW_KIND.crown),earth.vertex(roadPoint(b.edge),color,0,.12,EW_KIND.crown));
+        // Paid exposed rim: vertical support from the level disk to true natural ground.
+        const rim = (p: typeof a.day, lift: number) => roadPoint({ ...p, z: p.z+lift });
+        structure.quad(rim(a.edge,.12),rim(a.day,.015),rim(b.edge,.12),rim(b.day,.015),0xb7b4a9,0,0);
+        const collar = (s: typeof a, t: number) => roadPoint(collarPoint(s,t,
+          (x,y) => this.view.groundHeight(x,y),(x,y) => this.view.replacementHeight(x,y)));
+        for (let k = 0; k < 8; k++) terrain.quad(collar(a,k/8),collar(a,(k+1)/8),collar(b,k/8),collar(b,(k+1)/8),0xffffff,0,.015);
+      }
+    }
     for (const [builder, material, name] of [[terrain, this.view.crossingGroundMaterial(), 'crossing-terrain'],
       [earth, this.view.crossingEarthMaterial(), 'crossing-earthworks'], [structure, this.view.crossingEarthMaterial(), 'crossing-decks']] as const) {
       if (!builder.indices.length) { material.dispose(); continue; }
@@ -173,7 +206,7 @@ export class CrossingRenderer {
         earth.indices.push(...v);
       }
     }
-    if (s.link && s.crossing.cls !== 'track' && s.path.length &&
+    if (g.turnaroundRadius === undefined && s.link && s.crossing.cls !== 'track' && s.path.length &&
       (g.turnarounds === undefined || g.turnarounds.some(p => Math.hypot(p.x-s.path[0].x,p.y-s.path[0].y) < .01))) {
       // Turning heads only at explicit severed ends; absent metadata retains legacy link behavior.
       const p = s.path[0], radius = g.width * .72, sections = 20;
