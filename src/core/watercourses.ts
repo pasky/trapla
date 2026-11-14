@@ -79,6 +79,27 @@ export class WaterNet {
         }
     }
   }
+  /** Channels intercepted by a station's normal section, including parallel channels that never
+   * cross the centreline. Bounded local buckets, not a full route×network product. */
+  section(x: number, y: number, tx: number, ty: number, left: number, right: number): { id: number; x: number; y: number }[] {
+    const radius = Math.max(left, right), out: { id: number; x: number; y: number }[] = [], seen = new Set<string>();
+    for (let cx = Math.floor((x - radius) / 100); cx <= Math.floor((x + radius) / 100); cx++)
+      for (let cy = Math.floor((y - radius) / 100); cy <= Math.floor((y + radius) / 100); cy++)
+        for (const { reach: w, j } of this.buckets.get(`${cx},${cy}`) ?? []) {
+          const key = `${w.id}:${j}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const a = w.points[j], b = w.points[j + 1], dx = b[0] - a[0], dy = b[1] - a[1];
+          const den = dx * tx + dy * ty;
+          if (Math.abs(den) < 1e-9) continue; // channel lies along this normal; a crossing handles it
+          const t = -((a[0] - x) * tx + (a[1] - y) * ty) / den;
+          if (t < 0 || t > 1) continue;
+          const px = a[0] + t * dx, py = a[1] + t * dy;
+          const off = -(px - x) * ty + (py - y) * tx;
+          if (off <= left && off >= -right) out.push({ id: w.id, x: px, y: py });
+        }
+    return out;
+  }
   intersections(n: number, s: ArrayLike<number>, x: ArrayLike<number>, y: ArrayLike<number>): WaterCrossing[] {
     const out: WaterCrossing[] = [];
     for (let i = 0; i + 1 < n; i++) {

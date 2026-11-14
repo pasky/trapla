@@ -23,6 +23,8 @@ export interface StructureInput {
   tunnelPerM: number | ArrayLike<number>;
   /** stations that must be bridged (river / railway crossings), unless deep in cut */
   forced?: ArrayLike<number>;
+  /** A surface watercourse above a sufficiently deep grade must retain a bored tunnel, not an open cut. */
+  forcedTunnel?: ArrayLike<number>;
   /** −1 = automatic; otherwise KIND. Applied after automatic run decisions, even when invalid. */
   overrides?: ArrayLike<number>;
 }
@@ -48,6 +50,14 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       for (let j = Math.max(1, i - pad); j <= Math.min(n - 2, i + pad); j++) {
         // never lock a "bridge" below ground: the span ends where the terrain rises above the grade
         if (kind[j] !== KIND.tunnel && inp.h[j] > 0) { kind[j] = KIND.bridge; locked[j] = 1; }
+      }
+    }
+  }
+  if (inp.forcedTunnel) {
+    const pad = Math.ceil((rules.minTunnelLength / inp.ds - 1) / 2);
+    for (let i = 0; i < n; i++) if (inp.forcedTunnel[i]) {
+      for (let j = Math.max(1, i - pad); j <= Math.min(n - 2, i + pad); j++) {
+        if (inp.h[j] <= -rules.tunnelMinDepth) { kind[j] = KIND.tunnel; locked[j] = 1; }
       }
     }
   }
@@ -87,7 +97,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       let manual = false, forced = false;
       for (let i = r.i0; i <= r.i1; i++) {
         manual ||= inp.overrides[i] >= 0;
-        forced ||= r.kind === KIND.bridge && !!locked[i];
+        forced ||= !!locked[i];
       }
       const min = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
       // Paint may split a formerly viable automatic run. Unrequested, unlocked remnants remain
@@ -130,6 +140,9 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     flagRanges((i) => inp.overrides![i] === KIND.tunnel && -inp.h[i] < rules.tunnelMinDepth,
       'Your tunnel has too little cover', `Lower the road to at least ${rules.tunnelMinDepth} m below ground, or shorten the tunnel / set it back to Automatic`,
       `Tunnels you choose need ${rules.tunnelMinDepth} m of depth (game simplification)`);
+    flagRanges((i) => !!inp.forcedTunnel?.[i] && inp.overrides![i] >= 0 && kind[i] !== KIND.tunnel,
+      'Watercourse requires a bored tunnel', 'Set this stretch back to Automatic, or retain a tunnel below the channel',
+      'An open cut cannot intercept the surface watercourse');
     flagRanges((i) => !!inp.forced?.[i] && inp.overrides![i] >= 0 && kind[i] !== KIND.bridge,
       'Crossing requires a bridge', 'Set this stretch back to Automatic (or Bridge), or choose "Our bridge over it" for the crossing',
       'River, railway and separated-road crossings cannot be buried under earthwork (game crossing rule)');

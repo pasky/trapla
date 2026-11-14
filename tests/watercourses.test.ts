@@ -65,6 +65,39 @@ describe('watercourse crossing assemblies', () => {
     expect(blocked.waterCrossings[0].structure).toBe('blocked');
     expect(blocked.violations.some(v => v.kind === 'crossing')).toBe(true);
   });
+  it('charges an incised between-station gully from the crossing elevation, not the higher station', () => {
+    const d = data(0.1, [[1255, 0], [1255, 500]]);
+    const q = new Uint16Array(500 * 100).fill(40000);
+    for (let r = 0; r < 100; r++) {
+      q[r * 500 + 249] = q[r * 500 + 252] = 41000;
+      q[r * 500 + 250] = q[r * 500 + 251] = 39600;
+    }
+    const terrain = new Terrain({ nx: 500, ny: 100, cell: 5, base: 0, scale: 0.01, q, lc: new Uint8Array(q.length), watercourses: d });
+    const r = evaluate({ ...context(0.1), terrain }, design), c = r.waterCrossings[0];
+    expect(r.grade[c.i] - r.ground[c.i]).toBeLessThan(0);
+    expect(c.structure).toBe('pipe');
+    expect(r.parts.culverts[c.i]).toBeGreaterThan(0);
+    expect(r.parts.culverts[c.i]).toBeCloseTo(c.cost, 6);
+  });
+  it('a stream above a tunnel does not destroy another stream clearance in Auto', () => {
+    const nx = 800, ny = 100, q = new Uint16Array(nx * ny);
+    for (let r = 0; r < ny; r++) for (let c = 0; c < nx; c++) {
+      const x = (c + 0.5) * 5;
+      q[r * nx + c] = Math.round(100 * (400 + 100 * Math.max(0, Math.min(1, (x - 1200) / 200, (2400 - x) / 200))));
+    }
+    const water = data(0.1, [[600, 0], [600, 500]]);
+    water.reaches.push({ ...water.reaches[0], id: 2, points: [[1800, 0], [1800, 500]] });
+    const terrain = new Terrain({ nx, ny, cell: 5, base: 0, scale: 0.01, q, lc: new Uint8Array(q.length), watercourses: water });
+    const r = evaluate({ ...context(0.1), terrain, b: { x: 3750, y: 250 } }, { ...design, profileMode: 'auto' });
+    expect(['pipe', 'box', 'bridge']).toContain(r.waterCrossings[0].structure);
+    expect(r.waterCrossings[1].structure).toBe('tunnel');
+    expect(r.violations.filter(v => v.kind === 'crossing')).toHaveLength(0);
+  });
+  it('detects a parallel channel in the earthwork footprint without a centreline crossing', () => {
+    const water = data(0.1, [[750, 260], [1750, 260]]);
+    expect(new WaterNet(water).intersections(2, [0, 2000], [250, 2250], [250, 250])).toHaveLength(0);
+    expect(new WaterNet(water).section(1250, 250, 1, 0, 20, 20)).toHaveLength(1);
+  });
   it('does not silently culvert a cut; Auto lifts the grade to pass the stream', () => {
     const cut = evaluate(context(0.1, -3), design);
     expect(cut.cost.earthDetail.culverts).toBe(0);

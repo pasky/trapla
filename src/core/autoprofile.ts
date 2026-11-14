@@ -50,6 +50,8 @@ export interface AutoProfileOptions {
   balance?: BalanceSearch;
   /** optional per-station minimum h (NaN = none), e.g. bridge clearance over a river */
   minH?: ArrayLike<number>;
+  /** Disjunctive crossing clearance: pass above a channel OR tunnel sufficiently below it. */
+  eitherH?: { above: ArrayLike<number>; below: ArrayLike<number> };
   knotSpacing?: number;
   /** penalty per grade change, CZK (keeps the line calm) */
   vpiPenalty?: number;
@@ -181,7 +183,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   for (let k = 0; k < nK; k++) {
     clrStart[k] = clrIdx.length;
     for (let i = first[k]; i <= last[k]; i++) {
-      if ((opt.minH && opt.minH[i] > -Infinity) || (opt.maxH && opt.maxH[i] < Infinity)) clrIdx.push(i);
+      if ((opt.minH && opt.minH[i] > -Infinity) || (opt.maxH && opt.maxH[i] < Infinity) || opt.eitherH?.above[i]! > -Infinity) clrIdx.push(i);
     }
   }
   clrStart[nK] = clrIdx.length;
@@ -362,6 +364,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             const h = zm + slope * (s[i] - sk) - g[i];
             if (minH && h < minH[i] + CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
             if (maxH && h > maxH[i] - CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
+            if (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
           }
           // Last half-cell has no curve: the last tangent and the exact endpoint correction.
           if (knotPins && k === nK - 1) for (const p of knotPins[nK]) {
