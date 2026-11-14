@@ -10,8 +10,9 @@ import { sideSection, DEFAULT_SLOPES, type Sections } from './sections';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
-import type { FootprintConflict } from './footprint';
-import { barrelContains, barrelEnvelope, waterWidth, type WaterCrossing, type WaterSegment } from './watercourses';
+import { subtract, type FootprintConflict } from './footprint';
+import { KIND } from './structures';
+import { barrelContains, barrelIntervals, culvertEnvelope, waterWidth, type BarrelEnvelope, type WaterCrossing, type WaterSegment } from './watercourses';
 import { planChannelRelocations, type ChannelHit, type ChannelRelocation } from './channel-relocation';
 
 export interface RetainingWall {
@@ -56,16 +57,58 @@ export function retainingConflicts(walls: readonly RetainingWall[]): FootprintCo
   return out;
 }
 
+interface RetainingBarrel { c: WaterCrossing; i: number; left: number; right: number; cover: number; envelope: BarrelEnvelope }
+
 export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: RoadNet, overrides?: ArrayLike<number>, water: readonly WaterCrossing[] = [], cache?: RetainingFeatureCache): RetainingPlan {
+  const { n, ds } = r;
+  let barrels: RetainingBarrel[] = water.flatMap(c => {
+    const i = Math.min(n - 1, Math.round(c.s / ds)), j = Math.max(0, Math.min(n - 2, Math.floor(c.s / ds)));
+    if (overrides?.[i] === KIND.bridge || overrides?.[i] === KIND.tunnel) return [];
+    const t = Math.max(0, Math.min(1, (c.s - r.s[j]) / ds));
+    const cover = r.grade[j] * (1 - t) + r.grade[j + 1] * t - terrain.heightAt(c.x, c.y);
+    const envelope = culvertEnvelope(c, r.dayL[i], r.dayR[i], ds, r.tx[i], r.ty[i], cover);
+    return envelope ? [{ c, i, left: r.dayL[i], right: r.dayR[i], cover, envelope }] : [];
+  });
+  if (!barrels.length) return retainingPass(r, terrain, roads, overrides, water, cache, barrels);
+  // Road/water walls can shorten a crossing's barrel footprint. Re-screen its ownership
+  // against the shortened sections, rebuilding from the untouched input so quantities and
+  // wall costs are never applied twice. Ownership only shrinks; local query caches are reused.
+  const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open'] as const;
+  const original = fields.map(key => r[key].slice()), sideL = r.sideL?.slice(), sideR = r.sideR?.slice();
+  const restore = () => {
+    fields.forEach((key, k) => r[key].set(original[k]));
+    for (let i = 0; i < n; i++) {
+      if (sideL && r.sideL) r.sideL[i] = sideL[i];
+      if (sideR && r.sideR) r.sideR[i] = sideR[i];
+    }
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const plan = retainingPass(r, terrain, roads, overrides, water, cache, barrels);
+    let changed = false;
+    barrels = barrels.flatMap(b => {
+      const left = Math.min(b.left, r.dayL[b.i]), right = Math.min(b.right, r.dayR[b.i]);
+      if (left >= b.left - 1e-6 && right >= b.right - 1e-6) return [b];
+      changed = true;
+      // Recheck cover too: shortening can switch a box to a pipe with a different
+      // minimum cover, not merely move the asymmetric daylight ends inward.
+      const envelope = culvertEnvelope(b.c, left, right, ds, r.tx[b.i], r.ty[b.i], b.cover);
+      return envelope ? [{ ...b, left, right, envelope }] : [];
+    });
+    if (!changed) return plan;
+    restore();
+  }
+  // Bound coupled wall/ownership retries. If they do not settle, no hypothetical barrel
+  // can waive a constraint: retain/bridge the feature and let the final screen validate it.
+  return retainingPass(r, terrain, roads, overrides, water, cache, []);
+}
+
+function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | undefined, overrides: ArrayLike<number> | undefined,
+  water: readonly WaterCrossing[], cache: RetainingFeatureCache | undefined, barrels: readonly RetainingBarrel[]): RetainingPlan {
   const { n, ds } = r, w = r.crownWidth / 2;
   const limitL = new Float64Array(n).fill(Infinity), limitR = new Float64Array(n).fill(Infinity);
   const causeL: RetainingWall['feature'][] = [], causeR: RetainingWall['feature'][] = [];
   const forcedBridge = new Uint8Array(n), forcedTunnel = new Uint8Array(n), perCell = new Float64Array(n), landPerCell = new Float64Array(n);
   const wallSurfaceL = new Float64Array(n).fill(NaN), wallSurfaceR = new Float64Array(n).fill(NaN);
-  const barrels = water.map(c => {
-    const i = Math.min(n - 1, Math.round(c.s / ds));
-    return { c, envelope: barrelEnvelope(c, r.dayL[i], r.dayR[i], ds, r.tx[i], r.ty[i]) };
-  });
   const requests: { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean }[] = [];
   const clearanceRequests: { i: number; z: number; id?: number }[] = [];
   const bridgeRequests: { i: number; id?: number }[] = [], unretainable = new Set<number>(), channelHits = new Map<number, ChannelHit>();
@@ -76,9 +119,6 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
       limit = Math.abs(lateral) - padding - R.constrainedClearance; constrained = true;
     }
     if (limit < w) {
-      // The main barrel/bridge already carries this channel through the crown. A retaining
-      // wall may still be needed along its outer slope, but do not force a second crossing.
-      if (id !== undefined && barrels.some(b => terrain.watercourses!.connected(id, b.c.id) && barrelContains({ x: gx, y: gy }, b.envelope))) return;
       const clearance = feature === 'railway' ? STRUCTURE_RULES.railClearance : feature === 'road' ? 6 : STRUCTURE_RULES.riverClearance;
       if (id !== undefined) unretainable.add(id);
       if (feature !== 'road') clearanceRequests.push({ i, z: terrain.heightAt(gx, gy) + clearance, id });
@@ -91,29 +131,28 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
     requests.push({ i, side: lateral >= 0 ? 1 : -1, limit, feature, id, constrained });
     if (limit < limits[i]) { limits[i] = limit; cause[i] = feature; }
   };
-  const segment = (c: FootprintCell, seg: Segment2, pad: number, feature: RetainingWall['feature'], id?: number, normalOnly = false) => {
-    if (normalOnly) {
-      // A channel's offset at the section is independent of arbitrary OSM tag/vertex splits.
-      // Neighbour-cell wall extension below supplies the along-cell corner allowance.
-      const dx = seg.bx - seg.ax, dy = seg.by - seg.ay, den = dx * c.tx + dy * c.ty;
-      if (Math.abs(den) < 1e-9) return;
-      for (const shift of [-c.along, 0, c.along]) {
-        const t = (shift - ((seg.ax - c.x) * c.tx + (seg.ay - c.y) * c.ty)) / den;
-        if (t < -1e-9 || t > 1 + 1e-9) continue;
-        const x = seg.ax + t * dx, y = seg.ay + t * dy;
-        propose(c, -(x - c.x) * c.ty + (y - c.y) * c.tx, pad, feature, x, y, id);
-      }
-      return;
-    }
+  const segment = (c: FootprintCell, seg: Segment2, pad: number, feature: RetainingWall['feature'], id?: number) => {
     const hit = clipFootprint(seg, c, pad);
     if (!hit || seg.length <= 0) return;
-    const a = (hit[0] - seg.d) / seg.length, b = (hit[1] - seg.d) / seg.length;
-    const at = (t: number) => ({ x: seg.ax + t * (seg.bx - seg.ax), y: seg.ay + t * (seg.by - seg.ay) });
-    const p = at(a), q = at(b), vp = -(p.x - c.x) * c.ty + (p.y - c.y) * c.tx, vq = -(q.x - c.x) * c.ty + (q.y - c.y) * c.tx;
-    // A centreline crossing is handled by its own bridge/culvert/junction, not a wall closing it.
-    if (vp * vq <= 0) return;
-    const nearest = Math.abs(vp) <= Math.abs(vq) ? p : q;
-    propose(c, Math.abs(vp) <= Math.abs(vq) ? vp : vq, pad, feature, nearest.x, nearest.y, id);
+    // Clip ownership BEFORE selecting constraint points: a barrel may cover only the
+    // nearest part of a segment. This also makes OSM vertex/way splits immaterial.
+    const covered = id === undefined ? [] : barrels.filter(b => terrain.watercourses!.connected(id, b.c.id))
+      .flatMap(b => barrelIntervals(seg, b.envelope));
+    const at = (d: number) => {
+      const t = (d - seg.d) / seg.length;
+      return { x: seg.ax + t * (seg.bx - seg.ax), y: seg.ay + t * (seg.by - seg.ay) };
+    };
+    for (const [a, b] of subtract(hit, covered)) {
+      const p = at(a), q = at(b), vp = -(p.x - c.x) * c.ty + (p.y - c.y) * c.tx, vq = -(q.x - c.x) * c.ty + (q.y - c.y) * c.tx;
+      if (vp * vq <= 0) {
+        if (id === undefined) continue; // existing road centreline crossings have their own remedy
+        const t = vp / (vp - vq || 1);
+        propose(c, 0, pad, feature, p.x + t * (q.x - p.x), p.y + t * (q.y - p.y), id);
+      } else {
+        const nearest = Math.abs(vp) <= Math.abs(vq) ? p : q;
+        propose(c, Math.abs(vp) <= Math.abs(vq) ? vp : vq, pad, feature, nearest.x, nearest.y, id);
+      }
+    }
   };
   for (let i = 1; i < n - 1; i++) {
     const c: FootprintCell = { i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i], along: ds / 2,
@@ -132,7 +171,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
       const pad = waterWidth(seg.reach) / 2;
       const hit = clipFootprint(seg, c, pad);
       if (!hit) return;
-      segment(c, seg, pad, seg.reach.kind === 'river' ? 'water' : 'stream', seg.reach.id, true);
+      segment(c, seg, pad, seg.reach.kind === 'river' ? 'water' : 'stream', seg.reach.id);
       const previous = channelHits.get(seg.reach.id);
       if (previous) { previous.a = Math.min(previous.a, hit[0]); previous.b = Math.max(previous.b, hit[1]); previous.i1 = i; }
       else channelHits.set(seg.reach.id, { reach: seg.reach, a: hit[0], b: hit[1], i0: i, i1: i });

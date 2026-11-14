@@ -3,11 +3,13 @@ import { computeSections, DEFAULT_SLOPES, type SectionCache } from '../src/core/
 import { planRetainingWalls, retainingConflicts } from '../src/core/retaining';
 import { footprintConflicts } from '../src/core/footprint';
 import { RoadNet } from '../src/core/roadnet';
-import { syntheticTerrain, LC, RAIL_CROSSING_BIT } from '../src/core/terrain';
+import { syntheticTerrain, Terrain, LC, RAIL_CROSSING_BIT } from '../src/core/terrain';
+import type { WaterData } from '../src/core/watercourses';
 
-function setup(grade = 108) {
+function setup(grade = 108, watercourses?: WaterData) {
   const n = 81, arr = (v: number) => new Float64Array(n).fill(v);
-  const terrain = syntheticTerrain(200, 40, 5, () => 100);
+  const terrain = watercourses ? new Terrain({ nx: 200, ny: 40, cell: 5, base: 100, scale: 1,
+    q: new Uint16Array(8000), lc: new Uint8Array(8000), watercourses }) : syntheticTerrain(200, 40, 5, () => 100);
   const st = { n, ds: 10, s: Float64Array.from({ length: n }, (_, i) => i * 10), x: Float64Array.from({ length: n }, (_, i) => 100 + i * 10),
     y: arr(100), tx: arr(1), ty: arr(0), grade: arr(grade), crownWidth: 10 };
   const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, st.grade, { crownWidth: 10, ...DEFAULT_SLOPES });
@@ -86,6 +88,73 @@ describe('automatic slope retention', () => {
       const again = computeSections(terrain, route.n, route.x, route.y, route.tx, route.ty, route.grade, template, true, cache);
       expect(again.sideL![40]).toBe(rawLeft);
       expect(cache[20]).toBe(unchanged);
+    }
+  });
+  it('prices a wall for a river-bank corner beyond every station-normal probe', () => {
+    const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'river', width: 30,
+      points: [[518, 130], [522, 130]], catchmentKm2: [10, 10], truncated: [false, false] }] });
+    const check = () => footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], []);
+    // At x500 the ±5 m normals miss this segment; its 15 m bank still touches
+    // the footprint corner. Even a one-cell extension of x520's wall misses x500.
+    expect(check().conflicts.some(c => c.i === 40)).toBe(true);
+    const before = route.fill[40], plan = planRetainingWalls(route, terrain);
+    expect(plan.walls.some(w => w.i === 40 && w.feature === 'water' && w.cost > 0)).toBe(true);
+    expect(route.fill[40]).toBeLessThan(before);
+    expect(plan.forcedBridge.some(Boolean)).toBe(false);
+    expect(check().violations).toEqual([]);
+    expect(plan.perCell.reduce((a, b) => a + b, 0)).toBeCloseTo(plan.walls.reduce((sum, w) => sum + w.cost, 0), 5);
+  });
+  it('never exempts a bridge-required crossing as a culvert barrel', () => {
+    const run = (river: boolean) => {
+      const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: river ? 'river' : 'ditch', width: river ? 5 : 0.5,
+        points: [[400, 0], [600, 200]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] });
+      const water = terrain.watercourses!.intersections(route.n, route.s, route.x, route.y);
+      const plan = planRetainingWalls(route, terrain, undefined, undefined, water);
+      const check = footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [] }, terrain, undefined, [], [], water);
+      return { plan, check };
+    };
+    const river = run(true);
+    expect(river.plan.forcedBridge[40]).toBe(1);
+    // An explicit earthwork route still reports the collision; the raw crossing is not ownership.
+    expect(river.check.violations.length).toBeGreaterThan(0);
+    const ditch = run(false);
+    expect(ditch.plan.forcedBridge.some(Boolean)).toBe(false);
+    expect(ditch.check.violations).toEqual([]);
+  });
+  it('retains the unowned part of a partly barrel-owned dog-leg independently of OSM splits', () => {
+    const run = (split: boolean) => {
+      const first = { id: 1, kind: 'ditch' as const, width: 0.5,
+        points: split ? [[500, 0], [500, 110], [510, 110]] : [[500, 0], [500, 110], [550, 110], [550, 200]],
+        catchmentKm2: [0.1, 0.1, 0.1, 0.1], truncated: [false, false, false, false] };
+      const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [first,
+        ...(split ? [{ ...first, id: 2, points: [[510, 110], [550, 110], [550, 200]] }] : [])] });
+      const water = terrain.watercourses!.intersections(route.n, route.s, route.x, route.y);
+      const plan = planRetainingWalls(route, terrain, undefined, undefined, water);
+      return { plan, route };
+    };
+    const whole = run(false), split = run(true);
+    expect(whole.plan.walls.some(w => w.i === 43 && w.feature === 'stream' && w.cost > 0)).toBe(true);
+    expect(split.plan.forcedBridge).toEqual(whole.plan.forcedBridge);
+    expect(split.route.dayL).toEqual(whole.route.dayL);
+    expect(split.plan.perCell.reduce((a, b) => a + b, 0)).toBeCloseTo(whole.plan.perCell.reduce((a, b) => a + b, 0), 5);
+  });
+  it('rescreens culvert ownership after a road wall shortens the crossing barrel', () => {
+    const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
+      points: [[400, 0], [520, 120], [550, 120], [550, 200]], catchmentKm2: [0.1, 0.1, 0.1, 0.1], truncated: [false, false, false, false] }] });
+    Object.assign(route, computeSections(terrain, route.n, route.x, route.y, route.tx, route.ty, route.grade,
+      { crownWidth: route.crownWidth, ...DEFAULT_SLOPES }, true));
+    const roads = new RoadNet({ cls: ['service'], ways: [[0, 450, 118, 490, 118]] });
+    const water = terrain.watercourses!.intersections(route.n, route.s, route.x, route.y), cache = new Map();
+    // The road wall ends at x490 but extends to the x500 crossing cell. Its shorter
+    // barrel no longer owns the whole diagonal leading into the dog-leg at x520.
+    const plan = planRetainingWalls(route, terrain, roads, undefined, water, cache);
+    expect(plan.walls.some(w => w.i === 40 && w.feature === 'road')).toBe(true);
+    expect(plan.walls.some(w => w.i === 41 && w.feature === 'stream')).toBe(true);
+    expect(footprintConflicts({ ...route, kind: new Uint8Array(route.n), runs: [], featureCache: cache }, terrain, undefined, [], [], water).violations).toEqual([]);
+    expect(plan.perCell.reduce((a, b) => a + b, 0)).toBeCloseTo(plan.walls.reduce((sum, w) => sum + w.cost, 0), 5);
+    for (let i = 38; i < 46; i++) {
+      expect(route.fill[i]).toBeCloseTo(route.sideL![i].fill + route.sideR![i].fill, 8);
+      expect(route.cut[i]).toBeCloseTo(route.sideL![i].cut + route.sideR![i].cut, 8);
     }
   });
   it('requests a bridge instead of inventing an unlimited wall, while preserving explicit earthwork', () => {

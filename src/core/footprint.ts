@@ -12,7 +12,7 @@ import { KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadCrossing, RoadNet, RoadSegment } from './roadnet';
-import { barrelLength, barrelEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, type WaterCrossing, type WaterSegment } from './watercourses';
+import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, type WaterCrossing, type WaterSegment } from './watercourses';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
@@ -111,11 +111,15 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   }
   cells.push(...structureFootprints(r));
   const grid = new FootprintGrid(cells);
-  const earthWater = water.filter(c => r.kind[Math.min(r.n - 1, Math.round(c.s / r.ds))] === KIND.earth);
-  const barrels = new Map(earthWater.map(c => {
-    const i = Math.min(r.n - 1, Math.round(c.s / r.ds));
-    return [c, barrelEnvelope(c, r.dayL[i], r.dayR[i], r.ds, r.tx[i], r.ty[i])] as const;
+  const barrels = new Map(water.flatMap(c => {
+    const i = Math.min(r.n - 1, Math.round(c.s / r.ds)), j = Math.max(0, Math.min(r.n - 2, Math.floor(c.s / r.ds)));
+    if (r.kind[i] !== KIND.earth) return [];
+    const t = Math.max(0, Math.min(1, (c.s - r.s[j]) / r.ds));
+    const cover = r.grade[j] * (1 - t) + r.grade[j + 1] * t - terrain.heightAt(c.x, c.y);
+    const envelope = culvertEnvelope(c, r.dayL[i], r.dayR[i], r.ds, r.tx[i], r.ty[i], cover);
+    return envelope ? [[c, envelope] as const] : [];
   }));
+  const earthWater = [...barrels.keys()];
   const byReach = new Map<number, WaterCrossing[]>();
   const connectedWater = (id: number) => {
     let list = byReach.get(id);

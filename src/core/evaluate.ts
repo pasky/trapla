@@ -40,7 +40,7 @@ import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { CULVERT_RULES } from './data/culverts';
-import { barrelLength, barrelEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
+import { barrelLength, culvertEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
 
 export interface Design {
   category: CategoryId;
@@ -268,17 +268,21 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     offset: -(hit.x - st.x[i]) * st.ty[i] + (hit.y - st.y[i]) * st.tx[i], ground: terrain.heightAt(hit.x, hit.y) })));
   const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>, diverted?: ReadonlySet<number>) => {
     const gridDs = indices.length > 1 ? st.s[indices[1]] - st.s[indices[0]] : ds;
-    const barrels = water.map(c => {
+    const barrels = water.flatMap(c => {
       const k = Math.min(indices.length - 1, Math.round(c.s / gridDs)), i = indices[k];
-      return barrelEnvelope(c, left[k], right[k], ds, st.tx[i], st.ty[i]);
+      const j = Math.max(0, Math.min(indices.length - 2, Math.floor(c.s / gridDs)));
+      const t = Math.max(0, Math.min(1, (c.s - st.s[indices[j]]) / (st.s[indices[j + 1]] - st.s[indices[j]])));
+      const cover = z[j] * (1 - t) + z[j + 1] * t - waterGround.get(c)!;
+      const envelope = culvertEnvelope(c, left[k], right[k], ds, st.tx[i], st.ty[i], cover);
+      return envelope ? [{ c, envelope }] : [];
     });
     for (let k = 0; k < indices.length; k++) {
       const i = indices[k];
       if (z[k] <= ground[i]) continue;
       if (waterSide[i].some(hit => !diverted?.has(hit.id) && hit.offset <= left[k] && hit.offset >= -right[k]
         && z[k] - hit.ground >= STRUCTURE_RULES.riverClearance
-        && !water.some((c, j) => terrain.watercourses!.connected(c.id, hit.id)
-          && barrelContains(hit, barrels[j])))) mask[k] = 1;
+        && !barrels.some(({ c, envelope }) => terrain.watercourses!.connected(c.id, hit.id)
+          && barrelContains(hit, envelope)))) mask[k] = 1;
     }
   };
   const tunnelWater = (ss: ArrayLike<number>, z: ArrayLike<number>) => {
