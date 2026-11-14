@@ -235,7 +235,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       let earth: number;
       if (h >= 0) {
         const { area, width: wd } = flatEarthGeometry(h, b, fillSlope, true);
-        earth = (baseRural + area * dp.fillPerM3 + earthEngineeringPerM(h, 0, area) + wd * topsoilPerM2) * sur + wd * LAND.perM2;
+        earth = (baseRural + area * dp.fillPerM3 + earthEngineeringPerM(h, 0, area) + wd * topsoilPerM2
+          + (costClass === 1 && h > 0 ? culvertExtra(wd, b) / ds : 0)) * sur + wd * LAND.perM2;
       } else {
         const c = -h, wd = flatEarthGeometry(c, b, cutSlope, false).width;
         const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClass]);
@@ -320,6 +321,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const apOpt = {
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, structureKind: manualStructures,
+      costClass: streamS.length ? streamCount : undefined, costClassCount: streamS.length ? 2 : 1,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
