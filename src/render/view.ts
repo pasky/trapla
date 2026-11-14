@@ -14,7 +14,7 @@ import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
-import { crossingBaseHeight, crossingSurfaces, endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
+import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, groundSegment, type CrossingSurface } from './crossing-surface';
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
@@ -476,7 +476,10 @@ export class View {
 
   setResult(r: Result, crownWidth: number) {
     const natural = (x: number, y: number) => this.terrain.heightAt(x, y);
-    this.crossingSurfaces = crossingSurfaces(r.crossings, natural, crossingBaseHeight(r, crownWidth, natural));
+    this.crossingSurfaces = [
+      ...crossingSurfaces(r.crossings, natural, crossingBaseHeight(r, crownWidth, natural)),
+      ...footprintSurfaces(r.footprintConflicts ?? [], natural),
+    ];
     const corridors: GroundCorridor[] = [];
     for (const surface of this.crossingSurfaces) for (let i = 0; i+1 < surface.sections.length; i++) {
       if (!groundSegment(surface,i)) continue;

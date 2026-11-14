@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import type { CrossingPoint } from '../core/crossings';
 import type { Result } from '../core/evaluate';
+import type { FootprintConflict } from '../core/footprint';
 import { endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
 import { existingRoadColor } from './landcover';
 import type { View } from './view';
@@ -46,7 +47,7 @@ class MeshBuilder {
 export class CrossingRenderer {
   private group = new THREE.Group();
   constructor(private view: View) { this.group.name = 'crossing-roads'; view.world.add(this.group); }
-  setResult(_r: Pick<Result, 'crossings' | 'grade' | 'ground'>) {
+  setResult(r: Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[] }) {
     this.clear();
     const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view), structure = new MeshBuilder(this.view);
     for (const surface of this.view.crossingSurfaces) this.surface(surface, earth, terrain, structure);
@@ -57,7 +58,40 @@ export class CrossingRenderer {
         const mesh = new THREE.Mesh(geometry, material); mesh.name = name; this.group.add(mesh);
       }
     }
+    this.conflicts(r.footprintConflicts ?? []);
     this.view.requestRender();
+  }
+  private conflicts(conflicts: readonly FootprintConflict[]) {
+    const blocked: number[] = [];
+    for (const c of conflicts) {
+      if (c.action === 'blocked') {
+        const p = this.view.local(c.x, c.y, this.view.drape(c.x, c.y) + 2);
+        blocked.push(p.x, p.y, p.z);
+        if (c.geometry?.road && c.geometry.road.length >= 2) this.conflictPath(c, c.geometry.road, true);
+      }
+      if (c.action === 'relocation' && c.geometry?.road?.length && c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
+    }
+    if (!blocked.length) return;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(blocked, 3));
+    const material = new THREE.PointsMaterial({ color: 0xd7301f, size: 13, sizeAttenuation: false, depthTest: false, depthWrite: false });
+    material.onBeforeCompile = shader => {
+      shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>',
+        '#include <clipping_planes_fragment>\nif (abs(abs(gl_PointCoord.x - .5) - abs(gl_PointCoord.y - .5)) > .13) discard;');
+    };
+    material.customProgramCacheKey = () => 'footprint-blocked-cross';
+    const markers = new THREE.Points(geometry, material);
+    markers.name = 'footprint-blocked'; markers.renderOrder = 6; this.group.add(markers);
+  }
+  private conflictPath(c: FootprintConflict, path: CrossingPoint[], proposed: boolean) {
+    const points = path.map(p => this.view.local(p.x, p.y, this.view.drape(p.x, p.y) + .3));
+    // Annotations, not surviving roads: legible even under fill. Blocked proposals must not
+    // carve terrain or mark the original as removed because the mitigation cannot be built.
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineDashedMaterial({
+      color: proposed ? 0xe0a800 : 0xc83d32, dashSize: 12, gapSize: 8, transparent: true, opacity: .8, depthTest: false, depthWrite: false,
+    }));
+    line.computeLineDistances(); line.name = proposed ? 'footprint-proposed' : 'footprint-removed'; line.userData.conflictId = c.id;
+    line.renderOrder = 5; this.group.add(line);
   }
   private surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder) {
     const g = s.crossing.geometry!, color = existingRoadColor(s.crossing.cls), casing = 0x807468;

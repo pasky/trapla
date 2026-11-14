@@ -18,6 +18,7 @@ import type { WallOverride } from '../core/build-controls';
 import type { VPI } from '../core/vertical';
 import type { StationRange } from '../state';
 import { COST_GROUPS, czk, perM } from './costgroups';
+import { footprintConflictsInRange, footprintConflictText } from './footprint';
 
 export interface ProfileEvents {
   onVpiDrag?: (i: number, s: number, z: number) => void;
@@ -778,6 +779,9 @@ export class ProfilePanel {
       const row = ROAD_CLASSES[x.cls];
       facts.push(`crosses a ${row.label} (${x.h >= 0 ? '+' : '−'}${Math.abs(x.h).toFixed(1)} m): ${crossingLabel(x)}${x.cost > 0 ? ` — ${czk(x.cost)}` : ''}`);
     }
+    for (const c of footprintConflictsInRange(r.footprintConflicts ?? [], Math.max(0, r.s[a] - r.ds / 2), Math.min(r.length, r.s[b] + r.ds / 2))) {
+      facts.push(footprintConflictText(c));
+    }
     for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) {
       facts.push(`${c.waterKind}: ${c.structure} ${c.opening}, ${c.length.toFixed(0)} m long; catchment ${c.catchmentKm2.toFixed(2)} km²${c.truncated ? ' (incomplete)' : ''}, estimated Q100 ${c.q100.toFixed(2)} m³/s`);
     }
@@ -807,7 +811,7 @@ export class ProfilePanel {
     else this.tip.innerHTML = `<div class="tip-h"><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
       <div class="tip-sub">ground ${r.ground[i].toFixed(1)} m · road ${r.grade[i].toFixed(1)} m · ${land}</div>
       <div class="tip-fact">${escapedGeology}</div>
-      ${facts.map((t) => `<div class="tip-fact">${t}</div>`).join('')}
+      ${facts.map((t) => `<div class="tip-fact">${t.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)}</div>`).join('')}
       <table>${rows}<tr class="tip-total"><td>Cost per metre <small>average over ${len.toFixed(0)} m</small></td><td>${perM(total)} CZK</td></tr></table>
       <div class="tip-hint">${this.hint()}</div>`;
     this.tip.style.display = '';

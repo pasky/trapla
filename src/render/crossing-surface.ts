@@ -2,6 +2,7 @@
 // Work is bounded by the core's point budget and happens only on a new evaluation.
 import type { CrossingPoint, CrossingResult } from '../core/crossings';
 import type { Result } from '../core/evaluate';
+import type { FootprintConflict } from '../core/footprint';
 import { KIND } from '../core/structures';
 import { GROUND_COLLAR } from './earthwork-surface';
 
@@ -100,6 +101,15 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
   }
   return out;
 }
+/** Relocations reuse the physical road surface without entering the centreline crossing list.
+ * They sit on natural ground, not our engineered formation, and have no severed-end turnarounds. */
+export function footprintSurfaces(conflicts: readonly FootprintConflict[], height: (x: number, y: number) => number): CrossingSurface[] {
+  return crossingSurfaces(conflicts.filter(c => c.feature === 'road' && c.action === 'relocation' && c.geometry?.road?.length).map(c => ({
+    s: (c.s0 + c.s1) / 2, i: c.i, x: c.x, y: c.y, h: 0, cost: c.cost,
+    cls: c.cls ?? 'unclassified', roadId: c.roadId, type: 'diversion', geometry: c.geometry,
+  })), height);
+}
+
 /** Ground collars beyond each endpoint let the original textured road continue at the tie-in
  * elevation before blending back into the coarse terrain mesh. No extra road is invented. */
 export function endCollars(surface: CrossingSurface, height: (x: number, y: number) => number): CrossingPoint[][] {
