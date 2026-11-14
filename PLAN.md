@@ -123,8 +123,18 @@ What exists (details and commands in `README.md`):
 
 ### Travel-time target X and traffic Y
 
-- Y = 9,000 vehicles/day → minimum S 9.5 by the placeholder thresholds (S 7.5 < 5,000 ≤ S 9.5 < 12,000 ≤ S 11.5;
-  no source supports these cutoffs — research/08 keeps S 9.5 as a scenario assumption).
+- Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.
+  Since research/14 the thresholds come from TP 188 (2018): the highest AADT at which a rural two-lane
+  section still meets **LOS C**, which applies to class I roads. ČSN 73 6101 says “C to D”; the official TP
+  188 class I example uses C.
+  - Design hour: AADT × 0.103, the 50th-highest hour (TP 189 tab. 6).
+  - Representative hilly case: climb class 2, curviness 75–150 grad/km, 15 % heavy vehicles.
+  - LOS C volume: 1,200 veh/h for S 11.5, times 0.85 for S 9.5 and 0.60 for S 7.5.
+  - Maximum AADT: S 7.5 ≤ 6,990, S 9.5 ≤ 9,902, S 11.5 ≤ 11,650. Above that, no playable two-lane
+    category reaches LOS C, and D 27.5 stands in.
+  - Y needs no change: S 7.5 falls 29 % short, while S 9.5 leaves 9 % headroom. Very winding designs with
+    long steep climbs would need S 11.5 under a full assessment, and the game does not run that per design.
+    Under LOS D, S 7.5 would carry 9,582.
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
@@ -152,7 +162,9 @@ Cost model 6: 20.81 km, 13.87 min, **3.949 bn CZK = 190 M CZK/km**; includes thr
   sources the 8× multiplier, farmland trades at 30–55 CZK/m², low confidence locally). Forest at 320 incl.
   timber, plus 50 CZK/m² (removal levy ≈ 20 + clearing ≈ 30), are PROVISIONAL estimates, not sourced local rates.
   Buildings, building land, crossings, noise and excavation classes: see the next section.
-- Traffic → category thresholds (UNVERIFIED, research/08).
+- Traffic → category thresholds: derived from TP 188 / TP 189 (research/14). The calculation itself is
+  sourced. Still PROVISIONAL: LOS C rather than D for class I, and the representative climb class 2,
+  curviness 75–150 grad/km and 15 % heavy vehicles. These are not assessed on the player's design.
 - Decision prices for the auto-profile and structure choice: a m³ of fill material is worth a value between
   −196 (haul to a tip) and 536 CZK (bought fill less placing) that the auto-profile searches for (start 200);
   see "Mass balance" in the next section.

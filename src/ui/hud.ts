@@ -68,7 +68,7 @@ export class Hud {
         <h1>${sc.title}</h1>
         <p>Build the <b>cheapest</b> norm-abiding road from <b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border).</p>
         <div class="goals">
-          <div><span>Traffic Y</span><b>${num(sc.traffic)} veh/day</b><small>needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]} <i title="Placeholder thresholds: ${TRAFFIC_THRESHOLDS.map((t) => `${t.category} < ${isFinite(t.maxAadt) ? num(t.maxAadt) : '∞'}`).join(', ')}">(placeholder)</i></small></div>
+          <div><span>Traffic Y</span><b>${num(sc.traffic)} veh/day</b><small>needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]} <i title="Class I road at LOS C (TP 188 / TP 189, hilly, 15 % heavy; research/14): ${TRAFFIC_THRESHOLDS.filter((t) => isFinite(t.maxAadt)).map((t) => `${t.category} ≤ ${num(t.maxAadt)}`).join(', ')}">(TP 188)</i></small></div>
           <div><span>Travel time X</span><b>≤ ${sc.maxTravelMin.toFixed(1)} min</b><small>length ÷ design speed</small></div>
         </div>
       </section>
