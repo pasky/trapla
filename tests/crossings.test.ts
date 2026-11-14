@@ -1,0 +1,171 @@
+import { describe, expect, it, vi } from 'vitest';
+import * as THREE from 'three';
+import { buildCrossingGeometry, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
+  type CrossingOverride, type CrossingResult, type CrossingRoute } from '../src/core/crossings';
+import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet';
+import { chooseStructures, KIND } from '../src/core/structures';
+import { CrossingRenderer } from '../src/render/crossings';
+import type { View } from '../src/render/view';
+
+const cross = (roadId: number, s: number, cls = 'primary', h = 0, i = 0): CrossingResult =>
+  ({ roadId, s, cls, h, i, x: s, y: 0, type: 'atGrade', cost: 0 });
+const resolve = (cs: CrossingResult[], overrides: CrossingOverride[] = [], kind = [KIND.earth] as number[], urban = [0]) =>
+  resolveCrossings(cs, 9000, kind, [30, 30, 30], urban, urban, overrides);
+
+describe('explicit crossing choices (automatic policy already covered in town.test)', () => {
+  it('normalizes persisted choices by pack way, keeps the last edit, and rejects malformed entries', () => {
+    expect(normalizeCrossingOverrides([{ roadId: 5, type: 'junction' }, { roadId: 1, type: 'bridge' },
+      { roadId: 5, type: 'reconnection' }, { roadId: -1, type: 'bridge' }, { roadId: 0.5, type: 'bridge' },
+      { roadId: 4, type: 'free' }, null])).toEqual([{ roadId: 1, type: 'bridge' }, { roadId: 5, type: 'reconnection' }]);
+    expect(normalizeCrossingOverrides({})).toEqual([]);
+  });
+
+  it('preserves selected raw hits through billing merge, including a second hit and endpoint spacing', () => {
+    const raw: RoadCrossing[] = [
+      { way: 3, s: 100, x: 100, y: 0, cls: 'primary' },
+      { way: 2, s: 3000, x: 3000, y: 0, cls: 'primary' },
+      { way: 3, s: 3010, x: 3010, y: 0, cls: 'secondary' },
+      { way: 3, s: 3050, x: 3050, y: 0, cls: 'secondary' },
+    ];
+    expect(mergeCrossings(raw, 9000).map(c => c.s)).toEqual([3000]);
+    expect(mergeCrossings(raw, 9000, undefined, new Set([3])).map(c => [c.way, c.s]))
+      .toEqual([[3, 100], [2, 3000], [3, 3010], [3, 3050]]);
+  });
+
+  it('reserves a chosen lower-class junction before automatic higher-class candidates and restores Auto', () => {
+    const cs = [cross(1, 3000), cross(2, 4000, 'secondary')];
+    expect(resolve(cs, [{ roadId: 2, type: 'junction' }])).toEqual([]);
+    expect(cs[1].type).toBe('junction'); expect(cs[0].type).not.toBe('junction');
+    resolve(cs);
+    expect(cs[0].type).toBe('junction'); expect(cs[1].type).not.toBe('junction');
+    expect(cs[1].requestedType).toBeUndefined(); expect(cs[1].issues).toBeUndefined();
+  });
+
+  it('keeps invalid choices priced with numeric spacing diagnostics at A, B and another manual junction', () => {
+    const cs = [cross(1, 1499), cross(2, 7501), cross(3, 3500), cross(4, 4999)];
+    const issues = resolve(cs, cs.map(c => ({ roadId: c.roadId!, type: 'junction' })));
+    expect(issues.map(v => [v.crossing.code, v.crossing.actual, v.crossing.targetS]))
+      .toEqual([['spacing', 1499, 0], ['spacing', 1499, 3500], ['spacing', 1499, 9000]]);
+    expect(cs.every(c => c.type === 'junction' && c.cost > 0)).toBe(true);
+    expect(issues.every(v => v.fix.includes('1500') && v.kind === 'crossing')).toBe(true);
+  });
+
+  it('rejects motorway/local junctions, vertical separation and conflicting main-road structures', () => {
+    for (const [cls, h, kind, code] of [
+      ['motorway', 0, KIND.earth, 'class'], ['residential', 0, KIND.earth, 'class'],
+      ['primary', 8, KIND.earth, 'clearance'], ['primary', -8, KIND.earth, 'depth'],
+      ['primary', 0, KIND.bridge, 'structure'], ['primary', -20, KIND.tunnel, 'structure'],
+    ] as const) {
+      const c = cross(1, 3000, cls, h);
+      expect(resolve([c], [{ roadId: 1, type: 'junction' }], [kind]).map(v => v.crossing.code)).toContain(code);
+      expect(c.type).toBe('junction'); expect(c.cost).toBeGreaterThan(0);
+    }
+  });
+
+  it('validates all requested bridge hits and motorway clearance, while the main-road bill owns their cost', () => {
+    const cs = [cross(1, 3000, 'primary', 7), cross(1, 3050, 'primary', 4), cross(2, 5000, 'motorway', 7)];
+    const issues = resolve(cs, [{ roadId: 1, type: 'bridge' }, { roadId: 2, type: 'bridge' }], [KIND.bridge]);
+    expect(issues.map(v => [v.s0, v.crossing.required])).toEqual([[5000, 7.5], [3050, 6]]);
+    expect(cs.every(c => c.type === 'bridge' && c.cost === 0)).toBe(true);
+  });
+
+  it('uses the same overbridge price as Auto and retains priced approaches for an insufficient cut', () => {
+    const auto = cross(1, 4000, 'residential', -8), manual = { ...auto };
+    resolve([auto]); expect(resolve([manual], [{ roadId: 1, type: 'overbridge' }])).toEqual([]);
+    expect(manual.cost).toBe(auto.cost); expect(manual.span).toBe(auto.span);
+    const shallow = cross(2, 4000, 'residential', -2);
+    expect(resolve([shallow], [{ roadId: 2, type: 'overbridge' }]).map(v => v.crossing.code)).toEqual(['depth']);
+    expect(shallow.approachLength).toBeGreaterThan(0); expect(shallow.cost).toBeGreaterThan(manual.cost);
+  });
+
+  it('uses the same link price and service allowance as Auto, and never caps unreachable choices', () => {
+    const cs = [cross(1, 3000), cross(2, 3100, 'service')];
+    resolve(cs); const autoCost = cs[1].cost;
+    expect(resolve(cs, [{ roadId: 2, type: 'reconnection' }])).toEqual([]);
+    expect(cs[1].cost).toBe(autoCost); expect(cs[1].targetS).toBe(3000);
+    const far = cross(3, 4000, 'residential');
+    const issues = resolve([far], [{ roadId: 3, type: 'reconnection' }]);
+    expect(issues[0].crossing).toMatchObject({ code: 'reach', actual: 4000, required: 750 });
+    expect(far.linkLength).toBe(8000); expect(far.type).toBe('reconnection');
+  });
+
+  it('does not let another street anchor to an invalid motorway reconnection', () => {
+    const cs = [cross(1, 3000), cross(2, 3200, 'motorway'), cross(3, 3250, 'residential')];
+    resolve(cs, [{ roadId: 2, type: 'reconnection' }]);
+    expect(cs[1].issues?.some(v => v.crossing.code === 'class')).toBe(true);
+    expect(cs[2].targetS).toBe(3000);
+  });
+
+  it('paints only bridge spans, preserving other automatic structures and unrelated manual paint', () => {
+    const s = Float64Array.from({ length: 101 }, (_, i) => i * 10);
+    const raw = [{ way: 4, s: 250, x: 250, y: 0, cls: 'primary' }];
+    const base = new Int8Array(101).fill(-1); base.fill(KIND.earth, 20, 31); base.fill(KIND.tunnel, 70, 100);
+    const mask = crossingBridgeMask(s, raw, [{ roadId: 4, type: 'bridge' }], base);
+    expect(base[25]).toBe(KIND.earth); expect(mask[25]).toBe(KIND.bridge);
+    expect(mask[22]).toBe(KIND.earth); expect(mask[50]).toBe(-1); expect(mask[80]).toBe(KIND.tunnel);
+    const h = Float64Array.from(s, (_, i) => i >= 70 ? -30 : 20);
+    const earth = Float64Array.from(s, (_, i) => i >= 40 && i <= 60 ? 1000 : 1);
+    const built = chooseStructures({ ds: 10, h, earthPerM: earth, bridgePerM: 100, tunnelPerM: 100, overrides: mask });
+    expect(built.kind[25]).toBe(KIND.bridge); expect(built.kind[50]).toBe(KIND.bridge); expect(built.kind[80]).toBe(KIND.tunnel);
+    expect(built.runs.filter(r => r.kind === KIND.bridge)).toHaveLength(2);
+  });
+});
+
+describe('crossing geometry and map overlay', () => {
+  const s = Float64Array.from({ length: 901 }, (_, i) => i * 10);
+  const route: CrossingRoute = { s, x: s, y: new Float64Array(s.length), tx: new Float64Array(s.length).fill(1),
+    ty: new Float64Array(s.length), grade: new Float64Array(s.length).fill(400), width: new Float64Array(s.length).fill(20) };
+  const roads = new RoadNet({ cls: ['primary', 'residential', 'track'], ways: [
+    [0, 3000, -200, 3000, 0, 3020, 20, 3020, 200], [1, 3100, -200, 3100, 200], [2, 3200, -200, 3200, 200],
+  ] });
+  it('clips the actual bent way around a hit, with no invented extension', () => {
+    const path = roads.crossingPath(0, 3000, 0, 40);
+    expect(path.some(p => p.x === 3020 && p.y === 20)).toBe(true);
+    expect(path[0]).toEqual({ x: 3000, y: -40, d: -40 });
+    expect(path[path.length - 1].d).toBeCloseTo(40);
+    expect(roads.crossingPath(99, 0, 0, 40)).toEqual([]);
+  });
+
+  it('keeps a crossed road continuous under our bridge and above a cut, without repricing', () => {
+    const cs = [cross(0, 3000, 'primary', 8), cross(1, 3100, 'residential', -8, 1)];
+    resolve(cs, [], [KIND.bridge, KIND.earth]); const costs = cs.map(c => c.cost);
+    buildCrossingGeometry(cs, route, () => 400, roads);
+    expect(cs[0].geometry!.road!.some(p => p.x === 3020 && p.y === 20)).toBe(true);
+    expect(cs[0].geometry!.road!.some(p => p.x === 3000 && p.y === 0 && p.z === 400)).toBe(true);
+    expect(cs[1].type).toBe('overbridge');
+    expect(cs[1].geometry!.road!.every(p => p.z >= 400)).toBe(true);
+    expect(cs.map(c => c.cost)).toEqual(costs);
+  });
+
+  it('draws two opposite side links to the resolved real-road anchors, including chained diversions', () => {
+    const cs = [cross(0, 3000), cross(1, 3100, 'residential'), cross(2, 3200, 'track')];
+    resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);
+    const links = cs[1].geometry!.links!;
+    expect(links).toHaveLength(2);
+    expect(links[0].every(p => p.y <= -15)).toBe(true); expect(links[1].every(p => p.y >= 15)).toBe(true);
+    expect(links[0][0].x).toBe(3100); expect(links[0].at(-1)!.x).toBe(3000);
+    expect(links[1].at(-1)).toMatchObject({ x: 3015, y: 15 }); // actual bent target way, not an invented normal
+    expect(cs[2].targetS).toBe(3100);
+    expect(cs[2].geometry!.links![0].at(-1)).toEqual(links[0][0]);
+    expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1][0]);
+  });
+
+  it('creates depth-tested decks and visible symbols, then retires resources and restores the render hook', () => {
+    const cs = [cross(0, 3000), cross(1, 4000, 'residential', -8)];
+    resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);
+    const prev = vi.fn(), retired: THREE.Material[] = [];
+    const mock = { world: new THREE.Group(), metresPerPixel: 2, onRender: prev as (() => void) | null,
+      local: (x: number, y: number, z: number, v: THREE.Vector3) => v.set(x, z, -y),
+      requestRender: vi.fn(), retire: (m: THREE.Material) => { retired.push(m); } };
+    const renderer = new CrossingRenderer(mock as unknown as View);
+    renderer.setResult({ crossings: cs, grade: Float64Array.of(400), ground: Float64Array.of(400) });
+    const group = mock.world.getObjectByName('crossing-roads')!;
+    expect(group.children.length).toBeGreaterThan(0);
+    expect(group.children.every(c => ((c as THREE.Mesh).material as THREE.Material).depthTest)).toBe(true);
+    expect(mock.world.getObjectByName('crossing-symbols')!.children).toHaveLength(1);
+    mock.onRender!(); expect(prev).toHaveBeenCalled();
+    renderer.setResult({ crossings: [], grade: Float64Array.of(400), ground: Float64Array.of(400) });
+    expect(group.children).toHaveLength(0); expect(retired.length).toBeGreaterThan(0);
+    renderer.dispose(); expect(mock.world.children).toHaveLength(0); expect(mock.onRender).toBe(prev);
+  });
+});

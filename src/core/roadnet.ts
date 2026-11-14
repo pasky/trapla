@@ -31,9 +31,11 @@ export class RoadNet {
   private readonly way: Int32Array;
   private readonly stamp: Int32Array;
   private readonly wayCls: string[];
+  private readonly ways: readonly number[][];
   readonly segments: number;
 
   constructor(data: RoadNetData) {
+    this.ways = data.ways;
     let m = 0;
     for (const w of data.ways) m += Math.max(0, (w.length - 1) / 2 - 1);
     this.x0 = new Float64Array(m); this.y0 = new Float64Array(m); this.x1 = new Float64Array(m); this.y1 = new Float64Array(m);
@@ -57,6 +59,32 @@ export class RoadNet {
       }
     });
     this.segments = k;
+  }
+
+  /** Clip a real pack way around the closest point to a crossing, preserving bends.
+   * Distances are along the existing way; no invented extension beyond its endpoints. */
+  crossingPath(roadId: number, x: number, y: number, reach: number): { x: number; y: number; d: number }[] {
+    const w = this.ways[roadId];
+    if (!w || w.length < 5 || !(reach > 0)) return [];
+    const stations = [0];
+    let centre = 0, best = Infinity;
+    for (let j = 1, k = 0; j + 3 < w.length; j += 2, k++) {
+      const dx = w[j + 2] - w[j], dy = w[j + 3] - w[j + 1], len = Math.hypot(dx, dy);
+      const t = len ? Math.max(0, Math.min(1, ((x - w[j]) * dx + (y - w[j + 1]) * dy) / (len * len))) : 0;
+      const dist = Math.hypot(x - w[j] - t * dx, y - w[j + 1] - t * dy);
+      if (dist < best) { best = dist; centre = stations[k] + t * len; }
+      stations.push(stations[k] + len);
+    }
+    const a = Math.max(0, centre - reach), b = Math.min(stations[stations.length - 1], centre + reach);
+    const out: { x: number; y: number; d: number }[] = [];
+    const samples = [...new Set([a, ...stations.filter(s => s > a && s < b), centre, b])].sort((p, q) => p - q);
+    let k = 0;
+    for (const s of samples) {
+      while (k + 2 < stations.length && stations[k + 1] < s) k++;
+      const t = (s - stations[k]) / (stations[k + 1] - stations[k] || 1), j = 1 + 2 * k;
+      out.push({ x: w[j] + t * (w[j + 2] - w[j]), y: w[j + 1] + t * (w[j + 3] - w[j + 1]), d: s - centre });
+    }
+    return out;
   }
 
   /**
@@ -114,15 +142,19 @@ export class RoadNet {
  * Cost representation only: hard clearance constraints must use raw intersections, not this list.
  */
 export function mergeCrossings(raw: RoadCrossing[], length: number,
-  rules: Pick<typeof CROSSING_RULES, 'endMargin' | 'mergeDistance' | 'sameWayMergeDistance'> = CROSSING_RULES): RoadCrossing[] {
+  rules: Pick<typeof CROSSING_RULES, 'endMargin' | 'mergeDistance' | 'sameWayMergeDistance'> = CROSSING_RULES,
+  selectedRoadIds: ReadonlySet<number> = new Set()): RoadCrossing[] {
   const out: (RoadCrossing & { last: number; ways: number[] })[] = [];
   for (const c of raw) {
-    if (c.s < rules.endMargin || c.s > length - rules.endMargin) {
+    if (!selectedRoadIds.has(c.way) && (c.s < rules.endMargin || c.s > length - rules.endMargin)) {
       if (!ROAD_CLASSES[c.cls].noAtGrade || c.s <= CROSSING_RULES.endpointTolerance
         || length - c.s <= CROSSING_RULES.endpointTolerance) continue;
     }
     let hit = -1;
     for (let k = out.length - 1; k >= Math.max(0, out.length - 16); k--) {
+      // Keep EVERY hit of a selected road: a second intersection can have a different clearance.
+      // Raw intersections already deduplicate shared vertices. Auto keeps historical billing groups.
+      if (selectedRoadIds.has(c.way) || out[k].ways.some(w => selectedRoadIds.has(w))) continue;
       const gap = c.s - out[k].last;
       if (gap <= rules.mergeDistance || (gap <= rules.sameWayMergeDistance && out[k].ways.includes(c.way))) { hit = k; break; }
     }
