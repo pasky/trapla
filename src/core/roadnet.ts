@@ -1,6 +1,9 @@
 // Existing road network (OSM) as a segment grid, and the crossings of a route with it.
 
 import { CROSSING_RULES, ROAD_CLASSES } from './data/urban';
+import type { Segment2 } from './footprint-geometry';
+
+export interface RoadSegment extends Segment2 { way: number; cls: string }
 
 /** pack format (`overlays.net`): class names and polylines [classIndex, x0, y0, x1, y1, …] in local metres */
 export interface RoadNetData { cls: string[]; ways: number[][] }
@@ -31,6 +34,9 @@ export class RoadNet {
   private readonly y1: Float64Array;
   private readonly way: Int32Array;
   private readonly stamp: Int32Array;
+  private queryStamp = 0;
+  private readonly querySeen: Int32Array;
+  private readonly distance: Float64Array;
   private readonly wayCls: string[];
   // Segment endpoints are immutable; lazily retain their cycle-detection keys across traversals.
   private readonly endpointKeys: string[] = [];
@@ -43,13 +49,16 @@ export class RoadNet {
     for (const w of data.ways) m += Math.max(0, (w.length - 1) / 2 - 1);
     this.x0 = new Float64Array(m); this.y0 = new Float64Array(m); this.x1 = new Float64Array(m); this.y1 = new Float64Array(m);
     this.way = new Int32Array(m); this.stamp = new Int32Array(m);
+    this.querySeen = new Int32Array(m); this.distance = new Float64Array(m);
     this.wayCls = data.ways.map((w) => data.cls[w[0]]);
     let k = 0;
     data.ways.forEach((w, wi) => {
       if (!(this.wayCls[wi] in ROAD_CLASSES)) return;
+      let distance = 0;
       for (let j = 1; j + 3 < w.length; j += 2) {
         const ax = w[j], ay = w[j + 1], bx = w[j + 2], by = w[j + 3];
         this.x0[k] = ax; this.y0[k] = ay; this.x1[k] = bx; this.y1[k] = by; this.way[k] = wi;
+        this.distance[k] = distance; distance += Math.hypot(bx - ax, by - ay);
         const c0 = Math.floor(Math.min(ax, bx) / this.cell), c1 = Math.floor(Math.max(ax, bx) / this.cell);
         const r0 = Math.floor(Math.min(ay, by) / this.cell), r1 = Math.floor(Math.max(ay, by) / this.cell);
         for (let cx = c0; cx <= c1; cx++) for (let cy = r0; cy <= r1; cy++) {
@@ -62,6 +71,41 @@ export class RoadNet {
       }
     });
     this.segments = k;
+  }
+
+  /** Existing segment grid reused by footprint checks; no full-network scan per evaluation. */
+  nearSegments(bounds: readonly number[], visit: (segment: RoadSegment) => void): void {
+    if (++this.queryStamp >= 2147483647) { this.querySeen.fill(0); this.queryStamp = 1; }
+    const [x0, y0, x1, y1] = bounds;
+    for (let x = Math.floor(x0 / this.cell); x <= Math.floor(x1 / this.cell); x++)
+      for (let y = Math.floor(y0 / this.cell); y <= Math.floor(y1 / this.cell); y++)
+        for (const k of this.map.get(x * 100003 + y) ?? []) {
+          if (this.querySeen[k] === this.queryStamp) continue;
+          this.querySeen[k] = this.queryStamp;
+          if (Math.max(this.x0[k], this.x1[k]) < x0 || Math.min(this.x0[k], this.x1[k]) > x1
+            || Math.max(this.y0[k], this.y1[k]) < y0 || Math.min(this.y0[k], this.y1[k]) > y1) continue;
+          visit({ ax: this.x0[k], ay: this.y0[k], bx: this.x1[k], by: this.y1[k], d: this.distance[k],
+            length: Math.hypot(this.x1[k] - this.x0[k], this.y1[k] - this.y0[k]), way: this.way[k], cls: this.wayCls[this.way[k]] });
+        }
+  }
+
+  /** Absolute distance along a way at its nearest point, for interval subtraction and real tie-ins. */
+  wayStation(way: number, x: number, y: number): number {
+    const path = this.crossingPath(way, x, y, Number.MAX_VALUE);
+    return path.length ? -path[0].d : 0;
+  }
+  wayPath(way: number, start: number, end: number): { x: number; y: number; d: number }[] {
+    const w = this.ways[way];
+    if (!w) return [];
+    const path = this.crossingPath(way, w[1], w[2], Number.MAX_VALUE), out: typeof path = [];
+    for (let j = 1; j < path.length; j++) {
+      const a = path[j - 1], b = path[j], lo = Math.max(start, a.d), hi = Math.min(end, b.d);
+      if (hi < lo || b.d <= a.d) continue;
+      const point = (d: number) => { const t = (d - a.d) / (b.d - a.d); return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), d }; };
+      if (!out.length) out.push(point(lo));
+      out.push(point(hi));
+    }
+    return out;
   }
 
   /** Clip a real pack way around the closest point to a crossing, preserving bends.

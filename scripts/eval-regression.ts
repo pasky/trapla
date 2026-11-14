@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
-import { PART_KEYS } from '../src/core/cost';
+import { PART_KEYS, sumParts, surchargeRate, type CostParts } from '../src/core/cost';
 import { loadPack } from './loadpack';
 
 export const fixturePath = 'tests/fixtures/evaluate-costs.json';
@@ -28,6 +28,18 @@ export function regressionContext(checkPack = true): EvalContext {
 export function bill(r: ReturnType<typeof evaluate>) {
   return { cost: r.cost, parts: Object.fromEntries(PART_KEYS.map(k => [k, r.parts[k].reduce((a, b) => a + b, 0)])),
     vpis: r.vpis, materialValue: r.quantities.materialValue };
+}
+/** Model-13 frozen bills remain untouched. Model 14 adds separately attributable footprint
+ * works without changing profile/structure decisions; subtract ONLY those explicit new works
+ * to continue detecting regressions in every pre-existing cost part on the original pack. */
+export function legacyBill(r: ReturnType<typeof evaluate>) {
+  const parts = Object.fromEntries(PART_KEYS.map(k => [k, r.parts[k].slice()])) as CostParts;
+  for (const c of r.footprintConflicts) {
+    if (!c.cost) continue;
+    parts[c.feature === 'road' ? 'crossings' : 'culverts'][c.i] -= c.cost;
+    parts.surcharge[c.i] -= c.cost * surchargeRate(r.cell.urban[c.i]);
+  }
+  return bill({ ...r, parts, cost: sumParts(parts) });
 }
 export interface CostFixture { name: string; design: Design; expected: ReturnType<typeof bill> }
 export function numericLeaves(value: object, prefix = ''): [string, number][] {
@@ -68,7 +80,7 @@ if (process.argv[1]?.endsWith('/eval-regression.ts')) {
   } else {
     const fixtures: CostFixture[] = JSON.parse(readFileSync(fixturePath, 'utf8'));
     for (const f of fixtures) {
-      const actual = bill(evaluate(ctx, f.design));
+      const actual = legacyBill(evaluate(ctx, f.design));
       for (const group of ['cost', 'parts'] as const) {
         const got = new Map(numericLeaves(actual[group]));
         for (const [key, value] of numericLeaves(f.expected[group])) {

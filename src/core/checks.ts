@@ -11,7 +11,7 @@ import type { Profile } from './vertical';
 
 export type ViolationKind =
   | 'radius' | 'transition' | 'arcShort' | 'compound' | 'gradient' | 'crest' | 'sag' | 'vcOverlap' | 'oob'
-  | 'category' | 'time' | 'profile' | 'section' | 'crossing' | 'structure' | 'building' | 'noise';
+  | 'category' | 'time' | 'profile' | 'section' | 'crossing' | 'structure' | 'building' | 'noise' | 'footprint';
 
 /** what a requirement rests on: a design norm, a rule / simplification of the game, or a limitation of
  *  the game's solvers (they found no valid shape although one may exist) */

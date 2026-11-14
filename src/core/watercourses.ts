@@ -1,5 +1,7 @@
 // Independent watercourse geometry: roads/land-cover drawing order cannot erase a stream.
 import { STRUCTURE_RULES } from './data/prices';
+import type { Segment2 } from './footprint-geometry';
+export interface WaterSegment extends Segment2 { reach: WaterReach; j: number }
 import { BOX_SIZES, CULVERT_RULES as R, PIPE_SIZES } from './data/culverts';
 
 export interface WaterReach {
@@ -78,7 +80,8 @@ export function waterOpening(size: WaterSize): string {
 
 /** Bounded segment buckets; no road × network Cartesian-product arrays. */
 export class WaterNet {
-  private buckets = new Map<string, { reach: WaterReach; j: number }[]>();
+  private buckets = new Map<string, WaterSegment[]>();
+  private distances = new Map<number, number[]>();
   private components = new Map<number, number>();
   constructor(readonly data: WaterData) {
     if (data.version !== 1) throw new Error('Unsupported watercourse pack');
@@ -97,14 +100,33 @@ export class WaterNet {
       }
     });
     data.reaches.forEach((w, i) => this.components.set(w.id, root(i)));
+    for (const reach of data.reaches) {
+      const distances = [0];
+      for (let j = 1; j < reach.points.length; j++) distances.push(distances[j - 1] + Math.hypot(reach.points[j][0] - reach.points[j - 1][0], reach.points[j][1] - reach.points[j - 1][1]));
+      this.distances.set(reach.id, distances);
+    }
     for (const reach of data.reaches) for (let j = 0; j + 1 < reach.points.length; j++) {
       const a = reach.points[j], b = reach.points[j + 1];
+      const segment: WaterSegment = { reach, j, ax: a[0], ay: a[1], bx: b[0], by: b[1],
+        d: this.distances.get(reach.id)![j], length: Math.hypot(b[0] - a[0], b[1] - a[1]) };
       for (let x = Math.floor(Math.min(a[0], b[0]) / 100); x <= Math.floor(Math.max(a[0], b[0]) / 100); x++)
         for (let y = Math.floor(Math.min(a[1], b[1]) / 100); y <= Math.floor(Math.max(a[1], b[1]) / 100); y++) {
           const key = `${x},${y}`, bucket = this.buckets.get(key) ?? [];
-          bucket.push({ reach, j }); this.buckets.set(key, bucket);
+          bucket.push(segment); this.buckets.set(key, bucket);
         }
     }
+  }
+  nearSegments(bounds: readonly number[], visit: (segment: WaterSegment) => void): void {
+    const [x0, y0, x1, y1] = bounds, seen = new Set<WaterSegment>();
+    for (let x = Math.floor(x0 / 100); x <= Math.floor(x1 / 100); x++)
+      for (let y = Math.floor(y0 / 100); y <= Math.floor(y1 / 100); y++)
+        for (const segment of this.buckets.get(`${x},${y}`) ?? []) {
+          if (seen.has(segment)) continue;
+          seen.add(segment);
+          if (Math.max(segment.ax, segment.bx) < x0 || Math.min(segment.ax, segment.bx) > x1
+            || Math.max(segment.ay, segment.by) < y0 || Math.min(segment.ay, segment.by) > y1) continue;
+          visit(segment);
+        }
   }
   connected(a: number, b: number): boolean {
     return a === b || (this.components.has(a) && this.components.get(a) === this.components.get(b));

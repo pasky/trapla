@@ -3,6 +3,7 @@
 // a Web Worker in the app.
 
 import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP } from './autoprofile';
+import { footprintConflicts, type FootprintConflict } from './footprint';
 import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
@@ -98,6 +99,8 @@ export interface Result {
   cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array };
   crossings: CrossingResult[];
   waterCrossings: WaterResult[];
+  /** Footprint conflicts beyond the handled centreline crossings; costs already in the bill. */
+  footprintConflicts: FootprintConflict[];
   walls: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   demolished: { j: number; i: number; cost: number }[];
@@ -703,6 +706,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     if (c.cost > 0) crossingsPaid++;
   }
 
+  lap('crossings');
+  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs }, terrain, ctx.roads, crossings, rawRoadX, water);
+  for (const c of footprintCheck.conflicts) {
+    if (c.feature === 'road') crossingStructure[c.i] += c.cost;
+    else if (c.action === 'culvert') culverts[c.i] += c.cost;
+  }
+  lap('footprint');
+
   // --- noise walls ---
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
   const noiseBuyouts = new Float64Array(n);
@@ -763,6 +774,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     ...structureViolations,
     ...pinViolations,
     ...crossingIssues,
+    ...footprintCheck.violations,
     ...buildingViolations,
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
     ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
@@ -795,21 +807,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       opening: kind[i] === KIND.bridge ? `≥${bridgeSpan.toFixed(1)} m clear` : isTunnel ? 'surface channel retained' : waterOpening(size),
       length: run?.length ?? tunnelRun?.length ?? barrelLength(c, wd), cost, requiredBridge: size.type === 'bridge' };
   });
-  // A channel parallel to the alignment can be buried without any centreline intersection.
-  // No silent channel relocation: expose it as a conflict outside a priced crossing's barrel.
-  const waterAlongside = new Map<number, { s0: number; s1: number }>();
-  if (terrain.watercourses) for (let i = 0; i < n; i++) {
-    if (kind[i] !== KIND.earth) continue;
-    for (const hit of exposedWater(i, sec.dayL[i], sec.dayR[i])) {
-      const range = waterAlongside.get(hit.id);
-      if (range) range.s1 = st.s[i]; else waterAlongside.set(hit.id, { s0: st.s[i], s1: st.s[i] });
-    }
-  }
-  for (const range of waterAlongside.values()) violations.push({ kind: 'crossing', ...range,
-    title: 'Earthwork footprint intercepts a watercourse',
-    fix: 'Move the alignment clear of the channel, or bridge it; channel diversion is not modelled',
-    basis: 'game', rule: 'A parallel watercourse cannot be buried for free outside a priced crossing',
-  });
+  // Parallel watercourses and support placement are checked by the indexed footprint pass.
   // the whole at-grade footprint must be on terrain data, and every slope must reach the ground
   for (let i = 0; i < n; i++) {
     if (kind[i] !== KIND.earth) continue;
@@ -874,7 +872,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, walls, demolished, boughtOut, kept,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
     noise: { receivers, footprint: footprintMap },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
