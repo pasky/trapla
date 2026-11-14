@@ -58,6 +58,9 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - The game starts from the straight line with the automatic grade line; the cost of a design that is not valid is
   struck through. Hover the profile for the cost split at a station; drag in the cost strip under it (or click a
   curve / tangent in the band above it) to get the breakdown of that stretch, <kbd>Esc</kbd> for the whole route.
+- Through-road junctions keep **1.5 km spacing**, including A/B tie-ins (also in town: a scenario assumption).
+  Other crossings use overbridges or parallel reconnections/diversions priced by measured route gaps × SPK
+  road rates. Profile tooltips show the resolution and link/approach metres; HUD counts and sums them.
 - Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
   floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
   shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
@@ -165,8 +168,10 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
   walls and purchased fill per `research/07-property-land.md`, `08-junctions-crossings.md`,
   `09-noise-earthworks-urban.md` (sources and confidence there; research-informed estimates / provisional
   allowances are marked in `src/core/data/`). Research market/contract examples are not escalated to 2026.
-  Building values exclude land; noise buyouts add a provisional plot allowance. See `PLAN.md` for model-6
-  comparisons, raw-crossing clearance rules and geometric wall/cut screening.
+  Building values exclude land; noise buyouts add a provisional plot allowance. Crossings also use
+  `research/12-csn-norm-values.md` §2 and `13-crossing-items-tenders.md`: SPK unit prices are sourced,
+  link/ramp geometry remains a study-stage heuristic. See `PLAN.md` for model-7 comparisons, junction spacing,
+  raw-crossing clearance rules and geometric wall/cut screening.
 
 ## Long curves and radius handles (horizontal editing)
 

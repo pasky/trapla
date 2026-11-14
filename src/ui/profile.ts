@@ -6,7 +6,8 @@
 
 import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
-import type { CrossingResult, Result } from '../core/evaluate';
+import type { Result } from '../core/evaluate';
+import { crossingLabel } from '../core/crossings';
 import { KIND } from '../core/structures';
 import type { VPI } from '../core/vertical';
 import type { StationRange } from '../state';
@@ -26,11 +27,6 @@ export interface ProfileEvents {
 /** the cost strip never averages over less than this, so lump sums (buildings, junctions) stay readable, m */
 const MIN_WINDOW = 50;
 const BAND_H = 11, STRIP_H = 54, GAP_CHART = 6, GAP_BAND = 3;
-
-const CROSSING_TEXT: Record<CrossingResult['type'], string> = {
-  bridge: 'passes under the new bridge', tunnel: 'the new road is in a tunnel below',
-  overbridge: 'carried over the cut on an overbridge', atGrade: '',
-};
 
 interface Element { s0: number; s1: number; curve: boolean; label: string }
 
@@ -504,7 +500,7 @@ export class ProfilePanel {
     for (const x of r.crossings) {
       if (x.i < a || x.i > b) continue;
       const row = ROAD_CLASSES[x.cls];
-      facts.push(`crosses a ${row.label} (${x.h >= 0 ? '+' : '−'}${Math.abs(x.h).toFixed(1)} m): ${x.type === 'atGrade' ? row.atGradeLabel : CROSSING_TEXT[x.type]}${x.cost > 0 ? ` — ${czk(x.cost)}` : ''}`);
+      facts.push(`crosses a ${row.label} (${x.h >= 0 ? '+' : '−'}${Math.abs(x.h).toFixed(1)} m): ${crossingLabel(x)}${x.cost > 0 ? ` — ${czk(x.cost)}` : ''}`);
     }
     let nb = 0, cb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) { nb++; cb += d.cost; }

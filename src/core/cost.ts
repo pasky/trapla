@@ -89,7 +89,7 @@ export interface CostBreakdown {
   earthDetail: { excavation: number; fillPlacing: number; haul: number; surplusHaul: number; unsuitable: number; borrow: number; topsoil: number };
   bridges: number;
   tunnels: number;
-  /** crossings of existing roads: junction / reconnection lump sums and overbridges */
+  /** Existing-road crossings: junctions, geometry-priced parallel links and overbridges/approaches. */
   crossings: number;
   noiseWalls: number;
   /** road base + earthworks + structures + crossings + noise walls */
@@ -137,7 +137,7 @@ export interface StationCostInput {
   noiseBuyouts?: ArrayLike<number>;
   /** crossings of existing roads: all-in lump sums, CZK per cell */
   crossingLump?: ArrayLike<number>;
-  /** crossings of existing roads: overbridges (get the other-objects surcharge), CZK per cell */
+  /** SPK crossing works: links, overbridges and approaches (get other-objects surcharge), CZK/cell */
   crossingStructure?: ArrayLike<number>;
   /** noise wall surface in each cell (both sides added), m² */
   wallArea?: ArrayLike<number>;

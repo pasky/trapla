@@ -9,11 +9,13 @@ import {
   basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
   type CostBreakdown, type CostParts,
 } from './cost';
+import { resolveCrossings, type CrossingResult } from './crossings';
+export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
+import { ACCESS, BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import { dwellingExposure, noiseBarrier, noiseDistance, wallFlags, wallStretches, type EarthEdges, type WallStretch } from './noise';
@@ -40,27 +42,6 @@ export interface EvalContext {
   buildings?: BuildingIndex;
   /** existing road network (crossings) */
   roads?: RoadNet;
-}
-
-/** a crossing of an existing road and how it is resolved */
-export interface CrossingResult {
-  /** station, m, and its station index */
-  s: number;
-  i: number;
-  x: number;
-  y: number;
-  /** key into ROAD_CLASSES */
-  cls: string;
-  /** grade minus the crossed road's ground, m */
-  h: number;
-  /**
-   * 'bridge': the road passes under a bridge of the new road (paid as bridge); 'tunnel': the new road
-   * is in a tunnel below it (free); 'overbridge': carried across the cut; 'atGrade': junction,
-   * reconnection or diversion lump sum (motorways / expressways: not allowed, a violation)
-   */
-  type: 'bridge' | 'tunnel' | 'overbridge' | 'atGrade';
-  /** CZK attributed to the crossing itself (0 for 'bridge' / 'tunnel'), excl. surcharge */
-  cost: number;
 }
 
 export interface Result {
@@ -437,19 +418,12 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // --- crossings of existing roads ---
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
+  resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban);
   for (const c of crossings) {
-    const row = ROAD_CLASSES[c.cls];
-    if (kind[c.i] === KIND.bridge) c.type = 'bridge';
-    else if (kind[c.i] === KIND.tunnel) c.type = 'tunnel';
-    else if (row.separable && c.h <= -CROSSING_RULES.underDepth) {
-      // overbridge spanning the cut (slope edge to slope edge), as wide as the crossed road
-      c.type = 'overbridge';
-      c.cost = ((sec.dayL[c.i] + sec.dayR[c.i]) / 1000) * row.bridgePerKm;
-      crossingStructure[c.i] += c.cost;
-    } else {
-      c.cost = row.atGrade;
-      crossingLump[c.i] += c.cost;
-    }
+    // SPK links/approaches/bridges receive other-objects surcharge; all-in junction/access do not.
+    const lump = c.type === 'junction' ? c.cost : c.type === 'reconnection' && c.cls === 'service' ? ACCESS : 0;
+    crossingLump[c.i] += lump;
+    crossingStructure[c.i] += c.cost - lump;
     if (c.cost > 0) crossingsPaid++;
   }
 

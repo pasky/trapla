@@ -205,8 +205,8 @@ Cost model 6: 20.81 km, 13.87 min, **3.949 bn CZK = 190 M CZK/km**; includes thr
 
 ## Town cost model and cost breakdown (2026-11-14)
 
-Cost model 6: research-informed prices, raw-crossing clearance, geometric wall/cut diffraction, slant-distance
-noise excess and building-only valuations with separate plot allowances for noise buyouts.
+Cost model 7 adds spaced junctions and geometry-priced parallel links/overbridge approaches to model 6's
+raw-crossing clearance, geometric noise diffraction and building-only valuations.
 The model distinguishes a dense urban cut-through from a shorter route skirting the eastern settlement edge;
 whole-route ratios alone do not measure the cost of building through town.
 
@@ -260,9 +260,29 @@ whole-route ratios alone do not measure the cost of building through town.
   track; bridges/tunnels left out). Each crossing is resolved by the grade's height above the crossed road's
   ground: ≥ 6 m above → a forced short bridge on the new road (the same mechanism as rivers/railways; the
   owner's "street buried next to a bridged railway" case); ≤ −6 m → an overbridge carrying the crossed road,
-  span = cut width there × the SPK CN bridge row of the crossed road's width (+ surcharge); in between → a lump
-  sum: junction with a through road, side-road reconnection for streets and local roads, access reconnection
-  for service roads, track diversion. Service roads and tracks never force a bridge. Motorways and expressways
+  span = cut width there × the SPK CN bridge row of the crossed road's width (+ surcharge). Otherwise,
+  class I–III roads are junction candidates: deterministic greedy class I before II before III, then station
+  order, **≥ 1.5 km from other junctions including A/B tie-ins** (already paid in BILL). Research/12 §2
+  supports ČSN 73 6101:2018 at medium-high confidence; the same spacing in built-up areas is our conservative
+  scenario assumption, not a sourced ČSN 73 6110 value. A retained junction stays 25 M (low-confidence
+  roundabout-based allowance, research/13); streets, accesses and tracks never become direct junctions.
+  Rejected through roads and local/service roads get the cheaper of a parallel reconnection or overbridge;
+  tracks get a diversion or shared overbridge. Existing separation is retained first. Resolve remaining
+  crossings in class/station order, linking to the nearest **already resolved** compatible road or A/B.
+  This creates acyclic connections, not two severed roads pretending to connect only to each other; close
+  tracks share a crossing via a chain. Through/local roads cannot discharge into tracks or service roads;
+  motorway/trunk crossings are never link targets. This is a local greedy, not optimal network routing.
+  Link quantity = **2 × max(25 m, actual station gap)** (one link on each side); maximum reach 750 m per
+  side. Beyond that, build an overbridge rather than cap an unreachable link's price. Bounds are heuristics.
+  SPK CN 2026 standard flat+hilly road rows price the total length: class I/II/III by corresponding width;
+  local/service links M7.5 rural 24.133 M/km or M11.5 urban 32.930 M/km, selected by the crossing's built-up
+  mask (not a survey of the link). Tracks use **paved P4 13.986 M/km**, conservative for unpaved tracks but
+  traceable, unlike the unsupported 1.5 M/km gravel allowance. Service links add 0.5 M for one simple sjezd
+  onto the local network (very low confidence), not onto our road. Overbridge = footprint-width span × SPK
+  bridge-width row + **2 × max(0, 6 + h) / 0.06 m** of approaches × crossed-road row, h = new grade minus
+  crossed-road ground. The 6% ramp is a heuristic; road norms include standard approach earthworks, not a
+  separate invented embankment lump sum. SPK works get the cell's other-objects surcharge; junction/sjezd
+  all-in allowances do not. Service roads and tracks never force a bridge on our road. Motorways and expressways
   (OSM motorway / trunk; cost model 3) are never crossed at grade: like a railway, the grade must clear them by
   7.5 m (forced bridge; the auto-profile requests this) or pass ≥ 6 m below them (overbridge); anything in
   between is a violation. Hard constraints and auto-profile clearance use **every raw crossing**, sorted
@@ -274,7 +294,9 @@ whole-route ratios alone do not measure the cost of building through town.
   without intersecting either motorway centreline. **Billing only** merges crossings within 30 m, or
   the same OSM way within 150 m. Ordinary-road objects within 150 m of A/B belong to the tie-in allowance;
   motorway/trunk overbridges still pay there, except at the actual endpoint intersection.
-  A crossing under a new bridge or above its tunnel is free. Billing representatives are shown in the profile/HUD.
+  A crossing under a new bridge or above its tunnel is free. Profile tooltips show junction / overbridge
+  (span and approaches) / reconnection or diversion (total metres and target station); HUD totals count
+  each resolution and sum link lengths. All crossing works are attributed to the source crossing cell.
 - **Excavation class by depth** (gameplay heuristic standing in for geology; OTSKP classes are defined by
   excavability, not depth, and route-specific class shares are unknown — research/09 §3): each cross-section's cut area is split by depth below
   the original ground: class I to 3 m, class II to 8 m, class III deeper (OTSKP 12273 / 12283 / 12293: 183 /
@@ -347,8 +369,11 @@ price cannot be determined (research/07 §1).
 | Grade separation thresholds | ≥ 6 m above (4.8 m clearance + deck) / ≤ −6 m below | heuristic: 4.8 m clearance is ČSN 73 6201, the deck depth unverified (research/08) |
 | Junction with a through road (class I–III) | 25 M CZK | PROVISIONAL research-informed estimate from roundabout awards 19.8–37.5 M; no isolated T/X-junction contract found (research/08) |
 | Motorway / expressway | no at-grade crossing | bridge ≥ 7.5 m above or overbridge ≥ 6 m below (research/08) |
-| Side-road reconnection (street, local road) | 4 M CZK | UNVERIFIED allowance (research/08: no published award) |
-| Access reconnection (service road) / track diversion | 1 M / 0.5 M CZK | never grade-separated; UNVERIFIED allowances |
+| Junction spacing incl. A/B | 1.5 km | rural ČSN 73 6101:2018 via research/12 §2, medium-high confidence; same urban rule is a scenario assumption |
+| Parallel links, both sides | 2 × max(25 m, station gap), reach ≤ 750 m per side | heuristics; beyond reach choose overbridge, never truncate cost |
+| Local/service reconnection | 24.133 / 32.930 M CZK/km rural / urban | SPK A.1.M.7,5.NER / M.11,5.NIR; mask at crossing, flat+hilly rows |
+| Service sjezd / track diversion | +0.5 M per service reconnection / 13.986 M/km | research/13 sjezd very low confidence; SPK A.1.P4.NE paved field road, not gravel |
+| Raised overbridge approaches | total 2 × max(0, 6 + h) / 6% metres × SPK road row | heuristic gradient; includes standard earthworks, no separate fill lump sum |
 | Crossed-road widths for overbridges | 27.5 / 11.5 / 9.5 / 7.5 / 6.5 / 4 m by class | priced by the SPK CN bridge row of that width |
 | Excavation class depth bands | I to 3 m, II to 8 m, III below | gameplay heuristic, not geology: OTSKP classes are by excavability (research/09 §3) |
 | Noise distance and scaling | 100 m at 9,000 veh/day and 90 km/h; exponents 2/3 and 5/3 | UNVERIFIED screening heuristic (research/09 §2) |
@@ -361,22 +386,23 @@ price cannot be determined (research/07 §1).
 
 ### Numbers with the new model (S 9.5, auto profile, `npx tsx scripts/bench.ts <design.json>`)
 
-Cost model **6**, with raw-crossing constraints, cut-edge diffraction, slant excess and consistent property
-valuation. All five saved alignments stay fixed from model 4 (not reoptimised); all remain valid, no tunnel.
-The straight auto-profile start is 6,974 M CZK (18.59 km). Per-cell parts sum to every total.
+Cost model **7**, adding junction spacing and geometric crossing costs. All five saved alignments stay
+fixed from model 4 for an apples-to-apples comparison; all remain valid, no tunnel. Per-cell parts sum to
+every total. Short reoptimisation results are recorded separately below; these are not global optima.
 
 | M CZK | Reference bypass | Optimised bypass 90 | Direct fringe 80 | Direct fringe 90 | Town centre 90 |
 |---|---:|---:|---:|---:|---:|
 | design file (`scripts/`) | `demo-design.json` | `best-design.json` | `direct-80-design.json` | `direct-90-design.json` | `town-centre-design.json` |
 | length km / min | 20.81 / 13.87 | 21.03 / 14.02 | 19.08 / 14.31 | 19.59 / 13.06 | 18.94 / 12.62 |
-| **total** | **3,949** | **3,038** | **3,470** | **3,626** | **9,024** |
-| per km | 190 | 144 | 182 | 185 | 477 |
+| model 6 total (same geometry) | 3,949 | 3,038 | 3,470 | 3,626 | 9,024 |
+| **total** | **4,195** | **3,289** | **3,690** | **3,839** | **9,281** |
+| per km | 202 | 156 | 193 | 196 | 490 |
 | road base | 864 | 862 | 769 | 782 | 722 |
 | earthworks | 1,043 | 700 | 580 | 816 | 1,575 |
 | bridges | 278 | 319 | 609 | 614 | 1,160 |
-| road crossings | 190 | 91 | 124 | 92 | 76 |
+| road crossings | 355 | 277 | 269 | 250 | 256 |
 | noise walls | 121 | 73 | 204 | 136 | 298 |
-| other objects | 695 | 591 | 663 | 731 | 1,197 |
+| other objects | 776 | 655 | 737 | 786 | 1,275 |
 | land / forest | 270 / 12 | 229 / 8 | 247 / 9 | 235 / 13 | 324 / 15 |
 | footprint buildings (count) | 397 (18) | 166 (11) | 253 (35) | 206 (27) | 3,358 (116) |
 | noise buyouts incl. plots (count) | 79 (3) | 0 (0) | 13 (1) | 0 (0) | 298 (10) |
@@ -384,13 +410,14 @@ The straight auto-profile start is 6,974 M CZK (18.59 km). Per-cell parts sum to
 | bridges: count / m | 6 / 480 | 7 / 550 | 9 / 1,050 | 9 / 1,060 | 11 / 2,000 |
 | noise walls m / m² | 3,409 / 12,115 | 2,439 / 7,318 | 5,288 / 20,372 | 4,218 / 13,574 | 7,939 / 29,835 |
 | crossings (paid) | 31 (28) | 28 (24) | 31 (24) | 35 (23) | 40 (24) |
+| junction / overbridge / reconnection / diversion | 4 / 12 / 2 / 10 | 3 / 12 / 2 / 7 | 2 / 13 / 4 / 5 | 3 / 9 / 2 / 9 | 0 / 11 / 9 / 4 |
 | cut / fill k m³ | 2,079 / 1,763 | 1,542 / 1,310 | 1,302 / 1,106 | 1,705 / 1,452 | 2,727 / 2,440 |
 
 Search provenance: the saved bypass/direct80 are seeded-search outputs, direct90 the fresh-search output
 (the cheapest valid result of each strategy under model 4). Bypass searches start in the official corridor
 but are not constrained to it. No global-optimality claim. Reproduce those searches with model-4 code
 (commit `cecb3e9`); original inputs remain in commit `a6a93b6`. Evaluate the saved outputs with current code
-for the model-6 numbers above:
+for the fixed-geometry numbers above:
 
 ```sh
 git show a6a93b6:scripts/best-design.json > /tmp/start-bypass.json
@@ -403,8 +430,15 @@ npx tsx scripts/optimize.ts 80 3500 - /tmp/direct80-fresh.json 20261118
 npx tsx scripts/optimize.ts 90 3500 - /tmp/direct90-fresh.json 20261119
 ```
 
-**Calibration and spatial check:** direct80 / bypass = **1.142×**, direct90 / bypass = **1.193×**, actual
-centre / bypass = **2.970×**. The modest fringe premium warranted inspecting the mask, roads and oriented building
+Short model-7 continuation searches: 500 iterations each from the saved bypass/direct80/direct90,
+seeds 20261121 / 20261122 / 20261123, yield **3,234 / 3,597 / 3,828 M**, all VALID (21.05 / 19.32 /
+19.59 km, 14.03 / 14.49 / 13.06 min). Kept as experiments, not substituted into the five saved comparison
+geometries during concurrent geology/noise calibration. Reproduce with
+`npx tsx scripts/optimize.ts <90|80|90> 500 scripts/<design>.json /tmp/candidate.json <seed>`.
+
+**Calibration and spatial check:** current fixed-geometry direct80 / bypass = **1.122×**, direct90 / bypass =
+**1.167×**, actual centre / bypass = **2.822×**. The following spatial audit and noise sensitivity are
+**historical model-6 figures**, not recalculated model-7 bills. The modest fringe premium warranted inspecting the mask, roads and oriented building
 rectangles (`scripts/town-audit.ts design.json map.svg`), not adding a multiplier to force a preferred ratio.
 The 80 km/h line skirts eastern Kryblice / garage rows at km 3–4, crosses the narrow developed valley at the
 western edge of Poříčí's industrial strip around km 5, and skirts / crosses Voletiny at km 6–7. It does not
@@ -446,7 +480,7 @@ buyouts vary from 7 to 27. These figures demonstrate sensitivity, not validation
 
 ### Performance
 
-`evaluate()` model 6: 29–39 ms in Node across the five saved designs (five-run bench means).
+`evaluate()` model 7: 30–38 ms in Node across the five saved designs (five-run bench means).
 The entire town step (footprint buildings + crossings + noise) is about 2–3 ms, cost arrays 0.2–0.4 ms.
 Noise queries use the building spatial hash, deduplicate candidates per station, and cache actual exposed
 pairs; no station × building matrix. Source-to-wall legs are precomputed per evaluation; the required path
@@ -460,10 +494,11 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   validation rejects unsafe crossings. Structure choice uses each station's urban rates/land, not buildings.
 - The balance search can end 0.1–0.2 M m³ off balance when a bridge/embankment decision flips between its
   estimate and the final bill, and the chosen value can jump between neighbouring designs (≈ 1 % of the bill).
-- Crossings: an existing road running along the route and weaving across it pays a lump sum at every crossing
-  further than 150 m apart; roads on existing bridges are ignored; no junction geometry, no connection
-  requirement (a grade-separated crossing is not connected). Skew is ignored: the overbridge span is the cut
-  width square to the new road, and a forced bridge is the 30 m minimum whatever the crossing angle.
+- Crossings: local greedy connections are not surveyed OSM routing; parallel links have no terrain, parcel,
+  utility, land or building-footprint model, and reuse of a chain is not globally optimised. Approaches use
+  standard flat+hilly road norms, not detailed ramp earthwork volumes/vertical curves. Existing bridges are
+  ignored. No junction geometry or main-road connection requirement (an overbridge is not an interchange).
+  Skew is ignored: span is the footprint width square to the new road; a forced bridge is the 30 m minimum.
 - The structure choice compares each option at the rates of its own footprint, but the balance search's
   estimate takes the built-up share at the centreline only.
 - Buildings: only OSM ways (no multipolygon buildings); the rectangle over-covers L-shaped footprints; no

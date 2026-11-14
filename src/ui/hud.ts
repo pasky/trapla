@@ -6,7 +6,7 @@ import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { EXCAVATION_DEPTH_BANDS, LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
-import { BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
+import { BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
 import type { Best, StationRange } from '../state';
 import { COST_GROUPS, czk } from './costgroups';
@@ -45,7 +45,7 @@ const ROW_HELP: Record<string, (c: CostBreakdown) => string> = {
   },
   bridges: () => 'SFDI bridge norm per km of bridge; includes the short bridges forced over rivers, railways and roads clearly below the grade',
   tunnels: () => 'SFDI bored-tunnel norm per km of tube (urban rows under built-up areas)',
-  crossings: () => `existing roads crossed: an overbridge where the road is ≥ ${CROSSING_RULES.underDepth} m above the grade, otherwise a junction (${czk(ROAD_CLASSES.primary.atGrade)}), side-road reconnection (${czk(ROAD_CLASSES.residential.atGrade)}), access (${czk(ROAD_CLASSES.service.atGrade)}) or track diversion (${czk(ROAD_CLASSES.track.atGrade)}) — lump sums (junction: PROVISIONAL research-informed estimate from ŘSD roundabout awards, no isolated T/X contract found; the rest unverified allowances). Roads ≥ ${CROSSING_RULES.overHeight} m below the grade get a bridge (counted under Bridges). Motorways and expressways cannot be crossed at grade: bridge ≥ ${STRUCTURE_RULES.railClearance} m above or overbridge ≥ ${CROSSING_RULES.underDepth} m below.`,
+  crossings: () => `Class I–III junctions ≥ ${CROSSING_RULES.junctionSpacing} m apart, including A/B (also in town: scenario assumption), higher class first. Junction ${czk(JUNCTION)}: low-confidence roundabout-based allowance. Other roads: cheaper of overbridge + approach ramps or parallel reconnection/diversion to a resolved road. Links priced by total length on both sides × SPK 2026 road rows (local roads: rural/urban mask; tracks: paved P4). Reach ≤ ${CROSSING_RULES.linkMaxReach} m per side, otherwise overbridge. Service reconnection includes 0.5 M simple access onto the link, never our road. SPK works get other-objects surcharge. Roads ≥ ${CROSSING_RULES.overHeight} m below grade get our bridge (under Bridges). Motorways/expressways still need bridge ≥ ${STRUCTURE_RULES.railClearance} m above or overbridge ≥ ${CROSSING_RULES.underDepth} m below.`,
   noiseWalls: () => `PROVISIONAL screening model, not an acoustic assessment: ${NOISE.wallHeights.join(' / ')} m walls at ${NOISE.wallPerM2.toLocaleString('en-US')} CZK/m² (research-informed calibrated estimate; project datapoint assumes 3 m height, not escalated to 2026); geometric single-edge diffraction at ${NOISE.wavelength} m wavelength, minus ${NOISE.trafficCorrectionDb} dB traffic allowance, capped at ${NOISE.maxAttenuationDb} dB. Near-lane source ${NOISE.sourceHeight} m above grade; wall at crown edge + ${NOISE.wallEdgeOffset} m, not the slope toe. Unmitigated contour ${NOISE.refDistance} m at ${NOISE.refTraffic.toLocaleString('en-US')} veh/day and ${NOISE.refSpeed} km/h; excess = ${NOISE.distanceDb} log₁₀(D/d) dB. Receiver ${NOISE.facadeOffset} m in front of the facade, top floor ${NOISE.receiverHeight} + ${NOISE.storeyHeight} × (levels − 1) m above building ground; attenuation depends on the source–wall–receiver path difference; zero when the receiver sees over the wall. Excess uses slant source–receiver distance. Cut edges use the same diffraction formula; take the better of earth edge and wall, not their sum. Only tunnels fully shield.`,
   noiseBuyouts: () => `Dwellings bought out for noise, separate from footprint demolitions; building-only estimate × ${BUILDING_RULES.purchaseMultiplier} + demolition, plus a PROVISIONAL plot max(${BUILDING_RULES.buyoutPlotMultiple} × footprint, ${BUILDING_RULES.buyoutPlotMinimum} m²) at ${URBAN_LAND.buildingLandPerM2} × ${URBAN_LAND.multiplier} CZK/m². Bought out when neither the earth edge nor the tallest available wall protects the top-floor receiver in the PROVISIONAL model; not an acoustic assessment.`,
   surcharge: () => `SFDI "other objects" (utilities, drainage, safety, preparation…): +${pct(PRICES.otherObjectsSurcharge)} of construction, +${pct(URBAN_RATES.otherObjectsSurcharge)} inside built-up areas`,
@@ -163,9 +163,14 @@ export class Hud {
     }).join('');
     const q = r.quantities;
     const tOk = r.travelMin <= this.sc.maxTravelMin;
-    const x = { bridge: 0, tunnel: 0, overbridge: 0, atGrade: 0 };
-    for (const cr of r.crossings) if (!sel || (cr.i >= sel.i0 && cr.i <= sel.i1)) x[cr.type]++;
-    const xing = `${x.bridge + x.tunnel + x.overbridge + x.atGrade} <small>(${[x.atGrade ? `${x.atGrade} at grade` : '', x.overbridge ? `${x.overbridge} overbridge${x.overbridge > 1 ? 's' : ''}` : '', x.bridge ? `${x.bridge} under our bridges` : '', x.tunnel ? `${x.tunnel} above tunnels` : ''].filter(Boolean).join(', ') || 'none'})</small>`;
+    const x = { bridge: 0, tunnel: 0, overbridge: 0, atGrade: 0, junction: 0, reconnection: 0, diversion: 0 };
+    let reconnectM = 0, divertM = 0;
+    for (const cr of r.crossings) if (!sel || (cr.i >= sel.i0 && cr.i <= sel.i1)) {
+      x[cr.type]++;
+      if (cr.type === 'reconnection') reconnectM += cr.linkLength ?? 0;
+      if (cr.type === 'diversion') divertM += cr.linkLength ?? 0;
+    }
+    const xing = `${Object.values(x).reduce((a, b) => a + b, 0)} <small>(${[x.junction ? `${x.junction} junctions` : '', x.reconnection ? `${x.reconnection} reconnections ${num(reconnectM, 0)} m` : '', x.diversion ? `${x.diversion} diversions ${num(divertM, 0)} m` : '', x.atGrade ? `${x.atGrade} invalid at grade` : '', x.overbridge ? `${x.overbridge} overbridges` : '', x.bridge ? `${x.bridge} under our bridges` : '', x.tunnel ? `${x.tunnel} above tunnels` : ''].filter(Boolean).join(', ') || 'none'})</small>`;
     const cls = q.cutByClass.map((v) => num((100 * v) / Math.max(1, q.cut), 0)).join(' / ');
     const common = (cut: number, fill: number, len: number, fp: number, forest: number, urban: number, bld: number, buyouts: number, walls: number, wallArea: number) => `
       <tr><td>Cut / fill</td><td>${kvol(cut)} / ${kvol(fill)} <small>(${num(cut / len, 0)} / ${num(fill / len, 0)} m³/m)</small></td></tr>

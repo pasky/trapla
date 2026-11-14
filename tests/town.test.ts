@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
 import { BuildingIndex, noiseBuyoutCost, type BuildingInfo } from '../src/core/buildings';
 import { PART_KEYS } from '../src/core/cost';
+import { resolveCrossings, type CrossingResult } from '../src/core/crossings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
 import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
@@ -54,6 +55,60 @@ describe('road network crossings', () => {
   it('merges close crossings and drops those at the route ends', () => {
     const m = mergeCrossings(net.intersections(n, s, s, y), 1000);
     expect(m.map((c) => [Math.round(c.s), c.cls])).toEqual([[200, 'residential'], [300, 'primary'], [500, 'track']]);
+  });
+});
+
+describe('junction spacing and geometric reconnections', () => {
+  const crossing = (s: number, cls: string, h = 0): CrossingResult => ({ s, cls, h, i: 0, x: s, y: 0, type: 'atGrade', cost: 0 });
+  const resolve = (cs: CrossingResult[], urban = 0) => {
+    resolveCrossings(cs, 9000, [KIND.earth], [9.5], [urban]);
+    return cs;
+  };
+
+  it('keeps higher-class junctions first, enforces endpoint spacing and accepts the exact boundary', () => {
+    const input = () => [crossing(1499, 'primary'), crossing(1500, 'secondary'), crossing(2900, 'tertiary'),
+      crossing(3000, 'primary'), crossing(4499, 'secondary'), crossing(6000, 'tertiary'), crossing(7500, 'primary'), crossing(7501, 'primary')];
+    const cs = resolve(input());
+    expect(cs.filter(c => c.type === 'junction').map(c => c.s)).toEqual([1500, 3000, 6000, 7500]);
+    expect(resolve(input().reverse()).filter(c => c.type === 'junction').map(c => c.s).sort((a, b) => a - b))
+      .toEqual([1500, 3000, 6000, 7500]);
+    // Built-up does not silently relax the class-I spacing rule.
+    expect(resolve(input(), 1).filter(c => c.type === 'junction').map(c => c.s)).toEqual([1500, 3000, 6000, 7500]);
+  });
+
+  it('prices both sides by actual gap and urban row, never making local streets direct junctions', () => {
+    const run = (gap: number, urban = 0) => resolve([crossing(3000, 'primary'), crossing(3000 + gap, 'residential')], urban)[1];
+    const a = run(50), b = run(100), town = run(100, 1);
+    expect(a.type).toBe('reconnection'); expect(b.type).toBe('reconnection');
+    expect(b.targetS).toBe(3000); expect(b.linkLength).toBe(200);
+    expect(b.cost).toBeCloseTo(2 * a.cost, 6);
+    expect(town.cost).toBeGreaterThan(b.cost);
+    expect(town.roadCode).not.toBe(b.roadCode);
+    const isolated = run(800);
+    expect(isolated.type).toBe('overbridge');
+    expect(isolated.linkLength).toBeUndefined(); // no capped link pretending to reach the junction
+    expect(isolated.approachLength).toBeGreaterThan(0);
+    expect(isolated.cost).toBeCloseTo((isolated.span! * ROAD_CLASSES.residential.bridgePerKm
+      + isolated.approachLength! * isolated.roadPerKm!) / 1000, 6);
+  });
+
+  it('consolidates nearby tracks into one crossing with an acyclic chain; services use the local network', () => {
+    const cs = resolve([crossing(4000, 'track'), crossing(4050, 'track'), crossing(4100, 'track')]);
+    expect(cs.map(c => c.type)).toEqual(['overbridge', 'diversion', 'diversion']);
+    expect(cs.map(c => c.targetS)).toEqual([undefined, 4000, 4050]);
+    expect(cs[1].linkLength).toBe(100);
+    const services = resolve([crossing(3000, 'primary'), crossing(3050, 'service'), crossing(3100, 'service')]);
+    expect(services.slice(1).map(c => c.type)).toEqual(['reconnection', 'reconnection']);
+    expect(services[2].targetS).toBe(3050);
+    expect(services[2].cost).toBe(services[1].cost);
+  });
+
+  it('preserves grade separation without consuming junction spacing or making motorway access', () => {
+    const cs = [crossing(3000, 'primary'), { ...crossing(3100, 'primary'), i: 1 }, crossing(3200, 'motorway'), crossing(3250, 'residential')];
+    resolveCrossings(cs, 9000, [KIND.earth, KIND.bridge], [9.5, 9.5], [0, 0]);
+    expect(cs[0].type).toBe('junction'); expect(cs[1].type).toBe('bridge');
+    expect(cs[2].type).toBe('atGrade'); expect(cs[2].cost).toBe(0);
+    expect(cs[3].targetS).toBe(3100); // cannot connect to the nearer motorway
   });
 });
 
@@ -213,8 +268,8 @@ describe('evaluate on a synthetic town', () => {
 
   it('resolves each crossing by the height of the grade above the crossed road', () => {
     expect(r.crossings.map((c) => [Math.round(c.s), c.cls, c.type])).toEqual([
-      [1500, 'residential', 'bridge'], [2500, 'residential', 'atGrade'], [2700, 'track', 'atGrade'],
-      [3500, 'residential', 'overbridge'], [4500, 'primary', 'atGrade'],
+      [1500, 'residential', 'bridge'], [2500, 'residential', 'overbridge'], [2700, 'track', 'diversion'],
+      [3500, 'residential', 'overbridge'], [4500, 'primary', 'junction'],
     ]);
     // the valley street forces a short bridge into what would otherwise be an embankment
     expect(r.kind[150]).toBe(KIND.bridge);
@@ -225,7 +280,11 @@ describe('evaluate on a synthetic town', () => {
     const span = 9.5 + 2 * 1.75 * 12;
     const over = r.crossings[3];
     expect(over.cost).toBeCloseTo((span / 1000) * ROAD_CLASSES.residential.bridgePerKm, -4);
-    expect(r.cost.crossings).toBeCloseTo(over.cost + ROAD_CLASSES.residential.atGrade + ROAD_CLASSES.track.atGrade + ROAD_CLASSES.primary.atGrade, 0);
+    // The plain street now needs raised approaches; the neighbouring track shares its crossing.
+    expect(r.crossings[1].approachLength).toBeGreaterThan(0);
+    expect(r.crossings[2].targetS).toBe(r.crossings[1].s);
+    expect(r.crossings[2].linkLength).toBe(400); // two 200 m parallel links
+    expect(r.cost.crossings).toBeCloseTo(r.crossings.reduce((sum, c) => sum + c.cost, 0), 0);
   });
 
   it('demolishes what is in the footprint or under a bridge deck, and nothing else', () => {
