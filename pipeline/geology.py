@@ -54,7 +54,7 @@ def fetch_features(url, name, cache, bounds, http_get, log):
             raise RuntimeError(f"ČGS {name}: empty truncated page")
         offset += len(batch)
         last_id = max(seen)
-    log(f"ČGS {name}: {len(features)} polygons")
+    log(f"ČGS {name}: {len(features)} features")
     return features
 
 
