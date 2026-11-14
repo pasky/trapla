@@ -569,10 +569,12 @@ export class ProfilePanel {
     }
     g.save(); g.translate(12, (T + B) / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.fillText('height above sea, m', 0, 0); g.restore();
     // one line on how to change the road height in this mode
-    const hint = this.mode === 'manual' ? 'By hand: drag a ◆ to change the road height · double-click the line to add a point · right-click a ◆ to delete it'
-      : 'Automatic road height · click the line to pin its height there, then drag the pin';
+    const hints = this.mode === 'manual'
+      ? ['By hand: drag a ◆ to change the road height · double-click the line to add a point · right-click a ◆ to delete it', 'By hand: drag a ◆ · double-click the line adds one']
+      : ['Automatic road height · click the line to pin its height there, then drag the pin', 'click the line to pin its height'];
     // bottom left of the chart, over the ground (the floating bar sits over the selection)
     g.font = '11px system-ui, sans-serif'; g.textAlign = 'left';
+    const hint = hints.find((t) => g.measureText(t).width < (R - L) * 0.7) ?? hints[hints.length - 1];
     const hw = g.measureText(hint).width;
     g.fillStyle = 'rgba(247,245,240,0.88)'; g.fillRect(L + 2, B - 17, hw + 8, 15);
     g.fillStyle = this.mode === 'manual' ? '#1f5fbf' : '#555'; g.fillText(hint, L + 6, B - 6);
@@ -736,7 +738,10 @@ export class ProfilePanel {
     if (!this.sel) {
       g.fillStyle = 'rgba(0,0,0,0.42)';
       g.textAlign = 'right';
-      g.fillText('drag across the profile to select a stretch · click a curve / straight in the band above to select it', R - 6, top + 11);
+      // the longest hint that fits (narrow windows get the short one)
+      const hints = ['drag across the profile to select a stretch · click a curve / straight in the band above to select it', 'drag across the profile to select a stretch'];
+      const hint = hints.find((t) => g.measureText(t).width < R - L - 80);
+      if (hint) g.fillText(hint, R - 6, top + 11);
     }
   }
 

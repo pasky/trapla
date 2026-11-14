@@ -37,6 +37,7 @@ async function main() {
   const { meta } = pack;
   const A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
   document.getElementById('attrib')!.innerHTML = meta.attribution.join(' · ');
+  document.getElementById('attrib')!.title = document.getElementById('attrib')!.textContent ?? '';
   document.getElementById('legend-official')!.textContent = scenario.labels.official;
 
   const store = new Store(`trapla.${scenario.id}`, startDesign,
@@ -142,7 +143,12 @@ async function main() {
 
   worker.onmessage = (ev: MessageEvent) => {
     const m = ev.data;
-    if (m.type === 'error') { console.error('worker error', m.message); received = m.id; return; }
+    if (m.type === 'error') {
+      console.error('worker error', m.message); received = m.id;
+      setStatus('This design could not be computed (a bug, see the console). Undo the last change.');
+      if (received === posted) { hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
+      return;
+    }
     if (m.type !== 'result') return;
     if (m.id < received) return; // older than what is shown
     received = m.id;

@@ -12,6 +12,7 @@ import type { Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import type { RouteExtras } from './extras';
 import type { View } from './view';
+import { czk } from '../ui/costgroups';
 
 /** building colours (sRGB) by noise outcome; walls / buyouts / demolitions match their map symbols */
 export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: 0xc43c9b, demolished: 0xd7301f };
@@ -31,7 +32,7 @@ const glsl = (c: string) => { const k = new THREE.Color().setStyle(c, THREE.Line
 const fmt = (v: number, d = 1) => v.toFixed(d).replace('-', '−');
 const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}`;
 const km = (s: number) => `km ${(s / 1000).toFixed(2)}`;
-const czk = (v: number) => `${(v / 1e6).toFixed(1)} M CZK`;
+
 
 export class NoiseLayer {
   private on = false;
@@ -167,7 +168,7 @@ export class NoiseLayer {
       <div><b>Noise</b> — ${period} L<sub>Aeq</sub> relative to the ${limit} dB limit, ground floor (1.5 m), walls and cuts included</div>
       <div class="ramp"><div class="bar" style="background:${bar}"><u style="left:${at(0).toFixed(1)}%"></u></div><div class="ticks">${ticks}</div></div>
       <div>Dwellings: ${b(NOISE_COLORS.wall, 'behind a wall')}${b(NOISE_COLORS.cut, 'screened by a cut')}${b(NOISE_COLORS.ok, 'within limit')}
-        ${b(NOISE_COLORS.bought, 'bought out')}${b(NOISE_COLORS.demolished, 'demolished (footprint)')}${b(0xe87718, 'retained, over limit')}</div>
+        ${b(NOISE_COLORS.bought, 'bought out')}${b(NOISE_COLORS.demolished, 'demolished (in the road\'s way)')}${b(0xe87718, 'retained, over limit')}</div>
       <div class="hint">Top-floor façade decides walls and buyouts. Hover a building or a wall for details.</div>`;
   }
 

@@ -198,7 +198,7 @@ export class BuildTools {
     const li = (attrs: string, text: string, title = 'Show it') => items.push(`<li><button type="button" class="link" ${attrs} title="${title}">${text}</button></li>`);
     for (const o of [...(d.structureOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="st-${o.kind}"></i>${['Earthwork', 'Bridge', 'Tunnel'][o.kind]} km ${km(o.s0)}–${km(o.s1)}`, 'Select this stretch');
     for (const o of [...(d.wallOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="wall"></i>${o.height ? `${o.height} m wall` : 'No wall'} ${o.side === 'L' ? 'left' : 'right'} km ${km(o.s0)}–${km(o.s1)}`, 'Select this stretch');
-    for (const p of d.gradePins ?? []) li(`data-pin="${p.s}"`, `<i class="pin"></i>Pinned height ${p.z.toFixed(1)} m at km ${(p.s / 1000).toFixed(3)}${p.s > r.length ? ' <small>(beyond the end of the route)</small>' : ''}`);
+    for (const p of d.gradePins ?? []) li(`data-pin="${p.s}"`, `<i class="pin"></i>Pinned height ${p.z.toFixed(1)} m at km ${km(p.s)}${p.s > r.length ? ' <small>(beyond the end of the route)</small>' : ''}`);
     const inactive: number[] = [];
     for (const o of d.crossingOverrides ?? []) {
       const c = r.crossings.find((c) => c.roadId === o.roadId);

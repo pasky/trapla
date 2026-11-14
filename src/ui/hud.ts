@@ -279,8 +279,8 @@ export class Hud {
       <tr><td>Cut / fill</td><td>${kvol(cut)} / ${kvol(fill)} <small>(${num(cut / len, 0)} / ${num(fill / len, 0)} m³/m)</small></td></tr>
       <tr><td>Footprint</td><td>${num(fp / 1e4, 1)} ha <small>(forest ${num(forest / 1e4, 1)} ha)</small></td></tr>
       <tr><td>In built-up area</td><td>${km(urban)}</td></tr>
-      <tr class="${bld ? 'warn' : ''}"><td>Footprint demolitions</td><td>${bld}</td></tr>
-      <tr class="${buyouts ? 'warn' : ''}" title="Separate from footprint demolitions; purchase + demolition"><td>Off-corridor buyouts</td><td>${buyouts}</td></tr>
+      <tr class="${bld ? 'warn' : ''}"><td title="Buildings in the road's footprint, demolished">Demolished buildings</td><td>${bld}</td></tr>
+      <tr class="${buyouts ? 'warn' : ''}" title="Outside the footprint, bought out for noise or by you: purchase + demolition"><td>Bought-out buildings</td><td>${buyouts}</td></tr>
       <tr><td>Roads crossed</td><td>${xing}</td></tr>
       <tr><td>Noise walls</td><td>${num(walls, 0)} m / ${num(wallArea, 0)} m²</td></tr>`;
     this.$('stats').innerHTML = sel ? `
