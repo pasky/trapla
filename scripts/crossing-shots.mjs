@@ -18,10 +18,17 @@ try {
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
   for (const [k, type] of ['overbridge', 'bridge', 'reconnection', 'diversion', 'junction'].entries()) {
     await page.evaluate(d => window.trapla.setDesign(d), design); await idle();
+    // Keep the original short track example reproducible after Auto learns cheaper alternatives.
+    // Exercise the real crossing choice tool rather than fabricating render-only geometry.
+    if (type === 'diversion') {
+      await page.evaluate(() => window.trapla.selectCrossing(2704));
+      await page.selectOption('#crossing-choice', 'reconnection'); await page.locator('#crossing-choice').blur(); await idle();
+    }
     const selected = await page.evaluate(type => {
       const r = window.trapla.result();
       const candidates = r.crossings.filter(c => c.type === type && !c.issues?.length);
-      const c = candidates.find(c => c.cls !== 'track' && (type !== 'overbridge' || c.approachLength > 5)) ?? candidates[0];
+      const c = (type === 'diversion' ? candidates.find(c => c.roadId === 2704) : undefined)
+        ?? candidates.find(c => c.cls !== 'track' && (type !== 'overbridge' || c.approachLength > 5)) ?? candidates[0];
       if (!c) return null;
       window.trapla.selectCrossing(c.roadId);
       const size = type === 'reconnection' || type === 'diversion' ? Math.max(450, Math.min(2200, c.linkLength * .8)) : Math.max(400, Math.min(1000, (c.span ?? 50) * 3 + (c.approachLength ?? 0)));

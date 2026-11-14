@@ -5,21 +5,26 @@ import type { Result } from '../core/evaluate';
 import { endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
 import { existingRoadColor } from './landcover';
 import type { View } from './view';
+import { EW_KIND } from './terrainMaterial';
 
 class MeshBuilder {
   pos: number[] = []; col: number[] = []; elev: number[] = []; ink: number[] = []; indices: number[] = [];
+  kinds: number[] = []; geo: number[] = [];
   constructor(private view: View) {}
-  vertex(p: CrossingPoint, color: number, ink = 0, lift = .08) {
+  vertex(p: CrossingPoint, color: number, ink = 0, lift = .08,
+    kind: number = ink ? (color === 0xe3d27e ? EW_KIND.fill : EW_KIND.cut) : EW_KIND.structure) {
     const v = this.view.local(p.x, p.y, p.z + lift), c = new THREE.Color(color), i = this.pos.length / 3;
-    this.pos.push(v.x, v.y, v.z); this.col.push(c.r, c.g, c.b); this.elev.push(p.z); this.ink.push(ink); return i;
+    this.pos.push(v.x, v.y, v.z); this.col.push(c.r, c.g, c.b); this.elev.push(p.z); this.ink.push(ink);
+    this.kinds.push(kind); this.geo.push(...(this.view.crossingGeology?.(p.x,p.y,p.z) ?? [-3,-3]), p.d ?? 0);
+    return i;
   }
-  quad(a: CrossingPoint, b: CrossingPoint, c: CrossingPoint, d: CrossingPoint, color: number, ink = 0, lift = .08) {
-    const v = [a, b, c, d].map(p => this.vertex(p, color, ink, lift));
+  quad(a: CrossingPoint, b: CrossingPoint, c: CrossingPoint, d: CrossingPoint, color: number, ink = 0, lift = .08, kind?: number) {
+    const v = [a, b, c, d].map(p => this.vertex(p, color, ink, lift, kind));
     this.indices.push(v[0], v[1], v[2], v[1], v[3], v[2]);
   }
   geometry() {
     const g = new THREE.BufferGeometry();
-    for (const [name, values, size] of [['position', this.pos, 3], ['color', this.col, 3], ['elev', this.elev, 1], ['ink', this.ink, 1]] as const)
+    for (const [name, values, size] of [['position', this.pos, 3], ['color', this.col, 3], ['elev', this.elev, 1], ['ink', this.ink, 1], ['ewKind', this.kinds, 1], ['ewGeo', this.geo, 3]] as const)
       g.setAttribute(name, new THREE.Float32BufferAttribute(values, size));
     g.setIndex(this.indices); g.computeVertexNormals(); g.computeBoundingSphere(); return g;
   }
@@ -46,7 +51,7 @@ export class CrossingRenderer {
       // The casing and surface occupy the same surveyed alignment, never a parallel schematic line.
       target.quad(a.edge[0], a.edge[1], b.edge[0], b.edge[1], casing);
       const inset = (p: CrossingPoint, q: CrossingPoint) => ({ ...q, x: q.x + (p.x - q.x) * .10, y: q.y + (p.y - q.y) * .10 });
-      target.quad(inset(a.p, a.edge[0]), inset(a.p, a.edge[1]), inset(b.p, b.edge[0]), inset(b.p, b.edge[1]), color, 0, .10);
+      target.quad(inset(a.p, a.edge[0]), inset(a.p, a.edge[1]), inset(b.p, b.edge[0]), inset(b.p, b.edge[1]), color, 0, .10, EW_KIND.crown);
       if (ground) for (const k of [0, 1] as const) {
         earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
         // Natural ground collar replaces the coarse mesh locally. At its outside edge it meets
@@ -95,7 +100,7 @@ export class CrossingRenderer {
           const angle = j / sections * Math.PI * 2, x = p.x + Math.cos(angle) * radius, y = p.y + Math.sin(angle) * radius;
           return { ...p, x, y, z: this.view.groundHeight(x, y) };
         };
-        const a = earth.vertex(p, color, 0, .12), b = earth.vertex(pt(k), color, 0, .12), c = earth.vertex(pt(k + 1), color, 0, .12);
+        const a = earth.vertex(p, color, 0, .12, EW_KIND.crown), b = earth.vertex(pt(k), color, 0, .12, EW_KIND.crown), c = earth.vertex(pt(k + 1), color, 0, .12, EW_KIND.crown);
         earth.indices.push(a, b, c);
       }
     }

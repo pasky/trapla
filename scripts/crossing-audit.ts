@@ -2,7 +2,6 @@
 // node --max-old-space-size=2048 --import tsx scripts/crossing-audit.ts [scripts/foo-design.json ...]
 import { readFileSync, readdirSync } from 'node:fs';
 import { auditCrossingGeometry } from '../src/core/crossings';
-import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate } from '../src/core/evaluate';
 import { KIND } from '../src/core/structures';
 import { loadPack } from './loadpack';
@@ -10,8 +9,8 @@ import { crossingBaseHeight, crossingSurfaces, groundSegment } from '../src/rend
 import { CATEGORIES } from '../src/core/data/categories';
 import type { Design } from '../src/core/evaluate';
 
-const { meta, terrain, buildings, roads } = loadPack();
-const ctx = { terrain, buildings, roads, scenario: D11_SCENARIO,
+const { meta, terrain, buildings, roads, scenario } = loadPack();
+const ctx = { terrain, buildings, roads, scenario,
   a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
 const args = process.argv.slice(2), strict = args.includes('--strict');
 const selected = args.filter(arg => arg !== '--strict');

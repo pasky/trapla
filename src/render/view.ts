@@ -351,6 +351,10 @@ export class View {
   /** height that clears both the true and the rendered terrain (for draped overlays) */
   drape(x: number, y: number) { return this.drapeHeight(x, y); }
   groundHeight(x: number, y: number) { return this.terrain.heightAt(x, y); }
+  crossingGeology(x: number, y: number, z: number) {
+    const profile = this.terrain.groundAt(x,y), depth = this.terrain.heightAt(x,y)-z;
+    return profile.normMix ? [-3,-3] : [depth-profile.classIto, depth-profile.classIIto];
+  }
   crossingEarthMaterial() { return makeEarthworkMaterial(this.terrainU, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); }
   crossingGroundMaterial() {
     const material = makeTerrainMaterial(this.terrainU, this.originalMask);
@@ -523,7 +527,7 @@ export class View {
       const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
       const zl = this.terrain.heightAt(x+nx*w, y+ny*w), zr = this.terrain.heightAt(x-nx*w, y-ny*w);
       if (z <= Math.max(zl, zr)) continue;
-      const l = push(x+nx*w, y+ny*w, zl, fillC, zl, slopeInk), rr = push(x-nx*w, y-ny*w, zr, fillC, zr, slopeInk);
+      const l = push(x+nx*w, y+ny*w, zl, fillC, zl, slopeInk, EW_KIND.fill), rr = push(x-nx*w, y-ny*w, zr, fillC, zr, slopeInk, EW_KIND.fill);
       quad(sv[i].el, l, sv[i].er, rr);
       idx.push(sv[i].dl, l, sv[i].el, sv[i].er, rr, sv[i].dr);
     }
@@ -609,7 +613,7 @@ export class View {
       shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ; uniform sampler2D crossingTex; uniform vec4 crossingBox; uniform float crossingOn;')
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nvec2 crossingUV = (crossingXZ-crossingBox.xy)/crossingBox.zw;\nif (vInk > .9 && crossingOn > .5 && all(greaterThan(crossingUV, vec2(0.0))) && all(lessThan(crossingUV, vec2(1.0))) && texture2D(crossingTex, crossingUV).r > .5) discard;');
     };
-    ribbonMaterial.customProgramCacheKey = () => 'earthwork-contours-crossing-cuts';
+    ribbonMaterial.customProgramCacheKey = () => 'earthwork-relief-crossing-cuts';
     const ribbon = new THREE.Mesh(g, ribbonMaterial);
     ribbon.name = 'ribbon';
     this.routeGroup.add(ribbon);

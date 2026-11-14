@@ -62,6 +62,7 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
           const t = k/count, x = a.x+(b.x-a.x)*t, y = a.y+(b.y-a.y)*t, ground = height(x,y);
           const terrain = a.surface === 'terrain' && b.surface === 'terrain';
           path.push({ x, y, ground, z: terrain ? ground : a.z+(b.z-a.z)*t,
+            ...(a.d !== undefined && b.d !== undefined ? { d: a.d+(b.d-a.d)*t } : {}),
             surface: terrain ? 'terrain' : 'ramp', ...(terrain ? {} : { support: 'embankment' as const }) });
         }
       }
