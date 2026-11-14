@@ -15,6 +15,7 @@
 // whose grade line neither buys fill nor tips a surplus.
 
 import { buildProfile, type VPI } from './vertical';
+import { GRADE_PIN_TOLERANCE, gradePinViolations, type GradePin, type GradePinViolation } from './grade-pins';
 
 export interface BalanceSearch {
   /** cost per metre of road for grade-minus-ground h, given the value of a m³ of fill material */
@@ -29,6 +30,9 @@ export interface BalanceSearch {
 }
 
 export interface AutoProfileOptions {
+  /** Absolute-chainage heights on the smoothed grade (±0.5 m). Out-of-route pins are inactive.
+   * Endpoint pins constrain, but never replace, the fixed ground tie-ins. */
+  pins?: readonly GradePin[];
   maxGradient: number;
   minCrest: number;
   minSag: number;
@@ -62,6 +66,8 @@ export interface AutoProfileResult {
   materialValue?: number;
   /** balance estimate at that value, m³ */
   balance?: number;
+  /** Present for active pins; append to evaluation violations. No-pin results stay unchanged. */
+  pinViolations?: GradePinViolation[];
 }
 
 const H_MAX = 100;
@@ -106,10 +112,28 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   const zA = g[0], zB = g[n - 1];
   const straight: VPI[] = [{ s: 0, z: zA, r: null }, { s: L, z: zB, r: null }];
   const straightOk = Math.abs(zB - zA) <= opt.maxGradient * L + 1e-9;
+  // Keep the no-pin path (including empty/inactive saved pins) numerically unchanged.
+  const pins = opt.pins?.filter((p) => !Number.isFinite(p.s) || !Number.isFinite(p.z) || (p.s >= 0 && p.s <= L));
+  const hasPins = !!pins?.length;
+  const pinChecks = (vpis: VPI[]) => gradePinViolations(opt.pins ?? [], buildProfile(vpis, opt.minCrest, opt.minSag), opt.maxGradient);
+  const finish = (r: AutoProfileResult): AutoProfileResult => {
+    if (!hasPins) return r;
+    const pinViolations = pinChecks(r.vpis);
+    return { ...r, feasible: r.feasible && pinViolations.length === 0, pinViolations };
+  };
+  if (hasPins && pinChecks(straight).some((v) => v.pin.reason !== 'search')) {
+    return finish({ vpis: straight, feasible: false, cost: Infinity });
+  }
   const spacing = opt.knotSpacing ?? 250;
-  if (L < 2 * spacing * 0.8) return { vpis: straight, feasible: straightOk, cost: Infinity };
+  if (L < 2 * spacing * 0.8 && (!hasPins || pinChecks(straight).length === 0)) {
+    return finish({ vpis: straight, feasible: straightOk, cost: Infinity });
+  }
   const nK = Math.max(2, Math.round(L / spacing));
   const D = L / nK;
+  // A curve is at most D long. In a knot's half-cell only that knot's curve can contribute.
+  // Its exact elevation is known when both incoming/outgoing grades are selected in the DP.
+  const knotPins: GradePin[][] | null = hasPins ? Array.from({ length: nK + 1 }, () => []) : null;
+  if (knotPins) for (const p of pins!) knotPins[Math.min(nK, Math.round(p.s / D))].push(p);
   const ds = n > 1 ? s[1] - s[0] : L;
   const stride = Math.max(1, Math.round(DP_STATION_STEP / ds));
   const classes = opt.costClassCount ?? 1;
@@ -173,14 +197,18 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     gmin[k] = mn; gmaxEnv[k] = mx;
   }
 
-  const ok = (r: Solved | null): r is Solved => !!r && profileOk(r.vpis, opt.maxGradient, opt.minCrest, opt.minSag);
+  const ok = (r: Solved | null): r is Solved => !!r && profileOk(r.vpis, opt.maxGradient, opt.minCrest, opt.minSag)
+    && (!hasPins || pinChecks(r.vpis).length === 0);
   /**
    * coarse pass: normal band, then a wide one (deep tunnels / high viaducts); if the coarse grid finds
    * nothing compliant (its grade steps are twice as large, which matters near the gradient limit),
    * the fine grid over the whole band
    */
   const coarse = (lut: Float64Array): Solved | null => {
-    for (const [u, pd] of [[COARSE_GRID, pad], [COARSE_GRID, pad * 5], [FINE_GRID, pad]]) {
+    // Half-metre fallback only for pins: a narrow target can fall between coarse-grid paths.
+    const passes = [[COARSE_GRID, pad], [COARSE_GRID, pad * 5], [FINE_GRID, pad]];
+    if (hasPins) passes.push([0.5, pad]);
+    for (const [u, pd] of passes) {
       const r = solve(lut, opt.maxGradient, u, pd, null);
       if (ok(r)) return r;
     }
@@ -193,6 +221,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   };
   /** last resort when no compliant line was found: relaxed gradients, reported as not feasible */
   const relaxed = (lut: Float64Array): AutoProfileResult => {
+    // Pins never enable a relaxed-gradient search or a posthoc edited/manual profile.
+    if (hasPins) return finish({ vpis: straight, feasible: straightOk, cost: Infinity });
     if (straightOk) return { vpis: straight, feasible: true, cost: Infinity };
     for (const [gm, u] of [[opt.maxGradient * 1.5, 1], [opt.maxGradient * 2.5, 2]]) {
       const r = solve(lut, gm, u, pad, null);
@@ -207,7 +237,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const c = coarse(lut);
     if (!c) return relaxed(lut);
     const f = refine(lut, c);
-    return { vpis: f.vpis, cost: f.cost, feasible: true };
+    return finish({ vpis: f.vpis, cost: f.cost, feasible: true });
   }
   // mass-balance search: one coarse pass fixes the corridor, then the fine pass is repeated within
   // it for a few material values. The balance grows with the value (more cut, less fill), so the
@@ -241,7 +271,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     if (b < 0) { if (!neg || v > neg[0]) neg = [v, b]; } else if (!pos || v < pos[0]) pos = [v, b];
     if (Math.abs(b) < Math.abs(bestB)) { best = f; bestV = v; bestB = b; }
   }
-  return { vpis: best.vpis, cost: best.cost, feasible: true, materialValue: bestV, balance: bestB };
+  return finish({ vpis: best.vpis, cost: best.cost, feasible: true, materialValue: bestV, balance: bestB });
 
   /**
    * DP with elevations on a grid of u metres anchored at zA; dz values are in grid units. The band
@@ -255,6 +285,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     if (dzMax < 1) return null;
     const ND = 2 * dzMax + 1;
     const uB = Math.round((zB - zA) / u); // end knot in grid units relative to zA
+    const corr = zB - (zA + uB * u);
     const zlo = new Int32Array(nK + 1), zhi = new Int32Array(nK + 1);
     for (let k = 0; k <= nK; k++) {
       const rlo = Math.max(-dzMax * k, uB - dzMax * (nK - k));
@@ -265,7 +296,29 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (k === 0) { a = 0; b = 0; }
       if (k === nK) { a = uB; b = uB; }
       if (a > b) { a = rlo; b = rhi; } // ground band unreachable: use the reachable set
+      if (hasPins) {
+        // Necessary bounds only. Smoothing shifts a VPI by at most D²/(8 Rmin).
+        const shave = D * D / (8 * Math.min(opt.minCrest, opt.minSag));
+        for (const p of pins!) {
+          const reach = gmax * Math.abs(p.s - k * D) + GRADE_PIN_TOLERANCE + shave;
+          a = Math.max(a, Math.ceil((p.z - reach - zA - corr * k / nK) / u - 1e-9));
+          b = Math.min(b, Math.floor((p.z + reach - zA - corr * k / nK) / u + 1e-9));
+        }
+        if (a > b) return null;
+      }
       zlo[k] = a; zhi[k] = b;
+    }
+    if (hasPins) {
+      // Hard preflight budgets per pass: ≤16 MB of parent indices and ≤60 M estimated inner
+      // iterations. Four coarse attempts + refinement/balance are bounded; never allocate a
+      // station × elevation × grade tensor. Budget exhaustion is a search failure, not proof.
+      let states = 0, work = 0;
+      for (let k = 0; k < nK; k++) {
+        states += (zhi[k + 1] - zlo[k + 1] + 1) * ND;
+        work += (zhi[k] - zlo[k] + 1) * ND * (costStart[k + 1] - costStart[k]
+          + clrStart[k + 1] - clrStart[k] + (crestLim + sagLim + 1) * (1 + knotPins![k].length));
+      }
+      if (states > 4_000_000 || work > 60_000_000) return null;
     }
     let cur = new Float64Array(ND).fill(Infinity);
     cur[dzMax] = 0; // knot 0 (dz is ignored there: any first grade is allowed)
@@ -304,6 +357,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             if (minH && h < minH[i] + CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
             if (maxH && h > maxH[i] - CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
           }
+          // Last half-cell has no curve: the last tangent and the exact endpoint correction.
+          if (knotPins && k === nK - 1) for (const p of knotPins[nK]) {
+            const actual = zm + slope * (p.s - sk) + corr * p.s / L;
+            if (Math.abs(actual - p.z) > GRADE_PIN_TOLERANCE + 1e-9) { c = Infinity; break; }
+          }
           seg[d2] = c;
         }
         for (let d = 0; d < ND; d++) {
@@ -317,6 +375,19 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             const d2 = dz2 + dzMax;
             const sc = seg[d2];
             if (sc === Infinity) continue;
+            if (knotPins && knotPins[k].length) {
+              let matches = true;
+              const dg = k === 0 ? 0 : (dz2 - dz) * u / D;
+              const len = Math.abs(dg) * (dg < 0 ? opt.minCrest : opt.minSag);
+              for (const p of knotPins[k]) {
+                const t = p.s - sk;
+                let actual = zm + (t < 0 ? dz : dz2) * u / D * t + corr * p.s / L;
+                const x = len / 2 - Math.abs(t);
+                if (x > 0) actual += dg * x * x / (2 * len);
+                if (Math.abs(actual - p.z) > GRADE_PIN_TOLERANCE + 1e-9) { matches = false; break; }
+              }
+              if (!matches) continue;
+            }
             const st = (z + dz2 - zlo[k + 1]) * ND + d2;
             const v = base + sc + (k > 0 && dz2 !== dz ? penalty : 0);
             if (v < next[st]) { next[st] = v; par[st] = zi * ND + d; }
@@ -339,7 +410,6 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       st = parents[k - 1][st];
     }
     // grid → metres, with a linear correction so that B is met exactly (|corr| ≤ u/2)
-    const corr = zB - (zA + uB * u);
     const zAt = (k: number) => zA + zs[k] * u + (corr * k) / nK;
     const vpis: VPI[] = [{ s: 0, z: zA, r: null }];
     const z = new Float64Array(nK + 1);
