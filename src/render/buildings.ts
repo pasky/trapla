@@ -20,10 +20,17 @@ export interface Ground {
 
 export class Buildings {
   readonly group = new THREE.Group();
-  private chunks: { mesh: THREE.Mesh; x: number; y: number; r: number }[] = [];
+  private chunks: { mesh: THREE.Mesh; x: number; y: number; r: number; colors: Uint8Array; muted?: Uint8Array }[] = [];
+  private muted = false;
+  /** per building: chunk, first vertex, vertex count (for tinting) */
+  private where: Int32Array;
+  private tinted: number[] = [];
+  /** 50 m grid of building bounding boxes (built on the first find) */
+  private grid: Map<number, number[]> | null = null;
 
   /** `cx`, `cy`: the view's origin shift (world x = x − cx, world z = −(y − cy)) */
-  constructor(b: BuildingData, chunk: number, ground: Ground, cx: number, cy: number) {
+  constructor(private b: BuildingData, chunk: number, ground: Ground, cx: number, cy: number) {
+    this.where = new Int32Array(3 * b.count).fill(-1);
     const groups = new Map<number, number[]>();
     for (let i = 0; i < b.count; i++) {
       const v = b.starts[i];
@@ -68,6 +75,7 @@ export class Buildings {
         const roof = lin(area > 700 ? BIG_ROOF : BUILDING_COLOR, 0.9 + 0.2 * hash);
         const wall = lin(WALL, 0.94 + 0.1 * hash);
         const base = pv;
+        this.where[3 * i] = this.chunks.length; this.where[3 * i + 1] = pv; this.where[3 * i + 2] = 3 * n;
         for (let ring = 0; ring < 3; ring++) {
           const c = ring === 0 ? roof : wall, z = ring === 2 ? zBase : zTop;
           for (let k = 0; k < n; k++) {
@@ -100,8 +108,97 @@ export class Buildings {
       mesh.name = 'buildings';
       mesh.matrixAutoUpdate = false;
       this.group.add(mesh);
-      this.chunks.push({ mesh, x: (minX + maxX) / 2, y: (minY + maxY) / 2, r: Math.hypot(maxX - minX, maxY - minY) / 2 });
+      this.chunks.push({ mesh, x: (minX + maxX) / 2, y: (minY + maxY) / 2, r: Math.hypot(maxX - minX, maxY - minY) / 2, colors: colr.slice() });
     }
+  }
+
+  /** The building whose footprint contains local (x, y), else the one whose footprint is nearest within
+   * `tol` metres; −1 if none. (Matches the engine's overlay buildings to these render meshes.) */
+  find(x: number, y: number, tol = 3): number {
+    const b = this.b, G = 50;
+    if (!this.grid) {
+      const grid = this.grid = new Map<number, number[]>();
+      for (let i = 0; i < b.count; i++) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (let v = b.starts[i]; v < b.starts[i + 1]; v++) {
+          x0 = Math.min(x0, b.verts[2 * v]); x1 = Math.max(x1, b.verts[2 * v]);
+          y0 = Math.min(y0, b.verts[2 * v + 1]); y1 = Math.max(y1, b.verts[2 * v + 1]);
+        }
+        for (let gx = Math.floor(x0 / G); gx <= Math.floor(x1 / G); gx++) for (let gy = Math.floor(y0 / G); gy <= Math.floor(y1 / G); gy++) {
+          const k = gx * 65536 + gy;
+          let a = grid.get(k);
+          if (!a) grid.set(k, a = []);
+          a.push(i);
+        }
+      }
+    }
+    let best = -1, bestD = tol;
+    const seen = new Set<number>();
+    for (let gx = Math.floor((x - tol) / G); gx <= Math.floor((x + tol) / G); gx++) for (let gy = Math.floor((y - tol) / G); gy <= Math.floor((y + tol) / G); gy++) {
+      for (const i of this.grid.get(gx * 65536 + gy) ?? []) {
+        if (seen.has(i)) continue;
+        seen.add(i);
+        // inside test (even-odd) and distance to the ring
+        let inside = false, d = Infinity;
+        const v0 = b.starts[i], n = b.starts[i + 1] - v0;
+        for (let k = 0, l = n - 1; k < n; l = k++) {
+          const ax = b.verts[2 * (v0 + k)], ay = b.verts[2 * (v0 + k) + 1], bx = b.verts[2 * (v0 + l)], by = b.verts[2 * (v0 + l) + 1];
+          if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
+          const ex = bx - ax, ey = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey || 1)));
+          d = Math.min(d, Math.hypot(x - ax - ex * t, y - ay - ey * t));
+        }
+        if (inside) return i;
+        if (d < bestD) { bestD = d; best = i; }
+      }
+    }
+    return best;
+  }
+
+  /** Paint buildings in a flat colour (index from `find` → 0xRRGGBB, sRGB). `mute`: the rest turn a
+   * light grey (so that the red roofs do not read as a status); otherwise they keep their own colours. */
+  tint(colors: Map<number, number>, mute = false) {
+    const dirty = new Set<number>();
+    const base = (chunk: Buildings['chunks'][number]) => {
+      if (!mute) return chunk.colors;
+      if (!chunk.muted) {
+        const m = chunk.muted = new Uint8Array(chunk.colors.length);
+        for (let k = 0; k < m.length; k += 3) {
+          const l = 0.3 * chunk.colors[k] + 0.55 * chunk.colors[k + 1] + 0.15 * chunk.colors[k + 2];
+          m[k] = m[k + 1] = m[k + 2] = Math.round(120 + 0.5 * l);
+        }
+      }
+      return chunk.muted;
+    };
+    if (mute !== this.muted) {
+      this.muted = mute;
+      this.chunks.forEach((chunk, c) => { ((chunk.mesh.geometry.getAttribute('color') as THREE.BufferAttribute).array as Uint8Array).set(base(chunk)); dirty.add(c); });
+    } else {
+      for (const i of this.tinted) {
+        const c = this.where[3 * i], v = this.where[3 * i + 1], n = this.where[3 * i + 2];
+        const chunk = this.chunks[c], attr = chunk.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+        (attr.array as Uint8Array).set(base(chunk).subarray(3 * v, 3 * (v + n)), 3 * v);
+        dirty.add(c);
+      }
+    }
+    this.tinted = [];
+    const col = new THREE.Color();
+    for (const [i, hex] of colors) {
+      const c = this.where[3 * i];
+      if (c < 0) continue;
+      const v = this.where[3 * i + 1], n = this.where[3 * i + 2];
+      const arr = (this.chunks[c].mesh.geometry.getAttribute('color') as THREE.BufferAttribute).array as Uint8Array;
+      col.setHex(hex, THREE.SRGBColorSpace);
+      for (let k = 0; k < n; k++) {
+        // roof (first ring) a little lighter than the walls
+        const f = k < n / 3 ? 1 : 0.8;
+        arr[3 * (v + k)] = Math.round(Math.min(1, col.r * f) * 255);
+        arr[3 * (v + k) + 1] = Math.round(Math.min(1, col.g * f) * 255);
+        arr[3 * (v + k) + 2] = Math.round(Math.min(1, col.b * f) * 255);
+      }
+      this.tinted.push(i);
+      dirty.add(c);
+    }
+    for (const c of dirty) (this.chunks[c].mesh.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }
 
   /** show only the chunks near the camera (local x, y of the camera) */

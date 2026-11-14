@@ -139,6 +139,24 @@ export class View {
   /** screen position (px inside the view) of a local point; `vis` = in front of the camera */
   project(x: number, y: number, z: number) { return this.screenOf(x, y, z); }
 
+  /** camera ray under a screen point in local coordinates (x east, y north, z elevation; `d` not unit) */
+  rayAt(clientX: number, clientY: number) {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const o = ray.ray.origin, d = ray.ray.direction;
+    return { o: { x: o.x + this.cx, y: this.cy - o.z, z: o.y / this.exag }, d: { x: d.x, y: -d.z, z: d.y / this.exag } };
+  }
+
+  /** metres per screen pixel at the orbit target */
+  get metresPerPixel() {
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    return (2 * dist * Math.tan((this.camera.fov * Math.PI) / 360)) / (this.container.clientHeight || 1);
+  }
+
+  /** extruded buildings, if shown (noise view tints them) */
+  get buildingMeshes() { return this.buildings; }
+
   /** ray-march the heightfield under a screen point; returns local (x,y) or null */
   pick(clientX: number, clientY: number): { x: number; y: number } | null {
     const r = this.renderer.domElement.getBoundingClientRect();
@@ -323,6 +341,8 @@ export class View {
   }
 
   private drapeHeight(x: number, y: number) { return Math.max(this.terrain.heightAt(x, y), this.meshHeight(x, y)); }
+  /** height that clears both the true and the rendered terrain (for draped overlays) */
+  drape(x: number, y: number) { return this.drapeHeight(x, y); }
 
   private makeLine(points: number[], colors: number[] | null, width: number, opts: Partial<{ color: number; opacity: number; depthTest: boolean; dashed: boolean; dashSize: number; gapSize: number; order: number }> = {}) {
     const g = new LineGeometry();

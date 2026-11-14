@@ -109,6 +109,7 @@ export class Hud {
           <li>Map: <b>left-drag</b> pan · <b>right-drag</b> rotate · <b>wheel</b> zoom</li>
           <li>Profile: drag the profile points (takes manual control), <b>double-click</b> adds, <b>right-click</b> deletes, wheel zooms</li>
           <li>Why is a stretch expensive? <b>Hover</b> the profile for the cost split there; <b>drag</b> in the cost strip (or <kbd>Shift</kbd>+drag) to select a stretch, <b>click</b> a curve / tangent in the band above it; <kbd>Esc</kbd> = whole route</li>
+          <li>Who gets a wall, who is bought out? <kbd>N</kbd> = noise view: the road's noise over the limit, dwellings coloured by outcome; <b>hover</b> a building or wall for the levels and the reason</li>
         </ul>
         <label class="exag">Vertical exaggeration <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>
       </section>`;

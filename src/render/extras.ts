@@ -1,5 +1,6 @@
 // Route overlays driven by the cost model, kept apart from view.ts: the highlighted station range
-// picked for the cost breakdown (state.RangeSelection) and the noise walls (Result.walls).
+// picked for the cost breakdown (state.RangeSelection) and the noise walls (Result.walls) with their
+// far-zoom symbols and hover targets.
 // Uses only the public surface of View: `world`, `local()`, `requestRender()` and `retire()`.
 
 import * as THREE from 'three';
@@ -8,15 +9,21 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { Result } from '../core/evaluate';
 import { NOISE } from '../core/data/urban';
+import type { WallStretch } from '../core/noise';
 import { cellsInRange } from '../core/range';
 import { KIND } from '../core/structures';
 import type { StationRange } from '../state';
 import type { View } from './view';
 
 const HIGHLIGHT = 0xffe000, WALL = 0x18b0b0;
+/** wall symbols from this many metres per pixel on (a 3 m wall is then under ~5 px), offset ≥ this many px */
+const SYMBOL_FROM = 0.6, SYMBOL_PX = 7;
 
 export class RouteExtras {
   private walls = new THREE.Group();
+  private symbols = new THREE.Group();
+  private symbolScale = -1;
+  private wallHits: { w: WallStretch; pts: number[] }[] = [];
   private highlight = new THREE.Group();
   private r: Result | null = null;
   private crown = 9.5;
@@ -24,8 +31,11 @@ export class RouteExtras {
 
   constructor(private view: View) {
     this.walls.name = 'noise-walls';
+    this.symbols.name = 'noise-wall-symbols';
     this.highlight.name = 'range-highlight';
-    view.world.add(this.walls, this.highlight);
+    view.world.add(this.walls, this.symbols, this.highlight);
+    const prev = view.onRender;
+    view.onRender = () => { prev?.(); this.updateSymbols(); };
   }
 
   setResult(r: Result, crownWidth: number) { this.r = r; this.crown = crownWidth; this.buildWalls(); this.buildHighlight(); }
@@ -52,26 +62,34 @@ export class RouteExtras {
     }
   }
 
-  /** noise walls: a thin wall along the crown edge plus a line that reads from afar */
+  /** Points along a wall stretch at `off` metres from the axis, `dz` above grade: local x, y, z triplets.
+   * Includes the cell boundaries so even a single-cell wall has a visible, full-length face. */
+  private wallPath(w: WallStretch, off: number, dz: number): number[] {
+    const r = this.r!, sgn = w.side === 'L' ? 1 : -1, out: number[] = [];
+    const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1]
+      .filter((s, i, a) => i === 0 || s !== a[i - 1]);
+    for (const s of stations) {
+      const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[i]) / r.ds;
+      const at = (a: Float64Array) => a[i] + t * (a[i + 1] - a[i]);
+      const tx = at(r.tx), ty = at(r.ty), norm = Math.hypot(tx, ty) || 1;
+      out.push(at(r.x) - ty / norm * off * sgn, at(r.y) + tx / norm * off * sgn, at(r.grade) + dz);
+    }
+    return out;
+  }
+
+  /** noise walls: a thin wall along the crown edge plus a line along its top */
   private buildWalls() {
     this.clear(this.walls);
+    this.symbolScale = -1;
     const r = this.r;
     if (!r) return;
     const v = new THREE.Vector3();
     const off = this.crown / 2 + NOISE.wallEdgeOffset;
     const pos: number[] = [], idx: number[] = [];
     for (const w of r.walls) {
-      const sgn = w.side === 'L' ? 1 : -1;
-      const top: number[] = [];
-      // Include cell boundaries so even a single-cell wall has a visible, full-length face.
-      const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1]
-        .filter((s, i, a) => i === 0 || s !== a[i - 1]);
-      for (const [j, s] of stations.entries()) {
-        const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[i]) / r.ds;
-        const at = (a: Float64Array) => a[i] + t * (a[i + 1] - a[i]);
-        const tx = at(r.tx), ty = at(r.ty), norm = Math.hypot(tx, ty) || 1;
-        const x = at(r.x) - ty / norm * off * sgn, y = at(r.y) + tx / norm * off * sgn;
-        const z = at(r.grade);
+      const base = this.wallPath(w, off, 0), top: number[] = [];
+      for (let j = 0; j < base.length / 3; j++) {
+        const [x, y, z] = base.slice(3 * j, 3 * j + 3);
         this.view.local(x, y, z, v); pos.push(v.x, v.y, v.z);
         this.view.local(x, y, z + w.height, v); pos.push(v.x, v.y, v.z);
         top.push(v.x, v.y, v.z);
@@ -87,7 +105,57 @@ export class RouteExtras {
       mesh.renderOrder = 4;
       this.walls.add(mesh);
     }
+    this.updateSymbols();
     this.view.requestRender();
+  }
+
+  /**
+   * From afar a 3–5 m wall is under a pixel: draw each stretch as a teal line with a dark casing, pushed
+   * out to ≥ SYMBOL_PX pixels from the axis (left / right stay apart and clear of the centreline).
+   * Rebuilt when the zoom changes by a quarter octave; hidden close up, where the wall itself reads.
+   */
+  private updateSymbols() {
+    const r = this.r, mpp = this.view.metresPerPixel;
+    const scale = Math.round(Math.log2(Math.max(1e-3, mpp)) * 4);
+    if (scale === this.symbolScale) return;
+    this.symbolScale = scale;
+    this.clear(this.symbols);
+    this.wallHits = [];
+    if (!r) return;
+    const off = this.crown / 2 + NOISE.wallEdgeOffset, far = mpp > SYMBOL_FROM;
+    const symOff = Math.max(off, SYMBOL_PX * 2 ** (scale / 4)), v = new THREE.Vector3();
+    for (const w of r.walls) {
+      // hover target: the symbol from afar, the wall top close up
+      const pts = far ? this.wallPath(w, symOff, w.height) : this.wallPath(w, off, w.height);
+      this.wallHits.push({ w, pts });
+      if (!far || pts.length < 6) continue;
+      const world: number[] = [];
+      for (let j = 0; j < pts.length; j += 3) { this.view.local(pts[j], pts[j + 1], pts[j + 2], v); world.push(v.x, v.y, v.z); }
+      // both opaque: renderOrder then keeps the teal core over its casing
+      this.symbols.add(this.line(world, 0x0e4a4a, 6.5, 1, 5), this.line(world, WALL, 3.5, 1, 6));
+    }
+    this.view.requestRender();
+  }
+
+  /** the wall stretch drawn under a screen point (within `tol` px), for the hover label */
+  wallAt(clientX: number, clientY: number, tol = 7): WallStretch | null {
+    const rect = this.view.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - rect.left, my = clientY - rect.top;
+    let best: WallStretch | null = null, bestD = tol;
+    for (const { w, pts } of this.wallHits) {
+      let prev: { sx: number; sy: number; vis: boolean } | null = null;
+      for (let j = 0; j < pts.length; j += 3) {
+        const p = this.view.project(pts[j], pts[j + 1], pts[j + 2]);
+        if (prev && prev.vis && p.vis) {
+          const ex = p.sx - prev.sx, ey = p.sy - prev.sy;
+          const t = Math.max(0, Math.min(1, ((mx - prev.sx) * ex + (my - prev.sy) * ey) / (ex * ex + ey * ey || 1)));
+          const d = Math.hypot(mx - prev.sx - ex * t, my - prev.sy - ey * t);
+          if (d < bestD) { bestD = d; best = w; }
+        }
+        prev = p;
+      }
+    }
+    return best;
   }
 
   /** selected range: a wide translucent band over the route */

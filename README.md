@@ -11,7 +11,7 @@ Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.
 | ![close-up](docs/screenshots/03-closeup-bridge-cut.png) | ![contours](docs/screenshots/08-mid-contours.png) | ![photo](docs/screenshots/16-photo-contours.png) |
 
 More in `docs/screenshots/` (cost of a selected stretch, town, forest edge, deep cut, slope tint, 2× relief with a noise wall,
-contours over cut and fill slopes).
+contours over cut and fill slopes, the noise view on a town fringe and in the town centre with a buyout explained).
 
 ## Quick start
 
@@ -34,6 +34,7 @@ Other commands:
 | `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
+| `node scripts/noise-view.mjs [--gpu] [--docs] [outdir]` | noise view on a town-fringe and the town-centre design: hovers a walled / bought-out dwelling and a wall, prints the tooltips; `--docs` writes `docs/screenshots/28…29-*.png` |
 | `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
 | `node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name",{"contours":true}],…]' [outdir]` | debug renders of arbitrary camera views (`GPU=1` as above) |
 
@@ -50,7 +51,7 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   10 / 50 m mid, 20 / 100 m far, thick lines = major); **Slope** <kbd>S</kbd> — tints the ground by slope (yellow
   from 8 %, orange from 15 %, red from 25 %, purple from 40 %); **Relief** <kbd>E</kbd> — vertical exaggeration
   1× / 1.5× / 2× / 3× of the whole scene; **Photo** <kbd>O</kbd> — aerial photo instead of the map layers
-  (needs a network connection, see below).
+  (needs a network connection, see below); **Noise** <kbd>N</kbd> — the noise view (see Noise below).
 - The grade line is computed automatically (dynamic programming, see below) whenever the horizontal
   alignment changes. Dragging a VPI in the profile panel takes manual control; **Auto profile** gives it back.
   Profile: double-click adds a VPI, right-click deletes, wheel zooms, drag pans.
@@ -73,9 +74,20 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
   shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
   the bill includes its acquisition and
-  demolition, separately from buildings in the road footprint. Teal walls show their actual height; red squares
-  mark footprint demolitions, magenta diamonds mark noise buyouts. The HUD and profile tooltip explain both;
-  assumptions and limitations are in `PLAN.md`.
+  demolition, separately from buildings in the road footprint. Teal walls show their actual height (from afar,
+  where a 3–5 m wall is under a pixel, as a teal line with a dark outline just outside the road; hover it for its
+  height, side, extent and how many dwellings it protects); red squares mark footprint demolitions, magenta
+  diamonds mark noise buyouts. The HUD and profile tooltip explain both; assumptions and limitations are in
+  `PLAN.md`.
+- **Noise view** <kbd>N</kbd>: a band along the road shows the controlling-period level (night, for the scenario
+  traffic) over its limit at ground-floor receivers (1.5 m above the real ground) in steps of ≥ +10, +5…+10,
+  0…+5 dB, a dark line on the limit itself and a pale fade 0…−6 dB below it — computed in the worker by the
+  same calculator as the bill, with the chosen walls and the cut-edge screening (per 30 m station and side, a
+  12-sample profile across the road; ≈ +1.5 ms per recompute). Dwellings are coloured by outcome: behind a wall,
+  screened by a cut, within the limit, bought out for noise, demolished in the footprint (other buildings turn
+  grey); walls get height labels. Hover a building for its top-floor level without and with mitigation against
+  the limit and why it was walled or bought out. Walls and buyouts are decided at the top floor, so a dwelling
+  can be walled although the ground-floor band beside it is already under the limit.
 
 ## Architecture
 
@@ -96,6 +108,8 @@ src/core/               pure, tested modules (no DOM)
 src/worker.ts           runs evaluate() off the main thread, latest request only
 src/render/             three.js view
   view.ts               scene, camera, route ribbon, markers, heightfield picking
+  extras.ts             range highlight, noise walls (+ far-zoom symbols, hover targets)
+  noise.ts              noise view: footprint band, dwelling colours, wall labels, legend, hover details
   heightTexture.ts      the 5 m height grid as a filterable GPU texture (RG16F + hand-built mipmaps)
   terrainMaterial.ts    terrain shader: relief shading, hypsometric tint, contours, slope tint, OOB hatch
   landcover.ts          land cover / roads / rails / water / footprints rasterised from vectors into

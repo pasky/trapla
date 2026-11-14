@@ -345,6 +345,38 @@ describe('evaluate on a synthetic town', () => {
     expect(r.cost.noiseWalls).toBeCloseTo(r.quantities.wallArea * NOISE.wallPerM2, 3);
   });
 
+  it('noise view: each dwelling\'s status and mitigated level agree with the bill; the map includes walls and cuts', () => {
+    const st = new Map(r.noise.receivers.map((p) => [p.j, p]));
+    expect([1, 2, 5, 6, 7].map((j) => st.get(j)?.status)).toEqual(['wall', 'cut', 'bought', 'wall', 'wall']);
+    expect([0, 3, 4].some((j) => st.has(j))).toBe(false); // demolished / not a dwelling
+    for (const p of r.noise.receivers) {
+      if (p.status === 'bought') expect(p.mitigated).toBeGreaterThan(0);
+      else expect(p.mitigated).toBeLessThanOrEqual(1e-9);
+      if (p.status === 'wall') {
+        expect(p.raw).toBeGreaterThan(0);
+        expect(p.wall).toBeGreaterThanOrEqual(p.need);
+        expect(r.walls.some((w) => w.side === p.side && p.at >= w.i0 && p.at <= w.i1 && w.height === p.wall)).toBe(true);
+      }
+    }
+    // ground-floor excess at an axis distance, interpolated along a sampled station's profile
+    const fp = r.noise.footprint!;
+    const at = (i: number, side: 0 | 1, dist: number) => {
+      const k = fp.stations.indexOf(i), K = fp.offsets.length, base = (2 * k + side) * K, a = fp.start[2 * k + side];
+      for (let o = 1; o < K; o++) if (a + fp.offsets[o] >= dist) {
+        const t = (dist - a - fp.offsets[o - 1]) / (fp.offsets[o] - fp.offsets[o - 1]);
+        return fp.excess[base + o - 1] * (1 - t) + fp.excess[base + o] * t;
+      }
+      return NaN;
+    };
+    const flat = (d: number) => at(300, 0, d);
+    expect(flat(40)).toBeGreaterThan(0);
+    expect(at(300, 1, 40)).toBeCloseTo(flat(40), 6); // symmetric on the plain, no wall
+    expect(r.walls[0].i0 <= 51 && r.walls[0].i1 >= 51).toBe(true);
+    expect(at(51, 0, 40)).toBeLessThan(flat(40) - 5); // behind the wall
+    expect(at(51, 1, 40)).toBeCloseTo(flat(40), 6);
+    expect(at(351, 0, 60)).toBeLessThan(flat(60) - 3); // beside the 12 m cut
+  });
+
   it('built-up cells get the urban norm row, surcharge and land price', () => {
     const perM = (i: number, k: 'roadBase' | 'land' | 'surcharge') => r.parts[k][i] / r.ds;
     expect(r.cell.urban[210]).toBe(1);

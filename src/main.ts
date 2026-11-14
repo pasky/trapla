@@ -4,6 +4,7 @@ import { D11_SCENARIO } from './core/data/scenario';
 import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
 import { RouteExtras } from './render/extras';
+import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
 import { loadPack } from './scenario';
 import { RangeSelection, startDesign, Store } from './state';
@@ -35,12 +36,13 @@ async function main() {
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack);
   const extras = new RouteExtras(view);
+  const noise = new NoiseLayer(view, pack, extras, document.getElementById('view')!, document.getElementById('overlay')!);
   const profile = new ProfilePanel(document.getElementById('profile-canvas') as HTMLCanvasElement);
   const hud = new Hud(document.getElementById('hud')!, D11_SCENARIO);
   // after the HUD: it syncs the HUD's exaggeration select
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
-  });
+  }, noise);
 
   // station range picked for the cost breakdown: profile panel → HUD, profile, map
   const selection = new RangeSelection();
@@ -73,6 +75,7 @@ async function main() {
     last = r;
     view.setResult(r, CATEGORIES[rd.category].crownWidth);
     extras.setResult(r, CATEGORIES[rd.category].crownWidth);
+    noise.setResult(r, CATEGORIES[rd.category].crownWidth);
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
     profile.setResult(r, r.vpis);
@@ -206,6 +209,12 @@ async function main() {
     selectPi,
     maxRadius: (i: number) => curveEdit.maxRadius(i),
     pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
+    project: (x: number, y: number, z: number) => view.project(x, y, z),
+    /** screen position (px inside the view) of building j's centroid, `up` metres above its ground */
+    buildingScreen: (j: number, up = 2) => {
+      const b = pack.overlays.buildings[j];
+      return b && view.project(b[0], b[1], pack.terrain.heightAt(b[0], b[1]) + up);
+    },
     profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
     profileFit: () => profile.fit(),
     profileView: () => profile.view,

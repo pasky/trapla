@@ -5,7 +5,7 @@ import { noiseBuyoutCost, type BuildingIndex } from './buildings';
 import { NOISE } from './data/urban';
 import { CATEGORIES } from './data/categories';
 
-import { noiseExcess, type NoiseModel } from './road-noise';
+import { noiseExcess, noiseLevels, type NoiseModel } from './road-noise';
 export { noiseDistance } from './road-noise';
 
 /** Equivalent 2D source → wall → receiver section. The axis-to-façade distance is its horizontal
@@ -74,7 +74,7 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
   ty: ArrayLike<number>, buildings: BuildingIndex, model: NoiseModel, demolished: ArrayLike<number>,
   grade: ArrayLike<number>, groundAt: (x: number, y: number) => number,
   shieldL: ArrayLike<number>, shieldR: ArrayLike<number>, barrier = DEFAULT_BARRIER, edges?: EarthEdges): {
-    L: Uint8Array; R: Uint8Array; boughtOut: { j: number; i: number; cost: number }[];
+    L: Uint8Array; R: Uint8Array; boughtOut: { j: number; i: number; cost: number }[]; scratch: ExposureScratch;
   } {
   const L = new Uint8Array(n), R = new Uint8Array(n);
   const dist = model.radius; // Hard-ground bound: low-receiver contour would miss upper floors.
@@ -83,6 +83,10 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
   receiver.fill(NaN);
   const failed = new Map<number, { i: number; deficit: number }>();
   const stations: number[] = [], indices: number[] = [], heights: number[] = [], sides: boolean[] = [];
+  // Per-dwelling diagnostics for the noise view (worst unmitigated pair, every exposed pair).
+  const visited: number[] = [], raw = new Float64Array(buildings.n), rawI = new Int32Array(buildings.n);
+  const quiet = new Float64Array(buildings.n), rawD = new Float64Array(buildings.n), rawH = new Float64Array(buildings.n), rawLeft = new Uint8Array(buildings.n);
+  const pairs: ExposedPair[] = [];
   for (let i = 0; i < n; i++) {
     if (shieldL[i] && shieldR[i]) continue;
     const px = x[i], py = y[i];
@@ -94,12 +98,17 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       if (left ? shieldL[i] : shieldR[i]) return;
       const d = Math.max(1, buildings.facadeDistance(j, px, py) - NOISE.facadeOffset);
       if (d - NOISE.sourceOffset >= dist) return;
-      if (Number.isNaN(receiver[j])) receiver[j] = groundAt(items[j][0], items[j][1])
-        + NOISE.receiverHeight + (buildings.levels[j] - 1) * NOISE.storeyHeight;
+      if (Number.isNaN(receiver[j])) {
+        receiver[j] = groundAt(items[j][0], items[j][1]) + NOISE.receiverHeight + (buildings.levels[j] - 1) * NOISE.storeyHeight;
+        visited.push(j); raw[j] = quiet[j] = -Infinity;
+      }
       const height = receiver[j] - grade[i], edge = left ? edges?.L[i] : edges?.R[i];
       const direct = Math.hypot(d - NOISE.sourceOffset, height - NOISE.sourceHeight);
       const excess = noiseExcess(direct, height, model);
+      if (excess > raw[j]) { raw[j] = excess; rawI[j] = i; rawD[j] = d; rawH[j] = height; rawLeft[j] = left ? 1 : 0; }
       const h = requiredWall(d, excess, height, barrier, edge);
+      if (excess > 0) pairs.push({ i, j, left, d, height, excess, need: h });
+      else if (excess > quiet[j]) quiet[j] = excess;
       if (h === Infinity) {
         const k = NOISE.wallHeights.length - 1;
         const loss = Math.max(barrierAttenuation(d, height, k, barrier), attenuation(earthDelta(d, height, edge, direct)));
@@ -117,7 +126,131 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
     side[i] = Math.max(side[i], heights[k]);
   }
   const boughtOut = [...failed].map(([j, { i }]) => ({ j, i, cost: noiseBuyoutCost(buildings.cost[j], buildings.area[j]) })).sort((a, b) => a.i - b.i);
-  return { L, R, boughtOut };
+  return { L, R, boughtOut, scratch: { visited, raw, quiet, rawI, rawD, rawH, rawLeft, pairs, failed } };
+}
+
+interface ExposedPair { i: number; j: number; left: boolean; d: number; height: number; excess: number; need: number }
+/** What dwellingExposure saw, for noiseReceivers (not part of the Result). */
+export interface ExposureScratch {
+  visited: number[]; raw: Float64Array;
+  /** highest excess at stations where the dwelling is not exposed (≤ 0), −Infinity if none */
+  quiet: Float64Array; rawI: Int32Array; rawD: Float64Array; rawH: Float64Array; rawLeft: Uint8Array;
+  pairs: ExposedPair[]; failed: Map<number, { i: number; deficit: number }>;
+}
+
+/** Noise outcome of one dwelling within the search radius (the noise view's colours and hover). */
+export interface NoiseReceiver {
+  /** building index */
+  j: number;
+  /** wall = protected by a wall; cut = screened by a cut edge (no wall needed); ok = within the limit
+   * unmitigated; bought = no wall / edge suffices, acquired and demolished */
+  status: 'wall' | 'cut' | 'ok' | 'bought';
+  /** station of the worst unmitigated exposure, its side, façade distance from the axis (m) and
+   * top-floor receiver height above grade (m) */
+  i: number; side: 'L' | 'R'; d: number; h: number;
+  /** controlling-period level minus its limit at the top-floor receiver, dB: unmitigated, and with the
+   * built walls / cut edges (bought: with the best available, i.e. the shortfall) — max over stations */
+  raw: number; mitigated: number;
+  /** highest wall the receiver needs (0 = none) and the height actually built there, m */
+  need: number; wall: number;
+  /** station of the binding wall requirement / buyout (−1 = none) */
+  at: number;
+}
+
+/** Per-dwelling status after the walls are chosen: residual = excess − max(built wall, cut edge) at
+ * every exposed station (the same alternatives as requiredWall), raw elsewhere. */
+export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wallR: ArrayLike<number>,
+  barrier = DEFAULT_BARRIER, edges?: EarthEdges): NoiseReceiver[] {
+  const res = new Map<number, { mitigated: number; need: number; wall: number; at: number; cut: boolean }>();
+  for (const j of ex.visited) res.set(j, { mitigated: ex.raw[j] > 0 ? ex.quiet[j] : ex.raw[j], need: 0, wall: 0, at: -1, cut: false });
+  for (const p of ex.pairs) {
+    const r = res.get(p.j)!;
+    const built = (p.left ? wallL : wallR)[p.i], k = NOISE.wallHeights.indexOf(built);
+    const direct = Math.hypot(p.d - NOISE.sourceOffset, p.height - NOISE.sourceHeight);
+    const edge = p.left ? edges?.L[p.i] : edges?.R[p.i];
+    const earth = attenuation(earthDelta(p.d, p.height, edge, direct));
+    const loss = Math.max(earth, k >= 0 ? barrierAttenuation(p.d, p.height, k, barrier) : 0);
+    r.mitigated = Math.max(r.mitigated, p.excess - loss);
+    if (p.need === 0) r.cut = true;
+    else if (p.need > r.need || (p.need === r.need && built > r.wall)) { r.need = p.need; r.wall = built; r.at = p.i; }
+  }
+  const out: NoiseReceiver[] = [];
+  for (const j of ex.visited) {
+    const r = res.get(j)!, f = ex.failed.get(j);
+    const status = f ? 'bought' : r.need > 0 && r.need !== Infinity ? 'wall' : r.cut ? 'cut' : 'ok';
+    out.push({
+      j, status, i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], raw: ex.raw[j],
+      mitigated: f ? f.deficit : r.mitigated, need: f ? Infinity : r.need, wall: f ? 0 : r.wall, at: f ? f.i : r.at,
+    });
+  }
+  return out;
+}
+
+/** Ground-floor noise map along the route: excess (dB over the limit) at receivers NOISE.receiverHeight
+ * above the real ground, on the normal of every `stride`-th station, both sides, at `start` + offsets. */
+export interface NoiseFootprint {
+  stride: number;
+  /** sampled station indices */
+  stations: Int32Array;
+  /** distance from the inner edge of the band, m (shared by all stations) */
+  offsets: Float32Array;
+  /** inner edge (axis distance) per sampled station: [k*2] left, [k*2+1] right; NaN = no band (tunnel) */
+  start: Float32Array;
+  /** excess, dB: [(k*2 + side) * offsets.length + o] */
+  excess: Float32Array;
+  /** which period controls, its limit, dB */
+  controlling: 'day' | 'night';
+  limit: number;
+}
+
+/** Distance where the flat-ground low receiver falls `below` dB under the limit, axis metres. */
+function fadeDistance(model: NoiseModel, below: number): number {
+  let lo = NOISE.sourceOffset, hi = 2000;
+  if (noiseLevels(lo, NOISE.receiverHeight, model).excessDb <= -below) return lo;
+  for (let k = 0; k < 30; k++) {
+    const mid = (lo + hi) / 2;
+    if (noiseLevels(mid, NOISE.receiverHeight, model).excessDb > -below) lo = mid; else hi = mid;
+  }
+  return hi;
+}
+
+/** Same calculator as dwellingExposure, built walls (`wallL/R`, m) and positive cut edges included;
+ * O(n / stride × 2 × samples). `inner(i, left)`: where the band starts (daylight / deck edge). */
+export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<number>, tx: ArrayLike<number>,
+  ty: ArrayLike<number>, grade: ArrayLike<number>, groundAt: (x: number, y: number) => number, model: NoiseModel,
+  shieldL: ArrayLike<number>, shieldR: ArrayLike<number>, wallL: ArrayLike<number>, wallR: ArrayLike<number>,
+  inner: (i: number, left: boolean) => number, barrier = DEFAULT_BARRIER, edges?: EarthEdges,
+  stride = 3, samples = 12, fadeDb = 6): NoiseFootprint {
+  const m = n ? Math.floor((n - 1) / stride) + 1 + ((n - 1) % stride ? 1 : 0) : 0;
+  const stations = new Int32Array(m);
+  for (let k = 0; k < m; k++) stations[k] = Math.min(n - 1, k * stride);
+  const span = Math.max(20, fadeDistance(model, fadeDb) - barrier.wallOffset);
+  const offsets = new Float32Array(samples);
+  for (let o = 0; o < samples; o++) offsets[o] = span * (o / (samples - 1)) ** 1.7;
+  const start = new Float32Array(2 * m), excess = new Float32Array(2 * m * samples);
+  const sourceLegs = NOISE.wallHeights.map((_, k) => barrier.sourceLeg[k]);
+  for (let k = 0; k < m; k++) {
+    const i = stations[k], nx = -ty[i], ny = tx[i];
+    for (let s = 0; s < 2; s++) {
+      const left = s === 0;
+      if (left ? shieldL[i] : shieldR[i]) { start[2 * k + s] = NaN; continue; }
+      const a = Math.max(barrier.wallOffset + 0.5, inner(i, left)), sgn = left ? 1 : -1;
+      start[2 * k + s] = a;
+      const wk = NOISE.wallHeights.indexOf((left ? wallL : wallR)[i]);
+      const edge = left ? edges?.L[i] : edges?.R[i];
+      const base = (2 * k + s) * samples;
+      for (let o = 0; o < samples; o++) {
+        const d = a + offsets[o];
+        const height = groundAt(x[i] + nx * d * sgn, y[i] + ny * d * sgn) + NOISE.receiverHeight - grade[i];
+        const direct = Math.hypot(d - NOISE.sourceOffset, height - NOISE.sourceHeight);
+        const earth = attenuation(earthDelta(d, height, edge, direct));
+        const wall = wk >= 0 ? attenuation(pathDifference(d, height, barrier.wallOffset, NOISE.wallHeights[wk], sourceLegs[wk], direct)) : 0;
+        excess[base + o] = noiseExcess(direct, height, model) - Math.max(earth, wall);
+      }
+    }
+  }
+  return { stride, stations, offsets, start, excess, controlling: model.controlling,
+    limit: model.controlling === 'night' ? NOISE.limitNightDb : NOISE.limitDayDb };
 }
 
 export interface WallStretch {

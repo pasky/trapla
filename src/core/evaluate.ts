@@ -18,7 +18,10 @@ import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './dat
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
-import { dwellingExposure, noiseBarrier, wallFlags, wallStretches, type EarthEdges, type WallStretch } from './noise';
+import {
+  dwellingExposure, noiseBarrier, noiseFootprint, noiseReceivers, wallFlags, wallStretches,
+  type EarthEdges, type NoiseFootprint, type NoiseReceiver, type WallStretch,
+} from './noise';
 import { createNoiseModel } from './road-noise';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
@@ -79,6 +82,8 @@ export interface Result {
   demolished: { j: number; i: number; cost: number }[];
   /** Outside the footprint: noise-infeasible dwellings acquired AND demolished, billed separately. */
   boughtOut: { j: number; i: number; cost: number }[];
+  /** noise view: dwellings within the search radius with their status, and the ground-floor map */
+  noise: { receivers: NoiseReceiver[]; footprint: NoiseFootprint | null };
   quantities: {
     cut: number; fill: number; reused: number; surplus: number; deficit: number; avgHaul: number;
     /** cut volume by local geology + estimated weathering class I / II / III, m³ */
@@ -447,6 +452,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
   const noiseBuyouts = new Float64Array(n);
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
+  let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
   const noiseModel = createNoiseModel(scenario.traffic, d.speed);
   if (bld) {
     const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
@@ -469,6 +475,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       wallArea[i] = (fl[i] + fr[i]) * cellLength(i, n, ds);
     }
     walls = [...wallStretches(ds, al.length, fl, 'L'), ...wallStretches(ds, al.length, fr, 'R')];
+    const barrier = noiseBarrier(cat.crownWidth);
+    receivers = noiseReceivers(ex.scratch, fl, fr, barrier, edges);
+    footprintMap = noiseFootprint(n, st.x, st.y, st.tx, st.ty, grade, (x, y) => terrain.heightAt(x, y), noiseModel,
+      shieldL, shieldR, fl, fr, (i, left) => (kind[i] === KIND.earth ? (left ? sec.dayL[i] : sec.dayR[i]) : w), barrier, edges);
   }
   lap('town');
 
@@ -553,6 +563,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished, boughtOut,
+    noise: { receivers, footprint: footprintMap },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
       cutByClass, footprint, forestArea, buildingsHit: demolished.length, hitBuildings: demolished.map((p) => p.j),
