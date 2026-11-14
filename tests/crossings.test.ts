@@ -50,9 +50,15 @@ describe('explicit crossing choices (automatic policy already covered in town.te
     expect(issues.every(v => v.fix.includes('1500') && v.kind === 'crossing')).toBe(true);
   });
 
-  it('rejects motorway/local junctions, vertical separation and conflicting main-road structures', () => {
+  it('allows explicit local junctions while rejecting motorway access, vertical gaps and conflicting structures', () => {
+    for (const cls of ['residential', 'living_street', 'unclassified', 'service', 'track']) {
+      const c = cross(1, 3000, cls);
+      resolve([c]); expect(c.type).not.toBe('junction');
+      expect(resolve([c], [{ roadId: 1, type: 'junction' }])).toEqual([]);
+      expect(c.type).toBe('junction'); expect(c.cost).toBeGreaterThan(0);
+    }
     for (const [cls, h, kind, code] of [
-      ['motorway', 0, KIND.earth, 'class'], ['residential', 0, KIND.earth, 'class'],
+      ['motorway', 0, KIND.earth, 'class'],
       ['primary', 8, KIND.earth, 'clearance'], ['primary', -8, KIND.earth, 'depth'],
       ['primary', 0, KIND.bridge, 'structure'], ['primary', -20, KIND.tunnel, 'structure'],
     ] as const) {
@@ -108,6 +114,8 @@ describe('explicit crossing choices (automatic policy already covered in town.te
     const built = chooseStructures({ ds: 10, h, earthPerM: earth, bridgePerM: 100, tunnelPerM: 100, overrides: mask });
     expect(built.kind[25]).toBe(KIND.bridge); expect(built.kind[50]).toBe(KIND.bridge); expect(built.kind[80]).toBe(KIND.tunnel);
     expect(built.runs.filter(r => r.kind === KIND.bridge)).toHaveLength(2);
+    const atEnd = crossingBridgeMask(s, [{ ...raw[0], s: 0 }], [{ roadId: 4, type: 'bridge' }]);
+    expect(atEnd[0]).toBe(-1); expect(atEnd[1]).toBe(KIND.bridge);
   });
 });
 
@@ -128,7 +136,7 @@ describe('crossing geometry and map overlay', () => {
 
   it('keeps a crossed road continuous under our bridge and above a cut, without repricing', () => {
     const cs = [cross(0, 3000, 'primary', 8), cross(1, 3100, 'residential', -8, 1)];
-    resolve(cs, [], [KIND.bridge, KIND.earth]); const costs = cs.map(c => c.cost);
+    resolve(cs, [{ roadId: 1, type: 'overbridge' }], [KIND.bridge, KIND.earth], [0, 0]); const costs = cs.map(c => c.cost);
     buildCrossingGeometry(cs, route, () => 400, roads);
     expect(cs[0].geometry!.road!.some(p => p.x === 3020 && p.y === 20)).toBe(true);
     expect(cs[0].geometry!.road!.some(p => p.x === 3000 && p.y === 0 && p.z === 400)).toBe(true);
@@ -150,18 +158,56 @@ describe('crossing geometry and map overlay', () => {
     expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1][0]);
   });
 
+  it('finishes skewed overbridge ramps at ground level and connects side links at their feet', () => {
+    const dx = 400 * Math.cos(Math.PI / 6), dy = 400 * Math.sin(Math.PI / 6);
+    const net = new RoadNet({ cls: ['residential'], ways: [
+      [0, 3000 - dx, -dy, 3000 + dx, dy], [0, 3200, -300, 3200, 300],
+    ] });
+    const cs = [cross(0, 3000, 'residential', -2), cross(1, 3200, 'residential')];
+    resolve(cs); expect(cs[0].type).toBe('overbridge'); expect(cs[1].targetS).toBe(3000);
+    buildCrossingGeometry(cs, route, () => 400, net);
+    const road = cs[0].geometry!.road!, links = cs[1].geometry!.links!;
+    expect(road[0].z).toBe(400); expect(road.at(-1)!.z).toBe(400);
+    for (const link of links) {
+      expect(link.every(p => p.z === 400)).toBe(true);
+      expect(road).toContainEqual(link.at(-1));
+      expect(Math.abs(link.at(-1)!.y)).toBeGreaterThan(30);
+    }
+  });
+
+  it('bounds visual reach and all polylines for impossible grades and distant reconnections without clipping the bill', () => {
+    const c = cross(99, 4000, 'residential', 1e20);
+    resolve([c], [{ roadId: 99, type: 'overbridge' }]);
+    const price = c.cost;
+    buildCrossingGeometry([c], route, () => 400, roads);
+    expect(c.geometry!.road!.length).toBeLessThanOrEqual(500);
+    expect(c.geometry!.clipped).toBe(true);
+    expect(c.geometry!.road!.every(p => Math.hypot(p.x - c.x, p.y - c.y) <= 2000)).toBe(true);
+    expect(c.cost).toBe(price); expect(c.cost).toBeGreaterThan(1e20);
+    const bigS = Float64Array.from({ length: 9001 }, (_, i) => i * 10), zero = new Float64Array(bigS.length);
+    const longRoute: CrossingRoute = { s: bigS, x: bigS, y: zero, tx: new Float64Array(bigS.length).fill(1), ty: zero,
+      grade: new Float64Array(bigS.length).fill(400), width: new Float64Array(bigS.length).fill(20) };
+    const far = cross(2, 45000, 'residential');
+    resolveCrossings([far], 90000, [KIND.earth], [20], [0], [0], [{ roadId: 2, type: 'reconnection' }]);
+    buildCrossingGeometry([far], longRoute, () => 400);
+    expect(far.linkLength).toBe(90000);
+    expect(far.geometry!.links!.every(link => link.length <= 500)).toBe(true);
+    expect(far.geometry!.clipped).toBe(true);
+  });
+
   it('creates depth-tested decks and visible symbols, then retires resources and restores the render hook', () => {
     const cs = [cross(0, 3000), cross(1, 4000, 'residential', -8)];
     resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);
     const prev = vi.fn(), retired: THREE.Material[] = [];
     const mock = { world: new THREE.Group(), metresPerPixel: 2, onRender: prev as (() => void) | null,
       local: (x: number, y: number, z: number, v: THREE.Vector3) => v.set(x, z, -y),
-      requestRender: vi.fn(), retire: (m: THREE.Material) => { retired.push(m); } };
+      drape: () => 401, requestRender: vi.fn(), retire: (m: THREE.Material) => { retired.push(m); } };
     const renderer = new CrossingRenderer(mock as unknown as View);
     renderer.setResult({ crossings: cs, grade: Float64Array.of(400), ground: Float64Array.of(400) });
     const group = mock.world.getObjectByName('crossing-roads')!;
     expect(group.children.length).toBeGreaterThan(0);
     expect(group.children.every(c => ((c as THREE.Mesh).material as THREE.Material).depthTest)).toBe(true);
+    expect(((group.children[0] as THREE.Mesh).geometry.getAttribute('position') as THREE.BufferAttribute).getY(0)).toBeGreaterThan(401);
     expect(mock.world.getObjectByName('crossing-symbols')!.children).toHaveLength(1);
     mock.onRender!(); expect(prev).toHaveBeenCalled();
     renderer.setResult({ crossings: [], grade: Float64Array.of(400), ground: Float64Array.of(400) });

@@ -12,6 +12,7 @@ export class CrossingRenderer {
   private symbols = new THREE.Group();
   private r: Pick<Result, 'crossings' | 'grade' | 'ground'> | null = null;
   private scale = NaN;
+  private disposed = false;
   private previousRender: View['onRender'];
   private renderHook: () => void;
 
@@ -19,7 +20,7 @@ export class CrossingRenderer {
     this.roads.name = 'crossing-roads'; this.symbols.name = 'crossing-symbols';
     view.world.add(this.roads, this.symbols);
     this.previousRender = view.onRender;
-    this.renderHook = () => { this.previousRender?.(); this.updateSymbols(); };
+    this.renderHook = () => { this.previousRender?.(); if (!this.disposed) this.updateSymbols(); };
     view.onRender = this.renderHook;
   }
 
@@ -52,7 +53,8 @@ export class CrossingRenderer {
       const p = path[i], a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)];
       const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
       for (const side of [-1, 1]) {
-        this.view.local(p.x - dy / len * width / 2 * side, p.y + dx / len * width / 2 * side, p.z + 0.25, v);
+        const x = p.x - dy / len * width / 2 * side, y = p.y + dx / len * width / 2 * side;
+        this.view.local(x, y, Math.max(p.z, this.view.drape(x, y)) + 0.25, v);
         pos.push(v.x, v.y, v.z);
       }
       if (i) { const k = 2 * i; faces.push(k - 2, k - 1, k, k - 1, k + 1, k); }
@@ -103,6 +105,7 @@ export class CrossingRenderer {
   }
 
   dispose() {
+    this.disposed = true;
     this.clear(this.roads); this.clear(this.symbols);
     this.view.world.remove(this.roads, this.symbols);
     if (this.view.onRender === this.renderHook) this.view.onRender = this.previousRender;
