@@ -2,7 +2,7 @@
 
 Build the cheapest norm-abiding road from A to B on real Czech terrain, within a travel-time target
 and for a given traffic. Scenario #1: Trutnov → Polish border (the D11 corridor).
-Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.md`.
+Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.md`, `research/07`–`09` (prices).
 
 ![design](docs/screenshots/02-design.png)
 
@@ -146,7 +146,9 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
 - Terrain: © ČÚZK, DMR 5G, CC BY 4.0.
 - Overlays, vector map layers, buildings and the official D11 line: © OpenStreetMap contributors, ODbL.
 - Aerial photo (optional view layer, streamed, not redistributed): © ČÚZK, Ortofoto ČR, CC BY 4.0.
-- Prices: SFDI SPK CN 2026 and OTSKP 2026 (see `research/00-feasibility-map.md` §3).
+- Prices: SFDI SPK CN 2026 and OTSKP 2026 (see `research/00-feasibility-map.md` §3); property, land, crossings, noise
+  walls and purchased fill per `research/07-property-land.md`, `08-junctions-crossings.md`,
+  `09-noise-earthworks-urban.md` (sources and confidence there; unverified allowances are marked in `src/core/data/`).
 
 ## Long curves and radius handles (horizontal editing)
 

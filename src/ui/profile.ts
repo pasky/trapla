@@ -288,7 +288,7 @@ export class ProfilePanel {
       g.strokeStyle = 'rgba(40,40,40,0.55)';
       g.lineWidth = 1;
       g.beginPath(); g.moveTo(px, yg); g.lineTo(px, yr); g.stroke();
-      g.fillStyle = x.cost > 0 ? '#e0a800' : '#fff';
+      g.fillStyle = x.type === 'atGrade' && ROAD_CLASSES[x.cls].noAtGrade ? '#d33' : x.cost > 0 ? '#e0a800' : '#fff';
       g.strokeStyle = '#222';
       g.lineWidth = 1.2;
       const hw = minor ? 3 : 4.5, hh = minor ? 2 : 3;

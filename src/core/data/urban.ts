@@ -1,11 +1,13 @@
 // Built-up areas: buildings, building land, urban construction rates, crossings of existing roads,
-// noise walls. 2026 price level, CZK excl. VAT. Everything marked PROVISIONAL is an invented
-// placeholder (no open source found yet); the rest cites its source.
+// noise walls. 2026 price level, CZK excl. VAT. Sources: research/07-property-land.md (buildings,
+// land, demolition), research/08-junctions-crossings.md (crossings), research/09-noise-earthworks-urban.md
+// (noise walls). UNVERIFIED marks a game allowance or heuristic no source supports yet; PROVISIONAL a
+// game rule standing in for a real calculation.
 
 import type { CategoryId } from './categories';
 
 // ---------------------------------------------------------------------------------------------
-// Buildings in the footprint: floor area × market price × 1.5 + demolition
+// Buildings in the footprint: floor area × (usual price × 1.5 + demolition)
 // ---------------------------------------------------------------------------------------------
 
 /** kind codes as exported by the pipeline (`binfo[j][2]`, see pipeline/build_d11.py building_info) */
@@ -13,8 +15,11 @@ export const BUILDING_KIND = { house: 0, apartments: 1, civic: 2, industrial: 3,
 
 export interface BuildingKindRow {
   label: string;
-  /** PROVISIONAL market price per m² of floor area, CZK */
+  /** usual (market / replacement) price per m² of floor area, CZK — research/07 §2–3 */
   pricePerM2: number;
+  /** demolition incl. disposal per m² of floor area, CZK — research/07 §5 (Czech practice prices it per
+   * m³ of built volume: ≈ 1,000 CZK/m³ for a house ≈ 3,000 per m² of floor) */
+  demolitionPerM2: number;
   /** PROVISIONAL number of storeys when OSM has no building:levels */
   defaultLevels: number;
   /** PROVISIONAL cap on tagged building:levels (halls are valued by footprint; a few OSM values such
@@ -25,18 +30,22 @@ export interface BuildingKindRow {
 }
 
 export const BUILDING_KINDS: BuildingKindRow[] = [
-  /* house      */ { label: 'house', pricePerM2: 45_000, defaultLevels: 2, maxLevels: 12, dwelling: true },
-  /* apartments */ { label: 'apartment block', pricePerM2: 45_000, defaultLevels: 4, maxLevels: 12, dwelling: true },
-  /* civic      */ { label: 'civic building', pricePerM2: 45_000, defaultLevels: 2, maxLevels: 6, dwelling: false },
-  /* industrial */ { label: 'industrial / commercial', pricePerM2: 20_000, defaultLevels: 1, maxLevels: 3, dwelling: false },
-  /* minor      */ { label: 'garage / shed', pricePerM2: 15_000, defaultLevels: 1, maxLevels: 2, dwelling: false },
+  // house: Trutnov 2025 average ≈ 49,600 CZK/m² (sale, incl. plot); new construction 40–55k (range 40–65k)
+  /* house      */ { label: 'house', pricePerM2: 50_000, demolitionPerM2: 3_000, defaultLevels: 2, maxLevels: 12, dwelling: true },
+  // apartments: Trutnov 2025–26 sale 48,000–65,500 CZK/m² (range 45–70k); demolition 3–8k for blocks
+  /* apartments */ { label: 'apartment block', pricePerM2: 55_000, demolitionPerM2: 4_000, defaultLevels: 4, maxLevels: 12, dwelling: true },
+  // civic: replacement-cost basis 55,000 (range 40–80k), UNVERIFIED as a local benchmark
+  /* civic      */ { label: 'civic building', pricePerM2: 55_000, demolitionPerM2: 4_000, defaultLevels: 2, maxLevels: 6, dwelling: false },
+  // industrial / commercial: hall replacement ≈ 15,000 (9–25k) + business relocation (UNVERIFIED)
+  /* industrial */ { label: 'industrial / commercial', pricePerM2: 20_000, demolitionPerM2: 1_500, defaultLevels: 1, maxLevels: 3, dwelling: false },
+  // garages / sheds: a 20 m² Trutnov garage ≈ 650,000 CZK (500–850k) incl. its share of land
+  /* minor      */ { label: 'garage / shed', pricePerM2: 25_000, demolitionPerM2: 1_500, defaultLevels: 1, maxLevels: 2, dwelling: false },
 ];
 
 export const BUILDING_RULES = {
-  /** Act 416/2009 §3b: buildings are bought at 1.5× the appraised price (research/00 §3.3) */
+  /** Act 416/2009 §3b(1b): buildings are bought at 1.5× the price set by an expert appraisal, which
+   * §3b(2) sets at the usual (market) price — research/07 §1 */
   purchaseMultiplier: 1.5,
-  /** PROVISIONAL demolition incl. disposal, CZK per m² of floor area (≈ 1,000 CZK per m³ built volume) */
-  demolitionPerM2Floor: 3_000,
   /** PROVISIONAL working strip: a building closer than this to the footprint (slope edge at grade,
    * deck edge under a bridge) has to go as well, m */
   clearance: 3,
@@ -46,9 +55,10 @@ export const BUILDING_RULES = {
 // Land inside built-up areas (OSM landuse residential / commercial / industrial / retail)
 // ---------------------------------------------------------------------------------------------
 export const URBAN_LAND = {
-  /** PROVISIONAL market price of building land, CZK/m² */
+  /** usual price of serviced building land around Trutnov, CZK/m² (range 600–3,500) — research/07 §2–3 */
   buildingLandPerM2: 1_500,
-  /** Act 416/2009 §3b: building land is bought at 1.5× (other land at 8×, see LAND in prices.ts) */
+  /** Act 416/2009 §3b(1b): building land is bought at 1.5× the appraised usual price (other land at 8×,
+   * see LAND in prices.ts) */
   multiplier: 1.5,
 };
 
@@ -79,10 +89,10 @@ export const URBAN_NORM_PER_KM: Record<CategoryId, { hilly: number; mountainous:
 // Crossings of existing roads
 // ---------------------------------------------------------------------------------------------
 export const CROSSING_RULES = {
-  /** PROVISIONAL: grade this far above the crossed road → it passes under a bridge on our road
-   * (4.8 m clearance + ≈ 1.2 m deck), m */
+  /** heuristic: grade this far above the crossed road → it passes under a bridge on our road
+   * (4.8 m clearance for class I/II roads by ČSN 73 6201 + ≈ 1.2 m deck, UNVERIFIED) — research/08, m */
   overHeight: 6,
-  /** PROVISIONAL: grade this far below the crossed road → an overbridge carries it across our cut, m */
+  /** heuristic: grade this far below the crossed road → an overbridge carries it across our cut, m */
   underDepth: 6,
   /** crossings closer than this to A / B belong to the tie-in and are ignored, m */
   endMargin: 150,
@@ -103,31 +113,37 @@ export interface RoadClassRow {
   bridgeCode: string;
   /** can be grade-separated (forced bridge on our road when clearly above, overbridge when clearly below) */
   separable: boolean;
+  /** must be grade-separated (motorways, expressways): the grade has to clear it like a railway
+   * (STRUCTURE_RULES.railClearance) or pass ≥ CROSSING_RULES.underDepth below it; anything in between
+   * is a violation — research/08 "At-grade crossing of motorway / expressway" */
+  noAtGrade?: boolean;
   /** lump sum when the crossing is neither: junction, side-road reconnection or track diversion, CZK */
   atGrade: number;
   atGradeLabel: string;
 }
 
-/** SPK CN A.4.N grade-separated interchange (class I roads below S 20.75), each */
-const INTERCHANGE = 76_700_900;
-/** PROVISIONAL at-grade junction with a through road, all-in */
-const JUNCTION = 12_000_000;
-/** PROVISIONAL reconnection of a side street (short realignment + minor junction), all-in */
+/** new at-grade junction with a through road, all-in incl. turning lanes and tie-ins: ŘSD roundabout /
+ * junction awards on class I roads 2024–26 are 19.8–37.5 M; range 15–35 M, low confidence — research/08 */
+const JUNCTION = 25_000_000;
+/** UNVERIFIED game allowance: reconnection of a side street (short realignment + minor junction),
+ * all-in; no published standalone award found (range 2–8 M) — research/08 */
 const SIDE_ROAD = 4_000_000;
 
 /** keyed by OSM highway class (the pack's `net.cls` list); order = rank, most important first */
 export const ROAD_CLASSES: Record<string, RoadClassRow> = {
-  motorway: { label: 'motorway', width: 27.5, bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', separable: true, atGrade: INTERCHANGE, atGradeLabel: 'interchange' },
-  trunk: { label: 'expressway', width: 11.5, bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', separable: true, atGrade: INTERCHANGE, atGradeLabel: 'interchange' },
+  motorway: { label: 'motorway', width: 27.5, bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', separable: true, noAtGrade: true, atGrade: 0, atGradeLabel: 'at grade — not allowed' },
+  trunk: { label: 'expressway', width: 11.5, bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', separable: true, noAtGrade: true, atGrade: 0, atGradeLabel: 'at grade — not allowed' },
   primary: { label: 'class I road', width: 9.5, bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', separable: true, atGrade: JUNCTION, atGradeLabel: 'junction' },
   secondary: { label: 'class II road', width: 7.5, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, atGrade: JUNCTION, atGradeLabel: 'junction' },
   tertiary: { label: 'class III road', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, atGrade: JUNCTION, atGradeLabel: 'junction' },
   unclassified: { label: 'local road', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, atGrade: SIDE_ROAD, atGradeLabel: 'side-road reconnection' },
   residential: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, atGrade: SIDE_ROAD, atGradeLabel: 'side-road reconnection' },
   living_street: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, atGrade: SIDE_ROAD, atGradeLabel: 'side-road reconnection' },
-  /** PROVISIONAL: driveways and yard roads are reconnected along the new road, never bridged */
+  /** PROVISIONAL: driveways and yard roads are reconnected along the new road, never bridged; 1 M is an
+   * UNVERIFIED allowance (range 0.3–2 M) — research/08 */
   service: { label: 'service road', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, atGrade: 1_000_000, atGradeLabel: 'access reconnection' },
-  /** PROVISIONAL: field and forest tracks are diverted to the nearest crossing */
+  /** PROVISIONAL: field and forest tracks are diverted to the nearest crossing; 0.5 M is an UNVERIFIED
+   * allowance (range 0.2–1.5 M) — research/08 */
   track: { label: 'track', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, atGrade: 500_000, atGradeLabel: 'track diversion' },
 };
 
@@ -154,7 +170,7 @@ export const NOISE = {
   cutShield: 4,
   /** PROVISIONAL wall height, m */
   wallHeight: 3,
-  /** PROVISIONAL all-in price per m² of wall (OTSKP 2026 item 34712 reinforced-concrete wall panels
-   * alone: 3,265 CZK/m²; posts and foundations are extra) */
-  wallPerM2: 8_000,
+  /** all-in installed price per m² of wall, range 8,000–14,000 (ŘSD Radostín 2021: 280 m for 9 M ≈
+   * 10,700/m² at an assumed 3 m; OTSKP 34712 panels alone 3,265) — research/09 §1 */
+  wallPerM2: 10_000,
 };

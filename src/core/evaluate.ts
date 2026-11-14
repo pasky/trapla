@@ -56,7 +56,7 @@ export interface CrossingResult {
   /**
    * 'bridge': the road passes under a bridge of the new road (paid as bridge); 'tunnel': the new road
    * is in a tunnel below it (free); 'overbridge': carried across the cut; 'atGrade': junction,
-   * reconnection or diversion lump sum
+   * reconnection or diversion lump sum (motorways / expressways: not allowed, a violation)
    */
   type: 'bridge' | 'tunnel' | 'overbridge' | 'atGrade';
   /** CZK attributed to the crossing itself (0 for 'bridge' / 'tunnel'), excl. surcharge */
@@ -153,7 +153,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // `clearance[i]` = minimum grade-minus-ground at station i that puts the grade `need` metres above
   // the crossing's own ground; the crossing samples themselves are kept for the final check
   const clearance = new Float64Array(n).fill(NaN);
-  const mustBridge: { s: number; g: number; need: number }[] = [];
+  /** `below`: the crossing may instead pass this far below the crossed feature (motorways) */
+  const mustBridge: { s: number; g: number; need: number; what: string; below?: number }[] = [];
   for (let i = 0; i < n; i++) {
     for (const f of [0, 0.25, 0.5, 0.75]) {
       if (f > 0 && i + 1 >= n) break;
@@ -163,7 +164,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (!c) continue;
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
       const gc = terrain.heightAt(x, y);
-      mustBridge.push({ s: st.s[i] + f * ds, g: gc, need });
+      mustBridge.push({ s: st.s[i] + f * ds, g: gc, need, what: 'river/railway' });
       for (const j of f === 0 ? [i] : [i, i + 1]) {
         const req = need + gc - ground[j];
         if (!(clearance[j] >= req)) clearance[j] = req;
@@ -173,6 +174,19 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
 
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const roadX = ctx.roads ? mergeCrossings(ctx.roads.intersections(n, st.s, st.x, st.y), al.length) : [];
+  const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
+  // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
+  // auto-profile always goes over) or, in a manual profile, passes far enough below for an overbridge
+  roadX.forEach((c, k) => {
+    if (!ROAD_CLASSES[c.cls].noAtGrade) return;
+    const need = STRUCTURE_RULES.railClearance;
+    mustBridge.push({ s: c.s, g: roadG[k], need, what: ROAD_CLASSES[c.cls].label, below: CROSSING_RULES.underDepth });
+    const i0 = Math.min(n - 1, Math.floor(c.s / ds));
+    for (const j of c.s > st.s[i0] && i0 + 1 < n ? [i0, i0 + 1] : [i0]) {
+      const req = need + roadG[k] - ground[j];
+      if (!(clearance[j] >= req)) clearance[j] = req;
+    }
+  });
   lap('stations');
 
   // --- per-metre costs for the auto-profile: rural rates on flat ground, incl. the surcharge ---
@@ -224,7 +238,6 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     for (let j = i; j < (k + 1 < sub ? subI[k + 1] : n); j++) if (clearance[j] > -Infinity) subMust[k] = 1;
   }
   const roadS = roadX.map((c) => c.s);
-  const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   const balanceOf = (v: VPI[], materialValue: number) => {
     const p = buildProfile(v, norms.minCrestRadius, norms.minSagRadius);
     const z = elevations(p, subS);
@@ -337,8 +350,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     bridgePerM[i] = (cat.bridgePerKm / 1000) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, ut) / 1000) * (1 + surchargeRate(ut));
   }
-  // river / water / railway crossings must be bridged (streams get culverts, included in the norm);
-  // a crossing below the required clearance is a violation (and gets no fake buried bridge)
+  // river / water / railway crossings (and motorways the grade passes over) must be bridged (streams
+  // get culverts, included in the norm); a crossing below the required clearance is a violation (and
+  // gets no fake buried bridge)
   const forced = new Uint8Array(n);
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
   // an existing road clearly below the grade passes under a (short) bridge instead of being buried
@@ -490,15 +504,19 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }));
   if (mustBridge.length) {
     const zc = elevations(prof, mustBridge.map((c) => c.s));
-    let last = -Infinity;
+    const last = new Map<string, number>();
     mustBridge.forEach((c, k) => {
       const ic = Math.min(n - 1, Math.round(c.s / ds));
       const above = zc[k] - c.g;
-      if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6 || c.s - last < 50) return;
-      last = c.s;
+      if (kind[ic] === KIND.tunnel || above >= c.need - 1e-6) return;
+      if (c.below !== undefined && above <= -c.below + 1e-6) return;
+      if (c.s - (last.get(c.what) ?? -Infinity) < 50) return;
+      last.set(c.what, c.s);
       violations.push({
         kind: 'crossing', s0: c.s, s1: c.s,
-        msg: `river/railway crossing needs the grade ≥ ${c.need} m above it (now ${above.toFixed(1)} m)`,
+        msg: c.below === undefined
+          ? `${c.what} crossing needs the grade ≥ ${c.need} m above it (now ${above.toFixed(1)} m)`
+          : `${c.what} cannot be crossed at grade: the grade must be ≥ ${c.need} m above it (bridge) or ≥ ${c.below} m below it (overbridge) (now ${above >= 0 ? '+' : '−'}${Math.abs(above).toFixed(1)} m)`,
       });
     });
   }

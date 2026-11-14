@@ -139,6 +139,9 @@ describe('cost roll-up', () => {
     const parts = costParts({ ...inp, haul, runs: [{ kind: KIND.bridge, i0: 45, i1: 54, s0: 445, s1: 545, length: 100 }] });
     const t = sumParts(parts);
     expect(t.earthDetail.borrow).toBeCloseTo(haul.deficit * PRICES.borrowFill, 3);
+    // bought fill (OTSKP 17180) includes its placing: only the rest of the fill pays 17110
+    const fill = parts.fillPlacing.reduce((a, _, i) => a + inp.fill[i] * (i === n - 1 ? ds / 2 : ds), 0);
+    expect(t.earthDetail.fillPlacing).toBeCloseTo((fill - haul.deficit) * PRICES.fillPlacing, 3);
     expect(t.earthDetail.surplusHaul).toBeCloseTo(haul.surplus * PRICES.surplusHaulKm * PRICES.haulPerM3Km, 3);
     expect(t.earthDetail.haul).toBeCloseTo(((haul.moment - haul.reused * PRICES.freeHaul) / 1000) * PRICES.haulPerM3Km, 3);
     // bought fill is billed only where there is fill, surplus haul only where there is cut

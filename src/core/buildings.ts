@@ -1,4 +1,4 @@
-// Buildings from the OSM overlay: valuation (floor area × price × 1.5 + demolition), oriented
+// Buildings from the OSM overlay: valuation (floor area × (price × 1.5 + demolition)), oriented
 // footprint rectangles for hit tests, and a spatial hash for footprint / noise queries.
 
 import { BUILDING_KIND, BUILDING_KINDS, BUILDING_RULES } from './data/urban';
@@ -17,7 +17,7 @@ export function buildingLevels(levels: number, kind: number): number {
 export function buildingCost(area: number, levels: number, kind: number): number {
   const row = BUILDING_KINDS[kind] ?? BUILDING_KINDS[BUILDING_KIND.house];
   const floor = area * buildingLevels(levels, kind);
-  return floor * (row.pricePerM2 * BUILDING_RULES.purchaseMultiplier + BUILDING_RULES.demolitionPerM2Floor);
+  return floor * (row.pricePerM2 * BUILDING_RULES.purchaseMultiplier + row.demolitionPerM2);
 }
 
 export class BuildingIndex {

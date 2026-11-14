@@ -52,7 +52,8 @@ export function massHaul(ds: number, mass: Float64Array, cut: number, fill: numb
   const mEnd = mass[n - 1];
   const haulC = PRICES.haulPerM3Km / 1000;
   const surplusC = PRICES.surplusHaulKm * PRICES.haulPerM3Km;
-  const borrowC = PRICES.borrowFill;
+  // a bought m³ (17180, placing included) replaces a m³ of own cut that would have been placed (17110)
+  const borrowC = PRICES.borrowFill - PRICES.fillPlacing;
   const evalC = (c: number) => {
     let mom = 0;
     for (let i = 1; i < n; i++) {

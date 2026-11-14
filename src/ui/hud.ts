@@ -4,7 +4,7 @@ import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
-import { EXCAVATION_DEPTH_BANDS, LAND, PRICES } from '../core/data/prices';
+import { EXCAVATION_DEPTH_BANDS, LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
 import { BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
@@ -45,12 +45,12 @@ const ROW_HELP: Record<string, (c: CostBreakdown) => string> = {
   },
   bridges: () => 'SFDI bridge norm per km of bridge; includes the short bridges forced over rivers, railways and roads clearly below the grade',
   tunnels: () => 'SFDI bored-tunnel norm per km of tube (urban rows under built-up areas)',
-  crossings: () => `existing roads crossed: an overbridge where the road is ≥ ${CROSSING_RULES.underDepth} m above the grade, otherwise a junction (${czk(ROAD_CLASSES.primary.atGrade)}), side-road reconnection (${czk(ROAD_CLASSES.residential.atGrade)}), access (${czk(ROAD_CLASSES.service.atGrade)}) or track diversion (${czk(ROAD_CLASSES.track.atGrade)}) — provisional lump sums. Roads ≥ ${CROSSING_RULES.overHeight} m below the grade get a bridge (counted under Bridges).`,
+  crossings: () => `existing roads crossed: an overbridge where the road is ≥ ${CROSSING_RULES.underDepth} m above the grade, otherwise a junction (${czk(ROAD_CLASSES.primary.atGrade)}), side-road reconnection (${czk(ROAD_CLASSES.residential.atGrade)}), access (${czk(ROAD_CLASSES.service.atGrade)}) or track diversion (${czk(ROAD_CLASSES.track.atGrade)}) — lump sums (the junction from ŘSD awards, the rest unverified allowances). Roads ≥ ${CROSSING_RULES.overHeight} m below the grade get a bridge (counted under Bridges). Motorways and expressways cannot be crossed at grade: bridge ≥ ${STRUCTURE_RULES.railClearance} m above or overbridge ≥ ${CROSSING_RULES.underDepth} m below.`,
   noiseWalls: () => `provisional: ${NOISE.wallHeight} m wall at ${NOISE.wallPerM2.toLocaleString('en-US')} CZK/m² wherever a dwelling is within the screening distance (${NOISE.refDistance} m at ${NOISE.refTraffic.toLocaleString('en-US')} veh/day and ${NOISE.refSpeed} km/h), unless a cut ≥ ${NOISE.cutShield} m screens it`,
   surcharge: () => `SFDI "other objects" (utilities, drainage, safety, preparation…): +${pct(PRICES.otherObjectsSurcharge)} of construction, +${pct(URBAN_RATES.otherObjectsSurcharge)} inside built-up areas`,
-  land: () => `provisional: ${LAND.perM2} CZK/m² (8 × 50) outside, ${(URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier).toLocaleString('en-US')} CZK/m² (1.5 × ${URBAN_LAND.buildingLandPerM2.toLocaleString('en-US')}) inside built-up areas`,
-  forest: () => `provisional: +${LAND.forestExtraPerM2} CZK/m² of forest in the footprint (clearing, removal fee)`,
-  buildings: () => `floor area × market price × ${BUILDING_RULES.purchaseMultiplier} + demolition — provisional prices: ${BUILDING_KINDS.map((k) => `${k.label} ${k.pricePerM2.toLocaleString('en-US')}`).join(', ')} CZK/m²`,
+  land: () => `statutory purchase (Act 416/2009 §3b): ${LAND.perM2} CZK/m² (8 × ${LAND.perM2 / 8} market price) outside, ${(URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier).toLocaleString('en-US')} CZK/m² (1.5 × ${URBAN_LAND.buildingLandPerM2.toLocaleString('en-US')}) inside built-up areas`,
+  forest: () => `+${LAND.forestExtraPerM2} CZK/m² of forest in the footprint (clearing, forest-land removal levy; rough estimate)`,
+  buildings: () => `floor area × (market price × ${BUILDING_RULES.purchaseMultiplier} + demolition), CZK/m²: ${BUILDING_KINDS.map((k) => `${k.label} ${k.pricePerM2.toLocaleString('en-US')} + ${k.demolitionPerM2.toLocaleString('en-US')}`).join(', ')}`,
 };
 
 export class Hud {

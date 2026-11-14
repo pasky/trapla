@@ -4,7 +4,8 @@ import { autoProfile } from '../src/core/autoprofile';
 import { BuildingIndex, type BuildingInfo } from '../src/core/buildings';
 import { PART_KEYS } from '../src/core/cost';
 import { D11_SCENARIO } from '../src/core/data/scenario';
-import { BUILDING_KIND, NOISE, ROAD_CLASSES } from '../src/core/data/urban';
+import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
+import { BUILDING_KIND, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { noiseDistance, wallFlags } from '../src/core/noise';
 import { rangeSummary } from '../src/core/range';
@@ -158,7 +159,7 @@ describe('evaluate on a synthetic town', () => {
     expect(r.cell.urban[100]).toBe(0);
     // same flat cross-section in both places
     expect(perM(210, 'roadBase') - perM(100, 'roadBase')).toBeCloseTo((67_852_000 - 56_912_000) / 1000, 3);
-    expect(perM(210, 'land') / perM(100, 'land')).toBeCloseTo((1500 * 1.5) / 400, 6);
+    expect(perM(210, 'land') / perM(100, 'land')).toBeCloseTo((URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier) / LAND.perM2, 6);
     expect(perM(210, 'surcharge') / perM(210, 'roadBase')).toBeGreaterThan(0.493 - 1e-9);
     expect(r.quantities.urbanLength).toBeCloseTo(400, -1);
   });
@@ -207,6 +208,39 @@ describe('structures and the play-area boundary', () => {
   });
 });
 
+describe('motorway crossings', () => {
+  // flat plain, a motorway across the route at x = 1200
+  const ter = syntheticTerrain(500, 100, 5, () => 400);
+  const roads = new RoadNet({ cls: ['motorway'], ways: [[0, 1200, 0, 1200, 500]] });
+  const mctx = { terrain: ter, scenario: D11_SCENARIO, a: { x: 200, y: 250 }, b: { x: 2200, y: 250 }, roads };
+  const manual = (z: number): Design => ({
+    category: 'S9.5', speed: 90, pis: [], profileMode: 'manual',
+    vpis: [{ s: 0, z: 400, r: null }, { s: 1000, z, r: null }, { s: 2000, z: 400, r: null }],
+  });
+  const crossingViolations = (r: ReturnType<typeof evaluate>) => r.violations.filter((v) => v.kind === 'crossing');
+
+  it('cannot be crossed at grade: neither a lump sum nor a valid design', () => {
+    const r = evaluate(mctx, manual(400));
+    expect(r.crossings.map((c) => [c.type, c.cost])).toEqual([['atGrade', 0]]);
+    expect(crossingViolations(r).length).toBe(1);
+    expect(r.valid).toBe(false);
+  });
+
+  it('may pass under an overbridge in a deep enough cut', () => {
+    const r = evaluate(mctx, manual(392));
+    expect(r.crossings[0].type).toBe('overbridge');
+    expect(r.crossings[0].cost).toBeGreaterThan(0);
+    expect(crossingViolations(r)).toEqual([]);
+  });
+
+  it('the auto-profile clears it with a bridge like a railway', () => {
+    const r = evaluate(mctx, { ...manual(400), profileMode: 'auto' });
+    expect(r.crossings[0].type).toBe('bridge');
+    expect(r.crossings[0].h).toBeGreaterThanOrEqual(STRUCTURE_RULES.railClearance - 1e-6);
+    expect(r.valid).toBe(true);
+  });
+});
+
 describe('structure choice', () => {
   it('prices a bridge at the rates of its own deck strip, not of the embankment it replaces', () => {
     // 23 m deep valley; built-up land on both sides of a 20 m wide open strip along the route: the
@@ -224,7 +258,7 @@ describe('structure choice', () => {
     expect(r2.cell.urban[104]).toBeGreaterThan(0.4);
     expect(r2.kind[140]).toBe(KIND.bridge);
     expect(r2.cell.urban[140]).toBe(0);
-    expect(r2.parts.land[140]).toBeCloseTo(r2.ds * 9.5 * 400, 6);
+    expect(r2.parts.land[140]).toBeCloseTo(r2.ds * 9.5 * LAND.perM2, 6);
   });
 });
 

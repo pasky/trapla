@@ -59,7 +59,8 @@ const SURPLUS_PER_M3 = PRICES.surplusHaulKm * PRICES.haulPerM3Km;
  * Marginal prices used for *decisions* (auto-profile, bridge vs embankment) before the global mass
  * balance is known. One shadow price values a m³ of fill material: a m³ of fill consumes one, a m³
  * of cut yields the usable share of one (and sends the unsuitable share to a tip). Its true value is
- * the price of bought fill when the route is short of material and minus the haul to a tip when it
+ * the price of bought fill less the placing it includes when the route is short of material (every
+ * m³ of fill pays placing here) and minus the haul to a tip when it
  * has a surplus; the auto-profile searches for the value in between at which the grade line balances
  * (MATERIAL_VALUE in data/prices.ts). The final bill uses the real mass balance.
  */
@@ -168,7 +169,10 @@ export function costParts(inp: StationCostInput): CostParts {
   const haulCost = (Math.max(0, h.moment - h.reused * PRICES.freeHaul) / 1000) * PRICES.haulPerM3Km;
   const moved = inp.usable * cut + fill;
   const perCut = cut > 0 ? (h.surplus * SURPLUS_PER_M3) / cut : 0;
-  const perFill = fill > 0 ? (h.deficit * PRICES.borrowFill) / fill : 0;
+  // bought fill (OTSKP 17180) includes its placing: only fill from the route's own cut pays 17110
+  const boughtShare = fill > 0 ? Math.min(1, h.deficit / fill) : 0;
+  const perFill = boughtShare * PRICES.borrowFill;
+  const placingPerFill = (1 - boughtShare) * PRICES.fillPlacing;
   const perMoved = moved > 0 ? haulCost / moved : 0;
   const unsuitablePerCut = (1 - inp.usable) * SURPLUS_PER_M3;
   for (let i = 0; i < n; i++) {
@@ -180,7 +184,7 @@ export function costParts(inp: StationCostInput): CostParts {
       parts.roadBase[i] = len * (baseRural + (baseUrban - baseRural) * u);
       parts.excavation[i] = len * (inp.cutI[i] * EXCAVATION_BY_CLASS.I + inp.cutII[i] * EXCAVATION_BY_CLASS.II
         + inp.cutIII[i] * EXCAVATION_BY_CLASS.III);
-      parts.fillPlacing[i] = fillV[i] * PRICES.fillPlacing;
+      parts.fillPlacing[i] = fillV[i] * placingPerFill;
       parts.haul[i] = (inp.usable * cutV[i] + fillV[i]) * perMoved;
       parts.surplusHaul[i] = cutV[i] * perCut;
       parts.unsuitable[i] = cutV[i] * unsuitablePerCut;

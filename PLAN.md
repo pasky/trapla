@@ -21,7 +21,8 @@ How the prototype interprets it:
 - **Hard constraints:** every geometric norm check passes; travel time ≤ X; the category fits traffic Y.
 - **Travel time:** route length divided by the design speed the player picks for the road (90, 80 or
   70 km/h). A lower design speed permits tighter curves, so it is cheaper to build but slower.
-- **Traffic Y:** selects the minimum road category. The thresholds are placeholders, not norm values.
+- **Traffic Y:** selects the minimum road category. The thresholds are placeholders, not norm values
+  (UNVERIFIED: ČSN 73 6101 selects the category from design traffic, not a daily-volume cutoff; research/08).
 - **Structures:** bridges and simple tunnels appear where they are cheaper than the embankment or cut.
 
 ## Scenario #1 as OpenStreetMap has it today
@@ -113,7 +114,8 @@ What exists (details and commands in `README.md`):
   straight line with the automatic (legal) grade line; the cost of a design that is not valid is struck through.
 - **Rules added during the build** (game rules, not norm values): river / water-area / railway crossings are
   always bridged (≥ 30 m) and need the grade ≥ 3 m above a river and ≥ 7.5 m above a railway (otherwise a
-  violation; the auto-profile respects it); streams are assumed culverted (in the norm). Bridges are only
+  violation; the auto-profile respects it); streams are assumed culverted (in the norm). Since cost model 3
+  motorways / expressways are treated the same way (see "Crossing existing roads"). Bridges are only
   considered ≥ 4 m above ground and bored tunnels with ≥ 14 m of cover; minimum bridge 30 m, tunnel 150 m;
   earthwork gaps shorter than 60 m (bridges) / 150 m (tunnels) are merged. Road base price is charged on at-grade
   length only. Slopes that do not reach the ground within 150 m and footprints leaving the terrain data are
@@ -121,7 +123,8 @@ What exists (details and commands in `README.md`):
 
 ### Travel-time target X and traffic Y
 
-- Y = 9,000 vehicles/day → minimum S 9.5 by the placeholder thresholds (S 7.5 < 5,000 ≤ S 9.5 < 12,000 ≤ S 11.5).
+- Y = 9,000 vehicles/day → minimum S 9.5 by the placeholder thresholds (S 7.5 < 5,000 ≤ S 9.5 < 12,000 ≤ S 11.5;
+  no source supports these cutoffs — research/08 keeps S 9.5 as a scenario assumption).
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
@@ -146,12 +149,16 @@ First cost model (2026-11-13): 20.81 km, 13.87 min, 3.19 bn CZK = 153 M CZK/km. 
   sag 3400/2100/1500 m for 90/80/70 km/h (older edition; 90 uses the 100 km/h column).
 - Side slopes fill 1:2, cut 1:1.75 (pending geology).
 - Topsoil depth 0.3 m; topsoil allowance in the norm assumed over crown + 12 m.
-- Land 8 × 50 CZK/m² outside built-up areas; forest surcharge 250 CZK/m². (Buildings, building land, crossings,
-  noise, excavation classes: see the list in the next section.)
-- Traffic → category thresholds.
+- Land outside built-up areas 8 × 40 CZK/m² (sourced: research/07 — Act 416/2009 §3b 8× the appraised usual
+  price; farmland trades at 30–55 CZK/m², low confidence locally); forest priced the same plus 50 CZK/m²
+  (removal levy ≈ 20 + clearing ≈ 30, both low confidence). (Buildings, building land, crossings, noise,
+  excavation classes: see the list in the next section.)
+- Traffic → category thresholds (UNVERIFIED, research/08).
 - Decision prices for the auto-profile and structure choice: a m³ of fill material is worth a value between
-  −150 and 600 CZK that the auto-profile searches for (start 200); see "Mass balance" in the next section.
-- Purchased fill is charged 636 CZK/m³ on top of 100 CZK/m³ placing (OTSKP 17180 may already include placing).
+  −196 (haul to a tip) and 536 CZK (bought fill less placing) that the auto-profile searches for (start 200);
+  see "Mass balance" in the next section.
+- Purchased fill: OTSKP 17180 (636 CZK/m³) is a composite item that includes placing; 17110 placing (100) is
+  charged only on fill from the route's own cut (research/09 §3; exact current spec text unverified).
 - 15 % of all cut is unsuitable (hauled 10 km, replaced by bought fill) — the norm's own assumption, applied
   identically to the allowance and to the design; the first 1 km of haul is free (included in excavation).
 - Crossing clearances 3 m (river) / 7.5 m (railway).
@@ -223,7 +230,7 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
 
 - **Buildings by size**: the pipeline exports per building the footprint area, `building:levels`, a kind (house,
   apartments, civic, industrial/commercial, minor) and an oriented bounding rectangle. Cost = floor area
-  (footprint × levels) × market price × 1.5 (Act 416/2009 §3b) + demolition. Hit test: the rectangle against the
+  (footprint × levels) × (usual price × 1.5 (Act 416/2009 §3b) + demolition), both per kind. Hit test: the rectangle against the
   footprint strip (slope edge to slope edge at grade, the deck under bridges) widened by a working strip; none
   in tunnels.
 - **Land by land use**: a built-up mask (OSM landuse residential / commercial / industrial / retail; bit 3 of
@@ -238,11 +245,17 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
   owner's "street buried next to a bridged railway" case); ≤ −6 m → an overbridge carrying the crossed road,
   span = cut width there × the SPK CN bridge row of the crossed road's width (+ surcharge); in between → a lump
   sum: junction with a through road, side-road reconnection for streets and local roads, access reconnection
-  for service roads, track diversion. Service roads and tracks never force a bridge. Crossings within 30 m of
+  for service roads, track diversion. Service roads and tracks never force a bridge. Motorways and expressways
+  (OSM motorway / trunk; cost model 3) are never crossed at grade: like a railway, the grade must clear them by
+  7.5 m (forced bridge; the auto-profile always does this) or, in a manual profile, pass ≥ 6 m below them
+  (overbridge); anything in between is a violation. None of the designs below crosses one: the play area's
+  motorway (D11) starts at B, within the tie-in margin, and its only trunk road lies north-east of B (≥ 0.5 km
+  away), so only a route swinging east of B meets it. Crossings within 30 m of
   each other (dual carriageways, slip roads), or of the same OSM way within 150 m, are one crossing; those
   within 150 m of A/B belong to the tie-in. A crossing under one of the new road's bridges or above its tunnel
   is free. Shown as markers in the profile and counted in the HUD.
-- **Excavation class by depth** (stand-in for geology): each cross-section's cut area is split by depth below
+- **Excavation class by depth** (gameplay heuristic standing in for geology; OTSKP classes are defined by
+  excavability, not depth, and route-specific class shares are unknown — research/09 §3): each cross-section's cut area is split by depth below
   the original ground: class I to 3 m, class II to 8 m, class III deeper (OTSKP 12273 / 12283 / 12293: 183 /
   391 / 653 CZK/m³). The norm allowance stays valued at the 75/20/5 mix (248 CZK/m³). The bridge/tunnel-vs-
   earthwork choice and the auto-profile use the same class prices.
@@ -262,29 +275,39 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
   the real structure choice — is within 1.5 m³ per metre of route. Typical result: λ ≈ 165–215 CZK/m³, bought
   fill or surplus below 0.2 M m³.
 
-### PROVISIONAL values introduced here
+### Values introduced here
+
+Sourced since cost model 3 (research/07–09, confidence and ranges there); everything else PROVISIONAL / UNVERIFIED.
+Act 416/2009 §3b: the 8× (non-building land) and 1.5× (building land, buildings) multiples apply to the price set
+by an expert appraisal, which is the usual (market) price — the assessed "official" price only where a usual
+price cannot be determined (research/07 §1).
 
 | Value | Number | Note |
 |---|---|---|
-| Market price, houses / apartments / civic | 45,000 CZK/m² floor area | × 1.5 statutory multiple |
-| Market price, industrial / commercial / barns | 20,000 CZK/m² | × 1.5 |
-| Market price, garages / sheds / anything < 30 m² | 15,000 CZK/m² | × 1.5; a 20 m² garage ≈ 0.5 M all-in |
-| Demolition | 3,000 CZK/m² floor area | ≈ 1,000 CZK/m³ of built volume |
+| Price, houses / apartments / civic | 50,000 / 55,000 / 55,000 CZK/m² floor area | × 1.5; research/07: Trutnov sale ≈ 49,600 (houses, incl. plot) and 48,000–65,500 (flats); civic = replacement cost, unverified locally |
+| Price, industrial / commercial / barns | 20,000 CZK/m² | × 1.5; hall replacement ≈ 15,000 (research/07) + business relocation (unverified) |
+| Price, garages / sheds / anything < 30 m² | 25,000 CZK/m² | × 1.5; Trutnov 20 m² garage ≈ 650,000 incl. land (research/07) |
+| Demolition, house / apartments / civic / industrial / minor | 3,000 / 4,000 / 4,000 / 1,500 / 1,500 CZK/m² floor | ≈ 1,000 CZK/m³ built volume for a house; ranges 2–5k / 3–8k / 1–4k (research/07 §5) |
 | Default storeys when untagged | house 2, apartments 4, civic 2, industrial 1, minor 1 | tagged levels capped at 12 / 12 / 6 / 3 / 2 |
 | Classification of `building=yes` (46 % of buildings) | < 50 m² minor; by land-use zone, address; ≥ 300 m² outside any zone = industrial | `pipeline/build_d11.py` `building_info` |
 | Working strip for demolitions | 3 m beyond the footprint / deck edge | |
-| Building land | 1,500 CZK/m² × 1.5 | other land stays 8 × 50 |
-| Grade separation thresholds | ≥ 6 m above (4.8 m clearance + deck) / ≤ −6 m below | |
-| Junction with a through road (class I–III) | 12 M CZK | motorway / expressway: SPK CN interchange 76.7 M (not provisional) |
-| Side-road reconnection (street, local road) | 4 M CZK | |
-| Access reconnection (service road) / track diversion | 1 M / 0.5 M CZK | never grade-separated |
+| Building land | 1,500 CZK/m² × 1.5 | research/07 (range 600–3,500); other land 8 × 40 |
+| Grade separation thresholds | ≥ 6 m above (4.8 m clearance + deck) / ≤ −6 m below | heuristic: 4.8 m clearance is ČSN 73 6201, the deck depth unverified (research/08) |
+| Junction with a through road (class I–III) | 25 M CZK | ŘSD junction / roundabout awards 19.8–37.5 M (research/08, low confidence) |
+| Motorway / expressway | no at-grade crossing | bridge ≥ 7.5 m above or overbridge ≥ 6 m below (research/08) |
+| Side-road reconnection (street, local road) | 4 M CZK | UNVERIFIED allowance (research/08: no published award) |
+| Access reconnection (service road) / track diversion | 1 M / 0.5 M CZK | never grade-separated; UNVERIFIED allowances |
 | Crossed-road widths for overbridges | 27.5 / 11.5 / 9.5 / 7.5 / 6.5 / 4 m by class | priced by the SPK CN bridge row of that width |
-| Excavation class depth bands | I to 3 m, II to 8 m, III below | stand-in for geology |
-| Noise distance and scaling | 100 m at 9,000 veh/day and 90 km/h; exponents 2/3 and 5/3 | |
-| Noise wall | 3 m high, 8,000 CZK/m² all-in; 50 m margins; cut ≥ 4 m screens | OTSKP 34712 panels alone 3,265 CZK/m² |
-| Material value for decisions | search in −150 … 600 CZK/m³ from 200; tolerance 1.5 m³/m | |
+| Excavation class depth bands | I to 3 m, II to 8 m, III below | gameplay heuristic, not geology: OTSKP classes are by excavability (research/09 §3) |
+| Noise distance and scaling | 100 m at 9,000 veh/day and 90 km/h; exponents 2/3 and 5/3 | UNVERIFIED screening heuristic (research/09 §2) |
+| Noise wall | 3 m high, 10,000 CZK/m² all-in; 50 m margins; cut ≥ 4 m screens | price: research/09 §1 (range 8–14k); OTSKP 34712 panels alone 3,265 |
+| Material value for decisions | search in −196 … 536 CZK/m³ from 200; tolerance 1.5 m³/m | bounds = haul to a tip / bought fill less placing |
 
 ### Numbers with the new model (S 9.5, auto profile, `npx tsx scripts/bench.ts <design.json>`)
+
+These tables are cost model 2; the research-based prices of model 3 (see the table above) move the four
+design files by +0.1 % to +4.7 % (bypass 3,094, reference 3,869, direct 80 km/h 3,416, town centre 8,662 M);
+recalibration pending.
 
 Before → after for the two designs of the first prototype: straight line 5.50 → **6.83 bn**, reference bypass
 3.19 → **3.84 bn**.
@@ -349,7 +372,9 @@ room for the balance search (the first prototype needed ≈ 36 ms, 28 ms of it o
 - Noise: distance is measured to the building's centroid; no screening by terrain other than the road's own
   cut, none by other buildings; a bridge gets the same wall as an embankment. SPK CN's urban surcharge already
   contains 10 % "protective measures", so walls in built-up areas are partly counted twice.
-- Motorway / expressway crossings at grade are priced as an interchange instead of being forbidden.
+- Motorway / expressway crossings: the auto-profile always clears them with a bridge (it cannot choose the
+  cut-and-overbridge alternative, only a manual profile can); the forced bridge is the 30 m minimum whatever
+  the motorway's width and the crossing angle.
 
 ## Horizontal curve rules and long curves (2026-11-14)
 
