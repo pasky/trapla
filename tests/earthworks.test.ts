@@ -80,6 +80,22 @@ describe('mass haul', () => {
     expect(m.avgHaul).toBeLessThan(1150);
   });
 
+  it('keeps full reuse when the free-haul credit makes it cheaper than tip and replacement', () => {
+    // 37.8 km: without the credit this is just beyond the tip+borrow break-even distance.
+    const ds = 100, mass = new Float64Array(381).fill(1000);
+    mass[0] = mass[mass.length - 1] = 0;
+    const m = massHaul(ds, mass, 1000, 1000);
+    const reuseBill = Math.max(0, m.moment - 1000 * PRICES.freeHaul) / 1000 * PRICES.haulPerM3Km;
+    const replaceBill = 1000 * (PRICES.surplusHaulKm * PRICES.haulPerM3Km + PRICES.borrowFill - PRICES.fillPlacing);
+    expect(m.moment / 1000 * PRICES.haulPerM3Km).toBeGreaterThan(replaceBill);
+    expect(reuseBill).toBeLessThan(replaceBill);
+    expect(m.reused).toBe(1000);
+    expect(m.surplus).toBe(0);
+    expect(m.deficit).toBe(0);
+    // Beyond the credit-adjusted threshold disposal + replacement still wins.
+    expect(massHaul(ds * 1.1, mass, 1000, 1000).reused).toBeLessThan(1);
+  });
+
   it('hauls a surplus away rather than pretending it is reused', () => {
     const ds = 10, n = 101;
     const cut = new Float64Array(n).fill(50), fill = new Float64Array(n).fill(20);

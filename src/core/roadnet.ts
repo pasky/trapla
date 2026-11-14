@@ -61,7 +61,8 @@ export class RoadNet {
 
   /**
    * Every intersection of the route polyline (stations s, x, y) with the network, in station order.
-   * A hit exactly at a station belongs to the interval starting there; the road parameter is closed,
+   * A hit exactly at a station belongs to the interval starting there (the last interval also
+   * includes B); the road parameter is closed,
    * so the result does not depend on the direction in which a way was drawn. Both tests carry a
    * tolerance for round-off at end points; a hit that this (or a vertex shared by two segments of one
    * way) reports twice is dropped.
@@ -86,7 +87,7 @@ export class RoadNet {
           if (Math.abs(den) < 1e-9) continue; // parallel
           const ex = this.x0[k] - px, ey = this.y0[k] - py;
           const t = (ex * qy - ey * qx) / den, u = (ex * ry - ey * rx) / den;
-          if (t < -EPS || t >= 1 - EPS || u < -EPS || u > 1 + EPS) continue;
+          if (t < -EPS || (i + 2 === n ? t > 1 + EPS : t >= 1 - EPS) || u < -EPS || u > 1 + EPS) continue;
           out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: px + t * rx, y: py + t * ry, cls: this.wayCls[this.way[k]], way: this.way[k] });
         }
       }
@@ -108,7 +109,8 @@ export class RoadNet {
 /**
  * Collapse raw intersections (in station order) into crossings: hits within `mergeDistance` of each
  * other, or of the same way within `sameWayMergeDistance`, are one crossing, of the most important
- * class among them and located at that member; hits near the route ends belong to the tie-in.
+ * class among them and located at that member; hits near the route ends belong to the tie-in BILL.
+ * Cost representation only: hard clearance constraints must use raw intersections, not this list.
  */
 export function mergeCrossings(raw: RoadCrossing[], length: number,
   rules: Pick<typeof CROSSING_RULES, 'endMargin' | 'mergeDistance' | 'sameWayMergeDistance'> = CROSSING_RULES): RoadCrossing[] {

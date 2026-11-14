@@ -156,7 +156,10 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
 - Aerial photo (optional view layer, streamed, not redistributed): © ČÚZK, Ortofoto ČR, CC BY 4.0.
 - Prices: SFDI SPK CN 2026 and OTSKP 2026 (see `research/00-feasibility-map.md` §3); property, land, crossings, noise
   walls and purchased fill per `research/07-property-land.md`, `08-junctions-crossings.md`,
-  `09-noise-earthworks-urban.md` (sources and confidence there; unverified allowances are marked in `src/core/data/`).
+  `09-noise-earthworks-urban.md` (sources and confidence there; research-informed estimates / provisional
+  allowances are marked in `src/core/data/`). Research market/contract examples are not escalated to 2026.
+  Building values exclude land; noise buyouts add a provisional plot allowance. See `PLAN.md` for model-6
+  comparisons, raw-crossing clearance rules and geometric wall/cut screening.
 
 ## Long curves and radius handles (horizontal editing)
 

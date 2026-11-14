@@ -1,5 +1,6 @@
 // Built-up areas: buildings, building land, urban construction rates, crossings of existing roads,
-// noise walls. 2026 price level, CZK excl. VAT. Sources: research/07-property-land.md (buildings,
+// noise walls. CZK excl. VAT: SPK CN norms are 2026; research examples are at their original dates,
+// NOT escalated to 2026. Sources: research/07-property-land.md (buildings,
 // land, demolition), research/08-junctions-crossings.md (crossings), research/09-noise-earthworks-urban.md
 // (noise walls). UNVERIFIED marks a game allowance or heuristic no source supports yet; PROVISIONAL a
 // game rule standing in for a real calculation.
@@ -7,7 +8,7 @@
 import type { CategoryId } from './categories';
 
 // ---------------------------------------------------------------------------------------------
-// Buildings in the footprint: floor area × (usual price × 1.5 + demolition)
+// Buildings in the footprint: floor area × (building-only estimate × 1.5 + demolition); land separate
 // ---------------------------------------------------------------------------------------------
 
 /** kind codes as exported by the pipeline (`binfo[j][2]`, see pipeline/build_d11.py building_info) */
@@ -15,7 +16,8 @@ export const BUILDING_KIND = { house: 0, apartments: 1, civic: 2, industrial: 3,
 
 export interface BuildingKindRow {
   label: string;
-  /** usual (market / replacement) price per m² of floor area, CZK — research/07 §2–3 */
+  /** Building-only replacement-value estimate per m² floor, excluding plot, CZK — research/07 §2–3.
+   * PROVISIONAL proxy for an appraisal, not the statutory valuation method. */
   pricePerM2: number;
   /** demolition incl. disposal per m² of floor area, CZK — research/07 §5 (Czech practice prices it per
    * m³ of built volume: ≈ 1,000 CZK/m³ for a house ≈ 3,000 per m² of floor) */
@@ -30,16 +32,19 @@ export interface BuildingKindRow {
 }
 
 export const BUILDING_KINDS: BuildingKindRow[] = [
-  // house: Trutnov 2025 average ≈ 49,600 CZK/m² (sale, incl. plot); new construction 40–55k (range 40–65k)
+  // house: researched replacement cost 50k (new construction 40–55k, recommended range 40–60k), EXCL. plot.
+  // Do not use the similar Trutnov sale average ≈ 49,600, which includes the plot.
   /* house      */ { label: 'house', pricePerM2: 50_000, demolitionPerM2: 3_000, defaultLevels: 2, maxLevels: 12, dwelling: true },
-  // apartments: Trutnov 2025–26 sale 48,000–65,500 CZK/m² (range 45–70k); demolition 3–8k for blocks
+  // apartments: PROVISIONAL building-only replacement proxy 55k; research/07 sale range 48–65.5k
+  // is a cross-check, NOT a building-only appraisal. Demolition 3–8k for blocks.
   /* apartments */ { label: 'apartment block', pricePerM2: 55_000, demolitionPerM2: 4_000, defaultLevels: 4, maxLevels: 12, dwelling: true },
   // civic: replacement-cost basis 55,000 (range 40–80k), UNVERIFIED as a local benchmark
   /* civic      */ { label: 'civic building', pricePerM2: 55_000, demolitionPerM2: 4_000, defaultLevels: 2, maxLevels: 6, dwelling: false },
   // industrial / commercial: hall replacement ≈ 15,000 (9–25k) + business relocation (UNVERIFIED)
   /* industrial */ { label: 'industrial / commercial', pricePerM2: 20_000, demolitionPerM2: 1_500, defaultLevels: 1, maxLevels: 3, dwelling: false },
-  // garages / sheds: a 20 m² Trutnov garage ≈ 650,000 CZK (500–850k) incl. its share of land
-  /* minor      */ { label: 'garage / shed', pricePerM2: 25_000, demolitionPerM2: 1_500, defaultLevels: 1, maxLevels: 2, dwelling: false },
+  // garages / sheds: PROVISIONAL building-only replacement estimate 15k, not the researched
+  // 650k sale of a 20 m² garage (which includes land). Simple unheated structure; no local cost award.
+  /* minor      */ { label: 'garage / shed', pricePerM2: 15_000, demolitionPerM2: 1_500, defaultLevels: 1, maxLevels: 2, dwelling: false },
 ];
 
 export const BUILDING_RULES = {
@@ -49,6 +54,10 @@ export const BUILDING_RULES = {
   /** PROVISIONAL working strip: a building closer than this to the footprint (slope edge at grade,
    * deck edge under a bridge) has to go as well, m */
   clearance: 3,
+  /** PROVISIONAL noise-buyout plot allowance: max(3 × footprint, 400 m²), separate from the building.
+   * Additional land at building-land price × 1.5; no cadastral boundaries / parcel overlap model. */
+  buyoutPlotMultiple: 3,
+  buyoutPlotMinimum: 400,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -94,8 +103,12 @@ export const CROSSING_RULES = {
   overHeight: 6,
   /** heuristic: grade this far below the crossed road → an overbridge carries it across our cut, m */
   underDepth: 6,
-  /** crossings closer than this to A / B belong to the tie-in and are ignored, m */
+  /** Billing only: crossings this close to A / B belong to the tie-in cost allowance, m.
+   * NEVER suppress motorway / trunk clearance checks using this margin. */
   endMargin: 150,
+  /** Hard-constraint exemption ONLY at an actual endpoint intersection (coordinate tolerance, m).
+   * Allows joining the motorway at B; no exemption for another carriageway 20 m away. */
+  endpointTolerance: 1,
   /** crossings closer together than this along the route are one crossing (dual carriageways, slip
    * roads, a junction lying on the route), m */
   mergeDistance: 30,
@@ -122,8 +135,9 @@ export interface RoadClassRow {
   atGradeLabel: string;
 }
 
-/** new at-grade junction with a through road, all-in incl. turning lanes and tie-ins: ŘSD roundabout /
- * junction awards on class I roads 2024–26 are 19.8–37.5 M; range 15–35 M, low confidence — research/08 */
+/** PROVISIONAL research-informed estimate for a through-road junction, all-in: based on ŘSD
+ * ROUNDABOUT awards (19.8–37.5 M), not an isolated T/X-junction contract (none found).
+ * Recommended 25 M, range 15–35 M, low confidence — research/08; examples not escalated to 2026. */
 const JUNCTION = 25_000_000;
 /** UNVERIFIED game allowance: reconnection of a side street (short realignment + minor junction),
  * all-in; no published standalone award found (range 2–8 M) — research/08 */
@@ -155,7 +169,7 @@ export const NOISE = {
    * controlling limit's contour; day/night traffic and absolute levels are not separately modelled. */
   limitDayDb: 60,
   limitNightDb: 50,
-  /** PROVISIONAL unmitigated limit contour at reference traffic and speed, from road axis, m */
+  /** PROVISIONAL unmitigated limit contour at reference traffic/speed, slant source–receiver m */
   refDistance: 100,
   refTraffic: 9_000,
   refSpeed: 90,
@@ -165,9 +179,8 @@ export const NOISE = {
   speedExponent: 5 / 3,
   /** wall extends this far beyond the exposed stretch, m */
   margin: 50,
-  /** no wall on a side where the cut edge is at least this far above the road (the cut screens), m */
-  cutShield: 4,
-  /** PROVISIONAL E = distanceDb * log10(D/d); ≈ −4.5 dB per doubling of distance. */
+  /** PROVISIONAL E = distanceDb * log10(D/d), d = slant source–receiver distance;
+   * ≈ −4.5 dB per doubling. Cut edges use the same diffraction as walls, not a depth exemption. */
   distanceDb: 15,
   /** Protected outdoor receiver: 2 m in front of the nearest façade, towards the source. */
   facadeOffset: 2,
@@ -190,7 +203,8 @@ export const NOISE = {
   /** PROVISIONAL highest occupied receiver = 1.5 + (levels − 1) * 3 m above building ground. */
   receiverHeight: 1.5,
   storeyHeight: 3,
-  /** all-in installed price per m² of wall, range 8,000–14,000 (ŘSD Radostín 2021: 280 m for 9 M ≈
-   * 10,700/m² at an assumed 3 m; OTSKP 34712 panels alone 3,265) — research/09 §1 */
+  /** PROVISIONAL research-informed calibrated recommendation, all-in per m², range 8,000–14,000.
+   * Only project datapoint: ŘSD Radostín 2021, 280 m for 9 M ≈ 10,700/m² IF height is 3 m (assumed,
+   * not sourced); not escalated to 2026. OTSKP 34712 panels alone 3,265 — research/09 §1. */
   wallPerM2: 10_000,
 };

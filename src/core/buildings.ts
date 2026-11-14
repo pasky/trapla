@@ -1,7 +1,7 @@
 // Buildings from the OSM overlay: valuation (floor area × (price × 1.5 + demolition)), oriented
 // footprint rectangles for hit tests, and a spatial hash for footprint / noise queries.
 
-import { BUILDING_KIND, BUILDING_KINDS, BUILDING_RULES } from './data/urban';
+import { BUILDING_KIND, BUILDING_KINDS, BUILDING_RULES, URBAN_LAND } from './data/urban';
 
 /** pack row `binfo[j]`: [footprint m², tagged levels (0 = none), kind, bbox centre x, y, half-length,
  * half-width, angle of the long axis in degrees] */
@@ -13,18 +13,25 @@ export function buildingLevels(levels: number, kind: number): number {
   return levels >= 1 ? Math.min(levels, row.maxLevels) : row.defaultLevels;
 }
 
-/** purchase at the statutory multiple of the market value plus demolition, CZK */
+/** Building-only replacement-value estimate × statutory purchase multiple, plus demolition, CZK. */
 export function buildingCost(area: number, levels: number, kind: number): number {
   const row = BUILDING_KINDS[kind] ?? BUILDING_KINDS[BUILDING_KIND.house];
   const floor = area * buildingLevels(levels, kind);
   return floor * (row.pricePerM2 * BUILDING_RULES.purchaseMultiplier + row.demolitionPerM2);
 }
 
+/** Noise acquisition includes a separate PROVISIONAL plot, unlike footprint takes whose land is
+ * already billed by corridor area. No cadastral parcels: allowance is additional to corridor land. */
+export function noiseBuyoutCost(building: number, footprint: number): number {
+  const plot = Math.max(BUILDING_RULES.buyoutPlotMinimum, footprint * BUILDING_RULES.buyoutPlotMultiple);
+  return building + plot * URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier;
+}
+
 export class BuildingIndex {
   private readonly cell = 50;
   private readonly map = new Map<number, number[]>();
   readonly n: number;
-  /** purchase + demolition, CZK */
+  /** building-only purchase + demolition, excl. land, CZK */
   readonly cost: Float64Array;
   readonly kind: Uint8Array;
   readonly area: Float64Array;

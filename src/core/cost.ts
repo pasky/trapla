@@ -1,4 +1,5 @@
-// Cost model (2026 prices, CZK excl. VAT). All numbers come from data/*.ts.
+// Cost model (2026 norms + research-informed estimates at original dates, CZK excl. VAT).
+// All numbers and provenance come from data/*.ts.
 //
 // The bill is built per station cell (cell i = the stretch nearest to station i: ds long, half that
 // at the two ends), one array per component, so every koruna is attributable along the route and the

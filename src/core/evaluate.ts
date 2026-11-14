@@ -13,10 +13,10 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
+import { BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
-import { dwellingExposure, noiseBarrier, noiseDistance, wallFlags, wallStretches, type WallStretch } from './noise';
+import { dwellingExposure, noiseBarrier, noiseDistance, wallFlags, wallStretches, type EarthEdges, type WallStretch } from './noise';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
@@ -177,20 +177,27 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
 
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
-  const roadX = ctx.roads ? mergeCrossings(ctx.roads.intersections(n, st.s, st.x, st.y), al.length) : [];
+  const rawRoadX = ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [];
+  // Billing may merge carriageways / omit tie-in-area objects; safety must see every raw crossing.
+  const roadX = mergeCrossings(rawRoadX, al.length);
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
-  // auto-profile always goes over) or, in a manual profile, passes far enough below for an overbridge
-  roadX.forEach((c, k) => {
+  // auto-profile requests an overpass) or pass far enough below for an overbridge
+  rawRoadX.forEach((c) => {
     if (!ROAD_CLASSES[c.cls].noAtGrade) return;
-    const need = STRUCTURE_RULES.railClearance;
-    mustBridge.push({ s: c.s, g: roadG[k], need, what: ROAD_CLASSES[c.cls].label, below: CROSSING_RULES.underDepth });
+    // Only the actual endpoint tie-in is exempt (1 m coordinate tolerance), not the 150 m billing
+    // margin or the other carriageway. B lies on D11; A gets the same rule if placed on a motorway.
+    if (c.s <= CROSSING_RULES.endpointTolerance || al.length - c.s <= CROSSING_RULES.endpointTolerance) return;
+    const need = STRUCTURE_RULES.railClearance, g = terrain.heightAt(c.x, c.y);
+    mustBridge.push({ s: c.s, g, need, what: ROAD_CLASSES[c.cls].label, below: CROSSING_RULES.underDepth });
     const i0 = Math.min(n - 1, Math.floor(c.s / ds));
     for (const j of c.s > st.s[i0] && i0 + 1 < n ? [i0, i0 + 1] : [i0]) {
-      const req = need + roadG[k] - ground[j];
+      const req = need + g - ground[j];
       if (!(clearance[j] >= req)) clearance[j] = req;
     }
   });
+  // Raster crossings were collected before vector roads; elevations() requires station order.
+  mustBridge.sort((a, b) => a.s - b.s);
   lap('stations');
 
   // --- per-metre costs for the auto-profile: rural rates on flat ground, incl. the surcharge ---
@@ -453,14 +460,16 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const noiseD = noiseDistance(scenario.traffic, d.speed);
   if (bld) {
     const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
+    const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel) { shieldL[i] = shieldR[i] = 1; continue; }
       if (kind[i] !== KIND.earth) continue;
-      if (sec.zDayL[i] - grade[i] >= NOISE.cutShield) shieldL[i] = 1;
-      if (sec.zDayR[i] - grade[i] >= NOISE.cutShield) shieldR[i] = 1;
+      // Positive cut edges only; no terrain shield under a bridge or at an embankment toe.
+      if (sec.zDayL[i] > grade[i]) edges.L[i] = { offset: sec.dayL[i], height: sec.zDayL[i] - grade[i] };
+      if (sec.zDayR[i] > grade[i]) edges.R[i] = { offset: sec.dayR[i], height: sec.zDayR[i] - grade[i] };
     }
     const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseD, gone,
-      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, noiseBarrier(cat.crownWidth));
+      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, noiseBarrier(cat.crownWidth), edges);
     boughtOut = ex.boughtOut;
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;
     const fl = wallFlags(ds, ex.L, shieldL), fr = wallFlags(ds, ex.R, shieldR);

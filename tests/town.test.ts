@@ -1,17 +1,17 @@
 // Built-up areas: crossings of existing roads, buildings, noise walls, per-station cost attribution.
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
-import { BuildingIndex, type BuildingInfo } from '../src/core/buildings';
+import { BuildingIndex, noiseBuyoutCost, type BuildingInfo } from '../src/core/buildings';
 import { PART_KEYS } from '../src/core/cost';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
-import { BUILDING_KIND, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
+import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { barrierAttenuation, dwellingExposure, noiseBarrier, noiseDistance, requiredWall, wallFlags } from '../src/core/noise';
 import { rangeSummary } from '../src/core/range';
 import { mergeCrossings, RoadNet } from '../src/core/roadnet';
 import { KIND } from '../src/core/structures';
-import { BUILTUP_BIT, syntheticTerrain } from '../src/core/terrain';
+import { BUILTUP_BIT, RIVER_CROSSING_BIT, syntheticTerrain } from '../src/core/terrain';
 import { buildProfile, elevations, type VPI } from '../src/core/vertical';
 
 describe('road network crossings', () => {
@@ -85,12 +85,36 @@ describe('noise rule', () => {
     for (const width of [7.5, 9.5, 11.5]) {
       const barrier = noiseBarrier(width), distance = 30, receiverHeight = 10.5;
       const loss = barrierAttenuation(distance, receiverHeight, 1, barrier);
-      const contour = (excess: number) => distance * 10 ** (excess / NOISE.distanceDb);
+      const slant = Math.hypot(distance - NOISE.sourceOffset, receiverHeight - NOISE.sourceHeight);
+      const contour = (excess: number) => slant * 10 ** (excess / NOISE.distanceDb);
       // Just below the 4 m wall's capacity it suffices; just above it requires the 5 m wall.
       // Exercises the inverted hot-path formula against the forward calculation, not fixed prices.
       expect(requiredWall(distance, contour(loss - 0.01), receiverHeight, barrier)).toBe(4);
       expect(requiredWall(distance, contour(loss + 0.01), receiverHeight, barrier)).toBe(5);
     }
+  });
+
+  it('uses slant distance for excess beside a viaduct, including the unexposed limit', () => {
+    const d = 12, height = -18.5;
+    const slant = Math.hypot(d - NOISE.sourceOffset, height - NOISE.sourceHeight);
+    const excess = NOISE.distanceDb * Math.log10(100 / slant);
+    expect(excess).toBeCloseTo(10, 0);
+    expect(barrierAttenuation(d, height, 0)).toBeGreaterThan(excess);
+    expect(requiredWall(d, 100, height)).toBe(3); // horizontal distance alone forced a buyout
+    expect(requiredWall(d, slant - 0.01, height)).toBe(0);
+    expect(requiredWall(d, slant + 0.01, height)).toBe(3);
+  });
+
+  it('uses earth-edge diffraction as an alternative to a wall, never an additive credit', () => {
+    const barrier = noiseBarrier(9.5);
+    // Earth and the tallest wall have identical tops: counting both would falsely make this feasible.
+    const edge = { offset: barrier.wallOffset, height: 5 };
+    const loss = barrierAttenuation(30, 10.5, 2, barrier);
+    const slant = Math.hypot(30 - NOISE.sourceOffset, 10.5 - NOISE.sourceHeight);
+    expect(requiredWall(30, slant * 10 ** ((loss + 0.1) / NOISE.distanceDb), 10.5, barrier, edge)).toBe(Infinity);
+    expect(requiredWall(30, slant * 10 ** ((loss - 0.1) / NOISE.distanceDb), 10.5, barrier, edge)).toBe(0);
+    expect(requiredWall(25, 100, 14.5, barrier, { offset: 11.75, height: 4 })).toBe(Infinity);
+    expect(requiredWall(40, 100, 5.5, barrier, { offset: 11.75, height: 4 })).toBe(0);
   });
 
   it('uses the worst height over a connected stretch, without bridging a shielded gap', () => {
@@ -105,12 +129,12 @@ describe('noise rule', () => {
       [1, 1, 1], [0, 0, 0], b, 100, gone, [0, 0, 0], () => 0, shield, shield);
     for (const x of [[0, 100, 200], [200, 100, 0]]) {
       const r = run(x);
-      expect(r.boughtOut).toEqual([{ j: 0, i: 1, cost: b.cost[0] }]);
+      expect(r.boughtOut).toEqual([{ j: 0, i: 1, cost: noiseBuyoutCost(b.cost[0], b.area[0]) }]);
       expect([...r.L]).toEqual([0, 0, 0]);
     }
     expect(run([0, 100, 200], [1, 1, 1]).boughtOut).toEqual([]);
     expect(run([0, 100, 200], undefined, [1]).boughtOut).toEqual([]);
-    // The closest station is screened by a cut/tunnel; more distant unscreened sources need walls.
+    // The closest station is in a tunnel; more distant unscreened sources need walls.
     const cut = run([20, 100, 180], [0, 1, 0]);
     expect(cut.boughtOut).toEqual([]);
     expect([...cut.L]).toEqual([3, 0, 3]);
@@ -127,6 +151,17 @@ describe('noise rule', () => {
 });
 
 describe('building footprints', () => {
+  it('adds plot land only to noise acquisitions, with a minimum and footprint-based scaling', () => {
+    const landRate = URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier;
+    const b = new BuildingIndex([[0, 0, 8], [100, 0, 15]], [
+      [100, 1, BUILDING_KIND.house, 0, 0, 5, 5, 0],
+      [400, 1, BUILDING_KIND.house, 100, 0, 10, 10, 0],
+    ]);
+    expect(b.cost[1]).toBe(4 * b.cost[0]); // building-only floor value, no plot minimum
+    expect(noiseBuyoutCost(b.cost[0], b.area[0]) - b.cost[0]).toBe(BUILDING_RULES.buyoutPlotMinimum * landRate);
+    expect(noiseBuyoutCost(b.cost[1], b.area[1]) - b.cost[1]).toBe(400 * BUILDING_RULES.buyoutPlotMultiple * landRate);
+  });
+
   it('uses the oriented rectangle, not the bounding circle', () => {
     // a 40 × 6 m hall at 45°, centred 20 m left of an eastbound road strip that is 5 m wide each side
     const info: BuildingInfo = [240, 0, BUILDING_KIND.industrial, 0, 20, 20, 3, 45];
@@ -202,7 +237,8 @@ describe('evaluate on a synthetic town', () => {
   it('bills infeasible dwellings separately, once each and never as footprint demolitions', () => {
     expect(r.boughtOut.map((b) => b.j)).toEqual([5]);
     expect(r.quantities.noiseBuyouts).toBe(1);
-    expect(r.cost.landDetail.noiseBuyouts).toBeCloseTo(buildings.cost[5], 3);
+    expect(r.cost.landDetail.noiseBuyouts).toBeCloseTo(noiseBuyoutCost(buildings.cost[5], buildings.area[5]), 3);
+    expect(r.cost.landDetail.noiseBuyouts - buildings.cost[5]).toBeGreaterThan(0);
     expect(r.demolished.some(b => b.j === 6)).toBe(false); // distant block retained, protected by wall
     expect(r.parts.noiseBuyouts.reduce((a, b) => a + b, 0)).toBeCloseTo(r.cost.landDetail.noiseBuyouts, 3);
   });
@@ -275,6 +311,26 @@ describe('evaluate on a synthetic town', () => {
   });
 });
 
+describe('cut-edge receivers', () => {
+  it('does not switch off upper-floor exposure at a 4 m cut, but can protect low receivers', () => {
+    for (const depth of [3.99, 4]) {
+      const terrain = syntheticTerrain(500, 100, 5, x => 400 + depth * Math.max(0, Math.min(1, (300 - Math.abs(x - 1200)) / 100)));
+      const info: BuildingInfo[] = [
+        [100, 4, BUILDING_KIND.apartments, 1200, 282, 5, 5, 0],
+        [100, 1, BUILDING_KIND.house, 1200, 300, 5, 5, 0],
+      ];
+      const buildings = new BuildingIndex(info.map(f => [f[3], f[4], 8]), info);
+      const r = evaluate({ terrain, buildings, scenario: D11_SCENARIO, a: { x: 200, y: 250 }, b: { x: 2200, y: 250 } }, {
+        category: 'S9.5', speed: 90, pis: [], profileMode: 'manual',
+        vpis: [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }],
+      });
+      expect(r.demolished).toEqual([]);
+      expect(r.boughtOut.map(b => b.j)).toEqual([0]);
+      expect(r.cell.wall[100]).toBe(0); // earth edge suffices for the retained low house
+    }
+  });
+});
+
 describe('structures and the play-area boundary', () => {
   it('a bridge is not out of bounds because the embankment it replaces would have been', () => {
     // 200 m wide strip of terrain with a 50 m deep valley across it; the route runs down the middle
@@ -304,6 +360,55 @@ describe('motorway crossings', () => {
     const r = evaluate(mctx, manual(400));
     expect(r.crossings.map((c) => [c.type, c.cost])).toEqual([['atGrade', 0]]);
     expect(crossingViolations(r).length).toBe(1);
+    expect(r.valid).toBe(false);
+  });
+
+  it('checks raw crossings inside the billing end margin, exempting only the actual endpoint', () => {
+    for (const cls of ['motorway', 'trunk']) for (const x of [300, 2100]) {
+      const roads = new RoadNet({ cls: [cls], ways: [[0, x, 0, x, 500]] });
+      const ctx = { ...mctx, roads };
+      const r = evaluate(ctx, manual(400));
+      expect(r.crossings).toEqual([]); // billing tie-in margin is deliberately separate
+      expect(crossingViolations(r)).toHaveLength(1);
+      expect(r.valid).toBe(false);
+      expect(evaluate(ctx, { ...manual(400), profileMode: 'auto' }).valid).toBe(false); // too close to climb 7.5 m
+    }
+    const roads = new RoadNet({ cls: ['motorway'], ways: [[0, 200, 0, 200, 500], [0, 2200, 0, 2200, 500]] });
+    expect(crossingViolations(evaluate({ ...mctx, roads }, manual(400)))).toEqual([]);
+    // Joining B's carriageway never exempts the other carriageway 20 m before it.
+    const dual = new RoadNet({ cls: ['motorway'], ways: [[0, 2180, 0, 2180, 500], [0, 2200, 0, 2200, 500]] });
+    expect(crossingViolations(evaluate({ ...mctx, roads: dual }, manual(400)))).toHaveLength(1);
+  });
+
+  it('checks and auto-clears both carriageways even when only one is billed', () => {
+    const terrain = syntheticTerrain(500, 100, 5, x => 400 + 4 * Math.max(0, 1 - Math.abs(x - 1220) / 10));
+    for (const cls of ['motorway', 'trunk']) {
+      const roads = new RoadNet({ cls: [cls], ways: [[0, 1200, 0, 1200, 500], [0, 1220, 0, 1220, 500]] });
+      const ctx = { ...mctx, terrain, roads };
+      const r = evaluate(ctx, manual(410));
+      expect(r.crossings).toHaveLength(1);
+      expect(r.crossings[0].h).toBeGreaterThan(STRUCTURE_RULES.railClearance);
+      expect(crossingViolations(r).map(v => Math.round(v.s0))).toEqual([1020]);
+      expect(r.valid).toBe(false);
+      const auto = evaluate(ctx, { ...manual(400), profileMode: 'auto' });
+      expect(auto.valid).toBe(true);
+      for (const s of [1000, 1020]) {
+        const z = elevations(buildProfile(auto.vpis, 6000, 3400), [s])[0];
+        expect(z - terrain.heightAt(s + 200, 250)).toBeGreaterThanOrEqual(STRUCTURE_RULES.railClearance - 1e-6);
+      }
+    }
+  });
+
+  it('checks motorways at their own profile station even when a river is crossed later', () => {
+    const terrain = syntheticTerrain(500, 100, 5, () => 400);
+    for (let row = 0; row < terrain.ny; row++) terrain.lc[row * terrain.nx + 360] |= RIVER_CROSSING_BIT;
+    const r = evaluate({ ...mctx, terrain }, { ...manual(400), vpis: [
+      { s: 0, z: 400, r: null }, { s: 1000, z: 400, r: null },
+      { s: 1500, z: 420, r: null }, { s: 2000, z: 400, r: null },
+    ] });
+    // The river at s = 1600 is cleared; extrapolating its descending segment back to the motorway
+    // would falsely give 440 m there. Its actual grade is only about 401 m.
+    expect(crossingViolations(r).map(v => Math.round(v.s0))).toEqual([1000]);
     expect(r.valid).toBe(false);
   });
 

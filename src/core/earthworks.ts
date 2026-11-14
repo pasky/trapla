@@ -44,7 +44,8 @@ export interface MassHaul {
 /**
  * Mass-haul with one balance line c: material crossing station s is M(s) - c, so the haul moment is
  * ∫|M - c| ds; c also decides how much leaves / enters at the ends (surplus to a tip, borrow).
- * c is chosen to minimise haul + surplus + borrow cost (convex in c, ternary search).
+ * c minimises the bill's pooled free-haul-adjusted haul + surplus + net borrow cost
+ * (convex in c, ternary search). Fill placing is a constant minus the credit on bought fill.
  * `cut` is the usable cut (the mass ordinate must have been built with the same share).
  */
 export function massHaul(ds: number, mass: Float64Array, cut: number, fill: number): MassHaul {
@@ -62,7 +63,9 @@ export function massHaul(ds: number, mass: Float64Array, cut: number, fill: numb
     }
     const exported = Math.max(c, 0) + Math.max(mEnd - c, 0);
     const imported = Math.max(-c, 0) + Math.max(c - mEnd, 0);
-    return { mom, exported, imported, cost: mom * haulC + exported * surplusC + imported * borrowC };
+    const reused = Math.max(0, cut - exported);
+    const paidMoment = Math.max(0, mom - reused * PRICES.freeHaul);
+    return { mom, exported, imported, cost: paidMoment * haulC + exported * surplusC + imported * borrowC };
   };
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < n; i++) { if (mass[i] < lo) lo = mass[i]; if (mass[i] > hi) hi = mass[i]; }
@@ -71,7 +74,9 @@ export function massHaul(ds: number, mass: Float64Array, cut: number, fill: numb
     const a = lo + (hi - lo) / 3, b = hi - (hi - lo) / 3;
     if (evalC(a).cost <= evalC(b).cost) hi = b; else lo = a;
   }
-  const c = 0.5 * (lo + hi);
+  let c = 0.5 * (lo + hi);
+  // Include the exact no-extra-disposal kinks; avoid a fractional m³ of unnecessary tip + borrow.
+  for (const candidate of [0, mEnd]) if (evalC(candidate).cost < evalC(c).cost) c = candidate;
   const r = evalC(c);
   const surplus = Math.min(cut, r.exported);
   const deficit = Math.min(fill, r.imported);

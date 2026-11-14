@@ -1,9 +1,10 @@
-// Unit prices, 2026 price level, CZK excl. VAT. Sources: research/00-feasibility-map.md §3 and
+// Unit prices, CZK excl. VAT. SPK CN / OTSKP norms are 2026; research market/contract examples
+// remain at their original dates, NOT escalated to 2026. Sources: research/00-feasibility-map.md §3 and
 // research/data/spk-cn-2026-oceneni.csv; land: research/07-property-land.md; earthworks:
 // research/09-noise-earthworks-urban.md §3. PROVISIONAL marks a placeholder or game heuristic.
 
 /** Bump whenever prices or cost rules change: scores saved under an older model are not comparable. */
-export const COST_MODEL_VERSION = 5;
+export const COST_MODEL_VERSION = 6;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
@@ -77,11 +78,12 @@ export const NORM_EARTHWORK_ALLOWANCE = {
  * the price set by an expert appraisal, which §3b(2) sets at the usual (market) price. */
 export const LAND = {
   /** 8 × 40 CZK/m²: Czech farmland trades mostly at 30–55 CZK/m² (2024–25; low confidence locally).
-   * Forest land is priced the same: the appraisal covers the land with its components incl. the
-   * standing timber (forest land alone 8–50 CZK/m²). */
+   * Forest at the same 320 incl. standing timber is a PROVISIONAL research-informed estimate,
+   * NOT a sourced combined land+timber valuation (forest land alone 8–50 CZK/m²). */
   perM2: 8 * 40,
-  /** extra per m² of forest footprint: PUPFL removal levy ≈ 20 (0–50, the statutory formula is
-   * site-specific) + clearing ≈ 30 (15–40); both low confidence (research/07 §4) */
+  /** PROVISIONAL research-informed estimate per m² forest footprint: PUPFL removal levy ≈ 20
+   * (0–50, statutory formula is site-specific) + clearing ≈ 30 (15–40); neither is a sourced
+   * local rate (research/07 §4). */
   forestExtraPerM2: 50,
 };
 
