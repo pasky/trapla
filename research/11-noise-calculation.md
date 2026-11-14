@@ -223,7 +223,7 @@ hard-ground endpoint; the former mixed default is **not within** the study's unc
 difference is reproduced within ~0.3 dB. More exact agreement needs the original link/terrain model,
 not a guessed extra façade correction or doubled traffic.
 
-### II/360 Jaroměřice: independent bypass-only comparator, not class I
+### II/360 Jaroměřice: second calibration study, bypass-only comparator, not class I
 
 [CENIA VYS922 project](https://portal.cenia.cz/eiasea/detail/EIA_VYS922?lang=cs),
 [acoustic study, 5 December 2019](https://portal.cenia.cz/eiasea/download/RUlBX1ZZUzkyMl9wcmlsb2hhRG9rdW1lbnRhY2VET0NfNjI5NTI5NTIzNzAxNzg2MTIwOC5wZGY/VYS922_prilohaDokumentaceDOC_6.pdf).
