@@ -343,11 +343,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
           + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2 + waterPrice.cost) * sur + wd * LAND.perM2;
       }
       const waterBridge = waterPrice.bridge;
-      if (waterBridge) earth = bridgeRural + 1e7; // unavailable earthwork, not a free zero-price culvert
+      if (waterBridge) earth = bridgeRural(h) + 1e7; // unavailable earthwork, not a free zero-price culvert
       if (waterPrice.tunnel) earth = tunnelPerM + 1e7;
       if (kind === KIND.earth) return earth;
       if (waterPrice.tunnel) return tunnelPerM;
-      if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return bridgeRural;
+      if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return bridgeRural(h);
       let best = earth;
       if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural(h));
       if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
