@@ -128,20 +128,19 @@ What exists (details and commands in `README.md`):
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
-- Calibration runs with the town cost model of 2026-11-14 (`scripts/optimize.ts`, crude local search, 800–1200
-  iterations, PIs on whole metres; numbers in the table of the next section): 90 km/h around the town in the
-  official corridor → **3.09 bn CZK**, 21.1 km, 14.06 min; 80 km/h on the direct line, threaded through the east
-  of Trutnov → 3.39 bn, 18.85 km, 14.14 min; 90 km/h on the direct line → 3.63 bn, 18.86 km. So three distinct
-  strategies lie within 10–18 % of each other, the detour is the cheapest, and the limit still binds (the best
-  bypass uses 14.06 of 14.5 min; a wider detour is not allowed). X = 14.5 min is kept. The slower, smaller-radius
-  road is only reachable on a very direct line; its tighter curves and shorter noise distance (82 m) make it
-  cheaper than 90 km/h on the same line, but not cheaper than going around. The local search is weak; re-check
-  once players find better designs.
+- Cost model 4 calibration (`scripts/optimize.ts`, 2,500 seeded + 3,500 fresh trials per strategy, whole-metre
+  PIs): official-corridor bypass at 90 km/h → **3.101 bn CZK**, 21.03 km, 14.02 min; direct eastern fringe at
+  80 → **3.503 bn**, 19.08 km, 14.31 min; direct fringe at 90 → **3.647 bn**, 19.59 km, 13.06 min. The slower
+  direct route uses 98.7% of the time allowance; 70 remains impossible. Keep X = 14.5 min: it allows bypass vs
+  short/fringe strategies without making the slower road dominant. The 13% / 18% whole-route premiums are
+  explained by length/topography and mostly-open fringe routing, not a cheap dense-city corridor; the actual
+  centre route is 10.012 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
+  are local-search results, not proven minima; re-check as players find better designs.
 
 ### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
 
-First cost model (2026-11-13): 20.81 km, 13.87 min, 3.19 bn CZK = 153 M CZK/km. With the town cost model
-(next section) the same design costs **3.84 bn CZK = 185 M CZK/km**; details there.
+Cost model 4: 20.81 km, 13.87 min, **4.301 bn CZK = 207 M CZK/km**; includes eight noise buyouts
+(407 M). This reference is not the cheapest bypass; the reoptimised comparison is below.
 
 ### PROVISIONAL / placeholder values (all in `src/core/data/`)
 
@@ -192,13 +191,13 @@ First cost model (2026-11-13): 20.81 km, 13.87 min, 3.19 bn CZK = 153 M CZK/km. 
 
 ## Town cost model and cost breakdown (2026-11-14)
 
-Owner feedback on the first prototype: the start was misleading (an invalid straight line at 3.28 bn looked
-cheap), a stretch's cost could not be explained, and the town was far too cheap (a straight line through
-Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
+Cost model 4: research-based prices, per-cell accounting, and explicit noise feasibility / dwelling buyouts.
+The model distinguishes a dense urban cut-through from a shorter route skirting the eastern settlement edge;
+whole-route ratios alone do not measure the cost of building through town.
 
 ### Start and validity
 
-- The game starts from the straight line with the **auto profile** (valid; 6.83 bn with the model below).
+- The game starts from the straight line with the **auto profile**.
 - A saved "best valid design" carries the cost-model version (`COST_MODEL_VERSION`); bests from an older model
   are dropped, since their scores are not comparable.
 - The total of a design that is NOT VALID is struck through, greyed and labelled "invalid — fix the violations;
@@ -209,11 +208,12 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
 - The bill is built **per station cell** (cell i = the 10 m nearest to station i, half that at the ends), one
   array per component (`Result.parts`: road base, excavation, fill placing, haul, surplus haul, unsuitable haul,
   bought fill, topsoil, bridges, tunnels, crossings, noise walls, other-objects surcharge, land, forest,
-  buildings). The totals are the sums of these arrays (`core/cost.ts` `costParts` → `sumParts`), tested.
+  footprint buildings, noise buyouts). The totals are the sums of these arrays (`core/cost.ts` `costParts` → `sumParts`), tested.
 - Global mass-balance items are spread over the cells that cause them: bought fill over the fill volumes,
   surplus and unsuitable haul over the cut volumes, haul along the route over all volume moved; the surcharge
   follows each cell's construction cost (at that cell's rural/urban rate). A building is billed to the station
-  nearest to it, a crossing to its station.
+  nearest to it, a crossing to its station. A noise buyout is billed once, at its worst unscreened receiver
+  station; it never also pays as a footprint demolition or generates a wall after acquisition.
 - UI: an alignment band (tangents / curves with radius) and a stacked **cost-per-metre strip** under the
   longitudinal profile on the same horizontal scale (square-root height scale so a demolished block does not
   flatten everything else; never averaged over less than 50 m). **Hover** the profile → tooltip with the key
@@ -221,9 +221,9 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
   the strip (or Shift+drag anywhere), or **click** a tangent/curve in the band → the HUD breakdown switches to
   that range (length, cost, cost per km, share of the route, quantities) with a "Whole route" reset (also Esc);
   the range is highlighted on the map. Markers in the profile: crossed roads (at the crossed road's level),
-  noise walls, demolished buildings.
+  variable-height noise walls, red footprint-demolition squares and magenta noise-buyout diamonds.
 - State for the renderer: `state.ts` `RangeSelection` (selected station range) and `Result.walls` /
-  `Result.crossings` / `Result.demolished`; drawn by `src/render/extras.ts`, which only uses `View.world`,
+  `Result.crossings` / `Result.demolished` / `Result.boughtOut`; walls drawn by `src/render/extras.ts`, which only uses `View.world`,
   `View.local()` and `View.requestRender()`.
 
 ### Town cost model (all numbers in `src/core/data/urban.ts` and `prices.ts`)
@@ -259,13 +259,25 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
   the original ground: class I to 3 m, class II to 8 m, class III deeper (OTSKP 12273 / 12283 / 12293: 183 /
   391 / 653 CZK/m³). The norm allowance stays valued at the 75/20/5 mix (248 CZK/m³). The bridge/tunnel-vs-
   earthwork choice and the auto-profile use the same class prices.
-- **Noise walls**: screening rule — a dwelling (house / apartments; not sheds, garages, industrial or civic
-  buildings; not demolished ones) within D of the centreline exposes the stretch of road within D of it; exposed
-  stretches get a 3 m wall on that side, extended by 50 m both ways, except in tunnels and where the cut edge on
-  that side is ≥ 4 m above the road. D = 100 m × (Q / 9,000)^(2/3) × (v / 90)^(5/3) (+3 dB per doubling of
-  traffic, ≈ 25·log v with speed, −4.5 dB per doubling of distance): 100 m at 90 km/h, 82 m at 80, 66 m at 70.
-  Czech limits for main roads (60 dB day / 50 dB night) are context only; this is not a noise calculation.
-  Wall stretches (station range + side) are in `Result.walls` and drawn on the map and in the profile.
+- **Noise feasibility — PROVISIONAL, not an acoustic study**: the chosen new-main-road limits are 60 dB day /
+  50 dB night (NV 272/2011). Their controlling unmitigated contour is represented by
+  D = 100 m × (Q / 9,000)^(2/3) × (v / 90)^(5/3): 100 m at 90 km/h, 82 m at 80, 66 m at 70.
+  At each nearby station, distance d is measured from the road axis to the **nearest oriented-rectangle
+  façade**, minus 2 m to the protected outdoor receiver (clamped to 1 m); excess E = 15·log₁₀(D/d) dB.
+  A 3 / 4 / 5 m wall removes 7 / 10 / 12 dB for low receivers. The highest occupied receiver is 1.5 m +
+  3 m × (storeys − 1) above the building's sampled ground; attenuation loses 2 dB per metre above the wall
+  top, down to zero. The top is relative to road grade, so bridge/embankment elevation matters. This simple
+  loss-of-screening rule is invented, not diffraction physics; tagged levels or kind defaults are used for
+  houses as well as blocks. Contiguous walls take the worst protected dwelling's required height, with 50 m
+  end margins; billed surface is length × height. Tunnels and cuts ≥ 4 m on that side still screen; terrain
+  under a bridge never screens it. Only houses/apartments are receivers, not garages, sheds, industry or civic.
+- **Noise buyouts**: if any unscreened station cannot protect a dwelling with a 5 m wall, acquire the whole
+  building at 1.5× its usual value **plus demolition**, using the same kind-specific valuation as footprint
+  removals. Demolition prevents continued residential exposure; retaining it for another use is not modelled.
+  `Result.boughtOut`, `parts.noiseBuyouts` and the HUD/profile distinguish these from footprint demolitions.
+  Windows are not a substitute: they address indoor noise, not the protected outdoor façade receiver.
+  No blanket 50 m protection-zone purchase rule is added (research/07); the noise rule already removes close
+  homes (about 18 m façade-to-axis for a low receiver at 90 km/h). Parcel severance remains unmodelled.
 - **Mass balance** (found while re-running the comparisons): with depth-dependent excavation the old fixed
   decision prices left the reference design buying 1.15 M m³ of fill (+0.9 bn). The bill is very sensitive to
   how the auto-profile values cut against fill (± 5 % for ± 15 % of that value), so the auto-profile now
@@ -275,7 +287,7 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
   the real structure choice — is within 1.5 m³ per metre of route. Typical result: λ ≈ 165–215 CZK/m³, bought
   fill or surplus below 0.2 M m³.
 
-### Values introduced here
+### Values and PROVISIONAL assumptions
 
 Sourced since cost model 3 (research/07–09, confidence and ranges there); everything else PROVISIONAL / UNVERIFIED.
 Act 416/2009 §3b: the 8× (non-building land) and 1.5× (building land, buildings) multiples apply to the price set
@@ -300,59 +312,80 @@ price cannot be determined (research/07 §1).
 | Crossed-road widths for overbridges | 27.5 / 11.5 / 9.5 / 7.5 / 6.5 / 4 m by class | priced by the SPK CN bridge row of that width |
 | Excavation class depth bands | I to 3 m, II to 8 m, III below | gameplay heuristic, not geology: OTSKP classes are by excavability (research/09 §3) |
 | Noise distance and scaling | 100 m at 9,000 veh/day and 90 km/h; exponents 2/3 and 5/3 | UNVERIFIED screening heuristic (research/09 §2) |
-| Noise wall | 3 m high, 10,000 CZK/m² all-in; 50 m margins; cut ≥ 4 m screens | price: research/09 §1 (range 8–14k); OTSKP 34712 panels alone 3,265 |
+| Noise wall | 3 / 4 / 5 m, 10,000 CZK/m²; 50 m margins; cut ≥ 4 m screens | price: research/09 §1 (range 8–14k); height/length/screening choices PROVISIONAL |
+| Excess and attenuation | 15·log₁₀(D/d); 7 / 10 / 12 dB for 3 / 4 / 5 m walls | PROVISIONAL feasibility surrogate, not legal compliance |
+| Upper-floor receiver | 1.5 + 3 × (levels − 1) m; −2 dB benefit per metre above wall top | PROVISIONAL; local building ground and road grade included |
+| Noise-infeasible dwelling | 1.5× usual value + kind-specific demolition; billed separately | acquisition decision PROVISIONAL; no window-only outdoor compliance |
 | Material value for decisions | search in −196 … 536 CZK/m³ from 200; tolerance 1.5 m³/m | bounds = haul to a tip / bought fill less placing |
 
 ### Numbers with the new model (S 9.5, auto profile, `npx tsx scripts/bench.ts <design.json>`)
 
-These tables are cost model 2; the research-based prices of model 3 (see the table above) move the four
-design files by +0.1 % to +4.7 % (bypass 3,094, reference 3,869, direct 80 km/h 3,416, town centre 8,662 M);
-recalibration pending.
+Cost model **4**, research prices rebased from main. All five saved designs below are valid; no tunnel.
+The straight auto-profile start is 7,212 M CZK (18.59 km). Per-cell parts sum to every total.
 
-Before → after for the two designs of the first prototype: straight line 5.50 → **6.83 bn**, reference bypass
-3.19 → **3.84 bn**.
-
-| M CZK | Straight line (start) | Through the town centre | Reference bypass | Optimiser, bypass 90 km/h | Optimiser, direct 80 km/h |
+| M CZK | Reference bypass | Optimised bypass 90 | Direct fringe 80 | Direct fringe 90 | Town centre 90 |
 |---|---:|---:|---:|---:|---:|
-| design file (`scripts/`) | — | `town-centre-design.json` | `demo-design.json` | `best-design.json` | `direct-80-design.json` |
-| length km / min | 18.59 / 12.39 | 18.94 / 12.62 | 20.81 / 13.87 | 21.09 / 14.06 | 18.85 / 14.14 |
-| **total** | **6,833** | **8,274** | **3,841** | **3,090** | **3,393** |
-| per km | 368 | 437 | 185 | 147 | 180 |
-| road base | 694 | 722 | 864 | 866 | 753 |
-| earthworks | 1,162 | 1,587 | 1,055 | 757 | 570 |
-| bridges | 1,467 | 1,160 | 278 | 290 | 690 |
-| road crossings | 62 | 76 | 112 | 65 | 72 |
-| noise walls | 185 | 174 | 91 | 55 | 124 |
-| other objects | 1,161 | 1,201 | 699 | 602 | 689 |
-| land / forest | 401 / 57 | 378 / 76 | 321 / 60 | 287 / 40 | 289 / 43 |
-| buildings (count) | 1,644 (77) | 2,900 (116) | 362 (18) | 129 (20) | 162 (32) |
-| in built-up area km | 3.01 | 2.17 | 1.21 | 0.49 | 1.78 |
-| bridges | 16 / 2,529 m | 11 / 2,000 m | 6 / 480 m | 7 / 500 m | 10 / 1,190 m |
-| noise walls m | 7,688 | 7,269 | 3,778 | 2,309 | 5,169 |
-| crossings (paid) | 40 (19) | 40 (24) | 31 (28) | 29 (26) | 32 (23) |
-| cut / fill k m³ | 2,087 / 1,825 | 2,727 / 2,440 | 2,058 / 1,781 | 1,644 / 1,396 | 1,293 / 1,099 |
-| excavation class I / II / III % | 33 / 33 / 33 | 31 / 33 / 37 | 39 / 34 / 26 | 47 / 36 / 16 | 51 / 37 / 12 |
+| design file (`scripts/`) | `demo-design.json` | `best-design.json` | `direct-80-design.json` | `direct-90-design.json` | `town-centre-design.json` |
+| length km / min | 20.81 / 13.87 | 21.03 / 14.02 | 19.08 / 14.31 | 19.59 / 13.06 | 18.94 / 12.62 |
+| **total** | **4,301** | **3,101** | **3,503** | **3,647** | **10,012** |
+| per km | 207 | 147 | 184 | 186 | 529 |
+| road base | 864 | 862 | 769 | 782 | 722 |
+| earthworks | 1,043 | 700 | 580 | 816 | 1,575 |
+| bridges | 278 | 319 | 609 | 614 | 1,160 |
+| road crossings | 190 | 91 | 124 | 92 | 76 |
+| noise walls | 138 | 100 | 215 | 135 | 323 |
+| other objects | 695 | 591 | 663 | 731 | 1,197 |
+| land / forest | 270 / 12 | 229 / 8 | 247 / 9 | 235 / 13 | 324 / 15 |
+| footprint buildings (count) | 405 (18) | 167 (11) | 260 (35) | 210 (27) | 3,375 (116) |
+| noise buyouts (count) | 407 (8) | 35 (1) | 27 (3) | 18 (2) | 1,245 (59) |
+| in built-up area km | 1.21 | 0.44 | 1.69 | 1.00 | 2.17 |
+| bridges: count / m | 6 / 480 | 7 / 550 | 9 / 1,050 | 9 / 1,060 | 11 / 2,000 |
+| noise walls m / m² | 3,359 / 13,794 | 2,319 / 9,997 | 5,058 / 21,521 | 3,708 / 13,505 | 7,009 / 32,345 |
+| crossings (paid) | 31 (28) | 28 (24) | 31 (24) | 35 (23) | 40 (24) |
+| cut / fill k m³ | 2,079 / 1,763 | 1,542 / 1,310 | 1,302 / 1,106 | 1,705 / 1,452 | 2,727 / 2,440 |
 
-Reading:
-- The line through the actual centre costs **2.2× the reference bypass and 2.7× the best bypass found**. Its
-  kilometre through the centre (km 4–5) costs 2.73 bn (82 buildings, 2.13 bn of them; 520 m of bridges over
-  streets), against 70–250 M for a rural kilometre — about 20× per km. The whole-route ratio is not higher
-  because only 2.2 of its 19 km are built-up; the other 16.8 km cost what any route costs.
-- The straight start line does not hit the centre but the industrial zone and Poříčí east of it: its worst
-  kilometre (km 4.7–5.7) costs 1.5 bn, 0.96 bn of it 24 buildings — 13 industrial halls for 0.73 bn (the largest
-  208 M) and 8 houses for 0.23 bn.
-- A direct line can be threaded through the east of Trutnov along garage rows and yards for 3.4–3.6 bn (20–50
-  buildings but only 130–160 M of them): the model makes a careful urban route possible but ~10–18 % dearer
-  than going around. Such routes hinge on single buildings — moving a PI by a metre can add or remove a
-  200 M hall — which is the intended reason to look at the cost strip.
-- Sensible rural routes stay plausible: 147–185 M CZK/km (expected very roughly 60–200 for S 9.5).
-- Viaduct variant of the reference design (manual profile across the Úpa valley at Poříčí, 880 m): 4.49 bn.
+Optimisation: `scripts/optimize.ts <speed> <iterations> <start> <out> <seed>`. Existing-design starts used
+2,500 trials (bypass/direct80/direct90 seeds 20261114/15/16); fresh official-corridor / straight80 / straight90
+starts used 3,500 (seeds 20261117/18/19). Seeded results: 3,101 / 3,503 / 3,840 M; fresh: 3,146 / 3,550 /
+3,647 M. Saved the cheapest valid result of each strategy, not a claim of global optimality. Bypass searches
+start in the official corridor but are not constrained to it. Before reoptimisation the old best/direct80
+geometries cost 3,255 / 3,733 M; re-routing avoids costly noise failures rather than paying for them blindly.
+
+**Calibration and spatial check:** direct80 / bypass = **1.130×**, direct90 / bypass = **1.176×**, actual
+centre / bypass = **3.229×**. The 13% result warranted inspecting the mask, roads and oriented building
+rectangles (`scripts/town-audit.ts design.json map.svg`), not adding a multiplier to force a preferred ratio.
+The 80 km/h line skirts eastern Kryblice / garage rows at km 3–4, crosses the narrow developed valley at the
+western edge of Poříčí's industrial strip around km 5, and skirts / crosses Voletiny at km 6–7. It does not
+cut through central Trutnov's blocks. Some garage yards fall outside the OSM built-up mask, but the long
+unmasked gaps here are genuinely open slopes; treating every metre within 300 m as urban construction would
+substantially overstate the developed corridor.
+
+| Audit metric | Bypass 90 | Direct fringe 80 | Direct fringe 90 |
+|---|---:|---:|---:|
+| Within 300 m of any built-up cell: km / M CZK per km | 7.43 / 192 | 13.38 / 213 | 12.27 / 220 |
+| Outside 300 m: M CZK per km | 123 | 115 | 129 |
+| At grade, ≥ 50% built-up footprint: km / M CZK per km | 0.36 / 669 | 1.26 / 373 | 0.54 / 437 |
+| Same urban cells, before explicit property: M CZK per km | 195 | 180 | 211 |
+| Rural at grade, outside 300 m: M CZK per km | 120 | 109 | 125 |
+| Same rural cells, before explicit property: M CZK per km | 110 | 101 | 115 |
+
+The 300 m audit tests **all 5 m mask-cell centres**, so it includes open land near villages; it is not the
+same quantity as built-up footprint share. Property here means land, forest, footprint buildings and noise
+buyouts; walls and crossings remain in construction. The direct routes' urban at-grade construction rates
+are 1.78× / 1.83× their rural rates before property (research/09's broad 1.2–2.5× planning range), although
+terrain is not controlled. For direct80, extra bridges/walls/crossings cost +438 M versus the bypass, while
+road base/earthworks save 213 M on a route 1.95 km shorter; the bypass also has its own expensive valley
+crossing and acquisitions. These are plausible reasons for a modest whole-route difference, not evidence
+that building through dense fabric is cheap. The centre design's km 4–5 alone costs **3,777 M** with 82
+footprint removals and 34 additional noise buyouts. No urban multiplier or widened purchase buffer was tuned
+to hit a ratio; incomplete yard masks, plot/access severance and acoustic uncertainty remain limitations.
 
 ### Performance
 
-`evaluate()` on the reference design: ≈ 32 ms in Node (auto-profile ≈ 24 ms incl. the balance search, sections
-4.5 ms, town model 1.5 ms, cost arrays 0.3 ms); 28–38 ms on the other designs above. The coarse-to-fine DP made
-room for the balance search (the first prototype needed ≈ 36 ms, 28 ms of it one DP pass).
+`evaluate()` after calibration: 29–35 ms in Node across the five saved designs (five-run bench means).
+The entire town step (footprint buildings + crossings + noise) is about 1.5–2.2 ms, cost arrays 0.2–0.4 ms.
+Noise queries use the building spatial hash, deduplicate candidates per station, and cache actual exposed
+pairs; no station × building matrix. The auto-profile / mass-balance search still dominates.
 
 ### Known issues of this model
 
@@ -369,9 +402,12 @@ room for the balance search (the first prototype needed ≈ 36 ms, 28 ms of it o
   estimate takes the built-up share at the centreline only.
 - Buildings: only OSM ways (no multipolygon buildings); the rectangle over-covers L-shaped footprints; no
   severance cost for plots cut off from their access.
-- Noise: distance is measured to the building's centroid; no screening by terrain other than the road's own
-  cut, none by other buildings; a bridge gets the same wall as an embankment. SPK CN's urban surcharge already
-  contains 10 % "protective measures", so walls in built-up areas are partly counted twice.
+- Noise: D, insertion losses and the upper-floor penalty are provisional. No separate day/night traffic or
+  heavy-vehicle share, reflections, intervening buildings, or terrain screening beyond the road's own cut;
+  the ≥ 4 m cut exemption does not assess upper-floor diffraction. Receivers use 10 m source stations and
+  rectangle façades. Civic buildings with protected uses are not classified. Buyout is the only fallback;
+  covered roads, property reuse, parcel geometry and relocation are not optimised. SPK CN's urban surcharge
+  contains 10 % "protective measures", so explicit walls partly overlap that allowance.
 - Motorway / expressway crossings: the auto-profile always clears them with a bridge (it cannot choose the
   cut-and-overbridge alternative, only a manual profile can); the forced bridge is the 30 m minimum whatever
   the motorway's width and the crossing angle.

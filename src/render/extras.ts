@@ -63,7 +63,8 @@ export class RouteExtras {
       const sgn = w.side === 'L' ? 1 : -1;
       const top: number[] = [];
       // Include cell boundaries so even a single-cell wall has a visible, full-length face.
-      const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1];
+      const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1]
+        .filter((s, i, a) => i === 0 || s !== a[i - 1]);
       for (const [j, s] of stations.entries()) {
         const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[i]) / r.ds;
         const at = (a: Float64Array) => a[i] + t * (a[i + 1] - a[i]);

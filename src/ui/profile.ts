@@ -265,9 +265,11 @@ export class ProfilePanel {
     g.lineWidth = 2;
     for (const w of r.walls) {
       if (w.s1 < this.v0 || w.s0 > this.v1) continue;
+      g.strokeStyle = w.side === 'R' ? '#087575' : '#14a3a3';
       g.setLineDash(w.side === 'R' ? [3, 2] : []);
       g.beginPath();
-      const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1];
+      const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1]
+        .filter((s, i, a) => i === 0 || s !== a[i - 1]);
       for (const [k, s] of stations.entries()) {
         const a = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[a]) / r.ds;
         const z = r.grade[a] + t * (r.grade[a + 1] - r.grade[a]);

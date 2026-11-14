@@ -29,7 +29,8 @@ Other commands:
 | `npm run bench [design.json]` | recompute timing + realism numbers in Node (default: straight line and an official-line-like design) |
 | `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
 | `npm run smoke` | interaction smoke test with real mouse events (add/drag/delete PI, profile takeover, undo, persistence) |
-| `npx tsx scripts/optimize.ts <speed> <iters> [start.json]` | crude local search over PI positions (calibration aid) |
+| `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
+| `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
 | `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
 | `node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name",{"contours":true}],…]' [outdir]` | debug renders of arbitrary camera views (`GPU=1` as above) |
 
@@ -56,6 +57,11 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - The game starts from the straight line with the automatic grade line; the cost of a design that is not valid is
   struck through. Hover the profile for the cost split at a station; drag in the cost strip under it (or click a
   curve / tangent in the band above it) to get the breakdown of that stretch, <kbd>Esc</kbd> for the whole route.
+- Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
+  floor determine whether a 3–5 m wall can protect a dwelling. If not, the bill includes its acquisition and
+  demolition, separately from buildings in the road footprint. Teal walls show their actual height; red squares
+  mark footprint demolitions, magenta diamonds mark noise buyouts. The HUD and profile tooltip explain both;
+  assumptions and limitations are in `PLAN.md`.
 
 ## Architecture
 
