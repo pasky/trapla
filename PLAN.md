@@ -188,7 +188,9 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
 
 ### Start and validity
 
-- The game starts from the straight line with the **auto profile** (valid; 6.86 bn with the model below).
+- The game starts from the straight line with the **auto profile** (valid; 6.83 bn with the model below).
+- A saved "best valid design" carries the cost-model version (`COST_MODEL_VERSION`); bests from an older model
+  are dropped, since their scores are not comparable.
 - The total of a design that is NOT VALID is struck through, greyed and labelled "invalid — fix the violations;
   this cost does not count".
 
@@ -281,35 +283,35 @@ Trutnov demolished 81 buildings and still cost 5.5 bn). What changed:
 
 ### Numbers with the new model (S 9.5, auto profile, `npx tsx scripts/bench.ts <design.json>`)
 
-Before → after for the two designs of the first prototype: straight line 5.50 → **6.86 bn**, reference bypass
+Before → after for the two designs of the first prototype: straight line 5.50 → **6.83 bn**, reference bypass
 3.19 → **3.84 bn**.
 
 | M CZK | Straight line (start) | Through the town centre | Reference bypass | Optimiser, bypass 90 km/h | Optimiser, direct 80 km/h |
 |---|---:|---:|---:|---:|---:|
 | design file (`scripts/`) | — | `town-centre-design.json` | `demo-design.json` | `best-design.json` | `direct-80-design.json` |
 | length km / min | 18.59 / 12.39 | 18.94 / 12.62 | 20.81 / 13.87 | 21.09 / 14.06 | 18.85 / 14.14 |
-| **total** | **6,861** | **8,285** | **3,841** | **3,090** | **3,393** |
-| per km | 369 | 437 | 185 | 147 | 180 |
-| road base | 697 | 722 | 864 | 866 | 753 |
-| earthworks | 1,213 | 1,587 | 1,055 | 757 | 570 |
-| bridges | 1,426 | 1,160 | 278 | 290 | 690 |
+| **total** | **6,833** | **8,274** | **3,841** | **3,090** | **3,393** |
+| per km | 368 | 437 | 185 | 147 | 180 |
+| road base | 694 | 722 | 864 | 866 | 753 |
+| earthworks | 1,162 | 1,587 | 1,055 | 757 | 570 |
+| bridges | 1,467 | 1,160 | 278 | 290 | 690 |
 | road crossings | 62 | 76 | 112 | 65 | 72 |
 | noise walls | 185 | 174 | 91 | 55 | 124 |
-| other objects | 1,168 | 1,204 | 699 | 602 | 689 |
-| land / forest | 408 / 58 | 385 / 76 | 321 / 60 | 287 / 40 | 289 / 43 |
+| other objects | 1,161 | 1,201 | 699 | 602 | 689 |
+| land / forest | 401 / 57 | 378 / 76 | 321 / 60 | 287 / 40 | 289 / 43 |
 | buildings (count) | 1,644 (77) | 2,900 (116) | 362 (18) | 129 (20) | 162 (32) |
-| in built-up area km | 3.03 | 2.25 | 1.21 | 0.49 | 1.78 |
-| bridges | 17 / 2,459 m | 11 / 2,000 m | 6 / 480 m | 7 / 500 m | 10 / 1,190 m |
+| in built-up area km | 3.01 | 2.17 | 1.21 | 0.49 | 1.78 |
+| bridges | 16 / 2,529 m | 11 / 2,000 m | 6 / 480 m | 7 / 500 m | 10 / 1,190 m |
 | noise walls m | 7,688 | 7,269 | 3,778 | 2,309 | 5,169 |
 | crossings (paid) | 40 (19) | 40 (24) | 31 (28) | 29 (26) | 32 (23) |
-| cut / fill k m³ | 2,087 / 1,905 | 2,727 / 2,440 | 2,058 / 1,781 | 1,644 / 1,396 | 1,293 / 1,099 |
+| cut / fill k m³ | 2,087 / 1,825 | 2,727 / 2,440 | 2,058 / 1,781 | 1,644 / 1,396 | 1,293 / 1,099 |
 | excavation class I / II / III % | 33 / 33 / 33 | 31 / 33 / 37 | 39 / 34 / 26 | 47 / 36 / 16 | 51 / 37 / 12 |
 
 Reading:
 - The line through the actual centre costs **2.2× the reference bypass and 2.7× the best bypass found**. Its
-  kilometre through the centre (km 4–5) costs 2.74 bn (82 buildings, 2.13 bn of them; 520 m of bridges over
+  kilometre through the centre (km 4–5) costs 2.73 bn (82 buildings, 2.13 bn of them; 520 m of bridges over
   streets), against 70–250 M for a rural kilometre — about 20× per km. The whole-route ratio is not higher
-  because only 2.3 of its 19 km are built-up; the other 16.7 km cost what any route costs.
+  because only 2.2 of its 19 km are built-up; the other 16.8 km cost what any route costs.
 - The straight start line does not hit the centre but the industrial zone and Poříčí east of it: its worst
   kilometre (km 4.7–5.7) costs 1.5 bn, 0.96 bn of it 24 buildings — 13 industrial halls for 0.73 bn (the largest
   208 M) and 8 houses for 0.23 bn.
@@ -335,7 +337,10 @@ room for the balance search (the first prototype needed ≈ 36 ms, 28 ms of it o
   estimate and the final bill, and the chosen value can jump between neighbouring designs (≈ 1 % of the bill).
 - Crossings: an existing road running along the route and weaving across it pays a lump sum at every crossing
   further than 150 m apart; roads on existing bridges are ignored; no junction geometry, no connection
-  requirement (a grade-separated crossing is not connected).
+  requirement (a grade-separated crossing is not connected). Skew is ignored: the overbridge span is the cut
+  width square to the new road, and a forced bridge is the 30 m minimum whatever the crossing angle.
+- The structure choice compares each option at the rates of its own footprint, but the balance search's
+  estimate takes the built-up share at the centreline only.
 - Buildings: only OSM ways (no multipolygon buildings); the rectangle over-covers L-shaped footprints; no
   severance cost for plots cut off from their access.
 - Noise: distance is measured to the building's centroid; no screening by terrain other than the road's own

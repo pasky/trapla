@@ -182,17 +182,19 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const bridgeRural = (cat.bridgePerKm / 1000) * sur + cat.crownWidth * LAND.perM2;
   const { fillSlope, cutSlope } = DEFAULT_SLOPES;
   const b = cat.crownWidth;
-  const landFlat = LAND.perM2 + PRICES.topsoilDepth * PRICES.topsoil;
+  const topsoilPerM2 = PRICES.topsoilDepth * PRICES.topsoil;
   /** cost per metre against grade-minus-ground h for a given value of a m³ of fill material */
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
     return (h: number) => {
       let earth: number;
-      if (h >= 0) earth = (baseRural + (b * h + fillSlope * h * h) * dp.fillPerM3) * sur + (b + 2 * fillSlope * h) * landFlat;
-      else {
-        const c = -h;
+      if (h >= 0) {
+        const wd = b + 2 * fillSlope * h;
+        earth = (baseRural + (b * h + fillSlope * h * h) * dp.fillPerM3 + wd * topsoilPerM2) * sur + wd * LAND.perM2;
+      } else {
+        const c = -h, wd = b + 2 * cutSlope * c;
         const [a1, a2, a3] = flatCutBands(c, b, cutSlope);
-        earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III) * sur + (b + 2 * cutSlope * c) * landFlat;
+        earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       }
       let best = earth;
       if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural);
@@ -203,17 +205,22 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
   const tpl = { crownWidth: b, fillSlope, cutSlope };
   // Mass balance of a candidate grade line: the same steps as the bill below (cross-sections,
-  // structure choice incl. forced crossings, volumes), on every BALANCE_STRIDE-th station and with the
-  // built-up share taken at the centreline only.
-  const sub = Math.floor((n - 1) / BALANCE_STRIDE) + 1, subDs = ds * BALANCE_STRIDE;
+  // structure choice incl. forced crossings, volumes), on every BALANCE_STRIDE-th station (and B) and
+  // with the built-up share taken at the centreline only.
+  const subI: number[] = [];
+  for (let i = 0; i < n; i += BALANCE_STRIDE) subI.push(i);
+  if (subI[subI.length - 1] !== n - 1) subI.push(n - 1);
+  const sub = subI.length, subDs = ds * BALANCE_STRIDE;
   const subS = new Float64Array(sub), subX = new Float64Array(sub), subY = new Float64Array(sub);
-  const subTx = new Float64Array(sub), subTy = new Float64Array(sub);
+  const subTx = new Float64Array(sub), subTy = new Float64Array(sub), subW = new Float64Array(sub);
   const subMust = new Uint8Array(sub), subUrban = new Uint8Array(sub);
   for (let k = 0; k < sub; k++) {
-    const i = k * BALANCE_STRIDE;
+    const i = subI[k];
     subS[k] = st.s[i]; subX[k] = st.x[i]; subY[k] = st.y[i]; subTx[k] = st.tx[i]; subTy[k] = st.ty[i];
     subUrban[k] = terrain.cover(st.x[i], st.y[i]) & BUILTUP_BIT ? 1 : 0;
-    for (let j = i; j < Math.min(n, i + BALANCE_STRIDE); j++) if (clearance[j] > -Infinity) subMust[k] = 1;
+    // length represented by the sample (trapezoid rule)
+    subW[k] = (st.s[subI[Math.min(sub - 1, k + 1)]] - st.s[subI[Math.max(0, k - 1)]]) / 2;
+    for (let j = i; j < (k + 1 < sub ? subI[k + 1] : n); j++) if (clearance[j] > -Infinity) subMust[k] = 1;
   }
   const roadS = roadX.map((c) => c.s);
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
@@ -225,10 +232,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const hh = new Float64Array(sub), earth = new Float64Array(sub), bridge = new Float64Array(sub), tunnel = new Float64Array(sub);
     const must = new Uint8Array(sub);
     for (let k = 0; k < sub; k++) {
-      hh[k] = z[k] - ground[k * BALANCE_STRIDE];
-      const u = subUrban[k], su = 1 + surchargeRate(u), land = landPerM2(u);
+      hh[k] = z[k] - ground[subI[k]];
+      const u = subUrban[k], su = 1 + surchargeRate(u), land = landPerM2(u), wd = sc.dayL[k] + sc.dayR[k];
       earth[k] = (baseRural + (baseUrban - baseRural) * u + sc.cutI[k] * dp.cutPerM3.I + sc.cutII[k] * dp.cutPerM3.II
-        + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3) * su + (sc.dayL[k] + sc.dayR[k]) * (land + dp.topsoilPerM2);
+        + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2) * su + wd * land;
       bridge[k] = (cat.bridgePerKm / 1000) * su + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
       if (subMust[k] && hh[k] > 0) must[k] = 1;
@@ -242,10 +249,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     }
     const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bridge, tunnelPerM: tunnel, forced: must });
     let bal = 0;
-    for (let k = 0; k < sub; k++) {
-      if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * (k === 0 || k === sub - 1 ? 0.5 : 1);
-    }
-    return bal * subDs;
+    for (let k = 0; k < sub; k++) if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * subW[k];
+    return bal;
   };
 
   // --- vertical alignment ---
@@ -293,34 +298,43 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
   lap('sections');
 
-  // --- land cover under each station: built-up and forest share of the at-grade footprint ---
-  const urban = new Float32Array(n), forest = new Float32Array(n);
-  const coverShares = (i: number, left: number, right: number) => {
+  // --- land cover under each station, for each way of building it: the slope-to-slope footprint of
+  // the earthwork, the deck strip of a bridge, the centreline of a tunnel ---
+  const cover = { urban: 0, forest: 0, oob: 0 };
+  const sampleCover = (i: number, left: number, right: number) => {
     const nx = -st.ty[i], ny = st.tx[i];
-    let u = 0, f = 0, cnt = 0;
+    let u = 0, f = 0, cnt = 0, out = 0;
     for (let o = -right; o <= left + 1e-6; o += 2.5) {
       const v = terrain.cover(st.x[i] + nx * o, st.y[i] + ny * o);
       cnt++;
       if (v & BUILTUP_BIT) u++;
       if ((v & CLASS_BITS) === LC.forest) f++;
-      if (v & OOB_BIT) oob[i] = 1;
+      if (v & OOB_BIT) out = 1;
     }
-    urban[i] = cnt ? u / cnt : 0;
-    forest[i] = cnt ? f / cnt : 0;
+    cover.urban = cnt ? u / cnt : 0; cover.forest = cnt ? f / cnt : 0; cover.oob = out;
   };
-  for (let i = 0; i < n; i++) coverShares(i, sec.dayL[i], sec.dayR[i]);
+  const urbanEarth = new Float32Array(n), forestEarth = new Float32Array(n), urbanDeck = new Float32Array(n);
+  const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    sampleCover(i, sec.dayL[i], sec.dayR[i]);
+    urbanEarth[i] = cover.urban; forestEarth[i] = cover.forest; oobEarth[i] = cover.oob;
+    sampleCover(i, w, w);
+    urbanDeck[i] = cover.urban; oobDeck[i] = cover.oob;
+    urbanCentre[i] = terrain.cover(st.x[i], st.y[i]) & BUILTUP_BIT ? 1 : 0;
+  }
 
-  // --- structures: the earthwork option against a bridge / tunnel, at each station's own rates ---
+  // --- structures: the earthwork option against a bridge / tunnel, each at the rates of its own
+  // footprint (as the bill will charge it) ---
   const h = new Float64Array(n);
   const earthPerM = new Float64Array(n), bridgePerM = new Float64Array(n), tunnelPerMAt = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
-    const u = urban[i], su = 1 + surchargeRate(u), land = landPerM2(u);
-    earthPerM[i] = (baseRural + (baseUrban - baseRural) * u + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
-      + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP) * su
-      + (sec.dayL[i] + sec.dayR[i]) * (land + dec.topsoilPerM2 + forest[i] * LAND.forestExtraPerM2);
-    bridgePerM[i] = (cat.bridgePerKm / 1000) * su + b * land;
-    tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
+    const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
+    earthPerM[i] = (baseRural + (baseUrban - baseRural) * ue + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
+      + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2) * (1 + surchargeRate(ue))
+      + wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2);
+    bridgePerM[i] = (cat.bridgePerKm / 1000) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
+    tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, ut) / 1000) * (1 + surchargeRate(ut));
   }
   // river / water / railway crossings must be bridged (streams get culverts, included in the norm);
   // a crossing below the required clearance is a violation (and gets no fake buried bridge)
@@ -336,12 +350,16 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     if (ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
   }
   const { kind, runs } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced });
-  // land under structures: the deck strip on bridges, nothing in tunnels (centreline decides the rates)
-  const width = new Float64Array(n);
+  // what is actually built decides the land take, the rates and whether the terrain data suffice
+  const width = new Float64Array(n), urban = new Float32Array(n), forest = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    if (kind[i] === KIND.earth) width[i] = sec.dayL[i] + sec.dayR[i];
-    else if (kind[i] === KIND.bridge) { width[i] = b; coverShares(i, w, w); forest[i] = 0; }
-    else { coverShares(i, 0, 0); forest[i] = 0; }
+    if (kind[i] === KIND.earth) {
+      width[i] = sec.dayL[i] + sec.dayR[i]; urban[i] = urbanEarth[i]; forest[i] = forestEarth[i];
+      if (oobEarth[i]) oob[i] = 1;
+    } else if (kind[i] === KIND.bridge) {
+      width[i] = b; urban[i] = urbanDeck[i];
+      if (oobDeck[i]) oob[i] = 1;
+    } else urban[i] = urbanCentre[i];
   }
   lap('structures');
 

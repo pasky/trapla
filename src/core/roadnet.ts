@@ -58,7 +58,9 @@ export class RoadNet {
 
   /**
    * Every intersection of the route polyline (stations s, x, y) with the network, in station order.
-   * Both parameters are half-open, so a crossing exactly at a shared vertex is reported once.
+   * The route parameter is half-open (a hit exactly at a station belongs to the interval starting
+   * there); the road parameter is closed, so the result does not depend on the direction in which a
+   * way was drawn, and a hit at a vertex shared by two segments of one way is reported once.
    */
   intersections(n: number, s: ArrayLike<number>, x: ArrayLike<number>, y: ArrayLike<number>): RoadCrossing[] {
     const out: RoadCrossing[] = [];
@@ -80,13 +82,16 @@ export class RoadNet {
           if (Math.abs(den) < 1e-9) continue; // parallel
           const ex = this.x0[k] - px, ey = this.y0[k] - py;
           const t = (ex * qy - ey * qx) / den, u = (ex * ry - ey * rx) / den;
-          if (t < 0 || t >= 1 || u < 0 || u >= 1) continue;
+          if (t < 0 || t >= 1 || u < 0 || u > 1) continue;
           out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: px + t * rx, y: py + t * ry, cls: this.wayCls[this.way[k]], way: this.way[k] });
         }
       }
       if (out.length - first > 1) {
-        const part = out.splice(first).sort((p, q) => p.s - q.s);
-        for (const p of part) out.push(p);
+        const part = out.splice(first).sort((p, q) => p.s - q.s || p.way - q.way);
+        for (const p of part) {
+          const dup = out.length > first && out.slice(first).some((q) => q.way === p.way && Math.abs(q.s - p.s) < 1e-6);
+          if (!dup) out.push(p);
+        }
       }
     }
     return out;

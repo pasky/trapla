@@ -139,10 +139,14 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   }
 
   const ok = (r: Solved | null): r is Solved => !!r && profileOk(r.vpis, opt.maxGradient, opt.minCrest, opt.minSag);
-  /** coarse pass: normal band, then a wide one (deep tunnels / high viaducts) */
+  /**
+   * coarse pass: normal band, then a wide one (deep tunnels / high viaducts); if the coarse grid finds
+   * nothing compliant (its grade steps are twice as large, which matters near the gradient limit),
+   * the fine grid over the whole band
+   */
   const coarse = (lut: Float64Array): Solved | null => {
-    for (const pd of [pad, pad * 5]) {
-      const r = solve(lut, opt.maxGradient, COARSE_GRID, pd, null);
+    for (const [u, pd] of [[COARSE_GRID, pad], [COARSE_GRID, pad * 5], [FINE_GRID, pad]]) {
+      const r = solve(lut, opt.maxGradient, u, pd, null);
       if (ok(r)) return r;
     }
     return null;

@@ -1,6 +1,9 @@
 // Unit prices, 2026 price level, CZK excl. VAT. Sources: research/00-feasibility-map.md §3 and
 // research/data/spk-cn-2026-oceneni.csv. Everything marked PROVISIONAL is a placeholder.
 
+/** Bump whenever prices or cost rules change: scores saved under an older model are not comparable. */
+export const COST_MODEL_VERSION = 2;
+
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
 /** SPK CN excavability mix assumed by the norm: 75 % class I, 20 % class II, 5 % class III */

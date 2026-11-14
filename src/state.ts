@@ -1,8 +1,10 @@
 // Design store: current design, undo/redo history, localStorage persistence, best valid design.
 
+import { COST_MODEL_VERSION } from './core/data/prices';
 import type { Design } from './core/evaluate';
 
-export interface Best { cost: number; design: Design; at: string }
+/** `model` = COST_MODEL_VERSION the cost was computed with */
+export interface Best { cost: number; design: Design; at: string; model?: number }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -20,6 +22,8 @@ export class Store {
       if (raw) d = JSON.parse(raw);
       const b = localStorage.getItem(key + '.best');
       if (b) this.best = JSON.parse(b);
+      // a best score from an older cost model is not comparable with today's bills: forget it
+      if (this.best && this.best.model !== COST_MODEL_VERSION) this.best = null;
     } catch { d = null; }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
@@ -59,7 +63,7 @@ export class Store {
 
   offerBest(cost: number, d: Design) {
     if (this.best && this.best.cost <= cost) return false;
-    this.best = { cost, design: clone(d), at: new Date().toISOString() };
+    this.best = { cost, design: clone(d), at: new Date().toISOString(), model: COST_MODEL_VERSION };
     try { localStorage.setItem(this.key + '.best', JSON.stringify(this.best)); } catch { /* */ }
     return true;
   }

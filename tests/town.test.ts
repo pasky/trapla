@@ -11,6 +11,7 @@ import { rangeSummary } from '../src/core/range';
 import { mergeCrossings, RoadNet } from '../src/core/roadnet';
 import { KIND } from '../src/core/structures';
 import { BUILTUP_BIT, syntheticTerrain } from '../src/core/terrain';
+import { buildProfile, elevations, type VPI } from '../src/core/vertical';
 
 describe('road network crossings', () => {
   const net = new RoadNet({
@@ -29,6 +30,16 @@ describe('road network crossings', () => {
   it('finds each intersection once, in station order', () => {
     const raw = net.intersections(n, s, s, y);
     expect(raw.map((c) => [Math.round(c.s), c.cls])).toEqual([[30, 'residential'], [200, 'residential'], [300, 'primary'], [315, 'primary'], [500, 'track']]);
+  });
+
+  it('does not depend on the direction in which a way was drawn', () => {
+    // two ways of one road meeting on the route, both drawn towards it / both away from it
+    const towards = new RoadNet({ cls: ['primary'], ways: [[0, 500, -50, 500, 0], [0, 500, 50, 500, 0]] });
+    const away = new RoadNet({ cls: ['primary'], ways: [[0, 500, 0, 500, -50], [0, 500, 0, 500, 50]] });
+    for (const net2 of [towards, away]) {
+      const m = mergeCrossings(net2.intersections(n, s, s, y), 1000);
+      expect(m.map((c) => Math.round(c.s))).toEqual([500]);
+    }
   });
 
   it('merges close crossings and drops those at the route ends', () => {
@@ -174,19 +185,39 @@ describe('evaluate on a synthetic town', () => {
   });
 });
 
+describe('structures and the play-area boundary', () => {
+  it('a bridge is not out of bounds because the embankment it replaces would have been', () => {
+    // 200 m wide strip of terrain with a 50 m deep valley across it; the route runs down the middle
+    const ter = syntheticTerrain(400, 40, 5, (x) => 400 - 50 * Math.max(0, Math.min(1, (300 - Math.abs(x - 1000)) / 100)));
+    const r2 = evaluate({ terrain: ter, scenario: D11_SCENARIO, a: { x: 100, y: 100 }, b: { x: 1900, y: 100 } }, {
+      category: 'S9.5', speed: 90, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 1800, z: 400, r: null }],
+    });
+    // 50 m of fill would spread 4.75 + 100 m to each side — beyond the terrain — so it must be a bridge
+    expect(r2.kind[90]).toBe(KIND.bridge);
+    expect(r2.dayL[90]).toBeGreaterThan(100);
+    expect(r2.violations.filter((v) => v.kind === 'oob')).toEqual([]);
+  });
+});
+
 describe('auto-profile mass-balance search', () => {
-  it('finds the material value at which the balance changes sign', () => {
+  it('finds the material value at which the grade line balances', () => {
     const s = Float64Array.from({ length: 401 }, (_, i) => i * 10);
-    const g = Float64Array.from(s, (v) => 300 + 0.02 * v);
-    // the cheapest grade sits (300 − v) / 50 m above the ground; the balance is minus that height
-    const balance = {
-      costFor: (v: number) => (h: number) => 1e4 * (h - (300 - v) / 50) ** 2,
-      balanceOf: (_vpis: unknown, v: number) => -1e5 * ((300 - v) / 50),
-      start: 200, lo: -150, hi: 600, tolerance: 5e4,
+    const g = Float64Array.from(s, (v) => 300 + 0.02 * v + 3 * Math.sin(v / 300));
+    // the cheapest grade sits (300 − v) / 50 m above the ground; the balance is measured on the
+    // returned grade line: minus its mean height above the ground (per metre of route)
+    const balanceOf = (vpis: VPI[]) => {
+      const z = elevations(buildProfile(vpis, 6000, 3400), s);
+      let sum = 0;
+      for (let i = 0; i < s.length; i++) sum += z[i] - g[i];
+      return (-1e5 * sum) / s.length;
     };
-    const r = autoProfile(s, g, { maxGradient: 0.06, minCrest: 6000, minSag: 3400, costPerM: () => 0, balance });
+    const balance = { costFor: (v: number) => (h: number) => 1e4 * (h - (300 - v) / 50) ** 2, balanceOf, start: 200, lo: -150, hi: 600, tolerance: 2e4 };
+    const opt = { maxGradient: 0.06, minCrest: 6000, minSag: 3400, costPerM: balance.costFor(200) };
+    const fixed = autoProfile(s, g, opt), r = autoProfile(s, g, { ...opt, balance });
     expect(r.feasible).toBe(true);
-    expect(Math.abs(r.materialValue! - 300)).toBeLessThan(26);
-    expect(Math.abs(r.balance!)).toBeLessThanOrEqual(5e4);
+    // at the start value the line sits ≈ 2 m above the ground; the search brings it down to it
+    expect(Math.abs(balanceOf(fixed.vpis))).toBeGreaterThan(1.5e5);
+    expect(Math.abs(balanceOf(r.vpis))).toBeLessThan(4e4);
+    expect(Math.abs(r.materialValue! - 300)).toBeLessThan(30);
   });
 });

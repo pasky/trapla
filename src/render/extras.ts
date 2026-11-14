@@ -16,20 +16,22 @@ import type { View } from './view';
 const HIGHLIGHT = 0xffe000, WALL = 0x18b0b0;
 
 export class RouteExtras {
-  private group = new THREE.Group();
+  private walls = new THREE.Group();
+  private highlight = new THREE.Group();
   private r: Result | null = null;
   private crown = 9.5;
   private range: StationRange | null = null;
 
   constructor(private view: View) {
-    this.group.name = 'route-extras';
-    view.world.add(this.group);
+    this.walls.name = 'noise-walls';
+    this.highlight.name = 'range-highlight';
+    view.world.add(this.walls, this.highlight);
   }
 
-  setResult(r: Result, crownWidth: number) { this.r = r; this.crown = crownWidth; this.rebuild(); }
+  setResult(r: Result, crownWidth: number) { this.r = r; this.crown = crownWidth; this.buildWalls(); this.buildHighlight(); }
 
   /** highlight a station range on the map (null = none) */
-  setRange(range: StationRange | null) { this.range = range; this.rebuild(); }
+  setRange(range: StationRange | null) { this.range = range; this.buildHighlight(); }
 
   private line(pos: number[], color: number, width: number, opacity: number, order: number): Line2 {
     const g = new LineGeometry();
@@ -41,20 +43,21 @@ export class RouteExtras {
     return l;
   }
 
-  private rebuild() {
-    for (const c of [...this.group.children]) {
-      this.group.remove(c);
+  private clear(group: THREE.Group) {
+    for (const c of [...group.children]) {
+      group.remove(c);
       const m = c as THREE.Mesh;
       m.geometry?.dispose();
       (m.material as THREE.Material | undefined)?.dispose();
     }
+  }
+
+  /** noise walls: a thin wall along the crown edge plus a line that reads from afar */
+  private buildWalls() {
+    this.clear(this.walls);
     const r = this.r;
     if (!r) return;
     const v = new THREE.Vector3();
-    // tunnels are drawn on the surface, like the centreline
-    const zOf = (i: number) => (r.kind[i] === KIND.tunnel ? Math.max(r.ground[i], r.grade[i]) : r.grade[i]);
-
-    // ---- noise walls: a thin wall along the crown edge plus a line that reads from afar ----
     const off = this.crown / 2 + 0.6;
     const pos: number[] = [], idx: number[] = [];
     for (const w of r.walls) {
@@ -67,7 +70,7 @@ export class RouteExtras {
         top.push(v.x, v.y, v.z);
         if (i > w.i0) { const k = pos.length / 3 - 4; idx.push(k, k + 2, k + 1, k + 2, k + 3, k + 1); }
       }
-      if (top.length >= 6) this.group.add(this.line(top, WALL, 2, 0.9, 5));
+      if (top.length >= 6) this.walls.add(this.line(top, WALL, 2, 0.9, 5));
     }
     if (idx.length) {
       const g = new THREE.BufferGeometry();
@@ -75,11 +78,19 @@ export class RouteExtras {
       g.setIndex(idx);
       const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: WALL, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }));
       mesh.renderOrder = 4;
-      this.group.add(mesh);
+      this.walls.add(mesh);
     }
+    this.view.requestRender();
+  }
 
-    // ---- selected range: a wide translucent band over the route ----
-    if (this.range && this.range.s0 < r.length) {
+  /** selected range: a wide translucent band over the route */
+  private buildHighlight() {
+    this.clear(this.highlight);
+    const r = this.r;
+    if (r && this.range && this.range.s0 < r.length) {
+      const v = new THREE.Vector3();
+      // tunnels are drawn on the surface, like the centreline
+      const zOf = (i: number) => (r.kind[i] === KIND.tunnel ? Math.max(r.ground[i], r.grade[i]) : r.grade[i]);
       const [i0, i1] = cellsInRange(r, this.range.s0, Math.min(this.range.s1, r.length));
       const hp: number[] = [];
       for (let i = Math.max(0, i0 - (i0 === i1 ? 1 : 0)); i <= Math.min(r.n - 1, i1 + (i0 === i1 ? 1 : 0)); i++) {
@@ -87,8 +98,8 @@ export class RouteExtras {
         hp.push(v.x, v.y, v.z);
       }
       if (hp.length >= 6) {
-        this.group.add(this.line(hp, 0x000000, 15, 0.35, 6));
-        this.group.add(this.line(hp, HIGHLIGHT, 11, 0.8, 7));
+        this.highlight.add(this.line(hp, 0x000000, 15, 0.35, 6));
+        this.highlight.add(this.line(hp, HIGHLIGHT, 11, 0.8, 7));
       }
     }
     this.view.requestRender();

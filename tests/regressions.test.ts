@@ -31,6 +31,17 @@ describe('review regressions', () => {
     expect(autoProfile(s2, g2, opt).feasible).toBe(false);
   });
 
+  it('a grade near the limit that the coarse 2 m grid cannot follow still gets a fine-grid search', () => {
+    // 5.5 % average over 900 m: a knot interval (225 m) may rise 13 m on the 1 m grid but only 12 m on
+    // the 2 m grid, which is not enough
+    const s = Float64Array.from({ length: 91 }, (_, i) => i * 10);
+    const g = Float64Array.from(s, (v) => 300 + 0.055 * v + 1.5 * Math.sin((Math.PI * v) / 900));
+    const r = autoProfile(s, g, { maxGradient: 0.06, minCrest: 6000, minSag: 3400, costPerM: (h: number) => 1e5 * h * h });
+    expect(r.feasible).toBe(true);
+    expect(r.vpis.length).toBeGreaterThan(2);
+    expect(r.cost).toBeLessThan(2e7);
+  });
+
   it('a slightly shrunk vertical curve (effective radius below minimum) is a violation', () => {
     // crest Δg = 0.02 needs 120 m at R = 6000 but only ~119.6 m fit between the VPIs
     const p = buildProfile([{ s: 0, z: 0, r: null }, { s: 59.8, z: 0.598, r: null }, { s: 119.6, z: 0, r: null }], 6000, 3400);
