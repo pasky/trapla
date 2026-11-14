@@ -70,7 +70,9 @@ export class CrossingRenderer {
         if (c.geometry?.road && c.geometry.road.length >= 2) this.conflictPath(c, c.geometry.road, true);
       }
       if (c.feature === 'stream' && c.action === 'channel-relocation' && c.geometry?.road && c.geometry.road.length >= 2) {
-        const points = c.geometry.road.map(p => this.view.local(p.x, p.y, this.view.groundHeight(p.x,p.y) + .3));
+        // A visible path annotation at the designed bed, not a modelled excavation.
+        // Depth testing stays off because the undisturbed terrain still covers that bed.
+        const points = c.geometry.road.map(p => this.view.local(p.x, p.y, p.z + .3));
         const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({
           color: 0x168bdd, depthTest: false, depthWrite: false,
         }));

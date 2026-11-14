@@ -34,8 +34,12 @@ describe('footprint conflict presentation', () => {
     for (const action of ['retaining-wall','channel-relocation'] as const) {
       const text = footprintConflictText(conflict({ feature: 'stream', action }));
       expect(text).toContain(action.replace('-', ' '));
-      expect(text).toContain('included in footprint works');
-      expect(text).not.toContain('road crossings');
+      if (action === 'retaining-wall') expect(text).toContain('included in footprint works under crossings');
+      else {
+        expect(text).toContain('total includes land and construction before surcharge');
+        expect(text).toContain('construction under Road crossings, land under Land without surcharge');
+        expect(text).not.toContain('included in footprint works under crossings');
+      }
     }
   });
 
@@ -57,7 +61,8 @@ describe('footprint conflict presentation', () => {
 
   it('marks removed originals and blocked locations, then disposes their geometry on the next result', () => {
     const c = conflict(), blocked = conflict({ id: 'road:3', action: 'blocked', geometry: { road: path(60), width: 6, schematic: false } });
-    const channel = conflict({ id: 'stream:1', feature: 'stream', action: 'channel-relocation', geometry: { road: path(90), width: 3, schematic: false } });
+    const channel = conflict({ id: 'stream:1', feature: 'stream', action: 'channel-relocation',
+      geometry: { road: path(90).map(p => ({ ...p, z: p.z-2 })), width: 3, schematic: false } });
     const retired: THREE.Material[] = [];
     const mock = { world: new THREE.Group(), crossingSurfaces: footprintSurfaces([c], height),
       local: (x: number, y: number, z: number) => new THREE.Vector3(x, z, -y),
@@ -84,6 +89,8 @@ describe('footprint conflict presentation', () => {
     const water = group.getObjectByName('footprint-channel') as THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
     expect(water.userData.conflictId).toBe(channel.id);
     expect(water.geometry.getAttribute('position').getZ(0)).toBe(-90);
+    expect(water.geometry.getAttribute('position').getY(0)).toBeCloseTo(height(0,90)-2+.3);
+    expect(water.material.depthTest).toBe(false); // bed path remains visible; no physical excavation mesh
     expect(water.material.color.b).toBeGreaterThan(water.material.color.r);
     expect(water.material.type).toBe('LineBasicMaterial');
     const removedChannel = group.children.find(c => c.name === 'footprint-removed' && c.userData.conflictId === channel.id) as THREE.Line;
