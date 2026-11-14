@@ -29,6 +29,11 @@ Research snapshot: 2026-11-14. All construction prices are CZK, excl. VAT unless
 
 ## 2. Noise distance / limits
 
+**Superseded in cost model 7 by [11-noise-calculation.md](11-noise-calculation.md):** the text below
+records the former heuristic, not the current calculation. Model 7 uses Czech 2018/2020 source equations,
+TP219 day/night allocation and mixed-ground propagation; it confirms 60/50 dB for this new road and
+reports qualified numerical EIA comparisons rather than treating 100 m as validated.
+
 The legal framework is Government Regulation 272/2011 Sb., consolidated text: [e-Sbírka](https://www.e-sbirka.cz/sb/2011/272). A 2019 CENIA acoustic study expressly applies 60 dB day / 50 dB night: [study PDF](https://portal.cenia.cz/eiasea/download/RUlBX1ZZUzkyMl9wcmlsbGhaRG9rdW1lbnRhdG9jXzYyOTUyOTUyMzcwMTc4NjEyMDg5?x=1) (search-indexed as VYS922, 31 Oct 2019). Applicable limit depends on source/category/existing-road status and the regulation's corrections; the model's 60/50 should be labelled its chosen “main road” rule, not a universal rule for every new road.
 
 Czech examples include the I/23 Třebíč southwest bypass acoustic report (13 Jan 2018: [PDF](https://www.trebicobcanum.net/wp-content/uploads/2018/02/hlukova-studie.pdf)) and I/36 Sezemice bypass study ([PDF](http://www.poklidnepocaply.cz/wp-content/uploads/2017/11/H6-Hlukova-studie.pdf)). These assess receptor locations and mitigation, but their traffic, terrain, pavement, speeds and barriers differ; no directly comparable contour distance was independently extracted. Thus a specific 100 m compliance boundary is **UNVERIFIED** by those studies.

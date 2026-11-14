@@ -12,6 +12,11 @@ export interface NoiseTraffic {
   heavyNightShare?: number;
 }
 
+export interface NoiseOptions extends NoiseTraffic {
+  /** Default mixed (40–60% porous); hard is useful for paved-ground sensitivity checks. */
+  ground?: 'mixed' | 'hard';
+}
+
 /** Per-vehicle contribution to F1 for a flow of one vehicle/hour (not sound power or pass-by Lmax).
  * Manual equations 36–39, table 21: class I, year 2020 (also prescribed for later forecast years). */
 export function vehicleEmission(speed: number, heavy: boolean): number {
@@ -49,10 +54,10 @@ function hardGround(d: number): number {
  * receiver elevation, mirrored below grade). This conservative bridge/cut extension is NOT
  * prescribed by the manual; it suppresses soft-ground credit for elevated paths. No extra
  * façade reflection, vegetation, terrain or meteorological credit. */
-export function propagationLoss(slant: number, height: number): number {
+export function propagationLoss(slant: number, height: number, ground: 'mixed' | 'hard' = 'mixed'): number {
   const r = Math.max(3.75, slant), h = Math.max(1.5, height);
   const hard = hardGround(r);
-  if (h >= 10) return hard;
+  if (h >= 10 || ground === 'hard') return hard;
   const d = Math.max(8, Math.min(1000, r));
   const soft = 8.78 * Math.log10((d * d + (h + 3) ** 2) / (17 * h + 51))
     + (r < 8 ? 10 * Math.log10(r / 8) : r > 1000 ? 10 * Math.log10(r / 1000) : 0);
@@ -85,7 +90,7 @@ export function noiseExcess(slant: number, height: number, model: NoiseModel): n
   return model.excessDb - model.loss(slant, effectiveHeight(height));
 }
 
-export function createNoiseModel(traffic: number, speed: number, options: NoiseTraffic = {}): NoiseModel {
+export function createNoiseModel(traffic: number, speed: number, options: NoiseOptions = {}): NoiseModel {
   const source = noiseSource(traffic, speed, options);
   let low = 0, high = 1000;
   while (hardGround(high) < source.excessDb) high *= 2;
@@ -98,13 +103,13 @@ export function createNoiseModel(traffic: number, speed: number, options: NoiseT
   const step = 0.5, columns = Math.ceil(Math.min(radius + 1, 1000) / step) + 1, rows = 18;
   const table = new Float64Array(columns * rows);
   for (let j = 0; j < rows; j++) for (let i = 0; i < columns; i++) {
-    table[j * columns + i] = propagationLoss(i * step, 1.5 + j * step);
+    table[j * columns + i] = propagationLoss(i * step, 1.5 + j * step, options.ground);
   }
   const loss = (slant: number, height: number): number => {
     const x = Math.max(0, slant / step), y = Math.max(0, Math.min(rows - 1, (height - 1.5) / step));
     const i = Math.floor(x), j = Math.min(rows - 2, Math.floor(y));
     // Do not interpolate across the 3.75 m clamp or the empirical fits' small jump at 8 m.
-    if (slant < 8.5 || i >= columns - 1) return propagationLoss(slant, height);
+    if (slant < 8.5 || i >= columns - 1) return propagationLoss(slant, height, options.ground);
     const a = j * columns + i, b = a + columns, t = x - i, u = y - j;
     return (table[a] * (1 - t) + table[a + 1] * t) * (1 - u)
       + (table[b] * (1 - t) + table[b + 1] * t) * u;
