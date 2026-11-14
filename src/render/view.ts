@@ -304,7 +304,7 @@ export class View {
     if (!r) return false;
     for (let i = 0; i < r.n; i++) {
       if (r.kind[i] !== KIND.earth) continue;
-      const d = Math.max(r.dayL[i], r.dayR[i]) + 5;
+      const d = Math.max(r.dayL[i], r.dayR[i]) + GROUND_COLLAR;
       if (Math.abs(x - r.x[i]) < d && Math.abs(y - r.y[i]) < d && Math.hypot(x - r.x[i], y - r.y[i]) < d) return true;
     }
     return false;
@@ -512,7 +512,7 @@ export class View {
     const asphalt = new THREE.Color(0x3b3b42), asphaltBad = new THREE.Color(0x8a2020);
     // slope colours are only nominal: the earthwork shader textures cut / fill slopes itself (EW_KIND)
     const fillC = new THREE.Color(0x8aa95a), cutC = new THREE.Color(0x9e7859), concrete = new THREE.Color(0xc4c2ba);
-    const lift = 0.08;
+    const lift = 0.35, groundLift = .015;
     // contours on the cut / fill slopes join the terrain's at the daylight line; faint on the carriageway
     const slopeInk = 1, crownInk = 0.35;
     type SV = { dl: number; el: number; er: number; dr: number; cl: number; cr: number };
@@ -529,12 +529,12 @@ export class View {
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
       const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
       sv.push({
-        dl: push(xl, yl, natural(xl, yl) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
+        dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
         cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
-        dr: push(xr, yr, natural(xr, yr) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
+        dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
       });
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
@@ -565,12 +565,12 @@ export class View {
           const fill = s.edge.z > s.day.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
           const gp = r.geology.profiles[r.geology.ids[i]];
           const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
-          const day = push(s.day.x, s.day.y, s.day.z+lift, color, s.day.z, slopeInk, kind, geology(0));
+          const day = push(s.day.x, s.day.y, s.day.z+groundLift, color, s.day.z, slopeInk, kind, geology(0));
           const edge = push(s.edge.x, s.edge.y, s.edge.z+lift, color, s.edge.z, slopeInk, kind, geology(natural(s.edge.x,s.edge.y)-s.edge.z));
           const ground = groundPos.length / 3;
           for (let k = 0; k <= 8; k++) {
             const p = collarPoint(s, k/8, natural, coarse);
-            this.local(p.x,p.y,p.z+lift,v); groundPos.push(v.x,v.y,v.z);
+            this.local(p.x,p.y,p.z+groundLift,v); groundPos.push(v.x,v.y,v.z);
           }
           if (prev) {
             quad(prev.day, day, prev.edge, edge);

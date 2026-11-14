@@ -91,10 +91,10 @@ export class CrossingRenderer {
         earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
         // Natural ground collar replaces the coarse mesh locally. At its outside edge it meets
         // that mesh, while the actual road/earthwork tie-in remains at the real terrain height.
-        const at = (s: typeof a, t: number): CrossingPoint => ({ ...s.p,
-          ...collarPoint({ edge: s.edge[k], day: s.toe[k], outer: s.outer[k] }, t,
+        const collarAt = (section: typeof a, t: number): CrossingPoint => ({ ...section.p,
+          ...collarPoint({ day: section.toe[k], outer: section.outer[k] }, t,
             (x,y) => this.view.groundHeight(x,y), (x,y) => this.view.replacementHeight(x,y)) });
-        for (let j = 0; j < 8; j++) terrain.quad(at(a,j/8), at(a,(j+1)/8), at(b,j/8), at(b,(j+1)/8), 0xffffff, 0, .015);
+        for (let j = 0; j < 8; j++) terrain.quad(collarAt(a,j/8), collarAt(a,(j+1)/8), collarAt(b,j/8), collarAt(b,(j+1)/8), 0xffffff, 0, .015);
       } else {
         const depth = g.deck!.depth;
         for (const k of [0, 1] as const) {

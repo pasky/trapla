@@ -75,22 +75,22 @@ function routeGeometry(route: CrossingRoute) {
       if (distance(a, q) <= distance(b, q)) { visit(a, q); visit(b, q); } else { visit(b, q); visit(a, q); }
     }
   };
-  const project = (q: XY) => {
-    let column = projected.get(q.x);
+  const project = (q: XY, cache = true) => {
+    let column = cache ? projected.get(q.x) : undefined;
     const cached = column?.get(q.y);
     if (cached) return cached;
     best = Infinity; station = route.s[0];
     visit(root, q);
     const p = at(station), result = { s: p.s, x: p.x, y: p.y, tx: p.tx, ty: p.ty, z: p.z,
       left: p.left, right: p.right, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
-    if (projectedCount < 50000) {
+    if (cache && projectedCount < 50000) {
       if (!column) projected.set(q.x, column = new Map());
       column.set(q.y, result); projectedCount++;
     }
     return result;
   };
-  const margin = (q: XY, extra: number) => {
-    const p = project(q);
+  const margin = (q: XY, extra: number, cache = true) => {
+    const p = project(q, cache);
     return Math.abs(p.lateral) - (p.lateral >= 0 ? p.left : p.right) - extra;
   };
   return { at, project, margin };
@@ -341,8 +341,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       const stations = [lo];
       for (let i = 0; i < route.s.length; i++) if (route.s[i] > lo && route.s[i] < hi) stations.push(route.s[i]);
       stations.push(hi);
-      // Avoid chord cuts across changing earthwork edges; retain route stations, then drape all
-      // interpolated connector samples. An excessively long link is explicitly budget-limited.
+      // Start with the full daylight boundary, then shortcut only with checked clearance.
+      // Draping and billing use that same path. Excessively long links are explicitly budget-limited.
       if (stations.length > MAX_POINTS - 4) {
         diagnose(g, 'Link exceeds the bounded route sampling budget');
         const stride = Math.ceil(stations.length / (MAX_POINTS - 4));
@@ -351,7 +351,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       }
       if (s1 < s0) stations.reverse();
       const controls = smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
-        q => margin(q, g.width / 2), terrainPoint);
+        // One-off chord probes must not evict reusable anchor/bisection projections.
+        q => margin(q, g.width / 2, false), terrainPoint, SETBACK - 1e-5);
       const link: CrossingPoint[] = [a];
       const length = crossingPlanLength(controls), budget = Math.max(0, MAX_POINTS - controls.length);
       for (let i = 1; i < controls.length; i++) {

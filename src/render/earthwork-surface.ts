@@ -53,10 +53,11 @@ export function groundBlend(corridors: GroundCorridor[]) {
 }
 
 /** The overlap is wholly above the coarse triangles, while the daylight is at true ground. */
-export function collarPoint(section: DaylightSection, t: number, natural: (x: number, y: number) => number,
+export function collarPoint(section: Pick<DaylightSection, 'day' | 'outer'>, t: number, natural: (x: number, y: number) => number,
   mesh: (x: number, y: number) => number): GroundPoint {
   const x = section.day.x+(section.outer.x-section.day.x)*t, y = section.day.y+(section.outer.y-section.day.y)*t;
   const ground = natural(x,y), coarse = mesh(x,y);
   const blend = Math.max(0, Math.min(1, (t * GROUND_COLLAR - 10) / (GROUND_COLLAR - COLLAR_OVERLAP - 2.5 - 10)));
-  return { x, y, z: ground+(Math.max(ground,coarse)-ground)*blend };
+  const join = (section.day.z-natural(section.day.x,section.day.y))*Math.max(0,1-t*8);
+  return { x, y, z: ground+join+(Math.max(ground,coarse)-ground)*blend };
 }
