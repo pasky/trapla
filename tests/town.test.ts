@@ -148,6 +148,7 @@ describe('evaluate on a synthetic town', () => {
     sq(2000, 1012, 3, BUILDING_KIND.minor), // beside the deck, where an embankment would have buried it
     sq(1000, 1016, 5, BUILDING_KIND.house), // outside working strip but too close for any wall
     [100, 4, BUILDING_KIND.apartments, 1000, 1070, 5, 5, 0] as BuildingInfo, // upper-floor failure
+    [100, 4, BUILDING_KIND.apartments, 2000, 1040, 5, 5, 0] as BuildingInfo, // top floor below elevated road: wall feasible
   ];
   const buildings = new BuildingIndex(info.map((f) => [f[3], f[4], f[5] * Math.SQRT2]), info);
   const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 500, y: 1000 }, b: { x: 6500, y: 1000 }, buildings, roads };
@@ -188,15 +189,19 @@ describe('evaluate on a synthetic town', () => {
   });
 
   it('walls off dwellings within the screening distance unless a cut screens them', () => {
-    expect(r.walls.length).toBe(1);
+    expect(r.walls.length).toBe(2);
     const w = r.walls[0];
     expect(w.side).toBe('L');
     // Nearest façade (not centroid), receiver 2 m in front, plus 50 m longitudinal margins.
     expect(w.s0).toBeGreaterThan(500 - 105 - 50 - 10);
     expect(w.s1).toBeLessThan(500 + 105 + 50 + 10);
-    expect(r.quantities.wallLength).toBeCloseTo(w.s1 - w.s0, 6);
+    expect(r.quantities.wallLength).toBeCloseTo(r.walls.reduce((v, w) => v + w.s1 - w.s0, 0), 6);
     expect(w.height).toBe(4);
-    expect(r.quantities.wallArea).toBeCloseTo(r.quantities.wallLength * w.height, 6);
+    // Unlike the at-grade block, the block beside the bridge is protectable: its top receiver is
+    // below the deck. It still needs an actual wall; the terrain under a bridge is not a shield.
+    expect(r.walls.some(w => w.i0 <= 150 && w.i1 >= 150)).toBe(true);
+    expect(r.boughtOut.some(b => b.j === 7)).toBe(false);
+    expect(r.quantities.wallArea).toBeCloseTo(r.walls.reduce((v, w) => v + (w.s1 - w.s0) * w.height, 0), 6);
     expect(r.cost.noiseWalls).toBeCloseTo(r.quantities.wallArea * NOISE.wallPerM2, 3);
   });
 
@@ -239,6 +244,13 @@ describe('evaluate on a synthetic town', () => {
     expect(whole.quantities.wallArea).toBeCloseTo(r.quantities.wallArea, 6);
     expect(a.quantities.wallArea + b.quantities.wallArea).toBeCloseTo(r.quantities.wallArea, 6);
     expect(a.quantities.noiseBuyouts + b.quantities.noiseBuyouts).toBe(r.quantities.noiseBuyouts);
+    // Split through a wall (not just the empty middle of the route): clipped areas and bills agree.
+    const left = rangeSummary(r, 0, 495), right = rangeSummary(r, 500, r.length);
+    expect(left.quantities.wallArea).toBeGreaterThan(0);
+    expect(right.quantities.wallArea).toBeGreaterThan(0);
+    expect(left.quantities.wallArea + right.quantities.wallArea).toBeCloseTo(r.quantities.wallArea, 6);
+    expect(left.cost.noiseWalls).toBeCloseTo(left.quantities.wallArea * NOISE.wallPerM2, 3);
+    expect(right.cost.noiseWalls).toBeCloseTo(right.quantities.wallArea * NOISE.wallPerM2, 3);
     expect(a.quantities.crossings).toBe(3);
     expect(b.quantities.buildings).toBe(0);
   });

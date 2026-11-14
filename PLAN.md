@@ -350,6 +350,18 @@ starts used 3,500 (seeds 20261117/18/19). Seeded results: 3,101 / 3,503 / 3,840 
 3,647 M. Saved the cheapest valid result of each strategy, not a claim of global optimality. Bypass searches
 start in the official corridor but are not constrained to it. Before reoptimisation the old best/direct80
 geometries cost 3,255 / 3,733 M; re-routing avoids costly noise failures rather than paying for them blindly.
+Reproduce with model-4 code (commit `cecb3e9`); original inputs are retained in commit `a6a93b6`:
+
+```sh
+git show a6a93b6:scripts/best-design.json > /tmp/start-bypass.json
+git show a6a93b6:scripts/direct-80-design.json > /tmp/start-direct.json
+npx tsx scripts/optimize.ts 90 2500 /tmp/start-bypass.json /tmp/bypass-seeded.json 20261114
+npx tsx scripts/optimize.ts 80 2500 /tmp/start-direct.json /tmp/direct80-seeded.json 20261115
+npx tsx scripts/optimize.ts 90 2500 /tmp/start-direct.json /tmp/direct90-seeded.json 20261116
+npx tsx scripts/optimize.ts 90 3500 official /tmp/bypass-fresh.json 20261117
+npx tsx scripts/optimize.ts 80 3500 - /tmp/direct80-fresh.json 20261118
+npx tsx scripts/optimize.ts 90 3500 - /tmp/direct90-fresh.json 20261119
+```
 
 **Calibration and spatial check:** direct80 / bypass = **1.130×**, direct90 / bypass = **1.176×**, actual
 centre / bypass = **3.229×**. The 13% result warranted inspecting the mask, roads and oriented building
@@ -380,6 +392,18 @@ that building through dense fabric is cheap. The centre design's km 4–5 alone 
 footprint removals and 34 additional noise buyouts. No urban multiplier or widened purchase buffer was tuned
 to hit a ratio; incomplete yard masks, plot/access severance and acoustic uncertainty remain limitations.
 
+Sensitivity, **saved geometries held fixed, not reoptimised**: changing the provisional reference contour
+from 100 m to research/09's 70 / 150 m bounds gives totals (M CZK):
+
+| Reference D | Bypass | Direct80 | Direct90 | Centre |
+|---|---:|---:|---:|---:|
+| 70 m | 3,014 | 3,416 | 3,601 | 9,280 |
+| 100 m | 3,101 | 3,503 | 3,647 | 10,012 |
+| 150 m | 3,387 | 4,027 | 3,998 | 11,622 |
+
+The bypass remains cheapest among these geometries, but the two direct strategies reverse order; centre
+buyouts vary from 25 to 131. These figures demonstrate sensitivity, not validation of the acoustic model.
+
 ### Performance
 
 `evaluate()` after calibration: 29–35 ms in Node across the five saved designs (five-run bench means).
@@ -406,7 +430,10 @@ pairs; no station × building matrix. The auto-profile / mass-balance search sti
   heavy-vehicle share, reflections, intervening buildings, or terrain screening beyond the road's own cut;
   the ≥ 4 m cut exemption does not assess upper-floor diffraction. Receivers use 10 m source stations and
   rectangle façades. Civic buildings with protected uses are not classified. Buyout is the only fallback;
-  covered roads, property reuse, parcel geometry and relocation are not optimised. SPK CN's urban surcharge
+  covered roads, property reuse, parcel geometry and relocation are not optimised. **Fallback-only buyout is
+  discontinuous**: moving closer to a cheap house can replace an expensive long wall with cheaper acquisition.
+  This is a gameplay incentive, not a summation error; elective buyout versus shared-wall mitigation is not
+  solved. SPK CN's urban surcharge
   contains 10 % "protective measures", so explicit walls partly overlap that allowance.
 - Motorway / expressway crossings: the auto-profile always clears them with a bridge (it cannot choose the
   cut-and-overbridge alternative, only a manual profile can); the forced bridge is the 30 m minimum whatever
