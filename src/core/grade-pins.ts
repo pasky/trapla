@@ -1,6 +1,6 @@
 // Absolute-chainage constraints on the finished (parabolic), not tangent-polygon, grade line.
 import type { Violation } from './checks';
-import { elevationAt, type Profile } from './vertical';
+import { elevations, type Profile } from './vertical';
 
 export interface GradePin { s: number; z: number }
 
@@ -38,7 +38,8 @@ export interface GradePinViolation extends Violation {
 }
 
 /** Check active Auto pins against a finished profile. Manual mode must not call this.
- * Sorting + two sweeps, O(p log p) time / O(p) memory, including coincident pins.
+ * Sorting + batched profile sampling + two sweeps: O(p log p + v log p) time / O(p)
+ * memory for p pins and v VPIs, including coincident pins (curves do not overlap).
  * Profile endpoints are fixed tie-ins; pins never silently move them or clamp their station.
  * Finite pins outside the route are retained by the caller but inactive here.
  */
@@ -48,6 +49,9 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
   const ordered = pins.map((p, index) => ({ ...p, index }))
     .filter((p) => Number.isFinite(p.s) && Number.isFinite(p.z) && p.s >= a.s && p.s <= b.s)
     .sort((p, q) => p.s - q.s || p.index - q.index);
+  const sampled = elevations(profile, ordered.map((p) => p.s));
+  const actual = new Float64Array(pins.length);
+  for (let i = 0; i < ordered.length; i++) actual[ordered[i].index] = sampled[i];
   const bounds = new Map<number, { min: number; max: number }>();
   let low = a.z + maxGradient * a.s, high = a.z - maxGradient * a.s;
   for (const p of ordered) {
@@ -71,14 +75,14 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
     const finite = Number.isFinite(p.s) && Number.isFinite(p.z);
     const bound = bounds.get(index) ?? null;
     if (finite && !bound) continue; // saved absolute station is inactive on this route
-    const actualZ = bound ? elevationAt(profile, p.s) : null;
+    const actualZ = bound ? actual[index] : null;
     const outside = bound && (p.z + tol < bound.min - 1e-9 || p.z - tol > bound.max + 1e-9 || bound.min > bound.max + 1e-9);
     if (finite && bound && !outside && Math.abs(actualZ! - p.z) <= tol + 1e-9) continue;
     const reason = !finite ? 'invalid' : outside ? 'gradient-envelope' : 'search';
     const suggestedS = finite ? Math.max(a.s, Math.min(b.s, p.s)) : null;
     const suggestedZ = bound && bound.min <= bound.max
       ? outside ? Math.max(bound.min, Math.min(bound.max, p.z)) : actualZ!
-      : suggestedS !== null ? elevationAt(profile, suggestedS) : null;
+      : actualZ;
     const suggested = suggestedS !== null && suggestedZ !== null ? { s: suggestedS, z: suggestedZ } : null;
     out.push({
       kind: 'profile', basis: outside ? 'norm' : 'engine',

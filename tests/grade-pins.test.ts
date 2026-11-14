@@ -119,6 +119,17 @@ describe('pinned Auto DP heights', () => {
     expect(pins).toEqual([{ s: NaN, z: 5 }, { s: 800, z: Infinity }]);
   });
 
+  it('budgets dense final-half-cell pins before scanning them for every final segment', () => {
+    // 749 possible final segments × 81,000 pins already exceed the 60 M work budget.
+    // Keep the fixture itself small (~two MB of pin data), not a station × state tensor.
+    const pins = Array.from({ length: 81_000 }, (_, i) => ({ s: 24999 + i / 100_000, z: 0 }));
+    const r = autoProfile([0, 12500, 25000], [0, 0, 0], { ...opt, pins,
+      knotSpacing: 12500, pad: 1000, minCrest: 1e8, minSag: 1e8 });
+    expect(r.cost).toBe(Infinity); // bounded search skipped, explicitly priced as no DP solution
+    expect(r.feasible).toBe(true); // the fixed straight fallback itself satisfies every pin
+    expect(r.pinViolations).toEqual([]);
+  });
+
   it('retains pin constraints in every material-balance pass', () => {
     let calls = 0;
     solve([{ s: 825.3, z: 12.17 }], { balance: {

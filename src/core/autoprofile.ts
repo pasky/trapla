@@ -284,6 +284,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const sagLim = Math.floor((D * D) / opt.minSag / u + 1e-9);
     if (dzMax < 1) return null;
     const ND = 2 * dzMax + 1;
+    // Include pin-envelope pruning itself, before its O(knots × pins) sweep starts.
+    const pinBoundWork = hasPins ? (nK + 1) * pins!.length : 0;
+    if (pinBoundWork > 60_000_000) return null;
     const uB = Math.round((zB - zA) / u); // end knot in grid units relative to zA
     const corr = zB - (zA + uB * u);
     const zlo = new Int32Array(nK + 1), zhi = new Int32Array(nK + 1);
@@ -312,11 +315,14 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       // Hard preflight budgets per pass: ≤16 MB of parent indices and ≤60 M estimated inner
       // iterations. Four coarse attempts + refinement/balance are bounded; never allocate a
       // station × elevation × grade tensor. Budget exhaustion is a search failure, not proof.
-      let states = 0, work = 0;
+      let states = 0, work = pinBoundWork;
       for (let k = 0; k < nK; k++) {
         states += (zhi[k + 1] - zlo[k + 1] + 1) * ND;
         work += (zhi[k] - zlo[k] + 1) * ND * (costStart[k + 1] - costStart[k]
           + clrStart[k + 1] - clrStart[k] + (crestLim + sagLim + 1) * (1 + knotPins![k].length));
+        // Endpoint-half-cell pins are tested per valid segment, outside the transition loop.
+        if (k === nK - 1) work += (zhi[k] - zlo[k] + 1)
+          * Math.min(ND, zhi[k + 1] - zlo[k + 1] + 1) * knotPins![nK].length;
       }
       if (states > 4_000_000 || work > 60_000_000) return null;
     }
