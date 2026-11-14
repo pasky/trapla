@@ -240,16 +240,28 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     costClasses.push({ ground: groundIds[i], water: waterAt[i], elevation: ground[i] });
   }
   const crossingCost = (cs: WaterCrossing[], width: number, z: number) => cs.reduce((v, c) => v + (z > waterGround.get(c)! ? culvertCost(c, width) : 0), 0);
-  const forceWater = (mask: Uint8Array, ss: ArrayLike<number>, heights: ArrayLike<number>, widths: ArrayLike<number>) => {
+  const forceWater = (mask: Uint8Array, ss: ArrayLike<number>, heights: ArrayLike<number>, widths: ArrayLike<number>, chosen?: ArrayLike<number>) => {
     for (const c of water) {
       const i = Math.min(ss.length - 1, Math.round(c.s / (ss[1] - ss[0])));
       const size = waterSize(c, widths[i]);
-      if (size.type !== 'bridge') continue;
-      const halfSpan = size.width / Math.max(0.01, c.sine) / 2;
+      if (size.type !== 'bridge' && chosen?.[i] !== KIND.bridge) continue;
+      const opening = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, size.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks);
+      const halfSpan = opening / Math.max(0.01, c.sine) / 2;
       for (let j = 0; j < ss.length; j++) if (Math.abs(ss[j] - c.s) <= halfSpan + (ss[1] - ss[0]) / 2 && heights[j] > 0) mask[j] = 1;
     }
   };
 
+  const waterSide = Array.from({ length: n }, (_, i) => (terrain.watercourses?.section(st.x[i], st.y[i], st.tx[i], st.ty[i], 150, 150) ?? []).map(hit => ({ ...hit,
+    offset: -(hit.x - st.x[i]) * st.ty[i] + (hit.y - st.y[i]) * st.tx[i], ground: terrain.heightAt(hit.x, hit.y) })));
+  const exposedWater = (i: number, left: number, right: number) => waterSide[i].filter(hit => hit.offset <= left && hit.offset >= -right
+    && !water.some(c => c.id === hit.id && Math.abs(c.s - st.s[i]) <= barrelLength(c, left + right) / 2 + ds));
+  const forceParallelWater = (mask: Uint8Array, indices: ArrayLike<number>, z: ArrayLike<number>, left: ArrayLike<number>, right: ArrayLike<number>) => {
+    for (let k = 0; k < indices.length; k++) {
+      const i = indices[k];
+      if (z[k] <= ground[i]) continue;
+      if (exposedWater(i, left[k], right[k]).some(hit => z[k] - hit.ground >= STRUCTURE_RULES.riverClearance)) mask[k] = 1;
+    }
+  };
   const tunnelWater = (ss: ArrayLike<number>, z: ArrayLike<number>) => {
     const mask = new Uint8Array(ss.length);
     for (const c of water) {
@@ -385,6 +397,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (subMust[k] && hh[k] > 0) must[k] = 1;
     }
     forceWater(must, subS, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]));
+    forceParallelWater(must, subI, z, sc.dayL, sc.dayR);
     if (roadS.length) {
       const rz = elevations(p, roadS);
       roadX.forEach((c, j) => {
@@ -393,8 +406,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0) must[k] = 1;
       });
     }
-    const { kind } = chooseStructures({ ds: subDs, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, forced: must, forcedTunnel: tunnelWater(subS, z), overrides: subOverrides,
-      bridgeRunCost: bridgeRunCost(bridge, hh, subDs, i => surchargeRate(subUrban[i]), i => landPerM2(subUrban[i])) });
+    const input = { ds: subDs, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, forced: must, forcedTunnel: tunnelWater(subS, z), overrides: subOverrides,
+      bridgeRunCost: bridgeRunCost(bridge, hh, subDs, i => surchargeRate(subUrban[i]), i => landPerM2(subUrban[i])) };
+    const firstChoice = chooseStructures(input);
+    forceWater(must, subS, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]), firstChoice.kind);
+    const { kind } = chooseStructures(input);
     let bal = 0;
     for (let k = 0; k < sub; k++) if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * subW[k];
     return bal;
@@ -530,6 +546,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const forced = new Uint8Array(n);
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]));
+  forceParallelWater(forced, Array.from({ length: n }, (_, i) => i), grade, sec.dayL, sec.dayR);
   // an existing road clearly below the grade passes under a (short) bridge instead of being buried
   const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
   const crossings: CrossingResult[] = roadX.map((c, k) => ({
@@ -540,8 +557,14 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const choice = crossingChoice(c.roadId!, crossingOverrides);
     if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
   }
-  const { kind, runs, violations: structureViolations } = chooseStructures({ ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel: tunnelWater(st.s, grade), overrides: manualStructures,
-    bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surchargeRate(urbanDeck[i]), i => landPerM2(urbanDeck[i])) });
+  const structureInput = { ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel: tunnelWater(st.s, grade), overrides: manualStructures,
+    bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surchargeRate(urbanDeck[i]), i => landPerM2(urbanDeck[i])) };
+  let selection = chooseStructures(structureInput);
+  // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
+  // was hydraulically possible. Extend crossing spans, retaining manual overrides and checks.
+  forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]), selection.kind);
+  selection = chooseStructures(structureInput);
+  const { kind, runs, violations: structureViolations } = selection;
   // what is actually built decides the land take, the rates and whether the terrain data suffice
   const width = new Float64Array(n), urban = new Float32Array(n), forest = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -711,7 +734,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const above = waterZ[k] - terrain.heightAt(c.x, c.y);
     const isTunnel = kind[i] === KIND.tunnel && above <= -STRUCTURE_RULES.tunnelMinDepth;
     const run = runs.find(r => r.kind === KIND.bridge && i >= r.i0 && i <= r.i1);
-    const bridgeSpan = size.type === 'bridge' ? size.width / Math.max(0.01, c.sine) : c.width / Math.max(0.01, c.sine);
+    const bridgeSpan = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, size.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks) / Math.max(0.01, c.sine);
     const clearBridge = !!run && c.s - bridgeSpan / 2 >= run.s0 && c.s + bridgeSpan / 2 <= run.s1;
     const need = kind[i] === KIND.bridge ? STRUCTURE_RULES.riverClearance : size.minHeight;
     const ok = isTunnel || (above >= need - 1e-6 && (kind[i] === KIND.bridge ? clearBridge : kind[i] === KIND.earth && size.type !== 'bridge'));
@@ -723,7 +746,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       basis: 'game', rule: 'Provisional flood-capacity, cover and ecological screening; not a hydraulic design (research/17)',
     });
     let cost = kind[i] === KIND.earth && above > 0 ? culvertCost(c, wd) : 0;
-    if (run) for (let j = run.i0; j <= run.i1; j++) cost += parts.bridges[j];
+    if (run) {
+      for (let j = run.i0; j <= run.i1; j++) cost += parts.bridges[j];
+      cost /= water.filter(other => other.s >= run.s0 && other.s <= run.s1).length;
+    }
     return { ...c, i, q100: size.q100, structure: !ok ? 'blocked' : isTunnel ? 'tunnel' : kind[i] === KIND.bridge ? 'bridge' : size.type,
       opening: kind[i] === KIND.bridge ? `≥${bridgeSpan.toFixed(1)} m clear` : isTunnel ? 'surface channel retained' : waterOpening(size),
       length: run?.length ?? barrelLength(c, wd), cost, requiredBridge: size.type === 'bridge' };
@@ -733,8 +759,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const waterAlongside = new Map<number, { s0: number; s1: number }>();
   if (terrain.watercourses) for (let i = 0; i < n; i++) {
     if (kind[i] !== KIND.earth) continue;
-    for (const hit of terrain.watercourses.section(st.x[i], st.y[i], st.tx[i], st.ty[i], sec.dayL[i], sec.dayR[i])) {
-      if (water.some(c => c.id === hit.id && Math.abs(c.s - st.s[i]) <= barrelLength(c, sec.dayL[i] + sec.dayR[i]) / 2 + ds)) continue;
+    for (const hit of exposedWater(i, sec.dayL[i], sec.dayR[i])) {
       const range = waterAlongside.get(hit.id);
       if (range) range.s1 = st.s[i]; else waterAlongside.set(hit.id, { s0: st.s[i], s1: st.s[i] });
     }

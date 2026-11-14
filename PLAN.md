@@ -115,13 +115,25 @@ What exists (details and commands in `README.md`):
   straight line with the automatic (legal) grade line; the cost of a design that is not valid is struck through.
 - **Rules added during the build** (game rules, not norm values): river / water-area / railway crossings are
   always bridged (≥ 30 m) and need the grade ≥ 3 m above a river and ≥ 7.5 m above a railway (otherwise a
-  violation; the auto-profile respects it); ordinary stream drainage is in the norm, with excess culvert
-  barrel length priced explicitly since model 11. Since cost model 3
+  violation; the auto-profile respects it). Mapped watercourses now pay full catchment-sized pipe/frame
+  assemblies (barrel + two heads); large flow/width/length forces a bridge. Cuts through channels are
+  invalid; deep bored tunnels retain surface flow. See research/17 for provisional hydraulics. Since cost model 3
   motorways / expressways are treated the same way (see "Crossing existing roads"). Bridges are only
   considered ≥ 4 m above ground and bored tunnels with ≥ 14 m of cover; minimum bridge 30 m, tunnel 150 m;
   earthwork gaps shorter than 60 m (bridges) / 150 m (tunnels) are merged. Road base price is charged on at-grade
   length only. Slopes that do not reach the ground within 150 m and footprints leaving the terrain data are
   violations.
+
+### Watercourse crossings
+
+- Independent OSM stream/river/ditch/canal vectors retain tagged widths and pointwise upstream areas;
+  `pipeline/hydrology.py` burns/fills/accumulates a 25 m DMR grid, flags truncated basins, writes
+  `watercourses.json.gz` with a scoring fingerprint. Legacy packs retain an explicitly uncertain fallback.
+- Full sized culvert assembly enters bill, structure choice and Auto estimate; separate HUD/profile cost
+  group and blue-ring map/profile markers. Parallel channels intercepted by fill force bridges where
+  clearance permits, otherwise a conflict; no unpriced diversion. Deep-tunnel passage is disjunctive in Auto.
+- Sources/assumptions: `research/17-stream-crossings.md`; saved-design results and the ~12.2 km case:
+  `research/17-stream-validation.md`, reproducible with `scripts/stream-report.ts`.
 
 ### Travel-time target X and traffic Y
 
@@ -391,6 +403,10 @@ price cannot be determined (research/07 §1).
 | Working strip for demolitions | 3 m beyond the footprint / deck edge | |
 | Building land | 1,500 CZK/m² × 1.5 | research/07 (range 600–3,500); other land 8 × 40 |
 | Grade separation thresholds | ≥ 6 m above (4.8 m clearance + deck) / ≤ −6 m below | heuristic: 4.8 m clearance is ČSN 73 6201, the deck depth unverified (research/08) |
+| Watercourse flood proxy | Q100 = 3 × max(0.1, A km²)^0.75; ×2 for incomplete catchments | PROVISIONAL, not a ČHMÚ regional formula or uncertainty bound; 25 m burned D8 on DMR with boundary/nodata flags (research/17) |
+| Culvert capacity / limits | velocity 2 m/s; pipe 70% area, box 75% height; pipe ≤80 m, frame ≤100 m, ≤5×3 m | PROVISIONAL screen; beyond → bridge, width+2 m banks each side / flood opening; not a hydraulic design |
+| Ecological frame floor | natural stream ≥1 km² or tagged width ≥1.5 m → natural bed +0.5 m bank | PROVISIONAL habitat proxy, not surveyed fish/ÚSES; AOPK ledge recommendation 0.4 m, justified minimum 0.25 m |
+| Watercourse assembly price | OTSKP Apr2026 DN800–>1600 / frames 2×2–3×2 + two heads | Larger frames and bedding/encasement quantities provisional; replaces excess-length term, ordinary road drainage remains in base norm |
 | Junction with a through road (class I–III) | 25 M CZK | PROVISIONAL research-informed estimate from roundabout awards 19.8–37.5 M; no isolated T/X-junction contract found (research/08) |
 | Motorway / expressway | no at-grade crossing | bridge ≥ 7.5 m above or overbridge ≥ 6 m below (research/08) |
 | Junction spacing incl. A/B | 1.5 km | rural ČSN 73 6101:2018 via research/12 §2, medium-high confidence; same urban rule is a scenario assumption |
@@ -554,7 +570,7 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 
 - Benched fill/cut geometry now contributes real volume and footprint; high earthworks pay a separate
   **provisional** stability/ground-treatment reserve even with free surplus soil. Stream crossings pay
-  excess culvert length beyond norm drainage. Bill, structure selector, balance estimate and DP share these
+  excess culvert length beyond norm drainage (superseded by full watercourse assemblies, research/17). Bill, structure selector, balance estimate and DP share these
   terms, including the merged ČGS geology categories. Sources, uncertainties and formulas: research/15.
 - Flat rural S9.5 bridge break-even at material value λ=200: **26.85 → 16.62 m**; at λ=0:
   **47.03 → 18.62 m**; at λ=−196.4: no old economic crossing → **21.03 m**. Reproduce with
