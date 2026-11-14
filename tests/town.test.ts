@@ -299,7 +299,7 @@ describe('evaluate on a synthetic town', () => {
 
   it('resolves each crossing by the height of the grade above the crossed road', () => {
     expect(r.crossings.map((c) => [Math.round(c.s), c.cls, c.type])).toEqual([
-      [1500, 'residential', 'bridge'], [2500, 'residential', 'overbridge'], [2700, 'track', 'overbridge'],
+      [1500, 'residential', 'bridge'], [2500, 'residential', 'overbridge'], [2700, 'track', 'diversion'],
       [3500, 'residential', 'overbridge'], [4500, 'primary', 'junction'],
     ]);
     // the valley street forces a short bridge into what would otherwise be an embankment
@@ -314,13 +314,13 @@ describe('evaluate on a synthetic town', () => {
     const g = over.geometry!, deck = g.deck!;
     expect(over.span).toBeCloseTo(crossingPlanLength(g.road!.slice(deck.start, deck.end + 1)), 6);
     expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(over.span!, 0, { span: over.span!, pierDensity: 0 }) + over.approachLength! * over.roadPerKm! / 1000, 3);
-    // The street needs raised approaches. Actual connectors to its approach feet make the
-    // neighbouring track's own short bridge cheaper than the built reconnection alternative.
+    // The street needs raised approaches. With the current clear-span bridge model, the
+    // neighbouring track's measured ground connection is cheaper than its own overbridge.
     expect(r.crossings[1].approachLength).toBeGreaterThan(0);
-    expect(r.crossings[2].targetS).toBeUndefined();
-    const linked = evaluate(ctx, { ...design, crossingOverrides: [{ roadId: 3, type: 'reconnection' }] });
-    expect(r.crossings[2].cost).toBeLessThan(linked.crossings.find(c => c.roadId === 3)!.cost);
-    expect(r.crossings[2].geometry!.deck).toBeDefined();
+    expect(r.crossings[2].targetS).toBeDefined();
+    const separated = evaluate(ctx, { ...design, crossingOverrides: [{ roadId: 3, type: 'overbridge' }] });
+    expect(r.crossings[2].cost).toBeLessThan(separated.crossings.find(c => c.roadId === 3)!.cost);
+    expect(r.crossings[2].linkLength).toBeCloseTo(r.crossings[2].geometry!.links!.reduce((sum,path) => sum+crossingPlanLength(path),0),6);
     expect(r.cost.crossings).toBeCloseTo(r.crossings.reduce((sum, c) => sum + c.cost, 0), 0);
   });
 

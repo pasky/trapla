@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { auditCrossingGeometry, buildCrossingGeometry, crossingPlanLength, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
   type CrossingOverride, type CrossingResult, type CrossingRoute } from '../src/core/crossings';
 import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet';
+import { bridgeModel } from '../src/core/bridge';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { chooseStructures, KIND } from '../src/core/structures';
 import { CrossingRenderer } from '../src/render/crossings';
@@ -163,7 +164,7 @@ describe('crossing geometry and map overlay', () => {
     expect(over.span).toBeCloseTo(crossingPlanLength(g.road!.slice(deck.start, deck.end + 1)), 6);
     const approaches = g.approaches!.reduce((sum, range) => sum + crossingPlanLength(g.road!.slice(range.start, range.end + 1)), 0);
     expect(over.approachLength).toBeCloseTo(approaches, 6);
-    expect(over.cost).toBeCloseTo((over.span! * ROAD_CLASSES.residential.bridgePerKm + approaches * over.roadPerKm!) / 1000, 5);
+    expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(over.span!, 0, { span: over.span!, pierDensity: 0 }) + approaches * over.roadPerKm! / 1000, 5);
     expect(auditCrossingGeometry(cs, route, () => 400, roads)).toEqual([]);
   });
 

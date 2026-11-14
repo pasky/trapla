@@ -2,11 +2,15 @@
 import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, CrossingRoute } from './crossings';
 import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
+import { bridgeModel } from './bridge';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
+// Match the main bridge model's clear-span overbridge layout: abutments on the banks, no
+// piers in our traffic corridor. Raised earth approaches are billed separately below.
+const deckPrice = (c: CrossingResult, span: number) => bridgeModel(ROAD_CLASSES[c.cls]).total(span, 0, { span, pierDensity: 0 });
 
 export function crossingPlanLength(path: readonly XY[]): number {
   let length = 0;
@@ -232,7 +236,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       if (isRaised) {
         g.deck = { start, end, depth: DEPTH };
         c.span = d1 - d0; c.approachLength = d0 - f0 + f1 - d1;
-        c.cost = (c.span * ROAD_CLASSES[c.cls].bridgePerKm + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0])) / 1000;
+        c.cost = deckPrice(c, c.span) + c.approachLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
       }
     } else if (['bridge', 'tunnel'].includes(c.type)) {
       // Only show the vicinity of the crossing; its existing road is unchanged at terrain level.
@@ -411,7 +415,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !['overbridge', 'reconnection', 'diversion'].includes(c.type)) continue;
     let best = c;
     const originalFeasible = feasible(c);
-    if (c.type !== 'overbridge' && (!originalFeasible || c.cost > route.width[c.i] * ROAD_CLASSES[c.cls].bridgePerKm / 1000)) {
+    if (c.type !== 'overbridge' && (!originalFeasible || c.cost > deckPrice(c, route.width[c.i]))) {
       const over = clone(c); over.type = 'overbridge'; delete over.targetS; delete over.targetRoadId; delete over.linkLength;
       build([over]);
       if (feasible(over) && (!originalFeasible || over.cost < best.cost)) best = over;
@@ -535,7 +539,7 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       if (Math.abs(price - c.cost) > 0.01) report('Link bill differs from measured quantities');
     }
     if (c.type === 'overbridge') {
-      const price = ((c.span ?? 0) * ROAD_CLASSES[c.cls].bridgePerKm + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0])) / 1000;
+      const price = deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
       if (Math.abs(price - c.cost) > 0.01) report('Overbridge bill differs from measured quantities');
     }
   }
