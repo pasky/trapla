@@ -566,10 +566,11 @@ Compound solve: arc j turns from leg j−1's direction to leg j's, so any radii 
 and the start point. The classic solution (arcs meet on the legs, T[k] + T[k+1] = leg) has one degree of freedom,
 spent on even radii. Where it breaks R min or the ratio rule (uneven spacing), tangency to the inner legs is relaxed
 by least squares only as far as needed, at most 5 m. For a two-bend pair with one manual radius, the remaining
-radius interval is now solved directly: intersect R min, ratio (or plain-arc exception), closure, offsets and tangent
-bounds; choose the smallest junction offset while preserving the manual radius exactly. This avoids the ladder
+radius interval is now solved directly: intersect R min, ratio (or plain-arc exception), closure, offsets, tangent
+bounds and the terminal-transition turning budget; choose the smallest junction offset while preserving the manual radius exactly. This avoids the ladder
 skipping a feasible interval when the exact-on-leg radius is negative. Joining is also tried for a manual arc too
-short for isolated transitions even if the shared leg has room, provided it does not worsen either outer leg.
+short for isolated transitions even if the shared leg has room, provided all ratios hold, it does not worsen either
+outer leg, and neither original arc moves more than 5 m (junction offset alone is insufficient).
 Next to an opposite curve or A/B the outer tangents are pulled
 in (a single arc may first be joined with a close same-direction neighbour). Fallbacks, in order: violation with the
 least-bad curve; squeeze into the leg when tangents physically overlap (always G1); dissolve into single arcs.

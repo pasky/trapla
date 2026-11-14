@@ -25,7 +25,8 @@ Reconstructing the owner's rounded tangent lengths gives turns `2 atan(68/355) =
 | R1 auto, R2 = 1,115 m | valid compound, R1 ≈ 783.088 m | valid, same radii; exact zero-offset solve |
 | R1 = 355 m, R2 = 1,115 m, both manual | rejected join, 460.238 m required on 452 m leg | remains rejected, with explicit numeric diagnostics |
 | 5° + 47°, 452 m, R1 auto, R2 = 1,115 m | join failed, unadapted R1 = 1,035 m | valid compound, R1 = 557.5 m, junction offset 4.623 m |
-| 21° + 3°, 452 m, R1 auto, R2 = 1,115 m | manual arc too short; joining never tried because the leg had room | valid compound, manual radius preserved, auto neighbour adapted |
+| 10° + 3°, 175 m, R1 auto, R2 = 1,115 m | manual arc too short; joining never tried because the leg had room | valid compound, manual radius preserved, auto neighbour adapted within 5 m reshape tolerance |
+| 3° + 3°, 35 m, R1 auto, R2 = 900 m | compound chosen with R1 = 450 m, too short for transitions | valid compound, R1 ≈ 818.873 m, 90 m total turning budget |
 
 The report's wording “radius set on bend 22 **and** bend 23” therefore matches **both manual**, not one manual. Without the saved full design, exterior constraints cannot be excluded; the isolated reconstruction establishes the distinction, not the player's actual input history.
 
@@ -33,8 +34,8 @@ For both fixed radii, the direct compound's junction would be 19.408 m from the 
 
 ## Changes and remaining limits
 
-- Fixed/auto pairs with free outer tangents now intersect an exact one-dimensional feasible interval: minimum radius, ratio or transition-free exception, closure, junction tolerance, and tangent bounds. Pick the radius with the smallest junction offset, keeping the player's radius exactly. The previous evenness ladder could jump from a negative exact-on-leg radius to a positive radius already outside tolerance.
-- Joining is also considered when a manual arc cannot carry its isolated terminal transitions, even if there is enough leg room. Accept only a valid compound that does not worsen the outer legs. Do not silently change manual radii.
+- Fixed/auto pairs with free outer tangents now intersect an exact one-dimensional feasible interval: minimum radius, ratio or transition-free exception, closure, junction tolerance, tangent bounds and terminal-transition turning budget (split at the transition-free radius). Pick the radius with the smallest junction offset, keeping the player's radius exactly. The previous evenness ladder could jump from a negative exact-on-leg radius to a positive radius already outside tolerance.
+- Joining is also considered when a manual arc cannot carry its isolated terminal transitions, even if there is enough leg room. Accept only a valid compound (including manual/manual ratios) that does not worsen the outer legs or reshape either original arc by more than 5 m. For example, 21° + 3° at 452 m would require ~32 m movement of the first arc and remains rejected as a game-tolerance restriction, even though its compound junction offset alone is small. Do not silently change manual radii.
 - Checks expose which radii are manual, required/available leg length, extra spacing **at unchanged angles and radii**, the rejected join's reason and offset when known, and a fixed-radius ratio conflict. A search failure is explicitly not a norm impossibility.
 - Radius advice reuses the editor's Max search on demand (not per drag). Its result is a tested valid editable radius, not a mathematical proof of the global maximum: existing 12% sampling can miss a narrower feasible island.
 - General chains, pinned-end solves and intermediate clothoids are not exhaustively solved. Transitions remain represented by tangent-series footprints and circular turning budgets, not drawn clothoids. No source-supported stricter-than-norm spacing rule was found that could safely be removed by simply subtracting metres; the fixes remove demonstrated **solver** restrictions rather than weakening minima.

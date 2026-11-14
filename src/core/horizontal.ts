@@ -422,8 +422,14 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
       // The no-transition exception is a second feasible interval, not a ratio constraint.
       const intervals = [[Math.max(rules.minRadius, fixed / rules.compoundRatio), Math.min(REACH, fixed * rules.compoundRatio)]];
       if (fixed >= rules.plainRadius) intervals.push([Math.max(rules.minRadius, rules.plainRadius), REACH]);
-      for (const interval of intervals) {
-        let [lo, hi] = interval;
+      // The terminal-transition budget changes at the automatic radius's plain-arc boundary.
+      const segments = intervals.flatMap(([lo, hi]) => [
+        [lo, Math.min(hi, rules.plainRadius - 1e-8), 1],
+        [Math.max(lo, rules.plainRadius), hi, 0],
+      ]);
+      const angle = (i: number) => 2 * Math.atan(tau[i]);
+      for (const [start, end, autoTransition] of segments) {
+        let lo = start, hi = end;
         const bound = (v: number, d: number, min: number, max: number) => {
           if (Math.abs(d) < 1e-12) { if (v < min || v > max) hi = -Infinity; return; }
           const a = (min - v) / d, b = (max - v) / d;
@@ -432,6 +438,8 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
         bound(w0, wd, -tolerance, tolerance);
         bound(origin[0], slope[0], -sMinIn + 1e-7, REACH - 1e-7);
         bound(out0, outD, -sMinOut + 1e-7, REACH - 1e-7);
+        const requiredArc = (autoTransition + (fixed < rules.plainRadius - 1e-9 ? 1 : 0)) * rules.transition / 2;
+        bound(fixed * angle(k === 1 ? 1 : 0), angle(k - 1), requiredArc + 1e-8, Infinity);
         if (lo > hi) continue;
         const r = Math.max(lo, Math.min(hi, Math.abs(wd) > 1e-12 ? -w0 / wd : fixed));
         const x = Float64Array.from(origin, (v, i) => v + r * slope[i]);
@@ -687,9 +695,13 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
           const oldSlack = rescue ? [slack(q - 1), slack(qe + 1)] : [];
           applyChain(u, sol);
           units.splice(q - 1, qe - q + 2, u);
-          if (rescue && (!sol.ok || arcShort(u)
+          const badRescue = rescue && (!sol.ok || arcShort(u)
             || slack(q - 1) < Math.min(0, oldSlack[0]) - EPS_LEN
-            || slack(q) < Math.min(0, oldSlack[1]) - EPS_LEN)) {
+            || slack(q) < Math.min(0, oldSlack[1]) - EPS_LEN
+            || sol.R.some((r, i) => i > 0 && ratioExcess(r, sol!.R[i - 1], rules) > 0)
+            || sol.R.some((r, i) => Math.abs(r - oldR![u.i0 + i])
+              * (Math.sqrt(1 + tau[u.i0 + i] ** 2) - 1) > EDIT_TOLERANCE));
+          if (badRescue) {
             units = oldUnits!;
             for (let i = 0; i < nv; i++) Rv[i] = oldR![i];
             continue;

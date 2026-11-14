@@ -401,7 +401,7 @@ describe('compound curves', () => {
   });
 
   it('joins to rescue a short manual arc even when a straight has ample room', () => {
-    const { a, b, pis } = route([[0, 1500], [21, 452], [3, 1500]]);
+    const { a, b, pis } = route([[0, 1500], [10, 175], [3, 1500]]);
     pis[1].r = 1115;
     const al = buildAlignment(a, b, pis, R90);
     expect(msgs(al)).toEqual([]);
@@ -411,12 +411,36 @@ describe('compound curves', () => {
     expect(al.curves[0].rEff).toBeLessThanOrEqual(1115 * 2);
     expect(al.units[0].maxOffset).toBeLessThanOrEqual(EDIT_TOLERANCE);
     expectG1(al, a, b);
+    const shift = Math.abs(al.curves[0].rEff - autoRadius(deg(10), R90)) * (1 / Math.cos(deg(5)) - 1);
+    expect(shift).toBeLessThanOrEqual(EDIT_TOLERANCE);
     // Joining is optional here: never trade the short-arc error for an overlap at the route end.
-    const squeezed = route([[0, 100], [21, 452], [3, 1500]]);
+    const squeezed = route([[0, 100], [10, 175], [3, 1500]]);
     squeezed.pis[1].r = 1115;
     const bad = buildAlignment(squeezed.a, squeezed.b, squeezed.pis, R90);
     expect(bad.units).toHaveLength(2);
     expect(horizontalViolations(bad, 90).some((v) => v.kind === 'arcShort')).toBe(true);
+    // A nearly zero junction offset does not permit reshaping the other arc by ~32 m.
+    const far = route([[0, 1500], [21, 452], [3, 1500]]);
+    far.pis[1].r = 1115;
+    expect(buildAlignment(far.a, far.b, far.pis, R90).units).toHaveLength(2);
+    // Unlike a mandatory join, an optional rescue must not introduce a new fixed/fixed ratio error.
+    const ratio = route([[0, 1500], [15, 175], [3, 1500]]);
+    ratio.pis[0].r = 400; ratio.pis[1].r = 1200;
+    const unchanged = buildAlignment(ratio.a, ratio.b, ratio.pis, R90);
+    expect(unchanged.units).toHaveLength(2);
+    expect(horizontalViolations(unchanged, 90).map((v) => v.kind)).toEqual(['arcShort']);
+  });
+
+  it('adapts the automatic radius to the compound terminal-transition budget', () => {
+    const { a, b, pis } = route([[0, 1500], [3, 35], [3, 1500]]);
+    pis[1].r = 900;
+    const al = buildAlignment(a, b, pis, R90);
+    expect(msgs(al)).toEqual([]);
+    expect(al.curves[1].rEff).toBe(900);
+    expect(al.curves[0].rEff).toBeCloseTo(90 / deg(3) - 900, 5);
+    expect(al.units[0].arcLen).toBeCloseTo(90, 6);
+    expect(al.units[0].maxOffset).toBeLessThan(EDIT_TOLERANCE);
+    expectG1(al, a, b);
   });
 
   it('a bend that only wiggles against the curve around it is left out, a real S is not', () => {
