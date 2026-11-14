@@ -14,11 +14,11 @@ function spanAt(spans: readonly BridgeDeckSpan[], s: number): number {
   }
   return lo;
 }
-/** At a pier, stop at the lower of the two adjacent soffits rather than entering a deck. */
-export function bridgeDepthAt(spans: readonly BridgeDeckSpan[], s: number): number {
-  if (!spans.length) return 1.2;
-  const i = spanAt(spans,s), span = spans[i];
-  return i > 0 && Math.abs(s-span.s0) < 1e-8 ? Math.max(span.depth,spans[i-1].depth) : span.depth;
+/** A flat pier top must reach both unequal/sloping soffits. Its overlap inside the deeper
+ * deck is hidden; stopping at that deeper soffit would leave the shallow span unsupported. */
+export function bridgePierTop(spans: readonly BridgeDeckSpan[], s0: number, s1: number,
+  highestGrade: (s0: number, s1: number) => number): number {
+  return Math.max(...bridgeDeckSegments(spans,s0,s1).map(span => highestGrade(span.s0,span.s1)-span.depth));
 }
 /** Split a route interval at actual supports, retaining the existing half-station deck
  * extension into the abutment with the depth of its nearest span. */

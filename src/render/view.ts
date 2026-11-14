@@ -18,7 +18,7 @@ import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, gr
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 import { structureFootprints } from '../core/footprint';
-import { bridgeDeckSpans, bridgeDeckSegments, bridgeDepthAt } from './bridge-surface';
+import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
 
 export interface ViewEvents {
   onPickTerrain?: (x: number, y: number, clientX: number, clientY: number, forceBend: boolean) => void;
@@ -631,6 +631,7 @@ export class View {
         const at = (s: number) => {
           const i = Math.max(0,Math.min(n-2,Math.floor(s/r.ds))), t = Math.max(0,Math.min(1,(s-r.s[i])/(r.s[i+1]-r.s[i])));
           const value = (a: Float64Array) => a[i]+(a[i+1]-a[i])*t;
+          // Interpolate the crown's chord edges exactly; normalising tangents would widen the split.
           return { x: value(r.x), y: value(r.y), z: value(r.grade), tx: value(r.tx), ty: value(r.ty) };
         };
         for (let i = Math.max(0, run.i0 - 1); i <= Math.min(n - 2, run.i1); i++) {
@@ -649,15 +650,27 @@ export class View {
           }
         }
         // Close the soffit step between unequal spans, rather than leave an open deck at a pier.
-        for (let j = 1; j < spans.length; j++) if (spans[j-1].depth !== spans[j].depth) {
+        for (let j = 1; j < spans.length; j++) if (Math.abs(spans[j-1].depth-spans[j].depth) > 1e-6) {
           const p = at(spans[j].s0), c = shade(concrete,.65);
           quad(push(p.x-p.ty*w,p.y+p.tx*w,p.z-spans[j-1].depth,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z-spans[j-1].depth,c),
             push(p.x-p.ty*w,p.y+p.tx*w,p.z-spans[j].depth,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z-spans[j].depth,c));
         }
+        // Close deep deck ends even where the embankment cap cannot hide the underside.
+        for (const [s,depth] of [[r.s[Math.max(0,run.i0-1)],spans[0].depth],
+          [r.s[Math.min(n-1,run.i1+1)],spans[spans.length-1].depth]]) {
+          const p = at(s), c = shade(concrete,.75);
+          quad(push(p.x-p.ty*w,p.y+p.tx*w,p.z+lift,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z+lift,c),
+            push(p.x-p.ty*w,p.y+p.tx*w,p.z-depth,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z-depth,c));
+        }
         // Same explicit layout as pricing and footprint checks. Never silently omit a
         // colliding pier: the blocked marker explains why the player must adjust the bridge.
         for (const p of piers) {
-          boxAt(p.x, p.y, p.tx, p.ty, this.terrain.heightAt(p.x, p.y) - 2, at(p.s).z - bridgeDepthAt(spans,p.s),
+          const top = bridgePierTop(spans,p.s-p.along,p.s+p.along,(s0,s1) => {
+            let highest = Math.max(at(s0).z,at(s1).z);
+            for (let j = Math.max(0,Math.floor(s0/r.ds)+1); j < n && r.s[j] < s1; j++) highest = Math.max(highest,r.grade[j]);
+            return highest;
+          });
+          boxAt(p.x, p.y, p.tx, p.ty, this.terrain.heightAt(p.x, p.y) - 2, top,
             p.along, p.left, shade(concrete, 0.85));
         }
       } else if (run.kind === KIND.tunnel) {
