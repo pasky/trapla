@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import heapq
 import json
+from itertools import count
 import math
 from pathlib import Path
 import re
@@ -23,7 +24,7 @@ CELL = 25.0
 BURN_DEPTH = 5.0
 METHOD = ("DMR 5G mean-resampled 25m (any nodata block excluded); OSM waterways burned 5m; "
           "priority-flood depression fill + steepest D8, flood-parent flat routing; "
-          "25m maximum nearby burned-cell upstream area; boundary/nodata contributions "
+          "25m maximum nearby same-reach burned-cell upstream area; boundary/nodata contributions "
           "propagate truncated=true (known area only); unsampled points=0,truncated=true")
 KINDS = {"stream", "river", "ditch", "drain", "canal"}
 # Fixed order makes both flood ties and D8 ties deterministic.
@@ -77,10 +78,11 @@ def flow_grid(heights: np.ndarray, cell: float = CELL, burned: np.ndarray | None
     visited = boundary.copy()
     parent = np.full(ny * nx, -1, dtype=np.int32)
     z = filled.ravel()
-    heap = [(float(z[i]), int(i)) for i in np.flatnonzero(boundary)]
+    sequence = count()
+    heap = [(float(z[i]), next(sequence), int(i)) for i in np.flatnonzero(boundary)]
     heapq.heapify(heap)
     while heap:
-        elevation, i = heapq.heappop(heap)
+        elevation, _, i = heapq.heappop(heap)
         r, c = divmod(i, nx)
         for dr, dc, _ in NEIGHBORS:
             rr, cc = r + dr, c + dc
@@ -89,7 +91,9 @@ def flow_grid(heights: np.ndarray, cell: float = CELL, burned: np.ndarray | None
                 visited[rr, cc] = True
                 parent[j] = i
                 z[j] = max(float(z[j]), elevation)
-                heapq.heappush(heap, (float(z[j]), j))
+                # FIFO elevation ties spread across filled flats rather than
+                # preferring raster-index meanders toward the northwest.
+                heapq.heappush(heap, (float(z[j]), next(sequence), j))
 
     downstream = parent.copy()
     # Strict downhill always wins; otherwise the flood parent drains a flat.
@@ -161,6 +165,14 @@ def fetch_waterways(cache: Path, overpass) -> list[dict]:
     The presence of one drainage way is not proof a legacy query covered them.
     A separate versioned cache records that the full drainage query was made.
     """
+    # Freeze one independent snapshot, including when bootstrapped from legacy
+    # caches. A later overlay build creating osm_lines must not switch sources.
+    snapshot = cache / "osm_watercourses_v1.json"
+    if snapshot.exists():
+        elements = json.loads(snapshot.read_text())["elements"]
+        by_id = {el["id"]: el for el in elements
+                 if el.get("type") == "way" and el.get("tags", {}).get("waterway") in KINDS}
+        return [by_id[i] for i in sorted(by_id)]
     cached = cache / "osm_lines.json"
     elements = json.loads(cached.read_text())["elements"] if cached.exists() else []
     waterways = [el for el in elements
@@ -171,11 +183,36 @@ def fetch_waterways(cache: Path, overpass) -> list[dict]:
         extra = overpass("watercourses_v1", 'way["waterway"~"^(river|stream|canal|ditch|drain)$"];')["elements"]
     by_id = {el["id"]: el for el in waterways + extra
              if el.get("type") == "way" and el.get("tags", {}).get("waterway") in KINDS}
-    return [by_id[i] for i in sorted(by_id)]
+    result = [by_id[i] for i in sorted(by_id)]
+    snapshot.write_text(json.dumps({"elements": result}, separators=(",", ":")))
+    return result
+
+
+def line_cells(points: np.ndarray, shape: tuple[int, int], cell: float = CELL) -> set[int]:
+    """Rasterize one reach in its clipped bounding box, using floor consistently.
+
+    The temporary image is at most grid-sized; the retained cell IDs are only
+    the reach's line pixels. No per-reach full-grid masks are retained.
+    """
+    ny, nx = shape
+    pixels = [(math.floor(x / cell), math.floor(ny - y / cell)) for x, y in points]
+    if len(pixels) < 2:
+        return set()
+    left = max(0, min(x for x, _ in pixels))
+    top = max(0, min(y for _, y in pixels))
+    right = min(nx - 1, max(x for x, _ in pixels))
+    bottom = min(ny - 1, max(y for _, y in pixels))
+    if left > right or top > bottom:
+        return set()
+    image = Image.new("1", (right - left + 1, bottom - top + 1))
+    ImageDraw.Draw(image).line([(x - left, y - top) for x, y in pixels], fill=1, width=1)
+    rows, cols = np.nonzero(np.asarray(image))
+    return set(((rows + top) * nx + cols + left).tolist())
 
 
 def sample_catchments(points: np.ndarray, flow: FlowGrid, burned: np.ndarray,
-                      cell: float = CELL) -> tuple[list[float], list[bool]]:
+                      cell: float = CELL, reach_cells: set[int] | None = None
+                      ) -> tuple[list[float], list[bool]]:
     """Snap to the largest upstream area on a burned cell centre within one cell.
 
     The max is a local downstream proxy, not a monotonic assumption about OSM
@@ -194,6 +231,7 @@ def sample_catchments(points: np.ndarray, flow: FlowGrid, burned: np.ndarray,
         for rr in range(max(0, r - 1), min(ny, r + 2)):
             for cc in range(max(0, c - 1), min(nx, c + 2)):
                 if (burned[rr, cc] and np.isfinite(flow.filled[rr, cc]) and
+                        (reach_cells is None or rr * nx + cc in reach_cells) and
                         math.hypot((cc + 0.5) * cell - x, (ny - rr - 0.5) * cell - y) <= cell):
                     candidates.append((rr, cc))
         if not candidates:
@@ -214,8 +252,7 @@ def build(heights: np.ndarray, source_cell: float, elements: list[dict], way_xy,
     """Write watercourses independently of the categorical land-cover raster."""
     terrain = resample_terrain(heights, source_cell)
     ny, nx = terrain.shape
-    image = Image.new("1", (nx, ny))
-    draw = ImageDraw.Draw(image)
+    burned = np.zeros((ny, nx), dtype=bool)
     reaches = []
     for el in elements:
         tags = el.get("tags", {})
@@ -225,15 +262,17 @@ def build(heights: np.ndarray, source_cell: float, elements: list[dict], way_xy,
         points = way_xy(el)
         if len(points) < 2 or not np.isfinite(points).all():
             continue
-        # PIL clips lines to the grid; drawing segments avoids gaps in steep diagonals.
-        draw.line([(float(x / CELL), float(ny - y / CELL)) for x, y in points], fill=1, width=1)
+        cells = line_cells(points, (ny, nx))
+        if cells:
+            burned.ravel()[list(cells)] = True
         reaches.append({"id": int(el["id"]), "kind": "ditch" if kind == "drain" else kind,
-                        "width": tagged_width(tags.get("width")), "points": densify(points)})
-    burned = np.asarray(image, dtype=bool)
+                        "width": tagged_width(tags.get("width")), "points": densify(points),
+                        "_cells": cells})
     log(f"hydrology: {nx}x{ny} cells, {len(reaches)} mapped reaches, {burned.sum()} burned cells")
     flow = flow_grid(terrain, burned=burned)
     for reach in reaches:
-        reach["catchmentKm2"], reach["truncated"] = sample_catchments(reach["points"], flow, burned)
+        reach["catchmentKm2"], reach["truncated"] = sample_catchments(
+            reach["points"], flow, burned, reach_cells=reach.pop("_cells"))
         reach["points"] = np.round(reach["points"], 3).tolist()
     pack = {"version": 1, "method": METHOD, "reaches": reaches}
     filename = "watercourses.json.gz"

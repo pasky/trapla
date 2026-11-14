@@ -8,8 +8,8 @@ import unittest
 
 import numpy as np
 
-from hydrology import (build, densify, fetch_waterways, flow_grid, resample_terrain,
-                       sample_catchments, tagged_width)
+from hydrology import (build, densify, fetch_waterways, flow_grid, line_cells,
+                       resample_terrain, sample_catchments, tagged_width)
 
 
 class HydrologyTests(unittest.TestCase):
@@ -102,6 +102,25 @@ class HydrologyTests(unittest.TestCase):
         flow.truncated[1, 2] = True
         self.assertEqual(sample_catchments(points[:1], flow, burned)[1], [True])
 
+    def test_snap_does_not_borrow_parallel_waterway_area(self):
+        h = np.tile(np.arange(5, 0, -1)[:, None], (1, 5)).astype(float)
+        burned = np.zeros_like(h, dtype=bool)
+        burned[:, 2:4] = True
+        flow = flow_grid(h)
+        flow.catchment_km2[2, 3] = 100  # neighboring river, not this stream
+        point = np.array([[74, 62.5]])
+        self.assertEqual(sample_catchments(point, flow, burned)[0], [100])
+        own_cells = {r * 5 + 2 for r in range(5)}
+        areas, _ = sample_catchments(point, flow, burned, reach_cells=own_cells)
+        self.assertAlmostEqual(areas[0], flow.catchment_km2[2, 2])
+        self.assertEqual(sample_catchments(point, flow, burned, reach_cells=set())[0], [0])
+
+    def test_line_rasterization_clips_negative_edge_without_burning_inside(self):
+        self.assertEqual(line_cells(np.array([[-1, 20], [-1, 100]]), (5, 5)), set())
+        self.assertEqual(line_cells(np.array([[20, 126], [100, 126]]), (5, 5)), set())
+        self.assertEqual(line_cells(np.array([[12.5, 112.5], [112.5, 12.5]]), (5, 5)),
+                         {0, 6, 12, 18, 24})
+
     def test_densification_and_width_parsing(self):
         points = densify(np.array([[0, 0], [0, 70], [30, 70]]))
         self.assertLessEqual(np.linalg.norm(np.diff(points, axis=0), axis=1).max(), 25)
@@ -125,8 +144,14 @@ class HydrologyTests(unittest.TestCase):
             self.assertEqual(len(calls), 1)
             self.assertIn("ditch|drain", calls[0][1])
             (cache / "osm_lines.json").write_text('{"elements":[]}')
-            fetch_waterways(cache, overpass)
+            self.assertEqual(fetch_waterways(cache, overpass), [stream, ditch, drain])
+            self.assertEqual(len(calls), 1)  # snapshot is independent of subsequent overlay changes
+            (cache / "osm_watercourses_v1.json").unlink()
+            fresh = fetch_waterways(cache, overpass)
             self.assertIn("river|stream|canal|ditch|drain", calls[-1][1])
+            (cache / "osm_lines.json").write_text(json.dumps({"elements": [stream]}))
+            self.assertEqual(fetch_waterways(cache, overpass), fresh)
+            self.assertEqual(len(calls), 2)  # fresh-build source must not flip on second build
 
     def test_pack_roundtrip_preserves_identity_and_parallel_point_arrays(self):
         h = np.tile(np.arange(25, 0, -1)[:, None], (1, 25)).astype(float)
