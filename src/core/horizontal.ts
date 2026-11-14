@@ -1,13 +1,15 @@
 // Horizontal alignment: polyline of tangent-intersection points (PIs, "bends") from A to B with a
 // circular arc at every bend. Transition curves are not drawn, but the room they need is tracked.
 //
-// Rules (ČSN 73 6101 as reproduced in the VUT text "Aplikace ČSN 73 6101"; values in HorizontalRules):
+// Model rules (older ČSN 73 6101 via VUT "Aplikace ČSN 73 6101", with concessions below;
+// 2018 source/edition caveats in research/15-horizontal-pairs.md; values in HorizontalRules):
 //  - an arc whose radius is ≥ plainRadius (transition shift L²/24R ≤ 0.25 m) needs no transitions;
 //  - same-direction arcs may meet directly as a compound curve if neighbouring radii differ by at
 //    most compoundRatio (the norm's "exceptional" variant without intermediate transitions);
 //  - opposite arcs: their transitions may touch; ends without a transition need reverseStraight
 //    between them (half of it is asked of each such end).
-// Game simplifications: a transition takes ≈ L/2 of the tangent and L/2 of the curve; a compound
+// Game simplifications: omission threshold uses actual L = vn, not VUT's prescribed 1.5vn;
+// transitions use the series tangent offset (≈ L/2) and L/2 of the circular turning budget; a compound
 // curve only needs room for the transitions at its two ends; a straight between same-direction arcs
 // is accepted whenever the required transitions fit (no minimum length); when they do not fit the
 // arcs are joined into one compound curve instead (see solveChain).
@@ -39,7 +41,7 @@ export interface HorizontalRules {
   reverseStraight: number;
 }
 
-/** ČSN 73 6101 road defaults derived from the minimum radius and the transition length (= vn metres) */
+/** Game road defaults derived from minimum radius and actual model transition length (= vn metres). */
 export function roadRules(minRadius: number, lt: number): HorizontalRules {
   return { minRadius, transition: lt, plainRadius: (lt * lt) / (24 * 0.25), compoundRatio: 2, reverseStraight: 2 * lt };
 }
@@ -123,6 +125,10 @@ export interface JointInfo {
   offset: number;
   /** same-direction neighbours without room for a straight that could not be joined either */
   joinFailed: boolean;
+  /** Why a rejected join failed; never a proof that no norm-compliant alignment exists. */
+  joinFailure?: 'edit-tolerance' | 'fixed-geometry' | 'search';
+  /** Required junction offset for fixed radii, when calculable, m. */
+  requiredOffset?: number;
   /** stations of the stretch concerned (both curves) */
   s0: number;
   s1: number;
@@ -358,7 +364,9 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
       }
       if (change < 1e-3) break;
     }
-    if (!x) return null;
+    return x ? evaluate(x, lam) : null;
+  };
+  const evaluate = (x: Float64Array, lam: number): Sol | null => {
     const R: number[] = [];
     for (let i = 1; i <= m; i++) R.push(x[i]);
     const sIn = x[0];
@@ -389,6 +397,50 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
     }
     return good;
   };
+
+  // One fixed radius in a pair leaves exactly one degree of freedom. Intersect the linear
+  // constraints directly instead of hoping the evenness ladder crosses the feasible interval.
+  // In particular the exact-on-leg radius may be negative; the first positive ladder sample
+  // can already be outside the editor tolerance even though the ratio boundary fits.
+  if (m === 2 && manual.filter((r) => r === null).length === 1 && fixIn === null && fixOut === null) {
+    const k = manual[0] === null ? 1 : 2, fixed = manual[k === 1 ? 1 : 0]!;
+    const closing = (m - 1) * N, den = aW[closing];
+    if (Math.abs(den) > 1e-9) {
+      const origin = Float64Array.from(known), slope = new Float64Array(N);
+      let c = cW[m - 1];
+      for (let i = 1; i < N; i++) c += aW[closing + i] * origin[i];
+      origin[0] = -c / den;
+      slope[k] = 1; slope[0] = -aW[closing + k] / den;
+      const affine = (row: ArrayLike<number>, off: number, c: number): [number, number] => {
+        let v = c, d = 0;
+        for (let i = 0; i < N; i++) { v += row[off + i] * origin[i]; d += row[off + i] * slope[i]; }
+        return [v, d];
+      };
+      const [w0, wd] = affine(aW, 0, cW[0]);
+      const [out0, outD] = affine(aOut, 0, cOut);
+      let exact: Sol | null = null;
+      // The no-transition exception is a second feasible interval, not a ratio constraint.
+      const intervals = [[Math.max(rules.minRadius, fixed / rules.compoundRatio), Math.min(REACH, fixed * rules.compoundRatio)]];
+      if (fixed >= rules.plainRadius) intervals.push([Math.max(rules.minRadius, rules.plainRadius), REACH]);
+      for (const interval of intervals) {
+        let [lo, hi] = interval;
+        const bound = (v: number, d: number, min: number, max: number) => {
+          if (Math.abs(d) < 1e-12) { if (v < min || v > max) hi = -Infinity; return; }
+          const a = (min - v) / d, b = (max - v) / d;
+          lo = Math.max(lo, Math.min(a, b)); hi = Math.min(hi, Math.max(a, b));
+        };
+        bound(w0, wd, -tolerance, tolerance);
+        bound(origin[0], slope[0], -sMinIn + 1e-7, REACH - 1e-7);
+        bound(out0, outD, -sMinOut + 1e-7, REACH - 1e-7);
+        if (lo > hi) continue;
+        const r = Math.max(lo, Math.min(hi, Math.abs(wd) > 1e-12 ? -w0 / wd : fixed));
+        const x = Float64Array.from(origin, (v, i) => v + r * slope[i]);
+        const sol = evaluate(x, 0);
+        if (sol?.ok && (!exact || sol.offset < exact.offset)) exact = sol;
+      }
+      if (exact) return exact;
+    }
+  }
 
   if (!freeRadii) { // nothing to trade: the given radii fit within the tolerance or they do not
     const sol = run(1);
@@ -482,7 +534,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     keep.splice(L.drop, 1);
     L = layout();
   }
-  const { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, legKind, endNeed, mandatory, isChain, maxOffsetOf } = L;
+  const { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, joinFailures, legKind, endNeed, mandatory, isChain, maxOffsetOf } = L;
 
   function layout() {
     const nv = keep.length;
@@ -514,6 +566,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
 
     // ---- layout: units (single arcs / compound chains), restarted with fewer chains if one cannot be built ----
     const noChain = new Uint8Array(nv + 1); // legs across which arcs must not be joined
+    const joinFailures = new Map<number, Pick<JointInfo, 'joinFailure' | 'requiredOffset'>>();
     const Rv: number[] = new Array(nv).fill(0);
     let units: Unit[] = [];
     let Teff: { in: number; out: number }[] = [];
@@ -598,12 +651,15 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
         const now = [slack(q), slack(q + 1)];
         if ((now[0] < -EPS_LEN && now[0] < was[0]) || (now[1] < -EPS_LEN && now[1] < was[1])) { Rv[i] = old; u.sIn = u.sOut = old * tau[i]; }
       }
-      /** join same-direction neighbours that have no room for a straight with their transitions */
+      /** Join overlapping neighbours, or rescue a manual arc too short for isolated transitions. */
       const link = () => {
+        const arcShort = (u: Unit) => arcLenOf(u) < mandatory(u) * lt / 2 - EPS_LEN;
         for (let q = 1; q < units.length; q++) {
           const e = units[q].i0;
           const short = (qq: number) => legKind(units[qq].i0) === 'same' && !noChain[units[qq].i0] && slack(qq) < -EPS_LEN;
-          if (!short(q)) continue;
+          const rescue = !short(q) && legKind(e) === 'same' && !noChain[e]
+            && (arcShort(units[q - 1]) || arcShort(units[q]));
+          if (!short(q) && !rescue) continue;
           // take the whole run of neighbours that are short of room in one go (one solve instead of one per bend)
           let qe = q;
           while (qe + 1 < units.length && short(qe + 1)) qe++;
@@ -613,10 +669,31 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
             if (sol || qe === q) break;
             qe = q + ((qe - q) >> 1);
           }
-          if (!sol) { noChain[e] = 1; continue; }
+          if (!sol) {
+            if (!rescue) {
+              noChain[e] = 1;
+              const inp = chainInput(units[q - 1].i0, units[qe].i1);
+              if (inp.manual.every((r) => r !== null)) {
+                const unconstrained = solveChain(inp, rules, null, null);
+                joinFailures.set(e, unconstrained
+                  ? { joinFailure: 'edit-tolerance', requiredOffset: unconstrained.offset }
+                  : { joinFailure: 'fixed-geometry' });
+              } else joinFailures.set(e, { joinFailure: 'search' });
+            }
+            continue;
+          }
           const u: Unit = { i0: units[q - 1].i0, i1: units[qe].i1, sIn: 0, sOut: 0, w: null, lam: 0 };
+          const oldUnits = rescue ? units.slice() : null, oldR = rescue ? Rv.slice() : null;
+          const oldSlack = rescue ? [slack(q - 1), slack(qe + 1)] : [];
           applyChain(u, sol);
           units.splice(q - 1, qe - q + 2, u);
+          if (rescue && (!sol.ok || arcShort(u)
+            || slack(q - 1) < Math.min(0, oldSlack[0]) - EPS_LEN
+            || slack(q) < Math.min(0, oldSlack[1]) - EPS_LEN)) {
+            units = oldUnits!;
+            for (let i = 0; i < nv; i++) Rv[i] = oldR![i];
+            continue;
+          }
           q = Math.max(0, q - 2); // the grown curve may now reach its predecessor
         }
       };
@@ -721,7 +798,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       if (!failed) { drop = wiggle(false); break; }
       for (let e = failed.i0 + 1; e <= failed.i1; e++) noChain[e] = 1;
     }
-    return { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, legKind, endNeed, mandatory, isChain, maxOffsetOf, drop, chordOffset };
+    return { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, joinFailures, legKind, endNeed, mandatory, isChain, maxOffsetOf, drop, chordOffset };
   }
 
   // ---- elements ----
@@ -827,7 +904,8 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     joints.push({
       from, to, length: EL[e], kind, tFrom: qa >= 0 ? units[qa].sOut : 0, tTo: qb >= 0 ? units[qb].sIn : 0,
       needFrom: na.need, needTo: nb.need, plainFrom: na.plain, plainTo: nb.plain, offset: 0,
-      joinFailed: kind === 'same' && noChain[e] === 1, s0, s1,
+      joinFailed: kind === 'same' && noChain[e] === 1,
+      ...(kind === 'same' && noChain[e] === 1 ? joinFailures.get(e) ?? { joinFailure: 'search' as const } : {}), s0, s1,
     });
   }
   const legs: LegInfo[] = [];

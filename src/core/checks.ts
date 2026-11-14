@@ -6,7 +6,7 @@
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, SPEED_NORMS, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
-import { buildAlignment, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
+import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
 import type { Profile } from './vertical';
 
 export type ViolationKind =
@@ -16,6 +16,21 @@ export type ViolationKind =
 /** what a requirement rests on: a design norm, a rule / simplification of the game, or a limitation of
  *  the game's solvers (they found no valid shape although one may exist) */
 export type ViolationBasis = 'norm' | 'game' | 'engine';
+
+/** Numeric diagnostics for the geometry model, not proof that every norm-compliant shape is impossible. */
+export interface HorizontalConstraint {
+  rule: 'transition-space' | 'reverse-straight' | 'compound-ratio';
+  source: string;
+  manualRadii: { pi: number; radius: number; maxRadius?: number | null; autoRadius?: number }[];
+  requiredLength?: number;
+  availableLength?: number;
+  /** Extra leg length at unchanged angles/radii, not a guarantee for an arbitrary point move. */
+  extraDistance?: number;
+  joinFailure?: 'edit-tolerance' | 'fixed-geometry' | 'search';
+  requiredOffset?: number;
+  editTolerance?: number;
+  compoundRatio?: { actual: number; maximum: number };
+}
 
 export interface Violation {
   kind: ViolationKind;
@@ -40,6 +55,7 @@ export interface Violation {
   pis?: number[];
   /** how much the fix asks for (m); of nearby entries merged into one, the largest is kept */
   size?: number;
+  horizontal?: HorizontalConstraint;
 }
 
 /** one-line form for logs and scripts */
@@ -126,11 +142,11 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
   const plain = Math.ceil(RR.plainRadius);
   const rules = {
     minRadius: `ČSN 73 6101: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
-    easing: `ČSN 73 6101: curves need an easing curve (transition, at least ${fmt(lt)} m) at each end, and these must fit between the bends. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
+    easing: `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
     reverse: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
-    compound: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): where two curves turning the same way meet without a straight between them, one radius may be at most ${fmt(RR.compoundRatio)}× the other`,
+    compound: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`,
     uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
-    noJoin: 'Engine limitation: the curve solver found no single curve through these bends that fits between their neighbours; one may still exist — moving a bend a little may help',
+    noJoin: `Game geometry model: joined arcs must stay within ${fmt(EDIT_TOLERANCE)} m of the tangent legs; intermediate easing curves are not modelled. Failure to join is not proof that no ČSN-compliant alignment exists`,
   };
   // fixes that need the design itself (only when the caller passed it; never in the radius search).
   // A search costs ~25 ms on a 13-bend route, so only the first few bends get one per evaluation.
@@ -158,6 +174,11 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     };
   };
   const autoOf = (k: number) => { const o = options(k); return o ? ` (${R(up(o.auto))})` : ''; };
+  const manualRadii = (cs: (CurveInfo | null)[]): HorizontalConstraint['manualRadii'] =>
+    cs.filter((c): c is CurveInfo => !!c && !c.auto).map((c) => {
+      const o = options(c.index);
+      return { pi: c.index, radius: c.r, ...(o ? { maxRadius: o.max, autoRadius: o.auto } : {}) };
+    });
 
   for (const c of al.curves) {
     if (!c.tooSharp) continue;
@@ -253,6 +274,10 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
           : `Move ${pair(j.from, j.to)} so that the turn is spread more evenly between them, or delete one`;
       out.push({
         kind: 'compound', ...where,
+        horizontal: {
+          rule: 'compound-ratio', source: rules.compound, manualRadii: manualRadii([a, b]),
+          compoundRatio: { actual: hi / lo, maximum: RR.compoundRatio },
+        },
         title: `${cap(pair(j.from, j.to))}: radii too different for one curve`,
         fix,
         detail: `They turn the same way ${fmt(j.length)} m apart and are drawn as one curve, with ${R(a.rEff)} at ${bend(a.index)} and ${R(b.rEff)} at ${bend(b.index)}: more than ${fmt(RR.compoundRatio)}× apart.${!big.auto ? ` Moving the bends far enough apart for a straight between the curves also works.` : ''}`,
@@ -269,6 +294,15 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     const room = `${fmt(tf)} + ${fmt(tt)} m of curve${ease > 0 ? `, ${fmt(ease)} m of ${j.kind === 'reverse' && (j.plainFrom || j.plainTo) ? 'easing curve and straight' : 'easing'}` : ''}`;
     const need = (what: string) => `${what} need ${fmt(used)} m between ${pair(j.from, j.to)} (${room}), but the bends are only ${fmt(j.length)} m apart.`;
     const or = (t: string) => `Alternatively, ${t.charAt(0).toLowerCase()}${t.slice(1)}.`;
+    const reverseStraight = j.kind === 'reverse' && (j.plainFrom || j.plainTo);
+    const horizontal: HorizontalConstraint = {
+      rule: reverseStraight ? 'reverse-straight' : 'transition-space',
+      source: reverseStraight ? rules.reverse : rules.easing,
+      manualRadii: manualRadii([a, b]), requiredLength: used, availableLength: j.length, extraDistance: short,
+      ...(j.joinFailed ? { joinFailure: j.joinFailure ?? 'search', requiredOffset: j.requiredOffset, editTolerance: EDIT_TOLERANCE } : {}),
+      ...(j.kind === 'same' && a && b && !a.auto && !b.auto && ratioExcess(a.r, b.r, RR) > 0
+        ? { compoundRatio: { actual: Math.max(a.r, b.r) / Math.min(a.r, b.r), maximum: RR.compoundRatio } } : {}),
+    };
     if (j.kind === 'end') {
       const c = (a && a.unit >= 0 ? a : b)!;
       const atStart = c === b;
@@ -277,7 +311,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       const red = reduceFix([c]);
       const move = `Move ${bend(c.index)} at least ${more} further from ${other}`;
       out.push({
-        kind: 'transition', ...where, pi: c.index,
+        kind: 'transition', ...where, pi: c.index, horizontal,
         title: `${cap(bend(c.index))} is too close to ${other}`,
         fix: red ? red.text : move,
         detail: `${cap(bend(c.index))} is ${fmt(j.length)} m from ${other}, but its curve needs ${fmt(t)} m of that${need > 0 ? ` plus ${fmt(need)} m for its easing curve` : ''}. ${red ? or(move) : 'A smaller radius or a gentler turn also helps.'}`,
@@ -287,7 +321,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       const red = reduceFix([a, b]);
       const move = `Move ${pair(j.from, j.to)} at least ${more} further apart`;
       out.push({
-        kind: 'transition', ...where, pi: red?.bend ?? where.pi,
+        kind: 'transition', ...where, pi: red?.bend ?? where.pi, horizontal,
         title: `${cap(pair(j.from, j.to))} are too close for an S-bend`,
         fix: red ? red.text : move,
         detail: `${need(j.plainFrom && j.plainTo ? 'The two curves and the straight they need between them' : 'The two curves and their easing curves')} ${red ? or(move) : 'Smaller radii or deleting one bend also help.'}`,
@@ -299,17 +333,22 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       const red = reduceFix([a, b]);
       const move = `Move ${pair(j.from, j.to)} at least ${more} further apart`;
       const why = need(`The two curves turning the same way${ease > 0 ? ' plus their easing curves' : ''}`);
+      const set = manual.length ? ` Hand-set radii: ${manual.map((c) => `${bend(c.index)} ${R(c.r)}`).join(', ')}.` : '';
       const join = !j.joinFailed ? ''
-        : manual.length ? ` Bends this close are normally drawn as one curve, but not when you have set a radius by hand (${manual.map((c) => bend(c.index)).join(' and ')}).`
-          : ' They could not be drawn as one curve that fits between their neighbours either.';
+        : j.joinFailure === 'edit-tolerance' && j.requiredOffset !== undefined
+          ? ` Joining with these radii would move the arc junction ${fmt(j.requiredOffset, 1)} m off the tangent leg; the editor allows ${fmt(EDIT_TOLERANCE)} m.`
+          : j.joinFailure === 'fixed-geometry'
+            ? ' These fixed radii cannot close a direct compound between the outer tangent lines in the game model.'
+            : ' No joined curve was found within the editor tolerance and neighbouring-leg constraints; this is not a proof of a norm violation.';
+      const ratio = horizontal.compoundRatio
+        ? ` Their radius ratio ${fmt(horizontal.compoundRatio.actual, 2)} exceeds ${fmt(RR.compoundRatio)} for the exceptional compound without intermediate easing curves.` : '';
       out.push({
-        kind: 'transition', ...where, pi: red?.bend ?? manual[0]?.index ?? where.pi,
+        kind: 'transition', ...where, pi: red?.bend ?? manual[0]?.index ?? where.pi, horizontal,
         title: `${cap(pair(j.from, j.to))} are too close for their radii`,
         fix: red ? red.text : `${move}${j.joinFailed && !manual.length ? ', or delete one' : ''}`,
-        detail: `${why}${join} ${red ? or(move) : manual.length ? 'Setting their radii back to auto also helps.' : ''}`.trim(),
-        basis: j.joinFailed && !manual.length ? 'engine' : 'norm',
-        rule: j.joinFailed && !manual.length ? rules.noJoin
-          : `${rules.easing}. (Game: bends closer than that are drawn as one curve instead — but not when a radius is set by hand.)`,
+        detail: `${why}${set}${join}${ratio} ${red ? or(move) : manual.length ? 'Try auto to let the neighbouring radii adapt.' : ''} Spacing advice assumes the current turning angles.`.trim(),
+        basis: 'game',
+        rule: `${rules.easing}. ${rules.noJoin}${ratio ? `. ${rules.compound}` : ''}`,
       });
     }
   }

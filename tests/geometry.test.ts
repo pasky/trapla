@@ -342,6 +342,83 @@ describe('compound curves', () => {
     expect(al2.curves[1].rEff).toBeLessThanOrEqual(1000 + 1e-6);
   });
 
+  it('reproduces the reported 452 m pair: auto adapts, two fixed radii cannot join', () => {
+    const turn1 = 2 * Math.atan(68 / 355) * 180 / Math.PI;
+    const turn2 = 2 * Math.atan(302 / 1115) * 180 / Math.PI;
+    const { a, b, pis } = route([[0, 1500], [turn1, 452], [turn2, 1500]]);
+    pis[1].r = 1115;
+    const al = buildAlignment(a, b, pis, R90);
+    expect(msgs(al)).toEqual([]);
+    expect(al.curves[0].rEff).toBeCloseTo(150 * 355 / 68, 6);
+    expect(al.curves[1].rEff).toBe(1115);
+    expect(al.units[0].maxOffset).toBeLessThan(1e-6);
+    expectG1(al, a, b);
+    pis[0].r = 355;
+    const fixed = buildAlignment(a, b, pis, R90);
+    expect(horizontalViolations(fixed, 90)).toHaveLength(1);
+    expect(fixed.joints[1]).toMatchObject({ kind: 'same', joinFailed: true });
+    expect(fixed.joints[1].tFrom).toBeCloseTo(68, 9);
+    expect(fixed.joints[1].tTo).toBeCloseTo(302, 9);
+    expect(fixed.legs[1].used - fixed.legs[1].length).toBeCloseTo(8.237545, 5);
+    expect(fixed.curves.map((c) => c.auto)).toEqual([false, false]);
+    const v = horizontalViolations(fixed, 90, { a, b, pis })[0];
+    expect(v.horizontal).toMatchObject({
+      manualRadii: [{ pi: 0, radius: 355 }, { pi: 1, radius: 1115 }],
+      joinFailure: 'edit-tolerance', editTolerance: EDIT_TOLERANCE,
+      compoundRatio: { actual: 1115 / 355, maximum: 2 },
+    });
+    expect(v.horizontal!.requiredOffset).toBeCloseTo(19.407733, 5);
+    const advice = v.horizontal!.manualRadii;
+    expect(advice).toHaveLength(2);
+    const max = advice[1].maxRadius!;
+    expect(max).toBeGreaterThan(1000);
+    expect(max).toBeLessThan(1115);
+    expect(msgs(buildAlignment(a, b, [pis[0], { ...pis[1], r: max }], R90))).toEqual([]);
+    expect(horizontalViolations(buildAlignment(a, b, [pis[0], { ...pis[1], r: max + 5 }], R90), 90).length).toBeGreaterThan(0);
+  });
+
+  it('solves the fixed/auto pair at the ratio boundary even when the exact-on-leg radius is negative', () => {
+    // The old evenness ladder skipped the feasible interval and dissolved this pair.
+    for (const reverse of [false, true]) {
+      const { a, b, pis } = route([[0, 1500], [reverse ? -47 : 5, 452], [reverse ? -5 : 47, 1500]]);
+      const fixed = reverse ? 0 : 1, automatic = 1 - fixed;
+      pis[fixed].r = 1115;
+      const al = buildAlignment(a, b, pis, R90);
+      expect(msgs(al)).toEqual([]);
+      expect(al.curves[fixed].rEff).toBe(1115);
+      expect(al.curves[automatic].rEff).toBeCloseTo(557.5, 6);
+      expect(al.units[0].maxOffset).toBeCloseTo(4.623374, 5);
+      expect(al.units[0].maxOffset).toBeLessThan(EDIT_TOLERANCE);
+      expectG1(al, a, b);
+    }
+    // A larger turn cannot be rescued within the editor tolerance; do not silently move it farther.
+    const { a, b, pis } = route([[0, 1500], [5, 452], [49, 1500]]);
+    pis[1].r = 1115;
+    const al = buildAlignment(a, b, pis, R90);
+    expect(horizontalViolations(al, 90).length).toBeGreaterThan(0);
+    expect(al.curves[1].r).toBe(1115);
+    expect(al.units.every((u) => u.maxOffset <= EDIT_TOLERANCE)).toBe(true);
+  });
+
+  it('joins to rescue a short manual arc even when a straight has ample room', () => {
+    const { a, b, pis } = route([[0, 1500], [21, 452], [3, 1500]]);
+    pis[1].r = 1115;
+    const al = buildAlignment(a, b, pis, R90);
+    expect(msgs(al)).toEqual([]);
+    expect(al.units).toHaveLength(1);
+    expect(al.curves[1].rEff).toBe(1115);
+    expect(al.curves[0].rEff).toBeGreaterThanOrEqual(1115 / 2);
+    expect(al.curves[0].rEff).toBeLessThanOrEqual(1115 * 2);
+    expect(al.units[0].maxOffset).toBeLessThanOrEqual(EDIT_TOLERANCE);
+    expectG1(al, a, b);
+    // Joining is optional here: never trade the short-arc error for an overlap at the route end.
+    const squeezed = route([[0, 100], [21, 452], [3, 1500]]);
+    squeezed.pis[1].r = 1115;
+    const bad = buildAlignment(squeezed.a, squeezed.b, squeezed.pis, R90);
+    expect(bad.units).toHaveLength(2);
+    expect(horizontalViolations(bad, 90).some((v) => v.kind === 'arcShort')).toBe(true);
+  });
+
   it('a bend that only wiggles against the curve around it is left out, a real S is not', () => {
     // 5 points along a 2,000 m arc; the middle one pushed 6 m inwards so that it turns the other way
     const { a, b, pis } = route([[0, 700], [4, 150], [4, 150], [4, 150], [4, 150], [4, 700]]);

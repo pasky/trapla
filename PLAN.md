@@ -553,22 +553,39 @@ Rules now (`src/core/horizontal.ts`, `HORIZONTAL_NORMS` in `src/core/data/norms.
 
 | rule | source |
 |---|---|
-| arc with R ≥ L²/(24 · 0.25 m) needs no transition (1,350 / 1,067 / 817 m) | ČSN 73 6101 (VUT "Aplikace ČSN 73 6101") |
-| same-direction arcs may meet directly (compound curve) if neighbouring radii differ ≤ 2× and the smallest ≥ R min; no ratio limit between two transition-free arcs | ČSN, the "exceptional" variant without intermediate transitions — used freely here; the 0.25 m rule also covers intermediate transitions |
-| opposite curves: transitions may touch; ends without a transition need a 2·vn straight between them | ČSN (the recommended R2/R1 ≤ 2 for reverse curves is not checked) |
-| a transition takes ≈ L/2 of the tangent and L/2 of the curve; a compound curve needs them only at its two ends | game simplification (transitions are still not drawn) |
-| a large-radius arc facing an opposite curve may carry a transition if long enough (asks 45 m instead of 90 m) | game simplification |
-| straight between same-direction arcs: allowed whenever the required transitions fit, no minimum length; otherwise the arcs are joined | game simplification (the norm only discourages short straights) |
+| transition length L = vn metres (90 / 80 / 70 m) | 2018 speed-based minimum: actually max(vn, superelevation runoff length), Radimský 2019 slide 15. Game does not model runoff; already uses the smallest permitted speed-based length, not a recommendation that can simply be shortened. |
+| arc with R ≥ L²/(24 · 0.25 m) needs no transition (1,350 / 1,067 / 817 m) | **game assumption**, using actual model L = vn. VUT "Aplikace ČSN 73 6101", pp. 20–21, gives the 0.25 m shift criterion but specifies **L = 1.5vn** for the omission threshold (and R ≥ 800 m). That older-edition threshold is stricter; the 2018 omission clause is unverified. The 1,160 / 920 / 705 m values concern **superelevation**, not transition omission. |
+| same-direction arcs may meet directly (compound curve) if neighbouring radii differ ≤ 2× and the smallest ≥ R min; no ratio limit between two transition-free arcs | older ČSN via VUT, "Směrové oblouky", p. 16: **exceptional** variant without intermediate transitions, used freely as a game concession. The text also permits omission of intermediate transitions by the shift criterion; the game's two-plain-arcs exemption is a sufficient model condition, not the full intermediate-clothoid solver. Not independently verified against 2018. |
+| opposite curves: transitions may touch; ends without a transition need a 2·vn straight between them | older ČSN via VUT pp. 16, 33. With transitions, >15 m intermediate straight is preferred, but a reverse transition with **zero straight** is explicitly possible. Recommended R2/R1 ≤ 2 and parameter ratio ≤1.5 are not checked. |
+| a transition uses the clothoid-series tangent offset k + p·tan(Δ/2), approximately L/2; each terminal transition consumes L/2 of the circular turning budget | geometry approximation, **not an extra norm minimum straight**. Transitions remain undrawn; compounds only reserve terminal transitions. No blanket 90 m straight is required for same-direction arcs. |
+| a large-radius arc facing an opposite curve may carry a transition if long enough (asks ≈45 m instead of 90 m) | game layout choice based on the same transition geometry; not a norm mandate |
+| straight between same-direction arcs: any nonnegative residual after transition footprints, including zero; otherwise try a compound | game choice. No same-direction numerical intermediate-straight minimum was verified in the accessible sources; do not transfer the **opposite-direction** 2vn rule or claim a verified 2018 broken-back prohibition. |
 | 5 m editor tolerance (`EDIT_TOLERANCE`): arc junctions off the polygon legs; a bend turning against its neighbour where no S-curve fits is dropped from the tangent polygon if within 5 m of the line between its neighbours; arcs moved by joining | game rule, not a norm value |
 
 Compound solve: arc j turns from leg j−1's direction to leg j's, so any radii give a G1 curve; unknowns are the radii
 and the start point. The classic solution (arcs meet on the legs, T[k] + T[k+1] = leg) has one degree of freedom,
 spent on even radii. Where it breaks R min or the ratio rule (uneven spacing), tangency to the inner legs is relaxed
-by least squares only as far as needed, at most 5 m. Next to an opposite curve or A/B the outer tangents are pulled
+by least squares only as far as needed, at most 5 m. For a two-bend pair with one manual radius, the remaining
+radius interval is now solved directly: intersect R min, ratio (or plain-arc exception), closure, offsets and tangent
+bounds; choose the smallest junction offset while preserving the manual radius exactly. This avoids the ladder
+skipping a feasible interval when the exact-on-leg radius is negative. Joining is also tried for a manual arc too
+short for isolated transitions even if the shared leg has room, provided it does not worsen either outer leg.
+Next to an opposite curve or A/B the outer tangents are pulled
 in (a single arc may first be joined with a close same-direction neighbour). Fallbacks, in order: violation with the
 least-bad curve; squeeze into the leg when tangents physically overlap (always G1); dissolve into single arcs.
 
 Known issues: junction offsets and "left out" bends are only explained in the on-map label, not in the HUD; the
-solver is a heuristic ladder, not a proven optimum (a valid curve may exist that it does not find); a compound curve
+general multi-bend solver is still a heuristic ladder, not a proven optimum (a valid curve may exist that it does not find);
+the one-manual two-bend free-end case uses an exact feasible interval. Intermediate clothoids, full runoff and shifted
+clothoid/circle geometry remain unimplemented, so a failed model join is **not proof of a norm violation**. A compound curve
 can change shape abruptly when a drag crosses the join / no-join threshold (a few metres); "max" samples the
 radius range (12 % steps + the transition-free boundary), so a narrower feasible stretch can be missed.
+
+**Owner case audit:** matching 68 + 302 m tangents on a 452 m leg with R23 = 1,115 m and R22 automatic
+already joined before this fix (R22 ≈ 783.088 m). Setting R22 = 355 m manually reproduces the report naming
+**both** manual bends: transition footprints need 460.238 m (8.238 m extra), while the fixed-radii compound
+would miss the leg by 19.408 m > the game's 5 m tolerance and has ratio 3.141 > 2 for the exceptional
+no-intermediate-transition variant. Do not describe this as a universal norm impossibility. Diagnostics now expose
+manual indices/radii, required/available length, extra spacing at unchanged angles, join-failure reason, required
+offset and ratio. The expanded UI can resolve a valid maximum with the **same** search as the radius editor's
+Max button, on demand rather than during every drag. Source audit and new regressions: research/15-horizontal-pairs.md.

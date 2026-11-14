@@ -7,7 +7,7 @@ export interface SpeedNorms {
   minRadius: number;
   /** radius above which no superelevation is needed, m — information only */
   noSuperelevationRadius: number;
-  /** minimum transition (clothoid) length, m — "at least vn metres" (research/00 §4.1) */
+  /** speed-based transition minimum, m; 2018 also requires ≥ runoff length (not modelled), research/15 */
   minTransition: number;
   /** PROVISIONAL: older-edition minimum crest vertical radius, m (100 km/h value used for 90) */
   minCrestRadius: number;
@@ -36,6 +36,8 @@ export function speedNorms(speed: number): SpeedNorms {
 // ---- horizontal curve rules (table-driven; rail / motorway rows can differ later) ----------------
 // Source: ČSN 73 6101 as reproduced in the VUT teaching text "Aplikace ČSN 73 6101"
 // (fce.vutbr.cz/pko/sad/pdf/aplikace.pdf, chapters "Směrové oblouky" and "Přechodnice").
+// Older edition, not independently verified for 2018. Omission threshold below uses actual model L,
+// whereas VUT prescribes 1.5vn for that calculation: this is a game concession (research/15).
 import type { HorizontalRules } from '../horizontal';
 
 export interface HorizontalNormRow {
@@ -60,7 +62,7 @@ export function horizontalRules(speed: number): HorizontalRules {
   return {
     minRadius: n.minRadius,
     transition: n.minTransition,
-    // ΔR = L²/(24·R) ≤ limit  ⇔  R ≥ L²/(24·limit): 1,350 / 1,067 / 817 m for 90 / 80 / 70 km/h
+    // Game omission threshold with actual L: 1,350 / 1,067 / 817 m. Not the no-superelevation radius.
     plainRadius: (n.minTransition * n.minTransition) / (24 * h.maxShiftWithoutTransition),
     compoundRatio: h.maxCompoundRatio,
     reverseStraight: h.minReverseStraight,
