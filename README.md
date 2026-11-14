@@ -40,7 +40,7 @@ Other commands:
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
 | `node scripts/build-tools.mjs [--docs]` | real HUD/map checks for pins, crossings, building buy/keep, wall add/remove/Auto, undo and reload; `--docs` writes screenshots 30–35 |
-| `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 36–42 (`--before` writes to `/tmp/trapla-crossings-before`) |
+| `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
 | `node --max-old-space-size=2048 --import tsx scripts/crossing-audit.ts` | audits every saved design: terrain tie-ins ≤0.3 m, unsupported segment flotation ≤0.5 m, rendered road edges/side slopes, clearance and measured quantities; `--strict` also fails blocked designs |
 | `node scripts/noise-view.mjs [--gpu] [--docs] [outdir]` | noise view on a town-fringe and the town-centre design: hovers a walled / bought-out dwelling and a wall, prints the tooltips; `--docs` writes `docs/screenshots/28…29-*.png` |
 | `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
@@ -189,13 +189,13 @@ Reproduce the build-tool interactions with `node scripts/build-tools.mjs --docs`
 
 | Overbridge: deck, abutments and embankments | Ground-level reconnection |
 |---|---|
-| ![Overbridge detail](docs/screenshots/41-crossing-overbridge-detail.png) | ![Ground link](docs/screenshots/38-crossing-reconnection.png) |
+| ![Overbridge detail](docs/screenshots/47-crossing-overbridge-detail.png) | ![Ground link](docs/screenshots/44-crossing-reconnection.png) |
 
-[Overbridge approaches](docs/screenshots/36-crossing-overbridge.png),
-[existing road under our bridge](docs/screenshots/37-crossing-bridge.png),
-[track diversion](docs/screenshots/39-crossing-diversion.png),
-[at-grade junction](docs/screenshots/40-crossing-junction.png).
-[Junction detail, with noise-wall openings](docs/screenshots/42-crossing-junction-detail.png).
+[Overbridge approaches](docs/screenshots/42-crossing-overbridge.png),
+[existing road under our bridge](docs/screenshots/43-crossing-bridge.png),
+[track diversion](docs/screenshots/45-crossing-diversion.png),
+[at-grade junction](docs/screenshots/46-crossing-junction.png).
+[Junction detail, with noise-wall openings](docs/screenshots/48-crossing-junction-detail.png).
 Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall
