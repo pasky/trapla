@@ -10,7 +10,7 @@ export function footprintConflictsInRange(conflicts: readonly FootprintConflict[
 
 export function footprintConflictText(c: FootprintConflict): string {
   const feature = c.feature === 'road' ? `${c.cls ? ROAD_CLASSES[c.cls]?.label ?? c.cls : 'road'}${c.roadCode ? ` ${c.roadCode}` : ''}` : c.feature;
-  const bucket = c.action === 'culvert' ? 'culverts' : c.action === 'relocation' ? 'road crossings' : 'footprint works';
+  const bucket = c.action === 'culvert' ? 'culverts' : c.action === 'relocation' ? 'road crossings' : 'footprint works under crossings';
   const cost = c.cost > 0 ? ` — ${czk(c.cost)} (included in ${bucket}, before surcharge)` : '';
   const action = c.action === 'retaining-wall' ? 'retaining wall' : c.action === 'channel-relocation' ? 'channel relocation' : c.action;
   return `Footprint ${feature}: ${action}, ${c.length.toFixed(0)} m${cost}${c.detail ? ` — ${c.detail}` : ''}`;
