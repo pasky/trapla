@@ -199,3 +199,4 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 #profile:not(.manual) .lg-hp { display: none; }
 .sw.pinmk { width: 9px; height: 9px; border-radius: 50%; background: #ffb339; border: 1.5px solid #864000; }
 .sel-bar.bend { border-color: #1d232a; }
+.profile-tip .tip-hint.first { margin: 0; padding: 0; border: 0; font-size: 12px; }

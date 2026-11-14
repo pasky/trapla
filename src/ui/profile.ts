@@ -472,7 +472,10 @@ export class ProfilePanel {
       g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 9); g.stroke();
       g.beginPath(); g.arc(x, y - 9 - hr, hr, 0, 2 * Math.PI); g.fill(); g.stroke();
       g.beginPath(); g.arc(x, y, 2.5, 0, 2 * Math.PI); g.fillStyle = '#864000'; g.fill();
-      g.fillStyle = '#864000'; g.fillText(`pinned ${pin.z.toFixed(1)} m`, x, y - 12 - 2 * hr);
+      g.fillStyle = '#864000';
+      // the label above the head, or beside it near the top of the chart
+      if (y - 14 - 2 * hr < T + 10) { g.textAlign = 'left'; g.fillText(`pinned ${pin.z.toFixed(1)} m`, x + hr + 4, y - 9 - hr + 4); g.textAlign = 'center'; }
+      else g.fillText(`pinned ${pin.z.toFixed(1)} m`, x, y - 12 - 2 * hr);
     }
     if (this.pinStation !== null) {
       g.strokeStyle = '#b45800'; g.setLineDash([3, 4]);
@@ -553,10 +556,11 @@ export class ProfilePanel {
     // one line on how to change the road height in this mode
     const hint = this.mode === 'manual' ? 'By hand: drag a ◆ to change the road height · double-click the line to add a point · right-click a ◆ to delete it'
       : 'Automatic road height · click the line to pin its height there, then drag the pin';
-    g.font = '11px system-ui, sans-serif'; g.textAlign = 'right';
+    // bottom left of the chart, over the ground (the floating bar sits over the selection)
+    g.font = '11px system-ui, sans-serif'; g.textAlign = 'left';
     const hw = g.measureText(hint).width;
-    g.fillStyle = 'rgba(247,245,240,0.85)'; g.fillRect(R - hw - 10, T + 1, hw + 8, 15);
-    g.fillStyle = this.mode === 'manual' ? '#1f5fbf' : '#666'; g.fillText(hint, R - 6, T + 12);
+    g.fillStyle = 'rgba(247,245,240,0.88)'; g.fillRect(L + 2, B - 17, hw + 8, 15);
+    g.fillStyle = this.mode === 'manual' ? '#1f5fbf' : '#555'; g.fillText(hint, L + 6, B - 6);
     this.ev.onDraw?.();
   }
 
@@ -770,7 +774,10 @@ export class ProfilePanel {
       }
       return `<tr><td><i style="background:${gr.color}"></i>${gr.label}${detail ? `<small>${detail}</small>` : ''}</td><td>${perM(v)}</td></tr>`;
     }).join('');
-    this.tip.innerHTML = `<div class="tip-h"><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
+    // over a handle or a bend marker: just what it is and what to do (the map highlight must stay visible)
+    const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin';
+    if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
+    else this.tip.innerHTML = `<div class="tip-h"><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
       <div class="tip-sub">ground ${r.ground[i].toFixed(1)} m · road ${r.grade[i].toFixed(1)} m · ${land}</div>
       <div class="tip-fact">${escapedGeology}</div>
       ${facts.map((t) => `<div class="tip-fact">${t}</div>`).join('')}
