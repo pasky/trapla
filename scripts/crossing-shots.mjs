@@ -36,6 +36,10 @@ try {
     await page.mouse.move(5, 5);
     const path = `${out}/${36 + k}-crossing-${type}.png`;
     await page.screenshot({ path }); console.log(path, JSON.stringify(selected));
+    if (type === 'junction') {
+      await page.evaluate(id => { const c = window.trapla.result().crossings.find(c => c.roadId === id); window.trapla.lookAt(c.x, c.y, 180, 70, 40); }, selected.roadId);
+      await idle(); await page.screenshot({ path: `${out}/42-crossing-junction-detail.png` });
+    }
     if (type === 'overbridge') {
       await page.evaluate(id => { const c = window.trapla.result().crossings.find(c => c.roadId === id); window.trapla.lookAt(c.x, c.y, 180, 115, 24); }, selected.roadId);
       await idle(); await page.screenshot({ path: `${out}/41-crossing-overbridge-detail.png` });

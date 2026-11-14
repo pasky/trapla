@@ -27,6 +27,7 @@ import {
   type EarthEdges, type NoiseFootprint, type NoiseReceiver, type WallStretch,
 } from './noise';
 import { createNoiseModel } from './road-noise';
+import { crossingWallGaps } from './crossing-walls';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
@@ -678,6 +679,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const noiseModel = createNoiseModel(scenario.traffic, d.speed, { heavyShare: scenario.heavyShare });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
+  const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
   if (noiseBuildings) {
@@ -693,7 +695,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const barrier = noiseBarrier(cat.crownWidth);
     const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, noiseBuildings, noiseModel, gone,
       grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, barrier, edges,
-      { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R });
+      { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R, gapL: wallGaps.L, gapR: wallGaps.R });
     const resolved = resolveNoiseWalls(ex, ds, al.length, shieldL, shieldR, barrier, edges);
     boughtOut = [...manualBuys, ...resolved.boughtOut].sort((a, b) => a.i - b.i);
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;

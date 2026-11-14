@@ -6,7 +6,9 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate } from '../src/core/evaluate';
 import { KIND } from '../src/core/structures';
 import { loadPack } from './loadpack';
-import { crossingSurfaces, groundSegment } from '../src/render/crossing-surface';
+import { crossingBaseHeight, crossingSurfaces, groundSegment } from '../src/render/crossing-surface';
+import { CATEGORIES } from '../src/core/data/categories';
+import type { Design } from '../src/core/evaluate';
 
 const { meta, terrain, buildings, roads } = loadPack();
 const ctx = { terrain, buildings, roads, scenario: D11_SCENARIO,
@@ -17,14 +19,17 @@ const files = selected.length ? selected
   : readdirSync('scripts').filter(name => name.endsWith('-design.json')).sort().map(name => `scripts/${name}`);
 let failures = 0, infeasible = 0, crossings = 0;
 for (const file of files) {
-  const r = evaluate(ctx, JSON.parse(readFileSync(file, 'utf8')).design);
+  const design: Design = JSON.parse(readFileSync(file, 'utf8')).design;
+  const r = evaluate(ctx, design);
+  const formation = crossingBaseHeight(r, CATEGORIES[design.category].crownWidth, (x,y) => terrain.heightAt(x,y));
   const issues = auditCrossingGeometry(r.crossings, { ...r, width: r.cell.width,
     left: Float64Array.from(r.kind, (kind, i) => kind === KIND.earth ? r.dayL[i] : r.cell.width[i] / 2),
     right: Float64Array.from(r.kind, (kind, i) => kind === KIND.earth ? r.dayR[i] : r.cell.width[i] / 2),
   }, (x, y) => terrain.heightAt(x, y), roads);
   // Audit the same transverse sections used by the renderer and terrain mask, not just core
   // centreline metadata. Every raised non-deck edge must have a side face down to true ground.
-  for (const surface of crossingSurfaces(r.crossings, (x, y) => terrain.heightAt(x, y))) {
+  for (const surface of crossingSurfaces(r.crossings, (x, y) => terrain.heightAt(x, y), formation)) {
+    const base = surface.crossing.type === 'junction' ? formation : (x: number,y: number) => terrain.heightAt(x,y);
     const report = (message: string) => { if (!issues.some(v => v.roadId === surface.crossing.roadId && v.message === message))
       issues.push({ s: surface.crossing.s, roadId: surface.crossing.roadId, message, severity: 'error' }); };
     for (let i = 0; i + 1 < surface.sections.length; i++) {
@@ -32,8 +37,8 @@ for (const file of files) {
       const a = surface.sections[i], b = surface.sections[i + 1];
       for (const section of [a, b]) for (const k of [0, 1] as const) {
         const edge = section.edge[k], toe = section.toe[k];
-        if (Math.abs(toe.z - terrain.heightAt(toe.x, toe.y)) > .3) report('Rendered embankment toe floats above terrain');
-        if (edge.z > terrain.heightAt(edge.x, edge.y) + .5 && Math.hypot(toe.x-edge.x, toe.y-edge.y) < .1) report('Rendered raised road has no supporting side slope');
+        if (Math.abs(toe.z - base(toe.x, toe.y)) > .3) report('Rendered embankment toe floats above terrain or connected formation');
+        if (edge.z > base(edge.x, edge.y) + .5 && Math.hypot(toe.x-edge.x, toe.y-edge.y) < .1) report('Rendered raised road has no supporting side slope');
       }
       if (a.p.surface !== 'terrain' || b.p.surface !== 'terrain') continue;
       for (const t of [.25, .5, .75]) for (const k of [0, 1] as const) {
@@ -43,7 +48,7 @@ for (const file of files) {
       }
     }
     for (const section of [surface.sections[0], surface.sections.at(-1)]) if (section) for (const edge of section.edge)
-      if (Math.abs(edge.z-terrain.heightAt(edge.x,edge.y)) > .3) report('Rendered road endpoint does not meet terrain');
+      if (Math.abs(edge.z-base(edge.x,edge.y)) > .3) report('Rendered road endpoint does not meet terrain or connected road');
   }
   const errors = issues.filter(v => v.severity === 'error').length, constraints = issues.length - errors;
   crossings += r.crossings.length; failures += errors; infeasible += constraints;

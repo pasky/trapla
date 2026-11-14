@@ -2,6 +2,7 @@
 import type { Design, Result } from '../core/evaluate';
 import type { View } from './view';
 import type { Pack } from '../scenario';
+import { KIND } from '../core/structures';
 
 export class BuildAnnotations {
   private points: { el: HTMLButtonElement; x: number; y: number; z: number }[] = [];
@@ -24,7 +25,8 @@ export class BuildAnnotations {
       const t = (pin.s - r.s[i]) / r.ds;
       const x = r.x[i] + t * (r.x[i + 1] - r.x[i]), y = r.y[i] + t * (r.y[i + 1] - r.y[i]);
       const grade = r.grade[i] + t * (r.grade[i + 1] - r.grade[i]);
-      this.add(x, y, grade + .15, '●', 'grade-pin',
+      const anchor = r.kind[i] === KIND.tunnel ? this.pack.terrain.heightAt(x, y) : grade;
+      this.add(x, y, anchor + .15, '●', 'grade-pin',
         `Pinned grade ${pin.z.toFixed(1)} m at km ${(pin.s / 1000).toFixed(3)}${d.profileMode === 'manual' ? ' (inactive in Manual)' : ''}`,
         () => this.onPin?.(pin.s));
     }

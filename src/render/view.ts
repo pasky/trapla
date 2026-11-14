@@ -14,7 +14,7 @@ import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
-import { crossingSurfaces, endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
+import { crossingBaseHeight, crossingSurfaces, endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
 export interface ViewEvents {
@@ -451,7 +451,8 @@ export class View {
   }
 
   setResult(r: Result, crownWidth: number) {
-    this.crossingSurfaces = crossingSurfaces(r.crossings, (x, y) => this.terrain.heightAt(x, y));
+    const natural = (x: number, y: number) => this.terrain.heightAt(x, y);
+    this.crossingSurfaces = crossingSurfaces(r.crossings, natural, crossingBaseHeight(r, crownWidth, natural));
     for (const c of [...this.routeGroup.children]) {
       this.routeGroup.remove(c);
       const m = c as THREE.Mesh;
@@ -527,7 +528,8 @@ export class View {
       idx.push(sv[i].dl, l, sv[i].el, sv[i].er, rr, sv[i].dr);
     }
     // bridge deck edges and piers, tunnel portals
-    const deck = 2.2;
+    // Ordinary-road crossing rule reserves 6 m = 4.8 m clear + 1.2 m study-stage deck.
+    const deck = 1.2;
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
       const nx = -ty, ny = tx;
       const corners: number[] = [];
@@ -564,6 +566,14 @@ export class View {
         const nP = Math.max(1, Math.round(run.length / span));
         for (let k = 1; k < nP; k++) {
           const i = Math.round(run.i0 + ((run.i1 - run.i0) * k) / nP);
+          // Never put a support in the existing road preserved beneath this bridge.
+          const blocksRoad = r.crossings.some(c => c.type === 'bridge' && c.geometry?.road?.some((p, j, path) => {
+            if (!j) return false;
+            const a = path[j-1], dx = p.x-a.x, dy = p.y-a.y;
+            const t = Math.max(0, Math.min(1, ((r.x[i]-a.x)*dx+(r.y[i]-a.y)*dy)/(dx*dx+dy*dy || 1)));
+            return Math.hypot(r.x[i]-a.x-dx*t, r.y[i]-a.y-dy*t) < c.geometry!.width/2+w*.55+1.2;
+          }));
+          if (blocksRoad) continue;
           boxAt(r.x[i], r.y[i], r.tx[i], r.ty[i], r.ground[i] - 2, r.grade[i] - deck, 1.2, w * 0.55, shade(concrete, 0.85));
         }
       } else if (run.kind === KIND.tunnel) {
@@ -597,7 +607,7 @@ export class View {
       shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\ncrossingXZ = position.xz;');
       shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ; uniform sampler2D crossingTex; uniform vec4 crossingBox; uniform float crossingOn;')
-        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (crossingOn > .5 && texture2D(crossingTex, (crossingXZ-crossingBox.xy)/crossingBox.zw).r > .5) discard;');
+        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nvec2 crossingUV = (crossingXZ-crossingBox.xy)/crossingBox.zw;\nif (vInk > .9 && crossingOn > .5 && all(greaterThan(crossingUV, vec2(0.0))) && all(lessThan(crossingUV, vec2(1.0))) && texture2D(crossingTex, crossingUV).r > .5) discard;');
     };
     ribbonMaterial.customProgramCacheKey = () => 'earthwork-contours-crossing-cuts';
     const ribbon = new THREE.Mesh(g, ribbonMaterial);

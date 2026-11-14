@@ -24,6 +24,18 @@ const finish = (ex: ReturnType<typeof dwellingExposure>) => resolveNoiseWalls(ex
 // Existing town tests cover the automatic choice heights, buyout prices, station-order independence,
 // shielding and margins. These tests exercise the manual-policy branches and final-wall composition.
 describe('manual noise policy', () => {
+  it('keeps junction openings physically clear and recomputes noise instead of claiming a wall across a road', () => {
+    const b = house(0, 37);
+    const run = (policy?: NoisePolicy) => resolveNoiseWalls(dwellingExposure(1, [0], [0], [1], [0], b, normal, [0], [0], () => 0,
+      [0], [0], barrier, undefined, policy), 10, 10, [0], [0], barrier);
+    const ordinary = run();
+    expect(ordinary.L[0]).toBeGreaterThan(0); expect(ordinary.boughtOut).toHaveLength(0);
+    const opening = run({ gapL: [1] });
+    expect(opening.L[0]).toBe(0); expect(opening.boughtOut).toHaveLength(1);
+    const kept = run({ gapL: [1], wallL: [6], keptBuildingIds: new Set([0]) });
+    expect(kept.L[0]).toBe(0); expect(kept.boughtOut).toHaveLength(0);
+    expect(kept.unresolved).toHaveLength(1);
+  });
   it('retains an explicitly kept failing dwelling and its useful automatic walls at other stations', () => {
     const ex = exposure({ keptBuildingIds: new Set([0]) });
     expect(ex.boughtOut).toEqual([]);

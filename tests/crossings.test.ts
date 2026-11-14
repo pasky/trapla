@@ -326,7 +326,7 @@ describe('crossing geometry and map overlay', () => {
     expect(group.children.every(c => ((c as THREE.Mesh).material as THREE.Material).depthTest)).toBe(true);
     const mesh = group.getObjectByName('crossing-earthworks') as THREE.Mesh;
     const positions = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-    expect(Array.from({ length: positions.count }, (_, i) => positions.getY(i)).some(z => Math.abs(z - 400.1) < .01)).toBe(true);
+    expect(Array.from({ length: positions.count }, (_, i) => positions.getY(i)).some(z => z >= 400 && z <= 400.3)).toBe(true);
     expect(mock.world.getObjectByName('crossing-symbols')).toBeUndefined();
     expect(mock.onRender).toBe(prev); mock.onRender!(); expect(prev).toHaveBeenCalled();
     const count = group.children.length; mock.onRender!(); expect(group.children).toHaveLength(count);

@@ -80,6 +80,12 @@ export interface NoisePolicy {
   /** Station-indexed actual wall decisions: NaN/absent = auto, 0 = removed, 2…6 = built. */
   wallL?: ArrayLike<number>;
   wallR?: ArrayLike<number>;
+  /** Physical junction openings: cannot carry a wall, but unlike manual No-wall they permit Auto buyout. */
+  gapL?: ArrayLike<number>;
+  gapR?: ArrayLike<number>;
+}
+function wallGap(policy: NoisePolicy | undefined, left: boolean, i: number): boolean {
+  return !!(left ? policy?.gapL : policy?.gapR)?.[i];
 }
 
 function manualWall(policy: NoisePolicy | undefined, left: boolean, i: number): number | undefined {
@@ -128,7 +134,9 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       const direct = Math.hypot(d - NOISE.sourceOffset, height - NOISE.sourceHeight);
       const excess = noiseExcess(direct, height, model);
       if (excess > raw[j]) { raw[j] = excess; rawI[j] = i; rawD[j] = d; rawH[j] = height; rawLeft[j] = left ? 1 : 0; }
-      const h = requiredWall(d, excess, height, barrier, edge);
+      let h = requiredWall(d, excess, height, barrier, edge);
+      const gap = wallGap(policy, left, i);
+      if (gap && h > 0) h = Infinity;
       if (excess > 0) {
         pairs.push({ i, j, left, d, height, excess, need: h });
         // A manual decision at ANY exposing station retains the whole dwelling, even when the
@@ -137,7 +145,7 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       } else if (excess > quiet[j]) quiet[j] = excess;
       if (h === Infinity) {
         const k = NOISE.wallHeights.length - 1;
-        const loss = Math.max(barrierAttenuation(d, height, k, barrier), attenuation(earthDelta(d, height, edge, direct)));
+        const loss = Math.max(gap ? 0 : barrierAttenuation(d, height, k, barrier), attenuation(earthDelta(d, height, edge, direct)));
         const deficit = excess - loss;
         const old = failed.get(j);
         if (!old || deficit > old.deficit) failed.set(j, { i, deficit });
@@ -245,7 +253,7 @@ export function resolveNoiseWalls(ex: ReturnType<typeof dwellingExposure>, ds: n
   const automatic = (demand: Uint8Array, shield: ArrayLike<number>, left: boolean) => {
     const masked = demand.slice(), blocked = Uint8Array.from(shield);
     for (let i = 0; i < masked.length; i++) {
-      if (manualWall(ex.scratch.policy, left, i) === undefined) continue;
+      if (!wallGap(ex.scratch.policy, left, i) && manualWall(ex.scratch.policy, left, i) === undefined) continue;
       masked[i] = 0;
       blocked[i] = 1;
     }
@@ -253,8 +261,8 @@ export function resolveNoiseWalls(ex: ReturnType<typeof dwellingExposure>, ds: n
   };
   const L = automatic(ex.L, shieldL, true), R = automatic(ex.R, shieldR, false);
   for (let i = 0; i < L.length; i++) {
-    L[i] = shieldL[i] ? 0 : (manualWall(ex.scratch.policy, true, i) ?? L[i]);
-    R[i] = shieldR[i] ? 0 : (manualWall(ex.scratch.policy, false, i) ?? R[i]);
+    L[i] = shieldL[i] || wallGap(ex.scratch.policy, true, i) ? 0 : (manualWall(ex.scratch.policy, true, i) ?? L[i]);
+    R[i] = shieldR[i] || wallGap(ex.scratch.policy, false, i) ? 0 : (manualWall(ex.scratch.policy, false, i) ?? R[i]);
   }
   const receivers = noiseReceivers(ex.scratch, L, R, barrier, edges);
   return { L, R, boughtOut: ex.boughtOut, receivers,
