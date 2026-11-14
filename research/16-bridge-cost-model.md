@@ -39,7 +39,7 @@ For carried width `W`, run length `L`, local road-surface height `hᵢ`:
 ```
 spans N = ceil(L / 30 m), actual equal span s = L / N
 internal pier density d = (N−1) / L
-free height Hᵢ = max(0, hᵢ − s/20)
+priced free height Hᵢ = max(8, hᵢ − s/20) (no below-standard discount)
 C = Σ Δxᵢ [ W × (R + v(s) × Udeck) + d × (F + Bearings + Q × Upier × Hᵢ) ] + 2 Abutment
 ```
 
@@ -60,7 +60,7 @@ OTSKP concrete includes formwork/falsework; drilling includes temporary casing w
 
 Optional pile-length sensitivity is available in `model.total(..., pileLength)` and `perM(..., pileLength)`, including **both abutment foundations** in the total. The live route uses the explicit standard 15 m assumption: surface ČGS excavation classes cannot establish competent founding depth, scour, groundwater or pile capacity. No unsupported automatic geology-to-foundation multiplier is introduced.
 
-A 30 m single-span bridge has no internal piers: height does not change its price with bank-top abutments. A real elevated short bridge requiring tall abutments is outside this fixed-abutment simplification. Conversely, making many short bridges is not free: each pays two abutments. Main-road support count is actual `N−1`, not one fictional pier for every short span.
+A 30 m single-span bridge has no internal piers: height does not change its price with bank-top abutments. **This is a substantive model limitation, not just an exceptional case:** automatic main-road bridges start at ≥4 m surface height and therefore need raised approaches/abutment support rather than literal natural bank tops. Adjacent earthwork is billed, but a short elevated bridge’s tall abutments are not designed or height-priced by this fixed-abutment approximation. Conversely, making many short bridges is not free: each pays two abutments. Main-road support count is actual `N−1`, not one fictional pier for every short span.
 
 ## Fit and residuals
 
@@ -84,10 +84,14 @@ S9.5: residual `R=26,668.55 CZK/m²`; ordinary 30 m deck term `R+vU≈45,692 CZK
 | Uniform S9.5 run | 6 m surface height | 10 m | 20 m | 40 m | 60 m |
 |---|---:|---:|---:|---:|---:|
 | 30 m, one span | 667.7 | 667.7 | 667.7 | 667.7 | 667.7 |
-| 120 m, four spans | 557.4 | 583.1 | 647.6 | 776.4 | 905.3 |
-| 300 m, ten spans | 535.3 | 566.2 | 643.5 | 798.2 | 952.8 |
+| 120 m, four spans | 579.9 | 583.1 | 647.6 | 776.4 | 905.3 |
+| 300 m, ten spans | 562.4 | 566.2 | 643.5 | 798.2 | 952.8 |
 
-Units: **thousand CZK per metre before surcharge/land**. Short spans carry more fixed cost per metre. Longer high viaducts have more internal supports per metre. Height beyond 35 m and below 8 m, variable-height integration instead of whole-object maximum, and support-count changes are explicitly **model extrapolations**. In particular, the quantity model gives a modest discount below the 8 m reference; SPK itself specifies no below-8-m discount. Exceptional arches, cantilever spans and inaccessible valleys need project-specific estimates.
+Units: **thousand CZK per metre before surcharge/land**. Short spans carry more fixed cost per metre. Longer high viaducts have more internal supports per metre. Height beyond 35 m, variable-height integration instead of whole-object maximum, and support-count changes are explicitly **model extrapolations**. Following review, free heights below 8 m keep the 8 m standard allowance; no below-standard height discount is applied.
+
+**Local height versus SPK maximum:** the requested per-station quantity integration is **not** a direct implementation of SPK’s maximum-height attribute for a variable-height object. A triangular valley profile with free height 8 m at both ends and 35 m at the middle has mean height 21.5 m: the reference-layout model charges **+15%**, whereas applying SPK to its maximum gives **+30%**. This is a material downward difference in the *height premium*, not a validated improvement to the official tariff. Exact pier positions/sections and a representative valley-shape calibration remain unknown; we retain the explicit local-height model rather than silently doubling the fitted slope or replacing station height with the maximum.
+
+**Reference length:** 120 m is four ordinary assumed spans, close to the **125.5 m mean** of the four non-town saved designs’ baseline bridges (5,020 m / 40 runs). It is a scenario calibration choice, not a recovered SPK standard length. Two abutments make a 30 m S9.5 bridge **667.7k/m, +15.1%** versus the flat 579.9k/m row. This short-bridge premium contributes to the design-total increase separately from height. Exceptional arches, cantilever spans and inaccessible valleys need project-specific estimates.
 
 International evidence supports the decomposition, not our coefficients: TU Dresden’s 42 awarded Autobahn bridges use deck-area curves and separate cost groups/special foundations; German B27 planning estimates distinguish small bridges (€4,500/m²) from valley bridges (€2,750/m²), but this is **not a controlled span/height comparison**. FHWA 2024 replacement averages ($429/ft² NHS, $382 non-NHS) are whole replacement costs, not Czech new-build unit rates. [16-international.md](16-international.md) records sources, ranges and exclusions; no foreign FX-converted coefficient enters the code.
 
@@ -97,7 +101,7 @@ International evidence supports the decomposition, not our coefficients: TU Dres
 - Initial station choices use variable height costs; the actual merged run is then checked by `bridgeRunCost()` including its true span count, two abutments, local surcharge and deck-strip land. Painted automatic remnants are repriced too; forced/manual bridges are retained and billed even when uneconomic.
 - The coarse balance estimate and final selector share that callback. Coarse-grid/end-cell approximations already present in balance estimation remain; the final full-resolution bill uses actual cell lengths.
 - `costParts()` prices the identical run geometry/height, distributes abutments on endpoints, and applies each cell’s surcharge once. Existing range/component summation checks remain; new tests check direct selector-vs-bill equality with varying height/urban rates, endpoint half-cells, a one-cell bridge and split runs.
-- Crossed-road overbridges use **one unobstructed clear span equal to the cut/footprint width**, bank-top abutments and no piers in the new road. The deck span term replaces the flat width-row price; existing approach length/road price remains. Deep cut is not fictitious pier height. Very large clear spans are priced proxies, not certified structures.
+- Crossed-road overbridges use **one unobstructed clear span equal to the cut/footprint width**, bank-top abutments and no piers in the new road. The deck span term replaces the flat width-row price; existing approach length/road price remains. Deep cut is not a **pier** height when no piers are provided, though it **is** free height under SPK’s definition; omitting the height attribute in this single-span case is another component-model departure from that tariff. **Conservative layout limitation:** real overbridges can put piers on cut slopes or in a median. Requiring one clear span over the entire footprint is pessimistic: a 100 m S9.5 crossing costs **97.68 M** versus **58.32 M** for a 100 m equal-span bridge at reference height, before approaches/surcharge. No evidence establishes that the single-span option is required; a future corridor-clearance/side-span layout should replace this proxy. Very large clear spans are priced proxies, not certified structures.
 - Runtime work is O(stations), no bridge mesh, optimization search or additional terrain sampling. Existing `forced` stream/rail/road masks remain unchanged. Model version **11→12**.
 
 ## Break-even, same earthwork model
@@ -120,11 +124,11 @@ All five **unchanged saved horizontal plans**, Auto profile, VALID, per-cell sum
 
 | Design | Model 11 total | Model 12 total | Bridges M CZK / count / length m | Crossings M CZK | 50-trial candidate total |
 |---|---:|---:|---|---:|---:|
-| demo | 4,099 | **4,231** | 659 / 8 / 1,040 | 294 | 4,170 |
-| best bypass | 3,738 | **3,908** | 551 / 7 / 900 | 292 | 3,875 |
-| direct80 | 4,062 | **4,344** | 971 / 13 / 1,390 | 280 | 4,319 |
-| direct90 | 4,382 | **4,615** | 927 / 10 / 1,400 | 228 | 4,580 |
-| town-centre | 10,580 | **11,031** | 1,861 / 15 / 2,720 | 172 | 7,723 |
+| demo | 4,099 | **4,233** | 660 / 8 / 1,040 | 294 | 4,172 |
+| best bypass | 3,738 | **3,912** | 554 / 7 / 900 | 292 | 3,881 |
+| direct80 | 4,062 | **4,350** | 975 / 13 / 1,390 | 280 | 4,324 |
+| direct90 | 4,382 | **4,618** | 929 / 10 / 1,400 | 228 | 4,581 |
+| town-centre | 10,580 | **11,038** | 1,866 / 15 / 2,720 | 172 | 7,729 |
 
 All totals M CZK. Town-centre now also contains one 160 m tunnel, 238 M before surcharge. Changes include reoptimized vertical lines, mass-balance decisions, changed crossings and buildings—not just a bridge-price delta. The town search leaves the town-centre alignment and is **not** a replacement for that control design. All candidates VALID. Reproduce: `npx tsx scripts/optimize.ts <speed> 50 scripts/<name>-design.json /tmp/bridge16-<name>-candidate.json 1612` (90 except direct80). Baseline code: `1550438`.
 

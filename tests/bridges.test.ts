@@ -17,6 +17,7 @@ describe('geometry-priced bridges', () => {
   it('prices height and foundations only where supports exist, and charges longer clear spans more per area', () => {
     const model = bridgeModel(CATEGORIES['S9.5']);
     expect(model.total(120, 40)).toBeGreaterThan(model.total(120, 10));
+    expect(model.total(120, 4)).toBe(model.total(120, model.referenceHeight)); // no below-standard SPK discount
     expect(model.total(30, 40)).toBe(model.total(30, 10)); // bank-top abutments, no pier
     expect(model.total(120, 10, bridgeLayout(120), 25)).toBeGreaterThan(model.total(120, 10));
     const single = (span: number) => model.perM(0, { span, pierDensity: 0 });

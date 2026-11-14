@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
 import { BuildingIndex, noiseBuyoutCost, type BuildingInfo } from '../src/core/buildings';
-import { PART_KEYS } from '../src/core/cost';
+import { cellLength, PART_KEYS } from '../src/core/cost';
 import { bridgeLayout, bridgeModel } from '../src/core/bridge';
 import { CATEGORIES } from '../src/core/data/categories';
 import { resolveCrossings, type CrossingResult } from '../src/core/crossings';
@@ -412,7 +412,7 @@ describe('evaluate on a synthetic town', () => {
     let bridgeCost = 0;
     for (const run of r.runs) if (run.kind === KIND.bridge) {
       bridgeCost += model.abutments;
-      for (let i = run.i0; i <= run.i1; i++) bridgeCost += r.ds * model.perM(r.grade[i] - r.ground[i], bridgeLayout(run.length));
+      for (let i = run.i0; i <= run.i1; i++) bridgeCost += cellLength(i, r.n, r.ds) * model.perM(r.grade[i] - r.ground[i], bridgeLayout(run.length));
     }
     expect(c.bridges).toBeCloseTo(bridgeCost, 0);
     // two halves of the route

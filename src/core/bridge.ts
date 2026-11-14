@@ -34,7 +34,7 @@ export function bridgeModel(row: BridgeRow) {
   // It includes height-sensitive erection/access as well as actual pier material: not a design section.
   const pierArea = row.bridgePerKm / 1000 * H.upperExtra / (H.upper - H.standard) / reference.pierDensity / pierUnit;
   const pier = (height: number, span: number, pileLength: number) => foundation(pileLength) + bearing
-    + pierArea * Math.max(0, height - span / 20) * pierUnit;
+    + pierArea * Math.max(H.standard, height - span / 20) * pierUnit;
   const referenceHeight = H.standard + reference.span / 20;
   // Fit the intercept to SPK, subtracting support/endpoint work already bundled in that norm.
   // This residual includes equipment, erection, access and other unitemized ordinary bridge work.

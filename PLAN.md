@@ -400,7 +400,7 @@ price cannot be determined (research/07 §1).
 | Raised overbridge approaches | total 2 × max(0, 6 + h) / 6% metres × SPK road row | heuristic gradient; includes standard earthworks, no separate fill lump sum |
 | Crossed-road widths for overbridges | 27.5 / 11.5 / 9.5 / 7.5 / 6.5 / 4 m by class | SPK-normalized geometry model: one clear span across footprint, bank-top abutments, no piers on our road (research/16) |
 | Bridge height calibration | SPK free height 8 m standard; +30% at 35 m | **SOURCED** SPK CN 2026 appendices 1/5; linear interpolation recommended; not an empirical award fit |
-| Bridge span / supports | equal mainline spans ≤30 m; reference 120 m / 3 piers; surface-to-soffit depth span/20 | **PROVISIONAL layout**; local-height integration and below-8/above-35 m extrapolation differ from SPK whole-object maximum |
+| Bridge span / supports | equal mainline spans ≤30 m; reference 120 m / 3 piers; surface-to-soffit depth span/20 | **PROVISIONAL layout**; local-height integration and above-35 m extrapolation differ from SPK whole-object maximum; below 8 m retains standard |
 | Bridge foundations / abutments | S9.5: 6 Ø0.8 m ×15 m piles/support; 2 abutments ≈7.009 M before surcharge | OTSKP unit prices **sourced**, quantities **PROVISIONAL**; standard pile length, not inferred from surface geology; fixed cost once per run |
 | Bridge deck span term | equivalent concrete 0.45 m³/m² ≤20 m; linear increase through ordinary/long spans | **PROVISIONAL** quantity proxy; not a certified span/design choice; calibrated residual prevents double-counting SPK work |
 | Excavation weathering profiles | ČGS lithology + estimated local I/II bottom depths, III below; unknown = 75/20/5 | `pipeline/ground_profiles.json`; local D11 aggregate fit, not measured strata (research/10 §6) |
@@ -649,22 +649,31 @@ Reproduce with `npx tsx scripts/bridge-break-even.ts` and `scripts/bridge-calibr
 
 | Unchanged saved plan | Model 11 total, M | Model 12 total, M | Bridges count / m | 50-trial candidate total, M |
 |---|---:|---:|---|---:|
-| demo | 4,099 | **4,231** | 8 / 1,040 | 4,170 |
-| best bypass | 3,738 | **3,908** | 7 / 900 | 3,875 |
-| direct80 | 4,062 | **4,344** | 13 / 1,390 | 4,319 |
-| direct90 | 4,382 | **4,615** | 10 / 1,400 | 4,580 |
-| town-centre reference | 10,580 | **11,031** | 15 / 2,720 | 7,723 |
+| demo | 4,099 | **4,233** | 8 / 1,040 | 4,172 |
+| best bypass | 3,738 | **3,912** | 7 / 900 | 3,881 |
+| direct80 | 4,062 | **4,350** | 13 / 1,390 | 4,324 |
+| direct90 | 4,382 | **4,618** | 10 / 1,400 | 4,581 |
+| town-centre reference | 10,580 | **11,038** | 15 / 2,720 | 7,729 |
 
 All VALID; town-centre also has one 160 m tunnel. Candidate runs use seed1612, 50 trials and the saved
 speed (90 except direct80). Saved JSON geometry/metadata is deliberately unchanged for clean model
 comparison. The town candidate leaves the centre and must not replace that reference. Other quantities,
 source-data limitations and full component numbers are in research/16. Prior model tables above are historical.
 
+Review limitations: local heights give a +15% reference premium for an 8→35→8 m triangular valley,
+versus +30% from SPK's maximum-height rule. The 120 m reference is near the non-town baseline mean
+125.5 m, **not** an SPK length assumption; 30 m bridges pay a **15.1% short-run premium**. Fixed
+abutments do not capture tall short-bridge abutments. Full-cut single-span overbridges are conservative:
+100 m S9.5 **97.68 M** versus **58.32 M** for reference-height multiple spans. These need future
+layout/quantity refinement; the normative two-anchor fit is not empirical validation.
+
 Validation: **182 tests**, typecheck/build; added bridge calibration/height/span/foundation, exact
 selector-vs-cell-bill, fixed-abutment rejection/forced/manual/split-remnant tests (existing summation and
 crossing tests updated, not duplicated). Warm 20+20-evaluation bench on a loaded shared host:
-baseline wall **56/72/77/70/62 ms**, model12 **81/60/72/65/82 ms** (demo/best/80/90/town).
-Last-evaluation new timings included **54/70/57/53/84 ms**; process CPU and wall are reported separately.
+baseline wall **56/72/77/70/62 ms**, first model12 **81/60/72/65/82 ms** (demo/best/80/90/town).
+After review's below-8-m clamp, a more-loaded run measured **104/88/107/95/71 ms** (CPU
+**148/108/132/121/84 ms**, including V8 background work). Last-evaluation wall timings were
+**118/109/136/76/80 ms**. Do not interpret non-contemporaneous loaded runs as precise overhead.
 Bridge work remains linear; warmed structure+bill stages are roughly 1–3 ms combined. **40–60 ms
 wall time is not established for every design under concurrent Chromium/hydrology load**. No UI changes.
 
