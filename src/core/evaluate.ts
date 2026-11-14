@@ -293,7 +293,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const rawRoadX = ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [];
   // Billing may merge carriageways / omit tie-in-area objects; safety must see every raw crossing.
-  const roadX = mergeCrossings(rawRoadX, al.length, undefined, new Set(crossingOverrides.map((o) => o.roadId)));
+  // Only actual endpoint connections are outside this project's crossing scope. The old
+  // 150 m billing margin is not proof that nearby roads can be buried without engineering.
+  const roadX = mergeCrossings(rawRoadX, al.length, { ...CROSSING_RULES, endMargin: CROSSING_RULES.endpointTolerance + 1e-6 }, new Set(crossingOverrides.map((o) => o.roadId)));
   manualStructures = crossingBridgeMask(st.s, rawRoadX, crossingOverrides, manualStructures);
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
@@ -813,8 +815,21 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo }, terrain, ctx.roads, crossings, rawRoadX, water);
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
+  // Grouped wall annotations must not relocate their construction to the first station's
+  // surcharge band. Book the actual per-cell engineering, independently of presentation.
+  for (const wall of retainingWalls) crossingStructure[wall.i] += wall.cost;
+  for (const channel of channelRelocations) {
+    const c = channel.conflict, count = channel.i1 - channel.i0 + 1, land = (c.landCost ?? 0) / count;
+    c.allocations = [];
+    for (let i = channel.i0; i <= channel.i1; i++) {
+      crossingStructure[i] += (c.cost - (c.landCost ?? 0)) / count;
+      remedyLand[i] += land;
+      c.allocations.push({ i, cost: c.cost / count, landCost: land });
+    }
+  }
   for (const c of footprintCheck.conflicts) {
-    if (c.feature === 'road' || c.action === 'retaining-wall' || c.action === 'channel-relocation') crossingStructure[c.i] += c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0);
+    if (c.action === 'retaining-wall' || c.action === 'channel-relocation') continue;
+    if (c.feature === 'road') crossingStructure[c.i] += c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0);
     else if (c.action === 'culvert') culverts[c.i] += c.cost;
     remedyLand[c.i] += c.landCost ?? 0;
     crossingLump[c.i] += c.lumpCost ?? 0;

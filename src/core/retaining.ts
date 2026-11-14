@@ -45,10 +45,11 @@ export function retainingConflicts(walls: readonly RetainingWall[]): FootprintCo
     let group = previous;
     if (!group || wall.s0 > group.conflict.s1 + 0.01) {
       const conflict: FootprintConflict = { id: `retaining:${key}:${wall.i}`, feature: wall.feature, action: 'retaining-wall',
-        i: wall.i, s0: wall.s0, s1: wall.s1, x: wall.x, y: wall.y, length: 0, cost: 0, detail: '' };
+        i: wall.i, s0: wall.s0, s1: wall.s1, x: wall.x, y: wall.y, length: 0, cost: 0, allocations: [], detail: '' };
       group = { conflict, area: 0, height: 0 }; groups.set(key, group); out.push(conflict);
     }
     group.conflict.s1 = wall.s1; group.conflict.length += wall.s1 - wall.s0; group.conflict.cost += wall.cost;
+    group.conflict.allocations!.push({ i: wall.i, cost: wall.cost });
     group.area += wall.area; group.height = Math.max(group.height, wall.height);
     group.conflict.detail = `${wall.side === 'L' ? 'Left' : 'Right'} retaining wall: ${group.area.toFixed(1)} m² exposed face, up to ${group.height.toFixed(1)} m high; height-dependent RC/foundation assembly (OTSKP 327325 + 327365 + 13173 + 17411)${wall.watertight ? ', pressure-water membrane/cutoff (711122 + 711519), no pond drainage' : ', rear drain/filter (212625 + 214613)'}. The slope and earthwork volume are truncated at the wall, preserving the ${wall.feature}.`;
   }

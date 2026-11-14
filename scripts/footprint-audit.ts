@@ -13,7 +13,10 @@ for (const file of process.argv.slice(2)) {
   for (const c of r.footprintConflicts) {
     const key = `${c.feature}/${c.action}`, g = groups[key] ??= { count: 0, affectedM: 0, builtM: 0, cost: 0, withSurcharge: 0 };
     g.count++; g.affectedM += c.affectedLength ?? c.length; g.builtM += c.cost ? c.length : 0;
-    g.cost += c.cost; g.withSurcharge += c.cost + (c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0)) * surchargeRate(r.cell.urban[c.i]);
+    g.cost += c.cost;
+    g.withSurcharge += c.cost + (c.allocations
+      ? c.allocations.reduce((sum, a) => sum + (a.cost - (a.landCost ?? 0)) * surchargeRate(r.cell.urban[a.i]), 0)
+      : (c.cost - (c.landCost ?? 0) - (c.lumpCost ?? 0)) * surchargeRate(r.cell.urban[c.i]));
   }
   const sum = Object.values(r.parts).reduce((s, values) => s + values.reduce((a, b) => a + b, 0), 0);
   console.log(JSON.stringify({ file, valid: r.valid, violations: r.violations.length, footprintViolations: r.violations.filter(v => v.kind === 'footprint').length,

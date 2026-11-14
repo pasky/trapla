@@ -29,6 +29,8 @@ export interface FootprintConflict {
   landCost?: number;
   /** Included all-in access/junction allowance, exempt from construction surcharge. */
   lumpCost?: number;
+  /** Reporting allocation for distributed works; financial booking uses engineering quantities. */
+  allocations?: { i: number; cost: number; landCost?: number }[];
   detail: string;
   roadId?: number; cls?: string; roadCode?: string;
   geometry?: CrossingGeometry;
@@ -97,7 +99,7 @@ export function structureFootprints(r: FootprintRoute): FootprintCell[] {
 }
 
 export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: RoadNet | undefined,
-  crossings: readonly CrossingResult[], rawRoads: readonly RoadCrossing[], water: readonly WaterCrossing[]): { conflicts: FootprintConflict[]; violations: Violation[] } {
+  crossings: readonly CrossingResult[], _rawRoads: readonly RoadCrossing[], water: readonly WaterCrossing[]): { conflicts: FootprintConflict[]; violations: Violation[] } {
   const conflicts: FootprintConflict[] = [], violations: Violation[] = [];
   const cells: FootprintCell[] = [];
   for (let i = 0; i < r.n; i++) if (r.kind[i] === KIND.earth) {
@@ -135,20 +137,31 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const list = roadCovered.get(interval.way) ?? [];
       list.push([interval.a, interval.b]); roadCovered.set(interval.way, list);
     }
-    // An endpoint joining an existing road can be collinear and have no segment intersection.
-    // Exempt only ways actually within the 1 m tie-in tolerance, never the other carriageway.
-    for (const i of [0, r.n - 1]) roads.nearSegments([r.x[i] - 1, r.y[i] - 1, r.x[i] + 1, r.y[i] + 1], segment => {
-      const dx = segment.bx - segment.ax, dy = segment.by - segment.ay;
-      const t = Math.max(0, Math.min(1, ((r.x[i] - segment.ax) * dx + (r.y[i] - segment.ay) * dy) / (segment.length ** 2 || 1)));
-      if (Math.hypot(r.x[i] - segment.ax - t * dx, r.y[i] - segment.ay - t * dy) > CROSSING_RULES.endpointTolerance) return;
-      const d = segment.d + t * segment.length;
-      coverRoad(segment.way, d - CROSSING_RULES.endMargin, d + CROSSING_RULES.endMargin);
-    });
-    for (const c of rawRoads) {
-      if (c.s > CROSSING_RULES.endMargin && c.s < r.s[r.n - 1] - CROSSING_RULES.endMargin) continue;
-      if (ROAD_CLASSES[c.cls].noAtGrade && c.s > CROSSING_RULES.endpointTolerance && c.s < r.s[r.n - 1] - CROSSING_RULES.endpointTolerance) continue;
-      const d = roads.wayStation(c.way, c.x, c.y);
-      coverRoad(c.way, d - CROSSING_RULES.endMargin, d + CROSSING_RULES.endMargin);
+    // The defined boundary connection may be collinear and produce no raw intersection.
+    // Own only grade-compatible pavement in the actual endpoint crown cell—not ±150 m
+    // of that way, and never an unrelated crossing merely near the project boundary.
+    for (const i of [0, r.n - 1]) {
+      const ways = new Set<number>();
+      roads.nearSegments([r.x[i] - 1, r.y[i] - 1, r.x[i] + 1, r.y[i] + 1], segment => {
+        const dx = segment.bx - segment.ax, dy = segment.by - segment.ay;
+        const t = Math.max(0, Math.min(1, ((r.x[i] - segment.ax) * dx + (r.y[i] - segment.ay) * dy) / (segment.length ** 2 || 1)));
+        if (Math.hypot(r.x[i] - segment.ax - t * dx, r.y[i] - segment.ay - t * dy) <= CROSSING_RULES.endpointTolerance) ways.add(segment.way);
+      });
+      const direction = i === 0 ? 1 : -1, next = i === 0 ? 1 : r.n - 2;
+      const cell: FootprintCell = { i, s: r.s[i], x: r.x[i] + direction * r.tx[i] * r.ds / 4, y: r.y[i] + direction * r.ty[i] * r.ds / 4,
+        tx: r.tx[i], ty: r.ty[i], along: r.ds / 4, left: r.crownWidth / 2, right: r.crownWidth / 2 };
+      roads.nearSegments(cellBounds(cell, 14), segment => {
+        if (!ways.has(segment.way) || segment.length <= 0) return;
+        const hit = clipFootprint(segment, cell, existingHalfWidth(segment.cls));
+        if (!hit) return;
+        const compatible = [hit[0], (hit[0] + hit[1]) / 2, hit[1]].every(d => {
+          const t = (d - segment.d) / segment.length, x = segment.ax + t * (segment.bx - segment.ax), y = segment.ay + t * (segment.by - segment.ay);
+          const along = direction * ((x - r.x[i]) * r.tx[i] + (y - r.y[i]) * r.ty[i]);
+          const z = r.grade[i] + Math.max(0, Math.min(1, along / r.ds)) * (r.grade[next] - r.grade[i]);
+          return Math.abs(z - terrain.heightAt(x, y)) <= 0.3;
+        });
+        if (compatible) coverRoad(segment.way, hit[0], hit[1]);
+      });
     }
   }
   const roadHits = new Map<string, { way: number; cls: string; hits: Hit[] }>();
