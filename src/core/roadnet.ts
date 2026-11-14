@@ -195,6 +195,41 @@ export class RoadNet {
     return path;
   }
 
+  /** Identify a real source chord, including its own way chainages (not the chainage of a
+   * neighbouring way used to start a connected traversal). Both ends must lie on one segment. */
+  sourceInterval(a: { x: number; y: number }, b: { x: number; y: number }): { way: number; a: number; b: number; cls: string } | undefined {
+    const x = (a.x + b.x) / 2, y = (a.y + b.y) / 2;
+    let found: { way: number; a: number; b: number; cls: string } | undefined;
+    this.nearSegments([x - 0.02, y - 0.02, x + 0.02, y + 0.02], s => {
+      if (found || s.length < 1e-6) return;
+      const project = (p: { x: number; y: number }) => {
+        const t = ((p.x - s.ax) * (s.bx - s.ax) + (p.y - s.ay) * (s.by - s.ay)) / (s.length * s.length);
+        if (t < -1e-6 || t > 1 + 1e-6 || Math.hypot(p.x - s.ax - t * (s.bx - s.ax), p.y - s.ay - t * (s.by - s.ay)) > 0.02) return;
+        return s.d + Math.max(0, Math.min(1, t)) * s.length;
+      };
+      const da = project(a), db = project(b);
+      if (da !== undefined && db !== undefined) found = { way: s.way, a: da, b: db, cls: s.cls };
+    });
+    return found;
+  }
+
+  /** A traversal stopping is NOT evidence of a dead end: it may hit a class restriction,
+   * sharp junction, point budget or cycle. Only a single incident graph ray is a true end.
+   * Interior points of another segment count as two rays (an unsplit T-junction). */
+  isDeadEnd(p: { x: number; y: number }): boolean {
+    const rays = new Set<string>();
+    this.nearSegments([p.x - 0.02, p.y - 0.02, p.x + 0.02, p.y + 0.02], s => {
+      const dx = s.bx - s.ax, dy = s.by - s.ay;
+      const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / (s.length * s.length || 1)));
+      if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > 0.02) return;
+      for (const q of [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }]) {
+        const len = Math.hypot(q.x - p.x, q.y - p.y);
+        if (len > 0.02) rays.add(`${((q.x - p.x) / len).toFixed(5)},${((q.y - p.y) / len).toFixed(5)}`);
+      }
+    });
+    return rays.size === 1;
+  }
+
   /** Closest real way at a route tie-in, using the existing segment grid. */
   nearestWay(x: number, y: number, radius = 30): number | undefined {
     let best = radius, way: number | undefined;
