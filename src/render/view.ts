@@ -14,6 +14,7 @@ import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
+import { crossingSurfaces, endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
 export interface ViewEvents {
@@ -54,6 +55,11 @@ export class View {
   private dragging: number | null = null;
   // footprint mask: terrain fragments inside the at-grade footprint are discarded so cuts show
   private maskRT: THREE.WebGLRenderTarget | null = null;
+  private crossingCutRT: THREE.WebGLRenderTarget | null = null;
+  private originalMaskRT: THREE.WebGLRenderTarget | null = null;
+  readonly crossingCut = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } };
+  readonly originalMask = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } };
+  crossingSurfaces: CrossingSurface[] = [];
   private maskScene = new THREE.Scene();
   private maskCam = new THREE.Camera();
   private maskUniforms = {
@@ -344,6 +350,13 @@ export class View {
   private drapeHeight(x: number, y: number) { return Math.max(this.terrain.heightAt(x, y), this.meshHeight(x, y)); }
   /** height that clears both the true and the rendered terrain (for draped overlays) */
   drape(x: number, y: number) { return this.drapeHeight(x, y); }
+  groundHeight(x: number, y: number) { return this.terrain.heightAt(x, y); }
+  crossingEarthMaterial() { return makeEarthworkMaterial(this.terrainU, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }); }
+  crossingGroundMaterial() {
+    const material = makeTerrainMaterial(this.terrainU, this.originalMask);
+    material.side = THREE.DoubleSide;
+    return material;
+  }
 
   private makeLine(points: number[], colors: number[] | null, width: number, opts: Partial<{ color: number; opacity: number; depthTest: boolean; dashed: boolean; dashSize: number; gapSize: number; order: number }> = {}) {
     const g = new LineGeometry();
@@ -438,6 +451,7 @@ export class View {
   }
 
   setResult(r: Result, crownWidth: number) {
+    this.crossingSurfaces = crossingSurfaces(r.crossings, (x, y) => this.terrain.heightAt(x, y));
     for (const c of [...this.routeGroup.children]) {
       this.routeGroup.remove(c);
       const m = c as THREE.Mesh;
@@ -501,6 +515,17 @@ export class View {
         quad(a.er, b.er, a.dr, b.dr);
       }
     }
+    // Close the embankment cross-section at structure transitions. Without these faces the
+    // terrain cut-out is visible as a sky-coloured hole beside the first/last bridge span.
+    for (let i = 0; i < n; i++) {
+      if (r.kind[i] !== KIND.earth || !((i > 0 && r.kind[i-1] !== KIND.earth) || (i+1 < n && r.kind[i+1] !== KIND.earth))) continue;
+      const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
+      const zl = this.terrain.heightAt(x+nx*w, y+ny*w), zr = this.terrain.heightAt(x-nx*w, y-ny*w);
+      if (z <= Math.max(zl, zr)) continue;
+      const l = push(x+nx*w, y+ny*w, zl, fillC, zl, slopeInk), rr = push(x-nx*w, y-ny*w, zr, fillC, zr, slopeInk);
+      quad(sv[i].el, l, sv[i].er, rr);
+      idx.push(sv[i].dl, l, sv[i].el, sv[i].er, rr, sv[i].dr);
+    }
     // bridge deck edges and piers, tunnel portals
     const deck = 2.2;
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
@@ -559,9 +584,23 @@ export class View {
     g.computeBoundingSphere();
     g.computeVertexNormals();
     this.buildMask(r);
-    const ribbon = new THREE.Mesh(g, makeEarthworkMaterial(this.terrainU, {
+    const ribbonMaterial = makeEarthworkMaterial(this.terrainU, {
       side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
-    }));
+    });
+    // At-grade side roads cut through our side slopes, rather than being buried by them.
+    const compile = ribbonMaterial.onBeforeCompile;
+    ribbonMaterial.onBeforeCompile = (shader, renderer) => {
+      compile.call(ribbonMaterial, shader, renderer);
+      shader.uniforms.crossingTex = this.crossingCut.maskTex;
+      shader.uniforms.crossingBox = this.crossingCut.maskBox;
+      shader.uniforms.crossingOn = this.crossingCut.maskOn;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\ncrossingXZ = position.xz;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ; uniform sampler2D crossingTex; uniform vec4 crossingBox; uniform float crossingOn;')
+        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (crossingOn > .5 && texture2D(crossingTex, (crossingXZ-crossingBox.xy)/crossingBox.zw).r > .5) discard;');
+    };
+    ribbonMaterial.customProgramCacheKey = () => 'earthwork-contours-crossing-cuts';
+    const ribbon = new THREE.Mesh(g, ribbonMaterial);
     ribbon.name = 'ribbon';
     this.routeGroup.add(ribbon);
 
@@ -631,6 +670,25 @@ export class View {
       const a0 = P[2 * i], b0 = P[2 * i + 1], a1 = P[2 * i + 2], b1 = P[2 * i + 3];
       pos.push(a0[0], 0, a0[1], b0[0], 0, b0[1], a1[0], 0, a1[1], b0[0], 0, b0[1], b1[0], 0, b1[1], a1[0], 0, a1[1]);
     }
+    const original = [...pos], cuts: number[] = [];
+    const addQuad = (out: number[], a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) => {
+      for (const p of [a, b, c, b, d, c]) {
+        const x = p.x - this.cx, z = this.cy - p.y;
+        out.push(x, 0, z); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+      }
+    };
+    for (const surface of this.crossingSurfaces) for (let i = 0; i + 1 < surface.sections.length; i++) {
+      if (!groundSegment(surface, i)) continue;
+      const a = surface.sections[i], b = surface.sections[i + 1];
+      // Inset the terrain hole into its replacement collar to hide raster-mask antialiasing.
+      const inset = (p: typeof a.p, q: typeof a.p) => ({ x: p.x + (q.x - p.x) * .92, y: p.y + (q.y - p.y) * .92 });
+      addQuad(pos, inset(a.p, a.outer[0]), inset(a.p, a.outer[1]), inset(b.p, b.outer[0]), inset(b.p, b.outer[1]));
+      if (surface.crossing.type === 'junction') addQuad(cuts, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
+    }
+    for (const surface of this.crossingSurfaces) for (const [a, b, c, d] of endCollars(surface, (x, y) => this.terrain.heightAt(x, y))) {
+      const inset = (p: typeof a, q: typeof a) => ({ x: p.x + (q.x - p.x) * .8, y: p.y + (q.y - p.y) * .8 });
+      addQuad(pos, a, b, inset(a, c), inset(b, d));
+    }
     minX -= 20; minZ -= 20; maxX += 20; maxZ += 20;
     const maxTex = Math.min(8192, this.renderer.capabilities.maxTextureSize);
     const w = Math.min(maxTex, Math.ceil((maxX - minX) / 2.5 / 256) * 256);
@@ -659,10 +717,19 @@ export class View {
     this.maskScene.add(mesh);
     const prevTarget = this.renderer.getRenderTarget();
     const prevClear = this.renderer.getClearColor(new THREE.Color()), prevAlpha = this.renderer.getClearAlpha();
-    this.renderer.setRenderTarget(rt);
-    this.renderer.setClearColor(0x000000, 0);
-    this.renderer.clear();
-    this.renderer.render(this.maskScene, this.maskCam);
+    const draw = (target: THREE.WebGLRenderTarget, vertices: number[]) => {
+      g.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      this.renderer.setRenderTarget(target); this.renderer.setClearColor(0x000000, 0);
+      this.renderer.clear(); this.renderer.render(this.maskScene, this.maskCam);
+    };
+    const target = (old: THREE.WebGLRenderTarget | null) => {
+      if (old?.width === rt.width && old.height === rt.height) return old;
+      old?.dispose(); return rt.clone();
+    };
+    this.originalMaskRT = target(this.originalMaskRT); this.crossingCutRT = target(this.crossingCutRT);
+    draw(this.originalMaskRT, original); draw(this.crossingCutRT, cuts); draw(rt, pos);
+    this.originalMask.maskTex.value = this.originalMaskRT.texture; this.originalMask.maskBox.value.copy(box); this.originalMask.maskOn.value = original.length ? 1 : 0;
+    this.crossingCut.maskTex.value = this.crossingCutRT.texture; this.crossingCut.maskBox.value.copy(box); this.crossingCut.maskOn.value = cuts.length ? 1 : 0;
     this.renderer.setRenderTarget(prevTarget);
     this.renderer.setClearColor(prevClear, prevAlpha);
     this.maskUniforms.maskTex.value = rt.texture;

@@ -62,7 +62,7 @@ export class RouteExtras {
       for (const s of stations) {
         const i = Math.min(r.n - 2, Math.floor(s / r.ds)), t = (s - r.s[i]) / r.ds;
         const at = (z: Float64Array) => z[i] + t * (z[i + 1] - z[i]);
-        this.view.local(at(r.x), at(r.y), Math.max(at(r.ground), at(r.grade)) + 3, v);
+        this.view.local(at(r.x), at(r.y), (o.kind === KIND.tunnel ? at(r.ground) : at(r.grade)) + .15, v);
         pos.push(v.x, v.y, v.z);
       }
       const line = this.line(pos, [0x976025, 0x2f6fcf, 0x7a4fc0][o.kind], 6, 1, 6);
@@ -74,7 +74,7 @@ export class RouteExtras {
       const s0 = Math.max(0, o.s0), s1 = Math.min(r.length, o.s1);
       if (s1 <= s0) continue;
       const [i0, i1] = cellsInRange(r, s0, s1);
-      const path = this.wallPath({ ...o, s0, s1, i0, i1 }, this.crown / 2 + NOISE.wallEdgeOffset + 2, o.height + 2);
+      const path = this.wallPath({ ...o, s0, s1, i0, i1 }, this.crown / 2 + NOISE.wallEdgeOffset, o.height + .15);
       const pos: number[] = [];
       for (let k = 0; k < path.length; k += 3) { this.view.local(path[k], path[k + 1], path[k + 2], v); pos.push(v.x, v.y, v.z); }
       const line = this.line(pos, o.height ? 0x046767 : 0xd6338a, 3, 1, 7);
@@ -134,7 +134,14 @@ export class RouteExtras {
       const base = this.wallPath(w, off, 0), top: number[] = [];
       for (let j = 0; j < base.length / 3; j++) {
         const [x, y, z] = base.slice(3 * j, 3 * j + 3);
-        this.view.local(x, y, z, v); pos.push(v.x, v.y, v.z);
+        // The wall sits outside the crown. Extend its base onto the actual side slope instead
+        // of leaving a grade-height panel suspended above a descending embankment.
+        const station = w.s0 + (w.s1 - w.s0) * j / Math.max(1, base.length / 3 - 1);
+        const i = Math.min(r.n - 1, Math.max(0, Math.round(station / r.ds)));
+        const day = w.side === 'L' ? r.dayL[i] : r.dayR[i], zDay = w.side === 'L' ? r.zDayL[i] : r.zDayR[i];
+        const t = Math.max(0, Math.min(1, NOISE.wallEdgeOffset / Math.max(.1, day - this.crown / 2)));
+        const foot = r.kind[i] === KIND.earth ? Math.min(z, z + (zDay - r.grade[i]) * t) : z;
+        this.view.local(x, y, foot, v); pos.push(v.x, v.y, v.z);
         this.view.local(x, y, z + w.height, v); pos.push(v.x, v.y, v.z);
         top.push(v.x, v.y, v.z);
         if (j > 0) { const k = pos.length / 3 - 4; idx.push(k, k + 2, k + 1, k + 2, k + 3, k + 1); }

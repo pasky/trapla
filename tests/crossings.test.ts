@@ -7,6 +7,7 @@ import { ROAD_CLASSES } from '../src/core/data/urban';
 import { chooseStructures, KIND } from '../src/core/structures';
 import { CrossingRenderer } from '../src/render/crossings';
 import type { View } from '../src/render/view';
+import { crossingSurfaces } from '../src/render/crossing-surface';
 
 const cross = (roadId: number, s: number, cls = 'primary', h = 0, i = 0): CrossingResult =>
   ({ roadId, s, cls, h, i, x: s, y: 0, type: 'atGrade', cost: 0 });
@@ -274,21 +275,27 @@ describe('crossing geometry and map overlay', () => {
     expect(far.geometry!.clipped).toBe(true);
   });
 
-  it('creates depth-tested decks and visible symbols, then retires resources and restores the render hook', () => {
+  it('builds depth-tested physical geometry without lifting roads or rebuilding per frame, and retires resources', () => {
     const cs = [cross(0, 3000), cross(1, 4000, 'residential', -8)];
     resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);
     const prev = vi.fn(), retired: THREE.Material[] = [];
     const mock = { world: new THREE.Group(), metresPerPixel: 2, onRender: prev as (() => void) | null,
-      local: (x: number, y: number, z: number, v: THREE.Vector3) => v.set(x, z, -y),
+      local: (x: number, y: number, z: number, v = new THREE.Vector3()) => v.set(x, z, -y),
+      crossingSurfaces: crossingSurfaces(cs, () => 400), groundHeight: () => 400,
+      crossingEarthMaterial: () => new THREE.MeshBasicMaterial(), crossingGroundMaterial: () => new THREE.MeshBasicMaterial(),
       drape: () => 401, requestRender: vi.fn(), retire: (m: THREE.Material) => { retired.push(m); } };
     const renderer = new CrossingRenderer(mock as unknown as View);
     renderer.setResult({ crossings: cs, grade: Float64Array.of(400), ground: Float64Array.of(400) });
     const group = mock.world.getObjectByName('crossing-roads')!;
     expect(group.children.length).toBeGreaterThan(0);
     expect(group.children.every(c => ((c as THREE.Mesh).material as THREE.Material).depthTest)).toBe(true);
-    expect(((group.children[0] as THREE.Mesh).geometry.getAttribute('position') as THREE.BufferAttribute).getY(0)).toBeGreaterThan(401);
-    expect(mock.world.getObjectByName('crossing-symbols')!.children).toHaveLength(1);
-    mock.onRender!(); expect(prev).toHaveBeenCalled();
+    const mesh = group.getObjectByName('crossing-earthworks') as THREE.Mesh;
+    const positions = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+    expect(Array.from({ length: positions.count }, (_, i) => positions.getY(i)).some(z => Math.abs(z - 400.1) < .01)).toBe(true);
+    expect(mock.world.getObjectByName('crossing-symbols')).toBeUndefined();
+    expect(mock.onRender).toBe(prev); mock.onRender!(); expect(prev).toHaveBeenCalled();
+    const count = group.children.length; mock.onRender!(); expect(group.children).toHaveLength(count);
+    mock.crossingSurfaces = [];
     renderer.setResult({ crossings: [], grade: Float64Array.of(400), ground: Float64Array.of(400) });
     expect(group.children).toHaveLength(0); expect(retired.length).toBeGreaterThan(0);
     renderer.dispose(); expect(mock.world.children).toHaveLength(0); expect(mock.onRender).toBe(prev);

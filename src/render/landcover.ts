@@ -64,6 +64,12 @@ const PASSES: Pass[] = [
   { layer: 'motorway', kind: 'line', color: [240, 176, 128], alpha: 0.95, width: 11, minPx: 2.6 },
   { layer: 'buildings', kind: 'poly', color: BUILDING_COLOR, alpha: 1 },
 ];
+/** Physical crossing roads use the exact same class palette as the rasterised base map. */
+export function existingRoadColor(cls: string): number {
+  const layer = cls === 'trunk' ? 'motorway' : ['residential', 'unclassified', 'living_street'].includes(cls) ? 'minor' : cls;
+  const rgb = [...PASSES].reverse().find(p => p.layer === layer)?.color ?? ROAD;
+  return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
+}
 /** layers whose polylines get round caps and joins (wide enough for gaps to show) */
 const CAPPED = new Set(['minor', 'tertiary', 'secondary', 'primary', 'motorway', 'service', 'rail', 'river']);
 

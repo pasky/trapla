@@ -23,7 +23,8 @@ export class BuildAnnotations {
       const i = Math.min(r.n - 2, Math.max(0, Math.floor(pin.s / r.ds)));
       const t = (pin.s - r.s[i]) / r.ds;
       const x = r.x[i] + t * (r.x[i + 1] - r.x[i]), y = r.y[i] + t * (r.y[i + 1] - r.y[i]);
-      this.add(x, y, Math.max(pin.z, r.ground[i]) + 5, '●', 'grade-pin',
+      const grade = r.grade[i] + t * (r.grade[i + 1] - r.grade[i]);
+      this.add(x, y, grade + .15, '●', 'grade-pin',
         `Pinned grade ${pin.z.toFixed(1)} m at km ${(pin.s / 1000).toFixed(3)}${d.profileMode === 'manual' ? ' (inactive in Manual)' : ''}`,
         () => this.onPin?.(pin.s));
     }

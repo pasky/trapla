@@ -40,6 +40,8 @@ Other commands:
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
 | `node scripts/build-tools.mjs [--docs]` | real HUD/map checks for pins, crossings, building buy/keep, wall add/remove/Auto, undo and reload; `--docs` writes screenshots 30–35 |
+| `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 36–41 (`--before` writes to `/tmp/trapla-crossings-before`) |
+| `node --max-old-space-size=2048 --import tsx scripts/crossing-audit.ts` | audits every saved design: terrain tie-ins ≤0.3 m, unsupported segment flotation ≤0.5 m, rendered road edges/side slopes, clearance and measured quantities; `--strict` also fails blocked designs |
 | `node scripts/noise-view.mjs [--gpu] [--docs] [outdir]` | noise view on a town-fringe and the town-centre design: hovers a walled / bought-out dwelling and a wall, prints the tooltips; `--docs` writes `docs/screenshots/28…29-*.png` |
 | `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
 | `node scripts/views.mjs design.json '[[x,y,dist,bearing,elev,"name",{"contours":true}],…]' [outdir]` | debug renders of arbitrary camera views (`GPU=1` as above) |
@@ -101,11 +103,15 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   Our bridge overrides overlapping structure paint locally; Auto seeks its clearance. Ordinary-road
   overbridges use the same priced raised approaches as Auto; fixed-level motorways/expressways require
   our road in a ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
-  Gold rings mark junctions, crossed-road ribbons show the under/overpass, and ochre side links show
-  reconnections/diversions. Links are schematic terrain-draped geometry; their bill remains the documented
-  two-sided station-gap proxy, not surveyed link earthworks/land. Red rings identify invalid choices.
+  Crossed roads retain their OSM alignment. Overbridges have a 1.2 m deck, ≥4.8 m clearance over our crown,
+  abutments, railings and terrain-ended approaches with earthwork side slopes and contours. Junction roads
+  ramp to our grade; roads under our bridges remain on the ground. Reconnection/diversion links run outside
+  our footprint with turning heads, use the base-map road-class palette, and meet real road anchors.
+  Deck/approach/link quantities are measured from the displayed geometry, not station-gap proxies.
+  These remain study-stage roads: road unit rates include provisional earthworks, not a separate surveyed
+  land/earthworks take-off. Missing OSM connections and infeasible approaches are reported, never invented.
 - Through-road junctions keep **1.5 km spacing**, including A/B tie-ins (also in town: a scenario assumption).
-  Other crossings use overbridges or parallel reconnections/diversions priced by measured route gaps × SPK
+  Other crossings use overbridges or parallel reconnections/diversions priced by measured built lengths × SPK
   road rates. Profile tooltips show the resolution and link/approach metres; HUD counts and sums them.
 - Cut quantities use ČGS GEOCR50 / engineering-geological rajons on a 25 m ground grid. Hover the profile
   for the ground name and **estimated** loose/weathered depths; the HUD shows class I/II/III shares.
@@ -172,9 +178,21 @@ Reproduce with `node scripts/ux.mjs --docs`.
 | Keep a building | Player-built noise wall |
 | ![Keep building](docs/screenshots/33-build-building-keep.png) | ![Manual wall](docs/screenshots/34-build-noise-wall.png) |
 
-Also: [overbridge and its approaches](docs/screenshots/32-build-crossing-overbridge.png),
-[wall removal produces a violation, not a buyout](docs/screenshots/35-build-no-wall-conflict.png).
-Reproduce with `node scripts/build-tools.mjs --docs`.
+Also: [wall removal produces a violation, not a buyout](docs/screenshots/35-build-no-wall-conflict.png).
+Reproduce the build-tool interactions with `node scripts/build-tools.mjs --docs`.
+
+### Physical crossings
+
+| Overbridge: deck, abutments and embankments | Ground-level reconnection |
+|---|---|
+| ![Overbridge detail](docs/screenshots/41-crossing-overbridge-detail.png) | ![Ground link](docs/screenshots/38-crossing-reconnection.png) |
+
+[Overbridge approaches](docs/screenshots/36-crossing-overbridge.png),
+[existing road under our bridge](docs/screenshots/37-crossing-bridge.png),
+[track diversion](docs/screenshots/39-crossing-diversion.png),
+[at-grade junction](docs/screenshots/40-crossing-junction.png).
+Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
+not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 
 ## Architecture
 

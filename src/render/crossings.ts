@@ -1,127 +1,118 @@
-// Crossing objects are priced/resolved in core. This overlay only displays its worker-safe geometry.
+// Physical, depth-tested crossing roads. All geometry is rebuilt only on a worker result.
 import * as THREE from 'three';
-import { Line2 } from 'three/examples/jsm/lines/Line2.js';
-import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { CrossingPoint } from '../core/crossings';
 import type { Result } from '../core/evaluate';
+import { endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
+import { existingRoadColor } from './landcover';
 import type { View } from './view';
 
+class MeshBuilder {
+  pos: number[] = []; col: number[] = []; elev: number[] = []; ink: number[] = []; indices: number[] = [];
+  constructor(private view: View) {}
+  vertex(p: CrossingPoint, color: number, ink = 0, lift = .08) {
+    const v = this.view.local(p.x, p.y, p.z + lift), c = new THREE.Color(color), i = this.pos.length / 3;
+    this.pos.push(v.x, v.y, v.z); this.col.push(c.r, c.g, c.b); this.elev.push(p.z); this.ink.push(ink); return i;
+  }
+  quad(a: CrossingPoint, b: CrossingPoint, c: CrossingPoint, d: CrossingPoint, color: number, ink = 0, lift = .08) {
+    const v = [a, b, c, d].map(p => this.vertex(p, color, ink, lift));
+    this.indices.push(v[0], v[1], v[2], v[1], v[3], v[2]);
+  }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    for (const [name, values, size] of [['position', this.pos, 3], ['color', this.col, 3], ['elev', this.elev, 1], ['ink', this.ink, 1]] as const)
+      g.setAttribute(name, new THREE.Float32BufferAttribute(values, size));
+    g.setIndex(this.indices); g.computeVertexNormals(); g.computeBoundingSphere(); return g;
+  }
+}
 export class CrossingRenderer {
-  private roads = new THREE.Group();
-  private symbols = new THREE.Group();
-  private r: Pick<Result, 'crossings' | 'grade' | 'ground'> | null = null;
-  private scale = NaN;
-  private disposed = false;
-  private previousRender: View['onRender'];
-  private renderHook: () => void;
-
-  constructor(private view: View) {
-    this.roads.name = 'crossing-roads'; this.symbols.name = 'crossing-symbols';
-    view.world.add(this.roads, this.symbols);
-    this.previousRender = view.onRender;
-    this.renderHook = () => { this.previousRender?.(); if (!this.disposed) this.updateSymbols(); };
-    view.onRender = this.renderHook;
-  }
-
-  setResult(r: Pick<Result, 'crossings' | 'grade' | 'ground'>) {
-    this.r = r; this.clear(this.roads); this.scale = NaN;
-    for (const c of r.crossings) {
-      const g = c.geometry;
-      if (!g) continue;
-      // Depth-tested decks: a crossed road does not disappear at a bridge and is genuinely below
-      // or above the new road, rather than a screen-space line painted over every structure.
-      if (g.road) this.ribbon(g.road, g.width, c.type === 'overbridge' ? 0x7a858e : 0xa8a297, c.type === 'overbridge');
-      for (const link of g.links ?? []) this.ribbon(link, g.width, c.issues?.length ? 0xc75a42 : 0xc49a57, false);
+  private group = new THREE.Group();
+  constructor(private view: View) { this.group.name = 'crossing-roads'; view.world.add(this.group); }
+  setResult(_r: Pick<Result, 'crossings' | 'grade' | 'ground'>) {
+    this.clear();
+    const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view), structure = new MeshBuilder(this.view);
+    for (const surface of this.view.crossingSurfaces) this.surface(surface, earth, terrain, structure);
+    for (const [builder, material, name] of [[terrain, this.view.crossingGroundMaterial(), 'crossing-terrain'],
+      [earth, this.view.crossingEarthMaterial(), 'crossing-earthworks'], [structure, this.view.crossingEarthMaterial(), 'crossing-decks']] as const) {
+      if (!builder.indices.length) { material.dispose(); continue; }
+      const mesh = new THREE.Mesh(builder.geometry(), material); mesh.name = name; this.group.add(mesh);
     }
-    this.updateSymbols(); this.view.requestRender();
+    this.view.requestRender();
   }
-
-  private clear(group: THREE.Group) {
-    for (const child of [...group.children]) {
-      group.remove(child);
-      const obj = child as THREE.Mesh;
-      obj.geometry?.dispose();
-      this.view.retire(obj.material as THREE.Material | undefined);
-    }
-  }
-
-  private ribbon(path: CrossingPoint[], width: number, color: number, deck: boolean) {
-    if (path.length < 2) return;
-    const pos: number[] = [], faces: number[] = [], v = new THREE.Vector3();
-    for (let i = 0; i < path.length; i++) {
-      const p = path[i], a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)];
-      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
-      for (const side of [-1, 1]) {
-        const x = p.x - dy / len * width / 2 * side, y = p.y + dx / len * width / 2 * side;
-        this.view.local(x, y, Math.max(p.z, this.view.drape(x, y)) + 0.25, v);
-        pos.push(v.x, v.y, v.z);
-      }
-      if (i) { const k = 2 * i; faces.push(k - 2, k - 1, k, k - 1, k + 1, k); }
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geometry.setIndex(faces);
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide,
-      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-    this.roads.add(mesh);
-    if (deck) {
-      // Dark side faces give the elevated crossed-road deck thickness without inventing piers.
-      const sidePos: number[] = [], sideFaces: number[] = [];
-      for (let i = 0; i < path.length; i++) for (const side of [0, 1]) {
-        const k = (2 * i + side) * 3;
-        sidePos.push(pos[k], pos[k + 1], pos[k + 2]);
-        // View.local uses Y as height, while game Z is elevation; derive its vertical step explicitly.
-        const p = path[i], top = new THREE.Vector3(), bottom = new THREE.Vector3();
-        this.view.local(p.x, p.y, p.z + 0.25, top); this.view.local(p.x, p.y, p.z - 0.55, bottom);
-        sidePos.push(pos[k] + bottom.x - top.x, pos[k + 1] + bottom.y - top.y, pos[k + 2] + bottom.z - top.z);
-        if (i) { const j = (2 * i + side) * 2; sideFaces.push(j - 4, j - 3, j, j - 3, j + 1, j); }
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(sidePos, 3)); g.setIndex(sideFaces);
-      this.roads.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x46515c, side: THREE.DoubleSide })));
-    }
-  }
-
-  private updateSymbols() {
-    const scale = Math.round(Math.log2(Math.max(0.01, this.view.metresPerPixel)) * 4);
-    if (scale === this.scale) return;
-    this.scale = scale; this.clear(this.symbols);
-    if (!this.r) return;
-    const radius = Math.max(7, 6 * 2 ** (scale / 4)), v = new THREE.Vector3();
-    for (const c of this.r.crossings) {
-      // Thin road ribbons disappear beside the route/wall symbols at overview scales. Keep the
-      // schematic diversion legible as a cased dashed line, distinct from solid teal noise walls.
-      for (const path of c.geometry?.links ?? []) {
-        const pos: number[] = [];
-        for (const p of path) { this.view.local(p.x, p.y, p.z + 1, v); pos.push(v.x, v.y, v.z); }
-        for (const [color, width] of [[0x62431c, 5], [c.issues?.length ? 0xe34432 : 0xf5c15b, 3]]) {
-          const geometry = new LineGeometry(); geometry.setPositions(pos);
-          const material = new LineMaterial({ color, linewidth: width, depthTest: false, depthWrite: false });
-          material.dashed = true; material.dashSize = 10; material.gapSize = 5;
-          const line = new Line2(geometry, material); line.computeLineDistances();
-          line.renderOrder = width === 5 ? 6 : 7; line.frustumCulled = false; this.symbols.add(line);
+  private surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder) {
+    const g = s.crossing.geometry!, color = existingRoadColor(s.crossing.cls), casing = 0x807468;
+    const below = (p: CrossingPoint, dz: number) => ({ ...p, z: p.z - dz });
+    for (let i = 0; i + 1 < s.sections.length; i++) {
+      const a = s.sections[i], b = s.sections[i + 1], ground = groundSegment(s, i), target = ground ? earth : structure;
+      // The casing and surface occupy the same surveyed alignment, never a parallel schematic line.
+      target.quad(a.edge[0], a.edge[1], b.edge[0], b.edge[1], casing);
+      const inset = (p: CrossingPoint, q: CrossingPoint) => ({ ...q, x: q.x + (p.x - q.x) * .10, y: q.y + (p.y - q.y) * .10 });
+      target.quad(inset(a.p, a.edge[0]), inset(a.p, a.edge[1]), inset(b.p, b.edge[0]), inset(b.p, b.edge[1]), color, 0, .10);
+      if (ground) for (const k of [0, 1] as const) {
+        earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
+        // Natural ground collar replaces the coarse mesh locally. At its outside edge it meets
+        // that mesh, while the actual road/earthwork tie-in remains at the real terrain height.
+        const outer = (p: CrossingPoint) => ({ ...p, z: this.view.drape(p.x, p.y) });
+        terrain.quad(a.toe[k], outer(a.outer[k]), b.toe[k], outer(b.outer[k]), 0xffffff, 0, .015);
+      } else {
+        const depth = g.deck!.depth;
+        for (const k of [0, 1] as const) {
+          structure.quad(a.edge[k], below(a.edge[k], depth), b.edge[k], below(b.edge[k], depth), k ? 0x8b8982 : 0xc4c2ba);
+          // Continuous parapet, plus open upright posts at each profile sample.
+          const rail = (p: CrossingPoint, z: number, lateral: number) => ({ ...p, x: p.x + a.nx * lateral, y: p.y + a.ny * lateral, z: p.z + z });
+          structure.quad(rail(a.edge[k], .95, 0), rail(a.edge[k], 1.12, 0), rail(b.edge[k], .95, 0), rail(b.edge[k], 1.12, 0), 0x626969);
+          this.box(structure, a.edge[k], a.nx, a.ny, .10, .10, a.edge[k].z, a.edge[k].z + 1.12, 0x626969);
         }
+        structure.quad(below(a.edge[0], depth), below(a.edge[1], depth), below(b.edge[0], depth), below(b.edge[1], depth), 0x75756f);
       }
-      if (c.type !== 'junction' && !c.issues?.length) continue;
-      const pos: number[] = [], z = Math.max(this.r.grade[c.i], this.r.ground[c.i]) + 2;
-      for (let k = 0; k <= 32; k++) {
-        const angle = 2 * Math.PI * k / 32;
-        this.view.local(c.x + Math.cos(angle) * radius, c.y + Math.sin(angle) * radius, z, v);
-        pos.push(v.x, v.y, v.z);
+    }
+    for (const [a, b, c, d] of endCollars(s, (x, y) => this.view.groundHeight(x, y))) {
+      const across = Math.max(2, Math.ceil(Math.hypot(a.x - b.x, a.y - b.y) / 4)), along = 5;
+      const point = (u: number, v: number) => {
+        const x = a.x * (1-u)*(1-v) + b.x*u*(1-v) + c.x*(1-u)*v + d.x*u*v;
+        const y = a.y * (1-u)*(1-v) + b.y*u*(1-v) + c.y*(1-u)*v + d.y*u*v;
+        const ground = this.view.groundHeight(x, y), blend = Math.max(v, Math.max(0, Math.abs(u-.5)*4-1));
+        return { ...a, x, y, z: ground + (this.view.drape(x, y)-ground)*blend };
+      };
+      for (let i = 0; i < across; i++) for (let j = 0; j < along; j++) terrain.quad(point(i/across,j/along), point((i+1)/across,j/along), point(i/across,(j+1)/along), point((i+1)/across,(j+1)/along), 0xffffff, 0, .015);
+    }
+    if (s.deck && g.deck) for (const i of [s.deck.start, s.deck.end]) {
+      const a = s.sections[i];
+      // Full-width abutments down to natural ground; the clear span has no piers in our traffic lanes.
+      const bottom = Math.min(this.view.groundHeight(a.p.x, a.p.y), a.p.z - g.deck.depth - .5);
+      this.box(structure, a.p, a.nx, a.ny, g.width / 2 + .3, .65, bottom, a.p.z - g.deck.depth, 0xb7b4a9);
+      for (const k of [0, 1] as const) {
+        const e = a.edge[k], foot = { ...e, z: this.view.groundHeight(e.x, e.y) };
+        // Wing faces close the embankment beside the abutment, rather than revealing a hollow ramp.
+        const v = [e, foot, a.toe[k]].map(p => earth.vertex(p, 0xe3d27e, 1));
+        earth.indices.push(...v);
       }
-      const geometry = new LineGeometry(); geometry.setPositions(pos);
-      const line = new Line2(geometry, new LineMaterial({ color: c.issues?.length ? 0xe34432 : 0xf4be42,
-        linewidth: c.requestedType ? 4 : 3, depthTest: false, depthWrite: false }));
-      line.renderOrder = 7; line.frustumCulled = false;
-      this.symbols.add(line);
+    }
+    if (s.link && s.path.length) {
+      // Turning head and a transverse end cap at the severed original road end.
+      const p = s.path[0], radius = g.width * .72, sections = 20;
+      for (let k = 0; k < sections; k++) {
+        const pt = (j: number) => {
+          const angle = j / sections * Math.PI * 2, x = p.x + Math.cos(angle) * radius, y = p.y + Math.sin(angle) * radius;
+          return { ...p, x, y, z: this.view.groundHeight(x, y) };
+        };
+        const a = earth.vertex(p, color, 0, .12), b = earth.vertex(pt(k), color, 0, .12), c = earth.vertex(pt(k + 1), color, 0, .12);
+        earth.indices.push(a, b, c);
+      }
     }
   }
-
-  dispose() {
-    this.disposed = true;
-    this.clear(this.roads); this.clear(this.symbols);
-    this.view.world.remove(this.roads, this.symbols);
-    if (this.view.onRender === this.renderHook) this.view.onRender = this.previousRender;
-    this.r = null; this.view.requestRender();
+  private box(mesh: MeshBuilder, p: CrossingPoint, nx: number, ny: number, across: number, along: number, low: number, high: number, color: number) {
+    if (high <= low) return;
+    const corners = [[-1, -1], [-1, 1], [1, 1], [1, -1]].map(([a, b]) => ({ ...p, x: p.x + nx * across * a + ny * along * b, y: p.y + ny * across * a - nx * along * b, z: low }));
+    for (let i = 0; i < 4; i++) {
+      const a = corners[i], b = corners[(i + 1) % 4]; mesh.quad(a, { ...a, z: high }, b, { ...b, z: high }, color);
+    }
+    mesh.quad({ ...corners[0], z: high }, { ...corners[1], z: high }, { ...corners[3], z: high }, { ...corners[2], z: high }, color);
   }
+  private clear() {
+    for (const child of [...this.group.children]) {
+      this.group.remove(child); const mesh = child as THREE.Mesh;
+      mesh.geometry.dispose(); this.view.retire(mesh.material);
+    }
+  }
+  dispose() { this.clear(); this.view.world.remove(this.group); this.view.requestRender(); }
 }
