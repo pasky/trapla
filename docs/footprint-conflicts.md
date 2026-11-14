@@ -22,10 +22,10 @@ invalid: a clear deck is not proof that its foundations or adjacent slopes are c
   its measured proposal priced and its specific diagnostics visible. It is not drawn as a built
   road. Motorways/trunks and support collisions are blocked without a cheap relocation rate.
 - Crossing-owned original-way intervals are subtracted using actual approach/turnaround geometry,
-  including one-sided removed stubs, already-priced invalid choices, and nearby ways merged for
-  billing. A half-station tolerance absorbs stepped/continuous geometry slivers. New tie-ins cannot
-  rebill those intervals or another
-  relocation of the same way. Endpoint exemptions require a real crossing, or a collinear way
+  including confirmed one-sided removed stubs, already-priced invalid choices, and nearby ways
+  merged for billing. A provisional half-station tolerance absorbs stepped/continuous sampling
+  slivers; it is not a proven geometric bound. Missing-anchor geometries cannot claim an entire
+  branch. New tie-ins cannot rebill those intervals or another relocation of the same way. Endpoint exemptions require a real crossing, or a collinear way
   actually within the existing 1 m endpoint tolerance—not any road within 150 m.
 - Free bridge spans and tunnel interiors do not displace surface features. Abutment screens are
   6 m along × (crown + 4 m) across; piers 2.4 m along × 0.55 crown; portals use the abutment-sized
@@ -37,9 +37,10 @@ invalid: a clear deck is not proof that its foundations or adjacent slopes are c
   fill cover inside the barrel (excluding its exposed headwall zones), its hydraulic opening/length
   limits, and open outlets; no buried
   headwall at an internal OSM endpoint. Existing centreline barrel neighbourhoods are excluded
-  (a shared half-station resolution allowance in structure selection and final checking); a genuine
-  adjoining compatible barrel extension bills that allowance gap too and reuses its ends, not two
-  more heads. Sub-half-station remnants at an existing barrel are absorbed as sampling slivers. Resizing/merging incompatible assemblies is a violation, not free.
+  using the actual channel-aligned barrel corridor, not a circle that would hide a connected
+  dog-leg. Structure selection and final checking share its half-station sampling margins. A
+  genuine adjoining compatible barrel extension bills the end-margin gap too and reuses its ends,
+  not two more heads. Resizing/merging incompatible assemblies is a violation, not free.
   Legacy raster-stream crossings are excluded too. Long/large channels, cuts and missing cover
   or outlets require moving away or a clear bridge. See `research/17-culvert-prices.md` and
   `research/17-stream-crossings.md` for sourced rates and provisional hydraulics.
@@ -66,7 +67,8 @@ original terrain is not cut out merely to hide a road (that would leave holes).
 This is screening and provisional mitigation, not a routing/engineering solver. Realignments do
 not traverse arbitrary OSM junctions to invent anchors beyond their source way; a truncated way
 inside the footprint is explicitly blocked. Channel reach boundaries without usable outlets are
-also unresolved. Lateral roads' secondary earthworks, utilities, property acquisition and new
+also unresolved. The culvert head-zone allowance uses the provisional 1:2 fill slope; oblique exits
+and gentler slopes can conservatively need a separate hydraulic/earthwork design. Lateral roads' secondary earthworks, utilities, property acquisition and new
 intersections are not comprehensively redesigned. Road half-widths/support dimensions and raster
 rail/water masks are approximate. These limitations must not be hidden by marking a design VALID.
 
@@ -88,11 +90,11 @@ grade VPIs and material values for the ten saved/edited designs.
 
 | Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Stream spans / m | Footprint violations |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| best | 2 / 9 | 206.5 | 1,239.6 | 26.095 | 4 / 40.0 | 1 / 10.0 | 11 / 270.0 | 25 |
-| demo | 6 / 17 | 355.4 | 1,658.3 | 36.414 | 4 / 40.0 | 1 / 10.0 | 15 / 379.9 | 37 |
-| direct-80 | 1 / 25 | 403.3 | 1,618.7 | 64.955 | 5 / 70.0 | 4 / 60.0 | 7 / 70.0 | 41 |
-| direct-90 | 0 / 33 | 570.7 | 2,379.4 | 74.838 | 5 / 60.0 | 4 / 60.0 | 14 / 399.9 | 56 |
-| town-centre | 3 / 29 | 529.4 | 1,685.4 | 56.007 | 9 / 140.0 | 1 / 10.0 | 12 / 419.9 | 51 |
+| best | 2 / 9 | 206.5 | 1,239.6 | 26.095 | 4 / 40.0 | 1 / 10.0 | 16 / 449.9 | 30 |
+| demo | 6 / 17 | 355.4 | 1,658.3 | 36.414 | 4 / 40.0 | 1 / 10.0 | 22 / 669.8 | 44 |
+| direct-80 | 1 / 25 | 403.3 | 1,618.7 | 64.955 | 5 / 70.0 | 4 / 60.0 | 12 / 160.0 | 46 |
+| direct-90 | 0 / 33 | 570.7 | 2,379.4 | 74.838 | 5 / 60.0 | 4 / 60.0 | 16 / 549.8 | 58 |
+| town-centre | 3 / 29 | 529.4 | 1,685.4 | 56.007 | 9 / 140.0 | 1 / 10.0 | 16 / 489.9 | 55 |
 
 No additional longitudinal culverts qualify in this legacy raster-only pack. All five designs
 were VALID under the old centreline checks; all now require footprint/support fixes.
@@ -105,13 +107,13 @@ This table is a separate evaluation, not a replacement fingerprint/baseline.
 | Design | Roads built / blocked | Road affected m | Proposed/built road m | Added road M CZK | Rail spans / m | Water spans / m | Blocked channel spans / m | Footprint violations |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | best | 1 / 13 | 154.4 | 877.2 | 19.939 | 4 / 40.0 | 1 / 10.0 | 4 / 46.1 | 22 |
-| demo | 3 / 16 | 378.1 | 1,432.4 | 29.044 | 4 / 40.0 | 1 / 10.0 | 8 / 65.9 | 29 |
+| demo | 3 / 16 | 378.1 | 1,432.4 | 29.044 | 4 / 40.0 | 1 / 10.0 | 9 / 64.3 | 30 |
 | direct-80 | 2 / 23 | 355.9 | 1,478.1 | 57.515 | 5 / 70.0 | 4 / 60.0 | 3 / 82.3 | 35 |
-| direct-90 | 1 / 33 | 543.7 | 2,269.0 | 67.543 | 5 / 70.0 | 3 / 50.0 | 13 / 98.3 | 54 |
-| town-centre | 3 / 33 | 627.4 | 1,979.8 | 65.700 | 9 / 140.0 | 1 / 10.0 | 7 / 93.3 | 50 |
+| direct-90 | 1 / 31 | 514.0 | 2,012.8 | 54.730 | 5 / 70.0 | 3 / 50.0 | 13 / 82.7 | 52 |
+| town-centre | 3 / 32 | 594.7 | 1,913.3 | 64.097 | 9 / 140.0 | 1 / 10.0 | 4 / 41.2 | 46 |
 
-Demo additionally prices **one 23.47 m longitudinal culvert, 0.870 M CZK**. All five still require
-footprint fixes. The shared barrel-neighbourhood rule also changes some Auto structure choices on
+No additional longitudinal assembly in these five designs clears every cover/outlet/support check;
+all five still require footprint fixes. The shared barrel-neighbourhood rule also changes some Auto structure choices on
 this updated vector-water pack; these totals are not directly comparable with old-pack bills.
 
 ## Performance

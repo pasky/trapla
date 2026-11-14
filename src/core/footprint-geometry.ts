@@ -48,4 +48,9 @@ export class FootprintGrid {
   }
   near(p: Point2): readonly FootprintCell[] { return this.buckets.get(Math.floor(p.x / 100) * 100003 + Math.floor(p.y / 100)) ?? []; }
   hits(p: Point2, pad: number): boolean { return this.near(p).some(c => insideFootprint(p, c, pad)); }
+  /** Interior of the union, not of each shrunken station cell (shrinking cells invents outlet
+   * gaps at every station boundary). A real outer edge has at least one outside neighbour. */
+  interior(p: Point2): boolean {
+    return [[0.05, 0], [-0.05, 0], [0, 0.05], [0, -0.05]].every(([dx, dy]) => this.hits({ x: p.x + dx, y: p.y + dy }, 1e-6));
+  }
 }

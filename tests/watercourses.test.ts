@@ -44,7 +44,7 @@ describe('watercourse crossing assemblies', () => {
       expect(r.waterCrossings).toHaveLength(1);
       expect(r.waterCrossings[0].structure).toBe('pipe');
       expect(r.cost.total).toBeCloseTo(baseline.cost.total, 4);
-      expect(r.violations.filter(v => v.kind === 'crossing')).toHaveLength(0);
+      expect(r.violations.filter(v => v.kind === 'crossing' || v.kind === 'footprint')).toHaveLength(0);
     }
   });
   it('sizes up with runoff and width, reserves natural bed/bank, and rejects impractical length', () => {

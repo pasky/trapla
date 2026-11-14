@@ -52,6 +52,8 @@ describe('constructed footprint conflicts', () => {
     // A one-sided reconnection already removes the old-way stub beyond its sole turnaround.
     crossings[0].type = 'reconnection'; crossings[0].geometry!.turnarounds = [crossings[0].geometry!.road![0]];
     expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(197, 4);
+    crossings[0].issues![0].crossing.code = 'geometry'; // second required branch has no anchor
+    expect(check(route(), road(), terrain(), crossings).conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeCloseTo(1004, 4);
   });
   it('motorways cannot use the cheap road-reconnection fallback', () => {
     const r = check(route(), road('motorway'));
@@ -87,17 +89,31 @@ describe('constructed footprint conflicts', () => {
   });
   it('extends a compatible crossing barrel without paying for another pair of heads or leaving an unpriced gap', () => {
     const watercourses: WaterData = { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
-      points: [[400, 252], [1000, 252]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] };
+      points: [[500, 150], [500, 400]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] };
     const t = new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses });
     const r = route();
-    r.kind = Uint8Array.from({ length: r.n }, (_, i) => i >= 40 && i < 45 ? KIND.earth : KIND.bridge);
-    const c: WaterCrossing = { s: 400, x: 500, y: 252, id: 1, waterKind: 'ditch', width: 0.5, catchmentKm2: 0.1, truncated: false, sine: 1 };
+    // A real perpendicular crossing through an asymmetric fill: the straight 40 m barrel
+    // estimate leaves a 5 m residual at the wider toe, plus the 5 m sampling ownership gap.
+    r.dayL = new Float64Array(r.n).fill(30); r.dayR = new Float64Array(r.n).fill(10);
+    r.grade = new Float64Array(r.n).fill(120);
+    const c: WaterCrossing = { s: 400, x: 500, y: 250, id: 1, waterKind: 'ditch', width: 0.5, catchmentKm2: 0.1, truncated: false, sine: 1, channelTx: 0, channelTy: 1 };
     const result = footprintConflicts(r, t, undefined, [], [], [c]);
     expect(result.violations).toEqual([]);
     expect(result.conflicts).toHaveLength(1);
-    expect(result.conflicts[0].affectedLength).toBeCloseTo(20, 5);
-    expect(result.conflicts[0].length).toBeCloseTo(25, 5); // 20 m residual + 5 m ownership-resolution gap
-    expect(result.conflicts[0].cost).toBeCloseTo(25 * waterSize(c, 40).perM, 4);
+    expect(result.conflicts[0].affectedLength).toBeCloseTo(5, 5);
+    expect(result.conflicts[0].length).toBeCloseTo(10, 5);
+    expect(result.conflicts[0].cost).toBeCloseTo(10 * waterSize(c, 40).perM, 4);
+  });
+  it('does not hide a buried dog-leg inside a crossing’s circular neighbourhood', () => {
+    const watercourses: WaterData = { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
+      points: [[600, 150], [600, 255], [620, 255], [620, 400]], catchmentKm2: [0.1, 0.1, 0.1, 0.1], truncated: [false, false, false, false] }] };
+    const t = new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses });
+    const r = route(), water = t.watercourses!.intersections(r.n, r.s, r.x, r.y);
+    expect(water).toHaveLength(1);
+    const result = footprintConflicts(r, t, undefined, [], [], water);
+    expect(result.conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeGreaterThanOrEqual(25);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.conflicts.some(c => c.detail.includes('no clear outlet'))).toBe(true);
   });
   it('prices a short lengthwise stream barrel once and rejects long channels or insufficient cover', () => {
     const run = (end: number, grade = 105) => {

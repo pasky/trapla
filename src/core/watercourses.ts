@@ -1,6 +1,6 @@
 // Independent watercourse geometry: roads/land-cover drawing order cannot erase a stream.
 import { STRUCTURE_RULES } from './data/prices';
-import type { Segment2 } from './footprint-geometry';
+import type { FootprintCell, Segment2 } from './footprint-geometry';
 export interface WaterSegment extends Segment2 { reach: WaterReach; j: number }
 import { BOX_SIZES, CULVERT_RULES as R, PIPE_SIZES } from './data/culverts';
 
@@ -18,6 +18,8 @@ export interface WaterCrossing {
   width: number; catchmentKm2: number; truncated: boolean;
   /** Absolute sine of road/channel angle. Length = road footprint / sine. */
   sine: number;
+  /** Channel tangent at the intersection; preserves the actual barrel direction through bends. */
+  channelTx?: number; channelTy?: number;
 }
 export interface WaterSize {
   type: 'pipe' | 'box' | 'bridge'; width: number; height: number;
@@ -37,10 +39,14 @@ export function estimateQ100(c: Pick<WaterCrossing, 'catchmentKm2' | 'truncated'
 export function barrelLength(c: Pick<WaterCrossing, 'sine'>, footprint: number): number {
   return footprint / Math.max(0.01, c.sine);
 }
-/** Shared ownership radius of a station-sized barrel. Half a station accounts for the
- * stepped footprint representation; genuine longitudinal extensions also bill that end gap. */
-export function barrelReach(c: Pick<WaterCrossing, 'sine'>, footprint: number, ds: number): number {
-  return (barrelLength(c, footprint) + ds) / 2;
+/** Oriented barrel corridor, not a circle: a connected dog-leg is not part of a straight
+ * priced culvert. Half-station margins are sampling heuristics; real extensions bill the end gap.
+ * Legacy raster crossings lack a tangent and assume the same perpendicular crossing as pricing. */
+export function barrelEnvelope(c: WaterCrossing, footprint: number, ds: number, routeTx: number, routeTy: number): FootprintCell {
+  const cos = Math.sqrt(Math.max(0, 1 - c.sine ** 2));
+  const tx = c.channelTx ?? routeTx * cos - routeTy * c.sine;
+  const ty = c.channelTy ?? routeTy * cos + routeTx * c.sine;
+  return { x: c.x, y: c.y, s: c.s, i: 0, tx, ty, along: (barrelLength(c, footprint) + ds) / 2, left: ds / 2, right: ds / 2 };
 }
 /** An assembly includes TWO ends, not an arbitrary "excess" beyond an unmeasured norm allowance. */
 export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
@@ -177,7 +183,8 @@ export class WaterNet {
             out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: x[i] + t * dx, y: y[i] + t * dy,
               id: w.id, waterKind: w.kind, width: w.width ?? (w.kind === 'river' ? 5 : 0.5),
               catchmentKm2: Math.max(w.catchmentKm2[j], w.catchmentKm2[j + 1]),
-              truncated: w.truncated[j] || w.truncated[j + 1], sine: Math.abs(den) / (Math.hypot(dx, dy) * Math.hypot(wx, wy)) });
+              truncated: w.truncated[j] || w.truncated[j + 1], sine: Math.abs(den) / (Math.hypot(dx, dy) * Math.hypot(wx, wy)),
+              channelTx: wx / Math.hypot(wx, wy), channelTy: wy / Math.hypot(wx, wy) });
           }
         }
     }
