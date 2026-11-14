@@ -88,11 +88,11 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
       kind: 'profile', basis: outside ? 'norm' : 'engine',
       s0: Number.isFinite(p.s) ? p.s : a.s, s1: Number.isFinite(p.s) ? p.s : a.s,
       title: reason === 'invalid' ? 'Pinned height is not finite'
-        : outside ? 'Pinned height cannot be reached at the maximum gradient' : 'Auto could not find a legal line through the pinned height',
-      fix: suggested ? `Set pin ${index + 1} to station ${suggested.s.toFixed(2)} m, elevation ${suggested.z.toFixed(2)} m`
-        : `Remove pin ${index + 1} or enter a finite station and elevation`,
-      detail: bound ? `Requested ${p.z.toFixed(2)} m; displayed grade ${actualZ!.toFixed(2)} m. Gradient-only bounds ${bound.min.toFixed(2)}–${bound.max.toFixed(2)} m. These bounds include other pins but do not guarantee vertical-curve room. ${outside ? 'Conflicting pins may need editing together.' : 'The bounded grid search is approximate; another legal line may exist. The suggested height matches the displayed fallback.'}` : 'Pins keep absolute chainage when the horizontal route changes; they are not silently moved.',
-      rule: `Actual smoothed grade must pass within ±${tol} m of each pin; endpoint elevations remain fixed.`,
+        : outside ? 'Pinned height cannot be reached within the steepest allowed slope' : 'Automatic found no legal road height through the pinned height',
+      fix: suggested ? `Set pinned height ${index + 1} (km ${(suggested.s / 1000).toFixed(3)}) to ${suggested.z.toFixed(2)} m`
+        : `Remove pinned height ${index + 1} or enter a valid km position and height`,
+      detail: bound ? `You asked for ${p.z.toFixed(2)} m; the road is at ${actualZ!.toFixed(2)} m. Slopes alone allow ${bound.min.toFixed(2)}–${bound.max.toFixed(2)} m here (counting your other pins, but not the room the roundings need). ${outside ? 'Pins that conflict may need changing together.' : 'Automatic tries a limited set of heights; a legal one may still exist. The suggested height is where the road is now.'}` : 'A pin stays at its km position when you move the route; it is never moved for you.',
+      rule: `The finished road must pass within ±${tol} m of each pinned height; the heights at A and B are fixed.`,
       size: actualZ !== null ? Math.abs(actualZ - p.z) : undefined,
       pin: { index, requested: { ...p }, actualZ, tolerance: tol, reason, reachable: bound, suggested },
     });

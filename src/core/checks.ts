@@ -360,8 +360,8 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
 export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number): Violation[] {
   const out: Violation[] = [];
   const last = p.pts.length - 1;
-  // "profile point k (km …)": the points carry no numbers in the profile, the station finds them
-  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `profile point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
+  // "height point k (km …)": the points carry no numbers in the profile, the station finds them
+  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `height point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
   const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
   const gradeRule = `ČSN 73 6101 (older edition, provisional): at most ${fmt(maxGradient * 100, 0)} % gradient for this road in hilly terrain`;
   for (let i = 0; i < p.grades.length; i++) {
@@ -387,8 +387,8 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     out.push({
       kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
-      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : `Add a profile point here (double-click the profile) or make the route longer here`,
-      detail: `Between ${vpi(i)} and ${vpi(i + 1)} the grade line ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Auto profile finds a grade line within the limit when one exists.`,
+      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : `Add a height point here (click the road line in the profile) or make the route longer here`,
+      detail: `Between ${vpi(i)} and ${vpi(i + 1)} the road ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Automatic road height stays within the limit when it can.`,
       basis: 'norm', rule: gradeRule,
     });
   }
@@ -403,7 +403,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
       out.push({
         kind: c.type, ...where,
         title: `${word} too sharp`,
-        fix: `Set the ${crest ? 'crest' : 'sag'} radius at ${vpi(c.index)} to at least ${fmt(min)} m (tick "min" in its card)`,
+        fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to at least ${fmt(min)} m (tick "smallest allowed" in its card)`,
         detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
         basis: 'norm', rule: `ČSN 73 6101 (older edition, provisional): ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
       });
@@ -424,10 +424,10 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
       const both = !!w.nb && w.nb.type !== 'none' && w.nb.len > 0;
       out.push({
         kind: 'vcOverlap', ...where,
-        title: both ? 'Two vertical curves overlap' : 'Vertical curve does not fit',
+        title: both ? 'Two roundings of the road height overlap' : 'Rounding of the road height does not fit',
         fix: `Move ${vpi(c.index)} at least ${fmt(up(w.short))} m further from ${vpi(w.j)}`,
-        detail: `The ${crest ? 'crest' : 'dip'} at ${vpi(c.index)} needs ${fmt(c.len)} m (radius × change of grade)${both ? ` and the one at ${vpi(w.j)} ${fmt(w.nb!.len)} m; half of each must fit between the two points` : `; half of it must fit before ${vpi(w.j)}`}, but they are only ${fmt(Math.abs(p.pts[w.j].s - c.s))} m apart. A smaller radius (not below the minimum) or a smaller change of grade also helps.`,
-        basis: 'game', rule: 'Game rule: every vertical curve must fit whole between its neighbours — a squeezed curve would be sharper than its radius says',
+        detail: `The ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} needs ${fmt(c.len)} m (radius × change of slope)${both ? ` and the one at ${vpi(w.j)} ${fmt(w.nb!.len)} m; half of each must fit between the two points` : `; half of it must fit before ${vpi(w.j)}`}, but they are only ${fmt(Math.abs(p.pts[w.j].s - c.s))} m apart. A smaller radius (not below the minimum) or a smaller change of slope also helps.`,
+        basis: 'game', rule: 'Game rule: every rounding (vertical curve) must fit whole between its neighbours — a squeezed one would be sharper than its radius says',
       });
     }
   }
@@ -451,8 +451,8 @@ export function slopeViolation(s0: number, s1: number, above: number, below: num
   return {
     kind: 'section', s0, s1,
     title: fill ? 'Embankment never reaches the ground' : 'Cutting never reaches the top of the slope',
-    fix: fill ? `Lower the grade line here (now up to ${fmt(above, 1)} m above the ground), or move the road off the steep hillside`
-      : `Raise the grade line here (now up to ${fmt(below, 1)} m below the ground), or move the road off the steep hillside`,
+    fix: fill ? `Lower the road here (now up to ${fmt(above, 1)} m above the ground), or move it off the steep hillside`
+      : `Raise the road here (now up to ${fmt(below, 1)} m below the ground), or move it off the steep hillside`,
     detail: `The hillside is about as steep as the ${fill ? 'embankment' : 'cutting'} slope, so the side slope runs on for more than ${fmt(width)} m without meeting the ground.`,
     basis: 'game', rule: `Game limit: side slopes are modelled only ${fmt(width)} m to each side of the road`,
     size: Math.max(above, below),
@@ -467,14 +467,14 @@ export function crossingViolation(s: number, what: string, above: number, need: 
     return {
       kind: 'crossing', s0: s, s1: s,
       title: `Road too low over the ${what}`,
-      fix: `Raise the grade line here by ${fmt(raise, 1)} m`,
+      fix: `Raise the road here by ${fmt(raise, 1)} m`,
       detail: `To bridge the ${what} the road must be at least ${fmt(need, 1)} m above it; it is ${h(above)}.`,
       basis: 'game', rule: `Game assumption: a bridge needs the road at least ${fmt(need, 1)} m above a ${what} (deck plus clearance)`,
       size: raise,
     };
   }
   const lower = Math.ceil((above + below) * 10 - 1e-6) / 10;
-  const r = `Raise the grade line here by ${fmt(raise, 1)} m to bridge over it`, l = `lower it by ${fmt(lower, 1)} m to pass under it`;
+  const r = `Raise the road here by ${fmt(raise, 1)} m to bridge over it`, l = `lower it by ${fmt(lower, 1)} m to pass under it`;
   return {
     kind: 'crossing', s0: s, s1: s,
     title: `The ${what} cannot be crossed on the level`,
@@ -532,10 +532,10 @@ export function oobViolation(s0: number, s1: number, length: number): Violation 
 export function profileViolation(length: number, maxGradient: number): Violation {
   return {
     kind: 'profile', s0: 0, s1: length,
-    title: 'Auto profile found no valid grade line',
-    fix: 'Make the route climb more gently (longer, or along the hillside), or drag the profile points yourself',
-    detail: `No grade line it tried stays within ${fmt(maxGradient * 100, 0)} % with the minimum crest and dip radii and the required clearances. The other messages show where it fails.`,
-    basis: 'engine', rule: 'Engine limitation: the auto profile searches a limited set of grade lines; a valid one may still exist',
+    title: 'Automatic road height found no legal solution',
+    fix: 'Make the route climb more gently (longer, or along the hillside), or set the road height By hand',
+    detail: `None of the road heights it tried stays within ${fmt(maxGradient * 100, 0)} % with the minimum hilltop and dip roundings and the required clearances. The other messages show where it fails.`,
+    basis: 'engine', rule: 'Engine limitation: Automatic tries a limited set of road heights; a legal one may still exist',
   };
 }
 

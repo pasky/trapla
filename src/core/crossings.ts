@@ -124,7 +124,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         structure: 'The crossing choice and the built main-road structure must agree (game crossing rule)',
         reach: 'Parallel reconnections reach at most 750 m per side (study-stage heuristic)',
       }[code],
-      detail: 'The requested choice remains visible and priced. Clear it to restore automatic resolution.',
+      detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
     issues.push(v); (c.issues ??= []).push(v);
   };
