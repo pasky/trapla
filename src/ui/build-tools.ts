@@ -171,7 +171,7 @@ export class BuildTools {
     const roads = this.crossedRoads(r);
     const k = roads.findIndex((x) => x.roadId === c.roadId);
     const bad = c.issues?.length || (c.type === 'atGrade' && ROAD_CLASSES[c.cls].noAtGrade);
-    card.innerHTML = `<div class="ctx-h"><b>Crossed road</b><small>${esc(ROAD_CLASSES[c.cls].label)} #${c.roadId} · km ${km(c.s)}</small>
+    card.innerHTML = `<div class="ctx-h"><b>Crossed road</b><small title="${esc(ROAD_CLASSES[c.cls].label)} #${c.roadId} (OpenStreetMap way in the map data), crossed at km ${km(c.s)}">${esc(ROAD_CLASSES[c.cls].label)} · km ${km(c.s)}</small>
         <button type="button" class="nav" data-nav="-1" title="Previous crossed road along the route" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road along the route" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button><button type="button" class="x" title="Close (Esc)">✕</button></div>
       <div class="ctx-state"><span class="tag ${bad ? 'bad' : 'ok'}">${TYPE_NAME[c.type] ?? c.type}</span> ${esc(crossingLabel(c))}${cost > 0 ? ` · <b>${czk(cost)}</b>` : ''}<br><small>our road ${Math.abs(c.h).toFixed(1)} m ${c.h >= 0 ? 'above' : 'below'} it${all.length > 1 ? ` · crossed ${all.length}× (km ${all.map((x) => km(x.s)).join(', ')})` : ''}</small></div>
       ${c.issues?.length ? `<div class="ctx-issue">⚠ ${c.issues.map((v) => esc(v.title)).join('; ')}</div>` : ''}

@@ -575,9 +575,13 @@ export class ProfilePanel {
     // bottom left of the chart, over the ground (the floating bar sits over the selection)
     g.font = '11px system-ui, sans-serif'; g.textAlign = 'left';
     const hint = hints.find((t) => g.measureText(t).width < (R - L) * 0.7) ?? hints[hints.length - 1];
-    const hw = g.measureText(hint).width;
-    g.fillStyle = 'rgba(247,245,240,0.88)'; g.fillRect(L + 2, B - 17, hw + 8, 15);
-    g.fillStyle = this.mode === 'manual' ? '#1f5fbf' : '#555'; g.fillText(hint, L + 6, B - 6);
+    // only while the mouse is over the profile (or before anything is selected): it would otherwise hide
+    // the crossing / building marks along the bottom of the chart
+    if (this.hoverClient || (!this.sel && this.pinStation === null && this.selCrossing === null)) {
+      const hw = g.measureText(hint).width;
+      g.fillStyle = 'rgba(247,245,240,0.8)'; g.fillRect(L + 2, B - 17, hw + 8, 15);
+      g.fillStyle = this.mode === 'manual' ? '#1f5fbf' : '#555'; g.fillText(hint, L + 6, B - 6);
+    }
     this.ev.onDraw?.();
   }
 
