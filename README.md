@@ -113,6 +113,10 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - Through-road junctions keep **1.5 km spacing**, including A/B tie-ins (also in town: a scenario assumption).
   Other crossings use overbridges or parallel reconnections/diversions priced by measured built lengths × SPK
   road rates. Profile tooltips show the resolution and link/approach metres; HUD counts and sums them.
+- Reconnection reach uses **750 m as an economic preference**, not a safety limit. Both explicit choices
+  and Auto's geometry fallback allow up to **2 km along the route to the target**; bills use actual built
+  link lengths, never a capped station-gap estimate. Dead-end remnants within the connection working
+  strip (half link width plus 3 m beyond the earthwork toe) are consumed, not separate surviving branches.
 - Cut quantities use ČGS GEOCR50 / engineering-geological rajons on a 25 m ground grid. Hover the profile
   for the ground name and **estimated** loose/weathered depths; the HUD shows class I/II/III shares.
   Mapped lithology is real, vertical weathering profiles are provisional—not borehole measurements or ČSN

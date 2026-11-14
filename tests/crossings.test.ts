@@ -95,8 +95,13 @@ describe('explicit crossing choices (automatic policy already covered in town.te
     expect(cs[1].cost).toBe(autoCost); expect(cs[1].targetS).toBe(3000);
     const far = cross(3, 4000, 'residential');
     const issues = resolve([far], [{ roadId: 3, type: 'reconnection' }]);
-    expect(issues[0].crossing).toMatchObject({ code: 'reach', actual: 4000, required: 750 });
+    expect(issues[0].crossing).toMatchObject({ code: 'reach', actual: 4000, required: 2000 });
     expect(far.linkLength).toBe(8000); expect(far.type).toBe('reconnection');
+    for (const [station, allowed] of [[5000, true], [5001, false]] as const) {
+      const boundary = [cross(1, 3000), cross(2, station, 'residential')];
+      const issues = resolve(boundary, [{ roadId: 2, type: 'reconnection' }]);
+      expect(issues.some(v => v.crossing.code === 'reach')).toBe(!allowed);
+    }
   });
 
   it('does not let another street anchor to an invalid motorway reconnection', () => {
@@ -273,6 +278,28 @@ describe('crossing geometry and map overlay', () => {
     expect(c.geometry!.links![0].length).toBeGreaterThan(1); expect(c.geometry!.links![1]).toEqual([]);
     expect(c.cost).toBeCloseTo(crossingPlanLength(c.geometry!.links![0]) * c.roadPerKm! / 1000, 6);
     expect(auditCrossingGeometry(cs, route, () => 400, net)).toEqual([]);
+    const manual = [cross(0, 3000), cross(1, 3800, 'residential')];
+    expect(resolve(manual, [{ roadId: 1, type: 'reconnection' }])).toEqual([]);
+    expect(buildCrossingGeometry(manual, route, () => 400, net)).toEqual([]);
+    expect(manual[1].cost).toBeCloseTo(c.cost, 6); // choosing the same >750 m link explicitly stays valid
+  });
+
+  it('consumes tiny dead-end remnants in connection works but still requires anchors for surviving branches', () => {
+    const run = (lo: number, hi: number, cls = 'residential') => {
+      const net = new RoadNet({ cls: ['primary', cls], ways: [[0, 3000, -200, 3000, 0], [1, 3100, lo, 3100, hi]] });
+      const cs = [cross(0, 3000), cross(1, 3100, cls)];
+      resolve(cs, [{ roadId: 1, type: 'reconnection' }]);
+      const issues = buildCrossingGeometry(cs, route, () => 400, net);
+      return { c: cs[1], issues };
+    };
+    const stub = run(-200, 14); // toe is y=10; 4 m dead-end lies in the connection working strip
+    expect(stub.issues).toEqual([]);
+    expect(stub.c.geometry!.links![0].length).toBeGreaterThan(1); expect(stub.c.geometry!.links![1]).toEqual([]);
+    const surviving = run(-200, 30); // real positive-side road survives, but the target T has no such branch
+    expect(surviving.issues.some(v => v.title.includes('surviving road branch'))).toBe(true);
+    const consumed = run(-14, 14, 'service');
+    expect(consumed.issues).toEqual([]); expect(consumed.c.geometry!.links).toEqual([[], []]);
+    expect(consumed.c.linkLength).toBe(0); expect(consumed.c.cost).toBe(0); // no phantom service ACCESS lump
   });
 
   it('does not treat viaduct-scale approach fill as ordinary priced road embankment', () => {

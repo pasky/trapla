@@ -3,7 +3,7 @@ import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, Cr
 import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 
-const MAX_POINTS = 500, MAX_REACH = 2000, STEP = 10, SETBACK = 3;
+const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
@@ -138,11 +138,14 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       if (c.type === 'overbridge') { c.span = 0; c.approachLength = 0; c.cost = 0; }
       continue;
     }
-    // A dead-end swallowed by the footprint has no surviving road to reconnect on that side.
+    // Connection works consume short stubs through the whole link corridor, not just the main
+    // earthwork toe. Use the same half-width + setback as groundAnchors; otherwise a 0.1–6 m
+    // remnant would be required to reconnect while being geometrically forbidden any anchor.
+    const corridor = maxLinkWidth(c) / 2 + SETBACK;
     const sides: [boolean, boolean] = [false, false];
     for (const q of [...path].sort((a, b) => Math.abs(a.d) - Math.abs(b.d))) {
       const p = project(q);
-      if (Math.abs(p.lateral) > (p.lateral > 0 ? p.left : p.right) + 0.1) sides[p.lateral < 0 ? 0 : 1] = true;
+      if (Math.abs(p.lateral) > (p.lateral > 0 ? p.left : p.right) + corridor) sides[p.lateral < 0 ? 0 : 1] = true;
       if (sides[0] && sides[1]) break;
     }
     survivingSides.set(c, sides);

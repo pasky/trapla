@@ -138,7 +138,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         depth: 'Chosen overbridges require a 6 m cut; junctions cannot lie in the deep-cut range (game crossing rule)',
         clearance: 'Our bridge needs 6 m above ordinary roads, 7.5 m above motorways; a junction cannot lie in the bridge range (game crossing rule)',
         structure: 'The crossing choice and the built main-road structure must agree (game crossing rule)',
-        reach: 'Parallel reconnections reach at most 750 m per side (study-stage heuristic)',
+        reach: `Reconnections reach at most ${CROSSING_RULES.linkHardReach} m along the route to their target (shared manual/Auto study-stage limit)`,
         geometry: 'Crossing geometry must tie to real roads at terrain level',
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
@@ -233,8 +233,8 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       c.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       const { linkCost: _linkCost, ...priced } = link;
       Object.assign(c, priced); c.targetS = target.s; c.targetRoadId = target.roadId;
-      if (c.requestedType && gap > CROSSING_RULES.linkMaxReach) issue(c, 'reach', 'Reconnection is too far from a usable crossing',
-        `Choose an overbridge or provide a compatible crossing within ${CROSSING_RULES.linkMaxReach} m (now ${gap.toFixed(0)} m)`, gap, CROSSING_RULES.linkMaxReach, target.s);
+      if (c.requestedType && gap > CROSSING_RULES.linkHardReach) issue(c, 'reach', 'Reconnection is too far from a usable crossing',
+        `Choose an overbridge or provide a compatible crossing within ${CROSSING_RULES.linkHardReach} m (now ${gap.toFixed(0)} m)`, gap, CROSSING_RULES.linkHardReach, target.s);
     } else {
       c.type = 'overbridge'; Object.assign(c, over);
     }

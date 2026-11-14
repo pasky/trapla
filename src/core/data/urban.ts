@@ -118,8 +118,10 @@ export const CROSSING_RULES = {
   /** ČSN 73 6101:2018, research/12 §2 (medium-high confidence). Includes A/B tie-ins;
    * also used in built-up areas as a scenario assumption, not a ČSN 73 6110 value. */
   junctionSpacing: 1500,
-  /** PROVISIONAL link reach per side. Beyond this, build an overbridge, do not truncate cost. */
+  /** PROVISIONAL economical Auto shortlist radius; geometry feedback can choose longer links. */
   linkMaxReach: 750,
+  /** Shared hard station reach for manual links and Auto geometry fallback, not a bill cap. */
+  linkHardReach: 2000,
   /** PROVISIONAL minimum realignment length per side, including the tie-in, m. */
   linkMinLength: 25,
   /** PROVISIONAL approach gradient for raising the crossed road onto an overbridge. */
