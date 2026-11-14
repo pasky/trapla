@@ -588,5 +588,7 @@ already joined before this fix (R22 ≈ 783.088 m). Setting R22 = 355 m manually
 would miss the leg by 19.408 m > the game's 5 m tolerance and has ratio 3.141 > 2 for the exceptional
 no-intermediate-transition variant. Do not describe this as a universal norm impossibility. Diagnostics now expose
 manual indices/radii, required/available length, extra spacing at unchanged angles, join-failure reason, required
-offset and ratio. The expanded UI can resolve a valid maximum with the **same** search as the radius editor's
-Max button, on demand rather than during every drag. Source audit and new regressions: research/15-horizontal-pairs.md.
+offset and ratio. Structured fix/why messages use these diagnostics; same-direction model-join failures are labelled
+**game**, not norm or unproven engine impossibility. The worker resolves a tested valid maximum with the **same**
+`checks.ts` search as the radius editor's Max button, cached per bend and bounded to four searches per evaluation
+(the plain-violations integration). Source audit and new regressions: research/15-horizontal-pairs.md.

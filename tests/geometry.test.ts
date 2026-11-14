@@ -174,8 +174,11 @@ describe('horizontal rules (ČSN 73 6101)', () => {
     expect(g(170).curves.filter((c) => c.ignored)).toHaveLength(1);
     // with the player's own radii nothing is left out or changed: the rule is reported
     const r = route([[0, 600], [1.5, 200], [-1.5, 600]]);
-    const m2 = msgs(buildAlignment(r.a, r.b, r.pis.map((p) => ({ ...p, r: 1350 })), R90));
-    expect(m2).toEqual(['Bends 1 and 2 are too close for an S-bend — Move bends 1 and 2 at least 16 m further apart']);
+    const manual = buildAlignment(r.a, r.b, r.pis.map((p) => ({ ...p, r: 1350 })), R90);
+    expect(msgs(manual)).toEqual(['Bends 1 and 2 are too close for an S-bend — Move bends 1 and 2 at least 16 m further apart']);
+    const constraint = horizontalViolations(manual, 90)[0].horizontal!;
+    expect(constraint.rule).toBe('reverse-straight');
+    expect(constraint.source).toContain('pre-2018 VUT');
   });
 
   it('a too small or too short manual curve says what to do', () => {
@@ -545,7 +548,9 @@ describe('compound curves', () => {
     const off = buildAlignment(a, b, [{ x: 1000, y: 0, r: 500 }, { x: 1000, y: 1000, r: 520 }], R90);
     const v = horizontalViolations(off, 90)[0];
     expect(v.title).toBe('Bends 1 and 2 are too close for their radii');
-    expect(v.detail).toMatch(/not when you have set a radius by hand \(bend 1 and bend 2\)/);
+    expect(v.detail).toContain('Hand-set radii: bend 1 R 500 m, bend 2 R 520 m');
+    expect(v.horizontal?.joinFailure).toBe('fixed-geometry');
+    expect(v.basis).toBe('game');
     expectG1(off, a, b);
   });
 
@@ -664,9 +669,11 @@ describe('largest radius that fits', () => {
     const max = maxRadiusThatFits(a, b, pis, 1, 90)!;
     expect(v.length).toBeGreaterThan(0);
     for (const x of v) {
-      expect(x).toMatchObject({ kind: 'transition', pi: 1, basis: 'norm' });
+      expect(x).toMatchObject({ kind: 'transition', pi: 1, basis: 'game' });
       expect(x.fix).toBe(`Set bend 2 back to auto (R 645 m) or to at most R ${max.toLocaleString('en-US')} m`);
-      expect(x.detail).toMatch(/set a radius by hand \(bend 2\)\. Alternatively, move bends \d and \d at least \d+ m further apart\.$/);
+      expect(x.detail).toContain('Hand-set radii: bend 2 R 6,000 m');
+      expect(x.detail).toMatch(/Alternatively, move bends \d and \d at least \d+ m further apart/);
+      expect(x.horizontal?.manualRadii[0].maxRadius).toBe(max);
     }
     pis[1].r = max;
     expect(msgs(buildAlignment(a, b, pis, R90))).toEqual([]);
