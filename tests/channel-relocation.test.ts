@@ -73,6 +73,10 @@ describe('priced automatic channel relocation', () => {
     const raiseBank = (t: Terrain) => vi.spyOn(t, 'heightAt').mockImplementation((x, y) => 100 + (y > 280 && Math.abs(x - 600) < 1 ? 4 : 0));
     const clear = makeTerrain(false); raiseBank(clear);
     expect(trialChannel(clear)).toHaveLength(1); // extra cut itself is feasible
+    // A no-data pixel strictly inside the wide bank misses both its axis and its
+    // four corners; the interior pixel scan must still reject the excavation.
+    clear.lc[42 * clear.nx + 120] = OOB_BIT; // x600..605/y285..290
+    expect(trialChannel(clear)).toEqual([]);
     const crossed = makeTerrain(true);
     expect(trialChannel(crossed)).toHaveLength(1); // the ordinary shallow bank misses the water
     raiseBank(crossed);

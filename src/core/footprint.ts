@@ -165,7 +165,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     }
   }
   const roadHits = new Map<string, { way: number; cls: string; hits: Hit[] }>();
-  const streamHits = new Map<string, { segment: WaterSegment; hits: Hit[] }>();
+  const streamHits = new Map<string, { segment: WaterSegment; hits: Hit[]; axisHits: [number, number][] }>();
   // Raster classes are independent flags: a road-painted rail/water crossing remains protected.
   const rasterHits = new Map<string, { feature: 'railway' | 'water' | 'stream'; structure?: FootprintCell['structure']; hits: Map<number, { x: number; y: number; count: number }> }>();
   const rasterSeen = new Set<string>();
@@ -190,8 +190,11 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       if (!cell.structure) for (const c of connectedWater(segment.reach.id)) covered.push(...barrelIntervals(segment, barrels.get(c)!));
       const key = `${segment.reach.id}:${cell.structure ?? 'earth'}`;
       let group = streamHits.get(key);
-      if (!group) streamHits.set(key, group = { segment, hits: [] });
+      if (!group) streamHits.set(key, group = { segment, hits: [], axisHits: [] });
       for (const [a, b] of subtract(hit, covered)) group.hits.push({ a, b, i: cell.i, j: cell.i, structure: cell.structure });
+      // Bank contact is a safety screen, not extra barrel metres beyond the daylight toe.
+      const axis = clipFootprint(segment, cell);
+      if (axis) group.axisHits.push(...subtract(axis, covered));
     };
     if (cached) cached.water.forEach(visitWater); else terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), visitWater);
     const step = terrain.cell;
@@ -293,7 +296,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     }
     }
   }
-  for (const { segment, hits } of streamHits.values()) for (const h of union(hits)) {
+  for (const { segment, hits, axisHits } of streamHits.values()) for (const h of union(hits)) {
     const w = segment.reach, distances = [0];
     for (let j = 1; j < w.points.length; j++) distances.push(distances[j - 1] + Math.hypot(w.points[j][0] - w.points[j - 1][0], w.points[j][1] - w.points[j - 1][1]));
     let area = 0, truncated = false;
@@ -322,7 +325,15 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     if (!original.length) continue;
     const p = original[Math.floor(original.length / 2)], affectedLength = h.b - h.a;
     if (affectedLength < 0.1) continue;
-    let length = affectedLength;
+    let axisStart = Infinity, axisEnd = -Infinity;
+    for (const [a, b] of axisHits) {
+      const lo = Math.max(a, h.a), hi = Math.min(b, h.b);
+      if (hi > lo) { axisStart = Math.min(axisStart, lo); axisEnd = Math.max(axisEnd, hi); }
+    }
+    const bankOnly = axisEnd <= axisStart;
+    // Keep the full ribbon for feasibility/cover checks, but price the channel-axis span.
+    // A bank-only contact has no culvert quantity and must remain an unresolved conflict.
+    let length = bankOnly ? affectedLength : axisEnd - axisStart;
     const c: WaterCrossing = { s: r.s[h.i], x: p.x, y: p.y, id: w.id, waterKind: w.kind, width: waterWidth(w), catchmentKm2: area, truncated, sine: 1 };
     // An extension next to an already-priced barrel reuses its ends, not another two heads.
     // Resizing/merging multiple existing assemblies is deliberately not an automatic free fix.
@@ -355,7 +366,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const minCover = barrelCovers.length ? Math.min(...barrelCovers.map(p => p.cover)) : covers[Math.floor(covers.length / 2)].cover;
     const compatible = existing.length <= 1 && existing.every(e => e.size.perM === size.perM);
     const outlets = [original[0], original[original.length - 1]].every(p => !grid.interior(p) || adjoining.some(other => barrelContains(p, barrels.get(other)!, 0.05)));
-    const reasons = [h.structure ? `${h.structure} intersects the channel` : '', size.type === 'bridge' ? 'exceeds practical culvert opening/length limits' : '',
+    const reasons = [bankOnly ? 'channel bank overlaps the footprint outside a culvert axis' : '',
+      h.structure ? `${h.structure} intersects the channel` : '', size.type === 'bridge' ? 'exceeds practical culvert opening/length limits' : '',
       !compatible ? 'incompatible existing barrel' : '', !outlets ? 'no clear outlet' : '', minCover < size.minHeight ? `barrel cover ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'missing'} m, needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
     const ok = reasons.length === 0;
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,

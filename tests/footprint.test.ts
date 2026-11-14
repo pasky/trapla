@@ -108,9 +108,9 @@ describe('constructed footprint conflicts', () => {
     const result = footprintConflicts(r, skewTerrain, undefined, [], [], water);
     expect(result.violations).toEqual([]);
     expect(result.conflicts).toHaveLength(1);
-    // Full ribbon screening extends the daylight end by the ditch's 0.25 m half-width.
-    expect(result.conflicts[0].length).toBeCloseTo(15.25 * Math.SQRT2, 5);
-    expect(result.conflicts[0].cost).toBeCloseTo(15.25 * Math.SQRT2 * waterSize(water[0], 40).perM, 4);
+    // The bank screen extends past the daylight toe, but barrel metres follow the axis.
+    expect(result.conflicts[0].length).toBeCloseTo(15 * Math.SQRT2, 5);
+    expect(result.conflicts[0].cost).toBeCloseTo(15 * Math.SQRT2 * waterSize(water[0], 40).perM, 4);
   });
   it('checks vector water under displaced realignment chords, not untouched existing-road tails', () => {
     const withChannel = (points: number[][]) => new Terrain({ nx: 260, ny: 100, cell: 5, base: 100, scale: 1,
@@ -146,7 +146,7 @@ describe('constructed footprint conflicts', () => {
     const short = run(530);
     expect(short.conflicts).toHaveLength(1);
     expect(short.conflicts[0].action).toBe('culvert');
-    expect(short.conflicts[0].length).toBeCloseTo(30.5, 5); // bank envelope adds 0.25 m at each end
+    expect(short.conflicts[0].length).toBeCloseTo(30, 5);
     expect(short.conflicts[0].cost).toBeGreaterThan(0);
     expect(run(900).conflicts[0].action).toBe('blocked');
     expect(run(530, 100).violations).toHaveLength(1);
