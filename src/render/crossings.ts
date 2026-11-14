@@ -112,7 +112,9 @@ export class CrossingRenderer {
         line.name = 'footprint-channel'; line.userData.conflictId = c.id; line.renderOrder = 5; this.group.add(line);
         if (c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
       }
-      if (c.action === 'relocation' && hasCrossingPath(c.geometry) && c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
+      if (c.action === 'relocation' && hasCrossingPath(c.geometry)) {
+        for (const path of c.originals ?? [c.original]) if (path && path.length >= 2) this.conflictPath(c, path, false);
+      }
     }
     if (!blocked.length) return;
     const geometry = new THREE.BufferGeometry();

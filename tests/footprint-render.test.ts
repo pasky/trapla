@@ -69,8 +69,9 @@ describe('footprint conflict presentation', () => {
     expect(surfaces.every(s => s.crossing.geometry?.turnarounds === c.geometry!.turnarounds)).toBe(true);
   });
 
-  it('marks removed originals and blocked locations, then disposes their geometry on the next result', () => {
-    const c = conflict({ geometry: { links: [path(30),path(50)], turnarounds: [], width: 6, schematic: false } });
+  it.each([false,true])('marks removed originals and disposes annotations (shared originals: %s)', shared => {
+    const c = conflict({ geometry: { links: [path(30),path(50)], turnarounds: [], width: 6, schematic: false },
+      originals: shared ? [path(10),path(20)] : undefined });
     const blocked = conflict({ id: 'road:3', action: 'blocked', geometry: { road: path(60), width: 6, schematic: false } });
     const channel = conflict({ id: 'stream:1', feature: 'stream', action: 'channel-relocation',
       geometry: { road: path(90).map(p => ({ ...p, z: p.z-2 })), width: 3, schematic: false } });
@@ -100,7 +101,10 @@ describe('footprint conflict presentation', () => {
     const proposed = group.getObjectByName('footprint-proposed') as THREE.Line;
     expect(proposed.userData.conflictId).toBe(blocked.id);
     expect(proposed.geometry.getAttribute('position').getZ(0)).toBe(-60);
-    expect(group.children.filter(c => c.name === 'footprint-removed')).toHaveLength(2);
+    expect(group.children.filter(c => c.name === 'footprint-removed')).toHaveLength(shared ? 3 : 2);
+    const removedRoads = group.children.filter(o => o.name === 'footprint-removed' && o.userData.conflictId === c.id) as THREE.Line[];
+    expect(removedRoads.map(line => line.geometry.getAttribute('position').getZ(0))).toEqual(shared ? [-10,-20] : [-10]);
+    const disposeRoads = removedRoads.map(line => vi.spyOn(line.geometry,'dispose'));
     const water = group.getObjectByName('footprint-channel') as THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
     expect(water.userData.conflictId).toBe(channel.id);
     expect(water.geometry.getAttribute('position').getZ(0)).toBe(-90);
@@ -117,6 +121,7 @@ describe('footprint conflict presentation', () => {
     expect(group.children).toHaveLength(0);
     expect(disposeLine).toHaveBeenCalledOnce(); expect(disposeMarkers).toHaveBeenCalledOnce(); expect(disposeProposal).toHaveBeenCalledOnce();
     expect(disposeWater).toHaveBeenCalledOnce(); expect(disposeOldWater).toHaveBeenCalledOnce();
+    for (const dispose of disposeRoads) expect(dispose).toHaveBeenCalledOnce();
     expect(retired).toContain(removed.material); expect(retired).toContain(markers.material); expect(retired).toContain(water.material);
     renderer.dispose();
   });
