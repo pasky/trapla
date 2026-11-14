@@ -142,7 +142,7 @@ Sensitivity: fitting the **planned** split instead requires much deeper profiles
 Reproduce the fit against its initial priors:
 
 ```sh
-git show 8b29f98:pipeline/ground_profiles.json > /tmp/ground-initial.json
+git show 22958ec:pipeline/ground_profiles.json > /tmp/ground-initial.json
 npx tsx scripts/calibrate-ground.ts /tmp/ground-initial.json actual
 npx tsx scripts/calibrate-ground.ts /tmp/ground-initial.json planned
 # Check the current table without fitting:
