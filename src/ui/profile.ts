@@ -171,6 +171,11 @@ export class ProfilePanel {
       this.whole = span >= r.length;
     }
     this.draw();
+    // what is under a resting mouse may have changed (e.g. Undo removed the hovered height point)
+    if (this.hoverClient && !this.dragging) {
+      const b = this.canvas.getBoundingClientRect();
+      this.setUnder(this.hit(this.hoverClient.x - b.left, this.hoverClient.y - b.top));
+    } else if (!this.hoverClient) this.setUnder({ kind: 'none' });
     this.updateTip();
   }
 
@@ -799,6 +804,7 @@ export class ProfilePanel {
     switch (u.kind) {
       case 'vpi': {
         const v = this.vpis[u.k];
+        if (!v) return '';
         return `<b>◆ Height point ${u.k}</b>: the road is at ${v.z.toFixed(1)} m here (shown on the map). It is not a bend — bends are the numbered circles above.<br>`
           + (manual ? 'Drag it to raise / lower the road · right-click deletes it' : 'Drag it to raise / lower the road (switches the road height to By hand)');
       }

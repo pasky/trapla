@@ -75,6 +75,17 @@ try {
   ok((await get()).gradePins[0].z === pin0.z, 'the Undo button over the map undoes the drag');
   await page.keyboard.press('Control+Shift+Z'); await idle();
   ok((await get()).gradePins[0].z > pin0.z + 1, 'Ctrl+Shift+Z redoes it');
+  // Ctrl+Z in the middle of a drag is ignored (the drag's final commit would otherwise overwrite it)
+  const z1 = (await get()).gradePins[0].z;
+  p = await T((pin) => window.trapla.profilePoint(pin.s, pin.z), (await get()).gradePins[0]);
+  await page.mouse.move(p.x, p.y - 14); await page.mouse.down();
+  for (let k = 1; k <= 4; k++) await page.mouse.move(p.x, p.y - 14 + 4 * k);
+  await page.keyboard.press('Control+z');
+  await page.mouse.up(); await idle(150);
+  const z2 = (await get()).gradePins[0].z;
+  await page.keyboard.press('Control+z'); await idle();
+  ok(z2 < z1 && (await get()).gradePins[0].z === z1, `Ctrl+Z during a drag is ignored; afterwards it undoes the whole drag (${z1} → ${z2} → ${(await get()).gradePins[0].z})`);
+  await page.keyboard.press('Control+Shift+Z'); await idle();
   await page.keyboard.press('Escape');
 
   // 3. By hand: height points are diamonds; hovering one names it on the map; double-click on the line adds one
@@ -186,7 +197,9 @@ try {
   await T(() => window.trapla.profileFit());
   const j = await T(() => window.trapla.result().noise.receivers[0]?.j ?? 0);
   await T((j) => window.trapla.selectBuilding(j), j);
+  await page.focus('#building-choice');
   await page.selectOption('#building-choice', 'keep'); await idle();
+  ok(await T(() => document.activeElement?.id) === 'building-choice', 'the select keeps the focus');
   ok((await get()).buildingOverrides.some((o) => o.j === j && o.action === 'keep'), 'building Keep chosen');
   await page.keyboard.press('Control+z'); await idle(100);
   ok(!(await get()).buildingOverrides.some((o) => o.j === j), 'Ctrl+Z undoes it while the select still has focus');

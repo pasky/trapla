@@ -16,6 +16,8 @@ export interface SelectionBarEvents {
   pin?: (s: number, z: number | null) => void;
   /** pin the road height (Automatic) / add a height point (By hand) at station s, at a bend */
   heightAt?: (s: number) => void;
+  /** the height field lost focus: redraw with the current design (updates are held while typing) */
+  refresh?: () => void;
 }
 
 const km = (s: number) => (s / 1000).toFixed(2);
@@ -46,8 +48,12 @@ export class SelectionBar {
       b.blur();
     });
     this.el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.target as HTMLElement).matches('input')) this.el.querySelector<HTMLButtonElement>('.pin-set')?.click();
+      if (e.key !== 'Enter' || !(e.target as HTMLElement).matches('input')) return;
+      const set = this.el.querySelector<HTMLButtonElement>('.pin-set');
+      (e.target as HTMLInputElement).blur(); // before the click, so the result redraws the bar
+      set?.click();
     });
+    this.el.addEventListener('focusout', (e) => { if ((e.target as HTMLElement).matches('input')) queueMicrotask(() => this.ev.refresh?.()); });
   }
 
   showRange(range: StationRange, overrides: readonly StructureOverride[] = []) {

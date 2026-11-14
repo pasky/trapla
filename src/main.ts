@@ -162,7 +162,7 @@ async function main() {
   const selectPi = (i: number | null) => {
     selectedPi = i;
     profile.selectBend(i);
-    if (i === null) selBar.hide('bend');
+    selBar.hide('bend'); // a bend's bar belongs to the bend picked in the profile (re-shown there)
     view.setDesign(store.design, i);
     hud.setSelectedPi(i, last, store.design);
     curveEdit.refresh();
@@ -173,6 +173,7 @@ async function main() {
     view.setDesign(d, selectedPi);
     hud.setDesign(d);
     editBar.set(store.undoLabel(), store.redoLabel());
+    selBar.hide('bend'); // its station / mode may be stale now
     profile.selectBend(selectedPi);
     curveEdit.refresh();
     requestEval();
@@ -282,6 +283,7 @@ async function main() {
     },
     pin: (s, z) => tools.ev.pin?.(s, z),
     heightAt: (s) => { selBar.hide('bend'); addHeightAt(Math.round(s)); },
+    refresh: () => showStation(),
   };
 
   // ---- hover links between the map and the profile ----
@@ -297,24 +299,35 @@ async function main() {
     if (el) profile.setBendHover(Number(el.dataset.i));
   });
   overlayEl.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('.pi')) profile.setBendHover(null); });
-  let mapHoverAt: { x: number; y: number } | null = null, mapHoverFrame = 0, mapHovering = false;
+  let mapHoverAt: { x: number; y: number } | null = null, mapHoverFrame = 0, mapHoverK = -1;
   const mapHoverTick = () => {
     mapHoverFrame = 0;
     const at = mapHoverAt, r = last;
-    let s: number | null = null, k = -1;
-    const p = at && r ? view.pick(at.x, at.y) : null;
-    if (p && r) {
-      let bd = Infinity;
-      for (let i = 0; i < r.n; i++) { const d = (r.x[i] - p.x) ** 2 + (r.y[i] - p.y) ** 2; if (d < bd) { bd = d; k = i; } }
-      const tol = CATEGORIES[store.design.category].crownWidth / 2 + 14 * view.metresPerPixel;
-      if (Math.sqrt(bd) < tol) s = r.s[k];
+    let k = -1;
+    if (at && r) {
+      // the road as drawn (bridges included): nearest projected station within 12 px of the mouse
+      const box = view.renderer.domElement.getBoundingClientRect();
+      const mx = at.x - box.left, my = at.y - box.top;
+      let bd = 12 * 12;
+      const step = Math.max(1, Math.floor(r.n / 1500));
+      for (let i = 0; i < r.n; i += step) {
+        const p = view.project(r.x[i], r.y[i], r.grade[i]);
+        const d = (p.sx - mx) ** 2 + (p.sy - my) ** 2;
+        if (p.vis && d < bd) { bd = d; k = i; }
+      }
+      // refine between the subsampled stations
+      if (k >= 0 && step > 1) for (let i = Math.max(0, k - step); i <= Math.min(r.n - 1, k + step); i++) {
+        const p = view.project(r.x[i], r.y[i], r.grade[i]);
+        const d = (p.sx - mx) ** 2 + (p.sy - my) ** 2;
+        if (d < bd) { bd = d; k = i; }
+      }
     }
-    if (s !== null && r) {
-      mapHovering = true;
-      profile.setHover(s, true);
+    if (k === mapHoverK) return; // nothing new to draw
+    mapHoverK = k;
+    if (k >= 0 && r) {
+      profile.setHover(r.s[k], true);
       view.setHover({ x: r.x[k], y: r.y[k], z: r.grade[k] });
-    } else if (mapHovering) {
-      mapHovering = false;
+    } else {
       profile.setHover(null, true);
       view.setHover(null);
     }
@@ -376,7 +389,14 @@ async function main() {
     },
   };
 
+  // a drag (bend, height point, pin, radius grip) is applied without a history entry until it ends:
+  // Undo / Redo in the middle of one would be overwritten by its final commit
+  let pointerHeld = 0;
+  window.addEventListener('pointerdown', () => { pointerHeld++; }, { capture: true });
+  for (const t of ['pointerup', 'pointercancel'] as const) window.addEventListener(t, () => { pointerHeld = Math.max(0, pointerHeld - 1); }, { capture: true });
+  window.addEventListener('blur', () => { pointerHeld = 0; });
   const undoRedo = (redo: boolean) => {
+    if (pointerHeld) return;
     // a focused select / checkbox would keep the build tools from redrawing with the restored design
     (document.activeElement as HTMLElement | null)?.blur?.();
     if (redo) store.redo(); else store.undo();
