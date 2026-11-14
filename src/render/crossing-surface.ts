@@ -1,6 +1,6 @@
 // Shared plan cross-sections for the terrain cut-out and the physical crossing meshes.
 // Work is bounded by the core's point budget and happens only on a new evaluation.
-import type { CrossingPoint, CrossingResult } from '../core/crossings';
+import type { CrossingGeometry, CrossingPoint, CrossingResult } from '../core/crossings';
 import type { Result } from '../core/evaluate';
 import type { FootprintConflict } from '../core/footprint';
 import { KIND } from '../core/structures';
@@ -49,6 +49,7 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
     if (!g) continue;
     const base = crossing.type === 'junction' ? formation : height;
     for (const [source, link] of [...(g.road ? [[g.road, false] as const] : []), ...(g.links ?? []).map(p => [p, true] as const)]) {
+      if (source.length < 2) continue;
       // Centreline refinement alone misses transverse terrain ridges. A bounded fine ground mesh
       // keeps the full road width in contact; preserve every OSM bend and every deck boundary.
       const path: CrossingPoint[] = [], mapping: number[] = [];
@@ -101,10 +102,13 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
   }
   return out;
 }
+export function hasCrossingPath(g?: CrossingGeometry): boolean {
+  return (g?.road?.length ?? 0) >= 2 || !!g?.links?.some(path => path.length >= 2);
+}
 /** Relocations reuse the physical road surface without entering the centreline crossing list.
- * They sit on natural ground, not our engineered formation, and have no severed-end turnarounds. */
+ * They sit on natural ground, with explicit link-end turnarounds when supplied by the planner. */
 export function footprintSurfaces(conflicts: readonly FootprintConflict[], height: (x: number, y: number) => number): CrossingSurface[] {
-  return crossingSurfaces(conflicts.filter(c => c.feature === 'road' && c.action === 'relocation' && c.geometry?.road?.length).map(c => ({
+  return crossingSurfaces(conflicts.filter(c => c.feature === 'road' && c.action === 'relocation' && hasCrossingPath(c.geometry)).map(c => ({
     s: (c.s0 + c.s1) / 2, i: c.i, x: c.x, y: c.y, h: 0, cost: c.cost,
     cls: c.cls ?? 'unclassified', roadId: c.roadId, type: 'diversion', geometry: c.geometry,
   })), height);

@@ -59,8 +59,19 @@ describe('footprint conflict presentation', () => {
     expect(c).toEqual(original);
   });
 
+  it('renders usable link-only relocations, retaining explicit turnaround metadata', () => {
+    const links: [ReturnType<typeof path>, ReturnType<typeof path>] = [path(30),path(50)];
+    const c = conflict({ geometry: { links, turnarounds: [links[0][0]], width: 6, schematic: false } });
+    const surfaces = footprintSurfaces([c, conflict({ geometry: { links: [[],path(70).slice(0,1)], width: 6, schematic: false } })],height);
+    expect(surfaces).toHaveLength(2);
+    expect(surfaces.every(s => s.link)).toBe(true);
+    expect(surfaces.map(s => s.path[0].y)).toEqual([30,50]);
+    expect(surfaces.every(s => s.crossing.geometry?.turnarounds === c.geometry!.turnarounds)).toBe(true);
+  });
+
   it('marks removed originals and blocked locations, then disposes their geometry on the next result', () => {
-    const c = conflict(), blocked = conflict({ id: 'road:3', action: 'blocked', geometry: { road: path(60), width: 6, schematic: false } });
+    const c = conflict({ geometry: { links: [path(30),path(50)], turnarounds: [], width: 6, schematic: false } });
+    const blocked = conflict({ id: 'road:3', action: 'blocked', geometry: { road: path(60), width: 6, schematic: false } });
     const channel = conflict({ id: 'stream:1', feature: 'stream', action: 'channel-relocation',
       geometry: { road: path(90).map(p => ({ ...p, z: p.z-2 })), width: 3, schematic: false } });
     const retired: THREE.Material[] = [];
@@ -74,7 +85,11 @@ describe('footprint conflict presentation', () => {
     const result = { crossings: [], grade: Float64Array.of(100), ground: Float64Array.of(100) };
     renderer.setResult({ ...result, footprintConflicts: [c, blocked, channel] });
     const group = mock.world.getObjectByName('crossing-roads')!;
-    expect(group.getObjectByName('crossing-earthworks')).toBeDefined();
+    const earth = group.getObjectByName('crossing-earthworks') as THREE.Mesh<THREE.BufferGeometry>;
+    expect(earth).toBeDefined();
+    // Explicitly empty turnarounds must not invent circular heads beyond these link starts.
+    const positions = earth.geometry.getAttribute('position');
+    for (let i = 0; i < positions.count; i++) expect(positions.getX(i)).toBeGreaterThanOrEqual(0);
     const removed = group.getObjectByName('footprint-removed') as THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial>;
     expect(removed.userData.conflictId).toBe(c.id);
     expect(removed.geometry.getAttribute('position').count).toBe(c.original!.length);

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { CrossingPoint } from '../core/crossings';
 import type { Result } from '../core/evaluate';
 import type { FootprintConflict } from '../core/footprint';
-import { endCollars, groundSegment, type CrossingSurface } from './crossing-surface';
+import { endCollars, groundSegment, hasCrossingPath, type CrossingSurface } from './crossing-surface';
 import { existingRoadColor } from './landcover';
 import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
@@ -67,7 +67,7 @@ export class CrossingRenderer {
       if (c.action === 'blocked') {
         const p = this.view.local(c.x, c.y, this.view.drape(c.x, c.y) + 2);
         blocked.push(p.x, p.y, p.z);
-        if (c.geometry?.road && c.geometry.road.length >= 2) this.conflictPath(c, c.geometry.road, true);
+        for (const path of [c.geometry?.road, ...(c.geometry?.links ?? [])]) if (path && path.length >= 2) this.conflictPath(c, path, true);
       }
       if (c.feature === 'stream' && c.action === 'channel-relocation' && c.geometry?.road && c.geometry.road.length >= 2) {
         // A visible path annotation at the designed bed, not a modelled excavation.
@@ -79,7 +79,7 @@ export class CrossingRenderer {
         line.name = 'footprint-channel'; line.userData.conflictId = c.id; line.renderOrder = 5; this.group.add(line);
         if (c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
       }
-      if (c.action === 'relocation' && c.geometry?.road?.length && c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
+      if (c.action === 'relocation' && hasCrossingPath(c.geometry) && c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
     }
     if (!blocked.length) return;
     const geometry = new THREE.BufferGeometry();
@@ -173,8 +173,9 @@ export class CrossingRenderer {
         earth.indices.push(...v);
       }
     }
-    if (s.link && s.crossing.cls !== 'track' && s.path.length) {
-      // Turning head and a transverse end cap at the severed original road end.
+    if (s.link && s.crossing.cls !== 'track' && s.path.length &&
+      (g.turnarounds === undefined || g.turnarounds.some(p => Math.hypot(p.x-s.path[0].x,p.y-s.path[0].y) < .01))) {
+      // Turning heads only at explicit severed ends; absent metadata retains legacy link behavior.
       const p = s.path[0], radius = g.width * .72, sections = 20;
       for (let k = 0; k < sections; k++) {
         const pt = (j: number) => {
