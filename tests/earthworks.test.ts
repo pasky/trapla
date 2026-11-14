@@ -4,8 +4,9 @@ import { ROAD_CHECKS } from '../src/core/checks';
 import { allowanceValuePerKm, costParts, PART_KEYS, sumParts } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { speedNorms } from '../src/core/data/norms';
-import { EXCAVATION_MIX, NORM_EARTHWORK_ALLOWANCE, PRICES } from '../src/core/data/prices';
+import { EXCAVATION_MIX, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from '../src/core/data/prices';
 import { URBAN_RATES } from '../src/core/data/urban';
+import { flatEarthGeometry } from '../src/core/earthengineering';
 import { massHaul, volumes } from '../src/core/earthworks';
 import { buildAlignment, station } from '../src/core/horizontal';
 import { computeSections, flatCutBands, sideSection } from '../src/core/sections';
@@ -48,7 +49,10 @@ describe('volumes on synthetic terrain', () => {
     const z = new Float64Array(st.n); // grade at 0
     const sec = computeSections(ter, st.n, st.x, st.y, st.tx, st.ty, z, tpl);
     const v = volumes(st.ds, sec.cut, sec.fill);
-    const exact = 2 * ((tpl.crownWidth * H * H) / (2 * k) + (tpl.cutSlope * H ** 3) / (3 * k));
+    let exact = 2 * ((tpl.crownWidth * H * H) / (2 * k) + (tpl.cutSlope * H ** 3) / (3 * k));
+    // Each bench adds a triangular-prism volume on either side of the ridge.
+    for (let level = STRUCTURE_RULES.bermInterval; level < H; level += STRUCTURE_RULES.bermInterval)
+      exact += 2 * STRUCTURE_RULES.cutBermWidth * (H - level) ** 2 / k;
     expect(v.fill).toBeLessThan(1);
     expect(Math.abs(v.cut - exact) / exact).toBeLessThan(0.01);
   });
@@ -181,11 +185,11 @@ describe('excavation weathering profiles', () => {
       expect(2 * s.cutI).toBeCloseTo(a1, 6);
       expect(2 * s.cutII).toBeCloseTo(a2, 6);
       expect(2 * (s.cut - s.cutI - s.cutII)).toBeCloseTo(a3, 6);
-      expect(a1 + a2 + a3).toBeCloseTo(10 * c + tpl.cutSlope * c * c, 6);
+      expect(a1 + a2 + a3).toBeCloseTo(flatEarthGeometry(c, 10, tpl.cutSlope, false).area, 6);
     }
     // 12 m deep: 3 m of class I over the whole top width minus the slope wedges, class III only below 8 m
     const [a1, , a3] = flatCutBands(12, 10, 1.75, bands);
-    expect(a1).toBeCloseTo(10 * 3 + 2 * 1.75 * 3 * (12 - 1.5), 6);
+    expect(a1).toBeCloseTo(10 * 3 + 2 * 1.75 * 3 * (12 - 1.5) + 2 * STRUCTURE_RULES.cutBermWidth * 3, 6);
     expect(a3).toBeCloseTo(10 * 4 + 1.75 * 16, 6);
   });
 });
@@ -196,7 +200,7 @@ describe('local geology integration', () => {
     const s = sideSection(-10, 5, tpl, () => 0, (o) => o <= 5 ? soil : rock);
     expect(s.cutI).toBeCloseTo(50, 8); // soil only under this half-crown
     expect(s.cutII).toBe(0);
-    expect(s.cut - s.cutI).toBeCloseTo(tpl.cutSlope * 100 / 2, 8); // all-rock slope wedge
+    expect(s.cut - s.cutI).toBeCloseTo((flatEarthGeometry(10, 10, tpl.cutSlope, false).area - 100) / 2, 8); // rock slope and bench
     const reversed = sideSection(-10, 5, tpl, () => 0, (o) => o <= 5 ? rock : soil);
     expect(reversed.cutI + s.cutI).toBeCloseTo(s.cut, 8);
     expect(reversed.cut).toBeCloseTo(s.cut, 8);

@@ -303,7 +303,7 @@ describe('evaluate on a synthetic town', () => {
     expect(r.runs[0].length).toBeGreaterThanOrEqual(30);
     expect(r.runs[0].length).toBeLessThan(100);
     // the overbridge spans the cut from edge to edge: crown + two 1:1.75 slopes 12 m high
-    const span = 9.5 + 2 * 1.75 * 12;
+    const span = r.dayL[r.crossings[3].i] + r.dayR[r.crossings[3].i];
     const over = r.crossings[3];
     expect(over.cost).toBeCloseTo((span / 1000) * ROAD_CLASSES.residential.bridgePerKm, -4);
     // The plain street now needs raised approaches; the neighbouring track shares its crossing.

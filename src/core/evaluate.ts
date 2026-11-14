@@ -17,6 +17,7 @@ import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
+import { culvertExtra, earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import {
   dwellingExposure, noiseBarrier, noiseFootprint, noiseReceivers, wallFlags, wallStretches,
@@ -159,6 +160,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // `clearance[i]` = minimum grade-minus-ground at station i that puts the grade `need` metres above
   // the crossing's own ground; the crossing samples themselves are kept for the final check
   const clearance = new Float64Array(n).fill(NaN);
+  const streamSamples: number[] = [];
   /** `below`: the crossing may instead pass this far below the crossed feature (motorways) */
   const mustBridge: { s: number; g: number; need: number; what: string; below?: number }[] = [];
   for (let i = 0; i < n; i++) {
@@ -166,6 +168,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (f > 0 && i + 1 >= n) break;
       const x = st.x[i] + (i + 1 < n ? (st.x[i + 1] - st.x[i]) * f : 0);
       const y = st.y[i] + (i + 1 < n ? (st.y[i + 1] - st.y[i]) * f : 0);
+      if (terrain.landcover(x, y) === LC.stream) streamSamples.push(st.s[i] + f * ds);
       const c = terrain.crossing(x, y);
       if (!c) continue;
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
@@ -177,6 +180,16 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       }
     }
   }
+
+  // Collapse adjacent raster hits, rather than billing a new culvert for every 5 m stream pixel.
+  const streamS: number[] = [];
+  for (let k = 0; k < streamSamples.length; k++) {
+    const start = k;
+    while (k + 1 < streamSamples.length && streamSamples[k + 1] - streamSamples[k] <= STRUCTURE_RULES.streamCrossingMerge) k++;
+    streamS.push((streamSamples[start] + streamSamples[k]) / 2);
+  }
+  const streamCount = new Uint8Array(n);
+  for (const s of streamS) streamCount[Math.min(n - 1, Math.round(s / ds))]++;
 
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
   const rawRoadX = ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [];
@@ -217,12 +230,13 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     return (h: number, costClass: number) => {
       let earth: number;
       if (h >= 0) {
-        const wd = b + 2 * fillSlope * h;
-        earth = (baseRural + (b * h + fillSlope * h * h) * dp.fillPerM3 + wd * topsoilPerM2) * sur + wd * LAND.perM2;
+        const { area, width: wd } = flatEarthGeometry(h, b, fillSlope, true);
+        earth = (baseRural + area * dp.fillPerM3 + earthEngineeringPerM(h, 0, area) + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       } else {
-        const c = -h, wd = b + 2 * cutSlope * c;
+        const c = -h, wd = flatEarthGeometry(c, b, cutSlope, false).width;
         const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClass]);
-        earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III + wd * topsoilPerM2) * sur + wd * LAND.perM2;
+        earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
+          + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2) * sur + wd * LAND.perM2;
       }
       let best = earth;
       if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural);
@@ -250,6 +264,8 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     subW[k] = (st.s[subI[Math.min(sub - 1, k + 1)]] - st.s[subI[Math.max(0, k - 1)]]) / 2;
     for (let j = i; j < (k + 1 < sub ? subI[k + 1] : n); j++) if (clearance[j] > -Infinity) subMust[k] = 1;
   }
+  const subStreamCount = new Uint8Array(sub);
+  for (const s of streamS) subStreamCount[Math.min(sub - 1, Math.round(s / subDs))]++;
   const roadS = roadX.map((c) => c.s);
   const balanceOf = (v: VPI[], materialValue: number) => {
     const p = buildProfile(v, norms.minCrestRadius, norms.minSagRadius);
@@ -262,7 +278,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       hh[k] = z[k] - ground[subI[k]];
       const u = subUrban[k], su = 1 + surchargeRate(u), land = landPerM2(u), wd = sc.dayL[k] + sc.dayR[k];
       earth[k] = (baseRural + (baseUrban - baseRural) * u + sc.cutI[k] * dp.cutPerM3.I + sc.cutII[k] * dp.cutPerM3.II
-        + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2) * su + wd * land;
+        + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2
+        + earthEngineeringPerM(hh[k], sc.cut[k], sc.fill[k])
+        + (hh[k] > 0 ? subStreamCount[k] * culvertExtra(wd, b) / subW[k] : 0)) * su + wd * land;
       bridge[k] = (cat.bridgePerKm / 1000) * su + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
       if (subMust[k] && hh[k] > 0) must[k] = 1;
@@ -353,12 +371,16 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   // --- structures: the earthwork option against a bridge / tunnel, each at the rates of its own
   // footprint (as the bill will charge it) ---
   const h = new Float64Array(n);
+  const geotechnicalPerM = new Float64Array(n), culverts = new Float64Array(n);
   const earthPerM = new Float64Array(n), bridgePerM = new Float64Array(n), tunnelPerMAt = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
+    geotechnicalPerM[i] = earthEngineeringPerM(h[i], sec.cut[i], sec.fill[i]);
+    if (h[i] > 0) culverts[i] = streamCount[i] * culvertExtra(sec.dayL[i] + sec.dayR[i], b);
     const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
     earthPerM[i] = (baseRural + (baseUrban - baseRural) * ue + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
-      + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2) * (1 + surchargeRate(ue))
+      + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2
+      + geotechnicalPerM[i] + culverts[i] / cellLength(i, n, ds)) * (1 + surchargeRate(ue))
       + wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2);
     bridgePerM[i] = (cat.bridgePerKm / 1000) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, ut) / 1000) * (1 + surchargeRate(ut));
@@ -490,7 +512,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     category: d.category, terrainClass: scenario.terrainClass, n, ds, kind, urban,
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
-    width, forest, runs, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea,
+    width, forest, runs, geotechnicalPerM, culverts, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea,
   });
   const cost = sumParts(parts);
   lap('cost');

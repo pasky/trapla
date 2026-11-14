@@ -74,19 +74,19 @@ export function decisionPrices(materialValue: number) {
 }
 
 export const PART_KEYS = [
-  'roadBase', 'excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil',
+  'roadBase', 'excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil', 'geotechnical', 'culverts',
   'bridges', 'tunnels', 'crossings', 'noiseWalls', 'surcharge', 'land', 'forest', 'buildings', 'noiseBuyouts',
 ] as const;
 export type PartKey = (typeof PART_KEYS)[number];
 /** CZK per station cell, one array per cost component; the bill is their sum */
 export type CostParts = Record<PartKey, Float64Array>;
 
-const EARTH_KEYS = ['excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil'] as const;
+const EARTH_KEYS = ['excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil', 'geotechnical', 'culverts'] as const;
 
 export interface CostBreakdown {
   roadBase: number;
   earthworks: number;
-  earthDetail: { excavation: number; fillPlacing: number; haul: number; surplusHaul: number; unsuitable: number; borrow: number; topsoil: number };
+  earthDetail: { excavation: number; fillPlacing: number; haul: number; surplusHaul: number; unsuitable: number; borrow: number; topsoil: number; geotechnical: number; culverts: number };
   bridges: number;
   tunnels: number;
   /** Existing-road crossings: junctions, geometry-priced parallel links and overbridges/approaches. */
@@ -121,6 +121,10 @@ export interface StationCostInput {
   cutII: ArrayLike<number>;
   cutIII: ArrayLike<number>;
   fill: ArrayLike<number>;
+  /** High-earthwork engineering reserve, CZK/m before surcharge; earthwork cells only. */
+  geotechnicalPerM?: ArrayLike<number>;
+  /** Excess stream-culvert barrel cost, CZK/cell before surcharge; earthwork cells only. */
+  culverts?: ArrayLike<number>;
   /** usable share of cut (the rest is unsuitable and goes to a tip) */
   usable: number;
   /** global mass balance: haul moment along the route (m³·m), reused cut, usable surplus to a tip,
@@ -191,6 +195,8 @@ export function costParts(inp: StationCostInput): CostParts {
       parts.unsuitable[i] = cutV[i] * unsuitablePerCut;
       parts.borrow[i] = fillV[i] * perFill;
       parts.topsoil[i] = len * inp.width[i] * PRICES.topsoilDepth * PRICES.topsoil;
+      parts.geotechnical[i] = len * (inp.geotechnicalPerM?.[i] ?? 0);
+      parts.culverts[i] = inp.culverts?.[i] ?? 0;
       parts.forest[i] = len * inp.width[i] * (inp.forest ? inp.forest[i] : 0) * LAND.forestExtraPerM2;
       construction = parts.roadBase[i];
       for (const key of EARTH_KEYS) construction += parts[key][i];
@@ -221,7 +227,7 @@ export function sumParts(parts: CostParts, i0 = 0, i1 = parts.roadBase.length - 
   }
   const earthDetail = {
     excavation: t.excavation, fillPlacing: t.fillPlacing, haul: t.haul, surplusHaul: t.surplusHaul,
-    unsuitable: t.unsuitable, borrow: t.borrow, topsoil: t.topsoil,
+    unsuitable: t.unsuitable, borrow: t.borrow, topsoil: t.topsoil, geotechnical: t.geotechnical, culverts: t.culverts,
   };
   const earthworks = EARTH_KEYS.reduce((a, k) => a + t[k], 0);
   const construction = t.roadBase + earthworks + t.bridges + t.tunnels + t.crossings + t.noiseWalls;

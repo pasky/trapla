@@ -6,6 +6,7 @@ import { NORM_CAP_I, NORM_CAP_II, UNKNOWN_GROUND, type GroundProfile } from './g
 
 type Bands = Pick<GroundProfile, 'classIto' | 'classIIto' | 'normMix'>;
 import type { Terrain } from './terrain';
+import { flatBermCutBands, flatEarthGeometry, nextSlopeKink, slopeHeight } from './earthengineering';
 
 export interface SectionTemplate {
   crownWidth: number;
@@ -48,13 +49,16 @@ export function bandArea(c0: number, c1: number, L: number, cap: number): number
 
 /** flat ground: areas [class I, II, III] of a cut of depth c under a crown of width b with slopes 1:n */
 export function flatCutBands(c: number, b: number, n: number, bands: Bands = UNKNOWN_GROUND): [number, number, number] {
-  const total = b * c + n * c * c;
-  if (bands.normMix) return [total * NORM_CAP_I, total * (NORM_CAP_II - NORM_CAP_I), total * (1 - NORM_CAP_II)];
+  if (bands.normMix) {
+    const total = flatEarthGeometry(c, b, n, false).area;
+    return [total * NORM_CAP_I, total * (NORM_CAP_II - NORM_CAP_I), total * (1 - NORM_CAP_II)];
+  }
   // No per-call closure: the DP builds several thousand entries per local ground category.
   const m1 = Math.min(c, bands.classIto), m2 = Math.min(c, bands.classIIto);
   const a1 = b * m1 + 2 * n * m1 * (c - m1 / 2);
   const a2 = b * m2 + 2 * n * m2 * (c - m2 / 2);
-  return [a1, a2 - a1, total - a2];
+  const extra = flatBermCutBands(c, bands.classIto, bands.classIIto);
+  return [a1 + extra[0], a2 - a1 + extra[1], b * c + n * c * c - a2 + extra[2]];
 }
 
 /**
@@ -97,9 +101,10 @@ export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: 
   // beyond the crown edge: slope direction set by ground at the edge
   const isFill = dPrev >= 0;
   const n = isFill ? tpl.fillSlope : tpl.cutSlope;
-  const tmpl = (o: number) => (isFill ? z - (o - w) / n : z + (o - w) / n);
+  const tmpl = (o: number) => z + (isFill ? -1 : 1) * slopeHeight(o - w, n, isFill);
   let o0 = w, d0 = dPrev;
-  for (let o = w + STEP; o <= w + MAX_OFF; o += STEP) {
+  while (o0 < w + MAX_OFF - 1e-8) {
+    const o = Math.min(o0 + STEP, w + nextSlopeKink(o0 - w, n, isFill), w + MAX_OFF);
     const g = ground(o);
     const d = tmpl(o) - g;
     const crossed = isFill ? d <= 0 : d >= 0;
@@ -110,7 +115,7 @@ export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: 
       if (isFill) fill += 0.5 * d0 * (od - o0); else { cut -= 0.5 * d0 * (od - o0); band(o0, d0, od, 0); }
       return { cut, cutI: capI, cutII: capII - capI, fill, day: od, zDay: tmpl(od), open: false };
     }
-    if (isFill) fill += 0.5 * (d0 + d) * STEP; else { cut -= 0.5 * (d0 + d) * STEP; band(o0, d0, o, d); }
+    if (isFill) fill += 0.5 * (d0 + d) * (o - o0); else { cut -= 0.5 * (d0 + d) * (o - o0); band(o0, d0, o, d); }
     o0 = o; d0 = d;
   }
   return { cut, cutI: capI, cutII: capII - capI, fill, day: o0, zDay: ground(o0), open: true };

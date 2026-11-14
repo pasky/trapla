@@ -17,7 +17,7 @@ export interface CostGroup {
 /** stacking order of the cost strip, bottom first */
 export const COST_GROUPS: CostGroup[] = [
   { id: 'roadBase', label: 'Road (base)', short: 'road', color: '#7b8494', keys: ['roadBase'], of: (c) => c.roadBase },
-  { id: 'earthworks', label: 'Earthworks', short: 'earth', color: '#d08a3c', keys: ['excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil'], of: (c) => c.earthworks },
+  { id: 'earthworks', label: 'Earthworks', short: 'earth', color: '#d08a3c', keys: ['excavation', 'fillPlacing', 'haul', 'surplusHaul', 'unsuitable', 'borrow', 'topsoil', 'geotechnical', 'culverts'], of: (c) => c.earthworks },
   { id: 'bridges', label: 'Bridges', short: 'bridges', color: '#2f7fe6', keys: ['bridges'], of: (c) => c.bridges },
   { id: 'tunnels', label: 'Tunnels', short: 'tunnels', color: '#8a5fd0', keys: ['tunnels'], of: (c) => c.tunnels },
   { id: 'crossings', label: 'Road crossings', short: 'crossings', color: '#e0a800', keys: ['crossings'], of: (c) => c.crossings },

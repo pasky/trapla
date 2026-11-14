@@ -83,6 +83,27 @@ export const LAND = {
 
 /** Structure selection parameters (game rules, not norm values) */
 export const STRUCTURE_RULES = {
+  /** PROVISIONAL stepped-slope geometry, not a quoted ČSN requirement. I/27 Klatovy's EIA uses
+   * 1 m benches in cuts >6 m; repeated 6 m lifts and 2 m fill benches are game assumptions.
+   * See research/15-bridge-vs-embankment.md and 15-followup.md. */
+  bermInterval: 6,
+  fillBermWidth: 2,
+  cutBermWidth: 1,
+  /** PROVISIONAL stability/ground-treatment reserve above 6 m, CZK/m³ per additional metre.
+   * D11 1107 documents drains, granular mattresses, reinforced slopes and settlement monitoring;
+   * no isolated priced BOQ was recovered. These are sensitivity parameters, NOT tender rates.
+   * Applied independently of the mass-balance material price (free soil is not free engineering). */
+  engineeringFromHeight: 6,
+  highFillPerM3PerM: 35,
+  highCutPerM3PerM: 20,
+  /** Only extra barrel beyond crown + 12 m is charged (ordinary drainage is in the road norm).
+   * OTSKP Apr 2026 9183E2 DN800: 9450.93/m + 899524 concrete 4366.36/m³.
+   * PROVISIONAL assembly: 0.6 m³ encasement/m + 3000/m bedding, excavation and drainage.
+   * No hydraulic sizing inferred from the stream raster; not valid for major rivers. */
+  culvertIncludedExtraWidth: 12,
+  culvertExtraPerM: 9450.93 + 0.6 * 4366.36 + 3000,
+  /** Raster cells of one stream within this distance count as one crossing (PROVISIONAL). */
+  streamCrossingMerge: 30,
   /** a bridge is only considered where the grade is at least this high above ground, m */
   bridgeMinHeight: 4,
   /** a bored tunnel needs at least this much cover above the crown, m (tunnel crown ≈ 8 m) */

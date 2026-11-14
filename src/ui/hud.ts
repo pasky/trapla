@@ -45,7 +45,7 @@ const ROW_HELP: Record<string, (c: CostBreakdown) => string> = {
   roadBase: () => `SFDI per-km norm minus the value of its built-in earthworks allowance, at-grade length only; inside built-up areas the "intravilán" norm row`,
   earthworks: (c) => {
     const e = c.earthDetail;
-    return `excavation ${czk(e.excavation)} (ČGS mapped ground + estimated weathering profiles; unmapped ground uses norm mix), fill ${czk(e.fillPlacing)}, haul ${czk(e.haul)}, surplus to tip ${czk(e.surplusHaul)}, unsuitable 15 % to tip ${czk(e.unsuitable)}, bought fill ${czk(e.borrow)}, topsoil ${czk(e.topsoil)}`;
+    return `excavation ${czk(e.excavation)} (ČGS mapped ground + estimated weathering profiles; unmapped ground uses norm mix), fill ${czk(e.fillPlacing)}, haul ${czk(e.haul)}, surplus to tip ${czk(e.surplusHaul)}, unsuitable 15 % to tip ${czk(e.unsuitable)}, bought fill ${czk(e.borrow)}, topsoil ${czk(e.topsoil)}, high-earthwork engineering ${czk(e.geotechnical)} (provisional reserve), extra stream culverts ${czk(e.culverts)}`;
   },
   bridges: () => 'SFDI bridge norm per km of bridge; includes the short bridges forced over rivers, railways and roads clearly below the grade',
   tunnels: () => 'SFDI bored-tunnel norm per km of tube (urban rows under built-up areas)',
