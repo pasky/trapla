@@ -10,7 +10,8 @@ Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.
 |---|---|---|
 | ![close-up](docs/screenshots/03-closeup-bridge-cut.png) | ![contours](docs/screenshots/08-mid-contours.png) | ![photo](docs/screenshots/16-photo-contours.png) |
 
-More in `docs/screenshots/` (cost of a selected stretch, town, forest edge, deep cut, slope tint, 2× relief with a noise wall).
+More in `docs/screenshots/` (cost of a selected stretch, town, forest edge, deep cut, slope tint, 2× relief with a noise wall,
+contours over cut and fill slopes).
 
 ## Quick start
 
@@ -103,6 +104,12 @@ Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overvie
 - **Contours and slope tint** come from the same height and gradient: line width is constant in screen pixels
   (distance to the contour = elevation difference ÷ elevation change per pixel), lines fade where they would be
   closer than ~4–9 px, are dark on light ground and light on forest, and are not drawn out of bounds.
+  The road's cut and fill slopes carry the same lines (one shared GLSL function, fed with the slope's true
+  elevation, so they join the terrain's at the daylight line at any relief exaggeration); the carriageway shows
+  them faintly, structures not at all. The slope tint stays on the natural ground: designed slopes (1:1.5–1:2)
+  would all be purple and lose the cut / fill colours. `node scripts/earthworks.mjs [design.json] [outdir]`
+  renders the deepest cut and the highest embankment with contours at 1× and 2× relief
+  (`docs/screenshots/24…27-*.png`).
 - **Land cover, existing roads, railways, water, building footprints** are vectors (`vector.bin.gz`), rasterised
   on the GPU with 4× MSAA into one base texture of the whole area (≈ 8.5 m/texel, drawn once) and four 2048²
   *clip levels* around the camera focus at 0.125 … 4 m/texel, each twice as coarse as the previous. A level is

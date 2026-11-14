@@ -14,7 +14,7 @@ import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
-import { makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
+import { makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 
 export interface ViewEvents {
   onPickTerrain?: (x: number, y: number) => void;
@@ -430,14 +430,18 @@ export class View {
       for (let i = 0; i < n; i++) if (r.s[i] >= v.s0 - r.ds && r.s[i] <= v.s1 + r.ds) bad[i] = 1;
     }
     // ---- ribbon (crown + slopes) and bridge decks ----
-    const pos: number[] = [], col: number[] = [], idx: number[] = [];
+    const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
     const v = new THREE.Vector3();
-    const push = (x: number, y: number, z: number, c: THREE.Color) => {
-      this.local(x, y, z, v); pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); return pos.length / 3 - 1;
+    // `e` = true elevation for the contour lines (the surface itself may be lifted), `k` = contour strength
+    const push = (x: number, y: number, z: number, c: THREE.Color, e = z, k = 0) => {
+      this.local(x, y, z, v); pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); elev.push(e); ink.push(k);
+      return pos.length / 3 - 1;
     };
     const asphalt = new THREE.Color(0x3b3b42), asphaltBad = new THREE.Color(0x8a2020);
     const fillC = new THREE.Color(0xe3d27e), cutC = new THREE.Color(0xbf6a32), concrete = new THREE.Color(0xc4c2ba);
     const lift = 0.35;
+    // contours on the cut / fill slopes join the terrain's at the daylight line; faint on the carriageway
+    const slopeInk = 1, crownInk = 0.35;
     type SV = { dl: number; el: number; er: number; dr: number; cl: number; cr: number };
     const sv: SV[] = [];
     for (let i = 0; i < n; i++) {
@@ -446,12 +450,12 @@ export class View {
       const fillL = r.zDayL[i] < z, fillR = r.zDayR[i] < z;
       const crown = bad[i] ? asphaltBad : asphalt;
       sv.push({
-        dl: push(xl, yl, Math.max(r.zDayL[i], this.meshHeight(xl, yl)) + lift, fillL ? fillC : cutC),
-        el: push(x + nx * w, y + ny * w, z + lift, fillL ? fillC : cutC),
-        cl: push(x + nx * w, y + ny * w, z + lift, crown),
-        cr: push(x - nx * w, y - ny * w, z + lift, crown),
-        er: push(x - nx * w, y - ny * w, z + lift, fillR ? fillC : cutC),
-        dr: push(xr, yr, Math.max(r.zDayR[i], this.meshHeight(xr, yr)) + lift, fillR ? fillC : cutC),
+        dl: push(xl, yl, Math.max(r.zDayL[i], this.meshHeight(xl, yl)) + lift, fillL ? fillC : cutC, r.zDayL[i], slopeInk),
+        el: push(x + nx * w, y + ny * w, z + lift, fillL ? fillC : cutC, z, slopeInk),
+        cl: push(x + nx * w, y + ny * w, z + lift, crown, z, crownInk),
+        cr: push(x - nx * w, y - ny * w, z + lift, crown, z, crownInk),
+        er: push(x - nx * w, y - ny * w, z + lift, fillR ? fillC : cutC, z, slopeInk),
+        dr: push(xr, yr, Math.max(r.zDayR[i], this.meshHeight(xr, yr)) + lift, fillR ? fillC : cutC, r.zDayR[i], slopeInk),
       });
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
@@ -515,12 +519,14 @@ export class View {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setAttribute('elev', new THREE.Float32BufferAttribute(elev, 1));
+    g.setAttribute('ink', new THREE.Float32BufferAttribute(ink, 1));
     g.setIndex(idx);
     g.computeBoundingSphere();
     g.computeVertexNormals();
     this.buildMask(r);
-    const ribbon = new THREE.Mesh(g, new THREE.MeshLambertMaterial({
-      vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+    const ribbon = new THREE.Mesh(g, makeEarthworkMaterial(this.terrainU.contour, {
+      side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
     }));
     ribbon.name = 'ribbon';
     this.routeGroup.add(ribbon);

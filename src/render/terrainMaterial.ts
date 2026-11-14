@@ -96,6 +96,30 @@ export function terrainUniforms(): TerrainUniforms {
   };
 }
 
+/**
+ * Contour lines shared by the terrain and the earthworks (cut and fill slopes), so both draw the same
+ * lines from true elevation and they join at the daylight line. `contourInk` returns the line colour
+ * (display-referred sRGB) and its coverage for a pixel at elevation `h` (m) where the elevation changes by
+ * `mPerPx` metres per screen pixel, over ground of colour `albedo` (sRGB).
+ */
+const CONTOUR_GLSL = /* glsl */ `
+uniform vec4 contour;
+// coverage of the nearest contour of the given interval (width in pixels), faded out where lines crowd
+float contourLine(float h, float interval, float mPerPx, float width) {
+  float d = abs(fract(h / interval + 0.5) - 0.5) * interval / mPerPx;
+  float spacing = interval / mPerPx;
+  return (1.0 - smoothstep(width * 0.5 - 0.5, width * 0.5 + 0.5, d)) * smoothstep(4.0, 9.0, spacing);
+}
+vec4 contourInk(float h, float mPerPx, vec3 albedo) {
+  float pr = contour.w;
+  float minor = contourLine(h, contour.x, mPerPx, 1.0 * pr) * 0.42;
+  float major = contourLine(h, contour.y, mPerPx, 1.7 * pr) * 0.9;
+  // dark lines on light ground, light lines on dark ground (forest, water)
+  float dark = smoothstep(0.50, 0.58, dot(albedo, vec3(0.299, 0.587, 0.114)));
+  vec3 lineCol = mix(vec3(0.97, 0.96, 0.84), vec3(0.23, 0.13, 0.05), dark);
+  return vec4(lineCol, max(minor, major) * contour.z * mix(0.8, 1.0, dark));
+}`;
+
 const VERT = /* glsl */ `
 varying vec3 vWorld;
 #include <fog_pars_vertex>
@@ -125,7 +149,6 @@ uniform sampler2D lcTex2;
 uniform sampler2D lcTex3;
 uniform vec4 lcBox[${LC_LEVELS}];
 uniform float lcOn[${LC_LEVELS}];
-uniform vec4 contour;
 uniform float slopeTint;
 uniform float shadeAmt;
 // at-grade footprint of the designed road: terrain there is discarded so cuts are visible
@@ -144,12 +167,7 @@ vec4 lcLevel(sampler2D tex, vec4 box, float on, vec2 loc, vec4 under) {
   return mix(under, texture2D(tex, u), w);
 }
 
-// distance in pixels to the nearest contour of the given interval, and the line spacing in pixels
-float contourLine(float h, float interval, float mPerPx, float width) {
-  float d = abs(fract(h / interval + 0.5) - 0.5) * interval / mPerPx;
-  float spacing = interval / mPerPx;
-  return (1.0 - smoothstep(width * 0.5 - 0.5, width * 0.5 + 0.5, d)) * smoothstep(4.0, 9.0, spacing);
-}
+${CONTOUR_GLSL}
 
 void main() {
   if (maskOn > 0.5) {
@@ -208,14 +226,8 @@ void main() {
   if (contour.z > 0.0) {
     // elevation change per screen pixel, from the analytic gradient and the pixel footprint
     float mPerPx = max(length(vec2(dot(grad, dFdx(vWorld.xz)), dot(grad, dFdy(vWorld.xz)))), 1e-6);
-    float pr = contour.w;
-    float minor = contourLine(elev, contour.x, mPerPx, 1.0 * pr) * 0.42;
-    float major = contourLine(elev, contour.y, mPerPx, 1.7 * pr) * 0.9;
-    float a = max(minor, major) * contour.z * (1.0 - oob) * smoothstep(0.0015, 0.005, slope);
-    // dark lines on light ground, light lines on dark ground (forest, water)
-    float dark = smoothstep(0.50, 0.58, dot(albedo, vec3(0.299, 0.587, 0.114)));
-    vec3 lineCol = mix(vec3(0.97, 0.96, 0.84), vec3(0.23, 0.13, 0.05), dark);
-    col = mix(col, lineCol, a * mix(0.8, 1.0, dark));
+    vec4 ink = contourInk(elev, mPerPx, albedo);
+    col = mix(col, ink.rgb, ink.a * (1.0 - oob) * smoothstep(0.0015, 0.005, slope));
   }
 
   if (oob > 0.0) {
@@ -232,6 +244,36 @@ void main() {
   #include <fog_fragment>
   #include <colorspace_fragment>
 }`;
+
+/**
+ * Lit, vertex-coloured material of the route ribbon with the terrain's contour lines on top. Per vertex:
+ * `elev` = true elevation (m; the drawn surface is lifted a little above the terrain, and scaled by the
+ * relief exaggeration), `ink` = contour strength (1 on cut / fill slopes, less on the carriageway, 0 on
+ * structures). `contourU` is the terrain's `contour` uniform, shared so the interval follows the zoom.
+ */
+export function makeEarthworkMaterial(contourU: TerrainUniforms['contour'], params: THREE.MeshLambertMaterialParameters): THREE.MeshLambertMaterial {
+  const m = new THREE.MeshLambertMaterial({ ...params, vertexColors: true });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.contour = contourU;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float elev;\nattribute float ink;\nvarying float vElev;\nvarying float vInk;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvElev = elev;\nvInk = ink;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying float vElev;\nvarying float vInk;\n${CONTOUR_GLSL}`)
+      .replace('#include <opaque_fragment>', /* glsl */ `
+        // derivatives outside the branch (vInk varies per fragment)
+        float ewPx = max(length(vec2(dFdx(vElev), dFdy(vElev))), 1e-6);
+        if (contour.z > 0.0) {
+          // the terrain mixes its lines in display-referred sRGB: do the same for identical lines
+          vec4 ewInk = contourInk(vElev, ewPx, pow(max(diffuseColor.rgb, 0.0), vec3(1.0 / 2.2)));
+          vec3 ewCol = mix(pow(max(outgoingLight, 0.0), vec3(1.0 / 2.2)), ewInk.rgb, ewInk.a * vInk);
+          outgoingLight = pow(ewCol, vec3(2.2));
+        }
+        #include <opaque_fragment>`);
+  };
+  m.customProgramCacheKey = () => 'earthwork-contours';
+  return m;
+}
 
 export function makeTerrainMaterial(uniforms: TerrainUniforms, maskUniforms: Record<string, THREE.IUniform>): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
