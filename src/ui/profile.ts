@@ -93,13 +93,22 @@ export class ProfilePanel {
     for (const k of PART_KEYS) this.cumKey[k] = prefix((i) => r.parts[k][i]);
     this.cum = COST_GROUPS.map((g) => prefix((i) => { let v = 0; for (const k of g.keys) v += r.parts[k][i]; return v; }));
     this.cumLen = prefix((i) => cellLength(i, n, r.ds));
-    // alignment elements: tangents between the curves
+    // alignment elements: tangents between the curves; the arcs of one compound curve (bends joined
+    // by the horizontal solver) are one stretch, labelled with its range of radii
     const els: Element[] = [];
-    let prev = 0;
+    let prev = 0, unit = -1, lo = 0, hi = 0;
     for (const c of [...r.curves].sort((a, b) => a.sStart - b.sStart)) {
       if (!(c.sEnd > c.sStart + 1)) continue;
-      if (c.sStart > prev + 1) els.push({ s0: prev, s1: c.sStart, curve: false, label: '' });
-      els.push({ s0: Math.max(prev, c.sStart), s1: c.sEnd, curve: true, label: `R ${Math.round(c.rEff)}` });
+      const last = els[els.length - 1];
+      if (last?.curve && c.unit >= 0 && c.unit === unit && c.sStart <= prev + 1) {
+        lo = Math.min(lo, c.rEff); hi = Math.max(hi, c.rEff);
+        last.s1 = c.sEnd;
+        last.label = Math.round(lo) === Math.round(hi) ? `R ${Math.round(lo)}` : `R ${Math.round(lo)}–${Math.round(hi)}`;
+      } else {
+        if (c.sStart > prev + 1) els.push({ s0: prev, s1: c.sStart, curve: false, label: '' });
+        els.push({ s0: Math.max(prev, c.sStart), s1: c.sEnd, curve: true, label: `R ${Math.round(c.rEff)}` });
+        unit = c.unit; lo = hi = c.rEff;
+      }
       prev = Math.max(prev, c.sEnd);
     }
     if (r.length > prev + 1) els.push({ s0: prev, s1: r.length, curve: false, label: '' });

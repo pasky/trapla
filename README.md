@@ -150,7 +150,7 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
 
 ## Long curves and radius handles (horizontal editing)
 
-![long curve](docs/screenshots/05-long-curve.png)
+![long curve](docs/screenshots/19-long-curve-selected.png)
 
 - **Bends are corners of the dashed tangent polygon, not waypoints**: the road cuts each corner with a circular arc.
 - **One bend, long curve**: select a bend and drag one of the two diamond grips along its leg, turn the mouse wheel over
@@ -166,5 +166,8 @@ render-only extras: fields, meadows, parks; tracks and service roads come from `
   no transition needed from R ≥ L²/6 (1,350 / 1,067 / 817 m at 90 / 80 / 70 km/h); opposite curves may touch with
   their transitions, plain arcs need a 2·vn straight between them; every horizontal violation names the bends, the
   room required and available, and a fix.
-- `npm run curves` replays this with real mouse events (multi-point curve, grips, wheel, keys, max, auto, undo) and
-  writes `docs/screenshots/05…08-*.png`; `05-long-curve-before.png` is the same design on the previous rules.
+- In the profile's curve band a compound curve is one stretch (labelled with its range of radii): a click selects
+  the whole curve for the cost breakdown. Bends left out have no stretch of their own.
+- `npm run curves` replays this with real mouse events (multi-point curve, curve band, grips, wheel, keys, max, auto,
+  undo, relief 1–3× with contours / photo) and writes `docs/screenshots/18…23-*.png`; `17-long-curve-before.png` is
+  the same design on the previous rules.

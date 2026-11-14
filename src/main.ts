@@ -204,6 +204,7 @@ async function main() {
     resetCamera: () => view.resetCamera(),
     selectPi,
     maxRadius: (i: number) => curveEdit.maxRadius(i),
+    pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
     profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
     profileFit: () => profile.fit(),
     selectRange: (s0: number | null, s1?: number) => selection.set(s0 === null || s1 === undefined ? null : { s0, s1 }),

@@ -78,7 +78,8 @@ export interface Result {
   vpis: VPI[];
   vcurves: { s: number; z: number; len: number; r: number; type: string }[];
   grades: number[];
-  curves: { index: number; x: number; y: number; r: number; rEff: number; delta: number; auto: boolean; sStart: number; sEnd: number; t: number }[];
+  /** per bend; `unit` is shared by the arcs of one (compound) curve, −1 for a bend without an arc (left out, collinear, U-turn) */
+  curves: { index: number; x: number; y: number; r: number; rEff: number; delta: number; auto: boolean; sStart: number; sEnd: number; t: number; unit: number }[];
   violations: Violation[];
   geomViolations: number;
   cost: CostBreakdown;
@@ -526,7 +527,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     length: al.length, ds, n, s: st.s, x: st.x, y: st.y, tx: st.tx, ty: st.ty, ground, grade, kind,
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
-    curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t })),
+    curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, walls, demolished,
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,

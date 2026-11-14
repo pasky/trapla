@@ -7,7 +7,8 @@ import { createServer } from 'vite';
 
 const OUT = process.argv[2] ?? 'docs/screenshots';
 mkdirSync(OUT, { recursive: true });
-const server = await createServer({ server: { port: 5196, strictPort: true }, logLevel: 'warn' });
+const PORT = Number(process.env.PORT ?? 5196); // set PORT when several checkouts run at once
+const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
 await server.listen();
 const browser = await chromium.launch({
   executablePath: process.env.CHROME ?? '/usr/bin/chromium',
@@ -17,7 +18,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto('http://localhost:5196/');
+await page.goto(`http://localhost:${PORT}/`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
@@ -25,7 +26,16 @@ const idle = async (ms = 500) => { await page.waitForTimeout(ms); await page.eva
 const ok = (c, m) => { console.log(c ? 'PASS' : 'FAIL', m); if (!c) process.exitCode = 1; };
 const state = () => page.evaluate(() => ({ d: window.trapla.getDesign(), s: window.trapla.summary() }));
 const horiz = (s) => s.violations.filter((v) => ['radius', 'transition', 'arcShort', 'compound'].includes(v.kind));
-const shot = async (name) => { await page.screenshot({ path: `${OUT}/${name}.png` }); console.log('saved', `${OUT}/${name}.png`); };
+// wait until the land-cover textures for the current camera are drawn (and photos fetched)
+const settle = async () => {
+  await page.evaluate(() => new Promise((res) => {
+    const f = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? f() : res()));
+    requestAnimationFrame(() => requestAnimationFrame(f));
+  }));
+  await page.waitForTimeout(500); // contour labels are laid out once the camera rests
+};
+const shot = async (name) => { await settle(); await page.screenshot({ path: `${OUT}/${name}.png` }); console.log('saved', `${OUT}/${name}.png`); };
+const view = (prefs) => page.evaluate((p) => window.trapla.setView({ contours: false, slope: false, exag: 1, photo: false, ...p }), prefs);
 const centre = async (sel) => { const b = await page.locator(sel).first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 
 // ---- 1. the owner's case: bend 4 of the reference design replaced by six points 120–155 m apart
@@ -33,6 +43,7 @@ const centre = async (sel) => { const b = await page.locator(sel).first().boundi
 const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
 const curvePts = [[9871, 6852], [9937, 6986], [9986, 7122], [10009, 7256], [10015, 7409], [9992, 7528]];
 design.pis.splice(3, 1, ...curvePts.map(([x, y]) => ({ x, y, r: null })));
+await view({});
 await page.evaluate((d) => window.trapla.setDesign(d), design);
 await idle();
 await page.waitForLoadState('networkidle');
@@ -43,13 +54,44 @@ const radii = await page.evaluate(() => window.trapla.result().curves.slice(3, 9
 ok(radii.every((r) => r >= 355) && Math.max(...radii) / Math.min(...radii) <= 2, `joined radii ${radii.join(', ')} m`);
 await page.evaluate(() => window.trapla.lookAt(9950, 7200, 2300, 0, 65));
 await idle(300);
-await shot('05-long-curve');
+await shot('18-long-curve');
 await page.evaluate(() => window.trapla.selectPi(5));
 await page.evaluate(() => window.trapla.lookAt(9990, 7200, 1100, 0, 65));
 await idle(300);
 const sub = await page.locator('.rlabel small').textContent();
 ok(/one curve with bends 4, 5, 7–9/.test(sub), `label of a joined bend: "${sub}"`);
-await shot('06-long-curve-selected');
+// the profile's curve band shows the joined bends as one stretch; a click on it selects the whole curve
+await page.evaluate(() => window.trapla.profileFit());
+const chain = await page.evaluate(() => {
+  const r = window.trapla.result(), u = r.curves[5].unit, m = r.curves.filter((c) => c.unit === u);
+  return { n: m.length, s0: Math.min(...m.map((c) => c.sStart)), s1: Math.max(...m.map((c) => c.sEnd)), len: r.length, ds: r.ds };
+});
+const cb = await page.locator('#profile-canvas').boundingBox();
+const bandX = (st) => cb.x + 52 + (st / chain.len) * (cb.width - 66), bandY = cb.y + cb.height - 22 - 54 - 3 - 5;
+await page.mouse.click(bandX((chain.s0 + chain.s1) / 2), bandY);
+let rg = await page.evaluate(() => window.trapla.range());
+ok(chain.n === 6 && rg && Math.abs(rg.s0 - chain.s0) <= chain.ds && Math.abs(rg.s1 - chain.s1) <= chain.ds,
+  `clicking the curve band selects the whole compound curve (km ${rg && (rg.s0 / 1000).toFixed(2)}–${rg && (rg.s1 / 1000).toFixed(2)}, curve km ${(chain.s0 / 1000).toFixed(2)}–${(chain.s1 / 1000).toFixed(2)})`);
+await page.mouse.move(cb.x + 300, cb.y - 200); // off the profile: no hover marker in the picture
+await idle(200);
+await shot('19-long-curve-selected');
+await page.evaluate(() => { window.trapla.selectRange(null); window.trapla.profileFit(); });
+// a point that only wiggles against the curve (3 m inside the leg between bends 6 and 7) is left out, and says so
+const wig = JSON.parse(JSON.stringify(design));
+{
+  const p = wig.pis[5], q = wig.pis[6], L = Math.hypot(q.x - p.x, q.y - p.y);
+  wig.pis.splice(6, 0, { x: (p.x + q.x) / 2 - 3 * (q.y - p.y) / L, y: (p.y + q.y) / 2 + 3 * (q.x - p.x) / L, r: null });
+}
+await page.evaluate((d) => { window.trapla.setDesign(d); window.trapla.selectPi(6); }, wig);
+await idle();
+s = await state();
+const left = await page.evaluate(() => ({ unit: window.trapla.result().curves[6].unit, text: document.querySelector('.rlabel b').textContent, sub: document.querySelector('.rlabel small').textContent, grips: [...document.querySelectorAll('.rgrip')].filter((g) => g.style.display !== 'none').length }));
+ok(horiz(s.s).length === 0 && left.unit === -1 && left.text === 'left out' && left.grips === 0, `a wiggling point is left out without a violation: "${left.text} — ${left.sub}"`);
+await page.mouse.click(bandX((chain.s0 + chain.s1) / 2), bandY);
+rg = await page.evaluate(() => window.trapla.range());
+ok(rg && Math.abs(rg.s1 - rg.s0 - (chain.s1 - chain.s0)) < 30, `the curve band still reads as one stretch around the left-out point (${rg && (rg.s1 - rg.s0).toFixed(0)} m)`);
+await page.evaluate((d) => { window.trapla.selectRange(null); window.trapla.setDesign(d); }, design);
+await idle();
 
 // ---- 2. radius handles on a single bend (bend 2 of the reference design: 45° right, long legs)
 const I = 1;
@@ -77,7 +119,7 @@ const rDrag = s.d.pis[I].r;
 ok(rDrag > 400, `dragging a grip along the leg enlarges the radius (${rDrag} m)`);
 ok((await page.locator('.rlabel b').textContent()) === `R ${rDrag.toLocaleString('en-US')} m`, 'label follows the drag');
 ok(Number(await page.locator('#pi-r').inputValue()) === rDrag, 'HUD radius field in sync while dragging');
-await shot('07-radius-handle');
+await shot('20-radius-handle');
 await page.mouse.up();
 await idle(200);
 const g1 = await centre('.rgrip');
@@ -125,7 +167,7 @@ await page.keyboard.press('Control+z');
 await idle(300);
 await page.evaluate(() => window.trapla.lookAt(7900, 5300, 3000, 0, 65));
 await idle(300);
-await shot('08-radius-max');
+await shot('21-radius-max');
 await page.click('.rlabel .rauto');
 await idle(300);
 ok((await state()).d.pis[I].r === null, '"auto" returns to the automatic radius');
@@ -174,7 +216,7 @@ await page.keyboard.press('Escape');
 await page.mouse.move(gB.x + vx * 70, gB.y + vy * 70);
 await page.mouse.up();
 await idle(300);
-ok(rMid > 900 && (await state()).d.pis[I].r === 900 && !(await page.locator('.rlabel').isVisible()), `Esc during a drag restores the radius (${rMid} → ${(await state()).d.pis[I].r} m) and deselects`);
+ok(rMid > 900 && (await state()).d.pis[I].r === 900 && await page.locator('.rlabel').isVisible(), `Esc during a drag restores the radius (${rMid} → ${(await state()).d.pis[I].r} m), the bend stays selected`);
 await page.keyboard.press('Control+z');
 await idle(200);
 ok((await state()).d.pis[I].r === 600, 'the cancelled drag left no undo step behind (undo goes to the design before the replaced one)');
@@ -186,5 +228,43 @@ await page.mouse.move(pA.x + 230, pA.y + 215);
 await page.mouse.up();
 await idle(300);
 ok((await state()).d.pis[I].r === 900 && (await state()).d.pis.length === 18, 'map controls work again after the aborted drag (pan, no stray edit)');
+
+// ---- 4. relief exaggeration, contours, aerial photo: handles sit on the road, picking and dragging still agree
+await page.evaluate((d) => { window.trapla.setDesign(d); window.trapla.selectPi(1); }, (() => { const d = JSON.parse(JSON.stringify(design)); d.pis[1].r = 700; return d; })());
+await idle();
+for (const [exag, prefs] of [[1, {}], [2, { contours: true, photo: true }], [3, { contours: true }]]) {
+  await view({ exag, ...prefs });
+  await page.evaluate(() => window.trapla.lookAt(7454, 5258, 1700, 20, 55));
+  await idle(300);
+  await settle();
+  // the terrain point under each handle must be the handle's point on the road (to within the cut / fill there)
+  const off = await page.evaluate(() => {
+    const t = window.trapla, r = t.result(), c = r.curves[1], d = t.getDesign();
+    const at = (s) => { const k = Math.round(s / r.ds); return { x: r.x[k], y: r.y[k], h: Math.abs(r.grade[k] - r.ground[k]) }; };
+    const under = (el) => { const b = el.getBoundingClientRect(); return t.pick(b.x + b.width / 2, b.y + b.height / 2); };
+    const grips = [...document.querySelectorAll('.rgrip')].map((g, k) => { const p = under(g), q = at(k ? c.sEnd : c.sStart); return p ? [Math.hypot(p.x - q.x, p.y - q.y), q.h] : null; });
+    const m = under(document.querySelector('.pi.sel'));
+    return { grips, pi: m ? Math.hypot(m.x - d.pis[1].x, m.y - d.pis[1].y) : null };
+  });
+  ok(off.pi !== null && off.pi < 6 && off.grips.every((g) => g && g[0] < 8 + 2.5 * exag * g[1]),
+    `relief ${exag}×${prefs.contours ? ' + contours' : ''}${prefs.photo ? ' + photo' : ''}: bend marker ${off.pi?.toFixed(1)} m and grips ${off.grips.map((g) => g && `${g[0].toFixed(1)} m (road ${g[1].toFixed(1)} m off the ground)`).join(', ')} from the terrain under them`);
+  // drag a grip 60 px along its leg: it stays under the cursor and the radius grows
+  const p0 = await centre('.pi.sel'), q0 = await centre('.rgrip');
+  const wx = (q0.x - p0.x) / Math.hypot(q0.x - p0.x, q0.y - p0.y), wy = (q0.y - p0.y) / Math.hypot(q0.x - p0.x, q0.y - p0.y);
+  await page.mouse.move(q0.x, q0.y);
+  await page.mouse.down();
+  for (let k = 1; k <= 6; k++) await page.mouse.move(q0.x + wx * 10 * k, q0.y + wy * 10 * k);
+  await idle(200);
+  if (exag === 3) await shot('22-radius-handle-relief-3x-contours');
+  await page.mouse.up();
+  await idle(200);
+  const q1 = await centre('.rgrip');
+  const rNow = (await state()).d.pis[1].r;
+  ok(rNow > 700 && Math.hypot(q1.x - (q0.x + wx * 60), q1.y - (q0.y + wy * 60)) < 12, `relief ${exag}×: the dragged grip stays under the cursor (R ${rNow} m, ${Math.hypot(q1.x - (q0.x + wx * 60), q1.y - (q0.y + wy * 60)).toFixed(1)} px off)`);
+  if (exag === 2) { await page.evaluate(() => window.trapla.lookAt(9990, 7200, 1300, 0, 50)); await page.evaluate(() => window.trapla.selectPi(5)); await idle(300); await shot('23-long-curve-relief-2x-photo'); await page.evaluate(() => window.trapla.selectPi(1)); }
+  await page.keyboard.press('Control+z');
+  await idle(200);
+}
+await view({});
 ok(errors.length === 0, `no console errors ${errors.join(' | ')}`);
 await browser.close(); await server.close();

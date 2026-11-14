@@ -98,6 +98,7 @@ export class Hud {
         <ul>
           <li><b>Click</b> the terrain to add a bend (PI) to the nearest leg</li>
           <li><b>Drag</b> a numbered PI to move it, <b>right-click</b> or <kbd>Del</kbd> to delete</li>
+          <li>Bends are corners of the dashed polygon; the selected one shows its radius on the map: drag a <b>◇ grip</b> along the leg, <b>wheel</b> over the bend or <kbd>+</kbd> / <kbd>−</kbd>, <b>max</b> / <b>auto</b>. Close bends turning the same way become one long curve</li>
           <li>Map: <b>left-drag</b> pan · <b>right-drag</b> rotate · <b>wheel</b> zoom</li>
           <li>Profile: drag VPIs (takes manual control), <b>double-click</b> adds, <b>right-click</b> deletes, wheel zooms</li>
           <li>Why is a stretch expensive? <b>Hover</b> the profile for the cost split there; <b>drag</b> in the cost strip (or <kbd>Shift</kbd>+drag) to select a stretch, <b>click</b> a curve / tangent in the band above it; <kbd>Esc</kbd> = whole route</li>

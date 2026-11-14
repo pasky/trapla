@@ -84,7 +84,11 @@ export class CurveEditor {
     });
     // anything else the player does (undo, a click, another key) first turns the pending steps into
     // their undo step, so that history is never rewritten behind an uncommitted change
-    window.addEventListener('keydown', (e) => { if (!radiusKey(e) && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) this.flushCommit(); }, true);
+    window.addEventListener('keydown', (e) => {
+      // Esc while a grip is held cancels that drag and nothing else (not the selected range or bend)
+      if (e.key === 'Escape' && this.drag) { this.drag.abort(true); e.stopImmediatePropagation(); e.preventDefault(); return; }
+      if (!radiusKey(e) && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) this.flushCommit();
+    }, true);
     window.addEventListener('pointerdown', () => this.flushCommit(), true);
     const prev = view.onRender;
     view.onRender = () => { prev?.(); this.place(); };
