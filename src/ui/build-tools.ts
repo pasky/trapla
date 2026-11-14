@@ -21,7 +21,8 @@ export interface BuildToolEvents {
   selectCrossing?: (roadId: number) => void;
   building?: (j: number, action: BuildingOverride['action'] | null) => void;
   selectBuilding?: (j: number) => void;
-  wall?: (side: 'L' | 'R', height: number | null) => void;
+  /** a wall of `height` (0: none, null: automatic) on these sides of the selected stretch, one edit */
+  wall?: (sides: ('L' | 'R')[], height: number | null) => void;
   /** bridge / tunnel / earthwork / automatic (null) on the selected stretch */
   structure?: (kind: StructureKind | null) => void;
   /** deselect the stretch */
@@ -123,10 +124,10 @@ export class BuildTools {
       else if (b.dataset.side) { this.wallSide = b.dataset.side as 'L' | 'R' | 'both'; this.render(); }
       else if (b.id === 'wall-add') {
         const h = height.valueAsNumber;
-        if (Number.isFinite(h) && h >= 2 && h <= 6) { this.wallHeight = h; for (const s of sides()) this.ev.wall?.(s, h); }
+        if (Number.isFinite(h) && h >= 2 && h <= 6) { this.wallHeight = h; this.ev.wall?.(sides(), h); }
         else { height.classList.add('bad'); height.focus(); }
-      } else if (b.id === 'wall-remove') for (const s of sides()) this.ev.wall?.(s, 0);
-      else if (b.id === 'wall-auto') for (const s of sides()) this.ev.wall?.(s, null);
+      } else if (b.id === 'wall-remove') this.ev.wall?.(sides(), 0);
+      else if (b.id === 'wall-auto') this.ev.wall?.(sides(), null);
     };
   }
 

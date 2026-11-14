@@ -24,7 +24,7 @@ import { ViewBar, type ViewPrefs } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
 import { SelectionBar } from './ui/selection-bar';
 import type { WorkerIn } from './worker';
-import { toast } from './ui/toast';
+import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
 const status = document.getElementById('status')!;
@@ -67,7 +67,10 @@ async function main() {
   tools.describeBuilding = (j) => { const f = pack.overlays.binfo?.[j]; return buildingKind(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0)); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  const selectBuilding = (j: number) => { tools.selectBuilding(j); annotations.selectBuilding(j); annotations.selectCrossing(null); profile.selectCrossing(null); closeStation(); hud.revealContext(); };
+  const selectBuilding = (j: number) => {
+    tools.selectBuilding(j); annotations.selectBuilding(j); annotations.selectCrossing(null); profile.selectCrossing(null); closeStation();
+    opened('building'); hud.revealContext('building-card');
+  };
   const closeBuilding = () => { tools.selectBuilding(null); annotations.selectBuilding(null); };
   tools.ev.closeBuilding = closeBuilding;
   annotations.onBuilding = selectBuilding;
@@ -81,10 +84,13 @@ async function main() {
     selBar.showStation(s, pin?.z ?? last.grade[i], !!pin, store.design.profileMode === 'auto');
   };
   const selectStation = (s: number) => {
-    station = s; tools.selectStation(s); annotations.selectBuilding(null); annotations.selectCrossing(null); profile.selectCrossing(null);
+    station = s; tools.selectStation(s); annotations.selectBuilding(null); annotations.selectCrossing(null); profile.selectCrossing(null); opened('station');
     profile.selectStation(s); showStation();
   };
   const closeStation = () => { station = null; profile.selectStation(null); selBar.hide('station'); };
+  /** what the player picked, most recent last: Esc closes the most recent one still open */
+  const picked: string[] = [];
+  const opened = (what: string) => { const k = picked.indexOf(what); if (k >= 0) picked.splice(k, 1); picked.push(what); };
   annotations.onPin = selectStation;
   annotations.onCulvert = (s) => { profile.focus(s - 250, s + 250); };
   tools.ev.selectStation = selectStation;
@@ -102,7 +108,7 @@ async function main() {
   const selection = new RangeSelection();
   selection.on((range) => {
     profile.setSelection(range); hud.setRange(range); extras.setRange(range); tools.setRange(range);
-    if (range) { closeStation(); selBar.showRange(range, store.design.structureOverrides); hud.revealContext(); } else selBar.hide('range');
+    if (range) { closeStation(); selBar.showRange(range, store.design.structureOverrides); opened('range'); hud.revealContext('range'); } else selBar.hide('range');
   });
 
   let selectedPi: number | null = null;
@@ -116,7 +122,7 @@ async function main() {
     const c = last?.crossings.find((c) => c.roadId === roadId);
     closeStation();
     if (c) view.setHover({ x: c.x, y: c.y, z: last!.grade[c.i] }, 'crossed road');
-    hud.revealContext();
+    opened('crossing'); hud.revealContext('crossing-card');
   };
   const closeCrossing = () => { tools.selectCrossing(null); profile.selectCrossing(null); annotations.selectCrossing(null); view.setHover(null); };
   tools.ev.selectCrossing = (roadId) => {
@@ -197,11 +203,12 @@ async function main() {
     selBar.hide('bend'); // a bend's bar belongs to the bend picked in the profile (re-shown there)
     view.setDesign(store.design, i);
     hud.setSelectedPi(i, last, store.design);
-    if (i !== null) hud.revealContext();
+    if (i !== null) { opened('bend'); hud.revealContext('pi-card'); }
     curveEdit.refresh();
   };
 
   store.on((d) => {
+    hideToast(); // its Undo belongs to the edit before this one
     if (selectedPi !== null && selectedPi >= d.pis.length) selectedPi = null;
     view.setDesign(d, selectedPi);
     hud.setDesign(d);
@@ -241,6 +248,8 @@ async function main() {
     onPiDelete: (i) => { store.update((d) => { d.pis.splice(i, 1); }); selectPi(null); },
   };
 
+  const closeVpi = () => { selectedVpi = null; hud.setSelectedVpi(null, last); profile.select(null); };
+
   // ---- profile interactions ----
   const takeProfile = (d: Design) => {
     if (d.profileMode === 'auto' && last) d.vpis = last.vpis.map((v) => ({ ...v }));
@@ -263,7 +272,7 @@ async function main() {
       });
     },
     onVpiDelete: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; },
-    onVpiSelect: (i) => { selectedVpi = i; hud.setSelectedVpi(i, last); },
+    onVpiSelect: (i) => { selectedVpi = i; hud.setSelectedVpi(i, last); if (i !== null) { opened('vpi'); hud.revealContext('vpi-card'); } },
     onSelect: (range) => selection.set(range),
     onHover: (s, label) => {
       if (s === null || !last) { view.setHover(null); return; }
@@ -413,11 +422,11 @@ async function main() {
     const [i0, i1] = cellsInRange(last, range.s0, Math.min(range.s1, last.length));
     return { s0: Math.max(0, (i0 - 0.5) * last.ds), s1: Math.min(last.length, (i1 + 0.5) * last.ds) };
   };
-  tools.ev.wall = (side, height) => {
+  tools.ev.wall = (sides, height) => {
     const range = paintRange();
     if (!range) return;
     const previous = store.design.wallOverrides ?? [];
-    const next = paintWallOverride(previous, range.s0, range.s1, side, height);
+    const next = sides.reduce((o, side) => paintWallOverride(o, range.s0, range.s1, side, height), previous);
     if (JSON.stringify(previous) !== JSON.stringify(next)) store.update((d) => { d.wallOverrides = next; });
   };
   const setStructure = (kind: StructureKind | null) => {
@@ -444,7 +453,7 @@ async function main() {
       toast('Started over from the straight line.', 'Undo', () => store.undo());
     },
     onClosePi: () => selectPi(null),
-    onCloseVpi: () => { selectedVpi = null; hud.setSelectedVpi(null, last); },
+    onCloseVpi: () => closeVpi(),
     onIntro: () => intro.show(),
     onLoadBest: () => { if (store.best) { store.replace(store.best.design); toast('Loaded your best valid design.', 'Undo', () => store.undo()); } },
     onRadius: (i, r) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }),
@@ -501,11 +510,20 @@ async function main() {
     } else if (e.key === 'Escape') {
       if (intro.visible) intro.hide();
       else if (!keyBox.hidden) showKey(false);
-      else if (selection.range) selection.set(null);
-      else if (station !== null) closeStation();
-      else if (tools.crossing !== null) closeCrossing();
-      else if (tools.building !== null) closeBuilding();
-      else selectPi(null);
+      else {
+        // the most recently picked thing that is still open
+        const isOpen: Record<string, () => boolean> = {
+          range: () => !!selection.range, station: () => station !== null, crossing: () => tools.crossing !== null,
+          building: () => tools.building !== null, bend: () => selectedPi !== null, vpi: () => selectedVpi !== null,
+        };
+        const close: Record<string, () => void> = {
+          range: () => selection.set(null), station: closeStation, crossing: closeCrossing, building: closeBuilding,
+          bend: () => selectPi(null), vpi: () => closeVpi(),
+        };
+        while (picked.length && !isOpen[picked[picked.length - 1]]()) picked.pop();
+        const what = picked.pop();
+        if (what) close[what]();
+      }
     }
   }, { capture: true }); // range shortcuts take precedence over the map's E/C shortcuts
 
@@ -536,6 +554,8 @@ async function main() {
     pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
     project: (x: number, y: number, z: number) => view.project(x, y, z),
     /** screen position (px inside the view) of building j's centroid, `up` metres above its ground */
+    /** building j is drawn in 3D (false: removed as demolished, or no mesh) */
+    buildingShown: (j: number) => { const k = view.buildingMesh(j); return k >= 0 && !view.buildingMeshes?.isHidden(k); },
     buildingScreen: (j: number, up = 2) => {
       const b = pack.overlays.buildings[j];
       return b && view.project(b[0], b[1], pack.terrain.heightAt(b[0], b[1]) + up);

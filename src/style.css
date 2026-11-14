@@ -321,7 +321,7 @@ button.primary:hover:not(:disabled) { background: #1a5fd0 !important; }
 .profile-bar .legend .sw { margin: 0 4px 0 0; }
 .key-toggle { padding: 1px 8px; font-size: 12px; flex: none; }
 .key-toggle.on { background: #1f6feb; color: #fff; border-color: #1f6feb; }
-.profile-key { position: absolute; z-index: 15; left: 10px; bottom: calc(100% - 26px); max-width: calc(100% - 20px); display: flex; gap: 18px; flex-wrap: wrap; background: #fff; border: 1px solid #c8ccd2; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); padding: 10px 14px; font-size: 12px; color: #334; }
+.profile-key { position: absolute; z-index: 15; left: 10px; bottom: calc(100% + 4px); max-width: calc(100% - 20px); max-height: calc(100vh - 316px); overflow: auto; display: flex; gap: 18px; flex-wrap: wrap; background: #fff; border: 1px solid #c8ccd2; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); padding: 10px 14px; font-size: 12px; color: #334; }
 .profile-key[hidden] { display: none; }
 .profile-key h3 { margin: 0 0 5px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #778; }
 .profile-key h3 small { text-transform: none; letter-spacing: 0; font-weight: 400; }
@@ -369,6 +369,7 @@ button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choic
   #viewbar { top: 44px; left: 12px; right: auto; flex-wrap: wrap; }
   #brand small { display: none; }
   #editbar { left: 84px; }
+  #intro { top: 84px; }
   #legend { bottom: 22px; font-size: 10px; }
   #attrib { font-size: 9px; max-width: 60%; }
 }

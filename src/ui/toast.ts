@@ -21,4 +21,7 @@ export function toast(text: string, action?: string, onAction?: () => void, ms =
   timer = window.setTimeout(hide, ms);
 }
 
-function hide() { if (el) el.hidden = true; }
+function hide() { if (el) el.hidden = true; clearTimeout(timer); }
+
+/** take the toast (and its action) away, e.g. once another edit makes its Undo mean something else */
+export function hideToast() { hide(); }

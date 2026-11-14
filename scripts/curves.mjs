@@ -81,7 +81,8 @@ let s = await state();
 ok(horiz(s.s).length === 0, `six points along a gentle curve: no horizontal violations (${horiz(s.s).map((v) => `${v.title} — ${v.fix}`).join(' | ')})`);
 ok(s.s.valid, `design valid, ${(s.s.length / 1000).toFixed(2)} km, ${(s.s.cost.total / 1e9).toFixed(2)} bn CZK`);
 const radii = await page.evaluate((K) => window.trapla.result().curves.slice(K, K + 6).map((c) => Math.round(c.rEff)), K);
-ok(radii.every((r) => r >= 355) && Math.max(...radii) / Math.min(...radii) <= 2, `joined radii ${radii.join(', ')} m`);
+const minRadius = await page.evaluate(() => Number(document.querySelector('#norms b').textContent.replace(/[^0-9]/g, ''))); // the speed's smallest radius
+ok(radii.every((r) => r >= minRadius) && Math.max(...radii) / Math.min(...radii) <= 2, `joined radii ${radii.join(', ')} m`);
 await page.evaluate((m) => window.trapla.lookAt(m.x, m.y, 2300, 0, 65), mid);
 await idle(300);
 await shot('18-long-curve');
@@ -126,12 +127,18 @@ await page.evaluate((d) => { window.trapla.selectRange(null); window.trapla.setD
 await idle();
 
 // ---- 2. radius handles on a single bend: a turn of ≥ 30° with the longest legs (room for large radii)
-let I = -1;
-for (let k = 0; k < K; k++) { const t = turn(k); if (Math.abs(t.d) > 0.52 && (I < 0 || t.leg > turn(I).leg)) I = k; }
-if (I < 0) throw new Error('no bend with long legs before the long curve');
+// (any original bend but the replaced one and its neighbours; indices after it moved by the five added points)
+let I0 = -1;
+for (let k = 0; k < pts.length - 2; k++) {
+  if (Math.abs(k - K) <= 1) continue;
+  const t = turn(k);
+  if (Math.abs(t.d) > 0.52 && (I0 < 0 || t.leg > turn(I0).leg)) I0 = k;
+}
+const I = I0 < 0 ? -1 : I0 > K ? I0 + 5 : I0;
+if (I < 0) throw new Error('no ≥ 30° bend away from the long curve');
 const PI = design.pis[I];
 const MIN_R = await page.evaluate((I) => Math.round(window.trapla.result().curves[I].r), I); // its automatic radius
-console.log(`radius handles: bend ${I + 1} at ${PI.x}, ${PI.y} (${(turn(I).d * 180 / Math.PI).toFixed(0)}°)`);
+console.log(`radius handles: bend ${I + 1} at ${PI.x}, ${PI.y} (${(turn(I0).d * 180 / Math.PI).toFixed(0)}°)`);
 await page.evaluate(() => window.trapla.selectPi(null));
 await page.evaluate((p) => window.trapla.lookAt(p.x, p.y, 1700, 0, 65), PI);
 await idle(300);

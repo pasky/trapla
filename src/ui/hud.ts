@@ -210,12 +210,16 @@ export class Hud {
     el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
   }
 
-  /** bring the contextual cards into view (just picked something) unless they already show */
-  revealContext() {
-    const score = this.$('score'), ctx = this.context;
+  /** bring the card of what was just picked fully into view (below the sticky score) unless it already is */
+  revealContext(cardId: string) {
     requestAnimationFrame(() => {
-      const top = ctx.getBoundingClientRect().top, below = score.getBoundingClientRect().bottom;
-      if (top < below - 1 || top > this.root.getBoundingClientRect().bottom - 60) this.root.scrollTo({ top: 0, behavior: 'smooth' });
+      const card = this.root.querySelector<HTMLElement>(`#${cardId}`);
+      if (!card || card.style.display === 'none') return;
+      const c = card.getBoundingClientRect(), top = this.$('score').getBoundingClientRect().bottom + 8;
+      const bottom = this.root.getBoundingClientRect().bottom - 8;
+      // too high: align its top under the score; too low: lift its bottom into view (its top first if it is taller)
+      const delta = c.top < top ? c.top - top : c.bottom > bottom ? Math.min(c.bottom - bottom, c.top - top) : 0;
+      if (Math.abs(delta) > 1) this.root.scrollBy({ top: delta, behavior: 'smooth' });
     });
   }
 

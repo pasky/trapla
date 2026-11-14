@@ -47,6 +47,13 @@ const overlap = (a, b) => T(([a, b]) => {
   return !!p && !!q && p.width > 0 && q.width > 0 && p.left < q.right && q.left < p.right && p.top < q.bottom && q.top < p.bottom;
 }, [a, b]);
 const visible = (sel) => page.locator(sel).first().isVisible();
+/** the control is on screen and on top: what a click at its centre would hit */
+const clickable = (sel) => T((sel) => {
+  const el = document.querySelector(sel), b = el?.getBoundingClientRect();
+  if (!b || !b.width) return false;
+  const x = b.left + b.width / 2, y = b.top + b.height / 2;
+  return x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight && el.contains(document.elementFromPoint(x, y));
+}, sel);
 
 try {
   await page.goto(`http://localhost:${PORT}/`);
@@ -97,6 +104,8 @@ try {
   await page.mouse.up(); await idle();
   ok(await visible('#range') && await visible('.sel-bar.range'), 'a dragged stretch opens its card and the bar over the profile');
   ok(!(await overlap('#range', '#score')), 'the stretch card sits below the score');
+  await page.waitForTimeout(400); // the HUD scrolls the new card into view
+  ok(await clickable('#range #wall-add') && await clickable('#range [data-structure="2"]'), 'the stretch card\'s buttons are on screen, not covered');
   await page.click('#range [data-structure="1"]'); await idle();
   d = await get();
   ok(d.structureOverrides.length === 1 && d.structureOverrides[0].kind === 1, 'Bridge on the stretch card forces a bridge');
@@ -104,6 +113,11 @@ try {
   await shot('forced-bridge');
 
   // 6. noise wall on the selected stretch: right side, 5 m
+  await page.click('#range [data-side="both"]');
+  await page.click('#wall-add'); await idle();
+  ok((await get()).wallOverrides?.length === 2, 'a wall on both sides');
+  await page.keyboard.press('Control+z'); await idle();
+  ok(!(await get()).wallOverrides?.length, 'one Undo takes both sides back');
   await page.click('#range [data-side="R"]');
   await page.fill('#wall-height', '5'); await page.click('#wall-add'); await idle();
   d = await get();
@@ -165,6 +179,8 @@ try {
   const bs = await T((j) => window.trapla.buildingScreen(j, 3), j);
   await page.mouse.click(view.x + bs.sx, view.y + bs.sy); await idle();
   ok(await visible('#building-card'), 'clicking a building on the map opens its card');
+  await page.waitForTimeout(400);
+  ok(await clickable('#building-choice [data-building="keep"]'), 'its buttons are on screen, not covered');
   await page.click('#building-choice [data-building="keep"]'); await idle();
   await shot('keep-building');
   await page.click('#building-choice [data-building="buy"]'); await idle();
@@ -199,9 +215,18 @@ try {
   // 12. the profile key and the HUD's foldable sections
   await page.click('#key-toggle'); await page.waitForTimeout(150);
   ok(await visible('#profile-key'), 'Key opens the full legend of the profile');
+  ok(await clickable('#key-toggle'), 'the Key button stays clickable (closes it again)');
   await shot('profile-key');
   await page.keyboard.press('Escape');
   ok(!(await visible('#profile-key')), 'Esc closes it');
+
+  // 12b. Esc closes the most recently picked card first
+  await T(() => { window.trapla.selectPi(0); window.trapla.selectRange(3000, 3500); });
+  await T((j) => window.trapla.selectBuilding(j), j); await page.waitForTimeout(100);
+  await page.keyboard.press('Escape');
+  ok(!(await visible('#building-card')) && await visible('#range') && await visible('#pi-card'), 'Esc closes the building card picked last, the stretch and bend stay');
+  await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+  ok(!(await visible('#range')) && !(await visible('#pi-card')), 'then the stretch, then the bend');
 
   // 13. start over: one click, a toast offers Undo
   await page.click('#reset'); await idle();
@@ -210,6 +235,11 @@ try {
   await shot('start-over');
   await page.click('#toast button:not(.x)'); await idle();
   ok((await get()).pis.length === 2, 'the toast\'s Undo brings the design back');
+  await page.click('#reset'); await idle();
+  await page.selectOption('#speed', '80'); await idle();
+  ok(!(await visible('#toast')), 'another edit takes the toast (and its Undo) away');
+  await page.keyboard.press('Control+z'); await page.keyboard.press('Control+z'); await idle();
+  ok((await get()).pis.length === 2 && (await get()).speed === 90, 'Ctrl+Z twice: back to the design before Start over');
 
   // 14. the reference design: the overview keeps the route readable (crowded bends shrink to dots,
   //     culverts and walls are small marks); demolished buildings are gone from the map
@@ -221,7 +251,8 @@ try {
   await shot('overview');
   const dem = await T(() => { const r = window.trapla.result(), b = r.demolished[0]; window.trapla.lookAt(r.x[b.i], r.y[b.i], 450, 30, 50); return r.demolished.length; });
   await idle(500);
-  ok(dem > 0, `${dem} demolished buildings, drawn as red squares without their houses`);
+  const shown = await T(() => { const r = window.trapla.result(); return { gone: r.demolished.filter((b) => !window.trapla.buildingShown(b.j)).length, kept: r.noise.receivers.slice(0, 20).filter((p) => window.trapla.buildingShown(p.j)).length }; });
+  ok(dem > 0 && shown.gone === dem && shown.kept > 0, `all ${dem} demolished buildings are removed from the 3D map (${shown.gone}); others stay (${shown.kept} of 20 receivers drawn)`);
   await shot('demolished');
 
   ok(errors.length === 0, `no browser errors ${errors.join(' | ')}`);

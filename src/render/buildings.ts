@@ -227,6 +227,9 @@ export class Buildings {
     for (const c of dirty) attr(c).needsUpdate = true;
   }
 
+  /** render building i was removed by hide() */
+  isHidden(i: number) { return this.hidden.has(i); }
+
   /** show only the chunks near the camera (local x, y of the camera) */
   update(camX: number, camY: number) {
     for (const c of this.chunks) c.mesh.visible = Math.hypot(c.x - camX, c.y - camY) - c.r < MAX_DIST;
