@@ -377,4 +377,5 @@ least-bad curve; squeeze into the leg when tangents physically overlap (always G
 
 Known issues: junction offsets and "left out" bends are only explained in the on-map label, not in the HUD; the
 solver is a heuristic ladder, not a proven optimum (a valid curve may exist that it does not find); a compound curve
-can change shape abruptly when a drag crosses the join / no-join threshold (a few metres).
+can change shape abruptly when a drag crosses the join / no-join threshold (a few metres); "max" samples the
+radius range (12 % steps + the transition-free boundary), so a narrower feasible stretch can be missed.

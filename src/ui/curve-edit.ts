@@ -36,8 +36,8 @@ export class CurveEditor {
   private anchors: { x: number; y: number; z: number }[] = [];
   private inward: { x: number; y: number } = { x: 0, y: 1 };
   private shown = false;
-  /** grip drag in progress: the design as the drag last left it, and how to call it off */
-  private drag: { design: string; abort: () => void } | null = null;
+  /** grip drag in progress: its bend, the design as the drag last left it, and how to call it off */
+  private drag: { i: number; design: string; abort: (restore: boolean) => void } | null = null;
   /** wheel / key steps not yet committed as an undo step: the design they left behind */
   private pending: { timer: number; design: string } | null = null;
   /** true while this editor itself is changing the design */
@@ -114,7 +114,9 @@ export class CurveEditor {
     if (!this.own && (this.pending || this.drag)) {
       const now = JSON.stringify(d);
       if (this.pending && now !== this.pending.design) { clearTimeout(this.pending.timer); this.pending = null; }
-      if (this.drag && (now !== this.drag.design || i === null)) this.drag.abort();
+      // a replaced design is someone else's now; a mere change of selection (Esc) cancels the drag
+      if (this.drag && now !== this.drag.design) this.drag.abort(false);
+      else if (this.drag && i !== this.drag.i) this.drag.abort(true);
     }
     this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed));
     const info = i === null || !this.al ? undefined : this.al.curves[i];
@@ -180,10 +182,11 @@ export class CurveEditor {
 
   private startDrag(e: PointerEvent, side: 0 | 1) {
     const c = this.curve(), i = this.host.selected();
-    if (!c || i === null || !this.al || e.button !== 0) return;
+    if (!c || i === null || !this.al || e.button !== 0 || this.drag) return;
     e.preventDefault();
     e.stopPropagation();
     const g = this.grips[side];
+    const r0 = this.host.design().pis[i].r;
     // direction of the polygon leg the grip slides on, pointing away from the bend
     const p = pointAt(this.al, side === 0 ? c.sStart : c.sEnd);
     const ux = side === 0 ? -p.tx : p.tx, uy = side === 0 ? -p.ty : p.ty;
@@ -196,38 +199,43 @@ export class CurveEditor {
     g.classList.add('drag');
     this.view.controls.enabled = false;
     g.setPointerCapture(e.pointerId);
-    let moved = false;
+    let moved = false, active = true;
     const move = (ev: PointerEvent) => {
+      if (!active || ev.pointerId !== e.pointerId) return;
       const a1 = along(ev);
-      if (a1 === null || !this.drag) return;
+      if (a1 === null) return;
       const r = snap(Math.max(1, t0 + a1 - a0) / tan);
       if (r === this.host.design().pis[i]?.r) return;
       moved = true;
       this.setRadius(i, r);
-      this.drag.design = JSON.stringify(this.host.design());
+      mine.design = JSON.stringify(this.host.design());
     };
-    const end = (commit: boolean) => {
-      if (!this.drag) return;
-      this.drag = null;
+    /** how: commit the change as one undo step, restore the radius the drag started from, or just let go */
+    const end = (how: 'commit' | 'restore' | 'drop') => {
+      if (!active) return;
+      active = false;
+      if (this.drag === mine) this.drag = null;
       g.removeEventListener('pointermove', move);
       g.removeEventListener('pointerup', up);
       g.removeEventListener('pointercancel', up);
       if (g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId);
       g.classList.remove('drag');
       this.view.controls.enabled = true;
-      if (commit && moved) this.host.commit();
+      if (moved && how === 'commit') this.host.commit();
+      else if (moved && how === 'restore') this.setRadius(i, r0);
       this.place();
     };
-    const up = () => end(true);
-    // (refresh() calls abort when the design is changed from elsewhere while the grip is held)
-    this.drag = { design: JSON.stringify(this.host.design()), abort: () => end(false) };
+    const up = (ev: PointerEvent) => { if (ev.pointerId === e.pointerId) end('commit'); };
+    // (refresh() calls abort when the selection or the design changes from elsewhere while the grip is held)
+    const mine = { i, design: JSON.stringify(this.host.design()), abort: (restore: boolean) => end(restore ? 'restore' : 'drop') };
+    this.drag = mine;
     g.addEventListener('pointermove', move);
     g.addEventListener('pointerup', up);
     g.addEventListener('pointercancel', up);
   }
 
   /** a transient (not yet committed) radius change made by this editor */
-  private setRadius(i: number, r: number) {
+  private setRadius(i: number, r: number | null) {
     this.own = true;
     try { this.host.setRadius(i, r, false); } finally { this.own = false; }
   }

@@ -13,8 +13,10 @@ export const snapRadius = (r: number) => Math.min(R_MAX, Math.max(R_MIN, r >= 40
  * Largest radius for bend i that adds no horizontal violation (none involving the bend, and no more in
  * total than with its automatic radius); null if even the automatic radius does not fit.
  * Feasibility is not monotonic in the radius — e.g. room for transitions runs out, then from the
- * transition-free radius on the curve fits again — so the whole range is scanned and the upper edge of
- * the last feasible stretch refined.
+ * transition-free radius on the curve fits again — so the whole range is sampled (12 % steps plus the
+ * transition-free boundary) and the upper edge of the last feasible stretch refined. A feasible
+ * stretch narrower than the sampling can be missed. The result is rounded down to the editing step
+ * when such a value fits, otherwise to the metre.
  */
 export function maxRadiusThatFits(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number): number | null {
   const rules = horizontalRules(speed);

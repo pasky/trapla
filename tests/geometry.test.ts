@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { horizontalViolations } from '../src/core/checks';
 import { horizontalRules } from '../src/core/data/norms';
 import {
-  autoRadius, buildAlignment, EDIT_TOLERANCE, pointAt, roadRules, station, transitionTangent,
+  autoRadius, buildAlignment, EDIT_TOLERANCE, pointAt, roadRules, solveChain, station, transitionTangent,
   type Alignment, type Element, type PI, type Vec2,
 } from '../src/core/horizontal';
 import { buildProfile, elevations } from '../src/core/vertical';
@@ -443,6 +443,17 @@ describe('compound curves', () => {
     const off = buildAlignment(a, b, [{ x: 1000, y: 0, r: 500 }, { x: 1000, y: 1000, r: 520 }], R90);
     expect(msgs(off)[0]).toMatch(/^bends 1 and 2 turn the same way 1,000 m apart: .* with the radius set on bend 1 and bend 2 they cannot be joined into one curve either/);
     expectG1(off, a, b);
+  });
+
+  it('pinned ends that say the same thing twice are not mistaken for an impossible curve', () => {
+    // a 180° turn: the end tangent equals the start tangent, so pinning both to 498 m is one condition, not two
+    const half = { px: [1000, 1000], py: [0, 1000], ux: [1, 0, -1], uy: [0, 1, 0], tau: [1, 1], manual: [500, null] };
+    const sol = solveChain(half, R90, 498, 498, EDIT_TOLERANCE)!;
+    expect(sol.R[1]).toBeCloseTo(500, 9);
+    expect(sol.sOut).toBeCloseTo(498, 9);
+    expect(sol.ok).toBe(true);
+    // … and two different values really are impossible
+    expect(solveChain(half, R90, 498, 480, EDIT_TOLERANCE)).toBeNull();
   });
 
   it('a long run of fixed radii that cannot be joined is still solved quickly', () => {

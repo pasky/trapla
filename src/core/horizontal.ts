@@ -179,6 +179,9 @@ export interface ChainSol {
   ok: boolean;
 }
 
+/** no radius or tangent length of a sane solution is larger than this, m */
+const REACH = 1e7;
+
 /** Gaussian elimination with partial pivoting; overwrites M (n×n, row-major) and rhs. */
 function solveLinear(M: Float64Array, rhs: Float64Array, n: number): boolean {
   for (let c = 0; c < n; c++) {
@@ -261,14 +264,25 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
   };
   const W = Array.from({ length: m }, (_, j) => reduce(aW, j * N, cW[j])); // w_j = W[j].r·y + W[j].c
   const O = reduce(aOut, 0, cOut); // sOut = O.r·y + O.c
-  // hard conditions: the curve ends on the outgoing leg's line, and a pinned end tangent. A condition
-  // that no unknown can influence (e.g. a 180° turn of given radii) either holds already or never will.
+  // hard conditions: the curve ends on the outgoing leg's line, and a pinned end tangent. Each is
+  // reduced against those already taken; what then no unknown can influence (it follows from the
+  // others, or e.g. a 180° turn of given radii) either holds already or never will.
   const cons: { row: Float64Array; d: number }[] = [];
-  const require = (row: Float64Array, d: number): boolean => {
+  const require = (row0: Float64Array, d0: number): boolean => {
+    const row = Float64Array.from(row0);
+    let d = d0;
+    for (const c of cons) {
+      let dot = 0, nn = 0;
+      for (let f = 0; f < F; f++) { dot += row[f] * c.row[f]; nn += c.row[f] * c.row[f]; }
+      const k = dot / nn;
+      for (let f = 0; f < F; f++) row[f] -= k * c.row[f];
+      d -= k * c.d;
+    }
     let big = 0;
     for (let f = 0; f < F; f++) big = Math.max(big, Math.abs(row[f]));
-    if (big < 1e-9) return Math.abs(d) < 1e-6;
-    cons.push({ row, d });
+    if (big * REACH < 1e-6) return Math.abs(d) < 1e-6; // (no unknown is larger than REACH)
+    for (let f = 0; f < F; f++) row[f] /= big; // scaled, so that a weak but real condition is not lost in the solve
+    cons.push({ row, d: d / big });
     return true;
   };
   if (!require(W[m - 1].r, -W[m - 1].c)) return null;
@@ -358,10 +372,10 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
       w.push(v);
       if (j < m - 1) off = Math.max(off, Math.abs(v));
     }
-    if (!(Math.abs(w[m - 1]) < 1e-6) || !(sIn > -sMinIn) || !(sOut > -sMinOut)) return null;
+    if (!(Math.abs(w[m - 1]) < 1e-6) || !(sIn > -sMinIn) || !(sOut > -sMinOut) || !(sIn < REACH) || !(sOut < REACH)) return null;
     let bad = 0;
     for (let i = 0; i < m; i++) {
-      if (!(R[i] >= floorR) || !Number.isFinite(R[i])) return null;
+      if (!(R[i] >= floorR) || !(R[i] <= REACH)) return null;
       if (manual[i] === null && R[i] < rules.minRadius) bad = Math.max(bad, rules.minRadius / R[i] - 1);
       if (i > 0 && (manual[i] === null || manual[i - 1] === null)) bad = Math.max(bad, ratioExcess(R[i], R[i - 1], rules));
     }
