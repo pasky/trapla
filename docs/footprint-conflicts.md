@@ -36,7 +36,10 @@ Walls use a height-dependent RC/foundation/drainage assembly from
 [`research/18-footprint-remedies-rates.md`](../research/18-footprint-remedies-rates.md), not an
 invented universal CZK/m² tariff. Principal OTSKP 2026 items are 327325 concrete, 327365 reinforcement,
 13173 foundation excavation, 17411 backfill, 212625 complete rear drainage and 214613 filtration.
-The reported face area is measured; the effective price/m² varies with wall height.
+The reported face area is measured; the effective price/m² varies with wall height. Wall
+construction is booked at each actual station and its own urban surcharge, independently of
+how adjacent faces are grouped for a tooltip. Channel construction/land allocations likewise
+retain their distributed stations; land receives no construction surcharge.
 
 The preferred setback is 1.5 m outside the protected feature and the preferred face is at least
 0.75 m outside the crown. A constrained vertical face can instead stand at the crown edge,
@@ -64,7 +67,8 @@ includes haul up to 1 km. Reused backfill is not also charged for stockpiling. T
 `depth × (bottom + sideSlope × depth)`, not the area of its bounding rectangle.
 
 New road/rail/water interceptions reject the proposal unless an existing water tie-in is actually
-preserved. Continuous old-reach checks prevent backfilling a confluence and stranding a tributary
+preserved. Screening covers the full excavated bank (including the wider adjacent section),
+protected raster-pixel corners and interior/boundary no-data cells—not just the channel centreline. Continuous old-reach checks prevent backfilling a confluence and stranding a tributary
 between samples. Centreline assemblies are not also billed as channel relocations. Accepted source
 intervals alone are removed from the final footprint screen. Construction is under **Road crossings**;
 land is under **Land**, without construction surcharge.
@@ -77,7 +81,8 @@ priced diversion and rejection of lost tributaries/new unpriced confluences.
 ### Bridges, portals and supports
 
 `src/core/support-layout.ts` searches local clear sites for automatic abutments, portals and piers.
-A run containing a manual structure override is not silently redesigned. The bounded search allows
+A run containing a manual structure override is not silently redesigned, but its actual spans and
+soffit clearances are still validated; painting the same bridge manual cannot erase a violation. The bounded search allows
 end movement up to 300 m and clear spans up to 180 m. These are game engineering limits, not norms.
 
 Abutments/portals screen 6 m along × (crown + 4 m) across; piers screen 2.4 m along × 0.55 crown.
@@ -102,7 +107,9 @@ a failed shortcut can retry at the nearest **actual** clear junction. The 2 m si
 uncertainty guard only prevents losing branches—it does not invent source topology or anchors.
 
 Only exact built/removed source intervals are reserved. There is no blanket half-station pad or
-translation of one crossing's ownership onto another nearby road. Failed geometry cannot claim
+translation of one crossing's ownership onto another nearby road. The old 150 m endpoint billing
+margin no longer hides nearby crossings: they enter engineering. A defined boundary connection
+owns only its grade-compatible pavement overlap in the actual endpoint crown cell. Failed geometry cannot claim
 removed roads. Complete, physically usable crossing approaches can still be used when an unrelated
 spacing rule makes the player's choice invalid.
 
@@ -131,8 +138,14 @@ indexes, an indexed footprint and row-wise raster bounds avoid route × whole-ne
 Protected rail/water bits remain active where road paint overwrites the visible raster class;
 5 m raster pixels retain their half-cell screening uncertainty.
 
+Full vector-water ribbons are screened even without redundant raster paint; missing river widths
+use the same 5 m study default throughout. Bank-only contact is not fabricated culvert length.
 Short longitudinal culverts still require a sourced opening/length assembly, real cover and clear
-outlets. Compatible adjoining extensions reuse existing heads and charge their actual extra length.
+outlets. Only feasible pipe/box assemblies own barrel intervals—not raw bridge-required crossings.
+Ownership is subtracted before water-wall constraint points are chosen, and shortening a barrel
+triggers bounded section restoration/rechecking rather than double-applied earthwork or wall costs.
+Exact crossing elevations and a shared numerical cover tolerance keep ownership and validation
+consistent at the minimum cover, independently of absolute altitude. Compatible adjoining extensions reuse existing heads and charge their actual extra length.
 Vector ownership follows the asymmetric, channel-aligned barrel envelope, including its provisional
 20° chord flare—not a circle concealing a connected dog-leg. The directionless raster fallback is
 explicitly uncertain. See [research/17](../research/17-culvert-prices.md).
@@ -166,31 +179,32 @@ never writes an invalid result and requires `--write` to replace a published inp
 
 Current vector-watercourse pack; money below is **M CZK before surcharge**, except whole-route totals:
 
-| Design | Wall length m / face m² | Wall M CZK | Road works: count / m / M CZK | Adjusted support runs / max span m | Total bn CZK | Violations |
+| Design | Wall length m / face m² | Wall M CZK | Road works: count / m / M CZK | Explicit support layouts / max span m | Total bn CZK | Violations |
 |---|---:|---:|---:|---:|---:|---:|
-| straight | 1,729.6 / 7,057.6 | 96.546 | 1 / 37.5 / 1.734 | 16 / 142.0 | 10.265487 | 0 |
-| best | 1,349.8 / 6,241.7 | 99.916 | 1 / 59.9 / 3.083 | 7 / 49.0 | 4.743266 | 0 |
-| demo | 1,809.4 / 8,937.8 | 146.182 | 3 / 200.3 / 4.363 | 7 / 56.6 | 5.292406 | 0 |
-| direct-80 | 1,389.7 / 5,488.8 | 84.108 | 4 / 406.6 / 27.814 | 11 / 79.7 | 5.212337 | 0 |
-| direct-90 | 1,299.7 / 6,459.8 | 106.388 | 1 / 94.7 / 13.201 | 12 / 69.0 | 5.665303 | 0 |
-| town-centre | 1,430.0 / 7,079.5 | 114.591 | 2 / 112.0 / 3.416 | 10 / 120.0 | 11.640221 | 0 |
+| straight | 1,539.7 / 6,561.2 | 91.244 | 1 / 37.5 / 1.734 | 14 / 142.0 | 10.266047 | 0 |
+| best | 1,219.8 / 5,078.1 | 76.704 | 1 / 59.9 / 3.083 | 6 / 61.0 | 4.758320 | 0 |
+| demo | 1,179.6 / 4,275.7 | 58.911 | 3 / 223.2 / 5.740 | 8 / 56.6 | 5.375679 | 0 |
+| direct-80 | 909.8 / 3,498.4 | 56.895 | 4 / 406.6 / 27.814 | 11 / 92.0 | 5.244108 | 0 |
+| direct-90 | 1,069.7 / 4,780.2 | 73.275 | 1 / 94.7 / 13.201 | 12 / 64.0 | 5.726710 | 0 |
+| town-centre | 1,170.0 / 5,545.0 | 87.906 | 2 / 112.0 / 3.416 | 11 / 120.0 | 11.690899 | 0 |
 
-No blocked road costs or selected channel relocations are hidden in this table. Component-array
-sums differ from total bills by at most 0.000002 CZK (floating-point summation).
+No blocked road costs or selected channel relocations are hidden in this table. Support counts
+refer to runs with explicit pier stations, not every moved abutment/portal. Component-array sums
+match total bills (below the 0.005 CZK regression tolerance).
 
 Same **current pack and same repaired inputs**, main `3dccc23` (model 13) versus model 15:
 
 | Design | Model 13 bn CZK | Model 15 bn CZK | Change M CZK |
 |---|---:|---:|---:|
-| straight | 8.806911 | 10.265487 | +1,458.575 |
-| best | 4.162396 | 4.743266 | +580.870 |
-| demo | 4.855298 | 5.292406 | +437.107 |
-| direct-80 | 4.787410 | 5.212337 | +424.927 |
-| direct-90 | 5.015213 | 5.665303 | +650.090 |
-| town-centre | 11.738640 | 11.640221 | −98.419 |
+| straight | 8.806911 | 10.266047 | +1,459.135 |
+| best | 4.162396 | 4.758320 | +595.923 |
+| demo | 4.855298 | 5.375679 | +520.380 |
+| direct-80 | 4.787410 | 5.244108 | +456.698 |
+| direct-90 | 5.015213 | 5.726710 | +711.497 |
+| town-centre | 11.738640 | 11.690899 | −47.741 |
 
 These are intentional engineering changes, not just additive remedy rows: profiles, structures,
-earthwork and acquisitions change. For example straight adds 1,255.934 M in bridges before
+earthwork and acquisitions change. For example straight adds 1,245.123 M in bridges before
 surcharge; town reduces building acquisition by 781.902 M while adding bridge/tunnel work.
 Subtracting the new footprint bill lines cannot reproduce the old designs.
 
@@ -205,15 +219,31 @@ regression. See `scripts/eval-regression.ts` for explicit reviewed-model-change 
 
 ## Performance
 
-Correct-tree warmed measurements before the final performance pass put model 15 at roughly
-75–115 ms versus 62–88 ms for unchanged main on the same updated pack and repaired inputs.
-The main added work is repeated section/retaining/support engineering. The `sections` cumulative
-checkpoint is overwritten on each engineering refinement; its delta from `profile` includes
-previous engineering passes and Auto lifts, not just the final section calculation.
+Final reviewed-run measurements at `10393cd`: 15 warmups, 30 evaluations, 2 GB Node heap,
+separate consecutive processes, the same updated pack and repaired inputs. The subsequent
+cover-tolerance normalization leaves these six route outputs unchanged.
 
-**The ≤3 ms added-work and ≤50 ms total targets are not yet met by these measurements.** Do not
-reuse the earlier detection-only model-14 timing claim for the automatic engineering model.
-Performance work must preserve the frozen bills, geometry and validity on both recognized packs.
+| Design | Main model 13 ms | Model 15 ms | Retaining work ms | Support work ms | Extra profile DP ms | Final footprint screen ms |
+|---|---:|---:|---:|---:|---:|---:|
+| straight | 62.2 | 100.9 | 20.8 | 5.6 | 0 | 6.1 |
+| best | 65.3 | 75.5 | 9.4 | 1.3 | 0 | 3.7 |
+| demo | 67.4 | 82.0 | 12.1 | 1.2 | 0 | 4.9 |
+| direct-80 | 70.4 | 118.2 | 18.3 | 1.9 | 0 | 7.8 |
+| direct-90 | 61.1 | 95.2 | 10.8 | 2.6 | 14.2 | 4.3 |
+| town-centre | 71.9 | 75.5 | 8.8 | 2.8 | 0 | 4.4 |
+
+**Neither the ≤3 ms added-work nor the ≤50 ms total target is achieved.** Net before/after
+elapsed differences are not isolated overhead: the changed engineering also alters later crossing
+work. Retaining and support columns sum all engineering passes. The semantics-preserving cache/
+allocation pass reduced engineering work by roughly 2–5 ms before the later correctness repairs;
+it did not solve the budget. Raw-section and cover caches remain evaluation-local, preserving
+mutable-terrain semantics. Further work needs to target repeated retaining passes and, for direct-90,
+the additional DP—not weaken geometry checks or republish old detection-only timing claims.
+
+Unprefixed timing keys are cumulative checkpoints; `sections` is overwritten each refinement.
+`work.*` measures elapsed work summed across passes (`work.engineering` includes its substeps),
+and `count.*` counts calls. Future performance changes must preserve the frozen bills, geometry
+and validity on both recognized packs.
 
 Reproduce audits with:
 

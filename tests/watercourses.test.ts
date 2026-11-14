@@ -24,6 +24,21 @@ const design: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'man
   vpis: [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }] };
 
 describe('watercourse crossing assemblies', () => {
+  it.each([0, 100])('keeps exact-threshold culvert feasibility consistent at altitude %s', base => {
+    const terrain = new Terrain({ nx: 260, ny: 100, cell: 5, base, scale: 1, q: new Uint16Array(26000), lc: new Uint8Array(26000),
+      watercourses: { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
+        points: [[600, 100], [600, 400]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] } });
+    const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 1100, y: 250 } };
+    const run = (height: number) => evaluate(ctx, { ...design, vpis: [
+      { s: 0, z: base, r: null }, { s: 300, z: base + height, r: null },
+      { s: 700, z: base + height, r: null }, { s: 1000, z: base, r: null },
+    ] });
+    const exact = run(1.8);
+    expect(exact.waterCrossings[0].structure).toBe('pipe');
+    expect(exact.valid).toBe(true);
+    expect(exact.footprintConflicts.filter(c => c.action === 'blocked')).toEqual([]);
+    expect(run(1.8 - 2e-6).valid).toBe(false);
+  });
   it('deduplicates shared vertices but preserves distinct nearby streams and recrossings', () => {
     const d = data(1);
     d.reaches.push({ ...d.reaches[0], id: 2, points: [[1260, 0], [1260, 250], [1260, 500]] });

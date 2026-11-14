@@ -12,7 +12,7 @@ import { KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadCrossing, RoadNet, RoadSegment } from './roadnet';
-import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, type WaterCrossing, type WaterSegment } from './watercourses';
+import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, waterCoverFits, type WaterCrossing, type WaterSegment } from './watercourses';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
@@ -373,7 +373,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const outlets = [original[0], original[original.length - 1]].every(p => !grid.interior(p) || adjoining.some(other => barrelContains(p, barrels.get(other)!, 0.05)));
     const reasons = [bankOnly ? 'channel bank overlaps the footprint outside a culvert axis' : '',
       h.structure ? `${h.structure} intersects the channel` : '', size.type === 'bridge' ? 'exceeds practical culvert opening/length limits' : '',
-      !compatible ? 'incompatible existing barrel' : '', !outlets ? 'no clear outlet' : '', minCover < size.minHeight ? `barrel cover ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'missing'} m, needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
+      !compatible ? 'incompatible existing barrel' : '', !outlets ? 'no clear outlet' : '', !waterCoverFits(minCover, size.minHeight) ? `barrel cover ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'missing'} m, needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
     const ok = reasons.length === 0;
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,
       s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length, affectedLength,

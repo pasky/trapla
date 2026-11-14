@@ -58,11 +58,13 @@ export function barrelEnvelope(c: WaterCrossing, left: number, right: number, ds
     // PROVISIONAL chord tolerance for modest OSM channel bends; still rejects side dog-legs.
     flare: Math.tan(20 * Math.PI / 180), raster: c.id < 0 };
 }
+/** Shared numerical tolerance for crossing validation and ownership, independent of altitude. */
+export function waterCoverFits(cover: number, minimum: number): boolean { return cover >= minimum - 1e-6; }
 /** Only a feasible pipe/box owns a buried channel interval. A raw crossing that needs a
  * bridge (or lacks barrel cover) cannot exempt adjacent earthwork from a bank constraint. */
 export function culvertEnvelope(c: WaterCrossing, left: number, right: number, ds: number, routeTx: number, routeTy: number, cover: number): BarrelEnvelope | undefined {
   const size = waterSize(c, left + right);
-  return size.type !== 'bridge' && cover >= size.minHeight ? barrelEnvelope(c, left, right, ds, routeTx, routeTy) : undefined;
+  return size.type !== 'bridge' && waterCoverFits(cover, size.minHeight) ? barrelEnvelope(c, left, right, ds, routeTx, routeTy) : undefined;
 }
 export function barrelContains(p: { x: number; y: number }, b: BarrelEnvelope, pad = 0): boolean {
   const dx = p.x - b.x, dy = p.y - b.y;

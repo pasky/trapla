@@ -150,15 +150,19 @@ What exists (details and commands in `README.md`):
   Vertical retaining faces, full turning disks and removed-road/channel annotations show the
   construction; final unresolved constraints remain explicit violations with measured diagnostics.
 - Straight-line Automatic and all five refreshed saves are VALID on the current vector-water pack.
-  Whole totals in bn CZK: straight 10.265487; best 4.743266; demo 5.292406; direct80 5.212337;
-  direct90 5.665303; town 11.640221. Four saves received small bounded PI refinements, not new routes.
+  Whole totals in bn CZK: straight 10.266047; best 4.758320; demo 5.375679; direct80 5.244108;
+  direct90 5.726710; town 11.690899. Four saves received small bounded PI refinements, not new routes.
   Counts, face areas, lengths, sources, paired cost changes and limits: `docs/footprint-conflicts.md`.
 - Model-13 fixtures and their pack fingerprint remain untouched. Separate model-15 fixtures freeze
   bills, validity and built geometry on both known packs; no subtract-new-rows workaround remains.
   Reproduce with `scripts/footprint-audit.ts` and `scripts/eval-regression.ts` (`PACK=` selects data).
-- Automatic engineering is not covered by the old detection-only ~3 ms claim. Before the final
-  performance pass, warmed totals were roughly 75–115 ms versus 62–88 ms for unchanged main on the
-  same inputs. The ≤3 ms added / ≤50 ms total targets are not yet demonstrated.
+- Review regressions cover true endpoint ownership, manual bridge depth validation, full vector
+  water ribbons/excavated banks, vertical paid road-support faces and per-cell wall surcharges.
+  Only feasible pipe/box assemblies own water intervals; retained barrel changes are rechecked.
+- Automatic engineering is not covered by the old detection-only ~3 ms claim. Final reviewed-run
+  warmed totals are 75.5–118.2 ms versus 61.1–71.9 ms for unchanged main on identical inputs.
+  The ≤3 ms added / ≤50 ms total targets remain unmet despite an exact-output cache/allocation pass.
+  Attributable `work.*` timings identify repeated retaining work and the direct-90 DP retry.
 
 ### Travel-time target X and traffic Y
 

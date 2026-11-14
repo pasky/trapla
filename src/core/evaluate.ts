@@ -40,7 +40,7 @@ import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { CULVERT_RULES } from './data/culverts';
-import { barrelLength, culvertEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
+import { barrelLength, culvertEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, waterCoverFits, type WaterCrossing, type WaterResult } from './watercourses';
 
 export interface Design {
   category: CategoryId;
@@ -918,7 +918,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     const bridgeSpan = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, size.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks) / Math.max(0.01, c.sine);
     const clearBridge = !!run && c.s - bridgeSpan / 2 >= run.s0 && c.s + bridgeSpan / 2 <= run.s1;
     const need = kind[i] === KIND.bridge ? STRUCTURE_RULES.riverClearance : size.minHeight;
-    const ok = isTunnel || (above >= need - 1e-6 && (kind[i] === KIND.bridge ? clearBridge : kind[i] === KIND.earth && size.type !== 'bridge'));
+    const ok = isTunnel || (waterCoverFits(above, need) && (kind[i] === KIND.bridge ? clearBridge : kind[i] === KIND.earth && size.type !== 'bridge'));
     if (!ok) violations.push({ kind: 'crossing', s0: c.s, s1: c.s,
       title: shortTunnel ? 'Watercourse tunnel is too short' : above < 0 ? 'Cut intercepts a watercourse' : 'Watercourse crossing is obstructed',
       fix: shortTunnel ? `Provide at least ${STRUCTURE_RULES.minTunnelLength} m of bored tunnel with sufficient cover, or pass above the channel` : size.type === 'bridge' || kind[i] === KIND.bridge ? `Provide a bridge clearing the channel and banks (${bridgeSpan.toFixed(1)} m opening along the road), at least ${need.toFixed(1)} m above the bed`
