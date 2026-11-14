@@ -128,19 +128,19 @@ What exists (details and commands in `README.md`):
 - **X = 14.5 min.** At 90 km/h this allows 21.75 km = 1.17 × the straight line (the official line's 21 km fits);
   at 80 km/h 19.33 km = 1.04 × the straight line (only a nearly straight route); 70 km/h would need ≤ 16.9 km
   < 18.59 km, i.e. impossible.
-- Cost model 4 calibration (`scripts/optimize.ts`, 2,500 seeded + 3,500 fresh trials per strategy, whole-metre
-  PIs): official-corridor bypass at 90 km/h → **3.101 bn CZK**, 21.03 km, 14.02 min; direct eastern fringe at
-  80 → **3.503 bn**, 19.08 km, 14.31 min; direct fringe at 90 → **3.647 bn**, 19.59 km, 13.06 min. The slower
+- Cost model 5 repricing of saved local-search designs (2,500 seeded + 3,500 fresh trials per strategy under
+  model 4, whole-metre PIs): official-corridor bypass at 90 km/h → **3.039 bn CZK**, 21.03 km, 14.02 min;
+  direct eastern fringe at 80 → **3.436 bn**, 19.08 km, 14.31 min; direct fringe at 90 → **3.613 bn**, 19.59 km, 13.06 min. The slower
   direct route uses 98.7% of the time allowance; 70 remains impossible. Keep X = 14.5 min: it allows bypass vs
-  short/fringe strategies without making the slower road dominant. The 13% / 18% whole-route premiums are
+  short/fringe strategies without making the slower road dominant. The 13% / 19% whole-route premiums are
   explained by length/topography and mostly-open fringe routing, not a cheap dense-city corridor; the actual
-  centre route is 10.012 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
+  centre route is 9.079 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
   are local-search results, not proven minima; re-check as players find better designs.
 
 ### Reference design numbers (`scripts/demo-design.json`, S 9.5, 90 km/h, auto profile)
 
-Cost model 4: 20.81 km, 13.87 min, **4.301 bn CZK = 207 M CZK/km**; includes eight noise buyouts
-(407 M). This reference is not the cheapest bypass; the reoptimised comparison is below.
+Cost model 5: 20.81 km, 13.87 min, **3.957 bn CZK = 190 M CZK/km**; includes three noise buyouts
+(76 M). This reference is not the cheapest bypass; the saved-design comparison is below.
 
 ### PROVISIONAL / placeholder values (all in `src/core/data/`)
 
@@ -191,7 +191,7 @@ Cost model 4: 20.81 km, 13.87 min, **4.301 bn CZK = 207 M CZK/km**; includes eig
 
 ## Town cost model and cost breakdown (2026-11-14)
 
-Cost model 4: research-based prices, per-cell accounting, and explicit noise feasibility / dwelling buyouts.
+Cost model 5: research-based prices, per-cell accounting, and geometric noise barriers / dwelling buyouts.
 The model distinguishes a dense urban cut-through from a shorter route skirting the eastern settlement edge;
 whole-route ratios alone do not measure the cost of building through town.
 
@@ -264,20 +264,26 @@ whole-route ratios alone do not measure the cost of building through town.
   D = 100 m × (Q / 9,000)^(2/3) × (v / 90)^(5/3): 100 m at 90 km/h, 82 m at 80, 66 m at 70.
   At each nearby station, distance d is measured from the road axis to the **nearest oriented-rectangle
   façade**, minus 2 m to the protected outdoor receiver (clamped to 1 m); excess E = 15·log₁₀(D/d) dB.
-  A 3 / 4 / 5 m wall removes 7 / 10 / 12 dB for low receivers. The highest occupied receiver is 1.5 m +
-  3 m × (storeys − 1) above the building's sampled ground; attenuation loses 2 dB per metre above the wall
-  top, down to zero. The top is relative to road grade, so bridge/embankment elevation matters. This simple
-  loss-of-screening rule is invented, not diffraction physics; tagged levels or kind defaults are used for
-  houses as well as blocks. Contiguous walls take the worst protected dwelling's required height, with 50 m
-  end margins; billed surface is length × height. Tunnels and cuts ≥ 4 m on that side still screen; terrain
-  under a bridge never screens it. Only houses/apartments are receivers, not garages, sheds, industry or civic.
+  The highest occupied receiver is 1.5 + 3 × (storeys − 1) m above building ground, using tagged levels or
+  kind defaults. Each pair uses an equivalent 2D section: source at 1.75 m from the axis towards the receiver,
+  0.5 m above road grade; wall at crown/2 + 1.5 m, based at road grade (shoulder-side allowance, **not the
+  embankment toe**, same on bridges). The protected-façade distance supplies the horizontal receiver position.
+  For each 3 / 4 / 5 m wall, test source-to-receiver line of sight at the wall; if the receiver sees over it,
+  benefit is zero. Otherwise δ = source→top + top→receiver − direct, N = 2δ/0.68, and
+  IL = clamp(10·log₁₀(3 + 20N) − 5, 0, 13) dB. This simplified Maekawa expression at 500 Hz is corrected by
+  a **provisional 5 dB allowance**, not a standard traffic correction, for distributed/broadband noise and
+  omitted ground/end effects. The 13 dB cap is conservative between FHWA's 10 dB “attainable” and 15 dB “very
+  difficult”; sources and caveats in research/09 §5. A distant fourth-floor receiver can lie well inside the
+  barrier's shadow; height above the wall alone does not imply failure. Contiguous walls take the worst
+  protected dwelling's required height, with 50 m end margins; billed surface is length × height. Tunnels and
+  cuts ≥ 4 m on that side still screen; terrain under bridges never does. Only houses/apartments are receivers.
 - **Noise buyouts**: if any unscreened station cannot protect a dwelling with a 5 m wall, acquire the whole
   building at 1.5× its usual value **plus demolition**, using the same kind-specific valuation as footprint
   removals. Demolition prevents continued residential exposure; retaining it for another use is not modelled.
   `Result.boughtOut`, `parts.noiseBuyouts` and the HUD/profile distinguish these from footprint demolitions.
   Windows are not a substitute: they address indoor noise, not the protected outdoor façade receiver.
   No blanket 50 m protection-zone purchase rule is added (research/07); the noise rule already removes close
-  homes (about 18 m façade-to-axis for a low receiver at 90 km/h). Parcel severance remains unmodelled.
+  homes (about 16 m façade-to-axis for a low receiver at 90 km/h). Parcel severance remains unmodelled.
 - **Mass balance** (found while re-running the comparisons): with depth-dependent excavation the old fixed
   decision prices left the reference design buying 1.15 M m³ of fill (+0.9 bn). The bill is very sensitive to
   how the auto-profile values cut against fill (± 5 % for ± 15 % of that value), so the auto-profile now
@@ -313,44 +319,44 @@ price cannot be determined (research/07 §1).
 | Excavation class depth bands | I to 3 m, II to 8 m, III below | gameplay heuristic, not geology: OTSKP classes are by excavability (research/09 §3) |
 | Noise distance and scaling | 100 m at 9,000 veh/day and 90 km/h; exponents 2/3 and 5/3 | UNVERIFIED screening heuristic (research/09 §2) |
 | Noise wall | 3 / 4 / 5 m, 10,000 CZK/m²; 50 m margins; cut ≥ 4 m screens | price: research/09 §1 (range 8–14k); height/length/screening choices PROVISIONAL |
-| Excess and attenuation | 15·log₁₀(D/d); 7 / 10 / 12 dB for 3 / 4 / 5 m walls | PROVISIONAL feasibility surrogate, not legal compliance |
-| Upper-floor receiver | 1.5 + 3 × (levels − 1) m; −2 dB benefit per metre above wall top | PROVISIONAL; local building ground and road grade included |
+| Excess and attenuation | E = 15·log₁₀(D/d); IL = clamp(10·log₁₀(3 + 40δ/0.68) − 5, 0, 13) | Shadow-zone Maekawa approximation; correction/cap PROVISIONAL (research/09 §5) |
+| Source / wall position | source +0.5 m high, 1.75 m off axis; wall at crown/2 + 1.5 m | PROVISIONAL equivalent 2D section at road grade, not slope toe |
+| Upper-floor receiver | 1.5 + 3 × (levels − 1) m above building ground | PROVISIONAL; geometric sightline and path difference, not a height-only penalty |
 | Noise-infeasible dwelling | 1.5× usual value + kind-specific demolition; billed separately | acquisition decision PROVISIONAL; no window-only outdoor compliance |
 | Material value for decisions | search in −196 … 536 CZK/m³ from 200; tolerance 1.5 m³/m | bounds = haul to a tip / bought fill less placing |
 
 ### Numbers with the new model (S 9.5, auto profile, `npx tsx scripts/bench.ts <design.json>`)
 
-Cost model **4**, research prices rebased from main. All five saved designs below are valid; no tunnel.
-The straight auto-profile start is 7,212 M CZK (18.59 km). Per-cell parts sum to every total.
+Cost model **5**, with geometric barriers. All five saved alignments are held fixed from model 4 to isolate
+this correction (not reoptimised); all remain valid, no tunnel. The straight auto-profile start is 7,061 M
+CZK (18.59 km). Per-cell parts sum to every total.
 
 | M CZK | Reference bypass | Optimised bypass 90 | Direct fringe 80 | Direct fringe 90 | Town centre 90 |
 |---|---:|---:|---:|---:|---:|
 | design file (`scripts/`) | `demo-design.json` | `best-design.json` | `direct-80-design.json` | `direct-90-design.json` | `town-centre-design.json` |
 | length km / min | 20.81 / 13.87 | 21.03 / 14.02 | 19.08 / 14.31 | 19.59 / 13.06 | 18.94 / 12.62 |
-| **total** | **4,301** | **3,101** | **3,503** | **3,647** | **10,012** |
-| per km | 207 | 147 | 184 | 186 | 529 |
+| **total** | **3,957** | **3,039** | **3,436** | **3,613** | **9,079** |
+| per km | 190 | 144 | 180 | 184 | 479 |
 | road base | 864 | 862 | 769 | 782 | 722 |
 | earthworks | 1,043 | 700 | 580 | 816 | 1,575 |
 | bridges | 278 | 319 | 609 | 614 | 1,160 |
 | road crossings | 190 | 91 | 124 | 92 | 76 |
-| noise walls | 138 | 100 | 215 | 135 | 323 |
+| noise walls | 126 | 73 | 176 | 119 | 289 |
 | other objects | 695 | 591 | 663 | 731 | 1,197 |
 | land / forest | 270 / 12 | 229 / 8 | 247 / 9 | 235 / 13 | 324 / 15 |
 | footprint buildings (count) | 405 (18) | 167 (11) | 260 (35) | 210 (27) | 3,375 (116) |
-| noise buyouts (count) | 407 (8) | 35 (1) | 27 (3) | 18 (2) | 1,245 (59) |
+| noise buyouts (count) | 76 (3) | 0 (0) | 0 (0) | 0 (0) | 345 (13) |
 | in built-up area km | 1.21 | 0.44 | 1.69 | 1.00 | 2.17 |
 | bridges: count / m | 6 / 480 | 7 / 550 | 9 / 1,050 | 9 / 1,060 | 11 / 2,000 |
-| noise walls m / m² | 3,359 / 13,794 | 2,319 / 9,997 | 5,058 / 21,521 | 3,708 / 13,505 | 7,009 / 32,345 |
+| noise walls m / m² | 3,688 / 12,575 | 2,439 / 7,318 | 5,088 / 17,613 | 3,728 / 11,925 | 7,419 / 28,926 |
 | crossings (paid) | 31 (28) | 28 (24) | 31 (24) | 35 (23) | 40 (24) |
 | cut / fill k m³ | 2,079 / 1,763 | 1,542 / 1,310 | 1,302 / 1,106 | 1,705 / 1,452 | 2,727 / 2,440 |
 
-Optimisation: `scripts/optimize.ts <speed> <iterations> <start> <out> <seed>`. Existing-design starts used
-2,500 trials (bypass/direct80/direct90 seeds 20261114/15/16); fresh official-corridor / straight80 / straight90
-starts used 3,500 (seeds 20261117/18/19). Seeded results: 3,101 / 3,503 / 3,840 M; fresh: 3,146 / 3,550 /
-3,647 M. Saved the cheapest valid result of each strategy, not a claim of global optimality. Bypass searches
-start in the official corridor but are not constrained to it. Before reoptimisation the old best/direct80
-geometries cost 3,255 / 3,733 M; re-routing avoids costly noise failures rather than paying for them blindly.
-Reproduce with model-4 code (commit `cecb3e9`); original inputs are retained in commit `a6a93b6`:
+Search provenance: the saved bypass/direct80 are seeded-search outputs, direct90 the fresh-search output
+(the cheapest valid result of each strategy under model 4). Bypass searches start in the official corridor
+but are not constrained to it. No global-optimality claim. Reproduce those searches with model-4 code
+(commit `cecb3e9`); original inputs remain in commit `a6a93b6`. Evaluate the saved outputs with current code
+for the model-5 numbers above:
 
 ```sh
 git show a6a93b6:scripts/best-design.json > /tmp/start-bypass.json
@@ -363,8 +369,8 @@ npx tsx scripts/optimize.ts 80 3500 - /tmp/direct80-fresh.json 20261118
 npx tsx scripts/optimize.ts 90 3500 - /tmp/direct90-fresh.json 20261119
 ```
 
-**Calibration and spatial check:** direct80 / bypass = **1.130×**, direct90 / bypass = **1.176×**, actual
-centre / bypass = **3.229×**. The 13% result warranted inspecting the mask, roads and oriented building
+**Calibration and spatial check:** direct80 / bypass = **1.131×**, direct90 / bypass = **1.189×**, actual
+centre / bypass = **2.987×**. The 13% result warranted inspecting the mask, roads and oriented building
 rectangles (`scripts/town-audit.ts design.json map.svg`), not adding a multiplier to force a preferred ratio.
 The 80 km/h line skirts eastern Kryblice / garage rows at km 3–4, crosses the narrow developed valley at the
 western edge of Poříčí's industrial strip around km 5, and skirts / crosses Voletiny at km 6–7. It does not
@@ -374,22 +380,22 @@ substantially overstate the developed corridor.
 
 | Audit metric | Bypass 90 | Direct fringe 80 | Direct fringe 90 |
 |---|---:|---:|---:|
-| Within 300 m of any built-up cell: km / M CZK per km | 7.43 / 192 | 13.38 / 213 | 12.27 / 220 |
+| Within 300 m of any built-up cell: km / M CZK per km | 7.43 / 184 | 13.38 / 208 | 12.27 / 218 |
 | Outside 300 m: M CZK per km | 123 | 115 | 129 |
-| At grade, ≥ 50% built-up footprint: km / M CZK per km | 0.36 / 669 | 1.26 / 373 | 0.54 / 437 |
-| Same urban cells, before explicit property: M CZK per km | 195 | 180 | 211 |
+| At grade, ≥ 50% built-up footprint: km / M CZK per km | 0.36 / 650 | 1.26 / 339 | 0.54 / 407 |
+| Same urban cells, before explicit property: M CZK per km | 176 | 168 | 201 |
 | Rural at grade, outside 300 m: M CZK per km | 120 | 109 | 125 |
 | Same rural cells, before explicit property: M CZK per km | 110 | 101 | 115 |
 
 The 300 m audit tests **all 5 m mask-cell centres**, so it includes open land near villages; it is not the
 same quantity as built-up footprint share. Property here means land, forest, footprint buildings and noise
 buyouts; walls and crossings remain in construction. The direct routes' urban at-grade construction rates
-are 1.78× / 1.83× their rural rates before property (research/09's broad 1.2–2.5× planning range), although
-terrain is not controlled. For direct80, extra bridges/walls/crossings cost +438 M versus the bypass, while
+are 1.66× / 1.74× their rural rates before property (research/09's broad 1.2–2.5× planning range), although
+terrain is not controlled. For direct80, extra bridges/walls/crossings cost +426 M versus the bypass, while
 road base/earthworks save 213 M on a route 1.95 km shorter; the bypass also has its own expensive valley
 crossing and acquisitions. These are plausible reasons for a modest whole-route difference, not evidence
-that building through dense fabric is cheap. The centre design's km 4–5 alone costs **3,777 M** with 82
-footprint removals and 34 additional noise buyouts. No urban multiplier or widened purchase buffer was tuned
+that building through dense fabric is cheap. The centre design's km 4–5 alone costs **3,266 M** with 82
+footprint removals and 5 additional noise buyouts. No urban multiplier or widened purchase buffer was tuned
 to hit a ratio; incomplete yard masks, plot/access severance and acoustic uncertainty remain limitations.
 
 Sensitivity, **saved geometries held fixed, not reoptimised**: changing the provisional reference contour
@@ -397,19 +403,20 @@ from 100 m to research/09's 70 / 150 m bounds gives totals (M CZK):
 
 | Reference D | Bypass | Direct80 | Direct90 | Centre |
 |---|---:|---:|---:|---:|
-| 70 m | 3,014 | 3,416 | 3,601 | 9,280 |
-| 100 m | 3,101 | 3,503 | 3,647 | 10,012 |
-| 150 m | 3,387 | 4,027 | 3,998 | 11,622 |
+| 70 m | 3,011 | 3,390 | 3,578 | 8,924 |
+| 100 m | 3,039 | 3,436 | 3,613 | 9,079 |
+| 150 m | 3,093 | 3,578 | 3,751 | 9,488 |
 
-The bypass remains cheapest among these geometries, but the two direct strategies reverse order; centre
-buyouts vary from 25 to 131. These figures demonstrate sensitivity, not validation of the acoustic model.
+The ordering of these geometries stays the same across this contour range; centre
+buyouts vary from 8 to 26. These figures demonstrate sensitivity, not validation of the acoustic model.
 
 ### Performance
 
-`evaluate()` after calibration: 29–35 ms in Node across the five saved designs (five-run bench means).
-The entire town step (footprint buildings + crossings + noise) is about 1.5–2.2 ms, cost arrays 0.2–0.4 ms.
+`evaluate()` after calibration: 29–34 ms in Node across the five saved designs (five-run bench means).
+The entire town step (footprint buildings + crossings + noise) is about 1.4–3.0 ms, cost arrays 0.2–0.4 ms.
 Noise queries use the building spatial hash, deduplicate candidates per station, and cache actual exposed
-pairs; no station × building matrix. The auto-profile / mass-balance search still dominates.
+pairs; no station × building matrix. Source-to-wall legs are precomputed per evaluation; the required path
+difference is calculated once per pair, avoiding three attenuation logarithms. The auto-profile / mass-balance search still dominates.
 
 ### Known issues of this model
 
@@ -426,8 +433,10 @@ pairs; no station × building matrix. The auto-profile / mass-balance search sti
   estimate takes the built-up share at the centreline only.
 - Buildings: only OSM ways (no multipolygon buildings); the rectangle over-covers L-shaped footprints; no
   severance cost for plots cut off from their access.
-- Noise: D, insertion losses and the upper-floor penalty are provisional. No separate day/night traffic or
-  heavy-vehicle share, reflections, intervening buildings, or terrain screening beyond the road's own cut;
+- Noise: D, the 500 Hz equivalent source, traffic correction and practical cap are provisional. Pairwise 2D
+  geometry uses radial façade distance as an equivalent cross-section, not true oblique rays; no line-source
+  integration, separate day/night traffic or heavy-vehicle spectrum, reflections, intervening buildings, or
+  terrain screening beyond the road's own cut;
   the ≥ 4 m cut exemption does not assess upper-floor diffraction. Receivers use 10 m source stations and
   rectangle façades. Civic buildings with protected uses are not classified. Buyout is the only fallback;
   covered roads, property reuse, parcel geometry and relocation are not optimised. **Fallback-only buyout is

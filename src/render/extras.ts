@@ -7,6 +7,7 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { Result } from '../core/evaluate';
+import { NOISE } from '../core/data/urban';
 import { cellsInRange } from '../core/range';
 import { KIND } from '../core/structures';
 import type { StationRange } from '../state';
@@ -57,7 +58,7 @@ export class RouteExtras {
     const r = this.r;
     if (!r) return;
     const v = new THREE.Vector3();
-    const off = this.crown / 2 + 0.6;
+    const off = this.crown / 2 + NOISE.wallEdgeOffset;
     const pos: number[] = [], idx: number[] = [];
     for (const w of r.walls) {
       const sgn = w.side === 'L' ? 1 : -1;

@@ -7,7 +7,7 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
 import { BUILDING_KIND, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
-import { dwellingExposure, noiseDistance, requiredWall, wallFlags } from '../src/core/noise';
+import { barrierAttenuation, dwellingExposure, noiseDistance, requiredWall, wallFlags } from '../src/core/noise';
 import { rangeSummary } from '../src/core/range';
 import { mergeCrossings, RoadNet } from '../src/core/roadnet';
 import { KIND } from '../src/core/structures';
@@ -64,12 +64,18 @@ describe('noise rule', () => {
     expect(noiseDistance(2 * NOISE.refTraffic, NOISE.refSpeed)).toBeGreaterThan(NOISE.refDistance * 1.4);
   });
 
-  it('increases wall height with exposure, rejects unprotectable upper floors, and respects road elevation', () => {
-    expect(requiredWall(50, 100, 1.5)).toBe(3);
-    expect(requiredWall(30, 100, 1.5)).toBe(4);
-    expect(requiredWall(20, 100, 1.5)).toBe(5);
+  it('shadows distant upper floors geometrically, but buys close receivers no available wall can protect', () => {
+    expect(requiredWall(50, 100, 4.5)).toBe(3);
+    expect(requiredWall(20, 100, 4.5)).toBe(4);
+    expect(requiredWall(16, 100, 4.5)).toBe(5);
     expect(requiredWall(10, 100, 1.5)).toBe(Infinity);
-    expect(requiredWall(50, 100, 10.5)).toBe(Infinity);
+    // A fourth-floor receiver is NOT unshielded merely because it is higher than the wall.
+    expect(requiredWall(80, 100, 10.5)).toBe(3);
+    expect(requiredWall(20, 100, 10.5)).toBe(Infinity);
+    // The path via the wall top is longer even in the illuminated zone: explicit LoS matters.
+    expect(barrierAttenuation(20, 30, 2)).toBe(0);
+    expect(barrierAttenuation(80, 10.5, 2)).toBeGreaterThan(barrierAttenuation(20, 10.5, 2));
+    expect(barrierAttenuation(4, 1.5, 2)).toBe(0); // receiver on road side of barrier
     // A bridge 8 m above the building ground brings the wall above the top receiver.
     expect(requiredWall(50, 100, 10.5 - 8)).toBe(3);
     expect(requiredWall(101, 100, 20)).toBe(0);
@@ -147,7 +153,7 @@ describe('evaluate on a synthetic town', () => {
     sq(2000, 1000, 3, BUILDING_KIND.minor), // under the bridge deck → demolished
     sq(2000, 1012, 3, BUILDING_KIND.minor), // beside the deck, where an embankment would have buried it
     sq(1000, 1016, 5, BUILDING_KIND.house), // outside working strip but too close for any wall
-    [100, 4, BUILDING_KIND.apartments, 1000, 1070, 5, 5, 0] as BuildingInfo, // upper-floor failure
+    [100, 4, BUILDING_KIND.apartments, 1000, 1070, 5, 5, 0] as BuildingInfo, // distant upper floor is shadowed
     [100, 4, BUILDING_KIND.apartments, 2000, 1040, 5, 5, 0] as BuildingInfo, // top floor below elevated road: wall feasible
   ];
   const buildings = new BuildingIndex(info.map((f) => [f[3], f[4], f[5] * Math.SQRT2]), info);
@@ -182,9 +188,10 @@ describe('evaluate on a synthetic town', () => {
   });
 
   it('bills infeasible dwellings separately, once each and never as footprint demolitions', () => {
-    expect(r.boughtOut.map((b) => b.j).sort()).toEqual([5, 6]);
-    expect(r.quantities.noiseBuyouts).toBe(2);
-    expect(r.cost.landDetail.noiseBuyouts).toBeCloseTo(buildings.cost[5] + buildings.cost[6], 3);
+    expect(r.boughtOut.map((b) => b.j)).toEqual([5]);
+    expect(r.quantities.noiseBuyouts).toBe(1);
+    expect(r.cost.landDetail.noiseBuyouts).toBeCloseTo(buildings.cost[5], 3);
+    expect(r.demolished.some(b => b.j === 6)).toBe(false); // distant block retained, protected by wall
     expect(r.parts.noiseBuyouts.reduce((a, b) => a + b, 0)).toBeCloseTo(r.cost.landDetail.noiseBuyouts, 3);
   });
 
@@ -196,8 +203,8 @@ describe('evaluate on a synthetic town', () => {
     expect(w.s0).toBeGreaterThan(500 - 105 - 50 - 10);
     expect(w.s1).toBeLessThan(500 + 105 + 50 + 10);
     expect(r.quantities.wallLength).toBeCloseTo(r.walls.reduce((v, w) => v + w.s1 - w.s0, 0), 6);
-    expect(w.height).toBe(4);
-    // Unlike the at-grade block, the block beside the bridge is protectable: its top receiver is
+    expect(w.height).toBe(3);
+    // The block beside the bridge is also protectable: its top receiver is
     // below the deck. It still needs an actual wall; the terrain under a bridge is not a shield.
     expect(r.walls.some(w => w.i0 <= 150 && w.i1 >= 150)).toBe(true);
     expect(r.boughtOut.some(b => b.j === 7)).toBe(false);

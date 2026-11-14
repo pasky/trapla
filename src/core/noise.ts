@@ -3,21 +3,57 @@
 // at the highest occupied façade receiver; otherwise acquire and demolish the entire dwelling.
 import type { BuildingIndex } from './buildings';
 import { NOISE } from './data/urban';
+import { CATEGORIES } from './data/categories';
 
 /** Unmitigated limit contour for traffic (veh/day) and design speed (km/h), m. */
 export function noiseDistance(traffic: number, speed: number, p = NOISE): number {
   return p.refDistance * Math.pow(traffic / p.refTraffic, p.trafficExponent) * Math.pow(speed / p.refSpeed, p.speedExponent);
 }
 
+/** Equivalent 2D source → wall → receiver section. The axis-to-façade distance is its horizontal
+ * receiver coordinate; oblique rays / source aggregation are not resolved. Precompute fixed legs
+ * once per road category/evaluation. Walls sit beside the crown, not at the embankment toe. */
+export function noiseBarrier(crownWidth: number) {
+  const wallOffset = crownWidth / 2 + NOISE.wallEdgeOffset;
+  const sourceToWall = wallOffset - NOISE.sourceOffset;
+  return { wallOffset, sourceToWall,
+    sourceLeg: NOISE.wallHeights.map(h => Math.hypot(sourceToWall, h - NOISE.sourceHeight)) };
+}
+type Barrier = ReturnType<typeof noiseBarrier>;
+const DEFAULT_BARRIER = noiseBarrier(CATEGORIES['S9.5'].crownWidth);
+
+/** Path difference in the shadow zone, −1 otherwise. A+B−direct is never geometrically negative:
+ * test the sightline explicitly, rather than mistaking an illuminated receiver for a shadowed one. */
+function pathDifference(distance: number, height: number, k: number, barrier: Barrier, direct: number): number {
+  if (distance <= barrier.wallOffset) return -1; // wall not between source and receiver
+  const sightline = NOISE.sourceHeight + (height - NOISE.sourceHeight)
+    * barrier.sourceToWall / (distance - NOISE.sourceOffset);
+  const h = NOISE.wallHeights[k];
+  if (h <= sightline) return -1;
+  return Math.max(0, barrier.sourceLeg[k] + Math.hypot(distance - barrier.wallOffset, height - h) - direct);
+}
+
+/** Corrected Maekawa-style IL = 10 log10(3 + 20 N), N = 2δ/λ; practical traffic cap.
+ * `distance` is protected-receiver distance from the axis; `height` is relative to road grade. */
+export function barrierAttenuation(distance: number, height: number, k: number, barrier = DEFAULT_BARRIER): number {
+  const direct = Math.hypot(distance - NOISE.sourceOffset, height - NOISE.sourceHeight);
+  const delta = pathDifference(distance, height, k, barrier, direct);
+  if (delta < 0) return 0;
+  return Math.max(0, Math.min(NOISE.maxAttenuationDb,
+    10 * Math.log10(3 + 40 * delta / NOISE.wavelength) - NOISE.trafficCorrectionDb));
+}
+
 /** Minimum feasible wall height, 0 if unexposed, Infinity if no available wall protects the receiver.
- * `height` is receiver elevation above road grade, not above local building ground. */
-export function requiredWall(distance: number, contour: number, height: number): number {
+ * Invert the IL expression once per pair instead of computing logarithms for all three heights. */
+export function requiredWall(distance: number, contour: number, height: number, barrier = DEFAULT_BARRIER): number {
   if (distance >= contour || contour <= 0) return 0;
   const excess = NOISE.distanceDb * Math.log10(contour / Math.max(1, distance));
+  if (excess > NOISE.maxAttenuationDb) return Infinity;
+  const neededDelta = NOISE.wavelength / 40 * (10 ** ((excess + NOISE.trafficCorrectionDb) / 10) - 3);
+  const direct = Math.hypot(distance - NOISE.sourceOffset, height - NOISE.sourceHeight);
   for (let k = 0; k < NOISE.wallHeights.length; k++) {
-    const h = NOISE.wallHeights[k];
-    const attenuation = Math.max(0, NOISE.lowAttenuationDb[k] - NOISE.upperPenaltyDbPerM * Math.max(0, height - h));
-    if (attenuation >= excess) return h;
+    const delta = pathDifference(distance, height, k, barrier, direct);
+    if (delta >= 0 && delta >= neededDelta) return NOISE.wallHeights[k];
   }
   return Infinity;
 }
@@ -29,7 +65,7 @@ export function requiredWall(distance: number, contour: number, height: number):
 export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<number>, tx: ArrayLike<number>,
   ty: ArrayLike<number>, buildings: BuildingIndex, dist: number, demolished: ArrayLike<number>,
   grade: ArrayLike<number>, groundAt: (x: number, y: number) => number,
-  shieldL: ArrayLike<number>, shieldR: ArrayLike<number>): {
+  shieldL: ArrayLike<number>, shieldR: ArrayLike<number>, barrier = DEFAULT_BARRIER): {
     L: Uint8Array; R: Uint8Array; boughtOut: { j: number; i: number; cost: number }[];
   } {
   const L = new Uint8Array(n), R = new Uint8Array(n);
@@ -51,11 +87,10 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       if (d >= dist) return;
       if (Number.isNaN(receiver[j])) receiver[j] = groundAt(items[j][0], items[j][1])
         + NOISE.receiverHeight + (buildings.levels[j] - 1) * NOISE.storeyHeight;
-      const h = requiredWall(d, dist, receiver[j] - grade[i]);
+      const h = requiredWall(d, dist, receiver[j] - grade[i], barrier);
       if (h === Infinity) {
         const k = NOISE.wallHeights.length - 1;
-        const attenuation = Math.max(0, NOISE.lowAttenuationDb[k]
-          - NOISE.upperPenaltyDbPerM * Math.max(0, receiver[j] - grade[i] - NOISE.wallHeights[k]));
+        const attenuation = barrierAttenuation(d, receiver[j] - grade[i], k, barrier);
         const deficit = NOISE.distanceDb * Math.log10(dist / d) - attenuation;
         const old = failed.get(j);
         if (!old || deficit > old.deficit) failed.set(j, { i, deficit });

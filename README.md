@@ -58,7 +58,9 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
   struck through. Hover the profile for the cost split at a station; drag in the cost strip under it (or click a
   curve / tangent in the band above it) to get the breakdown of that stretch, <kbd>Esc</kbd> for the whole route.
 - Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
-  floor determine whether a 3–5 m wall can protect a dwelling. If not, the bill includes its acquisition and
+  floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
+  shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
+  the bill includes its acquisition and
   demolition, separately from buildings in the road footprint. Teal walls show their actual height; red squares
   mark footprint demolitions, magenta diamonds mark noise buyouts. The HUD and profile tooltip explain both;
   assumptions and limitations are in `PLAN.md`.

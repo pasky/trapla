@@ -171,16 +171,25 @@ export const NOISE = {
   distanceDb: 15,
   /** Protected outdoor receiver: 2 m in front of the nearest façade, towards the source. */
   facadeOffset: 2,
-  /** PROVISIONAL practical wall choices and low-receiver insertion loss, dB (research/09).
-   * Not a diffraction calculation; no arbitrarily tall wall to save an infeasible route. */
+  /** PROVISIONAL practical wall choices; no arbitrarily tall wall to save an infeasible route. */
   wallHeights: [3, 4, 5],
-  lowAttenuationDb: [7, 10, 12],
+  /** PROVISIONAL equivalent near-lane source, m above grade / towards the receiver from the axis. */
+  sourceHeight: 0.5,
+  sourceOffset: 1.75,
+  /** PROVISIONAL wall at crown/2 + this allowance, at road-grade elevation; same on embankments
+   * and bridges, NOT at the toe of the earthwork footprint. Renderer uses the same position. */
+  wallEdgeOffset: 1.5,
+  /** 500 Hz representative wavelength (≈ 340 m/s); single-band surrogate, not a traffic spectrum. */
+  wavelength: 0.68,
+  /** PROVISIONAL deduction from point-source Maekawa loss for distributed/broadband traffic and
+   * unmodelled ground/end effects. 5 dB is an allowance, NOT a standard line-source correction. */
+  trafficCorrectionDb: 5,
+  /** PROVISIONAL practical cap. FHWA handbook §3.5: 10 dB attainable, 15 very difficult.
+   * Use 13 rather than single-frequency theoretical 20–24 dB (research/09 §5). */
+  maxAttenuationDb: 13,
   /** PROVISIONAL highest occupied receiver = 1.5 + (levels − 1) * 3 m above building ground. */
   receiverHeight: 1.5,
   storeyHeight: 3,
-  /** PROVISIONAL loss of insertion benefit per metre the receiver is above the wall top,
-   * relative to road grade; floor at zero benefit. Includes upper floors of houses too. */
-  upperPenaltyDbPerM: 2,
   /** all-in installed price per m² of wall, range 8,000–14,000 (ŘSD Radostín 2021: 280 m for 9 M ≈
    * 10,700/m² at an assumed 3 m; OTSKP 34712 panels alone 3,265) — research/09 §1 */
   wallPerM2: 10_000,

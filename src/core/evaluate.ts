@@ -16,7 +16,7 @@ import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './dat
 import { BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
-import { dwellingExposure, noiseDistance, wallFlags, wallStretches, type WallStretch } from './noise';
+import { dwellingExposure, noiseBarrier, noiseDistance, wallFlags, wallStretches, type WallStretch } from './noise';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import { computeSections, DEFAULT_SLOPES, flatCutBands } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
@@ -460,7 +460,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (sec.zDayR[i] - grade[i] >= NOISE.cutShield) shieldR[i] = 1;
     }
     const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, bld, noiseD, gone,
-      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR);
+      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, noiseBarrier(cat.crownWidth));
     boughtOut = ex.boughtOut;
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;
     const fl = wallFlags(ds, ex.L, shieldL), fr = wallFlags(ds, ex.R, shieldR);
