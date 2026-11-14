@@ -90,8 +90,9 @@ official_line()` keeps ways with that `ref` whose `highway` or `construction` eq
 starts at the way whose **first node** is nearest `startNear` and chains ways whose first node is within 5 m of
 the previous end, preferring the straightest continuation. On a dual carriageway pick the carriageway whose
 way direction runs from `startNear` towards the other endpoint (D11: the southbound one from the border).
-Planned-but-unbuilt sections are often `highway=construction` or `proposed`; if the line is not in OSM at
-all, digitise the ZÚR corridor into the same JSON shape. Where there is no planned road, an existing road
+Sections under construction are `highway=construction` + `construction=motorway` (matched). Planned ones are
+`highway=proposed` + `proposed=motorway`, which `official_line()` does **not** match yet (extend its tag test
+and the query, or retag the extract); if the line is not in OSM at all, digitise the ZÚR corridor into the same JSON shape. Where there is no planned road, an existing road
 being replaced (e.g. `ref=16`, `highway=primary`) is a reasonable reference.
 
 ## 3. Geology (scenario-specific)
@@ -103,7 +104,8 @@ The ground grid maps each 25 m cell to an excavation profile: depth `classIto` o
 1. `classify()` turns GEOCR50 attributes (`hor_karto`, `hor_typ`, `utvar`, `geneze`) into a profile key.
    Its rules were written for the lithologies **in the D11 envelope**: Quaternary deposits, Permian /
    Carboniferous clastics, Cretaceous/Triassic sandstone and marlstone, crystalline and volcanic rocks.
-   Anything else becomes `unknown` → the norm 75/20/5 mix at any depth (no rock is invented). The build log
+   Anything else becomes `unknown`: the cell then takes the IG rajon profile if `IG_PROFILES` maps that
+   rajon code (point 2), otherwise the norm 75/20/5 mix at any depth (no rock is invented). The build log
    lists the unmapped `hor_karto` strings. For each frequent one, add a rule (and a test in
    `pipeline/test_geology.py`) — e.g. consolidated Neogene/Paleogene rocks (Mostecko, Moravian flysch),
    Proterozoic/Palaeozoic shales and greywackes (Barrandien), granites (the `igneous` group only matches
@@ -154,7 +156,7 @@ export const D35_SCENARIO: ScenarioParams = {
 - **terrainClass**: `hilly` (SPK CN …NER rows, flat + hilly) or `mountainous` (…NEH). Only these two exist.
 - **maxGradient**: ČSN 73 6101 per category and terrain (6 % for S 9.5 hilly; research/12).
 - **Travel-time target X** (minutes; `travelMin = length / design speed`). Start from the official line:
-  `X ≈ official length A–B / 90 km/h × ~1.03`, then check what each speed allows (`X × speed / 60` km vs the
+  `X [min] ≈ official length A–B [km] / 90 km/h × 60 × ~1.03` (D11: 21.0 km → 14.4, X = 14.5), then check what each speed allows (`X × speed / 60` km vs the
   straight line), as PLAN.md "Travel-time target X" does: 90 should permit a bypass, 80 only a near-direct
   route, 70 should be impossible (or argue otherwise). Then calibrate with local search:
 

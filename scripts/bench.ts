@@ -32,7 +32,8 @@ if (process.argv.length > 2) {
   process.exit(0);
 }
 report('straight (auto profile)', { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] });
-report('reference bypass (scripts/demo-design.json)', JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design);
+// D11 coordinates: other scenarios pass their own designs as arguments
+if (meta.id === 'd11') report('reference bypass (scripts/demo-design.json)', JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design);
 
 // follow the official line: take points every ~1.5 km between A and B
 const off = meta.official.xy as [number, number][];

@@ -160,10 +160,10 @@ export class NoiseLayer {
     const period = fp?.controlling ?? 'night', limit = fp?.limit ?? NOISE.limitNightDb;
     const sw = (c: string, extra = '') => `<i style="background:${c};${extra}"></i>`;
     const b = (c: number, label: string) => `<span>${sw(`#${c.toString(16).padStart(6, '0')}`, 'width:10px;height:10px')}${label}</span>`;
-    // the bar shows the ramp as drawn over a light map: colour at its opacity over white
+    // the bar shows the ramp at its drawn opacity over the legend's white
     const lo = RAMP[0][0], hi = RAMP[RAMP.length - 1][0], at = (t: number) => ((t - lo) / (hi - lo)) * 100;
     const rgba = (c: string, a: number) => { const k = new THREE.Color().setStyle(c, THREE.LinearSRGBColorSpace); return `rgba(${Math.round(k.r * 255)},${Math.round(k.g * 255)},${Math.round(k.b * 255)},${a})`; };
-    const bar = `linear-gradient(to right, ${RAMP.map(([t, c, a]) => `${rgba(c, Math.min(1, a * 1.35))} ${at(t).toFixed(1)}%`).join(', ')})`;
+    const bar = `linear-gradient(to right, ${RAMP.map(([t, c, a]) => `${rgba(c, a)} ${at(t).toFixed(1)}%`).join(', ')})`;
     const ticks = TICKS.map((t) => `<em style="left:${at(t).toFixed(1)}%"${t === 0 ? ' class="lim"' : ''}>${t === 0 ? `${limit} dB limit` : `${t > 0 ? '+' : '−'}${Math.abs(t)}${t === hi ? ' dB' : ''}`}</em>`).join('');
     this.legend.innerHTML = `
       <div><b>Noise</b> — ${period} L<sub>Aeq</sub> relative to the ${limit} dB limit, ground floor (1.5 m), walls and cuts included</div>
