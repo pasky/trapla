@@ -12,7 +12,7 @@ import { KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadCrossing, RoadNet, RoadSegment } from './roadnet';
-import { barrelLength, barrelEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, type WaterCrossing, type WaterSegment } from './watercourses';
+import { barrelLength, barrelEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, type WaterCrossing, type WaterSegment } from './watercourses';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
@@ -183,7 +183,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     };
     if (cached) cached.roads.forEach(visitRoad); else roads?.nearSegments(cellBounds(cell, 14), visitRoad);
     const visitWater = (segment: WaterSegment) => {
-      const hit = clipFootprint(segment, cell, cell.structure ? (segment.reach.width ?? 0.5) / 2 : 0);
+      // Earthworks can cut a bank even when the channel axis stays outside the toe.
+      const hit = clipFootprint(segment, cell, waterWidth(segment.reach) / 2);
       if (!hit) return;
       const covered: [number, number][] = (r.channelRelocations ?? []).filter(c => c.id === segment.reach.id).map(c => [c.a, c.b]);
       if (!cell.structure) for (const c of connectedWater(segment.reach.id)) covered.push(...barrelIntervals(segment, barrels.get(c)!));
@@ -322,7 +323,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const p = original[Math.floor(original.length / 2)], affectedLength = h.b - h.a;
     if (affectedLength < 0.1) continue;
     let length = affectedLength;
-    const c: WaterCrossing = { s: r.s[h.i], x: p.x, y: p.y, id: w.id, waterKind: w.kind, width: w.width ?? 0.5, catchmentKm2: area, truncated, sine: 1 };
+    const c: WaterCrossing = { s: r.s[h.i], x: p.x, y: p.y, id: w.id, waterKind: w.kind, width: waterWidth(w), catchmentKm2: area, truncated, sine: 1 };
     // An extension next to an already-priced barrel reuses its ends, not another two heads.
     // Resizing/merging multiple existing assemblies is deliberately not an automatic free fix.
     const adjoining = connectedWater(w.id).filter(other => {

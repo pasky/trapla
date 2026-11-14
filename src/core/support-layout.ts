@@ -8,6 +8,7 @@ import type { RoadNet } from './roadnet';
 import { findRuns, KIND, type Run } from './structures';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
+import { waterWidth } from './watercourses';
 
 /** Provisional automatic-search envelope, not a norm-proven span feasibility limit. Clear
  * spans up to 180 m use the existing bridge model's long-span extrapolation (as overbridges
@@ -57,7 +58,7 @@ function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet): nu
       + (ROAD_CLASSES[segment.cls].noAtGrade ? R.railClearance : CROSSING_RULES.overHeight));
   });
   terrain.watercourses?.nearSegments(cellBounds(c, terrain.watercourses.maxHalfWidth), segment => {
-    const hit = clipFootprint(segment, c, (segment.reach.width ?? (segment.reach.kind === 'river' ? 5 : 0.5)) / 2);
+    const hit = clipFootprint(segment, c, waterWidth(segment.reach) / 2);
     if (!hit) return;
     const t = ((hit[0] + hit[1]) / 2 - segment.d) / segment.length;
     height = Math.max(height, terrain.heightAt(segment.ax + t * (segment.bx - segment.ax), segment.ay + t * (segment.by - segment.ay)) + R.riverClearance);

@@ -11,7 +11,7 @@ import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
 import type { FootprintConflict } from './footprint';
-import { barrelContains, barrelEnvelope, type WaterCrossing, type WaterSegment } from './watercourses';
+import { barrelContains, barrelEnvelope, waterWidth, type WaterCrossing, type WaterSegment } from './watercourses';
 import { planChannelRelocations, type ChannelHit, type ChannelRelocation } from './channel-relocation';
 
 export interface RetainingWall {
@@ -129,7 +129,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
     }
     for (const seg of candidates.roads) segment(c, seg, roadHalfWidth(seg.cls), 'road');
     candidates.water.forEach(seg => {
-      const pad = (seg.reach.width ?? (seg.reach.kind === 'river' ? 5 : 0.5)) / 2;
+      const pad = waterWidth(seg.reach) / 2;
       const hit = clipFootprint(seg, c, pad);
       if (!hit) return;
       segment(c, seg, pad, seg.reach.kind === 'river' ? 'water' : 'stream', seg.reach.id, true);

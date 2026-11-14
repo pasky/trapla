@@ -8,8 +8,9 @@ import { NORM_CAP_I, NORM_CAP_II } from './ground';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell } from './footprint-geometry';
 import type { FootprintConflict } from './footprint';
 import type { CrossingPoint } from './crossings';
-import { estimateQ100, type WaterCrossing, type WaterReach } from './watercourses';
-import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
+import { estimateQ100, waterWidth, type WaterCrossing, type WaterReach } from './watercourses';
+import { protectedRasterCells } from './protected-raster';
+import { BUILTUP_BIT, OOB_BIT, type Terrain } from './terrain';
 import type { RoadNet } from './roadnet';
 
 export interface ChannelRoute {
@@ -22,9 +23,26 @@ export interface ChannelRelocation {
   conflict: FootprintConflict;
 }
 
+/** Check all excavation corners and any no-data pixels touched by the bank. Chords are
+ * short and bank cuts bounded; stream local pixels rather than allocating a raster product. */
+function bankIsOob(terrain: Terrain, cell: FootprintCell): boolean {
+  for (const along of [-cell.along, cell.along]) for (const across of [-cell.right, cell.left]) {
+    if (terrain.isOob(cell.x + cell.tx * along - cell.ty * across, cell.y + cell.ty * along + cell.tx * across)) return true;
+  }
+  const step = terrain.cell, pad = step / Math.SQRT2;
+  const [x0, y0, x1, y1] = cellBounds(cell, pad);
+  const r0 = Math.max(0, Math.floor((terrain.height - y1) / step)), r1 = Math.min(terrain.ny - 1, Math.floor((terrain.height - y0) / step));
+  const c0 = Math.max(0, Math.floor(x0 / step)), c1 = Math.min(terrain.nx - 1, Math.floor(x1 / step));
+  for (let row = r0; row <= r1; row++) for (let col = c0; col <= c1; col++) {
+    if ((terrain.lc[row * terrain.nx + col] & OOB_BIT)
+      && insideFootprint({ x: (col + 0.5) * step, y: terrain.height - (row + 0.5) * step }, cell, pad)) return true;
+  }
+  return false;
+}
+
 export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads: RoadNet | undefined,
   hits: readonly ChannelHit[], water: readonly WaterCrossing[]): ChannelRelocation[] {
-  const candidates = hits.filter(h => h.reach.kind !== 'river' && (h.reach.width ?? 0.5) <= 5
+  const candidates = hits.filter(h => h.reach.kind !== 'river' && waterWidth(h.reach) <= 5
     && !water.some(c => c.id === h.reach.id)); // keep centreline barrels intact; no overlapping channel/crossing assembly
   if (!candidates.length) return [];
   const cells: FootprintCell[] = Array.from({ length: r.n }, (_, i) => ({ i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i],
@@ -35,7 +53,7 @@ export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads:
     if (!distances || distances.length < 2) continue;
     const area = Math.max(...reach.catchmentKm2), q100 = estimateQ100({ catchmentKm2: area, truncated: reach.truncated.some(Boolean) });
     if (q100 > 10) continue; // larger water works need a separately designed flood/ecological solution
-    const assembly = channelAssembly(reach.width ?? 0.5, q100);
+    const assembly = channelAssembly(waterWidth(reach), q100);
     // Reserve the whole excavated bank, not just the wet channel. Five metres is the bounded
     // additional bank cut considered here; actual quantities use the measured ground difference.
     const pad = assembly.topWidth / 2 + R.sideSlope * R.maxAdditionalCut + R.setback;
@@ -87,42 +105,50 @@ export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads:
     const length = lengths[lengths.length - 1], drop = path[path.length - 1].z - path[0].z;
     if (!length || Math.abs(drop) / length > 0.03) continue; // provisional lined-channel grade limit; no unpriced drop structures
     let invalid = false, cost = 0, excavation = 0, landCost = 0;
+    let previousHalf = assembly.topWidth / 2, maxWidth = assembly.topWidth;
     for (let j = 0; j < path.length; j++) {
       const p = path[j]; p.z = path[0].z + drop * lengths[j] / length;
       const additional = p.ground - p.z - assembly.depth;
       if (additional < -0.3 || additional > R.maxAdditionalCut) invalid = true; // no invented raised aqueduct/levee
       if (invalid) break; // a rejected candidate cannot become feasible later in the path
+      const currentHalf = assembly.topWidth / 2 + R.sideSlope * Math.max(0, additional);
+      // A descending cut must not use only the narrower downstream bank for the whole chord.
+      const bankHalf = Math.max(previousHalf, currentHalf);
+      previousHalf = currentHalf; maxWidth = Math.max(maxWidth, 2 * bankHalf);
       if (!j) continue;
       const a = path[j - 1], len = lengths[j] - lengths[j - 1], x = (a.x + p.x) / 2, y = (a.y + p.y) / 2;
       if (len < 1e-6) continue;
       const g = terrain.groundAt(x, y), depth = assembly.depth + Math.max(0, additional);
       const mix = g.normMix ? [NORM_CAP_I, NORM_CAP_II - NORM_CAP_I, 1 - NORM_CAP_II] :
         [Math.min(depth, g.classIto) / depth, Math.max(0, Math.min(depth, g.classIIto) - g.classIto) / depth, Math.max(0, depth - g.classIIto) / depth];
-      const price = channelAssembly(reach.width ?? 0.5, q100, mix, Math.max(0, additional));
+      const price = channelAssembly(waterWidth(reach), q100, mix, Math.max(0, additional));
       cost += len * price.perM; excavation += len * price.excavation;
       landCost += len * (price.topWidth + R.bankRestorationWidth) * landPerM2(terrain.cover(x, y) & BUILTUP_BIT ? 1 : 0);
+      const cell: FootprintCell = { x, y, i: hit.i0, s: r.s[hit.i0], tx: (p.x - a.x) / len, ty: (p.y - a.y) / len,
+        along: len / 2, left: bankHalf, right: bankHalf };
+      if (bankIsOob(terrain, cell)) invalid = true;
+      // The row helper already pads half a pixel. Complete that to the half-diagonal so
+      // rotated banks cannot miss a protected pixel corner between centreline samples.
+      const extra = terrain.cell * (Math.SQRT2 - 1) / 2;
+      protectedRasterCells(terrain, { ...cell, along: cell.along + extra, left: bankHalf + extra, right: bankHalf + extra }, () => { invalid = true; });
       for (let k = 0, count = Math.max(1, Math.ceil(len / 2.5)); k <= count; k++) {
         const t = k / count, q = { x: a.x + t * (p.x - a.x), y: a.y + t * (p.y - a.y) };
-        if (grid.hits(q, price.topWidth / 2 + R.setback) || terrain.isOob(q.x, q.y)) invalid = true;
-        const cover = terrain.cover(q.x, q.y), cls = cover & CLASS_BITS;
-        if ((cover & (RAIL_CROSSING_BIT | RIVER_CROSSING_BIT)) || cls === LC.rail || cls === LC.water) invalid = true;
+        if (grid.hits(q, bankHalf + R.setback)) invalid = true;
       }
       // A new channel cannot cut an existing road without another bridge/culvert. Real tie-in
       // tails are unchanged and keep their existing crossings, so query only displaced chords.
       if (Math.hypot(p.x - original[j].x, p.y - original[j].y) > 0.25 || Math.hypot(a.x - original[j - 1].x, a.y - original[j - 1].y) > 0.25) {
-        const cell: FootprintCell = { x, y, i: hit.i0, s: r.s[hit.i0], tx: (p.x - a.x) / len, ty: (p.y - a.y) / len,
-          along: len / 2, left: price.topWidth / 2, right: price.topWidth / 2 };
         roads?.nearSegments(cellBounds(cell, 14), road => {
           const half = ROAD_CLASSES[road.cls].width / (road.cls === 'motorway' ? 4 : 2);
           if (clipFootprint(road, cell, half)) invalid = true;
         });
         terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), other => {
           if (other.reach.id === reach.id || other.length <= 0) return;
-          const otherHalf = (other.reach.width ?? 0.5) / 2, overlap = clipFootprint(other, cell, otherHalf);
+          const otherHalf = waterWidth(other.reach) / 2, overlap = clipFootprint(other, cell, otherHalf);
           if (!overlap) return;
           const dx = other.bx - other.ax, dy = other.by - other.ay;
           const endpoints = overlap.map(d => ({ x: other.ax + (d - other.d) / other.length * dx, y: other.ay + (d - other.d) / other.length * dy }));
-          const radius = price.topWidth / 2 + otherHalf + 0.05;
+          const radius = bankHalf + otherHalf + 0.05;
           const existingTie = [original[0], original[original.length - 1]].some(tie => {
             const t = Math.max(0, Math.min(1, ((tie.x - other.ax) * dx + (tie.y - other.ay) * dy) / (other.length ** 2)));
             return Math.hypot(tie.x - other.ax - t * dx, tie.y - other.ay - t * dy) < 0.05
@@ -156,7 +182,7 @@ export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads:
     cost += landCost;
     const i = hit.i0, conflict: FootprintConflict = { id: `channel:${reach.id}:${hit.a.toFixed(1)}`, feature: 'stream', action: 'channel-relocation', i,
       s0: Math.max(0, r.s[hit.i0] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[hit.i1] + r.ds / 2), x: path[Math.floor(path.length / 2)].x, y: path[Math.floor(path.length / 2)].y,
-      length, affectedLength: hit.b - hit.a, cost, landCost, geometry: { road: path, width: assembly.topWidth, schematic: false },
+      length, affectedLength: hit.b - hit.a, cost, landCost, geometry: { road: path, width: maxWidth, schematic: false },
       original,
       detail: `${length.toFixed(1)} m open-channel realignment with real bed-level tie-ins, ${assembly.bottom.toFixed(1)} m bed × ${assembly.depth.toFixed(1)} m depth, Q100 ${q100.toFixed(2)} m³/s. Measured excavation/haul ≤1 km, stone lining/filter, bank restoration, old-channel backfill and land (OTSKP 124731/831/931, 46451, 28997, 18221, 18242, 17120); no new culvert billed.` };
     out.push({ id: reach.id, a: removedStart, b: removedEnd, i0: hit.i0, i1: hit.i1, conflict });

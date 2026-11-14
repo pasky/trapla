@@ -12,6 +12,10 @@ export interface WaterReach {
   catchmentKm2: number[];
   truncated: boolean[];
 }
+/** Study-stage full ribbon width where OSM supplies no measured width. */
+export function waterWidth(reach: Pick<WaterReach, 'kind' | 'width'>): number {
+  return reach.width ?? (reach.kind === 'river' ? 8 : 0.5);
+}
 export interface WaterData { version: 1; method: string; reaches: WaterReach[] }
 export interface WaterCrossing {
   s: number; x: number; y: number; id: number; waterKind: WaterReach['kind'];
@@ -148,7 +152,7 @@ export class WaterNet {
     });
     data.reaches.forEach((w, i) => this.components.set(w.id, root(i)));
     for (const reach of data.reaches) {
-      this.maxHalfWidth = Math.max(this.maxHalfWidth, (reach.width ?? (reach.kind === 'river' ? 5 : 0.5)) / 2);
+      this.maxHalfWidth = Math.max(this.maxHalfWidth, waterWidth(reach) / 2);
       const distances = [0];
       for (let j = 1; j < reach.points.length; j++) distances.push(distances[j - 1] + Math.hypot(reach.points[j][0] - reach.points[j - 1][0], reach.points[j][1] - reach.points[j - 1][1]));
       this.distances.set(reach.id, distances);
@@ -221,7 +225,7 @@ export class WaterNet {
             if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) continue;
             // Neighbour max avoids false precision at a resampled catchment jump.
             out.push({ s: s[i] + t * (s[i + 1] - s[i]), x: x[i] + t * dx, y: y[i] + t * dy,
-              id: w.id, waterKind: w.kind, width: w.width ?? (w.kind === 'river' ? 5 : 0.5),
+              id: w.id, waterKind: w.kind, width: waterWidth(w),
               catchmentKm2: Math.max(w.catchmentKm2[j], w.catchmentKm2[j + 1]),
               truncated: w.truncated[j] || w.truncated[j + 1], sine: Math.abs(den) / (Math.hypot(dx, dy) * Math.hypot(wx, wy)),
               channelTx: wx / Math.hypot(wx, wy), channelTy: wy / Math.hypot(wx, wy) });

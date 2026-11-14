@@ -6,6 +6,7 @@ import { retainingAssembly } from './data/remedies';
 import type { FootprintRoute } from './footprint';
 import { cellBounds, clipFootprint, insideFootprint, type FootprintCell, type FootprintGrid, type Point2 } from './footprint-geometry';
 import type { RoadNet } from './roadnet';
+import { waterWidth } from './watercourses';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
 
 export interface RoadSourceInterval { way: number; a: number; b: number }
@@ -433,7 +434,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         const cell: FootprintCell = { ...mid, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half };
         raster(cell);
         terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), channel => {
-          if (clipFootprint(channel, cell, (channel.reach.width ?? 0.5) / 2)) problems.add('path intersects water/rail');
+          if (clipFootprint(channel, cell, waterWidth(channel.reach) / 2)) problems.add('path intersects water/rail');
         });
       }
     }
@@ -447,7 +448,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       // Conservative bounding square protects the whole disk, including its pavement apron.
       raster(diskCell);
       terrain.watercourses?.nearSegments(cellBounds(diskCell, terrain.watercourses.maxHalfWidth), channel => {
-        if (clipFootprint(channel, diskCell, (channel.reach.width ?? 0.5) / 2)) problems.add('turnaround intersects water/rail');
+        if (clipFootprint(channel, diskCell, waterWidth(channel.reach) / 2)) problems.add('turnaround intersects water/rail');
       });
       const z = terrain.heightAt(turn.x, turn.y);
       const other = dead[0] ? path[1] : path[path.length - 2], norm = distance(turn, other) || 1;

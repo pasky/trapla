@@ -152,6 +152,21 @@ describe('watercourse crossing assemblies', () => {
     expect(new WaterNet(water).intersections(2, [0, 2000], [250, 2250], [250, 250])).toHaveLength(0);
     expect(new WaterNet(water).section(1250, 250, 1, 0, 20, 20)).toHaveLength(1);
   });
+  it.each([10, null])('rejects earthwork overlapping a parallel river bank (width %s), not just its axis', width => {
+    const water = data(0.1, [[0, 258], [2500, 258]]);
+    water.reaches[0].kind = 'river'; water.reaches[0].width = width;
+    const ctx = context(0.1, 0, water), groundDesign: Design = { ...design,
+      vpis: [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }] };
+    const r = evaluate(ctx, groundDesign);
+    expect(r.waterCrossings).toEqual([]);
+    expect(r.footprintConflicts.some(c => c.action === 'blocked' && c.id.startsWith('stream:1:'))).toBe(true);
+    expect(r.violations.some(v => v.kind === 'footprint')).toBe(true);
+    // The same alignment is clear of a narrow ditch: this is ribbon overlap, not a
+    // blanket ban on nearby water. Unknown river width must also reach local queries.
+    water.reaches[0].kind = 'ditch'; water.reaches[0].width = 0.5;
+    const clear = evaluate(context(0.1, 0, water), groundDesign);
+    expect(clear.footprintConflicts).toEqual([]);
+  });
   it('does not silently culvert a cut; Auto lifts the grade to pass the stream', () => {
     const cut = evaluate(context(0.1, -3), design);
     expect(cut.cost.earthDetail.culverts).toBe(0);
