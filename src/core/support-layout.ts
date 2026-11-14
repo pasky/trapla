@@ -185,13 +185,14 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       forced: r.runs.some(run => run.forced && run.i0 <= part.i1 && run.i1 >= part.i0) };
   });
   for (const run of runs) {
-    if (run.kind !== KIND.bridge || manual.subarray(run.i0, run.i1 + 1).some(Boolean)) continue;
+    if (run.kind !== KIND.bridge) continue;
+    const isManual = manual.subarray(run.i0, run.i1 + 1).some(Boolean);
     const ordinary = bridgeLayout(run.length), spans = Math.max(1, Math.round(run.length / ordinary.span));
-    const piers: number[] = [];
+    const originalPiers = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + (k + 1) * ordinary.span);
+    let piers: number[] = [];
     let changed = false;
-    for (let k = 1; k < spans; k++) {
-      const s = run.s0 + k * ordinary.span;
-      if (!blocked(s, true)) { piers.push(s); continue; }
+    for (const s of originalPiers) {
+      if (isManual || !blocked(s, true)) { piers.push(s); continue; }
       changed = true;
       // Seek the nearest free support in this pier's own half-span neighbourhood. Disjoint
       // neighbourhoods preserve ordering. A fully obstructed neighbourhood becomes a priced
@@ -202,15 +203,16 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         if (!blocked(candidate, true)) { piers.push(candidate); found = true; break; }
       }
     }
-    // Even an unchanged support pattern needs clearance verification after Auto extends a
-    // bridge or retains a new neighbouring slope. The nominal 1.2 m allowance is not enough
-    // for every span in the priced model.
-    const layout = supportBridgeLayout(run.s0, run.s1, piers);
-    if (layout.span > SUPPORT_LIMITS.spanM) {
+    // Manual choices freeze support geometry, not clearance validation. Even an unchanged
+    // support pattern can exceed the nominal 1.2 m structural-depth allowance.
+    let layout = supportBridgeLayout(run.s0, run.s1, piers);
+    if (changed && layout.span > SUPPORT_LIMITS.spanM) {
       // Retain the original, fully billed supports; the downstream screen must still flag
       // their collisions. Do not fabricate an arbitrarily long feasible bridge from a price proxy.
       diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-limit', extensionM: 0, raiseM: 0, requiredSpanM: layout.span });
-      continue;
+      piers = [...originalPiers];
+      layout = supportBridgeLayout(run.s0, run.s1, piers);
+      changed = false;
     }
     if (changed) { run.pierStations = piers; run.layout = layout; }
     // The sourced cost model's span/20 depth proxy is not a feasibility certificate. Check

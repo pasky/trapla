@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { bridgeLayout, bridgeModel, bridgeRunCost } from '../src/core/bridge';
+import { bridgeLayout, bridgeModel, bridgeRunCost, supportBridgeLayout } from '../src/core/bridge';
 import { costParts } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
+import { D11_SCENARIO } from '../src/core/data/scenario';
+import { evaluate, type Design } from '../src/core/evaluate';
 import { RoadNet } from '../src/core/roadnet';
 import { remedyBridgeSupports, type SupportRoute } from '../src/core/support-layout';
 import { KIND } from '../src/core/structures';
@@ -117,10 +119,14 @@ describe('automatic bridge support remedies', () => {
     expect(limited.kind).toEqual(r.kind);
     (r.kind as Uint8Array).fill(KIND.bridge, 10, 39);
     r.runs = [{ kind: KIND.bridge, i0: 10, i1: 38, s0: 95, s1: 385, length: 290 }];
+    (r.grade as Float64Array).fill(106.1);
     const wide = remedyBridgeSupports(r, terrain(), roads);
     expect(wide.runs[0].pierStations).toBeUndefined();
     expect(wide.runs[0].layout).toBeUndefined();
     expect(wide.diagnostics.some(d => d.reason === 'span-limit' && d.requiredSpanM === 290)).toBe(true);
+    // The rejected 290 m span must not hide the retained ordinary 29 m spans' shortfall.
+    expect(wide.diagnostics.find(d => d.reason === 'span-depth')!.raiseM).toBeCloseTo(0.15);
+    expect(wide.clearanceRequirements).toContainEqual({ s: 100, z: 106.25 });
   });
 
   it('moves automatic portals only with sufficient cover or a still-viable non-forced tunnel', () => {
@@ -148,7 +154,55 @@ describe('automatic bridge support remedies', () => {
     expect(result.clearanceRequirements.every(c => c.z > 107.5)).toBe(true);
     expect(r.grade).toEqual(before);
     const manual = new Int8Array(r.n).fill(-1); manual[15] = KIND.bridge;
-    expect(remedyBridgeSupports(r, terrain(), roadAt(255, 'motorway'), manual).clearanceRequirements).toEqual([]);
+    const fixed = remedyBridgeSupports(r, terrain(), roadAt(255, 'motorway'), manual);
+    expect(fixed.runs).toEqual(r.runs);
+    expect(fixed.kind).toEqual(r.kind);
+    expect(fixed.clearanceRequirements).toContainEqual({ s: 150, z: 107.8 });
+    expect(fixed.diagnostics.find(d => d.reason === 'span-depth')!.raiseM).toBeCloseTo(0.8);
+    expect(fixed.violations).toHaveLength(1);
+    expect(r.grade).toEqual(before);
+  });
+
+  it('validates an explicit manual support arrangement without replacing it with ordinary spans', () => {
+    const r = route(), mask = new Int8Array(r.n).fill(-1);
+    mask[15] = KIND.bridge;
+    (r.grade as Float64Array).fill(106.6);
+    r.runs[0].pierStations = [125, 165, 185];
+    r.runs[0].layout = supportBridgeLayout(95, 215, r.runs[0].pierStations);
+    const result = remedyBridgeSupports(r, terrain(), roadAt(255), mask);
+    expect(result.runs).toEqual(r.runs);
+    expect(result.kind).toEqual(r.kind);
+    expect(result.clearanceRequirements).toContainEqual({ s: 150, z: 106.8 });
+    expect(result.diagnostics.find(d => d.reason === 'span-depth')!.raiseM).toBeCloseTo(0.2);
+    expect(result.violations).toHaveLength(1);
+  });
+
+  it('does not make an under-clearance bridge valid by painting the same structure manually', () => {
+    const ctx = { terrain: syntheticTerrain(260, 100, 5, () => 100), scenario: D11_SCENARIO,
+      a: { x: 100, y: 250 }, b: { x: 1100, y: 250 },
+      roads: new RoadNet({ cls: ['secondary'], ways: [[0, 600, 100, 600, 400]] }) };
+    const design: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual',
+      vpis: [{ s: 0, z: 100, r: null }, { s: 400, z: 106.1, r: null },
+        { s: 600, z: 106.1, r: null }, { s: 1000, z: 100, r: null }] };
+    const automatic = evaluate(ctx, design);
+    const painted = evaluate(ctx, { ...design, structureOverrides: [{ s0: 490, s1: 520, kind: KIND.bridge }] });
+    expect(automatic.runs).toHaveLength(1);
+    expect(automatic.runs[0]).toMatchObject({ s0: 485, s1: 515, length: 30 });
+    expect(painted.runs).toEqual(automatic.runs);
+    expect(painted.kind).toEqual(automatic.kind);
+    expect(painted.grade).toEqual(automatic.grade);
+    expect(painted.vpis).toEqual(automatic.vpis);
+    for (const result of [automatic, painted]) {
+      expect(result.valid).toBe(false);
+      expect(result.violations).toContainEqual(expect.objectContaining({ kind: 'structure',
+        title: 'Obstacle-clearing bridge span needs more height', fix: expect.stringContaining('by at least 0.2 m') }));
+    }
+    const autoProfile = evaluate(ctx, { ...design, profileMode: 'auto',
+      structureOverrides: [{ s0: 490, s1: 520, kind: KIND.bridge }] });
+    expect(autoProfile.runs).toEqual(painted.runs);
+    expect(autoProfile.kind).toEqual(painted.kind);
+    expect(autoProfile.grade[50]).toBeGreaterThanOrEqual(106.3);
+    expect(autoProfile.valid).toBe(true);
   });
 
   it('prices a provisional >120 m clear span locally instead of retaining blocked intermediate piers', () => {
