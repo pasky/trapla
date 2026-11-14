@@ -77,7 +77,7 @@ The mapper checks unconsolidated genesis first, then crystalline/volcanic lithol
 - Tests cover raster cell centres/holes/islands, cached keyset pagination, ground-grid orientation/validation, cut contacts across the crown/slope, unknown prior, and spatially varying auto-profile costs. The complete pipeline was rebuilt from copied worktree-local terrain/OSM caches.
 - Cut slopes remain 1:1.75, fill slopes 1:2 and unusable material 15%. Changing those from lithology alone would add unsupported stability/reuse claims and obscure this change's cost effect. Peat/clay suitability, groundwater, tunnel rock classes, landslides and undermining are **next steps**, not secretly priced here. In particular active-landslide excavation should eventually carry an explicit violation/risk treatment after querying activity polygons; absence of that penalty is not evidence of safety.
 
-## 5. Initial fixed-design comparison (main model 7 → uncalibrated geology model 8)
+## 5. Initial branch experiment (main model 7 → uncalibrated geology)
 
 Historical pre-calibration snapshot; current totals are maintained in PLAN.md after the main/noise rebase.
 
@@ -142,11 +142,13 @@ Sensitivity: fitting the **planned** split instead requires much deeper profiles
 Reproduce the fit against its initial priors:
 
 ```sh
-git show 27947cb:pipeline/ground_profiles.json > /tmp/ground-initial.json
+git show 8b29f98:pipeline/ground_profiles.json > /tmp/ground-initial.json
 npx tsx scripts/calibrate-ground.ts /tmp/ground-initial.json actual
 npx tsx scripts/calibrate-ground.ts /tmp/ground-initial.json planned
 # Check the current table without fitting:
 npx tsx scripts/calibrate-ground.ts pipeline/ground_profiles.json actual --check
 ```
 
-Fit measurements above use the pre-noise-rebase geometry/cost implementation at `27947cb`. A later engineering/berm change can alter the surrogate shares and should rerun this check rather than presenting the old match as permanent.
+The share-fit check was rerun after rebasing onto the model-9 noise/crossing implementation: the same **42.56/18.05/39.39%** result holds in model 10. A later engineering/berm change can alter the surrogate shares and should rerun this check rather than presenting the old match as permanent.
+
+Final model-10 five-design results (rebased main model 9 → mapped/calibrated geology), M CZK: best **3,303→3,325**, demo **4,105→4,144**, direct80 **3,661→3,694**, direct90 **3,799→3,873**, town **8,957→9,035**. Class shares respectively **57/19/23**, **47/18/35**, **59/19/22**, **51/20/29**, **35/16/49** (rounded). All VALID; per-cell parts sum. The town route was not a fit target and makes much deeper cuts; its high class-III share is not evidence of pervasive blasting in shallow red beds.

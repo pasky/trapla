@@ -2,7 +2,7 @@
 
 Build the cheapest norm-abiding road from A to B on real Czech terrain, within a travel-time target
 and for a given traffic. Scenario #1: Trutnov → Polish border (the D11 corridor).
-Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.md`, `research/07`–`10` (prices and geology).
+Background, data sources and decisions: `PLAN.md`, `research/00-feasibility-map.md`, `research/07`–`11` (prices, geology and noise).
 
 ![design](docs/screenshots/02-design.png)
 
@@ -66,7 +66,9 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - Cut quantities use ČGS GEOCR50 / engineering-geological rajons on a 25 m ground grid. Hover the profile
   for the ground name and **estimated** loose/weathered depths; the HUD shows class I/II/III shares.
   Mapped lithology is real, vertical weathering profiles are provisional—not borehole measurements or ČSN
-  class determinations. Unmapped ground uses the norm's 75/20/5 mix; see `research/10-geology-excavation.md`.
+  class determinations. Permian/Carboniferous profiles are calibrated to D11 1109 reported excavation
+  quantities (official-line surrogate 42.6/18.0/39.4% I/II/III, not an as-built reconstruction).
+  Unmapped ground uses the norm's 75/20/5 mix; see `research/10-geology-excavation.md`.
 - Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
   floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
   shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
