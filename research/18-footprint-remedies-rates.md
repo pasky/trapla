@@ -4,7 +4,7 @@ Research snapshot: 2026-11-14. Prices are official OTSKP 2026 catalogue rates in
 
 ## Source and verification
 
-Primary source: [SFDI OTSKP database page](https://sfdi.gov.cz/cenove-databaze/otskp/) and the actual [April 2026 OTSKP archive](https://sfdi.gov.cz/wp-content/uploads/2026/04/otskp-2.zip). Downloaded the ZIP and inspected `OTSKP/otevřený_formát/Příloha č.2 OTSKP 2026 - soubor položek_20260410.R1.Shared.xlsx`. Workbook was read with `openpyxl` `read_only=True`, `data_only=True` under a 1.5 GB virtual-memory limit. Codes, descriptions, units, rates, and the cited scope were checked in the workbook's item rows/specification text. The official item list itself is the cited source for all rates below.
+Primary source: [SFDI OTSKP database page](https://sfdi.gov.cz/cenove-databaze/otskp/) and the actual [April 2026 OTSKP archive](https://sfdi.gov.cz/wp-content/uploads/2026/04/otskp-2.zip). Downloaded as `/tmp/otskp-2026.zip`; inspected workbook at `/tmp/otskp-xlsx/OTSKP/otevřený_formát/Příloha č.2 OTSKP 2026 - soubor položek_20260410.R1.Shared.xlsx` (archive member path: `OTSKP/otevřený_formát/Příloha č.2 OTSKP 2026 - soubor položek_20260410.R1.Shared.xlsx`). Workbook was read with `openpyxl` `read_only=True`, `data_only=True` under a 1.5 GB virtual-memory limit. Codes, descriptions, units, rates, and the cited scope were checked in the workbook's item rows/specification text. The official item list itself is the cited source for all rates below.
 
 Existing relevant research read first: [16-official-items.md](16-official-items.md), [17-culvert-prices.md](17-culvert-prices.md), [17-stream-crossings.md](17-stream-crossings.md), [17-stream-validation.md](17-stream-validation.md), plus the bridge component CSVs under [`data/`](data/). The previous research confirms that culvert barrels are separate from bedding/encasement and that creek/river diversions have not previously been priced.
 
@@ -61,18 +61,18 @@ Rows 1141* are removal of existing watercourse paving/construction, not new-chan
 
 ### Geometry illustration for quantity transparency (not a tariff)
 
-For comparison only, assume a trapezoidal channel with 2.0 m bottom width, 1.0 m flow/design depth and 2H:1V banks. Cross-sectional excavation area is `depth × (bottom + side-slope horizontal widths) = 1 × (2 + 2×2) = 6 m²`, not 4 m². Wetted perimeter is `2 + 2×sqrt(1²+2²) = 6.472 m`. Suppose the wetted bed/banks receive 0.30 m-thick quarry-stone pohoz (code 46451), with geotextile beneath it (28997); outside the lined strip, restore 2.0 m horizontal width at each bank using up to 0.10 m topsoil (18221) and hydroseed (18242). Assume excavated class-I soil is hauled up to 1 km (124731) and handled/placed on site (17120); this is explicitly **not** off-site disposal.
+For comparison only, assume a trapezoidal channel with 2.0 m bottom width, 1.0 m flow/design depth and 2H:1V banks. Top width is `2 + 2×2 = 6 m`; cross-sectional excavation area is `depth × (bottom + top width)/2 = 1 × (2 + 6)/2 = 4 m²` (the two bank triangles total 2 m²). Wetted perimeter is `2 + 2×sqrt(1²+2²) = 6.472 m`. Suppose the wetted bed/banks receive 0.30 m-thick quarry-stone pohoz (code 46451), with geotextile beneath it (28997); outside the lined strip, restore 2.0 m horizontal width at each bank using up to 0.10 m topsoil (18221) and hydroseed (18242). Assume excavated class-I soil is hauled up to 1 km (124731) and handled/placed on site (17120); this is explicitly **not** off-site disposal.
 
 | BOQ quantity basis | Quantity per channel m | Row and extended CZK/m |
 |---|---:|---:|
-| Channel excavation (class I, haul ≤1 km) | 6.000 m³ | 124731: **1,142.16** |
-| On-site loose placement of excavated material, if approved | 6.000 m³ | 17120: **127.02** |
+| Channel excavation (class I, haul ≤1 km) | 4.000 m³ | 124731: **761.44** |
+| On-site loose placement of excavated material, if approved | 4.000 m³ | 17120: **84.68** |
 | Stone lining, thickness 0.30 m over 6.472 m wetted perimeter | 1.942 m³ | 46451: **3,066.19** |
 | Geotextile under lining (same developed wetted surface) | 6.472 m² | 28997: **565.91** |
 | Topsoil + hydroseed on 4 m² restored banks | 4.000 m² | 18221 + 18242: **274.16** |
-| **Illustrative measured subtotal** | | **5,175.45 CZK/channel m** |
+| **Illustrative measured subtotal** | | **4,752.39 CZK/channel m** |
 
-This is only arithmetic over the stated rows and geometry, **not a recommended channel design or a universal relocation rate**. It omits off-site disposal or haul if on-site placement is unavailable (the listed disposal fee is a zero placeholder); temporary flow diversion/cofferdams and construction sequencing beyond scope embedded in excavation; water permits, fish/ecology timing, hydraulic/scour design, transitions and tie-ins, bed substrate/vegetation requirements, special energy dissipation, land acquisition, and any separate structures. Ground class alone changes excavation materially. If the channel is naturally unlined, a gravel/soil bed restoration rather than stone is a different quantity/specification and is not priced by this example. Avoid adding old-channel demolition, both alternatives of a lining, or duplicated excavation/transport rows unless the BOQ separately calls for them.
+This is only arithmetic over the stated rows and geometry, **not a recommended channel design or a universal relocation rate**. The subtotal uses unrounded extensions (rounding each displayed line to cents yields 4,752.38 CZK/m, one cent below the rounded full-precision total). It omits off-site disposal or haul if on-site placement is unavailable (the listed disposal fee is a zero placeholder); temporary flow diversion/cofferdams and construction sequencing beyond scope embedded in excavation; water permits, fish/ecology timing, hydraulic/scour design, transitions and tie-ins, bed substrate/vegetation requirements, special energy dissipation, land acquisition, and any separate structures. Ground class alone changes excavation materially. If the channel is naturally unlined, a gravel/soil bed restoration rather than stone is a different quantity/specification and is not priced by this example. Avoid adding old-channel demolition, both alternatives of a lining, or duplicated excavation/transport rows unless the BOQ separately calls for them.
 
 ## Interpretation
 
