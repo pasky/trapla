@@ -533,12 +533,12 @@ export class View {
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
       const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
       sv.push({
-        dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
+        dl: push(xl, yl, (Number.isFinite(r.wallSurfaceL?.[i]) ? r.wallSurfaceL[i] : natural(xl, yl)) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
         cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
-        dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
+        dr: push(xr, yr, (Number.isFinite(r.wallSurfaceR?.[i]) ? r.wallSurfaceR[i] : natural(xr, yr)) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
       });
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
@@ -563,14 +563,18 @@ export class View {
       quad(a.cl, b.cl, a.cr, b.cr);
       if (k0 === KIND.earth && k1 === KIND.earth) for (const side of [1, -1]) {
         const sections = daylightSections(r, i, side, w, natural);
-        let prev: { day: number; edge: number; ground: number } | undefined;
+        let prev: { day: number; edge: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
         for (let j = 0; j < sections.length; j++) {
-          const s = sections[j], t = j / (sections.length - 1);
-          const fill = s.edge.z > s.day.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
+          const s = sections[j], t = j / (sections.length - 1), toe = s.slopeDay ?? s.day;
+          const fill = s.edge.z > toe.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
           const gp = r.geology.profiles[r.geology.ids[i]];
           const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
-          const day = push(s.day.x, s.day.y, s.day.z+groundLift, color, s.day.z, slopeInk, kind, geology(0));
+          const day = push(toe.x, toe.y, toe.z+groundLift, color, toe.z, slopeInk, kind, geology(s.day.z-toe.z));
           const edge = push(s.edge.x, s.edge.y, s.edge.z+lift, color, s.edge.z, slopeInk, kind, geology(natural(s.edge.x,s.edge.y)-s.edge.z));
+          // Separate concrete vertices keep earth textures off the physically vertical face.
+          // The collar still starts at natural ground, not at the retained slope elevation.
+          const wallGround = s.slopeDay ? push(s.day.x,s.day.y,s.day.z+groundLift,concrete) : undefined;
+          const wallSlope = s.slopeDay ? push(toe.x,toe.y,toe.z+groundLift,concrete) : undefined;
           const ground = groundPos.length / 3;
           for (let k = 0; k <= 8; k++) {
             const p = collarPoint(s, k/8, natural, coarse);
@@ -578,9 +582,10 @@ export class View {
           }
           if (prev) {
             quad(prev.day, day, prev.edge, edge);
+            if (prev.wallGround !== undefined && wallGround !== undefined) quad(prev.wallGround, wallGround, prev.wallSlope!, wallSlope!);
             for (let k = 0; k < 8; k++) groundIdx.push(prev.ground+k, ground+k, prev.ground+k+1, ground+k, ground+k+1, prev.ground+k+1);
           }
-          prev = { day, edge, ground };
+          prev = { day, edge, ground, wallGround, wallSlope };
         }
       }
     }

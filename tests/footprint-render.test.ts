@@ -31,11 +31,18 @@ describe('footprint conflict presentation', () => {
     expect(footprintConflictText(c)).toContain(c.detail);
     expect(footprintConflictText(conflict({ feature: 'stream', action: 'culvert' }))).toContain('included in culverts');
     expect(footprintConflictText(conflict({ feature: 'railway', action: 'blocked', cost: 0 }))).not.toContain('included in');
+    for (const action of ['retaining-wall','channel-relocation'] as const) {
+      const text = footprintConflictText(conflict({ feature: 'stream', action }));
+      expect(text).toContain(action.replace('-', ' '));
+      expect(text).toContain('included in footprint works');
+      expect(text).not.toContain('road crossings');
+    }
   });
 
   it('renders only road relocations as continuous terrain roads at their class width', () => {
     const c = conflict(), original = structuredClone(c);
-    const surfaces = footprintSurfaces([c, conflict({ action: 'blocked' }), conflict({ feature: 'stream', action: 'culvert' }), conflict({ geometry: undefined })], height);
+    const surfaces = footprintSurfaces([c, conflict({ action: 'blocked' }), conflict({ feature: 'stream', action: 'culvert' }),
+      conflict({ feature: 'stream', action: 'channel-relocation' }), conflict({ action: 'retaining-wall' }), conflict({ geometry: undefined })], height);
     expect(surfaces).toHaveLength(1);
     const s = surfaces[0];
     expect(s.link).toBe(false); expect(s.deck).toBeUndefined();
@@ -50,16 +57,17 @@ describe('footprint conflict presentation', () => {
 
   it('marks removed originals and blocked locations, then disposes their geometry on the next result', () => {
     const c = conflict(), blocked = conflict({ id: 'road:3', action: 'blocked', geometry: { road: path(60), width: 6, schematic: false } });
+    const channel = conflict({ id: 'stream:1', feature: 'stream', action: 'channel-relocation', geometry: { road: path(90), width: 3, schematic: false } });
     const retired: THREE.Material[] = [];
     const mock = { world: new THREE.Group(), crossingSurfaces: footprintSurfaces([c], height),
       local: (x: number, y: number, z: number) => new THREE.Vector3(x, z, -y),
-      drape: height, groundHeight: height, requestRender: vi.fn(),
+      drape: height, groundHeight: height, replacementHeight: height, requestRender: vi.fn(),
       crossingEarthMaterial: () => new THREE.MeshBasicMaterial(), crossingGroundMaterial: () => new THREE.MeshBasicMaterial(),
       retire: (m: THREE.Material) => retired.push(m),
     };
     const renderer = new CrossingRenderer(mock as unknown as View);
     const result = { crossings: [], grade: Float64Array.of(100), ground: Float64Array.of(100) };
-    renderer.setResult({ ...result, footprintConflicts: [c, blocked] });
+    renderer.setResult({ ...result, footprintConflicts: [c, blocked, channel] });
     const group = mock.world.getObjectByName('crossing-roads')!;
     expect(group.getObjectByName('crossing-earthworks')).toBeDefined();
     const removed = group.getObjectByName('footprint-removed') as THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial>;
@@ -72,13 +80,22 @@ describe('footprint conflict presentation', () => {
     const proposed = group.getObjectByName('footprint-proposed') as THREE.Line;
     expect(proposed.userData.conflictId).toBe(blocked.id);
     expect(proposed.geometry.getAttribute('position').getZ(0)).toBe(-60);
-    expect(group.children.filter(c => c.name === 'footprint-removed')).toHaveLength(1);
+    expect(group.children.filter(c => c.name === 'footprint-removed')).toHaveLength(2);
+    const water = group.getObjectByName('footprint-channel') as THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+    expect(water.userData.conflictId).toBe(channel.id);
+    expect(water.geometry.getAttribute('position').getZ(0)).toBe(-90);
+    expect(water.material.color.b).toBeGreaterThan(water.material.color.r);
+    expect(water.material.type).toBe('LineBasicMaterial');
+    const removedChannel = group.children.find(c => c.name === 'footprint-removed' && c.userData.conflictId === channel.id) as THREE.Line;
+    expect(removedChannel.geometry.getAttribute('position').getZ(0)).toBe(-10);
+    const disposeWater = vi.spyOn(water.geometry, 'dispose'), disposeOldWater = vi.spyOn(removedChannel.geometry, 'dispose');
     const disposeLine = vi.spyOn(removed.geometry, 'dispose'), disposeMarkers = vi.spyOn(markers.geometry, 'dispose'), disposeProposal = vi.spyOn(proposed.geometry, 'dispose');
     mock.crossingSurfaces = [];
     renderer.setResult(result);
     expect(group.children).toHaveLength(0);
     expect(disposeLine).toHaveBeenCalledOnce(); expect(disposeMarkers).toHaveBeenCalledOnce(); expect(disposeProposal).toHaveBeenCalledOnce();
-    expect(retired).toContain(removed.material); expect(retired).toContain(markers.material);
+    expect(disposeWater).toHaveBeenCalledOnce(); expect(disposeOldWater).toHaveBeenCalledOnce();
+    expect(retired).toContain(removed.material); expect(retired).toContain(markers.material); expect(retired).toContain(water.material);
     renderer.dispose();
   });
 });

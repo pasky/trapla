@@ -24,6 +24,35 @@ describe('daylight stitching', () => {
       }
     }
   });
+  it('keeps retained fill and cut slopes vertically separate from natural ground collars on either side', () => {
+    const retained = { ...route, wallSurfaceL: f([108,112]), wallSurfaceR: f([92,94]) };
+    for (const side of [-1,1]) {
+      const sections = daylightSections(retained,0,side,5,natural);
+      for (const [j,s] of sections.entries()) {
+        const t = j/(sections.length-1), toe = s.slopeDay!;
+        expect(toe.x).toBe(s.day.x); expect(toe.y).toBe(s.day.y);
+        expect(toe.z).toBeCloseTo(side > 0 ? 108+4*t : 92+2*t);
+        expect((toe.z-s.day.z)*side).toBeGreaterThan(0);
+        expect(s.day.z).toBe(natural(s.day.x,s.day.y));
+        expect(collarPoint(s,0,natural,coarse)).toEqual(s.day);
+        // Ground outside the face cannot rise to the wall top and bury a nearby feature.
+        const p = collarPoint(s,1/8,natural,coarse);
+        expect(p.z).toBe(natural(p.x,p.y));
+      }
+    }
+  });
+  it('tapers to unretained stations and leaves NaN or absent walls on natural daylight', () => {
+    for (const walls of [[NaN,110],[110,NaN]]) {
+      const sections = daylightSections({ ...route, wallSurfaceL: f(walls) },0,1,5,natural);
+      const noWall = Number.isNaN(walls[0]) ? sections[0] : sections.at(-1)!;
+      expect(noWall.slopeDay!.z).toBeCloseTo(noWall.day.z);
+      expect(sections.every(s => Number.isFinite(s.slopeDay!.z))).toBe(true);
+    }
+    for (const wallSurfaceL of [undefined,f([NaN,NaN])]) {
+      const sections = daylightSections({ ...route, wallSurfaceL },0,1,5,natural);
+      expect(sections.every(s => s.slopeDay === undefined)).toBe(true);
+    }
+  });
   it('keeps overlapping collars at natural height near either road, including an endpoint tie-in', () => {
     const blend = groundBlend([{ a: { x: 0,y: 0 }, b: { x: 100,y: 0 }, width: 3 },
       { a: { x: 50,y: 0 }, b: { x: 50,y: 100 }, width: 2 }]);

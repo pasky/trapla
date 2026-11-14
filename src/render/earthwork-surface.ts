@@ -2,17 +2,19 @@ import type { Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
 
 export interface GroundPoint { x: number; y: number; z: number }
-export interface DaylightSection { edge: GroundPoint; day: GroundPoint; outer: GroundPoint }
+export interface DaylightSection { edge: GroundPoint; day: GroundPoint; outer: GroundPoint; slopeDay?: GroundPoint }
 // The discard edge lives in the replacement ground, never on the exposed cut face.
 export const GROUND_COLLAR = 20;
 export const COLLAR_OVERLAP = 5;
-export type EarthworkRoute = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'grade' | 'kind' | 'dayL' | 'dayR'>;
+export type EarthworkRoute = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'grade' | 'kind' | 'dayL' | 'dayR'> & {
+  wallSurfaceL?: Float64Array; wallSurfaceR?: Float64Array;
+};
 export function daylightPoint(r: EarthworkRoute, i: number, side: number, extra = 0) {
   const off = ((side > 0 ? r.dayL[i] : r.dayR[i]) + extra) * side;
   return { x: r.x[i] - r.ty[i] * off, y: r.y[i] + r.tx[i] * off };
 }
-/** Fine replacement ground, rebuilt only on evaluation. The inner edge is shared with the
- * slope; the outer edge returns to the existing 20 m triangles. No camera-dependent seams. */
+/** Fine replacement ground, rebuilt only on evaluation. The inner edge meets the slope or
+ * vertical retaining face; the outer edge returns to the existing 20 m triangles. */
 export function daylightSections(r: EarthworkRoute, i: number, side: number, halfWidth: number,
   natural: (x: number, y: number) => number): DaylightSection[] {
   if (i + 1 >= r.n || r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) return [];
@@ -20,11 +22,19 @@ export function daylightSections(r: EarthworkRoute, i: number, side: number, hal
   const ao = daylightPoint(r, i, side, GROUND_COLLAR), bo = daylightPoint(r, i + 1, side, GROUND_COLLAR);
   const edge = (j: number) => ({ x: r.x[j] - r.ty[j] * halfWidth * side, y: r.y[j] + r.tx[j] * halfWidth * side, z: r.grade[j] });
   const ae = edge(i), be = edge(i + 1);
+  const wall = side > 0 ? r.wallSurfaceL : r.wallSurfaceR;
+  const wallA = Number.isFinite(wall?.[i]), wallB = Number.isFinite(wall?.[i+1]);
+  const az = wallA ? wall![i] : natural(a.x,a.y), bz = wallB ? wall![i+1] : natural(b.x,b.y);
   const count = Math.max(1, Math.ceil(Math.max(Math.hypot(b.x-a.x,b.y-a.y), Math.hypot(bo.x-ao.x,bo.y-ao.y)) / 2.5));
   return Array.from({ length: count + 1 }, (_, j) => {
     const t = j/count, at = (p: { x: number; y: number }, q: typeof p) => ({ x: p.x+(q.x-p.x)*t, y: p.y+(q.y-p.y)*t });
     const day = at(a,b), outer = at(ao,bo);
-    return { edge: { ...at(ae,be), z: ae.z+(be.z-ae.z)*t }, day: { ...day, z: natural(day.x,day.y) }, outer: { ...outer, z: natural(outer.x,outer.y) } };
+    const ground = { ...day, z: natural(day.x,day.y) };
+    // NaN means no wall. Preserve the fine natural daylight there, and taper a wall to
+    // the neighbouring unretained station without ever lifting its ground collar.
+    const slopeDay = wallA || wallB ? { ...day, z: az+(bz-az)*t } : undefined;
+    return { edge: { ...at(ae,be), z: ae.z+(be.z-ae.z)*t }, day: ground,
+      outer: { ...outer, z: natural(outer.x,outer.y) }, slopeDay };
   });
 }
 export interface GroundCorridor { a: { x: number; y: number }; b: { x: number; y: number }; width: number }

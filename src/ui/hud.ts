@@ -290,7 +290,7 @@ export class Hud {
     const xing = `${Object.values(x).reduce((a, b) => a + b, 0)} <small>(${[x.junction ? `${x.junction} junction${x.junction === 1 ? '' : 's'}` : '', x.reconnection ? `${x.reconnection} reconnection${x.reconnection === 1 ? '' : 's'} ${num(reconnectM, 0)} m` : '', x.diversion ? `${x.diversion} diversion${x.diversion === 1 ? '' : 's'} ${num(divertM, 0)} m` : '', x.atGrade ? `${x.atGrade} invalid at grade` : '', x.overbridge ? `${x.overbridge} overbridge${x.overbridge === 1 ? '' : 's'}` : '', x.bridge ? `${x.bridge} under our bridges` : '', x.tunnel ? `${x.tunnel} above tunnels` : ''].filter(Boolean).join(', ') || 'none'})</small>`;
     const conflicts = footprintConflictsInRange(r.footprintConflicts ?? [], sel?.s0 ?? 0, sel?.s1 ?? r.length);
     const footprint = conflicts.length ? `<tr class="${conflicts.some(c => c.action === 'blocked') ? 'warn' : ''}"><td colspan="2"><details>
-      <summary>Footprint conflicts: ${conflicts.length} <small>(red dashes: removed road; amber dashes: unbuildable proposal; red ×: blocked)</small></summary>
+      <summary>Footprint conflicts: ${conflicts.length} <small>(concrete: retaining wall; blue line: new channel; red dashes: removed road/channel; amber dashes: unbuildable proposal; red ×: blocked)</small></summary>
       ${conflicts.map(c => `<div class="sub">km ${num(c.s0 / 1000, 2)}–${num(c.s1 / 1000, 2)} · ${esc(footprintConflictText(c))}</div>`).join('')}
       <div class="sub">Amounts describe each complete conflict, already included in the bill; selected-stretch costs follow their booking stations.</div>
       </details></td></tr>` : '';

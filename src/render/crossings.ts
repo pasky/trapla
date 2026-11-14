@@ -69,6 +69,14 @@ export class CrossingRenderer {
         blocked.push(p.x, p.y, p.z);
         if (c.geometry?.road && c.geometry.road.length >= 2) this.conflictPath(c, c.geometry.road, true);
       }
+      if (c.feature === 'stream' && c.action === 'channel-relocation' && c.geometry?.road && c.geometry.road.length >= 2) {
+        const points = c.geometry.road.map(p => this.view.local(p.x, p.y, this.view.groundHeight(p.x,p.y) + .3));
+        const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({
+          color: 0x168bdd, depthTest: false, depthWrite: false,
+        }));
+        line.name = 'footprint-channel'; line.userData.conflictId = c.id; line.renderOrder = 5; this.group.add(line);
+        if (c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
+      }
       if (c.action === 'relocation' && c.geometry?.road?.length && c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
     }
     if (!blocked.length) return;
