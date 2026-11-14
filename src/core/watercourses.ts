@@ -58,6 +58,16 @@ export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
   const width = Math.max(c.width + 2 * R.bridgeBanks, q100 / (R.velocity * 2) + 2 * R.bridgeBanks);
   return { type: 'bridge', width, height: 2, q100, capacity: Infinity, perM: 0, head: 0, minHeight: STRUCTURE_RULES.riverClearance, naturalBed };
 }
+/** Per-crossing sizing cache for a profile search. Width only changes the three length tests;
+ * Q100, opening and prices are otherwise constant. Lifetime is one evaluation, not a mutable pack. */
+export function waterSizer(c: WaterCrossing): (footprint: number) => WaterSize {
+  const sizes: WaterSize[] = [];
+  return (footprint) => {
+    const length = barrelLength(c, footprint);
+    const key = (length > 15 ? 1 : 0) | (length > R.maxPipeLength ? 2 : 0) | (length > R.maxBoxLength ? 4 : 0);
+    return sizes[key] ?? (sizes[key] = waterSize(c, footprint));
+  };
+}
 export function culvertCost(c: WaterCrossing, footprint: number): number {
   const size = waterSize(c, footprint);
   return size.type === 'bridge' ? 0 : barrelLength(c, footprint) * size.perM + 2 * size.head;

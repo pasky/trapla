@@ -72,8 +72,9 @@ export interface AutoProfileResult {
   pinViolations?: GradePinViolation[];
 }
 
-const H_MAX = 100;
-const H_STEP = 0.05;
+export const PROFILE_HEIGHT_MAX = 100;
+export const PROFILE_HEIGHT_STEP = 0.05;
+const H_MAX = PROFILE_HEIGHT_MAX, H_STEP = PROFILE_HEIGHT_STEP;
 /** CZK per required-clearance station that is not met */
 const CLEARANCE_PENALTY = 1e8;
 /** extra clearance asked of the polyline grade: vertical curves later shave up to ~1 m off crests */
@@ -87,13 +88,12 @@ const FINE_BAND = 6;
 /** fine passes spent on the mass-balance search (incl. the first) */
 const BALANCE_EVALS = 4;
 
-function buildLut(f: (h: number, kind?: number, costClass?: number) => number, classes: number, kinds: readonly number[]): Float64Array {
+interface CostLut { values: Float64Array; cost: AutoProfileOptions['costPerM'] }
+function buildLut(cost: AutoProfileOptions['costPerM'], classes: number): CostLut {
   const m = Math.round((2 * H_MAX) / H_STEP) + 1;
-  const lut = new Float64Array(classes * 4 * m);
-  for (let c = 0; c < classes; c++) for (const k of kinds) for (let i = 0; i < m; i++) {
-    lut[(c * 4 + k + 1) * m + i] = f(-H_MAX + i * H_STEP, k, c);
-  }
-  return lut;
+  // Sparse crossings used to price all 4,001 heights, even when the search visits only a few.
+  // Fill entries on first use, retaining the identical grid, interpolation and arithmetic.
+  return { values: new Float64Array(classes * 4 * m).fill(NaN), cost };
 }
 
 /** does the grade line satisfy max gradient and the (effective) vertical radii? */
@@ -139,8 +139,6 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   const ds = n > 1 ? s[1] - s[0] : L;
   const stride = Math.max(1, Math.round(DP_STATION_STEP / ds));
   const classes = opt.costClassCount ?? 1;
-  // Most edits have no manual structures; don't recompute three unused LUT blocks per geology.
-  const lutKinds = [...new Set([-1, ...Array.from(opt.structureKind ?? []).filter((k) => k >= 0)])];
   const lutMax = Math.round((2 * H_MAX) / H_STEP);
   const pad = opt.pad ?? 25;
   const penalty = opt.vpiPenalty ?? 1e6;
@@ -206,7 +204,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    * nothing compliant (its grade steps are twice as large, which matters near the gradient limit),
    * the fine grid over the whole band
    */
-  const coarse = (lut: Float64Array): Solved | null => {
+  const coarse = (lut: CostLut): Solved | null => {
     // Half-metre fallback only for pins: a narrow target can fall between coarse-grid paths.
     const passes = [[COARSE_GRID, pad], [COARSE_GRID, pad * 5], [FINE_GRID, pad]];
     if (hasPins) passes.push([0.5, pad]);
@@ -217,12 +215,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     return null;
   };
   /** fine pass around a coarse line; keeps the coarse line if the fine one is not compliant */
-  const refine = (lut: Float64Array, c: Solved): Solved => {
+  const refine = (lut: CostLut, c: Solved): Solved => {
     const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z);
     return ok(f) ? f : c;
   };
   /** last resort when no compliant line was found: relaxed gradients, reported as not feasible */
-  const relaxed = (lut: Float64Array): AutoProfileResult => {
+  const relaxed = (lut: CostLut): AutoProfileResult => {
     // Pins never enable a relaxed-gradient search or a posthoc edited/manual profile.
     if (hasPins) return finish({ vpis: straight, feasible: straightOk, cost: Infinity });
     if (straightOk) return { vpis: straight, feasible: true, cost: Infinity };
@@ -235,7 +233,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
 
   const bal = opt.balance;
   if (!bal) {
-    const lut = buildLut(opt.costPerM, classes, lutKinds);
+    const lut = buildLut(opt.costPerM, classes);
     const c = coarse(lut);
     if (!c) return relaxed(lut);
     const f = refine(lut, c);
@@ -246,7 +244,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   // root is bracketed and interpolated. (The coarse line's own balance is no proxy for the fine one's.)
   const clampV = (v: number) => Math.max(bal.lo, Math.min(bal.hi, v));
   let v = clampV(bal.start);
-  let lut = buildLut(bal.costFor(v), classes, lutKinds);
+  let lut = buildLut(bal.costFor(v), classes);
   const c = coarse(lut);
   if (!c) return { ...relaxed(lut), materialValue: v };
   let best = refine(lut, c);
@@ -266,7 +264,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     if (Math.abs(next - v) < 1e-6) break;
     v = next;
-    lut = buildLut(bal.costFor(v), classes, lutKinds);
+    lut = buildLut(bal.costFor(v), classes);
     const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z);
     if (!ok(f)) break;
     const b = bal.balanceOf(f.vpis, v);
@@ -279,7 +277,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    * DP with elevations on a grid of u metres anchored at zA; dz values are in grid units. The band
    * searched at each knot is the ground envelope ± padM, or `around[k]` ± padM when given.
    */
-  function solve(lut: Float64Array, gmax: number, u: number, padM: number, around: Float64Array | null): Solved | null {
+  function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null): Solved | null {
+    const lut = table.values;
     // the end correction below spreads ≤ u/2 over the route: keep that much grade in reserve
     const dzMax = Math.floor(((gmax - u / L) * D) / u + 1e-9);
     const crestLim = Math.floor((D * D) / opt.minCrest / u + 1e-9);
@@ -327,6 +326,25 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           * Math.min(ND, zhi[k + 1] - zlo[k + 1] + 1) * knotPins![nK].length;
       }
       if (states > 4_000_000 || work > 60_000_000) return null;
+    }
+    // Fill only the height envelope this pass can visit, outside the DP's candidate loop.
+    // Bounds are deliberately conservative (one extra grid entry for roundoff).
+    const low = new Int32Array(classes * 4).fill(lutMax + 1), high = new Int32Array(classes * 4).fill(-1);
+    for (let k = 0; k < nK; k++) {
+      const sk = k * D;
+      for (let q = costStart[k]; q < costStart[k + 1]; q++) {
+        const i = costIdx[q], block = costOffset[q] / (lutMax + 1);
+        const h0 = zA + zlo[k] * u + (-dzMax * u) / D * (s[i] - sk) - g[i];
+        const h1 = zA + zhi[k] * u + (dzMax * u) / D * (s[i] - sk) - g[i];
+        low[block] = Math.min(low[block], Math.max(0, Math.min(lutMax, Math.floor((h0 + H_MAX) / H_STEP) - 1)));
+        high[block] = Math.max(high[block], Math.max(0, Math.min(lutMax, Math.ceil((h1 + H_MAX) / H_STEP) + 1)));
+      }
+    }
+    for (let block = 0; block < low.length; block++) {
+      const off = block * (lutMax + 1);
+      for (let j = low[block]; j <= high[block]; j++) if (Number.isNaN(lut[off + j])) {
+        lut[off + j] = table.cost(-H_MAX + j * H_STEP, block % 4 - 1, Math.floor(block / 4));
+      }
     }
     let cur = new Float64Array(ND).fill(Infinity);
     cur[dzMax] = 0; // knot 0 (dz is ignored there: any first grade is allowed)

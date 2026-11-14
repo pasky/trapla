@@ -16,6 +16,7 @@
     "bench": "tsx scripts/bench.ts"
   },
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "@types/three": "^0.187.0",
     "playwright-core": "^1.65.0",
     "tsx": "^4.23.15",

@@ -2,7 +2,7 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile } from './autoprofile';
+import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP } from './autoprofile';
 import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
@@ -36,7 +36,7 @@ import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { CULVERT_RULES } from './data/culverts';
-import { barrelLength, culvertCost, waterOpening, waterSize, type WaterCrossing, type WaterResult } from './watercourses';
+import { barrelLength, culvertCost, waterOpening, waterSize, waterSizer, type WaterCrossing, type WaterResult } from './watercourses';
 
 export interface Design {
   category: CategoryId;
@@ -313,46 +313,77 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const topsoilPerM2 = PRICES.topsoilDepth * PRICES.topsoil;
   // Hydraulics does not depend on the mass-balance shadow price. Cache the sparse height LUT
   // across its iterations instead of resizing every barrel twice per entry on every iteration.
-  const waterLut = costClasses.map(() => new Map<number, { cost: number; bridge: boolean; tunnel: boolean }>());
+  const heightIndex = (h: number) => Math.round((h + PROFILE_HEIGHT_MAX) / PROFILE_HEIGHT_STEP);
+  const dryOption = { cost: 0, bridge: false, tunnel: false };
+  const waterPrice = { ...dryOption }; // scratch: consumed immediately by the synchronous cost callback
+  const heightCount = Math.round(2 * PROFILE_HEIGHT_MAX / PROFILE_HEIGHT_STEP) + 1;
+  const waterLut = costClasses.map(c => c.water.length ? {
+    cost: new Float64Array(heightCount).fill(NaN), flags: new Uint8Array(heightCount),
+  } : null);
+  const waterSizes = new Map(water.map(c => [c, waterSizer(c)]));
   const waterOption = (cls: number, h: number, wd: number) => {
     const entry = costClasses[cls];
-    if (!entry.water.length) return { cost: 0, bridge: false, tunnel: false };
-    let value = waterLut[cls].get(h);
-    if (!value) {
-      value = { cost: crossingCost(entry.water, wd, h + entry.elevation) / ds,
-        bridge: entry.water.some(c => h + entry.elevation > waterGround.get(c)! && waterSize(c, wd).type === 'bridge'),
-        tunnel: entry.water.some(c => h + entry.elevation <= waterGround.get(c)! - STRUCTURE_RULES.tunnelMinDepth) };
-      waterLut[cls].set(h, value);
+    if (!entry.water.length) return dryOption;
+    const j = heightIndex(h);
+    const lut = waterLut[cls]!;
+    if (Number.isNaN(lut.cost[j])) {
+      let cost = 0, flags = 0;
+      const z = h + entry.elevation;
+      for (const c of entry.water) {
+        const bed = waterGround.get(c)!;
+        if (z > bed) {
+          const size = waterSizes.get(c)!(wd);
+          if (size.type === 'bridge') flags |= 1;
+          else cost += barrelLength(c, wd) * size.perM + 2 * size.head;
+        }
+        if (z <= bed - STRUCTURE_RULES.tunnelMinDepth) flags |= 2;
+      }
+      lut.cost[j] = cost / ds;
+      lut.flags[j] = flags;
     }
-    return value;
+    waterPrice.cost = lut.cost[j]; waterPrice.bridge = !!(lut.flags[j] & 1); waterPrice.tunnel = !!(lut.flags[j] & 2);
+    return waterPrice;
+  };
+  // Geometry is independent of the mass-balance price and sparse water class. Reuse it across
+  // every geology/water LUT and clearance retry; only the price arithmetic belongs in costFor.
+  const geometry: { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }[] = [];
+  const geometryAt = (h: number) => {
+    const j = heightIndex(h);
+    let row = geometry[j];
+    if (!row) {
+      const { area, width } = flatEarthGeometry(Math.abs(h), b, h >= 0 ? fillSlope : cutSlope, h >= 0);
+      const cuts = h < 0 ? groundProfiles.map(g => flatCutBands(-h, b, cutSlope, g)) : [];
+      row = { area, width, cuts, bridge: bridgeRural(h), engineering: earthEngineeringPerM(h, 0, area) };
+      geometry[j] = row;
+    }
+    return row;
   };
   /** cost per metre against grade-minus-ground h for a given value of a m³ of fill material */
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
     return (h: number, kind = -1, costClass = 0) => {
-      if (kind === KIND.bridge) return bridgeRural(h);
       if (kind === KIND.tunnel) return tunnelPerM;
+      const geo = geometryAt(h);
+      if (kind === KIND.bridge) return geo.bridge;
       let earth: number;
-      const wd = flatEarthGeometry(Math.abs(h), b, h >= 0 ? fillSlope : cutSlope, h >= 0).width;
+      const wd = geo.width;
       const waterPrice = waterOption(costClass, h, wd);
       if (h >= 0) {
-        const { area, width: wd } = flatEarthGeometry(h, b, fillSlope, true);
-        earth = (baseRural + area * dp.fillPerM3 + earthEngineeringPerM(h, 0, area) + wd * topsoilPerM2
+        earth = (baseRural + geo.area * dp.fillPerM3 + geo.engineering + wd * topsoilPerM2
           + waterPrice.cost) * sur + wd * LAND.perM2;
       } else {
-        const c = -h, wd = flatEarthGeometry(c, b, cutSlope, false).width;
-        const [a1, a2, a3] = flatCutBands(c, b, cutSlope, groundProfiles[costClasses[costClass].ground]);
+        const [a1, a2, a3] = geo.cuts[costClasses[costClass].ground];
         earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
           + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2 + waterPrice.cost) * sur + wd * LAND.perM2;
       }
       const waterBridge = waterPrice.bridge;
-      if (waterBridge) earth = bridgeRural(h) + 1e7; // unavailable earthwork, not a free zero-price culvert
+      if (waterBridge) earth = geo.bridge + 1e7; // unavailable earthwork, not a free zero-price culvert
       if (waterPrice.tunnel) earth = tunnelPerM + 1e7;
       if (kind === KIND.earth) return earth;
       if (waterPrice.tunnel) return tunnelPerM;
-      if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return bridgeRural(h);
+      if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return geo.bridge;
       let best = earth;
-      if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeRural(h));
+      if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, geo.bridge);
       if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
       return best;
     };

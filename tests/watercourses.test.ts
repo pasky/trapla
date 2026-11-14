@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { culvertCost, WaterNet, waterSize, type WaterCrossing, type WaterData } from '../src/core/watercourses';
+import { culvertCost, WaterNet, waterSize, waterSizer, type WaterCrossing, type WaterData } from '../src/core/watercourses';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { Terrain, syntheticTerrain, LC } from '../src/core/terrain';
@@ -64,6 +64,17 @@ describe('watercourse crossing assemblies', () => {
     // Endworks are charged once at each end, independent of barrel length.
     expect(culvertCost(crossing, 40) - culvertCost(crossing, 20)).toBeCloseTo(20 * small.perM, 6);
     expect(culvertCost(crossing, 40) - 40 * small.perM).toBeCloseTo(2 * small.head, 6);
+  });
+  it('cached sizing agrees through length thresholds in either direction, including skew', () => {
+    for (const c of [crossing, { ...crossing, sine: 0.2 }, { ...crossing, catchmentKm2: 2 },
+      { ...crossing, waterKind: 'river' as const, truncated: true }]) {
+      const cached = waterSizer(c);
+      const lengths = [0, 14.999, 15, 15.001, 79.999, 80, 80.001, 100, 100.001, 200];
+      for (const length of [...lengths, ...lengths.slice().reverse()]) {
+        const width = length * c.sine;
+        expect(cached(width)).toEqual(waterSize(c, width));
+      }
+    }
   });
   it('bills a full culvert in 7 m fill despite road raster masking; larger basin forces a bridge', () => {
     const r = evaluate(context(0.1), design);

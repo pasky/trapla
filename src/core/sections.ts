@@ -61,64 +61,67 @@ export function flatCutBands(c: number, b: number, n: number, bands: Bands = UNK
   return [a1 + extra[0], a2 - a1 + extra[1], b * c + n * c * c - a2 + extra[2]];
 }
 
+/** Accumulate depth caps (cutII is the cumulative second cap until the section is finished). */
+function addBands(out: SideResult, bands: Bands | ((o: number) => Bands), o0: number, da: number, o1: number, db: number) {
+  const g = typeof bands === 'function' ? bands((o0 + o1) / 2) : bands;
+  if (g.normMix) {
+    const area = bandArea(-da, -db, o1 - o0, Infinity);
+    out.cutI += area * NORM_CAP_I; out.cutII += area * NORM_CAP_II;
+  } else {
+    out.cutI += bandArea(-da, -db, o1 - o0, g.classIto);
+    out.cutII += bandArea(-da, -db, o1 - o0, g.classIIto);
+  }
+}
+
 /**
  * One side of a section. `ground(o)` gives terrain elevation at offset o (m) on this side.
  */
 export function sideSection(z: number, w: number, tpl: SectionTemplate, ground: (o: number) => number,
   bands: Bands | ((o: number) => Bands) = UNKNOWN_GROUND): SideResult {
-  let cut = 0, fill = 0, capI = 0, capII = 0;
-  /** Midpoint geology on each ≤2.5 m strip, including the daylight triangle. */
-  const band = (o0: number, da: number, o1: number, db: number) => {
-    const g = typeof bands === 'function' ? bands((o0 + o1) / 2) : bands;
-    if (g.normMix) {
-      const area = bandArea(-da, -db, o1 - o0, Infinity);
-      capI += area * NORM_CAP_I; capII += area * NORM_CAP_II;
-    } else {
-      capI += bandArea(-da, -db, o1 - o0, g.classIto);
-      capII += bandArea(-da, -db, o1 - o0, g.classIIto);
-    }
-  };
-  // under the crown: integrate (z - G) from 0 to w with sign split
+  let cut = 0, fill = 0;
+  const out: SideResult = { cut: 0, cutI: 0, cutII: 0, fill: 0, day: 0, zDay: 0, open: false };
+  // Under the crown: integrate (z - G) with sign split. No per-section helper closures:
+  // balance search and final billing call this thousands of times on every edit.
   const nCrown = Math.max(2, Math.ceil(w / STEP));
   let oPrev = 0, dPrev = z - ground(0);
-  const acc = (o0: number, d0: number, o1: number, d1: number) => {
-    const L = o1 - o0;
-    if (d0 < 0 || d1 < 0) band(o0, d0, o1, d1);
-    if (d0 >= 0 && d1 >= 0) fill += 0.5 * (d0 + d1) * L;
-    else if (d0 <= 0 && d1 <= 0) cut -= 0.5 * (d0 + d1) * L;
-    else {
-      const t = d0 / (d0 - d1);
-      const a0 = 0.5 * d0 * t * L, a1 = 0.5 * d1 * (1 - t) * L;
-      if (d0 > 0) { fill += a0; cut -= a1; } else { cut -= a0; fill += a1; }
-    }
-  };
   for (let j = 1; j <= nCrown; j++) {
     const o = (w * j) / nCrown;
-    const d = z - ground(o);
-    acc(oPrev, dPrev, o, d);
+    const d = z - ground(o), L = o - oPrev;
+    if (dPrev < 0 || d < 0) addBands(out, bands, oPrev, dPrev, o, d);
+    if (dPrev >= 0 && d >= 0) fill += 0.5 * (dPrev + d) * L;
+    else if (dPrev <= 0 && d <= 0) cut -= 0.5 * (dPrev + d) * L;
+    else {
+      const t = dPrev / (dPrev - d);
+      const a0 = 0.5 * dPrev * t * L, a1 = 0.5 * d * (1 - t) * L;
+      if (dPrev > 0) { fill += a0; cut -= a1; } else { cut -= a0; fill += a1; }
+    }
     oPrev = o; dPrev = d;
   }
   // beyond the crown edge: slope direction set by ground at the edge
   const isFill = dPrev >= 0;
   const n = isFill ? tpl.fillSlope : tpl.cutSlope;
-  const tmpl = (o: number) => z + (isFill ? -1 : 1) * slopeHeight(o - w, n, isFill);
+  const sign = isFill ? -1 : 1;
   let o0 = w, d0 = dPrev;
   while (o0 < w + MAX_OFF - 1e-8) {
     const o = Math.min(o0 + STEP, w + nextSlopeKink(o0 - w, n, isFill), w + MAX_OFF);
     const g = ground(o);
-    const d = tmpl(o) - g;
+    const d = z + sign * slopeHeight(o - w, n, isFill) - g;
     const crossed = isFill ? d <= 0 : d >= 0;
     if (crossed) {
       const t = d0 === d ? 0 : d0 / (d0 - d); // d0 = d = 0: slope lies on the ground
       const od = o0 + t * (o - o0);
       // triangle from o0 to daylight
-      if (isFill) fill += 0.5 * d0 * (od - o0); else { cut -= 0.5 * d0 * (od - o0); band(o0, d0, od, 0); }
-      return { cut, cutI: capI, cutII: capII - capI, fill, day: od, zDay: tmpl(od), open: false };
+      if (isFill) fill += 0.5 * d0 * (od - o0); else { cut -= 0.5 * d0 * (od - o0); addBands(out, bands, o0, d0, od, 0); }
+      out.cut = cut; out.fill = fill; out.cutII -= out.cutI;
+      out.day = od; out.zDay = z + sign * slopeHeight(od - w, n, isFill);
+      return out;
     }
-    if (isFill) fill += 0.5 * (d0 + d) * (o - o0); else { cut -= 0.5 * (d0 + d) * (o - o0); band(o0, d0, o, d); }
+    if (isFill) fill += 0.5 * (d0 + d) * (o - o0); else { cut -= 0.5 * (d0 + d) * (o - o0); addBands(out, bands, o0, d0, o, d); }
     o0 = o; d0 = d;
   }
-  return { cut, cutI: capI, cutII: capII - capI, fill, day: o0, zDay: ground(o0), open: true };
+  out.cut = cut; out.fill = fill; out.cutII -= out.cutI;
+  out.day = o0; out.zDay = ground(o0); out.open = true;
+  return out;
 }
 
 export interface Sections {
