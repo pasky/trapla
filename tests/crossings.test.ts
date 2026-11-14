@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { buildCrossingGeometry, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
+import { auditCrossingGeometry, buildCrossingGeometry, crossingPlanLength, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
   type CrossingOverride, type CrossingResult, type CrossingRoute } from '../src/core/crossings';
 import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet';
+import { ROAD_CLASSES } from '../src/core/data/urban';
 import { chooseStructures, KIND } from '../src/core/structures';
 import { CrossingRenderer } from '../src/render/crossings';
 import type { View } from '../src/render/view';
@@ -134,17 +135,30 @@ describe('crossing geometry and map overlay', () => {
     expect(path[0]).toEqual({ x: 3000, y: -40, d: -40 });
     expect(path[path.length - 1].d).toBeCloseTo(40);
     expect(roads.crossingPath(99, 0, 0, 40)).toEqual([]);
+    const split = new RoadNet({ cls: ['residential', 'unclassified'], ways: [
+      [0, 100, -20, 100, 10], [1, 100, 10, 110, 20, 110, 200], [0, 100, -200, 100, -20],
+    ] });
+    const connected = split.connectedCrossingPath(0, 100, 0, 60);
+    expect(connected[0].d).toBe(-60); expect(connected.at(-1)!.d).toBe(60);
+    expect(connected).toContainEqual({ x: 110, y: 20, d: 10 + Math.sqrt(200) });
+    expect(split.crossingPath(0, 100, 0, 60).at(-1)!.d).toBe(10); // original way stays intact
   });
 
-  it('keeps a crossed road continuous under our bridge and above a cut, without repricing', () => {
+  it('keeps roads at terrain under bridges and prices the actual overbridge deck and approaches', () => {
     const cs = [cross(0, 3000, 'primary', 8), cross(1, 3100, 'residential', -8, 1)];
-    resolve(cs, [{ roadId: 1, type: 'overbridge' }], [KIND.bridge, KIND.earth], [0, 0]); const costs = cs.map(c => c.cost);
+    resolve(cs, [{ roadId: 1, type: 'overbridge' }], [KIND.bridge, KIND.earth], [0, 0]);
     buildCrossingGeometry(cs, route, () => 400, roads);
     expect(cs[0].geometry!.road!.some(p => p.x === 3020 && p.y === 20)).toBe(true);
     expect(cs[0].geometry!.road!.some(p => p.x === 3000 && p.y === 0 && p.z === 400)).toBe(true);
     expect(cs[1].type).toBe('overbridge');
     expect(cs[1].geometry!.road!.every(p => p.z >= 400)).toBe(true);
-    expect(cs.map(c => c.cost)).toEqual(costs);
+    expect(cs[0].cost).toBe(0);
+    const over = cs[1], g = over.geometry!, deck = g.deck!;
+    expect(over.span).toBeCloseTo(crossingPlanLength(g.road!.slice(deck.start, deck.end + 1)), 6);
+    const approaches = g.approaches!.reduce((sum, range) => sum + crossingPlanLength(g.road!.slice(range.start, range.end + 1)), 0);
+    expect(over.approachLength).toBeCloseTo(approaches, 6);
+    expect(over.cost).toBeCloseTo((over.span! * ROAD_CLASSES.residential.bridgePerKm + approaches * over.roadPerKm!) / 1000, 5);
+    expect(auditCrossingGeometry(cs, route, () => 400, roads)).toEqual([]);
   });
 
   it('draws two opposite side links to the resolved real-road anchors, including chained diversions', () => {
@@ -154,45 +168,108 @@ describe('crossing geometry and map overlay', () => {
     expect(links).toHaveLength(2);
     expect(links[0].every(p => p.y <= -15)).toBe(true); expect(links[1].every(p => p.y >= 15)).toBe(true);
     expect(links[0][0].x).toBe(3100); expect(links[0].at(-1)!.x).toBe(3000);
-    expect(links[1].at(-1)).toMatchObject({ x: 3015, y: 15 }); // actual bent target way, not an invented normal
+    const end = links[1].at(-1)!;
+    expect(end.x - 3000).toBeCloseTo(end.y, 6); // actual bent target way, not an invented normal
+    expect(end.y).toBeGreaterThanOrEqual(10 + ROAD_CLASSES.residential.width / 2 + 3);
+    expect(cs[1].linkLength).toBeCloseTo(links.reduce((sum, path) => sum + crossingPlanLength(path), 0), 6);
     expect(cs[2].targetS).toBe(3100);
     expect(cs[2].geometry!.links![0].at(-1)).toEqual(links[0][0]);
     expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1][0]);
   });
 
-  it('finishes skewed overbridge ramps at ground level and connects side links at their feet', () => {
+  it('clears the crown across a skewed footprint, grades approaches to sloping terrain and anchors links at their feet', () => {
     const dx = 400 * Math.cos(Math.PI / 6), dy = 400 * Math.sin(Math.PI / 6);
     const net = new RoadNet({ cls: ['residential'], ways: [
       [0, 3000 - dx, -dy, 3000 + dx, dy], [0, 3200, -300, 3200, 300],
     ] });
     const cs = [cross(0, 3000, 'residential', -2), cross(1, 3200, 'residential')];
     resolve(cs); expect(cs[0].type).toBe('overbridge'); expect(cs[1].targetS).toBe(3000);
-    buildCrossingGeometry(cs, route, () => 400, net);
-    const road = cs[0].geometry!.road!, links = cs[1].geometry!.links!;
-    expect(road[0].z).toBe(400); expect(road.at(-1)!.z).toBe(400);
+    const terrain = (x: number, y: number) => 400 + 0.003 * (x - 3000) + 0.015 * y + Math.sin(y / 50);
+    const graded = { ...route, grade: Float64Array.from(s, x => 400 + 0.01 * (x - 3000)),
+      left: new Float64Array(s.length).fill(24), right: new Float64Array(s.length).fill(14) };
+    buildCrossingGeometry(cs, graded, terrain, net);
+    const g = cs[0].geometry!, road = g.road!, links = cs[1].geometry!.links!, deck = g.deck!;
+    expect(cs[0].span!).toBeGreaterThan(38 / Math.sin(Math.PI / 6));
+    for (const p of [road[0], road.at(-1)!]) expect(p.z).toBeCloseTo(terrain(p.x, p.y), 6);
+    for (let i = deck.start; i <= deck.end; i++) expect(road[i].z - deck.depth).toBeGreaterThanOrEqual(400 + 0.01 * (road[i].x - 3000) + 4.8 - 1e-6);
     for (const link of links) {
-      expect(link.every(p => p.z === 400)).toBe(true);
+      expect(link.every(p => p.z === terrain(p.x, p.y) && p.surface === 'terrain')).toBe(true);
       expect(road).toContainEqual(link.at(-1));
       expect(Math.abs(link.at(-1)!.y)).toBeGreaterThan(30);
     }
+    expect(auditCrossingGeometry(cs, graded, terrain, net)).toEqual([]);
   });
 
-  it('bounds visual reach and all polylines for impossible grades and distant reconnections without clipping the bill', () => {
-    const c = cross(99, 4000, 'residential', 1e20);
-    resolve([c], [{ roadId: 99, type: 'overbridge' }]);
-    const price = c.cost;
-    buildCrossingGeometry([c], route, () => 400, roads);
-    expect(c.geometry!.road!.length).toBeLessThanOrEqual(500);
-    expect(c.geometry!.clipped).toBe(true);
-    expect(c.geometry!.road!.every(p => Math.hypot(p.x - c.x, p.y - c.y) <= 2000)).toBe(true);
-    expect(c.cost).toBe(price); expect(c.cost).toBeGreaterThan(1e20);
+  it('adjusts junctions through the footprint to our grade, supports fill/cut and ties back to terrain', () => {
+    const c = cross(0, 3000, 'primary', 2);
+    resolve([c], [{ roadId: 0, type: 'junction' }]);
+    const graded = { ...route, grade: Float64Array.from(s, x => 402 + (x - 3000) * 0.01) };
+    const terrain = (_x: number, y: number) => 400 + y * 0.005;
+    buildCrossingGeometry([c], graded, terrain, roads);
+    const road = c.geometry!.road!;
+    for (const p of road.filter(p => Math.abs(p.y) <= 10)) expect(p.z).toBeCloseTo(402 + (p.x - 3000) * 0.01, 6);
+    expect(road.some(p => p.surface === 'ramp' && p.support === 'embankment')).toBe(true);
+    expect(auditCrossingGeometry([c], graded, terrain, roads)).toEqual([]);
+    const ramp = road.find(p => p.support)!; delete ramp.support;
+    expect(auditCrossingGeometry([c], graded, terrain, roads).some(v => v.message.includes('lacks earthwork support'))).toBe(true);
+  });
+
+  it('adaptively drapes terrain interiors and distinguishes flotation from endpoint failures', () => {
+    const c = cross(1, 3100, 'residential', 8);
+    resolve([c], [], [KIND.bridge]);
+    const terrain = (_x: number, y: number) => 400 - 6 * Math.exp(-(((y - 5) / 2) ** 2));
+    buildCrossingGeometry([c], route, terrain, roads);
+    const road = c.geometry!.road!;
+    expect(road.length).toBeLessThanOrEqual(500);
+    expect(road.some(p => p.y > 0 && p.y < 10 && p.z < 399)).toBe(true);
+    expect(auditCrossingGeometry([c], route, terrain, roads)).toEqual([]);
+    // Deliberately remove the refinement: endpoints are still ground, but the road floats over the gully.
+    c.geometry!.road = road.filter(p => p.y <= 0 || p.y >= 10);
+    const issues = auditCrossingGeometry([c], route, terrain, roads);
+    expect(issues.some(v => v.message.includes('Unsupported flotation'))).toBe(true);
+    expect(issues.some(v => v.message === 'Dangling endpoint')).toBe(false);
+  });
+
+  it('omits impossible decks instead of dropping into our lanes and bills only available real link sides', () => {
+    const net = new RoadNet({ cls: ['residential', 'primary'], ways: [
+      [0, 3100, -200, 3100, 2], [1, 3000, -200, 3000, 200],
+    ] });
+    const deck = cross(0, 3100, 'residential');
+    resolve([deck], [{ roadId: 0, type: 'overbridge' }]);
+    const issues = buildCrossingGeometry([deck], route, () => 400, net);
+    expect(issues.some(v => v.crossing.code === 'geometry')).toBe(true);
+    expect(deck.geometry!.road).toBeUndefined(); expect(deck.geometry!.deck).toBeUndefined(); expect(deck.cost).toBe(0);
+    const cs = [cross(1, 3000), cross(0, 3100, 'residential')];
+    resolve(cs); buildCrossingGeometry(cs, route, () => 400, net);
+    const links = cs[1].geometry!.links!;
+    expect(links[0].length).toBeGreaterThan(1); expect(links[1]).toEqual([]);
+    expect(cs[1].linkLength).toBeCloseTo(crossingPlanLength(links[0]), 6);
+    expect(cs[1].cost).toBeCloseTo(cs[1].linkLength! * cs[1].roadPerKm! / 1000, 6);
+    expect(cs[1].geometry!.turnarounds).toEqual([links[0][0]]);
+    expect(auditCrossingGeometry(cs, route, () => 400, net).filter(v => v.severity === 'error')).toEqual([]);
+  });
+
+  it('bounds impossible profiles and long links without fabricating roads, and bills only constructed paths', () => {
+    const missing = cross(99, 4000, 'residential', 1e20);
+    resolve([missing], [{ roadId: 99, type: 'overbridge' }]);
+    expect(buildCrossingGeometry([missing], route, () => 400, roads).some(v => v.crossing.code === 'geometry')).toBe(true);
+    expect(missing.geometry!.road).toBeUndefined(); expect(missing.cost).toBe(0);
+    const c = cross(1, 3100, 'residential', 1e20);
+    resolve([c], [{ roadId: 1, type: 'overbridge' }]);
+    const impossible = { ...route, grade: new Float64Array(s.length).fill(1e20) };
+    buildCrossingGeometry([c], impossible, () => 400, roads);
+    const road = c.geometry!.road!;
+    expect(road.length).toBeLessThanOrEqual(500); expect(c.geometry!.clipped).toBe(true);
+    expect(road[0].z).toBe(400); expect(road.at(-1)!.z).toBe(400);
+    expect(auditCrossingGeometry([c], impossible, () => 400, roads).filter(v => v.severity === 'error')).toEqual([]);
     const bigS = Float64Array.from({ length: 9001 }, (_, i) => i * 10), zero = new Float64Array(bigS.length);
     const longRoute: CrossingRoute = { s: bigS, x: bigS, y: zero, tx: new Float64Array(bigS.length).fill(1), ty: zero,
       grade: new Float64Array(bigS.length).fill(400), width: new Float64Array(bigS.length).fill(20) };
-    const far = cross(2, 45000, 'residential');
-    resolveCrossings([far], 90000, [KIND.earth], [20], [0], [0], [{ roadId: 2, type: 'reconnection' }]);
-    buildCrossingGeometry([far], longRoute, () => 400);
-    expect(far.linkLength).toBe(90000);
+    const net = new RoadNet({ cls: ['residential'], ways: [[0, 45000, -100, 45000, 100], [0, 0, -100, 0, 100]] });
+    const far = cross(0, 45000, 'residential');
+    resolveCrossings([far], 90000, [KIND.earth], [20], [0], [0], [{ roadId: 0, type: 'reconnection' }]);
+    buildCrossingGeometry([far], longRoute, () => 400, net);
+    expect(far.linkLength).toBeCloseTo(90000, 3);
     expect(far.geometry!.links!.every(link => link.length <= 500)).toBe(true);
     expect(far.geometry!.clipped).toBe(true);
   });

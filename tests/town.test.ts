@@ -2,10 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
 import { BuildingIndex, noiseBuyoutCost, type BuildingInfo } from '../src/core/buildings';
-import { cellLength, PART_KEYS } from '../src/core/cost';
+import { cellLength, PART_KEYS, surchargeRate } from '../src/core/cost';
 import { bridgeLayout, bridgeModel } from '../src/core/bridge';
 import { CATEGORIES } from '../src/core/data/categories';
-import { resolveCrossings, type CrossingResult } from '../src/core/crossings';
+import { crossingPlanLength, resolveCrossings, type CrossingResult } from '../src/core/crossings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
 import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
@@ -123,8 +123,11 @@ describe('junction spacing and geometric reconnections', () => {
       ways: [[0, 3500, 0, 3500, 500], [1, 3550, 0, 3550, 500]] }) }, d);
     const street = run('residential'), service = run('service'), plain = evaluate(ctx, d);
     expect(service.crossings[1].type).toBe('reconnection');
-    expect(service.cost.total - street.cost.total).toBeCloseTo(500_000, 3);
-    expect(service.cost.surcharge).toBeCloseTo(street.cost.surcharge, 3);
+    // Different road widths change the real connector lengths. Only that measured construction
+    // receives surcharge; the service access allowance itself remains an unsurcharged lump.
+    const extraRoad = service.crossings[1].cost - 500_000 - street.crossings[1].cost;
+    expect(service.cost.total - street.cost.total).toBeCloseTo(500_000 + extraRoad * (1 + surchargeRate(0)), 3);
+    expect(service.cost.surcharge - street.cost.surcharge).toBeCloseTo(extraRoad * surchargeRate(0), 3);
     expect(service.cost.surcharge).toBeGreaterThan(plain.cost.surcharge); // SPK link does get surcharge
     expect(service.parts.surcharge[300]).toBe(plain.parts.surcharge[300]); // junction does not
   });
@@ -307,11 +310,15 @@ describe('evaluate on a synthetic town', () => {
     // the overbridge spans the cut from edge to edge: crown + two 1:1.75 slopes 12 m high
     const span = r.dayL[r.crossings[3].i] + r.dayR[r.crossings[3].i];
     const over = r.crossings[3];
-    expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(span, 0, { span, pierDensity: 0 }), -4);
+    expect(over.span!).toBeGreaterThan(span); // whole crossed ribbon and abutment setbacks, not only its centre
+    const g = over.geometry!, deck = g.deck!;
+    expect(over.span).toBeCloseTo(crossingPlanLength(g.road!.slice(deck.start, deck.end + 1)), 6);
+    expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(over.span!, 0, { span: over.span!, pierDensity: 0 }) + over.approachLength! * over.roadPerKm! / 1000, 3);
     // The plain street now needs raised approaches; the neighbouring track shares its crossing.
     expect(r.crossings[1].approachLength).toBeGreaterThan(0);
     expect(r.crossings[2].targetS).toBe(r.crossings[1].s);
-    expect(r.crossings[2].linkLength).toBe(400); // two 200 m parallel links
+    expect(r.crossings[2].linkLength).toBeGreaterThanOrEqual(400); // side corridors plus real-road connectors
+    expect(r.crossings[2].linkLength).toBeCloseTo(r.crossings[2].geometry!.links!.reduce((sum, path) => sum + crossingPlanLength(path), 0), 6);
     expect(r.cost.crossings).toBeCloseTo(r.crossings.reduce((sum, c) => sum + c.cost, 0), 0);
   });
 

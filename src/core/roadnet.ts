@@ -92,8 +92,13 @@ export class RoadNet {
    * Both traversal and output are bounded, including malformed cyclic networks. */
   connectedCrossingPath(roadId: number, x: number, y: number, reach: number,
     maxPoints = 1500): { x: number; y: number; d: number }[] {
-    const path = this.crossingPath(roadId, x, y, reach);
-    if (path.length < 2 || path.length > maxPoints) return path.slice(0, maxPoints);
+    let path = this.crossingPath(roadId, x, y, reach);
+    if (path.length < 2) return path;
+    if (path.length > maxPoints) {
+      const centre = path.findIndex(p => p.d >= 0);
+      const start = Math.max(0, Math.min(path.length - maxPoints, centre - Math.floor(maxPoints / 2)));
+      path = path.slice(start, start + maxPoints);
+    }
     const key = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`;
     const visited = new Set(path.map(p => key(p.x, p.y)));
     for (const side of [-1, 1]) {
@@ -111,7 +116,6 @@ export class RoadNet {
           const step = Math.hypot(bx - p.x, by - p.y);
           if (step < 1e-6 || visited.has(key(bx, by))) continue;
           const dot = ((bx - p.x) * dx + (by - p.y) * dy) / (step * len);
-          if (dot < -0.5) continue;
           const value = dot + (this.wayCls[this.way[k]] === this.wayCls[roadId] ? 2 : 0);
           if (value <= score) continue;
           score = value;

@@ -29,6 +29,8 @@ export interface CrossingGeometry {
   width: number;
   /** Inclusive indices in road; deck top clears our crown by 4.8 m plus this depth. */
   deck?: { start: number; end: number; depth: number };
+  /** Inclusive road-index ranges from each terrain tie-in to the adjusted footprint. */
+  approaches?: [{ start: number; end: number }, { start: number; end: number }];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
   schematic: false;
@@ -38,7 +40,7 @@ export interface CrossingGeometry {
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
-    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach';
+    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry';
     actual?: number; required?: number; targetS?: number };
 }
 export interface CrossingResult {
@@ -135,6 +137,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         clearance: 'Our bridge needs 6 m above ordinary roads, 7.5 m above motorways; a junction cannot lie in the bridge range (game crossing rule)',
         structure: 'The crossing choice and the built main-road structure must agree (game crossing rule)',
         reach: 'Parallel reconnections reach at most 750 m per side (study-stage heuristic)',
+        geometry: 'Crossing geometry must tie to real roads at terrain level',
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
