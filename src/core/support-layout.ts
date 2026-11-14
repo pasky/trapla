@@ -106,7 +106,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
           if (kind[index] !== KIND.earth) { reason ??= 'boundary'; break; }
           lowerM = Math.max(lowerM, R.tunnelMinDepth - (r.ground[index] - r.grade[index]));
           if (lowerM > 0) reason ??= 'terrain';
-          if (!blocked(target)) { clear = true; break; }
+          if (!blocked(target)) {
+            if (manual[index + direction] && kind[index + direction] === KIND.tunnel) reason ??= 'manual';
+            clear = true; break;
+          }
         }
         if (!reason && clear) {
           if (direction < 0) i0 = index; else i1 = index;
@@ -148,10 +151,15 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         if (index <= 0 || index >= r.n - 1) { reason ??= 'boundary'; break; }
         target = r.s[index] + direction * r.ds / 2;
         if (manual[index]) reason ??= 'manual';
-        if (r.kind[index] === KIND.tunnel) reason ??= 'tunnel';
+        if (kind[index] === KIND.tunnel) reason ??= 'tunnel';
         raiseM = Math.max(raiseM, R.bridgeMinHeight - (r.grade[index] - r.ground[index]));
         if (raiseM > 0) reason ??= 'terrain';
-        if (!blocked(target)) { clear = true; break; }
+        if (!blocked(target)) {
+          // Filling the last earth cell would merge adjacent runs and erase the requested
+          // run's endpoint/abutment, even though no painted cell itself changed kind.
+          if (manual[index + direction] && kind[index + direction] === KIND.bridge) reason ??= 'manual';
+          clear = true; break;
+        }
       }
       if (!reason && clear) {
         const a = Math.min(index, run.i0), b = Math.max(index, run.i1);
@@ -198,12 +206,19 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     // The sourced cost model's span/20 depth proxy is not a feasibility certificate. Check
     // additional depth against actual terrain and protected features under the deck. These
     // are clearance queries, NOT solid-deck footprint conflicts or relocation charges.
-    const extraDepth = Math.max(0, run.layout.span / 20 - 1.2);
+    const supports = [run.s0, ...piers, run.s1];
     let raiseM = 0;
-    for (let i = run.i0; i <= run.i1; i++) {
-      const cell = cellAt(r, r.s[i], r.ds / 2, r.crownWidth / 2);
-      const required = Math.max(r.ground[i] + run.layout.span / 20, obstacleHeight(cell, terrain, roads) + extraDepth);
-      raiseM = Math.max(raiseM, required - r.grade[i]);
+    for (let k = 0; k + 1 < supports.length; k++) {
+      const a = supports[k], b = supports[k + 1], span = b - a;
+      const extraDepth = Math.max(0, span / 20 - 1.2);
+      const i0 = Math.max(run.i0, Math.floor(a / r.ds + 0.5)), i1 = Math.min(run.i1, Math.floor(b / r.ds + 0.5));
+      for (let i = i0; i <= i1; i++) {
+        const left = Math.max(a, r.s[i] - r.ds / 2), right = Math.min(b, r.s[i] + r.ds / 2);
+        if (right <= left) continue;
+        const cell = cellAt(r, (left + right) / 2, (right - left) / 2, r.crownWidth / 2);
+        const required = Math.max(r.ground[i] + span / 20, obstacleHeight(cell, terrain, roads) + extraDepth);
+        raiseM = Math.max(raiseM, required - r.grade[i]);
+      }
     }
     if (raiseM > 0.01) {
       diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-depth', extensionM: 0, raiseM });
@@ -211,7 +226,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
         title: 'Obstacle-clearing bridge span needs more height',
         fix: `Raise this bridge by at least ${raiseM.toFixed(1)} m, or move the alignment to shorten its ${run.layout.span.toFixed(1)} m clear span`,
         rule: 'Existing crossing clearances plus the bridge model’s span/20 structural-depth allowance',
-        detail: 'The obstacle-free support arrangement and its longest-span deck section remain fully priced; no colliding pier is hidden.' });
+        detail: 'The obstacle-free support arrangement and each local span’s deck section remain fully priced; no colliding pier is hidden.' });
     }
   }
   return { kind, runs, diagnostics, violations };

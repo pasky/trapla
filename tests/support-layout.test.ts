@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bridgeLayout, bridgeModel, bridgeRunCost } from '../src/core/bridge';
-import { cellLength, costParts } from '../src/core/cost';
+import { costParts } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { RoadNet } from '../src/core/roadnet';
 import { remedyBridgeSupports, type SupportRoute } from '../src/core/support-layout';
@@ -41,6 +41,31 @@ describe('automatic bridge support remedies', () => {
     expect(remedyBridgeSupports(r, terrain(), roadAt(195), mask).runs).toEqual(r.runs);
   });
 
+  it('does not erase a neighbouring manual run’s endpoint when filling the last intervening earth cell', () => {
+    for (const structure of [KIND.bridge, KIND.tunnel]) {
+      const r = route(61), mask = new Int8Array(r.n).fill(-1);
+      const i1 = structure === KIND.tunnel ? 29 : 21;
+      (r.kind as Uint8Array).fill(KIND.earth); (r.kind as Uint8Array).fill(structure, 10, i1 + 1);
+      (r.kind as Uint8Array).fill(structure, i1 + 2, i1 + 20);
+      r.runs = [{ kind: structure, i0: 10, i1, s0: 95, s1: (i1 + .5) * 10, length: (i1 - 9) * 10 },
+        { kind: structure, i0: i1 + 2, i1: i1 + 19, s0: (i1 + 1.5) * 10, s1: (i1 + 19.5) * 10, length: 180 }];
+      mask[i1 + 3] = structure;
+      if (structure === KIND.tunnel) { (r.grade as Float64Array).fill(80); r.runs[0].forced = true; }
+      const result = remedyBridgeSupports(r, terrain(), roadAt(100 + r.runs[0].s1), mask);
+      expect(result.runs).toEqual(r.runs);
+      expect(result.kind).toEqual(r.kind);
+      expect(result.diagnostics.some(d => d.reason === 'manual')).toBe(true);
+    }
+  });
+
+  it('checks depth only under the actual local span, not a longer span elsewhere on the bridge', () => {
+    const r = route(); (r.grade as Float64Array).fill(106.4, 10, 14);
+    const roads = new RoadNet({ cls: ['service'], ways: [[0, 210, 50, 210, 150], [0, 285, 50, 285, 150]] });
+    const result = remedyBridgeSupports(r, terrain(), roads);
+    expect(result.runs[0].layout!.span).toBe(34);
+    expect(result.violations).toEqual([]);
+  });
+
   it('stops at low terrain or tunnel and computes required extension and elevation', () => {
     const r = route(); (r.grade as Float64Array)[9] = 102;
     const result = remedyBridgeSupports(r, terrain(), roadAt(195));
@@ -63,11 +88,16 @@ describe('automatic bridge support remedies', () => {
     let billed = 0;
     for (let i = run.i0; i <= run.i1; i++) {
       billed += parts.bridges[i];
-      expect(parts.bridges[i]).toBeCloseTo(cellLength(i, n, r.ds) * model.perM(h[i], run.layout)
-        + (i === run.i0 || i === run.i1 ? model.abutments / 2 : 0), 5);
+      const supports = [run.s0, ...run.pierStations!, run.s1];
+      let variable = 0;
+      for (let k = 0; k + 1 < supports.length; k++) {
+        const overlap = Math.max(0, Math.min((i + .5) * r.ds, supports[k + 1]) - Math.max((i - .5) * r.ds, supports[k]));
+        variable += overlap * model.perM(h[i], { span: supports[k + 1] - supports[k], pierDensity: run.layout!.pierDensity });
+      }
+      expect(parts.bridges[i]).toBeCloseTo(variable + (i === run.i0 || i === run.i1 ? model.abutments / 2 : 0), 5);
     }
-    expect(billed).toBeCloseTo(bridgeRunCost(model, h, r.ds, () => 0, () => 0)(run.i0, run.i1, run.length, run.layout), 5);
-    expect(billed).toBeGreaterThan(model.total(run.length, 15));
+    expect(billed).toBeCloseTo(bridgeRunCost(model, h, r.ds, () => 0, () => 0)(run.i0, run.i1, run.length, run.layout, run.pierStations), 5);
+    expect(billed).toBeLessThan(model.total(run.length, 15, run.layout)); // no whole-viaduct longest-span penalty
   });
 
   it('clears independently flagged rail and water pixels, not just vector roads', () => {

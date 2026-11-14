@@ -9,7 +9,7 @@ import { CATEGORIES, type CategoryId, type TerrainClass } from './data/categorie
 import { EXCAVATION_BY_CLASS, LAND, NORM_EARTHWORK_ALLOWANCE, PRICES } from './data/prices';
 import { NOISE, URBAN_LAND, URBAN_NORM_PER_KM, URBAN_RATES } from './data/urban';
 import { KIND, type Run } from './structures';
-import { bridgeLayout, bridgeModel } from './bridge';
+import { bridgeModel, bridgeVariableCosts } from './bridge';
 
 /** value of the earthworks already included in the SFDI per-km norm, CZK per km */
 export function allowanceValuePerKm(cat: CategoryId): number {
@@ -167,8 +167,7 @@ export function costParts(inp: StationCostInput): CostParts {
     if (r.kind === KIND.tunnel) {
       for (let i = r.i0; i <= r.i1; i++) runLen[i] = r.length;
     } else if (r.kind === KIND.bridge) {
-      const layout = r.layout ?? bridgeLayout(r.length);
-      for (let i = r.i0; i <= r.i1; i++) parts.bridges[i] = cellLength(i, n, ds) * bridge.perM(inp.h[i], layout);
+      for (const [i, variable] of bridgeVariableCosts(bridge, inp.h, ds, r)) parts.bridges[i] = variable;
       parts.bridges[r.i0] += bridge.abutments / 2;
       parts.bridges[r.i1] += bridge.abutments / 2;
     }

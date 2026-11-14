@@ -5,8 +5,8 @@ import { BRIDGE_GEOMETRY as G, BRIDGE_HEIGHT as H, BRIDGE_ITEMS as P } from './d
 export type BridgeRow = { bridgePerKm: number } & ({ crownWidth: number } | { width: number });
 export interface BridgeLayout { span: number; pierDensity: number }
 
-/** Nonuniform layouts use their longest clear span for the whole deck's section allowance.
- * Conservative study-stage sizing, not an unpriced deletion of obstructed supports. */
+/** Summary of a nonuniform support arrangement. Billing integrates each actual span below;
+ * the longest span is retained here for diagnostics, never applied to the whole viaduct. */
 export function supportBridgeLayout(s0: number, s1: number, piers: readonly number[]): BridgeLayout {
   let previous = s0, span = 0;
   for (const s of piers) { span = Math.max(span, s - previous); previous = s; }
@@ -63,15 +63,41 @@ export function bridgeModel(row: BridgeRow) {
 }
 export type BridgeModel = ReturnType<typeof bridgeModel>;
 
+export interface PricedBridgeRun {
+  i0: number; i1: number; length: number; layout?: BridgeLayout; pierStations?: readonly number[];
+}
+
+/** Span-overlap integration shared by selector and bill. O(cells + supports), including a
+ * pier inside a station cell. Support density retains the calibrated run-average allowance;
+ * the deck section and span/20 height conversion use the actual local span. */
+export function* bridgeVariableCosts(model: BridgeModel, h: ArrayLike<number>, ds: number, run: PricedBridgeRun): Generator<[number, number]> {
+  const layout = run.layout ?? bridgeLayout(run.length);
+  const start = Math.max(0, (run.i0 - 0.5) * ds), end = Math.min((h.length - 1) * ds, (run.i1 + 0.5) * ds);
+  const supports = run.pierStations ? [start, ...run.pierStations, end] : undefined;
+  let spanIndex = 0;
+  for (let i = run.i0; i <= run.i1; i++) {
+    const left = Math.max(0, (i - 0.5) * ds), right = Math.min((h.length - 1) * ds, (i + 0.5) * ds);
+    if (!supports) { yield [i, (right - left) * model.perM(h[i], layout)]; continue; }
+    let s = left, cost = 0;
+    while (s < right - 1e-9) {
+      while (spanIndex + 1 < supports.length - 1 && supports[spanIndex + 1] <= s + 1e-9) spanIndex++;
+      const next = Math.min(right, supports[spanIndex + 1]);
+      cost += (next - s) * model.perM(h[i], { span: supports[spanIndex + 1] - supports[spanIndex], pierDensity: layout.pierDensity });
+      s = next;
+    }
+    yield [i, cost];
+  }
+}
+
 /** Exact selector cost, matching cell billing including endpoint half-cells and local surcharge.
  * Fixed abutments split equally over first/last cells (both halves on a one-cell bridge). */
 export function bridgeRunCost(model: BridgeModel, h: ArrayLike<number>, ds: number,
   surcharge: (i: number) => number, land: (i: number) => number) {
-  return (i0: number, i1: number, length: number, layout = bridgeLayout(length)) => {
+  return (i0: number, i1: number, length: number, layout = bridgeLayout(length), pierStations?: readonly number[]) => {
     let cost = model.abutments / 2 * (2 + surcharge(i0) + surcharge(i1));
-    for (let i = i0; i <= i1; i++) {
+    for (const [i, variable] of bridgeVariableCosts(model, h, ds, { i0, i1, length, layout, pierStations })) {
       const len = i === 0 || i === h.length - 1 ? ds / 2 : ds;
-      cost += len * (model.perM(h[i], layout) * (1 + surcharge(i)) + model.width * land(i));
+      cost += variable * (1 + surcharge(i)) + len * model.width * land(i);
     }
     return cost;
   };
