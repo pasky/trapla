@@ -56,7 +56,12 @@ export function formationSection(row: FormationRow): FormationSectionQuantity {
   return out;
 }
 
-/** Average-end-area longitudinal quadrature; insert rows at geometry/structure breaks. */
+/**
+ * Average-end-area quadrature within one continuous geometry/structure run. A curvature
+ * discontinuity needs TWO one-sided rows: end the run, then start the next at the same
+ * station with its own curvature. Use formationQuantityRuns to aggregate such runs;
+ * a single shared row would smear a line/arc or compound-arc Jacobian jump.
+ */
 export function formationQuantities(rows: readonly FormationRow[]): FormationQuantity {
   if (rows.length < 2) throw new Error('Formation needs at least two rows');
   const result: FormationQuantity = { cutVolume: 0, fillVolume: 0, footprintArea: 0, cells: [] };
@@ -71,6 +76,21 @@ export function formationQuantities(rows: readonly FormationRow[]): FormationQua
     result.cells.push(cell);
     result.cutVolume += cell.cutVolume; result.fillVolume += cell.fillVolume; result.footprintArea += cell.footprintArea;
     previous = current;
+  }
+  return result;
+}
+
+/** Adjacent, separately integrated runs preserve both sides of curvature/structure breaks. */
+export function formationQuantityRuns(runs: readonly (readonly FormationRow[])[]): FormationQuantity {
+  if (!runs.length) throw new Error('Formation needs at least one run');
+  const result: FormationQuantity = { cutVolume: 0, fillVolume: 0, footprintArea: 0, cells: [] };
+  let end: number | undefined;
+  for (const rows of runs) {
+    if (end !== undefined && rows[0]?.s !== end) throw new Error('Formation runs must meet without a station gap or overlap');
+    const q = formationQuantities(rows);
+    result.cutVolume += q.cutVolume; result.fillVolume += q.fillVolume; result.footprintArea += q.footprintArea;
+    for (const cell of q.cells) result.cells.push(cell);
+    end = rows[rows.length - 1].s;
   }
   return result;
 }

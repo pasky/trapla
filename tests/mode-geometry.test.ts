@@ -3,7 +3,7 @@ import { buildAlignment, type Element } from '../src/core/horizontal';
 import { assertCurvePath, childStationAt, curvePointAt, offsetCurvePath, reverseCurvePath, spineStationAt, type CurvePath } from '../src/core/offset-path';
 import { curveIntersections } from '../src/core/curve-intersections';
 import { connectionMismatch, pairedCarriageways } from '../src/core/paired-carriageways';
-import { formationQuantities, formationSection } from '../src/core/formation-quantities';
+import { formationQuantities, formationQuantityRuns, formationSection } from '../src/core/formation-quantities';
 import { modeCapability } from '../src/core/mode-policy';
 
 function curved(): CurvePath {
@@ -64,6 +64,23 @@ describe('exact paired-carriageway plan geometry', () => {
     }));
   });
 
+  it('detects a returning strip entering the open start without crossing a longitudinal boundary', () => {
+    const elements: Element[] = [];
+    let x = 0, y = 0, heading = 0, s = 0;
+    for (const length of [1000, 1000, 1000, 1005, 10]) {
+      elements.push({ kind: 'line', s0: s, len: length, x0: x, y0: y, dx: Math.cos(heading), dy: Math.sin(heading) });
+      x += length * Math.cos(heading); y += length * Math.sin(heading); s += length;
+      if (length === 10) break;
+      const cx = x + 100 * Math.sin(heading), cy = y - 100 * Math.cos(heading), a0 = heading + Math.PI / 2;
+      elements.push({ kind: 'arc', s0: s, len: 100 * Math.PI / 2, cx, cy, r: 100, a0, dir: -1, pi: 0 });
+      s += 100 * Math.PI / 2; heading -= Math.PI / 2;
+      x = cx + 100 * Math.cos(heading + Math.PI / 2); y = cy + 100 * Math.sin(heading + Math.PI / 2);
+    }
+    const pair = pairedCarriageways({ elements, length: s }, section, 90);
+    expect(pair.planChecksComplete).toBe(true);
+    expect(pair.issues.some(i => i.kind === 'terminal-overlap')).toBe(true);
+  });
+
   it('rejects corners, non-unit tangents and a median overlap rather than inventing an offset join', () => {
     const kink: CurvePath = { length: 20, elements: [
       { kind: 'line', s0: 0, len: 10, x0: 0, y0: 0, dx: 1, dy: 0 },
@@ -99,6 +116,12 @@ describe('bounded analytic collision checks', () => {
       ...line(0, -5, 0, 1, 10).elements.map(e => ({ ...e, s0: 20 })),
     ] };
     expect(curveIntersections(crossing).collisions).toHaveLength(1);
+    // Consecutive does not imply a genuine shared end/start when checking imported geometry.
+    const endpointToInterior = { length: 20, elements: [
+      ...line(0, 0, 1, 0, 10).elements,
+      ...line(10, -5, 0, 1, 10).elements.map(e => ({ ...e, s0: 10 })),
+    ] };
+    expect(curveIntersections(endpointToInterior).collisions).toHaveLength(1);
   });
   it('ignores only normal consecutive joins and fails closed at a runtime budget', () => {
     expect(curveIntersections(curved())).toEqual({ complete: true, collisions: [] });
@@ -125,6 +148,14 @@ describe('one physical formation and fail-closed mode dispatch', () => {
     expect(() => formationSection({ ...row, curvature: 0.1 })).toThrow(/collapsed/);
     expect(() => formationQuantities([row, row])).toThrow(/increase/);
   });
+  it('keeps both sides of line/arc curvature breaks without smearing their volume', () => {
+    const row = { s: 0, curvature: 0, knots: [0, 10].map(offset => ({ offset, groundZ: 0, formationZ: 1 })) };
+    const straight = [row, { ...row, s: 100 }];
+    const arc = [{ ...row, s: 100, curvature: 0.01 }, { ...row, s: 200, curvature: 0.01 }];
+    expect(formationQuantityRuns([straight, arc]).fillVolume).toBeCloseTo(1950, 8);
+    expect(() => formationQuantityRuns([straight, [{ ...arc[0], s: 99 }, arc[1]]])).toThrow(/gap or overlap/);
+  });
+
   it('makes it impossible to dispatch railway/motorway through a legacy-road capability', () => {
     for (const mode of ['railway', 'motorway'] as const) {
       const capability = modeCapability(mode);

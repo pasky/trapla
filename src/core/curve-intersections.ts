@@ -77,7 +77,8 @@ export function curveIntersections(first: CurvePath, second?: CurvePath, budget 
       if (++checks > budget) return { complete: false, collisions };
       if ((second && a.group === entry.group) || a.maxY < entry.minY - EPS || entry.maxY < a.minY - EPS) continue;
       const p = second ? (a.group === 0 ? a : entry) : (a.i < entry.i ? a : entry), q = p === a ? entry : a;
-      const joint = !second && q.i === p.i + 1 ? end(p.e, true) : undefined;
+      const pEnd = end(p.e, true), qStart = end(q.e, false);
+      const joint = !second && q.i === p.i + 1 && Math.hypot(pEnd.x - qStart.x, pEnd.y - qStart.y) <= EPS ? pEnd : undefined;
       for (const point of intersect(p.e, q.e)) {
         if (joint && Math.hypot(point.x - joint.x, point.y - joint.y) <= EPS) continue;
         if (collisions.some(c => c.first === p.i && c.second === q.i && Math.hypot(c.point.x - point.x, c.point.y - point.y) <= EPS)) continue;

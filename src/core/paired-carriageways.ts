@@ -1,6 +1,6 @@
 import type { PointOnAlignment } from './horizontal';
 import { curveIntersections } from './curve-intersections';
-import { curvePointAt, offsetCurvePath, type CurvePath, type OffsetPath } from './offset-path';
+import { childStationAt, curvePointAt, offsetCurvePath, type CurvePath, type OffsetPath } from './offset-path';
 
 /** Signed LEFT offsets from the common spine, sorted low to high. All dimensions in metres. */
 export interface CarriagewayBand { min: number; max: number }
@@ -30,6 +30,7 @@ export type PairedGeometryIssue =
   | { kind: 'radius'; side: 'right' | 'left'; element: number; actual: number; required: number }
   | { kind: 'self-intersection'; boundary: number; first: number; second: number }
   | { kind: 'boundary-intersection'; firstBoundary: number; secondBoundary: number }
+  | { kind: 'terminal-overlap'; end: 'start' | 'end'; boundary: number }
   | { kind: 'intersection-budget' };
 
 /**
@@ -72,6 +73,28 @@ export function pairedCarriageways(spine: CurvePath, section: PairedCrossSection
       if (pair.collisions.length) result.issues.push({ kind: 'boundary-intersection', firstBoundary: j, secondBoundary: i });
     }
   }
+  // A returning strip can enter through an open end without crossing a longitudinal edge.
+  // Close the formation at each end for overlap checks (these are NOT built road connectors).
+  const caps = [0, spine.length].map(s => {
+    const a = curvePointAt(result.formationEdges[0].path, childStationAt(result.formationEdges[0], s));
+    const b = curvePointAt(result.formationEdges[1].path, childStationAt(result.formationEdges[1], s));
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const path: CurvePath = { length: len, elements: [{ kind: 'line', s0: 0, len, x0: a.x, y0: a.y, dx: (b.x - a.x) / len, dy: (b.y - a.y) / len }] };
+    return { path, s };
+  });
+  caps.forEach((cap, endIndex) => {
+    boundaries.forEach((boundary, i) => {
+      const check = curveIntersections(cap.path, boundary.path);
+      budgetHit ||= !check.complete;
+      const expected = curvePointAt(boundary.path, childStationAt(boundary, cap.s));
+      if (check.collisions.some(c => Math.hypot(c.point.x - expected.x, c.point.y - expected.y) > 1e-6)) {
+        result.issues.push({ kind: 'terminal-overlap', end: endIndex === 0 ? 'start' : 'end', boundary: i });
+      }
+    });
+  });
+  const capPair = curveIntersections(caps[0].path, caps[1].path);
+  budgetHit ||= !capPair.complete;
+  if (capPair.collisions.length) result.issues.push({ kind: 'terminal-overlap', end: 'end', boundary: -1 });
   if (budgetHit) { result.planChecksComplete = false; result.issues.push({ kind: 'intersection-budget' }); }
   return result;
 }
