@@ -70,7 +70,9 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
       assertProjectDesign(save.design, true);
       if (save.design.scenarioId !== options.namespace.scenarioId || save.design.presetId !== options.namespace.presetId) throw new Error('Save namespace mismatch');
       if (save.best) {
-        assertProjectDesign(save.best.design);
+        // Validate shape first, then reject stale scores by bindings/semantics. A stale best must
+        // not turn repairable current work into an unsupported envelope.
+        assertProjectDesign(save.best.design, true);
         if (!compatibleProjectBest(save.best, options)) save.best = null;
       } else save.best = null;
       const reasons = bindingRepairs(save.design, options);
