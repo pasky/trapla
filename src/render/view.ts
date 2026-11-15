@@ -18,6 +18,7 @@ import type { CrossingSurface } from './crossing-surface';
 import { routeMask, type RouteMaskInput } from './route-mask';
 import { buildRouteSurfaces, routeSurfaceContext, type RouteSurfaceContext } from './route-surfaces';
 import { RouteGroups } from './route-groups';
+import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
 import { GROUND_COLLAR, collarPoint, daylightSections } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
@@ -826,7 +827,7 @@ export class View {
     const cp: number[] = [], cc: number[] = [], v = new THREE.Vector3();
     for (let i = 0; i < r.n; i++) {
       const tun = r.kind[i] === KIND.tunnel;
-      const z = tun ? this.drapeHeight(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5;
+      const z = routeIndicationHeight(r, i, (x, y) => this.drapeHeight(x, y));
       this.local(r.x[i], r.y[i], z, v);
       cp.push(v.x, v.y, v.z);
       const c = bad[i] ? COL.bad : r.kind[i] === KIND.bridge ? COL.bridge : tun ? COL.tunnel : COL.earth;

@@ -144,8 +144,9 @@ export class CrossingRenderer {
     const surfaces = context?.surfaces ?? this.view.crossingSurfaces;
     const neighbours = context?.neighbours ?? surfaces;
     const replacement = context?.replacementHeight ?? ((x: number, y: number) => this.view.replacementHeight(x, y));
-    const heads = turnaroundSurfaces(surfaces,(x,y) => this.view.groundHeight(x,y));
     const allHeads = turnaroundSurfaces(neighbours,(x,y) => this.view.groundHeight(x,y));
+    const ownGeometry = new Set(surfaces.map(s => s.crossing.geometry));
+    const heads = allHeads.filter(head => ownGeometry.has(head.crossing.geometry));
     const materials = this.materials ??= { ground: this.view.crossingGroundMaterial(), earth: this.view.crossingEarthMaterial(), structure: this.view.crossingEarthMaterial() };
     const fresh: THREE.Object3D[] = [];
     let handedOver = false, settled = false;
@@ -188,7 +189,7 @@ export class CrossingRenderer {
       for (let k = 0; k < surfaces.length; k++) {
         const b = sample[k], near: string[] = [];
         reach.forEach((o, j) => { if (neighbours[j] !== surfaces[k] && o.x0 <= b.x1 && o.x1 >= b.x0 && o.y0 <= b.y1 && o.y1 >= b.y0) near.push(neighbourKeys[j]); });
-        let key = `${own[k]}|${near.sort().join(',')}|${allHeads.length ? headKey.key : ''}`;
+        let key = `${own[k]}|${near.sort().join(',')}|${allHeads.length ? headKey.key : ''}|${context?.groundKey ?? ''}`;
         while (next.has(key)) key += '+';
         const kept = this.surfaces.get(key);
         if (kept) { next.set(key, kept); continue; }

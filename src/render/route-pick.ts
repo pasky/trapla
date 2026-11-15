@@ -1,5 +1,5 @@
 import type { Result } from '../core/evaluate';
-import { KIND } from '../core/structures';
+import { routeIndicationHeight } from './route-indication';
 
 export type PickRoute = { id: string; result: Pick<Result, 'n' | 's' | 'x' | 'y' | 'grade' | 'ground' | 'kind'> };
 export interface RouteHit { routeId: string; s: number; index: number; distance: number }
@@ -8,11 +8,11 @@ type Project = (x: number, y: number, z: number) => { sx: number; sy: number; vi
 /** Pick the actual drawn segments, including inactive roads and ground-level tunnel indications.
  * No sampling stride: small bends and short branches must not vanish from picking. */
 export function pickRoute(routes: readonly PickRoute[], x: number, y: number, pixels: number,
-  project: Project, activeRouteId?: string): RouteHit | null {
+  project: Project, drape: (x: number, y: number) => number, activeRouteId?: string): RouteHit | null {
   let hit: RouteHit | null = null, best = pixels * pixels;
   for (const { id, result: r } of routes) {
     if (r.n < 2) continue;
-    const at = (i: number) => project(r.x[i], r.y[i], r.kind[i] === KIND.tunnel ? r.ground[i] : r.grade[i]);
+    const at = (i: number) => project(r.x[i], r.y[i], routeIndicationHeight(r, i, drape));
     let prev = at(0);
     for (let i = 1; i < r.n; i++) {
       const p = at(i);

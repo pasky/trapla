@@ -17,7 +17,8 @@ export function renderView() {
     drapeHeight: () => 0, drape: () => 0, drawMask,
     collarMaterial: () => collar, ribbonMaterial: () => ribbon,
     crossingEarthMaterial: () => new THREE.MeshBasicMaterial(), crossingGroundMaterial: () => new THREE.MeshBasicMaterial(),
-    makeLine: () => new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial()),
+    makeLine: (points: number[]) => new THREE.Mesh(new THREE.BufferGeometry().setAttribute('position',
+      new THREE.Float32BufferAttribute(points, 3)), new THREE.MeshBasicMaterial()),
     retire: (m: THREE.Material) => m.dispose(),
   }) as unknown as View;
   return { view, world, groups, drawMask, dispose: () => { groups.dispose(); collar.dispose(); ribbon.dispose(); } };
