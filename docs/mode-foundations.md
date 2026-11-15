@@ -151,3 +151,47 @@ road width. Increments, each committed green:
    formation quantities, rail bridges/tunnels, no level crossings: every road crossing grade-separated),
    rail noise per research/32 or explicitly unpriced; scored only if every needed check and price exists.
 8. Gates: full AGENTS.md list, drag-perf all modes plus a motorway design, screenshots (next free numbers).
+
+## M1 status (implemented, 2026-11-15)
+
+**Motorway (scored).** `core/project-motorway.ts`, rows `D27.5` / `D27.5-1` in `data/categories.ts`.
+- A motorway is a corridor + two directional child routes (C0). Paired: ONE kernel evaluation of the
+  spine with the D 27.5 row (27.5 m common formation, SPK whole-category norm, D27.5 bridge row priced on
+  the spine = average of both decks, two tunnel tubes); the result is published under both directions and
+  the bill is `cost.shared` (never a sum of directions). Road widgets edit the spine through the
+  active-route adapter (`project-legacy.ts`).
+- Norms: radii 840/690/560 m (Radimský 2019), easing ≥ vn; crest 15,000/12,000/10,000 m (ČSN 73 6101:2004
+  via Mahdal 2012, research/33 §6); sag 5,000 m and max grade 4 % / 4.5 % older-edition PROVISIONAL (130 km/h
+  sag UNVERIFIED). No level junctions (`resolveCrossings(..., gradeSeparated)`): crossed roads get a bridge,
+  an overbridge, an underpass or a reroute to such a crossing, never to the motorway's ends.
+- Noise: Manuál 2018 v2020 motorway rows (LOA/LNA, tab. 7 night shares, tab. 9/15 lane shares and speeds),
+  `road-noise.ts` `MOTORWAY_NOISE`. One equivalent source per corridor (≈ two carriageways for receivers
+  beyond 20 m); two directional sources are requested from the finite-segment noise rework.
+- Ends are the mission's scenario ports (motorway continues off-map; SPK's norm includes earth-built
+  interchange branches at 1 per 7 km). Other connections stay unpriced.
+- Presets `d3-motorway` (D 27.5/120, research/25) and `d35-stage1-motorway` (built as D 27.5; the real
+  section is D 26.0, no SPK row), own saves; traffic prior = CSD 2020 national mean motorway AADT 30,700,
+  heavy share 22.56 % (TP 219 motorway mix).
+- Rendering: two carriageways (TP 133 markings), grass median with concrete barrier, twin decks (open
+  median), one portal per tube.
+
+**Split / rejoin (scored).** HUD "Both directions / Towards A / Towards B". Split = one undoable edit:
+each direction gets the exact offset bends (radii R ± 6.875 m, never below its own Auto radius) and the
+shared grade line mapped to its chainage (By hand). Each is evaluated as `D27.5-1` (half formation incl. half
+median, 60 % SPK norm = SPK "half of a divided road", ½ bridge row per m², one tube). `splitLedger` then
+counts once what both bodies counted: where the crowns touch at the same height the formation is one
+D 27.5 body (50 % norm each), overlapping embankment/cutting volumes, land and houses. A slope of one
+direction standing on (or undermining) the other carriageway is a violation with a concrete distance.
+Noise per direction uses the whole corridor's traffic (safe upper bound, ≤ +3 dB where only one direction
+is near); houses beside joined stretches belong to the outer direction. Join = explicit reset to the
+kept shared line (Undo restores the separate edits). Unchanged, a split D3 prices ≈ 4 % above the pair
+(twin crossing structures, slightly longer tube runs). C0's `exact`/frozen helpers stay for materialised
+geometry; editable directions use ordinary bends (validation accepts `pi` for independent children).
+
+**Railway (engineered and billed; unpriced).** Rows `R1`/`R2`, `core/project-railway.ts`. Electrified new
+line ≤ 160 km/h: min radius 11.8·V²/(150+80) (cant envelope, VUT 2009), cant ramp easing 10·V·150/1000,
+vertical radius max(2,000, 0.4·V²) (Plášek 2009), formation S3 X 6.2 m (+4.0 m track centres, PROVISIONAL),
+SPOŽES 2026 items (track, layers, ditches, catenary, signalling, ETCS, cables, GSM-R, utilities; H02 bridges,
+J01/J03 tunnels) with SPOŽES P1 markups (research/32). No level crossings (game rule). Train noise and the
+freight ruling gradient are listed as not checked, so a railway never yields a project price yet;
+research in progress (research/34 §7, /35).
