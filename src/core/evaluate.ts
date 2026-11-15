@@ -990,20 +990,18 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     walls = resolved.walls;
     receivers = resolved.receivers;
     noiseViolations.push(...noiseControlViolations(receivers, ex.scratch, st.s, cat.crownWidth));
+    // the band shows the height that decides: the top floor of the tallest dwelling beside each station
+    // (within ±40 m along the road, on that side; bought-out ones are gone)
+    const topL = new Float32Array(n).fill(NOISE.receiverHeight), topR = new Float32Array(n).fill(NOISE.receiverHeight);
+    const reach = Math.round(40 / ds);
+    for (const p of receivers) {
+      if (p.status === 'bought') continue;
+      const up = NOISE.receiverHeight + (noiseBuildings.levels[p.j] - 1) * NOISE.storeyHeight, top = p.side === 'L' ? topL : topR;
+      for (let k = Math.max(0, p.i - reach); k <= Math.min(n - 1, p.i + reach); k++) if (up > top[k]) top[k] = up;
+    }
     footprintMap = noiseFootprint(n, st.x, st.y, st.tx, st.ty, grade, (x, y) => terrain.heightAt(x, y), noiseModel,
       shieldL, shieldR, fl, fr, (i, left) => (kind[i] === KIND.earth ? (left ? sec.dayL[i] : sec.dayR[i]) : w), barrier, edges,
-      undefined, undefined, undefined, (i, left, reach) => {
-        // the band shows the height that decides: the top floor of the tallest dwelling beside this station
-        let up: number = NOISE.receiverHeight;
-        const px = st.x[i], py = st.y[i], tx = st.tx[i], ty = st.ty[i], items = noiseBuildings.items;
-        noiseBuildings.near(px, py, reach, (j) => {
-          if (!noiseBuildings.dwelling[j] || gone[j]) return;
-          const dx = items[j][0] - px, dy = items[j][1] - py;
-          if (Math.abs(dx * tx + dy * ty) > 45 || (-dx * ty + dy * tx >= 0) !== left) return;
-          up = Math.max(up, NOISE.receiverHeight + (noiseBuildings.levels[j] - 1) * NOISE.storeyHeight);
-        });
-        return up;
-      });
+      undefined, undefined, undefined, (i, left) => (left ? topL : topR)[i]);
   }
   lap('town');
 

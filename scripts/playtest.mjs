@@ -85,12 +85,12 @@ try {
   await page.mouse.click(mid.x, mid.y); await idle();
   ok((await get()).pis.length === 0, 'A: a click on empty ground adds nothing');
   // the road under the mouse can be grabbed
-  const r1 = at(route[2]);
+  const r1 = at(await T(() => window.trapla.roadScreen(window.trapla.result().length * 0.4)));
   await page.mouse.move(r1.x, r1.y); await page.waitForTimeout(250);
   ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'grab', 'A: the road shows a grab cursor');
   const cost0 = await T(() => window.trapla.result().cost.total);
   await page.mouse.down();
-  for (let k = 1; k <= 12; k++) await page.mouse.move(r1.x + 7 * k, r1.y + 2 * k);
+  for (let k = 1; k <= 12; k++) await page.mouse.move(r1.x + 6 * k, r1.y + 2 * k);
   await page.mouse.up(); await idle(300);
   let d = await get();
   ok(d.pis.length === 1 && (await sel())?.kind === 'bend', 'A: dragging the road adds a bend, selected');

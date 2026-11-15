@@ -320,7 +320,7 @@ export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<num
   ty: ArrayLike<number>, grade: ArrayLike<number>, groundAt: (x: number, y: number) => number, model: NoiseModel,
   shieldL: ArrayLike<number>, shieldR: ArrayLike<number>, wallL: ArrayLike<number>, wallR: ArrayLike<number>,
   inner: (i: number, left: boolean) => number, barrier = DEFAULT_BARRIER, edges?: EarthEdges,
-  stride = 3, samples = 12, fadeDb = 6, receiverAt?: (i: number, left: boolean, reach: number) => number): NoiseFootprint {
+  stride = 3, samples = 12, fadeDb = 6, receiverAt?: (i: number, left: boolean) => number): NoiseFootprint {
   const m = n ? Math.floor((n - 1) / stride) + 1 + ((n - 1) % stride ? 1 : 0) : 0;
   const stations = new Int32Array(m);
   for (let k = 0; k < m; k++) stations[k] = Math.min(n - 1, k * stride);
@@ -339,7 +339,7 @@ export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<num
       const sourceLeg = Math.hypot(barrier.sourceToWall, built - NOISE.sourceHeight);
       const edge = left ? edges?.L[i] : edges?.R[i];
       const base = (2 * k + s) * samples;
-      const up = receiverAt?.(i, left, a + span) ?? NOISE.receiverHeight;
+      const up = receiverAt?.(i, left) ?? NOISE.receiverHeight;
       receiver[2 * k + s] = up;
       for (let o = 0; o < samples; o++) {
         const d = a + offsets[o];
