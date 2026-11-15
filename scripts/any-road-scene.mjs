@@ -60,7 +60,8 @@ try {
 
   // a long rebuildable road well clear of our road
   const roads = await page.evaluate(() => window.trapla.baseRoads(700));
-  const far = roads.filter(r => r.rebuildable && r.clear > 800 && r.clear < 4000).sort((a, b) => b.length - a.length);
+  // far from our road first (its noise reaches ~3.6 km on D11, so a nearer change waits for combined noise)
+  const far = roads.filter(r => r.rebuildable && r.clear > 800 && r.length < 3000).sort((a, b) => (b.clear > 4000) - (a.clear > 4000) || b.length - a.length);
   let road = null;
   for (const r of far) {
     await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 900), [r.id, r.length / 2]);
@@ -143,6 +144,18 @@ try {
   assert.equal(ops.aadt, 2500); assert.equal(ops.heavyShare, 0.1); assert.equal(ops.trafficUnknown, undefined);
   assert(!(await page.evaluate(() => window.trapla.projectResult())).issues.some(i => i.code === 'traffic-unknown'));
 
+  // 4b. now the replacement is priced: nothing but road interactions may keep it unpriced
+  const priced = await page.evaluate(() => window.trapla.projectResult());
+  const left = priced.cost.unpriced.map(u => u.reason).filter(r => !/^shared-|too-many/.test(r));
+  assert.deepEqual(left, [], 'a rebuilt stretch with its traffic is priced (removal, side roads) unless roads interact');
+  if (priced.cost.total !== null) {
+    assert(priced.works.items.every(w => w.owner.id === rebuilt), 'its works are its own');
+    assert.deepEqual(priced.acceptedReplacements.map(i => i.sourceId), [road.id], 'the old stretch is accepted off the map');
+    console.log(`priced: ${(priced.cost.total / 1e9).toFixed(3)} bn CZK, works ${priced.works.items.map(w => w.label).join('; ')}`);
+  } else console.log(`unpriced only because roads interact: ${priced.cost.unpriced.map(u => u.reason).join(', ')}`);
+  await page.evaluate(() => window.trapla.select(null));
+  await page.screenshot({ path: shot(first + 4, 'rebuilt-road-priced') });
+
   // 5. reload keeps it
   await page.close(); page = await context.newPage(); watch(page);
   url = await open(scenario); await idle();
@@ -177,6 +190,31 @@ try {
   await page.evaluate(() => window.trapla.select(null));
   await page.screenshot({ path: shot(first + 2, 'new-road-built') });
   assert.deepEqual(errors, []);
+
+  // 6b. Build → Road from our road to a mapped road: its junction with our road is built and billed
+  const mission0 = (await page.evaluate(() => window.trapla.getProject())).routes[0];
+  const sm = await page.evaluate(id => window.trapla.projectResult().routes[id].legacy.length * 0.45, mission0.id);
+  await page.evaluate(([id, s]) => { const r = window.trapla.projectResult().routes[id].legacy, i = Math.round(s / r.ds); window.trapla.lookAt(r.x[i], r.y[i], 1600, 0, 60); }, [mission0.id, sm]);
+  await idle();
+  const target = await page.evaluate(([id, s]) => {
+    const t = window.trapla, r = t.projectResult().routes[id].legacy, i = Math.round(s / r.ds);
+    return t.baseRoads(150).filter(b => b.rebuildable || true).map(b => ({ b, p: t.sourceScreen(b.id, b.length / 2) }))
+      .filter(({ p }) => p?.vis).map(({ b, p }) => ({ id: b.id, s: b.length / 2, d: Math.hypot(p.sx - t.project(r.x[i], r.y[i], r.grade[i]).sx, p.sy - t.project(r.x[i], r.y[i], r.grade[i]).sy) }))
+      .filter(c => c.d > 120 && c.d < 500).sort((a, b) => a.d - b.d)[0] ?? null;
+  }, [mission0.id, sm]);
+  if (target) {
+    await page.locator('#build-route').click(); await page.locator('.route-build-choices button', { hasText: 'Road' }).click();
+    point = await screen('routeScreen', mission0.id, sm); await page.mouse.click(point.x, point.y);
+    assert.match(await page.locator('#inspector').textContent(), /joins our road/);
+    point = await screen('sourceScreen', target.id, target.s); await page.mouse.click(point.x, point.y); await idle();
+    const joined = (await page.evaluate(() => window.trapla.getProject())).routes.at(-1);
+    assert.equal(joined.endpoints.a.anchor.kind, 'route'); assert.equal(joined.endpoints.b.anchor.kind, 'source');
+    const pr = await page.evaluate(() => window.trapla.projectResult());
+    assert(pr.works.items.some(w => w.owner.id === joined.id && w.label === 'Junction with our road'), 'its junction with our road is billed');
+    assert(!pr.issues.some(i => i.code === 'connection-pending' && i.scope.routeIds.includes(joined.id)), 'no unbuilt junction');
+    await page.evaluate(() => window.trapla.select(null));
+    await page.screenshot({ path: shot(first + 5, 'side-road-joins-ours') });
+  } else console.log('no mapped road on screen near our road: join-ours step skipped');
 
   // 7. the photo keeps the mapped roads drawn (what is clickable)
   await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, mid]);
