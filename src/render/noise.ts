@@ -297,6 +297,6 @@ export class NoiseLayer {
     if (r.boughtOut.some((p) => p.j === j)) return `${head} · bought out`;
     if (!rec) return head;
     const limit = r.noise?.limit ?? NOISE.limitNightDb, level = limit + rec.mitigated;
-    return `${head}<div><b class="${rec.mitigated > 1e-6 ? 'tip-bad' : ''}">${fmt(level)} dB</b> at the top floor (limit ${limit})${rec.status === 'wall' ? ` · behind a ${rec.wall} m wall` : rec.status === 'cut' ? ' · shielded by a cut' : ''}</div><div class="tip-sub">click for the cross-section</div>`;
+    return `${head}<div><b class="${rec.mitigated > 1e-6 ? 'tip-bad' : ''}">${fmt(level)} dB</b> on the loudest floor (limit ${limit})${rec.status === 'wall' ? ` · behind a ${rec.wall} m wall` : rec.status === 'cut' ? ' · shielded by a cut' : ''}</div><div class="tip-sub">click for the cross-section</div>`;
   }
 }

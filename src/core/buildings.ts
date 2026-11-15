@@ -105,14 +105,15 @@ export class BuildingIndex {
    * registered in (dedupe by index), with the index of the point nearest that cell's centre. */
   alongPoints(x: ArrayLike<number>, y: ArrayLike<number>, n: number, r: number, fn: (j: number, near: number) => void) {
     if (!n) return;
-    // every other point, reaching the one between too (and the last one)
-    const reach = n > 1 ? Math.hypot(x[1] - x[0], y[1] - y[0]) : 0, rr = r + reach;
+    // every `step`-th point (about r/4 apart), reaching the ones between too (and the last one)
+    const ds = n > 1 ? Math.hypot(x[1] - x[0], y[1] - y[0]) : 0;
+    const step = Math.max(2, Math.floor(r / 4 / Math.max(1e-6, ds))), rr = r + step * ds / 2 + ds;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (let i = 0; i < n; i++) { x0 = Math.min(x0, x[i]); x1 = Math.max(x1, x[i]); y0 = Math.min(y0, y[i]); y1 = Math.max(y1, y[i]); }
     const c0 = Math.floor((x0 - rr) / this.cell), r0 = Math.floor((y0 - rr) / this.cell);
     const nc = Math.floor((x1 + rr) / this.cell) - c0 + 1, nr = Math.floor((y1 + rr) / this.cell) - r0 + 1;
     const near = new Int32Array(nc * nr).fill(-1), dist = new Float64Array(nc * nr);
-    for (let i = 0; i < n; i = i + 2 < n || i === n - 1 ? i + 2 : n - 1) {
+    for (let i = 0; i < n; i = i + step < n || i === n - 1 ? i + step : n - 1) {
       const a0 = Math.floor((x[i] - rr) / this.cell) - c0, a1 = Math.floor((x[i] + rr) / this.cell) - c0;
       const b0 = Math.floor((y[i] - rr) / this.cell) - r0, b1 = Math.floor((y[i] + rr) / this.cell) - r0;
       for (let cx = a0; cx <= a1; cx++) for (let cy = b0; cy <= b1; cy++) {

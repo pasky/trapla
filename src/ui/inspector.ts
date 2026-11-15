@@ -416,7 +416,9 @@ export class Inspector {
       const w = r.walls.find((x) => x.side === side && i >= x.i0 && i <= x.i1);
       const fix = vio.find(({ v }) => v.target?.wall)?.v.target?.wall;
       const half = Math.max(25, NOISE.minWallLengthFactor * Math.max(0, rec.d - (side === 'L' ? src.L : src.R).wallOff[i]) / 2);
-      const s0 = w?.s0 ?? fix?.s0 ?? Math.max(0, r.s[i] - half), s1 = w?.s1 ?? fix?.s1 ?? Math.min(r.length, r.s[i] + half);
+      // its own wall request (which may step over several heights) first, then the stretch standing there
+      const own = rec.span && [Math.max(0, r.s[rec.span[0]] - r.ds / 2), Math.min(r.length, r.s[rec.span[1]] + r.ds / 2)];
+      const s0 = own?.[0] ?? w?.s0 ?? fix?.s0 ?? Math.max(0, r.s[i] - half), s1 = own?.[1] ?? w?.s1 ?? fix?.s1 ?? Math.min(r.length, r.s[i] + half);
       const mine = (d.wallOverrides ?? []).find((o) => o.side === side && o.s0 <= r.s[i] && o.s1 >= r.s[i]);
       const active = mine ? String(mine.height) : 'auto';
       const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...[2, 3, 4, 5, 6].map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];

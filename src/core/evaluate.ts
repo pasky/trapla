@@ -105,7 +105,8 @@ export interface Result {
   parts: CostParts;
   /** per station cell: land-take width (m), built-up and forest share of it (0…1), noise walls
    * (bit 0 = left of travel, bit 1 = right) */
-  cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array };
+  /** `wallLength` / `wallArea`: noise walls billed in the cell, along their own lines (m, m²) */
+  cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array; wallLength: Float64Array; wallArea: Float64Array };
   crossings: CrossingResult[];
   waterCrossings: WaterResult[];
   /** Footprint conflicts beyond the handled centreline crossings; costs already in the bill. */
@@ -1145,7 +1146,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
     retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
     noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
       limit: noiseModel.controlling === 'night' ? NOISE.limitNightDb : NOISE.limitDayDb },

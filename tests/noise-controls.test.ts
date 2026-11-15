@@ -7,7 +7,7 @@ import { KIND } from '../src/core/structures';
 import {
   crossSectionScreens, dwellingLevels, noiseOutcome, sourceExcess, wallLineLengths, type AcousticSource,
 } from '../src/core/noise';
-import { emptyScreen, noiseField, pointTransfer, transferBuffers } from '../src/core/noise-field';
+import { emptyScreen, lineTransfer, noiseField, pointTransfer, transferBuffers } from '../src/core/noise-field';
 import { createNoiseModel, noiseLevels } from '../src/core/road-noise';
 import { noiseControlViolations } from '../src/core/noise-control-violations';
 
@@ -39,7 +39,7 @@ describe('finite-segment sum', () => {
   it('splitting a road into two sources adds nothing (energy of disjoint cells)', () => {
     const half = (a: number, b: number): AcousticSource => {
       const pick = <T extends ArrayLike<number>>(v: T) => Float64Array.from(Array.prototype.slice.call(v, a, b) as number[]);
-      const side = (x: typeof src.L) => ({ shield: Uint8Array.from(Array.prototype.slice.call(x.shield, a, b) as number[]), edgeOff: pick(x.edgeOff), edgeTop: pick(x.edgeTop),
+      const side = (x: typeof src.L) => ({ shield: Uint8Array.from(Array.prototype.slice.call(x.shield, a, b) as number[]), edgeOff: pick(x.edgeOff), edgeTop: pick(x.edgeTop), edgeLane: Uint8Array.from(Array.prototype.slice.call(x.edgeLane, a, b) as number[]),
         wallOff: pick(x.wallOff), wallFoot: pick(x.wallFoot), gap: Uint8Array.from(Array.prototype.slice.call(x.gap, a, b) as number[]) });
       return { ...src, n: b - a, x: pick(src.x), y: pick(src.y), tx: pick(src.tx), ty: pick(src.ty), grade: pick(src.grade), len: pick(src.len), L: side(src.L), R: side(src.R) };
     };
@@ -66,6 +66,35 @@ describe('finite-segment sum', () => {
     pointTransfer(noiseField(ring), 0, 0, [1.5], null, null, t);
     expect(excess(t.raw[0]) - noiseLevels(R, 1.5, model).excessDb).toBeGreaterThan(2.5);
     expect(excess(t.raw[0]) - noiseLevels(R, 1.5, model).excessDb).toBeLessThan(3.5);
+  });
+  it('never below the manual\'s §1.10.2 transformation: beyond a road end and outside a tight bend', () => {
+    // the transformed sum (U at the true distance, face-on angle) cell by cell
+    const manual = (r: AcousticSource, px: number, py: number, z: number) => {
+      let q = 0;
+      for (let i = 0; i < r.n; i++) {
+        const dist = Math.hypot(px - r.x[i], py - r.y[i]), h = r.len[i] / 2;
+        q += 2 * Math.atan(h / dist) / Math.PI * lineTransfer(dist, z - r.grade[i]);
+      }
+      return q;
+    };
+    const t2 = transferBuffers(1);
+    for (const [x, y] of [[2050, 0.5], [2100, 2], [2030, 10]]) {
+      pointTransfer(f, x, y, [1.5], null, null, t2);
+      expect(t2.raw[0]).toBeGreaterThanOrEqual(manual(src, x, y, 1.5) * 0.977) // within the far grouping's 0.1 dB;
+    }
+    const R = 50, n = Math.round(Math.PI / 2 * R / 5), a = (i: number) => i * 5 / R;
+    const bend: AcousticSource = { ...road(n), x: Float64Array.from({ length: n }, (_, i) => R * Math.sin(a(i))), y: Float64Array.from({ length: n }, (_, i) => R - R * Math.cos(a(i))),
+      tx: Float64Array.from({ length: n }, (_, i) => Math.cos(a(i))), ty: Float64Array.from({ length: n }, (_, i) => Math.sin(a(i))), len: new Float64Array(n).fill(5) };
+    const px = (R + 20) * Math.sin(Math.PI / 4), py = R - (R + 20) * Math.cos(Math.PI / 4);
+    pointTransfer(noiseField(bend), px, py, [1.5], null, null, t2);
+    expect(t2.raw[0]).toBeGreaterThanOrEqual(manual(bend, px, py, 1.5) * 0.977);
+  });
+  it('a house just past a tunnel portal is assessed from the portal', () => {
+    const tun = road(401, -2000, { kind: (i) => (i >= 200 ? KIND.tunnel : KIND.earth) });
+    const o = noiseOutcome(tun, model, house(5, 30, 2), [0], () => 0, s(tun));
+    expect(o.receivers).toHaveLength(1);
+    expect(o.receivers[0].raw).toBeGreaterThan(0);
+    expect(o.receivers[0].status === 'bought' || o.receivers[0].mitigated <= 1e-9).toBe(true);
   });
   it('a wall screens only a point in its shadow; a higher wall more', () => {
     const at = (h: number, z: number) => { pointTransfer(f, 0, 30, [z], new Float64Array(src.n).fill(h), null, t); return excess(t.screened[0]); };
