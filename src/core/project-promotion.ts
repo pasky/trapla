@@ -15,7 +15,8 @@ export function groundRoadSourceInfo(base: ProjectTransportIndex, sourceId: stri
   const legalClass: RoadSpec['legalClass'] = source.tags.highway === 'primary' ? 'I' : source.tags.highway === 'secondary' ? 'II'
     : source.tags.highway === 'tertiary' ? 'III' : source.tags.highway === 'track' ? 'track' : source.tags.highway === 'service' ? 'service' : 'local';
   const raw = source.tags.maxspeed?.trim(), speed = raw && /^\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : NaN;
-  return { name: source.tags.name || source.tags.ref || row.label, legalClass, width: row.width, widthBasis: 'study-road-class',
+  // A road number alone ("11436") is no name: say what kind of road carries it.
+  return { name: source.tags.name || (source.tags.ref ? `${row.label} ${source.tags.ref}` : row.label), legalClass, width: row.width, widthBasis: 'study-road-class',
     taggedSpeed: Number.isFinite(speed) && speed > 0 ? speed : null };
 }
 

@@ -118,6 +118,9 @@ export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, 
   const next = copy(project), replacement = adapted.routes[0];
   if (replacement.kind !== 'road') throw new Error('Legacy adapter mode mismatch');
   replacement.specification.operations = copy(old.specification.operations);
+  // The legal class is the road's, not its width's: keep it while the cross-section suits it.
+  const fits = { 'S7.5': ['II', 'III'], 'S9.5': ['I', 'II'], 'S11.5': ['I'] }[design.category as 'S7.5' | 'S9.5' | 'S11.5'] ?? [];
+  if (fits.includes(old.specification.legalClass)) replacement.specification.legalClass = old.specification.legalClass;
   if (design.speed !== old.specification.designSpeed && old.specification.operations.speedPolicy !== 'independent')
     replacement.specification.operations.speed = design.speed;
   next.routes = next.routes.map(r => r.id === routeId ? { ...replacement, id: old.id, name: old.name, role: old.role,
