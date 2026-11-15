@@ -26,6 +26,14 @@ class ReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside"):
             endpoint({"alongOfficial": 21}, pts, [0, 10, 20], self.project)
 
+    def test_explicit_interior_node_range_omits_outside_reference_without_retagging(self):
+        long = way(10, [0, 1, 2, 3], [(-10, 0), (0, 0), (10, 0), (20, 0)])
+        cfg = {**self.cfg, "wayIds": [10], "wayNodeRanges": {"10": [2, 1]}, "lengthRangeM": [9, 11]}
+        pts, kinds, _ = chain_reference([long], cfg, self.project)
+        np.testing.assert_array_equal(pts, [[0, 0], [10, 0]])
+        self.assertEqual(kinds, [0])
+        self.assertEqual(len(long["nodes"]), 4)
+
     def test_branch_requires_explicit_manifest(self):
         branch = way(30, [2, 4], [(10, 0), (10, 10)])
         with self.assertRaisesRegex(ValueError, "ambiguous"):

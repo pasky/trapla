@@ -21,6 +21,17 @@ class GeologyTests(unittest.TestCase):
         self.assertEqual(classify({"utvar": "PERM", "hor_karto":
             "arkózovité pískovce s polohami slepenců a vložkami červenohnědých i pestrobarevných aleuropelitů"}), "perm_sand")
 
+    def test_posazavi_descriptions_use_broad_rock_priors_not_norm_mix(self):
+        for rock, expected in [
+            ("granodiorit, tonalit, křemenný diorit (sázavský typ)", "igneous"),
+            ("biotitové rohovce s polohami metadrob", "hard"),
+            ("droby, prachovce, břidlice", "hard"),
+            ("jílovité břidlice", "phyllite"),
+            ("intermediální až kyselé metatufy se sulfidy", "tuff"),
+            ("neznámá hornina", "unknown"),
+        ]:
+            self.assertEqual(classify({"hor_karto": rock}), expected)
+
     def test_keyset_pagination_and_offline_cache(self):
         requests = []
 
@@ -38,6 +49,20 @@ class GeologyTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual([r["where"][0] for r in requests], ["objectid > -1", "objectid > 10"])
         self.assertTrue(all(r["geometry"][0] == "0,0,100,100" and r["inSR"] == ["5514"] for r in requests))
+
+    def test_spatial_ordering_failure_falls_back_to_verified_id_batch(self):
+        def get(url):
+            q = parse_qs(urlparse(url).query)
+            if "returnIdsOnly" in q:
+                return json.dumps({"objectIds": [25, 10]}).encode()
+            if "objectIds" in q:
+                self.assertNotIn("geometry", q)
+                return json.dumps({"features": [feature(25, []), feature(10, [])]}).encode()
+            return json.dumps({"error": {"code": 500}}).encode()
+        with tempfile.TemporaryDirectory() as directory, patch("geology.time.sleep"):
+            result = fetch_features("https://example.invalid/query", "ig", Path(directory),
+                                    (0, 0, 100, 100), get, lambda *a: None)
+        self.assertEqual([f["attributes"]["objectid"] for f in result], [10, 25])
 
     def test_cell_centres_holes_islands_and_clipping(self):
         outer = [[-10, -10], [110, -10], [110, 110], [-10, 110], [-10, -10]]

@@ -36,6 +36,36 @@ def fetch_features(url, name, cache, bounds, http_get, log):
                           resultRecordCount=500)
             log("ČGS fetch", name, offset)
             page = json.loads(http_get(url + "/query?" + urllib.parse.urlencode(params)))
+            if "error" in page:
+                # Some regions of IG_rajony50 fail spatial+ordered queries (ArcGIS 500),
+                # while the same spatial ID query and bounded object-ID fetch succeed.
+                id_path = cache / f"cgs_{name}_{envelope.replace(',', '_')}_ids.json"
+                if id_path.exists():
+                    ids = json.loads(id_path.read_text())
+                else:
+                    id_params = {k: v for k, v in params.items() if k not in
+                                 ("outFields", "returnGeometry", "orderByFields", "resultRecordCount", "outSR")}
+                    id_params.update(where="1=1", returnIdsOnly="true")
+                    result = json.loads(http_get(url + "/query?" + urllib.parse.urlencode(id_params)))
+                    if "objectIds" not in result:
+                        raise RuntimeError(f"ČGS {name} ID query failed: {result}")
+                    ids = sorted(set(result["objectIds"] or []))
+                    if len(ids) > 100_000:
+                        raise RuntimeError("geology envelope exceeds bounded feature budget")
+                    id_path.write_text(json.dumps(ids))
+                pending = [oid for oid in ids if oid > last_id]
+                if pending:
+                    batch_params = dict(f="json", objectIds=",".join(map(str, pending[:100])),
+                                        outFields="*", outSR=5514, returnGeometry="true")
+                    page = json.loads(http_get(url + "/query?" + urllib.parse.urlencode(batch_params)))
+                    if "features" in page:
+                        got = {f["attributes"]["objectid"] for f in page["features"]}
+                        if got != set(pending[:100]):
+                            raise RuntimeError(f"ČGS {name}: incomplete ID batch")
+                        page["features"].sort(key=lambda f: f["attributes"]["objectid"])
+                        page["exceededTransferLimit"] = len(pending) > 100
+                else:
+                    page = {"features": []}
             if "error" in page or "features" not in page:
                 raise RuntimeError(f"ČGS {name}: {page}")
             path.write_text(json.dumps(page, ensure_ascii=False))
@@ -104,6 +134,20 @@ def classify(a):
         if fine:
             return "perm_fine"
         return "perm_congl" if first in ("slepenc", "brekci") else "perm_sand"
+    # Additional Posázaví / Moravian map descriptions. These are broad lithology groups,
+    # NOT measured excavation classes. Existing D11 matches above remain unchanged.
+    if any(word in rock for word in ("granit", "granodiorit", "diorit", "tonalit", "trondhjemit",
+                                     "gabro", "aplit", "pegmatit", "lamprofyr", "melilitit")):
+        return "igneous"
+    if rock.startswith(("dacit", "metaandez", "metabaz", "metadacit", "bazický metatuf")):
+        return "igneous"
+    if any(word in rock for word in ("rohovc", "metapískov", "metakvarc", "metadrob", "metakonglomer")) \
+            or rock.startswith(("droby", "silicity", "slepence")):
+        return "hard"
+    if rock.startswith(("jílovité břidlice", "prachovce, břidlice")):
+        return "phyllite"
+    if "metatuf" in rock:
+        return "tuff"
     return "unknown"
 
 

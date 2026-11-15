@@ -22,6 +22,14 @@ export async function scenarioAvailable(id: string): Promise<boolean> {
     const response = await fetch(`${base}/meta.json`, { signal: controller.signal });
     if (!response.ok) return false;
     const meta = await response.json();
+    // New builders invalidate this marker before touching any output, and publish it last.
+    // Legacy D11 deliberately keeps its original pack format/fingerprint.
+    if (id !== 'd11') {
+      const readyResponse = await fetch(`${base}/ready.json`, { signal: controller.signal, cache: 'no-store' });
+      if (!readyResponse.ok) return false;
+      const ready = await readyResponse.json();
+      if (ready.id !== id || ready.ready !== true) return false;
+    }
     if (meta.id !== id || !Number.isInteger(meta.nx) || !Number.isInteger(meta.ny)
       || meta.nx <= 0 || meta.ny <= 0 || !meta.heights?.file || !meta.landcover?.file) return false;
     const files = [meta.heights.file, meta.landcover.file, 'overlays.json',
