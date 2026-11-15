@@ -2,10 +2,14 @@ import type { ProjectIdentity, ProjectResult, ProjectSnapshot, RouteId, RouteRes
 
 /** Additive worker messages; legacy init/eval/result remain unchanged. */
 export type ProjectWorkerIn =
-  | { type: 'project-eval'; id: number; snapshot: ProjectSnapshot }
+  | { type: 'project-eval'; id: number; snapshot: ProjectSnapshot; displayedResult: ProjectIdentity | null }
   | { type: 'project-preview'; id: number; snapshot: ProjectSnapshot; routeId: RouteId; materialValue?: number };
 export type ProjectWorkerOut =
-  | { type: 'project-result'; id: number; result: ProjectResult; changedRouteIds: RouteId[]; removedRouteIds: RouteId[]; dependentRouteIds: RouteId[] }
+  | { type: 'project-result'; id: number; result: ProjectResult;
+      /** Change lists are relative to this last acknowledged DISPLAYED snapshot, not the last eval.
+       * null or mismatch: compare every route's engineeringRevision against displayed geometry. */
+      baseIdentity: ProjectIdentity | null;
+      changedRouteIds: RouteId[]; removedRouteIds: RouteId[]; dependentRouteIds: RouteId[] }
   | { type: 'project-preview'; id: number; identity: ProjectIdentity; routeId: RouteId; routeRevision: number; result: RouteResult }
   | { type: 'project-error'; id: number; identity: ProjectIdentity; message: string };
 

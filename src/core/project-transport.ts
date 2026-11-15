@@ -10,9 +10,19 @@ export interface TransportTags {
   tracks?: string; gauge?: string; electrified?: string; voltage?: string; frequency?: string;
   maxspeed?: string; oneway?: string; service?: string; usage?: string;
 }
+export interface TransportRenderFeature {
+  id: string;
+  /** Resolves in VectorPack.lines by layer name, then starts[polylineIndex].
+   * Scoped to TransportGraphData.vectorData, never a transient GPU allocation. */
+  layer: string; polylineIndex: number;
+}
 export interface TransportRenderInterval {
-  /** Vector feature identity, not its transient GPU buffer index. */
-  featureId: string; sourceId: SourceId; s0: number; s1: number;
+  featureId: string; sourceId: SourceId;
+  /** Increasing canonical SOURCE interval. */
+  s0: number; s1: number;
+  /** Piecewise-linear mapping to cumulative metres along the rendered polyline, measured from its
+   * first vertex. Source s increases; renderS may decrease for reversed features. Includes both ends. */
+  correspondence: { sourceS: number; renderS: number }[];
   /** Centreline display width; masking retains other sources sharing the same pixels. */
   width: number;
 }
@@ -41,6 +51,9 @@ export type TransportSource = TransportSourceBase & (
 );
 export interface TransportGraphData {
   version: 1;
+  /** Fingerprint of vector.bin content whose line-layer/feature indices the mapping addresses. */
+  vectorData: string;
+  renderFeatures: TransportRenderFeature[];
   nodes: TransportNode[];
   sources: TransportSource[];
 }

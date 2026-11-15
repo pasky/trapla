@@ -1,10 +1,13 @@
 // C0 project contract. Persistent data only; no renderer, DOM or mode-default physics.
 import type { BuildingOverride } from './build-controls';
+import type { CrossingChoice } from './crossings';
 import type { Violation } from './checks';
 import type { CategoryId, TerrainClass } from './data/categories';
 import type { Design, Result } from './evaluate';
 import type { Element, Vec2 } from './horizontal';
-import type { TransportRenderInterval } from './project-transport';
+import type { TransportRenderInterval, TransportSurfaceQuery } from './project-transport';
+import type { Terrain } from './terrain';
+import type { BuildingIndex } from './buildings';
 
 export const PROJECT_SCHEMA_VERSION = 1 as const;
 /** Independent from schema and price-table versions: changes when project accounting changes. */
@@ -34,12 +37,28 @@ export interface EndpointConstraint {
   binding: 'resolved' | 'unresolved';
 }
 export interface EndpointPair { a: EndpointConstraint; b: EndpointConstraint }
-export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrides' | 'objectData' | 'pis'>;
+export type CrossingTarget =
+  | { kind: 'legacy-way'; objectData: string; roadId: number }
+  | { kind: 'source'; interval: SourceInterval }
+  | { kind: 'route'; routeId: RouteId; s0: number; s1: number };
+export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrides' | 'objectData' | 'pis'
+  | 'profileMode' | 'vpis' | 'gradePins' | 'crossingOverrides'> & {
+    crossings?: { target: CrossingTarget; choice: CrossingChoice }[];
+  };
+export type DesignedVertical =
+  | { kind: 'auto'; pins: NonNullable<Design['gradePins']> }
+  | { kind: 'manual'; vpis: Design['vpis'] }
+  /** Frozen built geometry; interpolation is linear in horizontal station. */
+  | { kind: 'frozen'; points: { s: number; z: number }[] };
 export type AlignmentDesign =
-  | { kind: 'pi'; pis: Design['pis']; controls: RouteControls }
+  | { kind: 'pi'; pis: Design['pis']; vertical: DesignedVertical; controls: RouteControls }
   | { kind: 'reference'; path: ReferencePoint[]; controls: RouteControls;
+      /** reference preserves imported per-point elevation authority. Switching explicitly to auto/manual
+       * relinquishes that authority, retaining the original path as evidence, and requires revalidation. */
+      vertical: DesignedVertical | { kind: 'reference' };
       provenance: 'imported' | 'built-work' | 'independent-carriageway' }
-  | { kind: 'exact'; path: { elements: Element[]; length: number }; controls: RouteControls }
+  /** Exact refers to horizontal geometry only; vertical authority is always explicit. */
+  | { kind: 'exact'; path: { elements: Element[]; length: number }; vertical: DesignedVertical; controls: RouteControls }
   | { kind: 'corridor'; corridorId: CorridorId; direction: 'forward' | 'reverse' };
 /** Explicit imported geometry: no invisible PI fitting. s is local horizontal chainage. */
 export interface ReferencePoint extends Vec2 {
@@ -139,8 +158,10 @@ export interface ProjectEnvironment {
 export interface ProjectIssue {
   code: string;
   scope: { routeIds: RouteId[]; workId?: WorkId; connectionId?: ConnectionId; buildingIndex?: number };
-  /** Existing plain-word violation payload; IDs/codes are not player labels. */
-  violation: Violation;
+  /** Every station/control location belongs to exactly one route, even for pair conflicts. */
+  locations: { routeId: RouteId; s0: number; s1: number; pi?: number; vpi?: number; pin?: number }[];
+  /** Legacy station/index/target fields are deliberately excluded. IDs/codes are not player labels. */
+  violation: Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'basis' | 'rule'>;
   blocking: 'invalid' | 'incomplete';
 }
 export interface TransportSurface {
@@ -148,10 +169,20 @@ export interface TransportSurface {
   /** Actual built elevations; ground is a separate terrain query. */
   points: (XYZ & { s: number; halfWidth: number; structure: 'ground' | 'bridge' | 'tunnel' })[];
 }
+/** Mode-neutral, authoritative geometry. Renderer draws these faces without deriving slopes,
+ * deck depth, support positions or a median. Local metre XYZ triples, triangle indices. */
+export interface EngineeringGeometry {
+  meshes: { id: string; role: 'pavement' | 'formation' | 'retaining' | 'deck' | 'pier' | 'abutment'
+    | 'tunnel' | 'track' | 'ballast' | 'noise-wall'; positions: Float64Array; triangles: Uint32Array }[];
+  terrainMasks: { boundary: XYZ[]; surfaceMeshIds: string[] }[];
+  /** BOQ measurements link to the SAME geometry, including common formation and shared structures. */
+  measurements: { id: string; meshIds: string[]; quantity: number; unit: 'm' | 'm2' | 'm3' | 'each' }[];
+}
 export interface WorkProposal {
-  id: WorkId; owner: RouteId | CorridorId; participants: RouteId[];
+  id: WorkId; owner: { kind: 'route'; id: RouteId } | { kind: 'corridor'; id: CorridorId }; participants: RouteId[];
   kind: 'formation' | 'structure' | 'connection' | 'property' | 'noise' | 'land';
   surfaces: TransportSurface[];
+  geometry: EngineeringGeometry;
   claims: SourceInterval[];
   /** Final priced quantities must use this same geometry. */
   cost: number;
@@ -190,7 +221,11 @@ export interface AcousticScreen {
   complete: boolean;
 }
 export interface RouteResult {
-  routeId: RouteId; revision: number; surface: TransportSurface | null;
+  routeId: RouteId; revision: number;
+  /** Includes dependency/decision changes even when the route design revision is unchanged. */
+  engineeringRevision: string;
+  surface: TransportSurface | null;
+  geometry: EngineeringGeometry | null;
   /** Present only for the road kernel. Other modes never impersonate road Result. */
   legacy?: Result;
   complete: boolean; valid: boolean; accepted: boolean;
@@ -223,15 +258,37 @@ export interface ProjectResult extends ProjectIdentity {
 export interface RouteKernel {
   kind: RouteKind; policy: string;
   propose(route: RouteDesign, input: RouteKernelInput): EngineeringProposal;
+  /** Called before acquisitions and again after mitigation changes; streams receivers, no dense matrix. */
+  acoustics(proposal: EngineeringProposal, input: AcousticQuery, emit: (c: AcousticContribution) => void): AcousticScreen;
   finalize(proposal: EngineeringProposal, decisions: ProjectDecisions): RouteResult;
+}
+export interface AcousticQuery {
+  receivers: { buildingIndex: number; position: XYZ; height: number }[];
+  decisions: ProjectDecisions | null;
+  /** Aggregator supplies the bound needed to include individually quiet contributors. */
+  omittedEnergyBudget: { day: number; night: number };
+}
+/** Paired formation is engineered once, not as two independent priced road kernels. */
+export interface CorridorKernel {
+  kind: 'motorway'; policy: string;
+  propose(corridor: CorridorDesign, children: readonly [RouteDesign, RouteDesign], input: RouteKernelInput): {
+    routes: EngineeringProposal[]; sharedWorks: WorkProposal[]; issues: ProjectIssue[];
+  };
 }
 export interface RouteKernelInput {
   environment: ProjectEnvironment;
+  /** Real immutable terrain stays separate from transport-surface elevation queries. */
+  terrain: Terrain;
+  buildings?: BuildingIndex;
+  transport: TransportSurfaceQuery;
   /** All claims in this jointly dependent candidate group, not just the current route's claims.
    * Authoritative ownership is derived atomically after feasibility, never from evaluation order. */
   candidateExclusions: SourceInterval[];
-  acceptedSurfaces: TransportSurface[];
+  /** Bounded spatial query; kernels do not scan the entire designed network per station. */
+  nearAcceptedSurfaces(bounds: Bounds, visit: (surface: TransportSurface) => void): void;
   endpointConstraints: EndpointPair;
+  /** Resolved owning corridor/group, including spine and both operation specifications. */
+  corridor: { design: CorridorDesign; children: readonly [RouteDesign, RouteDesign] } | null;
   /** Bound imposed by the orchestrator; kernels cannot recursively evaluate neighbours. */
   pass: number;
 }
