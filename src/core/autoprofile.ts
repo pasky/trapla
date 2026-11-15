@@ -32,6 +32,9 @@ export interface BalanceSearch {
 export interface AutoProfileOptions {
   /** Transport-surface endpoint constraints, independent of the real ground used for earthworks. */
   endpointElevations?: { a?: number; b?: number };
+  /** Grades the line must continue at its ends (a vertical curve within one knot), e.g. a stretch of
+   * a longer grade line re-solved in a drag preview. Omitted: any first / last grade. */
+  endpointGrades?: { a?: number; b?: number };
   /** Absolute-chainage heights on the smoothed grade (±0.5 m). Out-of-route pins are inactive.
    * Endpoint pins constrain, but never replace, the fixed transport endpoints. */
   pins?: readonly GradePin[];
@@ -357,6 +360,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       }
     }
     const slopes = Float64Array.from({ length: ND }, (_, d2) => ((d2 - dzMax) * u) / D);
+    // Continuing grades at the ends, in grid units per knot (real-valued).
+    const gA = opt.endpointGrades?.a, gB = opt.endpointGrades?.b;
+    const dzA = gA === undefined ? NaN : gA * D / u, dzB = gB === undefined ? NaN : gB * D / u;
     let cur = new Float64Array(ND).fill(Infinity);
     cur[dzMax] = 0; // knot 0 (dz is ignored there: any first grade is allowed)
     const parents: Int32Array[] = [];
@@ -417,9 +423,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           const base = cur[zi * ND + d];
           if (base === Infinity) continue;
           const dz = d - dzMax;
-          // knot 0 has no incoming grade: any first grade is allowed
-          const dmin = k === 0 ? -dzMax : Math.max(-dzMax, dz - crestLim);
-          const dmax = k === 0 ? dzMax : Math.min(dzMax, dz + sagLim);
+          // knot 0 has no incoming grade: any first grade is allowed (unless it continues a given one)
+          const dmin = k === 0 ? (Number.isNaN(dzA) ? -dzMax : Math.max(-dzMax, Math.ceil(dzA - crestLim - 1e-9)))
+            : Math.max(-dzMax, dz - crestLim);
+          const dmax = k === 0 ? (Number.isNaN(dzA) ? dzMax : Math.min(dzMax, Math.floor(dzA + sagLim + 1e-9)))
+            : Math.min(dzMax, dz + sagLim);
           for (let dz2 = dmin; dz2 <= dmax; dz2++) {
             const d2 = dz2 + dzMax;
             const sc = seg[d2];
@@ -447,7 +455,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       cur = next;
     }
     let best = Infinity, bi = -1;
-    for (let d = 0; d < ND; d++) if (cur[d] < best) { best = cur[d]; bi = d; }
+    for (let d = 0; d < ND; d++) {
+      // A given end grade must be reachable from the last tangent by one vertical curve.
+      if (!Number.isNaN(dzB) && (d - dzMax < dzB - sagLim - 1e-9 || d - dzMax > dzB + crestLim + 1e-9)) continue;
+      if (cur[d] < best) { best = cur[d]; bi = d; }
+    }
     if (bi < 0) return null;
     const zs = new Float64Array(nK + 1);
     const dzs = new Int32Array(nK + 1);

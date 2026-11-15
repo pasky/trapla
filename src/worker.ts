@@ -3,7 +3,8 @@
 
 import { BuildingIndex, type BuildingInfo } from './core/buildings';
 import type { ScenarioParams } from './core/data/scenario';
-import { evaluate, type Design, type EndpointJunction, type EvalContext } from './core/evaluate';
+import { evaluate, type Design, type EndpointJunction, type EvalContext, type Result } from './core/evaluate';
+import { adoptFull } from './core/preview-window';
 import { RoadNet, type RoadNetData } from './core/roadnet';
 import type { WaterData } from './core/watercourses';
 import type { GroundData } from './core/ground';
@@ -16,7 +17,9 @@ export type WorkerIn =
   | { type: 'init'; nx: number; ny: number; cell: number; base: number; scale: number; q: Uint16Array; lc: Uint8Array;
       a: { x: number; y: number }; b: { x: number; y: number }; buildings: [number, number, number][];
       binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData; scenario: ScenarioParams; watercourses?: WaterData;
-      projectEnvironment?: ProjectEnvironment; junctions?: EndpointJunction[] }
+      projectEnvironment?: ProjectEnvironment; junctions?: EndpointJunction[];
+      /** 'full' passes each full result on `port` to the 'preview' worker (base of its windowed previews). */
+      role?: 'full' | 'preview'; port?: MessagePort }
   | { type: 'eval'; id: number; design: Design; preview?: boolean; materialValue?: number }
   | ProjectWorkerIn;
 
@@ -25,6 +28,8 @@ let pending: Exclude<WorkerIn, { type: 'init' }> | null = null;
 let scheduled = false;
 let projectEnvironment: ProjectEnvironment | null = null;
 let lastProject: ProjectResult | null = null;
+/** full worker: where full results go for the preview worker */
+let basePort: MessagePort | null = null;
 
 function run() {
   scheduled = false;
@@ -35,6 +40,7 @@ function run() {
     if (job.type === 'eval') {
       const result = evaluate(ctx, job.design, { preview: job.preview, materialValue: job.materialValue });
       (self as unknown as Worker).postMessage({ type: 'result', id: job.id, result });
+      if (!job.preview) basePort?.postMessage([result]);
     } else {
       if (!projectEnvironment) throw new Error('Project environment missing from worker init');
       const projectContext = { legacy: ctx, environment: projectEnvironment };
@@ -50,6 +56,7 @@ function run() {
         const changedRouteIds = Object.keys(result.routes).filter(id => result.routes[id].engineeringRevision !== known?.routes[id]?.engineeringRevision);
         const removedRouteIds = known ? Object.keys(known.routes).filter(id => !Object.prototype.hasOwnProperty.call(result.routes, id)) : [];
         lastProject = result; // One result only; never retain a history of typed arrays.
+        basePort?.postMessage(Object.values(result.routes).flatMap(r => r.legacy ? [r.legacy] : []));
         (self as unknown as Worker).postMessage({ type: 'project-result', id: job.id, result, baseIdentity,
           changedRouteIds, removedRouteIds, dependentRouteIds: [] });
       }
@@ -65,6 +72,10 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const m = ev.data;
   if (m.type === 'init') {
     pending = null; lastProject = null; projectEnvironment = m.projectEnvironment ?? null;
+    basePort = m.role === 'full' ? m.port ?? null : null;
+    if (m.role === 'preview' && m.port) m.port.onmessage = (e: MessageEvent<Result[]>) => {
+      if (ctx) for (const r of e.data) adoptFull(ctx.terrain, r);
+    };
     const terrain = new Terrain({ nx: m.nx, ny: m.ny, cell: m.cell, base: m.base, scale: m.scale, q: m.q, lc: m.lc, ground: m.ground, watercourses: m.watercourses });
     ctx = {
       terrain, scenario: m.scenario, a: m.a, b: m.b, buildings: new BuildingIndex(m.buildings, m.binfo),

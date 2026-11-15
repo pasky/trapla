@@ -120,7 +120,12 @@ async function main() {
   if (storage.problem !== null) storageNotice();
   const store = new ActiveRouteStore(projectStore, initialProject);
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
+  // Full evaluations and drag previews run in separate workers, so that a preview never waits behind a
+  // full evaluation (hundreds of ms on long routes). The full worker hands each full result to the
+  // preview worker directly (MessageChannel): the base its windowed previews re-solve locally.
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  const previewWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  const bases = new MessageChannel();
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
@@ -128,7 +133,9 @@ async function main() {
     projectEnvironment: { objectData, transportData, pricingData, waterData: meta.watercourses?.sha256 ?? 'raster-water',
       terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
   };
-  worker.postMessage(init, [init.q.buffer, init.lc.buffer]);
+  const previewInit: WorkerIn = { ...init, q: pack.q.slice(), lc: pack.lc.slice(), role: 'preview', port: bases.port2 };
+  worker.postMessage({ ...init, role: 'full', port: bases.port1 }, [init.q.buffer, init.lc.buffer, bases.port1]);
+  previewWorker.postMessage(previewInit, [previewInit.q.buffer, previewInit.lc.buffer, bases.port2]);
 
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
@@ -469,7 +476,7 @@ async function main() {
       ? { type: 'project-preview', id: posted, snapshot, routeId: store.activeRouteId, materialValue: lastFull?.quantities.materialValue,
           gesture: { id: previewGesture!.id, sequence: ++previewGesture!.sequence } }
       : { type: 'project-eval', id: posted, snapshot, displayedResult: displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision } };
-    worker.postMessage(message);
+    (message.type === 'project-preview' ? previewWorker : worker).postMessage(message);
     projectScore(true);
     if (preview) fullTimer = window.setTimeout(() => { fullTimer = 0; requestEval(false); }, FULL_AFTER_IDLE_MS);
     schedulePreview();
@@ -536,7 +543,7 @@ async function main() {
     inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
   };
 
-  worker.onmessage = (ev: MessageEvent<ProjectWorkerOut | { type: 'ready' }>) => {
+  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | { type: 'ready' }>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
     const request = inflight.get(m.id);

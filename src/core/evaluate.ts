@@ -41,6 +41,7 @@ import { chooseStructures, KIND, type Run } from './structures';
 import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
+import { rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
 import { barrelLength, culvertEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, waterCoverFits, type WaterCrossing, type WaterResult } from './watercourses';
 
@@ -152,6 +153,8 @@ export interface Result {
   timing: Record<string, number>;
   /** A fast drag preview (see EvalOptions.preview): approximate, never a score. */
   preview?: boolean;
+  /** Full results: what windowed drag previews need to start from this one (core/preview-window.ts). */
+  lineage?: { key: string; design: Design };
 }
 
 export interface EvalOptions {
@@ -181,6 +184,10 @@ export interface EvalOptions {
   sharedCrossings?: { own: true } | { own: false; from: readonly CrossingResult[] };
   /** Railway: trains per period by type and speed (noise source); none = a silent, unused line. */
   railTraffic?: readonly RailTrafficGroup[];
+  /** Drag preview of a long route (core/preview-window.ts): evaluate only the stations within
+   * [s0, s1] of the route's own chainage as if they were the whole route, with the grade continuing
+   * `grades` at its ends (endpointElevations give the heights). Never used for a scored result. */
+  window?: { s0: number; s1: number; grades: { a?: number; b?: number } };
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -234,17 +241,29 @@ export function normalizeVpis(v: VPI[], L: number, zA: number, zB: number): VPI[
 export const MIN_VPI_GAP = 20;
 
 export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
-  const preview = !!opts.preview;
+  if (opts.preview && !opts.window) {
+    const windowed = windowedPreview(ctx, d, opts, evaluateRoute);
+    if (windowed) return windowed;
+  }
+  const result = evaluateRoute(ctx, d, opts);
+  if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
+  return result;
+}
+
+function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
+  const preview = !!opts.preview || !!opts.window;
   const t0 = performance.now();
   const timing: Record<string, number> = {};
   const lap = (k: string) => { timing[k] = performance.now() - t0; };
   const { terrain, scenario } = ctx;
   const cat = CATEGORIES[d.category];
   const norms = speedNorms(d.speed, d.category);
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
+  const fullAlignment = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
+  const win = opts.window;
+  const al = win ? { ...fullAlignment, length: win.s1 - win.s0 } : fullAlignment;
   // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
   const maxGradient = cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient;
-  const st = station(al, STEP);
+  const st = win ? stationWindow(station(fullAlignment, STEP), win.s0, win.s1) : station(al, STEP);
   const n = st.n, ds = st.ds;
   let manualStructures = overrideMask(st.s, d.structureOverrides);
   const crossingOverrides = normalizeCrossingOverrides(d.crossingOverrides);
@@ -614,7 +633,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
     }
     const apOpt = {
-      endpointElevations: opts.endpointElevations,
+      endpointElevations: opts.endpointElevations, ...(win ? { endpointGrades: win.grades } : {}),
       maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: { above: waterMin.slice(), below: waterBelow }, structureKind: manualStructures, pins: d.gradePins,
       costClass: profileCostClass, costClassCount: costClasses.length,
