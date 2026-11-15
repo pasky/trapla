@@ -34,7 +34,7 @@ export function acceptsProjectMessage(current: ProjectSnapshot, message: Project
 
 /** A settled result contains the ENTIRE coherent project, never the active route's bill. */
 export function isScorableProject(result: ProjectResult): boolean {
-  return result.complete && result.valid && result.cost.total !== null && Number.isFinite(result.cost.total)
+  return result.complete && result.valid && result.cost.total !== null && result.cost.unpriced.length === 0 && Number.isFinite(result.cost.total)
     && result.cost.total >= 0 && result.acousticScreen.complete
     && result.issues.every(i => i.blocking !== 'incomplete' && i.blocking !== 'invalid')
     && Object.values(result.routes).every(r => r.complete && r.valid && r.accepted);
