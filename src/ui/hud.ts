@@ -84,18 +84,19 @@ export class Hud {
   private last: { r: Result; d: Design } | null = null;
   private projectIssuesFor: ProjectResult | null | undefined;
   private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId;
-    missionPrice: { total: number; approx: boolean } | null; unpriced: number } | null = null;
+    ownPrice: { total: number; approx: boolean; label: string } | null } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
     for (const id of ['sec-cost', 'sec-stats', 'sec-decisions']) this.$(id).hidden = !hasResult;
-    if (!hasResult) { this.last = null; this.routeViolations = []; this.projectIssuesFor = undefined; this.renderProjectScore(); }
+    if (!hasResult) { this.last = null; this.renderProjectScore(); }
   }
   /** `legacy`: the project is exactly one legacy road (the facade): the unchanged single-road score shows,
    * including its live ≈ preview total. Otherwise the project score owns the total and verdict. */
   setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; legacy?: boolean;
-    /** our road's own kernel price (a live ≈ during its drag); never a project total */
-    missionPrice?: { total: number; approx: boolean } | null; unpriced?: number } = {}) {
-    const { missionRouteId, legacy = false, missionPrice = null, unpriced = 0 } = opts;
+    /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
+     * shown only while there is no project total, never added up */
+    ownPrice?: { total: number; approx: boolean; label: string } | null } = {}) {
+    const { missionRouteId, legacy = false, ownPrice = null } = opts;
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       if (was) this.$('cost-scope').textContent = 'Total cost';
@@ -103,22 +104,18 @@ export class Hud {
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
       return;
     }
-    this.project = { result, pending, best, missionRouteId, missionPrice, unpriced }; this.renderProjectScore();
+    this.project = { result, pending, best, missionRouteId, ownPrice }; this.renderProjectScore();
   }
-  /** the listed project issues followed by the active road's own checks (k indexes this list) */
-  listedIssue(k: number): { issue?: ProjectResult['issues'][number]; routeViolation?: number } | null {
-    const issues = this.project?.result?.issues ?? [];
-    if (k < issues.length) return { issue: issues[k] };
-    return k - issues.length < this.routeViolations.length ? { routeViolation: k - issues.length } : null;
-  }
+  /** the listed project issue k */
+  listedIssue(k: number) { return this.project?.result?.issues[k] ?? null; }
   private renderProjectScore() {
     if (!this.project) return;
-    const { result, pending, best, missionRouteId, missionPrice, unpriced } = this.project, total = result?.cost.total;
-    const priced = total !== null && total !== undefined;
-    // An unpriced network keeps our road's own price visible, plainly labelled, never as a total.
-    this.$('cost-scope').textContent = priced ? 'Total cost' : 'Our road only';
+    const { result, pending, best, missionRouteId, ownPrice } = this.project, total = result?.cost.total;
+    const priced = total !== null && total !== undefined, unpriced = result?.cost.unpriced.length ?? 0;
+    // An unpriced network keeps one road's own price visible, plainly labelled, never as a total.
+    this.$('cost-scope').textContent = priced ? 'Total cost' : ownPrice ? ownPrice.label : 'Total cost';
     this.$('total').textContent = priced ? `${pending ? '≈ ' : ''}${czk(total)}`
-      : missionPrice ? `${missionPrice.approx || pending ? '≈ ' : ''}${czk(missionPrice.total)}` : '—';
+      : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
     this.$('valid').textContent = pending ? '≈ CHECKING' : !result?.complete ? 'NOT CHECKED' : result.valid ? '✓ VALID' : '✗ NOT VALID';
@@ -131,9 +128,9 @@ export class Hud {
       this.$('chip-time').innerHTML = `${ok ? '✓' : '✗'} ${num(time, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
       this.$('chip-time').className = `chip ${ok ? 'ok' : 'bad'}`;
     }
-    const issues = result?.issues ?? [], chip = this.$('chip-viol'), own = this.routeViolations;
-    const listed: (Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'rule'> & { s0?: number; goal?: boolean })[] = [
-      ...issues.map(issue => ({ ...issue.violation, s0: issue.locations[0]?.s0 })), ...own];
+    const issues = result?.issues ?? [], chip = this.$('chip-viol');
+    const listed: (Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'rule'> & { s0?: number; goal?: boolean })[] =
+      issues.map(issue => ({ ...issue.violation, s0: issue.locations[0]?.s0 }));
     chip.className = `chip ${pending ? 'pending' : listed.length ? 'bad' : result?.complete ? 'ok' : 'pending'}`;
     chip.innerHTML = pending ? '⋯ checked when you pause' : listed.length ? `⚠ ${listed.length} violation${listed.length === 1 ? '' : 's'} <small>show ›</small>` : result?.complete ? '✓ no violations' : 'Checks not finished';
     chip.toggleAttribute('disabled', pending || !listed.length);
@@ -165,8 +162,6 @@ export class Hud {
   private openWhy = new Set<string>();
   /** the violations the list shows: the last full result's (a drag preview keeps them) */
   private listed: Result['violations'] | null = null;
-  /** project mode: the active road's own (full-result) checks, listed after the project issues */
-  private routeViolations: Result['violations'] = [];
   private legacyBest: Pick<Best, 'cost'> | null = null;
   private folds: Record<string, boolean> = {};
   private goalText = '';
@@ -249,7 +244,7 @@ export class Hud {
       if (why && li) {
         // "why?" unfolds the explanation (kept open across recomputes) instead of jumping to the place
         const k = Number(why.dataset.why), listed = this.project ? this.listedIssue(k) : null;
-        const x = this.project ? (listed?.issue?.violation ?? (listed?.routeViolation !== undefined ? this.routeViolations[listed.routeViolation] : undefined)) : this.listed?.[k];
+        const x = this.project ? listed?.violation : this.listed?.[k];
         const box = li.querySelector<HTMLElement>('.vdetail')!;
         box.hidden = !box.hidden;
         why.textContent = box.hidden ? 'why?' : 'less';
@@ -407,7 +402,6 @@ export class Hud {
 
   setResult(r: Result, d: Design, best: Pick<Best, 'cost'> | null) {
     this.last = { r, d };
-    if (this.project && !r.preview) { this.routeViolations = r.violations; this.projectIssuesFor = undefined; }
     this.renderCost(r, d);
     if (this.project) return; // active-route widgets never overwrite the project score/violations
     this.legacyBest = best;

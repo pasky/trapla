@@ -146,6 +146,14 @@ try {
   const reloaded = await page.evaluate(() => window.trapla.getProject());
   assert.equal(reloaded.routes.length, 2); assert.equal(reloaded.connections.length, project.connections.length);
   assert.equal(await page.evaluate(() => window.trapla.proposalLines()), 1);
+
+  // 8. with the photo on, the roads the game knows stay visible as a thin overlay (what is clickable)
+  await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, mid]);
+  await page.evaluate(() => window.trapla.setView({ photo: true }));
+  await page.waitForFunction(() => !window.trapla.viewBusy(), null, { timeout: 60000 }).catch(() => console.log('photo tiles still loading'));
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  await page.screenshot({ path: `${out}/83-photo-mapped-roads.png` });
+  await page.evaluate(() => window.trapla.setView({ photo: false }));
   assert.deepEqual(errors, []);
   console.log('PASS base road select / Change road handles / cancel / apply (branches kept) / switch / undo / reload; unscored');
 } finally { await browser?.close(); await server.close(); }

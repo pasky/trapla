@@ -44,8 +44,13 @@ try {
   await idle();
   const bodies = await page.evaluate(() => window.trapla.renderRoutes());
   assert.equal(bodies.length, 2); assert(bodies.every(r => r.ribbonTriangles > 20 && r.collars > 0), 'both roads have real bodies and ground collars');
+  // two separate roads: core prices them together only after its independence screen passes
   const score = await page.evaluate(() => window.trapla.projectResult());
-  assert.equal(score.complete, false); assert.equal(score.valid, false); assert.equal(score.cost.total, null, 'unreconciled network never invents a total');
+  console.log('separate roads:', score.complete, score.cost.total, score.cost.unpriced, score.issues.filter(i => i.blocking === 'incomplete').map(i => i.violation.title));
+  assert.equal(score.complete, true, 'separate roads are priced together'); assert.deepEqual(score.cost.unpriced, []);
+  assert(Number.isFinite(score.cost.total));
+  assert.equal(await page.locator('#cost-scope').textContent(), 'Total cost');
+  assert.match(await page.locator('#valid').textContent(), /VALID/);
   const hit = async id => {
     const p = await page.evaluate(id => { const t = window.trapla, r = t.projectResult().routes[id].legacy; return t.routeScreen(id, r.length / 2); }, id);
     const box = await page.locator('#view').boundingBox(); assert(p?.vis, 'road is on screen');
@@ -81,10 +86,32 @@ try {
   }, ids.side);
   await next.locator('#active-route').selectOption(ids.side);
   await next.waitForTimeout(500);
-  await next.screenshot({ path: `${out}/79-two-engineered-roads.png` });
+  await next.screenshot({ path: `${out}/79-two-roads-priced-together.png` });
+  // move the side road across ours: they now affect each other and cannot be priced together
+  await next.evaluate(([mission, side]) => {
+    const t = window.trapla, project = t.getProject(), r = t.projectResult().routes[mission].legacy, i = Math.floor(r.n / 2);
+    const dx = r.x[i + 1] - r.x[i - 1], dy = r.y[i + 1] - r.y[i - 1], L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L;
+    const endpoint = (x, y) => ({ position: { x, y, z: t.groundHeight(x, y) }, binding: 'resolved', anchor: { kind: 'free' } });
+    const road = project.routes.find(x => x.id === side);
+    road.endpoints = { a: endpoint(r.x[i] - 500 * nx, r.y[i] - 500 * ny), b: endpoint(r.x[i] + 500 * nx, r.y[i] + 500 * ny) };
+    road.alignment.pis = [];
+    t.setProject(project); t.lookAt(r.x[i], r.y[i], 2600, 0, 55);
+  }, [ids.mission, ids.side]);
+  await next.evaluate(() => window.trapla.whenIdle());
+  await next.evaluate(() => new Promise(resolve => {
+    const frame = () => requestAnimationFrame(() => window.trapla.viewBusy() ? frame() : resolve());
+    requestAnimationFrame(() => requestAnimationFrame(frame));
+  }));
+  const crossing = await next.evaluate(() => window.trapla.projectResult());
+  assert.equal(crossing.cost.total, null, 'interacting roads have no invented total'); assert.equal(crossing.complete, false);
+  assert(crossing.cost.unpriced.length >= 1);
+  assert(crossing.issues.some(i => i.violation.title === 'These roads affect each other' && i.scope.routeIds.length === 2));
+  assert.equal(await next.locator('#valid').textContent(), 'NOT CHECKED');
+  assert.equal(await next.locator('#cost-scope').textContent(), 'This road only');
+  assert.match(await next.locator('#perkm').textContent(), /road changes? not priced yet/);
+  await next.screenshot({ path: `${out}/82-two-roads-not-priced.png` });
   await next.keyboard.press('n');
   assert.match(await next.locator('#noise-legend').textContent(), /Project noise check not finished/);
-  assert.equal(await next.locator('#valid').textContent(), 'NOT CHECKED');
   assert.deepEqual(errors, []);
   console.log('PASS two engineered bodies, real-mouse selection/drag, profile, atomic undo, reload and honest network score/noise');
 } finally { await browser?.close(); await server.close(); }

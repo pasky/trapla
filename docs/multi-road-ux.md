@@ -132,8 +132,9 @@ intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixtu
    project score (no total, NOT CHECKED).
 2. *Violation clicks matched project issues to kernel violations by title/kind* — the first of two
    identical "too steep" titles always won. Facade: index is 1:1 (core maps violations in order).
-   Project mode: route-qualified `locations` (pi/vpi/range) only; no title matching. The active road's
-   own kernel violations are listed after the project issues (they are real checks, not a verdict).
+   Project mode: core now lists each road's own kernel violations as route-qualified issues; a click
+   maps the issue's ordinal among that road's `invalid` issues to the kernel violation (cross-checked),
+   else to its `locations` (pi/vpi/range). No title matching.
 3. *Start over replaced only the active route* — with a side road active it would overwrite that road
    with the mission's starting design (or silently do nothing for a non-PI road). It now restores the
    whole initial project atomically (one undo entry).
@@ -174,8 +175,20 @@ intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixtu
 - The promoted road is a reference proposal: core returns `source-needs-network`, so it has no bill,
   no body and no profile. It is drawn as an orange dashed line over the still-visible old road, is
   pickable and selectable from the route list, and its card says "Proposed change · not checked yet"
-  with an undoable **Remove change**. Multi-road HUD: no total/VALID/best; the kicker reads "Our road
-  only" with our road's own kernel price (live ≈ during its drag) and "N road changes not priced yet".
+  with an undoable **Remove change**.
+- Project score (core `cost.alone` / `cost.unpriced`, merged d9a8c92): a project total and verdict show
+  only when core priced the whole project (single road, or separate roads its independence screen
+  passes). Otherwise no total/VALID/best: the kicker reads "This road only" with the active road's own
+  bill (live ≈ during its drag), or "Our road only" when the active road has none, plus "N road changes
+  not priced yet". The UI never adds `alone` bills. Noise band and house cards are available exactly when
+  core's acoustic screen is complete; a house card switches to the road whose noise reaches it most.
+- Photo view: the roads/tracks/railways the game knows are drawn over the orthophoto, thin and
+  semi-transparent in the map palette (rail dashed), only for transport-mapped features (what is
+  clickable), through the same accepted source cuts as the map. Built once on first photo use.
+- Screenshots (U slots): 79 two separate roads priced together, 80 Change road handles, 81 unpriced
+  proposal over the old road, 82 interacting roads not priced, 83 photo with mapped roads.
 - Requires a pack with `transport-meta.json`; D11 currently has none (S is regenerating it), so the
   real-mouse base-road test runs on D3. No D11 behaviour changes without the sidecar.
 - Open: reference-path editing (bend/profile of a promoted road), C1 acceptance/pricing, Build tool.
+  A Change road stretch is limited to one mapped way (core promotes one source interval); a player's
+  "road" spanning several ways needs multi-interval promotion.

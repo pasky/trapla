@@ -125,13 +125,14 @@ async function main() {
     return d.routes.length === 1 && !d.corridors.length && !d.connections.length && only.role === 'mission' && !only.source
       && store.activeRouteId === only.id && store.read() !== null;
   };
-  /** our road's live drag price (≈), until the next full result */
-  let missionPreviewPrice: number | null = null;
+  /** the active road's live drag price (≈), until the next full result */
+  let activePreviewPrice: number | null = null;
   const projectScore = (pending: boolean) => {
-    const mission = missionRouteId(), own = mission ? projectFull?.routes[mission]?.legacy?.cost.total : undefined;
-    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(),
-      missionPrice: missionPreviewPrice !== null ? { total: missionPreviewPrice, approx: true } : own !== undefined ? { total: own, approx: false } : null,
-      unpriced: projectStore.snapshot.design.routes.filter(r => r.id !== mission).length });
+    const mission = missionRouteId(), active = store.activeRouteId, alone = projectFull?.cost.alone ?? {};
+    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: 'This road only' }
+      : active && active in alone ? { total: alone[active], approx: false, label: 'This road only' }
+        : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only' } : null;
+    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own });
   };
   let posted = 0, received = 0;
   /** main-thread ms per consumer of the last handled result (drag-perf probe) */
@@ -194,6 +195,12 @@ async function main() {
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   const select = (next: Sel | null, fly = false) => {
     if (sourceEditor?.selected) sourceEditor.clear();
+    // a house belongs to the project: its card shows the road whose noise reaches it most
+    if (next?.kind === 'building' && projectFull?.complete && Object.keys(projectFull.routes).length > 1) {
+      const contributions = projectFull.receivers.find(r => r.buildingIndex === next.j)?.contributions ?? [];
+      const owner = contributions.reduce<(typeof contributions)[number] | null>((a, c) => (!a || c.dayEnergy > a.dayEnergy ? c : a), null)?.routeId;
+      if (owner && owner !== store.activeRouteId) switchRoute(owner);
+    }
     qualifiedSelection = store.activeRouteId ? qualifySelection(store.activeRouteId, next) : null;
     sel = activeSelection(store.activeRouteId, qualifiedSelection);
     if (next) intro.hide();
@@ -429,7 +436,7 @@ async function main() {
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
-    inspector.setNetworkPending(!projectFull?.acousticScreen.complete || projectStore.snapshot.design.routes.length > 1);
+    inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
     inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh();
   };
 
@@ -456,15 +463,16 @@ async function main() {
         profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
-        if (m.routeId === missionRouteId()) missionPreviewPrice = shown.cost.total;
+        if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
         hud.setResult(shown, rd, store.best); projectScore(true); took('hud');
         curveEdit.refresh(); took('curveEdit');
       }
       if (received < posted) schedulePreview(); settle(); return;
     }
-    projectFull = m.result; missionPreviewPrice = null;
+    projectFull = m.result; activePreviewPrice = null;
     const result = m.result;
-    noise.setAvailable(result.acousticScreen.complete && projectStore.snapshot.design.routes.length === 1);
+    // complete: one road, or roads core priced together after proving they share no houses or noise
+    noise.setAvailable(result.complete && result.acousticScreen.complete);
     heavy?.cancel();
     const inputs = projectStore.snapshot.design.routes.flatMap(route => {
       const legacy = result.routes[route.id]?.legacy;
@@ -472,7 +480,7 @@ async function main() {
       if (route.kind !== 'road') return [];
       const crownWidth = route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
       return [{ id: route.id, result: legacy, crownWidth,
-        buildingMarkers: result.complete && projectStore.snapshot.design.routes.length === 1 }];
+        buildingMarkers: result.complete }];
     });
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {
@@ -509,7 +517,7 @@ async function main() {
 
   const switchRoute = (id: RouteId) => {
     if (!store.switchRoute(id)) return false;
-    previewGesture = null;
+    previewGesture = null; activePreviewPrice = null;
     if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
     sel = activeSelection(id, qualifiedSelection); qualifiedSelection = qualifySelection(id, sel);
     view.setHover(null); extras.setRange(null); profile.fit();
@@ -771,13 +779,15 @@ async function main() {
     onViolation: (k) => {
       // the list shows the last full result's violations (previews do not replace it)
       if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }
-      const listed = hud.listedIssue(k);
-      if (listed?.routeViolation !== undefined) { showViolation(lastFull?.violations[listed.routeViolation]); return; }
-      const issue = listed?.issue, owner = issue?.scope.routeIds[0];
+      const issue = hud.listedIssue(k), owner = issue?.scope.routeIds[0];
       if (!issue) return;
       if (owner && owner !== store.activeRouteId) switchRoute(owner);
       if (issue.scope.buildingIndex !== undefined) { select({ kind: 'building', j: issue.scope.buildingIndex }, true); return; }
-      // route-qualified locations only: never match a kernel violation by its title
+      // A road's own check: core lists each road's kernel violations in order, route-qualified. Its
+      // ordinal among that road's 'invalid' issues identifies the kernel violation (never its title).
+      const own = projectFull.issues.filter(i => i.blocking === 'invalid' && i.scope.routeIds.length === 1 && i.scope.routeIds[0] === store.activeRouteId);
+      const n = own.indexOf(issue), v = n >= 0 && lastFull && own.length === lastFull.violations.length ? lastFull.violations[n] : undefined;
+      if (v && v.title === issue.violation.title) { showViolation(v); return; }
       const at = issue.locations.find(l => l.routeId === store.activeRouteId), d = store.read();
       if (!at) { hud.reveal('viol'); return; }
       if (at.pi !== undefined && d?.pis[at.pi]) select({ kind: 'bend', i: at.pi }, true);
