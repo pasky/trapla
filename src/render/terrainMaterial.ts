@@ -50,6 +50,8 @@ export function oobTexture(lc: Uint8Array, nx: number, ny: number, oobBit: numbe
 }
 
 export const LC_LEVELS = 4;
+/** size of the `roadSections` table */
+export const ROAD_SECTIONS = 8;
 
 export interface TerrainUniforms {
   [name: string]: THREE.IUniform;
@@ -81,6 +83,11 @@ export interface TerrainUniforms {
   slopeTint: { value: number };
   /** strength of the relief shading (1 = full; lower over the orthophoto, which has its own light) */
   shadeAmt: { value: number };
+  /** cross-sections of the designed roads (m): lane, lane + hard shoulder, edge-line width, centre-line
+   * width; a road's vertices index them (`ewGeo.y`); lane 0 = no markings */
+  roadSections: { value: THREE.Vector4[] };
+  /** centre-line dash and gap (m) */
+  roadDash: { value: THREE.Vector2 };
 }
 
 export function terrainUniforms(): TerrainUniforms {
@@ -100,6 +107,8 @@ export function terrainUniforms(): TerrainUniforms {
     contour: { value: new THREE.Vector4(10, 50, 0, 1) },
     slopeTint: { value: 0 },
     shadeAmt: { value: 1 },
+    roadSections: { value: Array.from({ length: ROAD_SECTIONS }, () => new THREE.Vector4(0, 0, 0, 0)) },
+    roadDash: { value: new THREE.Vector2(3, 6) },
   };
 }
 
@@ -266,7 +275,7 @@ void main() {
 }`;
 
 /** `ewKind` vertex attribute of the route ribbon: how the earthwork material draws a surface */
-export const EW_KIND = { structure: 0, crown: 1, cut: 2, fill: 3 } as const;
+export const EW_KIND = { structure: 0, crown: 1, cut: 2, fill: 3, road: 4 } as const;
 
 /**
  * Earthwork surfaces: world-space procedural texture of cut and fill slopes (no texture assets). Value
@@ -321,6 +330,53 @@ vec3 earthAlbedo(vec3 p, float fillW, vec3 geo, float fw, float fs) {
 }`;
 
 /**
+ * The designed road's carriageway (`ewKind` EW_KIND.road): asphalt with the white Czech markings of its
+ * cross-section (`roadSections`, `roadDash`; data/categories.ts), hard shoulders and the gravel verge
+ * (bridges: the concrete edge beam). Per vertex `ewGeo` = (offset from the axis, m, left positive;
+ * 2 · section index + 1 on a bridge / + 0 on earthworks; station, m). Lines are box-filtered over the pixel footprint, so
+ * from afar they fade into the asphalt's average instead of shimmering.
+ */
+const ROAD_GLSL = /* glsl */ `
+uniform vec4 roadSections[${ROAD_SECTIONS}];
+uniform vec2 roadDash;
+// coverage of [lo, hi] by a pixel of width fw centred at x
+float rdCover(float x, float lo, float hi, float fw) {
+  float w = max(fw, 1e-4);
+  return clamp((min(hi, x + 0.5 * w) - max(lo, x - 0.5 * w)) / w, 0.0, 1.0);
+}
+// coverage of the dashes [k·period, k·period + dash] along the station
+float rdDashes(float s, float dash, float period, float fs) {
+  if (fs >= period) return dash / period;
+  float u = mod(s, period);
+  return min(1.0, rdCover(u, 0.0, dash, fs) + rdCover(u, period, period + dash, fs) + rdCover(u, -period, dash - period, fs));
+}
+vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
+  // geo.y interpolates only between a section's 2k and 2k + 1 (earthworks / bridge)
+  int k = int(floor(geo.y * 0.5 + 0.01));
+  vec4 roadSection = vec4(0.0);
+  for (int j = 0; j < ${ROAD_SECTIONS}; j++) if (j == k) roadSection = roadSections[j];
+  float bridge = geo.y - 2.0 * float(k);
+  float x = abs(geo.x), lane = roadSection.x, paved = roadSection.y;
+  float fine = ewOctave(p + 11.1, 0.45, fw), mid = ewOctave(p + 3.7, 2.3, fw), big = ewOctave(p, 9.0, fw);
+  vec3 col = vec3(0.33, 0.33, 0.34) * (1.0 + 0.10 * big + 0.07 * mid + 0.09 * fine);
+  if (lane > 0.0) {
+    // wheel paths: polished, a little darker, ~0.9 m either side of each lane centre
+    float track = 1.0 - smoothstep(0.15, 0.45, abs(abs(x - 0.5 * lane) - 0.9));
+    col *= 1.0 - 0.06 * track * (1.0 - smoothstep(0.3, 0.8, fx));
+    // gravel verge beside the hard shoulder; on a bridge the concrete edge beam
+    float verge = rdCover(x, paved, 1e3, fx);
+    vec3 gravel = mix(vec3(0.56, 0.53, 0.47), vec3(0.48, 0.55, 0.36), smoothstep(-0.2, 0.3, big + mid)) * (1.0 + 0.2 * fine);
+    col = mix(col, mix(gravel, vec3(0.70, 0.69, 0.66) * (1.0 + 0.05 * mid), step(0.5, bridge)), verge);
+    // white paint: edge lines on the inner edge of the guide strip, dashed centre line
+    float edge = rdCover(x, lane, lane + roadSection.z, fx);
+    float centre = rdCover(geo.x, -0.5 * roadSection.w, 0.5 * roadSection.w, fx) * rdDashes(geo.z, roadDash.x, roadDash.x + roadDash.y, fs);
+    col = mix(col, vec3(0.88, 0.88, 0.85), max(edge, centre) * 0.95);
+  }
+  // a problem stretch: the surface tinted red (the line that marks it from afar is not drawn close up)
+  return mix(col, vec3(0.62, 0.20, 0.17) * (1.0 + 0.1 * mid), 0.55 * bad);
+}`;
+
+/**
  * Material of the route ribbon. Cut and fill slopes and the carriageway are lit like the terrain relief
  * (same hillshade and strength, normals of the exaggerated surface) and the slopes get a procedural
  * texture; structures (bridge sides, piers, portals: `ewKind` 0) are vertex-coloured Lambert. The
@@ -336,6 +392,8 @@ export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLamb
     shader.uniforms.contour = u.contour;
     shader.uniforms.exag = u.exag;
     shader.uniforms.shadeAmt = u.shadeAmt;
+    shader.uniforms.roadSections = u.roadSections;
+    shader.uniforms.roadDash = u.roadDash;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', /* glsl */ `#include <common>
         attribute float elev;
@@ -351,17 +409,18 @@ export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLamb
       .replace('#include <begin_vertex>', /* glsl */ `#include <begin_vertex>
         vElev = elev; vInk = ink; vObj = position; vNrm = normal; vKind = ewKind; vGeo = ewGeo;`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float exag;\nuniform float shadeAmt;\nvarying float vElev;\nvarying float vInk;\n${CONTOUR_GLSL}\n${RELIEF_GLSL}\n${EARTH_GLSL}`)
+      .replace('#include <common>', `#include <common>\nuniform float exag;\nuniform float shadeAmt;\nvarying float vElev;\nvarying float vInk;\n${CONTOUR_GLSL}\n${RELIEF_GLSL}\n${EARTH_GLSL}\n${ROAD_GLSL}`)
       .replace('#include <opaque_fragment>', /* glsl */ `
         // derivatives outside the branches (the varyings vary per fragment)
         float ewPx = max(length(vec2(dFdx(vElev), dFdy(vElev))), 1e-6);
-        float ewFw = length(fwidth(vObj)), ewFs = fwidth(vGeo.z);
+        float ewFw = length(fwidth(vObj)), ewFs = fwidth(vGeo.z), ewFx = fwidth(vGeo.x);
         // display-referred sRGB, like the terrain (which mixes its colours and lines there)
         vec3 ewAlb = pow(max(diffuseColor.rgb, 0.0), vec3(1.0 / 2.2));
         if (vKind > 0.5) {
           vec3 ewN = normalize(vNrm);
           ewN *= sign(ewN.y + 1e-6); // double-sided: the upward face
-          if (vKind > 1.5) ewAlb = earthAlbedo(vObj, clamp(vKind - 2.0, 0.0, 1.0), vGeo, ewFw, ewFs);
+          if (vKind > 3.5) ewAlb = roadAlbedo(vObj, vGeo, ewFw, ewFx, ewFs, clamp((diffuseColor.r - diffuseColor.g) * 4.0, 0.0, 1.0));
+          else if (vKind > 1.5) ewAlb = earthAlbedo(vObj, clamp(vKind - 2.0, 0.0, 1.0), vGeo, ewFw, ewFs);
           // the world is scaled by the exaggeration in y: normals by its inverse
           float ewLight = reliefLight(normalize(vec3(ewN.x, ewN.y / exag, ewN.z)), shadeAmt);
           outgoingLight = pow(ewAlb * ewLight, vec3(2.2));

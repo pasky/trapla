@@ -93,7 +93,8 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 .place.town { font-weight: 700; font-size: 15px; letter-spacing: .02em; }
 .place.village { font-size: 12px; }
 .place.suburb, .place.hamlet { font-size: 11px; color: #3a4048; font-style: italic; }
-.official-label { font-size: 11px; color: #fff; text-shadow: 0 0 3px #000; white-space: nowrap; font-style: italic; }
+.official-label { pointer-events: none; }
+.official-label span { position: absolute; left: 8px; top: -9px; white-space: nowrap; font-size: 11px; font-style: italic; color: #1d232a; background: rgba(255,255,255,0.85); border-radius: 3px; padding: 0 5px; box-shadow: 0 0 0 1px rgba(29,35,42,0.35); }
 .hover-dot { width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #ffd400; border: 2px solid #000; }
 #brand { position: absolute; left: 12px; top: 10px; font-weight: 800; font-size: 18px; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.6); pointer-events: none; }
 #brand small { font-weight: 500; font-size: 11px; opacity: .8; }
@@ -112,7 +113,7 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 #noise-legend .ramp em { position: absolute; top: 0; transform: translateX(-50%); font-style: normal; color: #444; white-space: nowrap; line-height: 15px; }
 #noise-legend .ramp em.lim { color: #590019; font-weight: 600; }
 .wall-label { font-size: 10px; font-weight: 700; color: #fff; background: #127f7f; padding: 0 4px; border-radius: 3px; margin: -18px 0 0 -10px; pointer-events: none; white-space: nowrap; }
-#legend i.dash { background: repeating-linear-gradient(90deg, #888 0 5px, transparent 5px 8px); }
+#legend i.dash { background: repeating-linear-gradient(90deg, #fff 0 5px, transparent 5px 8px) #5a5f66; height: 3px; border: 1px solid #5a5f66; }
 #attrib { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(100% - 12px); position: absolute; right: 6px; bottom: 4px; font-size: 10px; color: #222; background: rgba(255,255,255,0.75); padding: 1px 6px; border-radius: 3px; }
 #status { z-index: 3; max-width: 80%; text-align: center; position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); background: rgba(20,24,30,0.85); color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 14px; }
 

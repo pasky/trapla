@@ -25,6 +25,7 @@ import { GROUND_COLLAR, collarPoint, daylightSections } from './earthwork-surfac
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
+import { CATEGORIES } from '../core/data/categories';
 
 export interface ViewEvents {
   /** a click on the map (not a drag) at ground point x, y */
@@ -57,6 +58,22 @@ export interface RenderEndpoints {
   plain?: boolean;
 }
 
+/**
+ * The coloured structure line (road / bridge / tunnel / problem) is a map symbol for orientation: drawn
+ * from this many metres per pixel on, where the road itself is only a few pixels wide. Closer, the
+ * carriageway shows its real surface and markings, and the line would read as (yellow) paint on it; it
+ * is then drawn only while the road is being changed (its body follows when the drag pauses). Tunnels,
+ * invisible close up, keep a dashed trace on the ground.
+ */
+const STRUCTURE_LINE_FROM = 2.5;
+
+/** Carriageway cross-sections by index (`roadSections`; 0 = none: plain asphalt) and the index of a
+ * crown width's category. All have the same centre-line dash (TP 133: 3 / 6 m outside motorways). */
+const SECTIONS = [undefined, ...Object.values(CATEGORIES).map((c) => c.section).filter((s) => s)];
+function sectionIndex(crownWidth: number) {
+  return Math.max(0, SECTIONS.indexOf(Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth)?.section));
+}
+
 /** stations within a (non-goal) violation, drawn red */
 function badStations(r: Result) {
   const bad = new Uint8Array(r.n);
@@ -81,7 +98,16 @@ export class View {
   private routeGroups = new RouteGroups(this.world,
     () => new Set([this.collarMaterial(), this.ribbonMaterial()]), (material) => this.retire(material));
   private routeInputs = new Map<string, { result: Result; surfaces: readonly CrossingSurface[] }>();
-  private polyLine: Line2 | null = null;
+  /** editing guide: the tangent lines through the active bend (dragged, hovered or selected) */
+  private guide: THREE.Group | null = null;
+  private guideFor: number | null = null;
+  private designPts: { x: number; y: number }[] = [];
+  private hoverPi: number | null = null;
+  /** a drag preview's centreline is newer than the road body */
+  private stale = false;
+  private officialPts: { x: number; y: number; z: number }[] = [];
+  private officialLabel: HTMLElement | null = null;
+  private officialLine: Line2 | null = null;
   private proposalLines = new Map<string, { key: string; line: Line2 }>();
   get proposalCount() { return this.proposalLines.size; }
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
@@ -108,7 +134,13 @@ export class View {
     maskOn: { value: 0 },
   };
   // terrain surface: shaded per pixel from the height texture, land cover from GPU-rasterised vectors
-  private terrainU = terrainUniforms();
+  private terrainU = (() => {
+    const u = terrainUniforms();
+    SECTIONS.forEach((s, k) => { if (s) u.roadSections.value[k].set(s.lane, s.lane + s.hardShoulder, s.edgeLine, s.centreLine); });
+    const dash = SECTIONS[1];
+    if (dash) u.roadDash.value.set(dash.dash, dash.gap);
+    return u;
+  })();
   private landcover: LandCover | null = null;
   private buildings: Buildings | null = null;
   private contours = false;
@@ -452,17 +484,42 @@ export class View {
   private buildOfficial() {
     const pts: number[] = [];
     const xy = this.pack.meta.official.xy;
+    let along = Infinity;
     for (let i = 0; i < xy.length; i++) {
       const [x, y] = xy[i];
       if (x < 0 || y < 0 || x > this.terrain.width || y > this.terrain.height) continue;
-      const v = this.local(x, y, this.drapeHeight(x, y) + 3);
+      const z = this.drapeHeight(x, y) + 3, v = this.local(x, y, z);
       pts.push(v.x, v.y, v.z);
+      // label anchors every ~150 m
+      const last = this.officialPts[this.officialPts.length - 1];
+      along = last ? along + Math.hypot(x - last.x, y - last.y) : Infinity;
+      if (along > 150) { this.officialPts.push({ x, y, z }); along = 0; }
     }
     if (pts.length >= 6) {
-      const l = this.makeLine(pts, null, 2.5, { color: 0xffffff, opacity: 0.55, dashed: true, dashSize: 60, gapSize: 40 });
-      l.name = 'official';
-      this.world.add(l);
+      // a reference, not a road: white dashes on a dark casing (cartographic, unlike any road colour or
+      // marking), the dashes a constant 12 px on screen (render() scales them with the zoom)
+      const casing = this.makeLine(pts, null, 4, { color: 0x1d232a, opacity: 0.45 });
+      const l = this.makeLine(pts, null, 2, { color: 0xffffff, opacity: 0.95, dashed: true, dashSize: 12, gapSize: 8 });
+      casing.name = 'official-casing'; l.name = 'official';
+      this.world.add(casing, l);
+      this.officialLine = l;
     }
+  }
+
+  /** the official line's label rides along it: at its point nearest the middle of the view */
+  private placeOfficialLabel() {
+    const el = this.officialLabel;
+    if (!el) return;
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    let best: { sx: number; sy: number } | null = null, bd = Infinity;
+    for (const p of this.officialPts) {
+      const s = this.screenOf(p.x, p.y, p.z);
+      if (!s.vis || s.sx < 40 || s.sy < 40 || s.sx > w - 160 || s.sy > h - 60) continue;
+      const d = Math.hypot(s.sx - w / 2, s.sy - h / 2);
+      if (d < bd) { bd = d; best = s; }
+    }
+    el.style.display = best ? '' : 'none';
+    if (best) el.style.transform = `translate(${best.sx.toFixed(1)}px, ${best.sy.toFixed(1)}px)`;
   }
 
   private buildLabels() {
@@ -486,9 +543,12 @@ export class View {
       this.endpointMarkers.push({ el, x: 0, y: 0, z: 0 });
     }
     this.setEndpoints(this.endpoints);
-    const official = this.pack.meta.official?.xy ?? [];
-    const legend = official[Math.floor(official.length * 0.33)];
-    if (official.length >= 2) add('official-label', this.labels.official, legend[0] + 150, legend[1], 25000);
+    if ((this.pack.meta.official?.xy ?? []).length >= 2) {
+      const el = this.officialLabel = document.createElement('div');
+      el.className = 'official-label';
+      el.innerHTML = `<span>${this.labels.official}</span>`;
+      this.overlay.appendChild(el);
+    }
   }
 
   // ---- route ---------------------------------------------------------------------------------
@@ -545,29 +605,16 @@ export class View {
 
   clearDesign(endpoints = this.endpoints) {
     this.setEndpoints(endpoints);
-    if (this.polyLine) { this.world.remove(this.polyLine); this.polyLine.geometry.dispose(); this.retire(this.polyLine.material); this.polyLine = null; }
+    this.designPts = []; this.hoverPi = null; this.buildGuide();
     for (const marker of this.piMarkers) marker.el.remove(); this.piMarkers = [];
     this.selected = null; this.dirty = true;
   }
 
   setDesign(d: Design, selected: number | null, endpoints = this.endpoints) {
     this.setEndpoints(endpoints);
-    const pts = [endpoints.a, ...d.pis, endpoints.b];
-    // tangent polygon draped on terrain
-    const arr: number[] = [];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const L = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
-      const n = Math.max(1, Math.ceil(L / 60));
-      for (let k = 0; k <= n; k++) {
-        if (k === 0 && i > 0) continue;
-        const x = pts[i].x + (pts[i + 1].x - pts[i].x) * (k / n), y = pts[i].y + (pts[i + 1].y - pts[i].y) * (k / n);
-        const v = this.local(x, y, this.drapeHeight(x, y) + 4);
-        arr.push(v.x, v.y, v.z);
-      }
-    }
-    if (this.polyLine) { this.world.remove(this.polyLine); this.polyLine.geometry.dispose(); this.retire(this.polyLine.material); }
-    this.polyLine = this.makeLine(arr, null, 1.5, { color: 0xffffff, opacity: 0.8, depthTest: false, dashed: true, dashSize: 8, gapSize: 6, order: 3 });
-    this.world.add(this.polyLine);
+    this.designPts = [endpoints.a, ...d.pis, endpoints.b].map((p) => ({ x: p.x, y: p.y }));
+    this.selected = selected;
+    this.buildGuide();
     // PI markers
     while (this.piMarkers.length > d.pis.length) this.piMarkers.pop()!.el.remove();
     while (this.piMarkers.length < d.pis.length) {
@@ -575,6 +622,8 @@ export class View {
       el.className = 'pi';
       const idx = this.piMarkers.length;
       el.dataset.i = String(idx);
+      el.addEventListener('pointerenter', () => { this.hoverPi = idx; this.dirty = true; });
+      el.addEventListener('pointerleave', () => { if (this.hoverPi === idx) { this.hoverPi = null; this.dirty = true; } });
       this.overlay.appendChild(el);
       this.piMarkers.push({ el, x: 0, y: 0, z: 0 });
     }
@@ -585,8 +634,43 @@ export class View {
       m.el.title = `Bend ${i + 1}`;
       m.el.classList.toggle('sel', selected === i);
     });
-    this.selected = selected;
+    if (this.hoverPi !== null && this.hoverPi >= d.pis.length) this.hoverPi = null;
     this.dirty = true;
+  }
+
+  /** the bend whose tangent lines are shown: dragged, else hovered, else selected */
+  private get activeBend() {
+    const i = this.dragging ?? this.hoverPi ?? this.selected;
+    return i !== null && i + 2 < this.designPts.length ? i : null;
+  }
+
+  /**
+   * Editing guide: the two tangent lines through the active bend (to the neighbouring bends or A / B),
+   * where the curve between them is fitted. Hidden when no bend is being worked on.
+   */
+  private buildGuide() {
+    if (this.guide) {
+      this.world.remove(this.guide);
+      for (const c of this.guide.children as Line2[]) { c.geometry.dispose(); this.retire(c.material); }
+      this.guide = null;
+    }
+    const i = this.guideFor = this.activeBend;
+    if (i === null) return;
+    const pts = this.designPts.slice(i, i + 3), arr: number[] = [];
+    for (let j = 0; j < pts.length - 1; j++) {
+      const L = Math.hypot(pts[j + 1].x - pts[j].x, pts[j + 1].y - pts[j].y);
+      const n = Math.max(1, Math.ceil(L / 60));
+      for (let k = j > 0 ? 1 : 0; k <= n; k++) {
+        const x = pts[j].x + (pts[j + 1].x - pts[j].x) * (k / n), y = pts[j].y + (pts[j + 1].y - pts[j].y) * (k / n);
+        const v = this.local(x, y, this.drapeHeight(x, y) + 4);
+        arr.push(v.x, v.y, v.z);
+      }
+    }
+    const g = this.guide = new THREE.Group();
+    g.name = 'bend-guide';
+    g.add(this.makeLine(arr, null, 3, { color: 0x1d232a, opacity: 0.35, depthTest: false, order: 3 }),
+      this.makeLine(arr, null, 1.5, { color: 0xffffff, opacity: 0.9, depthTest: false, dashed: true, dashSize: 8, gapSize: 6, order: 3 }));
+    this.world.add(g);
   }
 
   setResult(r: Result, crownWidth: number) { finish(this.buildResult(r, crownWidth)).commit(); }
@@ -613,7 +697,7 @@ export class View {
     const context = sharedContext ?? routeSurfaceContext(surfaces, surfaces, natural, (x, y) => this.drape(x, y));
     yield;
     const n = r.n, w = crownWidth / 2;
-    const bad = badStations(r);
+    const bad = badStations(r), section = sectionIndex(crownWidth);
     // ---- ribbon (crown + slopes) and bridge decks ----
     const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
     const kinds: number[] = [], geo: number[] = [];
@@ -649,8 +733,9 @@ export class View {
         dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
-        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
-        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
+        // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
         dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
@@ -837,6 +922,7 @@ export class View {
       settled = true;
       owned.commit();
       this.routeInputs.set(routeId, { result: r, surfaces });
+      this.stale = false;
       if (!batch) this.commitRouteScene(new Set(this.routeInputs.keys()));
       this.dirty = true;
     };
@@ -897,7 +983,17 @@ export class View {
     line.name = 'centre';
     const ghost = this.makeLine(cp, cc, 2, { opacity: 0.35, depthTest: false, order: 2 });
     ghost.name = 'ghost';
-    return [line, ghost];
+    const out: THREE.Object3D[] = [line, ghost];
+    // tunnels on the ground above them, for close up (where the structure line is not drawn)
+    for (const run of r.runs) {
+      if (run.kind !== KIND.tunnel) continue;
+      const tp = cp.slice(3 * Math.max(0, run.i0 - 1), 3 * (Math.min(r.n - 1, run.i1 + 1) + 1));
+      if (tp.length < 6) continue;
+      const trace = this.makeLine(tp, null, 2, { color: COL.tunnel.getHex(), opacity: 0.85, dashed: true, dashSize: 10, gapSize: 8, order: 4 });
+      trace.name = 'tunnel-trace';
+      out.push(trace);
+    }
+    return out;
   }
 
   /**
@@ -915,12 +1011,12 @@ export class View {
   setPreview(r: Result, routeId = LEGACY_ROUTE) {
     const group = this.routeGroups.get(routeId);
     if (!group) return;
-    for (const name of ['centre', 'ghost']) {
-      const old = group.getObjectByName(name) as Line2 | undefined;
-      if (!old) continue;
+    for (const old of [...group.children] as Line2[]) {
+      if (old.name !== 'centre' && old.name !== 'ghost' && old.name !== 'tunnel-trace') continue;
       group.remove(old); old.geometry.dispose(); this.retire(old.material);
     }
     for (const o of this.centreline(r, badStations(r))) { o.userData.routeId = routeId; group.add(o); }
+    this.stale = true;
     this.dirty = true;
   }
 
@@ -1157,14 +1253,17 @@ export class View {
   private render() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     this.world.traverse((o) => { if ((o as Line2).isLine2) ((o as Line2).material as LineMaterial).resolution.set(w, h); });
-    // the screen-space centreline is for orientation; close up it would hide the ribbon
-    const dist = this.camera.position.distanceTo(this.controls.target);
-    for (const group of this.routeGroups.values()) {
-      const centre = group.getObjectByName('centre') as Line2 | undefined;
-      const ghost = group.getObjectByName('ghost') as Line2 | undefined;
-      if (centre) (centre.material as LineMaterial).linewidth = dist < 1200 ? 1 : dist < 4000 ? 2.5 : 3.5;
-      if (ghost) ghost.visible = dist > 1200;
+    // the structure line: see STRUCTURE_LINE_FROM
+    const mpp = this.metresPerPixel, far = mpp > STRUCTURE_LINE_FROM, editing = this.stale || this.dragging !== null;
+    for (const group of this.routeGroups.values()) for (const o of group.children) {
+      if (o.name === 'centre') {
+        o.visible = far || editing;
+        ((o as Line2).material as LineMaterial).linewidth = far ? (mpp < 8 ? 2.5 : 3.5) : 2;
+      } else if (o.name === 'ghost') o.visible = far;
+      else if (o.name === 'tunnel-trace') o.visible = !far;
     }
+    if (this.activeBend !== this.guideFor) this.buildGuide();
+    if (this.officialLine) (this.officialLine.material as LineMaterial).dashScale = 1 / mpp;
     this.updateSurface();
     this.renderer.render(this.scene, this.camera);
     if (this.retired.length) { for (const m of this.retired) this.release(m); this.retired.length = 0; }
@@ -1176,8 +1275,8 @@ export class View {
     };
     for (const m of this.markers) place(m.el, m.x, m.y, m.z, m.minDist);
     for (const m of this.endpointMarkers) place(m.el, m.x, m.y, m.z);
+    this.placeOfficialLabel();
     // zoom class for the overlay's CSS (small symbols from afar)
-    const mpp = this.metresPerPixel;
     const zoom = mpp > 12 ? 'far' : mpp > 3 ? 'mid' : 'near';
     if (this.overlay.dataset.zoom !== zoom) this.overlay.dataset.zoom = zoom;
     // bends: one too close to an already drawn one (or to A / B) shrinks to a dot, its number in the
