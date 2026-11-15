@@ -59,13 +59,18 @@ opens one card under the score (the *inspector*) that says what it is, what the 
 costs, and offers the alternatives as buttons. The map and the profile always show the same selection.
 Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/interface-rethink.md).
 
+- **Reshape a reroute:** drag the new road of a crossed road that was cut and rerouted — a bend point appears
+  under the mouse and follows it, like bending our road. Drag a bend point to move it, click it for *Remove
+  bend point*; *Automatic path* in the crossing's card takes the shape back. The game checks it (off our
+  earthworks, not too steep, not across a motorway, railway, water or house) and prices it as drawn.
 - **Bend the road:** drag the orange road on the map — a new bend appears under the mouse and follows it
   (the cursor turns into a hand over the road). Drag a numbered bend to move it; right-click it, <kbd>Del</kbd>
   or *Delete* in its card removes it. **Double-click** the ground adds a bend there (for big detours). A click
   on empty ground only deselects — nothing is ever added by a single click.
 - **Inspect anything** — on the map or in the profile: the **road** (selects the piece under the mouse: a
-  bridge, tunnel, cut or embankment), a **bend**, a **house**, a **crossed road**, a **noise wall**, a pinned
-  height. Drag sideways across the profile for **any stretch**. <kbd>Esc</kbd> or ✕ deselects. With nothing
+  bridge, tunnel, cut or embankment), a **bend**, a **house**, a **crossed road** (anything its crossing built
+  counts: the rebuilt stretch, its ramps, a new road it was rerouted onto, a turning head, a side road raised
+  to meet it), a **noise wall**, a pinned height. Drag sideways across the profile for **any stretch**. <kbd>Esc</kbd> or ✕ deselects. With nothing
   selected the card lists **where the money goes** — the five most expensive pieces, each a link.
 - **The inspector:** header (what and where), one status line (numbers first, and the reason in a few words:
   *Auto: cheaper here than a bridge*), any **problems with their fix as a button** (*4 m wall right*,

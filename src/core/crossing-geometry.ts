@@ -63,8 +63,17 @@ export function rampLimit(cls: string, z: number, g0: number, g: number, run: nu
 /** Diagnostics of a reroute the player shaped (crossing override `via`). */
 export const LINK_OVER_OUR_ROAD = 'Shaped link enters our earthworks';
 export const LINK_TOO_STEEP = 'Shaped link is steeper than its class allows';
-/** Steepest grade of a draped path over stretches of at least 20 m (shorter terrain wrinkles are
- * smoothed by its formation), m/m. */
+export const LINK_TOO_FAR = 'Shaped link runs too far';
+export const LINK_CROSSES_MOTORWAY = 'Shaped link crosses a motorway at grade';
+/** + 'railway' | 'water' | 'building' */
+export const LINK_BLOCKED = 'Shaped link runs through a ';
+const segmentsCross = (a: XY, b: XY, c: XY, d: XY) => {
+  const cross = (o: XY, p: XY, q: XY) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
+  return cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0;
+};
+/** Steepest grade of a draped path over stretches of at least 20 m, m/m. PROVISIONAL: the 20 m averaging
+ * length is a game allowance for small bumps a road's own formation would smooth out; the path itself
+ * stays draped (and is priced as ordinary road), it is not engineered. */
 export function linkSteepest(path: readonly { x: number; y: number; z: number }[]): number {
   const d = [0];
   for (let i = 1; i < path.length; i++) d.push(d[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
@@ -93,10 +102,21 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Drag its bend points clear of our road\'s slopes, or choose "Automatic path" on the crossing card',
     detail: `The new piece of ${what} must run outside our earthworks to reach the next crossing.`, basis: 'game',
     rule: 'Game rule: a reroute runs on the ground outside our earthworks' };
+  if (message === LINK_TOO_FAR) return { title: `Your path for the new ${what} goes too far`,
+    fix: 'Drag its bend points closer to our road, or choose "Automatic path" on the crossing card',
+    detail: `A new piece of ${what} may run at most about ${(4 * MAX_REACH / 1000).toFixed(0)} km.`, basis: 'engine',
+    rule: `Engine limit: a reroute is at most ${(4 * MAX_REACH / 1000).toFixed(0)} km long` };
+  if (message === LINK_CROSSES_MOTORWAY || message.startsWith(LINK_BLOCKED)) {
+    const thing = message === LINK_CROSSES_MOTORWAY ? 'a motorway' : `a ${message.slice(LINK_BLOCKED.length)}`;
+    return { title: `Your path for the new ${what} runs across ${thing}`,
+      fix: `Drag its bend points so that it stays clear of ${thing}, or choose "Automatic path" on the crossing card`,
+      detail: `A new ${what} cannot cross ${thing} on the ground.`, basis: 'game',
+      rule: 'Game rule: a new road crosses motorways and railways only on a bridge, and does not run through water or buildings' };
+  }
   if (message === LINK_TOO_STEEP) return { title: `Your path for the new ${what} is too steep in places`,
     fix: 'Drag its bend points so that it runs more along the slope, or choose "Automatic path" on the crossing card',
     detail: `It follows the ground where you drew it, which is steeper than a ${what} may be.`, basis: 'game',
-    rule: `Research/20: a ${what} is at most ${Math.round(ROAD_CLASSES[c.cls].rampSteepest * 100)} % steep (over any 20 m)` };
+    rule: `Research/20: a ${what} is at most ${Math.round(ROAD_CLASSES[c.cls].rampSteepest * 100)} % steep; the game measures it over 20 m stretches of the ground it follows (a provisional allowance for small bumps the road's own earthworks smooth out)` };
   if (message === WORKS_COVER_ROAD || message === WORKS_TIE_TOO_LONG || message === WORKS_TIE_SHARED) {
     const junction = c.type === 'junction', raised = junction ? 'raised or lowered for the junction' : 'raised onto the bridge over our road';
     const others = junction ? 'choose "Our bridge over it", an underpass or "Cut and reroute", or move the junction'
@@ -638,10 +658,23 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       // The player's shape: straight legs through their bend points between the same real anchors.
       const controls = shape?.length ? [a, ...shape.map(p => terrainPoint(p)), b]
         : cached!.map((p, i) => i === 0 ? a : i === cached!.length - 1 ? b : { ...p });
-      if (shape?.length) for (let i = 1; i < controls.length; i++) {
-        const p = controls[i - 1], q = controls[i], count = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 2.5));
-        for (let j = 0; j <= count; j++) if (margin({ x: p.x + (q.x - p.x) * j / count, y: p.y + (q.y - p.y) * j / count }, g.width / 2, false) < 0) {
-          diagnose(g, LINK_OVER_OUR_ROAD); break;
+      if (shape?.length) {
+        // Bounded work: a shape reaching beyond the crossed road's traced reach is rejected outright.
+        const span = crossingPlanLength(controls);
+        if (span > 4 * MAX_REACH) diagnose(g, LINK_TOO_FAR);
+        else {
+          // Off our earthworks (2.5 m probes), clear of motorways, railways, water and buildings.
+          for (let i = 1; i < controls.length; i++) {
+            const p = controls[i - 1], q = controls[i], count = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 2.5));
+            for (let j = 0; j <= count; j++) if (margin({ x: p.x + (q.x - p.x) * j / count, y: p.y + (q.y - p.y) * j / count }, g.width / 2, false) < 0) {
+              diagnose(g, LINK_OVER_OUR_ROAD); break;
+            }
+            roads?.nearSegments([Math.min(p.x, q.x), Math.min(p.y, q.y), Math.max(p.x, q.x), Math.max(p.y, q.y)], seg => {
+              if (ROAD_CLASSES[seg.cls]?.noAtGrade && segmentsCross(p, q, { x: seg.ax, y: seg.ay }, { x: seg.bx, y: seg.by })) diagnose(g, LINK_CROSSES_MOTORWAY);
+            });
+            const blocked = route.obstacle?.(p, q, g.width / 2);
+            if (blocked) diagnose(g, `${LINK_BLOCKED}${blocked}`);
+          }
         }
       }
       const link: CrossingPoint[] = [a];

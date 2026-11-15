@@ -17,10 +17,10 @@ const route: CrossingRoute = { s, x: s, y: new Float64Array(s.length), tx: new F
   ty: new Float64Array(s.length), grade: new Float64Array(s.length).fill(400), width: new Float64Array(s.length).fill(20) };
 const roads = new RoadNet({ cls: ['primary', 'residential'], ways: [[0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 300]] });
 const cross = (roadId: number, x: number, cls: string): CrossingResult => ({ roadId, s: x, cls, h: 0, i: 0, x, y: 0, type: 'atGrade', cost: 0 });
-const build = (overrides: CrossingOverride[], height = (_x: number, _y: number) => 400) => {
+const build = (overrides: CrossingOverride[], height = (_x: number, _y: number) => 400, obstacle?: CrossingRoute['obstacle']) => {
   const cs = [cross(0, 3000, 'primary'), cross(1, 3800, 'residential')];
   resolveCrossings(cs, 9000, [0], [30], [0], [0], [{ roadId: 0, type: 'junction' }, ...overrides]);
-  buildCrossingGeometry(cs, route, height, roads);
+  buildCrossingGeometry(cs, { ...route, obstacle }, height, roads);
   return cs[1];
 };
 
@@ -46,6 +46,36 @@ describe('a reroute the player shaped', () => {
     expect(build([{ roadId: 1, type: 'reconnection' }], slope).issues ?? []).toEqual([]);
     const steep = build([{ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -150 }], []] }], slope);
     expect(steep.issues?.map(v => v.title)).toContain('Your path for the new street is too steep in places');
+  });
+  it('keeps leading to the crossing it led to when shaped, and belongs to one crossing of its way', () => {
+    // a second junction at x = 4550 is nearer to the street than the one at x = 3000
+    const net = new RoadNet({ cls: ['primary', 'residential', 'secondary'], ways: [[0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 300], [2, 4550, -300, 4550, 300]] });
+    const run = (o: CrossingOverride, extra: CrossingResult[] = []) => {
+      const cs = [cross(0, 3000, 'primary'), cross(1, 3800, 'residential'), cross(2, 4550, 'secondary'), ...extra];
+      resolveCrossings(cs, 9000, [0], [30], [0], [0], [{ roadId: 0, type: 'junction' }, { roadId: 2, type: 'junction' }, o]);
+      buildCrossingGeometry(cs, route, () => 400, net);
+      return cs;
+    };
+    expect(run({ roadId: 1, type: 'reconnection' })[1].targetS).toBe(4550);
+    const kept = run({ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -100 }], []], to: 0 })[1];
+    expect(kept.targetS).toBe(3000); expect(kept.geometry!.links![0].some(p => p.x === 3400 && p.y === -100)).toBe(true);
+    // the same way crossed again far away: only the crossing nearest to the shape gets it
+    const twice = run({ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -100 }], []], to: 0 }, [{ ...cross(1, 7000, 'residential') }]);
+    expect(twice[1].via).toBeDefined(); expect(twice[3].via).toBeUndefined();
+  });
+  it('is checked against motorways, railways, water and buildings on its way, and bounded', () => {
+    const motorway = new RoadNet({ cls: ['primary', 'residential', 'motorway'], ways: [[0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 300], [2, 3100, -100, 3700, -100]] });
+    const cs = [cross(0, 3000, 'primary'), cross(1, 3800, 'residential')];
+    resolveCrossings(cs, 9000, [0], [30], [0], [0], [{ roadId: 0, type: 'junction' }, { roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -200 }], []] }]);
+    buildCrossingGeometry(cs, route, () => 400, motorway);
+    expect(cs[1].issues?.map(v => v.title)).toContain('Your path for the new street runs across a motorway');
+    const rail = build([{ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -200 }], []] }], undefined,
+      (a, b) => (Math.min(a.x, b.x) < 3500 && Math.max(a.x, b.x) > 3500 ? 'railway' : null));
+    expect(rail.issues?.map(v => v.title)).toContain('Your path for the new street runs across a railway');
+    expect(build([{ roadId: 1, type: 'reconnection' }], undefined, () => 'railway').issues ?? []).toEqual([]); // the automatic path is not shaped
+    expect(normalizeCrossingOverrides([{ roadId: 1, type: 'reconnection', via: [[{ x: 1e12, y: 0 }], []] }])).toEqual([{ roadId: 1, type: 'reconnection' }]);
+    const far = build([{ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -20000 }], []] }]);
+    expect(far.issues?.map(v => v.title)).toContain('Your path for the new street goes too far');
   });
   it('is kept only on a reroute, normalized, persisted through the project and validated', () => {
     expect(normalizeCrossingOverrides([{ roadId: 2, type: 'reconnection', via: [[{ x: 1, y: 2 }], []] },

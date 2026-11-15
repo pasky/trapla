@@ -1392,11 +1392,13 @@ export class View {
         canvas.removeEventListener('pointermove', move);
         canvas.removeEventListener('pointerup', up);
         canvas.removeEventListener('pointercancel', cancel);
+        canvas.removeEventListener('lostpointercapture', cancel);
         if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
         this.controls.enabled = true;
       };
-      const cancel = () => { stop(); if (started) grab.end(); };
+      const cancel = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (started) grab.end(); };
       const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
         stop();
         if (started) { grab.end(); return; }
         const p = this.pick(ev.clientX, ev.clientY);
@@ -1405,6 +1407,7 @@ export class View {
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);
       canvas.addEventListener('pointercancel', cancel);
+      canvas.addEventListener('lostpointercapture', cancel);
     }, { capture: true });
     this.container.addEventListener('pointerdown', (e) => {
       if (e.target !== canvas || e.button !== 0 || !this.ev.hitRoad?.(e.clientX, e.clientY)) return;

@@ -231,7 +231,8 @@ try {
   });
   if (works) {
     await page.mouse.move(view.x + works.sx, view.y + works.sy); await page.waitForTimeout(250);
-    ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'pointer', `C: the crossed road's works under the mouse show a pointer (${works.type})`);
+    // a reroute link can be dragged (grab cursor); the other works are clicked (pointer)
+    ok(await T(() => document.querySelector('#view canvas').style.cursor) === (works.link ? 'grab' : 'pointer'), `C: the crossed road's works under the mouse show a ${works.link ? 'grab' : 'pointer'} cursor (${works.type})`);
     await page.mouse.click(view.x + works.sx, view.y + works.sy); await idle(400);
     const picked = await sel();
     ok(picked?.kind === 'crossing' && picked.roadId === works.roadId && await visible('#crossing-choice'), `C: a click on its ${works.type} works, away from the crossing, opens its card`);

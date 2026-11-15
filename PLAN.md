@@ -218,6 +218,12 @@ What exists (details and commands in `README.md`):
 - Clicking any geometry a crossing owns (rebuilt stretch, reroute links, turning heads, underpass box,
   regraded side roads) opens its card, on the drawn width plus 3 px like mapped roads; elsewhere a mapped road
   keeps its base-road card.
+- A reroute can be shaped by dragging its new road (persisted bend points per side, undoable, "Automatic path"
+  in the card). The shape keeps leading to the crossing it led to and belongs to the one crossing of that way
+  nearest to it; a way crossed more than once is shaped only after "Cut and reroute" is chosen for it. Checked:
+  off our earthworks, no steeper than the class's justified maximum over 20 m stretches (PROVISIONAL averaging
+  length), not across motorways (at grade), railways, water or buildings, at most 8 km. Automatic reroutes are
+  not yet checked against railways, water and buildings.
 - Known gap: a crossed way whose cut ends stay connected over other roads is rerouted instead of closed (crossings
   have no "closed" outcome; footprint rebuilds do). Example: the service-loop fixture's 1.4 + 1.4 km reroute
   of a 100 m loop chord (`docs/footprint-conflicts.md` § Model 19).

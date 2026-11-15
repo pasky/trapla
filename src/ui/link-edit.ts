@@ -18,8 +18,9 @@ export interface LinkEditHost {
   design(): Design;
   /** select this crossed road (its card), without moving the camera */
   select(roadId: number): void;
-  /** store the shape (null: back to the automatic path); `commit`: one undo step now */
-  setVia(roadId: number, via: LinkVia | null, commit: boolean): void;
+  /** store the shape (null: back to the automatic path); `commit`: one undo step now; `to`: the
+   * crossing the reroute leads to, kept with a new shape */
+  setVia(roadId: number, via: LinkVia | null, commit: boolean, to?: number): void;
   commit(): void;
   heightAt(x: number, y: number): number;
 }
@@ -45,6 +46,13 @@ export function insertViaPoint(path: readonly XY[], via: readonly XY[], p: XY): 
   const next = via.map(q => ({ ...q }));
   next.splice(index, 0, { x: p.x, y: p.y });
   return { via: next, index };
+}
+
+/** A way crossed more than once shares one crossing choice: its reroutes are shaped only once the
+ * player has chosen "Cut and reroute" for all of them. */
+export function shapeable(r: Result | null, d: Design, roadId: number): boolean {
+  const count = r?.crossings.filter(c => c.roadId === roadId).length ?? 0;
+  return count <= 1 || (d.crossingOverrides ?? []).some(o => o.roadId === roadId && o.type === 'reconnection');
 }
 
 export class LinkEditor {
@@ -76,8 +84,8 @@ export class LinkEditor {
   /** the selected crossing's reroute, if it has one to shape */
   private crossing(roadId = this.host.selected()) {
     if (roadId === null) return null;
-    const c = this.host.result()?.crossings.find(c => c.roadId === roadId && (c.type === 'reconnection' || c.type === 'diversion') && c.geometry?.links);
-    return c ?? null;
+    const all = this.host.result()?.crossings.filter(c => c.roadId === roadId && (c.type === 'reconnection' || c.type === 'diversion') && c.geometry?.links) ?? [];
+    return all.find(c => c.via) ?? all[0] ?? null;
   }
   private via(roadId: number): LinkVia {
     const v = crossingVia(roadId, this.host.design().crossingOverrides ?? []);
@@ -89,7 +97,8 @@ export class LinkEditor {
     const c = hit.crossing, side = hit.link, roadId = c.roadId;
     if (side === undefined || roadId === undefined || (c.type !== 'reconnection' && c.type !== 'diversion')) return null;
     const path = c.geometry?.links?.[side];
-    if (!path || path.length < 2) return null;
+    if (!path || path.length < 2 || !shapeable(this.host.result(), this.host.design(), roadId)) return null;
+    const to = c.targetRoadId ?? (c.targetS === 0 ? -1 : -2);
     return {
       start: (x, y) => {
         const via = this.via(roadId);
@@ -98,7 +107,7 @@ export class LinkEditor {
         via[side] = next;
         this.host.select(roadId);
         this.dragging = { roadId, side, i: index }; this.picked = null;
-        this.host.setVia(roadId, via, false); this.refresh();
+        this.host.setVia(roadId, via, false, to); this.refresh();
         return true;
       },
       move: (x, y) => this.moveTo(x, y),
@@ -152,22 +161,25 @@ export class LinkEditor {
     const roadId = this.crossing()?.roadId;
     if (roadId === undefined || e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
-    const side = Number(h.dataset.side) as 0 | 1, i = Number(h.dataset.i), x0 = e.clientX, y0 = e.clientY;
-    h.setPointerCapture(e.pointerId);
-    let moved = false;
+    const side = Number(h.dataset.side) as 0 | 1, i = Number(h.dataset.i), x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+    h.setPointerCapture(id);
+    let moved = false, done = false;
     const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return;
       if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
       if (!moved) { moved = true; this.dragging = { roadId, side, i }; this.picked = null; h.classList.add('drag'); }
       const p = this.view.pick(ev.clientX, ev.clientY);
       if (p) this.moveTo(p.x, p.y);
     };
-    const up = () => {
-      h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== id || done) return;
+      done = true;
+      for (const [type, fn] of [['pointermove', move], ['pointerup', up], ['pointercancel', up], ['lostpointercapture', up]] as const) h.removeEventListener(type, fn);
       h.classList.remove('drag');
       if (moved) this.endDrag();
-      else { this.picked = this.picked?.side === side && this.picked.i === i ? null : { roadId, side, i }; this.refresh(); }
+      else if (ev.type === 'pointerup') { this.picked = this.picked?.side === side && this.picked.i === i ? null : { roadId, side, i }; this.refresh(); }
     };
-    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up); h.addEventListener('lostpointercapture', up);
   }
 
   /** position the handles, the Remove button and the shape line (after every render) */

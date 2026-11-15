@@ -14,8 +14,8 @@ import { RouteScene } from './render/route-scene';
 import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { CrossingPicker } from './render/crossing-pick';
-import { LinkEditor } from './ui/link-edit';
-import { crossingVia, type LinkVia } from './core/crossings';
+import { LinkEditor, shapeable } from './ui/link-edit';
+import type { LinkVia } from './core/crossings';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
 import { SourceEditor } from './ui/source-editor';
@@ -351,9 +351,9 @@ async function main() {
     pin: (s, z) => setPin(s, z),
     crossing: (roadId, type) => store.update((d) => {
       // a reroute keeps the player's shape while it stays a reroute
-      const via = type === 'reconnection' ? crossingVia(roadId, d.crossingOverrides ?? []) : undefined;
+      const kept = type === 'reconnection' ? d.crossingOverrides?.find((o) => o.roadId === roadId && o.via) : undefined;
       d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(via ? { via } : {}) });
+      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}) });
     }),
     crossingPathAuto: (roadId) => setVia(roadId, null, true),
     building: (js, action) => store.editProject(d => { for (const j of js) d.buildingOverrides = setBuildingOverride(d.buildingOverrides, j, action); }),
@@ -550,11 +550,11 @@ async function main() {
   });
 
   /** a reroute's shape (null: its automatic path again); shaping a crossing makes it a reroute */
-  const setVia = (roadId: number, via: LinkVia | null, commit: boolean) => store.update((d) => {
+  const setVia = (roadId: number, via: LinkVia | null, commit: boolean, to?: number) => store.update((d) => {
     const list = d.crossingOverrides ??= [];
     let o = list.find((x) => x.roadId === roadId);
     if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
-    if (via) { o.type = 'reconnection'; o.via = via; } else delete o.via;
+    if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
   }, commit);
   linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
     selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull, design: () => store.design,
@@ -797,7 +797,7 @@ async function main() {
         if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, 'drag to bend'); profile.setHover(r.s[k], true); }
       } else if (routeAt(at.x, at.y, 10)) { cursor = 'pointer'; key = 'other-route'; }
       else if ((works = crossingWorksAt(at.x, at.y))) {
-        const c = works.crossing, link = works.link !== undefined;
+        const c = works.crossing, link = works.link !== undefined && shapeable(lastFull, store.design, c.roadId!);
         cursor = link ? 'grab' : 'pointer'; key = `x${c.roadId}${link ? 'l' : ''}`;
         if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${link ? ' · drag to reshape' : ''}`); profile.setHover(c.s, true); }
       } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
