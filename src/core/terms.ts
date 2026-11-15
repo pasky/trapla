@@ -96,6 +96,18 @@ export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' 
   }
 }
 
+/** The motorway's two directions: edited together, or each on its own (split) and joined again. */
+export const DIRECTIONS_TEXT = {
+  heading: 'Edit',
+  both: 'Both directions',
+  towards: (place: string) => `Towards ${place}`,
+  together: 'Both directions follow one line and share one embankment, bridges side by side and twin tunnels.',
+  separate: 'Each direction now has its own bends and heights. Where they run side by side at the same height they share one embankment and are priced as one.',
+  join: 'Both directions joined on their shared line again. Undo brings back the separate changes.',
+  bothTitle: 'Bend and raise both directions together',
+  oneTitle: (place: string) => `Bend and raise only the direction towards ${place}; the other stays where it is`,
+} as const;
+
 /** Automatic on a motorway: no junction anywhere along it. */
 export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
 

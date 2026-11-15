@@ -7,7 +7,8 @@ import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
 import { NOISE, ROAD_CLASSES } from './core/data/urban';
-import { createMotorwayProject, MOTORWAY_CATEGORY } from './core/project-motorway';
+import { CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, rejoinCorridor, splitCorridor } from './core/project-motorway';
+import { DIRECTIONS_TEXT } from './core/terms';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
@@ -210,9 +211,11 @@ async function main() {
   if (claimedSources().length) await ensureTransport();
   view.onNeedTransport = () => { void ensureTransport(); };
   if (viewBar.photo) void ensureTransport(); // the photo was already on from the saved view
+  // the motorway's return direction starts at B
+  const reversed = () => !!store.route && projectStore.snapshot.design.corridors.some(c => c.children.reverse === store.route!.id);
   const activeEndpoints = () => ({
-    a: { ...(store.route?.endpoints.a.position ?? positionA), label: store.route?.role === 'mission' ? scenario.labels.a : 'Start' },
-    b: { ...(store.route?.endpoints.b.position ?? positionB), label: store.route?.role === 'mission' ? scenario.labels.b : 'End' },
+    a: { ...(store.route?.endpoints.a.position ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : 'Start' },
+    b: { ...(store.route?.endpoints.b.position ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : 'End' },
     plain: !!store.route && store.route.role !== 'mission',
   });
   const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);
@@ -464,8 +467,10 @@ async function main() {
     for (const [id, entry] of otherExtras) if (!result.routes[id]?.legacy) { entry.overlay.dispose(); otherExtras.delete(id); }
     for (const route of projectStore.snapshot.design.routes) {
       const r = result.routes[route.id]?.legacy;
-      if (!r || route.kind !== 'road') continue;
-      const crown = route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
+      const splitDirection = route.kind === 'motorway' && route.alignment.kind === 'pi';
+      if (!r || (route.kind !== 'road' && !splitDirection)) continue;
+      const crown = route.kind !== 'road' ? CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth
+        : route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
       const controls = route.alignment.kind === 'corridor' ? {} : route.alignment.controls;
       const entry = otherExtras.get(route.id);
       if (route.id === store.activeRouteId) { entry?.overlay.setVisible(false); continue; }
@@ -538,6 +543,8 @@ async function main() {
       if (!legacy) return [];
       // A paired motorway is ONE body drawn once (its forward direction carries the shared result).
       if (route.kind === 'motorway') {
+        // split: each direction is its own body
+        if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth, buildingMarkers: result.complete }];
         const corridor = projectStore.snapshot.design.corridors.find(c => c.children.forward === route.id);
         return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth, buildingMarkers: result.complete }] : [];
       }
@@ -581,8 +588,16 @@ async function main() {
     commit: () => store.commit(),
   });
 
+  /** the motorway direction switch follows the active route */
+  const syncDirections = () => {
+    const design = projectStore.snapshot.design, route = store.route, corridor = route ? corridorOfRoute(design, route.id) : undefined;
+    if (!corridor) { hud.setDirections(null); return; }
+    hud.setDirections({ split: corridor.mode === 'independent', active: corridor.children.reverse === route!.id ? 'reverse' : 'forward',
+      places: { forward: scenario.labels.b, reverse: scenario.labels.a } });
+  };
   const switchRoute = (id: RouteId) => {
     if (!store.switchRoute(id)) return false;
+    syncDirections();
     previewGesture = null; activePreviewPrice = null;
     if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
     sel = activeSelection(id, qualifiedSelection); qualifiedSelection = qualifySelection(id, sel);
@@ -598,6 +613,7 @@ async function main() {
   store.onHistory = () => select(null);
   routeBar.onSelect = switchRoute;
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
+  syncDirections();
 
   store.on((d, committed) => {
     if (committed) previewGesture = null;
@@ -611,6 +627,7 @@ async function main() {
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
+    syncDirections();
     // a borrowed card (a proposal's) may belong to a road undo just removed: restore the right card
     if (committed && inspector.isHosting && !sourceEditor?.selected) { if (d) inspector.set(sel); else routeCard(); }
     requestEval(!committed);
@@ -842,6 +859,26 @@ async function main() {
       toast('Back to the starting road.', 'Undo', () => store.undo());
     },
     onIntro: () => intro.show(),
+    onDirection: (which) => {
+      const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;
+      if (!corridor || projectStore.inTransaction) return;
+      if (which === 'both') {
+        if (corridor.mode !== 'independent') return;
+        select(null);
+        store.editProject(d => { Object.assign(d, rejoinCorridor(d, corridor.id)); });
+        switchRoute(corridor.children.forward);
+        toast(DIRECTIONS_TEXT.join, 'Undo', () => store.undo());
+        return;
+      }
+      if (corridor.mode === 'paired') {
+        // split from the settled shared line: its heights are what each direction starts from
+        const spine = projectFull?.revision === projectStore.snapshot.revision ? projectFull.routes[corridor.children.forward]?.legacy : undefined;
+        if (!spine || spine.preview) { toast('One moment: still computing.'); return; }
+        select(null);
+        store.editProject(d => { Object.assign(d, splitCorridor(d, corridor.id, spine)); });
+      }
+      switchRoute(corridor.children[which]);
+    },
     onLoadBest: () => { if (store.best) { store.loadBest(); toast('Loaded your best design.', 'Undo', () => store.undo()); } },
     onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {

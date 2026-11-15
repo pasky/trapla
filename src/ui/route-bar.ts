@@ -25,7 +25,8 @@ export class RouteBar {
   set(project: ProjectDesign, activeRouteId: RouteId | null, editing = false) {
     // A paired motorway is one entry: both directions share its alignment.
     const paired = new Map(project.corridors.filter(c => c.mode === 'paired').map(c => [c.children.reverse, c.children.forward]));
-    const options = project.routes.filter(route => !paired.has(route.id)).map(route => ({ id: route.id, name: route.name }));
+    const together = new Set(paired.values());
+    const options = project.routes.filter(route => !paired.has(route.id)).map(route => ({ id: route.id, name: together.has(route.id) ? 'Motorway' : route.name }));
     if (activeRouteId && paired.has(activeRouteId)) activeRouteId = paired.get(activeRouteId)!;
     if (JSON.stringify(options) !== this.select.dataset.options) {
       this.select.replaceChildren(...options.map(route => { const option = document.createElement('option'); option.value = route.id; option.textContent = route.name; return option; }));

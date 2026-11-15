@@ -10,6 +10,7 @@ import type { ProjectResult, RouteId } from '../core/project';
 import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
+import { DIRECTIONS_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
@@ -34,6 +35,8 @@ export interface HudEvents {
   onSpeed?: (s: number) => void;
   onProfileMode?: (mode: 'auto' | 'manual') => void;
   onReset?: () => void;
+  /** motorway: edit both directions together, or one of them on its own */
+  onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
   onExaggeration?: (e: number) => void;
@@ -207,6 +210,13 @@ export class Hud {
         <label>Type <select id="cat" title="Wider roads cost more, carry more traffic">${PLAYABLE_CATEGORIES.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('')}</select></label>
         <label>Design speed <select id="speed" title="Faster: shorter travel time, wider curves">${[90, 80, 70].map((s) => `<option value="${s}">${s} km/h</option>`).join('')}</select></label>
         <div class="norms" id="norms"></div>
+        <div class="mode" id="directions" hidden>
+          <div class="mode-h"><b>${DIRECTIONS_TEXT.heading}</b></div>
+          <div class="seg" role="radiogroup" aria-label="Directions">
+            <button type="button" id="dir-both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" id="dir-forward" role="radio"></button><button type="button" id="dir-reverse" role="radio"></button>
+          </div>
+          <p id="dir-explain" class="mode-explain"></p>
+        </div>
         <div class="mode">
           <div class="mode-h"><b>Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
@@ -248,6 +258,7 @@ export class Hud {
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
+    for (const which of ['both', 'forward', 'reverse'] as const) this.$(`dir-${which}`).onclick = () => this.ev.onDirection?.(which);
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
     // the first listed item (project mode: the first real violation, else the first not-checked item)
     this.$('chip-viol').onclick = () => {
@@ -342,6 +353,21 @@ export class Hud {
       : 'Drag the ◆ points in the profile; double-click the line adds one.';
     this.$('mode-help').title = auto ? AUTO_LONG : MANUAL_LONG;
     this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'Auto height' : 'height by hand'}`;
+  }
+
+  /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */
+  setDirections(state: { split: boolean; active: 'forward' | 'reverse'; places: { forward: string; reverse: string } } | null) {
+    const box = this.$('directions');
+    box.hidden = !state;
+    if (!state) return;
+    const on = state.split ? state.active : 'both';
+    for (const which of ['both', 'forward', 'reverse'] as const) {
+      const b = this.$(`dir-${which}`);
+      if (which !== 'both') { b.textContent = DIRECTIONS_TEXT.towards(state.places[which]); b.title = DIRECTIONS_TEXT.oneTitle(state.places[which]); }
+      else b.title = DIRECTIONS_TEXT.bothTitle;
+      b.classList.toggle('on', on === which); b.setAttribute('aria-checked', String(on === which));
+    }
+    this.$('dir-explain').textContent = state.split ? DIRECTIONS_TEXT.separate : DIRECTIONS_TEXT.together;
   }
 
   setProfileBusy(busy: boolean) {

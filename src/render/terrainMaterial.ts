@@ -92,9 +92,13 @@ export interface TerrainUniforms {
    * width, outer paved shoulder (m); lines: edge width, lane-line width, dash, gap (m) */
   roadPaired: { value: THREE.Vector4 };
   roadPairedLines: { value: THREE.Vector4 };
+  /** half-width of one direction's own formation (split motorway), m */
+  roadCarriageway: { value: number };
 }
 /** `roadSections` slot reserved for the paired motorway cross-section (two carriageways and a median). */
 export const PAIRED_SECTION = ROAD_SECTIONS - 1;
+/** Slot of one direction of a split motorway: the same paint, the median on its left (travel inside). */
+export const CARRIAGEWAY_SECTION = ROAD_SECTIONS - 2;
 
 export function terrainUniforms(): TerrainUniforms {
   return {
@@ -117,6 +121,7 @@ export function terrainUniforms(): TerrainUniforms {
     roadDash: { value: new THREE.Vector2(3, 6) },
     roadPaired: { value: new THREE.Vector4(0, 0, 0, 0) },
     roadPairedLines: { value: new THREE.Vector4(0, 0, 1, 1) },
+    roadCarriageway: { value: 0 },
   };
 }
 
@@ -349,6 +354,10 @@ uniform vec4 roadSections[${ROAD_SECTIONS}];
 uniform vec2 roadDash;
 uniform vec4 roadPaired;
 uniform vec4 roadPairedLines;
+uniform float roadCarriageway;
+// offset from the motorway's centre line: paired sections are symmetric about it, a split direction's
+// axis lies roadCarriageway to the right of it (geo.x left-positive, the median on the left)
+float rdSpine(int k, float gx) { return k == ${ROAD_SECTIONS - 1} ? abs(gx) : roadCarriageway - gx; }
 // coverage of [lo, hi] by a pixel of width fw centred at x
 float rdCover(float x, float lo, float hi, float fw) {
   float w = max(fw, 1e-4);
@@ -363,7 +372,7 @@ float rdDashes(float s, float dash, float period, float fs) {
 // twin decks: the paired section's median is open on a bridge
 bool roadGap(vec3 geo) {
   int k = int(floor(geo.y * 0.5 + 0.01));
-  return k == ${ROAD_SECTIONS - 1} && roadPaired.z > 0.0 && geo.y - 2.0 * float(k) > 0.5 && abs(geo.x) < roadPaired.x;
+  return k >= ${ROAD_SECTIONS - 2} && roadPaired.z > 0.0 && geo.y - 2.0 * float(k) > 0.5 && rdSpine(k, geo.x) < roadPaired.x;
 }
 vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
   // geo.y interpolates only between a section's 2k and 2k + 1 (earthworks / bridge)
@@ -374,8 +383,9 @@ vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
   float x = abs(geo.x), lane = roadSection.x, paved = roadSection.y;
   float fine = ewOctave(p + 11.1, 0.45, fw), mid = ewOctave(p + 3.7, 2.3, fw), big = ewOctave(p, 9.0, fw);
   vec3 col = vec3(0.33, 0.33, 0.34) * (1.0 + 0.10 * big + 0.07 * mid + 0.09 * fine);
-  if (k == ${ROAD_SECTIONS - 1} && roadPaired.z > 0.0) {
+  if (k >= ${ROAD_SECTIONS - 2} && roadPaired.z > 0.0) {
     // two carriageways about the spine: median (grass, concrete barrier), inner shoulder, two lanes, hard shoulder, verge
+    x = rdSpine(k, geo.x);
     float m = roadPaired.x, l0 = m + roadPaired.y, l1 = l0 + 2.0 * roadPaired.z, paved = l1 + roadPaired.w;
     float u = x - l0 - roadPaired.z; // offset from the line between the two lanes
     float track = 1.0 - smoothstep(0.15, 0.45, abs(abs(u) - 0.5 * roadPaired.z) - 0.9);
@@ -425,6 +435,7 @@ export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLamb
     shader.uniforms.roadDash = u.roadDash;
     shader.uniforms.roadPaired = u.roadPaired;
     shader.uniforms.roadPairedLines = u.roadPairedLines;
+    shader.uniforms.roadCarriageway = u.roadCarriageway;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', /* glsl */ `#include <common>
         attribute float elev;

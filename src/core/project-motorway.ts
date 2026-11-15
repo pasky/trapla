@@ -151,8 +151,9 @@ export function createMotorwayProject(base: ProjectDesign, d: Design, operations
   const child = (id: string, name: string, reverse: boolean): MotorwayRoute => ({ id, name, role: 'mission', revision: 0, kind: 'motorway',
     acousticSourceId: `acoustic:${id}`, endpoints: reverse ? { a: structuredClone(b), b: structuredClone(a) } : structuredClone({ a, b }),
     alignment: { kind: 'corridor', corridorId, direction: reverse ? 'reverse' : 'forward' }, specification: spec(half) });
+  const port = (id: string) => base.mission.ports.find(p => p.id === (id === 'a' ? (a.anchor as { portId?: string }).portId : (b.anchor as { portId?: string }).portId))?.name ?? '';
   const project: ProjectDesign = { ...structuredClone(base), routes: [
-    child('route:motorway-forward', 'Motorway', false), child('route:motorway-reverse', 'Motorway (return)', true)], connections: [],
+    child('route:motorway-forward', `Motorway towards ${port('b')}`, false), child('route:motorway-reverse', `Motorway towards ${port('a')}`, true)], connections: [],
   corridors: [{ id: corridorId, revision: 0, kind: 'motorway', mode: 'paired', endpoints: structuredClone({ a, b }),
     children: { forward: 'route:motorway-forward', reverse: 'route:motorway-reverse' }, formationPolicy: MOTORWAY_POLICY, correspondence: [],
     spine: { kind: 'pi', pis: [], controls: {}, vertical: { kind: 'auto', pins: [] } } }],

@@ -22,7 +22,7 @@ import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
 import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
-import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
+import { CARRIAGEWAY_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
 import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
@@ -81,6 +81,7 @@ const SECTIONS = [undefined, ...Object.values(CATEGORIES).map((c) => c.section).
 function sectionIndex(crownWidth: number) {
   const cat = Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth);
   if (cat?.paired) return PAIRED_SECTION;
+  if (cat?.carriageway) return CARRIAGEWAY_SECTION;
   return Math.max(0, SECTIONS.indexOf(cat?.section));
 }
 
@@ -150,6 +151,7 @@ export class View {
     const dash = SECTIONS[1];
     if (dash) u.roadDash.value.set(dash.dash, dash.gap);
     u.roadPaired.value.set(D275_SECTION.median / 2, D275_SECTION.innerPavedShoulder, D275_SECTION.laneWidth, D275_SECTION.outerPavedShoulder);
+    u.roadCarriageway.value = CATEGORIES['D27.5-1'].crownWidth / 2;
     u.roadPairedLines.value.set(MOTORWAY_MARKINGS.edgeLine, MOTORWAY_MARKINGS.laneLine, MOTORWAY_MARKINGS.dash, MOTORWAY_MARKINGS.gap);
     return u;
   })();
@@ -871,8 +873,9 @@ export class View {
     const shade = (c: THREE.Color, f: number) => c.clone().multiplyScalar(f);
     const supports = structureFootprints({ ...r, crownWidth });
     // A paired motorway is carried on twin decks and runs through twin tubes: the median is open.
-    const gap = section === PAIRED_SECTION ? D275_SECTION.median / 2 : 0;
-    const strips: [number, number][] = gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
+    const gap = section === PAIRED_SECTION || section === CARRIAGEWAY_SECTION ? D275_SECTION.median / 2 : 0;
+    // one direction of a split motorway: its half of the median (on its left) is open on a bridge
+    const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [[-w, w - gap]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
     const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;
     for (const run of r.runs) {
       if (run.kind === KIND.bridge) {
@@ -887,7 +890,7 @@ export class View {
         for (let i = Math.max(0, run.i0 - 1); i <= Math.min(n - 2, run.i1); i++) {
           for (const segment of bridgeDeckSegments(spans,r.s[i],r.s[i+1])) {
             const a = at(segment.s0), b = at(segment.s1), deck = segment.depth;
-            for (const o of gap ? [w, -w, gap, -gap] : [w, -w]) {
+            for (const o of strips.flat()) {
               const c = shade(concrete, o > 0 ? 0.95 : 0.75), [ax, ay] = across(a, o), [bx, by] = across(b, o);
               quad(push(ax,ay,a.z+lift,c), push(bx,by,b.z+lift,c), push(ax,ay,a.z-deck,c), push(bx,by,b.z-deck,c));
             }
