@@ -172,7 +172,14 @@ try {
   await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, sOn]); await idle();
   point = await screen('sourceScreen', road.id, sOn); await page.mouse.click(point.x, point.y);
   assert.match(await page.locator('#inspector').textContent(), /Click where it ends/);
-  await page.mouse.click(point.x - 160, point.y - 90); await idle();
+  // an end on open ground: the first nearby spot where a click joins no road
+  let free = null;
+  for (const [dx, dy] of [[-160, -90], [160, -90], [-160, 90], [160, 90], [-220, 0], [220, 0], [0, -160], [0, 160]]) {
+    const p = await page.evaluate(([x, y]) => window.trapla.placementAt(x, y), [point.x + dx, point.y + dy]);
+    if (p?.ok && p.end.anchor.kind === 'free') { free = { x: point.x + dx, y: point.y + dy }; break; }
+  }
+  assert(free, 'open ground near the road');
+  await page.mouse.click(free.x, free.y); await idle();
   const built = await page.evaluate(() => window.trapla.getProject());
   if (built.routes.length !== 3) { console.log('inspector:', await page.locator('#inspector').textContent()); await page.screenshot({ path: `${out}/fail-build.png` }); }
   assert.equal(built.routes.length, 3, 'Build made a third road');
@@ -193,14 +200,22 @@ try {
 
   // 6b. Build → Road from our road to a mapped road: its junction with our road is built and billed
   const mission0 = (await page.evaluate(() => window.trapla.getProject())).routes[0];
-  const sm = await page.evaluate(id => window.trapla.projectResult().routes[id].legacy.length * 0.45, mission0.id);
+  // a station where our road runs on the ground (a road cannot join on a bridge)
+  const sm = await page.evaluate(id => { const r = window.trapla.projectResult().routes[id].legacy;
+    for (const f of [0.45, 0.4, 0.5, 0.35, 0.55, 0.3, 0.6, 0.25, 0.65]) { const i = Math.round(r.n * f);
+      if ([-30, -15, 0, 15, 30].every(d => r.kind[Math.max(0, Math.min(r.n - 1, i + Math.round(d / r.ds)))] === 0)) return r.s[i]; }
+    return r.length * 0.45; }, mission0.id);
   await page.evaluate(([id, s]) => { const r = window.trapla.projectResult().routes[id].legacy, i = Math.round(s / r.ds); window.trapla.lookAt(r.x[i], r.y[i], 1600, 0, 60); }, [mission0.id, sm]);
   await idle();
   const target = await page.evaluate(([id, s]) => {
     const t = window.trapla, r = t.projectResult().routes[id].legacy, i = Math.round(s / r.ds);
-    return t.baseRoads(150).filter(b => b.rebuildable || true).map(b => ({ b, p: t.sourceScreen(b.id, b.length / 2) }))
-      .filter(({ p }) => p?.vis).map(({ b, p }) => ({ id: b.id, s: b.length / 2, d: Math.hypot(p.sx - t.project(r.x[i], r.y[i], r.grade[i]).sx, p.sy - t.project(r.x[i], r.y[i], r.grade[i]).sy) }))
-      .filter(c => c.d > 120 && c.d < 500).sort((a, b) => a.d - b.d)[0] ?? null;
+    // a mapped road off to the side of ours (roughly square to it), not along it
+    const o = t.project(r.x[i], r.y[i], r.grade[i]), ahead = t.project(r.x[Math.min(r.n - 1, i + 20)], r.y[Math.min(r.n - 1, i + 20)], r.grade[i]);
+    const ux = ahead.sx - o.sx, uy = ahead.sy - o.sy, ul = Math.hypot(ux, uy) || 1;
+    return t.baseRoads(150).map(b => ({ b, p: t.sourceScreen(b.id, b.length / 2) }))
+      .filter(({ p }) => p?.vis).map(({ b, p }) => { const dx = p.sx - o.sx, dy = p.sy - o.sy, d = Math.hypot(dx, dy);
+        return { id: b.id, s: b.length / 2, d, square: Math.abs(dx * uy - dy * ux) / (ul * (d || 1)) }; })
+      .filter(c => c.d > 150 && c.d < 450 && c.square > 0.7).sort((a, b) => b.square - a.square || a.d - b.d)[0] ?? null;
   }, [mission0.id, sm]);
   if (target) {
     await page.locator('#build-route').click(); await page.locator('.route-build-choices button', { hasText: 'Road' }).click();

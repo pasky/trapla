@@ -219,15 +219,21 @@ Motorway card) splits the directions; [one direction bent on its own](docs/scree
 keeps its height points on their ground and runs as one body with the other wherever they still meet.
 "Both directions" joins them again. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130`.
 
-### Several roads (foundation, not priced together yet)
+### Editing any road
 
-| A second road: our road keeps its own price, the other is not priced yet | Change road: Start and End along a mapped road |
+Any mapped road behaves like our road: click it (its stretch between junctions is highlighted), then drag it
+to rebuild that stretch, bent under the pointer, with its profile and price. **Build → Road** places a new
+road from a click to a click; an end on a road joins it with a junction (Auto: a T, or a roundabout).
+See [docs/any-road-editing.md](docs/any-road-editing.md).
+
+| A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|
-| ![Our road priced, side road not](docs/screenshots/79-our-road-priced-side-road-not.png) | ![Change road handles](docs/screenshots/80-base-road-handles.png) |
-| The proposed change over the old road, not checked yet | With the photo: the roads the game knows |
-| ![Proposed change](docs/screenshots/81-base-road-proposal.png) | ![Photo with mapped roads](docs/screenshots/83-photo-mapped-roads.png) |
+| ![Mapped road selected](docs/screenshots/100-mapped-road-selected.png) | ![Mapped road rebuilt](docs/screenshots/101-mapped-road-rebuilt.png) |
+| Priced: old road removed, its land not bought again, side roads reconnected | A side road joining our road at a roundabout |
+| ![Rebuilt road priced](docs/screenshots/104-rebuilt-road-priced.png) | ![Side road joins ours](docs/screenshots/105-side-road-joins-ours.png) |
 
-Also: [two roads crossing, not priced](docs/screenshots/82-two-roads-not-priced.png). See `docs/multi-road-ux.md`.
+Also: [a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
+roads](docs/screenshots/103-photo-mapped-roads.png); the earlier foundation views 79–83 are in `docs/multi-road-ux.md`.
 
 ### Physical crossings
 

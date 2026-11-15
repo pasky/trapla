@@ -384,7 +384,8 @@ async function main() {
         ? 'The old road is gone where the new line leaves it.' : 'The old road stays until the change can be priced.'}`;
     } else {
       const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
-        : e.anchor.kind === 'route' ? projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId)?.name ?? 'a road'
+        : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
+          return !host ? 'a road' : host.role === 'mission' ? 'our road' : host.name; })()
         : e.anchor.kind === 'source' ? (() => { const t = transportIndex?.source((e.anchor as { location: { sourceId: string } }).location.sourceId)?.tags;
           return t?.name || [ROAD_CLASSES[t?.highway ?? '']?.label ?? 'a road', t?.ref].filter(Boolean).join(' '); })() : 'a scenario end';
       what.textContent = `New road from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
@@ -1327,6 +1328,8 @@ async function main() {
     sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
     sourceSelection: () => sourceEditor?.selection ?? null,
     building: () => buildTool.active,
+    /** what a Build click at this client point would place (no change) */
+    placementAt: (clientX: number, clientY: number) => { const g = view.pick(clientX, clientY); return g ? placeAt(clientX, clientY, g.x, g.y) : null; },
     /** a point on a drawn road away from ours (for checking the no-road-links card) */
     legacyRoadPoint: () => {
       const net = pack.overlays.net, r = last; if (!net || !r) return null;
