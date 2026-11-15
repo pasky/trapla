@@ -42,6 +42,21 @@ it('prices separate roads together only as one coherent project bill', () => {
   expect(overlapping.cost.unpriced.map(u => u.reason)).toEqual(['shared-land', 'shared-land']);
 });
 
+it('never prices a road tied into an existing road or a mission port as if its ends were free', () => {
+  const { ctx, snapshot, side } = fixture();
+  snapshot.design.routes.push(side);
+  for (const anchor of [{ kind: 'source' as const, location: { transportData: 'transport', sourceId: 'way:1', s: 0 } },
+    { kind: 'mission' as const, portId: 'a' }]) {
+    side.endpoints.a.anchor = anchor;
+    if (anchor.kind === 'source') snapshot.design.transportData = 'transport';
+    else side.endpoints.a.position = { ...snapshot.design.mission.ports[0].position };
+    const project = evaluateProject(ctx, snapshot);
+    expect(project.cost.total).toBeNull(); expect(isScorableProject(project)).toBe(false);
+    expect(project.cost.unpriced).toContainEqual({ routeId: 'side', reason: 'connection-pending' });
+    expect(Object.keys(project.cost.alone)).toHaveLength(2); // own bills stay visible
+  }
+});
+
 it('leaves roads unpriced when one house hears both, while keeping each road\'s own bill visible', () => {
   const house = new BuildingIndex([[600, 350, 5]], [[100, 2, BUILDING_KIND.house, 600, 350, 4, 4, 0]]);
   const { ctx, snapshot, side } = fixture(house);

@@ -73,6 +73,24 @@ it('never overwrites malformed or newer project/legacy saves, including quota fa
   expect(data.get(keys.projectRecovery)).toBe(corruptBest);
 });
 
+it('keeps every exact original envelope whenever loading drops a best or repairs bindings', () => {
+  const { data, options, keys } = setup();
+  const design = options.initial(), missionData = projectMissionKey(design);
+  const newerBest = JSON.stringify({ schemaVersion: 1, design, best: { design, cost: 5, at: 'later', model: COST_MODEL_VERSION + 1,
+    pricingData: 'prices', evaluationVersion: 1, missionData } });
+  data.set(keys.project, newerBest);
+  expect(openProjectStore(options).store!.best).toBeNull();
+  expect(data.get(keys.projectRecovery)).toBe(newerBest); // a newer build's best is never silently lost
+  const otherCorrupt = JSON.stringify({ schemaVersion: 1, design, best: { design: { broken: true } } });
+  data.set(keys.project, otherCorrupt);
+  openProjectStore(options);
+  expect(data.get(keys.projectRecovery)).toBe(newerBest); expect(data.get(`${keys.projectRecovery}:2`)).toBe(otherCorrupt);
+  const before = data.get(keys.project)!;
+  const repaired = openProjectStore({ ...options, objectData: 'objects-b' }); // e.g. a temporarily different pack
+  expect(repaired.load.status).toBe('needs-repair');
+  expect(data.get(`${keys.projectRecovery}:3`)).toBe(before);
+});
+
 it('keeps source geometry and decisions unresolved on pack changes instead of rebinding indices', () => {
   const { options } = setup();
   const store = openProjectStore(options).store!;

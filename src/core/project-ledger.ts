@@ -116,6 +116,7 @@ function touchedRoads(result: Result): { roads: Set<number>; closes: boolean } {
   let closes = false;
   for (const f of result.footprintConflicts) {
     if (f.roadId !== undefined) roads.add(f.roadId);
+    for (const interval of f.sourceIntervals ?? []) roads.add(interval.way); // every removed old way
     if (f.closed) closes = true;
   }
   return { roads, closes };
@@ -134,9 +135,12 @@ function withinReach(route: NoiseRoute, x: number, y: number, reach: number): bo
   }
   return false;
 }
+/** Largest non-decreasing lower envelope of the hard-ground law, which jumps DOWN by 0.137 dB at 8 m
+ * (near-distance expression → Uo fit): a bound at a shorter slant then holds at every longer one. */
+const monotoneLoss = (slant: number) => slant < 8 ? Math.min(hardGroundLoss(slant), hardGroundLoss(8)) : hardGroundLoss(slant);
 /** Hard ground is the least loss at every height in the legacy model; walls/cuts only reduce it. */
 function excessBound(route: NoiseRoute, distance: number): number {
-  return route.excess - hardGroundLoss(Math.max(0, distance - NOISE.facadeOffset - NOISE.sourceOffset)) + INDEPENDENCE_SCREEN.noiseTolerance;
+  return route.excess - monotoneLoss(Math.max(0, distance - NOISE.facadeOffset - NOISE.sourceOffset)) + INDEPENDENCE_SCREEN.noiseTolerance;
 }
 function noiseRoute(route: ScreenRoute, margin: number): NoiseRoute {
   const excess = noiseSource(route.aadt, route.speed, { heavyShare: route.heavyShare }).excessDb;

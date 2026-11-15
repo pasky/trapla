@@ -70,16 +70,18 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
       assertProjectDesign(save.design, true);
       if (save.design.scenarioId !== options.namespace.scenarioId || save.design.presetId !== options.namespace.presetId) throw new Error('Save namespace mismatch');
       let originalProject: string | undefined;
+      // Whatever the loader drops or rewrites (malformed/stale/newer best, repaired bindings) keeps the
+      // exact original envelope in project recovery before the slot is ever written again.
       if (save.best) {
         try {
           // Best is optional: malformed best bytes must not block valid current work.
           assertProjectDesign(save.best.design, true);
-          if (!compatibleProjectBest(save.best, options)) save.best = null;
+          if (!compatibleProjectBest(save.best, options)) { originalProject = raw; save.best = null; }
         } catch { originalProject = raw; save.best = null; }
       } else save.best = null;
       const reasons = bindingRepairs(save.design, options);
       assertProjectDesign(save.design);
-      if (reasons.length) { save.best = null; return { status: 'needs-repair', save, original: null, reasons, ...(originalProject ? { originalProject } : {}) }; }
+      if (reasons.length) { save.best = null; return { status: 'needs-repair', save, original: null, reasons, originalProject: raw }; }
       return { status: 'loaded', save, original: null, ...(originalProject ? { originalProject } : {}) };
     } catch (e) { return { status: 'unsupported', raw, reason: String(e) }; }
   }
@@ -107,11 +109,21 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
     return reasons.length ? { status: 'needs-repair', save, original, reasons } : { status: 'migrated', save, original };
   } catch (e) { return { status: 'unsupported', raw: original.design ?? original.best!, reason: String(e) }; }
 }
+/** Distinct original envelopes go to `<key>`, then `<key>:2` … `<key>:${PROJECT_RECOVERY_SLOTS}`; an identical
+ * original is not stored twice. Full slots throw, so the caller keeps the old bytes instead of losing one. */
+export const PROJECT_RECOVERY_SLOTS = 16;
+export function preserveProjectOriginal(storage: ProjectLoadOptions['storage'], key: string, original: string): void {
+  for (let i = 1; i <= PROJECT_RECOVERY_SLOTS; i++) {
+    const slot = i === 1 ? key : `${key}:${i}`, held = storage.getItem(slot);
+    if (held === original) return;
+    if (held === null) { storage.setItem(slot, original); return; }
+  }
+  throw new Error('Project recovery slots are full; refusing to overwrite the saved project');
+}
 /** Recovery must succeed before the new slot is written. Never modifies legacy .design/.best. */
 export function persistProjectSave(options: ProjectLoadOptions, save: ProjectSave, load?: ProjectLoadResult): void {
   const keys = projectStorageKeys(options.namespace);
-  if (load && 'originalProject' in load && load.originalProject && options.storage.getItem(keys.projectRecovery) === null)
-    options.storage.setItem(keys.projectRecovery, load.originalProject);
+  if (load && 'originalProject' in load && load.originalProject) preserveProjectOriginal(options.storage, keys.projectRecovery, load.originalProject);
   if (load && 'original' in load && load.original && options.storage.getItem(keys.recovery) === null) {
     options.storage.setItem(keys.recovery, JSON.stringify(load.original));
   }

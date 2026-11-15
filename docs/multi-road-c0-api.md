@@ -103,6 +103,11 @@ source (including editor splits), sum across distinct physical sources. Screenin
 quiet contributions and exposes an omitted **aggregate** energy bound. Mixed legal policies need a
 policy decision; no addition of limit-relative excess. Finite-segment correction is out of scope.
 
+Whenever loading drops a best (malformed, stale, newer build) or repairs bindings, the exact original
+envelope is kept in project recovery first: `trapla.project-recovery:…`, then `…:2` … `…:16` for distinct
+originals; full slots refuse to overwrite. Legacy `state.ts` may become read-only (`storageProblem`): the UI
+must tell the player, otherwise edits are silently lost on reload.
+
 Save/Continue helpers are `projectStorageKeys({scenarioId, presetId})` and
 `hasProjectSave(storage, {scenarioId, presetId})` in `src/project-store-contract.ts`. The stable project
 slot is `trapla.project:<encoded scenarioId>:<encoded presetId>`; the distinct role prefix
@@ -151,18 +156,27 @@ retain their category/speed; an unknown or malformed newer save is never overwri
   unpriced. Interactions add `blocking: 'incomplete'` issues scoped to both roads (and the house, if any).
 - Undo/discard is just a new snapshot: removing the unpriced change restores the scored single-road result.
 
-One road: the exact legacy facade (D11 bit-exact). Several roads with no connections between them:
+One road: the exact legacy facade, bit-identical to `evaluate` (`eval-regression` checks every frozen D11
+fixture through `evaluateProject` too). Ground-level endpoints keep the kernel's own end-station terrain
+sample; only an explicit non-ground XYZ overrides it. Several roads with free ends and no connections:
 `screenIndependence` (`src/core/project-ledger.ts`) prices them together (`total` = sum of their own bills,
-`cost.routes` the per-road shares) ONLY when a conservative screen proves nothing interacts:
+`cost.routes` the per-road shares) only when a conservative screen finds no interaction:
 land take, works and removed old roads (plus a 1:2 toe bound on links and a PROVISIONAL 10 m clearance) do
-not touch; no existing road is changed by two roads, and no closure's detour can be affected; no building is
-demolished/bought/kept-in-the-way by two roads; and every house belongs to at most one road for noise (in
-its own noise list, or within 20 + 10·log10(N − 1) dB of the limit by the all-height hard-ground bound).
-Further roads are neglected: together ≤ 1 % of one limit (≤ +0.043 dB at a house exactly at the limit,
-below reported precision). Nearer roads stay unpriced until joint noise/wall decisions exist (C1);
-the neglected energy bound is published in `acousticScreen`. Max 10 roads. Real D11 pack: ≈ 8–10 ms per
-multi-road full evaluation (26 567 buildings); single-road and preview paths unchanged. Promoted/source
-roads, joined roads, corridors and modes stay unpriced: joint engineering is still a later stage.
+not touch; no existing road is changed by two roads (crossed, relocated or removed ways), and no closure's
+detour can be affected; no building is demolished/bought/kept-in-the-way by two roads; and every house
+belongs to at most one road for noise (in its own noise list, or within 20 + 10·log10(N − 1) dB of the limit
+by a monotone all-height hard-ground upper bound). Further roads are neglected, not proven absent: together
+≤ 1 % of one limit (≤ +0.043 dB at a house exactly at the limit, below reported precision), published in
+`acousticScreen`. Nearer roads stay unpriced until joint noise/wall decisions exist (C1). For D11 traffic
+(9000/day, 90 km/h) that reach is ≈ 3.6 km per road (≈ 1 km at 3000/day, 70 km/h), so most second roads in
+the D11 pack stay unpriced. Max 10 roads. The screen itself adds ≈ 15–22 ms to a multi-road full evaluation
+(26 567 buildings), on top of each road's own evaluation; single-road and preview paths are unchanged.
+Unpriced, beyond the route's own incomplete reasons: any end tied to an existing road, another road or (for
+a non-mission road) a mission port, and any connection row (`connection-pending`); promoted/source roads,
+corridors and modes. A null `total` with empty `unpriced` means a project-level issue (no mission road,
+empty project). Known limitation: project-wide manual building buys are passed to every road's kernel, which
+bills them regardless of distance, so a manual buy leaves any multi-road project unpriced (fails safe) and
+shows inside each road's own bill.
 
 ## Source proposal foundation
 

@@ -149,7 +149,7 @@ export interface Result {
 
 export interface EvalOptions {
   /** Explicit transport heights; never replace the Terrain height query. Omitted preserves legacy. */
-  endpointElevations?: { a: number; b: number };
+  endpointElevations?: { a?: number; b?: number };
   /** Project checks goals on the required connection, not every auxiliary route. */
   goals?: { time: boolean; capacity: boolean };
   /** Operating speed is independent of design speed. Omitted preserves legacy emissions. */
