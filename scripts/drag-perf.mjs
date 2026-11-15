@@ -4,7 +4,7 @@
 // (instrumentation wraps the page's Worker; nothing in the app is required).
 //
 //   node scripts/drag-perf.mjs [--root DIR] [--gpu] [--profile out.cpuprofile] [--trace out.json]
-//        [--scenario d11] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi] [--bend 9]
+//        [--scenario d11] [--preset d3-motorway] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi] [--bend 9]
 //        [--seconds 2] [--check] [--shot out.png]
 //
 // --scenario <id>: another pack; the design defaults to scripts/scenarios/<id>/default.json and the
@@ -20,7 +20,8 @@ const root = arg('--root', process.cwd());
 const gpu = process.argv.includes('--gpu');
 const port = Number(arg('--port', 5197));
 const scenarioId = arg('--scenario', 'd11');
-const designFile = arg('--design', scenarioId === 'd11' ? 'scripts/best-design.json' : `scripts/scenarios/${scenarioId}/default.json`);
+const presetId = arg('--preset'); // e.g. d3-motorway: design defaults to scripts/scenarios/<id>/<preset>.json
+const designFile = arg('--design', presetId ? `scripts/scenarios/${scenarioId}/${presetId}.json` : scenarioId === 'd11' ? 'scripts/best-design.json' : `scripts/scenarios/${scenarioId}/default.json`);
 const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point)
 const bendArg = arg('--bend');
 const seconds = Number(arg('--seconds', 2));
@@ -31,7 +32,7 @@ const shot = arg('--shot'); // screenshot path, taken once in the middle of the 
 // other agents / scripts may hold the port: take the next free one
 const server = await createServer({ root, server: { port, strictPort: false }, logLevel: 'warn' });
 await server.listen();
-const url = `${server.resolvedUrls.local[0]}?scenario=${encodeURIComponent(scenarioId)}`;
+const url = `${server.resolvedUrls.local[0]}?scenario=${encodeURIComponent(scenarioId)}${presetId ? `&preset=${encodeURIComponent(presetId)}` : ''}`;
 const args = gpu
   ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
   : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
