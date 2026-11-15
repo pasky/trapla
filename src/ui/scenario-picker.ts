@@ -76,6 +76,7 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
       const details = scenario.picker;
       card.append(element('p', details?.kind ?? 'Class I road', 'scenario-picker-kind'),
         element('h2', scenario.title), element('p', details?.goal ?? 'Connect Trutnov to the Polish border.'));
+      if (details?.note) card.append(element('p', details.note, 'scenario-picker-note'));
       const note = element('p', 'Checking map…', 'scenario-picker-state');
       note.setAttribute('role', 'status');
       const actions = element('div', '', 'scenario-picker-actions');

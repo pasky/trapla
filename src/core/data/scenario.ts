@@ -1,4 +1,5 @@
 import type { CategoryId, TerrainClass } from './categories';
+import type { PI } from '../horizontal';
 
 // Traffic → minimum category: the highest design-year AADT at which a rural two-lane section still meets the
 // level of service required for a class I road (research/14-category-capacity.md).
@@ -37,9 +38,9 @@ export interface ScenarioParams {
   /** Stable mission/preset identity, separate from the terrain pack id. Legacy D11 uses d11. */
   presetId?: string;
   /** Fresh designs only; loading an existing design must never overwrite its specification. */
-  initial?: { category: CategoryId; speed: 70 | 80 | 90 };
+  initial?: { category: CategoryId; speed: 70 | 80 | 90; pis?: PI[] };
   /** Short catalogue copy; D3/D35 road exercises are not motorway demand forecasts. */
-  picker?: { kind: string; goal: string };
+  picker?: { kind: string; goal: string; note?: string };
   /** traffic Y, vehicles/day (scenario value) */
   traffic: number;
   /** travel-time target X, minutes (calibration in PLAN.md) */
@@ -63,9 +64,51 @@ export const D11_SCENARIO: ScenarioParams = {
   labels: { a: 'Trutnov', b: 'PL border', official: 'official D11', brief: '<b>A</b> (D11 near Trutnov) to <b>B</b> (Polish border)' },
 };
 
-/** Game parameters per scenario id (= pack directory public/scenarios/<id>, pipeline/scenarios/<id>.json).
- * Adding a scenario: docs/new-scenario.md. */
-export const SCENARIOS: Record<string, ScenarioParams> = { d11: D11_SCENARIO };
+// New two-lane exercises use explicit GAME PRIORS, not local census/forecast claims.
+// The TP188 representative capacity case above and 15% heavy share are uncalibrated here.
+// Reference routes/norm category evidence: research/24–26. Time targets are mission choices.
+export const D3_SCENARIO: ScenarioParams = {
+  id: 'd3', presetId: 'd3-road', title: 'Jílové → Václavice',
+  // Editable starter near the reference, validated on this pack; no hidden structure overrides.
+  // Three bends moved <12 m by the existing bounded repair tool to resolve a track conflict.
+  initial: { category: 'S9.5', speed: 90, pis: [
+    { x: 3872.4, y: 14182.6, r: null }, { x: 3608.6, y: 12643.7, r: null },
+    { x: 4588.5, y: 9743.4, r: null }, { x: 4849.5, y: 8185.1, r: null },
+    { x: 5549, y: 6639, r: null }, { x: 7079, y: 5914, r: null }, { x: 8520, y: 4281, r: null },
+  ] },
+  picker: { kind: 'Road through Posázaví', goal: 'Cross the Sázava and find a way through the hills.' },
+  // 11.5 min allows 17.25 km at 90 (mapped reference 15.68 km), 15.33 km at 80.
+  traffic: 9_000, heavyShare: 0.15, maxTravelMin: 11.5,
+  terrainClass: 'hilly', maxGradient: 0.06,
+  labels: { a: 'Jílové', b: 'Václavice', official: 'planned D3', brief: '<b>Jílové</b> to <b>Václavice</b>, across the Sázava' },
+};
+
+export const D35_SCENARIO: ScenarioParams = {
+  id: 'd35', presetId: 'd35-road', title: 'Opatovec → Mohelnice',
+  initial: { category: 'S9.5', speed: 90 },
+  picker: { kind: 'Road across the hills', goal: 'Pass the ridges and villages on the way to Mohelnice.' },
+  traffic: 9_000, heavyShare: 0.15, maxTravelMin: 24,
+  terrainClass: 'hilly', maxGradient: 0.06,
+  labels: { a: 'Opatovec', b: 'Mohelnice', official: 'planned D35', brief: '<b>Opatovec</b> to <b>Mohelnice</b>' },
+};
+
+export const NOVA_PAKA_SCENARIO: ScenarioParams = {
+  id: 'i16-nova-paka', presetId: 'i16-nova-paka-road', title: 'Nová Paka bypass',
+  // S11.5/70 is the actual project's category (OPD entry); 10,000/day is a GAME PRIOR,
+  // not the project's forecast. Eight minutes permits 9.33 km at 70 km/h (reference 8.479 km).
+  initial: { category: 'S11.5', speed: 70 },
+  picker: { kind: 'Class I road · 70 km/h', goal: 'Take traffic around town without moving too much earth.',
+    note: 'Ground includes the real bypass’s cuts. Photo shows construction.' },
+  traffic: 10_000, heavyShare: 0.15, maxTravelMin: 8,
+  terrainClass: 'hilly', maxGradient: 0.06,
+  labels: { a: 'Kumburský Újezd', b: 'Vidochov', official: 'bypass reference', brief: '<b>Kumburský Újezd</b> to <b>Vidochov</b>, around Nová Paka' },
+};
+
+/** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.
+ * D11 intentionally retains its exact legacy parameters and default. */
+export const SCENARIOS: Record<string, ScenarioParams> = {
+  d11: D11_SCENARIO, d3: D3_SCENARIO, d35: D35_SCENARIO, 'i16-nova-paka': NOVA_PAKA_SCENARIO,
+};
 export const DEFAULT_SCENARIO = 'd11';
 
 export function scenarioParams(id: string): ScenarioParams {
