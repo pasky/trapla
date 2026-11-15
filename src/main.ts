@@ -26,7 +26,7 @@ import { createNoiseModel } from './core/road-noise';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
-import { loadPack } from './scenario';
+import { endpointJunctions, loadPack } from './scenario';
 import { startDesign } from './state';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
@@ -103,7 +103,7 @@ async function main() {
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
-    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario,
+    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario, junctions: endpointJunctions(meta),
     projectEnvironment: { objectData, transportData, pricingData, waterData: meta.watercourses?.sha256 ?? 'raster-water',
       terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
   };

@@ -15,7 +15,9 @@
     "lengthRangeM": [33700, 34100]
   },
   "A": {"alongOfficial": 0, "note": "Opatovec: western end of mapped proposed D35, at the temporary service-road continuation"},
-  "B": {"latlon": [49.7673123, 16.9177858], "note": "Mohelnice: mapped proposed D35 joins the existing motorway; reference excludes the existing-road reconstruction farther east"},
+  "B": {"alongOfficial": 33300, "note": "Mohelnice: 33.3 km along the mapped proposed D35, where it starts to merge with the existing I/35 (59 m away); the last 0.6 km of the mapped line rebuilds the existing road, which the game cannot model yet",
+        "junction": {"kind": "merge", "osmWayIds": [815005702, 815005703, 4256394],
+                     "about": "I/35 carriageway ways within the merge zone of B. The merge onto I/35 is priced as one junction; the onward reconstruction of I/35 into D35 is outside this exercise."}},
   "groundProfileOverrides": {
     "perm_sand": {"classIto": 2, "classIIto": 6},
     "perm_congl": {"classIto": 1.5, "classIIto": 4},
@@ -26,7 +28,7 @@
     "hard": {"name": "Greywacke / conglomerate / quartzite — uncalibrated regional prior", "classIto": 1, "classIIto": 3},
     "carbonate": {"name": "Limestone / dolomite — uncalibrated regional prior", "classIto": 1, "classIIto": 3}
   },
-  "baselineNote": "Road exercise in the full Opatovec–Mohelnice corridor, not a motorway traffic forecast. OSM proposed-line reference is about 33.9 km; the official combined projects total 34.830 km including existing-road reconstruction. Ground profiles are uncalibrated regional priors, not the D11 fit.",
+  "baselineNote": "Road exercise in the full Opatovec–Mohelnice corridor, not a motorway traffic forecast. The route ends 33.3 km along the 33.9 km OSM proposed line, where it starts merging with the existing I/35; the merge is priced as one junction, and the rest, a rebuild of the existing road, is not modelled. The official combined projects total 34.830 km including existing-road reconstruction. Ground profiles are uncalibrated regional priors, not the D11 fit.",
   "sources": [
     "https://apdos.roadmedia.cz/Upload/Stavby/53/infoletak_d35-opatovec-st_mesto.pdf",
     "https://apdos.roadmedia.cz/Upload/Stavby/54/infoletak_d35-stare-mesto-mohelnice.pdf",

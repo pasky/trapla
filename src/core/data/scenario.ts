@@ -85,7 +85,16 @@ export const D3_SCENARIO: ScenarioParams = {
 
 export const D35_SCENARIO: ScenarioParams = {
   id: 'd35', presetId: 'd35-road', title: 'Opatovec → Mohelnice',
-  initial: { category: 'S9.5', speed: 90 },
+  // Editable starter: mapped-reference bends at ~1.5 km up to the I/35 merge, then bounded
+  // validity-first repair moved bend 7 by 7.6 m (research/27). The merge at B is a declared junction.
+  initial: { category: 'S9.5', speed: 90, pis: [
+    { x: 3911.6, y: 9138.6, r: null }, { x: 5364.7, y: 9523.8, r: null }, { x: 7643.7, y: 9336.4, r: null },
+    { x: 9356.7, y: 9036.3, r: null }, { x: 11092.7, y: 8524, r: null }, { x: 12724.6, y: 8498.3, r: null },
+    { x: 14565.1, y: 8794.8, r: null }, { x: 16198, y: 8345, r: null }, { x: 17709.9, y: 7719.1, r: null },
+    { x: 19116.3, y: 6932.6, r: null }, { x: 20627.3, y: 6972, r: null }, { x: 22483.1, y: 7641.5, r: null },
+    { x: 23954.1, y: 8069.3, r: null }, { x: 25909.9, y: 8135.3, r: null }, { x: 27602.4, y: 7468.2, r: null },
+    { x: 29118.3, y: 6704.6, r: null }, { x: 30492.6, y: 5500.7, r: null }, { x: 31181.5, y: 4174.1, r: null },
+  ] },
   picker: { kind: 'Road across the hills', goal: 'Pass the ridges and villages on the way to Mohelnice.' },
   traffic: 9_000, heavyShare: 0.15, maxTravelMin: 24,
   terrainClass: 'hilly', maxGradient: 0.06,
@@ -96,7 +105,11 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
   id: 'i16-nova-paka', presetId: 'i16-nova-paka-road', title: 'Nová Paka bypass',
   // S11.5/70 is the actual project's category (OPD entry); 10,000/day is a GAME PRIOR,
   // not the project's forecast. Eight minutes permits 9.33 km at 70 km/h (reference 8.479 km).
-  initial: { category: 'S11.5', speed: 70 },
+  // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
+  // bends 0/1 by 23.1/6.6 m (research/27). Not cost-optimised; the roundabout arm is a declared junction.
+  initial: { category: 'S11.5', speed: 70, pis: [
+    { x: 7832, y: 5962, r: null }, { x: 8841, y: 6871, r: null }, { x: 10208.9, y: 7474.7, r: null }, { x: 10894.3, y: 8418.4, r: null },
+  ] },
   picker: { kind: 'Class I road · 70 km/h', goal: 'Take traffic around town without moving too much earth.',
     note: 'Ground includes the real bypass’s cuts. Photo shows construction.' },
   traffic: 10_000, heavyShare: 0.15, maxTravelMin: 8,

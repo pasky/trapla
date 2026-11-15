@@ -6,14 +6,29 @@ import { loadPack } from '../loadpack';
 import { evaluate, type Design, type EvalContext } from '../../src/core/evaluate';
 import { PART_KEYS } from '../../src/core/cost';
 import { startDesign } from '../../src/state';
+import { ENDPOINT_JUNCTIONS } from '../../src/core/data/urban';
 
-const { meta, scenario, terrain, buildings, roads } = loadPack();
+const { meta, scenario, terrain, buildings, roads, junctions, overlays } = loadPack();
 if (meta.id === 'd11') throw new Error('Choose a new scenario explicitly with SCENARIO.');
 const dir = `public/scenarios/${meta.id}`;
 const ready = JSON.parse(readFileSync(`${dir}/ready.json`, 'utf8'));
 if (ready.id !== meta.id || !ready.ready) throw new Error('Pack build is incomplete.');
-const ctx: EvalContext = { terrain, scenario, buildings, roads,
+const ctx: EvalContext = { terrain, scenario, buildings, roads, junctions,
   a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
+// A declared junction must be real: its joined road lies inside the sourced junction zone of that end.
+for (const j of junctions) {
+  let nearest = Infinity;
+  for (const way of j.ways) {
+    const w: number[] = overlays.net.ways[way];
+    for (let k = 1; k + 3 < w.length; k += 2) {
+      const ax = w[k], ay = w[k + 1], dx = w[k + 2] - ax, dy = w[k + 3] - ay;
+      const t = Math.max(0, Math.min(1, ((j.x - ax) * dx + (j.y - ay) * dy) / (dx * dx + dy * dy || 1)));
+      nearest = Math.min(nearest, Math.hypot(ax + t * dx - j.x, ay + t * dy - j.y));
+    }
+  }
+  console.log(JSON.stringify({ junction: j.kind, ways: j.ways, nearestM: nearest, zoneM: ENDPOINT_JUNCTIONS[j.kind].zone }));
+  if (!(nearest <= ENDPOINT_JUNCTIONS[j.kind].zone)) throw new Error(`Declared ${j.kind} is not within its junction zone.`);
+}
 const fixtureDir = `scripts/scenarios/${meta.id}`;
 if (process.argv.includes('--seed')) {
   mkdirSync(fixtureDir, { recursive: true });

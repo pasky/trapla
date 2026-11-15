@@ -4,8 +4,19 @@ import type { GroundMeta } from './core/ground';
 import type { BuildingInfo } from './core/buildings';
 import type { RoadNetData } from './core/roadnet';
 import type { TransportGraphData, TransportMeta } from './core/project-transport';
+import type { EndpointJunction } from './core/evaluate';
+import type { EndpointJunctionKind } from './core/data/urban';
 import { decodeHeights, Terrain } from './core/terrain';
 import { parseVectorPack, type VectorPack } from './render/vectorPack';
+
+/** `junction`: scenario-declared connection to retained roads (legacy net way indices). */
+export interface PackEndpoint { xy: [number, number]; latlon: [number, number]; note: string;
+  junction?: { kind: EndpointJunctionKind; osmWayIds: number[]; ways: number[] } }
+
+/** Evaluator form of the declared end connections; empty for packs without them (D11). */
+export function endpointJunctions(meta: Pick<PackMeta, 'A' | 'B'>): EndpointJunction[] {
+  return [meta.A, meta.B].flatMap(e => e.junction ? [{ x: e.xy[0], y: e.xy[1], kind: e.junction.kind, ways: e.junction.ways }] : []);
+}
 
 export interface PackMeta {
   id: string;
@@ -26,8 +37,8 @@ export interface PackMeta {
   vector?: { file: string } | null;
   /** ArcGIS MapServer "export" endpoint serving an orthophoto in the scenario's CRS (optional view layer) */
   orthophoto?: { export: string; sr: number; attribution: string } | null;
-  A: { xy: [number, number]; latlon: [number, number]; note: string };
-  B: { xy: [number, number]; latlon: [number, number]; note: string };
+  A: PackEndpoint;
+  B: PackEndpoint;
   official: { xy: [number, number][]; kinds: number[]; lengthM: number;
     /** Published project scope may include work beyond the mapped new-road reference. */
     publishedProjectLengthM?: number };

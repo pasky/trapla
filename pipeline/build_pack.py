@@ -745,6 +745,23 @@ def waterways(hydrology) -> list:
     return hydrology.fetch_waterways(osm_cache, overpass)
 
 
+def endpoint_junction(end: str) -> dict:
+    """Scenario-declared connection of an end to retained roads: OSM ways -> legacy net indices.
+    The evaluator prices it as one junction; each declared way must be in this pack's network."""
+    spec = SCENARIO[end].get("junction")
+    if spec is None:
+        return {}
+    if spec.get("kind") not in ("roundabout-arm", "merge") or not spec.get("osmWayIds"):
+        raise ValueError(f"endpoint {end}: junction needs kind roundabout-arm|merge and osmWayIds")
+    ways = []
+    for wid in spec["osmWayIds"]:
+        found = [i for i, source in enumerate(LEGACY_SOURCE_IDS) if source == wid]
+        if len(found) != 1:
+            raise ValueError(f"endpoint {end}: joined way {wid} is not exactly one network way")
+        ways.append(found[0])
+    return {"junction": {"kind": spec["kind"], "osmWayIds": spec["osmWayIds"], "ways": ways}}
+
+
 def cache_inputs(names=None) -> dict:
     """Hashes of the cache inputs used by this build (or of the named recorded ones)."""
     paths = sorted(USED_INPUTS) if names is None else [CACHE / name for name in names]
@@ -875,9 +892,9 @@ def build():
         "orthophoto": {"export": "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer/export",
                        "sr": 5514, "attribution": "© ČÚZK, Ortofoto ČR, CC BY 4.0"},
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],
-              "note": SCENARIO["A"]["note"]},
+              "note": SCENARIO["A"]["note"], **endpoint_junction("A")},
         "B": {"xy": loc(b), "latlon": [round(b_lat, 6), round(b_lon, 6)],
-              "note": SCENARIO["B"]["note"]},
+              "note": SCENARIO["B"]["note"], **endpoint_junction("B")},
         "official": {"xy": [loc(pts[i]) for i in keep], "lengthM": round(float(cum[-1]), 1),
                      "kinds": [int(max(kinds[keep[j - 1]:keep[j]] or [0])) for j in range(1, len(keep))]},
         "attribution": ["© ČÚZK, DMR 5G, CC BY 4.0", "© OpenStreetMap contributors, ODbL", "© ČGS, GEOCR50 + IG rajony 1:50 000"],

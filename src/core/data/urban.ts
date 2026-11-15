@@ -168,6 +168,20 @@ export interface RoadClassRow {
  * ROUNDABOUT awards (19.8–37.5 M), not an isolated T/X-junction contract (none found).
  * Recommended 25 M, range 15–35 M, low confidence — research/08; examples not escalated to 2026. */
 export const JUNCTION = 25_000_000;
+/** Scenario-declared connection of our route's end to a retained road (research/28). Inside the zone,
+ * our earthworks over THAT road are the junction's own works, paid by `cost`; anything else still counts.
+ * - roundabout arm: TP 135 (2017) §1.7.1 places the splitter island over 5–25 m of the arm before the
+ *   entry; the upper bound is the arm length that belongs to the roundabout design.
+ * - merge (end-to-end join onto a retained carriageway): PROVISIONAL. ČSN 73 6102 tab. 35 rows for
+ *   80/90 km/h were not verified; 90 m is the end taper (Lz) of a documented 130 km/h connector (MD
+ *   technical report), used as an upper bound for a slower road.
+ * Price: the all-in through-road junction allowance above (research/08, low confidence); no sourced
+ * item for an arm on an existing roundabout or a merge, so both are PROVISIONAL reuses of it. */
+export const ENDPOINT_JUNCTIONS = {
+  'roundabout-arm': { zone: 25, cost: JUNCTION, source: 'TP 135 (2017) §1.7.1 arm splitter island ≤ 25 m; junction allowance, research/08 (PROVISIONAL)' },
+  merge: { zone: 90, cost: JUNCTION, source: 'PROVISIONAL taper Lz 90 m (130 km/h connector, MD report); junction allowance, research/08 (PROVISIONAL)' },
+} as const;
+export type EndpointJunctionKind = keyof typeof ENDPOINT_JUNCTIONS;
 /** Simple sjezd onto the service link, NOT onto the class-I road. Very low confidence — research/13. */
 export const ACCESS = 500_000;
 const LOCAL_ROAD = {
