@@ -157,12 +157,9 @@ describe('one physical formation and fail-closed mode dispatch', () => {
   });
 
   it('makes it impossible to dispatch railway/motorway through a legacy-road capability', () => {
-    for (const mode of ['railway', 'motorway'] as const) {
-      const capability = modeCapability(mode);
-      expect(capability.scoring).toBe(false);
-      expect(capability.kernel).not.toBe('legacy-road');
-      expect(capability.missing.length).toBeGreaterThan(0);
-    }
+    // M1: motorway and railway score only through their own kernels, never the road one.
+    expect(modeCapability('motorway').kernel).toBe('paired-corridor');
+    expect(modeCapability('railway').kernel).toBe('conventional-rail');
     expect(() => modeCapability('tram' as 'road')).toThrow(/Unknown/);
   });
 });

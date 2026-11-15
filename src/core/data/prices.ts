@@ -3,8 +3,11 @@
 // research/data/spk-cn-2026-oceneni.csv; land: research/07-property-land.md; earthworks:
 // research/09-noise-earthworks-urban.md §3. PROVISIONAL marks a placeholder or game heuristic.
 
-/** Bump whenever prices or cost rules change: scores saved under an older model are not comparable. */
-export const COST_MODEL_VERSION = 19;
+/** Bump whenever prices or cost rules change: scores saved under an older model are not comparable.
+ * 20: motorway and railway scoring enabled (paired / split D 27.5 corridors: motorway norms, no level
+ * junctions, motorway noise source; R1/R2 railways: SPOŽES prices, CNOSSOS train noise); road bills
+ * unchanged (eval-regression identical). */
+export const COST_MODEL_VERSION = 20;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
@@ -59,7 +62,8 @@ export const MATERIAL_VALUE = {
 
 /** Earthworks the SFDI road norm already includes per km (research/00 §3.1) */
 export const NORM_EARTHWORK_ALLOWANCE = {
-  cutPerKm: { motorway: 70_000, I: 40_000, II: 20_000 } as Record<string, number>,
+  // One direction of a split motorway: 60 % of the motorway allowance, like its 60 % norm (SPK p. 7).
+  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000 } as Record<string, number>,
   fillShareOfCut: 0.85,
   /** share of cut that is unsuitable: hauled to a tip ≤ 10 km and replaced from a borrow pit (norm
    * assumption; applied identically to the allowance and to the player's design) */

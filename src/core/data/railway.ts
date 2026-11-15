@@ -39,3 +39,54 @@ export const RAILWAY_EVIDENCE = {
    */
   newLineNoise: { dayDb: 60, nightDb: 55 },
 } as const;
+
+/** SFDI SPOŽES 2026 (study-stage railway price book), functional workbook 260429, sheet "Tabulka
+ * propočtu", CU2026, CZK excl. VAT; personally checked against the downloaded workbook (research/32).
+ * Item codes in comments. Per metre/km of TRACK unless the unit says route. */
+export const SPOZES = {
+  trackPerM: 22_000, // E02 Kolej, nová, štěrkové lože (m koleje)
+  layersPerM: 12_300, // F03 Konstrukční vrstvy pražcového podloží, do 160 km/h (m koleje)
+  ditchPerM: 2_700, // F09 Odvodnění (zpevněný příkop) (bm)
+  catenaryAcPerKm: 13_310_300, // N04 Trakční vedení, střídavá soustava (trať) (km koleje)
+  signallingSinglePerKm: 3_751_100, // A04 TZZ - jednokolejná trať (km tratě)
+  signallingDoublePerKm: 5_921_800, // A05 TZZ - dvoukolejná trať (km tratě)
+  etcsPerKm: 2_605_100, // A09 ETCS (km koleje)
+  cablesPerKm: 3_495_300, // B02 Sdělovací kabelizace v trati (km tratě)
+  gsmrPerKm: 5_056_300, // B10 Rádiový systém GSM-R (km tratě)
+  utilitiesPerKm: 4_952_600, // I02 Přeložky sítí v řídce zastavěném území (km tratě)
+  utilitiesUrbanPerKm: 14_965_800, // I01 … v hustě zastavěném území (km tratě)
+  bridgeLongPerM2: 173_400, // H02 Nový železniční most - nad 40 m, estakáda (m²)
+  tunnelSinglePerKm: 847_500_000, // J01 Tunel 1-kolejný v extravilánu (bm)
+  tunnelSingleUrbanPerKm: 1_194_900_000, // J02 … v intravilánu
+  tunnelDoublePerKm: 1_920_900_000, // J03 Tunel 2-kolejný v extravilánu (bm)
+  tunnelDoubleUrbanPerKm: 2_818_300_000, // J04 … v intravilánu
+  /** Sheet "Databaze přirážek" P1, novostavba (lower study detail): railway substructure (F) +10 %,
+   * bridges (H) and tunnels (J) +13 %; track, systems and catenary 0 %. P2 (environment, extravilán) 0. */
+  markup: { substructure: 0.10, bridges: 0.13, tunnels: 0.13 },
+} as const;
+
+/** PROVISIONAL track-centre distance on open line ≤ 160 km/h: Plášek (VUT 2009) p. 42, 4.0 m; current
+ * SŽ S11 / ČSN 73 6320 values not verified (research/34 §4). Double-track formation = single + this. */
+export const TRACK_CENTRES_M = 4.0;
+
+/** Route-km price of a new electrified (25 kV AC) line: track, sleeper-bed layers, a lined ditch on
+ * each side, catenary, line signalling, ETCS, line cables, GSM-R and utility relocations (sparse).
+ * NOT included (not modelled): stations, turnouts, traction substations and feeders, buildings.
+ * Earthworks, land, bridges and tunnels are measured separately by the game. */
+export function railRouteBasePerKm(tracks: 1 | 2, urban = false): number {
+  const s = SPOZES;
+  return railEverywherePerKm(tracks, urban) + (tracks * s.layersPerM * 1000 + 2 * s.ditchPerM * 1000) * (1 + s.markup.substructure);
+}
+/** The part of the route-km price that bridges and tunnels carry too: track, catenary, ETCS, signalling,
+ * cables, GSM-R and utility relocations (sleeper-bed layers and ditches are ground-only, SPOŽES F). */
+export function railEverywherePerKm(tracks: 1 | 2, urban = false): number {
+  const s = SPOZES;
+  return tracks * (s.trackPerM * 1000 + s.catenaryAcPerKm + s.etcsPerKm) + (tracks === 1 ? s.signallingSinglePerKm : s.signallingDoublePerKm)
+    + s.cablesPerKm + s.gsmrPerKm + (urban ? s.utilitiesUrbanPerKm : s.utilitiesPerKm);
+}
+
+/** TSI INF (1299/2014 consolidated 2023) annex §4.2.3.3: main-track maximum gradients "shall be defined
+ * taking into account the characteristics of the traffic" — a project parameter, no general number.
+ * For a new mixed passenger + freight line the game uses 12.5 ‰, the value SŽDC's feasibility study of
+ * the new Prague link adopted ("maximální podélný sklon 12,5 ‰", Čech 2018 p. 7; research/34 §7). */
+export const RAIL_MAX_GRADIENT = 0.0125;

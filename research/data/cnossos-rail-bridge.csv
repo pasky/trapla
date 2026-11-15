@@ -1,0 +1,25 @@
+table,source,source_date,annex_table,parameter,frequency_hz,bridge_10_dBA,bridge_15_dBA
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,50,85.2,90.1
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,63,87.1,92.1
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,80,91.0,96.0
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,100,94.0,99.5
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,125,94.4,99.9
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,160,96.0,101.5
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,200,92.5,99.6
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,250,96.7,103.8
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,315,97.4,104.5
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,400,99.4,106.5
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,500,100.7,107.8
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,630,102.5,109.6
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,800,107.1,116.1
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,1000,109.8,118.8
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,1250,112.0,120.9
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,1600,107.2,109.5
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,2000,106.8,109.1
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,2500,107.3,109.6
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,3150,99.3,102.0
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,4000,91.4,94.1
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,5000,86.9,89.6
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,6300,79.7,83.6
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,8000,75.1,79.0
+CNOSSOS-EU Table G-7 LH_bridge_i,Commission Delegated Directive (EU) 2021/1226 OJ L 269 28 July 2021 pp.65-142,2021-07-29,G-7,LH_bridge_i,10000,70.8,74.7

@@ -1,5 +1,5 @@
 import './scenario-picker.css';
-import { SCENARIOS, type ScenarioParams } from '../core/data/scenario';
+import { PRESETS, SCENARIOS, type ScenarioParams } from '../core/data/scenario';
 import { hasProjectSave } from '../project-store-contract';
 
 export interface ScenarioPickerOptions {
@@ -51,9 +51,13 @@ export async function scenarioAvailable(id: string): Promise<boolean> {
  * Missing packs stay here with a build instruction instead of starting a broken terrain view.
  * Continue is advisory only: loading/migration and save protection belong to the store.
  */
-export async function pickScenario(options: ScenarioPickerOptions = {}): Promise<string> {
-  const requested = new URLSearchParams(location.search).get('scenario');
-  if (requested && Object.hasOwn(SCENARIOS, requested) && await scenarioAvailable(requested)) return requested;
+export interface PickedScenario { scenarioId: string; presetId: string | null }
+export async function pickScenario(options: ScenarioPickerOptions = {}): Promise<PickedScenario> {
+  const params = new URLSearchParams(location.search), requested = params.get('scenario');
+  const requestedPreset = params.get('preset');
+  const known = requested && Object.hasOwn(SCENARIOS, requested)
+    && (!requestedPreset || PRESETS.some(p => p.id === requested && (p.presetId ?? p.id) === requestedPreset));
+  if (known && await scenarioAvailable(requested)) return { scenarioId: requested, presetId: requestedPreset };
   const root = element('main', '', 'scenario-picker');
   root.setAttribute('aria-labelledby', 'scenario-picker-heading');
   const content = element('div', '', 'scenario-picker-content');
@@ -71,7 +75,7 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
   heading.tabIndex = -1;
   heading.focus();
   return new Promise((resolve) => {
-    for (const scenario of Object.values(SCENARIOS)) {
+    for (const scenario of PRESETS) {
       const card = element('article', '', 'scenario-picker-card');
       const details = scenario.picker;
       card.append(element('p', details?.kind ?? 'Class I road', 'scenario-picker-kind'),
@@ -86,9 +90,12 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
       button.addEventListener('click', () => {
         const url = new URL(location.href);
         url.searchParams.set('scenario', scenario.id);
+        // The road exercise keeps its plain link; other missions on the same map name their preset.
+        if (scenario === SCENARIOS[scenario.id]) url.searchParams.delete('preset');
+        else url.searchParams.set('preset', scenario.presetId ?? scenario.id);
         history.replaceState(null, '', url);
         root.remove();
-        resolve(scenario.id);
+        resolve({ scenarioId: scenario.id, presetId: scenario === SCENARIOS[scenario.id] ? null : scenario.presetId ?? null });
       });
       actions.append(button);
       card.append(note, actions);

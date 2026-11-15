@@ -27,10 +27,47 @@ export const PROVISIONAL_NORMS = {
   verticalRadiiNote: 'older edition of ČSN 73 6101, not confirmed for 2018; 90 km/h uses the 100 km/h column',
 };
 
-export function speedNorms(speed: number): SpeedNorms {
-  const n = SPEED_NORMS[speed];
+/** Motorway design speeds: D 27.5 base 130, lowered by 10 or 20 in justified cases (Radimský 2019 slide 4).
+ * Radii at 6 % superelevation and no-superelevation radii: Radimský slide 6 (data/motorway.ts).
+ * Transition minimum = vn metres (slide 15; runoff length not modelled, as for roads).
+ * Vertical radii: the 2018 table is not public (research/22 §2, /33 §1, §6), so PROVISIONAL older-edition
+ * values, as for the road rows: crest = ČSN 73 6101:2004 "Rv zast. dovolené" 15,000 / 12,000 / 10,000 m
+ * at 130 / 120 / 110 (reproduced in Mahdal, VUT 2012, p. 8; research/33 §6). Sag: the older VUT
+ * "Aplikace ČSN 73 6101" p. 11 gives 5,000 m at 120 only; 110 uses it (conservative); 130 has no older
+ * column found and reuses 5,000 m: UNVERIFIED, may be too lenient at 130. */
+export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
+  130: { speed: 130, minRadius: 840, noSuperelevationRadius: 2420, minTransition: 130, minCrestRadius: 15000, minSagRadius: 5000 },
+  120: { speed: 120, minRadius: 690, noSuperelevationRadius: 2060, minTransition: 120, minCrestRadius: 12000, minSagRadius: 5000 },
+  110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 10000, minSagRadius: 5000 },
+};
+
+/** Railway (new conventional mixed line, ≤ 160 km/h), PROVISIONAL older teaching values (research/23, /34;
+ * current ČSN 73 6360-1 tables not public):
+ * - min radius from the cant envelope: R ≥ 11.8·V² / (D + I) with ordinary cant D 150 mm and deficiency
+ *   I 80 mm (VUT 2009 pp. 4, 9); a 100 km/h freight train then stays within the 80 mm excess (p. 7);
+ * - easing curve = linear cant ramp n = 10·V at the full 150 mm: L = 10·V·150/1000 (p. 14), always needed;
+ * - vertical rounding: max(2,000 m, 0.4·V²) (Plášek, Úvod do železničních staveb, 2009, p. 28) for crests
+ *   and dips. Train noise and the freight ruling gradient have no sourced Czech values: not checked. */
+const railNorms = (v: number): SpeedNorms => {
+  const rv = Math.max(2000, Math.ceil(0.4 * v * v / 100) * 100);
+  return { speed: v, minRadius: Math.ceil(11.8 * v * v / (150 + 80)), noSuperelevationRadius: Infinity,
+    minTransition: 10 * v * 150 / 1000, minCrestRadius: rv, minSagRadius: rv };
+};
+export const RAIL_SPEED_NORMS: Record<number, SpeedNorms> = { 160: railNorms(160), 140: railNorms(140), 120: railNorms(120) };
+
+/** Norm table for a category: motorway and railway rows are separate (never borrowed from road rows). */
+function normTable(category?: CategoryId): Record<number, SpeedNorms> {
+  const mode = category ? CATEGORIES[category].mode : 'road';
+  return mode === 'motorway' ? MOTORWAY_SPEED_NORMS : mode === 'railway' ? RAIL_SPEED_NORMS : SPEED_NORMS;
+}
+export function speedNorms(speed: number, category?: CategoryId): SpeedNorms {
+  const n = normTable(category)[speed];
   if (!n) throw new Error(`no norms for design speed ${speed}`);
   return n;
+}
+/** Design speeds the category may be built for, fastest first. */
+export function designSpeeds(category: CategoryId): number[] {
+  return Object.keys(normTable(category)).map(Number).sort((a, b) => b - a);
 }
 
 // ---- horizontal curve rules (table-driven; rail / motorway rows can differ later) ----------------
@@ -39,6 +76,7 @@ export function speedNorms(speed: number): SpeedNorms {
 // Older edition, not independently verified for 2018. Omission threshold below uses actual model L,
 // whereas VUT prescribes 1.5vn for that calculation: this is a game concession (research/15).
 import type { HorizontalRules } from '../horizontal';
+import { CATEGORIES, type CategoryId } from './categories';
 
 export interface HorizontalNormRow {
   /** a circular arc needs no transition when the transition would shift it by at most this: ΔR = L²/(24·R), m */
@@ -49,15 +87,23 @@ export interface HorizontalNormRow {
   minReverseStraight: number;
 }
 
+// Motorway rows apply the same VUT rules (shift 0.25 m, ratio 2, reverse straight 2·vn) at motorway vn.
 export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
+  130: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 260 },
+  120: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 240 },
+  110: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 220 },
   90: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 180 },
   80: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 160 },
   70: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 140 },
 };
 
 /** Everything the horizontal geometry and its checks need for a design speed. */
-export function horizontalRules(speed: number): HorizontalRules {
-  const n = speedNorms(speed), h = HORIZONTAL_NORMS[speed];
+export function horizontalRules(speed: number, category?: CategoryId): HorizontalRules {
+  const n = speedNorms(speed, category);
+  // Track: every curve gets its cant ramp (no omission threshold); compound ratio as for roads (PROVISIONAL).
+  if (category && CATEGORIES[category].mode === 'railway')
+    return { minRadius: n.minRadius, transition: n.minTransition, plainRadius: Infinity, compoundRatio: 2, reverseStraight: 0 };
+  const h = HORIZONTAL_NORMS[speed];
   if (!h) throw new Error(`no horizontal rules for design speed ${speed}`);
   return {
     minRadius: n.minRadius,

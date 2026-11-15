@@ -34,3 +34,9 @@ export function motorwayHorizontalEvidence(speed: number) {
   return { minRadiusAtSixPercent: row[0], noSuperelevationRadius: row[1], speedTransitionFloor: speed,
     maxGradient: null, minCrestRadius: null, minSagRadius: null, complete: false as const };
 }
+
+/** TP 133 (MD 2013), personally checked: V 4 edge line 0.25 m wide on a divided road (§2 "Okraj
+ * vozovky"), placed at the lane edge; lane lines 0.125 m (§3.1); dashed lines on motorways are 6 m
+ * dashes with double gaps (§3.2: "Na dálnici a SMV se úsečka provádí v délce 6 m … Délka mezery je
+ * dvojnásobná"). */
+export const MOTORWAY_MARKINGS = { edgeLine: 0.25, laneLine: 0.125, dash: 6, gap: 12 } as const;

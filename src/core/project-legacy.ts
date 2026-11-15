@@ -3,6 +3,8 @@ import type { Design, EvalContext } from './evaluate';
 import { NOISE } from './data/urban';
 import type { EndpointPair, MissionRequirements, ProjectDesign, RoadOperations, RouteDesign } from './project';
 import { assertProjectDesign } from './project-validation';
+import { railwayDesign, replaceRailwayFromDesign } from './project-railway';
+import { carriagewayDesign, corridorDesign, corridorOfRoute, replaceCarriagewayFromDesign, replaceCorridorFromDesign } from './project-motorway';
 
 export interface LegacyProjectContext {
   scenarioId: string; presetId: string; packId: string; objectData: string; transportData: string | null;
@@ -59,6 +61,15 @@ export function projectFromLegacyDesign(value: unknown, context: LegacyProjectCo
  * foreign-source remapping or mode physics. Building choices have exactly one project owner. */
 export function legacyDesignForRoute(project: ProjectDesign, routeId: string): Design {
   const r = project.routes.find(r => r.id === routeId);
+  // A paired motorway direction edits the corridor's common spine (both directions move together).
+  if (r?.kind === 'motorway' && r.alignment.kind === 'corridor') {
+    const corridor = corridorOfRoute(project, routeId);
+    if (!corridor || corridor.mode !== 'paired') throw new Error('Route needs a non-legacy kernel');
+    return corridorDesign(project, corridor);
+  }
+  // A separate direction of a split motorway has its own bends and heights.
+  if (r?.kind === 'motorway' && r.alignment.kind === 'pi') return carriagewayDesign(project, r);
+  if (r?.kind === 'railway' && r.alignment.kind === 'pi') return railwayDesign(project, r);
   if (!r || r.kind !== 'road' || r.specification.policy !== 'legacy-road' || r.specification.crossSection === 'existing'
     || r.alignment.kind !== 'pi' || !['auto', 'manual'].includes(r.alignment.vertical.kind)) throw new Error('Route needs a non-legacy kernel');
   const a = r.alignment, v = a.vertical;
@@ -77,6 +88,23 @@ export function legacyDesignForRoute(project: ProjectDesign, routeId: string): D
 /** Apply legacy editing without replacing route identity/endpoints/operations or another route's controls. */
 export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, design: Design): ProjectDesign {
   const old = project.routes.find(r => r.id === routeId);
+  if (old?.kind === 'motorway' && old.alignment.kind === 'corridor') {
+    const corridor = corridorOfRoute(project, routeId);
+    if (!corridor) throw new Error('Unknown corridor');
+    const next = replaceCorridorFromDesign(project, corridor.id, design);
+    assertProjectDesign(next);
+    return next;
+  }
+  if (old?.kind === 'railway' && old.alignment.kind === 'pi') {
+    const next = replaceRailwayFromDesign(project, routeId, design);
+    assertProjectDesign(next);
+    return next;
+  }
+  if (old?.kind === 'motorway' && old.alignment.kind === 'pi') {
+    const next = replaceCarriagewayFromDesign(project, routeId, design);
+    assertProjectDesign(next);
+    return next;
+  }
   if (!old || old.kind !== 'road') throw new Error('Unknown road');
   if (design.objectData && design.objectData !== project.objectData) throw new Error('Foreign object binding needs repair');
   // Refuse silent flattening of imported paths/corridor children before editing through old widgets.

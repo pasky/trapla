@@ -56,7 +56,7 @@ function materializedEndpoints(route: RouteDesign, axis: OffsetPath, profile: re
  * R belongs only to forward R; L belongs only to reverse R. Copying both to each child would
  * manufacture two median walls. Inactive out-of-spine ranges stay in retainedSpine for rejoin.
  */
-function childControls(controls: RouteControls, axis: OffsetPath): RouteControls {
+export function childControls(controls: RouteControls, axis: OffsetPath): RouteControls {
   const last = axis.correspondence[axis.correspondence.length - 1].spineEnd;
   const range = (s0: number, s1: number) => {
     const lo = Math.max(0, s0), hi = Math.min(last, s1);

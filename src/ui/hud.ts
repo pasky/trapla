@@ -8,8 +8,9 @@ import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
 import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
-import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
-import { speedNorms } from '../core/data/norms';
+import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
+import { designSpeeds, speedNorms } from '../core/data/norms';
+import { DIRECTIONS_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
@@ -34,6 +35,8 @@ export interface HudEvents {
   onSpeed?: (s: number) => void;
   onProfileMode?: (mode: 'auto' | 'manual') => void;
   onReset?: () => void;
+  /** motorway: edit both directions together, or one of them on its own */
+  onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
   onExaggeration?: (e: number) => void;
@@ -168,6 +171,8 @@ export class Hud {
     const load = this.root.querySelector<HTMLButtonElement>('#load-best'); if (load) load.onclick = () => this.ev.onLoadBest?.();
   }
   private range: StationRange | null = null;
+  /** one direction of a split motorway: the cost card shows that direction alone */
+  private oneDirection = false;
   /** violations whose explanation the player unfolded */
   private openWhy = new Set<string>();
   /** the violations the list shows: the last full result's (a drag preview keeps them) */
@@ -203,10 +208,17 @@ export class Hud {
       <div id="context" class="context"></div>
       ${fold('viol', 'Violations', '<ol id="viol"></ol>', '<span class="count" id="viol-count"></span>')}
       ${fold('cost', '<span id="cost-h">Cost</span>', '<table id="breakdown"></table>')}
-      ${fold('design', 'Road', `
+      ${fold('design', '<span id="design-h">Road</span>', `
         <label>Type <select id="cat" title="Wider roads cost more, carry more traffic">${PLAYABLE_CATEGORIES.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('')}</select></label>
         <label>Design speed <select id="speed" title="Faster: shorter travel time, wider curves">${[90, 80, 70].map((s) => `<option value="${s}">${s} km/h</option>`).join('')}</select></label>
         <div class="norms" id="norms"></div>
+        <div class="mode" id="directions" hidden>
+          <div class="mode-h"><b>${DIRECTIONS_TEXT.heading}</b></div>
+          <div class="seg" role="radiogroup" aria-label="Directions">
+            <button type="button" id="dir-both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" id="dir-forward" role="radio"></button><button type="button" id="dir-reverse" role="radio"></button>
+          </div>
+          <p id="dir-explain" class="mode-explain"></p>
+        </div>
         <div class="mode">
           <div class="mode-h"><b>Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
@@ -229,7 +241,9 @@ export class Hud {
         </ul>
         <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>
         <label class="exag">Relief <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
-    this.goalText = `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
+    this.goalText = sc.mode === 'motorway'
+      ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
+      : `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
     this.context = this.$('context');
     this.decisions = this.$('decisions');
     this.context.innerHTML = '<section class="card ctx inspector" id="inspector"></section>';
@@ -246,6 +260,7 @@ export class Hud {
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
+    for (const which of ['both', 'forward', 'reverse'] as const) this.$(`dir-${which}`).onclick = () => this.ev.onDirection?.(which);
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
     // the first listed item (project mode: the first real violation, else the first not-checked item)
     this.$('chip-viol').onclick = () => {
@@ -309,13 +324,31 @@ export class Hud {
     });
   }
 
+  /** Type and speed lists follow the route's kind: a motorway offers motorway speeds, never road widths. */
+  private optionsFor = '';
   setDesign(d: Design) {
-    this.$<HTMLSelectElement>('cat').value = d.category;
-    this.$<HTMLSelectElement>('speed').value = String(d.speed);
-    const n = speedNorms(d.speed);
+    const cat = CATEGORIES[d.category], speeds = designSpeeds(d.category), key = `${cat.mode}|${d.category}|${speeds.join(',')}`;
+    const catSelect = this.$<HTMLSelectElement>('cat'), speedSelect = this.$<HTMLSelectElement>('speed');
+    if (key !== this.optionsFor) {
+      this.optionsFor = key;
+      const types: CategoryId[] = cat.mode === 'road' ? PLAYABLE_CATEGORIES : cat.mode === 'railway' ? ['R1', 'R2'] : [d.category];
+      catSelect.innerHTML = types.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('');
+      catSelect.disabled = types.length < 2;
+      speedSelect.innerHTML = speeds.map((s) => `<option value="${s}">${s} km/h</option>`).join('');
+      this.$('design-h').textContent = cat.mode === 'motorway' ? 'Motorway' : cat.mode === 'railway' ? 'Railway' : 'Road';
+    }
+    catSelect.value = d.category;
+    speedSelect.value = String(d.speed);
+    const n = speedNorms(d.speed, d.category), grade = cat.maxGradient?.[this.sc.terrainClass] ?? this.sc.maxGradient;
+    const pct = (g: number) => `${Math.round(g * 1000) / 10}`;
     const norms = this.$('norms');
-    norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${(this.sc.maxGradient * 100).toFixed(0)} %</b>`;
-    norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${(this.sc.maxGradient * 100).toFixed(0)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+    if (cat.mode === 'railway') {
+      norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${Math.round(grade * 10000) / 10} ‰</b>`;
+      norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; vertical rounding radius ≥ ${num(n.minCrestRadius)} m.`;
+    } else {
+      norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
+      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+    }
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
       b.classList.toggle('on', d.profileMode === mode);
@@ -327,6 +360,21 @@ export class Hud {
       : 'Drag the ◆ points in the profile; double-click the line adds one.';
     this.$('mode-help').title = auto ? AUTO_LONG : MANUAL_LONG;
     this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'Auto height' : 'height by hand'}`;
+  }
+
+  /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */
+  setDirections(state: { split: boolean; active: 'forward' | 'reverse'; places: { forward: string; reverse: string } } | null) {
+    const box = this.$('directions');
+    box.hidden = !state; this.oneDirection = !!state?.split;
+    if (!state) return;
+    const on = state.split ? state.active : 'both';
+    for (const which of ['both', 'forward', 'reverse'] as const) {
+      const b = this.$(`dir-${which}`);
+      if (which !== 'both') { b.textContent = DIRECTIONS_TEXT.towards(state.places[which]); b.title = DIRECTIONS_TEXT.oneTitle(state.places[which]); }
+      else b.title = DIRECTIONS_TEXT.bothTitle;
+      b.classList.toggle('on', on === which); b.setAttribute('aria-checked', String(on === which));
+    }
+    this.$('dir-explain').textContent = state.split ? DIRECTIONS_TEXT.separate : DIRECTIONS_TEXT.together;
   }
 
   setProfileBusy(busy: boolean) {
@@ -361,7 +409,7 @@ export class Hud {
     time.className = `chip ${tOk ? 'ok' : 'bad'}`;
     time.innerHTML = `${tOk ? '✓' : '✗'} ${num(r.travelMin, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
     const sel = this.range && this.range.s0 < r.length ? rangeSummary(r, this.range.s0, Math.min(this.range.s1, r.length)) : null;
-    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : `Cost <small>${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
+    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : `Cost <small>${this.oneDirection ? 'this direction · ' : ''}${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
       const v = g.of(c);

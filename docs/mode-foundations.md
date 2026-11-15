@@ -117,3 +117,121 @@ integration, ballast-ground contact, split-invariant track quantities and unknow
 An independent review of the first geometry commit found three edge cases; all were fixed and covered
 before this checkpoint. Full project/browser/GPU integration gates remain necessary once consumers wire
 these modules into the app; no browser is needed to test these currently unimported pure kernels.
+
+# M1 plan: playable, scored paired motorway and railway (2026-11-15)
+
+Goal: a motorway and a railway the player can build and that get a real price and verdict, built on the
+legacy route kernel through an explicit **mode policy row** (category), never by pretending a mode is a
+road width. Increments, each committed green:
+
+1. **Mode policy rows.** `data/categories.ts` rows gain `mode`, per-speed norms (horizontal, vertical,
+   max gradient), structure/tunnel rows, noise source and `gradeSeparated`. Road rows and D11 bills stay
+   bit-exact. Motorway: D27.5 VL1 section, Radimský radii, vertical/grade per research/33 (current values
+   where found, otherwise PROVISIONAL older-edition values flagged like today's road rows). Railway:
+   single/double track per research/23, /34; prices per research/32 or explicitly unpriced.
+2. **Paired motorway kernel.** One evaluation on the corridor spine (shared formation once, SPK D27.5
+   whole-category norm, D27.5 bridge row = average of both decks, two tunnel tubes), no at-grade
+   junctions anywhere (every crossed road is bridged, passes over us, goes through an underpass or is
+   rerouted to such a crossing; never to our ends), motorway noise (directional traffic, no doubled AADT).
+   Ends are scenario ports (the motorway continues beyond the map); anything else is unpriced.
+   `modeCapability('motorway')` becomes scoring for the paired corridor policy; COST_MODEL_VERSION 19.
+3. **Project wiring.** A motorway is a paired corridor + two directional child routes (C0). The road
+   widgets edit the spine through the active-route adapter; `evaluateProject` evaluates a corridor once
+   and publishes it under the corridor's children; the bill is the corridor's, never a sum of children.
+4. **Scenarios.** Separate `d3-motorway` / `d35-motorway` presets (own save namespaces) next to the
+   unchanged road presets; D11 untouched and bit-exact.
+5. **Rendering + UI.** Two carriageways with median and markings, twin decks, two tunnel portals; Build
+   menu Motorway / Railway; mode-appropriate cards and profile; plain words in `terms.ts`.
+6. **Split / rejoin.** Whole-corridor split per C0 (atomic helpers): each direction becomes its own
+   editable alignment and profile (offset bends with exact radii, mapped heights); Rejoin is an explicit
+   undoable reset. Each direction is engineered as its own carriageway body. Priced only once the union
+   of the two bodies (shared median earthworks, combined noise, one building owner) is engineered;
+   until then split corridors are shown, checked and listed as unpriced (no VALID, no best).
+7. **Railway kernel.** Track policy (cant-derived radii, rail gradient/vertical curves, trackbed and
+   formation quantities, rail bridges/tunnels, no level crossings: every road crossing grade-separated),
+   rail noise per research/32 or explicitly unpriced; scored only if every needed check and price exists.
+8. Gates: full AGENTS.md list, drag-perf all modes plus a motorway design, screenshots (next free numbers).
+
+## M1 status (implemented, 2026-11-15)
+
+**Motorway (scored).** `core/project-motorway.ts`, rows `D27.5` / `D27.5-1` in `data/categories.ts`.
+- A motorway is a corridor + two directional child routes (C0). Paired: ONE kernel evaluation of the
+  spine with the D 27.5 row (27.5 m common formation, SPK whole-category norm, D27.5 bridge row priced on
+  the spine = average of both decks, two tunnel tubes); the result is published under both directions and
+  the bill is `cost.shared` (never a sum of directions). Road widgets edit the spine through the
+  active-route adapter (`project-legacy.ts`).
+- Norms: radii 840/690/560 m (Radimský 2019), easing ≥ vn; crest 15,000/12,000/10,000 m (ČSN 73 6101:2004
+  via Mahdal 2012, research/33 §6); sag 5,000 m and max grade 4 % / 4.5 % older-edition PROVISIONAL (130 km/h
+  sag UNVERIFIED). No level junctions (`resolveCrossings(..., gradeSeparated)`): crossed roads get a bridge,
+  an overbridge, an underpass or a reroute to such a crossing, never to the motorway's ends.
+- Noise: Manuál 2018 v2020 motorway rows (LOA/LNA, tab. 7 night shares, tab. 9/15 lane shares and speeds),
+  `road-noise.ts` `MOTORWAY_NOISE`. One equivalent source per corridor (≈ two carriageways for receivers
+  beyond 20 m); two directional sources are requested from the finite-segment noise rework.
+- Ends are the mission's scenario ports (motorway continues off-map; SPK's norm includes earth-built
+  interchange branches at 1 per 7 km). Other connections stay unpriced.
+- Presets `d3-motorway` (D 27.5/120, research/25) and `d35-stage1-motorway` (built as D 27.5; the real
+  section is D 26.0, no SPK row), own saves; traffic prior = CSD 2020 national mean motorway AADT 30,700,
+  heavy share 22.56 % (TP 219 motorway mix).
+- Rendering: two carriageways (TP 133 markings), grass median with concrete barrier, twin decks (open
+  median), one portal per tube.
+
+**Split / rejoin (scored).** HUD "Both directions / Towards A / Towards B". Split = one undoable edit:
+each direction gets the exact offset bends (radii R ± 6.875 m, never below its own Auto radius) and the
+shared grade line mapped to its chainage (By hand). Each is evaluated as `D27.5-1` (half formation incl. half
+median, 60 % SPK norm = SPK "half of a divided road", ½ bridge row per m², one tube). `splitLedger` then
+counts once what both bodies counted: where the crowns touch at the same height the formation is one
+D 27.5 body (50 % norm each), overlapping embankment/cutting volumes, land and houses. A slope of one
+direction standing on (or undermining) the other carriageway is a violation with a concrete distance.
+Crossed roads where the directions run joined are built once: the forward direction prices and draws
+one structure spanning both bodies (the other mirrored), the reverse direction reuses it at no cost.
+Noise per direction uses the whole corridor's traffic (safe upper bound, ≤ +3 dB where only one direction
+is near); houses beside joined stretches belong to the outer direction, and where "joined" in plan is not
+one body at one height the ledger reports noise as not checked. Join = explicit reset to the kept shared
+line (Undo restores the separate edits). Unchanged, a split prices like the pair on open ground (+0.06 %
+in the test) and ≈ 3 % above it on D3 (structure choices differ per direction near bridge ends and
+tunnel portals; reroutes of roads crossed several times). C0's `exact`/frozen helpers stay for materialised
+geometry; editable directions use ordinary bends (validation accepts `pi` for independent children).
+
+**Railway (scored).** Rows `R1`/`R2`, `core/project-railway.ts`, `core/rail-noise.ts`. Electrified new
+line ≤ 160 km/h: min radius 11.8·V²/(150+80) (cant envelope, VUT 2009), cant ramp easing 10·V·150/1000,
+vertical radius max(2,000, 0.4·V²) (Plášek 2009), max grade 12.5 ‰ (TSI INF §4.2.3.3 leaves it to the
+project; SŽDC new-link study value, research/34 §7), formation S3 X 6.2 m (+4.0 m track centres,
+PROVISIONAL), SPOŽES 2026 items (track, layers, ditches, catenary, signalling, ETCS, cables, GSM-R,
+utilities; H02 bridges, J01/J03 tunnels) with SPOŽES P1 markups (research/32). No level crossings (game
+rule). Train noise: CNOSSOS-EU rolling + traction source from the Annex II Appendix G tables, line
+propagation over hard ground, new-line limits 60/55 dB (research/35); compositions and train counts are
+explicit PROVISIONAL game priors. Rendering: ballast beds, sleepers and rails for one or two tracks.
+New railways join the project through the generic Build / drag-to-rebuild flow (any-road-editing).
+
+## M1 continuation notes (handoff, 2026-11-15 22:20)
+
+Branch `side-agent/motorway-rail` (worktree-0004), all committed; tsc / 550 tests / build / eval-regression
+(11 D11 fixtures identical) green. `side-agent/scenario-expansion` (e201845) is merged in (D3/D35 code);
+packs copied into `public/scenarios/` (d3, d35, i16-nova-paka, d11 transport sidecar).
+
+Done since: browser pass (screenshots 130–135, smoke, playtest, drag-perf all modes on D11 and on
+`--scenario d3 --preset d3-motorway`, plus `--split forward` bend/vpi): fixes = twin piers, tunnel portal face,
+by-hand heights carried along a plan change (`core/carry-heights.ts`, via `ActiveRouteStore.update`), motorway
+store keyed by the motorway mission (bests were never kept), split cost card says "this direction". Merged
+main at a2bd5a6 (crossing-links, detmath): cost model **20**, fixture re-stamped after checking the diff was
+the version alone; motorway/rail noise uses detmath.
+
+Pending, in order:
+1. **Build flow** (any-road-editing, not merged yet): hook Build → Motorway (`createMotorwayProject`-like
+   corridor creation at picked ends; non-port ends stay unpriced) and Build → Railway
+   (`createRailwayRoute(id, name, endpoints, tracks)`); railway rerouting = their generic drag-to-rebuild
+   with kind `railway` (we supply `project-railway.ts` kernel/rules), not a separate stub.
+2. **Noise contract** (noise-walls-seams, cost model 21): move motorway (two directional sources, half
+   traffic each on lane axes ±6.0 m; `MOTORWAY_NOISE` emission) and railway (`rail-noise.ts`
+   `railLinePower` per period, CNOSSOS source) onto its per-source per-storey day/night energy model;
+   then drop the split "full traffic per direction" bound and the `leftJoined` shield in evaluate.ts.
+
+Key code map: `core/project-motorway.ts` (corridor eval, split/rejoin, `splitLedger`, shared crossings via
+`EvalOptions.sharedCrossings`), `core/project-railway.ts`, `core/rail-noise.ts` + `data/cnossos-rail.ts`,
+`data/categories.ts` rows D27.5 / D27.5-1 / R1 / R2 (`markup`, `everywherePerKm`, `normShareOf`,
+`tunnelPerKm`), `data/norms.ts` (category-aware), `data/railway.ts` (SPOŽES), `road-noise.ts`
+(`MOTORWAY_NOISE`), `crossings.ts` (`gradeSeparated`), `ui/hud.ts` direction switch, `ui/active-route-store.ts`
+(paired edited as forward), `data/scenario.ts` presets `d3-motorway` / `d35-stage1-motorway`.
+Known limits: motorway sag 130 km/h UNVERIFIED; no interchanges (ends = ports); crossings near but not
+joined between split directions are separate structures; rail bridge deck width = formation (PROVISIONAL);
+rail traffic counts and compositions are game priors.

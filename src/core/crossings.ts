@@ -68,7 +68,7 @@ export interface CrossingGeometry {
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
-    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape';
+    code: 'spacing' | 'class' | 'ours' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape';
     actual?: number; required?: number; targetS?: number };
 }
 export interface CrossingResult {
@@ -77,6 +77,8 @@ export interface CrossingResult {
   /** Pack way index; optional only for legacy/synthetic callers. */
   roadId?: number;
   requestedType?: CrossingChoice;
+  /** Built once with the other direction of a split motorway (that direction owns, bills and draws it). */
+  shared?: true;
   issues?: CrossingIssue[];
   geometry?: CrossingGeometry;
   /** New grade minus crossed-road ground, m. */
@@ -192,7 +194,7 @@ const rank = Object.fromEntries(Object.keys(ROAD_CLASSES).map((key, i) => [key, 
  * visible and priced, but cannot become anchors for another road. */
 export function resolveCrossings(crossings: CrossingResult[], length: number, kind: ArrayLike<number>,
   footprint: ArrayLike<number>, urban: ArrayLike<number>, billingUrban: ArrayLike<number> = urban,
-  overrides: readonly CrossingOverride[] = []): CrossingIssue[] {
+  overrides: readonly CrossingOverride[] = [], gradeSeparated: false | 'motorway' | 'railway' = false): CrossingIssue[] {
   const issues: CrossingIssue[] = [];
   const issue = (c: CrossingResult, code: CrossingIssue['crossing']['code'], title: string, fix: string,
     actual?: number, required?: number, targetS?: number) => {
@@ -200,6 +202,8 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       rule: {
         spacing: 'ČSN 73 6101:2018: junctions at least 1.5 km apart, counting both ends of the route (also in town: a scenario assumption)',
         class: 'ČSN 73 6101: motorways and expressways are crossed only at a different level, with no direct access (research/08)',
+        ours: gradeSeparated === 'railway' ? 'Game rule: a new railway crosses roads only on bridges, under them or by rerouting them (no level crossings)'
+          : 'ČSN 73 6101: a motorway has no level junctions or direct access; other roads cross it on bridges, under it, or are rerouted to such a crossing (research/08)',
         depth: 'Game rule: a bridge over our road needs a cutting at least 6 m deep where the crossed road cannot be raised; a junction cannot lie in such a cutting',
         clearance: 'Game rule: our bridge needs 6 m above ordinary roads and 7.5 m above motorways; a junction cannot lie that high',
         structure: 'Game rule: the crossing choice and what our road does there (bridge, tunnel, earthworks) must agree',
@@ -214,7 +218,8 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   };
   const priority = [...crossings].sort((a, b) => rank[a.cls] - rank[b.cls] || a.s - b.s || a.i - b.i);
   const junctions = [0, length];
-  const anchors: { s: number; cls?: string; roadId?: number }[] = [{ s: 0 }, { s: length }];
+  // A grade-separated route (motorway) cannot take local traffic at its ends: no reroute leads there.
+  const anchors: { s: number; cls?: string; roadId?: number }[] = gradeSeparated ? [] : [{ s: 0 }, { s: length }];
   const separated = (c: CrossingResult) => overbridgePrice(c, footprint[c.i], urban[c.i]);
   for (const c of crossings) {
     c.type = 'atGrade'; c.cost = 0;
@@ -237,7 +242,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (choice !== 'bridge' && kind[c.i] !== KIND.earth) issue(c, 'structure', 'Your crossing choice clashes with our bridge or tunnel here',
       'Set this crossing back to Automatic, or change our bridge or tunnel here in the profile');
     // row.junction is an Auto candidate heuristic, not a ban on manually connecting local roads.
-    if ((choice === 'junction' || choice === 'reconnection') && row.noAtGrade)
+    if (choice === 'junction' && gradeSeparated)
+      issue(c, 'ours', gradeSeparated === 'railway' ? 'Our railway cannot cross a road at the same level' : 'Our motorway cannot have a level junction',
+        'Choose "Our bridge over it", "Its bridge over us", an underpass or "Cut and reroute"');
+    else if ((choice === 'junction' || choice === 'reconnection') && row.noAtGrade)
       issue(c, 'class', `A ${row.label} cannot meet our road at the same level`, 'Choose "Our bridge over it" with enough height, or "Its bridge over us" over a cutting at least 6 m deep');
     if (choice === 'bridge') {
       const need = row.noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight;
@@ -284,7 +292,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (!row.noAtGrade) anchors.push(c);
   }
   for (const c of priority) {
-    if (c.requestedType || c.type !== 'atGrade' || !ROAD_CLASSES[c.cls].junction || c.h <= -CROSSING_RULES.underDepth) continue;
+    if (gradeSeparated || c.requestedType || c.type !== 'atGrade' || !ROAD_CLASSES[c.cls].junction || c.h <= -CROSSING_RULES.underDepth) continue;
     if (junctions.every(s => Math.abs(c.s - s) >= CROSSING_RULES.junctionSpacing)) {
       c.type = 'junction'; c.cost = JUNCTION;
       junctions.push(c.s); anchors.push(c);
@@ -295,11 +303,11 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   const kept = (c: CrossingResult, a: { s: number; roadId?: number }) => c.viaTo !== undefined
     && (c.viaTo >= 0 ? a.roadId === c.viaTo : a.roadId === undefined && a.s === (c.viaTo === -1 ? 0 : length));
   const nearest = pending.map(c => {
-    let target = anchors[0], gap = Infinity, fixed = false;
+    let target = anchors[0] as (typeof anchors)[number] | undefined, gap = Infinity, fixed = false;
     for (const a of anchors) if (kept(c, a)) { target = a; gap = Math.abs(c.s - a.s); fixed = true; }
     if (!fixed) for (const a of anchors) if (compatible(c, a.cls)) {
       const d = Math.abs(c.s - a.s);
-      if (d < gap || (d === gap && a.s < target.s)) { gap = d; target = a; }
+      if (d < gap || (d === gap && a.s < target!.s)) { gap = d; target = a; }
     }
     return { c, target, gap, fixed };
   });
@@ -322,12 +330,17 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     const box = kind[c.i] === KIND.earth && underpassFits(c, footprint[c.i]) ? underpassPrice(c, footprint[c.i], urban[c.i]) : undefined;
     const linkTotal = gap <= CROSSING_RULES.linkMaxReach ? linkCost * surcharge + access : Infinity;
     const overTotal = over.cost * surcharge, boxTotal = box ? box.cost * surcharge : Infinity;
-    if (c.requestedType === 'reconnection' || (linkTotal < overTotal && linkTotal <= boxTotal)) {
+    if (c.requestedType === 'reconnection' && !target) {
+      // A grade-separated route has no crossing yet that a cut road could be led to: say so and keep
+      // the road over us so the result stays buildable and priced.
+      issue(c, 'reach', 'No crossing to reroute it to', 'Choose "Its bridge over us" or an underpass, or first build a bridge or underpass for another road nearby');
+      c.type = 'overbridge'; Object.assign(c, over);
+    } else if (c.requestedType === 'reconnection' || (target && linkTotal < overTotal && linkTotal <= boxTotal)) {
       c.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       const { linkCost: _linkCost, ...priced } = link;
-      Object.assign(c, priced); c.targetS = target.s; c.targetRoadId = target.roadId;
+      Object.assign(c, priced); c.targetS = target!.s; c.targetRoadId = target!.roadId;
       if (c.requestedType && gap > CROSSING_RULES.linkHardReach) issue(c, 'reach', 'Reroute would be too long',
-        `Choose "Its bridge over us" or an underpass, or make a crossing it can reach within ${CROSSING_RULES.linkHardReach} m along our road (now ${gap.toFixed(0)} m)`, gap, CROSSING_RULES.linkHardReach, target.s);
+        `Choose "Its bridge over us" or an underpass, or make a crossing it can reach within ${CROSSING_RULES.linkHardReach} m along our road (now ${gap.toFixed(0)} m)`, gap, CROSSING_RULES.linkHardReach, target!.s);
     } else if (box && boxTotal < overTotal) {
       c.type = 'underpass'; Object.assign(c, priced(box));
     } else {
@@ -337,7 +350,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       const d = Math.abs(p.c.s - c.s);
       // a shaped reroute keeps leading where it led when the player shaped it
       if (kept(p.c, c)) { p.gap = d; p.target = c; p.fixed = true; }
-      else if (d < p.gap || (d === p.gap && c.s < p.target.s)) { p.gap = d; p.target = c; }
+      else if (d < p.gap || (d === p.gap && c.s < (p.target?.s ?? Infinity))) { p.gap = d; p.target = c; }
     }
   }
   return issues;
