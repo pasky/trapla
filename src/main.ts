@@ -230,9 +230,15 @@ async function main() {
     return legacyNet.nearestWay(x, y, Math.max(4, 4 * view.metresPerPixel)) !== undefined;
   };
   // a rebuilt stretch's ends carry their own drag handles (labelled), so the tick stays unlabelled
+  /** a side road's end on another road follows that road: its drawn end is where it was built */
+  const endAt = (end: 'a' | 'b') => {
+    const route = store.route, r = route && projectFull?.routes[route.id]?.legacy;
+    if (!route || route.endpoints[end].anchor.kind !== 'route' || !r) return route?.endpoints[end].position;
+    const i = end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], z: r.grade[i] };
+  };
   const activeEndpoints = () => ({
-    a: { ...(store.route?.endpoints.a.position ?? positionA), label: store.route?.role === 'mission' ? scenario.labels.a : store.route?.source ? '' : 'Start' },
-    b: { ...(store.route?.endpoints.b.position ?? positionB), label: store.route?.role === 'mission' ? scenario.labels.b : store.route?.source ? '' : 'End' },
+    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? scenario.labels.a : store.route?.source ? '' : 'Start' },
+    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? scenario.labels.b : store.route?.source ? '' : 'End' },
     plain: !!store.route && store.route.role !== 'mission',
   });
   const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);

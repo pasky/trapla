@@ -2,7 +2,7 @@
 import { evaluate, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
-import type { ProjectDesign, RoadSpec, RouteDesign } from './project';
+import type { ProjectDesign, RoadSpec, RouteDesign, XYZ } from './project';
 import type { RoadNet } from './roadnet';
 import { tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement } from './project-replacement';
@@ -42,7 +42,9 @@ function networkWithout(roads: RoadNet, route: RouteDesign, sourceWays: SourceWa
 const legalClassFits = (spec: RoadSpec) => ({ 'S7.5': ['II', 'III'], 'S9.5': ['I', 'II'], 'S11.5': ['I'] } as Record<string, string[]>)[spec.crossSection]?.includes(spec.legalClass) ?? false;
 
 export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, routeId: string,
-  objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue'> & { sourceWays?: SourceWays } = {}): ProjectRoadEvaluation {
+  objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue'> & { sourceWays?: SourceWays;
+    /** Ends on another designed road follow that road's CURRENT line (its nearest point and height). */
+    ends?: { a?: XYZ; b?: XYZ } } = {}): ProjectRoadEvaluation {
   const route = project.routes.find(r => r.id === routeId);
   if (!route) throw new Error('Unknown project route');
   // BEFORE categories, horizontal/vertical norms, AADT, pricing or emissions are selected.
@@ -82,7 +84,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     if (c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
   }
   const design = legacyDesignForRoute(project, routeId);
-  const a = route.endpoints.a.position, b = route.endpoints.b.position;
+  const a = options.ends?.a ?? route.endpoints.a.position, b = options.ends?.b ?? route.endpoints.b.position;
   // A ground-level end keeps the kernel's own terrain sample at its end station (legacy, bit-exact);
   // only an explicit non-ground XYZ (e.g. another road's deck) overrides it.
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;

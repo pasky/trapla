@@ -98,12 +98,33 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
     if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins the ${what}`,
       `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
       'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction (research/29)'));
-    const blocked = sightBlocked(t, r, roads, terrain, buildings);
+    const blocked = sightBlocked(t, r, wayLine(roads, t.way, terrain), terrain, buildings);
     if (blocked) out.push({ ...issue(s0, s1, `No clear view along the ${what}`, blocked.fix,
       `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along the ${what} (sight triangle, research/29)`),
       ...(blocked.building !== undefined ? { target: { buildings: [blocked.building] } } : {}) });
   }
   return out;
+}
+
+/** The road being joined, as a line with stations: an existing way (on its ground) or a designed road. */
+export interface HostLine {
+  length: number; halfWidth: number;
+  station(x: number, y: number): number;
+  /** point at station d, with the road surface height there */
+  point(d: number): { x: number; y: number; z: number } | null;
+}
+export function wayLine(roads: RoadNet, way: number, terrain: Terrain): HostLine {
+  const total = roads.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
+  return { length: total, halfWidth: (ROAD_CLASSES[roads.wayClass(way)]?.width ?? 6.5) / 2,
+    station: (x, y) => roads.wayStation(way, x, y),
+    point: d => { if (d < 0 || d > total) return null; const run = roads.wayPath(way, Math.max(0, d - 0.5), d), p = run.at(-1);
+      return p ? { x: p.x, y: p.y, z: terrain.heightAt(p.x, p.y) } : null; } };
+}
+export function resultLine(h: Result, halfWidth: number): HostLine {
+  return { length: h.length, halfWidth,
+    station: (x, y) => { let best = Infinity, s = 0; for (let k = 0; k < h.n; k++) { const d = Math.hypot(h.x[k] - x, h.y[k] - y); if (d < best) { best = d; s = h.s[k]; } } return s; },
+    point: d => { if (d < 0 || d > h.length) return null; const i = Math.min(h.n - 2, Math.floor(d / h.ds)), t = (d - h.s[i]) / h.ds;
+      return { x: h.x[i] + t * (h.x[i + 1] - h.x[i]), y: h.y[i] + t * (h.y[i + 1] - h.y[i]), z: h.grade[i] + t * (h.grade[i + 1] - h.grade[i]) }; } };
 }
 
 /** Distance along the joined way to the nearest other junction (null: none found within 1.5 km). */
@@ -120,17 +141,17 @@ function nearestJunction(roads: RoadNet, t: TieIn): number | null {
 
 /** The sight triangle's two legs along the joined road: a house in the triangle, or ground rising into
  * the sight line, blocks it. Measured on the existing ground (our own earthworks are not checked). */
-function sightBlocked(t: TieIn, r: Result, roads: RoadNet, terrain: Terrain, buildings?: BuildingIndex):
+export function sightBlocked(t: Pick<TieIn, 'end' | 'x' | 'y'>, r: Result, host: HostLine, terrain: Terrain, buildings?: BuildingIndex):
   { fix: string; legs: string; building?: number } | null {
   const i = t.end === 'a' ? 0 : r.n - 1, urban = r.cell.urban[i] >= 0.5;
   const speed = urban ? TIE_IN_RULES.defaultSpeed.urban : TIE_IN_RULES.defaultSpeed.rural;
   const [xb, xc] = TIE_IN_RULES.sight[speed];
-  const half = (ROAD_CLASSES[t.cls]?.width ?? 6.5) / 2, setback = urban ? TIE_IN_RULES.eyeSetback.urban : TIE_IN_RULES.eyeSetback.rural;
+  const half = host.halfWidth, setback = urban ? TIE_IN_RULES.eyeSetback.urban : TIE_IN_RULES.eyeSetback.rural;
   // our road's direction INTO the junction, and the joined road's direction there
   const ix = t.end === 'a' ? -r.tx[0] : r.tx[r.n - 1], iy = t.end === 'a' ? -r.ty[0] : r.ty[r.n - 1];
-  const at = roads.wayStation(t.way, t.x, t.y), along = roads.wayPath(t.way, Math.max(0, at - 1), at + 1);
-  if (along.length < 2) return null;
-  let hx = along[along.length - 1].x - along[0].x, hy = along[along.length - 1].y - along[0].y;
+  const at = host.station(t.x, t.y), p0 = host.point(Math.max(0, at - 1)), p1 = host.point(Math.min(host.length, at + 1));
+  if (!p0 || !p1) return null;
+  let hx = p1.x - p0.x, hy = p1.y - p0.y;
   const hl = Math.hypot(hx, hy) || 1; hx /= hl; hy /= hl;
   const eye = { x: t.x - ix * (half + setback), y: t.y - iy * (half + setback) };
   // left of a driver facing into the junction: rotate the inward direction +90°
@@ -139,16 +160,14 @@ function sightBlocked(t: TieIn, r: Result, roads: RoadNet, terrain: Terrain, bui
   // the eye is on our road as designed, (half + setback) m before its end
   const back = Math.min(r.length, half + setback), k0 = t.end === 'a' ? Math.min(r.n - 1, Math.round(back / r.ds)) : Math.max(0, Math.round((r.length - back) / r.ds));
   const zEye = r.grade[k0] + TIE_IN_RULES.eyeHeight;
-  const total = roads.wayPath(t.way, 0, Infinity).at(-1)?.d ?? 0;
   for (const [length, sign] of legs) {
     // the seen car is ON the joined road, `length` m along it (it may bend), not on its tangent
     const towards = sign > 0 ? 1 : -1, dist = at + towards * length;
-    if (dist < 0 || dist > total) continue; // the joined road ends sooner: nothing comes from there on it
-    const run = roads.wayPath(t.way, Math.min(at, dist), Math.max(at, dist)), far = towards > 0 ? run.at(-1) : run[0];
-    if (!far) continue;
+    const far = host.point(dist);
+    if (!far) continue; // the joined road ends sooner: nothing comes from there on it
     const target = { x: far.x, y: far.y };
     if (terrain.isOob(target.x, target.y)) continue;
-    const zTarget = terrain.heightAt(target.x, target.y) + TIE_IN_RULES.objectHeight;
+    const zTarget = far.z + TIE_IN_RULES.objectHeight;
     const dx = target.x - eye.x, dy = target.y - eye.y, d = Math.hypot(dx, dy), steps = Math.ceil(d / 5);
     for (let k = 1; k < steps; k++) {
       const u = k / steps, x = eye.x + u * dx, y = eye.y + u * dy;
@@ -175,4 +194,35 @@ function inTriangle(px: number, py: number, a: { x: number; y: number }, b: { x:
   const s = (p: { x: number; y: number }, q: { x: number; y: number }) => (q.x - p.x) * (py - p.y) - (q.y - p.y) * (px - p.x);
   const d1 = s(a, b), d2 = s(b, c), d3 = s(c, a);
   return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+
+/** A side road's end on another designed road (our road): the junction it builds there, priced as the
+ * one onto an existing road of the same class, and the same checks against the designed road. */
+export function designedTieIn(side: Result, end: 'a' | 'b', host: { name: string; legalClass: string; crownWidth: number; result: Result;
+  /** stations of the other junctions on the designed road (its ends count, as for our road's own junctions) */
+  junctions: number[] }, terrain: Terrain, buildings?: BuildingIndex): { violations: Violation[]; cost: number; label: string; s: number } {
+  const h = host.result, i = end === 'a' ? 0 : side.n - 1, line = resultLine(h, host.crownWidth / 2);
+  const s = line.station(side.x[i], side.y[i]), k = Math.max(0, Math.min(h.n - 1, Math.round(s / h.ds)));
+  const zone = ENDPOINT_JUNCTIONS['tie-in'].zone, atStart = end === 'a';
+  const s0 = atStart ? 0 : Math.max(0, side.length - zone), s1 = atStart ? Math.min(side.length, zone) : side.length;
+  const out: Violation[] = [], what = host.name;
+  if (h.kind[k] !== 0) out.push(issue(s0, s1, `Cannot join ${what} on a bridge or in a tunnel`, `Move this end along ${what} to where it runs on the ground`,
+    'Game rule: a junction is built where both roads are on the ground.', 'game'));
+  if (host.legalClass === 'I') {
+    const near = host.junctions.reduce((a, j) => Math.min(a, Math.abs(j - s)), Infinity);
+    if (near < CROSSING_RULES.junctionSpacing) out.push(issue(s0, s1, 'Too close to another junction',
+      `Move this end along ${what} to at least ${CROSSING_RULES.junctionSpacing} m from its next junction or end (now ${Math.round(near)} m)`,
+      'ČSN 73 6101:2018: junctions on class I roads at least 1.5 km apart, counting both ends of the route (research/12)'));
+  }
+  let steep = 0;
+  for (let q = 1; q < side.n; q++) if (side.s[q] > s0 && side.s[q - 1] < s1) steep = Math.max(steep, Math.abs(side.grade[q] - side.grade[q - 1]) / (side.s[q] - side.s[q - 1]));
+  if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins ${what}`,
+    `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
+    'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction (research/29)'));
+  const blocked = sightBlocked({ end, x: side.x[i], y: side.y[i] }, side, line, terrain, buildings);
+  if (blocked) out.push({ ...issue(s0, s1, `No clear view along ${what}`, blocked.fix,
+    `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along ${what} (sight triangle, research/29)`),
+    ...(blocked.building !== undefined ? { target: { buildings: [blocked.building] } } : {}) });
+  const major = host.legalClass === 'I' || host.legalClass === 'II';
+  return { violations: out, cost: ENDPOINT_JUNCTIONS[major ? 'tie-in' : 'tie-in-minor'].cost, label: `Junction with ${what}`, s };
 }

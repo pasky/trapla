@@ -92,7 +92,7 @@ export const ROAD_BUILD: BuildKind = {
     if (route.kind !== 'road' || !r) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
     const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
     if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
-    return { ok: true, label: route.name, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };
+    return { ok: true, label: route.role === 'mission' ? 'joins our road' : `joins ${route.name}`, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };
   },
   create: (project, a, b, ids) => newRoad(project, a, b, ids),
 };

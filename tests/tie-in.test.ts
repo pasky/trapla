@@ -88,3 +88,40 @@ it('says every junction finding and outcome in plain words', () => {
     for (const text of [o.tag, o.label, o.explain]) expect(jargonIn(text, true)).toEqual([]);
   }
 });
+
+describe('a side road joined to our road', () => {
+  const joinOurs = (x: number) => {
+    const f = fixture();
+    const mission = f.snapshot.design.routes[0], side = f.snapshot.design.routes[1];
+    side.endpoints.a = { position: { x, y: 250, z: 100 }, binding: 'resolved', anchor: { kind: 'route', routeId: mission.id, s: x - 100 } };
+    return { ...f, mission };
+  };
+  it('builds and bills its junction with our road and is priced together with it', () => {
+    const { ctx, snapshot, mission } = joinOurs(600);
+    const project = evaluateProject(ctx, snapshot);
+    expect(project.issues.filter(i => i.blocking === 'incomplete').map(i => [i.code, i.violation.title])).toEqual([]);
+    expect(project.cost.unpriced).toEqual([]);
+    const junction = project.works.items.find(w => w.owner.id === 'side' && w.label === 'Junction with our road')!;
+    expect(junction.cost).toBe(JUNCTION); // our road is a class I road
+    // its first metres inside our road's earthworks are not built (or bought) twice
+    const credit = project.works.items.find(w => w.owner.id === 'side' && w.cost < 0)!;
+    expect(credit.label).toMatch(/^Its first \d+ m are inside our road’s earthworks: not built twice$/);
+    expect(-credit.cost).toBeLessThan(project.cost.alone.side / 10);
+    expect(project.cost.total).toBeCloseTo(project.cost.alone[mission.id] + project.cost.alone.side + junction.cost + credit.cost, 3);
+    expect(project.issues.some(i => i.code === 'roads-cross' || i.code === 'roads-overlap' || i.code === 'connection-pending')).toBe(false);
+  });
+  it('keeps 1.5 km from our road\'s ends and other junctions, and follows our road when it moves', () => {
+    const { ctx, snapshot, mission } = joinOurs(300);
+    const side = evaluateProject(ctx, snapshot).routes.side.legacy!;
+    expect(side.violations.find(v => v.title === 'Too close to another junction')?.fix).toMatch(/our road .* \(now 200 m\)/);
+    // our road is bent 30 m north at x = 600: the side road's end stays on it
+    const m = snapshot.design.routes.find(r => r.id === mission.id)!;
+    if (m.alignment.kind !== 'pi') throw new Error('fixture');
+    m.alignment.pis = [{ x: 300, y: 300, r: null }];
+    const moved = evaluateProject(ctx, snapshot).routes.side.legacy!;
+    const ours = evaluateProject(ctx, snapshot).routes[mission.id].legacy!;
+    const d = Math.min(...Array.from({ length: ours.n }, (_, k) => Math.hypot(ours.x[k] - moved.x[0], ours.y[k] - moved.y[0])));
+    expect(d).toBeLessThan(1e-6);
+    expect(moved.grade[0]).toBeCloseTo(ours.grade[Math.round(Math.hypot(moved.x[0] - 100, moved.y[0] - 250) / ours.ds)], 0);
+  });
+});
