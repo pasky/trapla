@@ -111,6 +111,36 @@ export function validateTransportGraph(value: unknown, expectedVectorData: strin
       sourceRecords.push(source);
       if (source) unique(source.id, `sources[${i}].id`, sourceIds);
     }
+    if (graph.unresolvedSources !== undefined) {
+      const unresolved = array(graph.unresolvedSources, 'unresolvedSources', MAX_COLLECTION);
+      // These IDs are never added to sourceIds or nodeIds: visibility is not usable topology.
+      const unresolvedIds = new Set<string>();
+      if (unresolved) for (let i = 0; i < unresolved.length; i++) {
+        const path = `unresolvedSources[${i}]`, source = record(unresolved[i], path);
+        if (!source) continue;
+        if (unique(source.id, `${path}.id`, unresolvedIds) && sourceIds.has(source.id))
+          fail(`${path}.id`, 'unresolved ID also exists in valid sources');
+        string(source.osmWayId, `${path}.osmWayId`);
+        if (source.kind !== 'road' && source.kind !== 'railway') fail(`${path}.kind`, 'expected road or railway');
+        if (source.reason !== 'conflicting-snapshots') fail(`${path}.reason`, 'expected conflicting-snapshots');
+        for (const key of ['nodes', 'xy', 'stations', 'render', 'z', 'elevation', 'elevationEvidence', 'parallelSourceIds'])
+          if (source[key] !== undefined) fail(`${path}.${key}`, 'unresolved source cannot carry geometry or topology authority');
+        const refs = array(source.renderFeatureIds, `${path}.renderFeatureIds`), seen = new Set<string>();
+        if (refs) for (let j = 0; j < refs.length; j++) {
+          const ref = refs[j], refPath = `${path}.renderFeatureIds[${j}]`;
+          if (unique(ref, refPath, seen) && !featureIds.has(ref)) fail(refPath, 'unknown render feature ID');
+        }
+        if (source.legacyNetIndices !== undefined) {
+          const indices = array(source.legacyNetIndices, `${path}.legacyNetIndices`), seenIndices = new Set<number>();
+          if (indices) for (let j = 0; j < indices.length; j++) {
+            const value = indices[j], indexPath = `${path}.legacyNetIndices[${j}]`;
+            if (!index(value, indexPath)) continue;
+            if (seenIndices.has(value)) fail(indexPath, 'duplicate legacy net index');
+            seenIndices.add(value);
+          }
+        }
+      }
+    }
     for (let i = 0; i < sourceRecords.length; i++) {
       const source = sourceRecords[i], path = `sources[${i}]`;
       if (!source) continue;
