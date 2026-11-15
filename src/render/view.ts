@@ -110,7 +110,7 @@ export class View {
     this.controls.maxPolarAngle = Math.PI * 0.47;
     this.controls.minDistance = 80;
     this.controls.maxDistance = 60000;
-    this.controls.zoomToCursor = true;
+    this.controls.zoomToCursor = true; // touch pinch; wheel and trackpad pinch go through zoomAt (installWheel)
     this.controls.addEventListener('change', () => { this.dirty = true; });
     this.hoverEl = document.createElement('div');
     this.hoverEl.className = 'hover-dot';
@@ -126,6 +126,7 @@ export class View {
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
     this.installPointer();
+    this.installWheel();
     const loop = () => {
       requestAnimationFrame(loop);
       if (this.controls.enabled) this.controls.update();
@@ -157,6 +158,9 @@ export class View {
     const o = ray.ray.origin, d = ray.ray.direction;
     return { o: { x: o.x + this.cx, y: this.cy - o.z, z: o.y / this.exag }, d: { x: d.x, y: -d.z, z: d.y / this.exag } };
   }
+
+  /** camera distance to the orbit target (m) */
+  get cameraDistance() { return this.camera.position.distanceTo(this.controls.target); }
 
   /** metres per screen pixel at the orbit target */
   get metresPerPixel() {
@@ -931,6 +935,65 @@ export class View {
       if (k < 1) requestAnimationFrame(step); else this.controls.removeEventListener('start', cancel);
     };
     step();
+  }
+
+  /**
+   * Zoom by `s` (new distance = old × s) about the point under the screen position: the cursor ray's
+   * crossing with the orbit target's level, which keeps its place on screen. Both camera and target are
+   * scaled about it, so the target stays on its level (never sinks below the ground) and the distance
+   * changes by exactly `s` (within min/max distance) from any distance and any cursor position.
+   */
+  zoomAt(clientX: number, clientY: number, s: number) {
+    this.flight++; // a glide in progress stops
+    const cam = this.camera.position, t = this.controls.target;
+    const dist = cam.distanceTo(t);
+    s = Math.max(this.controls.minDistance / dist, Math.min(this.controls.maxDistance / dist, s));
+    if (!(Math.abs(s - 1) > 1e-9)) return;
+    this.camera.updateMatrixWorld();
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), this.camera);
+    const p = t.clone(), o = ray.ray.origin, d = ray.ray.direction;
+    if (d.y < -1e-4 && o.y > t.y) {
+      p.copy(d).multiplyScalar((t.y - o.y) / d.y).add(o);
+      // near the horizon the crossing runs away: keep the fixed point within a few distances of the target
+      const off = p.distanceTo(t);
+      if (off > 3 * dist) p.sub(t).multiplyScalar((3 * dist) / off).add(t);
+    }
+    cam.sub(p).multiplyScalar(s).add(p);
+    t.sub(p).multiplyScalar(s).add(p);
+    this.controls.update();
+    this.dirty = true;
+  }
+
+  /**
+   * Mouse wheel and trackpad pinch (a wheel event with ctrlKey and small pixel deltas: Chrome sends
+   * 100·ln(finger scale)) zoom the map multiplicatively: exp(k·delta) per event, k = 1/100 for a pinch
+   * (follows the fingers) and 1/450 for a wheel (≈ ×1.25 per 100 px notch). This replaces OrbitControls'
+   * wheel zoom (0.95^(delta/100): a 5 % notch and ≈ 0.5 % pinch steps, slower still with the cursor high
+   * on the screen). Wheels over overlay markers zoom too, unless a handle used them (the selected bend's
+   * radius); a ctrl-wheel anywhere on the page never zooms the page itself.
+   */
+  private installWheel() {
+    const canvas = this.renderer.domElement;
+    let ctrlHeld = false; // a real Ctrl key + mouse wheel is a wheel, not a pinch
+    window.addEventListener('keydown', (e) => { if (e.key === 'Control') ctrlHeld = true; });
+    window.addEventListener('keyup', (e) => { if (e.key === 'Control') ctrlHeld = false; });
+    window.addEventListener('blur', () => { ctrlHeld = false; });
+    const zoom = (e: WheelEvent) => {
+      if (e.defaultPrevented) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.controls.enabled) return; // a marker / grip drag in progress
+      const px = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 800 : 1);
+      const k = e.ctrlKey && !ctrlHeld ? 1 / 100 : 1 / 450;
+      this.zoomAt(e.clientX, e.clientY, Math.exp(Math.max(-0.7, Math.min(0.7, px * k))));
+    };
+    // on the canvas: in the capture phase, so OrbitControls' own wheel listener never sees it
+    this.container.addEventListener('wheel', (e) => { if (e.target === canvas) zoom(e); }, { capture: true, passive: false });
+    // on overlay markers: after their own handlers
+    this.container.addEventListener('wheel', (e) => { if (e.target !== canvas) zoom(e); }, { passive: false });
+    window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
   }
 
   private resize() {

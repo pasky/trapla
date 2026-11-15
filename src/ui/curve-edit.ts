@@ -66,10 +66,11 @@ export class CurveEditor {
     this.autoBtn = this.label.querySelector('.rauto')!;
     this.maxBtn.onclick = () => this.toMax();
     this.autoBtn.onclick = () => this.toAuto();
-    // wheel over the selected bend, a grip or the label changes the radius instead of zooming the map
+    // wheel over the selected bend, a grip or the label changes the radius instead of zooming the map;
+    // a trackpad pinch (ctrlKey) always zooms the map (a violation click centres the map on the bend)
     overlay.addEventListener('wheel', (e) => {
       const t = e.target as HTMLElement;
-      if (!t.closest('.pi.sel, .rgrip, .rlabel') || !this.curve()) return;
+      if (e.ctrlKey || !t.closest('.pi.sel, .rgrip, .rlabel') || !this.curve()) return;
       e.preventDefault();
       this.scale(Math.exp(-Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 120) * 0.0005));
     }, { passive: false });

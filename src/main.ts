@@ -580,6 +580,7 @@ async function main() {
     profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
     bendStations: () => last && bendStations(last, store.design),
     cameraTarget: () => view.target,
+    cameraDistance: () => view.cameraDistance,
     undoLabels: () => ({ undo: store.undoLabel(), redo: store.redoLabel() }),
     selectRange: (s0: number | null, s1?: number) => selection.set(s0 === null || s1 === undefined ? null : { s0, s1 }),
     range: () => selection.range,
