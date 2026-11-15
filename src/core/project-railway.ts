@@ -5,6 +5,7 @@ import { evaluate, type Design, type EvalContext, type EvalOptions, type Result 
 import { FREIGHT_TRAIN, PASSENGER_EMU, RAIL_TRAFFIC_PRIOR, type RailTrafficGroup } from './rail-noise';
 import { modeCapability } from './mode-policy';
 import { designSpeeds } from './data/norms';
+import { RAIL_TIE_IN_M } from './data/railway';
 import type { EndpointPair, ProjectDesign, RouteDesign } from './project';
 
 export const RAILWAY_POLICY = 'conventional-new';
@@ -50,20 +51,22 @@ export function createRailwayRoute(id: string, name: string, endpoints: Endpoint
 }
 
 /** The scenario's mission made by a railway: same ports and time target; demand = the prior's trains. */
-export const RAIL_TRAINS_PER_DAY = RAIL_TRAFFIC_PRIOR.passengerDay + RAIL_TRAFFIC_PRIOR.passengerNight + RAIL_TRAFFIC_PRIOR.freightDay + RAIL_TRAFFIC_PRIOR.freightNight;
-export function railwayMission(mission: ProjectDesign['mission']): ProjectDesign['mission'] {
-  const trainsPerDay = RAIL_TRAINS_PER_DAY;
+export type RailTrains = { passengerDay: number; passengerNight: number; freightDay: number; freightNight: number };
+export const trainsPerDay = (t: RailTrains = RAIL_TRAFFIC_PRIOR) => t.passengerDay + t.passengerNight + t.freightDay + t.freightNight;
+export function railwayMission(mission: ProjectDesign['mission'], trains: RailTrains = RAIL_TRAFFIC_PRIOR): ProjectDesign['mission'] {
+  const perDay = trainsPerDay(trains);
   return { ...structuredClone(mission), connections: mission.connections.map(c => ({ ...c, kinds: ['railway'] as RouteDesign['kind'][],
-    demand: { kind: 'railway' as const, trainsPerDay } })) };
+    demand: { kind: 'railway' as const, trainsPerDay: perDay } })) };
 }
 
 /** A fresh railway mission: the base project's mission road becomes a railway between the same ports. */
-export function createRailwayProject(base: ProjectDesign, d: Design): ProjectDesign {
+export function createRailwayProject(base: ProjectDesign, d: Design, trains: RailTrains = RAIL_TRAFFIC_PRIOR): ProjectDesign {
   const mission = base.routes.find(r => r.role === 'mission');
   if (!mission) throw new Error('Mission route needed');
   if (d.category !== 'R1' && d.category !== 'R2') throw new Error('A railway needs the R1 or R2 category');
   const rail: RailwayRoute = { ...createRailwayRoute('route:railway', 'Railway', mission.endpoints, d.category === 'R1' ? 1 : 2, d.speed), role: 'mission' };
-  return replaceRailwayFromDesign({ ...structuredClone(base), routes: [rail], corridors: [], connections: [], mission: railwayMission(base.mission) }, rail.id, d);
+  rail.specification.operations = { ...rail.specification.operations, ...trains };
+  return replaceRailwayFromDesign({ ...structuredClone(base), routes: [rail], corridors: [], connections: [], mission: railwayMission(base.mission, trains) }, rail.id, d);
 }
 
 /** The route's trains as noise groups (both directions, PROVISIONAL compositions in rail-noise.ts). */
@@ -107,8 +110,11 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
   }
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
+  // An end on an existing railway joins it there (a station): its first metres share that track's space.
+  const onRail = (p: typeof a) => [-1, 0, 1].some(i => [-1, 0, 1].some(j => ctx.terrain.crossing(p.x + i * ctx.terrain.cell, p.y + j * ctx.terrain.cell) === 2));
+  const tieIn = { a: onRail(a) ? RAIL_TIE_IN_M : 0, b: onRail(b) ? RAIL_TIE_IN_M : 0 };
   return { status: 'evaluated', result: evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } },
-    railwayDesign(project, route), { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, railTraffic: railTraffic(route),
+    railwayDesign(project, route), { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, railTraffic: railTraffic(route), ...(tieIn.a || tieIn.b ? { railTieIn: tieIn } : {}),
       goals: { time: goal?.maxTravelMin !== undefined, capacity: false } }) };
 }
 

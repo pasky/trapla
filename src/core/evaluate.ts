@@ -32,6 +32,7 @@ import {
 } from './noise';
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
+import { RAIL_TURNOUT_M } from './data/railway';
 import { crossingWallGaps } from './crossing-walls';
 import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadNet } from './roadnet';
@@ -181,6 +182,10 @@ export interface EvalOptions {
   sharedCrossings?: { own: true } | { own: false; from: readonly CrossingResult[] };
   /** Railway: trains per period by type and speed (noise source); none = a silent, unused line. */
   railTraffic?: readonly RailTrafficGroup[];
+  /** Railway between two points of an existing railway: metres from each end where the mapped railway is
+   * the station track it joins; elsewhere, where our axis runs along the mapped track we rebuild it in
+   * place (no bridge over it, no conflict with it). Crossing or running beside it stays a conflict. */
+  railTieIn?: { a: number; b: number };
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -278,6 +283,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const streamSamples: number[] = [];
   /** `below`: the crossing may instead pass this far below the crossed feature (motorways) */
   const mustBridge: { s: number; g: number; need: number; what: string; below?: number }[] = [];
+  const railOurs = railTrackOurs(st, terrain, al.length, opts.railTieIn);
+  const tieIn = (s: number) => !!railOurs && railOurs[Math.max(0, Math.min(n - 1, Math.round(s / ds)))] === 1;
   for (let i = 0; i < n; i++) {
     for (const f of [0, 0.25, 0.5, 0.75]) {
       if (f > 0 && i + 1 >= n) break;
@@ -286,6 +293,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       if (!terrain.watercourses && terrain.landcover(x, y) === LC.stream) streamSamples.push(st.s[i] + f * ds);
       const c = terrain.crossing(x, y);
       if (!c) continue;
+      if (c === 2 && tieIn(st.s[i] + f * ds)) continue; // the existing track this railway joins
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
       const gc = terrain.heightAt(x, y);
       mustBridge.push({ s: st.s[i] + f * ds, g: gc, need, what: c === 2 ? 'railway' : 'river' });
@@ -1000,7 +1008,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
   });
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
-    ...(endJunctions.length ? { junctions: endJunctions } : {}) }, terrain, ctx.roads, crossings, water,
+    ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}) }, terrain, ctx.roads, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
@@ -1182,8 +1190,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
   // Messages name what is built: a railway is "our railway", not "our road".
-  if (cat.mode === 'railway') for (const v of violations) for (const k of ['title', 'fix', 'detail'] as const)
-    if (v[k]) v[k] = v[k]!.replace(/\bour road\b/g, 'our railway').replace(/\bOur road\b/g, 'Our railway');
+  if (cat.mode === 'railway') for (const v of violations) {
+    // "Road too low over the river / railway" (checks.ts) names our own line as "the road"
+    const ours = v.title.startsWith('Road too low');
+    for (const k of ['title', 'fix', 'detail'] as const) if (v[k]) {
+      v[k] = v[k]!.replace(/\bour road\b/g, 'our railway').replace(/\bOur road\b/g, 'Our railway');
+      if (ours) v[k] = v[k]!.replace(/^Road too low/, 'Our railway too low').replace(/\bthe road\b/g, 'our railway');
+    }
+  }
   const travelMin = al.length / (d.speed / 3.6) / 60;
   const capacityTraffic = opts.capacityTraffic ?? scenario.traffic;
   const minCategory = minCategoryForTraffic(capacityTraffic);
@@ -1238,3 +1252,20 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
 }
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
 const STRICT_RETRY_REACH = 300;
+
+/** Stations where the mapped railway under us is the track we join or rebuild (EvalOptions.railTieIn):
+ * the station areas at both ends, and stretches where our axis runs along it (three consecutive stations
+ * each within 3 m of a mapped railway cell, i.e. parallel to it, not crossing it), widened by
+ * RAIL_TURNOUT_M where we join or leave it. Limit: the raster does not tell lines apart, so another line
+ * crossing exactly where we rebuild along ours is taken as ours too. */
+function railTrackOurs(st: { n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number> },
+  terrain: Terrain, length: number, tieIn: EvalOptions['railTieIn']): Uint8Array | null {
+  if (!tieIn) return null;
+  const n = st.n, on = new Uint8Array(n), out = new Uint8Array(n), widen = Math.ceil(RAIL_TURNOUT_M / st.ds);
+  for (let i = 0; i < n; i++) on[i] = [-3, 0, 3].some(o => terrain.crossing(st.x[i] - st.ty[i] * o, st.y[i] + st.tx[i] * o) === 2) ? 1 : 0;
+  for (let i = 0; i < n; i++) {
+    if (st.s[i] < tieIn.a || length - st.s[i] < tieIn.b) out[i] = 1;
+    if (i > 0 && i + 1 < n && on[i - 1] && on[i] && on[i + 1]) for (let j = Math.max(0, i - 1 - widen); j <= Math.min(n - 1, i + 1 + widen); j++) out[j] = 1;
+  }
+  return out;
+}

@@ -73,6 +73,10 @@ async function main() {
   const scenario = scenarioParams(picked.scenarioId, picked.presetId);
   const pack = await loadPack(`${import.meta.env.BASE_URL}scenarios/${scenario.id}`, setStatus);
   const { meta } = pack;
+  // A mission with its own ends (railway stations on a mapped line) replaces the pack's road ends; the
+  // motorway reference line means nothing to a railway.
+  if (scenario.ports) { meta.A = { ...scenario.ports.a }; meta.B = { ...scenario.ports.b }; }
+  if (scenario.mode === 'railway') meta.official = { ...meta.official, xy: [], kinds: [] };
   let A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
   document.getElementById('attrib')!.innerHTML = meta.attribution.join(' · ');
   document.getElementById('attrib')!.title = [document.getElementById('attrib')!.textContent,
@@ -96,11 +100,11 @@ async function main() {
   const roadBase = () => projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, legacyContext);
   const initialProject = () => motorwayMission
     ? createMotorwayProject(roadBase(), initialRoad(), { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
-    : railwayMission ? createRailwayProject(roadBase(), initialRoad())
+    : railwayMission ? createRailwayProject(roadBase(), initialRoad(), scenario.railTraffic)
     : projectFromLegacyDesign(initialRoad(), legacyContext);
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
     objectData, transportData, pricingData, initial: initialProject,
-    mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : railwayMission ? railwayMissionOf(legacyContext.mission) : legacyContext.mission,
+    mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : railwayMission ? railwayMissionOf(legacyContext.mission, scenario.railTraffic) : legacyContext.mission,
     // Old single-road saves belong to the road exercise only, never to a motorway or railway mission.
     ...(motorwayMission || railwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });

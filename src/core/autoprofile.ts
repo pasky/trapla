@@ -212,9 +212,14 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    * nothing compliant (its grade steps are twice as large, which matters near the gradient limit),
    * the fine grid over the whole band
    */
+  // A gentle gradient limit (track: 12.5 ‰ × 250 m = 3.1 m a knot, 2 m on the 1 m grid after the end
+  // reserve) leaves the 2 m and 1 m grids too few steps to rise over a crossing: search a 0.5 m grid.
+  // Roads and motorways (≥ 4 %: ≥ 10 m a knot) keep the 2 m / 1 m grids.
+  const gentle = opt.maxGradient * spacing < 3 * COARSE_GRID;
+  const coarseGrid = gentle ? FINE_GRID / 2 : COARSE_GRID, fineGrid = gentle ? FINE_GRID / 2 : FINE_GRID;
   const coarse = (lut: CostLut): Solved | null => {
     // Half-metre fallback only for pins: a narrow target can fall between coarse-grid paths.
-    const passes = [[COARSE_GRID, pad], [COARSE_GRID, pad * 5], [FINE_GRID, pad]];
+    const passes = [[coarseGrid, pad], [coarseGrid, pad * 5], [fineGrid, pad]];
     if (hasPins) passes.push([0.5, pad]);
     for (const [u, pd] of passes) {
       const r = solve(lut, opt.maxGradient, u, pd, null);
@@ -224,7 +229,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   };
   /** fine pass around a coarse line; keeps the coarse line if the fine one is not compliant */
   const refine = (lut: CostLut, c: Solved): Solved => {
-    const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z);
+    const f = solve(lut, opt.maxGradient, fineGrid, FINE_BAND, c.z);
     return ok(f) ? f : c;
   };
   /** last resort when no compliant line was found: relaxed gradients, reported as not feasible */
@@ -273,7 +278,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     if (Math.abs(next - v) < 1e-6) break;
     v = next;
     lut = buildLut(bal.costFor(v), classes);
-    const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z);
+    const f = solve(lut, opt.maxGradient, fineGrid, FINE_BAND, c.z);
     if (!ok(f)) break;
     const b = bal.balanceOf(f.vpis, v);
     if (b < 0) { if (!neg || v > neg[0]) neg = [v, b]; } else if (!pos || v < pos[0]) pos = [v, b];

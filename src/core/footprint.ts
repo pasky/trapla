@@ -57,6 +57,8 @@ export interface FootprintRoute {
   /** Scenario-declared end connections to retained roads: inside `zone` metres of that end, our
    * earthworks over these ways are the junction's own works (one allowance), not conflicts. */
   junctions?: readonly FootprintJunction[];
+  /** A railway joining / rebuilding an existing one: stations where the mapped track is ours (evaluate.ts). */
+  railOurs?: Uint8Array;
 }
 export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -266,6 +268,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     const visitRaster = ({ x, y, index, feature }: { x: number; y: number; index: number; feature: 'water' | 'stream' | 'railway' }) => {
       // Conservative raster-cell overlap; at most half a pixel uncertainty at the toe.
       if (!insideFootprint({ x, y }, cell, step / 2)) return;
+      if (feature === 'railway' && r.railOurs?.[cell.i]) return;
       if (feature === 'stream' && !cell.structure && earthWater.some(c => barrelContains({ x, y }, barrels.get(c)!, step / 2))) return;
       const key = `${feature}:${cell.structure ?? 'earth'}`, seenKey = `${key}:${index}`;
       if (rasterSeen.has(seenKey)) return;

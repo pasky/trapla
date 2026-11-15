@@ -90,3 +90,11 @@ export function railEverywherePerKm(tracks: 1 | 2, urban = false): number {
  * For a new mixed passenger + freight line the game uses 12.5 ‰, the value SŽDC's feasibility study of
  * the new Prague link adopted ("maximální podélný sklon 12,5 ‰", Čech 2018 p. 7; research/34 §7). */
 export const RAIL_MAX_GRADIENT = 0.0125;
+
+/** PROVISIONAL game assumption (no source): a new line ending on an existing railway joins it in a station
+ * area this long (turnouts and station tracks). Within it the mapped railway is the track we join, not an
+ * obstacle to bridge or keep clear of; beyond it the existing line keeps its own space. */
+export const RAIL_TIE_IN_M = 300;
+/** PROVISIONAL game assumption (no source): where a new line joins or leaves an existing track along the
+ * way, the track's own space is shared over about a turnout's length beyond the last parallel station. */
+export const RAIL_TURNOUT_M = 50;
