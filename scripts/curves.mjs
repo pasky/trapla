@@ -1,5 +1,5 @@
 // Long-curve check with real mouse events: a multi-point curve between two bends is valid, and the
-// on-map radius handles (grips, + / −, max, auto; the wheel zooms the map) work and stay in sync with the HUD and undo.
+// on-map radius handles (grips, + / −, the card's Tightest / Widest; the wheel zooms the map) work and stay in sync with the HUD and undo.
 // Bend positions are derived from scripts/demo-design.json, so the check follows the design file.
 // Usage: node scripts/curves.mjs [--docs] [outdir]   (screenshots into outdir, default /tmp/trapla-curves;
 // --docs writes docs/screenshots/18–23; starts its own Vite dev server)
@@ -197,11 +197,11 @@ await page.keyboard.press('Control+z');
 await idle(200);
 ok((await state()).d.pis[I].r === null, 'and the first step another');
 // largest radius that fits, back to auto
-await page.click('.rlabel .rmax');
+await page.click('#radius-choice [data-radius="max"]');
 await idle(300);
 s = await state();
 const rMax = s.d.pis[I].r;
-ok(rMax > 1000 && horiz(s.s).length === 0, `"max" sets the largest radius that fits (${rMax} m), still no horizontal violations`);
+ok(rMax > 1000 && horiz(s.s).length === 0, `"Widest" sets the largest radius that fits (${rMax} m), still no horizontal violations`);
 const over = await page.evaluate(([i, r]) => { const t = window.trapla, d = t.getDesign(); d.pis[i].r = r; t.setDesign(d); return t.whenIdle().then(() => t.summary().violations.map((v) => `${v.title} — ${v.fix}`)); }, [I, Math.round(rMax * 1.03)]);
 ok(over.some((m) => /bend/.test(m)), `3 % more does not fit: "${over[0]}"`);
 await page.keyboard.press('Control+z');
@@ -209,9 +209,9 @@ await idle(300);
 await page.evaluate((p) => window.trapla.lookAt(p.x, p.y, 3000, 0, 65), PI);
 await idle(300);
 await shot('21-radius-max');
-await page.click('.rlabel .rauto');
+await page.click('#radius-choice [data-radius="auto"]');
 await idle(300);
-ok((await state()).d.pis[I].r === null, '"auto" returns to the automatic radius');
+ok((await state()).d.pis[I].r === null, '"Tightest" returns to the automatic radius');
 
 // ---- 3. history stays intact around uncommitted + / − steps, and a drag gives way to outside changes
 await page.evaluate((p) => window.trapla.lookAt(p.x, p.y, 1700, 0, 65), PI);
