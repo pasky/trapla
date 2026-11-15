@@ -19,6 +19,10 @@ export class BuildAnnotations {
   /** ring around the crossed road whose card is open */
   selectCrossing(roadId: number | null) { if (roadId === this.selectedCrossing) return; this.selectedCrossing = roadId; if (this.current) this.setResult(this.current.r, this.current.d); }
   selectBuilding(j: number | null) { if (j === this.selectedBuilding) return; this.selectedBuilding = j; if (this.current) this.setResult(this.current.r, this.current.d); }
+  clear() {
+    for (const point of this.points) point.el.remove(); this.points = [];
+    this.current = null; this.selectedCrossing = this.selectedBuilding = null;
+  }
   setResult(r: Result, d: Design) {
     this.current = { r, d };
     for (const p of this.points) p.el.remove();

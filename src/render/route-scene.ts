@@ -6,7 +6,7 @@ import type { Staged } from './slices';
 import type { View } from './view';
 
 /** Ephemeral renderer adapter, not a saved project/schema. Results are authoritative engine outputs. */
-export interface RenderRoute { id: string; result: Result; crownWidth: number }
+export interface RenderRoute { id: string; result: Result; crownWidth: number; buildingMarkers?: boolean }
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type Entry = { input: RenderRoute; surfaces: CrossingSurface[]; box: Box; crossings: CrossingRenderer; dependencies: CrossingSurface[][] };
 const overlap = (a: Box, b: Box) => a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0;
@@ -30,7 +30,7 @@ export class RouteScene {
   private previews = new Set<string>();
   constructor(private view: View) {}
 
-  *build(inputs: readonly RenderRoute[]): Generator<void, Staged> {
+  *build(inputs: readonly RenderRoute[], globalDemolished?: readonly number[]): Generator<void, Staged> {
     if (new Set(inputs.map(i => i.id)).size !== inputs.length) throw new Error('Duplicate render route');
     const generation = ++this.generation, next = new Map<string, Entry>(), stages: Staged[] = [], fresh: CrossingRenderer[] = [];
     let handedOver = false, settled = false;
@@ -43,7 +43,7 @@ export class RouteScene {
     try {
       for (const input of inputs) {
         const old = this.entries.get(input.id);
-        const same = old?.input.result === input.result && old.input.crownWidth === input.crownWidth;
+        const same = old?.input.result === input.result && old.input.crownWidth === input.crownWidth && old.input.buildingMarkers === input.buildingMarkers;
         const surfaces = same ? old.surfaces : yield* buildRouteSurfaces(input.result, input.crownWidth, (x, y) => this.view.groundHeight(x, y));
         const crossings = old?.crossings ?? new CrossingRenderer(this.view);
         if (!old) fresh.push(crossings);
@@ -55,13 +55,13 @@ export class RouteScene {
         // Compare both old and new dependency sets: moving a neighbour away must restore the collar.
         entry.dependencies = neighbours.map(other => other.surfaces);
         const old = this.entries.get(entry.input.id);
-        if (old?.input.result === entry.input.result && old.input.crownWidth === entry.input.crownWidth &&
+        if (old?.input.result === entry.input.result && old.input.crownWidth === entry.input.crownWidth && old.input.buildingMarkers === entry.input.buildingMarkers &&
           old.dependencies.length === entry.dependencies.length && old.dependencies.every((r, i) => r === entry.dependencies[i])) continue;
         const surfaces = neighbours.flatMap(other => other.surfaces);
         const context = routeSurfaceContext(entry.surfaces, surfaces,
           (x, y) => this.view.groundHeight(x, y), (x, y) => this.view.drape(x, y),
           neighbours.map(other => other.input.result));
-        stages.push(yield* this.view.buildResult(entry.input.result, entry.input.crownWidth, entry.input.id, context, true));
+        stages.push(yield* this.view.buildResult(entry.input.result, entry.input.crownWidth, entry.input.id, context, true, entry.input.buildingMarkers));
         stages.push(yield* entry.crossings.build(entry.input.result, context));
       }
       handedOver = true;
@@ -78,7 +78,7 @@ export class RouteScene {
             const entry = next.get(id); if (entry) this.view.setPreview(entry.input.result, id);
           }
           this.previews.clear();
-          this.view.commitRouteScene(new Set(next.keys()));
+          this.view.commitRouteScene(new Set(next.keys()), globalDemolished);
           settled = true;
         },
         dispose,

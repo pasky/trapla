@@ -38,14 +38,17 @@ await page.addInitScript(() => {
   const D = window.__drag = { on: false, posts: new Map(), results: [], frames: [], longtasks: [], moves: [] };
   const Orig = window.Worker;
   window.Worker = class extends Orig {
-    postMessage(m, t) { if (m && m.type === 'eval' && D.on) D.posts.set(m.id, performance.now()); return super.postMessage(m, t); }
+    postMessage(m, t) { if (m && ['eval', 'project-eval', 'project-preview'].includes(m.type) && D.on) D.posts.set(m.id, performance.now()); return super.postMessage(m, t); }
     set onmessage(fn) {
       super.onmessage = (ev) => {
         const t0 = performance.now();
         fn(ev);
         const t1 = performance.now();
         const m = ev.data;
-        if (D.on && m && m.type === 'result') D.results.push({ id: m.id, t0, t1, preview: !!(m.preview ?? m.result?.preview), worker: m.result?.timing?.total, parts: window.trapla?.handlerTiming?.() });
+        const r = m?.type === 'project-preview' ? m.result?.legacy
+          : m?.type === 'project-result' ? m.result?.routes[window.trapla?.activeRoute?.()]?.legacy : m?.type === 'result' ? m.result : null;
+        const handled = !window.trapla?.handledRequest || window.trapla.handledRequest() === m?.id;
+        if (D.on && r && handled) D.results.push({ id: m.id, t0, t1, preview: m.type === 'project-preview' || !!(m.preview ?? r.preview), worker: r.timing?.total, parts: window.trapla?.handlerTiming?.() });
       };
     }
     get onmessage() { return super.onmessage; }

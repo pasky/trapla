@@ -3,7 +3,11 @@ import { routeIndicationHeight } from './route-indication';
 
 export type PickRoute = { id: string; result: Pick<Result, 'n' | 's' | 'x' | 'y' | 'grade' | 'ground' | 'kind'> };
 export interface RouteHit { routeId: string; s: number; index: number; distance: number }
-type Project = (x: number, y: number, z: number) => { sx: number; sy: number; vis: boolean };
+type Project = (x: number, y: number, z: number) => { sx: number; sy: number; vis: boolean; depth?: number };
+/** Perspective-correct world interpolation along a projected straight segment. */
+export function perspectiveFraction(t: number, a?: number, b?: number): number {
+  return a && b && a > 0 && b > 0 ? (t / b) / ((1 - t) / a + t / b) : t;
+}
 
 /** Pick the actual drawn segments, including inactive roads and ground-level tunnel indications.
  * No sampling stride: small bends and short branches must not vanish from picking. */
@@ -24,7 +28,8 @@ export function pickRoute(routes: readonly PickRoute[], x: number, y: number, pi
         const preferred = hit !== null && tied && (id === activeRouteId && hit.routeId !== activeRouteId ||
           id !== activeRouteId && hit.routeId !== activeRouteId && id < hit.routeId);
         if (d2 < best && !tied || preferred) {
-          best = d2; hit = { routeId: id, s: r.s[i - 1] + t * (r.s[i] - r.s[i - 1]), index: t < .5 ? i - 1 : i, distance: Math.sqrt(d2) };
+          const along = perspectiveFraction(t, prev.depth, p.depth);
+          best = d2; hit = { routeId: id, s: r.s[i - 1] + along * (r.s[i] - r.s[i - 1]), index: along < .5 ? i - 1 : i, distance: Math.sqrt(d2) };
         }
       }
       prev = p;

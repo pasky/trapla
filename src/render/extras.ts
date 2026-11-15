@@ -31,6 +31,8 @@ export class RouteExtras {
   private r: Result | null = null;
   private crown = 9.5;
   private range: StationRange | null = null;
+  private visible = true;
+  private removeFrame: () => void;
 
   constructor(private view: View) {
     this.walls.name = 'noise-walls';
@@ -38,8 +40,22 @@ export class RouteExtras {
     this.highlight.name = 'range-highlight';
     this.manual.name = 'manual-structures';
     view.world.add(this.walls, this.symbols, this.highlight, this.manual);
-    const prev = view.onRender;
-    view.onRender = () => { prev?.(); this.updateSymbols(); };
+    this.removeFrame = view.addRenderListener(() => this.updateSymbols());
+  }
+
+  setVisible(visible: boolean) {
+    this.visible = visible;
+    for (const group of [this.walls, this.symbols, this.highlight, this.manual]) group.visible = visible;
+    if (visible) this.symbolScale = -1;
+    this.view.requestRender();
+  }
+  reset() {
+    this.r = null; this.range = null; this.wallHits = [];
+    for (const group of [this.walls, this.symbols, this.highlight, this.manual]) this.clear(group);
+  }
+  dispose() {
+    this.reset(); this.removeFrame();
+    this.view.world.remove(this.walls, this.symbols, this.highlight, this.manual); this.view.requestRender();
   }
 
   setResult(r: Result, crownWidth: number, overrides: readonly StructureOverride[] = [], wallOverrides: readonly WallOverride[] = []) {
@@ -166,6 +182,7 @@ export class RouteExtras {
    * Rebuilt when the zoom changes by a quarter octave; hidden close up, where the wall itself reads.
    */
   private updateSymbols() {
+    if (!this.visible) return;
     const r = this.r, mpp = this.view.metresPerPixel;
     const scale = Math.round(Math.log2(Math.max(1e-3, mpp)) * 4);
     if (scale === this.symbolScale) return;

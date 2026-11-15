@@ -6,6 +6,7 @@
 import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
+import type { ProjectResult, RouteId } from '../core/project';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
@@ -40,7 +41,7 @@ export interface HudEvents {
 }
 
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const whyKey = (v: Violation) => `${v.kind}|${v.title}`;
+const whyKey = (v: Pick<Violation, 'kind' | 'title'>) => `${v.kind}|${v.title}`;
 
 const pct = (v: number) => `${(v * 100).toFixed(1)} %`;
 
@@ -81,6 +82,56 @@ const MANUAL_LONG = 'By hand: drag the ◆ height points in the profile; double-
 export class Hud {
   ev: HudEvents = {};
   private last: { r: Result; d: Design } | null = null;
+  private projectIssuesFor: ProjectResult | null | undefined;
+  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId } | null = null;
+  setRouteState(editable: boolean, hasResult: boolean) {
+    this.$('sec-design').hidden = !editable;
+    for (const id of ['sec-cost', 'sec-stats', 'sec-decisions']) this.$(id).hidden = !hasResult;
+  }
+  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, missionRouteId?: RouteId) {
+    this.project = { result, pending, best, missionRouteId }; this.renderProjectScore();
+  }
+  private renderProjectScore() {
+    if (!this.project) return;
+    const { result, pending, best, missionRouteId } = this.project, total = result?.cost.total;
+    this.$('cost-scope').textContent = 'Project cost';
+    this.$('total').textContent = total === null || total === undefined ? '—' : `${pending ? '≈ ' : ''}${czk(total)}`;
+    this.$('total').classList.toggle('invalid', !pending && !result?.valid);
+    this.$('score').classList.toggle('preview', pending);
+    this.$('valid').textContent = pending ? '≈ CHECKING' : !result?.complete ? 'NOT CHECKED' : result.valid ? '✓ VALID' : '✗ NOT VALID';
+    this.$('valid').className = `badge ${pending ? 'preview' : result?.complete && result.valid ? 'ok' : 'bad'}`;
+    const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
+    this.$('chip-time').hidden = time === undefined;
+    if (time !== undefined) {
+      this.$('chip-time').textContent = `${num(time, 1)} / ${this.sc.maxTravelMin.toFixed(1)} min`;
+      this.$('chip-time').className = `chip ${time <= this.sc.maxTravelMin ? 'ok' : 'bad'}`;
+    }
+    const issues = result?.issues ?? [], chip = this.$('chip-viol');
+    chip.className = `chip ${pending ? 'pending' : issues.length ? 'bad' : result?.complete ? 'ok' : 'pending'}`;
+    chip.innerHTML = pending ? '⋯ checked when you pause' : issues.length ? `⚠ ${issues.length} violation${issues.length === 1 ? '' : 's'} <small>show ›</small>` : result?.complete ? '✓ no violations' : 'Checks not finished';
+    chip.toggleAttribute('disabled', pending || !issues.length);
+    if (this.projectIssuesFor !== result) {
+      this.projectIssuesFor = result;
+      this.$('viol-count').textContent = String(issues.length);
+      this.$('sec-viol').hidden = !issues.length;
+      this.$('viol').innerHTML = issues.slice(0, 60).map((issue, k) => {
+      const v = issue.violation, location = issue.locations[0];
+      return `<li data-k="${k}"><span class="where">${location ? `km ${num(location.s0 / 1000, 2)}` : ''}</span>
+        <div><div class="vt">${esc(v.title)}</div><div class="vfix">${esc(v.fix)} <button type="button" class="why" data-why="${k}">why?</button></div>
+        <div class="vdetail" hidden>${v.detail ? esc(v.detail) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
+      }).join('');
+    }
+    if (!pending) {
+      const delta = this.baseline !== null && total !== null && total !== undefined ? total - this.baseline : 0;
+      this.$('delta').textContent = Math.abs(delta) >= 5e5 ? `${delta < 0 ? '−' : '+'}${czk(Math.abs(delta))}` : '';
+      this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
+      this.lastTotal = total ?? null;
+    }
+    const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
+    this.$('best').innerHTML = best ? `${isBest ? '★ your best' : `best ${czk(best.cost)}`}${isBest ? '' : ' <button type="button" id="load-best">Load</button>'}` : '<small>no valid design yet</small>';
+    this.$('best').classList.toggle('stale', pending);
+    const load = this.root.querySelector<HTMLButtonElement>('#load-best'); if (load) load.onclick = () => this.ev.onLoadBest?.();
+  }
   private range: StationRange | null = null;
   /** violations whose explanation the player unfolded */
   private openWhy = new Set<string>();
@@ -166,7 +217,7 @@ export class Hud {
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;
       if (why && li) {
         // "why?" unfolds the explanation (kept open across recomputes) instead of jumping to the place
-        const x = this.listed?.[Number(why.dataset.why)];
+        const x = this.project?.result?.issues[Number(why.dataset.why)]?.violation ?? this.listed?.[Number(why.dataset.why)];
         const box = li.querySelector<HTMLElement>('.vdetail')!;
         box.hidden = !box.hidden;
         why.textContent = box.hidden ? 'why?' : 'less';
@@ -319,11 +370,13 @@ export class Hud {
       <tr title="ČGS GEOCR50 / IG 1:50k lithology + estimated local loose/weathered/competent layers, not measured borehole profiles. Hover the profile for ground names. Unmapped cells use norm mix 75/20/5."><td>Excavation class</td><td>${cls} % <small>I / II / III</small></td></tr>
       <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km, 15 % of cut unsuitable</small></td></tr>
       <tr><td><small>recompute</small></td><td><small>${num(r.timing.total ?? 0, 0)} ms</small></td></tr>`;
+    this.renderProjectScore();
   }
 
-  setResult(r: Result, d: Design, best: Best | null) {
+  setResult(r: Result, d: Design, best: Pick<Best, 'cost'> | null) {
     this.last = { r, d };
     this.renderCost(r, d);
+    if (this.project) return; // active-route widgets never overwrite the project score/violations
     // Violations and the best score belong to full evaluations: during a drag preview the chip
     // says they are pending and the best chip is dimmed (the list keeps the last full verdict).
     const chip = this.$('chip-viol');
@@ -369,6 +422,7 @@ export class Hud {
     b.title = best ? 'Your cheapest valid design so far' : '';
     const lb = this.root.querySelector<HTMLButtonElement>('#load-best');
     if (lb) lb.onclick = () => this.ev.onLoadBest?.();
+    this.renderProjectScore();
   }
 
   /** an edit started (a drag counts once, from its start); the change chip compares with the total before it */

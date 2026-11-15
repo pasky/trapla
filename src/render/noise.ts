@@ -34,6 +34,7 @@ const fmt = (v: number, d = 1) => v.toFixed(d).replace('-', '−');
 
 export class NoiseLayer {
   private on = false;
+  private available = true;
   private r: Result | null = null;
   private crown = 9.5;
   private band = new THREE.Group();
@@ -71,20 +72,26 @@ export class NoiseLayer {
 
   setOn(on: boolean) {
     this.on = on;
-    this.band.visible = on;
+    this.band.visible = on && this.available;
     this.legend.style.display = on ? '' : 'none';
-    if (on && !this.built) this.build();
+    if (on && this.available && !this.built) this.build();
+    if (on && !this.available) this.legend.textContent = 'Project noise check not finished';
     this.tintBuildings();
     this.buildLabels();
     if (!on) this.hideTip();
     this.view.requestRender();
   }
 
+  setAvailable(available: boolean) {
+    if (available === this.available) return;
+    this.available = available; this.built = false; this.setOn(this.on);
+  }
+
   setResult(r: Result, crownWidth: number) {
     this.r = r;
     this.crown = crownWidth;
     this.built = false;
-    if (this.on) { this.build(); this.tintBuildings(); this.buildLabels(); }
+    if (this.on && this.available) { this.build(); this.tintBuildings(); this.buildLabels(); }
   }
 
   // ---- band --------------------------------------------------------------------------------
@@ -176,12 +183,12 @@ export class NoiseLayer {
     if (!bm) return;
     const colors = new Map<number, number>();
     const r = this.r;
-    if (this.on && r) {
+    if (this.on && this.available && r) {
       for (const p of r.noise?.receivers ?? []) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, parseInt(noiseColor(p.mitigated).slice(1), 16)); }
       for (const p of r.boughtOut) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.bought); }
       for (const p of r.demolished) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.demolished); }
     }
-    bm.tint(colors, this.on);
+    bm.tint(colors, this.on && this.available);
     this.view.requestRender();
   }
 
@@ -190,7 +197,7 @@ export class NoiseLayer {
     for (const l of this.labels) l.el.remove();
     this.labels = [];
     const r = this.r;
-    if (!this.on || !r) return;
+    if (!this.on || !this.available || !r) return;
     const off = this.crown / 2 + NOISE.wallEdgeOffset;
     for (const w of r.walls) {
       const i = Math.round((w.i0 + w.i1) / 2), sgn = w.side === 'L' ? 1 : -1;
@@ -218,7 +225,7 @@ export class NoiseLayer {
     const p = this.pending;
     this.pending = null;
     if (!p || !this.r) return;
-    const html = (this.on ? this.buildingTip(p.x, p.y) : null) ?? (this.on || this.view.metresPerPixel < 3 ? this.wallTip(this.extras.wallAt(p.x, p.y)) : null);
+    const html = (this.on && this.available ? this.buildingTip(p.x, p.y) : null) ?? (this.on || this.view.metresPerPixel < 3 ? this.wallTip(this.extras.wallAt(p.x, p.y)) : null);
     if (!html) { this.hideTip(); return; }
     this.tip.innerHTML = html;
     this.tip.style.display = '';

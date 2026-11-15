@@ -107,6 +107,8 @@ export class CurveEditor {
   }
 
   /** call whenever the design, the selection or the result changed */
+  hide() { this.shown = false; this.al = null; this.anchors = []; this.place(); }
+
   refresh() {
     const d = this.host.design(), i = this.host.selected();
     // changes from elsewhere (undo, another edit, a replaced design) end what was in progress here

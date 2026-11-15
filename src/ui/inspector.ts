@@ -73,6 +73,8 @@ export class Inspector {
   private more = false;
   private r: Result | null = null;
   private d: Design | null = null;
+  private networkPending = false;
+  setNetworkPending(pending: boolean) { this.networkPending = pending; this.render(); }
   private pending = false;
 
   constructor(private el: HTMLElement, private ctx: {
@@ -148,6 +150,11 @@ export class Inspector {
     return `${plan ? `${plan.svg}<div class="why plan-why">${esc(plan.caption)}</div>` : ''}${section}`;
   }
   setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
+  clear(message = 'Choose a road to inspect.') {
+    this.r = null; this.d = null; this.sel = null;
+    this.el.replaceChildren(); this.el.className = 'card ctx inspector idle';
+    const text = document.createElement('p'); text.textContent = message; this.el.append(text);
+  }
 
   /** `force`: the selection changed (redraw even under a focused field) */
   render(force = false) {
@@ -354,6 +361,9 @@ export class Inspector {
   private building(r: Result, d: Design, j: number) {
     const info = this.ctx.building(j);
     const action = d.buildingOverrides?.find((o) => o.j === j)?.action ?? '';
+    if (this.networkPending) return `${this.head(cap(info.kind), `${info.levels} floors`)}
+      <div class="ctx-state">Project noise check not finished</div>
+      ${this.choices('building-choice', 'data-building', [['', 'Auto', 'Let the game choose'], ['buy', 'Buy out', 'Buy and demolish it'], ['keep', 'Keep', 'Keep this building']], action)}`;
     const removed = r.demolished.find((p) => p.j === j), bought = r.boughtOut.find((p) => p.j === j);
     const kept = r.kept.find((p) => p.j === j), rec = r.noise.receivers.find((p) => p.j === j);
     const limit = r.noise.footprint?.limit ?? NOISE.limitNightDb;

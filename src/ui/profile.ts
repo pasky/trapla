@@ -129,6 +129,12 @@ export class ProfilePanel {
     this.install();
   }
 
+  clear() {
+    this.r = null; this.preview = null; this.vpis = []; this.bends = []; this.sel = null;
+    this.selected = this.selectedBend = this.pinStation = this.selCrossing = null;
+    this.tip.style.display = 'none'; this.draw();
+  }
+
   setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = [], pins: readonly { s: number; z: number }[] = [], walls: readonly WallOverride[] = []) {
     this.overrides = overrides;
     this.pins = pins;

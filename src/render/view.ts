@@ -122,6 +122,8 @@ export class View {
   ev: ViewEvents = {};
   /** called after every render, for overlays managed outside the view (curve handles) */
   onRender: (() => void) | null = null;
+  private renderListeners = new Set<() => void>();
+  addRenderListener(listener: () => void) { this.renderListeners.add(listener); return () => { this.renderListeners.delete(listener); }; }
 
   constructor(private container: HTMLElement, private overlay: HTMLElement, private pack: Pack,
     private labels: { a: string; b: string; official: string } = { a: 'A', b: 'B', official: 'official line' }) {
@@ -177,12 +179,13 @@ export class View {
   /** local (x east, y north, z elevation) → position inside `world` (scaled by exaggeration) */
   local(x: number, y: number, z: number, v = new THREE.Vector3()) { return v.set(x - this.cx, z, -(y - this.cy)); }
 
-  private screenOf(x: number, y: number, z: number): { sx: number; sy: number; vis: boolean; dist: number } {
+  private screenOf(x: number, y: number, z: number): { sx: number; sy: number; vis: boolean; dist: number; depth: number } {
     const v = this.local(x, y, z * this.exag);
-    const dist = v.distanceTo(this.camera.position);
+    const dist = v.distanceTo(this.camera.position), matrix = this.camera.matrixWorldInverse.elements;
+    const depth = -(matrix[2] * v.x + matrix[6] * v.y + matrix[10] * v.z + matrix[14]);
     v.project(this.camera);
     const w = this.container.clientWidth, h = this.container.clientHeight;
-    return { sx: (v.x * 0.5 + 0.5) * w, sy: (-v.y * 0.5 + 0.5) * h, vis: v.z < 1 && v.z > -1, dist };
+    return { sx: (v.x * 0.5 + 0.5) * w, sy: (-v.y * 0.5 + 0.5) * h, vis: v.z < 1 && v.z > -1, dist, depth };
   }
 
   /** screen position (px inside the view) of a local point; `vis` = in front of the camera */
@@ -495,6 +498,13 @@ export class View {
     this.dirty = true;
   }
 
+  clearDesign(endpoints = this.endpoints) {
+    this.setEndpoints(endpoints);
+    if (this.polyLine) { this.world.remove(this.polyLine); this.polyLine.geometry.dispose(); this.retire(this.polyLine.material); this.polyLine = null; }
+    for (const marker of this.piMarkers) marker.el.remove(); this.piMarkers = [];
+    this.selected = null; this.dirty = true;
+  }
+
   setDesign(d: Design, selected: number | null, endpoints = this.endpoints) {
     this.setEndpoints(endpoints);
     const pts = [endpoints.a, ...d.pis, endpoints.b];
@@ -544,7 +554,7 @@ export class View {
    * builders consume it explicitly rather than reading mutable staging state from View.
    */
   *buildResult(r: Result, crownWidth: number, routeId = LEGACY_ROUTE,
-    sharedContext?: RouteSurfaceContext, batch = false): Generator<void, StagedRoute> {
+    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true): Generator<void, StagedRoute> {
     const out: THREE.Object3D[] = [];
     const owned = this.routeGroups.stage(routeId, out);
     let handedOver = false, settled = false;
@@ -753,7 +763,7 @@ export class View {
     out.push(...this.centreline(r, bad));
 
     // ---- footprint demolitions (red squares) / noise buyouts (magenta diamonds) ----
-    for (const [buildings, buyout] of [[r.demolished, false], [r.boughtOut, true]] as const) {
+    for (const [buildings, buyout] of [[buildingMarkers ? r.demolished : [], false], [buildingMarkers ? r.boughtOut : [], true]] as const) {
       if (!buildings.length) continue;
       const bp: number[] = [];
       for (const { j } of buildings) {
@@ -849,6 +859,14 @@ export class View {
    * Drag preview: only the centreline follows the moved route (a few ms). The earthwork ribbon,
    * terrain cut-out, collars and crossings stay at the last full result until the next one.
    */
+  routeGeometryStats() {
+    return [...this.routeGroups.values()].map(group => ({
+      routeId: group.userData.routeId as string,
+      ribbonTriangles: ((group.getObjectByName('ribbon') as THREE.Mesh | undefined)?.geometry.index?.count ?? 0) / 3,
+      collars: group.children.filter(child => child.name === 'daylight-ground').length,
+    }));
+  }
+
   setPreview(r: Result, routeId = LEGACY_ROUTE) {
     const group = this.routeGroups.get(routeId);
     if (!group) return;
@@ -862,7 +880,7 @@ export class View {
   }
 
   /** Complete a staged scene swap once, after all route and crossing groups commit synchronously. */
-  commitRouteScene(ids: ReadonlySet<string>) {
+  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[]) {
     this.routeGroups.retain(ids);
     for (const id of this.routeInputs.keys()) if (!ids.has(id)) this.routeInputs.delete(id);
     this.maskSources = [...this.routeInputs.values()];
@@ -872,9 +890,8 @@ export class View {
     this.contourLabels?.schedule(this.contourStep * 5);
     this.drawMask(this.maskSources);
     const demolished = new Set<number>();
-    for (const { result } of this.routeInputs.values()) for (const { j } of result.demolished) {
-      const mesh = this.buildingMesh(j); if (mesh >= 0) demolished.add(mesh);
-    }
+    const indices = globalDemolished ?? [...this.routeInputs.values()].flatMap(({ result }) => result.demolished.map(b => b.j));
+    for (const j of indices) { const mesh = this.buildingMesh(j); if (mesh >= 0) demolished.add(mesh); }
     this.buildings?.hide(demolished);
     this.dirty = true;
   }
@@ -1137,6 +1154,7 @@ export class View {
     if (this.hoverPos) place(this.hoverEl, this.hoverPos.x, this.hoverPos.y, this.hoverPos.z);
     else this.hoverEl.style.display = 'none';
     this.onRender?.();
+    for (const listener of this.renderListeners) listener();
   }
 
   // ---- pointer -------------------------------------------------------------------------------

@@ -3,7 +3,8 @@ import type { TransportGraphData, TransportRenderInterval, TransportSource } fro
 import { buildLineGeos } from '../src/render/landcover';
 import { finish } from '../src/render/slices';
 import { sourceReplacementCuts } from '../src/render/source-intervals';
-import type { LineLayer } from '../src/render/vectorPack';
+import type { LineLayer, VectorPack } from '../src/render/vectorPack';
+import { SourcePicker } from '../src/render/source-pick';
 
 const mapping = (sourceId: string, featureId: string, s0 = 0, s1 = 200): TransportRenderInterval => ({
   sourceId, featureId, s0, s1, width: 9, correspondence: [{ sourceS: s0, renderS: 100 - s0 / 2 }, { sourceS: s1, renderS: 100 - s1 / 2 }],
@@ -19,6 +20,24 @@ function graph(): TransportGraphData {
 const layer: LineLayer = { name: 'primary', verts: Float32Array.of(0, 0, 100, 0, 50, -50, 50, 50), starts: Uint32Array.of(0, 2, 4) };
 
 describe('accepted source pavement rendering', () => {
+  const vectors: VectorPack = { chunk: 2500, polys: [], lines: [layer], buildings: null };
+  it('picks any mapped road in render space and keeps a coincident branch pickable after acceptance', () => {
+    const picker = new SourcePicker(graph(), vectors), project = (x: number, y: number) => ({ sx: x, sy: y, vis: true });
+    expect(picker.at(20, 0, 20, 0, 30, 6, project)).toMatchObject({ sourceId: 'road', s: 160 });
+    picker.setAccepted([mapping('road', 'horizontal', 50, 150)]);
+    expect(picker.at(50, 0, 50, 0, 30, 6, project)).toMatchObject({ sourceId: 'branch', s: 100 });
+    expect(picker.at(40, 0, 40, 0, 30, 6, project)).toBeNull();
+    picker.setAccepted([]);
+    expect(picker.at(40, 0, 40, 0, 30, 6, project)?.sourceId).toBe('road');
+  });
+
+  it('recovers canonical chainage with perspective-correct interpolation, not screen-space station guesses', () => {
+    const picker = new SourcePicker(graph(), vectors);
+    const project = (x: number, y: number) => ({ sx: x / (1 + x / 100), sy: y / (1 + x / 100), vis: true, depth: 1 + x / 100 });
+    const hit = picker.at(25, 0, 100 / 3, 0, 100, 2, project)!;
+    expect(hit.sourceId).toBe('road'); expect(hit.x).toBeCloseTo(100 / 3); expect(hit.s).toBeCloseTo(400 / 3);
+  });
+
   it('maps reversed canonical intervals and retains a crossing road at the same pixels', () => {
     const g = graph(), cuts = sourceReplacementCuts(g, [mapping('road', 'horizontal', 50, 150)]);
     expect([...cuts.get('primary')!]).toEqual([[0, [[25, 75]]]]);
