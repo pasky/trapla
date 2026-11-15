@@ -181,6 +181,18 @@ export const JUNCTION = 25_000_000;
 export const ENDPOINT_JUNCTIONS = {
   'roundabout-arm': { zone: 25, cost: JUNCTION, source: 'TP 135 (2017) §1.7.1 arm splitter island ≤ 25 m; junction allowance, research/08 (PROVISIONAL)' },
   merge: { zone: 90, cost: JUNCTION, source: 'PROVISIONAL taper Lz 90 m (130 km/h connector, MD report); junction allowance, research/08 (PROVISIONAL)' },
+  // A new road's end joining an existing ground road at a priority T (research/29: the automatic form).
+  // Zone: MODELLING ASSUMPTION, the mouth with its corner radii and any widening of the joined road;
+  // ČSN 73 6102 corner radii and turning-lane lengths were not verified (research/29 §4), so the arm's
+  // works are taken to reach as far as a roundabout arm's (TP 135 splitter island ≤ 25 m) plus 5 m.
+  // Price: onto a class I/II road the all-in junction allowance (research/08, low confidence); onto a
+  // class III/local/service road or track a simple T without turning lanes, 7 M CZK (midpoint of the
+  // 5–10 M range, research/29 §6, PROVISIONAL, very low confidence).
+  'tie-in': { zone: 30, cost: JUNCTION, source: 'priority T onto a class I/II road; junction allowance, research/08 (PROVISIONAL)' },
+  'tie-in-minor': { zone: 30, cost: 7_000_000, source: 'simple priority T onto a minor road, 5–10 M CZK, research/29 (PROVISIONAL)' },
+  // A rebuilt stretch continuing as the old road beyond its end: the joint is part of the new
+  // pavement, no junction is built. Same zone as a T (MODELLING ASSUMPTION), no lump cost.
+  continuation: { zone: 30, cost: 0, continuation: true, source: 'the rebuilt stretch continues as the old road (MODELLING ASSUMPTION)' },
 } as const;
 export type EndpointJunctionKind = keyof typeof ENDPOINT_JUNCTIONS;
 /** Simple sjezd onto the service link, NOT onto the class-I road. Very low confidence — research/13. */

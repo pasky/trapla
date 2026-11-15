@@ -59,13 +59,14 @@ const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectI
     rule: 'Game rule: noise and capacity depend on traffic, so a road without traffic cannot be priced.' } },
 };
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
-  preview = false, materialValue?: number): { route: RouteResult; issues: ProjectIssue[] } {
+  preview = false, materialValue?: number): { route: RouteResult; issues: ProjectIssue[]; junctionEnds: ('a' | 'b')[] } {
   const evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays });
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : undefined;
   return { route: { routeId: route.id, revision: route.revision,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
     surface: legacy ? roadSurface(route, legacy) : referenceRoadSurface(ctx.legacy, route), geometry: null,
     ...(legacy ? { legacy } : {}), complete: false, valid: false, accepted: false, attributedCost: null, dependencies: [], influence: [] },
+    junctionEnds: evaluated.status === 'evaluated' ? evaluated.junctionEnds ?? [] : [],
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
       : (evaluated.unpriced ?? []).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
 }
@@ -136,10 +137,13 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     acceptedReplacements: [], acceptedRenderReplacements: [], buildings: [], receivers: [], complete: false, valid: false,
     acousticScreen: { bounds: [], omittedDayEnergyUpperBound: Infinity, omittedNightEnergyUpperBound: Infinity, complete: false } };
   const priced: { route: RouteDesign; legacy: Result }[] = [], engineered: typeof priced = [];
+  /** route ends whose junction with an existing road is built and billed by that route (C1 a) */
+  const builtJunctions = new Set<string>();
   for (const route of design.routes) {
     const proposal = routeProposal(ctx, snapshot, route);
     defineRoute(result.routes, route.id, proposal.route);
     if (proposal.route.legacy) engineered.push({ route, legacy: proposal.route.legacy });
+    for (const end of proposal.junctionEnds) builtJunctions.add(`${route.id}:${end}`);
     for (const i of proposal.issues) { result.issues.push(i); result.cost.unpriced.push({ routeId: route.id, reason: i.code }); }
     if (!proposal.issues.length && proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
   }
@@ -161,14 +165,16 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   }
   // Joined roads share a junction nobody has checked yet.
   const joined = new Set<string>();
-  // Only the mission road's own mission ports and free ends are evaluated as the legacy kernel does;
-  // a tie-in to an existing road, another road or a mission port is a junction nobody has built or billed.
+  // Only the mission road's own mission ports and free ends are evaluated as the legacy kernel does,
+  // and a side road's end on an existing ground road whose junction it builds and bills (C1 a). A tie-in
+  // to another designed road, a mission port or a rebuilt stretch's connections are not built yet.
   for (const c of design.connections) {
     const routes = c.ports.flatMap(p => p.kind === 'route' ? [p.routeId] : []);
     for (const id of routes.length ? routes : design.routes.map(r => r.id)) joined.add(id);
   }
-  for (const r of design.routes) for (const e of [r.endpoints.a, r.endpoints.b]) {
+  for (const r of design.routes) for (const [end, e] of [['a', r.endpoints.a], ['b', r.endpoints.b]] as const) {
     if (e.anchor.kind === 'free' || (e.anchor.kind === 'mission' && r.role === 'mission')) continue;
+    if (e.anchor.kind === 'source' && builtJunctions.has(`${r.id}:${end}`)) continue;
     joined.add(r.id); if (e.anchor.kind === 'route') joined.add(e.anchor.routeId);
   }
   if (joined.size) { result.issues.push(junctionsPending([...joined])); unprice([...joined], 'connection-pending'); }

@@ -4,10 +4,13 @@ import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, RouteDesign } from './project';
 import type { RoadNet } from './roadnet';
+import { tieInChecks, tieIns } from './tie-in';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
-  | { status: 'evaluated'; result: Result; unpriced?: ('source-needs-network' | 'traffic-unknown')[] }
+  | { status: 'evaluated'; result: Result; unpriced?: ('source-needs-network' | 'traffic-unknown')[];
+      /** Ends joined to an existing ground road whose junction this road's bill includes. */
+      junctionEnds?: ('a' | 'b')[] }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
       | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 
@@ -79,12 +82,21 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   // A ground-level end keeps the kernel's own terrain sample at its end station (legacy, bit-exact);
   // only an explicit non-ground XYZ (e.g. another road's deck) overrides it.
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
-  const result = evaluate({ ...ctx, roads, a, b, scenario: { ...ctx.scenario,
+  // A side road's ends on existing ground roads are junction works of this road (C1 a); a rebuilt
+  // stretch's ends continue as its old road.
+  const ties = route.role === 'auxiliary' && roads ? tieIns(roads, route.endpoints, !!route.source) : [];
+  const junctions = ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => t.junction)] } : {};
+  const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, design,
   { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
+  if (ties.length && roads && !options.preview) {
+    const found = tieInChecks(ties, result, roads, ctx.terrain, ctx.buildings);
+    if (found.length) { result.violations.push(...found); result.valid = false; }
+  }
   const unpriced = [...route.source ? ['source-needs-network' as const] : [], ...spec.operations.trafficUnknown ? ['traffic-unknown' as const] : []];
-  return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}) };
+  const junctionEnds = ties.filter(t => t.junction.kind !== 'continuation').map(t => t.end);
+  return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}) };
 }
