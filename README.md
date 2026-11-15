@@ -185,6 +185,16 @@ Also: [the most expensive piece](docs/screenshots/62-playtest-money.png),
 [the reference design](docs/screenshots/71-playtest-overview.png).
 Before the rethink: [docs/screenshots/rethink-before](docs/screenshots/rethink-before).
 
+### Several roads (foundation, not priced together yet)
+
+| A second road: our road keeps its own price, the other is not priced yet | Change road: Start and End along a mapped road |
+|---|---|
+| ![Our road priced, side road not](docs/screenshots/79-our-road-priced-side-road-not.png) | ![Change road handles](docs/screenshots/80-base-road-handles.png) |
+| The proposed change over the old road, not checked yet | With the photo: the roads the game knows |
+| ![Proposed change](docs/screenshots/81-base-road-proposal.png) | ![Photo with mapped roads](docs/screenshots/83-photo-mapped-roads.png) |
+
+Also: [two roads crossing, not priced](docs/screenshots/82-two-roads-not-priced.png). See `docs/multi-road-ux.md`.
+
 ### Physical crossings
 
 | Overbridge: deck, abutments and embankments | Ground-level reconnection |
