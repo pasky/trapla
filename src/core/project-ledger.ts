@@ -15,12 +15,14 @@ export const INDEPENDENCE_SCREEN = {
   /** Plan gap kept between two roads' land take and works (working strip, drainage), m. */
   clearance: 10,
   /** Outside its own noise list, a road this far below the limit at a house (controlling period) is
-   * not counted as a second road there (the usual 10 dB rule of decibel addition; ≤ +0.41 dB for two
-   * roads at a house exactly at the limit). PROVISIONAL screening choice, not a Czech norm. */
-  noiseMargin: 10,
+   * not counted as a road of that house. The screen uses noiseMargin + 10·log10(N − 1) dB for N roads,
+   * so all neglected roads together add ≤ 1 % of one limit (≤ +0.043 dB) at a house exactly at the
+   * limit: below reported precision, never a quiet fake VALID. Nearer roads stay unpriced until joint
+   * noise/wall decisions exist. PROVISIONAL screening choice, not a Czech norm; the bound is published. */
+  noiseMargin: 20,
   /** Exceeds the legacy loss table's linear-interpolation shortfall against the exact hard-ground law, dB. */
   noiseTolerance: 0.05,
-  /** Bounds the neglected aggregate energy (maxRoutes × 10^(−margin/10) of one limit). */
+  /** Bounds screening work; more roads stay unpriced. */
   maxRoutes: 10,
 } as const;
 
@@ -30,7 +32,7 @@ export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-build
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number }
 export interface IndependenceScreen {
   independent: boolean; interactions: RouteInteraction[];
-  /** Upper bound on neglected linear energy at a house from roads other than its own one (N × margin). */
+  /** Upper bound on neglected linear energy at a house from roads other than its own one. */
   omittedDayEnergy: number; omittedNightEnergy: number;
 }
 
@@ -123,21 +125,22 @@ interface NoiseRoute { chunks: Chunk[]; excess: number; reach: number; minX: num
   receivers: Map<number, { removed: boolean; level: number }> }
 const noiseLine = (result: Result) => chunks(Array.from({ length: Math.max(0, result.n - 1) }, (_, k) =>
   ({ ax: result.x[k], ay: result.y[k], bx: result.x[k + 1], by: result.y[k + 1], r: 0 })));
-function lineDistance(route: NoiseRoute, x: number, y: number, cap: number): number {
-  let best = cap;
+/** Is any part of the road line closer than `reach`? Early exit: the decision, not the distance. */
+function withinReach(route: NoiseRoute, x: number, y: number, reach: number): boolean {
+  if (!(reach > 0)) return false;
   for (const c of route.chunks) {
-    if (Math.max(0, c.minX - x, x - c.maxX, c.minY - y, y - c.maxY) >= best) continue;
-    for (const s of c.items) best = Math.min(best, pointSegment(x, y, s.ax, s.ay, s.bx, s.by));
+    if (Math.max(0, c.minX - x, x - c.maxX, c.minY - y, y - c.maxY) >= reach) continue;
+    for (const s of c.items) if (pointSegment(x, y, s.ax, s.ay, s.bx, s.by) < reach) return true;
   }
-  return best;
+  return false;
 }
 /** Hard ground is the least loss at every height in the legacy model; walls/cuts only reduce it. */
 function excessBound(route: NoiseRoute, distance: number): number {
   return route.excess - hardGroundLoss(Math.max(0, distance - NOISE.facadeOffset - NOISE.sourceOffset)) + INDEPENDENCE_SCREEN.noiseTolerance;
 }
-function noiseRoute(route: ScreenRoute): NoiseRoute {
+function noiseRoute(route: ScreenRoute, margin: number): NoiseRoute {
   const excess = noiseSource(route.aadt, route.speed, { heavyShare: route.heavyShare }).excessDb;
-  const target = -INDEPENDENCE_SCREEN.noiseMargin;
+  const target = -margin;
   const r: NoiseRoute = { chunks: route.result.n > 1 ? noiseLine(route.result) : [], excess, reach: 0, minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity,
     receivers: new Map() };
   if (Number.isFinite(excess) && excessBound(r, 0) > target) {
@@ -146,6 +149,7 @@ function noiseRoute(route: ScreenRoute): NoiseRoute {
     if (Number.isFinite(high)) for (let k = 0; k < 50; k++) { const mid = (low + high) / 2; if (excessBound(r, mid) > target) low = mid; else high = mid; }
     r.reach = high;
   } else if (!Number.isFinite(excess) && excess > 0) r.reach = Infinity;
+  if (Number.isNaN(excess)) r.reach = NaN; // unknown source: counts at every house
   for (let i = 0; i < route.result.n; i++) {
     r.minX = Math.min(r.minX, route.result.x[i]); r.maxX = Math.max(r.maxX, route.result.x[i]);
     r.minY = Math.min(r.minY, route.result.y[i]); r.maxY = Math.max(r.maxY, route.result.y[i]);
@@ -158,7 +162,10 @@ function noiseRoute(route: ScreenRoute): NoiseRoute {
 export function screenIndependence(routes: readonly ScreenRoute[], buildings: BuildingIndex | undefined): IndependenceScreen {
   const interactions: RouteInteraction[] = [];
   const S = INDEPENDENCE_SCREEN;
-  const omitted = (db: number) => routes.length * 10 ** ((db - S.noiseMargin) / 10);
+  const margin = S.noiseMargin + 10 * Math.log10(Math.max(1, routes.length - 1));
+  // Neglected roads at a house each stay ≥ margin below its limits: ≤ 1 % beside its own road, and
+  // ≤ N/(N − 1) % at a house no road owns (where nothing is near the limit anyway).
+  const omitted = (db: number) => routes.length * 10 ** ((db - margin) / 10);
   const out = () => ({ independent: interactions.length === 0, interactions,
     omittedDayEnergy: omitted(NOISE.limitDayDb), omittedNightEnergy: omitted(NOISE.limitNightDb) });
   if (routes.length > S.maxRoutes) { interactions.push({ routeIds: routes.map(r => r.routeId), reason: 'too-many-roads' }); return out(); }
@@ -186,7 +193,7 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
   }
   if (!buildings || routes.length < 2) return out();
   // Noise: a house may belong to at most one road (in its own noise list, or above limit − margin).
-  const noise = routes.map(noiseRoute);
+  const noise = routes.map(r => noiseRoute(r, margin));
   for (let j = 0; j < buildings.n; j++) {
     if (!buildings.dwelling[j]) continue;
     const [x, y] = buildings.items[j], radius = buildings.extent(j);
@@ -195,24 +202,19 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     for (let k = 0; k < noise.length; k++) {
       const n = noise[k], known = n.receivers.get(j), reach = n.reach + radius;
       if (known?.removed) { removed = true; contributors.push(k); continue; }
-      let level = -S.noiseMargin; // bound beyond the screening reach
-      if (x >= n.minX - reach && x <= n.maxX + reach && y >= n.minY - reach && y <= n.maxY + reach) {
-        const d = n.chunks.length ? lineDistance(n, x, y, reach) : Math.hypot(x - n.minX, y - n.minY);
-        if (d < reach) level = excessBound(n, Math.max(0, d - radius));
-      }
-      // The road's own evaluated level at this house (all floors/stations, its walls) when it has one.
-      if (known) level = known.level;
-      if (Number.isNaN(level)) level = Infinity; // fail closed
-      // Any house in a road's own noise list (it could reach the limit there) is that road's house,
-      // even when its walls made it quiet: two such roads share it.
-      if (known || level > -S.noiseMargin) contributors.push(k);
+      // A house in a road's own noise list (it could reach the limit there) is that road's house, even
+      // when its walls made it quiet. Otherwise the road counts where its all-height bound exceeds
+      // limit − margin, i.e. within its reach (bound is monotone in distance). NaN reach fails closed.
+      const inReach = Number.isNaN(n.reach) || (x >= n.minX - reach && x <= n.maxX + reach && y >= n.minY - reach && y <= n.maxY + reach
+        && (n.chunks.length ? withinReach(n, x, y, reach) : Math.hypot(x - n.minX, y - n.minY) < reach));
+      if (known || inReach) contributors.push(k);
     }
     if (contributors.length > 1) {
       interactions.push({ routeIds: contributors.map(k => routes[k].routeId), reason: removed ? 'shared-building' : 'shared-noise', buildingIndex: j });
       continue;
     }
-    // One road per house. Others, each ≥ margin below the limit there, are neglected (10 dB rule): at a
-    // house exactly at the limit they add at most 10·log10(1 + (N−1)/10) dB, reported as omittedEnergy.
+    // One road per house. The others, each ≥ margin below the limit there, add ≤ 1 % of one limit
+    // (≤ +0.043 dB at a house exactly at the limit), published as omittedEnergy.
   }
   return out();
 }

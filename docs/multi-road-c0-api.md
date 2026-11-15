@@ -136,6 +136,34 @@ best score. Initial material balance remains independent per construction route.
 Per-scenario `initial` category/speed is only a new-project default. Existing/current/best legacy designs
 retain their category/speed; an unknown or malformed newer save is never overwritten with those defaults.
 
+## Project price: own bills, unpriced changes and the independence ledger
+
+`ProjectResult.cost` always carries data for the UI, never guesses:
+
+- `alone[routeId]`: each evaluated road's OWN bill against the unchanged existing network (display only,
+  label it as covering only that road). Never add these up yourself.
+- `unpriced: {routeId, reason}[]`: road changes not covered by a project price. Non-empty ⇒ `total === null`,
+  `complete/valid === false`, no best save (`isScorableProject` also checks it). Show e.g. "N road changes not
+  priced yet". Reasons: the route's incomplete code (`source-needs-network`, `unsupported-mode`, …),
+  `connection-pending`, `mission-needs-network`, or an interaction (`shared-land`, `shared-road`,
+  `shared-building`, `shared-noise`, `too-many-roads`).
+- Each evaluated road's own violations stay in `issues` (`blocking: 'invalid'`, route-qualified) even while
+  unpriced. Interactions add `blocking: 'incomplete'` issues scoped to both roads (and the house, if any).
+- Undo/discard is just a new snapshot: removing the unpriced change restores the scored single-road result.
+
+One road: the exact legacy facade (D11 bit-exact). Several roads with no connections between them:
+`screenIndependence` (`src/core/project-ledger.ts`) prices them together (`total` = sum of their own bills,
+`cost.routes` the per-road shares) ONLY when a conservative screen proves nothing interacts:
+land take, works and removed old roads (plus a 1:2 toe bound on links and a PROVISIONAL 10 m clearance) do
+not touch; no existing road is changed by two roads, and no closure's detour can be affected; no building is
+demolished/bought/kept-in-the-way by two roads; and every house belongs to at most one road for noise (in
+its own noise list, or within 20 + 10·log10(N − 1) dB of the limit by the all-height hard-ground bound).
+Further roads are neglected: together ≤ 1 % of one limit (≤ +0.043 dB at a house exactly at the limit,
+below reported precision). Nearer roads stay unpriced until joint noise/wall decisions exist (C1);
+the neglected energy bound is published in `acousticScreen`. Max 10 roads. Real D11 pack: ≈ 8–10 ms per
+multi-road full evaluation (26 567 buildings); single-road and preview paths unchanged. Promoted/source
+roads, joined roads, corridors and modes stay unpriced: joint engineering is still a later stage.
+
 ## Source proposal foundation
 
 `src/core/project-network.ts` provides `ProjectTransportIndex`, `ProjectSurfaceIndex`,
