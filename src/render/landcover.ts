@@ -721,6 +721,13 @@ export class LandCover {
   setPhotoSource(url: PhotoUrl | null) { this.photoUrl = url; }
   get hasPhotoSource() { return !!this.photoUrl; }
 
+  /** the transport graph (what is clickable / overlaid on the photo); it arrives after startup */
+  setNetwork(graph: TransportGraphData | null) {
+    if (graph === this.network) return;
+    this.network = graph; this.owned = null;
+    this.disposeNetwork();
+    if (this.photoOn && graph) { this.ensureNetwork(); this.reset(); this.onChange?.(); }
+  }
   /** drape the orthophoto instead of the vector land cover; everything is redrawn */
   setPhoto(on: boolean) {
     on = on && !!this.photoUrl;

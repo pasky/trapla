@@ -64,8 +64,12 @@ export interface Pack {
   overlays: Overlays;
   vectors: VectorPack | null;
   /** Independent identity; legacy D11 meta/object fingerprints deliberately exclude this graph. */
-  transport?: TransportGraphData | null;
   transportMeta?: TransportMeta | null;
+  /** The additive transport graph is not part of startup: `prefetchTransport` downloads and verifies
+   * its bytes (call when idle after the first frame); `loadTransport` parses it on first need. Both are
+   * memoised; a missing graph resolves to null, a corrupt or mismatched one rejects. */
+  prefetchTransport: () => Promise<ArrayBuffer | null>;
+  loadTransport: () => Promise<TransportGraphData | null>;
 }
 
 /** fetch a gzip file; some servers (e.g. Vite dev) already send it with Content-Encoding: gzip */
@@ -100,7 +104,7 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   if (transportMeta && (transportMeta.version !== 1 || !/^[a-zA-Z0-9_.-]+$/.test(transportMeta.file)))
     throw new Error('Unsupported transport map');
   progress?.('loading terrain (DMR 5G, 5 m)…');
-  const [hb, lb, overlays, vectorData, gb, wb, tb] = await Promise.all([
+  const [hb, lb, overlays, vectorData, gb, wb] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
@@ -110,20 +114,26 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
       : Promise.resolve(null),
     meta.ground ? gunzip(`${base}/${meta.ground.file}`) : Promise.resolve(null),
     meta.watercourses ? gunzip(`${base}/${meta.watercourses.file}`) : Promise.resolve(null),
-    transportMeta ? gunzip(`${base}/${transportMeta.file}`) : Promise.resolve(null),
   ]);
   const vectors = vectorData ? parseVectorPack(vectorData) : null;
-  let transport: TransportGraphData | null = null;
-  if (transportMeta && tb) {
+  let bytes: Promise<ArrayBuffer | null> | null = null, graph: Promise<TransportGraphData | null> | null = null;
+  const prefetchTransport = () => bytes ??= (async () => {
+    if (!transportMeta) return null;
+    const tb = await gunzip(`${base}/${transportMeta.file}`);
     if (await sha256(tb) !== transportMeta.fingerprint) throw new Error('Transport map changed during loading. Reload the page.');
-    transport = JSON.parse(new TextDecoder().decode(tb)) as TransportGraphData;
+    return tb;
+  })();
+  const loadTransport = () => graph ??= prefetchTransport().then(async (tb) => {
+    if (!tb) return null;
+    const transport = JSON.parse(new TextDecoder().decode(tb)) as TransportGraphData;
     if (transport.version !== 1 || !vectorData || await sha256(vectorData) !== transport.vectorData)
       throw new Error('Transport map and visible roads differ. Rebuild the map.');
-  }
+    return transport;
+  });
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
     ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
     watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined });
-  return { base, meta, terrain, q, lc, overlays, vectors, transport, transportMeta };
+  return { base, meta, terrain, q, lc, overlays, vectors, transportMeta, prefetchTransport, loadTransport };
 }

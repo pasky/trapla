@@ -52,6 +52,8 @@ export class ViewBar {
 
   get(): ViewPrefs { return { ...this.prefs }; }
 
+  /** the saved view shows the aerial photo */
+  get photo() { return this.prefs.photo; }
   set(p: Partial<ViewPrefs>) {
     Object.assign(this.prefs, p);
     if (!EXAG.includes(this.prefs.exag)) this.prefs.exag = 1;
