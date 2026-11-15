@@ -3,7 +3,8 @@
 // what the game decided (numbers first), its violations with the fix as a button where one exists, the
 // choices (Auto first), and "More" for the numbers. With nothing selected: where the money goes.
 import type { Violation } from '../core/checks';
-import { crossingChoice, crossingLabel, type CrossingChoice } from '../core/crossings';
+import { crossingChoice, type CrossingChoice } from '../core/crossings';
+import { CROSSING_CHOICE_TEXT, crossingOutcome } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -57,18 +58,8 @@ const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
 const SIDE = { L: 'left', R: 'right' } as const;
 const MORE_KEY = 'trapla.more';
 
-const CROSSING_OPTIONS: [CrossingChoice | '', string, string][] = [
-  ['', 'Auto', 'The cheapest that works'],
-  ['junction', 'Junction', 'At-grade junction (class I–III roads, 1.5 km apart)'],
-  ['bridge', 'Bridge over it', 'Our road bridges over it'],
-  ['overbridge', 'It bridges us', 'It crosses over our road on a bridge'],
-  ['reconnection', 'Close + link', 'Close it here; link both ends to the next crossing'],
-  ['underpass', 'Underpass', 'A box through our embankment (tracks and local roads)'],
-];
-const TYPE_NAME: Record<string, string> = {
-  bridge: 'under our bridge', tunnel: 'over our tunnel', overbridge: 'bridges over us', junction: 'junction',
-  reconnection: 'closed + linked', diversion: 'diverted', underpass: 'underpass', atGrade: 'at grade — not allowed',
-};
+/** the crossing card's choices: the shared vocabulary (core/terms.ts) */
+const CROSSING_OPTIONS = CROSSING_CHOICE_TEXT as unknown as [string, string, string][];
 const STRUCTURE_OPTIONS: [string, string, string][] = [
   ['clear', 'Auto', 'Let the game choose (key A)'], ['1', 'Bridge', 'Bridge the whole stretch (key B)'],
   ['2', 'Tunnel', 'Tunnel the whole stretch (key T)'], ['0', 'Earthwork', 'Only cuts and embankments (key E)'],
@@ -270,8 +261,9 @@ export class Inspector {
     if (!pi) return '';
     const cv = r.curves.find((c) => c.index === i), n = speedNorms(d.speed);
     const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius;
-    const max = this.ctx.maxRadius(i);
-    const active = auto ? 'auto' : max !== null && Math.abs(rv - max) < 2 ? 'max' : null;
+    // "Widest" is an action, not a state: finding the largest radius that fits is a geometry search
+    // (tens of ms), done only when it is clicked
+    const active = auto ? 'auto' : null;
     const turn = cv ? `turns ${((cv.delta * 180) / Math.PI).toFixed(0)}°` : '';
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: '' }));
@@ -323,9 +315,9 @@ export class Inspector {
     const roads = crossedRoads(r), k = roads.findIndex((x) => x.roadId === roadId);
     const nav = `<button type="button" class="nav" data-nav="-1" title="Previous crossed road" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button>`;
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
-    const rel = `we are ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`;
+    const rel = `our road ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c);
     return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}
-      <div class="ctx-state"><b>${cap(TYPE_NAME[c.type] ?? c.type)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(crossingLabel(c))} · ${rel}${choice ? ' · your choice' : ''}</div></div>
+      <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div><div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
       ${this.choices('crossing-choice', 'data-crossing', CROSSING_OPTIONS, choice)}`;
   }

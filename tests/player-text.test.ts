@@ -164,8 +164,8 @@ function literals(src: string): { text: string; before: string }[] {
 describe('player-facing text in the sources', () => {
   const read = (file: string) => readFileSync(file, 'utf8');
   it('every human-readable literal in the UI is plain words (source names only in pricing tooltips)', () => {
-    const files = ['src/ui/build-tools.ts', 'src/ui/footprint.ts', 'src/ui/hud.ts', 'src/ui/profile.ts', 'src/ui/structure-bar.ts',
-      'src/ui/selection-bar.ts', 'src/ui/viewbar.ts', 'src/ui/editbar.ts', 'src/ui/intro.ts', 'src/ui/curve-edit.ts', 'src/ui/costgroups.ts'];
+    // every UI module (new ones included), and the map's player-facing labels and tips
+    const files = [...readdirSync('src/ui').filter((f) => f.endsWith('.ts')).map((f) => `src/ui/${f}`), 'src/render/noise.ts', 'src/render/build-tools.ts'];
     for (const file of files) for (const { text } of literals(read(file))) {
       if (!/[a-z] [a-z]/i.test(text)) continue; // identifiers, selectors, CSS
       const titles = [...text.matchAll(/title="([^"]*)"/g)].map(m => m[1]);

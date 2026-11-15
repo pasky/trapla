@@ -43,7 +43,7 @@ Chromium trace; result deserialisation, GC, layout and GPU were minor):
 
 ### Measured
 
-`node scripts/drag-perf.mjs --gpu [--mode bend|radius|pin|vpi] [--root DIR] [--check]`: a real
+`node scripts/drag-perf.mjs --gpu [--mode bend|road|radius|pin|vpi] [--root DIR] [--check]`: a real
 mouse drag of bend 10 (index 9) of `best-design` for 2 s (60 Hz pointer timeline) after a short warm-up
 drag; frame intervals, main-thread time per worker result, worker time, latency from posting the
 evaluation (in the pointer-move handler) to its handled result, the longest gap between displayed
@@ -204,3 +204,13 @@ npx tsx scripts/check-profile-lut.ts /tmp/trapla-perf-before/src/core/autoprofil
 The differential script compares 400 seeded synthetic profiles with the original solver: steep terrain, pins, multiple cost classes, manual structure kinds, clearance constraints and material-balance iterations. Full results match exactly. Review caught a lower-grid boundary issue: interpolation at clamped height −100 m still reads its zero-weight neighbour. That entry is now always initialized, with a dedicated deep-tunnel regression; reverting the fix fails both the dedicated test and seeded case 91.
 
 Validation: **218 tests**, `npx tsc --noEmit`, `npm run build`, and `PORT=5214 npm run smoke` pass. Build retains the existing large-main-bundle warning. UI/render files are untouched.
+
+### After the interface rethink
+
+Every drag goes through the preview path: a bend, the road itself (`--mode road`: dragging the road inserts a
+bend that follows the pointer), a radius grip, a pin (made by dragging the profile's road line, `--mode pin`),
+a height point By hand (`--mode vpi` switches to By hand first; in Auto the line drag pins instead). The full
+result's main-thread work stays small: the inspector does not search for the largest radius that fits on
+every result (that 40 ms geometry search runs only when *Widest* is clicked). Three rounds of all five modes
+with `--check` on the GPU pass; full-result handler ≈ 5 ms (profile 2.5, HUD 1.5, curve grips 1.4, inspector
+0.3, choices list 0.3).

@@ -4,7 +4,7 @@
 // (instrumentation wraps the page's Worker; nothing in the app is required).
 //
 //   node scripts/drag-perf.mjs [--root DIR] [--gpu] [--profile out.cpuprofile] [--trace out.json]
-//        [--design scripts/best-design.json] [--mode bend|radius|pin|vpi] [--bend 9] [--seconds 2] [--check] [--shot out.png]
+//        [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi] [--bend 9] [--seconds 2] [--check] [--shot out.png]
 //
 // --check: exit 1 when the thresholds below are missed (p95 frame on GPU, preview latency).
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -16,7 +16,7 @@ const root = arg('--root', process.cwd());
 const gpu = process.argv.includes('--gpu');
 const port = Number(arg('--port', 5197));
 const designFile = arg('--design', 'scripts/best-design.json');
-const mode = arg('--mode', 'bend'); // bend | radius (a grip) | pin (an Automatic height pin) | vpi (a height point)
+const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point)
 const bend = Number(arg('--bend', 9));
 const seconds = Number(arg('--seconds', 2));
 const profileOut = arg('--profile'), traceOut = arg('--trace');
@@ -109,6 +109,20 @@ let grab, path;
 if (mode === 'bend') {
   // a loop around the bend's spot (the route length changes every step)
   grab = () => uncovered(`.pi[data-i="${bend}"]`);
+  path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
+} else if (mode === 'road') {
+  // drag the road itself between this bend and the next: every drag inserts a new bend that follows
+  // the pointer (the same loop as a bend drag)
+  grab = async () => {
+    const at = await T((i) => {
+      const t = window.trapla, b = t.bendStations(), s = (b[i].s + (b[i + 1]?.s ?? t.result().length)) / 2;
+      t.selectPi(null);
+      const p = t.roadScreen(s), box = document.querySelector('#view canvas').getBoundingClientRect();
+      return { x: box.left + p.sx, y: box.top + p.sy };
+    }, bend);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return at;
+  };
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
 } else if (mode === 'radius') {
   // a radius grip slid outwards along its leg and back (closer to the bend it would hide)

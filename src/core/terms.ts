@@ -40,6 +40,12 @@ export const JARGON: readonly [RegExp, string][] = [
   [/\bmain-road\b|\bmain road\b/i, '"main road" (say "our road")'],
   [/\bQ100\b|\bDEM\b|\bRC\b|\bA\/B\b/, 'technical abbreviation'],
   [/overbridge|diversion|diverted|reconnection/i, 'old outcome name (see OUTCOME)'],
+  // the interface rethink (docs/interface-rethink.md): words players tripped over
+  [/\breceivers?\b|L<sub>Aeq|\bLAeq\b/i, 'noise-model term (say "top floor", "night noise")'],
+  [/\bretained\b|\bblocking\b|keep\/wall/i, 'rule-engine term'],
+  [/\bdwellings?\b/i, '"dwelling" (say "house")'],
+  [/#\d/, 'object ID'],
+  [/\bstation\b/i, '"station" (say "km")'],
 ];
 /** Source names: allowed only in a violation's `rule` line and pricing tooltips. */
 export const SOURCE_NAMES: readonly [RegExp, string][] = [
