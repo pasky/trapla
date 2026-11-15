@@ -277,7 +277,7 @@ export class Hud {
     const valid = this.$('valid');
     valid.textContent = preview ? '≈ PREVIEW' : r.valid ? '✓ VALID' : '✗ NOT VALID';
     valid.className = 'badge ' + (preview ? 'preview' : r.valid ? 'ok' : 'bad');
-    valid.title = preview ? 'Approximate while you drag: crossings, footprint remedies, noise and support heights are worked out (and validity checked) when you pause or let go'
+    valid.title = preview ? 'Approximate while you drag: crossings, roads and streams next to our earthworks, noise and bridge support heights are worked out (and validity checked) when you pause or let go'
       : 'Valid = all norm checks pass and both goals are met';
     this.$('perkm').textContent = `${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)} · ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h`;
     const tOk = r.travelMin <= this.sc.maxTravelMin;
