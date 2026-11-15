@@ -19,7 +19,7 @@ import { pieceAt } from './ui/pieces';
 import { createNoiseModel } from './core/road-noise';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
-import { View } from './render/view';
+import { View, type StagedRoute } from './render/view';
 import { loadPack } from './scenario';
 import { startDesign, Store } from './state';
 import { CurveEditor } from './ui/curve-edit';
@@ -337,10 +337,10 @@ async function main() {
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {
       // both parts stay owned here until handed over: a cancel between them disposes the first
-      let routeGeometry: Staged | undefined, crossingGeometry: Staged | undefined, handedOver = false;
+      let routeGeometry: StagedRoute | undefined, crossingGeometry: Staged | undefined, handedOver = false;
       try {
         routeGeometry = yield* view.buildResult(r, crown);
-        crossingGeometry = yield* crossingRenderer.build(r);
+        crossingGeometry = yield* crossingRenderer.build(r, routeGeometry.context);
         handedOver = true;
         return [routeGeometry, crossingGeometry] as const;
       } finally {
