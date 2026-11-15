@@ -113,20 +113,41 @@ Priced now (core):
   grade, bridges/tunnels and sight against the designed road; the side road's first metres inside that
   road's earthworks are credited (not built twice); their meeting is no longer an unchecked crossing and
   the land test ignores the junction area.
+- **Old road land** under a rebuilt stretch is not bought again: the road authority owns its road land
+  (Act 13/1997 §11, research/30 §3). Cadastral widths are unknown, so only the old pavement's study width is
+  credited (the least it surely owns), at the land price the new road paid there.
+- **Roundabout** as a junction choice per end (the side road's card: Auto / Roundabout). Auto stays a
+  priority T: no norm found that requires a roundabout by class (research/29 §1). 32 M CZK (ŘSD awards,
+  research/08), a 40 m ring (middle of the 30–50 m PROVISIONAL envelope) whose land beyond the joined road
+  and houses on it are priced with the junction; offered on class I–III/local roads and on our road; no T
+  sight triangle at a roundabout (its entries see around the ring, TP 135; not modelled).
 - A project of independent roads is priced (`screenIndependence`): our road + a side road / rebuilt
   stretch anywhere their land, roads, houses and noise do not interact.
 
 Not yet (honest in the game):
 
-- **Combined noise** (C1 c): two roads whose noise reaches the same houses stay unpriced ("These roads
+- **Combined noise** (C1 c), prepared in `core/project-noise.ts` (tested with a synthetic decider): energy sum
+  per storey across physical sources, the prevailing road's limit, the cheapest single wall on the prevailing
+  road (walls built for earlier houses count) else one buy-out. Wiring once noise-walls-seams merges:
+  1. `screenIndependence` keeps land/road/building interactions; its `shared-noise` houses become the
+     candidates (plus houses a road removes that another hears: one buy-out, credited to the second road).
+  2. `NoiseDecider.sources(j)`: for each road whose bound reaches j, `pointTransfer` over its
+     `Result.noise.source` with its built walls `noise.L/R` plus project walls, every storey (receivers
+     1.5 m above each floor) → `SourceAtHouse` with 60/50 limits.
+  3. `tryWall`: that road's wall heights raised to h over ≥ 2× the house distance around its nearest
+     station on the facing side (where `gap`/`shield` allow), area added × `NOISE.wallPerM2`; commit keeps
+     the raised arrays for later houses.
+  4. Walls → a `noise` work of that road, drawn from its raised arrays; buy-outs → a `property` work of the
+     prevailing road; `ProjectReceiver.contributions` per storey; `acousticScreen.complete` with the
+     screen's omitted-energy bound.
+- **Combined noise**, today: two roads whose noise reaches the same houses stay unpriced ("These roads
   affect each other"). In D11 that is most side roads within ~3.6 km of our road. Waits for the noise
   agent's per-house, per-storey energy per physical road; then energy sum at each receiver, limit of the
   prevailing road (research/31), one buy-out per house, project-level walls.
 - Road crossings between designed roads (bridge/underpass), shared works beyond junctions.
-- Old road land under a rebuilt stretch is bought again (conservative; existing land width unknown).
 - A rebuilt alignment is assessed with new-road noise limits (it is relocated, research/30); traffic for
   mapped roads is the player's (CSD 2020 census per way could prefill it later).
-- Roundabout as a junction choice; ČSN 73 6102 turning-lane lengths; local-road/track design rules.
+- ČSN 73 6102 turning-lane lengths; local-road/track design rules; a roundabout's own entry visibility.
 - Rebuilding across several mapped ways (one way per stretch today).
 
 Gates on 6ae171b: any-road-scene (D3), smoke, playtest, GPU drag gates all pass. Later commits (merge with
