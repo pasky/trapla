@@ -13,6 +13,7 @@ import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
 import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
+import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
 import { SourceEditor } from './ui/source-editor';
 import { groundRoadSourceInfo } from './core/project-promotion';
@@ -48,6 +49,8 @@ import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
 const status = document.getElementById('status')!;
+/** a mapped road is hit on its drawn width plus this many pixels (a near miss on empty ground still deselects) */
+const SOURCE_PICK_SLACK_PX = 3;
 const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
 
 async function main() {
@@ -156,7 +159,8 @@ async function main() {
   if (pack.transport && pack.vectors && transportData) {
     try {
       transportIndex = new ProjectTransportIndex(pack.transport, transportData, pack.transport.vectorData, pack.terrain);
-      sourcePicker = new SourcePicker(pack.transport, pack.vectors);
+      // only the drawn road is clickable: its drawn width at the local scale (map or photo overlay), plus slack
+      sourcePicker = new SourcePicker(pack.transport, pack.vectors, (layer, res) => lineHalfWidth(layer, res, view.photoWithNetwork));
     } catch (error) { console.warn('Road map links are unavailable', error); transportIndex = null; sourcePicker = null; }
   }
   const inspectorEl = document.getElementById('inspector')!;
@@ -607,8 +611,8 @@ async function main() {
   const sourceAt = (clientX: number, clientY: number): { kind: 'source'; hit: SourceHit } | { kind: 'route-hit'; routeId: RouteId; s: number } | null => {
     if (!sourcePicker || !sourceEditor) return null;
     const g = view.pick(clientX, clientY); if (!g) return null;
-    const box = canvasBox(), px = 8;
-    const hit = sourcePicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(30, px * view.metresPerPixel * 3), px,
+    const box = canvasBox(), slack = SOURCE_PICK_SLACK_PX;
+    const hit = sourcePicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * view.metresPerPixel), slack,
       (x, y) => view.project(x, y, view.drape(x, y)));
     if (!hit) return null;
     for (const route of projectStore.snapshot.design.routes) for (const c of route.source?.intervals ?? [])

@@ -89,6 +89,19 @@ const NET_PASSES: Pass[] = [
   ...netPass('minor', 2.2, 1.4), ...netPass('tertiary', 2.6, 1.6), ...netPass('secondary', 3, 1.8),
   ...netPass('primary', 3.4, 2.0), ...netPass('motorway', 4, 2.4),
 ];
+/** The drawn half-width (m) of a line layer where a screen pixel is `res` metres, widest pass incl. casing,
+ * the same formula as the line shader; null where the layer is not drawn (faded out / not a line layer). */
+export function lineHalfWidth(layer: string, res: number, photo = false): number | null {
+  let hw: number | null = null;
+  for (const p of photo ? NET_PASSES : PASSES) {
+    if (p.layer !== layer || p.kind !== 'line') continue;
+    const fade = p.maxRes === undefined ? 1 : Math.max(0, Math.min(1, 2 - (2 * res) / p.maxRes));
+    if (fade <= 0) continue;
+    const w = Math.max((p.width ?? 0) / 2, ((p.minPx ?? 0) / 2) * res) + Math.max(p.extra ?? 0, (p.extraPx ?? 0) * res);
+    hw = Math.max(hw ?? 0, w);
+  }
+  return hw;
+}
 /** layers whose polylines get round caps and joins (wide enough for gaps to show) */
 const CAPPED = new Set(['minor', 'tertiary', 'secondary', 'primary', 'motorway', 'service', 'rail', 'river']);
 

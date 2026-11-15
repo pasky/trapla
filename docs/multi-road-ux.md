@@ -172,6 +172,9 @@ intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixtu
   `promote` command (branches become explicit connections), **Cancel**/✕/Esc changes nothing. Showing
   the card or switching roads creates no undo entry. A stretch already claimed by a project road selects
   that road. Accepted render intervals feed the picker cuts with the scene swap.
+  A base road is hit only on its drawn width (same width formula and fade as the map or photo overlay at
+  the local scale) plus 3 px; a near miss on empty ground still deselects, and a faded-out track is not
+  clickable.
 - The promoted road is a reference proposal: core returns `source-needs-network`, so it has no bill,
   no body and no profile. It is drawn as an orange dashed line over the still-visible old road, is
   pickable and selectable from the route list, and its card says "Proposed change · not checked yet"

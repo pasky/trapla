@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TransportGraphData, TransportRenderInterval, TransportSource } from '../src/core/project-transport';
-import { buildLineGeos } from '../src/render/landcover';
+import { buildLineGeos, lineHalfWidth } from '../src/render/landcover';
 import { finish } from '../src/render/slices';
 import { sourceReplacementCuts } from '../src/render/source-intervals';
 import type { LineLayer, VectorPack } from '../src/render/vectorPack';
@@ -116,5 +116,16 @@ describe('accepted source pavement rendering', () => {
       geo.dispose();
     }
     expect(n).toBeGreaterThan(0);
+  });
+  it('a base road is hit only on its drawn width plus a small slack, so a near miss on empty ground deselects', () => {
+    const picker = new SourcePicker(graph(), vectors, (l, res) => lineHalfWidth(l, res));
+    const project = (x: number, y: number) => ({ sx: x, sy: y, vis: true }); // 1 px per metre
+    const half = lineHalfWidth('primary', 1)!; // primary: casing 4.5 m + extra 0.55 px at 1 m/px
+    expect(half).toBeCloseTo(5.05);
+    expect(picker.at(20, half + 2, 20, half + 2, 30, 3, project)?.sourceId).toBe('road');
+    expect(picker.at(20, half + 4, 20, half + 4, 30, 3, project)).toBeNull();
+    expect(picker.at(20, 12, 20, 12, 30, 3, project)).toBeNull(); // 12 px away: empty ground
+    // a layer faded out at this scale is not drawn, hence not clickable
+    expect(lineHalfWidth('track', 20)).toBeNull(); expect(lineHalfWidth('track', 1)).not.toBeNull();
   });
 });
