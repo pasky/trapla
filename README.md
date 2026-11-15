@@ -77,9 +77,13 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
     on the map and <kbd>+</kbd> / <kbd>−</kbd> change the radius too;
   - crossed road: **Auto · Junction · Bridge over it · It bridges us · Close + link · Underpass**, ‹ › step
     along the crossed roads; a choice applies wherever we cross that road;
-  - house: **Auto · Buy out · Keep**, the wall on its side, and a **cross-section**: our road and its noise
-    source, the wall or cut edge, the house floor by floor in its own noise colour with each floor's level
-    (and what it was without the wall), the sightline and the wall's shadow. Hovering a wall height redraws it.
+  - house: **Auto · Buy out · Keep**, the wall on its side, a **plan** (our road with travel left → right,
+    its walls and side roads, a line from every km where the house is over the limit before walls: red = still
+    too loud from there, grey = stopped; one sentence says where the loudest comes from — past the wall's end,
+    through a junction's gap, over a too-low wall) and a **cross-section** along that loudest line: our road and
+    its noise source, the wall or cut edge, the house floor by floor in its own noise colour with each floor's
+    level (and what it was without the wall), the sightline and the wall's shadow. Hovering a wall height redraws
+    both ([a house that hears the road through a junction's gap](docs/screenshots/72-house-noise-plan-junction-gap.png)).
   - pinned height (Auto) / height point (By hand): its height, typed or dragged, *Unpin* / *Delete*.
 - **The score** (top right, sticky): total cost (struck through while not valid), ✓ VALID / ✗ NOT VALID, **the
   change the last edit made** (a drag counts once), travel time against the goal, the violations chip (click:

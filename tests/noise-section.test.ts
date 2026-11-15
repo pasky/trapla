@@ -7,6 +7,7 @@ import { BuildingIndex } from '../src/core/buildings';
 import { createNoiseModel } from '../src/core/road-noise';
 import { startDesign } from '../src/state';
 import { floorLevels } from '../src/ui/noise-section';
+import { noiseRays, raysWithWall } from '../src/core/noise';
 
 // The house card's cross-section must show the level the game decided on: its top floor equals the
 // receiver's reported level, with or without walls, near and far, low and tall.
@@ -24,9 +25,12 @@ describe('noise cross-section', () => {
       const r = evaluate({ ...ctx, buildings: new BuildingIndex(houses, info) }, { ...startDesign(), wallOverrides: walls });
       const shown = r.noise.receivers.filter((p) => p.status !== 'bought');
       expect(shown.length).toBeGreaterThan(3);
+      expect(shown.some((p) => p.rays?.length)).toBe(true);
       for (const p of shown) {
         const floors = floorLevels(p, Math.max(1, info[p.j][1]), model, CATEGORIES['S9.5'].crownWidth);
         expect(floors[floors.length - 1].after).toBeCloseTo(p.mitigated, 6);
+        // the card's wall preview recomputes each line the way the game did
+        if (walls) for (const [q, ray] of raysWithWall(noiseRays(p), 'L', () => true, 6).entries()) expect(ray.residual).toBeCloseTo(noiseRays(p)[q].residual, 4);
       }
     });
   }

@@ -8,13 +8,15 @@ import { NOISE } from './data/urban';
 export function noiseControlViolations(receivers: readonly NoiseReceiver[], scratch: ExposureScratch,
   s: ArrayLike<number>, crownWidth: number): Violation[] {
   const pending = new Map(receivers.filter((r) => r.unresolved).map((r) => [r.j,
-    { r, height: 0, s0: Infinity, s1: -Infinity, sides: new Set<string>() }]));
+    { r, height: 0, s0: Infinity, s1: -Infinity, sides: new Set<string>(), gap: false }]));
   if (!pending.size) return [];
   const barrier = noiseBarrier(crownWidth);
   for (const p of scratch.pairs) {
     const v = pending.get(p.j);
     if (!v || p.need === 0) continue;
-    const height = Number.isFinite(p.need) ? p.need : wallAttenuation(p.d, p.height, 6, barrier) >= p.excess - 1e-6 ? 6 : Infinity;
+    // a junction opening cannot carry a wall: no height closes it
+    const height = p.gap ? Infinity : Number.isFinite(p.need) ? p.need : wallAttenuation(p.d, p.height, 6, barrier) >= p.excess - 1e-6 ? 6 : Infinity;
+    if (p.gap) v.gap = true;
     v.height = Math.max(v.height, height);
     v.s0 = Math.min(v.s0, s[p.i]); v.s1 = Math.max(v.s1, s[p.i]); v.sides.add(p.left ? 'left' : 'right');
   }
@@ -33,10 +35,10 @@ export function noiseControlViolations(receivers: readonly NoiseReceiver[], scra
   }
   return groups.map((group): Violation => {
     const ids = group.map((v) => v.r.j), count = ids.length;
-    let height = 0, excess = 0, from = Infinity, to = -Infinity;
+    let height = 0, excess = 0, from = Infinity, to = -Infinity, gap = false;
     const sides = new Set<string>();
     for (const v of group) {
-      height = Math.max(height, v.height); excess = Math.max(excess, v.r.unresolved!.excess);
+      height = Math.max(height, v.height); excess = Math.max(excess, v.r.unresolved!.excess); gap ||= v.gap;
       from = Math.min(from, v.s0); to = Math.max(to, v.s1);
       for (const side of v.sides) sides.add(side);
     }
@@ -47,8 +49,8 @@ export function noiseControlViolations(receivers: readonly NoiseReceiver[], scra
     return {
       kind: 'noise', basis: 'game', s0: from, s1: to, size: excess,
       title: `${what} ${excess.toFixed(1)} dB too loud`,
-      fix: canWall ? `${height} m wall ${[...sides].join(' + ')}, or buy out` : 'Buy out, or move the road away',
-      detail: 'Your wall or Keep choice stops the automatic buyout. Levels are at the top floor, walls and cuts included.',
+      fix: canWall ? `${height} m wall ${[...sides].join(' + ')}, or buy out` : gap ? 'Buy out, or cross the side road without a junction' : 'Buy out, or move the road away',
+      detail: `${gap && !canWall ? 'The noise comes through the gap in the wall where a side road joins; a wall cannot close it. ' : ''}Your wall or Keep choice stops the automatic buyout. Levels are at the top floor, walls and cuts included.`,
       rule: 'Government Order 272/2011: 60 dB by day, 50 dB at night at the façade (game estimate, not an acoustic study)',
       target: { buildings: ids, ...(canWall ? { wall: { sides: wallSides, height, s0: from, s1: to } } : {}) },
     };

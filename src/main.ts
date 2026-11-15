@@ -68,7 +68,7 @@ async function main() {
   const intro = new Intro(document.getElementById('view')!);
   const decisions = new DecisionList(hud.decisions, (n) => { document.getElementById('decisions-count')!.textContent = n ? String(n) : ''; });
   decisions.objectDataChanged = store.objectDataChanged;
-  const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0)); };
+  const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0), pack.overlays.buildings[j]); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
   // after the HUD: it syncs the HUD's exaggeration select

@@ -6,6 +6,7 @@ import {
   wallAttenuation, wallFlags, wallStretches, type NoisePolicy,
 } from '../src/core/noise';
 import { createNoiseModel } from '../src/core/road-noise';
+import { noiseControlViolations } from '../src/core/noise-control-violations';
 
 const barrier = noiseBarrier(9.5);
 const house = (x = 100, y = 20, levels = 1) => new BuildingIndex([[x, y, 8]], [
@@ -32,9 +33,15 @@ describe('manual noise policy', () => {
     expect(ordinary.L[0]).toBeGreaterThan(0); expect(ordinary.boughtOut).toHaveLength(0);
     const opening = run({ gapL: [1] });
     expect(opening.L[0]).toBe(0); expect(opening.boughtOut).toHaveLength(1);
-    const kept = run({ gapL: [1], wallL: [6], keptBuildingIds: new Set([0]) });
+    const keptEx = dwellingExposure(1, [0], [0], [1], [0], b, normal, [0], [0], () => 0, [0], [0], barrier, undefined,
+      { gapL: [1], wallL: [6], keptBuildingIds: new Set([0]) });
+    const kept = resolveNoiseWalls(keptEx, 10, 10, [0], [0], barrier);
     expect(kept.L[0]).toBe(0); expect(kept.boughtOut).toHaveLength(0);
     expect(kept.unresolved).toHaveLength(1);
+    // the fix never offers a wall that cannot stand in the opening
+    const [v] = noiseControlViolations(kept.receivers, keptEx.scratch, [0], 9.5);
+    expect(v.target?.wall).toBeUndefined(); expect(v.fix).toMatch(/^Buy out/);
+    expect(kept.receivers[0].key?.gap).toBe(true);
   });
   it('retains an explicitly kept failing dwelling and its useful automatic walls at other stations', () => {
     const ex = exposure({ keptBuildingIds: new Set([0]) });

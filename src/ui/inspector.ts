@@ -12,9 +12,10 @@ import type { BuildingOverride } from '../core/build-controls';
 import type { Design, Result } from '../core/evaluate';
 import type { StructureKind } from '../core/overrides';
 import type { NoiseModel } from '../core/road-noise';
+import { noiseBarrier, noiseRays, raysWithWall, type NoiseReceiver } from '../core/noise';
 import { KIND } from '../core/structures';
 import { czk } from './costgroups';
-import { noiseSectionSvg } from './noise-section';
+import { noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
 import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './pieces';
 import { activeStructure } from './structure-bar';
 
@@ -76,7 +77,7 @@ export class Inspector {
 
   constructor(private el: HTMLElement, private ctx: {
     noiseModel: (d: Design) => NoiseModel;
-    building: (j: number) => { kind: string; levels: number; dwelling: boolean };
+    building: (j: number) => { kind: string; levels: number; dwelling: boolean; rect?: HouseRect };
     maxRadius: (i: number) => number | null;
   }) {
     try { this.more = localStorage.getItem(MORE_KEY) === '1'; } catch { /* private mode */ }
@@ -85,7 +86,7 @@ export class Inspector {
     // the building card: hovering a wall height redraws the cross-section with that wall
     el.addEventListener('pointerover', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.k-building .wall-row button');
-      this.preview(b ? (b.dataset.wallL ?? b.dataset.wallR ?? null) : null);
+      this.preview(b ? (b.dataset.wallL ?? b.dataset.wallR ?? null) : null, b?.dataset.wallL !== undefined ? 'L' : b?.dataset.wallR !== undefined ? 'R' : undefined);
     });
     el.addEventListener('pointerleave', () => this.preview(null));
     el.addEventListener('input', (e) => {
@@ -109,16 +110,34 @@ export class Inspector {
   }
 
   private previewing: string | null = null;
-  /** redraw the building's cross-section with a wall of height `v` (m, 'auto' = as built) */
-  private preview(v: string | null) {
+  /** redraw the building's plan and cross-section with a wall of height `v` (m, 'auto' = as built) */
+  private preview(v: string | null, side?: 'L' | 'R') {
     if (v === this.previewing || this.sel?.kind !== 'building' || !this.r || !this.d) return;
     this.previewing = v;
-    const svg = this.el.querySelector('.noise-section');
+    const box = this.el.querySelector('.noise-views');
+    const range = this.el.querySelector<HTMLElement>('.wall-row')?.dataset.range?.split(',').map(Number);
     const rec = this.r.noise.receivers.find((p) => p.j === (this.sel as { j: number }).j);
-    if (!svg || !rec?.key) return;
-    const wall = v === null || v === 'auto' ? rec.key.wall : Number(v);
-    const html = noiseSectionSvg({ ...rec, key: { ...rec.key, wall } }, this.ctx.building(rec.j).levels, this.ctx.noiseModel(this.d), CATEGORIES[this.d.category].crownWidth, this.r.noise.footprint?.limit ?? NOISE.limitNightDb);
-    svg.outerHTML = html;
+    if (!box || !rec?.key) return;
+    const r = this.r, wall = v === null || v === 'auto' || !side || !range ? undefined
+      : { side, height: Number(v), at: (i: number) => r.s[i] >= range[0] && r.s[i] < range[1] };
+    box.innerHTML = this.noiseViews(r, this.d, rec, wall);
+  }
+
+  /** the house's plan (where the noise comes from) and cross-section (its floors), as built or with a
+   * previewed wall choice: the section follows the loudest line */
+  private noiseViews(r: Result, d: Design, rec: NoiseReceiver, wall?: { side: 'L' | 'R'; height: number; at: (i: number) => boolean }) {
+    const info = this.ctx.building(rec.j), crown = CATEGORIES[d.category].crownWidth;
+    const limit = r.noise.footprint?.limit ?? NOISE.limitNightDb;
+    let rays = noiseRays(rec), key = rec.key!, level = rec.mitigated;
+    if (wall && rays.length) {
+      rays = raysWithWall(rays, wall.side, wall.at, wall.height, noiseBarrier(crown));
+      const worst = rays.reduce((a, p) => (p.residual > a.residual ? p : a));
+      key = { i: worst.i, side: worst.side, d: worst.d, h: worst.h, wall: worst.wall, ...(worst.edge ? { edge: worst.edge } : {}), ...(worst.gap ? { gap: true } : {}) };
+      level = worst.residual;
+    }
+    const plan = info.rect ? noisePlan(r, info.rect, rays, crown, level, wall) : null;
+    const section = noiseSectionSvg({ ...rec, key }, info.levels, this.ctx.noiseModel(d), crown, limit, r.s[key.i]);
+    return `${plan ? `${plan.svg}<div class="why plan-why">${esc(plan.caption)}</div>` : ''}${section}`;
   }
   setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
 
@@ -343,7 +362,7 @@ export class Inspector {
     const vio = r.violations.filter((v) => v.target?.buildings?.includes(j)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     let section = '', walls = '';
     if (rec?.key && !removed && !(bought && bought.reason === 'manual')) {
-      section = noiseSectionSvg(rec, info.levels, this.ctx.noiseModel(d), CATEGORIES[d.category].crownWidth, limit);
+      section = `<div class="noise-views">${this.noiseViews(r, d, rec)}</div>`;
       // the wall on that side, next to the house: its stretch, or the house's exposure ± the wall margin
       const side = rec.key.side, i = rec.key.i;
       const w = r.walls.find((x) => x.side === side && i >= x.i0 && i <= x.i1);
@@ -432,7 +451,10 @@ export function crossedRoads(r: Result) {
 }
 
 /** "house", levels, dwelling: from the pack's building info */
-export function buildingInfo(info: ArrayLike<number> | undefined, levels: number) {
+export function buildingInfo(info: ArrayLike<number> | undefined, levels: number, circle?: ArrayLike<number>) {
   const k = BUILDING_KINDS[info ? info[2] : 0];
-  return { kind: k?.label ?? 'building', levels, dwelling: !!k?.dwelling };
+  // the rectangle the noise model measures from (BuildingIndex: a square in the circle without info)
+  const rect: HouseRect | undefined = info ? { x: info[3], y: info[4], hl: info[5], hw: info[6], angle: info[7] }
+    : circle ? { x: circle[0], y: circle[1], hl: circle[2] / Math.SQRT2, hw: circle[2] / Math.SQRT2, angle: 0 } : undefined;
+  return { kind: k?.label ?? 'building', levels, dwelling: !!k?.dwelling, ...(rect ? { rect } : {}) };
 }

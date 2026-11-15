@@ -421,12 +421,12 @@ ol.money button.link span { font-variant-numeric: tabular-nums; font-weight: 600
 button.link i.pk-bridge { background: #2f8fff; } button.link i.pk-tunnel { background: #a070ff; }
 button.link i.pk-fill { background: #8fbf5a; } button.link i.pk-cut { background: #d78c32; }
 .inspector .hint { margin: 4px 0 0; color: #778; }
-.noise-section { display: block; margin: 2px 0 6px; background: #f6f9fc; border-radius: 6px; }
-.noise-section text { font: 11px system-ui, sans-serif; fill: #1d232a; }
+.noise-section, .noise-plan { display: block; margin: 2px 0 6px; background: #f6f9fc; border-radius: 6px; }
+.noise-section text, .noise-plan text { font: 11px system-ui, sans-serif; fill: #1d232a; }
 .noise-section text.bad { fill: #a3200f; font-weight: 700; }
 .noise-section text.ok { fill: #17663a; font-weight: 700; }
 .noise-section tspan.was { fill: #889; font-weight: 400; font-size: 10px; }
-.noise-section text.lbl { fill: #667; font-size: 10px; }
+.noise-section text.lbl, .noise-plan text.lbl { fill: #667; font-size: 10px; }
 .score-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .delta { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; min-height: 17px; }
 .delta.down { color: #17663a; } .delta.up { color: #a3200f; }
@@ -439,3 +439,5 @@ button.link i.pk-fill { background: #8fbf5a; } button.link i.pk-cut { background
 .inspector button.fix small { font-weight: 400; opacity: .8; }
 .inspector #crossing-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .sw.mapwin { width: 14px; height: 8px; background: rgba(31,111,235,0.12); border-top: 3px solid rgba(31,111,235,0.55); border-radius: 0; }
+.inspector .plan-why { margin: 0 0 4px; min-height: 2.7em; }
+.noise-plan text { paint-order: stroke; stroke: #f6f9fc; stroke-width: 3px; stroke-linejoin: round; }

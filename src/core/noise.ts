@@ -146,7 +146,7 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
       const gap = wallGap(policy, left, i);
       if (gap && h > 0) h = Infinity;
       if (excess > 0) {
-        pairs.push({ i, j, left, d, height, excess, need: h });
+        pairs.push({ i, j, left, d, height, excess, need: h, gap });
         // A manual decision at ANY exposing station retains the whole dwelling, even when the
         // automatic failure is at another station visited earlier or later.
         if (manualWall(policy, left, i) !== undefined) retained.add(j);
@@ -174,7 +174,8 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
   return { L, R, boughtOut, scratch: { visited, raw, quiet, quietI, quietD, quietH, quietLeft, rawI, rawD, rawH, rawLeft, pairs, failed, ...(policy ? { policy } : {}) } };
 }
 
-interface ExposedPair { i: number; j: number; left: boolean; d: number; height: number; excess: number; need: number }
+/** `gap`: a junction opening, where no wall can stand */
+interface ExposedPair { i: number; j: number; left: boolean; d: number; height: number; excess: number; need: number; gap: boolean }
 /** What dwellingExposure saw, for noiseReceivers (not part of the Result). */
 export interface ExposureScratch {
   visited: number[]; raw: Float64Array;
@@ -219,15 +220,50 @@ export interface NoiseReceiver {
   unresolved?: NoiseUnresolved;
   /** the deciding exposure (highest level left after walls / cut edges): station, side, façade distance
    * from the axis, top-floor height above grade, built wall and cut edge there — for the cross-section */
-  key?: { i: number; side: 'L' | 'R'; d: number; h: number; wall: number; edge?: EarthEdge };
+  key?: { i: number; side: 'L' | 'R'; d: number; h: number; wall: number; edge?: EarthEdge; gap?: boolean };
+  /** every station where the top floor is over the limit unmitigated, packed (RAY_STRIDE per station;
+   * read with `noiseRays`): where the noise comes from, and what stops it — for the house card's plan */
+  rays?: Float32Array;
+}
+
+/** One station's exposure of a house (see NoiseReceiver.rays). */
+export interface NoiseRay {
+  i: number; side: 'L' | 'R';
+  /** a junction opening: no wall can stand here */
+  gap: boolean;
+  /** façade distance from the axis, top-floor height above grade, m; excess over the limit without
+   * mitigation, cut-edge attenuation, dB; built wall, m; level left over the limit, dB */
+  d: number; h: number; excess: number; earth: number; wall: number; residual: number;
+  edge?: EarthEdge;
+}
+export const RAY_STRIDE = 11;
+
+export function noiseRays(rec: Pick<NoiseReceiver, 'rays'>): NoiseRay[] {
+  const a = rec.rays, out: NoiseRay[] = [];
+  if (!a) return out;
+  for (let k = 0; k + RAY_STRIDE <= a.length; k += RAY_STRIDE) {
+    out.push({ i: a[k], side: a[k + 1] & 1 ? 'L' : 'R', gap: !!(a[k + 1] & 2), d: a[k + 2], h: a[k + 3], excess: a[k + 4],
+      earth: a[k + 5], wall: a[k + 6], residual: a[k + 7], ...(a[k + 10] ? { edge: { offset: a[k + 8], height: a[k + 9] } } : {}) });
+  }
+  return out;
+}
+
+/** The rays with a wall of `height` m on `side` where `at(station)` (none in a junction opening), as
+ * noiseReceivers computes them: what a wall choice would change, for the card's preview. */
+export function raysWithWall(rays: readonly NoiseRay[], side: 'L' | 'R', at: (i: number) => boolean, height: number, barrier = DEFAULT_BARRIER): NoiseRay[] {
+  return rays.map((r) => {
+    if (r.side !== side || !at(r.i)) return r;
+    const wall = r.gap ? 0 : height;
+    return { ...r, wall, residual: r.excess - Math.max(r.earth, wallAttenuation(r.d, r.h, wall, barrier)) };
+  });
 }
 
 /** Per-dwelling status after the walls are chosen: residual = excess − max(built wall, cut edge) at
  * every exposed station (the same alternatives as requiredWall), raw elsewhere. */
 export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wallR: ArrayLike<number>,
   barrier = DEFAULT_BARRIER, edges?: EarthEdges): NoiseReceiver[] {
-  const res = new Map<number, { mitigated: number; need: number; wall: number; at: number; cut: boolean; worst?: NoiseUnresolved; key?: NoiseReceiver['key']; keyLevel: number }>();
-  for (const j of ex.visited) res.set(j, { mitigated: ex.raw[j] > 0 ? ex.quiet[j] : ex.raw[j], need: 0, wall: 0, at: -1, cut: false, keyLevel: -Infinity });
+  const res = new Map<number, { mitigated: number; need: number; wall: number; at: number; cut: boolean; worst?: NoiseUnresolved; key?: NoiseReceiver['key']; keyLevel: number; rays: number[] }>();
+  for (const j of ex.visited) res.set(j, { mitigated: ex.raw[j] > 0 ? ex.quiet[j] : ex.raw[j], need: 0, wall: 0, at: -1, cut: false, keyLevel: -Infinity, rays: [] });
   for (const p of ex.pairs) {
     const r = res.get(p.j)!;
     const built = (p.left ? wallL : wallR)[p.i];
@@ -236,7 +272,8 @@ export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wa
     const earth = attenuation(earthDelta(p.d, p.height, edge, direct));
     const loss = Math.max(earth, wallAttenuation(p.d, p.height, built, barrier));
     const residual = p.excess - loss;
-    if (residual > r.keyLevel) { r.keyLevel = residual; r.key = { i: p.i, side: p.left ? 'L' : 'R', d: p.d, h: p.height, wall: built, ...(edge ? { edge } : {}) }; }
+    r.rays.push(p.i, (p.left ? 1 : 0) | (p.gap ? 2 : 0), p.d, p.height, p.excess, earth, built, residual, edge?.offset ?? 0, edge?.height ?? 0, edge ? 1 : 0);
+    if (residual > r.keyLevel) { r.keyLevel = residual; r.key = { i: p.i, side: p.left ? 'L' : 'R', d: p.d, h: p.height, wall: built, ...(edge ? { edge } : {}), ...(p.gap ? { gap: true } : {}) }; }
     if (residual > r.mitigated) r.worst = { j: p.j, i: p.i, side: p.left ? 'L' : 'R', excess: residual, wall: built };
     r.mitigated = Math.max(r.mitigated, residual);
     if (p.need === 0) r.cut = true;
@@ -250,6 +287,7 @@ export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wa
       j, status, i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], raw: ex.raw[j],
       mitigated: f ? f.deficit : r.mitigated, need: f ? Infinity : r.need, wall: f ? 0 : r.wall, at: f ? f.i : r.at,
       ...(!f && r.mitigated > 1e-7 && r.worst ? { unresolved: r.worst } : {}),
+      ...(r.rays.length ? { rays: Float32Array.from(r.rays) } : {}),
       key: (r.key && r.keyLevel >= r.mitigated - 1e-9) || !ex.quietI || ex.quietI[j] < 0 ? r.key ?? { i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], wall: (ex.rawLeft[j] ? wallL : wallR)[ex.rawI[j]] ?? 0 }
         // a quiet station decides (walls brought the exposed ones lower): the model counts no wall there
         : { i: ex.quietI[j], side: ex.quietLeft![j] ? 'L' : 'R', d: ex.quietD![j], h: ex.quietH![j], wall: 0 },

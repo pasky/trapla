@@ -115,7 +115,8 @@ export interface Result {
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
   kept: { j: number; i: number; hit: boolean }[];
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
-  noise: { receivers: NoiseReceiver[]; footprint: NoiseFootprint | null };
+  /** `gaps`: junction openings in the wall lines, per station (1 = no wall can stand there) */
+  noise: { receivers: NoiseReceiver[]; footprint: NoiseFootprint | null; gaps?: { L: Uint8Array; R: Uint8Array } };
   quantities: {
     cut: number; fill: number; reused: number; surplus: number; deficit: number; avgHaul: number;
     /** cut volume by local geology + estimated weathering class I / II / III, m³ */
@@ -1123,7 +1124,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
     retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
-    noise: { receivers, footprint: footprintMap },
+    noise: { receivers, footprint: footprintMap, ...(receivers.length ? { gaps: wallGaps } : {}) },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
       cutByClass, footprint, forestArea, buildingsHit: demolished.length, hitBuildings: demolished.map((p) => p.j),
