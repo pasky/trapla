@@ -46,4 +46,20 @@ try {
   await page.mouse.click(box.x + screen.sx, box.y + screen.sy);
   await page.locator('#inspector.k-source').waitFor({ timeout: 10000 });
   console.log(`PASS first click on ${road.name} (${Math.round(road.length)} m) before the graph was parsed opens its card`);
+  // 3. a failed download is retried on the next need, not cached as permanently unavailable
+  await page.close(); // one tab per saved project
+  const flaky = await context.newPage();
+  let failures = 1, requests = 0;
+  // The picker's HEAD check sees the file; only the lazy download (GET) fails once.
+  await flaky.route('**/transport.json.gz', route => {
+    if (route.request().method() !== 'GET') return route.continue();
+    requests++; return failures-- > 0 ? route.fulfill({ status: 503, body: 'busy' }) : route.continue();
+  });
+  await flaky.goto(url);
+  await flaky.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
+  await flaky.evaluate(() => window.trapla.whenIdle());
+  await flaky.waitForTimeout(1500); // idle prefetch: the first, failing request
+  assert.equal(await flaky.evaluate(() => window.trapla.whenTransport()), true, 'a later need retries the graph after a failure');
+  assert(requests >= 2, `the graph was requested again (${requests} requests)`);
+  console.log(`PASS a failed graph download is retried (${requests} requests)`);
 } finally { await browser.close(); await server.close(); }

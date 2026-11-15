@@ -184,7 +184,12 @@ async function main() {
   let transportReady: Promise<void> | null = null;
   const ensureTransport = () => transportReady ??= (async () => {
     let graph: TransportGraphData | null;
-    try { graph = await pack.loadTransport(); } catch (error) { console.warn('Road map links are unavailable', error); return; }
+    try { graph = await pack.loadTransport(); } catch (error) {
+      // Visible, and retried on the next need (a click on a road, the photo, a reload of a project).
+      console.warn('Road map links are unavailable', error); transportReady = null;
+      toast(error instanceof Error && /Reload|Rebuild/.test(error.message) ? error.message : 'Mapped roads could not be loaded. Click a road to try again.');
+      return;
+    }
     if (!graph || !pack.vectors || !transportData) return;
     try {
       transportIndex = new ProjectTransportIndex(graph, transportData, graph.vectorData, pack.terrain);
@@ -234,7 +239,9 @@ async function main() {
     }
   };
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
+  let selectGeneration = 0; // a deferred base-road pick yields to any later selection
   const select = (next: Sel | null, fly = false) => {
+    selectGeneration++;
     if (sourceEditor?.selected) sourceEditor.clear();
     // a house belongs to the project: its card shows the road whose noise reaches it most
     if (next?.kind === 'building' && projectFull?.complete && Object.keys(projectFull.routes).length > 1) {
@@ -681,14 +688,21 @@ async function main() {
     onPickTerrain: (_x, _y, clientX, clientY) => {
       intro.hide();
       const t = thingAt(clientX, clientY);
-      // First click on a base road before the graph is parsed: parse it, then pick that road.
-      if (!t && !transportGraph && pack.transportMeta) void ensureTransport().then(() => {
-        const late = sourceAt(clientX, clientY);
-        if (late?.kind === 'source') showSource(late.hit);
-      });
+      // First click on a base road before the graph is parsed: parse it, then pick the road at the
+      // clicked ground point (wherever the camera is by then), unless something else was selected meanwhile.
+      const ground = !t && !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
       if (t?.kind === 'route-hit') { if (switchRoute(t.routeId) && store.read()) selectPiece(t.s); }
       else if (t?.kind === 'source') showSource(t.hit);
       else select(t);
+      if (ground) {
+        const generation = selectGeneration;
+        void ensureTransport().then(() => {
+          if (generation !== selectGeneration) return;
+          const p = view.project(ground.x, ground.y, view.drape(ground.x, ground.y)), box = canvasBox();
+          const late = p.vis ? sourceAt(box.left + p.sx, box.top + p.sy) : null;
+          if (late?.kind === 'source') showSource(late.hit);
+        });
+      }
     },
     onDoublePick: (x, y) => { if (!store.read() || routeAt(lastClient.x, lastClient.y, 10)) return; select({ kind: 'bend', i: insertBend(x, y, true) }); },
     // a drag from the road always bends it (a click there still inspects the nearest thing)
