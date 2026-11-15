@@ -33,17 +33,15 @@ Other commands:
 | `npm run typecheck` / `npm run build` | TypeScript check / production build into `dist/` |
 | `npm run bench [design.json]` | recompute timing + realism numbers in Node (default: straight line and an official-line-like design) |
 | `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
-| `npm run smoke` | interaction smoke test with real mouse events (first-run intro, add/drag/delete a bend, road height By hand, undo, persistence) |
-| `node scripts/playtest.mjs [--docs] [--size=1280x800]` | a new player's whole session with real mouse / keyboard (intro, bends, drag, profile hover, stretch → bridge, noise wall, pin, crossing, building, undo / redo, map views, profile key, Start over, overview, demolitions), a screenshot per step into `/tmp/trapla-playtest`; `--docs` writes the gallery 49–59 |
-| `node scripts/ux.mjs [--docs]` | UX checks with real mouse/keyboard events: road-height switch, pins, height points, stretch bar, Undo/Redo bar, bends in the profile, map ↔ profile hover, click-to-zoom; `--docs` writes screenshots 36–41 |
+| `npm run smoke` | interaction smoke test with real mouse events (empty clicks add nothing, drag the road to add a bend, drag / delete / double-click bends, the inspector's stretch choices and keys, By hand, undo, persistence) |
+| `node scripts/playtest.mjs [--docs] [--size=1280x800]` | three players' sessions with real mouse / keyboard: a first-time player (intro, harmless clicks, drag the road, where the money goes, inspect pieces), one fixing violations (fix buttons, the house cross-section, noise view) and a power user (bridge from the map, walls, keep a house, crossing, pin by dragging the line, undo / redo, Start over); a screenshot per step into `/tmp/trapla-playtest`; `--docs` writes the gallery 60–71 |
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
 | `PACK=/path/to/d11 npx tsx scripts/footprint-audit.ts --straight scripts/*-design.json` | automatic footprint remedies, measured wall/road works, remaining violations and bill reconciliation; `DETAIL=1` adds individual diagnostics |
 | `PACK=/path/to/d11 npx tsx scripts/eval-regression.ts` | frozen model-16 bills, validity and built geometry on either recognized data pack |
 | `PACK=/path/to/d11 npx tsx scripts/repair-designs.ts --budget=400 [--write] design.json` | bounded validity-first local PI refinement; preserves controls/category/speed and writes only valid designs |
 | `npx tsx scripts/town-audit.ts design.json [map.svg]` | urban/rural cost-per-km audit; optional map of mask, buildings, removals and route |
-| `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, range selection / Esc and view toggles, and follows the route's length while fitted |
+| `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, selections / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
-| `node scripts/build-tools.mjs [--docs]` | real HUD/map checks for click-to-pin, the crossing / building / stretch cards (buy / keep, wall add / remove / Auto), undo and reload; `--docs` writes screenshots 30–35 |
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
 | `npx tsx scripts/outcome-audit.ts [--straight] [--random N --seed S] [--quiet] [designs…]` | every crossing / footprint outcome with ramp, link and box lengths and costs, every violation; flags ramps > 250 m, links > 1 km and footprint / crossing violations |
 | `node scripts/crossing-sanity-shots.mjs [--out dir]` | the owner-reported service-road bridge (km 8.47 fixtures) and four typical crossings with their cards open; writes `docs/screenshots/crossing-sanity/` |
@@ -56,175 +54,132 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 
 ## How to play
 
-- **Move the route:** click the map to add a bend, drag a numbered bend to move it, right-click it (or
-  <kbd>Del</kbd>) to delete it. Clicking a building or crossed road selects it instead; **Shift+click** adds a
-  bend there anyway. Click a bend to change its curve radius (◇ grips, <kbd>+</kbd> / <kbd>−</kbd>, the bend card,
-  **max**; "smallest allowed" = the smallest radius the rules allow, incl. room for transition curves).
-- Map: left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms (always, also over a bend or a
-  marker), about the point under the cursor, equally fast at any distance.
-- **First run:** a three-step intro over the map (click to add a bend, drag a bend, watch the cost); *Got it*,
-  <kbd>Esc</kbd> or the first click on the map dismiss it for good; *How to play → Show the intro again* brings it back.
-- **Undo / Redo** sit at the top left of the map (tooltips say what they undo); <kbd>Ctrl+Z</kbd> /
-  <kbd>Ctrl+Shift+Z</kbd> (or <kbd>Ctrl+Y</kbd>) work for every edit, including the build cards.
-- View options (buttons at the top right of the map, remembered between sessions):
-  **Contours** <kbd>C</kbd> — contour lines with elevation labels; the interval follows the zoom (5 / 25 m close,
-  10 / 50 m mid, 20 / 100 m far, thick lines = major); **Slope** <kbd>S</kbd> — tints the ground by slope (yellow
-  from 8 %, orange from 15 %, red from 25 %, purple from 40 %); **Relief** <kbd>E</kbd> — vertical exaggeration
-  1× / 1.5× / 2× / 3× of the whole scene; **Photo** <kbd>O</kbd> — aerial photo instead of the map layers
-  (needs a network connection, see below); **Noise** <kbd>N</kbd> — the noise view (see Noise below).
-- **The longitudinal profile** (bottom) shows the ground, the **road height** (black line, with slope %), and the
-  plan's **bends** as numbered circles above it — the same numbers as on the map, with thin guides down to their
-  curves in the curve band. Hovering a bend highlights it on the map and vice versa; hovering the road on the map
-  marks that spot in the profile. No modifier keys anywhere:
-  **click** = zoom in there (the map glides to the same spot), **drag** = select a stretch, **click a curve /
-  straight** in the band under the chart = select it, wheel = zoom, sideways scroll or right-drag = scroll along
-  the route; **−** / **+** and **Whole route** (shown only while zoomed in) in the profile's title bar. **Key ▾**
-  there opens the full legend: every mark in the profile (bends, pins, crossed roads, culverts, buildings, your
-  structures) and the cost-strip colours.
-- **Road height: Automatic | By hand** (HUD). *Automatic*: the game sets the road's height along the route for the
-  lowest cost and updates it whenever you move the route (an approximate search; it can miss a legal solution).
-  The computed height points are not drawn; to force a height, **click the road line** — that pins it there — then
-  drag the orange pin up / down or type the height in the bar that pops up (**Unpin** removes it). A bend's bar /
-  HUD card also offers *Pin road height here*. The finished road passes within ±0.5 m of every pin; slope and
-  rounding rules still apply, and an unreachable pin is a violation with a suggested height, never silently moved.
-  Pins keep their km position when you move the route (they are kept, inactive, By hand and beyond the end of a
-  shortened route). *By hand*: the current automatic heights become your starting point, shown as **◆ height
-  points**: drag one to raise / lower the road, **double-click** the line to add one, right-click one to delete it.
-  Hovering a height point names it on the map. Going back to Automatic replaces them (Undo brings them back).
-- **Bridge / tunnel / earthwork on a stretch:** drag across the profile; a bar pops up over the selection with
-  **Bridge**, **Tunnel**, **Earthwork** and **Automatic** (keys <kbd>B</kbd> / <kbd>T</kbd> / <kbd>E</kbd> /
-  <kbd>C</kbd>) and **Noise wall…**. Your choice affects the automatic road height, shows as "your bridge" etc. on
-  profile and map, and stays at its km position when you reroute; choose again on any part of it to change or
-  erase that part. Impossible choices (too low a bridge, too little tunnel cover, too short) stay as you made them
-  and show as violations. <kbd>Esc</kbd> or ✕ deselects; without a selection E / C keep their map-view meaning.
+One rule for the whole interface: **drag the road to bend it, click anything to inspect it.** What you click
+opens one card under the score (the *inspector*) that says what it is, what the game decided and why, what it
+costs, and offers the alternatives as buttons. The map and the profile always show the same selection.
+Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/interface-rethink.md).
+
+- **Bend the road:** drag the orange road on the map — a new bend appears under the mouse and follows it
+  (the cursor turns into a hand over the road). Drag a numbered bend to move it; right-click it, <kbd>Del</kbd>
+  or *Delete* in its card removes it. **Double-click** the ground adds a bend there (for big detours). A click
+  on empty ground only deselects — nothing is ever added by a single click.
+- **Inspect anything** — on the map or in the profile: the **road** (selects the piece under the mouse: a
+  bridge, tunnel, cut or embankment), a **bend**, a **house**, a **crossed road**, a **noise wall**, a pinned
+  height. Drag sideways across the profile for **any stretch**. <kbd>Esc</kbd> or ✕ deselects. With nothing
+  selected the card lists **where the money goes** — the five most expensive pieces, each a link.
+- **The inspector:** header (what and where), one status line (numbers first, and the reason in a few words:
+  *Auto: cheaper here than a bridge*), any **problems with their fix as a button** (*4 m wall right*,
+  *Buy out*, *Bridge it*, *Back to Auto*), then the choices, Auto first:
+  - piece / stretch: **Auto · Bridge · Tunnel · Earthwork** (keys <kbd>A</kbd> <kbd>B</kbd> <kbd>T</kbd>
+    <kbd>E</kbd>) and, where houses are near, **noise walls** per side: Auto · None · 3–6 m. *More ▾*
+    (remembered) adds walls elsewhere, a typed road height to pin, and the stretch's bill by component;
+  - bend: **Tightest · Widest** curve; *More ▾*: radius field / slider; *Pin height here*, *Delete*. The ◇ grips
+    on the map and <kbd>+</kbd> / <kbd>−</kbd> change the radius too;
+  - crossed road: **Auto · Junction · Bridge over it · It bridges us · Close + link · Underpass**, ‹ › step
+    along the crossed roads; a choice applies wherever we cross that road;
+  - house: **Auto · Buy out · Keep**, the wall on its side, and a **cross-section**: our road and its noise
+    source, the wall or cut edge, the house floor by floor in its own noise colour with each floor's level
+    (and what it was without the wall), the sightline and the wall's shadow. Hovering a wall height redraws it.
+  - pinned height (Auto) / height point (By hand): its height, typed or dragged, *Unpin* / *Delete*.
+- **The score** (top right, sticky): total cost (struck through while not valid), ✓ VALID / ✗ NOT VALID, **the
+  change the last edit made** (a drag counts once), travel time against the goal, the violations chip (click:
+  selects the first one), your best valid design (*Load*; a position half-way through a drag never counts) and
+  the goal in one line. Below the inspector: **Violations** (only while there are any; a click selects the thing
+  and flies there), then folded: **Cost** (breakdown, of the selection while one is selected), **Road**
+  (category, design speed, road height Auto / By hand, *Start over*), **Your choices** (every decision as a link,
+  plus all crossed roads), **Quantities**, **Help**. Everything can be undone: Undo / Redo over the map,
+  <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd>; *Start over* and *Load* offer Undo in a toast.
+- **The profile** (bottom) is the side view with the same verbs: click = select the piece there (the map flies
+  to it if it is off screen), drag sideways = select a stretch, click a curve / straight in the band under the
+  chart = select it, **drag the black road line up / down = pin the road height there** (Auto; the finished
+  road passes within ±0.5 m of every pin, an unreachable pin is a violation with a suggested height), drag a
+  pin to change it. Wheel = zoom, right-drag = scroll, **−** / **+** / *Whole route*. Its tooltip is three short
+  lines and stays inside the profile. Numbered bends sit above the chart, hover-linked with the map; hovering
+  the road on the map marks the spot here; when the map is zoomed in, a light blue window shows which part of
+  the route it is looking at. **Key ▾** explains every mark.
+- **Road height: Auto | By hand** (the *Road* section): Auto sets the cheapest legal heights and redoes them after
+  every change (an approximate search); pins steer it. By hand starts from the current heights as **◆ points**:
+  drag one, double-click the line to add one, right-click to delete. Back to Auto replaces them (Undo brings them
+  back).
+- **Map:** left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms about the cursor. View buttons
+  (remembered): **Contours** <kbd>C</kbd> (interval follows the zoom), **Slope** <kbd>S</kbd> (yellow 8 %, orange
+  15 %, red 25 %, purple 40 %), **Relief** <kbd>R</kbd> (1–3× vertical exaggeration), **Photo** <kbd>O</kbd> (aerial
+  photo, needs a network connection), **Noise** <kbd>N</kbd>. Keys are accelerators only; every action has a button.
+- **First run:** three steps at the top left of the map (drag the road, click anything, the cost counts once
+  valid); *Got it*, <kbd>Esc</kbd> or the first click dismiss it; *Help → Show the intro* brings it back.
+- **Colours** are the same on the map, in the profile and in the cards: road orange, bridge blue, tunnel purple,
+  noise wall teal, problems red, demolished buildings dark grey squares, bought-out magenta diamonds, kept
+  green. Noise uses one ramp everywhere (pale → yellow at the limit → red).
+- **Noise view** <kbd>N</kbd>: the band along the road shows the night level (the controlling period for the
+  scenario traffic) **at the height that decides walls and buyouts — the top floor of the tallest house beside
+  each 30 m station and side** (1.5 m where there is none), continuously shaded with one dark line on the limit,
+  computed in the worker by the same calculator as the bill with the built walls and cut edges. Every house is
+  coloured by **its own** worst level on the same ramp; bought-out houses magenta, demolished ones are gone. So a
+  house that is too loud is never drawn in a quiet band, and raising a wall visibly cools the band where its
+  shadow reaches the top floors. Hover a house for its level, click it for the cross-section.
+
+### Model notes
+
 - High fills/cuts include benches and a separately visible **provisional engineering reserve**, independent
   of free cut material. Excess stream-culvert length is billed beyond ordinary norm drainage. This moves the
   flat S9.5 bridge break-even from ~26.9 to ~16.6 m at the default material value, not a legal height cap;
-  see `research/15-bridge-vs-embankment.md` for assumptions, uncertainty and sensitivity.
-- **The HUD** (right): the **score** stays at the top while it scrolls — total cost, ✓ VALID / ✗ NOT VALID, travel
-  time against the goal, the number of violations (click: show them) and your best valid design (**Load**). Below
-  it, the **card of whatever you picked** (a bend, a height point, a stretch, a crossed road, a building) with its
-  options as buttons; ✕ or <kbd>Esc</kbd> closes it. Then foldable sections (remembered): scenario goals, design
-  (category, speed, road height — one line, the **?** has the long explanation), violations (click one to fly
-  there), cost breakdown (of the selected stretch while one is selected), quantities, **Your decisions** (every
-  choice you made — forced structures, walls, pins, crossings, buildings — each a link to it, plus a picker of all
-  crossed roads) and how to play. **Start over** returns to the straight line at once; the toast that follows
-  offers Undo (so does **Load**). The design persists in localStorage.
-- The game starts from the straight line with Automatic road height; the cost of a design that is not valid is
-  struck through. Hover the profile for the cost split at that spot; a selected stretch shows its own bill in the
-  HUD, <kbd>Esc</kbd> returns to the whole route.
-- **Crossing tools:** click a crossed road on the map (pointer cursor and a label when the mouse is on one; from
-  afar a click near the road adds a bend instead) or its ▪ mark in the profile; its card opens under the score
-  (‹ › step to the previous / next crossed road; *Your decisions* lists them all). Choose **Automatic / Junction /
-  Our bridge over it / Its bridge over us / Cut and reroute / Underpass**; each button's tooltip says what gets
-  built, and the card names the outcome with its quantities and a one-sentence explanation (e.g. *Rerouted to the
-  nearest crossing at km 2.31 (+412 m of new track)*); the chosen one is highlighted and a ring marks
-  the road on the map. The choice follows the existing road's pack ID, including every intersection of that way.
+  see `research/15-bridge-vs-embankment.md`.
+- **Your bridge / tunnel / earthwork** choices affect the automatic road height, show as "your bridge" etc. on
+  profile and map, and stay at their km position when you reroute; choose again on any part to change or erase
+  that part. Impossible choices (too low a bridge, too little tunnel cover, too short) stay as made and show as
+  violations.
+- **Crossed roads:** the choice follows the existing road's pack ID, including every intersection of that way.
   Our bridge overrides overlapping structure paint locally; Auto seeks its clearance. Ordinary-road
-  overbridges use the same priced raised approaches as Auto; fixed-level motorways/expressways require
-  our road in a ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
-  Crossed roads retain their OSM alignment. Overbridges have a 1.2 m deck, ≥4.8 m clearance over our crown,
-  abutments, railings and terrain-ended approaches with earthwork side slopes and contours; ramps climb at the
-  crossed road's class gradient (track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 %, research/20). Junction roads
-  ramp to our grade; roads under our bridges remain on the ground. Reconnection/diversion links run outside
-  our footprint with turning heads, use the base-map road-class palette, and meet real road anchors.
-  Deck/approach/link quantities are measured from the displayed geometry, not station-gap proxies.
-  These remain study-stage roads: road unit rates include provisional earthworks, not a separate surveyed
-  land/earthworks take-off. Missing OSM connections and infeasible approaches are reported, never invented.
+  overbridges use the same priced raised approaches as Auto; fixed-level motorways/expressways require our road
+  in a ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced. Crossed roads
+  retain their OSM alignment. Overbridges have a 1.2 m deck, ≥4.8 m clearance over our crown, abutments,
+  railings and terrain-ended approaches; ramps climb at the crossed road's class gradient (track 10 %, service
+  9 %, streets 8 %, class III 7 %, I/II 6 %, research/20). Junction roads ramp to our grade; roads under our bridges remain on
+  the ground. Reconnection/diversion links run outside our footprint with turning heads and meet real road
+  anchors. Quantities are measured from the displayed geometry. These remain study-stage roads; missing OSM
+  connections and infeasible approaches are reported, never invented.
 - Through-road junctions keep **1.5 km spacing**, including A/B tie-ins (also in town: a scenario assumption).
-  Other crossings use overbridges or parallel reconnections/diversions priced by measured built lengths × SPK
-  road rates. Profile tooltips show the resolution and link/approach metres; HUD counts and sums them.
-- Reconnection reach uses **750 m as an economic preference**, not a safety limit. Both explicit choices
-  and Auto's geometry fallback allow up to **2 km along the route to the target**; bills use actual built
-  link lengths, never a capped station-gap estimate. Dead-end remnants within the connection working
-  strip (half link width plus 3 m beyond the earthwork toe) are consumed, not separate surviving branches.
-- Cut quantities use ČGS GEOCR50 / engineering-geological rajons on a 25 m ground grid. Hover the profile
-  for the ground name and **estimated** loose/weathered depths; the HUD shows class I/II/III shares.
-  Mapped lithology is real, vertical weathering profiles are provisional—not borehole measurements or ČSN
-  class determinations. Permian/Carboniferous profiles are calibrated to D11 1109 reported excavation
-  quantities (official-line surrogate 42.6/18.0/39.4% I/II/III, not an as-built reconstruction).
-  Unmapped ground uses the norm's 75/20/5 mix; see `research/10-geology-excavation.md`.
-- **Building tools:** click any building on the map (once buildings are a few pixels big) → its card offers
-  **Automatic / Buy out / Keep** and says what happens to it now.
-  An explicit buyout works even away from the road; off-corridor acquisitions include the existing
-  provisional whole-plot allowance. Footprint acquisitions are billed once with corridor land instead.
-  **Keep** forbids both demolition and noise buyout: a footprint/working-strip hit or remaining noise
-  excess becomes a blocking violation, with the dB shortfall shown. Green KEEP / magenta BUY map labels,
-  green profile squares and magenta diamonds show decisions; *Your decisions* lists them to revisit.
-  Demolished buildings disappear from the 3D map (their footprint stays painted on the ground, a red square marks
-  each); bought-out buildings stay standing with a magenta diamond.
-  Clearing the decision restores the automatic policy. Building/road IDs are scoped to the scenario
-  object-pack fingerprint: a changed pack clears those positional choices with a HUD notice, keeping
-  station-based edits. Unstamped imported designs are assumed to refer to the current pack.
-- **Wall tools:** select a profile stretch (or **Noise wall…** in its bar); in the stretch card choose **left /
-  right / both sides** (driving A → B) and **2–6 m**, then **Build wall / No wall / Automatic**. Repainting changes only that side and subrange; undo restores it.
-  Player walls retain their exact selected extent (no automatic end margins); tunnels suppress built walls.
-  Teal walls show the actual height, dotted marks show manual intent, and pink dashed marks show removals
-  on map/profile. Nearby retained dwellings are grouped by side/stretch in the violation list.
-  **Any manual wall decision at an exposed receiver prevents silent noise buyout** for
-  that dwelling: residual noise becomes a blocking dB violation with a computed sufficient wall height
-  and extent where possible, otherwise a buyout/route-change fix. Explicitly buy out the building to
-  accept acquisition. Clearing all relevant wall decisions restores automatic 3/4/5 m walls and the
-  existing fallback-buyout rule; **Keep** still forbids acquisition.
+  Reconnection reach uses **750 m as an economic preference** and up to **2 km along the route** as a limit;
+  bills use actual built link lengths. Dead-end remnants within the connection working strip are consumed.
+- Cut quantities use ČGS GEOCR50 / engineering-geological rajons on a 25 m ground grid; the HUD shows class
+  I/II/III shares. Mapped lithology is real, vertical weathering profiles are provisional — not borehole
+  measurements. Permian/Carboniferous profiles are calibrated to D11 1109 reported excavation quantities
+  (official-line surrogate 42.6/18.0/39.4 % I/II/III). Unmapped ground uses the norm's 75/20/5 mix; see
+  `research/10-geology-excavation.md`.
+- **Buildings:** an explicit buyout works even away from the road; off-corridor acquisitions include a
+  provisional whole-plot allowance, footprint acquisitions are billed once with corridor land. **Keep** forbids
+  both demolition and noise buyout: a footprint/working-strip hit or remaining noise becomes a violation. Building
+  and road IDs are scoped to the scenario object-pack fingerprint: a changed pack clears those choices with a
+  notice, keeping station-based edits.
+- **Walls:** player walls keep their exact extent (no automatic end margins); tunnels suppress walls. Teal walls
+  show the actual height, dotted marks your choice, pink dashes removals. **Any wall decision of yours at an
+  exposed house stops its automatic buyout**: remaining noise becomes a violation with a sufficient wall height
+  and extent (a fix button) or a buyout. Clearing the decisions restores automatic 3/4/5 m walls and the
+  fallback buyout; **Keep** still forbids acquisition.
 - Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
-  floor feed a geometric source–wall–receiver diffraction check for 3–5 m walls. Distant upper floors can be
-  shadowed; receivers with a clear sightline over the wall get no benefit. If no wall can protect the dwelling,
-  the bill includes its acquisition and
-  demolition, separately from buildings in the road footprint. Teal walls show their actual height (from afar,
-  where a 3–5 m wall is under a pixel, as a teal line just outside the road — thin at the overview; hover it for its
-  height, side, extent and how many dwellings it protects); red squares mark footprint demolitions, magenta
-  diamonds mark noise buyouts. The HUD and profile tooltip explain both; assumptions and limitations are in
-  `PLAN.md`.
-- **Noise view** <kbd>N</kbd>: a band along the road shows the controlling-period level (night, for the scenario
-  traffic) relative to its limit at ground-floor receivers (1.5 m above the real ground), continuously shaded
-  (transparent 6 dB below the limit → yellow at the limit → orange → deep red at +15 dB and above, interpolated
-  per pixel), with one thin dark line on the limit itself — computed in the worker by the
-  same calculator as the bill, with the chosen walls and the cut-edge screening (per 30 m station and side, a
-  12-sample profile across the road; ≈ +1.5 ms per recompute). Dwellings are coloured by outcome: behind a wall,
-  screened by a cut, within the limit, bought out for noise, demolished in the footprint (other buildings turn
-  grey); walls get height labels. Hover a building for its top-floor level without and with mitigation against
-  the limit and why it was walled or bought out. Walls and buyouts are decided at the top floor, so a dwelling
-  can be walled although the ground-floor band beside it is already under the limit.
+  floor feed a geometric source–wall–receiver diffraction check. Distant upper floors can be shadowed; floors
+  with a clear sightline over the wall get no benefit. Assumptions and limitations are in `PLAN.md`.
 
-### Profile and editing (UX)
+### Playtest gallery
 
-| Automatic road height: click the line to pin, drag the pin | By hand: ◆ height points, hover names one on the map |
+Three players' sessions at 1280 × 800 with real mouse events (`node scripts/playtest.mjs --docs`; personas and
+checks in [docs/interface-rethink.md](docs/interface-rethink.md)):
+
+| First run: the intro leaves the route visible, the card says where the money goes | Drag the road: a bend, and what it changed |
 |---|---|
-| ![Pinned height](docs/screenshots/36-road-height-auto-pin.png) | ![By hand](docs/screenshots/37-road-height-by-hand.png) |
-| Drag a stretch → Bridge / Tunnel / Earthwork / Automatic | Bends in the profile, hover-linked to the map |
-| ![Stretch bar](docs/screenshots/38-stretch-action-bar.png) | ![Bends](docs/screenshots/39-bends-in-profile.png) |
+| ![First run](docs/screenshots/60-playtest-first-run.png) | ![Drag the road](docs/screenshots/61-playtest-drag-road.png) |
+| A violation: the thing is selected, the fix is a button | The house's cross-section, after the one-click fix |
+| ![Violation](docs/screenshots/64-playtest-violation.png) | ![Noise fix](docs/screenshots/65-playtest-noise-fix.png) |
+| Click the embankment on the map, then Bridge | Walls on a stretch, per side |
+| ![Forced bridge](docs/screenshots/67-playtest-forced-bridge.png) | ![Walls](docs/screenshots/68-playtest-walls.png) |
 
-Also: [map hover marks the spot in the profile](docs/screenshots/40-map-hover-in-profile.png),
-[a click zooms the profile and the map](docs/screenshots/41-profile-click-zoom.png).
-Reproduce with `node scripts/ux.mjs --docs`.
-
-### Playtest gallery (after the polish pass)
-
-A new player's session at 1280 × 800 (`node scripts/playtest.mjs --docs`):
-
-| | |
-|---|---|
-| ![First run](docs/screenshots/49-playtest-first-run.png) | ![Forced bridge](docs/screenshots/50-playtest-forced-bridge.png) |
-| ![Crossed road card](docs/screenshots/53-playtest-crossing.png) | ![Overview](docs/screenshots/58-playtest-overview.png) |
-
-Also: [noise wall on a stretch](docs/screenshots/51-playtest-noise-wall.png),
-[pinned height](docs/screenshots/52-playtest-pinned-height.png),
-[building card (Keep)](docs/screenshots/54-playtest-keep-building.png),
-[noise view](docs/screenshots/55-playtest-noise-view.png),
-[profile key](docs/screenshots/56-playtest-profile-key.png),
-[Start over with Undo](docs/screenshots/57-playtest-start-over.png),
-[demolished buildings removed from the map](docs/screenshots/59-playtest-demolished.png).
-
-### Manual build tools
-
-| Pinned road height | Crossed-road reconnection |
-|---|---|
-| ![Pinned grade](docs/screenshots/30-build-grade-pin.png) | ![Crossing links](docs/screenshots/31-build-crossing-links.png) |
-| Keep a building | Player-built noise wall |
-| ![Keep building](docs/screenshots/33-build-building-keep.png) | ![Manual wall](docs/screenshots/34-build-noise-wall.png) |
-
-Also: [wall removal produces a violation, not a buyout](docs/screenshots/35-build-no-wall-conflict.png).
-Reproduce the build-tool interactions with `node scripts/build-tools.mjs --docs`.
+Also: [the most expensive piece](docs/screenshots/62-playtest-money.png),
+[a piece clicked in the profile](docs/screenshots/63-playtest-piece.png),
+[noise view](docs/screenshots/66-playtest-noise-view.png),
+[a crossed road](docs/screenshots/69-playtest-crossing.png),
+[a pinned height](docs/screenshots/70-playtest-pin.png),
+[the reference design](docs/screenshots/71-playtest-overview.png).
+Before the rethink: [docs/screenshots/rethink-before](docs/screenshots/rethink-before).
 
 ### Physical crossings
 

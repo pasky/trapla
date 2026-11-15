@@ -685,8 +685,8 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 - **Grade line: Auto | Manual** replaces the ambiguous button. Auto seeks a low-cost legal vertical line;
   Manual freezes it for vertical-point edits. Auto replaces manual vertical edits but keeps structure paint.
 - Manual-tool verification: 178 tests, typecheck/build, original mouse smoke and
-  `scripts/build-tools.mjs` (real controls, map building pick, Shift+click, clear/undo/reload).
-  Screenshots [30–35](docs/screenshots/30-build-grade-pin.png); README has the full gallery.
+  `scripts/build-tools.mjs` (real controls, map building pick, Shift+click, clear/undo/reload); both the
+  script and its screenshots were later replaced by the persona playtest (see "Interface rethink").
   All five saved designs retain **exactly** their baseline bills and VALID state, including per-cell
   sums. Shared-host five-run means: **43–62 ms**, versus **41–64 ms** before the tools; a demo pin takes
   ~64 ms after warm-up. Pin search can take longer on a tight constrained grid; drag computation stays
@@ -817,3 +817,15 @@ offset and ratio. Structured fix/why messages use these diagnostics; same-direct
 **game**, not norm or unproven engine impossibility. The worker resolves a tested valid maximum with the **same**
 `checks.ts` search as the radius editor's Max button, cached per bend and bounded to four searches per evaluation
 (the plain-violations integration). Source audit and new regressions: research/15-horizontal-pairs.md.
+
+## Interface rethink (2026-11-15)
+
+Owner, after playing: the interface was overcomplicated (finding a stretch again in the profile, single clicks
+adding bends, junk text, a noise band that contradicted the building colours). Playtested as three personas,
+then rebuilt: map-first editing (drag the road to bend it, click anything to inspect it, empty clicks harmless),
+one inspector card for every kind of thing with fixes as buttons, map ↔ profile selection always in sync, a
+"where the money goes" list, progressive disclosure (*More*), a ruthless copy cut, and a noise view that shows the
+deciding top-floor height with houses in their own level and a per-floor cross-section. Record, decisions and
+the before / after copy table: `docs/interface-rethink.md`; gallery 60–71; `scripts/playtest.mjs` replays the
+personas. Violations now carry a structured `target` (buildings, a sufficient wall) so the UI can select the
+thing and offer the fix; bills are unchanged.

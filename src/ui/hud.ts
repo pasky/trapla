@@ -293,9 +293,8 @@ export class Hud {
       x.overbridge ? `${plural(x.overbridge, 'bridge', 'bridges')} over our road` : '', x.bridge ? `${x.bridge} under our bridges` : '', x.tunnel ? `${x.tunnel} above our tunnels` : ''].filter(Boolean).join(', ') || 'none'})</small>`;
     const conflicts = footprintConflictsInRange(r.footprintConflicts ?? [], sel?.s0 ?? 0, sel?.s1 ?? r.length);
     const footprint = conflicts.length ? `<tr class="${conflicts.some(c => c.action === 'blocked') ? 'warn' : ''}"><td colspan="2"><details>
-      <summary>Things next to our road: ${conflicts.length} <small>(grey: retaining wall; blue line: new stream bed; red dashes: removed road or stream bed; amber dashes: a rebuild that does not work; red ×: in the way)</small></summary>
+      <summary>Things in the road's way: ${conflicts.length}</summary>
       ${conflicts.map(c => `<div class="sub" title="${esc(footprintConflictTitle(c))}">km ${num(c.s0 / 1000, 2)}–${num(c.s1 / 1000, 2)} · ${esc(footprintConflictText(c))}</div>`).join('')}
-      <div class="sub">Roads, streams, railways and water our earthworks would cover, and what is built about them. Amounts are already in the bill.</div>
       </details></td></tr>` : '';
     const cls = q.cutByClass.map((v) => num((100 * v) / Math.max(1, q.cut), 0)).join(' / ');
     const common = (cut: number, fill: number, len: number, fp: number, forest: number, urban: number, bld: number, buyouts: number, walls: number, wallArea: number) => `
