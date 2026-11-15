@@ -83,8 +83,9 @@ export class Hud {
   ev: HudEvents = {};
   private last: { r: Result; d: Design } | null = null;
   private projectIssuesFor: ProjectResult | null | undefined;
+  private issuesActive: RouteId | undefined;
   private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId;
-    ownPrice: { total: number; approx: boolean; label: string } | null } | null = null;
+    ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; activeRouteId?: RouteId } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
     for (const id of ['sec-cost', 'sec-stats', 'sec-decisions']) this.$(id).hidden = !hasResult;
@@ -95,23 +96,25 @@ export class Hud {
   setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; legacy?: boolean;
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
-    ownPrice?: { total: number; approx: boolean; label: string } | null } = {}) {
-    const { missionRouteId, legacy = false, ownPrice = null } = opts;
+    ownPrice?: { total: number; approx: boolean; label: string } | null;
+    /** road names, to say which road an issue belongs to when it is not the active one */
+    names?: Record<RouteId, string>; activeRouteId?: RouteId } = {}) {
+    const { missionRouteId, legacy = false, ownPrice = null, names = {}, activeRouteId } = opts;
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
-      this.$('best').hidden = false;
+      this.$('best').style.display = '';
       if (was) this.$('cost-scope').textContent = 'Total cost';
       // re-render the legacy score when leaving project mode or when a new best arrived
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
       return;
     }
-    this.project = { result, pending, best, missionRouteId, ownPrice }; this.renderProjectScore();
+    this.project = { result, pending, best, missionRouteId, ownPrice, names, activeRouteId }; this.renderProjectScore();
   }
   /** the listed project issue k */
   listedIssue(k: number) { return this.project?.result?.issues[k] ?? null; }
   private renderProjectScore() {
     if (!this.project) return;
-    const { result, pending, best, missionRouteId, ownPrice } = this.project, total = result?.cost.total;
+    const { result, pending, best, missionRouteId, ownPrice, names, activeRouteId } = this.project, total = result?.cost.total;
     const priced = total !== null && total !== undefined, unpriced = result?.cost.unpriced.length ?? 0;
     // An unpriced network keeps one road's own price visible, plainly labelled, never as a total.
     this.$('cost-scope').textContent = priced ? 'Total cost' : ownPrice ? ownPrice.label : 'Total cost';
@@ -130,19 +133,26 @@ export class Hud {
       this.$('chip-time').className = `chip ${ok ? 'ok' : 'bad'}`;
     }
     const issues = result?.issues ?? [], chip = this.$('chip-viol');
-    const listed: (Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'rule'> & { s0?: number; goal?: boolean })[] =
-      issues.map(issue => ({ ...issue.violation, s0: issue.locations[0]?.s0 }));
+    // one line per distinct message and road (core may report the same unfinished check twice); k is the issue index
+    const seen = new Set<string>();
+    const listed: (Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'rule'> & { s0?: number; goal?: boolean; k: number; road?: string })[] = [];
+    issues.forEach((issue, k) => {
+      const s0 = issue.locations[0]?.s0, key = JSON.stringify([issue.violation.title, issue.violation.fix, issue.scope.routeIds, s0]);
+      if (seen.has(key)) return; seen.add(key);
+      const other = issue.scope.routeIds.find(id => id !== activeRouteId);
+      listed.push({ ...issue.violation, s0, k, road: issue.scope.routeIds.length && !issue.scope.routeIds.includes(activeRouteId ?? '') && other ? names[other] : undefined });
+    });
     chip.className = `chip ${pending ? 'pending' : listed.length ? 'bad' : result?.complete ? 'ok' : 'pending'}`;
     chip.innerHTML = pending ? '⋯ checked when you pause' : listed.length ? `⚠ ${listed.length} violation${listed.length === 1 ? '' : 's'} <small>show ›</small>` : result?.complete ? '✓ no violations' : 'Checks not finished';
     chip.toggleAttribute('disabled', pending || !listed.length);
-    if (this.projectIssuesFor !== result) {
-      this.projectIssuesFor = result;
+    if (this.projectIssuesFor !== result || this.issuesActive !== activeRouteId) {
+      this.projectIssuesFor = result; this.issuesActive = activeRouteId;
       this.$('viol-count').textContent = String(listed.length);
       this.$('viol-count').className = `count${listed.length ? '' : ' ok'}`;
       this.$('sec-viol').hidden = !listed.length;
-      this.$('viol').innerHTML = listed.slice(0, 60).map((v, k) => {
-        const open = this.openWhy.has(whyKey(v));
-        return `<li data-k="${k}" class="${v.goal ? 'goal' : ''}"><span class="where">${v.goal ? 'goal' : v.s0 !== undefined ? `km ${num(v.s0 / 1000, 2)}` : ''}</span>
+      this.$('viol').innerHTML = listed.slice(0, 60).map((v) => {
+        const open = this.openWhy.has(whyKey(v)), k = v.k;
+        return `<li data-k="${k}" class="${v.goal ? 'goal' : ''}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.goal ? 'goal' : v.s0 !== undefined ? `km ${num(v.s0 / 1000, 2)}` : ''}</span>
         <div><div class="vt">${esc(v.title)}</div><div class="vfix">${esc(v.fix)} <button type="button" class="why" data-why="${k}">${open ? 'less' : 'why?'}</button></div>
         <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(v.detail) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
       }).join('');
@@ -154,7 +164,7 @@ export class Hud {
       this.lastTotal = priced ? total : null;
     }
     // no best while the project is not priced: a stored best is not comparable to an unpriced change
-    this.$('best').hidden = !priced;
+    this.$('best').style.display = priced ? '' : 'none';
     const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
     this.$('best').innerHTML = best ? `${isBest ? '★ your best' : `best ${czk(best.cost)}`}${isBest ? '' : ' <button type="button" id="load-best">Load</button>'}` : '<small>no valid design yet</small>';
     this.$('best').classList.toggle('stale', pending);

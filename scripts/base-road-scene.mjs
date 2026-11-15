@@ -119,7 +119,7 @@ try {
   assert.match(await page.locator('#perkm').textContent(), /1 road change not priced yet/);
   assert.equal(await page.evaluate(() => window.trapla.proposalLines()), 1, 'the proposal is drawn');
   assert.equal(await page.evaluate(() => window.trapla.renderRoutes().length), 1, 'no road body is invented for it');
-  assert.match(await page.locator('.profile-bar > b').textContent(), new RegExp(road.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(await page.locator('.profile-bar > b').textContent(), new RegExp(road.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
   assert.equal(await page.evaluate(() => window.trapla.profileHasRoad()), false, 'the profile does not show another road');
   await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   await page.screenshot({ path: `${out}/81-base-road-proposal.png` });

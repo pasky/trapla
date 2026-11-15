@@ -150,7 +150,8 @@ async function main() {
     const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: active === mission ? 'Our road only' : 'This road only' }
       : active && active in alone ? { total: alone[active], approx: false, label: active === mission ? 'Our road only' : 'This road only' }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only' } : null;
-    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own });
+    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own,
+      activeRouteId: active ?? undefined, names: Object.fromEntries(projectStore.snapshot.design.routes.map(r => [r.id, r.name])) });
   };
   let posted = 0, received = 0;
   /** main-thread ms per consumer of the last handled result (drag-perf probe) */
