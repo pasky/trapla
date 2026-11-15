@@ -189,7 +189,9 @@ export class CrossingRenderer {
       for (let k = 0; k < surfaces.length; k++) {
         const b = sample[k], near: string[] = [];
         reach.forEach((o, j) => { if (neighbours[j] !== surfaces[k] && o.x0 <= b.x1 && o.x1 >= b.x0 && o.y0 <= b.y1 && o.y1 >= b.y0) near.push(neighbourKeys[j]); });
-        let key = `${own[k]}|${near.sort().join(',')}|${allHeads.length ? headKey.key : ''}|${context?.groundKey ?? ''}`;
+        const ground = context?.groundFootprints?.filter(o => o.x0 <= b.x1 && o.x1 >= b.x0 && o.y0 <= b.y1 && o.y1 >= b.y0)
+          .map(o => o.key).sort() ?? [];
+        let key = `${own[k]}|${near.sort().join(',')}|${allHeads.length ? headKey.key : ''}|${ground.join(';')}`;
         while (next.has(key)) key += '+';
         const kept = this.surfaces.get(key);
         if (kept) { next.set(key, kept); continue; }

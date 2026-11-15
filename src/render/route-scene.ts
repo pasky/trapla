@@ -8,7 +8,7 @@ import type { View } from './view';
 /** Ephemeral renderer adapter, not a saved project/schema. Results are authoritative engine outputs. */
 export interface RenderRoute { id: string; result: Result; crownWidth: number }
 type Box = { x0: number; y0: number; x1: number; y1: number };
-type Entry = { input: RenderRoute; surfaces: CrossingSurface[]; box: Box; crossings: CrossingRenderer; dependencies: CrossingSurface[][]; version: number };
+type Entry = { input: RenderRoute; surfaces: CrossingSurface[]; box: Box; crossings: CrossingRenderer; dependencies: CrossingSurface[][] };
 const overlap = (a: Box, b: Box) => a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0;
 function bounds(r: Result, surfaces: readonly CrossingSurface[]): Box {
   const b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
@@ -27,7 +27,6 @@ function bounds(r: Result, surfaces: readonly CrossingSurface[]): Box {
 export class RouteScene {
   private entries = new Map<string, Entry>();
   private generation = 0;
-  private version = 0;
   private previews = new Set<string>();
   constructor(private view: View) {}
 
@@ -48,8 +47,7 @@ export class RouteScene {
         const surfaces = same ? old.surfaces : yield* buildRouteSurfaces(input.result, input.crownWidth, (x, y) => this.view.groundHeight(x, y));
         const crossings = old?.crossings ?? new CrossingRenderer(this.view);
         if (!old) fresh.push(crossings);
-        next.set(input.id, { input, surfaces, box: same ? old.box : bounds(input.result, surfaces), crossings, dependencies: [],
-          version: same ? old.version : ++this.version });
+        next.set(input.id, { input, surfaces, box: same ? old.box : bounds(input.result, surfaces), crossings, dependencies: [] });
       }
       const all = [...next.values()];
       for (const entry of all) {
@@ -62,7 +60,7 @@ export class RouteScene {
         const surfaces = neighbours.flatMap(other => other.surfaces);
         const context = routeSurfaceContext(entry.surfaces, surfaces,
           (x, y) => this.view.groundHeight(x, y), (x, y) => this.view.drape(x, y),
-          neighbours.map(other => other.input.result), neighbours.map(other => other.version).join(','));
+          neighbours.map(other => other.input.result));
         stages.push(yield* this.view.buildResult(entry.input.result, entry.input.crownWidth, entry.input.id, context, true));
         stages.push(yield* entry.crossings.build(entry.input.result, context));
       }

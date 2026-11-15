@@ -88,6 +88,22 @@ describe('constructed route scene ownership', () => {
     scene.dispose(); mock.dispose();
   });
 
+  it('returns asymmetric and tapered collars to coarse terrain at their actual outer edge', () => {
+    const mock = renderView(), scene = new RouteScene(mock.view), r = road(0);
+    mock.view.drape = () => 5;
+    r.dayL.set([40, 30, 15]); r.dayR.set([15, 12, 10]);
+    finish(scene.build([input('a', r)])).commit();
+    const heights: number[] = [];
+    mock.groups.get('a')!.traverse(o => {
+      if (o.name !== 'daylight-ground') return;
+      const p = (o as THREE.Mesh).geometry.getAttribute('position');
+      for (let i = 0; i < p.count; i++) if (Math.abs(p.getX(i) - 20) < .01 && Math.abs(p.getZ(i) - 32) < .01) heights.push(p.getY(i));
+    });
+    expect(heights.length).toBeGreaterThan(0);
+    for (const z of heights) expect(z).toBeCloseTo(5.015, 5);
+    scene.dispose(); mock.dispose();
+  });
+
   it('unions only actual ground footprints and removes deleted-route masks, including the empty scene', () => {
     const a = road(0), b = road(1000); b.kind.fill(KIND.bridge);
     const first = routeMask([{ result: a, surfaces: [] }], 0, 0, () => 0);
