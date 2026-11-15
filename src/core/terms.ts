@@ -121,6 +121,8 @@ export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action'
       explain: 'The stream runs under our earthworks in a longer concrete pipe or box.' };
     case 'channel-relocation': return { tag: 'stream moved', label: `Stream moved: ${m(c.length)} m of new bed`,
       explain: 'The stream gets a new bed outside our earthworks.' };
+    case 'junction': return { tag: 'junction', label: `Junction with the ${what}${c.length > 0 ? ` (${m(c.length)} m of it rebuilt)` : ''}`,
+      explain: `Our road ends by joining the ${what}; the edge of the ${what} where they meet is rebuilt as part of the junction.` };
     case 'blocked': return { tag: 'in the way', label: `${what} in the way (${m(c.affectedLength ?? c.length)} m)`,
       explain: `Our earthworks or bridge supports cover the ${what} and the game found no fix; this is a violation.` };
   }

@@ -8,9 +8,9 @@ import { crossingPlanLength } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { violationText } from '../src/core/checks';
 
-const { meta, terrain, scenario, buildings, roads } = loadPack(process.env.PACK);
+const { meta, terrain, scenario, buildings, roads, junctions } = loadPack(process.env.PACK);
 const A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
-const ctx = { terrain, scenario, buildings, roads, a: A, b: B };
+const ctx = { terrain, scenario, buildings, roads, junctions, a: A, b: B };
 const args = process.argv.slice(2);
 const opt = (name: string, fallback: number) => { const i = args.indexOf(name); return i >= 0 ? Number(args[i + 1]) : fallback; };
 const quiet = args.includes('--quiet');

@@ -8,6 +8,7 @@ import { routeContacts, screenIndependence, type RouteContact } from './project-
 import { evaluateProjectRoad, type SourceWays } from './project-road';
 import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
+import * as dm from './detmath';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays }
 const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete', check: 'not-checked',
@@ -98,7 +99,7 @@ function routeOutcome(ctx: ProjectEvalContext, route: RouteDesign, r: Result): {
     const raw = levels(receiver.raw), built = levels(receiver.mitigated);
     const height = NOISE.receiverHeight + ((ctx.legacy.buildings?.levels[receiver.j] ?? 1) - 1) * NOISE.storeyHeight;
     return { buildingIndex: receiver.j, height, contributions: [{ sourceId: route.acousticSourceId, routeId: route.id,
-      buildingIndex: receiver.j, height, dayEnergy: 10 ** (raw.day / 10), nightEnergy: 10 ** (raw.night / 10), policy: 'legacy-road' }],
+      buildingIndex: receiver.j, height, dayEnergy: dm.pow(10, raw.day / 10), nightEnergy: dm.pow(10, raw.night / 10), policy: 'legacy-road' }],
       dayDb: built.day, nightDb: built.night, dayLimit: NOISE.limitDayDb, nightLimit: NOISE.limitNightDb,
       action: receiver.status === 'bought' ? 'buy' as const : 'retain' as const };
   });
@@ -192,8 +193,8 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     ({ buildings: result.buildings, receivers: result.receivers } = routeOutcome(ctx, route, r));
     // Legacy's all-height screen excludes only sub-limit receivers. One physical source means
     // that bound is sufficient; it is NOT a valid aggregate screen for two or more sources.
-    result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: 10 ** (NOISE.limitDayDb / 10),
-      omittedNightEnergyUpperBound: 10 ** (NOISE.limitNightDb / 10), complete: true };
+    result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: dm.pow(10, NOISE.limitDayDb / 10),
+      omittedNightEnergyUpperBound: dm.pow(10, NOISE.limitNightDb / 10), complete: true };
     return result;
   }
   // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.
@@ -221,7 +222,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
       const seen = receivers.get(r.buildingIndex);
       if (!seen) { receivers.set(r.buildingIndex, r); continue; }
       // Distinct physical sources add as energy, never as dB or excess.
-      const add = (a: number, b: number) => 10 * Math.log10(10 ** (a / 10) + 10 ** (b / 10));
+      const add = (a: number, b: number) => 10 * dm.log10(dm.pow(10, a / 10) + dm.pow(10, b / 10));
       receivers.set(r.buildingIndex, { ...seen, contributions: [...seen.contributions, ...r.contributions],
         dayDb: add(seen.dayDb, r.dayDb), nightDb: add(seen.nightDb, r.nightDb), action: seen.action === 'buy' || r.action === 'buy' ? 'buy' : 'retain' });
     }

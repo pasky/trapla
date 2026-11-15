@@ -3,6 +3,7 @@ import { STRUCTURE_RULES } from './data/prices';
 import type { FootprintCell, Segment2 } from './footprint-geometry';
 export interface WaterSegment extends Segment2 { reach: WaterReach; j: number }
 import { BOX_SIZES, CULVERT_RULES as R, PIPE_SIZES } from './data/culverts';
+import * as dm from './detmath';
 
 export interface WaterReach {
   id: number;
@@ -37,7 +38,7 @@ export interface WaterResult extends WaterCrossing {
 
 /** No area-only law is a validated Czech Q100 estimator. Keep this explicitly provisional. */
 export function estimateQ100(c: Pick<WaterCrossing, 'catchmentKm2' | 'truncated'>): number {
-  return R.runoff * Math.max(R.unknownArea, c.catchmentKm2) ** R.areaExponent
+  return R.runoff * dm.pow(Math.max(R.unknownArea, c.catchmentKm2), R.areaExponent)
     * (c.truncated ? R.truncatedFlowFactor : 1);
 }
 export function barrelLength(c: Pick<WaterCrossing, 'sine'>, footprint: number): number {
@@ -56,7 +57,7 @@ export function barrelEnvelope(c: WaterCrossing, left: number, right: number, ds
   return { x: c.x + tx * offset, y: c.y + ty * offset, s: c.s, i: 0, tx, ty,
     along: (barrelLength(c, left + right) + ds) / 2, left: ds / 2, right: ds / 2,
     // PROVISIONAL chord tolerance for modest OSM channel bends; still rejects side dog-legs.
-    flare: Math.tan(20 * Math.PI / 180), raster: c.id < 0 };
+    flare: dm.tan(20 * Math.PI / 180), raster: c.id < 0 };
 }
 /** Shared numerical tolerance for crossing validation and ownership, independent of altitude. */
 export function waterCoverFits(cover: number, minimum: number): boolean { return cover >= minimum - 1e-6; }

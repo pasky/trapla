@@ -4,7 +4,11 @@
 // (instrumentation wraps the page's Worker; nothing in the app is required).
 //
 //   node scripts/drag-perf.mjs [--root DIR] [--gpu] [--profile out.cpuprofile] [--trace out.json]
-//        [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi] [--bend 9] [--seconds 2] [--check] [--shot out.png]
+//        [--scenario d11] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi] [--bend 9]
+//        [--seconds 2] [--check] [--shot out.png]
+//
+// --scenario <id>: another pack; the design defaults to scripts/scenarios/<id>/default.json and the
+// bend to the middle one. The budgets are the same for every scenario.
 //
 // --check: exit 1 when the thresholds below are missed (p95 frame on GPU, preview latency).
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -15,9 +19,10 @@ const arg = (k, d = null) => { const i = process.argv.indexOf(k); return i < 0 ?
 const root = arg('--root', process.cwd());
 const gpu = process.argv.includes('--gpu');
 const port = Number(arg('--port', 5197));
-const designFile = arg('--design', 'scripts/best-design.json');
+const scenarioId = arg('--scenario', 'd11');
+const designFile = arg('--design', scenarioId === 'd11' ? 'scripts/best-design.json' : `scripts/scenarios/${scenarioId}/default.json`);
 const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point)
-const bend = Number(arg('--bend', 9));
+const bendArg = arg('--bend');
 const seconds = Number(arg('--seconds', 2));
 const profileOut = arg('--profile'), traceOut = arg('--trace');
 const check = process.argv.includes('--check');
@@ -26,7 +31,7 @@ const shot = arg('--shot'); // screenshot path, taken once in the middle of the 
 // other agents / scripts may hold the port: take the next free one
 const server = await createServer({ root, server: { port, strictPort: false }, logLevel: 'warn' });
 await server.listen();
-const url = `${server.resolvedUrls.local[0]}?scenario=d11`;
+const url = `${server.resolvedUrls.local[0]}?scenario=${encodeURIComponent(scenarioId)}`;
 const args = gpu
   ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
   : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
@@ -70,7 +75,10 @@ const renderer = await page.evaluate(() => {
   const e = gl.getExtension('WEBGL_debug_renderer_info');
   return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : 'unknown';
 });
-const design = JSON.parse(readFileSync(designFile, 'utf8')).design;
+const saved = JSON.parse(readFileSync(designFile, 'utf8'));
+if (saved.scenario && saved.scenario !== scenarioId) throw new Error(`${designFile} belongs to ${saved.scenario}, not ${scenarioId}`);
+const design = saved.design;
+const bend = bendArg !== null ? Number(bendArg) : scenarioId === 'd11' ? 9 : Math.floor(design.pis.length / 2);
 await page.evaluate((d) => window.trapla.setDesign(d), design);
 await page.evaluate(() => window.trapla.whenIdle());
 const pi = design.pis[bend];

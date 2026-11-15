@@ -19,7 +19,7 @@ import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type Footpri
 export interface FootprintConflict {
   id: string;
   feature: 'road' | 'railway' | 'water' | 'stream';
-  action: 'relocation' | 'culvert' | 'retaining-wall' | 'channel-relocation' | 'blocked';
+  action: 'relocation' | 'culvert' | 'retaining-wall' | 'channel-relocation' | 'blocked' | 'junction';
   i: number; s0: number; s1: number; x: number; y: number;
   /** Constructed path/barrel length (affected length for blocked features), m. */
   length: number;
@@ -54,7 +54,11 @@ export interface FootprintRoute {
   /** Defined: minor roads at automatic abutments/portals are relocated (see remedyBridgeSupports),
    * except these strictly retried ways. */
   strictWays?: ReadonlySet<number>;
+  /** Scenario-declared end connections to retained roads: inside `zone` metres of that end, our
+   * earthworks over these ways are the junction's own works (one allowance), not conflicts. */
+  junctions?: readonly FootprintJunction[];
 }
+export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
@@ -212,12 +216,26 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   // Raster classes are independent flags: a road-painted rail/water crossing remains protected.
   const rasterHits = new Map<string, { feature: 'railway' | 'water' | 'stream'; structure?: FootprintCell['structure']; hits: Map<number, { x: number; y: number; count: number }> }>();
   const rasterSeen = new Set<string>();
+  const length = r.s[r.n - 1];
+  const junctionAt = (i: number, way: number) => r.junctions?.find(j => j.ways.has(way)
+    && (j.end === 'a' ? r.s[i] <= j.zone : length - r.s[i] <= j.zone));
+  const junctionWorks = new Map<FootprintJunction, Map<number, [number, number][]>>();
   for (const cell of cells) {
     const stored = !cell.structure ? r.featureCache?.get(cell.i) : undefined;
     const cached = stored && stored.left >= cell.left && stored.right >= cell.right ? stored : undefined;
     const visitRoad = (segment: RoadSegment) => {
       const hit = clipFootprint(segment, cell, existingHalfWidth(segment.cls));
       if (!hit) return;
+      // The joined road's own pavement inside the junction zone is rebuilt as part of the junction.
+      // Bridge supports on it are not ordinary junction works and stay conflicts.
+      const junction = !cell.structure ? junctionAt(cell.i, segment.way) : undefined;
+      if (junction) {
+        let byWay = junctionWorks.get(junction);
+        if (!byWay) junctionWorks.set(junction, byWay = new Map());
+        const list = byWay.get(segment.way) ?? [];
+        list.push(hit); byWay.set(segment.way, list);
+        return;
+      }
       // A minor road under an automatic abutment/portal is relocated with the adjoining earthwork
       // hits (support-layout leaves it in place unless strict); piers are always moved instead.
       const structure = cell.structure && !(r.strictWays && cell.structure !== 'pier' && !ROAD_CLASSES[segment.cls].separable
@@ -259,6 +277,17 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     };
     if (cached) cached.raster.forEach(visitRaster);
     else protectedRasterCells(terrain, cell, visitRaster);
+  }
+  for (const junction of r.junctions ?? []) {
+    const i = junction.end === 'a' ? 0 : r.n - 1, byWay = junctionWorks.get(junction);
+    let covered = 0;
+    for (const intervals of byWay?.values() ?? []) for (const h of union(intervals.map(([a, b]) => ({ a, b, i, j: i })))) covered += h.b - h.a;
+    const way = byWay?.keys().next().value ?? junction.ways.values().next().value;
+    conflicts.push({ id: `junction:${junction.end}`, feature: 'road', action: 'junction', i,
+      s0: junction.end === 'a' ? 0 : Math.max(0, length - junction.zone), s1: junction.end === 'a' ? Math.min(length, junction.zone) : length,
+      x: r.x[i], y: r.y[i], length: covered, affectedLength: covered, cost: junction.cost, lumpCost: junction.cost,
+      ...(way !== undefined && roads ? { roadId: way, cls: roads.wayClass(way) } : {}),
+      detail: '', source: junction.source });
   }
   for (const { way, cls, hits } of roadHits.values()) {
     const merged = union(hits);
