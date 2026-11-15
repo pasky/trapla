@@ -158,7 +158,7 @@ retain their category/speed; an unknown or malformed newer save is never overwri
 
 One road: the exact legacy facade, bit-identical to `evaluate` (`eval-regression` checks every frozen D11
 fixture through `evaluateProject` too). Ground-level endpoints keep the kernel's own end-station terrain
-sample; only an explicit non-ground XYZ overrides it. Several roads with free ends and no connections:
+sample; only an explicit non-ground XYZ overrides it. Several roads (once their tie-ins can be priced):
 `screenIndependence` (`src/core/project-ledger.ts`) prices them together (`total` = sum of their own bills,
 `cost.routes` the per-road shares) only when a conservative screen finds no interaction:
 land take, works and removed old roads (plus a 1:2 toe bound on links and a PROVISIONAL 10 m clearance) do
@@ -171,7 +171,10 @@ by a monotone all-height hard-ground upper bound). Further roads are neglected, 
 (9000/day, 90 km/h) that reach is ≈ 3.6 km per road (≈ 1 km at 3000/day, 70 km/h), so most second roads in
 the D11 pack stay unpriced. Max 10 roads. The screen itself adds ≈ 15–22 ms to a multi-road full evaluation
 (26 567 buildings), on top of each road's own evaluation; single-road and preview paths are unchanged.
-Unpriced, beyond the route's own incomplete reasons: any end tied to an existing road, another road or (for
+A non-mission road with any free end is never scorable (`road-ends-nowhere`, "Road ends nowhere / Connect
+both ends to a road"); together with unpriced tie-ins this means NO multi-road project is priced in this wave:
+the summed branch becomes reachable only once C1 prices connections. Unpriced, beyond the route's own
+incomplete reasons: any end tied to an existing road, another road or (for
 a non-mission road) a mission port, and any connection row (`connection-pending`); promoted/source roads,
 corridors and modes. A null `total` with empty `unpriced` means a project-level issue (no mission road,
 empty project). Known limitation: project-wide manual building buys are passed to every road's kernel, which
