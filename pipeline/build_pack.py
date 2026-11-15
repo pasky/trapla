@@ -11,6 +11,7 @@ See README.md for the pack format and docs/new-scenario.md for adding a scenario
 from __future__ import annotations
 
 import gzip
+import hashlib
 import io
 import json
 import math
@@ -43,6 +44,8 @@ X_MIN, Y_MIN, X_MAX, Y_MAX = (float(v) for v in SCENARIO["bbox5514"])
 CELL = float(SCENARIO.get("cell", 5))  # metres
 NX = int(round((X_MAX - X_MIN) / CELL))  # 3500 columns (west -> east)
 NY = int(round((Y_MAX - Y_MIN) / CELL))  # 4500 rows (row 0 = north edge)
+if NX <= 0 or NY <= 0 or NX * NY > SCENARIO.get("maxRasterCells", 15_750_000):
+    raise ValueError("scenario raster exceeds its reviewed memory budget")
 NODATA_U16 = 65535
 H_QUANT = 0.1  # metres per height unit in the pack
 
@@ -151,10 +154,16 @@ def osm_cache(name: str) -> Path:
     return CACHE / SCENARIO.get("osmCache", "osm_{id}_{name}.json").format(id=SCENARIO["id"], name=name)
 
 
-def overpass(name: str, body: str) -> dict:
+def baseline_osm(data: dict) -> dict:
+    from reference import baseline
+    return baseline(data, SCENARIO.get("baselineExcludeWayIds", []))
+
+
+def overpass(name: str, body: str, *, reference=False) -> dict:
     f = osm_cache(name)
     if f.exists():
-        return json.loads(f.read_text())
+        data = json.loads(f.read_text())
+        return data if reference else baseline_osm(data)
     s, w, n, e = latlon_bbox()
     q = f"[out:json][timeout:240][bbox:{s:.5f},{w:.5f},{n:.5f},{e:.5f}];\n{body}\nout geom qt;"
     last = None
@@ -164,9 +173,11 @@ def overpass(name: str, body: str) -> dict:
             log("overpass", name, url)
             data = http_get(url, urllib.parse.urlencode({"data": q}).encode(), timeout=400)
             d = json.loads(data)
+            if "remark" in d or "elements" not in d:
+                raise RuntimeError(f"incomplete Overpass response: {d.get('remark', 'no elements')}")
             f.write_bytes(data)
             time.sleep(3)
-            return d
+            return d if reference else baseline_osm(d)
         except Exception as ex:  # 429/5xx: back off and try the other mirror
             last = ex
             log("  failed:", ex)
@@ -498,7 +509,23 @@ def build_overlays():
 # ------------------------------------------------------------------------------------------------
 def official_line():
     """The official line: a chain of OSM ways (scenario "official"), and the endpoints A / B on it."""
-    cfg = SCENARIO["official"]
+    cfg = SCENARIO.get("official")
+    if cfg is None or cfg.get("strategy") == "strict":
+        from reference import chain_reference, endpoint
+        if cfg is None:
+            pts, kinds = np.empty((0, 2)), []
+        else:
+            data = overpass("reference", cfg["query"], reference=True)
+            pts, kinds, ids = chain_reference(data["elements"], cfg, TO_SJTSK.transform)
+            log(f"official reference ways: {ids}")
+        cum = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))]) if len(pts) else np.array([0.])
+        log(f"official line: {len(pts)} points, {cum[-1]:.0f} m")
+        a = endpoint(SCENARIO["A"], pts, cum, TO_SJTSK.transform)
+        b = endpoint(SCENARIO["B"], pts, cum, TO_SJTSK.transform)
+        for name, point in (("A", a), ("B", b)):
+            if not (X_MIN < point[0] < X_MAX and Y_MIN < point[1] < Y_MAX):
+                raise ValueError(f"endpoint {name} outside play area")
+        return pts, kinds, cum, a, b
     d = json.loads((ROOT / cfg["extract"]).read_text())
     ways = []
     for el in d["elements"]:
@@ -569,7 +596,7 @@ def cached_osm(name: str) -> dict:
     f = osm_cache(name)
     if not f.exists():
         raise RuntimeError(f"{f} missing: run the full pipeline (npm run data) first")
-    return json.loads(f.read_text())
+    return baseline_osm(json.loads(f.read_text()))
 
 
 def extra_cover() -> list:
@@ -597,6 +624,8 @@ def build_vectors() -> dict:
 def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
+    # Resolve references before expensive raster work; bad manifests must fail early.
+    pts, kinds, cum, a, b = official_line()
     h = fetch_terrain()
     # Hydrology uses raw DMR nodata, never the display fill or painted land cover.
     import hydrology
@@ -604,7 +633,8 @@ def main():
                                    way_xy, OUT, log)
     oob = np.isnan(h)
     import geology
-    ground = geology.build(CACHE, OUT, (X_MIN, Y_MIN, X_MAX, Y_MAX), http_get, log, oob)
+    ground = geology.build(CACHE, OUT, (X_MIN, Y_MIN, X_MAX, Y_MAX), http_get, log, oob,
+                           profile_overrides=SCENARIO.get("groundProfileOverrides"))
     log(f"terrain {NX}x{NY}, nodata {oob.mean() * 100:.1f} %, range {np.nanmin(h):.1f}..{np.nanmax(h):.1f}")
     h_disp = fill_nodata_for_display(h)
 
@@ -618,11 +648,12 @@ def main():
     dq = np.diff(q.astype(np.int32), axis=1, prepend=0).astype(np.int16)
     (OUT / "height.i16.gz").write_bytes(gzip.compress(dq.tobytes(), 9))
 
-    pts, kinds, cum, a, b = official_line()
     try:
         lc, cross, buildings, places, roads = build_overlays()
         have_osm = True
-    except Exception as ex:  # overlays are optional; core game works without
+    except Exception as ex:  # legacy fallback only; new published packs require complete data
+        if SCENARIO.get("requireComplete", False):
+            raise
         log("OSM overlays failed:", ex)
         lc, cross, buildings, places, roads = np.zeros((NY, NX), np.uint8), np.zeros((NY, NX), np.uint8), [], [], []
         have_osm = False
@@ -633,7 +664,9 @@ def main():
         stale.unlink(missing_ok=True)
     try:
         vector = build_vectors() if have_osm else None
-    except Exception as ex:  # the game runs without them (plain shaded relief)
+    except Exception as ex:  # legacy fallback only
+        if SCENARIO.get("requireComplete", False):
+            raise
         log("vector render data failed:", ex)
         vector = None
 
@@ -641,7 +674,7 @@ def main():
     a_lon, a_lat = TO_WGS.transform(a[0], a[1])
     b_lon, b_lat = TO_WGS.transform(b[0], b[1])
     # thin the official line to ~10 m spacing for display
-    keep = [0]
+    keep = [0] if len(pts) else []
     for i in range(1, len(pts)):
         if math.hypot(*(pts[i] - pts[keep[-1]])) > 10 or i == len(pts) - 1:
             keep.append(i)
@@ -672,9 +705,22 @@ def main():
         "attribution": ["© ČÚZK, DMR 5G, CC BY 4.0", "© OpenStreetMap contributors, ODbL", "© ČGS, GEOCR50 + IG rajony 1:50 000"],
         "haveOsm": have_osm,
     }
+    if SCENARIO.get("baselineNote"):
+        meta["baselineNote"] = SCENARIO["baselineNote"]
+    if SCENARIO.get("sources"):
+        meta["sources"] = SCENARIO["sources"]
     (OUT / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
     (OUT / "overlays.json").write_text(json.dumps(
         {"buildings": buildings, "places": places, "roads": roads, **ENGINE_OVERLAYS}, ensure_ascii=False, separators=(",", ":")))
+    if SCENARIO.get("requireComplete", False):
+        # Separate manifest leaves legacy D11 metadata/fingerprint semantics untouched.
+        manifest = {"config": SCENARIO, "files": {}, "inputs": {}}
+        for path in sorted(OUT.iterdir()):
+            if path.is_file() and path.name != "manifest.json":
+                manifest["files"][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(CACHE.glob(f"osm_{SCENARIO['id']}_*.json")):
+            manifest["inputs"][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        (OUT / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
     tot = sum(p.stat().st_size for p in OUT.iterdir())
     log(f"pack written to {OUT}: {tot / 1e6:.1f} MB; A={meta['A']} B={meta['B']}; "
         f"{len(buildings)} buildings, {len(places)} places")

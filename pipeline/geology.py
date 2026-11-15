@@ -147,9 +147,14 @@ def rasterize(features, ids, bounds, cell):
     return raster
 
 
-def build(cache, out, bounds, http_get, log, terrain_oob):
+def build(cache, out, bounds, http_get, log, terrain_oob, profile_overrides=None):
     """25 m categorical grid aligned to the 5 m terrain. GEOCR50 wins, IG fills map gaps."""
     table = json.loads(Path(__file__).with_name("ground_profiles.json").read_text())
+    # Regional priors must not silently inherit the fitted D11 excavation shares.
+    for key, value in (profile_overrides or {}).items():
+        if key not in table or not 0 <= value["classIto"] <= value["classIIto"]:
+            raise ValueError(f"invalid regional ground profile: {key}")
+        table[key] = {**table[key], **value}
     geo = fetch_features(GEOCR, "geocr50", cache, bounds, http_get, log)
     ig = fetch_features(IG, "ig50", cache, bounds, http_get, log)
     for f in ig:
