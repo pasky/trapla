@@ -96,6 +96,9 @@ export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' 
   }
 }
 
+/** Automatic on a motorway: no junction anywhere along it. */
+export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
+
 /** The player's choices on the crossing card: [value, button label, what gets built]. */
 export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overbridge' | 'reconnection' | 'underpass', string, string][] = [
   ['', 'Automatic', 'The game decides: existing bridges stay; class I–III roads get a junction at least 1.5 km from the next one; other roads get the cheapest of a bridge over our road, an underpass through a high enough embankment or a reroute to a nearby crossing.'],

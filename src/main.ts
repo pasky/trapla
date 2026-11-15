@@ -6,7 +6,8 @@ import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
-import { ROAD_CLASSES } from './core/data/urban';
+import { NOISE, ROAD_CLASSES } from './core/data/urban';
+import { createMotorwayProject, MOTORWAY_CATEGORY } from './core/project-motorway';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
@@ -57,10 +58,11 @@ const setStatus = (s: string) => { status.textContent = s; status.style.display 
 
 async function main() {
   const storage = new StorageGuard();
-  const scenarioId = await pickScenario({ hasSaved: (scenarioId, presetId) => {
-    try { return hasProjectSave(storage, { scenarioId, presetId }) || storage.getItem(`trapla.${scenarioId}.design`) !== null; } catch { return false; }
+  const picked = await pickScenario({ hasSaved: (scenarioId, presetId) => {
+    try { return hasProjectSave(storage, { scenarioId, presetId }) || (presetId === scenarioParams(scenarioId).presetId || presetId === scenarioId)
+      && storage.getItem(`trapla.${scenarioId}.design`) !== null; } catch { return false; }
   } });
-  const scenario = scenarioParams(scenarioId);
+  const scenario = scenarioParams(picked.scenarioId, picked.presetId);
   const pack = await loadPack(`${import.meta.env.BASE_URL}scenarios/${scenario.id}`, setStatus);
   const { meta } = pack;
   let A = { x: meta.A.xy[0], y: meta.A.xy[1] }, B = { x: meta.B.xy[0], y: meta.B.xy[1] };
@@ -79,10 +81,16 @@ async function main() {
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
   // One deep-cloned scenario factory for first start AND Start over; existing saves never receive defaults.
   const initialRoad = (): Design => ({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) });
-  const initialProject = () => projectFromLegacyDesign(initialRoad(), legacyContext);
+  const motorwayMission = scenario.mode === 'motorway';
+  const initialProject = () => motorwayMission
+    // The mission ports come from the same legacy context; the corridor then owns the alignment.
+    ? createMotorwayProject(projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, legacyContext), initialRoad(),
+      { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
+    : projectFromLegacyDesign(initialRoad(), legacyContext);
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
     objectData, transportData, pricingData, mission: legacyContext.mission, initial: initialProject,
-    legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' },
+    // Old single-road saves belong to the road exercise only, never to a motorway mission.
+    ...(motorwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });
   let opened: ReturnType<typeof openStore>;
   try { opened = openStore(); }
@@ -508,7 +516,9 @@ async function main() {
       const r = m.result.legacy, rd = request?.design;
       if (r && rd) {
         const shown = r.preview ? r : { ...r, preview: true }; last = shown;
-        routeScene.preview(m.routeId, shown); took('view');
+        // a paired motorway is drawn once, under its forward direction
+        const drawn = projectStore.snapshot.design.corridors.find(c => c.mode === 'paired' && c.children.reverse === m.routeId)?.children.forward ?? m.routeId;
+        routeScene.preview(drawn, shown); took('view');
         profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
@@ -526,6 +536,11 @@ async function main() {
     const inputs = projectStore.snapshot.design.routes.flatMap(route => {
       const legacy = result.routes[route.id]?.legacy;
       if (!legacy) return [];
+      // A paired motorway is ONE body drawn once (its forward direction carries the shared result).
+      if (route.kind === 'motorway') {
+        const corridor = projectStore.snapshot.design.corridors.find(c => c.children.forward === route.id);
+        return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth, buildingMarkers: result.complete }] : [];
+      }
       if (route.kind !== 'road') return [];
       const crownWidth = route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
       return [{ id: route.id, result: legacy, crownWidth,

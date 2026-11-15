@@ -4,7 +4,7 @@
 // choices (Auto first), and "More" for the numbers. With nothing selected: where the money goes.
 import type { Violation } from '../core/checks';
 import { crossingChoice, type CrossingChoice } from '../core/crossings';
-import { CROSSING_CHOICE_TEXT, crossingOutcome } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -61,6 +61,9 @@ const MORE_KEY = 'trapla.more';
 
 /** the crossing card's choices: the shared vocabulary (core/terms.ts) */
 const CROSSING_OPTIONS = CROSSING_CHOICE_TEXT as unknown as [string, string, string][];
+/** A motorway has no level junctions: Automatic never offers one, and neither does the card. */
+const MOTORWAY_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => v === ''
+  ? [v, label, MOTORWAY_AUTOMATIC] : [v, label, why]);
 const STRUCTURE_OPTIONS: [string, string, string][] = [
   ['clear', 'Auto', 'Let the game choose (key A)'], ['1', 'Bridge', 'Bridge the whole stretch (key B)'],
   ['2', 'Tunnel', 'Tunnel the whole stretch (key T)'], ['0', 'Earthwork', 'Only cuts and embankments (key E)'],
@@ -364,7 +367,7 @@ export class Inspector {
     return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div><div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
-      ${this.choices('crossing-choice', 'data-crossing', CROSSING_OPTIONS, choice)}`;
+      ${this.choices('crossing-choice', 'data-crossing', CATEGORIES[d.category].gradeSeparated ? MOTORWAY_CROSSING_OPTIONS : CROSSING_OPTIONS, choice)}`;
   }
 
   // ---- building ----

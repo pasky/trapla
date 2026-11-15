@@ -9,7 +9,7 @@ import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
 import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
-import { speedNorms } from '../core/data/norms';
+import { designSpeeds, speedNorms } from '../core/data/norms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
@@ -203,7 +203,7 @@ export class Hud {
       <div id="context" class="context"></div>
       ${fold('viol', 'Violations', '<ol id="viol"></ol>', '<span class="count" id="viol-count"></span>')}
       ${fold('cost', '<span id="cost-h">Cost</span>', '<table id="breakdown"></table>')}
-      ${fold('design', 'Road', `
+      ${fold('design', '<span id="design-h">Road</span>', `
         <label>Type <select id="cat" title="Wider roads cost more, carry more traffic">${PLAYABLE_CATEGORIES.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('')}</select></label>
         <label>Design speed <select id="speed" title="Faster: shorter travel time, wider curves">${[90, 80, 70].map((s) => `<option value="${s}">${s} km/h</option>`).join('')}</select></label>
         <div class="norms" id="norms"></div>
@@ -229,7 +229,9 @@ export class Hud {
         </ul>
         <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>
         <label class="exag">Relief <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
-    this.goalText = `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
+    this.goalText = sc.mode === 'motorway'
+      ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
+      : `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
     this.context = this.$('context');
     this.decisions = this.$('decisions');
     this.context.innerHTML = '<section class="card ctx inspector" id="inspector"></section>';
@@ -309,13 +311,26 @@ export class Hud {
     });
   }
 
+  /** Type and speed lists follow the route's kind: a motorway offers motorway speeds, never road widths. */
+  private optionsFor = '';
   setDesign(d: Design) {
-    this.$<HTMLSelectElement>('cat').value = d.category;
-    this.$<HTMLSelectElement>('speed').value = String(d.speed);
-    const n = speedNorms(d.speed, d.category);
+    const cat = CATEGORIES[d.category], speeds = designSpeeds(d.category), key = `${cat.mode}|${speeds.join(',')}`;
+    const catSelect = this.$<HTMLSelectElement>('cat'), speedSelect = this.$<HTMLSelectElement>('speed');
+    if (key !== this.optionsFor) {
+      this.optionsFor = key;
+      const types = cat.mode === 'road' ? PLAYABLE_CATEGORIES : [d.category];
+      catSelect.innerHTML = types.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('');
+      catSelect.disabled = types.length < 2;
+      speedSelect.innerHTML = speeds.map((s) => `<option value="${s}">${s} km/h</option>`).join('');
+      this.$('design-h').textContent = cat.mode === 'motorway' ? 'Motorway' : 'Road';
+    }
+    catSelect.value = d.category;
+    speedSelect.value = String(d.speed);
+    const n = speedNorms(d.speed, d.category), grade = cat.maxGradient?.[this.sc.terrainClass] ?? this.sc.maxGradient;
+    const pct = (g: number) => `${Math.round(g * 1000) / 10}`;
     const norms = this.$('norms');
-    norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${(this.sc.maxGradient * 100).toFixed(0)} %</b>`;
-    norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${(this.sc.maxGradient * 100).toFixed(0)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+    norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
+    norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
       b.classList.toggle('on', d.profileMode === mode);
