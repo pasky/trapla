@@ -219,14 +219,21 @@ Motorway card) splits the directions; [one direction bent on its own](docs/scree
 keeps its height points on their ground and runs as one body with the other wherever they still meet.
 "Both directions" joins them again. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130`.
 
-### Railway (cost model 20)
+### Railway (cost model 21)
 
-"Railway: Trutnov → Polish border" is an exercise in the D11 pass, not a planned line (the line there today is
-single-track and not electrified): a double-track electric line at up to 160 km/h between the same ends,
-slopes ≤ 12.5 ‰ (shown in ‰ in the profile), no level crossings, CNOSSOS train noise.
-[Overview](docs/screenshots/136-railway-overview.png), [double track in a cut](docs/screenshots/137-railway-track.png),
-[viaduct over Trutnov](docs/screenshots/138-railway-viaduct.png), [tunnel portal](docs/screenshots/139-railway-portal.png).
-Reproduce with `node scripts/railway-shots.mjs --docs 136`.
+"Railway: Trutnov → Královec" starts and ends on the rail network: at Trutnov hlavní nádraží and at Královec,
+the last station before the Polish border, on today's single-track, non-electrified line (passenger trains
+run on to Lubawka; 26 min with four stops in the 2022 timetable). No upgrade of it has been announced
+(research/36): the card says it is a game proposal. A single-track electric line at up to 120 km/h, slopes
+≤ 12.5 ‰ (‰ in the profile), no level crossings, CNOSSOS train noise. The new line joins the old track in both
+stations and rebuilds it where it runs along it; elsewhere the old line stays. The first railway card (between
+the motorway's ends) is retired; its saves still load (`?scenario=d11&preset=d11-railway`).
+Screenshots 136–139 (`node scripts/railway-shots.mjs --docs 136`).
+
+Build → Motorway makes both directions of a D 27.5 between two points of open ground (shown, not priced: the
+game has no interchanges). Build → Railway ends on a mapped railway or open ground. A mapped railway can be
+rebuilt by dragging it like a road: the dragged stretch becomes an editable single-track railway that takes
+up its old track (taking it up is not priced yet).
 
 ### Editing any road
 

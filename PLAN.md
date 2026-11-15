@@ -241,10 +241,15 @@ What exists (details and commands in `README.md`):
   height point and made both directions clash downstream); motorway bests are kept (the store was keyed by the
   road mission). Drag budget holds on D3 motorway, paired and split (`drag-perf --scenario d3 --preset
   d3-motorway [--split forward]`).
-- Railway mission (preset `d11-railway`, screenshots 136–139): the D11 ports joined by an R1/R2 railway, an
-  honest exercise (OSM: today's line is tracks=1, electrified=no); trains = the PROVISIONAL prior (128 a day);
-  time target 9 min is a mission choice. Straight starter VALID at 27.9 bn CZK; perf design
-  `scripts/scenarios/d11/d11-railway.json` 25.4 bn CZK. Drag budget holds in all five modes.
+- Railway mission `d11-rail-kralovec` (cost model 21, research/36): Trutnov hl.n. → Královec on the mapped
+  line (owner: a railway mission must start and end on the rail network). A game proposal (no announced
+  upgrade); trains a labelled prior (an hourly passenger train each way, 36 a day; 2022 ran 4 each way);
+  9 min target a mission choice. Starter VALID at 9.9 bn CZK. A railway between two points of an existing
+  line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
+  RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
+  crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
+- Build → Motorway / Railway and drag-to-rebuild of mapped railways (`ui/mode-kinds.ts`). A Build motorway is
+  unpriced (no interchanges); a rebuilt railway stretch is unpriced until taking up the old track is priced.
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
   ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
 

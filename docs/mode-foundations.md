@@ -220,12 +220,14 @@ Then: railway mission preset `d11-railway` (`createRailwayProject`, `railwayMiss
 red above the category's own maximum; legend / hint / "Track height" wording), screenshots 136–139,
 `scripts/railway-shots.mjs`. Split "By hand" density checked: same as roads (every auto grade break, each real).
 
-Pending, in order:
-1. **Build flow** (any-road-editing, not merged yet): hook Build → Motorway (`createMotorwayProject`-like
-   corridor creation at picked ends; non-port ends stay unpriced) and Build → Railway
-   (`createRailwayRoute(id, name, endpoints, tracks)`); railway rerouting = their generic drag-to-rebuild
-   with kind `railway` (we supply `project-railway.ts` kernel/rules), not a separate stub.
-2. **Noise contract** (noise-walls-seams, cost model 21): move motorway (two directional sources, half
+Then (cost model 21): the railway mission moved onto the rail network (`d11-rail-kralovec`, Trutnov hl.n. →
+Královec, research/36; `d11-railway` retired); `railTrackOurs` (tie-in / rebuild-along) and `railRetired`
+(a rebuilt stretch's old track) in evaluate.ts / footprint.ts; autoprofile 0.5 m grid for gentle limits.
+Build flow done (`ui/mode-kinds.ts`: MOTORWAY_BUILD via `addMotorwayCorridor`, RAIL_BUILD, RAIL_LINE via
+`promoteGroundRailway`; the worker receives mapped rail lines with `source-ways`).
+
+Pending:
+1. **Noise contract** (noise-walls-seams; its model number follows our 21): move motorway (two directional sources, half
    traffic each on lane axes ±6.0 m; `MOTORWAY_NOISE` emission) and railway (`rail-noise.ts`
    `railLinePower` per period, CNOSSOS source) onto its per-source per-storey day/night energy model;
    then drop the split "full traffic per direction" bound and the `leftJoined` shield in evaluate.ts.
