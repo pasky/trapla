@@ -150,6 +150,9 @@ Not yet (honest in the game):
 - ČSN 73 6102 turning-lane lengths; local-road/track design rules; a roundabout's own entry visibility.
 - Rebuilding across several mapped ways (one way per stretch today).
 
-Gates on 6ae171b: any-road-scene (D3), smoke, playtest, GPU drag gates all pass. Later commits (merge with
-lazy road links, kinds, C1 a/b/c) passed tsc, vitest (557) and eval-regression (D11 bills bit-identical);
-browser gates pending.
+Gates on 3c749f8 (main 7a7a13f merged, cost model 20): any-road-scene on D11 and D3 PASS (D11: a rebuilt
+Jičínská stretch priced, total 10.114 bn CZK with removal 71 m, land credit 1233 m, a track reconnected; D3:
+5.032 bn CZK, removal 400 m, a street reconnected by 33 m of new road), smoke (36 PASS), playtest (50 PASS),
+GPU drag gates bend/road/radius/pin/vpi/link all `--check` OK (frame p95 17 ms; preview p50 28–35 ms, p95
+43–81 ms) on a quiet machine, bench (5 saved designs VALID), outcome-audit run, eval-regression (11 frozen D11
+bills bit-identical), vitest 598. Screenshots 100–105 inspected.
