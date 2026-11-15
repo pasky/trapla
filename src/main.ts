@@ -187,7 +187,9 @@ async function main() {
     if (z !== null) d.gradePins.push({ s, z });
     d.gradePins.sort((a, b) => a.s - b.s);
   }, commit);
-  const deletePi = (i: number) => { store.update((d) => { d.pis.splice(i, 1); }); select(null); };
+  /** a field half-typed in the card applies to what it belongs to before indices shift */
+  const commitFields = () => { const a = document.activeElement as HTMLElement | null; if (a && document.getElementById('inspector')?.contains(a)) a.blur(); };
+  const deletePi = (i: number) => { commitFields(); store.update((d) => { d.pis.splice(i, 1); }); select(null); };
   const takeProfile = (d: Design) => {
     if (d.profileMode === 'auto' && last) d.vpis = last.vpis.map((v) => ({ ...v }));
     d.profileMode = 'manual';
@@ -221,7 +223,7 @@ async function main() {
     deletePi,
     bendHeight: (i) => { const b = last && bendStations(last, store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     vpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
-    deleteVpi: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
+    deleteVpi: (i) => { commitFields(); store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
   };
   decisions.ev = {
     select: (t) => select(t.kind === 'stretch' && last ? { ...t } : t, true),
@@ -264,7 +266,13 @@ async function main() {
   const requestEval = (preview = false) => {
     clearTimeout(fullTimer); fullTimer = 0;
     const design = JSON.stringify(store.design);
-    if (!preview && lastPost?.full && lastPost.design === design) return;
+    if (!preview && lastPost?.full && lastPost.design === design) {
+      // the drag paused before it ended: its full result is in, but a design half-way through a drag
+      // was not offered as the best one — now it is let go of
+      const f = lastFull;
+      if (received === posted && f && f.valid && last === f && store.offerBest(f.cost.total, store.design)) hud.setResult(f, store.design, store.best);
+      return;
+    }
     heavy?.cancel(); heavy = null; // a rebuild for an older design would only be thrown away
     hud.setProfileBusy(true);
     posted++;
@@ -489,7 +497,7 @@ async function main() {
         d.vpis.splice(k < 0 ? d.vpis.length - 1 : k, 0, { s, z, r: null });
       });
     },
-    onVpiDelete: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
+    onVpiDelete: (i) => { commitFields(); store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
     onVpiSelect: (i) => { if (i !== null) select({ kind: 'vpi', i }); else if (sel?.kind === 'vpi') select(null); },
     onSelect: (range) => select(range ? { kind: 'stretch', s0: range.s0, s1: range.s1 } : null),
     onHover: (s, label) => {

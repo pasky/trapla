@@ -124,7 +124,8 @@ export class Inspector {
 
   /** `force`: the selection changed (redraw even under a focused field) */
   render(force = false) {
-    if (!force && document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number]')) { this.pending = true; return; }
+    // not under the player's fingers: a field being typed into, a slider being dragged
+    if (!force && document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=range]')) { this.pending = true; return; }
     this.pending = false;
     const r = this.r, d = this.d, sel = this.sel;
     if (!r || !d) { this.el.innerHTML = ''; return; }
@@ -417,7 +418,7 @@ export class Inspector {
   private change(e: Event) {
     const t = e.target as HTMLInputElement, sel = this.sel;
     if (sel?.kind === 'bend' && t.id === 'pi-r' && Number.isFinite(t.valueAsNumber)) this.ev.radius?.(sel.i, Math.max(10, t.valueAsNumber));
-    if (sel?.kind === 'bend' && t.id === 'pi-slider') this.ev.commit?.();
+    if (sel?.kind === 'bend' && t.id === 'pi-slider') { this.ev.commit?.(); t.blur(); }
     if (sel?.kind === 'vpi' && t.id === 'vpi-r') this.ev.vpiRadius?.(sel.i, t.valueAsNumber);
     if (sel?.kind === 'vpi' && t.id === 'vpi-auto') this.ev.vpiRadius?.(sel.i, t.checked ? null : Math.round(this.r?.vcurves[sel.i - 1]?.r ?? 0));
     if (t.id === 'pin-z') this.el.querySelector<HTMLButtonElement>('#pin-set')?.click();
