@@ -325,7 +325,7 @@ export class Hud {
   /** Type and speed lists follow the route's kind: a motorway offers motorway speeds, never road widths. */
   private optionsFor = '';
   setDesign(d: Design) {
-    const cat = CATEGORIES[d.category], speeds = designSpeeds(d.category), key = `${cat.mode}|${speeds.join(',')}`;
+    const cat = CATEGORIES[d.category], speeds = designSpeeds(d.category), key = `${cat.mode}|${d.category}|${speeds.join(',')}`;
     const catSelect = this.$<HTMLSelectElement>('cat'), speedSelect = this.$<HTMLSelectElement>('speed');
     if (key !== this.optionsFor) {
       this.optionsFor = key;
@@ -340,8 +340,13 @@ export class Hud {
     const n = speedNorms(d.speed, d.category), grade = cat.maxGradient?.[this.sc.terrainClass] ?? this.sc.maxGradient;
     const pct = (g: number) => `${Math.round(g * 1000) / 10}`;
     const norms = this.$('norms');
-    norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
-    norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+    if (cat.mode === 'railway') {
+      norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${Math.round(grade * 10000) / 10} ‰</b>`;
+      norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; vertical rounding radius ≥ ${num(n.minCrestRadius)} m.`;
+    } else {
+      norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
+      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+    }
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
       b.classList.toggle('on', d.profileMode === mode);

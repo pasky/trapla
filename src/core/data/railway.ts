@@ -74,10 +74,15 @@ export const TRACK_CENTRES_M = 4.0;
  * NOT included (not modelled): stations, turnouts, traction substations and feeders, buildings.
  * Earthworks, land, bridges and tunnels are measured separately by the game. */
 export function railRouteBasePerKm(tracks: 1 | 2, urban = false): number {
-  const s = SPOZES, perTrack = (s.trackPerM + s.layersPerM * (1 + s.markup.substructure)) * 1000 + s.catenaryAcPerKm + s.etcsPerKm;
-  return tracks * perTrack + 2 * s.ditchPerM * 1000 * (1 + s.markup.substructure)
-    + (tracks === 1 ? s.signallingSinglePerKm : s.signallingDoublePerKm) + s.cablesPerKm + s.gsmrPerKm
-    + (urban ? s.utilitiesUrbanPerKm : s.utilitiesPerKm);
+  const s = SPOZES;
+  return railEverywherePerKm(tracks, urban) + (tracks * s.layersPerM * 1000 + 2 * s.ditchPerM * 1000) * (1 + s.markup.substructure);
+}
+/** The part of the route-km price that bridges and tunnels carry too: track, catenary, ETCS, signalling,
+ * cables, GSM-R and utility relocations (sleeper-bed layers and ditches are ground-only, SPOŽES F). */
+export function railEverywherePerKm(tracks: 1 | 2, urban = false): number {
+  const s = SPOZES;
+  return tracks * (s.trackPerM * 1000 + s.catenaryAcPerKm + s.etcsPerKm) + (tracks === 1 ? s.signallingSinglePerKm : s.signallingDoublePerKm)
+    + s.cablesPerKm + s.gsmrPerKm + (urban ? s.utilitiesUrbanPerKm : s.utilitiesPerKm);
 }
 
 /** TSI INF (1299/2014 consolidated 2023) annex §4.2.3.3: main-track maximum gradients "shall be defined

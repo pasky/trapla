@@ -46,7 +46,7 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
   const out: CrossingSurface[] = [];
   for (const crossing of crossings) {
     const g = crossing.geometry;
-    if (!g) continue;
+    if (!g || crossing.shared) continue; // drawn once, by the direction that builds it
     const base = crossing.type === 'junction' ? formation : height;
     for (const [source, link] of [...(g.road ? [[g.road, false] as const] : []), ...(g.links ?? []).map(p => [p, true] as const)]) {
       if (source.length < 2) continue;

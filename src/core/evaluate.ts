@@ -174,6 +174,10 @@ export interface EvalOptions {
    * left (one common formation). Houses on that side belong to the other direction's noise check and
    * no wall can stand in the median there. */
   leftJoined?: readonly { s0: number; s1: number }[];
+  /** Split motorway, crossed roads where the two directions run joined: the owning direction builds one
+   * crossing for both (its footprint widened by the other direction's mirror on the left); the other
+   * direction reuses that structure (`from`: the owner's crossings), billing and drawing nothing. */
+  sharedCrossings?: { own: true } | { own: false; from: readonly CrossingResult[] };
   /** Railway: trains per period by type and speed (noise source); none = a silent, unused line. */
   railTraffic?: readonly RailTrafficGroup[];
 }
@@ -407,8 +411,11 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const sur = mk ? 1 + mk.earth : 1 + PRICES.otherObjectsSurcharge, surBridge = mk ? 1 + mk.bridge : sur, surTunnel = mk ? 1 + mk.tunnel : sur;
   // The base rate rides on the earth markup in the cost expressions below: rescale it to its own markup.
   const baseScale = mk ? (1 + mk.base) / (1 + mk.earth) : 1;
-  const baseRural = basePerKm(d.category, scenario.terrainClass) / 1000 * baseScale;
-  const baseUrban = basePerKmUrban(d.category, scenario.terrainClass) / 1000 * baseScale;
+  // Items charged on every option alike (railway track and systems, also on structures) cannot change a
+  // choice: the decision costs leave them out; the bill (costParts) charges them everywhere.
+  const everywhere = cat.everywherePerKm ?? { rural: 0, urban: 0 };
+  const baseRural = (basePerKm(d.category, scenario.terrainClass) - everywhere.rural) / 1000 * baseScale;
+  const baseUrban = (basePerKmUrban(d.category, scenario.terrainClass) - everywhere.urban) / 1000 * baseScale;
   const tunnelKm = (u = 0) => categoryTunnelPerKm(cat, 0, u);
   const tunnelPerM = (cat.tunnelTubes * tunnelKm() / 1000) * surTunnel;
   const bridge = bridgeModel(cat);
@@ -946,11 +953,27 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // --- crossings of existing roads ---
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
-  const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides, !!cat.gradeSeparated);
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind,
-    left: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayL[i] : width[i] / 2),
+  // Split motorway: the owning direction spans the other's body too where they run joined (mirror).
+  const joinedAt = (i: number) => (opts.leftJoined ?? []).some(r => st.s[i] >= r.s0 && st.s[i] <= r.s1);
+  // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
+  const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * sec.dayR[i] : v) : width;
+  const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false);
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind,
+    left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
   }, (x, y) => terrain.heightAt(x, y), ctx.roads));
+  const shared = opts.sharedCrossings;
+  if (shared && !shared.own) {
+    const SHAREABLE = new Set(['overbridge', 'underpass', 'reconnection', 'diversion']);
+    for (const c of crossings) {
+      if (!joinedAt(c.i)) continue;
+      const owner = shared.from.find(o => o.roadId === c.roadId && SHAREABLE.has(o.type) && Math.hypot(o.x - c.x, o.y - c.y) < 4 * b);
+      if (!owner) continue;
+      const { s: _s, i: _i, x: _x, y: _y, h: _h, issues: _issues, requestedType: _r, ...built } = owner;
+      Object.assign(c, structuredClone(built), { cost: 0, shared: true as const });
+      for (let k = crossingIssues.length - 1; k >= 0; k--) if (crossingIssues[k].crossing.roadId === c.roadId) crossingIssues.splice(k, 1);
+    }
+  }
   for (const c of crossings) {
     // SPK links/approaches/bridges receive other-objects surcharge; all-in junction/access do not.
     const lump = c.type === 'junction' ? c.cost : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;

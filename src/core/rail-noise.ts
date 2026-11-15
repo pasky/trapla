@@ -3,10 +3,12 @@
 // track / vehicle / superstructure transfer) and traction per vehicle in 1/3-octave bands, A-weighted.
 // Aerodynamic noise only above 200 km/h (not reached ≤ 160 km/h); no squeal (curves ≥ 500 m), no
 // impact (continuously welded track), no bridge radiation (ballasted concrete decks). PROVISIONAL game
-// simplifications: one equivalent line source per railway at the track centre (0.5 m), the dipole
-// horizontal directivity (2.3.15) integrated along an infinite line (×0.505), propagation = spherical
-// spreading along the line over hard ground (+3 dB reflection), no air absorption or ground credit
-// (both would lower the level). Walls and cut edges use the game's diffraction like roads.
+// simplifications: one equivalent line source at 0.5 m, placed like the game's road source 1.75 m from the
+// axis towards the house (≈ the near track of a double line, 2.0 m); traction's 4 m source B is merged into
+// it (≈ 1 % of a passenger car's A-weighted power at 160 km/h, ≈ 26 % of a locomotive's at 100 km/h: a wall
+// shields that part somewhat too well); the dipole horizontal directivity (2.3.15) integrated along an
+// infinite line (×0.505), propagation = spherical spreading along the line over hard ground (+3 dB
+// reflection), no air absorption or ground credit (both would only lower the level). Walls and cut edges use the game's diffraction like roads.
 import { A_WEIGHTING, CONTACT_FILTER, FREQUENCIES, RAIL_ROUGHNESS, SUPERSTRUCTURE_TRANSFER, TRACK_TRANSFER_MM, TRACTION,
   VEHICLE_TRANSFER_920, WAVELENGTHS, WHEEL_ROUGHNESS } from './data/cnossos-rail';
 import { RAILWAY_EVIDENCE } from './data/railway';

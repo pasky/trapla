@@ -124,8 +124,13 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
     for (const [k, kid] of kids.entries()) for (const [e, port] of [[kid.endpoints.a, ports[k]], [kid.endpoints.b, ports[1 - k]]] as const)
       if (e.binding !== 'resolved' || Math.abs(Math.hypot(e.position.x - port.x, e.position.y - port.y) - CARRIAGEWAY_OFFSET) > 1e-3 || Math.abs(e.position.z - port.z) > 1e-6)
         return { status: 'incomplete', reason: 'unresolved-binding' };
+    // Crossed roads where the directions run joined: the forward direction builds one crossing for both,
+    // the reverse direction reuses it (evaluated after it). A drag preview of the reverse alone prices its own.
     const results: Record<string, Result> = {};
-    for (const kid of kids) if (!options.only || options.only === kid.id) results[kid.id] = evaluateCarriageway(ctx, project, kid.id, options);
+    const { only, ...evalOptions } = options;
+    if (!only || only === kids[0].id) results[kids[0].id] = evaluateCarriageway(ctx, project, kids[0].id, { ...evalOptions, sharedCrossings: { own: true } });
+    if (!only || only === kids[1].id) results[kids[1].id] = evaluateCarriageway(ctx, project, kids[1].id,
+      { ...evalOptions, ...(results[kids[0].id] ? { sharedCrossings: { own: false, from: results[kids[0].id].crossings } } : {}) });
     const [f, r] = kids.map(k => results[k.id]);
     return { status: 'split', results, ledger: f && r && !options.preview ? splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y)) : null };
   }
@@ -334,7 +339,7 @@ const carriagewayLine = (route: MotorwayRoute) => {
  * for every house (at most +3 dB too loud where only one direction is near), until a joint calculation
  * exists. Houses beside a joined stretch belong to the outer direction. */
 export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, routeId: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue'> = {}): Result {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'sharedCrossings'> = {}): Result {
   const route = project.routes.find(r => r.id === routeId) as MotorwayRoute, corridor = corridorOfRoute(project, routeId)!;
   const other = project.routes.find(r => r.id === (corridor.children.forward === routeId ? corridor.children.reverse : corridor.children.forward)) as MotorwayRoute;
   const ops = corridorOperations(project, corridor), goal = project.mission.connections[0];
@@ -373,6 +378,11 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
     return a[k] + (a[k + 1] - a[k]) * t;
   };
   const clashes: { s0: number; s1: number; need: number; overlap: boolean }[] = [];
+  const noiseGaps: { s0: number; s1: number }[] = [];
+  const noiseGap = (s: number) => {
+    const last = noiseGaps[noiseGaps.length - 1];
+    if (last && s - last.s1 <= f.ds + 1e-6) last.s1 = s; else noiseGaps.push({ s0: s, s1: s });
+  };
   const clash = (s: number, need: number, overlap: boolean) => {
     const last = clashes[clashes.length - 1];
     if (last && last.overlap === overlap && s - last.s1 <= f.ds + 1e-6) { last.s1 = s; last.need = Math.max(last.need, need); }
@@ -380,18 +390,27 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
   };
   for (let i = 0; i < f.n; i++) {
     const d = p.d[i];
-    if (!Number.isFinite(d) || !(p.dot[i] < -0.9) || d > 2 * w + 400) continue;
+    if (!Number.isFinite(d) || Math.abs(d) > 2 * w + 400) continue;
     const j = Math.max(0, Math.min(r.n - 1, Math.round(p.sb[i] / r.ds))), len = cellLength(i, f.n, f.ds);
     const zf = f.grade[i], zr = at(r, p.sb[i], r.grade), kf = f.kind[i], kr = r.kind[j];
-    if (d < 2 * w - JOINED_TOLERANCE) {
-      // carriageways on top of each other: only a structure with clearance separates them
-      if (Math.abs(zf - zr) < 7 || (kf === KIND.earth && kr === KIND.earth)) clash(f.s[i], 2 * w - d, true);
+    if (Math.abs(d) < 2 * w - JOINED_TOLERANCE) {
+      // carriageways on top of each other (side by side or crossing over): only a structure with
+      // clearance separates them
+      const separated = Math.abs(zf - zr) >= 7 && (zf > zr ? kf === KIND.bridge || kr === KIND.tunnel : kr === KIND.bridge || kf === KIND.tunnel);
+      if (!separated) clash(f.s[i], 2 * w - Math.abs(d), true);
       continue;
     }
+    if (!(p.dot[i] < -0.9) || d < 0) continue;
     const joined = d <= 2 * w + JOINED_TOLERANCE;
+    if (joined && p.dot[i] < -0.95 && (Math.abs(zf - zr) > JOINED_TOLERANCE || (kf === KIND.tunnel) !== (kr === KIND.tunnel)))
+      // houses beside a joined stretch were left to the outer direction's noise check; that holds only
+      // where the two run as one body at one height
+      noiseGap(f.s[i]);
     if (joined && Math.abs(zf - zr) <= JOINED_TOLERANCE && kf === kr && kf !== KIND.tunnel) {
-      // One D 27.5 formation: 50 % of the whole-category norm per direction instead of 60 %.
-      const base = f.parts.roadBase[i] / 6 + r.parts.roadBase[j] / 6 * len / cellLength(j, r.n, r.ds);
+      // One D 27.5 formation: 50 % of the whole-category norm per direction instead of 60 %, with its
+      // surcharge (or price-book markup) on that base.
+      const base = f.parts.roadBase[i] / 6 * (1 + surchargeRate(f.cell.urban[i]))
+        + r.parts.roadBase[j] / 6 * (1 + surchargeRate(r.cell.urban[j])) * len / cellLength(j, r.n, r.ds);
       out.parts.joinedBase += base; out.joinedLength += len;
     }
     if (kf !== KIND.earth || kr !== KIND.earth) continue;
@@ -428,6 +447,11 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
   for (const b of [...f.demolished, ...f.boughtOut]) taken.set(b.j, b.cost);
   for (const b of [...r.demolished, ...r.boughtOut]) if (taken.has(b.j)) out.parts.buildings += Math.min(b.cost, taken.get(b.j)!);
   out.credit = out.parts.joinedBase + out.parts.overlapEarth + out.parts.overlapLand + out.parts.buildings;
+  for (const g of noiseGaps) out.violations.push({ kind: 'noise', basis: 'engine', s0: g.s0, s1: g.s1,
+    title: 'Noise beside the two directions is not checked here',
+    fix: 'Give both directions the same height here, or move them apart',
+    detail: 'Where the directions run side by side, the houses on each side are checked against the nearer direction. That only holds where they run as one embankment at one height.',
+    rule: 'Engine limit: noise from two separately built directions is checked only where they share one body or stand apart.' });
   for (const c of clashes) out.violations.push({ kind: 'footprint', basis: 'engine', s0: c.s0, s1: c.s1,
     title: c.overlap ? 'The two directions overlap' : 'Slopes of the two directions clash',
     fix: c.overlap ? `Move the directions at least ${Math.ceil(c.need)} m further apart here, or carry one over the other on a bridge`

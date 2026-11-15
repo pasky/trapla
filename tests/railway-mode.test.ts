@@ -4,7 +4,7 @@ import { evaluateProject, type ProjectEvalContext } from '../src/core/project-ev
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
 import { createRailwayRoute } from '../src/core/project-railway';
 import { assertProjectDesign } from '../src/core/project-validation';
-import { railRouteBasePerKm } from '../src/core/data/railway';
+import { railEverywherePerKm, railRouteBasePerKm } from '../src/core/data/railway';
 import { speedNorms } from '../src/core/data/norms';
 import { syntheticTerrain } from '../src/core/terrain';
 import { evaluate } from '../src/core/evaluate';
@@ -47,6 +47,22 @@ describe('railway mode', () => {
     const r = next.routes.find(x => x.id === 'route:rail')!;
     expect(r.kind === 'railway' && r.specification.tracks).toBe(1);
     expect(legacyDesignForRoute(next, 'route:rail').speed).toBe(120);
+  });
+});
+
+describe('railway pricing and missions', () => {
+  it('charges track and systems over bridges too, and refuses a mission it does not serve', () => {
+    const { ctx, design, legacy } = fixture();
+    const allBridge = evaluate(legacy, { category: 'R2', speed: 160, pis: [], profileMode: 'auto', vpis: [], structureOverrides: [{ s0: 0, s1: 2200, kind: 1 }] });
+    expect(allBridge.runs.every(r => r.kind === 1)).toBe(true);
+    expect(allBridge.cost.roadBase).toBeGreaterThan(0.9 * 2.2 * railEverywherePerKm(2));
+    // the road mission (9,000 vehicles a day between A and B) is not served by a railway in its place
+    const road = design.routes.find(r => r.role === 'mission')!;
+    const rail = { ...createRailwayRoute('route:rail-mission', 'Railway', road.endpoints), role: 'mission' as const };
+    const swapped = { ...design, routes: [rail] };
+    const result = evaluateProject(ctx, { epoch: 'e', revision: 2, design: swapped });
+    expect(result.complete).toBe(false);
+    expect(result.cost.unpriced.map(u => u.reason)).toContain('mission-needs-network');
   });
 });
 

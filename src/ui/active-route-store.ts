@@ -31,16 +31,22 @@ export class ActiveRouteStore {
   get best() { return this.project.best; }
   /** Changed bindings remain in project state for repair; never clear choices to rebind indices. */
   get objectDataChanged() { return false; }
+  /** A paired motorway is edited as its forward direction (A→B), the orientation of its shared line. */
+  private togetherAs(id: RouteId | null): RouteId | null {
+    const corridor = this.project.snapshot.design.corridors.find(c => c.mode === 'paired' && c.children.reverse === id);
+    return corridor ? corridor.children.forward : id;
+  }
   switchRoute(id: RouteId): boolean {
     if (!this.project.snapshot.design.routes.some(r => r.id === id)) return false;
     if (this.project.inTransaction) return false;
-    this.activeRouteId = id;
+    this.activeRouteId = this.togetherAs(id);
     return true;
   }
   on(listener: (design: Design | null, committed: boolean) => void) {
     return this.project.subscribe((_snapshot, committed) => {
       if (this.atomic && !committed) return;
       if (!this.route) this.activeRouteId = this.project.snapshot.design.routes[0]?.id ?? null;
+      this.activeRouteId = this.togetherAs(this.activeRouteId);
       listener(this.read(), committed);
     });
   }

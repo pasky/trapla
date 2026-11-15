@@ -67,12 +67,17 @@ describe('motorway junction rule', () => {
   const crossing = (s: number, cls: string, h = 0): CrossingResult => ({ s, i: 0, x: 0, y: 0, cls, roadId: s, h, type: 'atGrade', cost: 0 });
   it('never builds a level junction or sends local traffic to the motorway ends', () => {
     const cs = [crossing(3000, 'primary'), crossing(4500, 'tertiary')];
-    resolveCrossings(cs, 9000, [KIND.earth], [40], [0], [0], [], true);
+    resolveCrossings(cs, 9000, [KIND.earth], [40], [0], [0], [], 'motorway');
     expect(cs.some(c => c.type === 'junction' || c.type === 'atGrade')).toBe(false);
     expect(cs.filter(c => c.type === 'reconnection').every(c => c.targetS !== 0 && c.targetS !== 9000)).toBe(true);
     const asked = [crossing(3000, 'primary')];
-    const issues = resolveCrossings(asked, 9000, [KIND.earth], [40], [0], [0], [{ roadId: 3000, type: 'junction' }], true);
+    const issues = resolveCrossings(asked, 9000, [KIND.earth], [40], [0], [0], [{ roadId: 3000, type: 'junction' }], 'motorway');
     expect(issues.map(i => i.crossing.code)).toEqual(['ours']);
+    // nothing to lead a cut road to yet: a clear message and a road kept over us, never a crash
+    const cut = [crossing(3000, 'tertiary')];
+    const reach = resolveCrossings(cut, 9000, [KIND.earth], [40], [0], [0], [{ roadId: 3000, type: 'reconnection' }], 'motorway');
+    expect(reach.map(i => i.crossing.code)).toEqual(['reach']);
+    expect(cut[0].type).toBe('overbridge');
   });
 });
 
@@ -88,7 +93,7 @@ describe('motorway noise source', () => {
 
 describe('split motorway', () => {
   it('splits into two editable directions that price like the pair, and joins back exactly', async () => {
-    const { splitCorridor, rejoinCorridor } = await import('../src/core/project-motorway');
+    const { splitCorridor, rejoinCorridor, splitLedger } = await import('../src/core/project-motorway');
     const { ctx, snapshot } = fixture();
     snapshot.design = replaceRouteFromLegacy(snapshot.design, snapshot.design.routes[0].id,
       { ...legacyDesignForRoute(snapshot.design, snapshot.design.routes[0].id), pis: [{ x: 1200, y: 420, r: null }] });
@@ -104,10 +109,16 @@ describe('split motorway', () => {
     expect(result.complete).toBe(true);
     expect(result.cost.unpriced).toEqual([]);
     expect(result.issues.filter(i => /directions/.test(i.violation.title))).toEqual([]);
-    // shared formation priced once: within a few % of the pair (twin structures, own noise bound)
-    expect(Math.abs(result.cost.total! / paired.cost.total! - 1)).toBeLessThan(0.08);
+    // shared formation, its surcharge and its earthworks priced once: an unedited split on open ground
+    // costs what the pair costs (no structures here; noise is a bound only near houses)
+    expect(Math.abs(result.cost.total! / paired.cost.total! - 1)).toBeLessThan(0.01);
     expect(result.cost.total!).toBeLessThan(result.cost.alone[f.id] + result.cost.alone[r.id]);
     expect(rejoinCorridor(split, 'corridor:motorway')).toEqual(snapshot.design);
+    // far apart (the other direction 1 km to the right) is neither joined nor overlapping
+    const fr = result.routes[f.id].legacy!, rr = result.routes[r.id].legacy!;
+    const far = { ...rr, x: Float64Array.from(rr.x), y: Float64Array.from(rr.y, v => v - 1000) };
+    const apart = splitLedger(fr, far, (x, y) => ctx.legacy.terrain.heightAt(x, y));
+    expect(apart.violations).toEqual([]); expect(apart.joinedLength).toBe(0);
     // moving one direction 3 m higher alongside the other: its slope stands on the other carriageway
     const raised = structuredClone(split), v = (raised.routes[0].alignment as { vertical: { vpis: { z: number }[] } }).vertical;
     v.vpis.forEach(p => { p.z += 3; });

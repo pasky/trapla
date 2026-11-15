@@ -1,4 +1,4 @@
-import { RAIL_MAX_GRADIENT, RAILWAY_EVIDENCE, railRouteBasePerKm, SPOZES, TRACK_CENTRES_M } from './railway';
+import { RAIL_MAX_GRADIENT, RAILWAY_EVIDENCE, railEverywherePerKm, railRouteBasePerKm, SPOZES, TRACK_CENTRES_M } from './railway';
 // Route categories as data rows (policy rows): the road Type list offers the single-carriageway S rows;
 // the D 27.5 row is the paired motorway corridor (mode 'motorway'), never offered as a road width.
 //
@@ -55,6 +55,12 @@ export interface Category {
   section?: CrossSection;
   /** two carriageways about the spine (motorway): see data/motorway.ts D275_SECTION */
   paired?: boolean;
+  /** A share of another category's norm (one direction of a split motorway: 60 % of D 27.5); its
+   * earthwork allowance is the same share of that category's allowance. */
+  normShareOf?: { category: CategoryId; share: number };
+  /** Railway: per-km items charged on every metre incl. bridges and tunnels (track, catenary, signalling,
+   * telecoms, utilities); the rest of `normPerKm` (sleeper-bed layers, ditches) is ground-only. */
+  everywherePerKm?: { rural: number; urban: number };
   /** railway: number of tracks (drawn and priced per track) */
   tracks?: 1 | 2;
   /** Price-book markups by kind of work, replacing SPK's "other objects" surcharge (railway: SPOŽES P1). */
@@ -112,6 +118,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   // one 2-lane tube.
   'D27.5-1': {
     id: 'D27.5-1', mode: 'motorway', label: 'D 27.5 (one direction)', enabled: false, crownWidth: 13.75, carriageway: true, gradeSeparated: true,
+    normShareOf: { category: 'D27.5', share: 0.6 },
     maxGradient: { hilly: 0.04, mountainous: 0.045 },
     speeds: [130, 120, 110], roadClass: 'motorway-carriageway',
     normPerKm: { hilly: 0.6 * 187_632_000, mountainous: 0.6 * 214_512_000 },
@@ -125,7 +132,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   'R1': {
     id: 'R1', mode: 'railway', label: 'Single-track railway', enabled: false, crownWidth: 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM,
     tracks: 1, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: RAIL_MAX_GRADIENT, mountainous: RAIL_MAX_GRADIENT },
-    normPerKm: { hilly: railRouteBasePerKm(1), mountainous: railRouteBasePerKm(1) },
+    normPerKm: { hilly: railRouteBasePerKm(1), mountainous: railRouteBasePerKm(1) }, everywherePerKm: { rural: railEverywherePerKm(1), urban: railEverywherePerKm(1, true) },
     normCodes: { hilly: 'SPOŽES 2026', mountainous: 'SPOŽES 2026' },
     bridgePerKm: SPOZES.bridgeLongPerM2 * 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM * 1000, bridgeCode: 'SPOŽES H02', tunnelTubes: 1,
     tunnelPerKm: { rural: SPOZES.tunnelSinglePerKm, urban: SPOZES.tunnelSingleUrbanPerKm },
@@ -134,7 +141,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   'R2': {
     id: 'R2', mode: 'railway', label: 'Double-track railway', enabled: false, crownWidth: 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM + TRACK_CENTRES_M,
     tracks: 2, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: RAIL_MAX_GRADIENT, mountainous: RAIL_MAX_GRADIENT },
-    normPerKm: { hilly: railRouteBasePerKm(2), mountainous: railRouteBasePerKm(2) },
+    normPerKm: { hilly: railRouteBasePerKm(2), mountainous: railRouteBasePerKm(2) }, everywherePerKm: { rural: railEverywherePerKm(2), urban: railEverywherePerKm(2, true) },
     normCodes: { hilly: 'SPOŽES 2026', mountainous: 'SPOŽES 2026' },
     bridgePerKm: SPOZES.bridgeLongPerM2 * (2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM + TRACK_CENTRES_M) * 1000, bridgeCode: 'SPOŽES H02', tunnelTubes: 1,
     tunnelPerKm: { rural: SPOZES.tunnelDoublePerKm, urban: SPOZES.tunnelDoubleUrbanPerKm },

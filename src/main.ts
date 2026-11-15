@@ -7,7 +7,9 @@ import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
 import { NOISE, ROAD_CLASSES } from './core/data/urban';
-import { CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, rejoinCorridor, splitCorridor } from './core/project-motorway';
+import { createRailNoiseModel } from './core/rail-noise';
+import { railTraffic } from './core/project-railway';
+import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, rejoinCorridor, splitCorridor } from './core/project-motorway';
 import { DIRECTIONS_TEXT } from './core/terms';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
@@ -176,8 +178,15 @@ async function main() {
   let models: { key: string; model: ReturnType<typeof createNoiseModel> } | null = null;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     noiseModel: (d) => {
-      const key = `${d.speed}`;
-      if (!models || models.key !== key) models = { key, model: createNoiseModel(scenario.traffic, d.speed, { heavyShare: scenario.heavyShare }) };
+      // the active route's own acoustic inputs, as its evaluation used them (road, motorway, railway)
+      const route = store.route, design = projectStore.snapshot.design;
+      const corridor = route?.kind === 'motorway' ? corridorOfRoute(design, route.id) : undefined;
+      const ops = corridor ? corridorOperations(design, corridor) : route?.kind === 'road' ? route.specification.operations : null;
+      const key = route?.kind === 'railway' ? `rail:${JSON.stringify(route.specification.operations)}`
+        : `${d.category}:${d.speed}:${ops?.aadt ?? scenario.traffic}:${ops?.heavyShare ?? scenario.heavyShare}`;
+      if (!models || models.key !== key) models = { key, model: route?.kind === 'railway' ? createRailNoiseModel(railTraffic(route))
+        : createNoiseModel(ops?.aadt ?? scenario.traffic, d.speed, { heavyShare: ops?.heavyShare ?? scenario.heavyShare,
+          ...(corridor ? { profile: 'motorway' as const } : {}) }) };
       return models.model;
     },
     building: binfo,

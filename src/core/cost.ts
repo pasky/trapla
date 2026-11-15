@@ -16,6 +16,7 @@ export function allowanceValuePerKm(cat: CategoryId): number {
   const c = CATEGORIES[cat];
   // Item price books (railway) price track and systems without any earthworks in them.
   if (c.roadClass === 'rail') return 0;
+  if (c.normShareOf) return c.normShareOf.share * allowanceValuePerKm(c.normShareOf.category);
   const cut = NORM_EARTHWORK_ALLOWANCE.cutPerKm[c.roadClass];
   const fill = cut * NORM_EARTHWORK_ALLOWANCE.fillShareOfCut;
   const topsoilArea = 1000 * (c.crownWidth + NORM_EARTHWORK_ALLOWANCE.topsoilExtraWidth);
@@ -230,13 +231,16 @@ export function costParts(inp: StationCostInput): CostParts {
     } else {
       construction = parts.tunnels[i] = cat.tunnelTubes * (len / 1000) * categoryTunnelPerKm(cat, runLen[i], u);
     }
+    // Railway track, catenary and systems run over bridges and through tunnels as well.
+    const everywhere = cat.everywherePerKm;
+    if (everywhere && k !== KIND.earth) { parts.roadBase[i] = len * (everywhere.rural + (everywhere.urban - everywhere.rural) * u) / 1000; construction += parts.roadBase[i]; }
     const structure = inp.crossingStructure ? inp.crossingStructure[i] : 0;
     parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
     parts.noiseWalls[i] = (inp.wallArea ? inp.wallArea[i] : 0) * NOISE.wallPerM2;
     const mk = cat.markup;
     parts.surcharge[i] = !mk ? (construction + structure) * surchargeRate(u)
       : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth + structure * mk.bridge
-        : (k === KIND.bridge ? construction * mk.bridge : construction * mk.tunnel) + structure * mk.bridge;
+        : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel) + structure * mk.bridge;
     parts.land[i] = len * inp.width[i] * landPerM2(u) + (inp.additionalLand?.[i] ?? 0);
     parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
     parts.noiseBuyouts[i] = inp.noiseBuyouts ? inp.noiseBuyouts[i] : 0;

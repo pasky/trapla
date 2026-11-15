@@ -68,7 +68,15 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
-export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength'>): OutcomeText {
+export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'shared'>): OutcomeText {
+  if (c.shared) {
+    const o = ownOutcome({ ...c, targetS: undefined });
+    return { ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
+      explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` };
+  }
+  return ownOutcome(c);
+}
+function ownOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength'>): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
   switch (c.type) {
     case 'bridge': return { tag: 'under our bridge', label: 'Passes under our bridge',

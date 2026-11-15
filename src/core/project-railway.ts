@@ -56,8 +56,9 @@ export function railTraffic(route: RailwayRoute): RailTrafficGroup[] {
     { train: FREIGHT_TRAIN, speed: o.freightSpeed, day: o.freightDay, night: o.freightNight }].filter(g => g.speed > 0 && g.day + g.night > 0);
 }
 
-export type RailwayEvaluation = { status: 'evaluated'; result: Result } | { status: 'incomplete'; reason: 'unsupported-policy' | 'unsupported-alignment' | 'unresolved-binding' };
-export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign, routeId: string,
+export type RailwayEvaluation = { status: 'evaluated'; result: Result } | { status: 'incomplete'; reason: 'unsupported-policy'
+  | 'unsupported-alignment' | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
+export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign, routeId: string, objectData: string,
   options: Pick<EvalOptions, 'preview' | 'materialValue'> = {}): RailwayEvaluation {
   const route = project.routes.find(r => r.id === routeId);
   if (!route || route.kind !== 'railway') throw new Error('Unknown railway');
@@ -66,10 +67,31 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
   if (s.policy !== RAILWAY_POLICY || s.gaugeMm !== 1435 || s.electrification !== 'AC25kV' || !designSpeeds(categoryOf(route)).includes(s.designSpeed))
     return { status: 'incomplete', reason: 'unsupported-policy' };
   if (route.alignment.kind !== 'pi' || !['auto', 'manual'].includes(route.alignment.vertical.kind)) return { status: 'incomplete', reason: 'unsupported-alignment' };
-  if (route.endpoints.a.binding !== 'resolved' || route.endpoints.b.binding !== 'resolved') return { status: 'incomplete', reason: 'unresolved-binding' };
+  if (project.objectData !== objectData || route.endpoints.a.binding !== 'resolved' || route.endpoints.b.binding !== 'resolved')
+    return { status: 'incomplete', reason: 'unresolved-binding' };
+  if (route.endpoints.a.tangent || route.endpoints.b.tangent) return { status: 'incomplete', reason: 'unimplemented-tangent' };
+  if (route.source) return { status: 'incomplete', reason: 'source-needs-network' };
+  for (const c of route.alignment.controls.crossings ?? []) {
+    if (c.target.kind !== 'legacy-way') return { status: 'incomplete', reason: 'unsupported-crossing' };
+    if (c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
+  }
+  // A mission railway must be what the mission asks for, between its ports (as the road kernel checks).
+  const goal = route.role === 'mission' ? project.mission.connections[0] : undefined;
+  if (route.role === 'mission') {
+    const ends = [route.endpoints.a, route.endpoints.b];
+    if (project.mission.connections.length !== 1 || !goal!.kinds.includes('railway') || (goal!.demand && goal!.demand.kind !== 'railway')
+      || ends.some(e => e.anchor.kind !== 'mission') || (ends[0].anchor as { portId: string }).portId !== goal!.from || (ends[1].anchor as { portId: string }).portId !== goal!.to)
+      return { status: 'incomplete', reason: 'mission-needs-network' };
+    for (const e of ends) {
+      const port = project.mission.ports.find(p => p.id === (e.anchor as { portId: string }).portId);
+      if (!port || Math.hypot(e.position.x - port.position.x, e.position.y - port.position.y, e.position.z - port.position.z) > 1e-6)
+        return { status: 'incomplete', reason: 'unresolved-binding' };
+    }
+  }
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
-  return { status: 'evaluated', result: evaluate({ ...ctx, a, b }, railwayDesign(project, route),
-    { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, railTraffic: railTraffic(route), goals: { time: false, capacity: false } }) };
+  return { status: 'evaluated', result: evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } },
+    railwayDesign(project, route), { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, railTraffic: railTraffic(route),
+      goals: { time: goal?.maxTravelMin !== undefined, capacity: false } }) };
 }
 

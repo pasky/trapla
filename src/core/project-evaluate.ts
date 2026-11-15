@@ -10,7 +10,7 @@ import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
 import { evaluateProjectRailway, railTraffic, type RailwayEvaluation } from './project-railway';
 import { createRailNoiseModel } from './rail-noise';
-import { corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
+import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment }
@@ -19,7 +19,7 @@ const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: {
     fix: 'Keep the existing road until its replacement is checked',
     rule: 'Engine limit: this foundation does not yet check shared construction, connections and combined noise for this design.' } });
 function crownOf(route: RouteDesign): number {
-  if (route.kind === 'motorway') return CATEGORIES[MOTORWAY_CATEGORY].crownWidth;
+  if (route.kind === 'motorway') return CATEGORIES[route.alignment.kind === 'corridor' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth;
   if (route.kind === 'railway') return CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth;
   return route.kind === 'road' && route.specification.crossSection !== 'existing' ? CATEGORIES[route.specification.crossSection].crownWidth : 0;
 }
@@ -69,7 +69,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(ctx.legacy, snapshot.design, corridor.id, ctx.environment.objectData,
       { preview, materialValue, ...(preview ? { only: route.id } : {}) }));
     evaluated = cached;
-  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, { preview, materialValue });
+  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
   else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
   return { route: { routeId: route.id, revision: route.revision,
