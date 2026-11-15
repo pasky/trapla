@@ -1,4 +1,5 @@
 // Recompute worker: holds its own copy of the terrain, evaluates only the latest request.
+// `preview` requests (while a drag is in progress) run the fast approximate evaluation.
 
 import { BuildingIndex, type BuildingInfo } from './core/buildings';
 import type { ScenarioParams } from './core/data/scenario';
@@ -12,10 +13,10 @@ export type WorkerIn =
   | { type: 'init'; nx: number; ny: number; cell: number; base: number; scale: number; q: Uint16Array; lc: Uint8Array;
       a: { x: number; y: number }; b: { x: number; y: number }; buildings: [number, number, number][];
       binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData; scenario: ScenarioParams; watercourses?: WaterData }
-  | { type: 'eval'; id: number; design: Design };
+  | { type: 'eval'; id: number; design: Design; preview?: boolean; materialValue?: number };
 
 let ctx: EvalContext | null = null;
-let pending: { id: number; design: Design } | null = null;
+let pending: Extract<WorkerIn, { type: 'eval' }> | null = null;
 let scheduled = false;
 
 function run() {
@@ -24,7 +25,7 @@ function run() {
   const job = pending;
   pending = null;
   try {
-    const result = evaluate(ctx, job.design);
+    const result = evaluate(ctx, job.design, { preview: job.preview, materialValue: job.materialValue });
     (self as unknown as Worker).postMessage({ type: 'result', id: job.id, result });
   } catch (e) {
     (self as unknown as Worker).postMessage({ type: 'error', id: job.id, message: String((e as Error)?.stack ?? e) });
@@ -41,7 +42,7 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
     };
     (self as unknown as Worker).postMessage({ type: 'ready' });
   } else if (m.type === 'eval') {
-    pending = { id: m.id, design: m.design };
+    pending = m;
     if (!scheduled) { scheduled = true; setTimeout(run, 0); }
   }
 };

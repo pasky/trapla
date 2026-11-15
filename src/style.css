@@ -42,6 +42,9 @@ select, input[type=number] { font: inherit; padding: 2px 4px; }
 .total { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .badge { font-weight: 700; padding: 4px 9px; border-radius: 6px; font-size: 12px; }
 .badge.ok { background: #1a9850; color: #fff; } .badge.bad { background: #d7301f; color: #fff; }
+.badge.preview { background: #8a8f98; color: #fff; }
+.card.score.preview .total { opacity: .7; }
+.chip.pending { color: #6b7079; } .chip.best.stale { opacity: .45; }
 .sub { color: #667; font-size: 12px; margin-bottom: 6px; }
 table { width: 100%; border-collapse: collapse; }
 td { padding: 2px 0; vertical-align: top; }

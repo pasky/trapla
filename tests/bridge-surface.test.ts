@@ -33,10 +33,11 @@ describe('bridge span rendering', () => {
       runs: [{ kind: KIND.bridge, i0: 1, i1: 3, s0: 10, s1: 70, length: 60, pierStations: [25] }],
       geology: { ids: new Uint8Array(5), profiles: [{ normMix: true }] },
     } as unknown as Result;
-    const mock = { routeGroup: new THREE.Group(), terrain: { heightAt: () => 0 }, terrainU: {},
+    // View's own helpers (sliced build, shared materials, centreline) on a mock without a WebGL context
+    const mock = Object.assign(Object.create(View.prototype) as object, { routeGroup: new THREE.Group(), terrain: { heightAt: () => 0 }, terrainU: {},
       local: (x: number, y: number, z: number, v = new THREE.Vector3()) => v.set(x,z,-y),
       replacementHeight: () => 0, buildMask: vi.fn(), makeLine: () => new THREE.Group(),
-    };
+    });
     vi.mocked(structureFootprints).mockReturnValue([
       { structure: 'pier', s: 25, i: 1, x: 25, y: 0, tx: 1, ty: 0, along: 1.2, left: 2.75, right: 2.75 },
     ]);

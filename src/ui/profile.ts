@@ -234,11 +234,12 @@ export class ProfilePanel {
   setBendHover(i: number | null) { if (i !== this.hoverBend) { this.hoverBend = i; this.draw(); } }
 
   /** x of station s in CSS px from the canvas' left edge, and the chart's top (for overlays) */
-  stationX(s: number) { return this.X(s); }
+  stationX(s: number) { this.flush(); return this.X(s); }
   get chartTop() { return this.pad.t; }
-  get chartBottom() { return this.chartB; }
+  get chartBottom() { this.flush(); return this.chartB; }
   /** client (page) coordinates of station s at height z (default: on the road line); `band`: in the curve band */
   toClient(s: number, z?: number, band = false) {
+    this.flush();
     const b = this.canvas.getBoundingClientRect();
     const y = band ? this.bandT + BAND_H / 2 : z === undefined ? this.Y(this.gradeAt(s)) : this.Y(z);
     return { x: b.left + this.X(s), y: b.top + y, bendY: b.top + BEND_Y, stripY: b.top + (this.stripT + this.stripB) / 2 };
@@ -272,7 +273,15 @@ export class ProfilePanel {
     return [Math.max(0, Math.min(r.n - 1, i0)), Math.max(0, Math.min(r.n - 1, i1))];
   }
 
-  draw() {
+  /** Redraw at the next animation frame: a result sets data, mode, bends… each asking for a
+   * draw (≈ 10 ms each); one paint per frame is enough. Readers of the drawn scales (hit tests,
+   * toClient) flush a pending paint first. */
+  draw() { if (!this.drawFrame) this.drawFrame = requestAnimationFrame(() => { this.drawFrame = 0; this.paint(); }); }
+  private drawFrame = 0;
+  /** paint now if a draw is pending (the scales below are set by the paint) */
+  private flush() { if (this.drawFrame) { cancelAnimationFrame(this.drawFrame); this.drawFrame = 0; this.paint(); } }
+
+  private paint() {
     const c = this.canvas, dpr = window.devicePixelRatio || 1;
     const W = this.cw = c.clientWidth, H = this.ch = c.clientHeight;
     if (!W || !H) return;
@@ -874,6 +883,7 @@ export class ProfilePanel {
 
   /** the thing under a point of the canvas (CSS px) */
   private hit(px: number, py: number): Under {
+    this.flush();
     const r = this.r;
     if (!r || px < this.pad.l - 10 || px > this.W - this.pad.r + 10) return { kind: 'none' };
     if (py < this.pad.t - 3) {

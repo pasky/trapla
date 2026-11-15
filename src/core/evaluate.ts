@@ -4,7 +4,7 @@
 
 import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
-import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingWall, type RetainingFeatureCache } from './retaining';
+import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
 import { bridgeModel, bridgeRunCost } from './bridge';
@@ -142,6 +142,18 @@ export interface Result {
    * work.* are elapsed milliseconds summed across all passes (engineering includes its substeps).
    * count.* count calls, not milliseconds. Missing work/count keys mean that path did not run. */
   timing: Record<string, number>;
+  /** A fast drag preview (see EvalOptions.preview): approximate, never a score. */
+  preview?: boolean;
+}
+
+export interface EvalOptions {
+  /** Drag preview: one fixed-price auto-profile solve (no mass-balance search or clearance
+   * retries), one engineering pass (no retaining walls or support lifts, no strict retry), no
+   * crossing geometry, footprint remedies or noise. Plan, grade line, structures and an approximate bill only;
+   * validity is provisional. The full evaluation follows when the drag pauses or ends. */
+  preview?: boolean;
+  /** Material value to price the preview's single solve at (the last full result's). */
+  materialValue?: number;
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -194,7 +206,8 @@ export function normalizeVpis(v: VPI[], L: number, zA: number, zB: number): VPI[
 /** minimum distance between VPIs (and from the ends), m */
 export const MIN_VPI_GAP = 20;
 
-export function evaluate(ctx: EvalContext, d: Design): Result {
+export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
+  const preview = !!opts.preview;
   const t0 = performance.now();
   const timing: Record<string, number> = {};
   const lap = (k: string) => { timing[k] = performance.now() - t0; };
@@ -569,9 +582,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       },
     };
     autoOptions = apOpt;
-    let ap = autoProfile(st.s, ground, apOpt);
+    const fixed = preview && opts.materialValue !== undefined ? opts.materialValue : undefined;
+    let ap = fixed === undefined ? autoProfile(st.s, ground, apOpt)
+      : { ...autoProfile(st.s, ground, { ...apOpt, costPerM: costFor(fixed), balance: undefined }), materialValue: fixed };
     // vertical curves can shave the clearance the polyline search provided: retry asking for more
-    for (let attempt = 0; attempt < 2 && mustBridge.length; attempt++) {
+    for (let attempt = 0; attempt < 2 && mustBridge.length && !preview; attempt++) {
       const prof0 = buildProfile(ap.vpis, norms.minCrestRadius, norms.minSagRadius);
       const z0 = elevations(prof0, mustBridge.map((c) => c.s));
       let short = 0;
@@ -645,7 +660,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo);
   work('sections', sectionsStart);
   const retainingStart = performance.now();
-  const retention = planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays);
+  // A preview keeps natural slopes: no retaining walls, nor the bridges an impossible wall forces.
+  const retention: RetainingPlan = preview ? {
+    walls: [], perCell: new Float64Array(n), landPerCell: new Float64Array(n), forcedBridge: new Uint8Array(n), forcedTunnel: new Uint8Array(n),
+    wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [],
+  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays);
   work('retaining', retainingStart);
   const dec = decisionPrices(materialValue);
   const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
@@ -766,7 +785,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   let engineering = engineer(vpis, relaxed, strict);
   const repairTargets = new Map<number, number>();
   let usedProfileRetry = false;
-  for (let attempt = 0; attempt < 5 && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
+  for (let attempt = 0; attempt < 5 && !preview && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
     for (const q of engineering.supportHeights) repairTargets.set(q.s, Math.max(q.z, repairTargets.get(q.s) ?? -Infinity));
     const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
     let lifted = liftProfile(vpis, targets);
@@ -795,7 +814,9 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings, selection, supported } = engineering;
   const { kind, runs } = supported;
-  const structureViolations = [...selection.violations, ...supported.violations];
+  // Auto support clearances are repaired by the lift loop above, which a preview skips: do not
+  // flash them as violations in a drag preview (the full evaluation reports any it cannot fix).
+  const structureViolations = [...selection.violations, ...(preview && d.profileMode === 'auto' ? [] : supported.violations)];
   const retainingWalls = retention.walls.filter(wall => kind[wall.i] === KIND.earth);
   const channelRelocations = retention.channelRelocations.filter(channel => kind.subarray(channel.i0, channel.i1 + 1).some(k => k === KIND.earth));
   for (let i = 0; i < n; i++) if (kind[i] !== KIND.earth) { retention.wallSurfaceL[i] = NaN; retention.wallSurfaceR[i] = NaN; }
@@ -890,7 +911,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides);
-  crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind,
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind,
     left: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayL[i] : width[i] / 2),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
   }, (x, y) => terrain.heightAt(x, y), ctx.roads));
@@ -903,7 +924,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }
 
   lap('crossings');
-  const footprintCheck = footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict }, terrain, ctx.roads, crossings, water,
+  const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict }, terrain, ctx.roads, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
@@ -940,7 +961,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
-  if (noiseBuildings) {
+  if (noiseBuildings && !preview) {
     const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
     const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
     for (let i = 0; i < n; i++) {
@@ -1098,12 +1119,13 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       wallArea: wallArea.reduce((a, v) => a + v, 0), noiseBuyouts: boughtOut.length,
       crossingsPaid, noiseDistance: noiseModel.contour, materialValue,
     },
-    travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing,
+    travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing, ...(preview ? { preview: true } : {}),
   };
   };
   return { vpis, footprintConflicts: footprintCheck.conflicts, complete };
   };
   const first = finish(crossingWays);
+  if (preview) return first.complete();
   // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
   const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');

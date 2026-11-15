@@ -15,6 +15,7 @@ import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, groundSegment, turnaroundSurfaces, turnaroundMaskRing, type CrossingSurface } from './crossing-surface';
+import { finish } from './slices';
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 import { structureFootprints } from '../core/footprint';
@@ -35,6 +36,16 @@ const COL = {
 };
 
 const SKY = 0xc9d6e2;
+
+/** stations within a (non-goal) violation, drawn red */
+function badStations(r: Result) {
+  const bad = new Uint8Array(r.n);
+  for (const v of r.violations) {
+    if (v.goal) continue;
+    for (let i = 0; i < r.n; i++) if (r.s[i] >= v.s0 - r.ds && r.s[i] <= v.s1 + r.ds) bad[i] = 1;
+  }
+  return bad;
+}
 
 export class View {
   readonly renderer: THREE.WebGLRenderer;
@@ -480,12 +491,25 @@ export class View {
     this.dirty = true;
   }
 
-  setResult(r: Result, crownWidth: number) {
+  setResult(r: Result, crownWidth: number) { finish(this.buildResult(r, crownWidth))(); }
+
+  /**
+   * The full result's route geometry, built in slices (each `yield` is a point where the caller
+   * may hand the main thread back to input and rendering) without touching what is shown; the
+   * returned commit swaps it in. Abandoning the generator (`return()`) disposes what it built.
+   * `crossingSurfaces` and the ground blend are replaced at the start: the crossing renderer
+   * builds from them, and nothing displayed reads them until the commit (buildMask).
+   */
+  *buildResult(r: Result, crownWidth: number): Generator<void, () => void> {
     const natural = (x: number, y: number) => this.terrain.heightAt(x, y);
-    this.crossingSurfaces = [
-      ...crossingSurfaces(r.crossings, natural, crossingBaseHeight(r, crownWidth, natural)),
-      ...footprintSurfaces(r.footprintConflicts ?? [], natural),
-    ];
+    const surfaces: CrossingSurface[] = [], base = crossingBaseHeight(r, crownWidth, natural);
+    for (const c of r.crossings) { surfaces.push(...crossingSurfaces([c], natural, base)); yield; }
+    for (const c of r.footprintConflicts ?? []) surfaces.push(...footprintSurfaces([c], natural));
+    this.crossingSurfaces = surfaces;
+    yield;
+    const out: THREE.Object3D[] = [];
+    let committed = false;
+    try {
     const corridors: GroundCorridor[] = [];
     for (const surface of this.crossingSurfaces) for (let i = 0; i+1 < surface.sections.length; i++) {
       if (!groundSegment(surface,i)) continue;
@@ -495,18 +519,9 @@ export class View {
     }
     for (const head of turnaroundSurfaces(this.crossingSurfaces,natural)) corridors.push({ a: head.center, b: head.center, width: head.radius });
     this.groundBlend = groundBlend(corridors);
-    for (const c of [...this.routeGroup.children]) {
-      this.routeGroup.remove(c);
-      const m = c as THREE.Mesh;
-      m.geometry?.dispose();
-      this.retire(m.material as THREE.Material | THREE.Material[] | undefined);
-    }
+    yield;
     const n = r.n, w = crownWidth / 2;
-    const bad = new Uint8Array(n);
-    for (const v of r.violations) {
-      if (v.goal) continue;
-      for (let i = 0; i < n; i++) if (r.s[i] >= v.s0 - r.ds && r.s[i] <= v.s1 + r.ds) bad[i] = 1;
-    }
+    const bad = badStations(r);
     // ---- ribbon (crown + slopes) and bridge decks ----
     const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
     const kinds: number[] = [], geo: number[] = [];
@@ -557,14 +572,12 @@ export class View {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(groundPos, 3));
       geometry.setIndex(groundIdx); geometry.computeBoundingSphere();
-      const material = makeTerrainMaterial(this.terrainU, { maskTex: { value: null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } });
-      material.side = THREE.DoubleSide;
-      const collar = new THREE.Mesh(geometry, material);
-      collar.name = 'daylight-ground'; this.routeGroup.add(collar);
+      const collar = new THREE.Mesh(geometry, this.collarMaterial());
+      collar.name = 'daylight-ground'; out.push(collar);
       groundPos.length = 0; groundIdx.length = 0;
     };
     for (let i = 0; i < n - 1; i++) {
-      if (i % 32 === 0) flushGround(); // corridor-local frustum culling, not one route-wide mesh
+      if (i % 32 === 0) { flushGround(); yield; } // corridor-local frustum culling, not one route-wide mesh
       const k0 = r.kind[i], k1 = r.kind[i + 1];
       if (k0 === KIND.tunnel || k1 === KIND.tunnel) continue;
       const a = sv[i], b = sv[i + 1];
@@ -695,46 +708,15 @@ export class View {
     g.setIndex(idx);
     g.computeBoundingSphere();
     g.computeVertexNormals();
-    this.buildMask(r);
-    const ribbonMaterial = makeEarthworkMaterial(this.terrainU, {
-      side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
-    });
-    // At-grade side roads cut through our side slopes, rather than being buried by them.
-    const compile = ribbonMaterial.onBeforeCompile;
-    ribbonMaterial.onBeforeCompile = (shader, renderer) => {
-      compile.call(ribbonMaterial, shader, renderer);
-      shader.uniforms.crossingTex = this.crossingCut.maskTex;
-      shader.uniforms.crossingBox = this.crossingCut.maskBox;
-      shader.uniforms.crossingOn = this.crossingCut.maskOn;
-      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\ncrossingXZ = position.xz;');
-      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ; uniform sampler2D crossingTex; uniform vec4 crossingBox; uniform float crossingOn;')
-        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nvec2 crossingUV = (crossingXZ-crossingBox.xy)/crossingBox.zw;\nif (vInk > .9 && crossingOn > .5 && all(greaterThan(crossingUV, vec2(0.0))) && all(lessThan(crossingUV, vec2(1.0))) && texture2D(crossingTex, crossingUV).r > .5) discard;');
-    };
-    ribbonMaterial.customProgramCacheKey = () => 'earthwork-relief-crossing-cuts';
-    const ribbon = new THREE.Mesh(g, ribbonMaterial);
+    yield;
+    const ribbon = new THREE.Mesh(g, this.ribbonMaterial());
     ribbon.name = 'ribbon';
-    this.routeGroup.add(ribbon);
+    out.push(ribbon);
 
-    // ---- centreline (screen-space width so it reads at any zoom) ----
-    const cp: number[] = [], cc: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const tun = r.kind[i] === KIND.tunnel;
-      const z = tun ? this.drapeHeight(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5;
-      this.local(r.x[i], r.y[i], z, v);
-      cp.push(v.x, v.y, v.z);
-      const c = bad[i] ? COL.bad : r.kind[i] === KIND.bridge ? COL.bridge : tun ? COL.tunnel : COL.earth;
-      cc.push(c.r, c.g, c.b);
-    }
-    const line = this.makeLine(cp, cc, 3.5, { order: 4 });
-    line.name = 'centre';
-    this.routeGroup.add(line);
-    const ghost = this.makeLine(cp, cc, 2, { opacity: 0.35, depthTest: false, order: 2 });
-    ghost.name = 'ghost';
-    this.routeGroup.add(ghost);
+    out.push(...this.centreline(r, bad));
 
     // demolished buildings are gone from the map (their red squares mark the spots)
-    if (this.buildings) this.buildings.hide(new Set(r.demolished.map((p) => this.buildingMesh(p.j)).filter((k) => k >= 0)));
+    const demolished = new Set(r.demolished.map((p) => this.buildingMesh(p.j)).filter((k) => k >= 0));
     // ---- footprint demolitions (red squares) / noise buyouts (magenta diamonds) ----
     for (const [buildings, buyout] of [[r.demolished, false], [r.boughtOut, true]] as const) {
       if (!buildings.length) continue;
@@ -757,8 +739,96 @@ export class View {
       const pts = new THREE.Points(pg, material);
       pts.name = buyout ? 'noise-buyouts' : 'footprint-demolitions';
       pts.renderOrder = 5;
-      this.routeGroup.add(pts);
+      out.push(pts);
     }
+    committed = true;
+    return () => {
+      const keep = new Set<THREE.Material>([this.collarMaterial(), this.ribbonMaterial()]);
+      for (const c of [...this.routeGroup.children]) {
+        this.routeGroup.remove(c);
+        const m = c as THREE.Mesh;
+        m.geometry?.dispose();
+        const mats = m.material as THREE.Material | THREE.Material[] | undefined;
+        for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) if (!keep.has(mat)) this.retire(mat);
+      }
+      for (const o of out) this.routeGroup.add(o);
+      this.buildMask(r);
+      if (this.buildings) this.buildings.hide(demolished);
+      this.dirty = true;
+    };
+    } finally {
+      // abandoned before the commit: nothing was shown, dispose it now
+      if (!committed) for (const o of out) {
+        (o as THREE.Mesh).geometry?.dispose();
+        const mats = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        const keep = [this.collarMaterial(), this.ribbonMaterial()];
+        for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) if (!keep.includes(mat)) mat.dispose();
+      }
+    }
+  }
+
+  /** Replacement ground beside the slopes: one material for the life of the view (it was one
+   * per 32 stations per result: a program lookup each, and churn for the retire queue). */
+  private collarMaterial() {
+    if (!this.collarMat) {
+      this.collarMat = makeTerrainMaterial(this.terrainU, { maskTex: { value: null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } });
+      this.collarMat.side = THREE.DoubleSide;
+    }
+    return this.collarMat;
+  }
+  private collarMat: THREE.ShaderMaterial | null = null;
+  /** The earthwork ribbon's material, also kept for the life of the view. */
+  private ribbonMaterial() {
+    if (this.ribbonMat) return this.ribbonMat;
+    const ribbonMaterial = this.ribbonMat = makeEarthworkMaterial(this.terrainU, {
+      side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+    });
+    // At-grade side roads cut through our side slopes, rather than being buried by them.
+    const compile = ribbonMaterial.onBeforeCompile;
+    ribbonMaterial.onBeforeCompile = (shader, renderer) => {
+      compile.call(ribbonMaterial, shader, renderer);
+      shader.uniforms.crossingTex = this.crossingCut.maskTex;
+      shader.uniforms.crossingBox = this.crossingCut.maskBox;
+      shader.uniforms.crossingOn = this.crossingCut.maskOn;
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\ncrossingXZ = position.xz;');
+      shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 crossingXZ; uniform sampler2D crossingTex; uniform vec4 crossingBox; uniform float crossingOn;')
+        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nvec2 crossingUV = (crossingXZ-crossingBox.xy)/crossingBox.zw;\nif (vInk > .9 && crossingOn > .5 && all(greaterThan(crossingUV, vec2(0.0))) && all(lessThan(crossingUV, vec2(1.0))) && texture2D(crossingTex, crossingUV).r > .5) discard;');
+    };
+    ribbonMaterial.customProgramCacheKey = () => 'earthwork-relief-crossing-cuts';
+    return ribbonMaterial;
+  }
+  private ribbonMat: THREE.Material | null = null;
+
+  /** Centreline (screen-space width so it reads at any zoom) and its see-through ghost. */
+  private centreline(r: Result, bad: Uint8Array): THREE.Object3D[] {
+    const cp: number[] = [], cc: number[] = [], v = new THREE.Vector3();
+    for (let i = 0; i < r.n; i++) {
+      const tun = r.kind[i] === KIND.tunnel;
+      const z = tun ? this.drapeHeight(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5;
+      this.local(r.x[i], r.y[i], z, v);
+      cp.push(v.x, v.y, v.z);
+      const c = bad[i] ? COL.bad : r.kind[i] === KIND.bridge ? COL.bridge : tun ? COL.tunnel : COL.earth;
+      cc.push(c.r, c.g, c.b);
+    }
+    const line = this.makeLine(cp, cc, 3.5, { order: 4 });
+    line.name = 'centre';
+    const ghost = this.makeLine(cp, cc, 2, { opacity: 0.35, depthTest: false, order: 2 });
+    ghost.name = 'ghost';
+    return [line, ghost];
+  }
+
+  /**
+   * Drag preview: only the centreline follows the moved route (a few ms). The earthwork ribbon,
+   * terrain cut-out, collars and crossings stay at the last full result until the next one.
+   */
+  setPreview(r: Result) {
+    for (const name of ['centre', 'ghost']) {
+      const old = this.routeGroup.getObjectByName(name) as Line2 | undefined;
+      if (!old) continue;
+      this.routeGroup.remove(old); old.geometry.dispose(); this.retire(old.material);
+    }
+    for (const o of this.centreline(r, badStations(r))) this.routeGroup.add(o);
     this.dirty = true;
   }
 

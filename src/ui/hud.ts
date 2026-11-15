@@ -17,7 +17,13 @@ import { COST_GROUPS, czk } from './costgroups';
 import { footprintConflictsInRange, footprintConflictText } from './footprint';
 
 export { czk };
-const num = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
+// toLocaleString with options builds a formatter per call (≈ 0.1 ms; hundreds per HUD render)
+const formats = new Map<number, Intl.NumberFormat>();
+const num = (v: number, d = 0) => {
+  let f = formats.get(d);
+  if (!f) formats.set(d, f = new Intl.NumberFormat('en-US', { maximumFractionDigits: d, minimumFractionDigits: d }));
+  return f.format(v);
+};
 const km = (m: number) => `${num(m / 1000, 2)} km`;
 const kvol = (m3: number) => `${num(m3 / 1000, 0)}k m³`;
 
@@ -260,12 +266,17 @@ export class Hud {
   private renderCost(r: Result, d: Design) {
     const whole = r.cost;
     const total = this.$('total');
-    total.textContent = czk(whole.total);
-    total.classList.toggle('invalid', !r.valid);
-    this.$('invalid-note').hidden = r.valid;
+    // A drag preview is approximate and never a verdict: "≈" total, a neutral badge, no ✓ / ✗.
+    const preview = !!r.preview;
+    total.textContent = (preview ? '≈ ' : '') + czk(whole.total);
+    total.classList.toggle('invalid', !preview && !r.valid);
+    this.$('score').classList.toggle('preview', preview);
+    this.$('invalid-note').hidden = preview || r.valid;
     const valid = this.$('valid');
-    valid.textContent = r.valid ? '✓ VALID' : '✗ NOT VALID';
-    valid.className = 'badge ' + (r.valid ? 'ok' : 'bad');
+    valid.textContent = preview ? '≈ PREVIEW' : r.valid ? '✓ VALID' : '✗ NOT VALID';
+    valid.className = 'badge ' + (preview ? 'preview' : r.valid ? 'ok' : 'bad');
+    valid.title = preview ? 'Approximate while you drag: crossings, footprint remedies, noise and support heights are worked out (and validity checked) when you pause or let go'
+      : 'Valid = all norm checks pass and both goals are met';
     this.$('perkm').textContent = `${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)} · ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h`;
     const tOk = r.travelMin <= this.sc.maxTravelMin;
     const time = this.$('chip-time');
@@ -323,11 +334,20 @@ export class Hud {
   setResult(r: Result, d: Design, best: Best | null) {
     this.last = { r, d };
     this.renderCost(r, d);
+    // Violations and the best score belong to full evaluations: during a drag preview the chip
+    // says they are pending and the best chip is dimmed (the list keeps the last full verdict).
+    const chip = this.$('chip-viol');
+    this.$('best').classList.toggle('stale', !!r.preview);
+    if (r.preview) {
+      chip.className = 'chip pending';
+      chip.innerHTML = '⋯ checked when you pause';
+      chip.toggleAttribute('disabled', true);
+      return;
+    }
     const v = r.violations;
     const count = this.$('viol-count');
     count.textContent = String(v.length);
     count.className = `count${v.length ? '' : ' ok'}`;
-    const chip = this.$('chip-viol');
     chip.className = `chip ${v.length ? 'bad' : 'ok'}`;
     chip.innerHTML = v.length ? `⚠ ${v.length} violation${v.length === 1 ? '' : 's'} <small>show ›</small>` : '✓ no violations';
     chip.toggleAttribute('disabled', !v.length);

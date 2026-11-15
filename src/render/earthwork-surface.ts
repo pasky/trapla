@@ -41,20 +41,31 @@ export interface GroundCorridor { a: { x: number; y: number }; b: { x: number; y
 /** All replacement patches share a blend field. Otherwise one patch's coarse outer collar
  * can cover a neighbouring road at true ground, notably diversion tie-ins beneath bridges. */
 export function groundBlend(corridors: GroundCorridor[]) {
-  const cell = 100, grid = new Map<string, GroundCorridor[]>();
-  for (const c of corridors) {
+  // Called for every collar vertex of every evaluation (≈ 10⁵ queries): a fine numeric-key grid
+  // over flat corridor terms, and a squared-distance reject for corridors too far to lower the
+  // blend (it is 1 from 12.5 m beyond a corridor's width). Same minimum as a full scan.
+  const cell = 25, grid = new Map<number, number[]>(), KEY = 1 << 20, OFF = 1 << 19;
+  const terms = new Float64Array(corridors.length * 6);
+  corridors.forEach((c, k) => {
+    const dx = c.b.x-c.a.x, dy = c.b.y-c.a.y;
+    terms.set([c.a.x, c.a.y, dx, dy, dx*dx+dy*dy || 1, c.width], k * 6);
     const reach = c.width + GROUND_COLLAR;
     for (let x = Math.floor((Math.min(c.a.x,c.b.x)-reach)/cell); x <= Math.floor((Math.max(c.a.x,c.b.x)+reach)/cell); x++)
       for (let y = Math.floor((Math.min(c.a.y,c.b.y)-reach)/cell); y <= Math.floor((Math.max(c.a.y,c.b.y)+reach)/cell); y++) {
-        const key = `${x},${y}`, list = grid.get(key) ?? []; list.push(c); grid.set(key,list);
+        const key = (x + OFF) * KEY + y + OFF, list = grid.get(key);
+        if (list) list.push(k * 6); else grid.set(key, [k * 6]);
       }
-  }
+  });
   return (x: number, y: number) => {
+    const list = grid.get((Math.floor(x/cell) + OFF) * KEY + Math.floor(y/cell) + OFF);
+    if (!list) return 1;
     let blend = 1;
-    for (const c of grid.get(`${Math.floor(x/cell)},${Math.floor(y/cell)}`) ?? []) {
-      const dx = c.b.x-c.a.x, dy = c.b.y-c.a.y;
-      const t = Math.max(0,Math.min(1,((x-c.a.x)*dx+(y-c.a.y)*dy)/(dx*dx+dy*dy || 1)));
-      const distance = Math.hypot(x-c.a.x-t*dx,y-c.a.y-t*dy)-c.width;
+    for (let j = 0; j < list.length; j++) {
+      const o = list[j], ax = terms[o], ay = terms[o+1], dx = terms[o+2], dy = terms[o+3], width = terms[o+5];
+      const t = Math.max(0,Math.min(1,((x-ax)*dx+(y-ay)*dy)/terms[o+4]));
+      const px = x-ax-t*dx, py = y-ay-t*dy, far = width + 12.5;
+      if (px*px+py*py >= far*far) continue;
+      const distance = Math.hypot(px,py)-width;
       blend = Math.min(blend,Math.max(0,(distance-10)/2.5));
       if (!blend) break;
     }
@@ -66,8 +77,11 @@ export function groundBlend(corridors: GroundCorridor[]) {
 export function collarPoint(section: Pick<DaylightSection, 'day' | 'outer'>, t: number, natural: (x: number, y: number) => number,
   mesh: (x: number, y: number) => number): GroundPoint {
   const x = section.day.x+(section.outer.x-section.day.x)*t, y = section.day.y+(section.outer.y-section.day.y)*t;
-  const ground = natural(x,y), coarse = mesh(x,y);
+  const ground = natural(x,y);
   const blend = Math.max(0, Math.min(1, (t * GROUND_COLLAR - 10) / (GROUND_COLLAR - COLLAR_OVERLAP - 2.5 - 10)));
-  const join = (section.day.z-natural(section.day.x,section.day.y))*Math.max(0,1-t*8);
-  return { x, y, z: ground+join+(Math.max(ground,coarse)-ground)*blend };
+  // the coarse mesh (an expensive lookup) only matters where it is blended in, the daylight
+  // join only next to the slope: skip each where its weight is exactly zero
+  const fade = Math.max(0,1-t*8);
+  const join = fade ? (section.day.z-natural(section.day.x,section.day.y))*fade : 0;
+  return { x, y, z: ground+join+(blend ? (Math.max(ground,mesh(x,y))-ground)*blend : 0) };
 }

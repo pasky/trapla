@@ -1,4 +1,5 @@
-// Physical, depth-tested crossing roads. All geometry is rebuilt only on a worker result.
+// Physical, depth-tested crossing roads. Geometry is built only on a worker result, and only for
+// surfaces whose inputs changed (a drag usually moves a few of ~40 crossings; see SurfaceKey).
 import * as THREE from 'three';
 import type { CrossingPoint } from '../core/crossings';
 import type { Result } from '../core/evaluate';
@@ -8,24 +9,65 @@ import { existingRoadColor } from './landcover';
 import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
 import { collarPoint } from './earthwork-surface';
+import { finish } from './slices';
+
+/** linear-space colour components per hex (THREE.Color converts sRGB on every construction) */
+const colorCache = new Map<number, THREE.Color>();
+const linear = (hex: number) => { let c = colorCache.get(hex); if (!c) colorCache.set(hex, c = new THREE.Color(hex)); return c; };
+
+/** 64-bit FNV-style hash of everything a surface's meshes are built from, numbers to 1 mm:
+ * an unchanged crossing (to well below a pixel) keeps its meshes across evaluations. */
+class SurfaceKey {
+  private a = 0x811c9dc5; private b = 0x9747b28c;
+  num(v: number | undefined) {
+    const q = v === undefined ? 0x7fffffff : Number.isFinite(v) ? Math.round(v * 1000) | 0 : 0x7ffffffe;
+    this.a = Math.imul(this.a ^ q, 16777619);
+    this.b = Math.imul(this.b ^ q, 0x5bd1e995); this.b ^= this.b >>> 15;
+  }
+  str(v: string | undefined) { if (v === undefined) this.num(undefined); else { this.num(v.length); for (let i = 0; i < v.length; i++) this.num(v.charCodeAt(i) / 1000); } }
+  point(p: CrossingPoint) { this.num(p.x); this.num(p.y); this.num(p.z); this.num(p.ground); this.num(p.d); this.str(p.surface); this.str(p.support); this.str(p.connection); }
+  get key() { return (this.a >>> 0).toString(36) + ':' + (this.b >>> 0).toString(36); }
+}
+function surfaceKey(s: CrossingSurface): string {
+  const h = new SurfaceKey(), c = s.crossing, g = c.geometry!;
+  h.str(c.type); h.str(c.cls); h.num(g.width); h.num(g.deck?.depth); h.num(g.turnaroundRadius);
+  h.num(g.turnarounds?.length); for (const p of g.turnarounds ?? []) h.point(p);
+  h.num(s.link ? 1 : 0); h.num(s.retainingSupport ? 1 : 0); h.num(s.deck?.start); h.num(s.deck?.end);
+  h.num(s.path.length); if (s.path.length) h.point(s.path[0]);
+  h.num(s.sections.length);
+  for (const q of s.sections) {
+    h.point(q.p); h.num(q.nx); h.num(q.ny);
+    for (const k of [0, 1] as const) { h.point(q.edge[k]); h.point(q.toe[k]); h.point(q.outer[k]); }
+  }
+  return h.key;
+}
 
 class MeshBuilder {
   pos: number[] = []; col: number[] = []; elev: number[] = []; ink: number[] = []; indices: number[] = [];
   kinds: number[] = []; geo: number[] = [];
   groundHoles: { center: { x: number; y: number }; radius: number }[] = [];
-  constructor(private view: View) {}
+  private scratch = new THREE.Vector3();
+  /** vertex of a point object at a lift (positions-only builders share them between quads) */
+  private shared = new Map<number, Map<CrossingPoint, number>>();
+  /** `positionsOnly`: for the terrain material, which reads nothing but `position` (its shading
+   * and normals come from the height texture), so its vertices can be shared between quads */
+  constructor(private view: View, readonly positionsOnly = false) {}
   vertex(p: CrossingPoint, color: number, ink = 0, lift = .08,
     kind: number = ink ? (color === 0xe3d27e ? EW_KIND.fill : EW_KIND.cut) : EW_KIND.structure) {
-    const v = this.view.local(p.x, p.y, p.z + lift), c = new THREE.Color(color), i = this.pos.length / 3;
-    this.pos.push(v.x, v.y, v.z); this.col.push(c.r, c.g, c.b); this.elev.push(p.z); this.ink.push(ink);
-    this.kinds.push(kind); this.geo.push(...(this.view.crossingGeology?.(p.x,p.y,p.z) ?? [-3,-3]), p.d ?? 0);
+    const v = this.view.local(p.x, p.y, p.z + lift, this.scratch), i = this.pos.length / 3;
+    this.pos.push(v.x, v.y, v.z);
+    if (this.positionsOnly) return i;
+    const c = linear(color);
+    this.col.push(c.r, c.g, c.b); this.elev.push(p.z); this.ink.push(ink);
+    const geology = this.view.crossingGeology?.(p.x,p.y,p.z);
+    this.kinds.push(kind); this.geo.push(geology ? geology[0] : -3, geology ? geology[1] : -3, p.d ?? 0);
     return i;
   }
   quad(a: CrossingPoint, b: CrossingPoint, c: CrossingPoint, d: CrossingPoint, color: number, ink = 0, lift = .08, kind?: number) {
     // Existing replacement collars must not cover a level turning disk in cut. Drop
     // touching cells; the disk's own 20 m natural collar covers the small outside remainder.
-    const polygon = [a,b,d,c];
-    if (this.groundHoles.some(({ center: p, radius: r }) => {
+    const polygon = this.groundHoles.length ? [a,b,d,c] : [];
+    if (this.groundHoles.length && this.groundHoles.some(({ center: p, radius: r }) => {
       if (p.x+r < Math.min(a.x,b.x,c.x,d.x) || p.x-r > Math.max(a.x,b.x,c.x,d.x) ||
         p.y+r < Math.min(a.y,b.y,c.y,d.y) || p.y-r > Math.max(a.y,b.y,c.y,d.y)) return false;
       let inside = false;
@@ -37,71 +79,154 @@ class MeshBuilder {
       }
       return inside;
     })) return;
-    const v = [a, b, c, d].map(p => this.vertex(p, color, ink, lift, kind));
-    this.indices.push(v[0], v[1], v[2], v[1], v[3], v[2]);
+    if (this.positionsOnly) {
+      let byPoint = this.shared.get(lift);
+      if (!byPoint) this.shared.set(lift, byPoint = new Map());
+      const va = this.sharedVertex(byPoint, a, lift), vb = this.sharedVertex(byPoint, b, lift);
+      const vc = this.sharedVertex(byPoint, c, lift), vd = this.sharedVertex(byPoint, d, lift);
+      this.indices.push(va, vb, vc, vb, vd, vc);
+      return;
+    }
+    const va = this.vertex(a, color, ink, lift, kind), vb = this.vertex(b, color, ink, lift, kind);
+    const vc = this.vertex(c, color, ink, lift, kind), vd = this.vertex(d, color, ink, lift, kind);
+    this.indices.push(va, vb, vc, vb, vd, vc);
+  }
+  private sharedVertex(byPoint: Map<CrossingPoint, number>, p: CrossingPoint, lift: number) {
+    let k = byPoint.get(p);
+    if (k === undefined) byPoint.set(p, k = this.vertex(p, 0, 0, lift));
+    return k;
   }
   *geometries() {
     // Spatially consecutive strips: bounded chunks let close views cull distant crossings.
     // A single route-wide ground mesh submitted every fine collar triangle at every zoom.
+    const remap = new Int32Array(this.pos.length / 3).fill(-1);
     for (let start = 0; start < this.indices.length; start += 12288) {
-      const sources: number[] = [], remap = new Map<number,number>(), indices: number[] = [];
-      for (const old of this.indices.slice(start,start+12288)) {
-        let index = remap.get(old);
-        if (index === undefined) { index = sources.length; sources.push(old); remap.set(old,index); }
-        indices.push(index);
+      const sources: number[] = [], end = Math.min(this.indices.length, start + 12288), indices = new Uint32Array(end - start);
+      for (let j = start; j < end; j++) {
+        const old = this.indices[j];
+        if (remap[old] < 0) { remap[old] = sources.length; sources.push(old); }
+        indices[j - start] = remap[old];
       }
+      for (const old of sources) remap[old] = -1;
       const g = new THREE.BufferGeometry();
-      for (const [name, values, size] of [['position', this.pos, 3], ['color', this.col, 3], ['elev', this.elev, 1], ['ink', this.ink, 1], ['ewKind', this.kinds, 1], ['ewGeo', this.geo, 3]] as const) {
+      const attributes = [['position', this.pos, 3], ['color', this.col, 3], ['elev', this.elev, 1], ['ink', this.ink, 1], ['ewKind', this.kinds, 1], ['ewGeo', this.geo, 3]] as const;
+      for (const [name, values, size] of this.positionsOnly ? attributes.slice(0, 1) : attributes) {
         const array = new Float32Array(sources.length*size);
-        sources.forEach((old,i) => { for (let k = 0; k < size; k++) array[i*size+k] = values[old*size+k]; });
+        for (let i = 0; i < sources.length; i++) for (let k = 0, old = sources[i]; k < size; k++) array[i*size+k] = values[old*size+k];
         g.setAttribute(name, new THREE.BufferAttribute(array,size));
       }
-      g.setIndex(indices); g.computeVertexNormals(); g.computeBoundingSphere(); yield g;
+      g.setIndex(new THREE.BufferAttribute(sources.length > 65535 ? indices : Uint16Array.from(indices), 1));
+      if (!this.positionsOnly) g.computeVertexNormals();
+      g.computeBoundingSphere(); yield g;
     }
   }
 }
+type CrossingInput = Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[] };
+
 export class CrossingRenderer {
   private group = new THREE.Group();
+  /** meshes of each crossing surface by its input key (see surfaceKey), reused while unchanged */
+  private surfaces = new Map<string, THREE.Object3D[]>();
+  /** per-result objects: turning heads, underpass boxes, conflict annotations */
+  private misc: THREE.Object3D[] = [];
+  /** shared by every crossing mesh for the renderer's life (a new material per result costs a
+   * program lookup and, once the last user is disposed, a shader recompile) */
+  private materials: { ground: THREE.Material; earth: THREE.Material; structure: THREE.Material } | null = null;
   constructor(private view: View) { this.group.name = 'crossing-roads'; view.world.add(this.group); }
-  setResult(r: Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[] }) {
-    this.clear();
-    const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view), structure = new MeshBuilder(this.view);
-    const heads = turnaroundSurfaces(this.view.crossingSurfaces,(x,y) => this.view.groundHeight(x,y));
-    terrain.groundHoles = heads;
-    for (const surface of this.view.crossingSurfaces) this.surface(surface, earth, terrain, structure);
-    for (const c of r.crossings) if (c.type === 'underpass' && c.geometry?.underpass && c.geometry.road) this.underpass(c.geometry.road, c.geometry.underpass, structure);
-    for (const head of heads) {
-      terrain.groundHoles = heads.filter(other => other !== head);
-      const color = existingRoadColor(head.crossing.cls), center = earth.vertex(head.center,color,0,.12,EW_KIND.crown);
-      for (let j = 0; j < head.sections.length; j++) {
-        const a = head.sections[j], b = head.sections[(j+1)%head.sections.length];
-        const roadPoint = (p: typeof a.day): CrossingPoint => ({ ...head.center, ...p });
-        earth.indices.push(center,earth.vertex(roadPoint(a.edge),color,0,.12,EW_KIND.crown),earth.vertex(roadPoint(b.edge),color,0,.12,EW_KIND.crown));
-        // Paid exposed rim: vertical support from the level disk to true natural ground.
-        const rim = (p: typeof a.day, lift: number) => roadPoint({ ...p, z: p.z+lift });
-        structure.quad(rim(a.edge,.12),rim(a.day,.015),rim(b.edge,.12),rim(b.day,.015),0xb7b4a9,0,0);
-        const collar = (s: typeof a, t: number) => roadPoint(collarPoint(s,t,
-          (x,y) => this.view.groundHeight(x,y),(x,y) => this.view.replacementHeight(x,y)));
-        for (let k = 0; k < 8; k++) terrain.quad(collar(a,k/8),collar(a,(k+1)/8),collar(b,k/8),collar(b,(k+1)/8),0xffffff,0,.015);
+  setResult(r: CrossingInput) { finish(this.build(r))(); }
+  /**
+   * Builds the crossing meshes for `view.crossingSurfaces` in slices (see View.buildResult)
+   * without touching the scene; the returned commit swaps them in. Surfaces whose key is
+   * unchanged keep their meshes. Abandoning the generator disposes what it built.
+   */
+  *build(r: CrossingInput): Generator<void, () => void> {
+    const surfaces = this.view.crossingSurfaces;
+    const heads = turnaroundSurfaces(surfaces,(x,y) => this.view.groundHeight(x,y));
+    const materials = this.materials ??= { ground: this.view.crossingGroundMaterial(), earth: this.view.crossingEarthMaterial(), structure: this.view.crossingEarthMaterial() };
+    const fresh: THREE.Object3D[] = [];
+    const emit = (earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder, into: THREE.Object3D[]) => {
+      for (const [builder, material, name] of [[terrain, materials.ground, 'crossing-terrain'],
+        [earth, materials.earth, 'crossing-earthworks'], [structure, materials.structure, 'crossing-decks']] as const) {
+        if (!builder.indices.length) continue;
+        for (const geometry of builder.geometries()) {
+          const mesh = new THREE.Mesh(geometry, material); mesh.name = name; into.push(mesh); fresh.push(mesh);
+        }
       }
-    }
-    for (const [builder, material, name] of [[terrain, this.view.crossingGroundMaterial(), 'crossing-terrain'],
-      [earth, this.view.crossingEarthMaterial(), 'crossing-earthworks'], [structure, this.view.crossingEarthMaterial(), 'crossing-decks']] as const) {
-      if (!builder.indices.length) { material.dispose(); continue; }
-      for (const geometry of builder.geometries()) {
-        const mesh = new THREE.Mesh(geometry, material); mesh.name = name; this.group.add(mesh);
+    };
+    // A surface's collars read the shared ground blend of every corridor near it and drop cells
+    // under turning heads: its key covers its own inputs, its neighbours' and the heads'.
+    const headKey = new SurfaceKey();
+    for (const head of heads) { headKey.num(head.center.x); headKey.num(head.center.y); headKey.num(head.radius); }
+    const own = surfaces.map(surfaceKey);
+    const boxes = surfaces.map(s => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const q of s.sections) for (const p of [q.outer[0], q.outer[1], q.p]) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+      return { x0, y0, x1, y1 };
+    });
+    const reach = 60;
+    const next = new Map<string, THREE.Object3D[]>(), misc: THREE.Object3D[] = [];
+    let committed = false;
+    try {
+      for (let k = 0; k < surfaces.length; k++) {
+        const b = boxes[k], near: string[] = [];
+        boxes.forEach((o, j) => { if (j !== k && o.x0 <= b.x1 + reach && o.x1 >= b.x0 - reach && o.y0 <= b.y1 + reach && o.y1 >= b.y0 - reach) near.push(own[j]); });
+        let key = `${own[k]}|${near.sort().join(',')}|${heads.length ? headKey.key : ''}`;
+        while (next.has(key)) key += '+';
+        const kept = this.surfaces.get(key);
+        if (kept) { next.set(key, kept); continue; }
+        const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
+        terrain.groundHoles = heads;
+        this.surface(surfaces[k], earth, terrain, structure);
+        const meshes: THREE.Object3D[] = [];
+        emit(earth, terrain, structure, meshes);
+        next.set(key, meshes);
+        yield;
       }
+      const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
+      for (const c of r.crossings) if (c.type === 'underpass' && c.geometry?.underpass && c.geometry.road) this.underpass(c.geometry.road, c.geometry.underpass, structure);
+      for (const head of heads) {
+        terrain.groundHoles = heads.filter(other => other !== head);
+        const color = existingRoadColor(head.crossing.cls), center = earth.vertex(head.center,color,0,.12,EW_KIND.crown);
+        for (let j = 0; j < head.sections.length; j++) {
+          const a = head.sections[j], b = head.sections[(j+1)%head.sections.length];
+          const roadPoint = (p: typeof a.day): CrossingPoint => ({ ...head.center, ...p });
+          earth.indices.push(center,earth.vertex(roadPoint(a.edge),color,0,.12,EW_KIND.crown),earth.vertex(roadPoint(b.edge),color,0,.12,EW_KIND.crown));
+          // Paid exposed rim: vertical support from the level disk to true natural ground.
+          const rim = (p: typeof a.day, lift: number) => roadPoint({ ...p, z: p.z+lift });
+          structure.quad(rim(a.edge,.12),rim(a.day,.015),rim(b.edge,.12),rim(b.day,.015),0xb7b4a9,0,0);
+          const collar = (s: typeof a, t: number) => roadPoint(collarPoint(s,t,
+            (x,y) => this.view.groundHeight(x,y),(x,y) => this.view.replacementHeight(x,y)));
+          for (let k = 0; k < 8; k++) terrain.quad(collar(a,k/8),collar(a,(k+1)/8),collar(b,k/8),collar(b,(k+1)/8),0xffffff,0,.015);
+        }
+      }
+      emit(earth, terrain, structure, misc);
+      const annotations: THREE.Object3D[] = [];
+      this.conflicts(r.footprintConflicts ?? [], annotations);
+      fresh.push(...annotations); misc.push(...annotations);
+      committed = true;
+    } finally {
+      // abandoned before the commit: nothing was shown, dispose it now
+      if (!committed) this.dispose3D(fresh, false);
     }
-    this.conflicts(r.footprintConflicts ?? []);
-    this.view.requestRender();
+    return () => {
+      this.clearMisc();
+      for (const [key, meshes] of this.surfaces) if (next.get(key) !== meshes) this.drop(meshes);
+      for (const meshes of next.values()) for (const m of meshes) if (m.parent !== this.group) this.group.add(m);
+      this.surfaces = next;
+      for (const o of misc) this.group.add(o);
+      this.misc = misc;
+      // no crossing meshes left: release the shared materials too
+      if (!this.group.children.some(c => c instanceof THREE.Mesh)) this.releaseMaterials();
+      this.view.requestRender();
+    };
   }
-  private conflicts(conflicts: readonly FootprintConflict[]) {
+  private conflicts(conflicts: readonly FootprintConflict[], out: THREE.Object3D[]) {
     const blocked: number[] = [];
     for (const c of conflicts) {
       if (c.action === 'blocked') {
         const p = this.view.local(c.x, c.y, this.view.drape(c.x, c.y) + 2);
         blocked.push(p.x, p.y, p.z);
-        for (const path of [c.geometry?.road, ...(c.geometry?.links ?? [])]) if (path && path.length >= 2) this.conflictPath(c, path, true);
+        for (const path of [c.geometry?.road, ...(c.geometry?.links ?? [])]) if (path && path.length >= 2) this.conflictPath(c, path, true, out);
       }
       if (c.feature === 'stream' && c.action === 'channel-relocation' && c.geometry?.road && c.geometry.road.length >= 2) {
         // A visible path annotation at the designed bed, not a modelled excavation.
@@ -110,11 +235,11 @@ export class CrossingRenderer {
         const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({
           color: 0x168bdd, depthTest: false, depthWrite: false,
         }));
-        line.name = 'footprint-channel'; line.userData.conflictId = c.id; line.renderOrder = 5; this.group.add(line);
-        if (c.original && c.original.length >= 2) this.conflictPath(c, c.original, false);
+        line.name = 'footprint-channel'; line.userData.conflictId = c.id; line.renderOrder = 5; out.push(line);
+        if (c.original && c.original.length >= 2) this.conflictPath(c, c.original, false, out);
       }
       if (c.action === 'relocation' && hasCrossingPath(c.geometry)) {
-        for (const path of c.originals ?? [c.original]) if (path && path.length >= 2) this.conflictPath(c, path, false);
+        for (const path of c.originals ?? [c.original]) if (path && path.length >= 2) this.conflictPath(c, path, false, out);
       }
     }
     if (!blocked.length) return;
@@ -127,9 +252,9 @@ export class CrossingRenderer {
     };
     material.customProgramCacheKey = () => 'footprint-blocked-cross';
     const markers = new THREE.Points(geometry, material);
-    markers.name = 'footprint-blocked'; markers.renderOrder = 6; this.group.add(markers);
+    markers.name = 'footprint-blocked'; markers.renderOrder = 6; out.push(markers);
   }
-  private conflictPath(c: FootprintConflict, path: CrossingPoint[], proposed: boolean) {
+  private conflictPath(c: FootprintConflict, path: CrossingPoint[], proposed: boolean, out: THREE.Object3D[]) {
     const points = path.map(p => this.view.local(p.x, p.y, this.view.drape(p.x, p.y) + .3));
     // Annotations, not surviving roads: legible even under fill. Blocked proposals must not
     // carve terrain or mark the original as removed because the mitigation cannot be built.
@@ -137,11 +262,14 @@ export class CrossingRenderer {
       color: proposed ? 0xe0a800 : 0xc83d32, dashSize: 12, gapSize: 8, transparent: true, opacity: .8, depthTest: false, depthWrite: false,
     }));
     line.computeLineDistances(); line.name = proposed ? 'footprint-proposed' : 'footprint-removed'; line.userData.conflictId = c.id;
-    line.renderOrder = 5; this.group.add(line);
+    line.renderOrder = 5; out.push(line);
   }
   private surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder) {
     const g = s.crossing.geometry!, color = existingRoadColor(s.crossing.cls), casing = 0x807468;
     const below = (p: CrossingPoint, dz: number) => ({ ...p, z: p.z - dz });
+    const collars = [new Map<object, CrossingPoint[]>(), new Map<object, CrossingPoint[]>()];
+    const stripRows = new Map<object, { casing: CrossingPoint[]; crown: CrossingPoint[] }>();
+    const natural = (x: number, y: number) => this.view.groundHeight(x,y), replacement = (x: number, y: number) => this.view.replacementHeight(x,y);
     for (let i = 0; i + 1 < s.sections.length; i++) {
       const a = s.sections[i], b = s.sections[i + 1], ground = groundSegment(s, i), target = ground ? earth : structure;
       // Tracks retain the billed formation width, but only the wheel strips are bare earth.
@@ -157,14 +285,24 @@ export class CrossingRenderer {
         // The casing and surface occupy the same surveyed alignment, never a parallel schematic line.
         const at = (section: typeof a, t: number): CrossingPoint => {
           const l = section.edge[0], r = section.edge[1], x = l.x+(r.x-l.x)*t, y = l.y+(r.y-l.y)*t;
-          return { ...section.p, x, y, z: section.p.surface === 'terrain' && s.crossing.type !== 'junction'
-            ? this.view.groundHeight(x,y) : l.z+(r.z-l.z)*t };
+          // the builders read x, y, z and d only: a light point instead of a spread copy
+          return { x, y, z: section.p.surface === 'terrain' && s.crossing.type !== 'junction'
+            ? this.view.groundHeight(x,y) : l.z+(r.z-l.z)*t, d: section.p.d } as CrossingPoint;
         };
+        // casing / crown points across each section, shared by the strips and segments beside it
         const strips = Math.max(1,Math.ceil(g.width/1.5));
+        const stripRow = (section: typeof a) => {
+          let row = stripRows.get(section);
+          if (!row) stripRows.set(section, row = {
+            casing: Array.from({ length: strips + 1 }, (_, j) => at(section, j/strips)),
+            crown: Array.from({ length: strips + 1 }, (_, j) => at(section, .05+.9*(j/strips))),
+          });
+          return row;
+        };
+        const ra = stripRow(a), rb = stripRow(b);
         for (let j = 0; j < strips; j++) {
-          const lo = j/strips, hi = (j+1)/strips;
-          target.quad(at(a,lo), at(a,hi), at(b,lo), at(b,hi), casing);
-          target.quad(at(a,.05+.9*lo), at(a,.05+.9*hi), at(b,.05+.9*lo), at(b,.05+.9*hi), color, 0, .10, EW_KIND.crown);
+          target.quad(ra.casing[j], ra.casing[j+1], rb.casing[j], rb.casing[j+1], casing);
+          target.quad(ra.crown[j], ra.crown[j+1], rb.crown[j], rb.crown[j+1], color, 0, .10, EW_KIND.crown);
         }
       }
       if (ground) for (const k of [0, 1] as const) {
@@ -177,10 +315,17 @@ export class CrossingRenderer {
         } else earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
         // Natural ground collar replaces the coarse mesh locally. At its outside edge it meets
         // that mesh, while the actual road/earthwork tie-in remains at the real terrain height.
-        const collarAt = (section: typeof a, t: number): CrossingPoint => ({ ...section.p,
-          ...collarPoint({ day: section.toe[k], outer: section.outer[k] }, t,
-            (x,y) => this.view.groundHeight(x,y), (x,y) => this.view.replacementHeight(x,y)) });
-        for (let j = 0; j < 8; j++) terrain.quad(collarAt(a,j/8), collarAt(a,(j+1)/8), collarAt(b,j/8), collarAt(b,(j+1)/8), 0xffffff, 0, .015);
+        // Each section's 9 collar points are shared by the segments on both sides of it.
+        const collarRow = (section: typeof a): CrossingPoint[] => {
+          let row = collars[k].get(section);
+          if (!row) collars[k].set(section, row = Array.from({ length: 9 }, (_, j) => {
+            const q = collarPoint({ day: section.toe[k], outer: section.outer[k] }, j/8, natural, replacement);
+            return { x: q.x, y: q.y, z: q.z, d: section.p.d } as CrossingPoint;
+          }));
+          return row;
+        };
+        const ra = collarRow(a), rb = collarRow(b);
+        for (let j = 0; j < 8; j++) terrain.quad(ra[j], ra[j+1], rb[j], rb[j+1], 0xffffff, 0, .015);
       } else {
         const depth = g.deck!.depth;
         for (const k of [0, 1] as const) {
@@ -281,14 +426,29 @@ export class CrossingRenderer {
     }
     mesh.quad({ ...corners[0], z: high }, { ...corners[1], z: high }, { ...corners[3], z: high }, { ...corners[2], z: high }, color);
   }
-  private clear() {
-    const materials = new Set<THREE.Material>();
-    for (const child of [...this.group.children]) {
+  /** remove shown objects; their own (non-shared) materials are retired, shared ones stay */
+  private drop(objects: THREE.Object3D[]) { this.dispose3D(objects, true); }
+  private dispose3D(objects: THREE.Object3D[], shown: boolean) {
+    const shared = new Set(this.materials ? Object.values(this.materials) : []), own = new Set<THREE.Material>();
+    for (const child of objects) {
       this.group.remove(child); const mesh = child as THREE.Mesh;
       mesh.geometry.dispose();
-      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) materials.add(material);
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) if (!shared.has(material)) own.add(material);
     }
-    for (const material of materials) this.view.retire(material);
+    // never drawn: no program shared with a successor yet, dispose at once
+    for (const material of own) if (shown) this.view.retire(material); else material.dispose();
   }
-  dispose() { this.clear(); this.view.world.remove(this.group); this.view.requestRender(); }
+  private clearMisc() { this.drop(this.misc); this.misc = []; }
+  private releaseMaterials() {
+    if (!this.materials) return;
+    for (const material of Object.values(this.materials)) this.view.retire(material);
+    this.materials = null;
+  }
+  dispose() {
+    this.clearMisc();
+    for (const meshes of this.surfaces.values()) this.drop(meshes);
+    this.surfaces.clear();
+    this.releaseMaterials();
+    this.view.world.remove(this.group); this.view.requestRender();
+  }
 }

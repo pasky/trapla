@@ -7,6 +7,7 @@ import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { ROAD_CLASSES } from './core/data/urban';
 import { RouteExtras } from './render/extras';
+import { runSliced, type SlicedJob } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
 import { CrossingRenderer } from './render/crossings';
 import { BuildingPicker } from './render/building-pick';
@@ -141,6 +142,8 @@ async function main() {
     if (type !== null) d.crossingOverrides.push({ roadId, type });
   });
   let posted = 0, received = 0;
+  /** main-thread ms per consumer of the last handled result (drag-perf probe) */
+  const handlerTiming: Record<string, number> = {};
   let idleWaiters: (() => void)[] = [];
 
   // designs of in-flight requests: intermediate results are shown (live feedback while dragging), but
@@ -156,12 +159,38 @@ async function main() {
       if (received < posted && last) profile.setPreview(provisionalProfile(A, B, store.design, last, (x, y) => pack.terrain.heightAt(x, y)));
     });
   };
-  const requestEval = () => {
+  // Two tiers: while a drag is in progress (uncommitted store updates) the worker runs the fast
+  // preview evaluation and only cheap things follow it (centreline, profile, "≈" total); the full
+  // evaluation, the 3D rebuild and any best score follow once the drag pauses or ends.
+  const FULL_AFTER_IDLE_MS = 150;
+  let fullTimer = 0;
+  /** the newest request: a full one for this design needs no repeat when the drag ends */
+  let lastPost: { full: boolean; design: string } | null = null;
+  /** last full result: the preview's single auto-profile solve is priced at its material value */
+  let lastFull: Result | null = null;
+  const settled = () => received === posted && !fullTimer;
+  /** the full result's 3D rebuild, run in slices between frames (see render/slices.ts) */
+  let heavy: SlicedJob | null = null;
+  let heavyStats = { slices: 0, busy: 0, maxSlice: 0, wall: 0, commit: 0 };
+  const requestEval = (preview = false) => {
+    clearTimeout(fullTimer); fullTimer = 0;
+    const design = JSON.stringify(store.design);
+    if (!preview && lastPost?.full && lastPost.design === design) return;
+    heavy?.cancel(); heavy = null; // a rebuild for an older design would only be thrown away
     hud.setProfileBusy(true);
     posted++;
-    inflight.set(posted, JSON.parse(JSON.stringify(store.design)));
-    worker.postMessage({ type: 'eval', id: posted, design: store.design } satisfies WorkerIn);
+    lastPost = { full: !preview, design };
+    inflight.set(posted, JSON.parse(design));
+    worker.postMessage({ type: 'eval', id: posted, design: store.design, preview,
+      materialValue: preview ? lastFull?.quantities.materialValue : undefined } satisfies WorkerIn);
+    if (preview) fullTimer = window.setTimeout(() => { fullTimer = 0; requestEval(false); }, FULL_AFTER_IDLE_MS);
     schedulePreview();
+  };
+  const settle = () => {
+    if (!settled()) return;
+    profile.setPreview(null); hud.setProfileBusy(false);
+    if (heavy) return; // whenIdle(): the 3D scene too
+    const w = idleWaiters; idleWaiters = []; w.forEach((f) => f());
   };
 
   worker.onmessage = (ev: MessageEvent) => {
@@ -169,7 +198,7 @@ async function main() {
     if (m.type === 'error') {
       console.error('worker error', m.message); received = m.id;
       setStatus('This design could not be computed (a bug, see the console). Undo the last change.');
-      if (received === posted) { profile.setPreview(null); hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
+      settle();
       return;
     }
     if (m.type !== 'result') return;
@@ -179,10 +208,54 @@ async function main() {
     const rd = inflight.get(m.id) ?? store.design;
     for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
     last = r;
-    view.setResult(r, CATEGORIES[rd.category].crownWidth);
-    extras.setResult(r, CATEGORIES[rd.category].crownWidth, rd.structureOverrides, rd.wallOverrides);
-    crossingRenderer.setResult(r);
-    noise.setResult(r, CATEGORIES[rd.category].crownWidth);
+    let lap = performance.now();
+    const took = (k: string) => { const now = performance.now(); handlerTiming[k] = now - lap; lap = now; };
+    for (const k in handlerTiming) delete handlerTiming[k];
+    // Only the newest full result rebuilds the 3D earthworks / crossings and may become the best
+    // score; a preview, or a full result the drag has already moved past, updates cheap things.
+    if (r.preview || m.id !== posted) {
+      // a superseded full result is shown as provisional too: its verdict is for an older design
+      const shown: Result = r.preview ? r : { ...r, preview: true };
+      last = shown;
+      view.setPreview(shown); took('view');
+      if (selection.range && selection.range.s0 >= r.length) selection.set(null);
+      profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+      profile.setMode(rd.profileMode); // a height-point drag switches Automatic to By hand
+      document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
+      profile.setBends(bendStations(shown, rd));
+      showStation(); took('profile');
+      hud.setResult(shown, rd, store.best);
+      hud.setSelectedPi(selectedPi, shown, store.design);
+      hud.setSelectedVpi(selectedVpi, shown); took('hud');
+      curveEdit.refresh(); took('curveEdit');
+      setStatus('');
+      if (received < posted) schedulePreview();
+      settle();
+      return;
+    }
+    lastFull = r;
+    // The 3D earthworks, collars and crossings (hundreds of ms) are built in slices between
+    // frames and swapped in together; the previous ones stay on screen until then.
+    const crown = CATEGORIES[rd.category].crownWidth;
+    heavy?.cancel();
+    const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
+    heavy = runSliced((function* () {
+      const commitView = yield* view.buildResult(r, crown);
+      const commitCrossings = yield* crossingRenderer.build(r);
+      return () => { commitView(); commitCrossings(); };
+    })(), (commit) => {
+      const t0 = performance.now();
+      commit();
+      extras.setResult(r, crown, rd.structureOverrides, rd.wallOverrides);
+      noise.setResult(r, crown);
+      annotations.setResult(r, rd);
+      heavy = null;
+      heavyStats = { ...stats, wall: performance.now() - started, commit: performance.now() - t0 };
+      settle();
+    }, (e) => {
+      console.error('3D rebuild failed', e);
+      heavy = null; settle();
+    }, 8, stats); took('view');
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
     profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
@@ -190,18 +263,16 @@ async function main() {
     document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));
     if (selection.range && selBar.showing === 'range') selBar.showRange(selection.range, rd.structureOverrides);
-    showStation();
+    showStation(); took('profile');
     tools.objectDataChanged = store.objectDataChanged;
-    tools.setResult(r, rd);
-    annotations.setResult(r, rd);
-    if (r.valid && received === posted) store.offerBest(r.cost.total, rd);
+    tools.setResult(r, rd); took('tools');
+    if (r.valid) store.offerBest(r.cost.total, rd);
     hud.setResult(r, rd, store.best);
     hud.setSelectedPi(selectedPi, r, store.design);
-    hud.setSelectedVpi(selectedVpi, r);
-    curveEdit.refresh();
+    hud.setSelectedVpi(selectedVpi, r); took('hud');
+    curveEdit.refresh(); took('curveEdit');
     setStatus('');
-    if (received === posted) profile.setPreview(null); else schedulePreview();
-    if (received === posted) { hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
+    settle();
   };
 
   // on-map radius handles for the selected bend (grips, + / −, max, auto)
@@ -220,7 +291,7 @@ async function main() {
     curveEdit.refresh();
   };
 
-  store.on((d) => {
+  store.on((d, committed) => {
     hideToast(); // its Undo belongs to the edit before this one
     if (selectedPi !== null && selectedPi >= d.pis.length) selectedPi = null;
     view.setDesign(d, selectedPi);
@@ -229,7 +300,7 @@ async function main() {
     selBar.hide('bend'); // its station / mode may be stale now
     profile.selectBend(selectedPi);
     curveEdit.refresh();
-    requestEval();
+    requestEval(!committed);
   });
 
   // ---- map interactions ----
@@ -457,7 +528,7 @@ async function main() {
     onCategory: (c) => store.update((d) => { d.category = c as CategoryId; }),
     onSpeed: (s) => store.update((d) => { d.speed = s; }),
     onProfileMode: (mode) => {
-      if (mode === store.design.profileMode || (mode === 'manual' && (!last || received !== posted))) return;
+      if (mode === store.design.profileMode || (mode === 'manual' && (!last || !settled()))) return;
       store.update((d) => { if (mode === 'manual') takeProfile(d); else d.profileMode = 'auto'; });
     },
     onReset: () => {
@@ -556,7 +627,7 @@ async function main() {
       quantities: { ...last.quantities, massHaul: undefined, hitBuildings: last.quantities.hitBuildings.length },
       runs: last.runs, timing: last.timing, vpis: last.vpis.length, crossings: last.crossings, walls: last.walls,
     },
-    whenIdle: () => new Promise<void>((res) => { if (received === posted) res(); else idleWaiters.push(res); }),
+    whenIdle: () => new Promise<void>((res) => { if (settled()) res(); else idleWaiters.push(res); }),
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
     resetCamera: () => view.resetCamera(),
     selectPi,
@@ -587,6 +658,9 @@ async function main() {
     setExaggeration: (e: number) => viewBar.set({ exag: e }),
     setView: (p: Partial<ViewPrefs>) => viewBar.set(p),
     viewBusy: () => view.busy,
+    handlerTiming: () => ({ ...handlerTiming }),
+    /** the last full result's sliced 3D rebuild: slices, busy / longest-slice / wall / commit ms */
+    rebuildStats: () => ({ ...heavyStats }),
     meta,
     official: meta.official.xy,
     A, B,
