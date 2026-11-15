@@ -40,7 +40,7 @@ export function projectFromLegacyDesign(value: unknown, context: LegacyProjectCo
     endpoints: copy(context.endpoints),
     alignment: { kind: 'pi', pis, controls: { ...controls,
       ...(crossingOverrides === undefined ? {} : { crossings: crossingOverrides.map(c => ({ choice: c.type,
-        target: { kind: 'legacy-way' as const, objectData, roadId: c.roadId }, ...(c.via ? { via: c.via } : {}), ...(c.to !== undefined ? { to: c.to } : {}) })) }) },
+        target: { kind: 'legacy-way' as const, objectData, roadId: c.roadId }, ...(c.via ? { via: c.via, ...(c.to !== undefined ? { to: c.to } : {}) } : {}) })) }) },
       vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
         : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } },
     specification: { kind: 'road', policy: 'legacy-road', legalClass: category === 'S7.5' ? 'II' : 'I',

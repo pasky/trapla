@@ -222,8 +222,10 @@ What exists (details and commands in `README.md`):
   in the card). The shape keeps leading to the crossing it led to and belongs to the one crossing of that way
   nearest to it; a way crossed more than once is shaped only after "Cut and reroute" is chosen for it. Checked:
   off our earthworks, no steeper than the class's justified maximum over 20 m stretches (PROVISIONAL averaging
-  length), not across motorways (at grade), railways, water or buildings, at most 8 km. Automatic reroutes are
-  not yet checked against railways, water and buildings.
+  length), not across motorways (at grade), railways, water or buildings, at most 8 km. A first drag starts from
+  the automatic path's own bends, so it only changes the road near the pointer. Engine gap: automatic reroutes
+  are not checked for steepness (published designs reach 22–29 % over 20 m along steep slope toes) nor against
+  railways, water and buildings; a shape may therefore be as steep as the automatic path (+1 point).
 - Known gap: a crossed way whose cut ends stay connected over other roads is rerouted instead of closed (crossings
   have no "closed" outcome; footprint rebuilds do). Example: the service-loop fixture's 1.4 + 1.4 km reroute
   of a 100 m loop chord (`docs/footprint-conflicts.md` § Model 19).

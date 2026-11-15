@@ -7,6 +7,7 @@ import './link-edit.css';
 import type { Design, Result } from '../core/evaluate';
 import { crossingVia, MAX_LINK_VIA, type LinkVia } from '../core/crossings';
 import type { CrossingHit } from '../render/crossing-pick';
+import { insertViaPoint, shapeable, simplifyLink } from './link-shape';
 import type { MapGrab, View } from '../render/view';
 
 type XY = { x: number; y: number };
@@ -23,36 +24,6 @@ export interface LinkEditHost {
   setVia(roadId: number, via: LinkVia | null, commit: boolean, to?: number): void;
   commit(): void;
   heightAt(x: number, y: number): number;
-}
-
-/** Distance along `path` to the point of it nearest to `p`. */
-export function arcPosition(path: readonly XY[], p: XY): number {
-  let best = Infinity, at = 0, run = 0;
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1], b = path[i], dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
-    const t = len ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (len * len))) : 0;
-    const d = Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
-    if (d < best) { best = d; at = run + t * len; }
-    run += len;
-  }
-  return at;
-}
-/** Insert a bend point at `p` (a point on the drawn link `path`) between the existing bend points it
- * lies between along the path; returns the new list and the new point's index. */
-export function insertViaPoint(path: readonly XY[], via: readonly XY[], p: XY): { via: XY[]; index: number } {
-  const s = arcPosition(path, p);
-  let index = 0;
-  while (index < via.length && arcPosition(path, via[index]) <= s) index++;
-  const next = via.map(q => ({ ...q }));
-  next.splice(index, 0, { x: p.x, y: p.y });
-  return { via: next, index };
-}
-
-/** A way crossed more than once shares one crossing choice: its reroutes are shaped only once the
- * player has chosen "Cut and reroute" for all of them. */
-export function shapeable(r: Result | null, d: Design, roadId: number): boolean {
-  const count = r?.crossings.filter(c => c.roadId === roadId).length ?? 0;
-  return count <= 1 || (d.crossingOverrides ?? []).some(o => o.roadId === roadId && o.type === 'reconnection');
 }
 
 export class LinkEditor {
@@ -102,6 +73,8 @@ export class LinkEditor {
     return {
       start: (x, y) => {
         const via = this.via(roadId);
+        // the first shape of this side starts from the automatic path's own bends
+        if (!via[side].length) via[side] = simplifyLink(path);
         if (via[side].length >= MAX_LINK_VIA) return false;
         const { via: next, index } = insertViaPoint(path, via[side], { x, y });
         via[side] = next;

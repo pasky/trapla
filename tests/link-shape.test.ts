@@ -3,7 +3,7 @@ import { buildCrossingGeometry, crossingPlanLength, normalizeCrossingOverrides, 
   type CrossingOverride, type CrossingResult, type CrossingRoute } from '../src/core/crossings';
 import { RoadNet } from '../src/core/roadnet';
 import { ROAD_CLASSES } from '../src/core/data/urban';
-import { insertViaPoint } from '../src/ui/link-edit';
+import { insertViaPoint, simplifyLink } from '../src/ui/link-shape';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign } from '../src/core/project-legacy';
 import { assertProjectDesign } from '../src/core/project-validation';
 import { D11_SCENARIO } from '../src/core/data/scenario';
@@ -41,6 +41,8 @@ describe('a reroute the player shaped', () => {
   it('reports a path over our earthworks, or one steeper than its class allows', () => {
     const over = build([{ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -4 }], []] }]);
     expect(over.issues?.map(v => v.title)).toContain("Your path for the new street runs onto our road's earthworks");
+    // the player's shape to fix: the crossing still stands and owns its road (no knock-on violations)
+    expect(over.issues?.every(v => v.crossing.code === 'shape')).toBe(true); expect(over.geometry!.clipped).toBeFalsy();
     // a 50 % slope beyond y = -40: the automatic path stays on the flat, the shaped one climbs it
     const slope = (_x: number, y: number) => 400 + Math.max(0, -40 - y) * .5;
     expect(build([{ roadId: 1, type: 'reconnection' }], slope).issues ?? []).toEqual([]);
@@ -91,6 +93,15 @@ describe('a reroute the player shaped', () => {
     crossing.choice = 'bridge';
     expect(() => assertProjectDesign(bad)).toThrow(/Invalid project/);
     expect(legacyDesignForRoute(project, project.routes[0].id).crossingOverrides).toEqual(design.crossingOverrides);
+  });
+  it('starting from the automatic path\'s own bends gives back the same road, with no new problems', () => {
+    const slope = (x: number, y: number) => 400 + Math.sin(x / 90) * 6 + Math.max(0, -30 - y) * .2;
+    const auto = build([{ roadId: 1, type: 'reconnection' }], slope);
+    const via = auto.geometry!.links!.map(l => simplifyLink(l)) as [{ x: number; y: number }[], { x: number; y: number }[]];
+    expect(via.every(v => v.length <= 20)).toBe(true);
+    const seeded = build([{ roadId: 1, type: 'reconnection', via, to: 0 }], slope);
+    expect(seeded.issues ?? []).toEqual([]);
+    expect(Math.abs(seeded.linkLength! - auto.linkLength!) / auto.linkLength!).toBeLessThan(0.01);
   });
   it('a drag on the link inserts its bend point between the ones it lies between', () => {
     const path = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];

@@ -4,7 +4,7 @@
 // choices (Auto first), and "More" for the numbers. With nothing selected: where the money goes.
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
-import { shapeable } from './link-edit';
+import { shapeable } from './link-shape';
 import { CROSSING_CHOICE_TEXT, crossingOutcome } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
@@ -296,7 +296,9 @@ export class Inspector {
       if (t.buildings.some((j) => d.buildingOverrides?.some((o) => o.j === j && o.action === 'keep'))) btn(`data-fix-unkeep="${t.buildings.join(',')}"`, 'Stop keeping');
     }
     const roadId = (v as Violation & { crossing?: { roadId?: number } }).crossing?.roadId;
-    if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
+    // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
+    if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
+    else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
     if (v.kind === 'footprint' && !t) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
@@ -442,6 +444,7 @@ export class Inspector {
     if (b.dataset.fixBuy) { this.ev.building?.(b.dataset.fixBuy.split(',').map(Number), 'buy'); return; }
     if (b.dataset.fixUnkeep) { this.ev.building?.(b.dataset.fixUnkeep.split(',').map(Number), null); return; }
     if (b.dataset.fixCrossing) { this.ev.crossing?.(Number(b.dataset.fixCrossing), null); return; }
+    if (b.dataset.fixCrossingPath) { this.ev.crossingPathAuto?.(Number(b.dataset.fixCrossingPath)); return; }
     if (b.dataset.crossingPath !== undefined && sel?.kind === 'crossing') { this.ev.crossingPathAuto?.(sel.roadId); return; }
     if (b.dataset.fixBridge) { const [s0, s1] = b.dataset.fixBridge.split(',').map(Number); this.ev.structure?.(1, s0, s1); return; }
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }

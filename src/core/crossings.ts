@@ -23,7 +23,7 @@ export interface CrossingOverride { roadId: number; type: CrossingChoice;
   to?: number }
 export type LinkVia = [{ x: number; y: number }[], { x: number; y: number }[]];
 /** At most this many bend points per shaped reroute piece. */
-export const MAX_LINK_VIA = 16;
+export const MAX_LINK_VIA = 24;
 /** Bend points lie on the scenario map (local metres): anything beyond is not a shape. */
 export const MAX_LINK_COORD = 1e6;
 export interface CrossingPoint {
@@ -68,7 +68,7 @@ export interface CrossingGeometry {
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
-    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass';
+    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape';
     actual?: number; required?: number; targetS?: number };
 }
 export interface CrossingResult {
@@ -206,6 +206,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         reach: `Game limit: a reroute reaches at most ${CROSSING_RULES.linkHardReach} m along our road to the next crossing`,
         geometry: 'Game rule: crossed roads keep their real line and meet the ground at both ends',
         underpass: `Game estimate (research/19): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road, and is at most ${UNDERPASS_RULES.maxLength} m long`,
+        shape: 'Game rule: a reroute the player shaped must be buildable where it is drawn',
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
@@ -303,9 +304,12 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     return { c, target, gap, fixed };
   });
   while (nearest.length) {
+    // A shaped reroute waits for the crossing it leads to (unless nothing else is left to resolve).
+    const waiting = (p: typeof nearest[number]) => p.c.viaTo !== undefined && !p.fixed;
     let next = 0;
     for (let i = 1; i < nearest.length; i++) {
       const a = nearest[i], b = nearest[next];
+      if (waiting(b) !== waiting(a)) { if (waiting(b)) next = i; continue; }
       if (tier(a.c) < tier(b.c) || (tier(a.c) === tier(b.c) && (a.gap < b.gap || (a.gap === b.gap && a.c.s < b.c.s)))) next = i;
     }
     const { c, target, gap } = nearest.splice(next, 1)[0];

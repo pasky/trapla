@@ -61,6 +61,13 @@ export function rampLimit(cls: string, z: number, g0: number, g: number, run: nu
 }
 
 /** Diagnostics of a reroute the player shaped (crossing override `via`). */
+/** Issues this geometry pass raises (rebuilt from scratch on every build). */
+const built = (v: CrossingIssue) => v.crossing.code === 'geometry' || v.crossing.code === 'shape';
+/** Every diagnostic of a player's reroute shape starts so (issue code 'shape'). */
+const SHAPED = 'Shaped link';
+/** A shape following the automatic path with straight legs between its bends reads up to about a
+ * percentage point steeper on the same ground; that alone is not a steeper road. */
+const SHAPE_SLACK = 0.01;
 export const LINK_OVER_OUR_ROAD = 'Shaped link enters our earthworks';
 export const LINK_TOO_STEEP = 'Shaped link is steeper than its class allows';
 export const LINK_TOO_FAR = 'Shaped link runs too far';
@@ -116,7 +123,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   if (message === LINK_TOO_STEEP) return { title: `Your path for the new ${what} is too steep in places`,
     fix: 'Drag its bend points so that it runs more along the slope, or choose "Automatic path" on the crossing card',
     detail: `It follows the ground where you drew it, which is steeper than a ${what} may be.`, basis: 'game',
-    rule: `Research/20: a ${what} is at most ${Math.round(ROAD_CLASSES[c.cls].rampSteepest * 100)} % steep; the game measures it over 20 m stretches of the ground it follows (a provisional allowance for small bumps the road's own earthworks smooth out)` };
+    rule: `Research/20: a ${what} is at most ${Math.round(ROAD_CLASSES[c.cls].rampSteepest * 100)} % steep, measured over 20 m stretches of the ground it follows (a provisional allowance for small bumps). Engine limit: the automatic path is not yet held to this, so your shape may be as steep as the automatic path is` };
   if (message === WORKS_COVER_ROAD || message === WORKS_TIE_TOO_LONG || message === WORKS_TIE_SHARED) {
     const junction = c.type === 'junction', raised = junction ? 'raised or lowered for the junction' : 'raised onto the bridge over our road';
     const others = junction ? 'choose "Our bridge over it", an underpass or "Cut and reroute", or move the junction'
@@ -365,7 +372,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>,
   sidesOf = new Map<string, [boolean, boolean]>()): CrossingIssue[] {
   const { at, project, margin } = spatial;
-  for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => v.crossing.code !== 'geometry');
+  for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => !built(v));
   // Works are remeasured on every build (Auto tries candidates, then rebuilds the network).
   for (const c of crossings) {
     if (c.worksCost) c.cost -= c.worksCost;
@@ -379,7 +386,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       : { x: q.x, y: q.y, z: ground, ground, surface: 'terrain' };
   };
   const diagnose = (g: CrossingGeometry, message: string) => {
-    g.clipped = true;
+    // A flawed player shape is the player's to fix; the crossing itself still stands (and owns its road).
+    if (!message.startsWith(SHAPED)) g.clipped = true;
     if (!g.diagnostics?.includes(message)) (g.diagnostics ??= []).push(message);
   };
   // Terrain-only source samples need elevations only at the selected anchors, not along the
@@ -649,7 +657,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       const key = `${a.x},${a.y},${b.x},${b.y},${side},${g.width},${stations.length}`;
       const shape = c.via?.[k];
       let cached = smoothed.get(key);
-      if (!cached && !shape?.length) {
+      if (!cached) {
         cached = smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
           // One-off chord probes must not evict reusable anchor/bisection projections.
           q => margin(q, g.width / 2, false), terrainPoint, SETBACK - 1e-5);
@@ -657,8 +665,21 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       }
       // The player's shape: straight legs through their bend points between the same real anchors.
       const controls = shape?.length ? [a, ...shape.map(p => terrainPoint(p)), b]
-        : cached!.map((p, i) => i === 0 ? a : i === cached!.length - 1 ? b : { ...p });
+        : cached.map((p, i) => i === 0 ? a : i === cached.length - 1 ? b : { ...p });
       if (shape?.length) {
+        // Automatic reroutes are draped on the ground unchecked for steepness (an engine gap): a shape is
+        // held to its class's limit, or to what the automatic path itself reaches when that is steeper.
+        // (both measured alike: ground every 2.5 m along their legs)
+        const steepest = (legs: readonly XY[]) => {
+          const pts: (XY & { z: number })[] = [];
+          for (let i = 1; i < legs.length; i++) {
+            const p = legs[i - 1], q = legs[i], count = Math.min(4000, Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 2.5)));
+            for (let j = i === 1 ? 0 : 1; j <= count; j++) { const x = p.x + (q.x - p.x) * j / count, y = p.y + (q.y - p.y) * j / count; pts.push({ x, y, z: heightAt(x, y) }); }
+          }
+          return linkSteepest(pts);
+        };
+        const legs = [a, ...shape, b];
+        if (crossingPlanLength(legs) <= 4 * MAX_REACH && steepest(legs) > Math.max(ROAD_CLASSES[c.cls].rampSteepest, steepest(cached) + SHAPE_SLACK)) diagnose(g, LINK_TOO_STEEP);
         // Bounded work: a shape reaching beyond the crossed road's traced reach is rejected outright.
         const span = crossingPlanLength(controls);
         if (span > 4 * MAX_REACH) diagnose(g, LINK_TOO_FAR);
@@ -736,8 +757,6 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       g.road = road;
     }
     if (g.links) g.links = g.links.map(path => refineTerrain(path, g)) as [CrossingPoint[], CrossingPoint[]];
-    // A shaped link follows the ground where the player put it: no steeper than its class allows.
-    if (g.links && c.via) g.links.forEach((path, k) => { if (c.via![k]?.length && linkSteepest(path) > ROAD_CLASSES[c.cls].rampSteepest + 1e-9) diagnose(g, LINK_TOO_STEEP); });
   }
   // The rebuilt stretch's own slopes must leave other roads usable: regrade side roads joining it,
   // hold the slope back from roads beside it, or report the treatment infeasible (crossing-works.ts).
@@ -758,7 +777,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   for (const c of crossings) for (const message of c.geometry?.diagnostics ?? []) {
     const text = diagnosticText(message, c);
     const issue: CrossingIssue = { kind: 'crossing', s0: c.s, s1: c.s, ...text,
-      crossing: { roadId: c.roadId, requested: c.requestedType ?? (c.type === 'diversion' ? 'reconnection' : c.type === 'tunnel' || c.type === 'atGrade' ? 'bridge' : c.type), code: 'geometry' } };
+      crossing: { roadId: c.roadId, requested: c.requestedType ?? (c.type === 'diversion' ? 'reconnection' : c.type === 'tunnel' || c.type === 'atGrade' ? 'bridge' : c.type),
+        code: message.startsWith(SHAPED) ? 'shape' : 'geometry' } };
     (c.issues ??= []).push(issue); issues.push(issue);
   }
   return issues;
@@ -779,7 +799,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   build(crossings);
   const clone = (c: CrossingResult): CrossingResult => {
     const copy: CrossingResult = { ...c, geometry: undefined, cost: c.cost - (c.worksCost ?? 0),
-      issues: c.issues?.filter(v => v.crossing.code !== 'geometry') };
+      issues: c.issues?.filter(v => !built(v)) };
     delete copy.worksCost; delete copy.tieLength; delete copy.wallLength;
     return copy;
   };
@@ -858,7 +878,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       Object.assign(c, best); changed = true;
     }
   }
-  if (!changed) return crossings.flatMap(c => c.issues?.filter(v => v.crossing.code === 'geometry') ?? []);
+  if (!changed) return crossings.flatMap(c => c.issues?.filter(built) ?? []);
   const issues = build(crossings);
   // A new target treatment can move the ground anchor of a dependent link. Do not buy a cheaper
   // local option by breaking a previously feasible connection elsewhere in the network.

@@ -117,7 +117,7 @@ const uncovered = async (selector) => {
 };
 const T = (f, a) => page.evaluate(f, a);
 /** where the drag starts and its pointer offset (px) at phase u ∈ [0, 1) of the measured drag */
-let grab, path;
+let grab, path, beforeMeasure = async () => {};
 if (mode === 'bend') {
   // a loop around the bend's spot (the route length changes every step)
   grab = () => uncovered(`.pi[data-i="${bend}"]`);
@@ -175,11 +175,12 @@ if (mode === 'bend') {
   });
   await page.waitForTimeout(1500);
   grab = async () => {
-    const p = await T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, at);
-    // undo the previous drag's bend point, so each drag starts on the automatic path again
-    await T(() => { const d = window.trapla.getDesign(); for (const o of d.crossingOverrides ?? []) delete o.via; window.trapla.setDesign(d); });
+    return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, at);
+  };
+  // after the warm-up drag: back to the automatic path, so the measured drag starts on it too
+  beforeMeasure = async () => {
+    await T(() => { const d = window.trapla.getDesign(); for (const o of d.crossingOverrides ?? []) { delete o.via; delete o.to; } window.trapla.setDesign(d); });
     await T(() => window.trapla.whenIdle());
-    return p;
   };
   path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
 } else throw new Error(`unknown --mode ${mode}`);
@@ -206,6 +207,7 @@ const drag = async (secs, size, shotAt = null) => {
 // warm-up: a short drag so JIT / shader programs are not first-use (the owner drags repeatedly)
 await drag(0.6, 30);
 await page.evaluate(() => window.trapla.whenIdle());
+await beforeMeasure();
 await page.waitForTimeout(800);
 
 const cdp = await page.context().newCDPSession(page);

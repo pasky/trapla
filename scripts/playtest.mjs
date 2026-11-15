@@ -256,7 +256,7 @@ try {
     for (let k = 1; k <= 10; k++) await page.mouse.move(lp.x + 6 * k, lp.y - 4 * k);
     await page.mouse.up(); await idle(600);
     const shaped = (await get()).crossingOverrides?.find((o) => o.roadId === link.roadId);
-    ok(shaped?.via?.flat().length === 1 && (await sel())?.roadId === link.roadId && await visible('#inspector .link-path button'),
+    ok(shaped?.via?.flat().length >= 1 && (await sel())?.roadId === link.roadId && await visible('#inspector .link-path button'),
       'C: dragging it adds a bend point, selects the crossing and offers "Automatic path"');
     ok(await T(() => document.querySelectorAll('#overlay .via').length) >= 1, 'C: the bend point is shown on the map');
     await shot('link-shape');

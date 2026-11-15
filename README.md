@@ -43,6 +43,9 @@ Other commands:
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, selections / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
+| `node scripts/crossing-works-shots.mjs [--before]` | a crossing's own works close up (side roads regraded to meet a junction approach / bridge ramp, a retaining wall) and picking a reroute; screenshots 110–116 |
+| `node scripts/link-shape-shots.mjs` | shaping a reroute with the mouse; screenshots 117–119 |
+| `npx tsx scripts/crossing-footprint-audit.ts [--straight] [--random N] [designs…]` | rough independent screen: crossing earthworks still lying over other mapped roads |
 | `npx tsx scripts/outcome-audit.ts [--straight] [--random N --seed S] [--quiet] [designs…]` | every crossing / footprint outcome with ramp, link and box lengths and costs, every violation; flags ramps > 250 m, links > 1 km and footprint / crossing violations |
 | `node scripts/crossing-sanity-shots.mjs [--out dir]` | the owner-reported service-road bridge (km 8.47 fixtures) and four typical crossings with their cards open; writes `docs/screenshots/crossing-sanity/` |
 | `node --max-old-space-size=2048 --import tsx scripts/crossing-audit.ts` | audits every saved design: terrain tie-ins ≤0.3 m, unsupported segment flotation ≤0.5 m, rendered road edges/side slopes, clearance and measured quantities; `--strict` also fails blocked designs |
@@ -239,6 +242,11 @@ raised to meet it instead of being buried under its slope:
 [after](docs/screenshots/115-crossing-works-after-junction-street-tie-demo.png);
 [a click on a reroute far from the crossing opens its card](docs/screenshots/116-crossing-pick-link.png).
 (`node scripts/crossing-works-shots.mjs`, `--before` on the older code.)
+
+Shaping a reroute by dragging it (`node scripts/link-shape-shots.mjs`):
+[the drag](docs/screenshots/117-link-shape-drag.png) (the first drag starts from the automatic path's own bends),
+[the rebuilt road with its bend points and "Automatic path"](docs/screenshots/118-link-shape-built.png),
+[a bend point dragged onto our earthworks: the problem, with the way back](docs/screenshots/119-link-shape-rejected.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
