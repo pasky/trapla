@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectIssue, ProjectResult } from '../src/core/project';
-import { listProjectIssues, notCheckedYet, projectBadge } from '../src/ui/project-issues';
+import { listProjectIssues, notCheckedYet, projectBadge, unpricedText } from '../src/ui/project-issues';
 
 const issue = (title: string, routeIds: string[], blocking: ProjectIssue['blocking'], basis: 'engine' | 'game' | 'norm', s0?: number): ProjectIssue => ({
   code: title, blocking, check: basis === 'engine' ? 'not-checked' : 'violation', scope: { routeIds }, locations: s0 === undefined ? [] : [{ routeId: routeIds[0], s0, s1: s0 + 10 }],
@@ -35,5 +35,11 @@ describe('project issue list', () => {
     expect(projectBadge(unpriced, false, 2)).toEqual({ text: '✗ NOT VALID', cls: 'bad' });
     expect(projectBadge({ complete: true, valid: true } as ProjectResult, false, 0).cls).toBe('ok');
     expect(projectBadge(unpriced, true, 2).cls).toBe('preview');
+  });
+  it('counts road changes, not our road caught up in a crossing, and names a single one', () => {
+    const names = { road: 'Road', side: 'Valley road', track: 'Track' };
+    expect(unpricedText([{ routeId: 'road' }, { routeId: 'side' }, { routeId: 'side' }], 'road', names)).toBe('Valley road not priced yet');
+    expect(unpricedText([{ routeId: 'side' }, { routeId: 'track' }, { routeId: 'road' }], 'road', names)).toBe('2 road changes not priced yet');
+    expect(unpricedText([{ routeId: 'road' }], 'road', names)).toBe('Our road is not priced yet');
   });
 });

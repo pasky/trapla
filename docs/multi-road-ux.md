@@ -228,3 +228,6 @@ join is not checked yet". Clicking a not-checked item flies to its `at` map posi
 are drawn as small square ticks, never the scenario's A / B discs. Scenes 79/81/82 re-run with `--docs`
 (82 now shows "Roads cross here" and a click flies there); bend/road drag gates re-run OK (p95 17 ms).
 One of five `base-road-scene` runs failed an assertion that was not captured; four reruns passed.
+The unpriced line counts distinct road changes (not our road caught up in a crossing) and names a single
+one ("Valley road not priced yet"). The rare `base-road-scene` failure is the external orthophoto fetch
+timing out (the photo falls back to the map); a rerun passes.

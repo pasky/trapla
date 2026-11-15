@@ -52,7 +52,7 @@ try {
   assert(Number.isFinite(score.cost.alone[ids.mission]), 'our road has its own bill');
   assert.equal(await page.locator('#cost-scope').textContent(), 'Our road only');
   assert.equal(await page.locator('#valid').textContent(), '✗ NOT VALID', 'the side road has real violations');
-  assert.match(await page.locator('#perkm').textContent(), /1 road change not priced yet/);
+  assert.match(await page.locator('#perkm').textContent(), /Valley road not priced yet/);
   assert.equal(await page.locator('#best').isVisible(), false, 'no best while not priced');
   const hit = async id => {
     const p = await page.evaluate(id => { const t = window.trapla, r = t.projectResult().routes[id].legacy; return t.routeScreen(id, r.length / 2); }, id);
@@ -117,7 +117,7 @@ try {
   const at = crossing.issues[Number(crossK)].at, target = await next.evaluate(() => new Promise(r => setTimeout(() => r(window.trapla.cameraTarget()), 700)));
   assert(Math.hypot(target.x - at.x, target.y - at.y) < 60, 'clicking it shows the place');
   assert.match(await next.locator('#cost-scope').textContent(), /road only/);
-  assert.match(await next.locator('#perkm').textContent(), /road changes? not priced yet/);
+  assert.match(await next.locator('#perkm').textContent(), /^Valley road not priced yet$/);
   await next.screenshot({ path: `${out}/82-two-roads-not-priced.png` });
   await next.keyboard.press('n');
   assert.match(await next.locator('#noise-legend').textContent(), /Project noise check not finished/);

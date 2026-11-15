@@ -7,7 +7,7 @@ import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
-import { listProjectIssues, projectBadge, type ListedIssue } from './project-issues';
+import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
@@ -123,7 +123,7 @@ export class Hud {
       : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
-    this.$('perkm').textContent = !priced && unpriced ? `${unpriced} road change${unpriced === 1 ? '' : 's'} not priced yet` : this.goalText;
+    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, missionRouteId, names) : this.goalText;
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {

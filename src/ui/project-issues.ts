@@ -52,3 +52,14 @@ export function projectBadge(result: ProjectResult | null, pending: boolean, vio
   if (violations) return { text: '✗ NOT VALID', cls: 'bad' };
   return { text: 'NOT PRICED', cls: 'neutral' };
 }
+
+/** What is not priced yet, counted per road change (distinct non-mission roads), named when there is one.
+ * Our road appears only when it is the sole unpriced road. */
+export function unpricedText(unpriced: readonly { routeId: RouteId }[], missionRouteId: RouteId | undefined,
+  names: Readonly<Record<RouteId, string>>): string {
+  const ids = [...new Set(unpriced.map(u => u.routeId))];
+  const changes = ids.filter(id => id !== missionRouteId);
+  if (!changes.length) return ids.length ? 'Our road is not priced yet' : '';
+  if (changes.length === 1) return `${names[changes[0]] ?? 'One road change'} not priced yet`;
+  return `${changes.length} road changes not priced yet`;
+}

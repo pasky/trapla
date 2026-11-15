@@ -117,7 +117,7 @@ try {
   assert.match(await page.locator('#chip-viol').textContent(), /not checked yet/); assert.equal(await page.locator('#viol-count').textContent(), '0');
   assert.equal(await page.locator('#cost-scope').textContent(), 'Our road only');
   assert.match(await page.locator('#total').textContent(), /CZK|Kč|\d/, 'our road keeps its own price');
-  assert.match(await page.locator('#perkm').textContent(), /1 road change not priced yet/);
+  assert.match(await page.locator('#perkm').textContent(), /Track not priced yet/);
   assert.equal(await page.evaluate(() => window.trapla.proposalLines()), 1, 'the proposal is drawn');
   assert.equal(await page.evaluate(() => window.trapla.renderRoutes().length), 1, 'no road body is invented for it');
   assert.match(await page.locator('.profile-bar > b').textContent(), new RegExp(road.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
