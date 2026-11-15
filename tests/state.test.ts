@@ -1,6 +1,23 @@
 import { expect, it, vi } from 'vitest';
 import { startDesign, Store } from '../src/state';
 
+it('preserves malformed/newer legacy bytes before the compatibility constructor can persist defaults', () => {
+  const values = new Map<string, string>();
+  vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value) });
+  try {
+    for (const raw of ['{broken', JSON.stringify({ ...startDesign(), schemaVersion: 2 })]) {
+      values.clear(); values.set('test.design', raw);
+      const store = new Store('test', startDesign);
+      expect(store.storageProblem).not.toBeNull();
+      store.update(d => { d.speed = 80; });
+      expect(store.offerBest(100, store.design)).toBe(false);
+      expect(values.get('test.design')).toBe(raw);
+      expect(JSON.parse(values.get('test.legacy-original')!).design).toBe(raw);
+    }
+  } finally { vi.unstubAllGlobals(); }
+});
+
 it('keeps the design but resets incomparable best scores when the ground pack changes', () => {
   const values = new Map<string, string>();
   vi.stubGlobal('localStorage', {

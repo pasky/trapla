@@ -1,8 +1,8 @@
 # C0 API checkpoint
 
-This is an early, unintegrated contract checkpoint, **not completion of C0 or C1**. No legacy
-kernel, Store constructor, worker dispatch, scenario values or renderer changes yet. Cost model stays 18.
-Parent review is required before UI/mode/pipeline consumers freeze these names.
+The API checkpoint was approved at `c554f55`. The following storage/legacy-adapter checkpoint implements
+safe migration, atomic project history and explicit endpoint/policy seams. This is **not completion of
+C0 or C1**: worker dispatch, network accounting and UI integration remain pending. Cost model stays 18.
 
 ## Modules
 
@@ -14,7 +14,23 @@ Parent review is required before UI/mode/pipeline consumers freeze these names.
 - `src/core/project-protocol.ts`: additive `ProjectWorkerIn` / `ProjectWorkerOut`, stale/active-route
   acceptance helper and score gate. These messages are **not yet dispatched by worker.ts**.
 - `src/project-store-contract.ts`: commands, load outcomes, storage/recovery bytes, `ProjectStoreApi`,
-  best/save envelopes and UI-only selection repair. Store implementation follows review.
+  best/save envelopes and UI-only selection repair. Control selection must carry `routeRevision`; otherwise
+  repair clears it rather than interpreting a shifted pin/PI index after undo.
+- `src/project-persistence.ts`: `loadProjectSave(options)` reads/migrates before any legacy Store is created;
+  returns loaded/migrated/needs-repair/unsupported/empty. Reads are pure. Unknown bytes never fall back.
+- `src/project-store.ts`: `openProjectStore(options)` returns `{load, store}` (null store for unsupported).
+  `initial()` applies scenario defaults only to empty storage. Frozen snapshots, copy-on-write drafts,
+  atomic commands/cancel/undo/redo, bounded 200-entry history, monotone revisions and guarded best scores.
+  `subscribe` returns unsubscribe. Storage errors propagate; migration recovery must persist first.
+- `src/core/project-validation.ts`: runtime schema and corridor/route authority checks before publication.
+- `src/core/project-legacy.ts`: `projectFromLegacyDesign`, `legacyDesignForRoute` and
+  `replaceRouteFromLegacy` preserve stable identity and separate project building choices. Imported/exact
+  paths and foreign crossing bindings are refused by the legacy adapter, never fitted silently.
+- `src/core/project-road.ts`: `evaluateProjectRoad` dispatches before road defaults, returns a route result
+  or machine-readable incomplete reason. It is NOT project accounting. Modes/source replacements/tangent
+  constraints not supported here cannot get a road bill. Mission goals do not apply to auxiliary routes.
+- `evaluate` / `autoProfile` now accept explicit endpoint elevations separately from terrain. Existing
+  calls default identically. Operating speed and mission capacity demand are separately optional.
 
 ## Important choices
 
@@ -38,7 +54,10 @@ source interval, or designed route interval. Diagnostics carry separately route-
 A corridor is discriminated: paired owns `spine`; independent owns `retainedSpine`. Paired children
 carry `alignment.kind = 'corridor'`; independent children own materialised `exact` alignment paths/controls.
 Stable directional IDs survive both transitions; there is never a competing PI and spine authority.
-Split/rejoin commands carry corridor and both children for one atomic edit. Mode owner
+Split/rejoin commands carry corridor and both children for one atomic edit. The store validates/applies
+M's materialisation; it does not generate geometry. Direction-specific controls require an explicit split
+first. Paired child-local control fields are rejected. Spine R maps to forward R; spine L maps to reverse R,
+not extra median walls. All station/side remapping and frozen child elevations come from mode engineering. Mode owner
 may export `modeCapability(kind)` as proposed; the project dispatcher must call it before constructing
 legacy road defaults. Unknown policy or incomplete mode physics cannot return a priced valid route.
 `CorridorKernel.propose` engineers a common formation with both child specifications; `RouteKernel`
@@ -82,11 +101,13 @@ best score. Initial material balance remains independent per construction route.
 
 ## Next implementation steps
 
-1. Runtime schema validation and safe read/migrate BEFORE current Store's destructive initial persist;
-   separate project key/recovery bytes, current+best compatibility and atomic draft/undo/reload.
-2. Legacy facade adapter and explicit endpoint/policy/staging seams; verify frozen D11 bills and geometry.
-3. Immutable transport index, bounded promotion preserving branches, candidate/accepted source ownership,
-   effective designed 3D network and shared ledger; real ground-road reconnection vertical slice.
+1. Integrate the implemented persistence/adapter API in U bootstrap. Never construct legacy Store first.
+   The old Store now additionally preserves `.legacy-original` and refuses writes for unknown/malformed
+   saved designs, but new bootstrap should use the separate project namespace and loader.
+2. Extract engineering/acquisition/noise decision stages before any global ledger. The current route
+   adapter still runs legacy internal decisions; it cannot be summed into a network score.
+3. Immutable transport index, bounded promotion preserving branches, joint candidate-surface queries,
+   candidate/accepted source ownership, effective 3D network and shared ledger; C1 reconnection slice.
 4. Worker dispatch/cache with bounded old+new influence invalidation, project acoustic/property decisions.
 
 Per-scenario `initial` category/speed is only a new-project default. Existing/current/best legacy designs

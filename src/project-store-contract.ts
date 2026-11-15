@@ -83,7 +83,9 @@ export function repairProjectEditor(state: ProjectEditorState, design: ProjectDe
           : alignment.kind === 'corridor' ? 0
           : target.kind === 'vpi' ? (alignment.vertical.kind === 'manual' ? alignment.vertical.vpis.length : 0)
           : alignment.vertical.kind === 'auto' ? alignment.vertical.pins.length : 0;
-        if (!Number.isInteger(target.index) || target.index < 0 || target.index >= count) selection = null;
+        // An index is not a control identity: undo may insert a pin before it. Without a matching
+        // route revision, clear rather than silently selecting a different surviving index.
+        if (target.routeRevision !== route.revision || !Number.isInteger(target.index) || target.index < 0 || target.index >= count) selection = null;
       }
     }
   }
