@@ -37,8 +37,8 @@ export interface ProjectSaveNamespace { scenarioId: string; presetId: string }
 /** Pack fingerprint is deliberately NOT in the key: changed packs must recover the user's geometry,
  * not hide it behind a fresh namespace. Keep schemas in one stable slot so newer saves are detected. */
 export function projectStorageKeys(namespace: ProjectSaveNamespace): { project: string; recovery: string } {
-  const prefix = `trapla.project:${encodeURIComponent(namespace.scenarioId)}:${encodeURIComponent(namespace.presetId)}`;
-  return { project: prefix, recovery: `${prefix}.legacy-recovery` };
+  const suffix = `${encodeURIComponent(namespace.scenarioId)}:${encodeURIComponent(namespace.presetId)}`;
+  return { project: `trapla.project:${suffix}`, recovery: `trapla.recovery:${suffix}` };
 }
 /** Continue means there are bytes to load/recover, NOT proof they are valid or scored.
  * Even malformed/newer saves must reach the recovery UI rather than being overwritten by Start. */
@@ -68,11 +68,29 @@ export interface ProjectEditorState {
   activeRouteId: RouteId | null; selection: ProjectSelection;
 }
 /** Selection repair is UI-only: never an undoable design mutation. */
-export function repairProjectEditor(state: ProjectEditorState, design: ProjectDesign): ProjectEditorState {
+export function repairProjectEditor(state: ProjectEditorState, design: ProjectDesign, settled?: ProjectResult): ProjectEditorState {
   const ids = new Set(design.routes.map(r => r.id));
   const activeRouteId = state.activeRouteId && ids.has(state.activeRouteId) ? state.activeRouteId : design.routes[0]?.id ?? null;
   let selection = state.selection;
-  if (selection?.kind === 'route' && !ids.has(selection.routeId)) selection = null;
+  if (selection?.kind === 'route') {
+    const routeId = selection.routeId;
+    const route = design.routes.find(r => r.id === routeId);
+    if (!route) selection = null;
+    else {
+      const target = selection.target, alignment = route.alignment;
+      if (target.kind !== 'range') {
+        const count = target.kind === 'pi' ? (alignment.kind === 'pi' ? alignment.pis.length : 0)
+          : alignment.kind === 'corridor' ? 0
+          : target.kind === 'vpi' ? (alignment.vertical.kind === 'manual' ? alignment.vertical.vpis.length : 0)
+          : alignment.vertical.kind === 'auto' ? alignment.vertical.pins.length : 0;
+        if (!Number.isInteger(target.index) || target.index < 0 || target.index >= count) selection = null;
+      }
+    }
+  }
+  if (selection?.kind === 'work') {
+    const workId = selection.workId;
+    if (!settled?.works.items.some(w => w.id === workId)) selection = null;
+  }
   if (selection?.kind === 'building' && selection.objectData !== design.objectData) selection = null;
   if (selection?.kind === 'source' && selection.interval.transportData !== design.transportData) selection = null;
   return { activeRouteId, selection };
