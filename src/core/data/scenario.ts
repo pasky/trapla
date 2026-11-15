@@ -34,6 +34,12 @@ export function minCategoryForTraffic(aadt: number): CategoryId {
 export interface ScenarioParams {
   id: string;
   title: string;
+  /** Stable mission/preset identity, separate from the terrain pack id. Legacy D11 uses d11. */
+  presetId?: string;
+  /** Fresh designs only; loading an existing design must never overwrite its specification. */
+  initial?: { category: CategoryId; speed: 70 | 80 | 90 };
+  /** Short catalogue copy; D3/D35 road exercises are not motorway demand forecasts. */
+  picker?: { kind: string; goal: string };
   /** traffic Y, vehicles/day (scenario value) */
   traffic: number;
   /** travel-time target X, minutes (calibration in PLAN.md) */
