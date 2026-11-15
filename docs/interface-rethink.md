@@ -224,9 +224,14 @@ Implemented as decided above (owner: "just fix everything yourself"). What chang
 - **Noise:** band at the top floor of the tallest dwelling within ±40 m on that side (from the evaluated
   receivers, no extra spatial queries: the evaluation's town lap is unchanged), houses in their own level,
   cross-section in the house's card with a live wall-height preview, one-line legend.
-- **Copy:** the before/after table above is applied, plus the footprint, watercourse, structure, pin and
-  support texts in `src/core`. Crossing texts (`crossings.ts`, `crossing-geometry.ts`) are left to the
-  concurrent crossing-sanity work.
+- **Copy:** the before/after table above is applied. Crossing and footprint wording comes from the shared
+  vocabulary in `src/core/terms.ts` (crossing-sanity); the inspector uses its outcome labels and choice texts.
+  The jargon guard (`tests/player-text.test.ts`) now scans every `src/ui` module plus the map's labels and
+  tips, and also bans the words players tripped over here: receiver / LAeq, retained / blocking / keep-wall,
+  dwelling, object IDs (`#123`), station.
+- **Drags:** every drag (bend, road → new bend, radius grip, line → pin, pin, height point, the radius
+  slider) is an uncommitted edit and goes through the fast preview; `node scripts/drag-perf.mjs --gpu --mode
+  bend|road|radius|pin|vpi --check` passes in all modes (three rounds).
 - **Checks:** `npm run smoke` (new interaction model) and `node scripts/playtest.mjs` (the three personas,
   ~70 checks) replace `ux.mjs` and `build-tools.mjs`; `layout.mjs`, `curves.mjs`, `noise-view.mjs` pass.
 
