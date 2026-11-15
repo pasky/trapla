@@ -40,6 +40,31 @@ it('does not price a road that ends nowhere, but keeps both roads\' own bills an
   expect(jargonIn(nowhere.violation.rule, false)).toEqual([]);
 });
 
+it('reports every crossing or overlap between new roads as not checked, located on both roads', () => {
+  const { ctx, snapshot, side } = fixture();
+  side.endpoints.a.position = { x: 600, y: 100, z: 100 }; side.endpoints.b.position = { x: 600, y: 450, z: 100 };
+  snapshot.design.routes.push(side);
+  const project = evaluateProject(ctx, snapshot), main = snapshot.design.routes[0];
+  const cross = project.issues.filter(i => i.code === 'roads-cross');
+  expect(cross).toHaveLength(1);
+  expect(cross[0]).toMatchObject({ check: 'not-checked', blocking: 'incomplete', scope: { routeIds: [main.id, 'side'] },
+    violation: { basis: 'engine', title: 'Roads cross here' } });
+  expect(cross[0].at!.x).toBeCloseTo(600, 6); expect(cross[0].at!.y).toBeCloseTo(250, 6);
+  const [onMain, onSide] = cross[0].locations;
+  expect(onMain.routeId).toBe(main.id); expect(onSide.routeId).toBe('side');
+  expect(onMain.s0).toBeCloseTo(500, 0); expect(onSide.s0).toBeCloseTo(150, 0);
+  for (const text of [cross[0].violation.title, cross[0].violation.fix]) expect(jargonIn(text, true)).toEqual([]);
+  expect(jargonIn(cross[0].violation.rule, false)).toEqual([]);
+  // Reported alongside, not instead of, the road's other problems; real violations stay distinguishable.
+  expect(project.issues.find(i => i.code === 'road-ends-nowhere')?.check).toBe('violation');
+  expect(project.issues.filter(i => i.blocking === 'invalid').every(i => i.check === 'violation')).toBe(true);
+  expect(project.cost.total).toBeNull();
+  side.endpoints.a.position = { x: 300, y: 255, z: 100 }; side.endpoints.b.position = { x: 900, y: 255, z: 100 };
+  const overlap = evaluateProject(ctx, snapshot).issues.filter(i => i.code === 'roads-overlap' || i.code === 'roads-cross');
+  expect(overlap.map(i => i.code)).toEqual(['roads-overlap']);
+  expect(overlap[0].locations[0].s0).toBeLessThan(overlap[0].locations[0].s1);
+});
+
 it('screens separate roads as independent, and overlapping land as shared', () => {
   const { ctx } = fixture();
   const own = (y: number) => evaluate({ ...ctx.legacy, a: { x: 100, y }, b: { x: 1100, y } }, design);
@@ -58,7 +83,8 @@ it('never prices a road tied into an existing road or a mission port as if its e
     else side.endpoints.a.position = { ...snapshot.design.mission.ports[0].position };
     const project = evaluateProject(ctx, snapshot);
     expect(project.cost.total).toBeNull(); expect(isScorableProject(project)).toBe(false);
-    expect(project.cost.unpriced).toContainEqual({ routeId: 'side', reason: 'connection-pending' });
+    expect(project.cost.unpriced.map(u => u.routeId)).toContain('side');
+    expect(project.issues.some(i => i.code === 'connection-pending' && i.scope.routeIds.includes('side'))).toBe(true);
     expect(Object.keys(project.cost.alone)).toHaveLength(2); // own bills stay visible
   }
 });

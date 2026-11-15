@@ -154,6 +154,13 @@ retain their category/speed; an unknown or malformed newer save is never overwri
   `shared-building`, `shared-noise`, `too-many-roads`).
 - Each evaluated road's own violations stay in `issues` (`blocking: 'invalid'`, route-qualified) even while
   unpriced. Interactions add `blocking: 'incomplete'` issues scoped to both roads (and the house, if any).
+- Every `ProjectIssue` has `check: 'violation' | 'not-checked'`. 'violation' is a checked rule the design breaks
+  (norm, game rule such as "Road ends nowhere", or an engine limit of a checked design); 'not-checked' means
+  the engine cannot check it yet. Show the two separately. `blocking` still says what it does to the score.
+- Every crossing or carriageway overlap between two designed roads' surfaces is its own not-checked issue
+  (`roads-cross` "Roads cross here" / `roads-overlap` "Roads overlap here", engine limit), scoped to both
+  roads, with one route-qualified location per road and plan position `at`, whatever else is wrong.
+  A tie-in at another road also shows here until junctions between new roads are checked (C1 (a)).
 - Undo/discard is just a new snapshot: removing the unpriced change restores the scored single-road result.
 
 One road: the exact legacy facade, bit-identical to `evaluate` (`eval-regression` checks every frozen D11
