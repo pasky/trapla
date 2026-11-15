@@ -179,3 +179,24 @@ Independent inspection of code, caches and actual packs, not of the claims above
 6. Endpoint/reference scopes otherwise hold up: D3 includes the Sázava (0302+0303), Paka's 7.4 km
    anchored branch is honestly distinguished from the 8.479 km project, and the modern-junction
    baseline retains III/28425 continuity.
+
+## Status after review fixes (40d6dea)
+
+Reviewer items 1–4 are fixed with regression tests (Python 42 tests); a second deep review's five
+findings (frozen-hash authority, fallback swallowing integrity errors, hydrology extent identity,
+concurrent writers, interrupted sidecars) are fixed too. Item 5 is a C/U consumer obligation.
+D11 full rebuild: every file byte-identical to the previous pack, incl. the corrected graph; frozen
+regression and all five saved-design benches pass (VALID). TS: tsc, 356 tests green (no TS changes).
+All three new packs were regenerated from bound, same-day caches; graphs pass C's validator; D3's
+starter stays VALID (4,743,380,449.49 CZK, research/27). Overpass mirrors: private.coffee (months
+stale/down) replaced by z.overpass-api.de and maps.mail.ru; stale snapshots are rejected anyway.
+
+**Blocked on parent decisions (no further route tuning until answered):**
+1. Paka B (roundabout arm) and D35 B (merge onto I/35/D35) need connected-endpoint ownership in
+   core (`footprint.ts` owns only a 1 m endpoint cell). C's `paka-endpoint` produced nothing.
+   Assign to C, or permit S a narrowly scoped core change?
+2. D35 B: diagnostic shows ending ≈600 m earlier (33.3 km along the mapped line, before it merges
+   with I/35) leaves one 1 m track contact; the final merge is the project's existing-road
+   reconstruction. Accept that scoped end with disclosure, or wait for (1)?
+3. Full-vs-stage needs GPU drag-perf on D35; `drag-perf.mjs` has no scenario option (U-owned).
+4. Recommend U/C load the transport graph lazily (currently fetched/parsed on every load).
