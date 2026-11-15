@@ -3,7 +3,7 @@ import { curveIntersections } from './curve-intersections';
 import { childStationAt, curvePointAt, offsetCurvePath, type CurvePath, type OffsetPath } from './offset-path';
 
 /** Signed LEFT offsets from the common spine, sorted low to high. All dimensions in metres. */
-export interface CarriagewayBand { min: number; max: number }
+export interface CarriagewayBand { min: number; max: number; /** Lane-pair axis may differ from asymmetric pavement midpoint. */ axis?: number }
 export interface PairedCrossSection {
   /** Right-hand traffic: right band travels along spine, left band travels against it. */
   right: CarriagewayBand;
@@ -44,9 +44,10 @@ export function pairedCarriageways(spine: CurvePath, section: PairedCrossSection
   const { right, left, formation } = section;
   if (![right.min, right.max, left.min, left.max, formation.min, formation.max, minimumRadius].every(Number.isFinite)
     || minimumRadius <= 0 || right.min >= right.max || left.min >= left.max || right.max >= left.min
-    || formation.min > right.min || formation.max < left.max) throw new Error('Invalid paired cross-section or radius');
+    || formation.min > right.min || formation.max < left.max
+    || [right, left].some(b => b.axis !== undefined && (!Number.isFinite(b.axis) || b.axis <= b.min || b.axis >= b.max))) throw new Error('Invalid paired cross-section or radius');
   const carriageway = (band: CarriagewayBand, direction: 1 | -1): PairedCarriageway => {
-    const axis = offsetCurvePath(spine, (band.min + band.max) / 2, direction);
+    const axis = offsetCurvePath(spine, band.axis ?? (band.min + band.max) / 2, direction);
     return { axis, edges: [offsetCurvePath(spine, band.min, direction), offsetCurvePath(spine, band.max, direction)],
       start: curvePointAt(axis.path, 0), end: curvePointAt(axis.path, axis.path.length) };
   };

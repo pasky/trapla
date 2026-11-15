@@ -1,5 +1,6 @@
+import type { RouteKind } from './project';
 /** Dispatch before resolving road category, speed, AADT, pavement or road-noise defaults. */
-export type TransportMode = 'road' | 'motorway' | 'railway';
+export type TransportMode = RouteKind;
 export type MissingModeCapability =
   | 'paired-formation' | 'directional-structures' | 'motorway-connections'
   | 'motorway-vertical-and-sight-checks' | 'motorway-operations'
