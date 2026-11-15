@@ -138,6 +138,65 @@ describe('malformed graph mutations', () => {
   });
 });
 
+function unresolvedGraph() {
+  return { ...graph(), unresolvedSources: [{ id: 'conflicted', osmWayId: '999', kind: 'road' as const,
+    reason: 'conflicting-snapshots' as const, renderFeatureIds: ['road-drawing'], legacyNetIndices: [0, 2] }] };
+}
+
+it('preserves unresolved source visibility without manufacturing coordinates, stations or connectivity', () => {
+  const input = unresolvedGraph();
+  const before = structuredClone(input);
+  expect(validateTransportGraph(input, 'vectors-fixture')).toEqual([]);
+  expect(input).toEqual(before);
+  // A pack may contain only unresolvable visible features; they do not require dummy nodes/sources.
+  expect(validateTransportGraph({ ...input, nodes: [], sources: [] }, 'vectors-fixture')).toEqual([]);
+  const { legacyNetIndices: _indices, ...source } = input.unresolvedSources[0];
+  expect(validateTransportGraph({ ...input, unresolvedSources: [{ ...source, kind: 'railway' }] }, 'vectors-fixture')).toEqual([]);
+  expect(validateTransportGraph({ ...input, unresolvedSources: [] }, 'vectors-fixture')).toEqual([]);
+});
+
+const unresolvedMutations: [string, (g: ReturnType<typeof unresolvedGraph>) => void, string][] = [
+  ['duplicate unresolved ID', g => { g.unresolvedSources.push({ ...g.unresolvedSources[0] }); }, 'duplicate ID'],
+  ['resolved/unresolved ID collision', g => { g.unresolvedSources[0].id = 'road'; }, 'also exists in valid sources'],
+  ['missing unresolved ID', g => { g.unresolvedSources[0].id = ''; }, '.id'],
+  ['numeric unresolved OSM ID', g => Object.assign(g.unresolvedSources[0], { osmWayId: 999 }), 'osmWayId'],
+  ['unknown unresolved kind', g => Object.assign(g.unresolvedSources[0], { kind: 'tram' }), '.kind'],
+  ['unknown unresolved reason', g => Object.assign(g.unresolvedSources[0], { reason: 'guessed' }), '.reason'],
+  ['missing render reference', g => { g.unresolvedSources[0].renderFeatureIds = ['missing']; }, 'unknown render feature'],
+  ['duplicate render reference', g => { g.unresolvedSources[0].renderFeatureIds.push('road-drawing'); }, 'duplicate ID'],
+  ['numeric render reference', g => Object.assign(g.unresolvedSources[0], { renderFeatureIds: [0] }), 'renderFeatureIds[0]'],
+  ['negative legacy index', g => { g.unresolvedSources[0].legacyNetIndices = [-1]; }, 'nonnegative safe integer'],
+  ['fractional legacy index', g => { g.unresolvedSources[0].legacyNetIndices = [0.5]; }, 'nonnegative safe integer'],
+  ['unsafe legacy index', g => { g.unresolvedSources[0].legacyNetIndices = [2 ** 53]; }, 'nonnegative safe integer'],
+  ['duplicate legacy index', g => { g.unresolvedSources[0].legacyNetIndices = [0, 0]; }, 'duplicate legacy net index'],
+  ['unresolved parallel target', g => { g.sources[0].parallelSourceIds = ['conflicted']; }, 'unknown source ID'],
+  ['unresolved node target', g => { g.sources[0].nodes[0] = 'conflicted'; }, 'unknown node ID'],
+  ['fabricated stations', g => Object.assign(g.unresolvedSources[0], { stations: [0, 5] }), 'cannot carry geometry'],
+  ['fabricated nodes', g => Object.assign(g.unresolvedSources[0], { nodes: ['node-a', 'junction'] }), 'cannot carry geometry'],
+  ['fabricated coordinates', g => Object.assign(g.unresolvedSources[0], { xy: [0, 0, 3, 4] }), 'cannot carry geometry'],
+  ['fabricated mapping', g => Object.assign(g.unresolvedSources[0], { render: g.sources[0].render }), 'cannot carry geometry'],
+];
+describe('unresolved source mutations', () => {
+  it.each(unresolvedMutations)('rejects %s', (_name, mutate, diagnostic) => {
+    const input = unresolvedGraph();
+    mutate(input);
+    expect(validateTransportGraph(input, 'vectors-fixture').join('\n')).toContain(diagnostic);
+  });
+});
+
+it('bounds and validates unresolved collections and nested reference arrays', () => {
+  const input = unresolvedGraph(), source = input.unresolvedSources[0];
+  for (const unresolvedSources of [null, {}, [null], [{ ...source, renderFeatureIds: null }],
+    [{ ...source, legacyNetIndices: {} }]]) {
+    expect(validateTransportGraph({ ...input, unresolvedSources }, 'vectors-fixture').join('\n')).toContain('unresolvedSources');
+  }
+  const sparse = new Array(2 ** 30);
+  Object.defineProperty(sparse, 0, { get() { throw new Error('must not traverse oversized input'); } });
+  for (const unresolvedSources of [sparse, [{ ...source, renderFeatureIds: sparse }], [{ ...source, legacyNetIndices: sparse }]]) {
+    expect(validateTransportGraph({ ...input, unresolvedSources }, 'vectors-fixture').join('\n')).toContain('size exceeds');
+  }
+});
+
 it('reports malformed structures without throwing', () => {
   const malformed: unknown[] = [null, undefined, [], 'graph', 7, {},
     { ...graph(), nodes: [null] }, { ...graph(), sources: [null] }, { ...graph(), renderFeatures: [null] },
