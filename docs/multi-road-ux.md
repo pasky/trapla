@@ -208,3 +208,12 @@ intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixtu
   unpriced project; a photo overlay built mid-staging keeping stale cuts; the overlay composited over
   missing (transparent) photo tiles, compounding opacity; and an overlay drawn on packs without a
   transport map (nothing is clickable there, so nothing is highlighted — D11 gets it with S's sidecar).
+
+### Browser gates (18:18–18:30, slot granted by parent)
+
+On `b55f402`'s code (core through 3514bce): `multi-road-scene.mjs` and `base-road-scene.mjs` PASS (incl.
+photo + mapped-road overlay actually loaded), `smoke.mjs` all PASS, `playtest.mjs` no FAIL, GPU drag
+gates bend/road/radius/pin/vpi all `--check` OK: frame p95 17 ms in every mode, handler p95 11–14 ms,
+no long tasks, no shader compiles. Screenshots 79–83 inspected. Gesture end always posts a full
+evaluation after the last preview (commit → `requestEval(false)`; every preview also arms the 150 ms
+full timer), so a full job replaced in the worker's single slot is re-sent.
