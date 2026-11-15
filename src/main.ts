@@ -185,6 +185,7 @@ async function main() {
   const activeEndpoints = () => ({
     a: { ...(store.route?.endpoints.a.position ?? positionA), label: store.route?.role === 'mission' ? scenario.labels.a : 'Start' },
     b: { ...(store.route?.endpoints.b.position ?? positionB), label: store.route?.role === 'mission' ? scenario.labels.b : 'End' },
+    plain: !!store.route && store.route.role !== 'mission',
   });
   const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);
   const stationNear = (x: number, y: number) => {

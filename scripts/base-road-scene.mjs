@@ -113,7 +113,8 @@ try {
   assert.match(await page.locator('#inspector').textContent(), /not checked yet/);
   const score = await page.evaluate(() => window.trapla.projectResult());
   assert.equal(score.cost.total, null); assert.equal(score.valid, false);
-  assert.equal(await page.locator('#valid').textContent(), 'NOT CHECKED');
+  assert.equal(await page.locator('#valid').textContent(), 'NOT PRICED', 'only not-checked items: neutral');
+  assert.match(await page.locator('#chip-viol').textContent(), /not checked yet/); assert.equal(await page.locator('#viol-count').textContent(), '0');
   assert.equal(await page.locator('#cost-scope').textContent(), 'Our road only');
   assert.match(await page.locator('#total').textContent(), /CZK|Kč|\d/, 'our road keeps its own price');
   assert.match(await page.locator('#perkm').textContent(), /1 road change not priced yet/);

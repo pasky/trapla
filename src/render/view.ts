@@ -53,6 +53,8 @@ export interface StagedRoute extends Staged { context: RouteSurfaceContext }
 export interface RenderEndpoints {
   a: { x: number; y: number; z?: number; label?: string };
   b: { x: number; y: number; z?: number; label?: string };
+  /** another road's ends (not the scenario's A / B): plain end markers without the A / B discs */
+  plain?: boolean;
 }
 
 /** stations within a (non-goal) violation, drawn red */
@@ -497,6 +499,7 @@ export class View {
       if (!marker) continue;
       marker.x = point.x; marker.y = point.y; marker.z = point.z ?? this.terrain.heightAt(point.x, point.y);
       marker.el.querySelector('span')!.textContent = point.label ?? '';
+      marker.el.classList.toggle('plain', !!endpoints.plain);
     }
     this.dirty = true;
   }

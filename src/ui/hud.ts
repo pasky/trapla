@@ -7,6 +7,7 @@ import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
+import { listProjectIssues, projectBadge, type ListedIssue } from './project-issues';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
@@ -122,8 +123,6 @@ export class Hud {
       : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
-    this.$('valid').textContent = pending ? '≈ CHECKING' : !result?.complete ? 'NOT CHECKED' : result.valid ? '✓ VALID' : '✗ NOT VALID';
-    this.$('valid').className = `badge ${pending ? 'preview' : result?.complete && result.valid ? 'ok' : 'bad'}`;
     this.$('perkm').textContent = !priced && unpriced ? `${unpriced} road change${unpriced === 1 ? '' : 's'} not priced yet` : this.goalText;
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
@@ -132,30 +131,28 @@ export class Hud {
       this.$('chip-time').innerHTML = `${ok ? '✓' : '✗'} ${num(time, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
       this.$('chip-time').className = `chip ${ok ? 'ok' : 'bad'}`;
     }
-    const issues = result?.issues ?? [], chip = this.$('chip-viol');
-    // one line per distinct message and road (core may report the same unfinished check twice); k is the issue index
-    const seen = new Set<string>();
-    const listed: (Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'rule'> & { s0?: number; goal?: boolean; k: number; road?: string })[] = [];
-    issues.forEach((issue, k) => {
-      const s0 = issue.locations[0]?.s0, key = JSON.stringify([issue.violation.title, issue.violation.fix, issue.scope.routeIds, s0]);
-      if (seen.has(key)) return; seen.add(key);
-      const other = issue.scope.routeIds.find(id => id !== activeRouteId);
-      listed.push({ ...issue.violation, s0, k, road: issue.scope.routeIds.length && !issue.scope.routeIds.includes(activeRouteId ?? '') && other ? names[other] : undefined });
-    });
-    chip.className = `chip ${pending ? 'pending' : listed.length ? 'bad' : result?.complete ? 'ok' : 'pending'}`;
-    chip.innerHTML = pending ? '⋯ checked when you pause' : listed.length ? `⚠ ${listed.length} violation${listed.length === 1 ? '' : 's'} <small>show ›</small>` : result?.complete ? '✓ no violations' : 'Checks not finished';
-    chip.toggleAttribute('disabled', pending || !listed.length);
+    const chip = this.$('chip-viol');
+    const { violations, notChecked } = listProjectIssues(result?.issues ?? [], activeRouteId, names);
+    const badge = projectBadge(result, pending, violations.length);
+    this.$('valid').textContent = badge.text; this.$('valid').className = `badge ${badge.cls}`;
+    const n = violations.length;
+    chip.className = `chip ${pending ? 'pending' : n ? 'bad' : result?.complete ? 'ok' : 'pending'}`;
+    chip.innerHTML = pending ? '⋯ checked when you pause' : n ? `⚠ ${n} violation${n === 1 ? '' : 's'} <small>show ›</small>`
+      : result?.complete ? '✓ no violations' : notChecked.length ? `${notChecked.length} not checked yet <small>show ›</small>` : 'Checks not finished';
+    chip.toggleAttribute('disabled', pending || !(n + notChecked.length));
     if (this.projectIssuesFor !== result || this.issuesActive !== activeRouteId) {
       this.projectIssuesFor = result; this.issuesActive = activeRouteId;
-      this.$('viol-count').textContent = String(listed.length);
-      this.$('viol-count').className = `count${listed.length ? '' : ' ok'}`;
-      this.$('sec-viol').hidden = !listed.length;
-      this.$('viol').innerHTML = listed.slice(0, 60).map((v) => {
-        const open = this.openWhy.has(whyKey(v)), k = v.k;
-        return `<li data-k="${k}" class="${v.goal ? 'goal' : ''}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.goal ? 'goal' : v.s0 !== undefined ? `km ${num(v.s0 / 1000, 2)}` : ''}</span>
-        <div><div class="vt">${esc(v.title)}</div><div class="vfix">${esc(v.fix)} <button type="button" class="why" data-why="${k}">${open ? 'less' : 'why?'}</button></div>
+      this.$('viol-count').textContent = String(n);
+      this.$('viol-count').className = `count${n ? '' : ' ok'}`;
+      this.$('sec-viol').hidden = !(n + notChecked.length);
+      const line = (v: ListedIssue, cls: string) => {
+        const open = this.openWhy.has(whyKey(v));
+        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.s0 !== undefined ? `km ${num(v.s0 / 1000, 2)}` : ''}</span>
+        <div><div class="vt">${esc(v.title)}</div><div class="vfix">${esc(v.fix)} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
         <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(v.detail) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
-      }).join('');
+      };
+      this.$('viol').innerHTML = violations.slice(0, 60).map(v => line(v, '')).join('')
+        + (notChecked.length ? `<li class="not-checked-h">Not checked yet</li>${notChecked.slice(0, 20).map(v => line(v, 'not-checked')).join('')}` : '');
     }
     if (!pending) {
       const delta = this.baseline !== null && priced ? total - this.baseline : 0;
@@ -250,7 +247,11 @@ export class Hud {
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
-    this.$('chip-viol').onclick = () => this.ev.onViolation?.(0);
+    // the first listed item (project mode: the first real violation, else the first not-checked item)
+    this.$('chip-viol').onclick = () => {
+      const first = this.root.querySelector<HTMLElement>('#viol li[data-k]');
+      this.ev.onViolation?.(this.project && first ? Number(first.dataset.k) : 0);
+    };
     this.$('viol').onclick = (e) => {
       const why = (e.target as HTMLElement).closest('.why') as HTMLElement | null;
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;

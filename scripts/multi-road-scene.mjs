@@ -51,7 +51,7 @@ try {
   assert(score.cost.unpriced.some(u => u.routeId === ids.side)); assert(!score.cost.unpriced.some(u => u.routeId === ids.mission));
   assert(Number.isFinite(score.cost.alone[ids.mission]), 'our road has its own bill');
   assert.equal(await page.locator('#cost-scope').textContent(), 'Our road only');
-  assert.equal(await page.locator('#valid').textContent(), 'NOT CHECKED');
+  assert.equal(await page.locator('#valid').textContent(), '✗ NOT VALID', 'the side road has real violations');
   assert.match(await page.locator('#perkm').textContent(), /1 road change not priced yet/);
   assert.equal(await page.locator('#best').isVisible(), false, 'no best while not priced');
   const hit = async id => {
@@ -109,7 +109,7 @@ try {
   assert.equal(crossing.cost.total, null, 'interacting roads have no invented total'); assert.equal(crossing.complete, false);
   assert(crossing.cost.unpriced.length >= 1);
   console.log('crossing roads:', crossing.cost.unpriced, crossing.issues.filter(i => i.blocking === 'incomplete').map(i => i.violation.title));
-  assert.equal(await next.locator('#valid').textContent(), 'NOT CHECKED');
+  assert.match(await next.locator('#valid').textContent(), /NOT VALID|NOT PRICED/);
   assert.match(await next.locator('#cost-scope').textContent(), /road only/);
   assert.match(await next.locator('#perkm').textContent(), /road changes? not priced yet/);
   await next.screenshot({ path: `${out}/82-two-roads-not-priced.png` });
