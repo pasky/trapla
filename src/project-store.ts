@@ -3,7 +3,7 @@ import { PROJECT_EVALUATION_VERSION, type ProjectDesign, type ProjectResult, typ
 import { isScorableProject } from './core/project-protocol';
 import { assertProjectDesign } from './core/project-validation';
 import { cloneProjectValue as copy, freezeProjectValue as freeze, projectValueKey as key } from './core/project-value';
-import { loadProjectSave, persistProjectSave, projectMissionKey, type ProjectLoadOptions } from './project-persistence';
+import { loadProjectSave, persistProjectSave, projectMissionKey, projectBindingsCurrent, type ProjectLoadOptions } from './project-persistence';
 import type { ProjectBest, ProjectCommand, ProjectLoadResult, ProjectSave, ProjectStoreApi } from './project-store-contract';
 
 export interface ProjectStoreOptions extends ProjectLoadOptions {
@@ -13,6 +13,8 @@ export interface ProjectStoreOptions extends ProjectLoadOptions {
 }
 export interface OpenProjectStoreResult { load: ProjectLoadResult; store: ProjectStore | null }
 const contentKey = (value: { revision: number }) => { const { revision: _revision, ...content } = value; return key(content); };
+const designContentKey = (d: ProjectDesign) => key({ ...d, routes: d.routes.map(contentKey),
+  corridors: d.corridors.map(contentKey), connections: d.connections.map(contentKey) });
 
 /** Whole-project copy-on-write transactions. Results/typed arrays and editor selection never enter history. */
 export class ProjectStore implements ProjectStoreApi {
@@ -128,7 +130,12 @@ export class ProjectStore implements ProjectStoreApi {
   commit(): void {
     if (!this.baseline) throw new Error('No project transaction');
     const design = this.current.design;
-    if (key(design) === key(this.baseline)) { this.baseline = null; return; }
+    if (designContentKey(design) === designContentKey(this.baseline)) {
+      const published = key(design) !== key(this.baseline);
+      this.baseline = null;
+      if (published) this.publish(design, true); // settle the drag, but preserve undo/redo and disk content
+      return;
+    }
     persistProjectSave(this.options, { schemaVersion: 1, design, best: this.savedBest });
     this.history = this.history.slice(0, this.index + 1);
     this.history.push(copy(design));
@@ -157,7 +164,7 @@ export class ProjectStore implements ProjectStoreApi {
     const d = this.current.design;
     if (this.inTransaction || result.epoch !== this.current.epoch || result.revision !== this.current.revision || !isScorableProject(result)
       || d.objectData !== this.options.objectData || d.transportData !== this.options.transportData
-      || projectMissionKey(d) !== key(this.options.mission)
+      || !projectBindingsCurrent(d, this.options)
       || Object.keys(result.routes).length !== d.routes.length || d.routes.some(r => result.routes[r.id]?.revision !== r.revision)
       || d.routes.some(r => r.source?.binding === 'unresolved' || r.endpoints.a.binding === 'unresolved' || r.endpoints.b.binding === 'unresolved')) return false;
     const total = result.cost.total!;

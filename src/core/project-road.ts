@@ -28,6 +28,12 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     || route.endpoints.a.anchor.kind !== 'mission' || route.endpoints.b.anchor.kind !== 'mission'
     || route.endpoints.a.anchor.portId !== goals[0].from || route.endpoints.b.anchor.portId !== goals[0].to))
     return { status: 'incomplete', reason: 'mission-needs-network' };
+  if (mission) for (const e of [route.endpoints.a, route.endpoints.b]) {
+    const anchor = e.anchor;
+    const port = anchor.kind === 'mission' ? project.mission.ports.find(p => p.id === anchor.portId) : undefined;
+    if (!port || Math.hypot(e.position.x - port.position.x, e.position.y - port.position.y, e.position.z - port.position.z) > 1e-6)
+      return { status: 'incomplete', reason: 'unresolved-binding' };
+  }
   const goal = mission ? goals[0] : undefined;
   if (goal?.demand && goal.demand.kind !== 'road') return { status: 'incomplete', reason: 'mission-needs-network' };
   const design = legacyDesignForRoute(project, routeId);

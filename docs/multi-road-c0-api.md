@@ -21,6 +21,8 @@ C0 or C1**: worker dispatch, network accounting and UI integration remain pendin
 - `src/project-store.ts`: `openProjectStore(options)` returns `{load, store}` (null store for unsupported).
   `initial()` applies scenario defaults only to empty storage. Frozen snapshots, copy-on-write drafts,
   atomic commands/cancel/undo/redo, bounded 200-entry history, monotone revisions and guarded best scores.
+  An out-and-back drag settles without adding history or truncating redo. Sparse/non-JSON control arrays
+  are rejected before serialization. Resolved mission anchors must match their actual port XYZ.
   `subscribe` returns unsubscribe. Storage errors propagate; migration recovery must persist first.
 - `src/core/project-validation.ts`: runtime schema and corridor/route authority checks before publication.
 - `src/core/project-legacy.ts`: `projectFromLegacyDesign`, `legacyDesignForRoute` and
@@ -75,6 +77,10 @@ Ground eligibility is explicit (`elevation: 'terrain'`); bridges/tunnels must be
 Surveyed source elevations carry matching z values and evidence. Shared OSM node IDs—not rounded XY—
 are topology evidence. Gauge/electrification are never inferred; `tracks` is a raw tag, not way count.
 `parallelSourceIds` preserves neighbour identity; own accepted replacement never masks that neighbour.
+`vectorData` hashes decompressed vector bytes; nominal display width is not an engineering width.
+Conflicting cache snapshots are listed in `unresolvedSources` with visible feature references, without
+fabricated nodes/stations/mappings. Promotion must refuse these sources. D11 metadata is an optional
+sidecar so frozen legacy `meta.json` and vector/net bytes remain unchanged.
 
 Physical `acousticSourceId` is independent of editor route ID. Contributions are raw day/night energy
 at common building/height receivers before acquisitions. Preserve max-over-stations within one physical

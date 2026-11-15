@@ -89,7 +89,7 @@ function spec(v: unknown, kind: unknown): boolean {
     && ['passengerDay', 'passengerNight', 'freightDay', 'freightNight', 'passengerSpeed', 'freightSpeed'].every(k => number(o[k]) && (o[k] as number) >= 0);
 }
 /** Never JSON-clone before this check: JSON turns NaN into null and silently drops undefined. */
-export function assertProjectDesign(value: unknown): asserts value is ProjectDesign {
+export function assertProjectDesign(value: unknown, allowStaleBindings = false): asserts value is ProjectDesign {
   const fail = (reason: string): never => { throw new Error(`Invalid project: ${reason}`); };
   if (!object(value) || value.schemaVersion !== 1) fail('unsupported schema');
   const p = value as Obj;
@@ -102,7 +102,9 @@ export function assertProjectDesign(value: unknown): asserts value is ProjectDes
     if (next && typeof next === 'object') {
       if (seen.has(next)) continue;
       seen.add(next);
-      if (!Array.isArray(next) && Object.getPrototypeOf(next) !== Object.prototype && Object.getPrototypeOf(next) !== null) fail('non-plain object');
+      if (Array.isArray(next)) {
+        for (let i = 0; i < next.length; i++) if (!Object.prototype.hasOwnProperty.call(next, i) || next[i] === undefined) fail('sparse or undefined array element');
+      } else if (Object.getPrototypeOf(next) !== Object.prototype && Object.getPrototypeOf(next) !== null) fail('non-plain object');
       for (const child of Object.values(next)) pending.push(child);
     }
   }
@@ -154,14 +156,28 @@ export function assertProjectDesign(value: unknown): asserts value is ProjectDes
       || c.demand !== undefined && (!object(c.demand) || !(c.demand.kind === 'road' ? number(c.demand.aadt) && c.demand.aadt >= 0
         : c.demand.kind === 'railway' && number(c.demand.trainsPerDay) && c.demand.trainsPerDay >= 0))) fail('mission connection');
   }
+  const checkEndpoints = (pair: ProjectDesign['routes'][number]['endpoints']) => {
+    for (const e of [pair.a, pair.b]) {
+      const a = e.anchor;
+      if (a.kind === 'route' && !routeMap.has(a.routeId) || a.kind === 'mission' && !ports.has(a.portId)) fail('dangling endpoint');
+      if (e.binding === 'resolved' && a.kind === 'source' && a.location.transportData !== p.transportData && !allowStaleBindings) fail('resolved source fingerprint');
+      if (e.binding === 'resolved' && a.kind === 'mission') {
+        const port = (mission.ports as ProjectDesign['mission']['ports']).find(port => port.id === a.portId)!;
+        if (Math.hypot(e.position.x - port.position.x, e.position.y - port.position.y, e.position.z - port.position.z) > 1e-6) fail('resolved mission position');
+      }
+    }
+  };
+  const checkAlignmentReferences = (a: AlignmentDesign) => {
+    if (a.kind !== 'corridor') for (const c of a.controls.crossings ?? [])
+      if (c.target.kind === 'route' && !routeMap.has(c.target.routeId)) fail('dangling crossing');
+  };
   for (const r of routeMap.values()) {
     if (r.alignment.kind === 'corridor' && owners.get(r.id) !== r.alignment.corridorId) fail('orphan corridor child');
-    for (const e of [r.endpoints.a, r.endpoints.b]) {
-      if (e.anchor.kind === 'route' && !routeMap.has(e.anchor.routeId) || e.anchor.kind === 'mission' && !ports.has(e.anchor.portId)) fail('dangling endpoint');
-    }
-    if (r.alignment.kind !== 'corridor') for (const c of r.alignment.controls.crossings ?? []) {
-      if (c.target.kind === 'route' && !routeMap.has(c.target.routeId)) fail('dangling crossing');
-    }
+    if (r.source?.binding === 'resolved' && r.source.intervals.some(i => i.transportData !== p.transportData) && !allowStaleBindings) fail('resolved replacement fingerprint');
+    checkEndpoints(r.endpoints); checkAlignmentReferences(r.alignment);
+  }
+  for (const c of corridors as ProjectDesign['corridors']) {
+    checkEndpoints(c.endpoints); checkAlignmentReferences(c.mode === 'paired' ? c.spine : c.retainedSpine);
   }
   for (const c of connections) {
     if (!object(c) || !integer(c.revision) || !choice(c.kind, ['continuation', 'junction', 'interchange']) || !xyz(c.position)
