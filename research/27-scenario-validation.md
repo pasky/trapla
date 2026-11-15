@@ -167,3 +167,38 @@ diagnostic (not a fixture) with the reference bends and the end moved back along
 So almost every D35 conflict is the final merge onto a retained road, the same connected-endpoint
 gap as Paka's roundabout arm. Neither is solved by tuning bends; the engine has no merge/arm
 ownership beyond a 1 m endpoint cell. Moving B back is a scope decision for the parent, not adopted.
+
+## Junction ends, D35 stage decision and final starters (2026-11-15, after main a121a92)
+
+**Junction ends (research/28).** Paka's B declares a roundabout arm onto the four ring ways of the
+retained I/16 roundabout and way 1418615945, an `access=no` service apron drawn across its central
+island with the ring (flagged for review: it is counted as part of the same junction). Inside 25 m of
+B, our earthworks over those ways become one priced junction (25 M CZK allowance, 21–23 m of ring
+rebuilt); the raw straight run then keeps only its two street footprints (km 2.04, 2.81).
+
+**D35: full corridor tried, first stage shipped.** With B at 33.3 km and a declared I/35 merge, the
+full corridor had a VALID starter (33,094.7 m, 9.215 bn CZK, one 7.6 m repair). GPU drag gate on that
+pack: bend, road, radius and vpi passed; **pin failed** median preview latency in 2 of 3 runs
+(69/59/75 ms vs 60). By the agreed rule D35 ships as the named first project section Opatovec → Staré
+Město: 16.6 km (km 74.500–91.100, ŘSD leaflet), 4100×1400 cells, B at 16,600 m on the mapped line
+(about 490 m before the Staré Město-východ interchange, open ground, no junction), 12-minute mission
+(18 km at 90). Mapped reference 16,650 m. All five GPU modes pass there.
+
+**Starters** (mapped-reference bends every ~1.5 km, then the bounded validity-first repair tool; no
+norm changes, no suppressed violations, not cost-optimised; every bend editable):
+
+| Scenario | Repair | Length | Cost | Warm median |
+|---|---|---|---|---|
+| D3 | bends 4/5/6 by 7.4/8.6/11.3 m (earlier) | 15,443.6 m | 4,743,380,449.49 CZK | 73–81 ms |
+| D35 stage | bend 7 by 7.6 m (track at km 13.59) | 16,512.8 m | 6,091,601,619.67 CZK | 55–62 ms |
+| Paka | bends 0/1 by 23.1/6.6 m, 19 evaluations | 6,629.9 m | 2,666,602,089.12 CZK | 29 ms |
+
+D35's raw straight line is itself VALID (15,846.4 m, 5.742 bn) and cheaper than the starter; the
+starter only seeds the mapped corridor. Paka's starter buys out more buildings (792 M) than the
+unrepaired seed; the player can do better.
+
+**Open discrepancy:** in the browser Paka's starter totals 2,666,492,493.77 CZK, 109,595 CZK less
+than Node (legacy and project paths agree with each other). The difference is one reconnection link
+(way 2559, km 3.05: 26,765,262 vs 26,849,179 CZK) plus its surcharge; footprint conflicts and the
+junction are identical, and D3/D35 match to the cent. Not reproduced in Node by evaluation order,
+previews, material value or endpoint z. Needs a core look.

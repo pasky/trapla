@@ -141,6 +141,16 @@ source-segment provenance: overlay clipping splits self-crossing ways at the cro
 matched to exactly one forward walk along its source, or the build fails. Different cache snapshots can contain conflicting node/way geometry: such source
 bindings need explicit unresolved handling, never invented connectivity or snapping the frozen map.
 
+### Ends that join a retained road
+
+An end may declare the retained road it joins: `"B": {..., "junction": {"kind": "roundabout-arm" | "merge",
+"osmWayIds": [...]}}`. The builder maps the ways to network indices in `meta.B.junction`; the evaluator
+treats our earthworks over exactly those ways, within the sourced zone of that end (`ENDPOINT_JUNCTIONS`,
+research/28), as the junction's own works priced once by the junction allowance. Everything else stays a
+conflict. `scripts/scenarios/check.ts` fails when no declared way comes within the zone. Nová Paka's
+bypass joins the I/16 roundabout this way. D11 declares none, so its bills are unchanged and the cost
+model version is not bumped.
+
 ## 4. Defaults are evidence or explicit game choices
 
 - Category/speed: source a real cross-section/preset, or label it as a road exercise. Nová Paka starts

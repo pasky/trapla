@@ -200,3 +200,15 @@ stale/down) replaced by z.overpass-api.de and maps.mail.ru; stale snapshots are 
    reconstruction. Accept that scoped end with disclosure, or wait for (1)?
 3. Full-vs-stage needs GPU drag-perf on D35; `drag-perf.mjs` has no scenario option (U-owned).
 4. Recommend U/C load the transport graph lazily (currently fetched/parsed on every load).
+
+## Status after parent decisions (main a121a92 merged)
+
+- Junction ends implemented (scenario-declared, sourced zone, priced once, D11 bit-exact through
+  both paths, no `COST_MODEL_VERSION` bump): research/28, tests/endpoint-junction.test.ts.
+- D35: full corridor missed the pin drag budget (2 of 3 runs); shipped as first stage Opatovec →
+  Staré Město. `drag-perf.mjs --scenario`. Numbers in docs/evaluate-performance.md and research/27.
+- Transport graph loads lazily; D11 startup improved (ready 1577 → 1151 ms, heap 425 → 336 MB).
+  `scripts/lazy-transport-check.mjs` proves a first click before parsing opens the road card;
+  `base-road-scene.mjs` passes.
+- All three new starters VALID; screenshots 73–78 refreshed and inspected.
+- Open: Paka browser-vs-Node reconnection cost difference (109,595 CZK; research/27).
