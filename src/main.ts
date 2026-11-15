@@ -9,7 +9,7 @@ import { KIND } from './core/structures';
 import { NOISE, ROAD_CLASSES } from './core/data/urban';
 import { createRailNoiseModel } from './core/rail-noise';
 import { railTraffic } from './core/project-railway';
-import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, rejoinCorridor, splitCorridor } from './core/project-motorway';
+import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
 import { DIRECTIONS_TEXT } from './core/terms';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
@@ -95,7 +95,7 @@ async function main() {
       { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
     : projectFromLegacyDesign(initialRoad(), legacyContext);
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
-    objectData, transportData, pricingData, mission: legacyContext.mission, initial: initialProject,
+    objectData, transportData, pricingData, mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : legacyContext.mission, initial: initialProject,
     // Old single-road saves belong to the road exercise only, never to a motorway mission.
     ...(motorwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });
@@ -619,6 +619,7 @@ async function main() {
   /** the motorway direction switch follows the active route */
   const syncDirections = () => {
     const design = projectStore.snapshot.design, route = store.route, corridor = route ? corridorOfRoute(design, route.id) : undefined;
+    inspector.oneDirection = corridor?.mode === 'independent';
     if (!corridor) { hud.setDirections(null); return; }
     hud.setDirections({ split: corridor.mode === 'independent', active: corridor.children.reverse === route!.id ? 'reverse' : 'forward',
       places: { forward: scenario.labels.b, reverse: scenario.labels.a } });

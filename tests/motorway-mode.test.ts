@@ -3,7 +3,8 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { createMotorwayProject } from '../src/core/project-motorway';
+import { createMotorwayProject, motorwayMission } from '../src/core/project-motorway';
+import { projectBindingsCurrent, type ProjectLoadOptions } from '../src/project-persistence';
 import { isScorableProject } from '../src/core/project-protocol';
 import { assertProjectDesign } from '../src/core/project-validation';
 import { resolveCrossings, type CrossingResult } from '../src/core/crossings';
@@ -20,7 +21,7 @@ function fixture(aadt = 30000) {
   const design = createMotorwayProject(road, motorway, { aadt, heavyShare: 0.2256 });
   const ctx: ProjectEvalContext = { legacy, environment: { objectData: 'objects', transportData: null,
     terrainData: 'terrain', pricingData: 'pricing', waterData: 'water', terrainClass: 'hilly' } };
-  return { ctx, snapshot: { epoch: 'test', revision: 1, design }, legacy };
+  return { ctx, snapshot: { epoch: 'test', revision: 1, design }, legacy, context };
 }
 
 describe('paired motorway corridor', () => {
@@ -43,6 +44,12 @@ describe('paired motorway corridor', () => {
     expect(isScorableProject(project)).toBe(direct.valid);
     expect(project.issues.every(i => i.locations.every(l => l.routeId === f.routeId))).toBe(true);
     expect(previewProjectRoute(ctx, snapshot, r.routeId).legacy?.preview).toBe(true);
+  });
+  it('keeps its bests: the store is opened for the motorway mission, not the road one', () => {
+    const { snapshot, context } = fixture();
+    const options = (mission: ProjectLoadOptions['mission']) => ({ objectData: 'objects', transportData: null, mission }) as ProjectLoadOptions;
+    expect(projectBindingsCurrent(snapshot.design, options(motorwayMission(context.mission)))).toBe(true);
+    expect(projectBindingsCurrent(snapshot.design, options(context.mission))).toBe(false);
   });
   it('edits both directions through the common spine', () => {
     const { snapshot } = fixture();

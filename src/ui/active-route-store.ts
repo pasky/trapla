@@ -4,6 +4,9 @@ import type { Design } from '../core/evaluate';
 import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../core/project-legacy';
 import type { ProjectStoreApi } from '../project-store-contract';
+import { carryVpis } from '../core/carry-heights';
+import { horizontalRules } from '../core/data/norms';
+import { buildAlignment } from '../core/horizontal';
 
 export class ActiveRouteStore {
   activeRouteId: RouteId | null;
@@ -52,8 +55,9 @@ export class ActiveRouteStore {
   }
   update(edit: (design: Design) => void, committed = true) {
     if (!this.activeRouteId || !this.read()) return;
-    const id = this.activeRouteId, design = structuredClone(this.design);
+    const id = this.activeRouteId, before = this.design, design = structuredClone(before);
     edit(design);
+    this.carryHeights(before, design);
     const own = !this.project.inTransaction;
     if (own) this.project.begin();
     this.atomic = committed;
@@ -62,6 +66,15 @@ export class ActiveRouteStore {
       if (committed) this.project.commit();
     } catch (error) { if (own) this.project.cancel(); throw error; }
     finally { this.atomic = false; }
+  }
+  /** By hand, a change of plan keeps the height points on their ground (core/carry-heights.ts). */
+  private carryHeights(before: Design, after: Design) {
+    const ends = this.route?.endpoints;
+    if (!ends || before.profileMode !== 'manual' || after.profileMode !== 'manual' || JSON.stringify(after.vpis) !== JSON.stringify(before.vpis)) return;
+    if (before.speed === after.speed && before.category === after.category && JSON.stringify(before.pis) === JSON.stringify(after.pis)) return;
+    const a = ends.a.position, b = ends.b.position;
+    after.vpis = carryVpis(buildAlignment(a, b, before.pis, horizontalRules(before.speed, before.category)),
+      buildAlignment(a, b, after.pis, horizontalRules(after.speed, after.category)), before.vpis);
   }
   editProject(edit: (project: ProjectDesign) => void) {
     const own = !this.project.inTransaction;

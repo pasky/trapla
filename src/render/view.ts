@@ -865,6 +865,23 @@ export class View {
       if (wl !== undefined) idx.push(dl, l, wl);
       if (wr !== undefined) idx.push(wr, rr, dr);
     }
+    // The portal face: the hill above and beside the portals, from the approach cut's cross-section up to
+    // natural ground (a secured face). Without it the cut-off edge of the terrain shows the sky.
+    const face = concrete.clone().multiplyScalar(0.8);
+    for (const run of r.runs) if (run.kind === KIND.tunnel) for (const i of [run.i0 - 1, run.i1 + 1]) {
+      if (i < 0 || i >= n || !ground[i]) continue;
+      const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i], L = r.dayL[i], R = r.dayR[i];
+      const bottom = (o: number) => o > w ? z + (r.zDayL[i] - z) * (o - w) / Math.max(1e-6, L - w)
+        : o < -w ? z + (r.zDayR[i] - z) * (-o - w) / Math.max(1e-6, R - w) : z;
+      const steps = Math.max(2, Math.ceil((L + R) / 2.5));
+      let prev: [number, number] | null = null;
+      for (let k = 0; k <= steps; k++) {
+        const o = L - (L + R) * k / steps, px = x + nx * o, py = y + ny * o, top = natural(px, py) + groundLift;
+        const at: [number, number] = [push(px, py, Math.min(bottom(o), top), face), push(px, py, top, face)];
+        if (prev) quad(prev[0], at[0], prev[1], at[1]);
+        prev = at;
+      }
+    }
     // bridge deck edges and piers, tunnel portals
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
       const nx = -ty, ny = tx;
@@ -934,8 +951,11 @@ export class View {
             for (let j = Math.max(0,Math.floor(s0/r.ds)+1); j < n && r.s[j] < s1; j++) highest = Math.max(highest,r.grade[j]);
             return highest;
           });
-          boxAt(p.x, p.y, p.tx, p.ty, this.terrain.heightAt(p.x, p.y) - 2, top,
-            p.along, p.left, shade(concrete, 0.85));
+          // twin decks stand on their own piers (same share of each deck's width as a single deck's)
+          for (const [lo, hi] of gap || section === CARRIAGEWAY_SECTION ? strips : [[-p.left, p.left]]) {
+            const [cx, cy] = across(p, (lo + hi) / 2);
+            boxAt(cx, cy, p.tx, p.ty, this.terrain.heightAt(cx, cy) - 2, top, p.along, gap || section === CARRIAGEWAY_SECTION ? (hi - lo) / 2 * 0.55 : p.left, shade(concrete, 0.85));
+          }
         }
       } else if (run.kind === KIND.tunnel) {
         for (const i of [Math.max(0, run.i0 - 1), Math.min(n - 1, run.i1 + 1)]) for (const [lo, hi] of strips) {

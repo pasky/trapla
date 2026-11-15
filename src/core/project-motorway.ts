@@ -162,8 +162,12 @@ export function createMotorwayProject(base: ProjectDesign, d: Design, operations
   corridors: [{ id: corridorId, revision: 0, kind: 'motorway', mode: 'paired', endpoints: structuredClone({ a, b }),
     children: { forward: 'route:motorway-forward', reverse: 'route:motorway-reverse' }, formationPolicy: MOTORWAY_POLICY, correspondence: [],
     spine: { kind: 'pi', pis: [], controls: {}, vertical: { kind: 'auto', pins: [] } } }],
-  mission: { ...structuredClone(base.mission), connections: base.mission.connections.map(c => ({ ...c, kinds: ['motorway'] as RouteDesign['kind'][] })) } };
+  mission: motorwayMission(base.mission) };
   return replaceCorridorFromDesign(project, corridorId, d);
+}
+/** The scenario's mission with its connection to be made by a motorway (saves and bests are keyed by it). */
+export function motorwayMission(mission: ProjectDesign['mission']): ProjectDesign['mission'] {
+  return { ...structuredClone(mission), connections: mission.connections.map(c => ({ ...c, kinds: ['motorway'] as RouteDesign['kind'][] })) };
 }
 
 /** Crown width the renderer/footprint screens use for a corridor (whole formation). */

@@ -171,6 +171,8 @@ export class Hud {
     const load = this.root.querySelector<HTMLButtonElement>('#load-best'); if (load) load.onclick = () => this.ev.onLoadBest?.();
   }
   private range: StationRange | null = null;
+  /** one direction of a split motorway: the cost card shows that direction alone */
+  private oneDirection = false;
   /** violations whose explanation the player unfolded */
   private openWhy = new Set<string>();
   /** the violations the list shows: the last full result's (a drag preview keeps them) */
@@ -363,7 +365,7 @@ export class Hud {
   /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */
   setDirections(state: { split: boolean; active: 'forward' | 'reverse'; places: { forward: string; reverse: string } } | null) {
     const box = this.$('directions');
-    box.hidden = !state;
+    box.hidden = !state; this.oneDirection = !!state?.split;
     if (!state) return;
     const on = state.split ? state.active : 'both';
     for (const which of ['both', 'forward', 'reverse'] as const) {
@@ -407,7 +409,7 @@ export class Hud {
     time.className = `chip ${tOk ? 'ok' : 'bad'}`;
     time.innerHTML = `${tOk ? '✓' : '✗'} ${num(r.travelMin, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
     const sel = this.range && this.range.s0 < r.length ? rangeSummary(r, this.range.s0, Math.min(this.range.s1, r.length)) : null;
-    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : `Cost <small>${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
+    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : `Cost <small>${this.oneDirection ? 'this direction · ' : ''}${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
       const v = g.of(c);

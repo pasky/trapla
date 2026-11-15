@@ -77,6 +77,8 @@ export class Inspector {
   sel: Sel | null = null;
   /** "More" open (remembered) */
   private more = false;
+  /** one direction of a split motorway is shown: its pieces are that direction's, not the total's */
+  oneDirection = false;
   private r: Result | null = null;
   private d: Design | null = null;
   private networkPending = false;
@@ -211,7 +213,7 @@ export class Inspector {
   // ---- nothing selected: where the money goes ----
   private money(r: Result) {
     const top = topPieces(r, 5);
-    return `<div class="ctx-h"><b>Where the money goes</b></div>
+    return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${km(p.s0)}–${km(p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
       <div class="sub hint">Drag the road to bend it. Click anything to inspect it.</div>`;
   }

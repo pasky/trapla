@@ -209,26 +209,19 @@ Branch `side-agent/motorway-rail` (worktree-0004), all committed; tsc / 550 test
 (11 D11 fixtures identical) green. `side-agent/scenario-expansion` (e201845) is merged in (D3/D35 code);
 packs copied into `public/scenarios/` (d3, d35, i16-nova-paka, d11 transport sidecar).
 
+Done since: browser pass (screenshots 130–135, smoke, playtest, drag-perf all modes on D11 and on
+`--scenario d3 --preset d3-motorway`, plus `--split forward` bend/vpi): fixes = twin piers, tunnel portal face,
+by-hand heights carried along a plan change (`core/carry-heights.ts`, via `ActiveRouteStore.update`), motorway
+store keyed by the motorway mission (bests were never kept), split cost card says "this direction". Merged
+main at a2bd5a6 (crossing-links, detmath): cost model **20**, fixture re-stamped after checking the diff was
+the version alone; motorway/rail noise uses detmath.
+
 Pending, in order:
-1. **Browser slot** (parent pings; order crossing-links → us → noise-walls-seams). Then run, one at a time,
-   closing Chromium after each: `node scripts/motorway-shots.mjs d3` (picker, paired motorway, carriageways,
-   twin bridge, twin tunnel, split via `#dir-forward`, bend via `trapla.setDesign`, join via `#dir-both`;
-   prints project state JSON per step; `--docs 130` copies to docs/screenshots/130-…, range 130–139), then
-   `node scripts/drag-perf.mjs --gpu --check` for all modes (bend|road|radius|pin|vpi) on D11 and with
-   `--scenario d3 --preset d3-motorway` (design scripts/scenarios/d3/d3-motorway.json). LOOK at every
-   screenshot: shader paint (terrainMaterial.ts PAIRED/CARRIAGEWAY/RAIL sections), twin decks (view.ts
-   `strips`), one portal per tube. Not yet seen in a browser at all. Node timing: motorway full eval
-   ≈ 240 ms vs road 103 ms (sections/retaining 2×, noise 50 ms); previews 30–65 ms. Add README/PLAN refs.
-2. **Rebase onto main** after crossing-links (cost model 19) merges: our bump becomes **20** ("motorway and
-   railway scoring enabled; road bills unchanged"); re-stamp `tests/fixtures/evaluate-remedies-current.json`
-   with `npx tsx scripts/eval-regression.ts --capture=current --reviewed-model-change` ONLY after checking
-   the diff is the version number alone. GIT_EDITOR=true, never stash. Expect conflicts in evaluate.ts,
-   project-evaluate.ts, main.ts, crossings.ts.
-3. **Build flow** (any-road-editing, not merged yet): hook Build → Motorway (`createMotorwayProject`-like
+1. **Build flow** (any-road-editing, not merged yet): hook Build → Motorway (`createMotorwayProject`-like
    corridor creation at picked ends; non-port ends stay unpriced) and Build → Railway
    (`createRailwayRoute(id, name, endpoints, tracks)`); railway rerouting = their generic drag-to-rebuild
    with kind `railway` (we supply `project-railway.ts` kernel/rules), not a separate stub.
-4. **Noise contract** (noise-walls-seams, cost model 21): move motorway (two directional sources, half
+2. **Noise contract** (noise-walls-seams, cost model 21): move motorway (two directional sources, half
    traffic each on lane axes ±6.0 m; `MOTORWAY_NOISE` emission) and railway (`rail-noise.ts`
    `railLinePower` per period, CNOSSOS source) onto its per-source per-storey day/night energy model;
    then drop the split "full traffic per direction" bound and the `leftJoined` shield in evaluate.ts.
