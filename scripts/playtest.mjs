@@ -214,16 +214,17 @@ try {
   await shot('crossing');
   // the crossed road's own works (rerouted link, rebuilt approach), well away from the crossing point
   // and from our road: a click there opens the same card
-  await page.keyboard.press('Escape'); await idle(200);
+  await page.keyboard.press('Escape');
+  await T((c) => window.trapla.lookAt(c.x, c.y, 350, 20, 55), xing); await idle(400);
   const works = await T(() => {
     const r = window.trapla.result(), box = document.querySelector('#view canvas').getBoundingClientRect();
-    const road = []; for (let i = 0; i < r.n; i += 2) road.push(window.trapla.project(r.x[i], r.y[i], r.grade[i]));
+    const road = []; for (let i = 0; i < r.n; i++) road.push(window.trapla.project(r.x[i], r.y[i], r.grade[i]));
     for (const c of r.crossings) {
       const g = c.geometry, mark = window.trapla.project(c.x, c.y, r.grade[c.i]);
       for (const p of [...(g?.road ? [g.road] : []), ...(g?.links ?? [])]) for (let k = 1; k + 1 < p.length; k++) {
         const q = window.trapla.project(p[k].x, p[k].y, p[k].z);
         if (!q.vis || q.sx < 80 || q.sy < 80 || q.sx > box.width - 80 || q.sy > box.height - 80) continue;
-        if (Math.hypot(q.sx - mark.sx, q.sy - mark.sy) < 60 || road.some((o) => o.vis && Math.hypot(o.sx - q.sx, o.sy - q.sy) < 30)) continue;
+        if (Math.hypot(q.sx - mark.sx, q.sy - mark.sy) < 60 || road.some((o) => o.vis && Math.hypot(o.sx - q.sx, o.sy - q.sy) < 20)) continue;
         return { roadId: c.roadId, type: c.type, sx: q.sx, sy: q.sy, link: p !== g.road };
       }
     }

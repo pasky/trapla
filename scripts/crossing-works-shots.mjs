@@ -24,26 +24,25 @@ const idle = async (ms = 600) => {
 };
 const load = (name) => name === 'straight' ? { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }
   : JSON.parse(readFileSync(`scripts/${name}-design.json`, 'utf8')).design;
-// [file number, design, crossed way, camera distance, bearing, elevation, label]
+// [file number, design, crossed way, camera centre (the same before and after: the regraded side road /
+// the wall), distance, bearing, elevation, label]
 const scenes = [
-  [110, 'straight', 2180, 260, 200, 50, 'junction-street-tie'],
-  [112, 'direct-80', 5189, 230, 150, 45, 'ramp-wall'],
-  [114, 'demo', 1975, 260, 20, 50, 'junction-street-tie-demo'],
+  [110, 'straight', 2180, [11880, 17823], 260, 200, 50, 'junction-street-tie'],
+  [112, 'direct-80', 5189, [11998, 17159], 110, 150, 35, 'ramp-wall'],
+  [114, 'demo', 1975, [9840, 8528], 170, 20, 45, 'junction-street-tie-demo'],
 ];
 try {
   await page.goto(`http://localhost:${port}/?scenario=d11`);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
-  for (const [number, name, roadId, dist, bearing, elev, label] of scenes) {
+  for (const [number, name, roadId, [x, y], dist, bearing, elev, label] of scenes) {
     await page.evaluate(d => window.trapla.setDesign(d), load(name)); await idle();
-    const c = await page.evaluate(([id, dist, bearing, elev]) => {
+    const c = await page.evaluate(([id, x, y, dist, bearing, elev]) => {
       const r = window.trapla.result(), c = r.crossings.find(c => c.roadId === id);
       if (!c) return null;
       window.trapla.select(null); window.trapla.setView({ contours: true });
-      // centre on the regraded side road / wall when there is one, else on the crossing
-      const tie = c.geometry?.ties?.[0]?.path, at = tie ? tie[Math.floor(tie.length / 2)] : c;
-      window.trapla.lookAt((c.x + at.x) / 2, (c.y + at.y) / 2, dist, bearing, elev);
+      window.trapla.lookAt(x, y, dist, bearing, elev);
       return { type: c.type, cls: c.cls, cost: c.cost, tie: c.tieLength, wall: c.wallLength, ties: c.geometry?.ties?.length ?? 0 };
-    }, [roadId, dist, bearing, elev]);
+    }, [roadId, x, y, dist, bearing, elev]);
     assert(c, `${name} crosses way ${roadId}`);
     if (!BEFORE) assert(c.tie > 0, `${name} way ${roadId} regrades a side road`);
     await idle(); await page.mouse.move(5, 5);
