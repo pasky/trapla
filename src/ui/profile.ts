@@ -278,6 +278,8 @@ export class ProfilePanel {
    * toClient) flush a pending paint first. */
   draw() { if (!this.drawFrame) this.drawFrame = requestAnimationFrame(() => { this.drawFrame = 0; this.paint(); }); }
   private drawFrame = 0;
+  /** a paint is scheduled for the next frame (it ends with `ev.onDraw`) */
+  get drawPending() { return this.drawFrame !== 0; }
   /** paint now if a draw is pending (the scales below are set by the paint) */
   private flush() { if (this.drawFrame) { cancelAnimationFrame(this.drawFrame); this.drawFrame = 0; this.paint(); } }
 

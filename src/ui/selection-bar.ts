@@ -110,7 +110,9 @@ export class SelectionBar {
   /** over the middle of the selection (or the spot), along the bottom of the chart (over the ground, where
    * it hides the least), inside the plot */
   place() {
-    if (!this.what || this.el.hidden) return;
+    // a pending profile paint places the bar when it runs (onDraw): reading the profile's scales
+    // now would force that paint synchronously, once per update during a drag
+    if (!this.what || this.el.hidden || this.profile.drawPending) return;
     const p = this.profile;
     const mid = this.what.kind === 'range' ? (this.what.range.s0 + this.what.range.s1) / 2 : this.what.s;
     const w = this.el.offsetWidth;

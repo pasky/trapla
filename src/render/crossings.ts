@@ -176,7 +176,7 @@ export class CrossingRenderer {
         if (kept) { next.set(key, kept); continue; }
         const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
         terrain.groundHoles = heads;
-        this.surface(surfaces[k], earth, terrain, structure);
+        yield* this.surface(surfaces[k], earth, terrain, structure);
         const meshes: THREE.Object3D[] = [];
         emit(earth, terrain, structure, meshes);
         next.set(key, meshes);
@@ -264,13 +264,15 @@ export class CrossingRenderer {
     line.computeLineDistances(); line.name = proposed ? 'footprint-proposed' : 'footprint-removed'; line.userData.conflictId = c.id;
     line.renderOrder = 5; out.push(line);
   }
-  private surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder) {
+  /** one crossing surface's quads (yields every 64 sections: long diversions take a while) */
+  private *surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder): Generator<void, void> {
     const g = s.crossing.geometry!, color = existingRoadColor(s.crossing.cls), casing = 0x807468;
     const below = (p: CrossingPoint, dz: number) => ({ ...p, z: p.z - dz });
     const collars = [new Map<object, CrossingPoint[]>(), new Map<object, CrossingPoint[]>()];
     const stripRows = new Map<object, { casing: CrossingPoint[]; crown: CrossingPoint[] }>();
     const natural = (x: number, y: number) => this.view.groundHeight(x,y), replacement = (x: number, y: number) => this.view.replacementHeight(x,y);
     for (let i = 0; i + 1 < s.sections.length; i++) {
+      if (i && i % 64 === 0) yield;
       const a = s.sections[i], b = s.sections[i + 1], ground = groundSegment(s, i), target = ground ? earth : structure;
       // Tracks retain the billed formation width, but only the wheel strips are bare earth.
       // A solid four-metre brown slab made parallel diversions look like footprint outlines.

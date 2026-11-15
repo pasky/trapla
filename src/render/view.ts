@@ -93,6 +93,8 @@ export class View {
   private maskSource: Result | null = null;
   private maskMat: THREE.ShaderMaterial | null = null;
   private retired: THREE.Material[] = [];
+  /** one material per shader program that would otherwise lose its last user (see release) */
+  private keepers = new Map<string, THREE.Material>();
   /** called when the contour interval changes with the zoom (minor, major in metres) */
   onContourInterval: ((minor: number, major: number) => void) | null = null;
   ev: ViewEvents = {};
@@ -1079,6 +1081,18 @@ export class View {
   requestRender() { this.dirty = true; }
 
   /**
+   * Dispose a retired material, unless it is the last user of its shader program: then it is kept
+   * (one per program, so bounded by the few program variants) and the program survives. Results
+   * without, say, blocked-conflict markers or noise walls would otherwise delete those programs
+   * and the next result with some would compile them again (≈ 10 ms on a GPU, ≈ 1 s in SwiftShader).
+   */
+  private release(m: THREE.Material) {
+    const program = (this.renderer.properties.get(m) as { currentProgram?: { cacheKey: string; usedTimes: number } }).currentProgram;
+    if (program && program.usedTimes <= 1 && !this.keepers.has(program.cacheKey)) { this.keepers.set(program.cacheKey, m); return; }
+    m.dispose();
+  }
+
+  /**
    * Dispose a replaced material after the next frame. three.js deletes a shader program together with
    * the last material using it, so disposing the old route materials before their replacements have
    * been drawn would recompile the same programs on every edit (≈ 15 ms each time).
@@ -1098,7 +1112,7 @@ export class View {
     if (ghost) ghost.visible = dist > 1200;
     this.updateSurface();
     this.renderer.render(this.scene, this.camera);
-    if (this.retired.length) { for (const m of this.retired) m.dispose(); this.retired.length = 0; }
+    if (this.retired.length) { for (const m of this.retired) this.release(m); this.retired.length = 0; }
     const place = (el: HTMLElement, x: number, y: number, z: number, minDist?: number) => {
       const s = this.screenOf(x, y, z);
       const show = s.vis && (minDist === undefined || s.dist < minDist);

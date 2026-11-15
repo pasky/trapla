@@ -171,7 +171,7 @@ async function main() {
   const settled = () => received === posted && !fullTimer;
   /** the full result's 3D rebuild, run in slices between frames (see render/slices.ts) */
   let heavy: SlicedJob | null = null;
-  let heavyStats = { slices: 0, busy: 0, maxSlice: 0, wall: 0, commit: 0 };
+  let heavyStats = { slices: 0, busy: 0, maxSlice: 0, wall: 0, commit: 0, commitView: 0, commitCrossings: 0, overlays: 0 };
   const requestEval = (preview = false) => {
     clearTimeout(fullTimer); fullTimer = 0;
     const design = JSON.stringify(store.design);
@@ -242,15 +242,17 @@ async function main() {
     heavy = runSliced((function* () {
       const commitView = yield* view.buildResult(r, crown);
       const commitCrossings = yield* crossingRenderer.build(r);
-      return () => { commitView(); commitCrossings(); };
-    })(), (commit) => {
+      return [commitView, commitCrossings] as const;
+    })(), ([commitView, commitCrossings]) => {
       const t0 = performance.now();
-      commit();
+      commitView(); const t1 = performance.now();
+      commitCrossings(); const t2 = performance.now();
       extras.setResult(r, crown, rd.structureOverrides, rd.wallOverrides);
       noise.setResult(r, crown);
       annotations.setResult(r, rd);
       heavy = null;
-      heavyStats = { ...stats, wall: performance.now() - started, commit: performance.now() - t0 };
+      const t3 = performance.now();
+      heavyStats = { ...stats, wall: t3 - started, commit: t3 - t0, commitView: t1 - t0, commitCrossings: t2 - t1, overlays: t3 - t2 };
       settle();
     }, (e) => {
       console.error('3D rebuild failed', e);
@@ -661,6 +663,8 @@ async function main() {
     handlerTiming: () => ({ ...handlerTiming }),
     /** the last full result's sliced 3D rebuild: slices, busy / longest-slice / wall / commit ms */
     rebuildStats: () => ({ ...heavyStats }),
+    /** live shader programs (a growing / changing list during edits means recompiles) */
+    programs: () => (view.renderer.info.programs ?? []).map((p) => `${p.id}:${p.cacheKey.slice(0, 40)}`),
     meta,
     official: meta.official.xy,
     A, B,
