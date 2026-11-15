@@ -8,6 +8,7 @@ import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
 import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
+import { RAIL_TRAINS_PER_DAY } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
 import { DIRECTIONS_TEXT } from '../core/terms';
@@ -220,7 +221,7 @@ export class Hud {
           <p id="dir-explain" class="mode-explain"></p>
         </div>
         <div class="mode">
-          <div class="mode-h"><b>Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
+          <div class="mode-h"><b id="height-h">Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
             <button type="button" id="grade-auto" role="radio" title="The game picks the cheapest legal heights">Auto</button><button type="button" id="grade-manual" role="radio" title="Drag the height points yourself">By hand</button>
           </div>
@@ -243,6 +244,7 @@ export class Hud {
         <label class="exag">Relief <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
     this.goalText = sc.mode === 'motorway'
       ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
+      : sc.mode === 'railway' ? `Goal: cheapest valid railway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(RAIL_TRAINS_PER_DAY)} trains a day`
       : `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
     this.context = this.$('context');
     this.decisions = this.$('decisions');
@@ -336,6 +338,7 @@ export class Hud {
       catSelect.disabled = types.length < 2;
       speedSelect.innerHTML = speeds.map((s) => `<option value="${s}">${s} km/h</option>`).join('');
       this.$('design-h').textContent = cat.mode === 'motorway' ? 'Motorway' : cat.mode === 'railway' ? 'Railway' : 'Road';
+      this.$('height-h').textContent = cat.mode === 'railway' ? 'Track height' : 'Road height';
     }
     catSelect.value = d.category;
     speedSelect.value = String(d.speed);

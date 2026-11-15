@@ -138,6 +138,9 @@ export class ProfilePanel {
     this.tip.style.display = 'none'; this.draw();
   }
 
+  /** the steepest slope the shown route's category allows (labels above it are red); tracks in per mille */
+  private gradeRule = { max: 0.06, perMille: false };
+  setGradeRule(rule: { max: number; perMille: boolean }) { this.gradeRule = rule; }
   setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = [], pins: readonly { s: number; z: number }[] = [], walls: readonly WallOverride[] = []) {
     this.overrides = overrides;
     this.pins = pins;
@@ -522,13 +525,15 @@ export class ProfilePanel {
     g.font = '11px system-ui, sans-serif';
     g.fillStyle = '#333';
     g.textAlign = 'center';
+    // the category's steepest slope (the scenarios' road value 6 % otherwise); track grades in per mille
+    const { max: maxGrade, perMille: rail } = this.gradeRule;
     for (let k = 0; k < this.vpis.length - 1; k++) {
       const a = this.X(this.vpis[k].s), b = this.X(this.vpis[k + 1].s);
       if (b - a < 46 || b < L || a > R) continue;
       const gr = r.grades[k] ?? 0;
       const ym = this.Y((this.vpis[k].z + this.vpis[k + 1].z) / 2);
-      g.fillStyle = Math.abs(gr) > 0.06 + 1e-6 ? '#d00' : '#333';
-      g.fillText(`${(gr * 100).toFixed(1)} %`, (a + b) / 2, ym - 8);
+      g.fillStyle = Math.abs(gr) > maxGrade + 1e-6 ? '#d00' : '#333';
+      g.fillText(rail ? `${(gr * 1000).toFixed(1)} ‰` : `${(gr * 100).toFixed(1)} %`, (a + b) / 2, ym - 8);
     }
     // Requested pin elevations are drawn separately from the realised grade, including failures.
     for (const pin of this.pins) {

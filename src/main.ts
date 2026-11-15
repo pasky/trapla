@@ -9,6 +9,7 @@ import { KIND } from './core/structures';
 import { NOISE, ROAD_CLASSES } from './core/data/urban';
 import { createRailNoiseModel } from './core/rail-noise';
 import { railTraffic } from './core/project-railway';
+import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
 import { DIRECTIONS_TEXT } from './core/terms';
 import { RouteExtras } from './render/extras';
@@ -77,6 +78,8 @@ async function main() {
   document.getElementById('attrib')!.title = [document.getElementById('attrib')!.textContent,
     meta.baselineNote].filter(Boolean).join(' · ');
   document.getElementById('legend-official')!.textContent = scenario.labels.official;
+  document.getElementById('legend-route')!.textContent = scenario.mode ?? 'road';
+  if (scenario.mode === 'railway') document.getElementById('legend-height')!.textContent = 'track height';
   document.getElementById('legend-official')!.parentElement!.hidden = meta.official.xy.length < 2;
 
   const presetId = scenario.presetId ?? scenario.id;
@@ -88,16 +91,18 @@ async function main() {
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
   // One deep-cloned scenario factory for first start AND Start over; existing saves never receive defaults.
   const initialRoad = (): Design => ({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) });
-  const motorwayMission = scenario.mode === 'motorway';
+  const motorwayMission = scenario.mode === 'motorway', railwayMission = scenario.mode === 'railway';
+  // The mission ports come from the same legacy context; the corridor / railway then owns the alignment.
+  const roadBase = () => projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, legacyContext);
   const initialProject = () => motorwayMission
-    // The mission ports come from the same legacy context; the corridor then owns the alignment.
-    ? createMotorwayProject(projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, legacyContext), initialRoad(),
-      { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
+    ? createMotorwayProject(roadBase(), initialRoad(), { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
+    : railwayMission ? createRailwayProject(roadBase(), initialRoad())
     : projectFromLegacyDesign(initialRoad(), legacyContext);
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
-    objectData, transportData, pricingData, mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : legacyContext.mission, initial: initialProject,
-    // Old single-road saves belong to the road exercise only, never to a motorway mission.
-    ...(motorwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
+    objectData, transportData, pricingData, initial: initialProject,
+    mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : railwayMission ? railwayMissionOf(legacyContext.mission) : legacyContext.mission,
+    // Old single-road saves belong to the road exercise only, never to a motorway or railway mission.
+    ...(motorwayMission || railwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });
   let opened: ReturnType<typeof openStore>;
   try { opened = openStore(); }
@@ -521,6 +526,8 @@ async function main() {
       view.clearDesign(activeEndpoints()); return;
     }
     revalidate(r, rd);
+    const cat = CATEGORIES[rd.category];
+    profile.setGradeRule({ max: cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient, perMille: cat.mode === 'railway' });
     profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));

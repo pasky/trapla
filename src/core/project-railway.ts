@@ -49,6 +49,23 @@ export function createRailwayRoute(id: string, name: string, endpoints: Endpoint
       operations: { ...RAIL_TRAFFIC_PRIOR, passengerSpeed: speed, freightSpeed: 100 } } };
 }
 
+/** The scenario's mission made by a railway: same ports and time target; demand = the prior's trains. */
+export const RAIL_TRAINS_PER_DAY = RAIL_TRAFFIC_PRIOR.passengerDay + RAIL_TRAFFIC_PRIOR.passengerNight + RAIL_TRAFFIC_PRIOR.freightDay + RAIL_TRAFFIC_PRIOR.freightNight;
+export function railwayMission(mission: ProjectDesign['mission']): ProjectDesign['mission'] {
+  const trainsPerDay = RAIL_TRAINS_PER_DAY;
+  return { ...structuredClone(mission), connections: mission.connections.map(c => ({ ...c, kinds: ['railway'] as RouteDesign['kind'][],
+    demand: { kind: 'railway' as const, trainsPerDay } })) };
+}
+
+/** A fresh railway mission: the base project's mission road becomes a railway between the same ports. */
+export function createRailwayProject(base: ProjectDesign, d: Design): ProjectDesign {
+  const mission = base.routes.find(r => r.role === 'mission');
+  if (!mission) throw new Error('Mission route needed');
+  if (d.category !== 'R1' && d.category !== 'R2') throw new Error('A railway needs the R1 or R2 category');
+  const rail: RailwayRoute = { ...createRailwayRoute('route:railway', 'Railway', mission.endpoints, d.category === 'R1' ? 1 : 2, d.speed), role: 'mission' };
+  return replaceRailwayFromDesign({ ...structuredClone(base), routes: [rail], corridors: [], connections: [], mission: railwayMission(base.mission) }, rail.id, d);
+}
+
 /** The route's trains as noise groups (both directions, PROVISIONAL compositions in rail-noise.ts). */
 export function railTraffic(route: RailwayRoute): RailTrafficGroup[] {
   const o = route.specification.operations;

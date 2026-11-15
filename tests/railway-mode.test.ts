@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { createRailwayRoute } from '../src/core/project-railway';
+import { createRailwayProject, createRailwayRoute, railwayMission } from '../src/core/project-railway';
+import { isScorableProject } from '../src/core/project-protocol';
+import { projectBindingsCurrent, type ProjectLoadOptions } from '../src/project-persistence';
 import { assertProjectDesign } from '../src/core/project-validation';
 import { railEverywherePerKm, railRouteBasePerKm } from '../src/core/data/railway';
 import { speedNorms } from '../src/core/data/norms';
@@ -23,7 +25,7 @@ function fixture() {
   const design = { ...base, routes: [...base.routes, rail] };
   const ctx: ProjectEvalContext = { legacy, environment: { objectData: 'objects', transportData: null,
     terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' } };
-  return { ctx, design, legacy };
+  return { ctx, design, legacy, base, context };
 }
 
 describe('railway mode', () => {
@@ -84,5 +86,22 @@ describe('railway noise (CNOSSOS-EU)', () => {
     expect(house).toBeDefined();
     expect(house.raw).toBeGreaterThan(0);
     expect(house.status === 'bought' || house.mitigated <= 0 || r.violations.some(v => v.kind === 'noise')).toBe(true);
+  });
+});
+
+describe('railway mission', () => {
+  it('replaces the mission road between the same ports, is priced as one bill and keeps its bests', () => {
+    const { ctx, base, context } = fixture();
+    const design = createRailwayProject(base, { category: 'R2', speed: 160, pis: [], profileMode: 'auto', vpis: [] });
+    assertProjectDesign(design);
+    expect(design.routes.map(r => [r.kind, r.role])).toEqual([['railway', 'mission']]);
+    expect(design.mission.connections[0].kinds).toEqual(['railway']);
+    const result = evaluateProject(ctx, { epoch: 'e', revision: 1, design });
+    expect(result.complete).toBe(true);
+    expect(result.cost.unpriced).toEqual([]);
+    expect(result.cost.total).toBe(result.routes['route:railway'].legacy!.cost.total);
+    expect(isScorableProject(result)).toBe(result.valid);
+    const options = { objectData: 'objects', transportData: null, mission: railwayMission(context.mission) } as ProjectLoadOptions;
+    expect(projectBindingsCurrent(design, options)).toBe(true);
   });
 });
