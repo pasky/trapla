@@ -644,6 +644,12 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
 - Motorway / expressway crossings: the auto-profile requests a bridge clearance rather than optimising
   the cut-and-overbridge alternative (which manual profiles can choose); the forced bridge is the 30 m minimum whatever
   the motorway's width and the crossing angle.
+- Noise walls in cuts stand inside the cut slope: the noise model (and the bill) puts every wall at
+  crown/2 + 1.5 m at grade, so in a cut the 3D wall is half buried in the slope (shown as modelled, e.g.
+  `docs/screenshots/96-road-look-abutment-cut-demo.png`). The fix is a reviewed cost-model change: a wall
+  at the top of the cut (with that geometry in the attenuation) or none where the cut edge already screens.
+- Render: thin pale (sky-coloured) seams show at some cut / fill slope and replacement-ground boundaries
+  near structures (pre-existing; visible in the before shots 90 and 94).
 
 ## Bridges vs high fills, player overrides (cost model 11)
 
