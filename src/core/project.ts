@@ -268,6 +268,8 @@ export interface ProjectBuildingOutcome {
 export interface ProjectResult extends ProjectIdentity {
   routes: Record<RouteId, RouteResult>;
   works: SharedWorkLedger; cost: ProjectCost; issues: ProjectIssue[];
+  /** Old stretches the project rebuilds: gone from the map, its checks and picking as soon as their new
+   * line is engineered without them, whether or not the project can be priced. */
   acceptedReplacements: SourceInterval[];
   acceptedRenderReplacements: TransportRenderInterval[];
   buildings: ProjectBuildingOutcome[];

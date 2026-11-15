@@ -1,9 +1,10 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
+import { editedNetwork, type SourceWays } from './project-roadnet';
+import { KIND } from './structures';
 import { evaluate, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
-import type { ProjectDesign, RoadSpec, RouteDesign, XYZ } from './project';
-import type { RoadNet } from './roadnet';
+import type { ProjectDesign, RoadSpec, XYZ } from './project';
 import { ringWorks, tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
 import { ROAD_CLASSES } from './data/urban';
@@ -21,31 +22,16 @@ export type ProjectRoadEvaluation =
       | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 
 /** Legacy road-net way of each mapped source (pack sidecar `legacyNetIndex`), to leave a rebuilt
- * stretch out of the network its own replacement is checked against. */
-export type SourceWays = ReadonlyMap<string, number>;
-const cutNets: { key: string; roads: RoadNet; base: RoadNet }[] = [];
-/** The existing network without the stretches this route rebuilds (bounded cache: drags reuse it). */
-function networkWithout(roads: RoadNet, route: RouteDesign, sourceWays: SourceWays | undefined): RoadNet | null {
-  const intervals = route.source?.intervals ?? [];
-  if (intervals.length !== 1) return null;
-  const way = sourceWays?.get(intervals[0].sourceId);
-  if (way === undefined) return null;
-  // Interval ends are the route's end anchors (promotion invariant); measured on the legacy way itself.
-  const a = route.endpoints.a.position, b = route.endpoints.b.position;
-  const da = roads.wayStation(way, a.x, a.y), db = roads.wayStation(way, b.x, b.y);
-  const key = `${way}:${Math.min(da, db).toFixed(2)}:${Math.max(da, db).toFixed(2)}`;
-  const hit = cutNets.find(c => c.key === key && c.base === roads);
-  if (hit) return hit.roads;
-  const cut = roads.without([{ way, d0: Math.min(da, db), d1: Math.max(da, db) }]);
-  cutNets.unshift({ key, roads: cut, base: roads }); cutNets.length = Math.min(cutNets.length, 4);
-  return cut;
-}
+ * stretch out of the network every road is checked against. */
+export type { SourceWays } from './project-roadnet';
 /** Cross-sections the road kernel prices for each legal class (S 7.5 for class II/III, S 9.5 for class I/II,
  * S 11.5 for class I); the legal class itself selects no other rule in this kernel. */
 const legalClassFits = (spec: RoadSpec) => ({ 'S7.5': ['II', 'III'], 'S9.5': ['I', 'II'], 'S11.5': ['I'] } as Record<string, string[]>)[spec.crossSection]?.includes(spec.legalClass) ?? false;
 
 export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, routeId: string,
   objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue'> & { sourceWays?: SourceWays;
+    /** Heights where a higher-ranking road's crossing holds this road (EvalOptions.holds). */
+    holds?: EvalOptions['holds'];
     /** Ends on another designed road follow that road's CURRENT line (its nearest point and height). */
     ends?: { a?: XYZ; b?: XYZ } } = {}): ProjectRoadEvaluation {
   const route = project.routes.find(r => r.id === routeId);
@@ -58,14 +44,17 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (project.objectData !== objectData || route.endpoints.a.binding !== 'resolved' || route.endpoints.b.binding !== 'resolved')
     return { status: 'incomplete', reason: 'unresolved-binding' };
   if (route.endpoints.a.tangent || route.endpoints.b.tangent) return { status: 'incomplete', reason: 'unimplemented-tangent' };
-  // A rebuilt stretch is engineered against the network without its own old stretch; it needs the
-  // sidecar's link to the legacy road net, and its replacement is not priced yet (C1 b).
+  // Every road is checked against the network as the player edited it: rebuilt stretches gone, the
+  // designed roads it crosses present (project-roadnet.ts). A rebuilt stretch needs the sidecar's link.
   let roads = ctx.roads, sourceWay: number | undefined;
   if (route.source) {
     sourceWay = options.sourceWays?.get(route.source.intervals[0]?.sourceId ?? '');
-    const cut = route.role === 'auxiliary' && ctx.roads ? networkWithout(ctx.roads, route, options.sourceWays) : null;
-    if (!cut) return { status: 'incomplete', reason: 'source-needs-network' };
-    roads = cut;
+    if (route.role !== 'auxiliary' || !ctx.roads || sourceWay === undefined) return { status: 'incomplete', reason: 'source-needs-network' };
+  }
+  if (ctx.roads) {
+    const edited = editedNetwork(ctx.roads, project, [route], options.sourceWays);
+    if (!edited) return { status: 'incomplete', reason: 'source-needs-network' };
+    roads = edited.roads;
   }
   if (route.alignment.kind !== 'pi' || !['auto', 'manual'].includes(route.alignment.vertical.kind)) return { status: 'incomplete', reason: 'unsupported-alignment' };
   const mission = route.role === 'mission';
@@ -83,10 +72,13 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const goal = mission ? goals[0] : undefined;
   if (goal?.demand && goal.demand.kind !== 'road') return { status: 'incomplete', reason: 'mission-needs-network' };
   for (const c of route.alignment.controls.crossings ?? []) {
-    if (c.target.kind !== 'legacy-way') return { status: 'incomplete', reason: 'unsupported-crossing' };
-    if (c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
+    if (c.target.kind !== 'legacy-way' && c.target.kind !== 'route') return { status: 'incomplete', reason: 'unsupported-crossing' };
+    if (c.target.kind === 'legacy-way' && c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
   }
   const design = legacyDesignForRoute(project, routeId);
+  // On its bridge over a higher-ranking road this road is that bridge (the player's own structures win).
+  const decks = (options.holds ?? []).flatMap(h => h.bridge ? [{ s0: h.bridge[0], s1: h.bridge[1], kind: KIND.bridge }] : []);
+  if (decks.length) design.structureOverrides = [...decks, ...design.structureOverrides ?? []];
   const a = options.ends?.a ?? route.endpoints.a.position, b = options.ends?.b ?? route.endpoints.b.position;
   // A ground-level end keeps the kernel's own terrain sample at its end station (legacy, bit-exact);
   // only an explicit non-ground XYZ (e.g. another road's deck) overrides it.

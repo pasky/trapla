@@ -100,17 +100,56 @@ export class RoadNet {
    * existing road is not a road its own replacement crosses. Existing way indices keep their meaning
    * (the part before d0 keeps the index); the part after d1 is appended as a new way. */
   without(cuts: readonly { way: number; d0: number; d1: number }[]): RoadNet {
-    const ways = this.ways.slice();
-    for (const cut of cuts) {
-      const w = ways[cut.way];
-      if (!w || !(cut.d1 > cut.d0)) continue;
-      const total = this.wayPath(cut.way, 0, Infinity).at(-1)?.d ?? 0;
-      const piece = (start: number, end: number) => [w[0], ...this.wayPath(cut.way, start, end).flatMap(p => [p.x, p.y])];
-      const before = cut.d0 > 0.01 ? piece(0, cut.d0) : null, after = cut.d1 < total - 0.01 ? piece(cut.d1, total) : null;
-      ways[cut.way] = before && before.length >= 5 ? before : [w[0]];
-      if (after && after.length >= 5) ways.push(after);
+    return this.edited(cuts, []);
+  }
+  /** Ways in the pack's network (designed roads of an edited network are numbered from here). */
+  get wayCount(): number { return this.ways.length; }
+  /** The network as the player edited it: rebuilt stretches cut out (see `without`) and designed roads
+   * added as ways of their class. Every pack way keeps its index; `extra[k]` is way `wayCount + k`;
+   * the parts after the cuts follow them. */
+  edited(cuts: readonly { way: number; d0: number; d1: number }[], extra: readonly { cls: string; xy: readonly number[] }[]): RoadNet {
+    const cls = this.clsNames.slice();
+    const clsIndex = (name: string) => { let i = cls.indexOf(name); if (i < 0) { i = cls.length; cls.push(name); } return i; };
+    const ways = [...this.ways, ...extra.map(e => [clsIndex(e.cls), ...e.xy])];
+    // Several cuts of one way: what is left between them; the first piece keeps the way's index.
+    const byWay = new Map<number, [number, number][]>();
+    for (const cut of cuts) if (this.ways[cut.way] && cut.d1 > cut.d0) {
+      let list = byWay.get(cut.way); if (!list) byWay.set(cut.way, list = []);
+      list.push([cut.d0, cut.d1]);
     }
-    return new RoadNet({ cls: this.clsNames as string[], ways });
+    for (const [way, list] of byWay) {
+      const w = this.ways[way], total = this.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
+      const piece = (start: number, end: number) => [w[0], ...this.wayPath(way, start, end).flatMap(p => [p.x, p.y])];
+      const kept: number[][] = [];
+      let at = 0;
+      for (const [d0, d1] of list.sort((p, q) => p[0] - q[0])) {
+        if (d0 > at + 0.01) kept.push(piece(at, d0));
+        at = Math.max(at, d1);
+      }
+      if (at < total - 0.01) kept.push(piece(at, total));
+      const pieces = kept.filter(p => p.length >= 5);
+      // the part before the first cut keeps the index (a cut from the way's start leaves it empty)
+      const first = list[0][0] > 0.01 ? pieces.shift() : undefined;
+      ways[way] = first ?? [w[0]];
+      ways.push(...pieces);
+    }
+    const net = new RoadNet({ cls, ways });
+    if (extra.length) net.designedWays = { from: this.ways.length, to: this.ways.length + extra.length };
+    return net;
+  }
+  /** Ways `from` ≤ way < `to` are designed roads of the project (see project-roadnet.ts). */
+  designedWays?: { from: number; to: number };
+  isDesigned(way: number): boolean { return !!this.designedWays && way >= this.designedWays.from && way < this.designedWays.to; }
+  private groundNet?: RoadNet;
+  /** The same network without designed roads: what earthworks, walls and relocations deal with (designed
+   * roads meet each other at crossings and junctions, never as relocated existing roads). */
+  get ground(): RoadNet {
+    if (!this.designedWays) return this;
+    if (!this.groundNet) {
+      const { from, to } = this.designedWays;
+      this.groundNet = new RoadNet({ cls: this.clsNames as string[], ways: this.ways.map((w, i) => i >= from && i < to ? [w[0]] : w) });
+    }
+    return this.groundNet;
   }
   /** Absolute distance along a way at its nearest point, for interval subtraction and real tie-ins. */
   wayStation(way: number, x: number, y: number): number {

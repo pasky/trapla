@@ -2,7 +2,7 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
+import { autoProfile, CLEARANCE_MARGIN, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
@@ -184,6 +184,12 @@ export interface EvalOptions {
   sharedCrossings?: { own: true } | { own: false; from: readonly CrossingResult[] };
   /** Railway: trains per period by type and speed (noise source); none = a silent, unused line. */
   railTraffic?: readonly RailTrafficGroup[];
+  /** Where a higher-ranking designed road's crossing holds this road: Auto keeps the grade between
+   * `min` and `max` (absolute) at station `s` (low enough under its bridge, on its deck, at its level
+   * in a junction). By-hand heights are the player's. */
+  holds?: readonly { s: number; min: number; max: number;
+    /** its bridge over the other road: this road is a bridge over that span (project-road.ts) */
+    bridge?: [number, number] }[];
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -616,6 +622,16 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         } else if (ROAD_CLASSES[c.cls].noAtGrade) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
       }
     }
+    for (const hold of opts.holds ?? []) {
+      // The search keeps CLEARANCE_MARGIN inside each bound: a two-sided band is widened by it, so a
+      // band of ±0.5 m is aimed at its middle rather than infeasible.
+      const both = hold.min > -Infinity && hold.max < Infinity ? CLEARANCE_MARGIN : 0;
+      const i0 = Math.max(0, Math.min(n - 2, Math.floor(hold.s / ds)));
+      for (const i of [i0, i0 + 1]) {
+        if (hold.min > -Infinity) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], hold.min - both - ground[i]);
+        if (hold.max < Infinity) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], hold.max + both - ground[i]);
+      }
+    }
     const apOpt = {
       endpointElevations: opts.endpointElevations,
       maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
@@ -710,7 +726,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const retention: RetainingPlan = preview ? {
     walls: [], perCell: new Float64Array(n), landPerCell: new Float64Array(n), forcedBridge: new Uint8Array(n), forcedTunnel: new Uint8Array(n),
     wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [],
-  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays);
+  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads?.ground, manualStructures, water, retainingMemo, waterElevation, crossingWays);
   work('retaining', retainingStart);
   const dec = decisionPrices(materialValue);
   const cutP = dec.cutPerM3, fillP = dec.fillPerM3;
@@ -776,7 +792,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const roadZ = roadS.length ? elevations(prof, roadS) : new Float64Array(0);
   const crossings: CrossingResult[] = roadX.map((c, k) => ({
     s: c.s, i: Math.min(n - 1, Math.round(c.s / ds)), x: c.x, y: c.y, cls: c.cls, roadId: c.way,
-    h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0,
+    h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0, ...(ctx.roads?.isDesigned(c.way) ? { designed: true as const } : {}),
   }));
   for (const c of crossings) {
     const choice = crossingChoice(c.roadId!, crossingOverrides);
@@ -961,7 +977,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const joinedAt = (i: number) => (opts.leftJoined ?? []).some(r => st.s[i] >= r.s0 && st.s[i] <= r.s1);
   // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
   const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * sec.dayR[i] : v) : width;
-  const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false);
+  const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
+    ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined);
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed).
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const len = Math.hypot(q.x - p.x, q.y - p.y);
@@ -1003,7 +1020,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
   });
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
-    ...(endJunctions.length ? { junctions: endJunctions } : {}) }, terrain, ctx.roads, crossings, water,
+    ...(endJunctions.length ? { junctions: endJunctions } : {}) }, terrain, ctx.roads?.ground, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);

@@ -16,6 +16,10 @@ import { createRailNoiseModel } from './rail-noise';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 import * as dm from './detmath';
+import { draws, editedNetwork, lineStation, planLine, registerNet } from './project-roadnet';
+import type { CrossingResult } from './crossings';
+import { CROSSING_RULES } from './data/urban';
+import type { EvalOptions } from './evaluate';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Combined noise of several roads (C1 c): answers each road's per-storey energy at a house from its
@@ -77,21 +81,31 @@ const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectI
     rule: 'Game rule: noise and capacity depend on traffic, so a road without traffic cannot be priced.' } },
 };
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
-  preview = false, materialValue?: number, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ }): { route: RouteResult; issues: ProjectIssue[];
+  preview = false, materialValue?: number, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ },
+  holds?: EvalOptions['holds']): { route: RouteResult; issues: ProjectIssue[];
     junctionEnds: ('a' | 'b')[]; replacement?: Replacement; ringWorks?: ReplacementWork[] } {
   const corridor = route.kind === 'motorway' ? corridorOfRoute(snapshot.design, route.id) : undefined;
   let evaluated: CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
+  // motorways and railways are checked against the network as the player edited it too
+  const edited = (owners: RouteDesign[]) => {
+    const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays) : null;
+    return net ? { ...ctx.legacy, roads: net.roads } : ctx.legacy;
+  };
   if (corridor) {
     let cached = corridors.get(corridor.id);
     // A drag preview of one separate direction evaluates only that direction.
-    if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(ctx.legacy, snapshot.design, corridor.id, ctx.environment.objectData,
-      { preview, materialValue, ...(preview ? { only: route.id } : {}) }));
+    if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(edited(snapshot.design.routes.filter(r => r.id === corridor.children.forward || r.id === corridor.children.reverse)),
+      snapshot.design, corridor.id, ctx.environment.objectData, { preview, materialValue, ...(preview ? { only: route.id } : {}) }));
     evaluated = cached;
-  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
+  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(edited([route]), snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
   else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays,
-    ...(ends ? { ends } : {}) });
+    ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}) });
   const road = route.kind === 'road' && !corridor && evaluated.status === 'evaluated' ? evaluated as Extract<ReturnType<typeof evaluateProjectRoad>, { status: 'evaluated' }> : null;
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
+  // the kernel names the mission's ends A and B; every other road's card and map say its start and end
+  if (legacy && route.role !== 'mission') for (const v of legacy.violations) {
+    v.title = endWords(route, v.title); v.fix = endWords(route, v.fix); if (v.detail) v.detail = endWords(route, v.detail);
+  }
   return { route: { routeId: route.id, revision: route.revision,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
     surface: legacy ? roadSurface(route, legacy) : referenceRoadSurface(ctx.legacy, route), geometry: null,
@@ -104,6 +118,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
 }
 export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, materialValue?: number): RouteResult {
   assertProjectDesign(snapshot.design);
+  if (ctx.legacy.roads) registerNet(snapshot.design.objectData, ctx.legacy.roads.wayCount);
   const route = snapshot.design.routes.find(r => r.id === routeId); if (!route) throw new Error('Unknown preview route');
   return routeProposal(ctx, snapshot, route, true, materialValue).route;
 }
@@ -205,12 +220,20 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   const ringsOf = new Map<string, ReplacementWork[]>();
   // A side road ending on another designed road follows that road's current line: the joined road is
   // evaluated first (dependency order, stable otherwise). A cycle of such ends is not built yet.
-  const hostOf = (r: RouteDesign) => [r.endpoints.a.anchor, r.endpoints.b.anchor].flatMap(x => x.kind === 'route' ? [x.routeId] : []);
+  // A road crossed by a higher-ranking road follows that road's crossing (project-roadnet.ts): the owner first.
+  const hostOf = (r: RouteDesign) => [r.endpoints.a.anchor, r.endpoints.b.anchor].flatMap(x => x.kind === 'route' ? [x.routeId] : [])
+    .concat(design.routes.filter(o => draws(design, o, r)).map(o => o.id));
   const order: RouteDesign[] = [], placed = new Set<string>();
   for (let pass = 0; pass <= design.routes.length && order.length < design.routes.length; pass++)
     for (const r of design.routes) if (!placed.has(r.id) && hostOf(r).every(h => placed.has(h) || !design.routes.some(q => q.id === h))) { order.push(r); placed.add(r.id); }
+  if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
+  /** where a higher-ranking road's crossing holds a designed road (filled as owners are evaluated) */
+  const holdsOf = new Map<string, Hold[]>(), seenOwners = new Set<Result>();
   const cyclic = design.routes.filter(r => !placed.has(r.id));
   const legacyOf = new Map<string, Result>();
+  const ownWorks = new Map<string, ReplacementWork[]>();
+  /** where two designed roads meet in one work (a junction, a crossing): its land is that work's */
+  const designedJunctions = new Map<string, { routeId: string; x: number; y: number; r: number }[]>();
   /** ends on another designed road: its nearest point and height now */
   const followEnds = (r: RouteDesign) => {
     const out: { a?: XYZ; b?: XYZ } = {};
@@ -223,8 +246,41 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     return out.a || out.b ? out : undefined;
   };
   for (const route of [...order, ...cyclic]) {
-    const proposal = routeProposal(ctx, snapshot, route, false, undefined, corridorCache, route.kind === 'road' ? followEnds(route) : undefined);
+    const holds = holdsOf.get(route.id) ?? [];
+    const proposal = routeProposal(ctx, snapshot, route, false, undefined, corridorCache, route.kind === 'road' ? followEnds(route) : undefined,
+      holds.map(({ s, min, max, bridge }) => ({ s, min, max, ...(bridge ? { bridge } : {}) })));
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
+    const own = proposal.route.legacy;
+    if (own && holds.length) {
+      const { violations, credits } = heldChecks(own, holds);
+      if (violations.length) { own.violations.push(...violations); own.valid = false; }
+      if (credits.length) ownWorks.set(route.id, [...ownWorks.get(route.id) ?? [], ...credits]);
+    }
+    // the designed roads this road crosses: each follows its crossing's height
+    if (own && ctx.legacy.roads && !seenOwners.has(own)) {
+      seenOwners.add(own);
+      const corridorKids = corridorOfRoute(design, route.id), owners = corridorKids
+        ? design.routes.filter(r => r.id === corridorKids.children.forward || r.id === corridorKids.children.reverse) : [route];
+      const net = editedNetwork(ctx.legacy.roads, design, owners, ctx.sourceWays);
+      for (const c of own.crossings) {
+        const crossedId = c.roadId !== undefined ? net?.designed.get(c.roadId) : undefined, crossed = design.routes.find(r => r.id === crossedId);
+        if (!crossed) continue;
+        c.crossedRoute = { id: crossed.id, name: crossed.name };
+        const hold = holdAt(route, own, c, crossed, ctx.legacy.terrain.heightAt(c.x, c.y));
+        let list = holdsOf.get(crossed.id); if (!list) holdsOf.set(crossed.id, list = []);
+        // a split motorway's two directions share one crossing structure
+        if (!hold || list.some(h => Math.abs(h.s - hold.s) < 30)) continue;
+        list.push(hold);
+        // the crossing's land is the owner's work: the two roads do not share land there
+        // (its earthworks around the crossing, measured along an oblique crossed road, and any ramps)
+        let wide = 0;
+        for (let q = 0; q < own.n; q++) if (Math.abs(own.s[q] - c.s) <= ZONE_ALONG) wide = Math.max(wide, own.cell.width[q] / 2);
+        const reach = wide / Math.max(0.3, crossingSine(own, c, hold.line, hold.s)) + ((c.approachLength ?? 0) + (c.span ?? 0)) / 2
+          + (ROAD_CLASSES[c.cls]?.width ?? 7.5) + INDEPENDENCE_SCREEN.clearance;
+        let zones = designedJunctions.get(crossed.id); if (!zones) designedJunctions.set(crossed.id, zones = []);
+        for (const o of owners) zones.push({ routeId: o.id, x: c.x, y: c.y, r: reach });
+      }
+    }
     defineRoute(result.routes, route.id, proposal.route);
     if (proposal.route.legacy) engineered.push({ route, legacy: proposal.route.legacy });
     for (const end of proposal.junctionEnds) builtJunctions.add(`${route.id}:${end}`);
@@ -233,10 +289,12 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     for (const i of proposal.issues) { result.issues.push(i); result.cost.unpriced.push({ routeId: route.id, reason: i.code }); }
     if (!proposal.issues.length && proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
   }
+  // A rebuilt stretch's old road is gone from the map as soon as its new line is engineered against the
+  // network without it, priced or not: every road is checked against the network as the player edited it.
+  for (const route of design.routes) if (route.source && replacements.has(route.id)) result.acceptedReplacements.push(...route.source.intervals.map(i => ({ ...i })));
   // Junctions where a side road meets another designed road: built and billed by the side road (C1 c),
   // checked against the joined road's current design. Each road's other junctions (and ends) count.
-  const ownWorks = new Map<string, ReplacementWork[]>(), junctionsOn = new Map<string, number[]>();
-  const designedJunctions = new Map<string, { routeId: string; x: number; y: number; r: number }[]>();
+  const junctionsOn = new Map<string, number[]>();
   for (const { route, legacy } of engineered) for (const end of ['a', 'b'] as const) {
     const anchor = route.endpoints[end].anchor;
     if (anchor.kind !== 'route' || cyclic.includes(route)) continue;
@@ -308,6 +366,9 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     .some(j => j.routeId === c.routeIds[1 - k] && Math.hypot(j.x - c.at.x, j.y - c.at.y) < j.r));
   for (const c of routeContacts(surfaces, (a, b) => corridorOf.has(a) && corridorOf.get(a) === corridorOf.get(b))) {
     if (atJunction(c)) continue;
+    // a crossing the higher-ranking road builds (bridge, its bridge over us, underpass, junction)
+    if (c.kind === 'crossing' && c.routeIds.some((id, k) => (legacyOf.get(id)?.crossings ?? [])
+      .some(x => x.crossedRoute?.id === c.routeIds[1 - k] && Math.hypot(x.x - c.at.x, x.y - c.at.y) < 30))) continue;
     result.issues.push(contactIssue(c)); unprice(c.routeIds, contactIssue(c).code);
   }
   const missionRoutes = design.routes.filter(r => r.role === 'mission' && unitOf(r) === r.id || design.corridors.some(c => c.children.forward === r.id && r.role === 'mission'));
@@ -425,7 +486,6 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     if (unit.members.length > 1) result.cost.shared += own; else defineRoute(result.cost.routes, unit.route.id, own);
     total += own; valid &&= unit.valid;
     for (const item of result.works.items) if (unit.members.includes(item.owner.id)) item.accepted = true;
-    for (const { route } of unit.parts) if (route.source && replacements.has(route.id)) result.acceptedReplacements.push(...route.source.intervals.map(i => ({ ...i })));
     result.issues.push(...unit.issues);
     const outcomes = unit.parts.map(p => routeOutcome(ctx, design, p.route, p.legacy));
     result.buildings.push(...mergeBuildings(outcomes.flatMap(o => o.buildings)));
@@ -465,4 +525,63 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
     kind: w.kind === 'removal' ? 'formation' : w.kind === 'land' ? 'land' : w.kind === 'noise-wall' ? 'noise' : w.kind === 'buyout' ? 'property' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
     geometry: { meshes: [], terrainMasks: [], measurements: [{ id: `${route.id}:${w.kind}:${k}:length`, meshIds: [], quantity: w.length, unit: 'm' }] },
     cost: w.cost, dependencies: [], accepted: false, label: w.label, at: { x: w.x, y: w.y, s: w.s } };
+}
+
+/** Where a higher-ranking road's crossing holds a designed road: grade band at its station there. */
+interface Hold { s: number; min: number; max: number; owner: RouteDesign; crossing: CrossingResult; line: number[]; bridge?: [number, number] }
+/** Along the owner, how far around a crossing its earthworks belong to that crossing, m (MODELLING ASSUMPTION:
+ * the 150 m crossing billing margin, CROSSING_RULES.endMargin). */
+const ZONE_ALONG = 150;
+/** |sin| of the angle between the owner and the crossed road's plan line at the crossing. */
+function crossingSine(own: Result, c: CrossingResult, line: readonly number[], s: number): number {
+  const k = Math.max(0, Math.min(own.n - 2, c.i)), ox = own.x[k + 1] - own.x[k], oy = own.y[k + 1] - own.y[k];
+  const j = Math.max(0, Math.min(line.length / 2 - 2, Math.round(s / 5))) * 2, lx = line[j + 2] - line[j], ly = line[j + 3] - line[j + 1];
+  return Math.abs(ox * ly - oy * lx) / (Math.hypot(ox, oy) * Math.hypot(lx, ly) || 1);
+}
+const HOLD_TOLERANCE = 0.5; // m, as a grade pin (GRADE_PIN_TOLERANCE)
+/** PROVISIONAL game tolerance, m: how far a crossed road's rounded profile may still miss the band its
+ * crossing holds (the crossing's own ramps carry it the rest of the way). */
+const HOLD_SLACK = 0.5;
+function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, crossed: RouteDesign, ground: number): Hold | null {
+  const line = planLine(crossed), s = lineStation(line, c.x, c.y), z = own.grade[c.i];
+  const at = (min: number, max: number): Hold => ({ s, min, max, owner, crossing: c, line });
+  switch (c.type) {
+    // under our bridge: low enough for the clearance the bridge was built with
+    case 'bridge': return at(-Infinity, z - CROSSING_RULES.overHeight);
+    case 'underpass': return at(ground - HOLD_TOLERANCE, ground + HOLD_TOLERANCE);
+    case 'overbridge': {
+      // on its bridge over us: the deck's height where it crosses our centreline
+      const road = c.geometry?.road; if (!road?.length) return null;
+      const deck = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p);
+      // its own deck over our road: the span measured along the crossed road
+      const half = (c.span ?? 0) / 2 / Math.max(0.3, crossingSine(own, c, line, s));
+      return { ...at(deck.z - HOLD_TOLERANCE, deck.z + HOLD_TOLERANCE), bridge: [Math.max(0, s - half), s + half] };
+    }
+    case 'junction': case 'atGrade': return at(z - HOLD_TOLERANCE, z + HOLD_TOLERANCE);
+    default: return null; // over our tunnel: free
+  }
+}
+const ownerName = (r: RouteDesign) => r.role === 'mission' ? 'our road' : r.name;
+/** A held road that misses its crossing's height (By hand), and the part of it the owner's bridge over
+ * the owner already builds (its deck and ramps are billed with that crossing). */
+function heldChecks(r: Result, holds: readonly Hold[]): { violations: Result['violations']; credits: ReplacementWork[] } {
+  const violations: Result['violations'] = [], credits: ReplacementWork[] = [];
+  for (const h of holds) {
+    if (!(h.s >= 0 && h.s <= r.length)) continue;
+    const k = Math.min(r.n - 2, Math.floor(h.s / r.ds)), t = (h.s - r.s[k]) / r.ds, z = r.grade[k] + (r.grade[k + 1] - r.grade[k]) * t;
+    const name = ownerName(h.owner), type = h.crossing.type;
+    // Auto aims at the band; its vertical curves may round a crest/sag by up to HOLD_SLACK more
+    const off = z > h.max + HOLD_SLACK ? z - h.max : z < h.min - HOLD_SLACK ? z - h.min : 0;
+    if (off) violations.push({ kind: 'crossing', s0: h.s, s1: h.s, basis: 'game',
+      title: type === 'bridge' ? `Too high under ${name}’s bridge` : type === 'overbridge' ? `Not on its bridge over ${name}` : `Not level with ${name} where they cross`,
+      fix: `${off > 0 ? 'Lower' : 'Raise'} this road here by ${Math.abs(off).toFixed(1)} m`,
+      rule: 'Game rule: where roads cross, the crossing is built once, by the more important road; the other road keeps the height it was built for.' } as Result['violations'][number]);
+    if (type !== 'overbridge') continue;
+    const half = ((h.crossing.approachLength ?? 0) + (h.crossing.span ?? 0)) / 2;
+    let credit = 0;
+    for (let q = 0; q < r.n; q++) if (Math.abs(r.s[q] - h.s) <= half) for (const key of [...SHARED_PARTS, 'bridges', 'culverts'] as const) credit += r.parts[key][q];
+    if (credit > 0) credits.push({ kind: 'junction', s: h.s, x: h.crossing.x, y: h.crossing.y, length: 2 * half, cost: -credit,
+      label: `Its ${Math.round(2 * half)} m on the bridge over ${name} are built with that bridge, not twice` });
+  }
+  return { violations, credits };
 }

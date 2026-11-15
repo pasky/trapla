@@ -386,7 +386,7 @@ async function main() {
       }
       const accepted = projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
       what.textContent = `Rebuilt stretch: its line is drawn as bends${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
-        ? 'The old road is gone where the new line leaves it.' : 'The old road stays until the change can be priced.'}`;
+        ? 'The old road is gone where the new line leaves it.' : 'Checking the change…'}`;
     } else {
       const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
         : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);

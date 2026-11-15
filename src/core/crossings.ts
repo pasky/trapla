@@ -79,6 +79,11 @@ export interface CrossingResult {
   requestedType?: CrossingChoice;
   /** Built once with the other direction of a split motorway (that direction owns, bills and draws it). */
   shared?: true;
+  /** The crossed road is a designed road of the project (it draws and bills its own body; this crossing
+   * holds its height there, project-roadnet.ts). */
+  designed?: true;
+  /** That designed road (set by the project evaluator), for the crossing card. */
+  crossedRoute?: { id: string; name: string };
   issues?: CrossingIssue[];
   geometry?: CrossingGeometry;
   /** New grade minus crossed-road ground, m. */
@@ -194,7 +199,10 @@ const rank = Object.fromEntries(Object.keys(ROAD_CLASSES).map((key, i) => [key, 
  * visible and priced, but cannot become anchors for another road. */
 export function resolveCrossings(crossings: CrossingResult[], length: number, kind: ArrayLike<number>,
   footprint: ArrayLike<number>, urban: ArrayLike<number>, billingUrban: ArrayLike<number> = urban,
-  overrides: readonly CrossingOverride[] = [], gradeSeparated: false | 'motorway' | 'railway' = false): CrossingIssue[] {
+  overrides: readonly CrossingOverride[] = [], gradeSeparated: false | 'motorway' | 'railway' = false,
+  /** A designed road of the project (project-roadnet.ts): bridged, passed under or met in a junction,
+   * never cut and rerouted (the player has just drawn it there). */
+  designed: (roadId: number) => boolean = () => false): CrossingIssue[] {
   const issues: CrossingIssue[] = [];
   const issue = (c: CrossingResult, code: CrossingIssue['crossing']['code'], title: string, fix: string,
     actual?: number, required?: number, targetS?: number) => {
@@ -330,7 +338,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     const box = kind[c.i] === KIND.earth && underpassFits(c, footprint[c.i]) ? underpassPrice(c, footprint[c.i], urban[c.i]) : undefined;
     const linkTotal = gap <= CROSSING_RULES.linkMaxReach ? linkCost * surcharge + access : Infinity;
     const overTotal = over.cost * surcharge, boxTotal = box ? box.cost * surcharge : Infinity;
-    if (c.requestedType === 'reconnection' && !target) {
+    if (c.roadId !== undefined && designed(c.roadId)) {
+      if (c.requestedType === 'reconnection') issue(c, 'reach', 'A new road cannot be cut and rerouted', 'Choose "Our bridge over it", "Its bridge over us" or a junction');
+      if (box && boxTotal < overTotal) { c.type = 'underpass'; Object.assign(c, priced(box)); } else { c.type = 'overbridge'; Object.assign(c, over); }
+    } else if (c.requestedType === 'reconnection' && !target) {
       // A grade-separated route has no crossing yet that a cut road could be led to: say so and keep
       // the road over us so the result stays buildable and priced.
       issue(c, 'reach', 'No crossing to reroute it to', 'Choose "Its bridge over us" or an underpass, or first build a bridge or underpass for another road nearby');

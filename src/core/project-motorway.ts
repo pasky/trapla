@@ -1,6 +1,7 @@
 // Paired motorway corridor (M1): ONE engineering evaluation of the common spine, never a sum of
 // two carriageway kernels. Directional children carry identity, operations and acoustic sources;
 // the spine owns the alignment, profile and structure controls (C0 corridor contract).
+import { crossingOverridesOf, crossingTargetsOf } from './project-roadnet';
 import type { Design, EvalContext, EvalOptions, Result } from './evaluate';
 import { evaluate } from './evaluate';
 import { CATEGORIES } from './data/categories';
@@ -46,10 +47,7 @@ export function corridorDesign(project: ProjectDesign, corridor: CorridorDesign)
   if (spine.kind !== 'pi' || (spine.vertical.kind !== 'auto' && spine.vertical.kind !== 'manual')) throw new Error('Spine needs bend controls');
   const v = spine.vertical;
   const { crossings, ...controls } = spine.controls;
-  const crossingOverrides = crossings?.map(c => {
-    if (c.target.kind !== 'legacy-way' || c.target.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
-    return { roadId: c.target.roadId, type: c.choice };
-  });
+  const crossingOverrides = crossings && crossingOverridesOf(project, crossings);
   return structuredClone({ ...controls, category: MOTORWAY_CATEGORY, speed: spec.designSpeed,
     pis: spine.pis, profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [],
     gradePins: v.kind === 'auto' ? v.pins : v.autoPins, crossingOverrides, buildingOverrides: project.buildingOverrides,
@@ -64,7 +62,7 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
   if (d.objectData && d.objectData !== project.objectData) throw new Error('Foreign object binding needs repair');
   const { category: _c, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, ...controls } = structuredClone(d);
   corridor.spine = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
-    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId } })) }) },
+    : { crossings: crossingTargetsOf(project, crossingOverrides) }) },
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
       : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } };
   for (const id of [corridor.children.forward, corridor.children.reverse]) {
@@ -104,8 +102,8 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
   if (project.objectData !== objectData || [corridor.endpoints.a, corridor.endpoints.b].some(e => e.binding !== 'resolved' || e.tangent))
     return { status: 'incomplete', reason: 'unresolved-binding' };
   for (const c of alignments.flatMap(a => a.kind === 'pi' ? a.controls.crossings ?? [] : [])) {
-    if (c.target.kind !== 'legacy-way') return { status: 'incomplete', reason: 'unsupported-crossing' };
-    if (c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
+    if (c.target.kind !== 'legacy-way' && c.target.kind !== 'route') return { status: 'incomplete', reason: 'unsupported-crossing' };
+    if (c.target.kind === 'legacy-way' && c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
   }
   const goals = project.mission.connections, goal = goals[0];
   const ends = [corridor.endpoints.a.anchor, corridor.endpoints.b.anchor];
@@ -262,10 +260,7 @@ export function carriagewayDesign(project: ProjectDesign, route: RouteDesign): D
   const a = route.alignment, v = a.vertical;
   if (v.kind !== 'auto' && v.kind !== 'manual') throw new Error('Unsupported vertical authority');
   const { crossings, ...controls } = a.controls;
-  const crossingOverrides = crossings?.map(c => {
-    if (c.target.kind !== 'legacy-way' || c.target.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
-    return { roadId: c.target.roadId, type: c.choice };
-  });
+  const crossingOverrides = crossings && crossingOverridesOf(project, crossings);
   return structuredClone({ ...controls, category: CARRIAGEWAY_CATEGORY, speed: route.specification.designSpeed, pis: a.pis,
     profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [], gradePins: v.kind === 'auto' ? v.pins : v.autoPins,
     crossingOverrides, buildingOverrides: project.buildingOverrides, objectData: project.objectData });
@@ -276,7 +271,7 @@ export function replaceCarriagewayFromDesign(project: ProjectDesign, routeId: st
   if (d.category !== CARRIAGEWAY_CATEGORY || !designSpeeds(d.category).includes(d.speed)) throw new Error('Wrong category for a motorway direction');
   const { category: _c, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, ...controls } = structuredClone(d);
   route.alignment = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
-    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId } })) }) },
+    : { crossings: crossingTargetsOf(project, crossingOverrides) }) },
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
       : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } };
   // One design speed for the motorway: both directions follow.

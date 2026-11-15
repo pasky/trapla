@@ -110,7 +110,8 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     line(g.road, g.width); line(g.links?.[0], g.width); line(g.links?.[1], g.width);
     line(g.turnarounds, g.width, g.turnaroundRadius ?? 0);
   };
-  for (const c of result.crossings) geometry(c.geometry);
+  // a designed road under/over our crossing is its own road (its own envelope), not ours
+  for (const c of result.crossings) if (!c.designed) geometry(c.geometry);
   for (const f of result.footprintConflicts) {
     geometry(f.geometry);
     for (const old of [f.original, ...(f.originals ?? [])]) line(old, f.geometry?.width ?? 0);
