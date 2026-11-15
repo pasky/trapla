@@ -125,6 +125,8 @@ export interface NoiseModel extends ReturnType<typeof noiseSource> {
   contour: number;
   /** Interpolated loss table (0.5 m range × 0.5 m height); built once per evaluation. */
   loss: (slant: number, height: number) => number;
+  /** Receiver limits the excess refers to; absent = road limits (NOISE). Railway: new-line 60 / 55 dB. */
+  limits?: { dayDb: number; nightDb: number };
 }
 
 function effectiveHeight(height: number): number {

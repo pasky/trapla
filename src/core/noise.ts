@@ -400,7 +400,7 @@ export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<num
     }
   }
   return { stride, stations, offsets, start, excess, receiver, controlling: model.controlling,
-    limit: model.controlling === 'night' ? NOISE.limitNightDb : NOISE.limitDayDb };
+    limit: model.controlling === 'night' ? model.limits?.nightDb ?? NOISE.limitNightDb : model.limits?.dayDb ?? NOISE.limitDayDb };
 }
 
 export interface WallStretch {

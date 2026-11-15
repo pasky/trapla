@@ -8,7 +8,8 @@ import { routeContacts, screenIndependence, type RouteContact } from './project-
 import { evaluateProjectRoad } from './project-road';
 import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
-import { evaluateProjectRailway, railwayPendingIssues, type RailwayEvaluation } from './project-railway';
+import { evaluateProjectRailway, railTraffic, type RailwayEvaluation } from './project-railway';
+import { createRailNoiseModel } from './rail-noise';
 import { corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 
@@ -97,7 +98,9 @@ function routeOutcome(ctx: ProjectEvalContext, design: ProjectDesign, route: Rou
   // controlling excess and fixed source offset. No multi-source inference is made from excess.
   const corridor = route.kind === 'motorway' ? corridorOfRoute(design, route.id) : undefined;
   const op = corridor ? corridorOperations(design, corridor) : route.specification.kind === 'road' ? route.specification.operations : null;
-  const source = op ? noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare, ...(corridor ? { profile: 'motorway' as const } : {}) }) : null;
+  const rail = route.kind === 'railway' ? createRailNoiseModel(railTraffic(route)) : null;
+  const source = rail ?? (op ? noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare, ...(corridor ? { profile: 'motorway' as const } : {}) }) : null);
+  const limits = rail?.limits ?? { dayDb: NOISE.limitDayDb, nightDb: NOISE.limitNightDb };
   const levels = (excess: number) => source && Number.isFinite(source.excessDb) ? {
     day: source.dayDb - source.excessDb + excess, night: source.nightDb - source.excessDb + excess,
   } : { day: -Infinity, night: -Infinity };
@@ -105,8 +108,8 @@ function routeOutcome(ctx: ProjectEvalContext, design: ProjectDesign, route: Rou
     const raw = levels(receiver.raw), built = levels(receiver.mitigated);
     const height = NOISE.receiverHeight + ((ctx.legacy.buildings?.levels[receiver.j] ?? 1) - 1) * NOISE.storeyHeight;
     return { buildingIndex: receiver.j, height, contributions: [{ sourceId: route.acousticSourceId, routeId: route.id,
-      buildingIndex: receiver.j, height, dayEnergy: 10 ** (raw.day / 10), nightEnergy: 10 ** (raw.night / 10), policy: 'legacy-road' }],
-      dayDb: built.day, nightDb: built.night, dayLimit: NOISE.limitDayDb, nightLimit: NOISE.limitNightDb,
+      buildingIndex: receiver.j, height, dayEnergy: 10 ** (raw.day / 10), nightEnergy: 10 ** (raw.night / 10), policy: rail ? 'cnossos-rail' : 'legacy-road' }],
+      dayDb: built.day, nightDb: built.night, dayLimit: limits.dayDb, nightLimit: limits.nightDb,
       action: receiver.status === 'bought' ? 'buy' as const : 'retain' as const };
   });
   return { buildings, receivers };
@@ -185,11 +188,6 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const ledger = evaluation.ledger;
     unit.total -= ledger.credit; unit.valid &&= ledger.violations.length === 0;
     unit.issues.push(...routeIssues(unit.parts[0].route, { violations: ledger.violations } as Result));
-  }
-  // A railway is engineered and billed, but its noise and freight grade cannot be checked yet.
-  for (const route of design.routes) if (route.kind === 'railway' && result.routes[route.id].legacy) {
-    result.issues.push(...railwayPendingIssues(route.id));
-    if (!result.cost.unpriced.some(u => u.routeId === route.id)) result.cost.unpriced.push({ routeId: route.id, reason: 'railway-checks-pending' });
   }
   // Keep each road's own bill and problems visible even while the project cannot be priced.
   for (const unit of priced) for (const { route, legacy } of unit.parts) defineRoute(result.cost.alone, route.id, legacy.cost.total);

@@ -31,6 +31,7 @@ import {
   type EarthEdges, type NoiseFootprint, type NoiseReceiver, type WallStretch,
 } from './noise';
 import { createNoiseModel } from './road-noise';
+import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
 import { crossingWallGaps } from './crossing-walls';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
@@ -173,6 +174,8 @@ export interface EvalOptions {
    * left (one common formation). Houses on that side belong to the other direction's noise check and
    * no wall can stand in the median there. */
   leftJoined?: readonly { s0: number; s1: number }[];
+  /** Railway: trains per period by type and speed (noise source); none = a silent, unused line. */
+  railTraffic?: readonly RailTrafficGroup[];
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -993,7 +996,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const noiseBuyouts = new Float64Array(n);
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
-  const noiseModel = createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare, ...(cat.mode === 'motorway' ? { profile: 'motorway' as const } : {}) });
+  // Railway: CNOSSOS-EU train source and line propagation (rail-noise.ts) against the new-line limits.
+  const noiseModel = cat.mode === 'railway' ? createRailNoiseModel(opts.railTraffic ?? [])
+    : createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare, ...(cat.mode === 'motorway' ? { profile: 'motorway' as const } : {}) });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
@@ -1001,9 +1006,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   for (const r of opts.leftJoined ?? []) for (let i = 0; i < n; i++) if (st.s[i] >= r.s0 && st.s[i] <= r.s1) { joinedLeft[i] = 1; wallGaps.L[i] = 1; }
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
-  // Railway: no sourced train-noise emission yet (research/32): no receivers, walls or buyouts; the
-  // project lists it as not checked instead of pretending the line is quiet.
-  if (noiseBuildings && !preview && cat.mode !== 'railway') {
+  if (noiseBuildings && !preview) {
     const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
     const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
     for (let i = 0; i < n; i++) {

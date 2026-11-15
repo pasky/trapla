@@ -1,8 +1,11 @@
 // Railway routes (M1): a new conventional electrified line through the route kernel with the railway
-// policy rows (data/categories.ts R1/R2: track geometry, 12.5 ‰ grade, SPOŽES prices, no level crossings).
+// policy rows (data/categories.ts R1/R2: track geometry, 12.5 ‰ grade, SPOŽES prices, no level crossings)
+// and CNOSSOS-EU train noise (rail-noise.ts) against the new-line limits 60 / 55 dB.
 import { evaluate, type Design, type EvalContext, type EvalOptions, type Result } from './evaluate';
+import { FREIGHT_TRAIN, PASSENGER_EMU, RAIL_TRAFFIC_PRIOR, type RailTrafficGroup } from './rail-noise';
+import { modeCapability } from './mode-policy';
 import { designSpeeds } from './data/norms';
-import type { EndpointPair, ProjectDesign, ProjectIssue, RouteDesign } from './project';
+import type { EndpointPair, ProjectDesign, RouteDesign } from './project';
 
 export const RAILWAY_POLICY = 'conventional-new';
 export type RailwayRoute = Extract<RouteDesign, { kind: 'railway' }>;
@@ -43,7 +46,14 @@ export function createRailwayRoute(id: string, name: string, endpoints: Endpoint
   return { id, name, role: 'auxiliary', revision: 0, kind: 'railway', acousticSourceId: `acoustic:${id}`, endpoints: structuredClone(endpoints),
     alignment: { kind: 'pi', pis: [], controls: {}, vertical: { kind: 'auto', pins: [] } },
     specification: { kind: 'railway', policy: RAILWAY_POLICY, designSpeed: speed, gaugeMm: 1435, tracks, electrification: 'AC25kV',
-      operations: { passengerDay: 0, passengerNight: 0, freightDay: 0, freightNight: 0, passengerSpeed: speed, freightSpeed: 100 } } };
+      operations: { ...RAIL_TRAFFIC_PRIOR, passengerSpeed: speed, freightSpeed: 100 } } };
+}
+
+/** The route's trains as noise groups (both directions, PROVISIONAL compositions in rail-noise.ts). */
+export function railTraffic(route: RailwayRoute): RailTrafficGroup[] {
+  const o = route.specification.operations;
+  return [{ train: PASSENGER_EMU, speed: o.passengerSpeed, day: o.passengerDay, night: o.passengerNight },
+    { train: FREIGHT_TRAIN, speed: o.freightSpeed, day: o.freightDay, night: o.freightNight }].filter(g => g.speed > 0 && g.day + g.night > 0);
 }
 
 export type RailwayEvaluation = { status: 'evaluated'; result: Result } | { status: 'incomplete'; reason: 'unsupported-policy' | 'unsupported-alignment' | 'unresolved-binding' };
@@ -51,6 +61,7 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
   options: Pick<EvalOptions, 'preview' | 'materialValue'> = {}): RailwayEvaluation {
   const route = project.routes.find(r => r.id === routeId);
   if (!route || route.kind !== 'railway') throw new Error('Unknown railway');
+  if (!modeCapability('railway').scoring) return { status: 'incomplete', reason: 'unsupported-policy' };
   const s = route.specification;
   if (s.policy !== RAILWAY_POLICY || s.gaugeMm !== 1435 || s.electrification !== 'AC25kV' || !designSpeeds(categoryOf(route)).includes(s.designSpeed))
     return { status: 'incomplete', reason: 'unsupported-policy' };
@@ -59,15 +70,6 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   return { status: 'evaluated', result: evaluate({ ...ctx, a, b }, railwayDesign(project, route),
-    { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, goals: { time: false, capacity: false } }) };
+    { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, railTraffic: railTraffic(route), goals: { time: false, capacity: false } }) };
 }
 
-/** What a railway cannot be checked for yet (shown separately from violations; blocks a project price). */
-export function railwayPendingIssues(routeId: string): ProjectIssue[] {
-  const pending = (code: string, title: string, rule: string): ProjectIssue => ({ code, blocking: 'incomplete', check: 'not-checked',
-    scope: { routeIds: [routeId] }, locations: [],
-    violation: { kind: 'crossing', basis: 'engine', title, fix: 'The railway is shown and billed; its price joins the project once this is checked', rule } });
-  return [
-    pending('rail-noise', 'Train noise is not checked yet', 'Engine limit: no sourced Czech train noise emission data yet (research/32); the line is never treated as quiet.'),
-  ];
-}
