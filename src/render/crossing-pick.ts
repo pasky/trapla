@@ -1,0 +1,91 @@
+import type { CrossingPoint, CrossingResult } from '../core/crossings';
+import { perspectiveFraction } from './route-pick';
+
+type Project = (x: number, y: number, z: number) => { sx: number; sy: number; vis: boolean; depth?: number };
+export interface CrossingHit { crossing: CrossingResult; x: number; y: number; z: number; distance: number }
+interface Segment { a: CrossingPoint; b: CrossingPoint; half: number; crossing: CrossingResult; length: number }
+interface Disk { c: CrossingPoint; radius: number; crossing: CrossingResult }
+
+/** Everything a crossing draws on the map: the crossed road's rebuilt stretch (junction approach,
+ * ramps and deck over our road, underpass box), reroute links and turning heads. Width per path: the
+ * drawn pavement (an underpass box is wider than the road it carries). */
+function owned(c: CrossingResult): { paths: { points: CrossingPoint[]; half: (i: number) => number }[]; disks: { c: CrossingPoint; radius: number }[] } {
+  const g = c.geometry, paths: ReturnType<typeof owned>['paths'] = [], disks: ReturnType<typeof owned>['disks'] = [];
+  if (!g) return { paths, disks };
+  const half = g.width / 2;
+  if (g.road && g.road.length >= 2) {
+    const box = g.underpass, outer = box ? box.width / 2 + box.wall : 0;
+    paths.push({ points: g.road, half: i => box && i >= box.start && i < box.end ? Math.max(half, outer) : half });
+  }
+  for (const link of g.links ?? []) if (link.length >= 2) paths.push({ points: link, half: () => half });
+  // Turning heads: explicit priced disks, else the small drawn heads at severed link starts.
+  if (g.turnaroundRadius !== undefined && Number.isFinite(g.turnaroundRadius) && g.turnaroundRadius > 0)
+    for (const p of g.turnarounds ?? []) disks.push({ c: p, radius: g.turnaroundRadius });
+  else if (c.cls !== 'track') for (const link of g.links ?? []) if (link.length
+    && (g.turnarounds === undefined || g.turnarounds.some(p => Math.hypot(p.x - link[0].x, p.y - link[0].y) < .01)))
+    disks.push({ c: link[0], radius: g.width * .72 });
+  return { paths, disks };
+}
+
+/** Picks a crossing by any geometry it owns, on the drawn width plus `pixels` of slack (the same rule
+ * as mapped roads). World-grid prefilter, exact screen-space test; built once per result. */
+export class CrossingPicker {
+  private source: readonly CrossingResult[] | null = null;
+  private segments: Segment[] = [];
+  private disks: Disk[] = [];
+  private grid = new Map<string, number[]>();
+  private cell = 50;
+  set(crossings: readonly CrossingResult[]) {
+    if (crossings === this.source) return;
+    this.source = crossings; this.segments = []; this.disks = []; this.grid.clear();
+    for (const c of crossings) {
+      if (c.roadId === undefined) continue;
+      const { paths, disks } = owned(c);
+      for (const d of disks) this.add(this.disks.push({ ...d, crossing: c }) - 1, d.c.x - d.radius, d.c.y - d.radius, d.c.x + d.radius, d.c.y + d.radius, true);
+      for (const { points, half } of paths) for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i], length = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+        if (!(length > 0)) continue;
+        const w = half(i - 1);
+        this.add(this.segments.push({ a, b, half: w, crossing: c, length }) - 1,
+          Math.min(a.x, b.x) - w, Math.min(a.y, b.y) - w, Math.max(a.x, b.x) + w, Math.max(a.y, b.y) + w, false);
+      }
+    }
+  }
+  private add(index: number, x0: number, y0: number, x1: number, y1: number, disk: boolean) {
+    const id = disk ? ~index : index;
+    for (let x = Math.floor(x0 / this.cell); x <= Math.floor(x1 / this.cell); x++)
+      for (let y = Math.floor(y0 / this.cell); y <= Math.floor(y1 / this.cell); y++) {
+        const key = `${x}:${y}`, list = this.grid.get(key); if (list) list.push(id); else this.grid.set(key, [id]);
+      }
+  }
+  /** The crossing whose drawn geometry is nearest to the screen point (by distance from its drawn
+   * edge), within `pixels`; `worldX/Y ± metres` bounds the candidates. */
+  at(screenX: number, screenY: number, worldX: number, worldY: number, metres: number, pixels: number, project: Project): CrossingHit | null {
+    const candidates = new Set<number>();
+    for (let x = Math.floor((worldX - metres) / this.cell); x <= Math.floor((worldX + metres) / this.cell); x++)
+      for (let y = Math.floor((worldY - metres) / this.cell); y <= Math.floor((worldY + metres) / this.cell); y++)
+        for (const i of this.grid.get(`${x}:${y}`) ?? []) candidates.add(i);
+    let hit: CrossingHit | null = null, best = pixels;
+    for (const id of candidates) {
+      if (id < 0) {
+        const d = this.disks[~id], c = project(d.c.x, d.c.y, d.c.z), e = project(d.c.x + d.radius, d.c.y, d.c.z), f = project(d.c.x, d.c.y + d.radius, d.c.z);
+        if (!c.vis || !e.vis || !f.vis) continue;
+        const radius = (Math.hypot(e.sx - c.sx, e.sy - c.sy) + Math.hypot(f.sx - c.sx, f.sy - c.sy)) / 2;
+        const edge = Math.hypot(screenX - c.sx, screenY - c.sy) - radius;
+        if (edge <= best) { best = edge; hit = { crossing: d.crossing, x: d.c.x, y: d.c.y, z: d.c.z, distance: Math.max(0, edge) }; }
+        continue;
+      }
+      const seg = this.segments[id], a = project(seg.a.x, seg.a.y, seg.a.z), b = project(seg.b.x, seg.b.y, seg.b.z);
+      if (!a.vis || !b.vis) continue;
+      const dx = b.sx - a.sx, dy = b.sy - a.sy, length2 = dx * dx + dy * dy;
+      const t = length2 ? Math.max(0, Math.min(1, ((screenX - a.sx) * dx + (screenY - a.sy) * dy) / length2)) : 0;
+      const edge = Math.hypot(screenX - a.sx - t * dx, screenY - a.sy - t * dy) - seg.half * Math.sqrt(length2) / seg.length;
+      if (edge > best) continue;
+      const along = perspectiveFraction(t, a.depth, b.depth);
+      best = edge;
+      hit = { crossing: seg.crossing, x: seg.a.x + along * (seg.b.x - seg.a.x), y: seg.a.y + along * (seg.b.y - seg.a.y),
+        z: seg.a.z + along * (seg.b.z - seg.a.z), distance: Math.max(0, edge) };
+    }
+    return hit;
+  }
+}

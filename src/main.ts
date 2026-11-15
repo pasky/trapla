@@ -13,6 +13,7 @@ import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
 import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
+import { CrossingPicker } from './render/crossing-pick';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
 import { SourceEditor } from './ui/source-editor';
@@ -622,6 +623,18 @@ async function main() {
     }
     return hit;
   };
+  /** any drawn geometry a crossing owns (its rebuilt road stretch, reroute links, turning heads,
+   * underpass box), on the drawn width plus the same slack as a mapped road */
+  const crossingPicker = new CrossingPicker();
+  const crossingWorksAt = (clientX: number, clientY: number) => {
+    const r = last;
+    if (!r || !crossingPickPx()) return null;
+    const g = view.pick(clientX, clientY); if (!g) return null;
+    crossingPicker.set(r.crossings);
+    const box = canvasBox();
+    return crossingPicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * view.metresPerPixel), SOURCE_PICK_SLACK_PX,
+      (x, y, z) => view.project(x, y, z));
+  };
   const buildingAt = (clientX: number, clientY: number) => {
     if (!buildingsPickable()) return null;
     const g = view.pick(clientX, clientY);
@@ -645,6 +658,9 @@ async function main() {
     if (c) return { kind: 'crossing', roadId: c.roadId! };
     const hit = routeAt(clientX, clientY, 10);
     if (hit) return { kind: 'route-hit', routeId: hit.routeId, s: hit.s };
+    // a crossing's own works before the rest of the mapped road (whose card is the base road's)
+    const works = crossingWorksAt(clientX, clientY);
+    if (works) return { kind: 'crossing', roadId: works.crossing.roadId! };
     const b = buildingAt(clientX, clientY);
     if (b !== null) return { kind: 'building', j: b };
     const w = extras.wallAt(clientX, clientY);
@@ -745,6 +761,7 @@ async function main() {
       const cross = crossingAt(at.x, at.y);
       const k = cross ? -1 : roadAt(at.x, at.y, 10);
       const building = cross || k >= 0 ? null : buildingAt(at.x, at.y);
+      let works: ReturnType<typeof crossingWorksAt> = null;
       if (cross) {
         cursor = 'pointer'; key = `x${cross.roadId}`;
         if (key !== mapHoverKey) { view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); profile.setHover(cross.s, true); }
@@ -752,7 +769,11 @@ async function main() {
         cursor = 'grab'; key = `r${k}`;
         if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, 'drag to bend'); profile.setHover(r.s[k], true); }
       } else if (routeAt(at.x, at.y, 10)) { cursor = 'pointer'; key = 'other-route'; }
-      else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
+      else if ((works = crossingWorksAt(at.x, at.y))) {
+        const c = works.crossing;
+        cursor = 'pointer'; key = `x${c.roadId}`;
+        if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, ROAD_CLASSES[c.cls].label); profile.setHover(c.s, true); }
+      } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
       else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }
     }

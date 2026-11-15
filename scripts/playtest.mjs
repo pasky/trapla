@@ -212,6 +212,30 @@ try {
   await page.click(`#crossing-choice [data-crossing="${other}"]`); await idle(500);
   ok((await get()).crossingOverrides?.some((o) => o.roadId === xing.roadId && o.type === other), `C: changed to ${other}`);
   await shot('crossing');
+  // the crossed road's own works (rerouted link, rebuilt approach), well away from the crossing point
+  // and from our road: a click there opens the same card
+  await page.keyboard.press('Escape'); await idle(200);
+  const works = await T(() => {
+    const r = window.trapla.result(), box = document.querySelector('#view canvas').getBoundingClientRect();
+    const road = []; for (let i = 0; i < r.n; i += 2) road.push(window.trapla.project(r.x[i], r.y[i], r.grade[i]));
+    for (const c of r.crossings) {
+      const g = c.geometry, mark = window.trapla.project(c.x, c.y, r.grade[c.i]);
+      for (const p of [...(g?.links ?? []), ...(g?.road ? [g.road] : [])]) for (let k = 1; k + 1 < p.length; k++) {
+        const q = window.trapla.project(p[k].x, p[k].y, p[k].z);
+        if (!q.vis || q.sx < 80 || q.sy < 80 || q.sx > box.width - 80 || q.sy > box.height - 80) continue;
+        if (Math.hypot(q.sx - mark.sx, q.sy - mark.sy) < 60 || road.some((o) => o.vis && Math.hypot(o.sx - q.sx, o.sy - q.sy) < 30)) continue;
+        return { roadId: c.roadId, type: c.type, sx: q.sx, sy: q.sy };
+      }
+    }
+    return null;
+  });
+  if (works) {
+    await page.mouse.move(view.x + works.sx, view.y + works.sy); await page.waitForTimeout(250);
+    ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'pointer', `C: the crossed road's works under the mouse show a pointer (${works.type})`);
+    await page.mouse.click(view.x + works.sx, view.y + works.sy); await idle(400);
+    const picked = await sel();
+    ok(picked?.kind === 'crossing' && picked.roadId === works.roadId && await visible('#crossing-choice'), `C: a click on its ${works.type} works, away from the crossing, opens its card`);
+  } else ok(false, 'C: no crossing works on screen to click');
   // a pinned height: drag the profile's line up
   await T(() => window.trapla.profileFit());
   const sPin = await T(() => { const r = window.trapla.result(); for (let s = r.length * 0.8; s > r.length * 0.3; s -= 50) if (!r.crossings.some((c) => Math.abs(c.s - s) < 150) && !r.waterCrossings.some((c) => Math.abs(c.s - s) < 150)) return Math.round(s); return Math.round(r.length * 0.8); });
