@@ -97,6 +97,11 @@ const interactionIssue = (routeIds: string[], code: string, buildingIndex?: numb
     fix: 'Move them further apart to price them together',
     rule: 'Engine limit: roads are priced together only when they share no land, houses, noise or existing road; checking them jointly is not finished.' } });
 
+const endsNowhere = (routeId: string): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'incomplete',
+  scope: { routeIds: [routeId] }, locations: [],
+  violation: { kind: 'crossing', basis: 'game', title: 'Road ends nowhere', fix: 'Connect both ends to a road',
+    rule: 'Game rule: a new road is priced only when both ends join a road or a scenario end.' } });
+
 export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapshot): ProjectResult {
   assertProjectDesign(snapshot.design);
   const design = snapshot.design;
@@ -134,6 +139,10 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     joined.add(r.id); if (e.anchor.kind === 'route') joined.add(e.anchor.routeId);
   }
   if (joined.size) { result.issues.push(issue([...joined][0], 'connection-pending')); unprice([...joined], 'connection-pending'); }
+  // A new road that ends nowhere is not a project: every end must reach a road or a scenario end.
+  for (const r of design.routes) if (r.role !== 'mission' && [r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'free')) {
+    result.issues.push(endsNowhere(r.id)); unprice([r.id], 'road-ends-nowhere');
+  }
   if (design.corridors.length) unprice(design.corridors.flatMap(c => [c.children.forward, c.children.reverse]), 'unsupported-mode');
   if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
   const finish = () => {
@@ -156,6 +165,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     return result;
   }
   // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.
+  // Unreachable in this wave (non-mission roads either end nowhere or have unpriced tie-ins); kept for C1.
   const screen = screenIndependence(priced.map(({ route, legacy }) => {
     const spec = route.specification, op = spec.kind === 'road' ? spec.operations : { aadt: Infinity, speed: Infinity, heavyShare: 1 };
     const halfWidth = spec.kind === 'road' && spec.crossSection !== 'existing' ? CATEGORIES[spec.crossSection].crownWidth / 2 : Infinity;

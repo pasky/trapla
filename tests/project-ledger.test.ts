@@ -6,10 +6,12 @@ import { evaluate } from '../src/core/evaluate';
 import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { makeLegacyProjectContext, projectFromLegacyDesign } from '../src/core/project-legacy';
 import { isScorableProject } from '../src/core/project-protocol';
+import { screenIndependence } from '../src/core/project-ledger';
 import { jargonIn } from '../src/core/terms';
 import { syntheticTerrain } from '../src/core/terrain';
 
 const design = { category: 'S9.5' as const, speed: 90, pis: [], profileMode: 'auto' as const, vpis: [] };
+const op = { aadt: D11_SCENARIO.traffic, speed: 90, heavyShare: 0.15, halfWidth: 4.75 };
 function fixture(buildings?: BuildingIndex) {
   const legacy = { terrain: syntheticTerrain(260, 120, 5, () => 100), scenario: D11_SCENARIO,
     a: { x: 100, y: 250 }, b: { x: 1100, y: 250 }, ...(buildings ? { buildings } : {}) };
@@ -25,21 +27,25 @@ function fixture(buildings?: BuildingIndex) {
   return { ctx, snapshot, side };
 }
 
-it('prices separate roads together only as one coherent project bill', () => {
+it('does not price a road that ends nowhere, but keeps both roads\' own bills and problems visible', () => {
   const { ctx, snapshot, side } = fixture();
   snapshot.design.routes.push(side);
   const project = evaluateProject(ctx, snapshot), [main] = snapshot.design.routes;
-  const alone = [project.routes[main.id].legacy!.cost.total, project.routes.side.legacy!.cost.total];
-  expect(project.cost.unpriced).toEqual([]);
-  expect(project.cost.total).toBe(alone[0] + alone[1]);
-  expect(project.cost.alone).toEqual({ [main.id]: alone[0], side: alone[1] });
-  expect(project.complete).toBe(true);
-  expect(isScorableProject(project)).toBe(project.routes[main.id].legacy!.valid && project.routes.side.legacy!.valid);
-  // Moving the second road onto the first: shared land, nothing added up.
-  side.endpoints.a.position.y = side.endpoints.b.position.y = 262;
-  const overlapping = evaluateProject(ctx, snapshot);
-  expect(overlapping.cost.total).toBeNull(); expect(isScorableProject(overlapping)).toBe(false);
-  expect(overlapping.cost.unpriced.map(u => u.reason)).toEqual(['shared-land', 'shared-land']);
+  expect(project.cost.total).toBeNull(); expect(project.valid).toBe(false); expect(isScorableProject(project)).toBe(false);
+  expect(project.cost.unpriced).toEqual([{ routeId: 'side', reason: 'road-ends-nowhere' }]);
+  expect(project.cost.alone).toEqual({ [main.id]: project.routes[main.id].legacy!.cost.total, side: project.routes.side.legacy!.cost.total });
+  const nowhere = project.issues.find(i => i.code === 'road-ends-nowhere')!;
+  expect(nowhere.scope.routeIds).toEqual(['side']);
+  for (const text of [nowhere.violation.title, nowhere.violation.fix]) expect(jargonIn(text, true)).toEqual([]);
+  expect(jargonIn(nowhere.violation.rule, false)).toEqual([]);
+});
+
+it('screens separate roads as independent, and overlapping land as shared', () => {
+  const { ctx } = fixture();
+  const own = (y: number) => evaluate({ ...ctx.legacy, a: { x: 100, y }, b: { x: 1100, y } }, design);
+  const screen = (y: number) => screenIndependence([{ routeId: 'main', result: own(250), ...op }, { routeId: 'side', result: own(y), ...op }], undefined);
+  expect(screen(450).independent).toBe(true);
+  expect(screen(262).interactions.map(i => i.reason)).toEqual(['shared-land']);
 });
 
 it('never prices a road tied into an existing road or a mission port as if its ends were free', () => {
@@ -57,32 +63,12 @@ it('never prices a road tied into an existing road or a mission port as if its e
   }
 });
 
-it('leaves roads unpriced when one house hears both, while keeping each road\'s own bill visible', () => {
+it('treats a house that one road walls and the other can reach as shared', () => {
   const house = new BuildingIndex([[600, 350, 5]], [[100, 2, BUILDING_KIND.house, 600, 350, 4, 4, 0]]);
-  const { ctx, snapshot, side } = fixture(house);
-  snapshot.design.routes.push(side);
-  const project = evaluateProject(ctx, snapshot);
-  expect(project.cost.total).toBeNull(); expect(project.valid).toBe(false); expect(isScorableProject(project)).toBe(false);
-  expect(Object.keys(project.cost.alone)).toHaveLength(2);
-  const shared = project.issues.find(i => i.scope.buildingIndex === 0)!;
-  expect(shared.code).toBe('shared-noise'); expect(shared.scope.routeIds).toHaveLength(2);
-  for (const text of [shared.violation.title, shared.violation.fix]) expect(jargonIn(text, true)).toEqual([]);
-  expect(jargonIn(shared.violation.rule, false)).toEqual([]);
-});
-
-it('keeps the mission road\'s own result while a road change is unpriced; removing it restores the score', () => {
-  const { ctx, snapshot, side } = fixture();
-  side.source = { binding: 'resolved', transferredWorkIds: [], intervals: [{ transportData: 'transport', sourceId: 'road', s0: 0, s1: 1000 }] };
-  snapshot.design.transportData = 'transport';
-  snapshot.design.routes.push(side);
-  const project = evaluateProject(ctx, snapshot), main = snapshot.design.routes[0], legacy = evaluate(ctx.legacy, design);
-  expect(project.cost.alone).toEqual({ [main.id]: legacy.cost.total });
-  expect(project.cost.unpriced).toEqual([{ routeId: 'side', reason: 'source-needs-network' }]);
-  expect(project.cost.total).toBeNull(); expect(project.complete).toBe(false); expect(isScorableProject(project)).toBe(false);
-  expect(project.issues.filter(i => i.blocking === 'invalid')).toHaveLength(legacy.violations.length);
-  snapshot.design.routes.pop();
-  const restored = evaluateProject(ctx, snapshot);
-  expect(restored.cost.total).toBe(legacy.cost.total); expect(isScorableProject(restored)).toBe(legacy.valid);
+  const { ctx } = fixture(house);
+  const own = (y: number) => evaluate({ ...ctx.legacy, a: { x: 100, y }, b: { x: 1100, y } }, design);
+  const screen = screenIndependence([{ routeId: 'main', result: own(250), ...op }, { routeId: 'side', result: own(450), ...op }], house);
+  expect(screen.interactions).toEqual([{ routeIds: ['main', 'side'], reason: 'shared-noise', buildingIndex: 0 }]);
 });
 
 it('lets a house near the limit belong to one road only; a second road must stay 20 dB below there', async () => {
