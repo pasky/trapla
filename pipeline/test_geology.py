@@ -57,7 +57,9 @@ class GeologyTests(unittest.TestCase):
                 return json.dumps({"objectIds": [25, 10]}).encode()
             if "objectIds" in q:
                 self.assertNotIn("geometry", q)
-                return json.dumps({"features": [feature(25, []), feature(10, [])]}).encode()
+                ids = [int(v) for v in q["objectIds"][0].split(",")]
+                return json.dumps({"error": {"code": 500}} if len(ids) > 1 else
+                                  {"features": [feature(ids[0], [])]}).encode()
             return json.dumps({"error": {"code": 500}}).encode()
         with tempfile.TemporaryDirectory() as directory, patch("geology.time.sleep"):
             result = fetch_features("https://example.invalid/query", "ig", Path(directory),

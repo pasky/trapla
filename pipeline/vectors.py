@@ -66,10 +66,10 @@ def chaikin(xy: np.ndarray, iters: int = 2) -> np.ndarray:
     return xy
 
 
-def thin(xy: np.ndarray, min_d: float = 0.4) -> np.ndarray:
+def thin(xy: np.ndarray, min_d: float = 0.4, *, indices=False) -> np.ndarray:
     """Drop points closer than min_d to the previous kept one (degenerate segments break the joins)."""
     if len(xy) < 2:
-        return xy
+        return np.arange(len(xy)) if indices else xy
     keep = [0]
     for i in range(1, len(xy)):
         if math.hypot(xy[i, 0] - xy[keep[-1], 0], xy[i, 1] - xy[keep[-1], 1]) >= min_d or i == len(xy) - 1:
@@ -77,7 +77,8 @@ def thin(xy: np.ndarray, min_d: float = 0.4) -> np.ndarray:
     out = xy[keep]
     if len(out) >= 2 and math.hypot(*(out[-1] - out[-2])) < 1e-3:
         out = out[:-1]
-    return out
+        keep = keep[:-1]
+    return np.asarray(keep) if indices else out
 
 
 def polygons_of(el, rings_of):
@@ -229,7 +230,8 @@ def building_height(tags: dict, area: float) -> float:
     return 3.0 if area < 45 else 6.5 if area < 500 else 8.5
 
 
-def build(out_dir: Path, osm, way_xy, rings_of, width: float, height: float, extra_polys=None, extra_lines=None) -> dict:
+def build(out_dir: Path, osm, way_xy, rings_of, width: float, height: float, extra_polys=None, extra_lines=None,
+          transport_lines=None) -> dict:
     """Write vector.bin.gz. `osm(name)` returns a cached Overpass result ("cover", "lines", "buildings");
     `extra_*` are optional lists of further Overpass element lists."""
     import mapbox_earcut as earcut
@@ -271,12 +273,28 @@ def build(out_dir: Path, osm, way_xy, rings_of, width: float, height: float, ext
             continue
         g = LineString(xy).intersection(clip)
         parts = [g] if g.geom_type == "LineString" else [p for p in getattr(g, "geoms", []) if p.geom_type == "LineString"]
-        for p in parts:
+        for part_index, p in enumerate(parts):
             a = np.asarray(p.coords, dtype=np.float64)
+            # A ford tagged as both road and stream may render only the water layer. Never
+            # assign that water ribbon to removable road ownership.
+            tracked = transport_lines is not None and name not in ("river", "stream") \
+                and ("highway" in el.get("tags", {}) or "railway" in el.get("tags", {}))
+            if tracked:
+                from transport import clipped_stations
+                source_s = clipped_stations(xy, a)
             if name in ("river", "stream", "rail", "rail_side"):
                 a = chaikin(a)
-            a = thin(a)
+                if tracked:
+                    # Carry the original chainage parameter through the identical corner cutting.
+                    source_s = chaikin(np.column_stack([source_s, source_s]))[:, 0]
+            keep = thin(a, indices=True)
+            a = a[keep]
             if len(a) >= 2:
+                if tracked:
+                    transport_lines.append({"osmWayId": str(el["id"]), "layer": name,
+                                            "polylineIndex": len(lines.get(name, [])),
+                                            "sourceS": source_s[keep].tolist(),
+                                            "xy": a.astype(np.float32).astype(float).tolist()})
                 lines.setdefault(name, []).append(a)
     for name, ls in lines.items():
         starts = np.concatenate([[0], np.cumsum([len(a) for a in ls])])

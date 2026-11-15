@@ -55,15 +55,24 @@ def fetch_features(url, name, cache, bounds, http_get, log):
                     id_path.write_text(json.dumps(ids))
                 pending = [oid for oid in ids if oid > last_id]
                 if pending:
-                    batch_params = dict(f="json", objectIds=",".join(map(str, pending[:100])),
-                                        outFields="*", outSR=5514, returnGeometry="true")
-                    page = json.loads(http_get(url + "/query?" + urllib.parse.urlencode(batch_params)))
-                    if "features" in page:
-                        got = {f["attributes"]["objectid"] for f in page["features"]}
-                        if got != set(pending[:100]):
+                    def id_batch(batch):
+                        batch_params = dict(f="json", objectIds=",".join(map(str, batch)),
+                                            outFields="*", outSR=5514, returnGeometry="true")
+                        result = json.loads(http_get(url + "/query?" + urllib.parse.urlencode(batch_params)))
+                        if "error" in result and len(batch) > 1:
+                            # IG sometimes fails a combined query whose individual features work.
+                            # Bounded divide-and-fetch; never omit a failed polygon.
+                            time.sleep(1)
+                            middle = len(batch) // 2
+                            return id_batch(batch[:middle]) + id_batch(batch[middle:])
+                        if "features" not in result:
+                            raise RuntimeError(f"ČGS {name}: ID batch failed: {result}")
+                        got = {f["attributes"]["objectid"] for f in result["features"]}
+                        if got != set(batch):
                             raise RuntimeError(f"ČGS {name}: incomplete ID batch")
-                        page["features"].sort(key=lambda f: f["attributes"]["objectid"])
-                        page["exceededTransferLimit"] = len(pending) > 100
+                        return result["features"]
+                    page = {"features": sorted(id_batch(pending[:100]), key=lambda f: f["attributes"]["objectid"]),
+                            "exceededTransferLimit": len(pending) > 100}
                 else:
                     page = {"features": []}
             if "error" in page or "features" not in page:
@@ -126,6 +135,10 @@ def classify(a):
         # and subordinate interbeds can occur before any comma ("pískovce s vložkami ...").
         material = re.search(r"aleuropelit|aleoropelit|jílovc|prachovc|slínovc|pískovc|arkóz|arkoz|slepenc|brekci", rock)
         if not material:
+            if rock.startswith(("droby", "valounové droby")):
+                return "hard"
+            if "břidlice" in rock:
+                return "phyllite"
             return "unknown"
         first = material.group()
         fine = first in ("aleuropelit", "aleoropelit", "jílovc", "prachovc", "slínovc")
@@ -148,6 +161,14 @@ def classify(a):
         return "phyllite"
     if "metatuf" in rock:
         return "tuff"
+    if "ortorula" in rock:
+        return "gneiss"
+    if rock.startswith(("dolomitický vápenec", "karbonát sladkovodní", "vápence", "vložky kryst. vápence")):
+        return "carbonate"
+    if rock.startswith(("serpentinit", "arkózovité pískovce", "střídání slepenců", "valounové droby")):
+        return "hard"
+    if rock.startswith(("břidlice, prachovce", "jílovité a prachovité břidlice", "metaprachovce")):
+        return "phyllite"
     return "unknown"
 
 

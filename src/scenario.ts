@@ -3,6 +3,7 @@
 import type { GroundMeta } from './core/ground';
 import type { BuildingInfo } from './core/buildings';
 import type { RoadNetData } from './core/roadnet';
+import type { TransportGraphData, TransportMeta } from './core/project-transport';
 import { decodeHeights, Terrain } from './core/terrain';
 import { parseVectorPack, type VectorPack } from './render/vectorPack';
 
@@ -17,13 +18,19 @@ export interface PackMeta {
   landcover: { file: string };
   ground?: GroundMeta;
   watercourses?: { file: string; version: number; method: string; sha256: string };
+  transport?: TransportMeta;
+  /** Historical-baseline limitations; removing mapped pavement never restores old terrain/photo. */
+  baselineNote?: string;
+  sources?: string[];
   /** vector render data (land cover, roads, buildings); absent in packs built without OSM */
   vector?: { file: string } | null;
   /** ArcGIS MapServer "export" endpoint serving an orthophoto in the scenario's CRS (optional view layer) */
   orthophoto?: { export: string; sr: number; attribution: string } | null;
   A: { xy: [number, number]; latlon: [number, number]; note: string };
   B: { xy: [number, number]; latlon: [number, number]; note: string };
-  official: { xy: [number, number][]; kinds: number[]; lengthM: number };
+  official: { xy: [number, number][]; kinds: number[]; lengthM: number;
+    /** Published project scope may include work beyond the mapped new-road reference. */
+    publishedProjectLengthM?: number };
   attribution: string[];
 }
 
@@ -45,6 +52,9 @@ export interface Pack {
   lc: Uint8Array;
   overlays: Overlays;
   vectors: VectorPack | null;
+  /** Independent identity; legacy D11 meta/object fingerprints deliberately exclude this graph. */
+  transport?: TransportGraphData | null;
+  transportMeta?: TransportMeta | null;
 }
 
 /** fetch a gzip file; some servers (e.g. Vite dev) already send it with Content-Encoding: gzip */
@@ -58,25 +68,51 @@ async function gunzip(url: string): Promise<ArrayBuffer> {
   return new Response(ds).arrayBuffer();
 }
 
+async function sha256(bytes: ArrayBuffer): Promise<string> {
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function transportSidecar(base: string): Promise<TransportMeta | null> {
+  const r = await fetch(`${base}/transport-meta.json`);
+  // Vite returns its HTML shell for an absent optional sidecar. Existing packs still load.
+  if (r.status === 404 || r.headers.get('content-type')?.includes('text/html')) return null;
+  if (!r.ok) throw new Error(`Transport metadata: HTTP ${r.status}`);
+  return await r.json() as TransportMeta;
+}
+
 export async function loadPack(base: string, progress?: (msg: string) => void): Promise<Pack> {
   progress?.('loading scenario…');
-  const meta: PackMeta = await (await fetch(`${base}/meta.json`)).json();
+  const metaResponse = await fetch(`${base}/meta.json`);
+  if (!metaResponse.ok) throw new Error(`Scenario map: HTTP ${metaResponse.status}`);
+  const meta: PackMeta = await metaResponse.json();
+  const transportMeta = meta.transport ?? await transportSidecar(base);
+  if (transportMeta && (transportMeta.version !== 1 || !/^[a-zA-Z0-9_.-]+$/.test(transportMeta.file)))
+    throw new Error('Unsupported transport map');
   progress?.('loading terrain (DMR 5G, 5 m)…');
-  const [hb, lb, overlays, vectors, gb, wb] = await Promise.all([
+  const [hb, lb, overlays, vectorData, gb, wb, tb] = await Promise.all([
     gunzip(`${base}/${meta.heights.file}`),
     gunzip(`${base}/${meta.landcover.file}`),
     fetch(`${base}/overlays.json`).then((r) => r.json() as Promise<Overlays>),
     // render-only: without it the view falls back to plain shaded relief
     meta.vector?.file
-      ? gunzip(`${base}/${meta.vector.file}`).then(parseVectorPack).catch((e) => { console.warn('vector render data unavailable', e); return null; })
+      ? gunzip(`${base}/${meta.vector.file}`).catch((e) => { console.warn('vector render data unavailable', e); return null; })
       : Promise.resolve(null),
     meta.ground ? gunzip(`${base}/${meta.ground.file}`) : Promise.resolve(null),
     meta.watercourses ? gunzip(`${base}/${meta.watercourses.file}`) : Promise.resolve(null),
+    transportMeta ? gunzip(`${base}/${transportMeta.file}`) : Promise.resolve(null),
   ]);
+  const vectors = vectorData ? parseVectorPack(vectorData) : null;
+  let transport: TransportGraphData | null = null;
+  if (transportMeta && tb) {
+    if (await sha256(tb) !== transportMeta.fingerprint) throw new Error('Transport map changed during loading. Reload the page.');
+    transport = JSON.parse(new TextDecoder().decode(tb)) as TransportGraphData;
+    if (transport.version !== 1 || !vectorData || await sha256(vectorData) !== transport.vectorData)
+      throw new Error('Transport map and visible roads differ. Rebuild the map.');
+  }
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
     ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
     watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined });
-  return { base, meta, terrain, q, lc, overlays, vectors };
+  return { base, meta, terrain, q, lc, overlays, vectors, transport, transportMeta };
 }
