@@ -43,6 +43,9 @@ Other commands:
 | `node scripts/layout.mjs` | layout check: the profile panel keeps its size through resizes, selections / Esc and view toggles, and follows the route's length while fitted |
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
+| `node scripts/crossing-works-shots.mjs [--before]` | a crossing's own works close up (side roads regraded to meet a junction approach / bridge ramp, a retaining wall) and picking a reroute; screenshots 110–116 |
+| `node scripts/link-shape-shots.mjs` | shaping a reroute with the mouse; screenshots 117–119 |
+| `npx tsx scripts/crossing-footprint-audit.ts [--straight] [--random N] [designs…]` | rough independent screen: crossing earthworks still lying over other mapped roads |
 | `npx tsx scripts/outcome-audit.ts [--straight] [--random N --seed S] [--quiet] [designs…]` | every crossing / footprint outcome with ramp, link and box lengths and costs, every violation; flags ramps > 250 m, links > 1 km and footprint / crossing violations |
 | `node scripts/crossing-sanity-shots.mjs [--out dir]` | the owner-reported service-road bridge (km 8.47 fixtures) and four typical crossings with their cards open; writes `docs/screenshots/crossing-sanity/` |
 | `node --max-old-space-size=2048 --import tsx scripts/crossing-audit.ts` | audits every saved design: terrain tie-ins ≤0.3 m, unsupported segment flotation ≤0.5 m, rendered road edges/side slopes, clearance and measured quantities; `--strict` also fails blocked designs |
@@ -59,13 +62,18 @@ opens one card under the score (the *inspector*) that says what it is, what the 
 costs, and offers the alternatives as buttons. The map and the profile always show the same selection.
 Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/interface-rethink.md).
 
+- **Reshape a reroute:** drag the new road of a crossed road that was cut and rerouted — a bend point appears
+  under the mouse and follows it, like bending our road. Drag a bend point to move it, click it for *Remove
+  bend point*; *Automatic path* in the crossing's card takes the shape back. The game checks it (off our
+  earthworks, not too steep, not across a motorway, railway, water or house) and prices it as drawn.
 - **Bend the road:** drag the orange road on the map — a new bend appears under the mouse and follows it
   (the cursor turns into a hand over the road). Drag a numbered bend to move it; right-click it, <kbd>Del</kbd>
   or *Delete* in its card removes it. **Double-click** the ground adds a bend there (for big detours). A click
   on empty ground only deselects — nothing is ever added by a single click.
 - **Inspect anything** — on the map or in the profile: the **road** (selects the piece under the mouse: a
-  bridge, tunnel, cut or embankment), a **bend**, a **house**, a **crossed road**, a **noise wall**, a pinned
-  height. Drag sideways across the profile for **any stretch**. <kbd>Esc</kbd> or ✕ deselects. With nothing
+  bridge, tunnel, cut or embankment), a **bend**, a **house**, a **crossed road** (anything its crossing built
+  counts: the rebuilt stretch, its ramps, a new road it was rerouted onto, a turning head, a side road raised
+  to meet it), a **noise wall**, a pinned height. Drag sideways across the profile for **any stretch**. <kbd>Esc</kbd> or ✕ deselects. With nothing
   selected the card lists **where the money goes** — the five most expensive pieces, each a link.
 - **The inspector:** header (what and where), one status line (numbers first, and the reason in a few words:
   *Auto: cheaper here than a bridge*), any **problems with their fix as a button** (*4 m wall right*,
@@ -220,6 +228,25 @@ Also: [two roads crossing, not priced](docs/screenshots/82-two-roads-not-priced.
 [track diversion](docs/screenshots/45-crossing-diversion.png),
 [at-grade junction](docs/screenshots/46-crossing-junction.png).
 [Junction detail, with noise-wall openings](docs/screenshots/48-crossing-junction-detail.png).
+
+Model 19: a crossing's own earthworks leave other roads usable. A street joining a raised junction approach is
+raised to meet it instead of being buried under its slope:
+
+| Before (street under the slope) | After (street regraded to meet the junction) |
+|---|---|
+| ![Before](docs/screenshots/110-crossing-works-before-junction-street-tie.png) | ![After](docs/screenshots/111-crossing-works-after-junction-street-tie.png) |
+
+[Ramp to a track bridge over us, before](docs/screenshots/112-crossing-works-before-ramp-wall.png) /
+[after: the side street regraded, a retaining wall at the corner](docs/screenshots/113-crossing-works-after-ramp-wall.png);
+[demo junction, before](docs/screenshots/114-crossing-works-before-junction-street-tie-demo.png) /
+[after](docs/screenshots/115-crossing-works-after-junction-street-tie-demo.png);
+[a click on a reroute far from the crossing opens its card](docs/screenshots/116-crossing-pick-link.png).
+(`node scripts/crossing-works-shots.mjs`, `--before` on the older code.)
+
+Shaping a reroute by dragging it (`node scripts/link-shape-shots.mjs`):
+[the drag](docs/screenshots/117-link-shape-drag.png) (the first drag starts from the automatic path's own bends),
+[the rebuilt road with its bend points and "Automatic path"](docs/screenshots/118-link-shape-built.png),
+[a bend point dragged onto our earthworks: the problem, with the way back](docs/screenshots/119-link-shape-rejected.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

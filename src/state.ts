@@ -133,7 +133,10 @@ export function describeChange(a: Design, b: Design): string {
   else if (!same('vpis')) parts.push(a.vpis.length < b.vpis.length ? 'add a height point' : a.vpis.length > b.vpis.length ? 'delete a height point' : 'change a height point');
   if (!same('structureOverrides')) parts.push('bridge / tunnel / earthwork choice');
   if (!same('gradePins')) parts.push('pinned height');
-  if (!same('crossingOverrides')) parts.push('road crossing choice');
+  if (!same('crossingOverrides')) {
+    const types = (d: Design) => JSON.stringify((d.crossingOverrides ?? []).map(o => [o.roadId, o.type]));
+    parts.push(types(a) === types(b) ? 'reroute path' : 'road crossing choice');
+  }
   if (!same('buildingOverrides')) parts.push('building decision');
   if (!same('wallOverrides')) parts.push('noise wall');
   if (a.category !== b.category) parts.push('road category');

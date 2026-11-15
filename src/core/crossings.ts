@@ -14,7 +14,18 @@ export const CROSSING_CHOICES = ['junction', 'bridge', 'overbridge', 'reconnecti
 export type CrossingChoice = typeof CROSSING_CHOICES[number];
 /** Pack way index, stable within a scenario pack, not a station or merged-list index.
  * One choice applies to every intersection of that way. Omission restores Auto. */
-export interface CrossingOverride { roadId: number; type: CrossingChoice }
+export interface CrossingOverride { roadId: number; type: CrossingChoice;
+  /** A reroute the player shaped: bend points of its two new pieces (the [-normal, +normal] sides of our
+   * road, like `CrossingGeometry.links`); an empty side keeps its automatic path. Only with 'reconnection'. */
+  via?: LinkVia;
+  /** The crossing the shaped reroute leads to (its pack way; -1 / -2: the start / end of our road), so a
+   * drag reshapes that connection rather than letting it pick another target. */
+  to?: number }
+export type LinkVia = [{ x: number; y: number }[], { x: number; y: number }[]];
+/** At most this many bend points per shaped reroute piece. */
+export const MAX_LINK_VIA = 24;
+/** Bend points lie on the scenario map (local metres): anything beyond is not a shape. */
+export const MAX_LINK_COORD = 1e6;
 export interface CrossingPoint {
   x: number; y: number; z: number;
   ground: number;
@@ -25,6 +36,9 @@ export interface CrossingPoint {
   d?: number;
   /** A terminating T-junction meets the constructed main road, not the removed old ground. */
   connection?: 'main-road';
+  /** Retaining walls cutting this sample's slopes short, at these offsets from the centreline on
+   * the [-normal, +normal] side (normal from the neighbouring samples), m. */
+  wall?: [number | undefined, number | undefined];
 }
 export interface CrossingGeometry {
   /** Existing road, continuous under our bridge or over our cut. */
@@ -41,6 +55,8 @@ export interface CrossingGeometry {
   underpass?: { start: number; end: number; width: number; height: number; roof: number; wall: number };
   /** Reconnection/diversion: signed way chainages where the severed way leaves the footprint. */
   removed?: [number, number];
+  /** Side roads joining the rebuilt stretch, regraded from its new level down to their own ground. */
+  ties?: { cls: string; way: number; path: CrossingPoint[] }[];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
   /** Explicit priced turning disk, distinct from legacy small severed-end heads. */
@@ -52,7 +68,7 @@ export interface CrossingGeometry {
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
-    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass';
+    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape';
     actual?: number; required?: number; targetS?: number };
 }
 export interface CrossingResult {
@@ -71,6 +87,10 @@ export interface CrossingResult {
   /** Both sides together, measured in plan from the built link geometry, m. */
   linkLength?: number;
   targetS?: number;
+  /** The player's shape of the reroute (see CrossingOverride.via), on the one crossing of that way
+   * nearest to it, and the crossing it leads to (CrossingOverride.to). */
+  via?: LinkVia;
+  viaTo?: number;
   /** Disambiguates independently selected roads at the same station; absent for A/B collectors. */
   targetRoadId?: number;
   span?: number;
@@ -79,14 +99,36 @@ export interface CrossingResult {
   underpassLength?: number;
   roadCode?: string;
   roadPerKm?: number;
+  /** Side roads regraded to meet the rebuilt stretch, m (measured along them). */
+  tieLength?: number;
+  /** Retaining walls holding its slopes off roads beside it, m. */
+  wallLength?: number;
+  /** Pre-surcharge CZK of those ties and walls, included in cost (never a lump sum). */
+  worksCost?: number;
 }
 
 export function normalizeCrossingOverrides(value: unknown): CrossingOverride[] {
   if (!Array.isArray(value)) return [];
   const byRoad = new Map<number, CrossingOverride>();
   for (const o of value) if (o && Number.isSafeInteger(o.roadId) && o.roadId >= 0
-    && CROSSING_CHOICES.includes(o.type)) byRoad.set(o.roadId, { roadId: o.roadId, type: o.type });
+    && CROSSING_CHOICES.includes(o.type)) {
+    const via = o.type === 'reconnection' ? normalizeLinkVia(o.via) : undefined;
+    const to = via && Number.isSafeInteger(o.to) && o.to >= -2 ? o.to as number : undefined;
+    byRoad.set(o.roadId, { roadId: o.roadId, type: o.type, ...(via ? { via } : {}), ...(to !== undefined ? { to } : {}) });
+  }
   return [...byRoad.values()].sort((a, b) => a.roadId - b.roadId);
+}
+
+export function normalizeLinkVia(value: unknown): LinkVia | undefined {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+  const side = (v: unknown) => Array.isArray(v) && v.length <= MAX_LINK_VIA && v.every(p => p && Math.abs(p.x) <= MAX_LINK_COORD && Math.abs(p.y) <= MAX_LINK_COORD)
+    ? v.map(p => ({ x: p.x, y: p.y })) : undefined;
+  const a = side(value[0]), b = side(value[1]);
+  return a && b && (a.length || b.length) ? [a, b] : undefined;
+}
+export function crossingVia(roadId: number | undefined, overrides: readonly CrossingOverride[] = []): LinkVia | undefined {
+  for (let i = overrides.length - 1; i >= 0; i--) if (overrides[i].roadId === roadId) return overrides[i].type === 'reconnection' ? overrides[i].via : undefined;
+  return undefined;
 }
 
 export function crossingChoice(roadId: number | undefined, overrides: readonly CrossingOverride[] = []): CrossingChoice | undefined {
@@ -164,6 +206,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         reach: `Game limit: a reroute reaches at most ${CROSSING_RULES.linkHardReach} m along our road to the next crossing`,
         geometry: 'Game rule: crossed roads keep their real line and meet the ground at both ends',
         underpass: `Game estimate (research/19): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road, and is at most ${UNDERPASS_RULES.maxLength} m long`,
+        shape: 'Game rule: a reroute the player shaped must be buildable where it is drawn',
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
@@ -177,7 +220,15 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo;
     c.requestedType = crossingChoice(c.roadId, overrides);
+  }
+  // A shape is absolute: it belongs to the one crossing of its way nearest to its bend points.
+  for (const o of overrides) if (o.type === 'reconnection' && o.via) {
+    const points = [...o.via[0], ...o.via[1]], x = points.reduce((a, p) => a + p.x, 0) / points.length, y = points.reduce((a, p) => a + p.y, 0) / points.length;
+    let owner: CrossingResult | undefined;
+    for (const c of crossings) if (c.roadId === o.roadId && (!owner || Math.hypot(c.x - x, c.y - y) < Math.hypot(owner.x - x, owner.y - y))) owner = c;
+    if (owner) { owner.via = o.via; if (o.to !== undefined) owner.viaTo = o.to; }
   }
   for (const c of priority) {
     const choice = c.requestedType, row = ROAD_CLASSES[c.cls];
@@ -241,18 +292,24 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   }
   const pending = priority.filter(c => c.requestedType === 'reconnection' || (c.type === 'atGrade' && !ROAD_CLASSES[c.cls].noAtGrade));
   const tier = (c: CrossingResult) => ROAD_CLASSES[c.cls].junction ? 0 : c.cls === 'track' ? 3 : c.cls === 'service' ? 2 : 1;
+  const kept = (c: CrossingResult, a: { s: number; roadId?: number }) => c.viaTo !== undefined
+    && (c.viaTo >= 0 ? a.roadId === c.viaTo : a.roadId === undefined && a.s === (c.viaTo === -1 ? 0 : length));
   const nearest = pending.map(c => {
-    let target = anchors[0], gap = Infinity;
-    for (const a of anchors) if (compatible(c, a.cls)) {
+    let target = anchors[0], gap = Infinity, fixed = false;
+    for (const a of anchors) if (kept(c, a)) { target = a; gap = Math.abs(c.s - a.s); fixed = true; }
+    if (!fixed) for (const a of anchors) if (compatible(c, a.cls)) {
       const d = Math.abs(c.s - a.s);
       if (d < gap || (d === gap && a.s < target.s)) { gap = d; target = a; }
     }
-    return { c, target, gap };
+    return { c, target, gap, fixed };
   });
   while (nearest.length) {
+    // A shaped reroute waits for the crossing it leads to (unless nothing else is left to resolve).
+    const waiting = (p: typeof nearest[number]) => p.c.viaTo !== undefined && !p.fixed;
     let next = 0;
     for (let i = 1; i < nearest.length; i++) {
       const a = nearest[i], b = nearest[next];
+      if (waiting(b) !== waiting(a)) { if (waiting(b)) next = i; continue; }
       if (tier(a.c) < tier(b.c) || (tier(a.c) === tier(b.c) && (a.gap < b.gap || (a.gap === b.gap && a.c.s < b.c.s)))) next = i;
     }
     const { c, target, gap } = nearest.splice(next, 1)[0];
@@ -276,9 +333,11 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     } else {
       c.type = 'overbridge'; Object.assign(c, over);
     }
-    for (const p of nearest) if (!c.issues?.length && !ROAD_CLASSES[c.cls].noAtGrade && compatible(p.c, c.cls)) {
+    for (const p of nearest) if (!p.fixed && !c.issues?.length && !ROAD_CLASSES[c.cls].noAtGrade && (compatible(p.c, c.cls) || kept(p.c, c))) {
       const d = Math.abs(p.c.s - c.s);
-      if (d < p.gap || (d === p.gap && c.s < p.target.s)) { p.gap = d; p.target = c; }
+      // a shaped reroute keeps leading where it led when the player shaped it
+      if (kept(p.c, c)) { p.gap = d; p.target = c; p.fixed = true; }
+      else if (d < p.gap || (d === p.gap && c.s < p.target.s)) { p.gap = d; p.target = c; }
     }
   }
   return issues;
@@ -303,6 +362,10 @@ export interface CrossingRoute {
   crownWidth?: number;
   /** Built structure kind per station; Auto considers an underpass only under earthwork. */
   kind?: ArrayLike<number>;
+  /** Urban share per station (≥ 0.5: urban SPK price rows for side-road regrades). */
+  urban?: ArrayLike<number>;
+  /** What blocks a new road of this half-width from a to b on the ground (a player's reroute shape). */
+  obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => 'railway' | 'water' | 'building' | null;
 }
 
 export { buildCrossingGeometry, crossingPlanLength, auditCrossingGeometry, underpassFits } from './crossing-geometry';

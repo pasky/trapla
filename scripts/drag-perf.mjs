@@ -4,7 +4,7 @@
 // (instrumentation wraps the page's Worker; nothing in the app is required).
 //
 //   node scripts/drag-perf.mjs [--root DIR] [--gpu] [--profile out.cpuprofile] [--trace out.json]
-//        [--scenario d11] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi] [--bend 9]
+//        [--scenario d11] [--design scripts/best-design.json] [--mode bend|road|radius|pin|vpi|link] [--bend 9]
 //        [--seconds 2] [--check] [--shot out.png]
 //
 // --scenario <id>: another pack; the design defaults to scripts/scenarios/<id>/default.json and the
@@ -21,7 +21,7 @@ const gpu = process.argv.includes('--gpu');
 const port = Number(arg('--port', 5197));
 const scenarioId = arg('--scenario', 'd11');
 const designFile = arg('--design', scenarioId === 'd11' ? 'scripts/best-design.json' : `scripts/scenarios/${scenarioId}/default.json`);
-const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point)
+const mode = arg('--mode', 'bend'); // bend | road (drag the road: a new bend) | radius (a grip) | pin (an Automatic height pin) | vpi (a height point) | link (shape a reroute)
 const bendArg = arg('--bend');
 const seconds = Number(arg('--seconds', 2));
 const profileOut = arg('--profile'), traceOut = arg('--trace');
@@ -117,7 +117,7 @@ const uncovered = async (selector) => {
 };
 const T = (f, a) => page.evaluate(f, a);
 /** where the drag starts and its pointer offset (px) at phase u ∈ [0, 1) of the measured drag */
-let grab, path;
+let grab, path, beforeMeasure = async () => {};
 if (mode === 'bend') {
   // a loop around the bend's spot (the route length changes every step)
   grab = () => uncovered(`.pi[data-i="${bend}"]`);
@@ -163,6 +163,26 @@ if (mode === 'bend') {
     grab = async () => T(() => { const r = window.trapla.result(), v = r.vpis[Math.floor(r.vpis.length / 2)]; return window.trapla.profilePoint(v.s, v.z); });
   }
   path = (u, size) => ({ x: 0, y: -size * 0.4 * Math.sin(u * 2 * Math.PI) });
+} else if (mode === 'link') {
+  // a reroute link (the new road of a cut crossed road), dragged by its middle: every drag adds a bend
+  // point there that follows the pointer (the same loop as a bend drag)
+  const at = await T(() => {
+    const r = window.trapla.result(), c = r.crossings.filter(c => (c.type === 'reconnection' || c.type === 'diversion') && c.geometry?.links?.some(l => l.length > 6))
+      .sort((a, b) => (b.linkLength ?? 0) - (a.linkLength ?? 0))[0];
+    const link = c.geometry.links.find(l => l.length > 6), q = link[Math.floor(link.length / 2)];
+    window.trapla.select(null); window.trapla.lookAt(q.x, q.y, 1200, 20, 45);
+    return { x: q.x, y: q.y, z: q.z };
+  });
+  await page.waitForTimeout(1500);
+  grab = async () => {
+    return T((q) => { const p = window.trapla.project(q.x, q.y, q.z), box = document.querySelector('#view canvas').getBoundingClientRect(); return { x: box.left + p.sx, y: box.top + p.sy }; }, at);
+  };
+  // after the warm-up drag: back to the automatic path, so the measured drag starts on it too
+  beforeMeasure = async () => {
+    await T(() => { const d = window.trapla.getDesign(); for (const o of d.crossingOverrides ?? []) { delete o.via; delete o.to; } window.trapla.setDesign(d); });
+    await T(() => window.trapla.whenIdle());
+  };
+  path = (u, size) => ({ x: size * Math.sin(u * 2 * Math.PI), y: size * (1 - Math.cos(u * 2 * Math.PI)) * 0.6 });
 } else throw new Error(`unknown --mode ${mode}`);
 
 const drag = async (secs, size, shotAt = null) => {
@@ -187,6 +207,7 @@ const drag = async (secs, size, shotAt = null) => {
 // warm-up: a short drag so JIT / shader programs are not first-use (the owner drags repeatedly)
 await drag(0.6, 30);
 await page.evaluate(() => window.trapla.whenIdle());
+await beforeMeasure();
 await page.waitForTimeout(800);
 
 const cdp = await page.context().newCDPSession(page);

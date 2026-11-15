@@ -108,6 +108,11 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
     const span = roads.sourceInterval(path[i - 1], path[i]);
     if (span) intervals.push({ way: span.way, a: Math.min(span.a, span.b), b: Math.max(span.a, span.b) });
   }
+  // Side roads regraded to meet a junction approach or ramp are rebuilt by the crossing too.
+  for (const tie of g.ties ?? []) for (let i = 1; i < tie.path.length; i++) {
+    const span = roads.sourceInterval(tie.path[i - 1], tie.path[i]);
+    if (span) intervals.push({ way: span.way, a: Math.min(span.a, span.b), b: Math.max(span.a, span.b) });
+  }
   const source = { path, intervals: mergeIntervals(intervals), targets };
   crossingSources.set(g, { roads, source });
   return source;

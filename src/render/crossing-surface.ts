@@ -1,6 +1,7 @@
 // Shared plan cross-sections for the terrain cut-out and the physical crossing meshes.
 // Work is bounded by the core's point budget and happens only on a new evaluation.
 import type { CrossingGeometry, CrossingPoint, CrossingResult } from '../core/crossings';
+import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import type { FootprintConflict } from '../core/footprint';
 import { KIND } from '../core/structures';
@@ -39,8 +40,13 @@ export interface SurfaceSection {
   p: CrossingPoint; nx: number; ny: number;
   edge: [CrossingPoint, CrossingPoint]; toe: [CrossingPoint, CrossingPoint];
   outer: [CrossingPoint, CrossingPoint];
+  /** Where a priced retaining wall cuts the slope short: its top (the slope there); `toe` is then
+   * the wall's foot on natural ground. */
+  wallTop?: [CrossingPoint | undefined, CrossingPoint | undefined];
 }
-export interface CrossingSurface { crossing: CrossingResult; path: CrossingPoint[]; sections: SurfaceSection[]; link: boolean; retainingSupport: boolean; deck?: { start: number; end: number } }
+export interface CrossingSurface { crossing: CrossingResult; path: CrossingPoint[]; sections: SurfaceSection[]; link: boolean; retainingSupport: boolean; deck?: { start: number; end: number };
+  /** A side road regraded to meet the crossing (its own class and width), not the crossed road. */
+  tie?: { cls: string; width: number } }
 export function crossingSurfaces(crossings: CrossingResult[], height: (x: number, y: number) => number,
   formation = height, retainingSupport = false): CrossingSurface[] {
   const out: CrossingSurface[] = [];
@@ -48,8 +54,13 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
     const g = crossing.geometry;
     if (!g) continue;
     const base = crossing.type === 'junction' ? formation : height;
-    for (const [source, link] of [...(g.road ? [[g.road, false] as const] : []), ...(g.links ?? []).map(p => [p, true] as const)]) {
+    const paths: [CrossingPoint[], boolean, { cls: string; width: number } | undefined][] = [
+      ...(g.road ? [[g.road, false, undefined] as [CrossingPoint[], boolean, undefined]] : []),
+      ...(g.links ?? []).map(p => [p, true, undefined] as [CrossingPoint[], boolean, undefined]),
+      ...(g.ties ?? []).map(t => [t.path, false, { cls: t.cls, width: ROAD_CLASSES[t.cls]?.width ?? g.width }] as [CrossingPoint[], boolean, { cls: string; width: number }])];
+    for (const [source, link, tie] of paths) {
       if (source.length < 2) continue;
+      const width = tie?.width ?? g.width;
       // Centreline refinement alone misses transverse terrain ridges. A bounded fine ground mesh
       // keeps the full road width in contact; preserve every OSM bend and every deck boundary.
       const path: CrossingPoint[] = [], mapping: number[] = [];
@@ -72,10 +83,12 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
             a.support !== 'embankment' && b.support !== 'embankment' ? 'retaining' : 'embankment';
           path.push({ x, y, ground, z: terrain ? ground : a.z+(b.z-a.z)*t,
             ...(a.d !== undefined && b.d !== undefined ? { d: a.d+(b.d-a.d)*t } : {}),
-            surface: terrain ? 'terrain' : 'ramp', ...(terrain && support !== 'retaining' ? {} : { support }) });
+            surface: terrain ? 'terrain' : 'ramp', ...(terrain && support !== 'retaining' ? {} : { support }),
+            ...(a.wall && b.wall ? { wall: [0, 1].map(k => a.wall![k] !== undefined && b.wall![k] !== undefined
+              ? a.wall![k]! + (b.wall![k]! - a.wall![k]!) * t : undefined) as CrossingPoint['wall'] } : {}) });
         }
       }
-      const deck = !link && g.deck ? { start: mapping[g.deck.start], end: mapping[g.deck.end] } : undefined;
+      const deck = !link && !tie && g.deck ? { start: mapping[g.deck.start], end: mapping[g.deck.end] } : undefined;
       const sections = path.map((p, i): SurfaceSection => {
         const a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)];
         const len = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
@@ -84,10 +97,11 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
           return { ...p, x, y, z: z ?? base(x, y) };
         };
         const edge = [-1, 1].map(side => {
-          const q = point(side * g.width / 2);
+          const q = point(side * width / 2);
           // Terrain roads conform across their whole width, not just their centreline.
           return { ...q, z: p.surface === 'terrain' || p.connection === 'main-road' ? q.z : p.z };
         }) as SurfaceSection['edge'];
+        let wallTop: SurfaceSection['wallTop'];
         const toe = edge.map((e, k) => {
           const side = k ? 1 : -1, ground = base(e.x, e.y), delta = e.z - ground;
           // Paid retaining faces meet ground directly beneath the paved edge; their
@@ -97,15 +111,23 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
           // 1:1.5 fill / cut daylight search. Bounded even for impossible manual grades.
           let off = .5;
           for (; off < 300; off += 1) {
-            const q = point(side * (g.width / 2 + off));
+            const q = point(side * (width / 2 + off));
             if (delta > 0 ? e.z - off / 1.5 <= q.z : e.z + off / 1.5 >= q.z) break;
           }
-          return point(side * (g.width / 2 + off));
+          // A priced retaining wall stops the slope short: the slope runs to its top, the wall
+          // stands down to natural ground (crossing-works.ts measures the same face).
+          const wall = p.wall?.[k];
+          if (wall !== undefined && wall < width / 2 + off) {
+            const drop = (wall - width / 2) / 1.5;
+            (wallTop ??= [undefined, undefined])[k] = point(side * wall, delta > 0 ? e.z - drop : e.z + drop);
+            return point(side * wall);
+          }
+          return point(side * (width / 2 + off));
         }) as SurfaceSection['toe'];
         const outer = toe.map((q, k) => point((k ? 1 : -1) * (Math.hypot(q.x - p.x, q.y - p.y) + GROUND_COLLAR))) as SurfaceSection['outer'];
-        return { p, nx, ny, edge, toe, outer };
+        return { p, nx, ny, edge, toe, outer, ...(wallTop ? { wallTop } : {}) };
       });
-      out.push({ crossing, path, sections, link, deck, retainingSupport });
+      out.push({ crossing, path, sections, link, deck, retainingSupport, ...(tie ? { tie } : {}) });
     }
   }
   return out;
