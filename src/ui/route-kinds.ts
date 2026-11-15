@@ -39,8 +39,21 @@ export interface BuildKind {
   onSource(base: ProjectTransportIndex, sourceId: string, s: number): Verdict<{ end: PlacedEnd; label: string }>;
   /** An end on a project route at station s, given its engineered result. */
   onRoute(route: RouteDesign, result: RouteResult, s: number): Verdict<{ end: PlacedEnd; label: string }>;
-  /** The new straight route between two placed ends. */
-  create(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids: RouteIds): RouteDesign;
+  /** The new straight route between two placed ends (one route; dispatched as `create-route`). */
+  create?(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids: RouteIds): RouteDesign;
+  /** Or the whole project with what this kind builds (e.g. a motorway: a corridor and its two direction
+   * routes), applied as ONE undoable edit; `activeRouteId` becomes the road being edited. Ids come from
+   * `newId` (fresh, never reused). Exactly one of `create` / `createInProject` is needed. */
+  createInProject?(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, newId: (prefix: 'route' | 'corridor' | 'acoustic' | 'connection') => string):
+    { project: ProjectDesign; activeRouteId: string };
+}
+/** What Build → <kind> produces, as one project edit (whichever form the kind implements). */
+export function buildInProject(kind: BuildKind, project: ProjectDesign, a: PlacedEnd, b: PlacedEnd,
+  newId: (prefix: 'route' | 'corridor' | 'acoustic' | 'connection') => string): { project: ProjectDesign; activeRouteId: string } {
+  if (kind.createInProject) return kind.createInProject(project, a, b, newId);
+  if (!kind.create) throw new Error(`Build kind ${kind.kind} creates nothing`);
+  const route = kind.create(project, a, b, { routeId: newId('route'), acousticSourceId: newId('acoustic') });
+  return { project: { ...structuredClone(project), routes: [...structuredClone(project.routes), route] }, activeRouteId: route.id };
 }
 
 const mappedKinds: MappedLineKind[] = [], buildKinds: BuildKind[] = [];

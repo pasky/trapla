@@ -25,7 +25,7 @@ import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
 import { strayDistance } from './ui/road-edit';
-import { mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
+import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
@@ -768,11 +768,14 @@ async function main() {
   store.onHistory = () => select(null);
   buildTool.onClose = () => select(null);
   buildTool.onDone = (a, b) => {
-    const route = building.create(projectStore.snapshot.design, a, b, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` });
     if (projectStore.inTransaction) projectStore.commit();
-    try { projectStore.dispatch({ type: 'create-route', route }); }
-    catch (error) { console.warn('New road was not created', error); toast('This road could not be made here.'); return; }
-    switchRoute(route.id); select(null);
+    let made: ReturnType<typeof buildInProject>;
+    try {
+      made = buildInProject(building, projectStore.snapshot.design, a, b, prefix => `${prefix}:${crypto.randomUUID()}`);
+      const next = made.project;
+      store.editProject(d => { for (const key of Object.keys(d)) delete (d as unknown as Record<string, unknown>)[key]; Object.assign(d, next); });
+    } catch (error) { console.warn('New road was not created', error); toast('This road could not be made here.'); return; }
+    switchRoute(made.activeRouteId); select(null);
     toast('Drag the road to bend it.');
   };
   /** the kind being built (Build menu), which decides where its ends may go */
