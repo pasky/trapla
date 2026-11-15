@@ -1143,6 +1143,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     violations.push(profileViolation(al.length, maxGradient));
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
+  // Messages name what is built: a railway is "our railway", not "our road".
+  if (cat.mode === 'railway') for (const v of violations) for (const k of ['title', 'fix', 'detail'] as const)
+    if (v[k]) v[k] = v[k]!.replace(/\bour road\b/g, 'our railway').replace(/\bOur road\b/g, 'Our railway');
   const travelMin = al.length / (d.speed / 3.6) / 60;
   const capacityTraffic = opts.capacityTraffic ?? scenario.traffic;
   const minCategory = minCategoryForTraffic(capacityTraffic);
