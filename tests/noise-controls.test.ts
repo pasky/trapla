@@ -10,6 +10,7 @@ import {
 import { emptyScreen, lineTransfer, noiseField, pointTransfer, transferBuffers } from '../src/core/noise-field';
 import { createNoiseModel, noiseLevels } from '../src/core/road-noise';
 import { noiseControlViolations } from '../src/core/noise-control-violations';
+import { createRailNoiseModel, PASSENGER_EMU } from '../src/core/rail-noise';
 
 const model = createNoiseModel(9000, 90);
 /** a straight road along x from x0, `n` 10 m cells, flat at grade 0, crown 9.5 */
@@ -34,6 +35,18 @@ describe('finite-segment sum', () => {
       const line = noiseLevels(d, 1.5, model).excessDb;
       expect(excess(t.raw[0])).toBeLessThan(line + 0.02);
       expect(excess(t.raw[0])).toBeGreaterThan(line - 0.2);
+    }
+  });
+  it('a long straight railway reproduces its own line model (spherical spreading, new-line limits)', () => {
+    const rail = createRailNoiseModel([{ train: PASSENGER_EMU, speed: 160, day: 64, night: 16 }]);
+    const r: AcousticSource = { ...src, mode: 'rail', dayDb: rail.dayDb, nightDb: rail.nightDb, limits: rail.limits };
+    const fr = noiseField(r);
+    expect(sourceExcess(r)).toBeCloseTo(rail.excessDb, 9);
+    for (const d of [20, 50, 100]) {
+      pointTransfer(fr, 0, d, [1.5], null, null, t);
+      const line = noiseLevels(d, 1.5, rail).excessDb, got = 10 * Math.log10(t.raw[0]) + rail.excessDb;
+      expect(got).toBeLessThan(line + 0.02);
+      expect(got).toBeGreaterThan(line - 0.2);
     }
   });
   it('splitting a road into two sources adds nothing (energy of disjoint cells)', () => {

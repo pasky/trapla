@@ -3,12 +3,14 @@
 // only a complete norm/pin-compliant profile. Manual grades are never passed to this helper.
 import { ROAD_CHECKS } from './checks';
 import { speedNorms } from './data/norms';
+import type { CategoryId } from './data/categories';
 import { buildProfile, elevations, type VPI } from './vertical';
 
 export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s: number; z: number }[],
-  speed: number, maxGradient: number, pins: readonly { s: number; z: number }[] = [], diagnostic?: (message: string) => void): VPI[] | undefined {
+  speed: number, maxGradient: number, pins: readonly { s: number; z: number }[] = [], diagnostic?: (message: string) => void,
+  category?: CategoryId): VPI[] | undefined {
   if (!requirements.length || vpis.length < 3) return;
-  const targets = [...requirements].sort((a, b) => a.s - b.s), norms = speedNorms(speed);
+  const targets = [...requirements].sort((a, b) => a.s - b.s), norms = speedNorms(speed, category);
   const locked = vpis.map((p, i) => i === 0 || i === vpis.length - 1 || pins.some(pin => Math.abs(pin.s - p.s) < 0.1));
   for (const radius of [600, 1200, 2400]) {
     const candidate = vpis.map(p => ({ ...p }));

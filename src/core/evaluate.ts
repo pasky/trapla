@@ -13,7 +13,7 @@ import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, 
 import { noiseControlViolations } from './noise-control-violations';
 import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, type Violation } from './checks';
 import {
-  basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
+  basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
 import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
@@ -31,6 +31,7 @@ import {
   type AcousticSource, type NoiseReceiver, type WallStretch,
 } from './noise';
 import { createNoiseModel } from './road-noise';
+import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
 import { crossingWallGaps } from './crossing-walls';
 import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadNet } from './roadnet';
@@ -176,6 +177,16 @@ export interface EvalOptions {
   materialValue?: number;
   /** Stable physical acoustic source id of this carriageway (project `acousticSourceId`). */
   acousticSourceId?: string;
+  /** One direction of a split motorway: station ranges where the other direction runs alongside on the
+   * left (one common formation). Houses on that side belong to the other direction's noise check and
+   * no wall can stand in the median there. */
+  leftJoined?: readonly { s0: number; s1: number }[];
+  /** Split motorway, crossed roads where the two directions run joined: the owning direction builds one
+   * crossing for both (its footprint widened by the other direction's mirror on the left); the other
+   * direction reuses that structure (`from`: the owner's crossings), billing and drawing nothing. */
+  sharedCrossings?: { own: true } | { own: false; from: readonly CrossingResult[] };
+  /** Railway: trains per period by type and speed (noise source); none = a silent, unused line. */
+  railTraffic?: readonly RailTrafficGroup[];
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -235,8 +246,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const lap = (k: string) => { timing[k] = performance.now() - t0; };
   const { terrain, scenario } = ctx;
   const cat = CATEGORIES[d.category];
-  const norms = speedNorms(d.speed);
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed));
+  const norms = speedNorms(d.speed, d.category);
+  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
+  // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
+  const maxGradient = cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient;
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
   let manualStructures = overrideMask(st.s, d.structureOverrides);
@@ -397,12 +410,23 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   lap('stations');
 
   // --- per-metre costs for the auto-profile: rural rates on flat ground, incl. the surcharge ---
-  const sur = 1 + PRICES.otherObjectsSurcharge;
-  const baseRural = basePerKm(d.category, scenario.terrainClass) / 1000;
-  const baseUrban = basePerKmUrban(d.category, scenario.terrainClass) / 1000;
-  const tunnelPerM = (cat.tunnelTubes * tunnelPerKm(0) / 1000) * sur;
+  // Markups by kind of work: SPK's rural/urban "other objects" surcharge (roads), or a price book's own
+  // per-profession markups (railway, data/categories.ts). Road expressions stay bit-identical.
+  const mk = cat.markup;
+  const surE = (u: number) => mk ? mk.earth : surchargeRate(u), surB = (u: number) => mk ? mk.bridge : surchargeRate(u);
+  const surT = (u: number) => mk ? mk.tunnel : surchargeRate(u);
+  const sur = mk ? 1 + mk.earth : 1 + PRICES.otherObjectsSurcharge, surBridge = mk ? 1 + mk.bridge : sur, surTunnel = mk ? 1 + mk.tunnel : sur;
+  // The base rate rides on the earth markup in the cost expressions below: rescale it to its own markup.
+  const baseScale = mk ? (1 + mk.base) / (1 + mk.earth) : 1;
+  // Items charged on every option alike (railway track and systems, also on structures) cannot change a
+  // choice: the decision costs leave them out; the bill (costParts) charges them everywhere.
+  const everywhere = cat.everywherePerKm ?? { rural: 0, urban: 0 };
+  const baseRural = (basePerKm(d.category, scenario.terrainClass) - everywhere.rural) / 1000 * baseScale;
+  const baseUrban = (basePerKmUrban(d.category, scenario.terrainClass) - everywhere.urban) / 1000 * baseScale;
+  const tunnelKm = (u = 0) => categoryTunnelPerKm(cat, 0, u);
+  const tunnelPerM = (cat.tunnelTubes * tunnelKm() / 1000) * surTunnel;
   const bridge = bridgeModel(cat);
-  const bridgeRural = (h: number) => bridge.estimatePerM(h) * sur + cat.crownWidth * LAND.perM2;
+  const bridgeRural = (h: number) => bridge.estimatePerM(h) * surBridge + cat.crownWidth * LAND.perM2;
   const { fillSlope, cutSlope } = DEFAULT_SLOPES;
   const b = cat.crownWidth;
   const topsoilPerM2 = PRICES.topsoilDepth * PRICES.topsoil;
@@ -533,13 +557,13 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const must = new Uint8Array(sub);
     for (let k = 0; k < sub; k++) {
       hh[k] = z[k] - ground[subI[k]];
-      const u = subUrban[k], su = 1 + surchargeRate(u), land = landPerM2(u), wd = sc.dayL[k] + sc.dayR[k];
+      const u = subUrban[k], su = 1 + surE(u), land = landPerM2(u), wd = sc.dayL[k] + sc.dayR[k];
       earth[k] = (baseRural + (baseUrban - baseRural) * u + sc.cutI[k] * dp.cutPerM3.I + sc.cutII[k] * dp.cutPerM3.II
         + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2
         + earthEngineeringPerM(hh[k], sc.cut[k], sc.fill[k])
         + crossingCost(subWater[k], wd, z[k]) / subW[k]) * su + wd * land;
-      bp[k] = bridge.perM(hh[k]) * su + b * land;
-      tunnel[k] = (cat.tunnelTubes * tunnelPerKm(0, u) / 1000) * su;
+      bp[k] = bridge.perM(hh[k]) * (mk ? 1 + surB(u) : su) + b * land;
+      tunnel[k] = (cat.tunnelTubes * tunnelKm(u) / 1000) * (mk ? 1 + surT(u) : su);
       if (subMust[k] && hh[k] > 0) must[k] = 1;
     }
     forceWater(must, subS, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]));
@@ -552,12 +576,12 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0)) return;
         // Auto local roads may instead pass through the embankment in a priced underpass.
         const wd = sc.dayL[k] + sc.dayR[k], box = !choice && underpassFits({ cls: c.cls, h: rz[j] - roadG[j] }, wd) ? underpassPrice(c, wd, subUrban[k]) : undefined;
-        if (box) earth[k] += box.cost * (1 + surchargeRate(subUrban[k])) / subW[k];
+        if (box) earth[k] += box.cost * (1 + surB(subUrban[k])) / subW[k];
         else must[k] = 1;
       });
     }
     const input = { ds: subDs, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, forced: must, forcedTunnel: tunnelWater(subS, z), overrides: subOverrides,
-      bridgeRunCost: bridgeRunCost(bridge, hh, subDs, i => surchargeRate(subUrban[i]), i => landPerM2(subUrban[i])) };
+      bridgeRunCost: bridgeRunCost(bridge, hh, subDs, i => surB(subUrban[i]), i => landPerM2(subUrban[i])) };
     const firstChoice = chooseStructures(input);
     forceWater(must, subS, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]), firstChoice.kind);
     const { kind } = chooseStructures(input);
@@ -597,7 +621,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     }
     const apOpt = {
       endpointElevations: opts.endpointElevations,
-      maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
+      maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: { above: waterMin.slice(), below: waterBelow }, structureKind: manualStructures, pins: d.gradePins,
       costClass: profileCostClass, costClassCount: costClasses.length,
       balance: {
@@ -739,10 +763,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
     earthPerM[i] = (baseRural + (baseUrban - baseRural) * ue + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
       + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2
-      + geotechnicalPerM[i] + (culverts[i] + retention.perCell[i]) / cellLength(i, n, ds)) * (1 + surchargeRate(ue))
+      + geotechnicalPerM[i] + (culverts[i] + retention.perCell[i]) / cellLength(i, n, ds)) * (1 + surE(ue))
       + wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2) + retention.landPerCell[i] / cellLength(i, n, ds);
-    bridgePerM[i] = bridge.perM(h[i]) * (1 + surchargeRate(ud)) + b * landPerM2(ud);
-    tunnelPerMAt[i] = (cat.tunnelTubes * tunnelPerKm(0, ut) / 1000) * (1 + surchargeRate(ut));
+    bridgePerM[i] = bridge.perM(h[i]) * (1 + surB(ud)) + b * landPerM2(ud);
+    tunnelPerMAt[i] = (cat.tunnelTubes * tunnelKm(ut) / 1000) * (1 + surT(ut));
   }
   // Rivers / water / railways and watercourses exceeding practical culvert limits need bridges.
   // Inadequate clearance stays a violation, never a fake buried bridge.
@@ -763,13 +787,13 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     // An Auto local road may instead keep its level in an underpass: the selector weighs that
     // box (estimated over the footprint width) against our bridge; crossings price the built one.
     const wd = sec.dayL[c.i] + sec.dayR[c.i], box = !choice && underpassFits(c, wd) ? underpassPrice(c, wd, urbanCentre[c.i]) : undefined;
-    if (box) earthPerM[c.i] += box.cost * (1 + surchargeRate(urbanEarth[c.i])) / cellLength(c.i, n, ds);
+    if (box) earthPerM[c.i] += box.cost * (1 + surB(urbanEarth[c.i])) / cellLength(c.i, n, ds);
     else forced[c.i] = 1;
   }
   const forcedTunnel = tunnelWater(st.s, grade);
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
   const structureInput = { ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel, overrides: manualStructures,
-    bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surchargeRate(urbanDeck[i]), i => landPerM2(urbanDeck[i])) };
+    bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i])) };
   let selection = chooseStructures(structureInput);
   // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
   // was hydraulically possible. Extend crossing spans, retaining manual overrides and checks.
@@ -794,7 +818,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   };
   const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[]) => {
     const start = performance.now();
-    const lifted = liftAutoProfile(candidate, targets, d.speed, scenario.maxGradient, d.gradePins);
+    const lifted = liftAutoProfile(candidate, targets, d.speed, maxGradient, d.gradePins, undefined, d.category);
     work('lift', start);
     timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
     return lifted;
@@ -936,7 +960,11 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // --- crossings of existing roads ---
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
-  const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides);
+  // Split motorway: the owning direction spans the other's body too where they run joined (mirror).
+  const joinedAt = (i: number) => (opts.leftJoined ?? []).some(r => st.s[i] >= r.s0 && st.s[i] <= r.s1);
+  // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
+  const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * sec.dayR[i] : v) : width;
+  const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false);
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed).
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const len = Math.hypot(q.x - p.x, q.y - p.y);
@@ -947,10 +975,22 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     if (!hit && bld) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && !gone[j] && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
     return hit;
   };
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
-    left: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayL[i] : width[i] / 2),
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
+    left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
   }, (x, y) => terrain.heightAt(x, y), ctx.roads));
+  const shared = opts.sharedCrossings;
+  if (shared && !shared.own) {
+    const SHAREABLE = new Set(['overbridge', 'underpass', 'reconnection', 'diversion']);
+    for (const c of crossings) {
+      if (!joinedAt(c.i)) continue;
+      const owner = shared.from.find(o => o.roadId === c.roadId && SHAREABLE.has(o.type) && Math.hypot(o.x - c.x, o.y - c.y) < 4 * b);
+      if (!owner) continue;
+      const { s: _s, i: _i, x: _x, y: _y, h: _h, issues: _issues, requestedType: _r, ...built } = owner;
+      Object.assign(c, structuredClone(built), { cost: 0, shared: true as const });
+      for (let k = crossingIssues.length - 1; k >= 0; k--) if (crossingIssues[k].crossing.roadId === c.roadId) crossingIssues.splice(k, 1);
+    }
+  }
   for (const c of crossings) {
     // SPK links/approaches/bridges receive other-objects surcharge; all-in junction/access do not.
     // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
@@ -998,18 +1038,27 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   let receivers: NoiseReceiver[] = [];
   let acoustic: Result["noise"]["source"] = null, builtL: Float64Array = new Float64Array(0), builtR: Float64Array = new Float64Array(0);
-  const noiseModel = createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare });
+  // Railway: CNOSSOS-EU train source and line propagation (rail-noise.ts) against the new-line limits.
+  const noiseModel = cat.mode === 'railway' ? createRailNoiseModel(opts.railTraffic ?? [])
+    : createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare, ...(cat.mode === 'motorway' ? { profile: 'motorway' as const } : {}) });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
+  const joinedLeft = new Uint8Array(n);
+  for (const r of opts.leftJoined ?? []) for (let i = 0; i < n; i++) if (st.s[i] >= r.s0 && st.s[i] <= r.s1) { joinedLeft[i] = 1; wallGaps.L[i] = 1; }
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
   if (noiseBuildings && !preview) {
     // walls and screening edges where the cross-section puts them (cut top, crown / deck edge)
     const screens = crossSectionScreens(n, kind, grade, cat.crownWidth, sec.dayL, sec.dayR, sec.zDayL, sec.zDayR,
       (i, left, o) => terrain.heightAt(st.x[i] - st.ty[i] * o * (left ? 1 : -1), st.y[i] + st.tx[i] * o * (left ? 1 : -1)), wallGaps);
-    acoustic = { id: opts.acousticSourceId ?? 'acoustic:road', mode: 'road', laneOffset: NOISE.sourceOffset, sourceHeight: NOISE.barrierSourceHeight, n, x: st.x, y: st.y, tx: st.tx, ty: st.ty, grade,
-      len: Float64Array.from({ length: n }, (_, i) => cellLength(i, n, ds)), dayDb: noiseModel.dayDb, nightDb: noiseModel.nightDb, ...screens };
+    // split motorway: where the other direction runs alongside on the left, that side is its check
+    for (let i = 0; i < n; i++) if (joinedLeft[i]) screens.L.shield[i] = 1;
+    const rail = cat.mode === 'railway';
+    acoustic = { id: opts.acousticSourceId ?? (rail ? 'acoustic:rail' : 'acoustic:road'), mode: rail ? 'rail' : 'road', laneOffset: NOISE.sourceOffset,
+      sourceHeight: NOISE.barrierSourceHeight, n, x: st.x, y: st.y, tx: st.tx, ty: st.ty, grade,
+      len: Float64Array.from({ length: n }, (_, i) => cellLength(i, n, ds)), dayDb: noiseModel.dayDb, nightDb: noiseModel.nightDb,
+      ...(noiseModel.limits ? { limits: noiseModel.limits } : {}), ...screens };
     const outcome = noiseOutcome(acoustic, noiseModel, noiseBuildings, gone, (x, y) => terrain.heightAt(x, y), st.s,
       { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R });
     boughtOut = [...manualBuys, ...outcome.boughtOut].sort((a, b) => a.i - b.i);
@@ -1049,8 +1098,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     ...crossingIssues,
     ...footprintCheck.violations,
     ...buildingViolations,
-    ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
-    ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
+    ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
+    ...ROAD_CHECKS.vertical(prof, norms, maxGradient, cat.mode === 'railway'),
   ];
   const waterCrossings: WaterResult[] = water.map((c, k) => {
     const i = Math.min(n - 1, Math.round(c.s / ds));
@@ -1124,13 +1173,16 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     i = j;
   }
   if (!profileFeasible && d.profileMode === 'auto' && pinViolations.length === 0) {
-    violations.push(profileViolation(al.length, scenario.maxGradient));
+    violations.push(profileViolation(al.length, maxGradient));
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
+  // Messages name what is built: a railway is "our railway", not "our road".
+  if (cat.mode === 'railway') for (const v of violations) for (const k of ['title', 'fix', 'detail'] as const)
+    if (v[k]) v[k] = v[k]!.replace(/\bour road\b/g, 'our railway').replace(/\bOur road\b/g, 'Our railway');
   const travelMin = al.length / (d.speed / 3.6) / 60;
   const capacityTraffic = opts.capacityTraffic ?? scenario.traffic;
   const minCategory = minCategoryForTraffic(capacityTraffic);
-  if ((opts.goals?.capacity ?? true) && CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
+  if ((opts.goals?.capacity ?? true) && cat.mode !== 'railway' && CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
     violations.push(categoryViolation(al.length, d.category, capacityTraffic, minCategory));
   }
   if ((opts.goals?.time ?? true) && travelMin > scenario.maxTravelMin + 1e-9) {
@@ -1149,7 +1201,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
     retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
     noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
-      limit: noiseModel.controlling === 'night' ? NOISE.limitNightDb : NOISE.limitDayDb },
+      limit: noiseModel.controlling === 'night' ? noiseModel.limits?.nightDb ?? NOISE.limitNightDb : noiseModel.limits?.dayDb ?? NOISE.limitDayDb },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
       cutByClass, footprint, forestArea, buildingsHit: demolished.length, hitBuildings: demolished.map((p) => p.j),

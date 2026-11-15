@@ -68,7 +68,16 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
-export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'>): OutcomeText {
+type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'>;
+export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>): OutcomeText {
+  if (c.shared) {
+    const o = ownOutcome({ ...c, targetS: undefined });
+    return { ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
+      explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` };
+  }
+  return ownOutcome(c);
+}
+function ownOutcome(c: OutcomeOf): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
   // what else its raised or lowered stretch takes (crossing-works.ts)
   const works = [c.tieLength ? ` Roads joining it there are raised or lowered to meet it (${m(c.tieLength)} m).` : '',
@@ -98,6 +107,21 @@ export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' 
       explain: `Roads may cross ours at the same level only in a junction; the ${what} needs a junction, a bridge, an underpass or a reroute.` };
   }
 }
+
+/** The motorway's two directions: edited together, or each on its own (split) and joined again. */
+export const DIRECTIONS_TEXT = {
+  heading: 'Edit',
+  both: 'Both directions',
+  towards: (place: string) => `Towards ${place}`,
+  together: 'Both directions follow one line and share one embankment, bridges side by side and twin tunnels.',
+  separate: 'Each direction now has its own bends and heights. Where they run side by side at the same height they share one embankment and are priced as one.',
+  join: 'Both directions joined on their shared line again. Undo brings back the separate changes.',
+  bothTitle: 'Bend and raise both directions together',
+  oneTitle: (place: string) => `Bend and raise only the direction towards ${place}; the other stays where it is`,
+} as const;
+
+/** Automatic on a motorway: no junction anywhere along it. */
+export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
 
 /** The player's choices on the crossing card: [value, button label, what gets built]. */
 export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overbridge' | 'reconnection' | 'underpass', string, string][] = [

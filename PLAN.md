@@ -230,6 +230,24 @@ What exists (details and commands in `README.md`):
   have no "closed" outcome; footprint rebuilds do). Example: the service-loop fixture's 1.4 + 1.4 km reroute
   of a 100 m loop chord (`docs/footprint-conflicts.md` § Model 19).
 
+### Motorway and railway scoring (cost model 20, 2026-11-15)
+
+- Motorways (paired D 27.5 corridor, split / rejoin per direction) and railways (R1/R2, SPOŽES prices, CNOSSOS
+  train noise) are scored; road bills are unchanged (eval-regression identical). Details and sources:
+  `docs/mode-foundations.md` § "M1 status", research/32–35.
+- Browser pass (screenshots 130–135): twin decks now stand on their own piers; a cut leading into a tunnel
+  ends in a portal face up to the natural ground (before, the terrain's cut-off edge showed the sky); by-hand
+  height points stay on their ground when a bend moves (before, bending one split direction slid every later
+  height point and made both directions clash downstream); motorway bests are kept (the store was keyed by the
+  road mission). Drag budget holds on D3 motorway, paired and split (`drag-perf --scenario d3 --preset
+  d3-motorway [--split forward]`).
+- Railway mission (preset `d11-railway`, screenshots 136–139): the D11 ports joined by an R1/R2 railway, an
+  honest exercise (OSM: today's line is tracks=1, electrified=no); trains = the PROVISIONAL prior (128 a day);
+  time target 9 min is a mission choice. Straight starter VALID at 27.9 bn CZK; perf design
+  `scripts/scenarios/d11/d11-railway.json` 25.4 bn CZK. Drag budget holds in all five modes.
+- "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
+  ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
+
 ### Travel-time target X and traffic Y
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.

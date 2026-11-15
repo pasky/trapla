@@ -207,6 +207,26 @@ Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scena
 [the aerial photo showing the real bypass under construction](docs/screenshots/78-nova-paka-photo.png).
 See `docs/new-scenario.md`.
 
+### Motorway (cost model 20)
+
+Two motorway places on the start screen ([picker](docs/screenshots/130-motorway-picker.png)): both directions
+are designed together as one D 27.5 corridor ([D3 overview](docs/screenshots/131-motorway-overview.png)),
+drawn as [two carriageways with a grass median and barrier](docs/screenshots/132-motorway-carriageways.png),
+[twin bridge decks on their own piers](docs/screenshots/133-motorway-twin-bridge.png) and
+[one portal per tunnel tube](docs/screenshots/134-motorway-twin-tunnel.png). "Edit: Towards …" (in the
+Motorway card) splits the directions; [one direction bent on its own](docs/screenshots/135-motorway-split.png)
+keeps its height points on their ground and runs as one body with the other wherever they still meet.
+"Both directions" joins them again. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130`.
+
+### Railway (cost model 20)
+
+"Railway: Trutnov → Polish border" is an exercise in the D11 pass, not a planned line (the line there today is
+single-track and not electrified): a double-track electric line at up to 160 km/h between the same ends,
+slopes ≤ 12.5 ‰ (shown in ‰ in the profile), no level crossings, CNOSSOS train noise.
+[Overview](docs/screenshots/136-railway-overview.png), [double track in a cut](docs/screenshots/137-railway-track.png),
+[viaduct over Trutnov](docs/screenshots/138-railway-viaduct.png), [tunnel portal](docs/screenshots/139-railway-portal.png).
+Reproduce with `node scripts/railway-shots.mjs --docs 136`.
+
 ### Several roads (foundation, not priced together yet)
 
 | A second road: our road keeps its own price, the other is not priced yet | Change road: Start and End along a mapped road |

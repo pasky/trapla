@@ -11,12 +11,12 @@ export interface ProvisionalProfile { s: Float64Array; ground: Float64Array; gra
 /** `previous`: the last evaluated result (its length and final VPIs). Same 10 m stationing as evaluate. */
 export function provisionalProfile(a: Vec2, b: Vec2, d: Design, previous: { length: number; vpis: readonly VPI[] },
   heightAt: (x: number, y: number) => number): ProvisionalProfile {
-  const al = buildAlignment(a, b, d.pis, horizontalRules(d.speed)), st = station(al, 10);
+  const al = buildAlignment(a, b, d.pis, horizontalRules(d.speed, d.category)), st = station(al, 10);
   const n = st.n, L = al.length, ground = new Float64Array(n);
   for (let i = 0; i < n; i++) ground[i] = heightAt(st.x[i], st.y[i]);
   const zA = ground[0], zB = ground[n - 1], scale = L / (previous.length || L);
   const vpis = d.profileMode === 'manual' && d.vpis.length >= 2 ? normalizeVpis(d.vpis, L, zA, zB)
     : previous.vpis.map((v, k, all) => k === 0 ? { ...v, s: 0, z: zA } : k === all.length - 1 ? { ...v, s: L, z: zB } : { ...v, s: v.s * scale });
-  const norms = speedNorms(d.speed);
+  const norms = speedNorms(d.speed, d.category);
   return { s: st.s, ground, grade: elevations(buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius), st.s), ds: st.ds, length: L };
 }

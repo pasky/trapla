@@ -41,6 +41,8 @@ export interface AcousticSource {
   /** stable physical source id (project `acousticSourceId`) */
   id: string;
   mode: 'road' | 'rail';
+  /** the limits its levels are judged against (absent: the road's NOISE limits; railway: new-line 60 / 55) */
+  limits?: { dayDb: number; nightDb: number };
   /** propagation: the equivalent line lies this far from the cell line towards the receiver, m
    * (two-lane road: the near lane, NOISE.sourceOffset; a directional carriageway on its lane axis: 0) */
   laneOffset: number;
@@ -108,7 +110,11 @@ const L_STEP = 0.5, L_MAX = 1100, L_ROWS = 18;
 const SOURCE_OFFSET = NOISE.sourceOffset, SOURCE_HEIGHT = NOISE.sourceHeight, HS = NOISE.barrierSourceHeight;
 const linCache = new Map<string, { table: Float64Array; cols: number; rows: number }>();
 const LIN_1000 = dm.pow(10, -propagationLoss(1000, 1.5, 'hard') / 10);
-function linTable(ground: 'hard' | 'mixed') {
+/** How a source's line energy falls with distance: the road manual's U over hard or mixed ground, or a
+ * railway's spherical spreading along the line (rail-noise.ts: 10^(−loss/10) = 1 / max(1 m, r)). */
+export type Propagation = 'hard' | 'mixed' | 'rail';
+function linTable(propagation: Propagation) {
+  const ground = propagation === 'mixed' ? 'mixed' : 'hard';
   let c = linCache.get(ground);
   if (!c) {
     const cols = Math.ceil(L_MAX / L_STEP) + 1, rows = ground === 'hard' ? 1 : L_ROWS;
@@ -121,13 +127,14 @@ function linTable(ground: 'hard' | 'mixed') {
 
 /** Ground loss of an infinite line at perpendicular distance `d` from the axis, point `dz` above grade,
  * as energy fraction (the manual's U, with the calibrated slant-range extension of road-noise.ts). */
-export function lineTransfer(d: number, dz: number, ground: 'hard' | 'mixed' = NOISE.ground,
+export function lineTransfer(d: number, dz: number, ground: Propagation = NOISE.ground,
   lin = linTable(ground), offset = SOURCE_OFFSET): number {
   return transfer(d, dz, ground, lin, offset);
 }
 /** lineTransfer's hot path, small enough to be inlined into the sums (hard ground from the table) */
-function transfer(d: number, dz: number, ground: 'hard' | 'mixed', lin: { table: Float64Array; cols: number; rows: number }, offset: number): number {
+function transfer(d: number, dz: number, ground: Propagation, lin: { table: Float64Array; cols: number; rows: number }, offset: number): number {
   const du = d - offset, dv = dz - SOURCE_HEIGHT, slant = Math.sqrt(du * du + dv * dv);
+  if (ground === 'rail') return 1 / Math.max(1, slant);
   if (ground === 'hard') {
     // below 8 m the manual's 10 log(r/8) (clamped at 3.75 m): 10^(−U/10) = 8/r exactly
     if (slant < 8) return 8 / Math.max(3.75, slant);
@@ -140,9 +147,9 @@ function transfer(d: number, dz: number, ground: 'hard' | 'mixed', lin: { table:
   }
   return transferSlow(slant, dv, ground, lin);
 }
-function transferSlow(slant: number, dv: number, ground: 'hard' | 'mixed', lin: { table: Float64Array; cols: number; rows: number }): number {
+function transferSlow(slant: number, dv: number, ground: Propagation, lin: { table: Float64Array; cols: number; rows: number }): number {
   const heff = Math.abs(dv) + SOURCE_HEIGHT;
-  if (slant < 8.5 || slant >= L_MAX - 1) return dm.pow(10, -propagationLoss(slant, heff, ground) / 10);
+  if (slant < 8.5 || slant >= L_MAX - 1) return dm.pow(10, -propagationLoss(slant, heff, ground === 'mixed' ? 'mixed' : 'hard') / 10);
   const table = lin.table, cols = lin.cols, rows = lin.rows;
   const x = slant / L_STEP, i = Math.floor(x), t = x - i;
   if (rows === 1) return table[i] + (table[i + 1] - table[i]) * t;
@@ -269,13 +276,14 @@ function mergeLevel(src: AcousticSource, a: Segments): Segments {
 
 export interface NoiseField {
   src: AcousticSource;
-  ground: 'hard' | 'mixed';
+  ground: Propagation;
   lin: { table: Float64Array; cols: number; rows: number };
   /** the segment tree: levels[0] = 4-cell chunks, each level pairs the one below, the last has one segment */
   levels: Segments[];
 }
 
-export function noiseField(src: AcousticSource, ground: 'hard' | 'mixed' = NOISE.ground): NoiseField {
+export function noiseField(src: AcousticSource, roadGround: 'hard' | 'mixed' = NOISE.ground): NoiseField {
+  const ground: Propagation = src.mode === 'rail' ? 'rail' : roadGround;
   const levels = [segments(src, CHUNK)];
   while (levels[levels.length - 1].n > 1) levels.push(mergeLevel(src, levels[levels.length - 1]));
   return { src, ground, lin: linTable(ground), levels };
@@ -657,17 +665,17 @@ export function openTransfer(f: NoiseField, px: number, py: number, z: ArrayLike
   }
 }
 
-/** g(d) = d·10^(−U(d)/10) at the loudest receiver height (hard ground: level with the source; mixed:
- * scanned), on a 0.5 m grid to 3 km: its maximum M and running maxima from below (`up`) and from above
+/** g(d) = d·10^(−U(d)/10) at the loudest receiver height (hard ground and railway: level with the source;
+ * mixed: scanned), on a 0.5 m grid to 3 km: its maximum M and running maxima from below (`up`) and from above
  * (`down`), which bound g over any interval of d (openBound). */
 export interface LineEnvelope { M: number; up: Float64Array; down: Float64Array }
 const ENV_STEP = 0.5, ENV_N = 5999;
 const envelopes = new Map<string, LineEnvelope>();
-export function lineEnvelope(ground: 'hard' | 'mixed' = NOISE.ground): LineEnvelope {
+export function lineEnvelope(ground: Propagation = NOISE.ground): LineEnvelope {
   let e = envelopes.get(ground);
   if (!e) {
     const g = new Float64Array(ENV_N).fill(0);
-    for (let dz = ground === 'hard' ? NOISE.sourceHeight : -30; dz <= (ground === 'hard' ? NOISE.sourceHeight : 40); dz += 0.5)
+    for (let dz = ground !== 'mixed' ? NOISE.sourceHeight : -30; dz <= (ground !== 'mixed' ? NOISE.sourceHeight : 40); dz += 0.5)
       for (let k = 0; k < ENV_N; k++) { const d = (k + 1) * ENV_STEP; g[k] = Math.max(g[k], d * lineTransfer(d, dz, ground)); }
     const up = new Float64Array(ENV_N), down = new Float64Array(ENV_N);
     let m = 0;
@@ -678,12 +686,12 @@ export function lineEnvelope(ground: 'hard' | 'mixed' = NOISE.ground): LineEnvel
   }
   return e;
 }
-/** max of g over [lo, hi] (bounded from the grid's running maxima; beyond 3 km: hard ground's g falls,
- * d/(d − source offset) under the 1/r law; mixed: M) */
-function envelopeMax(e: LineEnvelope, ground: 'hard' | 'mixed', lo: number, hi: number): number {
+/** max of g over [lo, hi] (bounded from the grid's running maxima; beyond 3 km: hard ground's and the
+ * railway's g fall, d/(d − source offset) under the 1/r law; mixed: M) */
+function envelopeMax(e: LineEnvelope, ground: Propagation, lo: number, hi: number): number {
   const kh = Math.ceil(hi / ENV_STEP) - 1, kl = Math.floor(lo / ENV_STEP) - 1;
   const up = kh >= ENV_N ? e.M : e.up[Math.max(0, kh)];
-  const down = kl < 0 ? e.M : kl >= ENV_N ? (ground === 'hard' ? e.down[ENV_N - 1] : e.M) : e.down[kl];
+  const down = kl < 0 ? e.M : kl >= ENV_N ? (ground !== 'mixed' ? e.down[ENV_N - 1] : e.M) : e.down[kl];
   return Math.min(up, down);
 }
 

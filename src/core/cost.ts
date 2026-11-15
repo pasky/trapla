@@ -5,7 +5,7 @@
 // at the two ends), one array per component, so every koruna is attributable along the route and the
 // totals are simply the sums of the arrays (`costParts` → `sumParts`).
 
-import { CATEGORIES, type CategoryId, type TerrainClass } from './data/categories';
+import { CATEGORIES, type Category, type CategoryId, type TerrainClass } from './data/categories';
 import { EXCAVATION_BY_CLASS, LAND, NORM_EARTHWORK_ALLOWANCE, PRICES } from './data/prices';
 import { NOISE, URBAN_LAND, URBAN_NORM_PER_KM, URBAN_RATES } from './data/urban';
 import { KIND, type Run } from './structures';
@@ -14,6 +14,9 @@ import { bridgeModel, bridgeVariableCosts } from './bridge';
 /** value of the earthworks already included in the SFDI per-km norm, CZK per km */
 export function allowanceValuePerKm(cat: CategoryId): number {
   const c = CATEGORIES[cat];
+  // Item price books (railway) price track and systems without any earthworks in them.
+  if (c.roadClass === 'rail') return 0;
+  if (c.normShareOf) return c.normShareOf.share * allowanceValuePerKm(c.normShareOf.category);
   const cut = NORM_EARTHWORK_ALLOWANCE.cutPerKm[c.roadClass];
   const fill = cut * NORM_EARTHWORK_ALLOWANCE.fillShareOfCut;
   const topsoilArea = 1000 * (c.crownWidth + NORM_EARTHWORK_ALLOWANCE.topsoilExtraWidth);
@@ -40,6 +43,12 @@ export function tunnelPerKm(length: number, urban = 0): number {
   const rural = long ? PRICES.tunnelLongPerKm : PRICES.tunnelShortPerKm;
   const town = long ? URBAN_RATES.tunnelLongPerKm : URBAN_RATES.tunnelShortPerKm;
   return rural + (town - rural) * urban;
+}
+
+/** tunnel price per km of tube for a category: its own price book (railway) or the SPK road tube rows */
+export function categoryTunnelPerKm(cat: Category, length: number, urban = 0): number {
+  const own = cat.tunnelPerKm;
+  return own ? own.rural + (own.urban - own.rural) * urban : tunnelPerKm(length, urban);
 }
 
 /** "other objects" surcharge rate for a built-up share 0…1 */
@@ -220,12 +229,18 @@ export function costParts(inp: StationCostInput): CostParts {
     } else if (k === KIND.bridge) {
       construction = parts.bridges[i];
     } else {
-      construction = parts.tunnels[i] = cat.tunnelTubes * (len / 1000) * tunnelPerKm(runLen[i], u);
+      construction = parts.tunnels[i] = cat.tunnelTubes * (len / 1000) * categoryTunnelPerKm(cat, runLen[i], u);
     }
+    // Railway track, catenary and systems run over bridges and through tunnels as well.
+    const everywhere = cat.everywherePerKm;
+    if (everywhere && k !== KIND.earth) { parts.roadBase[i] = len * (everywhere.rural + (everywhere.urban - everywhere.rural) * u) / 1000; construction += parts.roadBase[i]; }
     const structure = inp.crossingStructure ? inp.crossingStructure[i] : 0;
     parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
     parts.noiseWalls[i] = (inp.wallArea ? inp.wallArea[i] : 0) * NOISE.wallPerM2;
-    parts.surcharge[i] = (construction + structure) * surchargeRate(u);
+    const mk = cat.markup;
+    parts.surcharge[i] = !mk ? (construction + structure) * surchargeRate(u)
+      : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth + structure * mk.bridge
+        : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel) + structure * mk.bridge;
     parts.land[i] = len * inp.width[i] * landPerM2(u) + (inp.additionalLand?.[i] ?? 0);
     parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
     parts.noiseBuyouts[i] = inp.noiseBuyouts ? inp.noiseBuyouts[i] : 0;

@@ -8,7 +8,7 @@ import * as dm from './detmath';
 import { KIND } from './structures';
 import {
   cellOptions, segmentFlags, MAX_STOREYS, openBound, lineEnvelope, openTransfer, type CellOptions, emptyScreen, lineTransfer, noiseField, transferDelta, pointTransfer, transferBuffers, NOISE_REACH,
-  type AcousticSource, type NoiseField, type SideScreen,
+  type AcousticSource, type NoiseField, type Propagation, type SideScreen,
 } from './noise-field';
 import { noiseLevels, type NoiseModel } from './road-noise';
 import type { Result } from './evaluate';
@@ -184,8 +184,8 @@ function searchRadius(model: NoiseModel): number {
   return Math.min(NOISE_REACH, hi);
 }
 /** max over d and receiver height of d · 10^(−U/10), per ground class (noise-field's lineEnvelope) */
-function maxDLin(): number {
-  return lineEnvelope(NOISE.ground).M;
+function maxDLin(ground: Propagation): number {
+  return lineEnvelope(ground).M;
 }
 /**
  * Beyond this distance from every cell no house can reach the limit (research/36 §2): a cell r away adds at
@@ -193,8 +193,8 @@ function maxDLin(): number {
  * from the house on both sides of its nearest point and sweeps at most 360° around it, Σ l/r² ≤ (2 + 2π)/R
  * (ds ≤ |dr| + r|dθ|), so the whole road adds ≤ (2 + 2π)·M/(π R).
  */
-function boundRadius(excessDb: number): number {
-  return (2 + 2 * Math.PI) / Math.PI * maxDLin() * dm.pow(10, excessDb / 10);
+function boundRadius(excessDb: number, ground: Propagation): number {
+  return (2 + 2 * Math.PI) / Math.PI * maxDLin(ground) * dm.pow(10, excessDb / 10);
 }
 /** dB: the far grouping's error against the cell-by-cell sum stays below this (research/36 §2) */
 const OUTER_CHECK_DB = 0.5;
@@ -236,8 +236,8 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   // the emission weight a cell may carry above the source's reference (1 without weights)
   let wMax = 1;
   if (src.weight) for (let i = 0; i < n; i++) wMax = Math.max(wMax, src.weight[i]);
-  const env = lineEnvelope(NOISE.ground);
-  const outer = Number.isFinite(model.excessDb) ? Math.max(radius, boundRadius(model.excessDb) * wMax) : 0;
+  const env = lineEnvelope(field.ground);
+  const outer = Number.isFinite(model.excessDb) ? Math.max(radius, boundRadius(model.excessDb, field.ground) * wMax) : 0;
   const ds = n > 1 ? (s[n - 1] - s[0]) / (n - 1) : 1;
   if (outer > 0) buildings.alongCells(src.x, src.y, n, outer + NOISE.facadeOffset + NOISE.sourceOffset, (cell, i) => {
     for (const j of cell) if (!seen.has(j)) { seen.add(j); candidate(j, i); }
@@ -636,14 +636,20 @@ export interface NoiseFootprint {
   limit: number;
 }
 
-/** The source's controlling excess at its reference distance: max(Yday − 60, Ynight − 50), dB. */
-export function sourceExcess(src: Pick<AcousticSource, 'dayDb' | 'nightDb'>): number {
-  return Math.max(src.dayDb - NOISE.limitDayDb, src.nightDb - NOISE.limitNightDb);
+/** The limits a source's levels are judged against: its own (railway: new-line 60 / 55 dB) or the road's. */
+export function sourceLimits(src: Pick<AcousticSource, 'limits'>): { dayDb: number; nightDb: number } {
+  return src.limits ?? { dayDb: NOISE.limitDayDb, nightDb: NOISE.limitNightDb };
+}
+
+/** The source's controlling excess at its reference distance: max(Yday − limit, Ynight − limit), dB. */
+export function sourceExcess(src: Pick<AcousticSource, 'dayDb' | 'nightDb' | 'limits'>): number {
+  const lim = sourceLimits(src);
+  return Math.max(src.dayDb - lim.dayDb, src.nightDb - lim.nightDb);
 }
 
 /** Axis distance where an open straight road at the low receiver falls `below` dB under the limit. */
-function fadeDistance(excess: number, below: number): number {
-  const at = (d: number) => excess + 10 * dm.log10(lineTransfer(d, NOISE.receiverHeight));
+function fadeDistance(excess: number, below: number, ground: Propagation): number {
+  const at = (d: number) => excess + 10 * dm.log10(lineTransfer(d, NOISE.receiverHeight, ground));
   let lo = NOISE.sourceOffset, hi = 2000;
   if (at(lo) <= -below) return lo;
   for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (at(mid) > -below) lo = mid; else hi = mid; }
@@ -680,7 +686,7 @@ export function noiseFootprint(field: NoiseField, wallL: ArrayLike<number>, wall
   const stations = new Int32Array(m);
   for (let k = 0; k < m; k++) stations[k] = Math.min(n - 1, k * stride);
   const edge = crownWidth / 2 + NOISE.wallEdgeOffset;
-  const span = Math.max(20, fadeDistance(excess0, fadeDb) - edge);
+  const span = Math.max(20, fadeDistance(excess0, fadeDb, field.ground) - edge);
   const offsets = new Float32Array(samples);
   for (let o = 0; o < samples; o++) offsets[o] = span * dm.pow(o / (samples - 1), 1.7);
   const start = new Float32Array(2 * m), excess = new Float32Array(2 * m * samples), receiver = new Float32Array(2 * m);
@@ -703,9 +709,9 @@ export function noiseFootprint(field: NoiseField, wallL: ArrayLike<number>, wall
       }
     }
   }
-  const dayEx = src.dayDb - NOISE.limitDayDb, nightEx = src.nightDb - NOISE.limitNightDb;
+  const lim = sourceLimits(src), dayEx = src.dayDb - lim.dayDb, nightEx = src.nightDb - lim.nightDb;
   return { stride, stations, offsets, start, excess, receiver, controlling: dayEx >= nightEx ? 'day' : 'night',
-    limit: dayEx >= nightEx ? NOISE.limitDayDb : NOISE.limitNightDb };
+    limit: dayEx >= nightEx ? lim.dayDb : lim.nightDb };
 }
 
 export function wallStretches(ds: number, length: number, flags: ArrayLike<number>, side: 'L' | 'R'): WallStretch[] {

@@ -1,3 +1,4 @@
+import { railRouteBasePerKm } from './railway';
 // Built-up areas: buildings, building land, urban construction rates, crossings of existing roads,
 // noise walls. CZK excl. VAT: SPK CN norms are 2026; research examples are at their original dates,
 // NOT escalated to 2026. Sources: research/07-property-land.md (buildings,
@@ -93,6 +94,10 @@ export const URBAN_NORM_PER_KM: Record<CategoryId, { hilly: number; mountainous:
   'S9.5': { hilly: 67_852_000, mountainous: 78_271_000, codes: ['A.1.S1.9,5.NIR', 'A.1.S1.9,5.NIH'] },
   'S11.5': { hilly: 82_035_000, mountainous: 94_666_000, codes: ['A.1.S1.11,5.NIR', 'A.1.S1.11,5.NIH'] },
   'D27.5': { hilly: 187_632_000, mountainous: 214_512_000, codes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NEH'] },
+  // Railway: SPOŽES has no built-up row for track; its dense-area utility relocations (I01) apply instead.
+  'R1': { hilly: railRouteBasePerKm(1, true), mountainous: railRouteBasePerKm(1, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },
+  'R2': { hilly: railRouteBasePerKm(2, true), mountainous: railRouteBasePerKm(2, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },
+  'D27.5-1': { hilly: 0.6 * 187_632_000, mountainous: 0.6 * 214_512_000, codes: ['60 % × A.1.D.27,5.NER', '60 % × A.1.D.27,5.NEH'] },
 };
 
 // ---------------------------------------------------------------------------------------------

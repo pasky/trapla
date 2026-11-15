@@ -25,7 +25,7 @@ export const TRAFFIC_THRESHOLDS: { maxAadt: number; category: CategoryId }[] = [
   { maxAadt: Infinity, category: 'D27.5' },
 ];
 
-export const CATEGORY_RANK: Record<CategoryId, number> = { 'S7.5': 0, 'S9.5': 1, 'S11.5': 2, 'D27.5': 3 };
+export const CATEGORY_RANK: Record<CategoryId, number> = { 'S7.5': 0, 'S9.5': 1, 'S11.5': 2, 'D27.5': 3, 'D27.5-1': 3, R1: 0, R2: 0 };
 
 export function minCategoryForTraffic(aadt: number): CategoryId {
   for (const t of TRAFFIC_THRESHOLDS) if (aadt <= t.maxAadt) return t.category;
@@ -37,8 +37,11 @@ export interface ScenarioParams {
   title: string;
   /** Stable mission/preset identity, separate from the terrain pack id. Legacy D11 uses d11. */
   presetId?: string;
+  /** What the mission builds: a road (default), a paired motorway corridor (core/project-motorway.ts) or a
+   * railway (core/project-railway.ts). */
+  mode?: 'road' | 'motorway' | 'railway';
   /** Fresh designs only; loading an existing design must never overwrite its specification. */
-  initial?: { category: CategoryId; speed: 70 | 80 | 90; pis?: PI[] };
+  initial?: { category: CategoryId; speed: number; pis?: PI[] };
   /** Short catalogue copy; D3/D35 road exercises are not motorway demand forecasts. */
   picker?: { kind: string; goal: string; note?: string };
   /** traffic Y, vehicles/day (scenario value) */
@@ -116,6 +119,45 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
   labels: { a: 'Kumburský Újezd', b: 'Vidochov', official: 'bypass reference', brief: '<b>Kumburský Újezd</b> to <b>Vidochov</b>, around Nová Paka' },
 };
 
+// Motorway missions in the same corridors: separate presets (own saves) next to the unchanged road
+// exercises. Traffic: GAME PRIOR = CSD 2020 national mean motorway AADT "cca 30 700 voz/24h" (ŘSD
+// census page), not a local forecast (none found, research/33 §2). Acoustic heavy share 22.56 %: TP 219
+// tab. 4-2 first-class motorway mix (19 % goods + 1 % buses + 32 % of 8 % light goods, Manuál tab. 20).
+// Capacity: D 27.5 carries it. Time targets are mission choices (≈ 10 % longer than the reference).
+const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
+export const D3_MOTORWAY: ScenarioParams = {
+  ...D3_SCENARIO, presetId: 'd3-motorway', mode: 'motorway', title: 'Motorway D3: Jílové → Václavice',
+  // The real 0302/0303 sections are D 27.5/120 (research/25). Starter = the road exercise's bends with
+  // the last bend moved 30 m (bounded validity-first search) so the wider body clears a track; not optimised.
+  initial: { category: 'D27.5', speed: 120, pis: [
+    { x: 3872.4, y: 14182.6, r: null }, { x: 3608.6, y: 12643.7, r: null },
+    { x: 4588.5, y: 9743.4, r: null }, { x: 4849.5, y: 8185.1, r: null },
+    { x: 5549, y: 6639, r: null }, { x: 7079, y: 5914, r: null }, { x: 8498.8, y: 4259.8, r: null },
+  ] },
+  picker: { kind: 'Motorway · 120 km/h', goal: 'Both directions together; split them where the hills ask for it.' },
+  ...MOTORWAY_TRAFFIC, maxTravelMin: 8.6, // 17.2 km at 120 (reference 15.68 km)
+};
+export const D35_MOTORWAY: ScenarioParams = {
+  ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Motorway D35: Opatovec → Staré Město',
+  // The real section is D 26.0/130 (research/26), a category without an SPK 2026 row: built as D 27.5.
+  initial: { ...D35_SCENARIO.initial!, category: 'D27.5', speed: 130 },
+  picker: { kind: 'Motorway · 130 km/h', goal: 'Carry the motorway over the ridge to Staré Město.', note: 'Built as D 27.5; the planned section is D 26.0.' },
+  ...MOTORWAY_TRAFFIC, maxTravelMin: 8.3, // 18 km at 130 (project section 16.6 km)
+};
+// Railway exercise in the D11 pass, between the road mission's ports (own saves). Not a planned project:
+// the line through the pass today is single-track and not electrified (OSM tags in the pack's transport
+// data: tracks=1, electrified=no, maxspeed 40–100). Trains: the PROVISIONAL prior of rail-noise.ts (128 a
+// day). Time target: a mission choice, 9 min = 24 km at 160 km/h or 21 km at 140 (A–B 18.6 km in a line).
+export const D11_RAILWAY: ScenarioParams = {
+  ...D11_SCENARIO, presetId: 'd11-railway', mode: 'railway', title: 'Railway: Trutnov → Polish border',
+  initial: { category: 'R2', speed: 160 },
+  picker: { kind: 'Railway · 160 km/h', goal: 'Lay a double-track electric line through the pass to the border.',
+    note: 'An exercise, not a planned line. The line there today is single-track, without wires.' },
+  maxTravelMin: 9,
+};
+/** Every playable mission, in picker order. */
+export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D11_RAILWAY, D3_SCENARIO, D3_MOTORWAY, D35_SCENARIO, D35_MOTORWAY, NOVA_PAKA_SCENARIO];
+
 /** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.
  * D11 intentionally retains its exact legacy parameters and default. */
 export const SCENARIOS: Record<string, ScenarioParams> = {
@@ -123,7 +165,11 @@ export const SCENARIOS: Record<string, ScenarioParams> = {
 };
 export const DEFAULT_SCENARIO = 'd11';
 
-export function scenarioParams(id: string): ScenarioParams {
+export function scenarioParams(id: string, presetId?: string | null): ScenarioParams {
+  if (presetId) {
+    const preset = PRESETS.find(p => p.id === id && (p.presetId ?? p.id) === presetId);
+    if (preset) return preset;
+  }
   const sc = SCENARIOS[id];
   if (!sc) throw new Error(`unknown scenario "${id}" (known: ${Object.keys(SCENARIOS).join(', ')})`);
   return sc;

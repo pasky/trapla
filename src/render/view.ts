@@ -22,7 +22,9 @@ import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
 import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
-import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
+import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
+import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
+import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
 import { CATEGORIES } from '../core/data/categories';
@@ -83,7 +85,11 @@ const STRUCTURE_LINE_FROM = 2.5;
  * crown width's category. All have the same centre-line dash (TP 133: 3 / 6 m outside motorways). */
 const SECTIONS = [undefined, ...Object.values(CATEGORIES).map((c) => c.section).filter((s) => s)];
 function sectionIndex(crownWidth: number) {
-  return Math.max(0, SECTIONS.indexOf(Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth)?.section));
+  const cat = Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth);
+  if (cat?.paired) return PAIRED_SECTION;
+  if (cat?.carriageway) return CARRIAGEWAY_SECTION;
+  if (cat?.mode === 'railway') return cat.tracks === 2 ? RAIL2_SECTION : RAIL_SECTION;
+  return Math.max(0, SECTIONS.indexOf(cat?.section));
 }
 
 /** stations within a (non-goal) violation, drawn red */
@@ -154,6 +160,10 @@ export class View {
     SECTIONS.forEach((s, k) => { if (s) u.roadSections.value[k].set(s.lane, s.lane + s.hardShoulder, s.edgeLine, s.centreLine); });
     const dash = SECTIONS[1];
     if (dash) u.roadDash.value.set(dash.dash, dash.gap);
+    u.roadPaired.value.set(D275_SECTION.median / 2, D275_SECTION.innerPavedShoulder, D275_SECTION.laneWidth, D275_SECTION.outerPavedShoulder);
+    u.roadCarriageway.value = CATEGORIES['D27.5-1'].crownWidth / 2;
+    u.roadRail.value.set(1, TRACK_CENTRES_M, RAILWAY_EVIDENCE.ballastTopHalfWidthM, (RAILWAY_EVIDENCE.standardGaugeMm + 72) / 2000);
+    u.roadPairedLines.value.set(MOTORWAY_MARKINGS.edgeLine, MOTORWAY_MARKINGS.laneLine, MOTORWAY_MARKINGS.dash, MOTORWAY_MARKINGS.gap);
     return u;
   })();
   private landcover: LandCover | null = null;
@@ -858,6 +868,23 @@ export class View {
       if (wl !== undefined) idx.push(dl, l, wl);
       if (wr !== undefined) idx.push(wr, rr, dr);
     }
+    // The portal face: the hill above and beside the portals, from the approach cut's cross-section up to
+    // natural ground (a secured face). Without it the cut-off edge of the terrain shows the sky.
+    const face = concrete.clone().multiplyScalar(0.8);
+    for (const run of r.runs) if (run.kind === KIND.tunnel) for (const i of [run.i0 - 1, run.i1 + 1]) {
+      if (i < 0 || i >= n || !ground[i]) continue;
+      const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i], L = r.dayL[i], R = r.dayR[i];
+      const bottom = (o: number) => o > w ? z + (r.zDayL[i] - z) * (o - w) / Math.max(1e-6, L - w)
+        : o < -w ? z + (r.zDayR[i] - z) * (-o - w) / Math.max(1e-6, R - w) : z;
+      const steps = Math.max(2, Math.ceil((L + R) / 2.5));
+      let prev: [number, number] | null = null;
+      for (let k = 0; k <= steps; k++) {
+        const o = L - (L + R) * k / steps, px = x + nx * o, py = y + ny * o, top = natural(px, py) + groundLift;
+        const at: [number, number] = [push(px, py, Math.min(bottom(o), top), face), push(px, py, top, face)];
+        if (prev) quad(prev[0], at[0], prev[1], at[1]);
+        prev = at;
+      }
+    }
     // bridge deck edges and piers, tunnel portals
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
       const nx = -ty, ny = tx;
@@ -873,6 +900,11 @@ export class View {
     };
     const shade = (c: THREE.Color, f: number) => c.clone().multiplyScalar(f);
     const supports = structureFootprints({ ...r, crownWidth });
+    // A paired motorway is carried on twin decks and runs through twin tubes: the median is open.
+    const gap = section === PAIRED_SECTION || section === CARRIAGEWAY_SECTION ? D275_SECTION.median / 2 : 0;
+    // one direction of a split motorway: its half of the median (on its left) is open on a bridge
+    const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [[-w, w - gap]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
+    const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;
     for (const run of r.runs) {
       if (run.kind === KIND.bridge) {
         const piers = supports.filter(p => p.structure === 'pier' && p.s > run.s0 && p.s < run.s1);
@@ -886,30 +918,33 @@ export class View {
         for (let i = Math.max(0, run.i0 - 1); i <= Math.min(n - 2, run.i1); i++) {
           for (const segment of bridgeDeckSegments(spans,r.s[i],r.s[i+1])) {
             const a = at(segment.s0), b = at(segment.s1), deck = segment.depth;
-            for (const sgn of [1, -1]) {
-              const nx0 = -a.ty*sgn*w, ny0 = a.tx*sgn*w, nx1 = -b.ty*sgn*w, ny1 = b.tx*sgn*w;
-              const c = shade(concrete, sgn > 0 ? 0.95 : 0.75);
-              const a0 = push(a.x+nx0,a.y+ny0,a.z+lift,c), a1 = push(a.x+nx0,a.y+ny0,a.z-deck,c);
-              const b0 = push(b.x+nx1,b.y+ny1,b.z+lift,c), b1 = push(b.x+nx1,b.y+ny1,b.z-deck,c);
-              quad(a0,b0,a1,b1);
+            for (const o of strips.flat()) {
+              const c = shade(concrete, o > 0 ? 0.95 : 0.75), [ax, ay] = across(a, o), [bx, by] = across(b, o);
+              quad(push(ax,ay,a.z+lift,c), push(bx,by,b.z+lift,c), push(ax,ay,a.z-deck,c), push(bx,by,b.z-deck,c));
             }
             const u = shade(concrete, 0.55);
-            quad(push(a.x-a.ty*w,a.y+a.tx*w,a.z-deck,u), push(a.x+a.ty*w,a.y-a.tx*w,a.z-deck,u),
-              push(b.x-b.ty*w,b.y+b.tx*w,b.z-deck,u), push(b.x+b.ty*w,b.y-b.tx*w,b.z-deck,u));
+            for (const [lo, hi] of strips) {
+              const [a0x, a0y] = across(a, hi), [a1x, a1y] = across(a, lo), [b0x, b0y] = across(b, hi), [b1x, b1y] = across(b, lo);
+              quad(push(a0x,a0y,a.z-deck,u), push(a1x,a1y,a.z-deck,u), push(b0x,b0y,b.z-deck,u), push(b1x,b1y,b.z-deck,u));
+            }
           }
         }
         // Close the soffit step between unequal spans, rather than leave an open deck at a pier.
         for (let j = 1; j < spans.length; j++) if (Math.abs(spans[j-1].depth-spans[j].depth) > 1e-6) {
           const p = at(spans[j].s0), c = shade(concrete,.65);
-          quad(push(p.x-p.ty*w,p.y+p.tx*w,p.z-spans[j-1].depth,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z-spans[j-1].depth,c),
-            push(p.x-p.ty*w,p.y+p.tx*w,p.z-spans[j].depth,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z-spans[j].depth,c));
+          for (const [lo, hi] of strips) {
+            const [hx, hy] = across(p, hi), [lx, ly] = across(p, lo);
+            quad(push(hx,hy,p.z-spans[j-1].depth,c), push(lx,ly,p.z-spans[j-1].depth,c), push(hx,hy,p.z-spans[j].depth,c), push(lx,ly,p.z-spans[j].depth,c));
+          }
         }
         // Close deep deck ends even where the embankment cap cannot hide the underside.
         for (const [s,depth] of [[r.s[Math.max(0,run.i0-1)],spans[0].depth],
           [r.s[Math.min(n-1,run.i1+1)],spans[spans.length-1].depth]]) {
           const p = at(s), c = shade(concrete,.75);
-          quad(push(p.x-p.ty*w,p.y+p.tx*w,p.z+lift,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z+lift,c),
-            push(p.x-p.ty*w,p.y+p.tx*w,p.z-depth,c), push(p.x+p.ty*w,p.y-p.tx*w,p.z-depth,c));
+          for (const [lo, hi] of strips) {
+            const [hx, hy] = across(p, hi), [lx, ly] = across(p, lo);
+            quad(push(hx,hy,p.z+lift,c), push(lx,ly,p.z+lift,c), push(hx,hy,p.z-depth,c), push(lx,ly,p.z-depth,c));
+          }
         }
         // Same explicit layout as pricing and footprint checks. Never silently omit a
         // colliding pier: the blocked marker explains why the player must adjust the bridge.
@@ -919,13 +954,18 @@ export class View {
             for (let j = Math.max(0,Math.floor(s0/r.ds)+1); j < n && r.s[j] < s1; j++) highest = Math.max(highest,r.grade[j]);
             return highest;
           });
-          boxAt(p.x, p.y, p.tx, p.ty, this.terrain.heightAt(p.x, p.y) - 2, top,
-            p.along, p.left, shade(concrete, 0.85));
+          // twin decks stand on their own piers (same share of each deck's width as a single deck's)
+          for (const [lo, hi] of gap || section === CARRIAGEWAY_SECTION ? strips : [[-p.left, p.left]]) {
+            const [cx, cy] = across(p, (lo + hi) / 2);
+            boxAt(cx, cy, p.tx, p.ty, this.terrain.heightAt(cx, cy) - 2, top, p.along, gap || section === CARRIAGEWAY_SECTION ? (hi - lo) / 2 * 0.55 : p.left, shade(concrete, 0.85));
+          }
         }
       } else if (run.kind === KIND.tunnel) {
-        for (const i of [Math.max(0, run.i0 - 1), Math.min(n - 1, run.i1 + 1)]) {
-          boxAt(r.x[i], r.y[i], r.tx[i], r.ty[i], r.grade[i] - 0.5, r.grade[i] + 8, 1.5, w + 1.5, new THREE.Color(0x55555c));
-          boxAt(r.x[i], r.y[i], r.tx[i], r.ty[i], r.grade[i], r.grade[i] + 6.5, 1.8, w - 0.5, new THREE.Color(0x111114));
+        for (const i of [Math.max(0, run.i0 - 1), Math.min(n - 1, run.i1 + 1)]) for (const [lo, hi] of strips) {
+          // one portal per tube, centred on its carriageway
+          const half = (hi - lo) / 2, [cx, cy] = across({ x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i] }, (lo + hi) / 2);
+          boxAt(cx, cy, r.tx[i], r.ty[i], r.grade[i] - 0.5, r.grade[i] + 8, 1.5, half + 1.5, new THREE.Color(0x55555c));
+          boxAt(cx, cy, r.tx[i], r.ty[i], r.grade[i], r.grade[i] + 6.5, 1.8, half - 0.5, new THREE.Color(0x111114));
         }
       }
     }
