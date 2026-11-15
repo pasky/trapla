@@ -36,6 +36,7 @@ import { acceptsProjectMessage, type ProjectWorkerIn, type ProjectWorkerOut } fr
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
+import { StorageGuard, showStorageNotice } from './ui/storage-guard';
 import { RouteBar } from './ui/route-bar';
 import { activeSelection, qualifySelection, type RouteSelection } from './ui/route-selection';
 import { CurveEditor } from './ui/curve-edit';
@@ -54,8 +55,10 @@ const SOURCE_PICK_SLACK_PX = 3;
 const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
 
 async function main() {
-  const scenarioId = await pickScenario({ hasSaved: (scenarioId, presetId) =>
-    hasProjectSave(localStorage, { scenarioId, presetId }) || localStorage.getItem(`trapla.${scenarioId}.design`) !== null });
+  const storage = new StorageGuard();
+  const scenarioId = await pickScenario({ hasSaved: (scenarioId, presetId) => {
+    try { return hasProjectSave(storage, { scenarioId, presetId }) || storage.getItem(`trapla.${scenarioId}.design`) !== null; } catch { return false; }
+  } });
   const scenario = scenarioParams(scenarioId);
   const pack = await loadPack(`${import.meta.env.BASE_URL}scenarios/${scenario.id}`, setStatus);
   const { meta } = pack;
@@ -76,12 +79,24 @@ async function main() {
   // One deep-cloned scenario factory for first start AND Start over; existing saves never receive defaults.
   const initialRoad = (): Design => ({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) });
   const initialProject = () => projectFromLegacyDesign(initialRoad(), legacyContext);
-  const opened = openProjectStore({ storage: localStorage, namespace: { scenarioId: scenario.id, presetId },
+  const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
     objectData, transportData, pricingData, mission: legacyContext.mission, initial: initialProject,
     legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' },
   });
+  let opened: ReturnType<typeof openStore>;
+  try { opened = openStore(); }
+  catch (error) {
+    // Unreadable/unwritable storage: open again in memory (failed writes are dropped, never half-migrated).
+    if (storage.problem === null) throw error;
+    console.warn('Browser storage unavailable', error);
+    storage.strict = false; opened = openStore();
+  }
+  storage.strict = false;
   if (!opened.store) { showSaveRecovery(opened.load.status === 'unsupported' ? opened.load.raw : ''); return; }
   const projectStore = opened.store;
+  const storageNotice = () => showStorageNotice(document.getElementById('view')!, () => projectStore.snapshot.design);
+  storage.onProblem = () => { console.warn('Saving stopped', storage.problem); storageNotice(); };
+  if (storage.problem !== null) storageNotice();
   const store = new ActiveRouteStore(projectStore, initialProject);
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
@@ -132,8 +147,8 @@ async function main() {
   let activePreviewPrice: number | null = null;
   const projectScore = (pending: boolean) => {
     const mission = missionRouteId(), active = store.activeRouteId, alone = projectFull?.cost.alone ?? {};
-    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: 'This road only' }
-      : active && active in alone ? { total: alone[active], approx: false, label: 'This road only' }
+    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: active === mission ? 'Our road only' : 'This road only' }
+      : active && active in alone ? { total: alone[active], approx: false, label: active === mission ? 'Our road only' : 'This road only' }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only' } : null;
     hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own });
   };

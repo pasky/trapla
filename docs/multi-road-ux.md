@@ -188,8 +188,16 @@ intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixtu
 - Photo view: the roads/tracks/railways the game knows are drawn over the orthophoto, thin and
   semi-transparent in the map palette (rail dashed), only for transport-mapped features (what is
   clickable), through the same accepted source cuts as the map. Built once on first photo use.
-- Screenshots (U slots): 79 two separate roads priced together, 80 Change road handles, 81 unpriced
-  proposal over the old road, 82 interacting roads not priced, 83 photo with mapped roads.
+- In this wave core prices no multi-road project (core 3514bce: a side road with a free end and any
+  tie-in are unpriced), so a second road always shows our road's own price plus "N road changes not
+  priced yet". The UI's priced-together path exists but has no screenshot until core prices a pair.
+- Saving: all storage goes through `StorageGuard`. Opening/migrating stays strict (errors propagate;
+  on a storage error it reopens in memory, writing nothing). Afterwards a failed write keeps editing in
+  memory and shows a persistent notice "Saving stopped: your browser storage is full or blocked.
+  Download your design to keep it." with Download design. The legacy `state.ts` Store is not used by
+  the app any more (only `startDesign`), so its `storageProblem` has no UI path to cover.
+- Screenshots (U slots): 79 our road priced, side road not yet, 80 Change road handles, 81 unpriced
+  proposal over the old road, 82 crossing roads not priced, 83 photo with mapped roads.
 - Requires a pack with `transport-meta.json`; D11 currently has none (S is regenerating it), so the
   real-mouse base-road test runs on D3. No D11 behaviour changes without the sidecar.
 - Open: reference-path editing (bend/profile of a promoted road), C1 acceptance/pricing, Build tool.

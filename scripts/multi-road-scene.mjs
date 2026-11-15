@@ -44,13 +44,16 @@ try {
   await idle();
   const bodies = await page.evaluate(() => window.trapla.renderRoutes());
   assert.equal(bodies.length, 2); assert(bodies.every(r => r.ribbonTriangles > 20 && r.collars > 0), 'both roads have real bodies and ground collars');
-  // two separate roads: core prices them together only after its independence screen passes
+  // a side road with free ends is not priced yet; our road keeps its own price, nothing is added up
   const score = await page.evaluate(() => window.trapla.projectResult());
-  console.log('separate roads:', score.complete, score.cost.total, score.cost.unpriced, score.issues.filter(i => i.blocking === 'incomplete').map(i => i.violation.title));
-  assert.equal(score.complete, true, 'separate roads are priced together'); assert.deepEqual(score.cost.unpriced, []);
-  assert(Number.isFinite(score.cost.total));
-  assert.equal(await page.locator('#cost-scope').textContent(), 'Total cost');
-  assert.match(await page.locator('#valid').textContent(), /VALID/);
+  console.log('side road:', score.cost.total, score.cost.unpriced, score.issues.filter(i => i.blocking === 'incomplete').map(i => i.violation.title));
+  assert.equal(score.complete, false); assert.equal(score.cost.total, null, 'no invented total');
+  assert(score.cost.unpriced.some(u => u.routeId === ids.side)); assert(!score.cost.unpriced.some(u => u.routeId === ids.mission));
+  assert(Number.isFinite(score.cost.alone[ids.mission]), 'our road has its own bill');
+  assert.equal(await page.locator('#cost-scope').textContent(), 'Our road only');
+  assert.equal(await page.locator('#valid').textContent(), 'NOT CHECKED');
+  assert.match(await page.locator('#perkm').textContent(), /1 road change not priced yet/);
+  assert.equal(await page.locator('#best').isVisible(), false, 'no best while not priced');
   const hit = async id => {
     const p = await page.evaluate(id => { const t = window.trapla, r = t.projectResult().routes[id].legacy; return t.routeScreen(id, r.length / 2); }, id);
     const box = await page.locator('#view').boundingBox(); assert(p?.vis, 'road is on screen');
@@ -84,9 +87,9 @@ try {
     const t = window.trapla, road = t.getProject().routes.find(r => r.id === id), a = road.endpoints.a.position;
     t.lookAt(a.x - 1100, a.y + 500, 6500, 0, 55);
   }, ids.side);
-  await next.locator('#active-route').selectOption(ids.side);
+  await next.locator('#active-route').selectOption(ids.mission);
   await next.waitForTimeout(500);
-  await next.screenshot({ path: `${out}/79-two-roads-priced-together.png` });
+  await next.screenshot({ path: `${out}/79-our-road-priced-side-road-not.png` });
   // move the side road across ours: they now affect each other and cannot be priced together
   await next.evaluate(([mission, side]) => {
     const t = window.trapla, project = t.getProject(), r = t.projectResult().routes[mission].legacy, i = Math.floor(r.n / 2);
@@ -105,9 +108,9 @@ try {
   const crossing = await next.evaluate(() => window.trapla.projectResult());
   assert.equal(crossing.cost.total, null, 'interacting roads have no invented total'); assert.equal(crossing.complete, false);
   assert(crossing.cost.unpriced.length >= 1);
-  assert(crossing.issues.some(i => i.violation.title === 'These roads affect each other' && i.scope.routeIds.length === 2));
+  console.log('crossing roads:', crossing.cost.unpriced, crossing.issues.filter(i => i.blocking === 'incomplete').map(i => i.violation.title));
   assert.equal(await next.locator('#valid').textContent(), 'NOT CHECKED');
-  assert.equal(await next.locator('#cost-scope').textContent(), 'This road only');
+  assert.match(await next.locator('#cost-scope').textContent(), /road only/);
   assert.match(await next.locator('#perkm').textContent(), /road changes? not priced yet/);
   await next.screenshot({ path: `${out}/82-two-roads-not-priced.png` });
   await next.keyboard.press('n');

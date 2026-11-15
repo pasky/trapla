@@ -457,3 +457,7 @@ button.link i.pk-fill { background: #8fbf5a; } button.link i.pk-cut { background
 .source-operations small { color: #667; }
 .inspector .source-error { color: #b0281a; font-size: 12px; }
 .inspector.k-source #change-source, .inspector.k-proposal #remove-route { margin-top: 4px; }
+#storage-notice { position: absolute; z-index: 20; top: 84px; left: 50%; transform: translateX(-50%); max-width: min(640px, calc(100% - 24px));
+  display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 6px; background: #fff3cd; border: 1px solid #c99a00;
+  color: #3a2d00; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+#storage-notice button { flex: none; }
