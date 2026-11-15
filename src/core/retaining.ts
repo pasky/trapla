@@ -36,7 +36,7 @@ export type RetainingFeatureCache = Map<number, { left: number; right: number; r
   raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[]; memo?: StationMemo }>;
 /** One station's screening outcome, replayed in order when every input it read is unchanged:
  * this candidate set (same object), section widths, grade, barrels and crossing-way map. */
-interface StationMemo { left: number; right: number; grade: number; barrels: string; ways: string; events: StationEvent[] }
+interface StationMemo { left: number; right: number; grade: number; barrels: string; ways: number[]; events: StationEvent[] }
 type StationEvent = [0, Request] | [1, ClearanceRequest] | [2, BridgeRequest] | [3, number] | [4, WaterSegment['reach'], number, number, number]
   | [5, FootprintCell, RoadSegment, number, number, [number, number]];
 type Request = { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean; crossing: number; cap: number };
@@ -206,8 +206,20 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     const stream = candidates.raster.some(p => p.feature === 'stream');
     let key = '';
     for (let k = 0; k < barrels.length; k++)
-      if (stream || candidates.water.some(seg => terrain.watercourses!.connected(seg.reach.id, barrels[k].c.id))) key += barrelSig[k];
+      if (stream || candidates.water.some(seg => connectedToBarrel(seg.reach.id, k))) key += barrelSig[k];
     return key;
+  };
+  const barrelLinks = new Map<number, boolean[]>();
+  const connectedToBarrel = (reach: number, k: number) => {
+    let links = barrelLinks.get(reach);
+    if (!links) barrelLinks.set(reach, links = barrels.map(b => terrain.watercourses!.connected(reach, b.c.id)));
+    return links[k];
+  };
+  /** Indices of candidate roads that are crossing ways (all a station reads of that map). */
+  const sameWays = (roads: readonly RoadSegment[], list: readonly number[]) => {
+    let k = 0;
+    for (let j = 0; j < roads.length; j++) if (crossingWays?.has(roads[j].way)) { if (list[k] !== j) return false; k++; }
+    return k === list.length;
   };
   for (let i = 1; i < n - 1; i++) {
     const c: FootprintCell = { i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i], along: ds / 2,
@@ -222,10 +234,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       cache?.set(i, candidates);
     }
     // Which candidate roads are crossing ways (a strict retry removes some) is all the station reads.
-    let waysKey = '';
-    for (const seg of candidates.roads) waysKey += crossingWays?.has(seg.way) ? '1' : '0';
     const memo = candidates.memo, barrelKey = stationBarrels(candidates);
-    if (memo && memo.left === c.left && memo.right === c.right && memo.grade === r.grade[i] && memo.barrels === barrelKey && memo.ways === waysKey) {
+    if (memo && memo.left === c.left && memo.right === c.right && memo.grade === r.grade[i] && memo.barrels === barrelKey && sameWays(candidates.roads, memo.ways)) {
       for (const e of memo.events) apply(e);
       continue;
     }
@@ -255,7 +265,11 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         propose(c, off, step / 2, feature, x, y);
       }
     recording = null;
-    if (cache) candidates.memo = { left: c.left, right: c.right, grade: r.grade[i], barrels: barrelKey, ways: waysKey, events };
+    if (cache) {
+      const ways: number[] = [];
+      candidates.roads.forEach((seg, j) => { if (crossingWays?.has(seg.way)) ways.push(j); });
+      candidates.memo = { left: c.left, right: c.right, grade: r.grade[i], barrels: barrelKey, ways, events };
+    }
   }
   for (const [way, intervals] of crossingIntervals) {
     intervals.sort((a, b) => a[0] - b[0]);
