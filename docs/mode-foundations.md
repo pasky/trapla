@@ -182,10 +182,14 @@ median, 60 % SPK norm = SPK "half of a divided road", ½ bridge row per m², one
 counts once what both bodies counted: where the crowns touch at the same height the formation is one
 D 27.5 body (50 % norm each), overlapping embankment/cutting volumes, land and houses. A slope of one
 direction standing on (or undermining) the other carriageway is a violation with a concrete distance.
+Crossed roads where the directions run joined are built once: the forward direction prices and draws
+one structure spanning both bodies (the other mirrored), the reverse direction reuses it at no cost.
 Noise per direction uses the whole corridor's traffic (safe upper bound, ≤ +3 dB where only one direction
-is near); houses beside joined stretches belong to the outer direction. Join = explicit reset to the
-kept shared line (Undo restores the separate edits). Unchanged, a split D3 prices ≈ 4 % above the pair
-(twin crossing structures, slightly longer tube runs). C0's `exact`/frozen helpers stay for materialised
+is near); houses beside joined stretches belong to the outer direction, and where "joined" in plan is not
+one body at one height the ledger reports noise as not checked. Join = explicit reset to the kept shared
+line (Undo restores the separate edits). Unchanged, a split prices like the pair on open ground (+0.06 %
+in the test) and ≈ 3 % above it on D3 (structure choices differ per direction near bridge ends and
+tunnel portals; reroutes of roads crossed several times). C0's `exact`/frozen helpers stay for materialised
 geometry; editable directions use ordinary bends (validation accepts `pi` for independent children).
 
 **Railway (scored).** Rows `R1`/`R2`, `core/project-railway.ts`, `core/rail-noise.ts`. Electrified new
