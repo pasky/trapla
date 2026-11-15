@@ -17,7 +17,14 @@ import build_pack as b
 
 
 def main():
+    import generation
+    with generation.lock(b.OUT):  # no other writer can replace the verified generation meanwhile
+        publish()
+
+
+def publish():
     out = b.OUT
+    b.preflight_frozen()
     complete = b.SCENARIO.get("requireComplete", False)
     manifest = b.verify_published_generation() if complete else None
     overlays = json.loads((out / "overlays.json").read_text())

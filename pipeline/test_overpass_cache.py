@@ -49,9 +49,23 @@ class OverpassCacheTests(unittest.TestCase):
         self.path.write_bytes(OK)
         self.assertEqual(len(oc.load(self.path, QUERY, frozen_sha256=hashlib.sha256(OK).hexdigest())["elements"]), 1)
         self.assertFalse(oc.binding_path(self.path).exists())  # frozen bytes are not rebound
-        with self.assertRaisesRegex(RuntimeError, "frozen"):
+        with self.assertRaises(oc.FrozenInputError):
             oc.load(self.path, QUERY, frozen_sha256="0" * 64)
         self.assertTrue(self.path.exists())
+
+    def test_frozen_hash_is_authoritative_over_bindings_and_absence(self):
+        oc.store(self.path, OK, QUERY, "test")  # a valid binding must not override frozen identity
+        with self.assertRaises(oc.FrozenInputError):
+            oc.load(self.path, QUERY, frozen_sha256="0" * 64)
+        self.path.unlink()
+        with self.assertRaises(oc.FrozenInputError):  # missing frozen input: never refetched
+            oc.load(self.path, QUERY, frozen_sha256=hashlib.sha256(OK).hexdigest())
+
+    def test_interrupted_binding_counts_as_unbound(self):
+        self.path.write_bytes(OK)
+        oc.binding_path(self.path).write_text('{"version":')
+        self.assertIsNone(oc.load(self.path, QUERY))
+        self.assertTrue(self.path.with_name(self.path.name + ".unbound~").exists())
 
     def test_stale_mirror_snapshot_is_rejected_for_new_packs(self):
         now = dt.datetime(2026, 11, 15, tzinfo=dt.timezone.utc)

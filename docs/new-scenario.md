@@ -47,8 +47,12 @@ Do not commit extracts. New scenario cache names are `osm_<id>_<query>.json`; D1
 Each Overpass cache is reused only when its `.query.json` binding names the same canonical query (body,
 bbox, output mode) and the cached bytes' SHA-256; hits pass the same completeness check as fresh
 responses (an element list, no runtime-error `remark`). D11's original caches predate bindings and are
-accepted only by the exact byte hashes in `frozenOverpassCaches`. Any other cache is moved aside as
-`*.unbound~` and fetched again. New packs reject mirror snapshots older than `maxSnapshotAgeDays`
+accepted only by the exact byte hashes in `frozenOverpassCaches`; those hashes are checked first, before
+any output is touched, and a missing or changed frozen file aborts the build (never refetched, never an
+empty legacy fallback). Any other cache is moved aside as `*.unbound~` and fetched again; an
+interrupted binding counts as unbound. The hydrology snapshot carries a derivation record bound to the
+rectangle and, when derived from `lines`, to its bytes. All writers of one pack directory (full build,
+`build_transport.py`, `vectors.py`) hold an exclusive per-pack lock. New packs reject mirror snapshots older than `maxSnapshotAgeDays`
 (default 30): one public mirror lagged months behind, mixing June buildings with November roads.
 New packs set `coherentTransport`, so roads/rails for network, raster and rendering come from one query.
 

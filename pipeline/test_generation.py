@@ -47,5 +47,17 @@ class GenerationTests(unittest.TestCase):
             generation.verify(self.out, SCENARIO, INPUTS)
 
 
+class LockTests(unittest.TestCase):
+    def test_second_writer_is_refused_while_one_holds_the_pack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory) / "x"
+            with generation.lock(out):
+                with self.assertRaisesRegex(RuntimeError, "another build"):
+                    with generation.lock(out):
+                        pass
+            with generation.lock(out):
+                pass
+
+
 if __name__ == "__main__":
     unittest.main()

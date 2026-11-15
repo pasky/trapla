@@ -1,9 +1,23 @@
 """Published-pack generation identity: manifest of files/inputs, ready marker written last."""
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
 from pathlib import Path
+
+
+@contextlib.contextmanager
+def lock(out: Path):
+    """Serialize every writer of one pack directory (full build, graph sidecars, vectors)."""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out.parent / f".{out.name}.lock", "w") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError(f"another build is writing {out}; wait for it to finish") from None
+        yield
 
 
 def files(out: Path) -> dict:

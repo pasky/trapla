@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 from pathlib import Path
 
 VERSION = 1
@@ -54,23 +55,46 @@ def binding_path(path: Path) -> Path:
     return path.with_name(path.stem + ".query.json")
 
 
+class FrozenInputError(RuntimeError):
+    """A frozen legacy input is missing or changed. Never fetched, moved or rewritten."""
+
+
+def write_atomic(path: Path, data: bytes) -> None:
+    temporary = path.with_name(path.name + ".partial")
+    temporary.write_bytes(data)
+    os.replace(temporary, path)
+
+
+def read_record(path: Path) -> dict:
+    """A sidecar record; missing or malformed (e.g. interrupted) records count as absent."""
+    try:
+        record = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def load_frozen(path: Path, frozen_sha256: str) -> dict:
+    """Frozen identity is authoritative and checked first, independently of any binding."""
+    if not path.exists():
+        raise FrozenInputError(f"{path.name} (frozen legacy input) is missing; restore it, do not refetch")
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != frozen_sha256:
+        raise FrozenInputError(f"{path.name} differs from its frozen legacy bytes; restore it, do not refetch")
+    return validate(json.loads(raw))
+
+
 def load(path: Path, query: str, *, frozen_sha256=None):
     """Return validated cached data, or None when absent/unbound (moved aside, never deleted)."""
+    if frozen_sha256 is not None:
+        return load_frozen(path, frozen_sha256)
     if not path.exists():
         return None
     raw = path.read_bytes()
-    digest = hashlib.sha256(raw).hexdigest()
     sidecar = binding_path(path)
-    bound = False
-    if sidecar.exists():
-        binding = json.loads(sidecar.read_text())
-        bound = binding.get("version") == VERSION and binding.get("fingerprint") == fingerprint(query) \
-            and binding.get("sha256") == digest
-    if not bound and frozen_sha256 is not None:
-        if digest != frozen_sha256:
-            raise RuntimeError(f"{path.name} differs from its frozen legacy bytes; restore it instead of refetching")
-        bound = True
-    if not bound:
+    binding = read_record(sidecar)
+    if not (binding.get("version") == VERSION and binding.get("fingerprint") == fingerprint(query)
+            and binding.get("sha256") == hashlib.sha256(raw).hexdigest()):
         for stale in (path, sidecar):
             if stale.exists():
                 stale.rename(stale.with_name(stale.name + ".unbound~"))
@@ -82,7 +106,7 @@ def store(path: Path, raw: bytes, query: str, endpoint: str) -> None:
     """Write data first, then its binding: an interrupted write leaves an unbound (refetched) cache."""
     data = validate(json.loads(raw))
     binding_path(path).unlink(missing_ok=True)
-    path.write_bytes(raw)
-    binding_path(path).write_text(json.dumps({
+    write_atomic(path, raw)
+    write_atomic(binding_path(path), json.dumps({
         "version": VERSION, "fingerprint": fingerprint(query), "query": query, "endpoint": endpoint,
-        "sha256": hashlib.sha256(raw).hexdigest(), "snapshot": snapshot(data)}, ensure_ascii=False, indent=1))
+        "sha256": hashlib.sha256(raw).hexdigest(), "snapshot": snapshot(data)}, ensure_ascii=False, indent=1).encode())

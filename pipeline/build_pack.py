@@ -718,14 +718,15 @@ def waterways(hydrology) -> list:
     sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
     frozen = SCENARIO.get("frozenOverpassCaches", {}).get("watercourses_v1")
     if frozen is not None:
-        if sha(snapshot) != frozen:
-            raise RuntimeError(f"{snapshot.name} differs from its frozen legacy bytes")
+        overpass_cache.load_frozen(snapshot, frozen)
         return hydrology.fetch_waterways(osm_cache, overpass)
     lines_present = bound_cache("lines", QUERIES["lines"]) is not None  # moves an unbound one aside
+    # Extent identity: a snapshot derived for another rectangle is never reused.
+    extent = overpass_cache.fingerprint(overpass_cache.canonical_query("watercourses derivation v1", latlon_bbox()))
     if snapshot.exists():
-        derived = json.loads(record.read_text()) if record.exists() else {}
+        derived = overpass_cache.read_record(record)
         # A snapshot derived from its own complete query (linesSha256 null) stays independent of lines.
-        if "sha256" not in derived or derived["sha256"] != sha(snapshot) or \
+        if derived.get("extent") != extent or "sha256" not in derived or derived["sha256"] != sha(snapshot) or \
                 derived.get("linesSha256") not in (None, sha(osm_cache("lines"))):
             for stale in (snapshot, record, overpass_cache.binding_path(snapshot)):
                 if stale.exists():
@@ -735,7 +736,8 @@ def waterways(hydrology) -> list:
         lines_sha = sha(osm_cache("lines")) if lines_present else None
         result = hydrology.fetch_waterways(osm_cache, overpass)
         overpass_cache.binding_path(snapshot).unlink(missing_ok=True)
-        record.write_text(json.dumps({"sha256": sha(snapshot), "linesSha256": lines_sha}))
+        overpass_cache.write_atomic(record, json.dumps(
+            {"extent": extent, "sha256": sha(snapshot), "linesSha256": lines_sha}).encode())
         USED_INPUTS.discard(overpass_cache.binding_path(snapshot))
         USED_INPUTS.update((snapshot, record))
         return result
@@ -761,8 +763,28 @@ def publish_manifest(inputs: dict) -> None:
     generation.publish(OUT, SCENARIO, inputs)
 
 
+def is_integrity_error(ex: Exception) -> bool:
+    """Frozen/bound input identity failures abort; they never degrade into an empty legacy pack."""
+    import overpass_cache
+    return isinstance(ex, overpass_cache.FrozenInputError)
+
+
+def preflight_frozen() -> None:
+    """Check every frozen legacy input before any output is touched."""
+    import overpass_cache
+    for name, digest in SCENARIO.get("frozenOverpassCaches", {}).items():
+        overpass_cache.load_frozen(osm_cache(name), digest)
+
+
 def main():
+    import generation
+    with generation.lock(OUT):
+        build()
+
+
+def build():
     CACHE.mkdir(parents=True, exist_ok=True)
+    preflight_frozen()
     OUT.mkdir(parents=True, exist_ok=True)
     if SCENARIO.get("requireComplete", False):
         # A failed rebuild may leave mixed old/new files. Never advertise that as playable.
@@ -797,7 +819,7 @@ def main():
         lc, cross, buildings, places, roads = build_overlays()
         have_osm = True
     except Exception as ex:  # legacy fallback only; new published packs require complete data
-        if SCENARIO.get("requireComplete", False):
+        if SCENARIO.get("requireComplete", False) or is_integrity_error(ex):
             raise
         log("OSM overlays failed:", ex)
         lc, cross, buildings, places, roads = np.zeros((NY, NX), np.uint8), np.zeros((NY, NX), np.uint8), [], [], []
@@ -811,7 +833,7 @@ def main():
     try:
         vector = build_vectors(transport_lines) if have_osm else None
     except Exception as ex:  # legacy fallback only
-        if SCENARIO.get("requireComplete", False):
+        if SCENARIO.get("requireComplete", False) or is_integrity_error(ex):
             raise
         log("vector render data failed:", ex)
         vector = None
@@ -821,7 +843,7 @@ def main():
         try:
             transport_meta = build_transport(transport_lines)
         except Exception as ex:  # legacy packs stay playable without the additive graph
-            if SCENARIO.get("requireComplete", False):
+            if SCENARIO.get("requireComplete", False) or is_integrity_error(ex):
                 raise
             log("transport graph failed:", ex)
             for stale in ("transport-meta.json", "transport.json.gz"):

@@ -351,7 +351,10 @@ if __name__ == "__main__":
     # ready marker. A standalone rewrite may not keep those identities.
     if b.SCENARIO.get("requireComplete", False):
         raise SystemExit("complete scenario packs are rebuilt as a whole: npm run data -- " + b.SCENARIO["id"])
-    b.OUT.mkdir(parents=True, exist_ok=True)
-    for stale in ("transport-meta.json", "transport.json.gz"):
-        (b.OUT / stale).unlink(missing_ok=True)  # invalidate before writing; rerun build_transport.py
-    b.build_vectors()
+    import generation
+    with generation.lock(b.OUT):
+        b.preflight_frozen()
+        b.OUT.mkdir(parents=True, exist_ok=True)
+        for stale in ("transport-meta.json", "transport.json.gz"):
+            (b.OUT / stale).unlink(missing_ok=True)  # invalidate before writing; rerun build_transport.py
+        b.build_vectors()
