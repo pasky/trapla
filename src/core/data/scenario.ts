@@ -84,21 +84,20 @@ export const D3_SCENARIO: ScenarioParams = {
 };
 
 export const D35_SCENARIO: ScenarioParams = {
-  id: 'd35', presetId: 'd35-road', title: 'Opatovec → Mohelnice',
-  // Editable starter: mapped-reference bends at ~1.5 km up to the I/35 merge, then bounded
-  // validity-first repair moved bend 7 by 7.6 m (research/27). The merge at B is a declared junction.
+  // First stage only: the full 34 km corridor to Mohelnice missed the live-drag budget (research/27).
+  id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město',
+  // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
+  // bend 7 by 7.6 m to clear a track (research/27). No junction: B is the section boundary.
   initial: { category: 'S9.5', speed: 90, pis: [
-    { x: 3911.6, y: 9138.6, r: null }, { x: 5364.7, y: 9523.8, r: null }, { x: 7643.7, y: 9336.4, r: null },
-    { x: 9356.7, y: 9036.3, r: null }, { x: 11092.7, y: 8524, r: null }, { x: 12724.6, y: 8498.3, r: null },
-    { x: 14565.1, y: 8794.8, r: null }, { x: 16198, y: 8345, r: null }, { x: 17709.9, y: 7719.1, r: null },
-    { x: 19116.3, y: 6932.6, r: null }, { x: 20627.3, y: 6972, r: null }, { x: 22483.1, y: 7641.5, r: null },
-    { x: 23954.1, y: 8069.3, r: null }, { x: 25909.9, y: 8135.3, r: null }, { x: 27602.4, y: 7468.2, r: null },
-    { x: 29118.3, y: 6704.6, r: null }, { x: 30492.6, y: 5500.7, r: null }, { x: 31181.5, y: 4174.1, r: null },
+    { x: 3911.6, y: 4138.6, r: null }, { x: 5364.7, y: 4523.8, r: null }, { x: 7643.7, y: 4336.4, r: null },
+    { x: 9356.7, y: 4036.3, r: null }, { x: 11092.7, y: 3524, r: null }, { x: 12724.6, y: 3498.3, r: null },
+    { x: 14565.1, y: 3794.8, r: null }, { x: 16198, y: 3345, r: null }, { x: 17709.9, y: 2719.1, r: null },
   ] },
-  picker: { kind: 'Road across the hills', goal: 'Pass the ridges and villages on the way to Mohelnice.' },
-  traffic: 9_000, heavyShare: 0.15, maxTravelMin: 24,
+  picker: { kind: 'Road across the hills', goal: 'Pass the ridge and villages to Staré Město.' },
+  // 12 min allows 18 km at 90 or 16 km at 80 (project section 16.6 km); a mission choice, not a norm.
+  traffic: 9_000, heavyShare: 0.15, maxTravelMin: 12,
   terrainClass: 'hilly', maxGradient: 0.06,
-  labels: { a: 'Opatovec', b: 'Mohelnice', official: 'planned D35', brief: '<b>Opatovec</b> to <b>Mohelnice</b>' },
+  labels: { a: 'Opatovec', b: 'Staré Město', official: 'planned D35', brief: '<b>Opatovec</b> to <b>Staré Město</b>, first stage of D35' },
 };
 
 export const NOVA_PAKA_SCENARIO: ScenarioParams = {
