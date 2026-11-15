@@ -159,7 +159,7 @@ diagnostic (not a fixture) with the reference bends and the end moved back along
 
 | end along reference | length | diagnostics |
 |---|---|---|
-| 33,900 m (current B) | 33,695 m | 33, of which 25 at km 33.2–33.6 (piers/ends/earthworks on I/35, D35, service, stream) |
+| 33,900 m (current B) | 33,695 m | 33, of which 28 at km 33.2–33.6 (piers/ends/earthworks on I/35, D35, service, stream) |
 | 33,500 m | 33,295 m | 10 |
 | 33,300 m | 33,094 m | 1 (1 m track contact at km 13.58) |
 | 33,100 m | 32,895 m | 3 |
