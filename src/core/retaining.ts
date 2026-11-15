@@ -33,7 +33,15 @@ export interface RetainingPlan {
   clearanceRequirements: { s: number; z: number; i: number }[];
 }
 export type RetainingFeatureCache = Map<number, { left: number; right: number; roads: RoadSegment[]; water: WaterSegment[];
-  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[] }>;
+  raster: { x: number; y: number; index: number; feature: 'railway' | 'water' | 'stream' }[]; memo?: StationMemo }>;
+/** One station's screening outcome, replayed in order when every input it read is unchanged:
+ * this candidate set (same object), section widths, grade, barrels and crossing-way map. */
+interface StationMemo { left: number; right: number; grade: number; barrels: string; ways: CrossingChainages | undefined; events: StationEvent[] }
+type StationEvent = [0, Request] | [1, ClearanceRequest] | [2, BridgeRequest] | [3, number] | [4, WaterSegment['reach'], number, number, number]
+  | [5, FootprintCell, RoadSegment, number, number, [number, number]];
+type Request = { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean; crossing: number; cap: number };
+type ClearanceRequest = { i: number; z: number; id?: number };
+type BridgeRequest = { i: number; id?: number };
 /** OSM motorway ways represent one carriageway of the D27.5 divided road. */
 const roadHalfWidth = (cls: string) => ROAD_CLASSES[cls].width / (cls === 'motorway' ? 4 : 2);
 const protectionRank = { road: 0, railway: 1, stream: 2, water: 3 };
@@ -111,9 +119,33 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   const { n, ds } = r, w = r.crownWidth / 2;
   const forcedBridge = new Uint8Array(n), forcedTunnel = new Uint8Array(n), perCell = new Float64Array(n), landPerCell = new Float64Array(n);
   const wallSurfaceL = new Float64Array(n).fill(NaN), wallSurfaceR = new Float64Array(n).fill(NaN);
-  const requests: { i: number; side: number; limit: number; feature: RetainingWall['feature']; id?: number; constrained: boolean; crossing: number; cap: number }[] = [];
-  const clearanceRequests: { i: number; z: number; id?: number }[] = [];
-  const bridgeRequests: { i: number; id?: number }[] = [], unretainable = new Set<number>(), channelHits = new Map<number, ChannelHit>();
+  const requests: Request[] = [];
+  const clearanceRequests: ClearanceRequest[] = [];
+  const bridgeRequests: BridgeRequest[] = [], unretainable = new Set<number>(), channelHits = new Map<number, ChannelHit>();
+  // Every per-station side effect goes through apply(), so it can be recorded and replayed.
+  let recording: StationEvent[] | null = null;
+  const apply = (e: StationEvent) => {
+    recording?.push(e);
+    switch (e[0]) {
+      case 0: requests.push(e[1]); break;
+      case 1: clearanceRequests.push(e[1]); break;
+      case 2: bridgeRequests.push(e[1]); break;
+      case 3: unretainable.add(e[1]); break;
+      case 4: {
+        const [, reach, a, b, i] = e, previous = channelHits.get(reach.id);
+        if (previous) { previous.a = Math.min(previous.a, a); previous.b = Math.max(previous.b, b); previous.i1 = i; }
+        else channelHits.set(reach.id, { reach, a, b, i0: i, i1: i });
+        break;
+      }
+      case 5: {
+        const [, c, seg, pad, way, hit] = e;
+        crossingHits.push({ c, seg, pad });
+        const list = crossingIntervals.get(way);
+        if (list) list.push(hit); else crossingIntervals.set(way, [hit]);
+        break;
+      }
+    }
+  };
   const propose = (cell: FootprintCell, lateral: number, padding: number, feature: RetainingWall['feature'], gx: number, gy: number, id?: number, crossing = 0, cap = Infinity) => {
     const i = cell.i;
     let limit = Math.abs(lateral) - padding - R.clearance, constrained = false;
@@ -123,14 +155,14 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     if (limit < w) {
       if (crossing === 2) return; // severed/diverted by its crossing remedy, never bridged for
       const clearance = feature === 'railway' ? STRUCTURE_RULES.railClearance : feature === 'road' ? 6 : STRUCTURE_RULES.riverClearance;
-      if (id !== undefined) unretainable.add(id);
-      if (feature !== 'road') clearanceRequests.push({ i, z: terrain.heightAt(gx, gy) + clearance, id });
-      if ((overrides?.[i] ?? -1) < 0 && r.grade[i] - terrain.heightAt(gx, gy) >= clearance) bridgeRequests.push({ i, id });
+      if (id !== undefined) apply([3, id]);
+      if (feature !== 'road') apply([1, { i, z: terrain.heightAt(gx, gy) + clearance, id }]);
+      if ((overrides?.[i] ?? -1) < 0 && r.grade[i] - terrain.heightAt(gx, gy) >= clearance) apply([2, { i, id }]);
       return;
     }
     const day = lateral >= 0 ? r.dayL[i] : r.dayR[i];
     if (limit >= day - 0.05) return;
-    requests.push({ i, side: lateral >= 0 ? 1 : -1, limit, feature, id, constrained, crossing, cap });
+    apply([0, { i, side: lateral >= 0 ? 1 : -1, limit, feature, id, constrained, crossing, cap }]);
   };
   const segment = (c: FootprintCell, seg: Segment2, pad: number, feature: RetainingWall['feature'], id?: number,
     owned: readonly [number, number][] = [], ownedMode = 0, cap = Infinity) => {
@@ -167,6 +199,16 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   // Other stretches of the same way remain ordinary obstacles; the final screen validates all.
   const crossingHits: { c: FootprintCell; seg: RoadSegment; pad: number }[] = [];
   const crossingIntervals = new Map<number, [number, number][]>();
+  // Barrels read by a station: those connected to its water candidates (all of them for raster streams).
+  const barrelSig = barrels.map(b => `${water.indexOf(b.c)}:${b.i}:${b.left}:${b.right}:${b.cover}|`);
+  const stationBarrels = (candidates: { water: WaterSegment[]; raster: { feature: string }[] }) => {
+    if (!barrels.length || (!candidates.water.length && !candidates.raster.length)) return '';
+    const stream = candidates.raster.some(p => p.feature === 'stream');
+    let key = '';
+    for (let k = 0; k < barrels.length; k++)
+      if (stream || candidates.water.some(seg => terrain.watercourses!.connected(seg.reach.id, barrels[k].c.id))) key += barrelSig[k];
+    return key;
+  };
   for (let i = 1; i < n - 1; i++) {
     const c: FootprintCell = { i, s: r.s[i], x: r.x[i], y: r.y[i], tx: r.tx[i], ty: r.ty[i], along: ds / 2,
       left: r.dayL[i], right: r.dayR[i] };
@@ -179,23 +221,25 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       protectedRasterCells(terrain, query, p => candidates!.raster.push(p));
       cache?.set(i, candidates);
     }
+    const memo = candidates.memo, barrelKey = stationBarrels(candidates);
+    if (memo && memo.left === c.left && memo.right === c.right && memo.grade === r.grade[i] && memo.barrels === barrelKey && memo.ways === crossingWays) {
+      for (const e of memo.events) apply(e);
+      continue;
+    }
+    const events: StationEvent[] = recording = [];
     for (const seg of candidates.roads) {
       const pad = roadHalfWidth(seg.cls);
       if (!crossingWays?.has(seg.way)) { segment(c, seg, pad, 'road'); continue; }
       const hit = clipFootprint(seg, c, pad);
       if (!hit) continue;
-      crossingHits.push({ c, seg, pad });
-      const list = crossingIntervals.get(seg.way);
-      if (list) list.push(hit); else crossingIntervals.set(seg.way, [hit]);
+      apply([5, c, seg, pad, seg.way, hit]);
     }
     candidates.water.forEach(seg => {
       const pad = waterWidth(seg.reach) / 2;
       const hit = clipFootprint(seg, c, pad);
       if (!hit) return;
       segment(c, seg, pad, seg.reach.kind === 'river' ? 'water' : 'stream', seg.reach.id);
-      const previous = channelHits.get(seg.reach.id);
-      if (previous) { previous.a = Math.min(previous.a, hit[0]); previous.b = Math.max(previous.b, hit[1]); previous.i1 = i; }
-      else channelHits.set(seg.reach.id, { reach: seg.reach, a: hit[0], b: hit[1], i0: i, i1: i });
+      apply([4, seg.reach, hit[0], hit[1], i]);
     });
     const step = terrain.cell;
     for (const { x, y, feature } of candidates.raster) {
@@ -207,6 +251,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
         // Crown pixels become grade/structure constraints, never a wall through traffic.
         propose(c, off, step / 2, feature, x, y);
       }
+    recording = null;
+    if (cache) candidates.memo = { left: c.left, right: c.right, grade: r.grade[i], barrels: barrelKey, ways: crossingWays, events };
   }
   for (const [way, intervals] of crossingIntervals) {
     intervals.sort((a, b) => a[0] - b[0]);
@@ -258,7 +304,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     // across the protected feature. Never narrow a neighbour more than its own candidate section.
     for (const t of sides) {
       const copy = { limit: t.limit.slice(), cause: t.cause.slice(), constrained: t.constrained.slice(), crossing: t.crossing.slice(), cap: t.cap.slice() };
-      for (let i = 1; i < n - 1; i++) for (const j of [i - 1, i + 1]) if (copy.limit[j] < t.limit[i]
+      for (let i = 1; i < n - 1; i++) for (let j = i - 1; j <= i + 1; j += 2) if (copy.limit[j] < t.limit[i]
         || (Math.abs(copy.limit[j] - t.limit[i]) < 1e-6 && (protectionRank[copy.cause[j]] ?? -1) > (protectionRank[t.cause[i]] ?? -1))) {
         t.limit[i] = copy.limit[j]; t.cause[i] = copy.cause[j]; t.constrained[i] = copy.constrained[j]; t.crossing[i] = copy.crossing[j]; t.cap[i] = copy.cap[j];
       }
@@ -275,7 +321,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     }
   }
   const walls: RetainingWall[] = [], tpl = { crownWidth: r.crownWidth, ...DEFAULT_SLOPES };
-  for (let i = 1; i < n - 1; i++) for (const side of [1, -1]) for (const set of all === firm ? [all] : [all, firm]) {
+  const sets = all === firm ? [all] : [all, firm];
+  for (let i = 1; i < n - 1; i++) for (let side = 1; side >= -1; side -= 2) for (const set of sets) {
     const t = set[side > 0 ? 0 : 1], other = all[side > 0 ? 1 : 0];
     const limit = t.limit[i], day = side > 0 ? r.dayL : r.dayR, zDay = side > 0 ? r.zDayL : r.zDayR;
     if (!Number.isFinite(limit) || limit >= day[i] - 0.05) break;

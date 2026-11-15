@@ -1,17 +1,20 @@
 interface XY { x: number; y: number }
 /** Shortcuts and rounded bends on a paid diversion, not a display-only alternate alignment.
  * Clearance is checked along each chord; endpoints stay on their surveyed road anchors.
- * Input/output and look-ahead are bounded by the crossing geometry's point budget. */
+ * Input/output and look-ahead are bounded by the crossing geometry's point budget.
+ * `clearance` receives a reused scratch point: it must not retain it. */
 export function smoothLink<T extends XY>(points: T[], clearance: (p: XY) => number,
   point: (p: XY) => T, minimumClearance = .5): T[] {
   if (points.length < 3) return points;
   const lerp = (a: XY, b: XY, t: number) => ({ x: a.x+(b.x-a.x)*t, y: a.y+(b.y-a.y)*t });
+  const probe = { x: 0, y: 0 };
+  const probeAt = (a: XY, b: XY, t: number) => { probe.x = a.x+(b.x-a.x)*t; probe.y = a.y+(b.y-a.y)*t; return probe; };
   const safe = (a: XY, b: XY) => {
     const count = Math.max(1, Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/2.5));
     // Reject obvious corner cuts first, before the fine clearance walk.
-    if (clearance(lerp(a,b,.5)) < minimumClearance) return false;
+    if (clearance(probeAt(a,b,.5)) < minimumClearance) return false;
     // k/count === .5 exactly when 2k === count: that sample already passed above.
-    for (let k = 0; k <= count; k++) if (2 * k !== count && clearance(lerp(a,b,k/count)) < minimumClearance) return false;
+    for (let k = 0; k <= count; k++) if (2 * k !== count && clearance(probeAt(a,b,k/count)) < minimumClearance) return false;
     return true;
   };
   const simple = [points[0]];

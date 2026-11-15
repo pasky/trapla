@@ -2,7 +2,7 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions } from './autoprofile';
+import { autoProfile, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
@@ -144,6 +144,42 @@ export interface Result {
   timing: Record<string, number>;
 }
 
+interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
+interface ProfileTables {
+  /** Flat-ground earth geometry and rural bridge estimate by profile height index. */
+  geometry: GeometryRow[];
+  /** NaN-initialised dry-ground Auto-profile cost table (filled only by the identical cost function). */
+  dry: (materialValue: number, groundId: number, kind: number, size: number) => Float64Array;
+}
+/** Route-independent Auto-profile tables. Keyed by everything the dry cost depends on besides the
+ * terrain (category, terrain class, material value, pack ground id, structure kind), so successive
+ * drags reuse them bit-identically. Bounded LRU over material values. */
+const profileTableCache = new WeakMap<Terrain, Map<string, ProfileTables>>();
+const PROFILE_TABLE_VALUES = 8;
+function profileTablesFor(terrain: Terrain, key: string): ProfileTables {
+  let byKey = profileTableCache.get(terrain);
+  if (!byKey) profileTableCache.set(terrain, byKey = new Map());
+  let tables = byKey.get(key);
+  if (!tables) {
+    const byValue = new Map<number, Map<number, Float64Array>>();
+    tables = { geometry: [], dry: (materialValue, groundId, kind, size) => {
+      let values = byValue.get(materialValue);
+      if (values) byValue.delete(materialValue); // refresh LRU position
+      else {
+        values = new Map();
+        if (byValue.size >= PROFILE_TABLE_VALUES) byValue.delete(byValue.keys().next().value!);
+      }
+      byValue.set(materialValue, values);
+      const slot = groundId * 4 + kind + 1;
+      let table = values.get(slot);
+      if (!table) values.set(slot, table = new Float64Array(size).fill(NaN));
+      return table;
+    } };
+    byKey.set(key, tables);
+  }
+  return tables;
+}
+
 const STEP = 10;
 /** the auto-profile's mass-balance search measures candidates on every n-th station's cross-section */
 const BALANCE_STRIDE = 2;
@@ -171,7 +207,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   let manualStructures = overrideMask(st.s, d.structureOverrides);
   const crossingOverrides = normalizeCrossingOverrides(d.crossingOverrides);
   const ground = new Float64Array(n);
-  const groundIds = new Uint8Array(n), groundProfiles: GroundProfile[] = [];
+  const groundIds = new Uint8Array(n), groundProfiles: GroundProfile[] = [], groundPackIds: number[] = [];
   const groundClasses = new Map<number, number>();
   for (let i = 0; i < n; i++) {
     const id = terrain.groundIdAt(st.x[i], st.y[i]);
@@ -180,6 +216,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       k = groundProfiles.length;
       groundClasses.set(id, k);
       groundProfiles.push(terrain.groundAt(st.x[i], st.y[i]));
+      groundPackIds.push(id);
     }
     groundIds[i] = k;
   }
@@ -368,24 +405,29 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     waterPrice.cost = lut.cost[j]; waterPrice.bridge = !!(lut.flags[j] & 1); waterPrice.tunnel = !!(lut.flags[j] & 2);
     return waterPrice;
   };
-  // Geometry is independent of the mass-balance price and sparse water class. Reuse it across
-  // every geology/water LUT and clearance retry; only the price arithmetic belongs in costFor.
-  const geometry: { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }[] = [];
+  // Geometry is independent of the mass-balance price, sparse water class and the route itself.
+  // Rows (by category) and dry-ground cost tables (by category, terrain class, material value and
+  // pack ground id) are shared across evaluations of the same terrain; see profileTablesFor().
+  const tables = profileTablesFor(terrain, `${d.category}|${scenario.terrainClass}`);
+  const geometry = tables.geometry;
   const geometryAt = (h: number) => {
     const j = heightIndex(h);
     let row = geometry[j];
     if (!row) {
       const { area, width } = flatEarthGeometry(Math.abs(h), b, h >= 0 ? fillSlope : cutSlope, h >= 0);
-      const cuts = h < 0 ? groundProfiles.map(g => flatCutBands(-h, b, cutSlope, g)) : [];
-      row = { area, width, cuts, bridge: bridgeRural(h), engineering: earthEngineeringPerM(h, 0, area) };
+      row = { area, width, cuts: [], bridge: bridgeRural(h), engineering: earthEngineeringPerM(h, 0, area) };
       geometry[j] = row;
     }
     return row;
   };
+  const cutsAt = (row: GeometryRow, h: number, ground: number) =>
+    row.cuts[groundPackIds[ground]] ??= flatCutBands(-h, b, cutSlope, groundProfiles[ground]);
+  // Water classes depend on this route's crossings: their tables are shared only within this call.
+  const wetTables = new Map<string, Float64Array>();
   /** cost per metre against grade-minus-ground h for a given value of a m³ of fill material */
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
-    return (h: number, kind = -1, costClass = 0) => {
+    const cost = (h: number, kind = -1, costClass = 0) => {
       if (kind === KIND.tunnel) return tunnelPerM;
       const geo = geometryAt(h);
       if (kind === KIND.bridge) return geo.bridge;
@@ -396,7 +438,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
         earth = (baseRural + geo.area * dp.fillPerM3 + geo.engineering + wd * topsoilPerM2
           + waterPrice.cost) * sur + wd * LAND.perM2;
       } else {
-        const [a1, a2, a3] = geo.cuts[costClasses[costClass].ground];
+        const [a1, a2, a3] = cutsAt(geo, h, costClasses[costClass].ground);
         earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
           + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2 + waterPrice.cost) * sur + wd * LAND.perM2;
       }
@@ -411,6 +453,17 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
       return best;
     };
+    const table: SharedCostTable = (kind, costClass) => {
+      const entry = costClasses[costClass];
+      if (entry.water.length) {
+        const key = `${materialValue}|${costClass}|${kind}`;
+        let values = wetTables.get(key);
+        if (!values) wetTables.set(key, values = new Float64Array(heightCount).fill(NaN));
+        return values;
+      }
+      return tables.dry(materialValue, groundPackIds[entry.ground], kind, heightCount);
+    };
+    return Object.assign(cost, { table });
   };
   const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
   const tpl = { crownWidth: b, fillSlope, cutSlope };
@@ -692,7 +745,10 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   };
   /** Engineering through final checks. `relaxed` crossing ways leave their in-footprint stretch
    * to the crossing remedy (see retaining.ts); evaluate() retries strictly where that fails. */
-  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): Result => {
+  /** Stage A (engineering through the footprint screen) runs immediately; `complete()` runs the
+   * rest (noise, bill, checks). It reads only this pass's own arrays, never the shared
+   * engineer() buffers, so it stays valid after a later pass. */
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): { vpis: VPI[]; footprintConflicts: FootprintConflict[]; complete: () => Result } => {
   const oob = oobInput.slice();
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
@@ -859,6 +915,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     crossingLump[c.i] += c.lumpCost ?? 0;
   }
   lap('footprint');
+  const complete = (): Result => {
 
   // --- noise walls ---
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
@@ -1032,16 +1089,22 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing,
   };
   };
-  const result = finish(crossingWays);
+  return { vpis, footprintConflicts: footprintCheck.conflicts, complete };
+  };
+  const first = finish(crossingWays);
   // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
-  const blocked = result.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
-  if (!blocked.length) return result;
+  const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
+  if (!blocked.length) return first.complete();
   const relaxed = new Map(crossingWays), strict = new Set(blocked.map(b => b.roadId!));
   for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) { relaxed.delete(c.way); strict.add(c.way); }
   timing['count.strictRetry'] = 1;
   // Continue from the already repaired (lifted) Auto grade: its clearances still apply.
-  const retry = finish(relaxed, strict, result.vpis);
+  const retry = finish(relaxed, strict, first.vpis).complete();
+  // Every blocked road conflict is reported as a footprint violation, so a clean retry wins
+  // without completing (noise, bill, checks) the first pass.
+  if (!retry.violations.length) return retry;
+  const result = first.complete();
   return retry.violations.length < result.violations.length ? retry : result;
 }
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */

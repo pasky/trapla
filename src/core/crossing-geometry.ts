@@ -10,6 +10,13 @@ const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
 type CachedPath = { path: readonly Readonly<WayPoint>[]; diagnostics: readonly string[] };
+/** Immutable shared way paths, stably ordered by distance from their crossing. */
+const sortedPaths = new WeakMap<readonly Readonly<WayPoint>[], readonly Readonly<WayPoint>[]>();
+const byDistance = (path: readonly Readonly<WayPoint>[]) => {
+  let sorted = sortedPaths.get(path);
+  if (!sorted) sortedPaths.set(path, sorted = [...path].sort((a, b) => Math.abs(a.d) - Math.abs(b.d)));
+  return sorted;
+};
 // Match the main bridge model's clear-span overbridge layout: abutments on the banks, no
 // piers in our traffic corridor. Raised earth approaches are billed separately below.
 const deckPrice = (c: CrossingResult, span: number) => bridgeModel(ROAD_CLASSES[c.cls]).total(span, 0, { span, pierDensity: 0 });
@@ -18,6 +25,13 @@ export function crossingPlanLength(path: readonly XY[]): number {
   let length = 0;
   for (let i = 1; i < path.length; i++) length += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
   return length;
+}
+
+/** First index with s[i] > v (or ≥ v when inclusive) in ascending chainages. */
+function firstAbove(s: ArrayLike<number>, v: number, inclusive: boolean): number {
+  let lo = 0, hi = s.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (inclusive ? s[m] < v : s[m] <= v) lo = m + 1; else hi = m; }
+  return lo;
 }
 
 function lerpAt(v: ArrayLike<number>, lo: number, hi: number, t: number): number {
@@ -90,32 +104,62 @@ function routeGeometry(route: CrossingRoute) {
   for (let k = 0; k < gnx * gny; k++) cellStart[k + 1] += cellStart[k];
   const cellItems = new Int32Array(cellStart[gnx * gny]), fill = cellStart.slice(0, gnx * gny);
   if (dense) for (let i = 0; i + 1 < n; i++) cellsOf(i, cell => { cellItems[fill[cell]++] = i; });
-  const segment = (i: number, q: XY) => {
-    const dx = route.x[i + 1] - route.x[i], dy = route.y[i + 1] - route.y[i];
-    const t = Math.max(0, Math.min(1, ((q.x - route.x[i]) * dx + (q.y - route.y[i]) * dy) / (dx * dx + dy * dy || 1)));
-    const d2 = (q.x - route.x[i] - t * dx) ** 2 + (q.y - route.y[i] - t * dy) ** 2;
-    const s = route.s[i] + t * (route.s[i + 1] - route.s[i]);
-    if (d2 < best || (d2 === best && s < station)) { best = d2; station = s; }
+  // Typed copies of the per-segment terms (identical arithmetic to computing them per query).
+  const X = Float64Array.from(route.x), Y = Float64Array.from(route.y), S = Float64Array.from(route.s);
+  const DX = new Float64Array(n), DY = new Float64Array(n), DEN = new Float64Array(n);
+  for (let i = 0; i + 1 < n; i++) {
+    const dx = X[i + 1] - X[i], dy = Y[i + 1] - Y[i];
+    DX[i] = dx; DY[i] = dy; DEN[i] = dx * dx + dy * dy || 1;
+  }
+  const segmentXY = (i: number, qx: number, qy: number) => {
+    const dx = DX[i], dy = DY[i], ox = qx - X[i], oy = qy - Y[i];
+    const t = Math.max(0, Math.min(1, (ox * dx + oy * dy) / DEN[i]));
+    const d2 = (ox - t * dx) ** 2 + (oy - t * dy) ** 2;
+    if (!(d2 <= best)) return;
+    const s = S[i] + t * (S[i + 1] - S[i]);
+    if (d2 < best || s < station) { best = d2; station = s; }
   };
-  const nearest = (q: XY) => {
-    best = Infinity; station = route.s[0];
-    const qc = Math.floor((q.x - gx0) / GRID), qr = Math.floor((q.y - gy0) / GRID);
-    for (let ring = 0; dense && ring <= RINGS; ring++) {
-      for (let r = qr - ring; r <= qr + ring; r++) {
-        if (r < 0 || r >= gny) continue;
-        const edge = r === qr - ring || r === qr + ring;
-        for (let c = qc - ring; c <= qc + ring; c += edge ? 1 : 2 * ring) {
-          if (c < 0 || c >= gnx) { if (ring === 0) break; continue; }
-          const cell = r * gnx + c;
-          for (let k = cellStart[cell]; k < cellStart[cell + 1]; k++) segment(cellItems[k], q);
-          if (ring === 0) break;
+  const segment = (i: number, q: XY) => segmentXY(i, q.x, q.y);
+  // Hint: the previous query's segment. Seeding `best` with it only prunes, never changes, the
+  // exact minimum and its smaller-chainage tie-break (every equal candidate is still visited).
+  let hint = 0;
+  const nearestXY = (qx: number, qy: number) => {
+    best = Infinity; station = S[0];
+    if (dense) {
+      segmentXY(hint, qx, qy);
+      const qc = Math.floor((qx - gx0) / GRID), qr = Math.floor((qy - gy0) / GRID);
+      for (let ring = 0; ring <= RINGS; ring++) {
+        for (let r = qr - ring; r <= qr + ring; r++) {
+          if (r < 0 || r >= gny) continue;
+          // Rows/columns wholly farther than the current best cannot hold a closer (or equal) point:
+          // a segment's nearest point lies inside a cell its bounding box registered it in.
+          const ry = Math.max(gy0 + r * GRID - qy, 0, qy - gy0 - (r + 1) * GRID);
+          if (ry * ry > best * (1 + 1e-9) + 1e-9) continue;
+          const edge = r === qr - ring || r === qr + ring;
+          for (let c = qc - ring; c <= qc + ring; c += edge ? 1 : 2 * ring) {
+            if (c < 0 || c >= gnx) { if (ring === 0) break; continue; }
+            const cx = Math.max(gx0 + c * GRID - qx, 0, qx - gx0 - (c + 1) * GRID);
+            if (cx * cx + ry * ry <= best * (1 + 1e-9) + 1e-9) {
+              const cell = r * gnx + c;
+              for (let k = cellStart[cell]; k < cellStart[cell + 1]; k++) segmentXY(cellItems[k], qx, qy);
+            }
+            if (ring === 0) break;
+          }
         }
+        if ((ring * GRID) ** 2 > best) { hintFrom(); return; }
       }
-      if ((ring * GRID) ** 2 > best) return;
     }
-    best = Infinity; station = route.s[0];
-    visit(root, q);
+    best = Infinity; station = S[0];
+    visit(root, { x: qx, y: qy });
+    hintFrom();
   };
+  /** Remember a segment adjacent to the chosen station as the next query's seed. */
+  const hintFrom = () => {
+    let lo = 0, hi = n - 1;
+    while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (S[m] <= station) lo = m; else hi = m; }
+    hint = Math.min(lo, n - 2);
+  };
+  const nearest = (q: XY) => nearestXY(q.x, q.y);
   const project = (q: XY, cache = true) => {
     let column = cache ? projected.get(q.x) : undefined;
     const cached = column?.get(q.y);
@@ -231,7 +275,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     // remnant would be required to reconnect while being geometrically forbidden any anchor.
     const corridor = maxLinkWidth(c) / 2 + SETBACK;
     const sides: [boolean, boolean] = [false, false];
-    for (const q of [...path].sort((a, b) => Math.abs(a.d) - Math.abs(b.d))) {
+    for (const q of byDistance(path)) {
       const p = project(q);
       if (Math.abs(p.lateral) > (p.lateral > 0 ? p.left : p.right) + corridor) sides[p.lateral < 0 ? 0 : 1] = true;
       if (sides[0] && sides[1]) break;
@@ -271,7 +315,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         deckZ = Math.max(deckZ, p.z + CROSSING_RULES.underDepth, heightAt(q.x, q.y));
       }
       // Include intervening crown stations and the ribbon edges, not just sampled road centreline.
-      for (let i = 0; i < route.s.length; i++) if (route.s[i] >= minS - g.width / 2 && route.s[i] <= maxS + g.width / 2)
+      for (let i = firstAbove(route.s, minS - g.width / 2, true); i < route.s.length && route.s[i] <= maxS + g.width / 2; i++)
         deckZ = Math.max(deckZ, route.grade[i] + CROSSING_RULES.underDepth);
       const edgeZ = (d: number) => isRaised ? deckZ : project(along(path, d)).z;
       // Tie to actual terrain on each side. The linear engineered approach may require fill or cut;
@@ -409,7 +453,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       if (!required[k] || !a || !b) { links.push([]); continue; }
       const s0 = project(a).s, s1 = project(b).s, lo = Math.min(s0, s1), hi = Math.max(s0, s1);
       const stations = [lo];
-      for (let i = 0; i < route.s.length; i++) if (route.s[i] > lo && route.s[i] < hi) stations.push(route.s[i]);
+      for (let i = firstAbove(route.s, lo, false); i < route.s.length && route.s[i] < hi; i++) stations.push(route.s[i]);
       stations.push(hi);
       // Start with the full daylight boundary, then shortcut only with checked clearance.
       // Draping and billing use that same path. Excessively long links are explicitly budget-limited.

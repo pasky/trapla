@@ -88,7 +88,12 @@ const FINE_BAND = 6;
 /** fine passes spent on the mass-balance search (incl. the first) */
 const BALANCE_EVALS = 4;
 
-interface CostLut { values: Float64Array[]; cost: AutoProfileOptions['costPerM'] }
+/** Optional NaN-initialised height tables shared by the caller across solves (and evaluations).
+ * Entries are only ever filled with `cost(h, kind, costClass)` at the fixed height grid, so a
+ * shared table must belong to exactly that cost function's inputs. */
+export type SharedCostTable = (kind: number, costClass: number) => Float64Array | undefined;
+type CostFn = AutoProfileOptions['costPerM'] & { table?: SharedCostTable };
+interface CostLut { values: Float64Array[]; cost: CostFn }
 function buildLut(cost: AutoProfileOptions['costPerM'], classes: number): CostLut {
   // Sparse crossing classes used to price all 4,001 heights, even for narrow search bands.
   // Each solve fills its required envelope, retaining the identical grid and interpolation.
@@ -343,7 +348,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     for (let block = 0; block < low.length; block++) {
       if (high[block] < 0) continue;
-      const values = lut[block] ??= new Float64Array(lutMax + 1).fill(NaN);
+      const values = lut[block] ??= table.cost.table?.(block % 4 - 1, Math.floor(block / 4)) ?? new Float64Array(lutMax + 1).fill(NaN);
       for (let j = low[block]; j <= high[block]; j++) if (Number.isNaN(values[j])) {
         values[j] = table.cost(-H_MAX + j * H_STEP, block % 4 - 1, Math.floor(block / 4));
       }
@@ -360,15 +365,21 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const sk = k * D;
       const c0 = costStart[k], c1 = costStart[k + 1];
       for (let zi = 0; zi < Z0; zi++) {
-        let any = false;
-        for (let d = 0; d < ND; d++) if (cur[zi * ND + d] < Infinity) { any = true; break; }
-        if (!any) continue;
+        // Only grades some reachable incoming state can transition to are ever read below.
+        let reachLo = ND, reachHi = -1;
+        for (let d = 0; d < ND; d++) if (cur[zi * ND + d] < Infinity) {
+          const dz = d - dzMax;
+          const lo = k === 0 ? 0 : Math.max(0, dz - crestLim + dzMax), hi = k === 0 ? ND - 1 : Math.min(ND - 1, dz + sagLim + dzMax);
+          if (lo < reachLo) reachLo = lo;
+          if (hi > reachHi) reachHi = hi;
+        }
+        if (reachHi < 0) continue;
         const z = zlo[k] + zi;
         const zm = zA + z * u;
         // Valid next-knot grades form one contiguous range. Accumulate each cost point across
         // that range (q outer): every seg[d2] still sums its terms in the original q order, with
         // the identical per-term arithmetic, so results are bit-for-bit unchanged.
-        const d2lo = Math.max(0, zlo[k + 1] - z + dzMax), d2hi = Math.min(ND - 1, zhi[k + 1] - z + dzMax);
+        const d2lo = Math.max(reachLo, zlo[k + 1] - z + dzMax), d2hi = Math.min(reachHi, zhi[k + 1] - z + dzMax);
         seg.fill(Infinity);
         for (let d2 = d2lo; d2 <= d2hi; d2++) seg[d2] = 0;
         for (let q = c0; q < c1; q++) {
