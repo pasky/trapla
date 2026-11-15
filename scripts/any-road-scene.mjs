@@ -213,6 +213,12 @@ try {
     assert(pr.works.items.some(w => w.owner.id === joined.id && w.label === 'Junction with our road'), 'its junction with our road is billed');
     assert(!pr.issues.some(i => i.code === 'connection-pending' && i.scope.routeIds.includes(joined.id)), 'no unbuilt junction');
     await page.evaluate(() => window.trapla.select(null));
+    // the junction with our road: Auto (a T) or a roundabout, in the road's card
+    await page.locator('.route-junctions button[data-end="a"]', { hasText: 'Roundabout' }).click(); await idle();
+    const rb = await page.evaluate(() => window.trapla.projectResult());
+    assert(rb.works.items.some(w => w.owner.id === joined.id && w.label === 'Roundabout on our road'), 'the roundabout replaces the T');
+    assert.equal((await page.evaluate(() => window.trapla.getProject())).routes.at(-1).alignment.controls.junctionForms?.a, 'roundabout');
+    await page.evaluate(() => window.trapla.select(null));
     await page.screenshot({ path: shot(first + 5, 'side-road-joins-ours') });
   } else console.log('no mapped road on screen near our road: join-ours step skipped');
 
