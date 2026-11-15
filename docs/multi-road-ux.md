@@ -113,3 +113,52 @@ checkpoints `9a9738d`, `ab65033`, `aa294d8`, `853c7ac`, `5c3d976`. Newer core fi
 (mode foundations) need deliberate integration after the clean checkpoint. No merge to parent yet.
 Only the original D11 pack is copied into this worktree so far; copy S's reviewed transport sidecars/new
 packs before source/scenario browser tests. Never modify the other worktree's ignored data in place.
+
+## U1 critical review (successor, 2026-11-15)
+
+Scope: `dfe66a3` main wiring plus the strategy in `multi-road-plan.md` / `multi-road-c0-api.md`. Field names
+used by `main.ts`/HUD/SourceEditor were checked against `core/project.ts`: `acousticScreen.complete`,
+`buildings[].action/buildingIndex`, `routes[id].legacy/routeId`, `acceptedRenderReplacements`,
+`issues[].scope.buildingIndex`, `RoadSpec.designSpeed/existingWidth`, `operations.speedPolicy` all exist.
+Incomplete multi-road results still carry `legacy` per evaluable route (`project-evaluate.ts`). The
+intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixture shape is valid.
+
+**Implementation defects (fixed in this checkpoint unless marked open)**
+
+1. *Legacy D11 HUD regression.* `Hud.setResult` returned early whenever a project existed, so the exact
+   single-road facade lost the live `≈` total during drags (it showed the stale project total), the ✓/✗
+   travel-time chip, goal tags and kept-open "why?". A single legacy-readable mission road with no
+   corridors/connections now uses the unchanged legacy HUD; only real multi-road projects use the
+   project score (no total, NOT CHECKED).
+2. *Violation clicks matched project issues to kernel violations by title/kind* — the first of two
+   identical "too steep" titles always won. Facade: index is 1:1 (core maps violations in order).
+   Project mode: route-qualified `locations` (pi/vpi/range) only; no title matching. The active road's
+   own kernel violations are listed after the project issues (they are real checks, not a verdict).
+3. *Start over replaced only the active route* — with a side road active it would overwrite that road
+   with the mission's starting design (or silently do nothing for a non-PI road). It now restores the
+   whole initial project atomically (one undo entry).
+4. *`trapla.setDesign` forced operating speed* even under `speedPolicy: 'independent'`; now guarded.
+5. *Promoted/reference routes were invisible and unpickable*: rendering, picking and the inspector used
+   only `legacy` results, so an applied Change road would vanish from the map. Unaccepted proposals are
+   now drawn from their reference surface as a distinct dashed line over the still-visible old road, and
+   are pickable; their card says they are not checked. No earthwork/body is fabricated.
+6. *SourceEditor handle search was global* along the source: on a hairpin/loop the handle could jump
+   to the far leg. It now tracks continuously from its previous station. The initial ±100 m stretch is
+   an arbitrary visible start (kept, documented); handles cannot extend into a stretch already claimed
+   by another project route, and clicking a claimed stretch selects that route instead of offering a
+   second overlapping Change road.
+
+**Strategy / requirement interpretation risks (open, not UI-fixable)**
+
+- "Any road is editable" is **not** met: Change road only promotes the existing ground road as an
+  exact reference proposal. There is no reference-path editor (bend/profile) and core returns
+  `source-needs-network` for it, so it is never scored or accepted. Shipping this as "editing any road"
+  would overclaim; the card must keep saying it is not checked. Needs C1 acceptance + a reference editor.
+- Costs are project-wide only for the single-road facade; any second route yields no total. That is
+  honest but means multi-road play has no score at all until C1's ledger. Do not "fix" with sums.
+- Build (Road/Motorway/Railway with endpoints) is absent; motorway pairing and railway are M
+  foundations only (no kernel). Owner requirements 3–4 remain unmet; the Build button stays hidden.
+- The two-road scene test builds its side road through `setProject`, i.e. it proves rendering/selection/
+  undo, not a player creation flow. Real-mouse base-road coverage is added below; Build coverage awaits Build.
+- `RouteExtras` noise/wall overlays for inactive routes and the active-only noise band are legacy
+  single-source views; they are suppressed/marked unfinished for networks, never combined in the UI.

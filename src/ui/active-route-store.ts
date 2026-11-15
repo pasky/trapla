@@ -10,7 +10,7 @@ export class ActiveRouteStore {
   onHistory?: () => void;
   private atomic = false;
   private cached: { project: ProjectDesign; id: RouteId; design: Design | null } | null = null;
-  constructor(readonly project: ProjectStoreApi, private initialRoad: () => Design) {
+  constructor(readonly project: ProjectStoreApi, private initialProject: () => ProjectDesign) {
     this.activeRouteId = project.snapshot.design.routes[0]?.id ?? null;
   }
   get route() { return this.project.snapshot.design.routes.find(r => r.id === this.activeRouteId) ?? null; }
@@ -71,10 +71,11 @@ export class ActiveRouteStore {
       Object.assign(draft, structuredClone(design));
     });
   }
+  /** Start over: the whole initial project in one undoable step, not the active route alone. */
   reset() {
-    const fresh = this.initialRoad();
-    if (this.project.snapshot.design.routes.length > 1) fresh.buildingOverrides = structuredClone(this.project.snapshot.design.buildingOverrides);
-    this.replace(fresh);
+    const fresh = structuredClone(this.initialProject());
+    this.editProject(draft => { for (const key of Object.keys(draft)) delete (draft as unknown as Record<string, unknown>)[key]; Object.assign(draft, fresh); });
+    this.activeRouteId = this.project.snapshot.design.routes.find(r => r.role === 'mission')?.id ?? this.project.snapshot.design.routes[0]?.id ?? null;
   }
   loadBest() {
     const best = this.project.best;

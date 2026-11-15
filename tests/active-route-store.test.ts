@@ -19,8 +19,9 @@ function setup() {
   const storage = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => { data.set(k, v); } };
   const { store: project } = openProjectStore({ storage, namespace: context, objectData: 'objects', transportData: null,
     pricingData: 'fixture', mission: context.mission, initial: () => design, epoch: 'fixture' });
-  const adapter = new ActiveRouteStore(project!, () => structuredClone(seed));
-  return { project: project!, adapter, seed, data };
+  const fresh = projectFromLegacyDesign(seed, context);
+  const adapter = new ActiveRouteStore(project!, () => fresh);
+  return { project: project!, adapter, seed, data, fresh };
 }
 
 describe('active road widgets on project history', () => {
@@ -51,14 +52,17 @@ describe('active road widgets on project history', () => {
     adapter.undo(); expect(adapter.design.pis[0].x).toBe(50); expect(project.canUndo()).toBe(false);
   });
 
-  it('resets to a fresh scenario seed, removes absent controls, and keeps global decisions in a multi-road project', () => {
+  it('Start over restores the whole initial project in one undo step, even with a side road active', () => {
     const { adapter, project, seed } = setup();
-    adapter.update(d => { d.pis[0].x = 70; d.gradePins = [{ s: 30, z: 102 }]; d.wallOverrides = [{ s0: 0, s1: 20, side: 'L', height: 4 }];
-      d.buildingOverrides = [{ j: 3, action: 'keep' }]; });
+    adapter.update(d => { d.pis[0].x = 70; d.gradePins = [{ s: 30, z: 102 }]; d.buildingOverrides = [{ j: 3, action: 'keep' }]; });
+    adapter.switchRoute('other');
     adapter.reset();
-    expect(adapter.design.pis).toEqual(seed.pis); expect(adapter.design.gradePins ?? []).toEqual([]); expect(adapter.design.wallOverrides).toBeUndefined();
-    expect(project.snapshot.design.buildingOverrides).toEqual([{ j: 3, action: 'keep' }]);
-    adapter.undo(); expect(adapter.design.pis[0].x).toBe(70); expect(seed.pis[0].x).toBe(50);
+    expect(project.snapshot.design.routes.map(r => r.id)).toEqual(['route:legacy-mission']);
+    expect(adapter.activeRouteId).toBe('route:legacy-mission');
+    expect(adapter.design.pis).toEqual(seed.pis); expect(adapter.design.gradePins ?? []).toEqual([]);
+    expect(project.snapshot.design.buildingOverrides).toEqual([]);
+    adapter.undo();
+    expect(project.snapshot.design.routes.length).toBe(2); expect(project.snapshot.design.buildingOverrides).toEqual([{ j: 3, action: 'keep' }]);
   });
 
   it('refuses to turn an imported reference into PI controls', () => {

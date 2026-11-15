@@ -68,14 +68,14 @@ async function main() {
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
   // One deep-cloned scenario factory for first start AND Start over; existing saves never receive defaults.
   const initialRoad = (): Design => ({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) });
+  const initialProject = () => projectFromLegacyDesign(initialRoad(), legacyContext);
   const opened = openProjectStore({ storage: localStorage, namespace: { scenarioId: scenario.id, presetId },
-    objectData, transportData, pricingData, mission: legacyContext.mission,
-    initial: () => projectFromLegacyDesign(initialRoad(), legacyContext),
+    objectData, transportData, pricingData, mission: legacyContext.mission, initial: initialProject,
     legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' },
   });
   if (!opened.store) { showSaveRecovery(opened.load.status === 'unsupported' ? opened.load.raw : ''); return; }
   const projectStore = opened.store;
-  const store = new ActiveRouteStore(projectStore, initialRoad);
+  const store = new ActiveRouteStore(projectStore, initialProject);
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   const init: WorkerIn = {
@@ -115,7 +115,13 @@ async function main() {
   let displayedProject: ProjectResult | null = null;
   let qualifiedSelection: RouteSelection | null = null;
   const missionRouteId = () => projectStore.snapshot.design.routes.find(r => r.role === 'mission')?.id;
-  const projectScore = (pending: boolean) => hud.setProject(projectFull, pending, projectStore.best, missionRouteId());
+  /** exactly the one legacy road: the unchanged single-road score/verdict applies (core's facade) */
+  const legacyFacade = () => {
+    const d = projectStore.snapshot.design, only = d.routes[0];
+    return d.routes.length === 1 && !d.corridors.length && !d.connections.length && only.role === 'mission' && !only.source
+      && store.activeRouteId === only.id && store.read() !== null;
+  };
+  const projectScore = (pending: boolean) => hud.setProject(projectFull, pending, projectStore.best, missionRouteId(), legacyFacade());
   let posted = 0, received = 0;
   /** main-thread ms per consumer of the last handled result (drag-perf probe) */
   const handlerTiming: Record<string, number> = {};
@@ -681,31 +687,38 @@ async function main() {
     onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {
       // the list shows the last full result's violations (previews do not replace it)
-      const issue = projectFull?.issues[k], owner = issue?.scope.routeIds[0];
+      if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }
+      const listed = hud.listedIssue(k);
+      if (listed?.routeViolation !== undefined) { showViolation(lastFull?.violations[listed.routeViolation]); return; }
+      const issue = listed?.issue, owner = issue?.scope.routeIds[0];
+      if (!issue) return;
       if (owner && owner !== store.activeRouteId) switchRoute(owner);
-      if (issue?.scope.buildingIndex !== undefined) { select({ kind: 'building', j: issue.scope.buildingIndex }, true); return; }
-      const r = lastFull;
-      const v = issue ? r?.violations.find(v => v.title === issue.violation.title && v.kind === issue.violation.kind) : r?.violations[k];
-      if (!v || !r) {
-        const location = issue?.locations.find(l => l.routeId === store.activeRouteId);
-        if (location) select({ kind: 'stretch', s0: location.s0, s1: location.s1 }, true);
-        return;
-      }
-      const roadId = (v as { crossing?: { roadId?: number } }).crossing?.roadId;
-      const pin = v.kind === 'profile' ? store.design.gradePins?.find((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1) : undefined;
-      const t: Sel | null = v.target?.buildings?.length ? { kind: 'building', j: v.target.buildings[0] }
-        : roadId !== undefined ? { kind: 'crossing', roadId }
-          : v.pi !== undefined ? { kind: 'bend', i: v.pi } : v.pis?.length ? { kind: 'bend', i: v.pis[0] }
-            : v.vpi !== undefined && store.design.profileMode === 'manual' && v.vpi > 0 && v.vpi < r.vpis.length - 1 ? { kind: 'vpi', i: v.vpi }
-            : pin ? { kind: 'pin', s: pin.s } : v.goal ? null
-              : v.s1 - v.s0 < 60 ? (() => { const p = pieceAt(r, (v.s0 + v.s1) / 2); return { kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind } as Sel; })()
-                : { kind: 'stretch', s0: v.s0, s1: v.s1 };
-      if (!t) { hud.reveal('viol'); return; }
-      select(t);
-      const i = Math.max(0, Math.min(r.n - 1, Math.round((v.s0 + v.s1) / 2 / r.ds)));
-      view.lookAt(r.x[i], r.y[i], Math.max(1200, (v.s1 - v.s0) * 1.5), 20, 45);
-      profile.focus(v.s0, v.s1);
+      if (issue.scope.buildingIndex !== undefined) { select({ kind: 'building', j: issue.scope.buildingIndex }, true); return; }
+      // route-qualified locations only: never match a kernel violation by its title
+      const at = issue.locations.find(l => l.routeId === store.activeRouteId), d = store.read();
+      if (!at) { hud.reveal('viol'); return; }
+      if (at.pi !== undefined && d?.pis[at.pi]) select({ kind: 'bend', i: at.pi }, true);
+      else if (at.vpi !== undefined && d?.profileMode === 'manual' && lastFull && at.vpi > 0 && at.vpi < lastFull.vpis.length - 1) select({ kind: 'vpi', i: at.vpi }, true);
+      else select({ kind: 'stretch', s0: at.s0, s1: at.s1 }, true);
     },
+  };
+  const showViolation = (v: Result['violations'][number] | undefined) => {
+    const r = lastFull;
+    if (!v || !r) return;
+    const roadId = (v as { crossing?: { roadId?: number } }).crossing?.roadId;
+    const pin = v.kind === 'profile' ? store.design.gradePins?.find((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1) : undefined;
+    const t: Sel | null = v.target?.buildings?.length ? { kind: 'building', j: v.target.buildings[0] }
+      : roadId !== undefined ? { kind: 'crossing', roadId }
+        : v.pi !== undefined ? { kind: 'bend', i: v.pi } : v.pis?.length ? { kind: 'bend', i: v.pis[0] }
+          : v.vpi !== undefined && store.design.profileMode === 'manual' && v.vpi > 0 && v.vpi < r.vpis.length - 1 ? { kind: 'vpi', i: v.vpi }
+          : pin ? { kind: 'pin', s: pin.s } : v.goal ? null
+            : v.s1 - v.s0 < 60 ? (() => { const p = pieceAt(r, (v.s0 + v.s1) / 2); return { kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind } as Sel; })()
+              : { kind: 'stretch', s0: v.s0, s1: v.s1 };
+    if (!t) { hud.reveal('viol'); return; }
+    select(t);
+    const i = Math.max(0, Math.min(r.n - 1, Math.round((v.s0 + v.s1) / 2 / r.ds)));
+    view.lookAt(r.x[i], r.y[i], Math.max(1200, (v.s1 - v.s0) * 1.5), 20, 45);
+    profile.focus(v.s0, v.s1);
   };
 
   // a drag (bend, height point, pin, radius grip) is applied without a history entry until it ends:
@@ -763,7 +776,7 @@ async function main() {
         Object.assign(draft, replaceRouteFromLegacy(draft, id, d));
         const route = draft.routes.find(r => r.id === id)!;
         // Explicit legacy automation semantics: its one speed also governed traffic emissions.
-        if (route.kind === 'road') route.specification.operations.speed = d.speed;
+        if (route.kind === 'road' && route.specification.operations.speedPolicy !== 'independent') route.specification.operations.speed = d.speed;
       });
     },
     getProject: () => structuredClone(projectStore.snapshot.design),
