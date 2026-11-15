@@ -24,7 +24,7 @@ CSD values are integer rounded RPDI; the service metadata declares integer field
 
 ## Trapla fetch and use
 
-Run `uv run --with requests python pipeline/fetch_census.py`. It queries each supplied EPSG:5514 area with a 1 km margin, saves verbatim REST response JSON and normalized lists at `pipeline/cache/csd/sections-<area>.json`. Schema is `{id, road, rpdi, heavy, year, line}`; `heavy` is TV vehicles/day and `line` is `[[x,y], ...]` in EPSG:5514. The script is stdlib plus `requests`, and is reproducible against the public endpoint.
+Run `uv run --with requests python pipeline/fetch_census.py`. It queries each supplied EPSG:5514 area with a 1 km margin, saves verbatim REST response JSON and normalized lists at `pipeline/cache/csd/sections-<area>.json`. Schema is `{id, road, rpdi, heavy, year, lines}`; `heavy` is TV vehicles/day and `lines` is every part of the section, `[[[x,y], ...], ...]` in EPSG:5514 (the cached files from the first run still hold `line`, the first part only: re-run the script). The script is stdlib plus `requests`, and is reproducible against the public endpoint.
 
 For OSM prefill, use CSD2025 in preference to CSD2020; match same normalized `ref` and nearest line (point-to-line distance), then check section endpoints and road class. Retain source year and section id in game data. Set traffic to `rpdi`; derive a heavy share as `heavy/rpdi` when positive, but label the basis explicitly as TV, not TNV. Avoid assigning one section's value indiscriminately across an entire named road: adjacent sections can differ substantially. Keep unmatched local roads unset or use a separately labelled estimate rather than pretending they were counted.
 

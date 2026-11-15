@@ -221,11 +221,16 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   // A side road ending on another designed road follows that road's current line: the joined road is
   // evaluated first (dependency order, stable otherwise). A cycle of such ends is not built yet.
   // A road crossed by a higher-ranking road follows that road's crossing (project-roadnet.ts): the owner first.
-  const hostOf = (r: RouteDesign) => [r.endpoints.a.anchor, r.endpoints.b.anchor].flatMap(x => x.kind === 'route' ? [x.routeId] : [])
-    .concat(design.routes.filter(o => draws(design, o, r)).map(o => o.id));
-  const order: RouteDesign[] = [], placed = new Set<string>();
-  for (let pass = 0; pass <= design.routes.length && order.length < design.routes.length; pass++)
-    for (const r of design.routes) if (!placed.has(r.id) && hostOf(r).every(h => placed.has(h) || !design.routes.some(q => q.id === h))) { order.push(r); placed.add(r.id); }
+  const endHosts = (r: RouteDesign) => [r.endpoints.a.anchor, r.endpoints.b.anchor].flatMap(x => x.kind === 'route' ? [x.routeId] : []);
+  const ordered = (hostOf: (r: RouteDesign) => string[]) => {
+    const order: RouteDesign[] = [], placed = new Set<string>();
+    for (let pass = 0; pass <= design.routes.length && order.length < design.routes.length; pass++)
+      for (const r of design.routes) if (!placed.has(r.id) && hostOf(r).every(h => placed.has(h) || !design.routes.some(q => q.id === h))) { order.push(r); placed.add(r.id); }
+    return { order, placed };
+  };
+  // crossing owners first where that is possible; ends that follow another road always come first
+  let { order, placed } = ordered(r => endHosts(r).concat(design.routes.filter(o => draws(design, o, r)).map(o => o.id)));
+  if (order.length < design.routes.length) ({ order, placed } = ordered(endHosts));
   if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
   /** where a higher-ranking road's crossing holds a designed road (filled as owners are evaluated) */
   const holdsOf = new Map<string, Hold[]>(), seenOwners = new Set<Result>();
@@ -269,7 +274,8 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
         const hold = holdAt(route, own, c, crossed, ctx.legacy.terrain.heightAt(c.x, c.y));
         let list = holdsOf.get(crossed.id); if (!list) holdsOf.set(crossed.id, list = []);
         // a split motorway's two directions share one crossing structure
-        if (!hold || list.some(h => Math.abs(h.s - hold.s) < 30)) continue;
+        // the other direction of a split motorway reuses this structure (it holds nothing new)
+        if (!hold || c.shared) continue;
         list.push(hold);
         // the crossing's land is the owner's work: the two roads do not share land there
         // (its earthworks around the crossing, measured along an oblique crossed road, and any ramps)
@@ -554,7 +560,7 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, crossed: Rou
       const road = c.geometry?.road; if (!road?.length) return null;
       const deck = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p);
       // its own deck over our road: the span measured along the crossed road
-      const half = (c.span ?? 0) / 2 / Math.max(0.3, crossingSine(own, c, line, s));
+      const half = (c.span ?? 0) / 2; // measured along the crossed road already
       return { ...at(deck.z - HOLD_TOLERANCE, deck.z + HOLD_TOLERANCE), bridge: [Math.max(0, s - half), s + half] };
     }
     case 'junction': case 'atGrade': return at(z - HOLD_TOLERANCE, z + HOLD_TOLERANCE);
@@ -565,7 +571,7 @@ const ownerName = (r: RouteDesign) => r.role === 'mission' ? 'our road' : r.name
 /** A held road that misses its crossing's height (By hand), and the part of it the owner's bridge over
  * the owner already builds (its deck and ramps are billed with that crossing). */
 function heldChecks(r: Result, holds: readonly Hold[]): { violations: Result['violations']; credits: ReplacementWork[] } {
-  const violations: Result['violations'] = [], credits: ReplacementWork[] = [];
+  const violations: Result['violations'] = [], credits: ReplacementWork[] = [], credited = new Uint8Array(r.n);
   for (const h of holds) {
     if (!(h.s >= 0 && h.s <= r.length)) continue;
     const k = Math.min(r.n - 2, Math.floor(h.s / r.ds)), t = (h.s - r.s[k]) / r.ds, z = r.grade[k] + (r.grade[k + 1] - r.grade[k]) * t;
@@ -579,7 +585,10 @@ function heldChecks(r: Result, holds: readonly Hold[]): { violations: Result['vi
     if (type !== 'overbridge') continue;
     const half = ((h.crossing.approachLength ?? 0) + (h.crossing.span ?? 0)) / 2;
     let credit = 0;
-    for (let q = 0; q < r.n; q++) if (Math.abs(r.s[q] - h.s) <= half) for (const key of [...SHARED_PARTS, 'bridges', 'culverts'] as const) credit += r.parts[key][q];
+    for (let q = 0; q < r.n; q++) if (Math.abs(r.s[q] - h.s) <= half && !credited[q]) {
+      credited[q] = 1; // overlapping crossings credit a cell once
+      for (const key of [...SHARED_PARTS, 'bridges', 'culverts'] as const) credit += r.parts[key][q];
+    }
     if (credit > 0) credits.push({ kind: 'junction', s: h.s, x: h.crossing.x, y: h.crossing.y, length: 2 * half, cost: -credit,
       label: `Its ${Math.round(2 * half)} m on the bridge over ${name} are built with that bridge, not twice` });
   }

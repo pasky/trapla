@@ -34,6 +34,7 @@ import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKin
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
+import { registerNet } from './core/project-roadnet';
 import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { DecisionList } from './ui/build-tools';
 import { buildingInfo, Inspector, type Sel } from './ui/inspector';
@@ -90,6 +91,8 @@ async function main() {
 
   const presetId = scenario.presetId ?? scenario.id;
   const objectData = objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net);
+  // crossing choices on designed roads are stored on those roads; the editor maps them like the worker
+  if (pack.overlays.net) registerNet(objectData, pack.overlays.net.ways.length);
   const transportData = pack.transportMeta?.fingerprint ?? null;
   const pricingData = [meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'), meta.watercourses?.sha256 ?? 'raster-water'].join(':');
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },

@@ -45,6 +45,9 @@ def fetch(name: str, bounds: tuple[int, int, int, int]) -> None:
     response = requests.get(BASE, params=params, timeout=120)
     response.raise_for_status()
     raw = response.json()
+    # ArcGIS reports errors with HTTP 200: never overwrite a good dataset with an empty one
+    if "error" in raw or "features" not in raw:
+        raise RuntimeError(f"{name}: census service error: {raw.get('error')}")
     (CACHE / f"raw-{name}.json").write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
     features = raw.get("features", [])
     if raw.get("exceededTransferLimit"):
@@ -61,7 +64,8 @@ def fetch(name: str, bounds: tuple[int, int, int, int]) -> None:
             "rpdi": a.get("SV"),
             "heavy": a.get("TV"),
             "year": 2025,
-            "line": paths[0],
+            # every part of a multi-part section (OSM matching takes the nearest of them)
+            "lines": paths,
         })
     rows.sort(key=lambda row: (row["road"], row["id"]))
     (CACHE / f"sections-{name}.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

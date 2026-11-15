@@ -235,8 +235,22 @@ on a class III road" and an at-grade red ✕ where the new line crossed it. Fixe
 Remaining, in the parent's order (2026-11-16): **B** road-level settings (traffic, junction choice) visible on
 the road's card whenever it is selected, not hidden under the bend card; **D** (= follow-up 1) no inherited
 violations after the first drag; **E** (= follow-up 2) census traffic: `pipeline/fetch_census.py` +
-research/36 (ŘSD Geoportal CSD 2025 layer, EPSG:5514 lines, `CIS_SU`/`PSILNICE`/`SV`/`TV`; note the script keeps
+research/40 (ŘSD Geoportal CSD 2025 layer, EPSG:5514 lines, `CIS_SU`/`PSILNICE`/`SV`/`TV`; note the script keeps
 only `paths[0]` of multi-path sections — fix before use); class III roads such as 1057 are often not counted
 → labelled class prior; remove the "Traffic not set" issue entirely; name roads the Czech way ("road III/1057"
 or its name); **F** (= follow-up 3) flat 6 m cut. Then the owner's exact D3 steps in a real-mouse scene, a
 first-time-player pass, and playtest-qa on the integrated tree before merge.
+
+Review of 7ad2c26 (deep reviewer), fixed in the next commit: crossing choices on designed roads now map in the
+editor too (main thread registers the pack's net size), cache key carries route ids, a split motorway's shared
+crossing holds nothing new (no 30 m de-duplication of distinct crossings), owner-first ordering falls back to
+end-hosts-only order on a cycle, overlapping crossing credits count each cell once, the deck span is not divided
+by the skew twice, the census fetch fails on ArcGIS errors and keeps every part of a section (`lines`).
+**Still open from that review** (for the next session): (2) `crossing-geometry.ts` ~823–865 may still turn a
+designed crossing into a reconnection during geometry optimisation — exclude `c.designed` there too; (3) holds
+use `planLine` from stored endpoints while an end on another road follows that road's current line
+(`followEnds`) — build the edited network and holds from the same resolved endpoints; (5) cut remnants are
+numbered after the designed slots, so a saved `legacy-way` choice on a remnant can shift when a road is added —
+give remnants stable provenance; (10) drag previews carry no holds/decks (the side road drops off its deck while
+dragged); (11) `render/crossing-pick.ts` still indexes the hidden `g.road` of designed crossings; (12) the
+6-entry edited-network cache thrashes with many roads (share the base grid, key by owner).

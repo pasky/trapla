@@ -121,7 +121,7 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   const drawn = slots.map(r => owners.length > 0 && owners.every(o => o !== r && draws(design, o, r)));
   if (!cuts.length && !drawn.some(Boolean)) return { roads, designed: new Map() };
   const key = JSON.stringify([cuts.map(c => [c.way, c.d0.toFixed(2), c.d1.toFixed(2)]),
-    slots.map((r, k) => drawn[k] ? [r.endpoints, r.alignment.kind === 'pi' ? r.alignment.pis : null, r.specification] : 0)]);
+    slots.map((r, k) => drawn[k] ? [r.id, r.endpoints, r.alignment.kind === 'pi' ? r.alignment.pis : null, r.specification] : r.id)]);
   const hit = cache.find(c => c.key === key && c.base === roads);
   if (hit) return hit.net;
   const extra = slots.map((r, k) => ({ cls: MAP_CLASS[(r.specification as { legalClass: string }).legalClass], xy: drawn[k] ? planLine(r) : [] }));
