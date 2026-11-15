@@ -7,6 +7,7 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { Design, Result } from '../core/evaluate';
+import type { TransportGraphData, TransportRenderInterval } from '../core/project-transport';
 import { KIND } from '../core/structures';
 import { OOB_BIT, type Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
@@ -365,6 +366,10 @@ export class View {
     this.dirty = true;
   }
   get hasPhoto() { return !!this.landcover?.hasPhotoSource; }
+  *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
+    if (this.landcover) return yield* this.landcover.buildSourceReplacements(graph, accepted);
+    return { commit() {}, dispose() {} };
+  }
   /** true while land-cover textures for the current camera are still being drawn or fetched */
   get busy() { return this.lcPending || !!this.landcover?.loadingPhotos; }
   private lcPending = false;

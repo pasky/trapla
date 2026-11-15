@@ -17,6 +17,9 @@ import * as THREE from 'three';
 import { LC_LEVELS, type TerrainUniforms } from './terrainMaterial';
 import type { BuildingData, LineLayer, VectorPack } from './vectorPack';
 import { clip, exposed, Lru, tilesIn, wrapPieces, type Rect } from './photoTiles';
+import type { TransportGraphData, TransportRenderInterval } from '../core/project-transport';
+import { remainingLineIntervals, sourceReplacementCuts, type LineCuts } from './source-intervals';
+import { finish, type Staged } from './slices';
 
 type RGB = [number, number, number];
 
@@ -138,7 +141,7 @@ class ChunkAcc {
 }
 
 /** expand polylines into quads (mitred) plus optional round caps / joins; offsets are applied in the shader */
-function lineGeos(layer: LineLayer, chunk: number, caps: boolean): Geo[] {
+export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, cuts?: LineCuts): Generator<void, Geo[]> {
   const accs = new Map<number, ChunkAcc>();
   const acc = (x: number, y: number) => {
     const key = Math.floor(y / chunk) * 4096 + Math.floor(x / chunk);
@@ -154,6 +157,9 @@ function lineGeos(layer: LineLayer, chunk: number, caps: boolean): Geo[] {
   };
   const V = layer.verts, S = layer.starts;
   for (let p = 0; p + 1 < S.length; p++) {
+    if (p % 64 === 0) yield;
+    const removed = cuts?.get(p) ?? [];
+    const capped = (s: number) => caps && !removed.some(([a, b]) => s >= a && s <= b);
     const i0 = S[p], n = S[p + 1] - i0;
     if (n < 2) continue;
     // per-vertex mitre vector (left normal, lengthened at bends) and distance along the line
@@ -167,7 +173,7 @@ function lineGeos(layer: LineLayer, chunk: number, caps: boolean): Geo[] {
         nx = -ey / L; ny = ex / L;
         dd[j + 1] = dd[j] + L;
       }
-      if (j === 0 || j === n - 1) { mx[j] = nx; my[j] = ny; if (caps) disc(x, y, dd[j]); }
+      if (j === 0 || j === n - 1) { mx[j] = nx; my[j] = ny; if (capped(dd[j])) disc(x, y, dd[j]); }
       else {
         let sx = pnx + nx, sy = pny + ny;
         const sl = Math.hypot(sx, sy);
@@ -175,16 +181,23 @@ function lineGeos(layer: LineLayer, chunk: number, caps: boolean): Geo[] {
         const cos = sx * nx + sy * ny; // cos of half the turn angle
         const k = 1 / Math.max(0.6, cos);
         mx[j] = sx * k; my[j] = sy * k;
-        if (caps && cos < 0.92) disc(x, y, dd[j]);
+        if (capped(dd[j]) && cos < 0.92) disc(x, y, dd[j]);
       }
       pnx = nx; pny = ny;
     }
     for (let j = 0; j < n - 1; j++) {
       const x0 = V[2 * (i0 + j)], y0 = V[2 * (i0 + j) + 1], x1 = V[2 * (i0 + j + 1)], y1 = V[2 * (i0 + j + 1) + 1];
-      const a = acc(0.5 * (x0 + x1), 0.5 * (y0 + y1));
-      const v0 = a.vert(x0, y0, mx[j], my[j], dd[j]), v1 = a.vert(x0, y0, -mx[j], -my[j], dd[j]);
-      const v2 = a.vert(x1, y1, mx[j + 1], my[j + 1], dd[j + 1]), v3 = a.vert(x1, y1, -mx[j + 1], -my[j + 1], dd[j + 1]);
-      a.idx.push(v0, v1, v2, v1, v3, v2);
+      for (const [s0, s1] of remainingLineIntervals(dd[j], dd[j + 1], removed)) {
+        const t0 = (s0 - dd[j]) / (dd[j + 1] - dd[j]), t1 = (s1 - dd[j]) / (dd[j + 1] - dd[j]);
+        const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+        const ax = lerp(x0, x1, t0), ay = lerp(y0, y1, t0), bx = lerp(x0, x1, t1), by = lerp(y0, y1, t1);
+        const amx = lerp(mx[j], mx[j + 1], t0), amy = lerp(my[j], my[j + 1], t0);
+        const bmx = lerp(mx[j], mx[j + 1], t1), bmy = lerp(my[j], my[j + 1], t1);
+        const a = acc(0.5 * (ax + bx), 0.5 * (ay + by));
+        const v0 = a.vert(ax, ay, amx, amy, s0), v1 = a.vert(ax, ay, -amx, -amy, s0);
+        const v2 = a.vert(bx, by, bmx, bmy, s1), v3 = a.vert(bx, by, -bmx, -bmy, s1);
+        a.idx.push(v0, v1, v2, v1, v3, v2);
+      }
     }
   }
   const out: Geo[] = [];
@@ -282,6 +295,7 @@ export class LandCover {
   private box = { value: new THREE.Vector4() };
   private res = { value: 1 };
   private passes: { pass: Pass; mat: THREE.ShaderMaterial; meshes: THREE.Mesh[] }[] = [];
+  private sourceCuts = new Map<string, LineCuts>();
   private scratch: THREE.WebGLRenderTarget;
   private size: number;
   private base: THREE.WebGLRenderTarget;
@@ -316,13 +330,13 @@ export class LandCover {
   /** called when a texture changed outside update() (a photo arrived) */
   onChange: (() => void) | null = null;
 
-  constructor(private renderer: THREE.WebGLRenderer, vectors: VectorPack, private width: number, private height: number,
+  constructor(private renderer: THREE.WebGLRenderer, private vectors: VectorPack, private width: number, private height: number,
     private uniforms: TerrainUniforms) {
     const maxTex = renderer.capabilities.maxTextureSize;
     this.size = Math.min(2048, maxTex);
     const geos = new Map<string, Geo[]>();
     for (const l of vectors.polys) geos.set(l.name, polyGeos(l.verts, l.idx, l.chunks));
-    for (const l of vectors.lines) geos.set(l.name, lineGeos(l, vectors.chunk, CAPPED.has(l.name)));
+    for (const l of vectors.lines) geos.set(l.name, finish(buildLineGeos(l, vectors.chunk, CAPPED.has(l.name))));
     if (vectors.buildings) geos.set('buildings', buildingGeos(vectors.buildings, vectors.chunk));
     PASSES.forEach((pass, order) => {
       const gl = geos.get(pass.layer);
@@ -503,6 +517,44 @@ export class LandCover {
     this.uniforms.lcBaseOn.value = 0;
     for (const s of this.slots) { s.k = -1; s.have.clear(); }
     this.publish();
+  }
+
+  /** Stage exact accepted source removals before expansion by each style pass. Casing, minimum-pixel
+   * widths and railway dashes therefore agree, without erasing another source at the same pixels. */
+  *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
+    const next = sourceReplacementCuts(graph, accepted), changed = new Map<string, Geo[]>();
+    const key = (cuts?: LineCuts) => JSON.stringify(cuts ? [...cuts] : []);
+    let handedOver = false, settled = false;
+    const dispose = () => {
+      if (settled) return; settled = true;
+      for (const geos of changed.values()) for (const g of geos) g.geo.dispose();
+    };
+    try {
+      for (const layer of this.vectors.lines) {
+        if (key(this.sourceCuts.get(layer.name)) === key(next.get(layer.name))) continue;
+        changed.set(layer.name, yield* buildLineGeos(layer, this.vectors.chunk, CAPPED.has(layer.name), next.get(layer.name)));
+      }
+      handedOver = true;
+      return { dispose, commit: () => {
+        if (settled) return;
+        const old = new Set<THREE.BufferGeometry>();
+        for (const entry of this.passes) {
+          const geos = changed.get(entry.pass.layer);
+          if (entry.pass.kind !== 'line' || !geos) continue;
+          const order = entry.meshes[0]?.renderOrder ?? PASSES.indexOf(entry.pass);
+          for (const mesh of entry.meshes) { this.scene.remove(mesh); old.add(mesh.geometry); }
+          entry.meshes = geos.map(g => {
+            const mesh = new THREE.Mesh(g.geo, entry.mat); mesh.frustumCulled = false;
+            mesh.matrixAutoUpdate = false; mesh.renderOrder = order; mesh.userData.bbox = g.bbox;
+            this.scene.add(mesh); return mesh;
+          });
+        }
+        for (const geometry of old) geometry.dispose();
+        this.sourceCuts = next;
+        if (changed.size) { this.reset(); this.onChange?.(); }
+        settled = true;
+      } };
+    } finally { if (!handedOver) dispose(); }
   }
 
   /** the GPU lost everything (WebGL context loss): redraw, and do not trust the cached photo textures */
