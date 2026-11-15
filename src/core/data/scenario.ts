@@ -130,7 +130,7 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
 // census page), not a local forecast (none found, research/33 §2). Acoustic heavy share 22.56 %: TP 219
 // tab. 4-2 first-class motorway mix (19 % goods + 1 % buses + 32 % of 8 % light goods, Manuál tab. 20).
 // Capacity: D 27.5 carries it. Time targets are mission choices (≈ 10 % longer than the reference).
-const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
+export const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
 export const D3_MOTORWAY: ScenarioParams = {
   ...D3_SCENARIO, presetId: 'd3-motorway', mode: 'motorway', title: 'Motorway D3: Jílové → Václavice',
   // The real 0302/0303 sections are D 27.5/120 (research/25). Starter = the road exercise's bends with

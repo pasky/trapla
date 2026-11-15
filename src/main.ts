@@ -31,6 +31,7 @@ import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
 import { strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
+import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
@@ -248,7 +249,9 @@ async function main() {
     };
     ends.sync(store.route);
     // Road links let the game change mapped roads: the worker learns which legacy way each mapped road is.
-    worker.postMessage({ type: 'source-ways', ways: graph.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]) } satisfies WorkerIn);
+    // ... and where each mapped railway runs (what a rebuilt railway stretch takes up).
+    worker.postMessage({ type: 'source-ways', ways: graph.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]),
+      rails: graph.sources.flatMap(s => s.kind === 'railway' ? [[s.id, s.xy, s.stations]] : []) } satisfies WorkerIn);
     view.setTransport(graph);
   })();
   // A saved project that already rebuilds mapped roads needs the graph before its first scene.

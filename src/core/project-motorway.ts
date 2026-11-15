@@ -78,11 +78,12 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
   return next;
 }
 
+/** `unpriced`: engineered and shown, but the project cannot price it (no interchange at its ends). */
 export type CorridorEvaluation =
-  | { status: 'evaluated'; result: Result }
+  | { status: 'evaluated'; result: Result; unpriced?: 'motorway-needs-interchange'[] }
   /** Separate directions: each its own kernel result; the corridor ledger (absent in a drag preview,
    * which evaluates only the dragged direction) counts their shared formation, land and houses once. */
-  | { status: 'split'; results: Record<string, Result>; ledger: SplitLedger | null }
+  | { status: 'split'; results: Record<string, Result>; ledger: SplitLedger | null; unpriced?: 'motorway-needs-interchange'[] }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment' | 'unresolved-binding'
       | 'mission-needs-network' | 'unsupported-crossing' | 'separate-carriageways' };
 
@@ -107,17 +108,23 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
     if (c.target.kind !== 'legacy-way') return { status: 'incomplete', reason: 'unsupported-crossing' };
     if (c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
   }
-  const goals = project.mission.connections, goal = goals[0];
-  const ends = [corridor.endpoints.a.anchor, corridor.endpoints.b.anchor];
-  if (goals.length !== 1 || !goal.kinds.includes('motorway') || ends.some(a => a.kind !== 'mission')
+  const goals = project.mission.connections, ends = [corridor.endpoints.a.anchor, corridor.endpoints.b.anchor];
+  // The mission's motorway runs between its ports (it continues off the map there). Any other motorway
+  // (Build → Motorway) is engineered and shown, but joins other roads only at interchanges the game
+  // cannot build yet: it stays unpriced.
+  const missionKids = kids.filter(k => k.role === 'mission').length;
+  if (missionKids === 1) return { status: 'incomplete', reason: 'mission-needs-network' };
+  const goal = missionKids ? goals[0] : undefined;
+  if (goal && (goals.length !== 1 || !goal.kinds.includes('motorway') || ends.some(a => a.kind !== 'mission')
     || (ends[0] as { portId: string }).portId !== goal.from || (ends[1] as { portId: string }).portId !== goal.to
-    || kids.some(k => k.role !== 'mission') || (goal.demand && goal.demand.kind !== 'road'))
+    || (goal.demand && goal.demand.kind !== 'road')))
     return { status: 'incomplete', reason: 'mission-needs-network' };
-  for (const e of [corridor.endpoints.a, corridor.endpoints.b]) {
+  if (goal) for (const e of [corridor.endpoints.a, corridor.endpoints.b]) {
     const anchor = e.anchor as { portId: string }, port = project.mission.ports.find(p => p.id === anchor.portId);
     if (!port || Math.hypot(e.position.x - port.position.x, e.position.y - port.position.y, e.position.z - port.position.z) > 1e-6)
       return { status: 'incomplete', reason: 'unresolved-binding' };
   }
+  const unpriced = goal ? undefined : ['motorway-needs-interchange' as const];
   if (corridor.mode === 'independent') {
     // Each direction ends at its own lanes' continuation beside the port, at the port's height.
     const ports = [corridor.endpoints.a.position, corridor.endpoints.b.position];
@@ -132,38 +139,48 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
     if (!only || only === kids[1].id) results[kids[1].id] = evaluateCarriageway(ctx, project, kids[1].id,
       { ...evalOptions, ...(results[kids[0].id] ? { sharedCrossings: { own: false, from: results[kids[0].id].crossings } } : {}) });
     const [f, r] = kids.map(k => results[k.id]);
-    return { status: 'split', results, ledger: f && r && !options.preview ? splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y)) : null };
+    return { status: 'split', results, ledger: f && r && !options.preview ? splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y)) : null, ...(unpriced ? { unpriced } : {}) };
   }
   const ops = corridorOperations(project, corridor), a = corridor.endpoints.a.position, b = corridor.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   const result = evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
-    maxTravelMin: goal.maxTravelMin ?? ctx.scenario.maxTravelMin } }, corridorDesign(project, corridor),
+    maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, corridorDesign(project, corridor),
   { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: ops.speed,
-    capacityTraffic: goal.demand?.kind === 'road' ? goal.demand.aadt : undefined,
-    goals: { time: goal.maxTravelMin !== undefined, capacity: goal.demand !== undefined } });
-  return { status: 'evaluated', result };
+    capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
+    goals: { time: goal?.maxTravelMin !== undefined, capacity: goal?.demand !== undefined } });
+  return { status: 'evaluated', result, ...(unpriced ? { unpriced } : {}) };
 }
 
 /** A fresh paired motorway mission: corridor A→B plus two directional children (half the demand each). */
 export function createMotorwayProject(base: ProjectDesign, d: Design, operations: { aadt: number; heavyShare: number }): ProjectDesign {
   const mission = base.routes.find(r => r.role === 'mission');
   if (!mission) throw new Error('Mission route needed');
-  if (d.category !== MOTORWAY_CATEGORY) throw new Error('Motorway needs the D 27.5 category');
   const { a, b } = mission.endpoints;
+  const port = (e: typeof a) => base.mission.ports.find(p => p.id === (e.anchor as { portId?: string }).portId)?.name ?? '';
+  return addMotorwayCorridor({ ...structuredClone(base), routes: [], connections: [], corridors: [], mission: motorwayMission(base.mission) },
+    { a, b }, d, operations, { corridorId: 'corridor:motorway', forward: 'route:motorway-forward', reverse: 'route:motorway-reverse',
+      acoustic: id => `acoustic:${id}` }, 'mission', { forward: `Motorway towards ${port(b)}`, reverse: `Motorway towards ${port(a)}` });
+}
+
+/** A paired motorway corridor between two ends added to a project: the corridor plus its two direction
+ * routes (half the demand each), its line `d` on the shared spine. One project edit. */
+export function addMotorwayCorridor(project: ProjectDesign, ends: Pick<RouteDesign['endpoints'], 'a' | 'b'>, d: Design,
+  operations: { aadt: number; heavyShare: number }, ids: { corridorId: string; forward: string; reverse: string; acoustic: (routeId: string) => string },
+  role: RouteDesign['role'], names: { forward: string; reverse: string }): ProjectDesign {
+  if (d.category !== MOTORWAY_CATEGORY) throw new Error('Motorway needs the D 27.5 category');
+  const { a, b } = ends;
   const spec = (aadt: number) => ({ kind: 'motorway' as const, policy: MOTORWAY_POLICY, crossSection: MOTORWAY_CATEGORY, designSpeed: d.speed,
     operations: { aadt, heavyShare: operations.heavyShare, speed: d.speed, speedPolicy: 'design' as const } });
-  const corridorId = 'corridor:motorway', half = operations.aadt / 2;
-  const child = (id: string, name: string, reverse: boolean): MotorwayRoute => ({ id, name, role: 'mission', revision: 0, kind: 'motorway',
-    acousticSourceId: `acoustic:${id}`, endpoints: reverse ? { a: structuredClone(b), b: structuredClone(a) } : structuredClone({ a, b }),
-    alignment: { kind: 'corridor', corridorId, direction: reverse ? 'reverse' : 'forward' }, specification: spec(half) });
-  const port = (id: string) => base.mission.ports.find(p => p.id === (id === 'a' ? (a.anchor as { portId?: string }).portId : (b.anchor as { portId?: string }).portId))?.name ?? '';
-  const project: ProjectDesign = { ...structuredClone(base), routes: [
-    child('route:motorway-forward', `Motorway towards ${port('b')}`, false), child('route:motorway-reverse', `Motorway towards ${port('a')}`, true)], connections: [],
-  corridors: [{ id: corridorId, revision: 0, kind: 'motorway', mode: 'paired', endpoints: structuredClone({ a, b }),
-    children: { forward: 'route:motorway-forward', reverse: 'route:motorway-reverse' }, formationPolicy: MOTORWAY_POLICY, correspondence: [],
-    spine: { kind: 'pi', pis: [], controls: {}, vertical: { kind: 'auto', pins: [] } } }],
-  mission: motorwayMission(base.mission) };
-  return replaceCorridorFromDesign(project, corridorId, d);
+  const half = operations.aadt / 2;
+  const child = (id: string, name: string, reverse: boolean): MotorwayRoute => ({ id, name, role, revision: 0, kind: 'motorway',
+    acousticSourceId: ids.acoustic(id), endpoints: reverse ? { a: structuredClone(b), b: structuredClone(a) } : structuredClone({ a, b }),
+    alignment: { kind: 'corridor', corridorId: ids.corridorId, direction: reverse ? 'reverse' : 'forward' }, specification: spec(half) });
+  const next: ProjectDesign = { ...structuredClone(project), routes: [...structuredClone(project.routes),
+    child(ids.forward, names.forward, false), child(ids.reverse, names.reverse, true)],
+  corridors: [...structuredClone(project.corridors), { id: ids.corridorId, revision: 0, kind: 'motorway', mode: 'paired', endpoints: structuredClone({ a, b }),
+    children: { forward: ids.forward, reverse: ids.reverse }, formationPolicy: MOTORWAY_POLICY, correspondence: [],
+    spine: { kind: 'pi', pis: [], controls: {}, vertical: { kind: 'auto', pins: [] } } }] };
+  return replaceCorridorFromDesign(next, ids.corridorId, d);
 }
 /** The scenario's mission with its connection to be made by a motorway (saves and bests are keyed by it). */
 export function motorwayMission(mission: ProjectDesign['mission']): ProjectDesign['mission'] {

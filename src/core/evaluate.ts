@@ -189,6 +189,8 @@ export interface EvalOptions {
    * the station track it joins; elsewhere, where our axis runs along the mapped track we rebuild it in
    * place (no bridge over it, no conflict with it). Crossing or running beside it stays a conflict. */
   railTieIn?: { a: number; b: number };
+  /** Railway rebuilding mapped stretches: their old track (polylines) is taken up, no obstacle. */
+  railRetired?: readonly (readonly { x: number; y: number }[])[];
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -287,6 +289,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   /** `below`: the crossing may instead pass this far below the crossed feature (motorways) */
   const mustBridge: { s: number; g: number; need: number; what: string; below?: number }[] = [];
   const railOurs = railTrackOurs(st, terrain, al.length, opts.railTieIn);
+  const retiredAt = opts.railRetired?.length ? nearLines(opts.railRetired, RETIRED_TRACK_M) : undefined;
   const tieIn = (s: number) => !!railOurs && railOurs[Math.max(0, Math.min(n - 1, Math.round(s / ds)))] === 1;
   for (let i = 0; i < n; i++) {
     for (const f of [0, 0.25, 0.5, 0.75]) {
@@ -296,7 +299,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       if (!terrain.watercourses && terrain.landcover(x, y) === LC.stream) streamSamples.push(st.s[i] + f * ds);
       const c = terrain.crossing(x, y);
       if (!c) continue;
-      if (c === 2 && tieIn(st.s[i] + f * ds)) continue; // the existing track this railway joins
+      if (c === 2 && (tieIn(st.s[i] + f * ds) || retiredAt?.(x, y))) continue; // the existing track this railway joins, rebuilds or takes up
       const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
       const gc = terrain.heightAt(x, y);
       mustBridge.push({ s: st.s[i] + f * ds, g: gc, need, what: c === 2 ? 'railway' : 'river' });
@@ -1011,7 +1014,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
   });
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
-    ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}) }, terrain, ctx.roads, crossings, water,
+    ...(endJunctions.length ? { junctions: endJunctions } : {}), ...(railOurs ? { railOurs } : {}), ...(retiredAt ? { railRetired: retiredAt } : {}) }, terrain, ctx.roads, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);
@@ -1271,4 +1274,22 @@ function railTrackOurs(st: { n: number; ds: number; s: ArrayLike<number>; x: Arr
     if (i > 0 && i + 1 < n && on[i - 1] && on[i] && on[i + 1]) for (let j = Math.max(0, i - 1 - widen); j <= Math.min(n - 1, i + 1 + widen); j++) out[j] = 1;
   }
   return out;
+}
+
+/** Half the width of a taken-up track's raster trace (a 5 m cell either side of its line), m. */
+const RETIRED_TRACK_M = 6;
+/** Whether a point lies within `d` of any of the polylines (bucketed by 50 m cells). */
+function nearLines(lines: readonly (readonly { x: number; y: number }[])[], d: number): (x: number, y: number) => boolean {
+  const C = 50, buckets = new Map<string, [number, number, number, number][]>();
+  for (const line of lines) for (let k = 1; k < line.length; k++) {
+    const a = line[k - 1], b = line[k];
+    for (let cx = Math.floor((Math.min(a.x, b.x) - d) / C); cx <= Math.floor((Math.max(a.x, b.x) + d) / C); cx++)
+      for (let cy = Math.floor((Math.min(a.y, b.y) - d) / C); cy <= Math.floor((Math.max(a.y, b.y) + d) / C); cy++) {
+        const key = `${cx},${cy}`; let list = buckets.get(key); if (!list) buckets.set(key, list = []); list.push([a.x, a.y, b.x, b.y]);
+      }
+  }
+  return (x, y) => (buckets.get(`${Math.floor(x / C)},${Math.floor(y / C)}`) ?? []).some(([ax, ay, bx, by]) => {
+    const dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(x - ax - t * dx, y - ay - t * dy) <= d;
+  });
 }
