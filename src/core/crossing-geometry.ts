@@ -1207,7 +1207,7 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       }
       if (Math.abs(g.links.reduce((sum, path) => sum + crossingPlanLength(path), 0) - (c.linkLength ?? 0)) > 0.01) report('Link quantity differs from geometry');
       const price = (c.linkLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000
-        + (c.cls === 'service' && (c.linkLength ?? 0) > 0 ? ACCESS : 0);
+        + (c.cls === 'service' && (c.linkLength ?? 0) > 0 ? ACCESS : 0) + (c.culvertCost ?? 0) + (c.houseCost ?? 0);
       if (Math.abs(price - c.cost) > 0.01) report('Link bill differs from measured quantities');
     }
     // Side-road regrades and walls, remeasured from the drawn geometry (rural or urban rate).
