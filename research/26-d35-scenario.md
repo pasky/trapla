@@ -4,10 +4,10 @@ Research-only map/source check, 2026-11-15. This note verifies the corridor and 
 
 ## Official project leaflets (personally fetched and text-checked)
 
-- ŘSD, **D35 Opatovec–Staré Město**, leaflet marked *stav k 09/2025*: [official PDF](https://apdos.roadmedia.cz/Upload/Stavby/53/infoletak_d35-opatovec-st_mesto.pdf). It states route length **16,600 m**, category S 11.5/90, and a bored Dětřichov tunnel of **3,983 m** (four-lane R 25.5 in the leaflet's design description). It reports 700 m total bridge length. The current edition supersedes the older 2019 leaflet described in research/21.
-- ŘSD, **D35 Staré Město–Mohelnice**, leaflet marked *stav k 02/2020*: [PDF at dalnice-d35.cz](http://www.dalnice-d35.cz/public/files/documents/infoletak-d35-stare-mesto-mohelnice.pdf). It states **18,230 m**, D 26/130, including 1,330 m reconstruction of existing D35 alignment. It describes the Maletín tunnel and 3,542 m total bridge length. This is an older edition and hosted on the project domain, not a current dated ŘSD APDOS leaflet; verify the current project edition before freezing configuration. The document remains useful evidence for the route and planning length, not current construction status.
+- ŘSD, **D35 Opatovec–Staré Město**, leaflet marked *stav k 09/2025*: [official PDF](https://apdos.roadmedia.cz/Upload/Stavby/53/infoletak_d35-opatovec-st_mesto.pdf). It states a **16,600 m** main route, category **D 26.0/130** under the new ČSN (described as R 25.5/120 under the earlier scheme), and a bored Dětřichov tunnel of **3,983 m**. The same leaflet's **S 11.5/90 is the feeder road to I/35**, not the motorway mainline; its category box confirms D 26.0/130. It reports 700 m total bridge length. The alignment begins 350 m beyond MÚK Opatovec, joining the preceding Janov–Opatovec section (then noted as in construction), and has project chainage km 74.500–91.100. Its west-end design tie is therefore near, but not necessarily exactly coincident with, the first tagged proposed OSM node below.
+- ŘSD, **D35 Staré Město–Mohelnice**, current leaflet marked *stav k 09/2025*: [APDOS official PDF](https://apdos.roadmedia.cz/Upload/Stavby/54/infoletak_d35-stare-mesto-mohelnice.pdf?t=2022-07-18%2008:39:28.983). It states **18,230 m**, **D 26/130**, including **1,330 m reconstruction of existing D35**. This supersedes the older 02/2020 leaflet hosted at dalnice-d35.cz. The section begins east of Staré Město at project chainage **km 91.670**, continues through the 1,312.5 m Maletín tunnel, and ends by connection to existing D35 at km 110.000. It reports 3,542 m total bridge length.
 
-The two published section lengths sum to **34.830 km**. This is a strong source for “about 35 km”; do not replace it with the shorter OSM captured length or treat the project-line ways as surveyed/as-built centerline. The full corridor runs across highly varying terrain and both leaflets describe major structures. The explicit shorter fallback remains the first 16.6 km with Dětřichov tunnel reference.
+The section lengths sum to **34.830 km**. The OSM geometry below measures 33.900 km for one ordered carriageway, about 930 m (2.7%) shorter; these are not interchangeable measures. The second leaflet explicitly includes 1.330 km reconstruction of existing alignment, and both endpoint/tie-in geometries differ from the selected OSM way chain. Do not silently stretch the OSM line to the official length. The corridor traverses major structures and varied terrain. The honest shorter fallback is the named 16.6 km Opatovec–Staré Město project section, not an endpoint at the Maletín tunnel.
 
 ## Endpoints and map anchors
 
@@ -15,11 +15,11 @@ The bounded OSM reference extract (method below) returns these termini on the ta
 
 | Role | OSM node | Latitude, longitude (WGS84) | EPSG:5514 (m, rounded) | Interpretation |
 |---|---:|---|---|---|
-| West / Opatovec side | 9338690977 | 49.8001788, 16.5102302 | (−597,926, −1,093,092) | western end of the proposed corridor captured here; use as a map/reference anchor, but confirm against the current leaflet/MÚK tie-in before adopting as the actual game endpoint |
-| Stage join / Staré Město side | 938396920 | 49.8020063, 16.7566456 | (−580,268, −1,094,791) | proposed approach at the boundary to the Staré Město–Mohelnice section; suitable explicitly named extension/stage anchor, not necessarily the exact design interface |
-| East / Mohelnice side | 25996008 | 49.7673123, 16.9177858 | (−569,130, −1,099,840) | endpoint of one direction's proposed reference line at the Mohelnice-side end |
+| Full route west / Opatovec side | 938396772 | 49.7928053, 16.4949856 | (−599,106, −1,093,788) | western end of selected proposed D35 carriageway chain; leaflet places project start 350 m beyond MÚK Opatovec, joining Janov–Opatovec. The OSM extract maps the prior section as open and shows a service/proposed-motorway connector; confirm its pack topology before freezing endpoint |
+| Fallback end / first project section boundary | interpolated on way 80415880 | 49.8013793, 16.7146975 | (−583,278, −1,094,541) | point at 16,600 m chainage from the selected OSM west anchor, near leaflet boundary km 91.100. Not a source node; the next leaflet begins at km 91.670 east of Staré Město. Verify overlay/tie-in rather than using node 938396920 |
+| Full route east / Mohelnice side | 25996008 | 49.7673123, 16.9177858 | (−569,130, −1,099,840) | endpoint of the selected carriageway's proposed reference geometry; leaflet says link to existing D35 at project km 110.000, so check reconstruction/tie-in extent |
 
-These are actual OSM node coordinates, not city-centre points. Start/end identifications are based on geographic order and the leaflets' named sections; the OSM extract contains dual-carriageway ways and the endpoint-to-project-interface correspondence needs a visual leaflet/OSM overlay at configuration time. In particular, node 938396920 sits in the paired line/tunnel-transition area; do not assume the two directions share one exact endpoint node.
+The west and east positions are actual OSM node coordinates; the fallback position is linearly interpolated along EPSG:5514 geometry at 16,600 m. This point aligns with the first leaflet's 16,600 m and km 74.500–91.100 design interval, and lies about 570 m before the next section's km 91.670 start. The leaflets describe the first endpoint as 490 m before MÚK Staré Město-východ, while the next section provides that junction completion. The stage point is therefore a well-supported chainage-based candidate, though not a surveyed node; confirm the tie-in visually before freezing it. Node 938396920 (49.8020063,16.7566456) lies much farther east along the selected route, at approximately 19.78 km; it is near the Maletín tunnel area in the second section, not the Staré Město stage boundary.
 
 ### Candidate EPSG:5514 envelopes and grid implications
 
@@ -32,7 +32,7 @@ Both use EPSG:5514 S-JTSK / Křovák East North and are rounded in 500 m increme
 
 ## OSM reference data, continuity limits, reproducibility
 
-Retrieved a small Overpass JSON extract on 2026-11-15 (49 ways, 66,841 bytes, SHA-256 `78ec6bbfa749814944c601801fccd5e0b06deb32bd6320c6837ab41500de14b2`). Raw ignored file is at **`/home/pasky/projects/trapla-agent-worktree-0005/pipeline/cache/d35-reference-overpass.json`**; copy it into the parent worktree if needed. It is not committed. The query file is **`/home/pasky/projects/trapla-agent-worktree-0005/pipeline/cache/d35-overpass-query.txt`**. Reproducible query:
+Retrieved a bounded Overpass JSON extract on 2026-11-15 (49 ways, 66,841 bytes, SHA-256 `78ec6bbfa749814944c601801fccd5e0b06deb32bd6320c6837ab41500de14b2`). Raw ignored file is at **`/home/pasky/projects/trapla-agent-worktree-0005/pipeline/cache/d35-reference-overpass.json`**; copy it into the parent worktree if needed. It is not committed. The query file is **`/home/pasky/projects/trapla-agent-worktree-0005/pipeline/cache/d35-overpass-query.txt`**. Reproducible query:
 
 ```overpass
 [out:json][timeout:25][bbox:49.50,16.35,49.82,16.90];
@@ -40,14 +40,27 @@ way["ref"="D35"];
 out geom;
 ```
 
-It returned 49 `ref=D35` ways with geometry, including the proposed motorway and nearby already-open D35 links. The extracted proposed ways use `highway=proposed`, `proposed=motorway`, `ref=D35`; the returned reference set also includes paired carriageways and proposed tunnel segments. Key joined-way/node anchors from the proposed line include:
+It returned 49 `ref=D35` ways with geometry, including the proposed motorway and nearby already-open D35 links. The extracted proposed ways use `highway=proposed`, `proposed=motorway`, `ref=D35`; the returned reference set also includes paired carriageways and proposed tunnel segments. ### Ordered single-carriageway chain and measured length
 
-- West approach and route start: way **911292616**, node chain starts at **938396910** (49.8074335,16.5340299) and runs west to **9338690977** (49.8001788,16.5102302); opposing side way **911292617** connects via **9338690976** and **938384705**.
-- Dětřichov tunnel pair: ways **80415867** (nodes 938396824 → 938396910) and **80415874** (938384705 → 938384595). Their projected positions are around 49.807, 16.59.
-- Central / Staré Město-side tunnel approach: ways **1156589474** (10755873246 → 938396920) and **1156589475** (938384607 → 10755873245), with the tunnel pair **80415866** (938396920 → 938396940) and **80415898** (938384578 → 938384607). This supports the approximate stage boundary anchor; verify exact project section limits.
-- East continuation: ways **1012218272** (938396940 → 938396843), **80415880** (938396843 → 938396824), and **22768453** (25996008 → 10755873247); opposing directions include **1012218273**, **80415876**, and **80415873**. Short connector ways **1156589472/3** and **1012218276–79** complete the route through the tagged junction geometry.
+Following OSM node order from the western proposed endpoint, the selected carriageway is one continuous path; each way below is traversed in reverse OSM way order. Lengths are sums of consecutive geometry vertices projected to EPSG:5514 (Euclidean segment lengths), rounded to 0.01 m. This reproducible route totals **33,900.26 m**. The 16,600 m fallback point falls within way 80415880, at approximately 49.8013793, 16.7146975 (EPSG:5514 −583,278, −1,094,541); it is not a node and must be checked against the leaflet and OSM map before it becomes a fixed endpoint.
 
-The way/node topology is a continuous **paired** proposed corridor through each segment; each carriageway is a separate connected line and tunnel segments have their own ways. The extract is geographically bounded and should be used as reference provenance, not as a forced player's route. Existing motorway ways in the extract are distinct (for example 911292614/615); do not include completed links as proposed construction or indiscriminately chain all `ref=D35` ways. The Overpass query is reproducible but live data changes: preserve the ignored JSON used for any build, record retrieval date/hash, and commit the extract as project source only if the repository's data policy explicitly calls for it. The leaflets' 34.830 km remains the official length; precise length of the design/reference polyline should be recomputed from a selected, explicitly ordered single carriageway after endpoint tie-ins are confirmed.
+| Order | Way ID (traverse reverse) | Directed node anchors | Length (m) |
+|---:|---:|---|---:|
+| 1 | 1012218276 | 938396772 → 9338690979 | 1,014.53 |
+| 2 | 1012218277 | 9338690979 → 9338690977 | 362.02 |
+| 3 | 911292616 | 9338690977 → 938396910 | 1,944.19 |
+| 4 | 80415867 | 938396910 → 938396824 | 4,027.80 |
+| 5 | 80415880 | 938396824 → 938396843 | 9,616.89 |
+| 6 | 1012218272 | 938396843 → 938396940 | 1,560.83 |
+| 7 | 80415866 | 938396940 → 938396920 | 1,309.29 |
+| 8 | 1156589474 | 938396920 → 10755873246 | 8,022.95 |
+| 9 | 1156589473 | 10755873246 → 10755873247 | 697.64 |
+| 10 | 22768453 | 10755873247 → 25996008 | 5,344.13 |
+| | **Total** | **938396772 → 25996008** | **33,900.26** |
+
+The ordered chain includes the two short western proposed ways 1012218276/8277, which were omitted in the initial endpoint interpretation. The matching opposite carriageway is a separate chain and should not be concatenated into the official line length. Additional parallel/tunnel ways include 80415874, 80415876, 80415873, 1012218273, 1156589475 and 80415898. The chain is continuous by shared OSM node IDs. It describes tagged proposed geometry. The first leaflet says the project starts 350 m beyond MÚK Opatovec, joining the preceding Janov–Opatovec section. In the extract, the selected start node 938396772 connects via way 1047432140 (tagged `highway=service`, `proposed:highway=motorway`, `ref=D35`) toward existing motorway way 1047432138; the reciprocal service/connector ways are 1047432141/2142. This is the map evidence for the west tie-in, not an extra length to append to the 16.6 km project. The nearby existing motorway ways carry `opening_date=2025-12-18`, so they are mapped as opened, not construction, in this extract. Check the real status and connectivity before using the pack, and do not charge the preceding Janov–Opatovec project as new work.
+
+The extract is geographically bounded and should be used as reference provenance, not as a forced player's route. Existing motorway ways in the extract are distinct (for example 911292614/615); do not include completed links as proposed construction or indiscriminately chain all `ref=D35` ways. The Overpass query is reproducible but live data changes: preserve the ignored JSON used for any build and record retrieval date/hash. The official leaflets' total is 34.830 km; the selected proposed chain is 33.900 km, a 930 m difference. The second leaflet includes 1.330 km reconstruction of existing D35; exact reconciliation depends on the construction boundary and endpoint tie-ins, not an arbitrary length adjustment.
 
 ## Traffic evidence and scenario-default boundary
 
@@ -59,6 +72,6 @@ This corridor crosses the transition from the Svitavy / Moravian-Třebová area 
 
 ## Sources / follow-up
 
-- Official leaflets above; local PDFs fetched to `/tmp/d35-opatovec-staremesto.pdf` and `/tmp/d35-staremesto-mohelnice.pdf` in this worktree session.
+- Official leaflets above; local PDFs fetched to `/tmp/d35-opatovec-staremesto.pdf` and `/tmp/d35-staremesto-mohelnice-apdos.pdf` in this worktree session.
 - Project overview / independent cross-check: [Ministry of Transport, D35 PPP covers both sections, 35 km](https://md.gov.cz/Media/Media-a-tiskove-zpravy/Nejvetsi-silnicni-zakazka-v-historii-miri-do-final); [February 2025 contract news, reported 16.6 + 18.2 km](https://zdopravy.cz/35-kilometru-nove-dalnice-a-25-let-provoz-52-km-nejvetsi-silnicni-zakazka-odstartovala-236982/).
 - Existing methodology and source caution: [docs/new-scenario.md](../docs/new-scenario.md), [docs/multi-road-plan.md](../docs/multi-road-plan.md), [research/21-network-scenarios-modes.md](21-network-scenarios-modes.md), [research/14-category-capacity.md](14-category-capacity.md).
