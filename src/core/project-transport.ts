@@ -50,6 +50,13 @@ export type TransportSource = TransportSourceBase & (
   | { elevation: 'unknown' }
   | { elevation: 'surveyed'; z: number[]; elevationEvidence: string }
 );
+export interface UnresolvedTransportSource {
+  id: SourceId; osmWayId: string; kind: 'road' | 'railway';
+  reason: 'conflicting-snapshots';
+  /** Visible/pickable source without fabricated chainage/connectivity; promotion is refused. */
+  renderFeatureIds: string[];
+  legacyNetIndices?: number[];
+}
 export interface TransportGraphData {
   version: 1;
   /** SHA256 of DECOMPRESSED vector.bin content (gzip timestamps are not identity), whose
@@ -58,6 +65,7 @@ export interface TransportGraphData {
   renderFeatures: TransportRenderFeature[];
   nodes: TransportNode[];
   sources: TransportSource[];
+  unresolvedSources?: UnresolvedTransportSource[];
 }
 /** Runtime adapter separates ground sampling from usable transport elevations. null means unknown. */
 export interface TransportSurfaceQuery {

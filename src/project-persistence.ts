@@ -22,20 +22,42 @@ export function compatibleProjectBest(best: ProjectBest, options: ProjectLoadOpt
     && best.model === COST_MODEL_VERSION && best.evaluationVersion === PROJECT_EVALUATION_VERSION
     && best.pricingData === options.pricingData && d.objectData === options.objectData && d.transportData === options.transportData
     && d.scenarioId === options.namespace.scenarioId && d.presetId === options.namespace.presetId
-    && best.missionData === projectMissionKey(d) && best.missionData === projectValueKey(options.mission);
+    && best.missionData === projectMissionKey(d) && best.missionData === projectValueKey(options.mission)
+    && bindingRepairs(cloneProjectValue(d), options).length === 0;
 }
 function bindingRepairs(design: ProjectDesign, options: ProjectLoadOptions): string[] {
   const reasons: string[] = [];
   if (design.objectData !== options.objectData) reasons.push('object-data-changed');
-  if (design.transportData !== options.transportData) {
-    reasons.push('transport-data-changed');
-    for (const route of design.routes) {
-      if (route.source) route.source.binding = 'unresolved';
-      for (const e of [route.endpoints.a, route.endpoints.b]) if (e.anchor.kind === 'source') e.binding = 'unresolved';
+  const transportChanged = design.transportData !== options.transportData;
+  if (transportChanged) reasons.push('transport-data-changed');
+  const checkPair = (pair: ProjectDesign['routes'][number]['endpoints']) => {
+    for (const e of [pair.a, pair.b]) {
+      if (e.anchor.kind === 'source' && (transportChanged || e.anchor.location.transportData !== options.transportData)) e.binding = 'unresolved';
+      if (e.binding === 'unresolved') reasons.push('unresolved-endpoint');
     }
+  };
+  const checkAlignment = (a: ProjectDesign['routes'][number]['alignment']) => {
+    if (a.kind !== 'corridor') for (const c of a.controls.crossings ?? []) {
+      if (c.target.kind === 'source' && c.target.interval.transportData !== options.transportData
+        || c.target.kind === 'legacy-way' && c.target.objectData !== options.objectData) reasons.push('unresolved-crossing');
+    }
+  };
+  for (const route of design.routes) {
+    if (route.source) {
+      if (transportChanged || route.source.intervals.some(i => i.transportData !== options.transportData)) route.source.binding = 'unresolved';
+      if (route.source.binding === 'unresolved') reasons.push('unresolved-replacement');
+    }
+    checkPair(route.endpoints); checkAlignment(route.alignment);
   }
+  for (const corridor of design.corridors) {
+    checkPair(corridor.endpoints); checkAlignment(corridor.mode === 'paired' ? corridor.spine : corridor.retainedSpine);
+  }
+  for (const c of design.connections) if (c.ports.some(p => p.kind === 'source' && p.location.transportData !== options.transportData)) reasons.push('unresolved-connection');
   if (projectMissionKey(design) !== projectValueKey(options.mission)) reasons.push('mission-changed');
-  return reasons;
+  return [...new Set(reasons)];
+}
+export function projectBindingsCurrent(design: ProjectDesign, options: ProjectLoadOptions): boolean {
+  return bindingRepairs(cloneProjectValue(design), options).length === 0;
 }
 /** Pure read/migration. Never writes, never constructs legacy Store, never replaces bad bytes. */
 export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult {
@@ -45,13 +67,14 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
       const parsed: unknown = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object' || (parsed as ProjectSave).schemaVersion !== 1) throw new Error('Unsupported save schema');
       const save = parsed as ProjectSave;
-      assertProjectDesign(save.design);
+      assertProjectDesign(save.design, true);
       if (save.design.scenarioId !== options.namespace.scenarioId || save.design.presetId !== options.namespace.presetId) throw new Error('Save namespace mismatch');
       if (save.best) {
         assertProjectDesign(save.best.design);
         if (!compatibleProjectBest(save.best, options)) save.best = null;
       } else save.best = null;
       const reasons = bindingRepairs(save.design, options);
+      assertProjectDesign(save.design);
       if (reasons.length) { save.best = null; return { status: 'needs-repair', save, original: null, reasons }; }
       return { status: 'loaded', save, original: null };
     } catch (e) { return { status: 'unsupported', raw, reason: String(e) }; }

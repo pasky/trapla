@@ -3,6 +3,7 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { projectFromLegacyDesign, type LegacyProjectContext } from '../src/core/project-legacy';
 import { evaluateProjectRoad } from '../src/core/project-road';
+import { assertProjectDesign } from '../src/core/project-validation';
 import { syntheticTerrain } from '../src/core/terrain';
 
 const terrain = syntheticTerrain(260, 120, 5, () => 100);
@@ -23,6 +24,13 @@ it('preserves the legacy kernel bill, grade and geometry through the project ada
   if (adapted.status !== 'evaluated') throw new Error('adapter');
   const { timing: _a, ...a } = legacy, { timing: _b, ...b } = adapted.result;
   expect(b).toEqual(a);
+});
+
+it('refuses a mission shortcut whose anchor ID names a different endpoint position', () => {
+  const p = projectFromLegacyDesign(design, context);
+  p.routes[0].endpoints.b.position.x = 400;
+  expect(() => assertProjectDesign(p)).toThrow('mission position');
+  expect(evaluateProjectRoad(ctx, p, p.routes[0].id, 'objects')).toEqual({ status: 'incomplete', reason: 'unresolved-binding' });
 });
 
 it('constrains Auto and manual endpoints to actual transport heights without changing excavation ground', () => {

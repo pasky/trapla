@@ -61,13 +61,20 @@ export function legacyDesignForRoute(project: ProjectDesign, routeId: string): D
 export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, design: Design): ProjectDesign {
   const old = project.routes.find(r => r.id === routeId);
   if (!old || old.kind !== 'road') throw new Error('Unknown road');
+  if (design.objectData && design.objectData !== project.objectData) throw new Error('Foreign object binding needs repair');
   // Refuse silent flattening of imported paths/corridor children before editing through old widgets.
   legacyDesignForRoute(project, routeId);
-  const adapted = projectFromLegacyDesign(design, { ...project, endpoints: old.endpoints,
+  // Validate editable fields in isolation without pretending external endpoint anchors disappeared.
+  // Their real anchors are preserved below and checked against the complete project.
+  const isolatedEndpoints: EndpointPair = { a: { ...old.endpoints.a, anchor: { kind: 'free' } },
+    b: { ...old.endpoints.b, anchor: { kind: 'free' } } };
+  const adapted = projectFromLegacyDesign(design, { ...project, endpoints: isolatedEndpoints,
     mission: project.mission, operations: old.specification.operations });
   const next = copy(project), replacement = adapted.routes[0];
+  if (replacement.kind !== 'road') throw new Error('Legacy adapter mode mismatch');
+  replacement.specification.operations = copy(old.specification.operations);
   next.routes = next.routes.map(r => r.id === routeId ? { ...replacement, id: old.id, name: old.name, role: old.role,
-    acousticSourceId: old.acousticSourceId, revision: old.revision, source: old.source } : r);
+    endpoints: copy(old.endpoints), acousticSourceId: old.acousticSourceId, revision: old.revision, source: old.source } : r);
   next.buildingOverrides = adapted.buildingOverrides;
   assertProjectDesign(next);
   return next;

@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
 import { COST_MODEL_VERSION } from '../src/core/data/prices';
-import type { ProjectResult } from '../src/core/project';
+import type { CorridorDesign, ProjectResult, RouteDesign } from '../src/core/project';
 import type { Design } from '../src/core/evaluate';
-import { legacyDesignForRoute, projectFromLegacyDesign, type LegacyProjectContext } from '../src/core/project-legacy';
+import { legacyDesignForRoute, projectFromLegacyDesign, replaceRouteFromLegacy, type LegacyProjectContext } from '../src/core/project-legacy';
 import { assertProjectDesign } from '../src/core/project-validation';
 import { loadProjectSave } from '../src/project-persistence';
 import { openProjectStore, type ProjectStoreOptions } from '../src/project-store';
@@ -103,6 +103,11 @@ it('makes promotion one atomic undo step, cancels drafts, and reloads stable rou
   expect(store.canUndo()).toBe(true);
   store.undo(); expect(store.snapshot.design.routes).toHaveLength(1);
   expect(store.snapshot.revision).toBeGreaterThan(committedRevision);
+  store.begin();
+  store.update(d => { d.routes[0].specification.designSpeed = 90; });
+  store.update(d => { d.routes[0].specification.designSpeed = 80; });
+  store.commit(); // out-and-back drag is not an edit and must not truncate redo.
+  expect(store.canUndo()).toBe(false); expect(store.canRedo()).toBe(true);
   store.redo(); expect(store.snapshot.design.routes[1].id).toBe('route:side');
   const reloaded = openProjectStore({ ...options, epoch: 'load-2' }).store!;
   expect(reloaded.snapshot.design).toEqual(store.snapshot.design);
@@ -121,7 +126,39 @@ it('rolls back failed commands without half-created routes or undo entries', () 
   store.begin();
   expect(() => store.update(d => { d.routes[0].endpoints.a.position.z = NaN; })).toThrow();
   expect(store.snapshot.design.routes[0].endpoints.a.position.z).toBe(100);
+  expect(() => store.update(d => {
+    if (d.routes[0].alignment.kind === 'pi') d.routes[0].alignment.pis = new Array(2);
+  })).toThrow('sparse');
+  expect(data.get(keys.project)).toBe(before);
   store.cancel();
+});
+
+it('preserves operating speed and external anchors during legacy editing but rejects foreign object indices', () => {
+  const d = setup().options.initial(), route = d.routes[0];
+  const other = structuredClone(route); other.id = 'route:other'; other.role = 'auxiliary';
+  d.routes.push(other);
+  route.endpoints.a.anchor = { kind: 'route', routeId: other.id, s: 20 };
+  if (route.kind !== 'road') throw new Error('fixture');
+  route.specification.operations.speed = 40;
+  const legacy = legacyDesignForRoute(d, route.id);
+  const updated = replaceRouteFromLegacy(d, route.id, legacy);
+  expect(updated.routes[0].endpoints.a).toEqual(route.endpoints.a);
+  expect(updated.routes[0].specification.operations).toEqual(route.specification.operations);
+  expect(() => replaceRouteFromLegacy(d, route.id, { ...legacy, objectData: 'foreign',
+    buildingOverrides: [{ j: 7, action: 'keep' }] })).toThrow('Foreign object');
+  expect(d.buildingOverrides).toEqual(original.buildingOverrides);
+});
+
+it('repairs stale per-anchor source fingerprints even when the project fingerprint itself matches', () => {
+  const { options, data, keys } = setup();
+  const d = options.initial(); d.transportData = 'transport-a';
+  d.routes[0].endpoints.a.anchor = { kind: 'source', location: { transportData: 'transport-old', sourceId: 'way:1', s: 0 } };
+  data.set(keys.project, JSON.stringify({ schemaVersion: 1, design: d, best: null }));
+  const loaded = loadProjectSave({ ...options, transportData: 'transport-a' });
+  expect(loaded.status).toBe('needs-repair');
+  if (loaded.status !== 'needs-repair') throw new Error('fixture');
+  expect(loaded.save.design.routes[0].endpoints.a.binding).toBe('unresolved');
+  expect(() => assertProjectDesign(d)).toThrow('source fingerprint');
 });
 
 it('does not reinterpret a selected pin index after undo restores another pin before it', () => {
@@ -153,6 +190,31 @@ it('accepts best only for the current committed whole-project snapshot and recon
   store.dispatch({ type: 'set-building', index: 4, action: 'keep' });
   expect(store.offerBest({ ...result, cost: { ...result.cost, total: 90, routes: { [route.id]: 90 } } })).toBe(false);
   expect(openProjectStore(options).store!.best?.cost).toBe(100);
+});
+
+it('checks corridor endpoint and spine references, including their source repair status', () => {
+  const { options, data, keys } = setup(), d = options.initial();
+  const spine = structuredClone(d.routes[0].alignment);
+  if (spine.kind === 'corridor') throw new Error('fixture');
+  const child = (id: string, direction: 'forward' | 'reverse'): RouteDesign => ({ ...structuredClone(d.routes[0]), id, kind: 'motorway',
+    alignment: { kind: 'corridor', corridorId: 'corridor', direction },
+    specification: { kind: 'motorway', policy: 'foundation', crossSection: 'D27.5', designSpeed: 130, operations: context.operations } });
+  d.routes.push(child('forward', 'forward'), child('reverse', 'reverse'));
+  const c: CorridorDesign = { id: 'corridor', revision: 0, kind: 'motorway', mode: 'paired', spine,
+    endpoints: structuredClone(context.endpoints), children: { forward: 'forward', reverse: 'reverse' }, formationPolicy: 'foundation', correspondence: [] };
+  d.corridors.push(c);
+  c.endpoints.a.anchor = { kind: 'route', routeId: 'missing', s: 0 };
+  expect(() => assertProjectDesign(d)).toThrow('dangling endpoint');
+  c.endpoints.a.anchor = { kind: 'free' };
+  spine.controls.crossings = [{ choice: 'bridge', target: { kind: 'route', routeId: 'missing', s0: 1, s1: 2 } }];
+  expect(() => assertProjectDesign(d)).toThrow('dangling crossing');
+  spine.controls.crossings = [];
+  d.transportData = 'transport-a';
+  c.endpoints.a.anchor = { kind: 'source', location: { transportData: 'old', sourceId: 'way:1', s: 0 } };
+  data.set(keys.project, JSON.stringify({ schemaVersion: 1, design: d, best: null }));
+  const loaded = loadProjectSave({ ...options, transportData: 'transport-a' });
+  expect(loaded.status).toBe('needs-repair');
+  if (loaded.status === 'needs-repair') expect(loaded.save.design.corridors[0].endpoints.a.binding).toBe('unresolved');
 });
 
 it('rejects orphan paired controls and incompatible corridor children at the persistence boundary', () => {
