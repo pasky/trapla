@@ -7,7 +7,7 @@ import { NOISE } from './data/urban';
 import * as dm from './detmath';
 import { KIND } from './structures';
 import {
-  cellOptions, chunkFlags, MAX_STOREYS, openBound, openTransfer, type CellOptions, emptyScreen, lineTransfer, noiseField, transferDelta, pointTransfer, transferBuffers, NOISE_REACH,
+  cellOptions, segmentFlags, MAX_STOREYS, openBound, lineEnvelope, openTransfer, type CellOptions, emptyScreen, lineTransfer, noiseField, transferDelta, pointTransfer, transferBuffers, NOISE_REACH,
   type AcousticSource, type NoiseField, type SideScreen,
 } from './noise-field';
 import { noiseLevels, type NoiseModel } from './road-noise';
@@ -154,6 +154,16 @@ interface Candidate {
   levels?: { raw: Float64Array; earth: Float64Array; screened: Float64Array };
 }
 
+/** A cleared visited-set over a building index's dwellings (one stamp array per index, reused). */
+const stamps = new WeakMap<BuildingIndex, { mark: Int32Array; gen: number }>();
+function visited(b: BuildingIndex) {
+  let st = stamps.get(b);
+  if (!st || st.mark.length !== b.n) stamps.set(b, st = { mark: new Int32Array(b.n), gen: 0 });
+  const s = st, gen = ++s.gen;
+  if (gen === 0x7fffffff) { s.mark.fill(0); s.gen = 1; }
+  const g = s.gen;
+  return { has: (j: number) => s.mark[j] === g, add: (j: number) => { s.mark[j] = g; } };
+}
 const dB = (q: number) => (q > 0 ? 10 * dm.log10(q) : -Infinity);
 const maxOf = (a: ArrayLike<number>) => { let m = -Infinity; for (let k = 0; k < a.length; k++) if (a[k] > m) m = a[k]; return m; };
 
@@ -173,18 +183,9 @@ function searchRadius(model: NoiseModel): number {
   for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (noiseLevels(mid, NOISE.receiverHeight, model).excessDb + MARGIN_DB > 0) lo = mid; else hi = mid; }
   return Math.min(NOISE_REACH, hi);
 }
-/** max over d and receiver height of d · 10^(−U/10), per ground class (with hard ground the shortest slant,
- * level with the source, is the loudest; mixed ground is scanned over heights) */
-const dLinMax = new Map<string, number>();
+/** max over d and receiver height of d · 10^(−U/10), per ground class (noise-field's lineEnvelope) */
 function maxDLin(): number {
-  let m = dLinMax.get(NOISE.ground);
-  if (m === undefined) {
-    m = 0;
-    for (let dz = NOISE.ground === 'hard' ? NOISE.sourceHeight : -30; dz <= (NOISE.ground === 'hard' ? NOISE.sourceHeight : 40); dz += 0.5)
-      for (let d = 0.5; d < 3000; d += 0.5) m = Math.max(m, d * lineTransfer(d, dz));
-    dLinMax.set(NOISE.ground, m);
-  }
-  return m;
+  return lineEnvelope(NOISE.ground).M;
 }
 /**
  * Beyond this distance from every cell no house can reach the limit (research/36 §2): a cell r away adds at
@@ -229,35 +230,35 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   const passL = anyFixed ? fixedL : null, passR = anyFixed ? fixedR : null;
 
   // 1. candidates and their receiver points
-  const items = buildings.items, best = new Float64Array(buildings.n).fill(Infinity), bestI = new Int32Array(buildings.n).fill(-1);
-  const seen = new Int32Array(buildings.n), list: number[] = [];
+  const items = buildings.items, seen = visited(buildings), list: number[] = [], best = new Map<number, number>(), bestI = new Map<number, number>();
   // every hash cell along the route once; then each dwelling's nearest station by descent from the station
   // nearest its cell
   // the emission weight a cell may carry above the source's reference (1 without weights)
   let wMax = 1;
   if (src.weight) for (let i = 0; i < n; i++) wMax = Math.max(wMax, src.weight[i]);
-  const M = maxDLin() * wMax;
+  const env = lineEnvelope(NOISE.ground);
   const outer = Number.isFinite(model.excessDb) ? Math.max(radius, boundRadius(model.excessDb) * wMax) : 0;
-  if (outer > 0) buildings.alongPoints(src.x, src.y, n, outer + NOISE.facadeOffset + NOISE.sourceOffset, (j, i) => {
-    if (seen[j]) return;
-    seen[j] = 1;
+  const ds = n > 1 ? (s[n - 1] - s[0]) / (n - 1) : 1;
+  if (outer > 0) buildings.alongCells(src.x, src.y, n, outer + NOISE.facadeOffset + NOISE.sourceOffset, (cell, i) => {
+    for (const j of cell) if (!seen.has(j)) { seen.add(j); candidate(j, i); }
+  });
+  function candidate(j: number, i: number) {
     if (!buildings.dwelling[j] || demolished[j]) return;
-    let bi = i, bd = buildings.facadeDistance(j, src.x[i], src.y[i]);
-    // far from the station nearest its hash cell: first the rigorous open-road bound at any point of the
-    // house (2 m in front of its façade included), before searching its nearest station
-    if (bd - NOISE.facadeOffset - NOISE.sourceOffset >= radius + 20) {
-      const [x, y] = items[j];
-      if (excessOf(openBound(field, x, y, M, buildings.extent(j) + NOISE.facadeOffset)) <= 0) return;
-    }
+    // its nearest station: descent from its centre's projection on the tangent of the station nearest its
+    // hash cell
+    const [hx, hy] = items[j];
+    let bi = Math.max(0, Math.min(n - 1, i + Math.round(((hx - src.x[i]) * src.tx[i] + (hy - src.y[i]) * src.ty[i]) / ds)));
+    let b2 = buildings.facadeDistanceSq(j, src.x[bi], src.y[bi]);
     for (let moved = true; moved;) {
       moved = false;
       for (let q = 0; q < 4; q++) {
         const k = bi + DESCENT[q];
         if (k < 0 || k >= n) continue;
-        const fd = buildings.facadeDistance(j, src.x[k], src.y[k]);
-        if (fd < bd) { bd = fd; bi = k; moved = true; }
+        const f2 = buildings.facadeDistanceSq(j, src.x[k], src.y[k]);
+        if (f2 < b2) { b2 = f2; bi = k; moved = true; }
       }
     }
+    let bd = buildings.facadeDistance(j, src.x[bi], src.y[bi]);
     if (bd - NOISE.facadeOffset - NOISE.sourceOffset >= outer) return;
     if (src.L.shield[bi] && src.R.shield[bi]) {
       // nearest to a tunnel: assessed from the nearest open station (the portal), never dropped
@@ -270,19 +271,21 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
       if (d0 <= d1) { bi = k0; bd = d0; } else { bi = k1; bd = d1; }
       if (bd - NOISE.facadeOffset - NOISE.sourceOffset >= outer) return;
     }
-    list.push(j); best[j] = bd; bestI[j] = bi;
-  });
+    list.push(j); best.set(j, bd); bestI.set(j, bi);
+  }
   list.sort((a, b) => a - b);
   const reachCells = Math.max(1, Math.round(NOISE.wallWindow / Math.max(1e-6, (s[n - 1] - s[0]) / Math.max(1, n - 1))));
   // decisions and levels share one exact (cell-by-cell) window per house
   const windowOf = (c: { i: number }, scale = 1): [number, number] => [Math.max(0, c.i - reachCells * scale), Math.min(n - 1, c.i + reachCells * scale)];
   const cands: Candidate[] = [];
   for (const j of list) {
-    const i = bestI[j];
+    const i = bestI.get(j)!;
     const [fx, fy] = buildings.facadePoint(j, src.x[i], src.y[i]);
     const vx = src.x[i] - fx, vy = src.y[i] - fy, vl = Math.hypot(vx, vy);
     const step = Math.min(NOISE.facadeOffset, Math.max(0, vl - 1));
     const x = vl > 1e-9 ? fx + vx / vl * step : fx, y = vl > 1e-9 ? fy + vy / vl * step : fy;
+    // beyond the always-assessed radius: first the rigorous open-road bound at its receiver point
+    if (best.get(j)! - NOISE.facadeOffset - NOISE.sourceOffset >= radius && excessOf(openBound(field, x, y, env, wMax)) <= -OUTER_CHECK_DB) continue;
     const c = -(x - src.x[i]) * src.ty[i] + (y - src.y[i]) * src.tx[i];
     const ground = groundAt(items[j][0], items[j][1]);
     cands.push({ j, i, left: c >= 0, d: Math.max(1, Math.abs(c)), x, y, ground, z: storeys(buildings, j, ground),
@@ -293,7 +296,7 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   const quick = new Float64Array(MAX_STOREYS);
   for (let k = cands.length - 1; k >= 0; k--) {
     const c = cands[k];
-    if (best[c.j] - NOISE.facadeOffset - NOISE.sourceOffset < radius) continue;
+    if (best.get(c.j)! - NOISE.facadeOffset - NOISE.sourceOffset < radius) continue;
     const open = quick.subarray(0, c.z.length);
     openTransfer(field, c.x, c.y, c.z, open);
     if (excessOf(maxOf(open)) <= -OUTER_CHECK_DB) cands.splice(k, 1);
@@ -312,35 +315,51 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     return o;
   };
   interface Decision { w0: number; w1: number; cells: CellOptions; F: Float64Array; Fraw: Float64Array; Fearth: Float64Array;
+    /** F plus every window cell with nothing but its edge or the player's wall (option 0) */
+    F0: Float64Array;
+    /** the whole road's open-ground / edges-only sums */
+    raw: Float64Array; earth: Float64Array;
     /** outside the window with the highest automatic wall wherever one may stand (lazy): F − this bounds
      * what any wall beyond the window could take away */
     Fmax?: Float64Array }
   const data = new Map<number, Decision>();
   /** level per storey with walls L / R: outside part + each window cell at its wall's option */
   const levelWith = (d: Decision, wl: ArrayLike<number>, wr: ArrayLike<number>, H: number, out: Float64Array) => {
-    out.set(d.F);
-    const cells = d.cells;
+    out.set(d.F0);
+    const cells = d.cells, wallable = cells.wallable, side = cells.side;
     for (let i = d.w0; i <= d.w1; i++) {
-      const c = i - d.w0, e = cells.opt(cells.wallable[c] ? optionOf((cells.side[c] ? wl : wr)[i]) : 0), b = c * H;
-      for (let k = 0; k < H; k++) out[k] += e[b + k];
+      const c = i - d.w0;
+      if (!wallable[c]) continue;
+      const h = (side[c] ? wl : wr)[i];
+      if (!(h > 0)) continue;
+      const o = optionOf(h);
+      if (o === 0) continue;
+      const e = cells.opt(o), e0 = cells.opt(0), b = c * H;
+      for (let k = 0; k < H; k++) out[k] += e[b + k] - e0[b + k];
     }
     return out;
   };
-  const scratchH = new Float64Array(MAX_STOREYS);
   /** a house's decision data over its window (`scale` × the starting one) */
   const decision = (c: Candidate, scale: number): Decision => {
     const H = c.z.length, t = view(buf, H), [w0, w1] = windowOf(c, scale);
     pointTransfer(field, c.x, c.y, c.z, passL, passR, t, w0, w1, true);
-    return { w0, w1, cells: cellOptions(field, c.x, c.y, c.z, w0, w1, heights, manL, manR),
-      F: Float64Array.from(t.screened), Fraw: Float64Array.from(t.raw), Fearth: Float64Array.from(t.earth) };
+    const cells = cellOptions(field, c.x, c.y, c.z, w0, w1, heights, manL, manR);
+    // one slab: F, its raw / earth parts, F0, and the window's raw / earth sums
+    const slab = new Float64Array(6 * H), F = slab.subarray(0, H), Fraw = slab.subarray(H, 2 * H), Fearth = slab.subarray(2 * H, 3 * H);
+    const F0 = slab.subarray(3 * H, 4 * H), raw = slab.subarray(4 * H, 5 * H), earth = slab.subarray(5 * H);
+    F.set(t.screened); Fraw.set(t.raw); Fearth.set(t.earth); F0.set(t.screened); raw.set(t.raw); earth.set(t.earth);
+    const e0 = cells.opt(0);
+    for (let q = 0, m = w1 - w0 + 1; q < m; q++) for (let k = 0; k < H; k++) {
+      F0[k] += e0[q * H + k]; raw[k] += cells.raw[q * H + k]; earth[k] += cells.edge[q * H + k];
+    }
+    return { w0, w1, cells, F, Fraw, Fearth, F0, raw, earth };
   };
   for (const c of cands) {
-    const H = c.z.length, d = decision(c, 1);    data.set(c.j, d);
-    const raw = d.Fraw.slice(), earth = d.Fearth.slice();
-    for (let q = 0, m = d.w1 - d.w0 + 1; q < m; q++) for (let k = 0; k < H; k++) { raw[k] += d.cells.raw[q * H + k]; earth[k] += d.cells.edge[q * H + k]; }
-    const fixed = levelWith(d, fixedL, fixedR, H, scratchH.subarray(0, H));
-    c.rawExcess = excessOf(maxOf(raw)); c.earthExcess = excessOf(maxOf(earth)); c.fixedExcess = excessOf(maxOf(fixed));
-    c.levels = { raw, earth, screened: Float64Array.from(fixed) };
+    const H = c.z.length, d = decision(c, 1);
+    data.set(c.j, d);
+    const fixed = levelWith(d, fixedL, fixedR, H, new Float64Array(H));
+    c.rawExcess = excessOf(maxOf(d.raw)); c.earthExcess = excessOf(maxOf(d.earth)); c.fixedExcess = excessOf(maxOf(fixed));
+    c.levels = { raw: d.raw, earth: d.earth, screened: fixed };
   }
 
   // 3. decisions, loudest first
@@ -349,9 +368,12 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   const retained = new Set(policy?.keptBuildingIds);
   const exposed = cands.filter(c => c.fixedExcess > 0).sort((a, b) => b.fixedExcess - a.fixedExcess || a.j - b.j);
   // every wall Auto could add at its highest, the player's own decisions kept (for the window bound)
-  const maxWall = (man: Float64Array, side: SideScreen) => Float64Array.from({ length: n }, (_, i) =>
-    side.gap[i] || side.shield[i] ? 0 : man[i] === man[i] ? man[i] : heights[autoMax - 1]);
-  const maxL = maxWall(manL, src.L), maxR = maxWall(manR, src.R);
+  const maxWall = (man: Float64Array, side: SideScreen) => {
+    const out = new Float64Array(n);
+    for (let i = 0; i < n; i++) out[i] = side.gap[i] || side.shield[i] ? 0 : man[i] === man[i] ? man[i] : heights[autoMax - 1];
+    return out;
+  };
+  let maxL: Float64Array | null = null, maxR: Float64Array | null = null;
   // walls as they stand during the decisions: the player's, then Auto's (Auto never grows over a player cell)
   const curL = Float64Array.from(fixedL), curR = Float64Array.from(fixedR);
   /** Grow one wall of option `o` on the house's side from the most useful cell; the interval and whether
@@ -443,6 +465,7 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
           for (let k = 0; k < H; k++) if (g.lev[k] - d.F[k] > T * (1 + 1e-9)) could = false;
           if (could && !d.Fmax) {
             const t = view(buf, H);
+            if (!maxL) { maxL = maxWall(manL, src.L); maxR = maxWall(manR, src.R); }
             pointTransfer(field, c.x, c.y, c.z, maxL, maxR, t, d.w0, d.w1, true);
             d.Fmax = Float64Array.from(t.screened);
           }
@@ -483,7 +506,7 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   const L = finalize(autoL, manL, src.L), R = finalize(autoR, manR, src.R);
   const added = new Uint8Array(n);
   for (let i = 0; i < n; i++) added[i] = L[i] !== fixedL[i] || R[i] !== fixedR[i] ? 1 : 0;
-  const addedChunks = chunkFlags(field, added);
+  const addedFlags = segmentFlags(field, added);
 
   /** The lowest 2–6 m single stretch that would resolve a retained dwelling on top of the built walls. */
   const sufficientWall = (c: Candidate, wl: Float64Array, wr: Float64Array) => {
@@ -515,7 +538,7 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
       }
       levelWith(d, wl, wr, H, t.screened);
     } else levelWith(d, L, R, H, t.screened);
-    transferDelta(field, c.x, c.y, c.z, fixedL, fixedR, L, R, added, addedChunks, t, d.w0, d.w1, true);
+    transferDelta(field, c.x, c.y, c.z, fixedL, fixedR, L, R, added, addedFlags, t, d.w0, d.w1, true);
     let floor = 0;
     for (let k = 1; k < H; k++) if (t.screened[k] > t.screened[floor]) floor = k;
     const side = c.left ? 'L' as const : 'R' as const, walls = c.left ? L : R;
@@ -540,9 +563,8 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     }
     receivers.push(rec);
   }
-  const ds = n > 1 ? (s[n - 1] - s[0]) / (n - 1) : 0;
   return { L, R, receivers, boughtOut, unresolved, field,
-    walls: [...wallStretches(ds, s[n - 1] ?? 0, L, 'L'), ...wallStretches(ds, s[n - 1] ?? 0, R, 'R')] };
+    walls: [...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, L, 'L'), ...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, R, 'R')] };
 }
 
 /** Does most of the remaining noise come through junction openings on the house's side? */

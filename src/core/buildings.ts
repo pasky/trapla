@@ -32,6 +32,7 @@ export function noiseBuyoutCost(building: number, footprint: number): number {
 export class BuildingIndex {
   private readonly cell = 50;
   private readonly map = new Map<number, number[]>();
+  private grid?: { stamp: Int32Array; near: Int32Array; dist: Float64Array; gen: number };
   readonly n: number;
   /** building-only purchase + demolition, excl. land, CZK */
   readonly cost: Float64Array;
@@ -101,9 +102,12 @@ export class BuildingIndex {
     }
   }
 
-  /** Every building registered in a hash cell within `r` of any of the points, once per cell it is
-   * registered in (dedupe by index), with the index of the point nearest that cell's centre. */
-  alongPoints(x: ArrayLike<number>, y: ArrayLike<number>, n: number, r: number, fn: (j: number, near: number) => void) {
+  /** Every hash cell within `r` of any of the points that holds buildings, in the order the points reach
+   * them: its buildings
+   * (each may be registered in several cells), the index of the point nearest the cell's centre, and the
+   * cell's centre and half size. */
+  alongCells(x: ArrayLike<number>, y: ArrayLike<number>, n: number, r: number,
+    fn: (items: readonly number[], near: number, cx: number, cy: number, half: number) => void) {
     if (!n) return;
     // every `step`-th point (about r/4 apart), reaching the ones between too (and the last one)
     const ds = n > 1 ? Math.hypot(x[1] - x[0], y[1] - y[0]) : 0;
@@ -112,20 +116,25 @@ export class BuildingIndex {
     for (let i = 0; i < n; i++) { x0 = Math.min(x0, x[i]); x1 = Math.max(x1, x[i]); y0 = Math.min(y0, y[i]); y1 = Math.max(y1, y[i]); }
     const c0 = Math.floor((x0 - rr) / this.cell), r0 = Math.floor((y0 - rr) / this.cell);
     const nc = Math.floor((x1 + rr) / this.cell) - c0 + 1, nr = Math.floor((y1 + rr) / this.cell) - r0 + 1;
-    const near = new Int32Array(nc * nr).fill(-1), dist = new Float64Array(nc * nr);
+    // scratch grids reused across calls (a stamp marks this call's cells: no clearing)
+    let g = this.grid;
+    if (!g || g.stamp.length < nc * nr) this.grid = g = { stamp: new Int32Array(nc * nr), near: new Int32Array(nc * nr), dist: new Float64Array(nc * nr), gen: 0 };
+    if (++g.gen === 0x7fffffff) { g.stamp.fill(0); g.gen = 1; }
+    const { stamp, near, dist } = g, gen = g.gen, marked: number[] = [];
     for (let i = 0; i < n; i = i + step < n || i === n - 1 ? i + step : n - 1) {
       const a0 = Math.floor((x[i] - rr) / this.cell) - c0, a1 = Math.floor((x[i] + rr) / this.cell) - c0;
       const b0 = Math.floor((y[i] - rr) / this.cell) - r0, b1 = Math.floor((y[i] + rr) / this.cell) - r0;
       for (let cx = a0; cx <= a1; cx++) for (let cy = b0; cy <= b1; cy++) {
-        const k = cy * nc + cx, d = ((cx + c0 + 0.5) * this.cell - x[i]) ** 2 + ((cy + r0 + 0.5) * this.cell - y[i]) ** 2;
-        if (near[k] < 0 || d < dist[k]) { near[k] = i; dist[k] = d; }
+        const k = cy * nc + cx, ex = (cx + c0 + 0.5) * this.cell - x[i], ey = (cy + r0 + 0.5) * this.cell - y[i], d = ex * ex + ey * ey;
+        if (stamp[k] !== gen) { stamp[k] = gen; marked.push(k); near[k] = i; dist[k] = d; }
+        else if (d < dist[k]) { near[k] = i; dist[k] = d; }
       }
     }
-    for (let cy = 0; cy < nr; cy++) for (let cx = 0; cx < nc; cx++) {
-      const i = near[cy * nc + cx];
-      if (i < 0) continue;
-      const a = this.map.get(this.key(cx + c0, cy + r0));
-      if (a) for (const j of a) fn(j, i);
+    // in the order the cells were first reached along the route
+    const half = this.cell / 2;
+    for (const k of marked) {
+      const cx = k % nc, cy = (k - cx) / nc, a = this.map.get(this.key(cx + c0, cy + r0));
+      if (a) fn(a, near[k], (cx + c0) * this.cell + half, (cy + r0) * this.cell + half, half);
     }
   }
 
@@ -141,6 +150,14 @@ export class BuildingIndex {
     const along = Math.max(0, Math.abs(dx * this.ux[j] + dy * this.uy[j]) - this.hl[j]);
     const across = Math.max(0, Math.abs(-dx * this.uy[j] + dy * this.ux[j]) - this.hw[j]);
     return Math.hypot(along, across);
+  }
+
+  /** facadeDistance squared (cheaper; for comparisons) */
+  facadeDistanceSq(j: number, x: number, y: number): number {
+    const dx = x - this.ox[j], dy = y - this.oy[j];
+    const along = Math.max(0, Math.abs(dx * this.ux[j] + dy * this.uy[j]) - this.hl[j]);
+    const across = Math.max(0, Math.abs(-dx * this.uy[j] + dy * this.ux[j]) - this.hw[j]);
+    return along * along + across * across;
   }
 
   /** The façade point of the oriented rectangle nearest to (x, y) (the point itself when inside). */

@@ -75,7 +75,7 @@ export function barrierDb(z: number): number {
   return 13.41 + 10.47 * l - 2.67 * l * l;
 }
 // transmitted energy fraction 10^(−DB/10), tabulated over √Z (smooth there; ≤ 0.01 dB error)
-const T_STEP = 0.005, T_MAX = Math.sqrt(60);
+const T_STEP = 0.005, T_MAX = Math.sqrt(60), T_FLOOR = dm.pow(10, -2.4);
 const T_TABLE = (() => {
   const m = Math.ceil(T_MAX / T_STEP) + 2, t = new Float64Array(m);
   for (let k = 0; k < m; k++) t[k] = dm.pow(10, -barrierDb((k * T_STEP) * (k * T_STEP)) / 10);
@@ -83,7 +83,7 @@ const T_TABLE = (() => {
 })();
 function transmission(z: number): number {
   const u = Math.sqrt(Math.max(0, z)) / T_STEP;
-  if (u >= T_MAX / T_STEP) return dm.pow(10, -2.4);
+  if (u >= T_MAX / T_STEP) return T_FLOOR;
   const k = Math.floor(u), f = u - k;
   return T_TABLE[k] + (T_TABLE[k + 1] - T_TABLE[k]) * f;
 }
@@ -97,7 +97,8 @@ export function obstacleTransmission(o: number, t: number, d: number, rh: number
   const f = o / d;
   if (t <= hs + (dz - hs) * f) return 1;
   const xo = rh * f;
-  const z = Math.sqrt(xo * xo + (t - hs) ** 2) + Math.sqrt((rh - xo) ** 2 + (dz - t) ** 2) - Math.sqrt(rh * rh + (dz - hs) ** 2);
+  const a = t - hs, b = rh - xo, c = dz - t, e = dz - hs;
+  const z = Math.sqrt(xo * xo + a * a) + Math.sqrt(b * b + c * c) - Math.sqrt(rh * rh + e * e);
   return transmission(z);
 }
 
@@ -122,12 +123,25 @@ function linTable(ground: 'hard' | 'mixed') {
  * as energy fraction (the manual's U, with the calibrated slant-range extension of road-noise.ts). */
 export function lineTransfer(d: number, dz: number, ground: 'hard' | 'mixed' = NOISE.ground,
   lin = linTable(ground), offset = SOURCE_OFFSET): number {
+  return transfer(d, dz, ground, lin, offset);
+}
+/** lineTransfer's hot path, small enough to be inlined into the sums (hard ground from the table) */
+function transfer(d: number, dz: number, ground: 'hard' | 'mixed', lin: { table: Float64Array; cols: number; rows: number }, offset: number): number {
   const du = d - offset, dv = dz - SOURCE_HEIGHT, slant = Math.sqrt(du * du + dv * dv);
+  if (ground === 'hard') {
+    // below 8 m the manual's 10 log(r/8) (clamped at 3.75 m): 10^(−U/10) = 8/r exactly
+    if (slant < 8) return 8 / Math.max(3.75, slant);
+    // beyond 1 km it continues as 10 log(r/1000) over Uo(1000): 10^(−U/10) = 10^(−Uo(1000)/10)·1000/r
+    if (slant > 1000) return LIN_1000 * 1000 / slant;
+    if (slant >= 8.5) {
+      const table = lin.table, x = slant / L_STEP, i = Math.floor(x), t = x - i;
+      return table[i] + (table[i + 1] - table[i]) * t;
+    }
+  }
+  return transferSlow(slant, dv, ground, lin);
+}
+function transferSlow(slant: number, dv: number, ground: 'hard' | 'mixed', lin: { table: Float64Array; cols: number; rows: number }): number {
   const heff = Math.abs(dv) + SOURCE_HEIGHT;
-  // hard ground below 8 m is the manual's 10 log(r/8) (clamped at 3.75 m): 10^(−U/10) = 8/r exactly
-  if (ground === 'hard' && slant < 8) return 8 / Math.max(3.75, slant);
-  // beyond 1 km it continues as 10 log(r/1000) over Uo(1000): 10^(−U/10) = 10^(−Uo(1000)/10)·1000/r
-  if (ground === 'hard' && slant > 1000) return LIN_1000 * 1000 / slant;
   if (slant < 8.5 || slant >= L_MAX - 1) return dm.pow(10, -propagationLoss(slant, heff, ground) / 10);
   const table = lin.table, cols = lin.cols, rows = lin.rows;
   const x = slant / L_STEP, i = Math.floor(x), t = x - i;
@@ -140,12 +154,15 @@ export function lineTransfer(d: number, dz: number, ground: 'hard' | 'mixed' = N
 // ---- field: cells grouped for far-away summation -----------------------------------------------
 
 /** The whole road is summed: no truncation (a cut-off would only ever under-estimate). Cells one by one
- * within NEAR of the point, straight 8-cell chunks (≈ 80 m) beyond it, straight 32-cell groups beyond FAR;
- * beyond NOISE_REACH a group counts unscreened (louder than it is: walls and edges 3 km away are ignored,
- * never credited). Accuracy of the grouping against the cell-by-cell sum: research/36 §2. */
+ * within NEAR of the point; beyond, a binary tree of straight segments (4, 8, 16, … cells), each taken as
+ * one once its bounding circle's diameter is at most THETA × its distance (40 m chunks from 160 m, 80 m
+ * from 250 m, 320 m from 1 km), its edges and walls sampled at two cells; beyond NOISE_REACH a segment counts
+ * unscreened (louder than it is: walls and edges 3 km away are ignored, never credited), taken whole once
+ * its diameter is at most its distance. Accuracy of the grouping against the cell-by-cell sum:
+ * research/36 §2. */
 /** the most storeys a dwelling can have (buildingLevels caps tags): every per-storey buffer holds this many */
 export const MAX_STOREYS = Math.max(...BUILDING_KINDS.map(k => k.maxLevels));
-const CHUNK = 4, GROUP = 32, NEAR = 160, FAR = 1000, SAMPLE = 8;
+const CHUNK = 4, NEAR = 160, THETA = 0.32, THETA_OPEN = 1;
 export const NOISE_REACH = 3000;
 
 interface Segments { n: number; i0: Int32Array; i1: Int32Array; cx: Float64Array; cy: Float64Array; ux: Float64Array; uy: Float64Array; half: Float64Array; radius: Float64Array; z: Float64Array;
@@ -153,29 +170,51 @@ interface Segments { n: number; i0: Int32Array; i1: Int32Array; cx: Float64Array
    * the barrier source (relative to its own cell's grade), the nearest edge offset, the highest grade, the
    * farthest edge offset */
   edges: Float64Array;
-  /** length-weighted mean emission weight of the open cells (1 without weights) */
+  /** length-weighted mean emission weight of the cells (1 without weights) */
   w: Float64Array;
   /** total cell length, m */
-  len: Float64Array }
+  len: Float64Array;
+  /** cells between screening samples (far segments): two samples per segment */
+  step: number;
+  /** bounds over its cells: |t − u| of their tangents against the chord's direction, and the distance of
+   * their centres from the chord's line (openBound) */
+  dev: Float64Array; lat: Float64Array }
+
+function allocSegments(m: number, step: number): Segments {
+  return { n: m, i0: new Int32Array(m), i1: new Int32Array(m), cx: new Float64Array(m), cy: new Float64Array(m),
+    ux: new Float64Array(m), uy: new Float64Array(m), half: new Float64Array(m), radius: new Float64Array(m), z: new Float64Array(m),
+    edges: new Float64Array(m * 16), w: new Float64Array(m).fill(1), len: new Float64Array(m), step,
+    dev: new Float64Array(m), lat: new Float64Array(m) };
+}
+/** the straight chord of cells i0…i1, from the first cell's start to the last one's end */
+function chord(src: AcousticSource, s: Segments, c: number, i0: number, i1: number) {
+  const ax = src.x[i0] - src.tx[i0] * src.len[i0] / 2, ay = src.y[i0] - src.ty[i0] * src.len[i0] / 2;
+  const bx = src.x[i1] + src.tx[i1] * src.len[i1] / 2, by = src.y[i1] + src.ty[i1] * src.len[i1] / 2;
+  const L = Math.hypot(bx - ax, by - ay) || 1e-9;
+  s.i0[c] = i0; s.i1[c] = i1; s.cx[c] = (ax + bx) / 2; s.cy[c] = (ay + by) / 2;
+  s.ux[c] = (bx - ax) / L; s.uy[c] = (by - ay) / L; s.half[c] = L / 2;
+}
 
 function segments(src: AcousticSource, size: number): Segments {
   const m = Math.ceil(src.n / size);
-  const s: Segments = { n: m, i0: new Int32Array(m), i1: new Int32Array(m), cx: new Float64Array(m), cy: new Float64Array(m),
-    ux: new Float64Array(m), uy: new Float64Array(m), half: new Float64Array(m), radius: new Float64Array(m), z: new Float64Array(m),
-    edges: new Float64Array(m * 16), w: new Float64Array(m).fill(1), len: new Float64Array(m) };
+  const s = allocSegments(m, 2);
   for (let c = 0; c < m; c++) {
     const i0 = c * size, i1 = Math.min(src.n - 1, i0 + size - 1);
-    const ax = src.x[i0] - src.tx[i0] * src.len[i0] / 2, ay = src.y[i0] - src.ty[i0] * src.len[i0] / 2;
-    const bx = src.x[i1] + src.tx[i1] * src.len[i1] / 2, by = src.y[i1] + src.ty[i1] * src.len[i1] / 2;
-    const L = Math.hypot(bx - ax, by - ay) || 1e-9;
-    s.i0[c] = i0; s.i1[c] = i1; s.cx[c] = (ax + bx) / 2; s.cy[c] = (ay + by) / 2;
-    s.ux[c] = (bx - ax) / L; s.uy[c] = (by - ay) / L; s.half[c] = L / 2;
-    let r = L / 2, z = 0, w = 0;
+    chord(src, s, c, i0, i1);
+    let r = s.half[c], z = 0, w = 0;
     for (let i = i0; i <= i1; i++) {
-      r = Math.max(r, Math.hypot(src.x[i] - s.cx[c], src.y[i] - s.cy[c]) + src.len[i] / 2);
+      const dx = src.x[i] - s.cx[c], dy = src.y[i] - s.cy[c];
+      r = Math.max(r, Math.sqrt(dx * dx + dy * dy) + src.len[i] / 2);
       z += src.grade[i] * src.len[i]; w += src.len[i];
     }
     s.radius[c] = r; s.z[c] = w > 0 ? z / w : src.grade[i0]; s.len[c] = w;
+    let dev = 0, lat = 0;
+    for (let i = i0; i <= i1; i++) {
+      const ex = src.tx[i] - s.ux[c], ey = src.ty[i] - s.uy[c];
+      dev = Math.max(dev, Math.sqrt(ex * ex + ey * ey));
+      lat = Math.max(lat, Math.abs(-(src.x[i] - s.cx[c]) * s.uy[c] + (src.y[i] - s.cy[c]) * s.ux[c]));
+    }
+    s.dev[c] = dev; s.lat[c] = lat;
     if (src.weight) { let a = 0; for (let i = i0; i <= i1; i++) a += src.weight[i] * src.len[i]; s.w[c] = w > 0 ? a / w : 1; }
     for (let side = 0; side < 2; side++) {
       const sc = side ? src.R : src.L, e = s.edges, b = (c * 2 + side) * 8;
@@ -194,16 +233,52 @@ function segments(src: AcousticSource, size: number): Segments {
   return s;
 }
 
+/** The next tree level: pairs of `a`'s segments (bounding circles enclose the children's). */
+function mergeLevel(src: AcousticSource, a: Segments): Segments {
+  const m = Math.ceil(a.n / 2), s = allocSegments(m, a.step * 2), e = s.edges, ea = a.edges;
+  for (let c = 0; c < m; c++) {
+    const p = 2 * c, q = Math.min(a.n - 1, p + 1);
+    chord(src, s, c, a.i0[p], a.i1[q]);
+    let r = s.half[c], z = 0, w = 0, len = 0;
+    for (let k = p; k <= q; k++) {
+      const dx = a.cx[k] - s.cx[c], dy = a.cy[k] - s.cy[c];
+      r = Math.max(r, Math.sqrt(dx * dx + dy * dy) + a.radius[k]);
+      z += a.z[k] * a.len[k]; w += a.w[k] * a.len[k]; len += a.len[k];
+    }
+    s.radius[c] = r; s.len[c] = len; s.z[c] = len > 0 ? z / len : a.z[p]; s.w[c] = len > 0 ? w / len : 1;
+    let dev = 0, lat = 0;
+    for (let k = p; k <= q; k++) {
+      const ex = a.ux[k] - s.ux[c], ey = a.uy[k] - s.uy[c], du = Math.sqrt(ex * ex + ey * ey);
+      dev = Math.max(dev, a.dev[k] + du);
+      lat = Math.max(lat, Math.abs(-(a.cx[k] - s.cx[c]) * s.uy[c] + (a.cy[k] - s.cy[c]) * s.ux[c]) + a.lat[k] + a.radius[k] * du);
+    }
+    s.dev[c] = dev; s.lat[c] = lat;
+    for (let side = 0; side < 2; side++) {
+      const b = (c * 2 + side) * 8;
+      e[b + 2] = -Infinity; e[b + 3] = Infinity; e[b + 4] = -Infinity; e[b + 5] = -Infinity;
+      for (let k = p; k <= q; k++) {
+        const bk = (k * 2 + side) * 8;
+        e[b] += ea[bk]; e[b + 1] += ea[bk + 1];
+        e[b + 2] = Math.max(e[b + 2], ea[bk + 2]); e[b + 3] = Math.min(e[b + 3], ea[bk + 3]);
+        e[b + 4] = Math.max(e[b + 4], ea[bk + 4]); e[b + 5] = Math.max(e[b + 5], ea[bk + 5]);
+      }
+    }
+  }
+  return s;
+}
+
 export interface NoiseField {
   src: AcousticSource;
   ground: 'hard' | 'mixed';
   lin: { table: Float64Array; cols: number; rows: number };
-  chunks: Segments;
-  groups: Segments;
+  /** the segment tree: levels[0] = 4-cell chunks, each level pairs the one below, the last has one segment */
+  levels: Segments[];
 }
 
 export function noiseField(src: AcousticSource, ground: 'hard' | 'mixed' = NOISE.ground): NoiseField {
-  return { src, ground, lin: linTable(ground), chunks: segments(src, CHUNK), groups: segments(src, GROUP) };
+  const levels = [segments(src, CHUNK)];
+  while (levels[levels.length - 1].n > 1) levels.push(mergeLevel(src, levels[levels.length - 1]));
+  return { src, ground, lin: linTable(ground), levels };
 }
 
 /** Per-point accumulators for `pointTransfer`, one entry per receiver height. Energies are fractions of
@@ -220,19 +295,20 @@ export function transferBuffers(heights: number): Transfer {
   return { raw: new Float64Array(heights), earth: new Float64Array(heights), screened: new Float64Array(heights) };
 }
 
-/** One cell's contribution, for breakdowns and wall decisions: cell index (or a far segment's first cell),
- * side the point is on, perpendicular / horizontal distance, its angle weight α/π times U-transfer
- * (per height, before screening) — screening fractions per height follow from `cellScreen`. */
-export interface CellVisit {
-  k: number; last: number; left: boolean; d: number; rh: number;
-}
+// ---- per-segment kernels -------------------------------------------------------------------------
+// The hot loops pass geometry through these typed scratch arrays rather than as arguments or return values
+// (doubles crossing a call boundary that is not inlined are boxed: allocation and GC per cell otherwise).
 
-const scratch = { d: 0, rh: 0, w: 0, alt: 0, left: false };
+/** geometry of the segment being summed: perpendicular / horizontal distance, angle weight α/π, the
+ * transformed form's weight, 1 when the point is left of it; the point (set by the walkers) */
+const GEO = new Float64Array(8);
+const G_D = 0, G_RH = 1, G_W = 2, G_ALT = 3, G_LEFT = 4, G_PX = 5, G_PY = 6;
+/** per storey: open energy, edge transmission, the screened result */
+const EN = new Float64Array(MAX_STOREYS), TE = new Float64Array(MAX_STOREYS), TS = new Float64Array(MAX_STOREYS);
 
-/** geometry of segment (centre cx,cy, unit ux,uy, half length h) seen from (px,py): sets scratch.d (perp),
- * scratch.rh (to the centre), scratch.w = α/π, scratch.left */
-function segmentGeometry(px: number, py: number, cx: number, cy: number, ux: number, uy: number, h: number) {
-  const dx = px - cx, dy = py - cy;
+/** Geometry of a straight segment (centre cx,cy, unit ux,uy, half length h) seen from the point in GEO. */
+function segmentGeometry(cx: number, cy: number, ux: number, uy: number, h: number) {
+  const dx = GEO[G_PX] - cx, dy = GEO[G_PY] - cy;
   const a = dx * ux + dy * uy, c = -dx * uy + dy * ux;
   const d = Math.max(0.5, Math.abs(c));
   const den = d * d + a * a - h * h, num = 2 * h * d;
@@ -241,286 +317,418 @@ function segmentGeometry(px: number, py: number, cx: number, cy: number, ux: num
   if (den > 0 && num < 0.2 * den) { const x = num / den, x2 = x * x; alpha = x * (1 - x2 / 3 + x2 * x2 / 5); }
   else alpha = dm.atan2(num, den);
   const rh = Math.sqrt(a * a + d * d);
-  scratch.d = d; scratch.rh = rh; scratch.w = alpha / Math.PI; scratch.left = c >= 0;
+  GEO[G_D] = d; GEO[G_RH] = rh; GEO[G_W] = alpha / Math.PI; GEO[G_LEFT] = c >= 0 ? 1 : 0;
   // outside its band: also the manual's §1.10.2 transformation (U at the true distance, the angle of the
   // segment seen face-on); `energy` takes the larger, so neither form can under-state a cell
-  if (Math.abs(a) > h) { const x = h / rh; scratch.alt = 2 * (x < 0.1 ? x * (1 - x * x / 3) : dm.atan(x)) / Math.PI; }
-  else scratch.alt = 0;
+  if (Math.abs(a) > h) { const x = h / rh; GEO[G_ALT] = 2 * (x < 0.1 ? x * (1 - x * x / 3) : dm.atan(x)) / Math.PI; }
+  else GEO[G_ALT] = 0;
 }
+function cellGeometry(src: AcousticSource, i: number) { segmentGeometry(src.x[i], src.y[i], src.tx[i], src.ty[i], src.len[i] / 2); }
+function nodeGeometry(S: Segments, c: number) { segmentGeometry(S.cx[c], S.cy[c], S.ux[c], S.uy[c], S.half[c]); }
 
 /** A segment's open-road energy fraction at height dz above its grade: the in-band form (U at the
  * perpendicular distance d, true angle w·π) or, outside the band, the transformed one when larger. */
 function energy(f: NoiseField, w: number, d: number, alt: number, rh: number, dz: number): number {
-  const u = w * lineTransfer(d, dz, f.ground, f.lin, f.src.laneOffset);
+  const u = w * transfer(d, dz, f.ground, f.lin, f.src.laneOffset);
   // the transformed form exceeds the in-band one by more than 0.005 dB only for a line passing within
   // 12 m + 2 |dz − 0.5 m| of the point (scanned over segment, distance, offset and height: research/36 §2)
   if (!(alt > 0) || d >= 12 + 2 * Math.abs(dz - NOISE.sourceHeight)) return u;
-  const t = alt * lineTransfer(rh, dz, f.ground, f.lin, f.src.laneOffset);
+  const t = alt * transfer(rh, dz, f.ground, f.lin, f.src.laneOffset);
   return t > u ? t : u;
 }
+/** EN[k] = energy of far segment c (the current geometry) at every storey: as one (`open` = false: the
+ * caller scales it), or its open part with its mean emission weight. */
+function nodeEnergies(f: NoiseField, z: ArrayLike<number>, S: Segments, c: number, open: boolean) {
+  let w = GEO[G_W], alt = GEO[G_ALT];
+  if (open) {
+    const eb = (c * 2 + (GEO[G_LEFT] === 1 ? 0 : 1)) * 8, a = S.w[c], o = S.edges[eb + 1], t = S.edges[eb];
+    w = w * a * o / t; alt = alt * a * o / t;
+  }
+  const d = GEO[G_D], rh = GEO[G_RH], g = S.z[c];
+  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g);
+}
+/** EN[k] = open-road energy of cell i (the current geometry) at every storey, its weight in the angle. */
+function openCellEnergies(f: NoiseField, z: ArrayLike<number>, i: number) {
+  const src = f.src, wt = src.weight ? src.weight[i] : 1, w = GEO[G_W] * wt, alt = GEO[G_ALT] * wt;
+  const d = GEO[G_D], rh = GEO[G_RH], g = src.grade[i];
+  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g);
+}
+/** EN[k] = energy of cell i (the current geometry) at every storey, times its weight afterwards. */
+function cellEnergies(f: NoiseField, z: ArrayLike<number>, i: number) {
+  const src = f.src, wt = src.weight ? src.weight[i] : 1, w = GEO[G_W], alt = GEO[G_ALT];
+  const d = GEO[G_D], rh = GEO[G_RH], g = src.grade[i];
+  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g) * wt;
+}
 
-/** Screened fraction of cell `i` (side `s`) for a point (d, rh, dz): best single obstacle. */
 /** A wall of `wall` m at cell i on top of its edge transmission `te`: the better single obstacle. */
 function wallScreen(s: SideScreen, i: number, wall: number, d: number, rh: number, dz: number, hs: number, te: number): number {
   const w = obstacleTransmission(s.wallOff[i], s.wallFoot[i] + wall, d, rh, dz, hs);
   return w < te ? w : te;
 }
 
-function cellScreen(s: SideScreen, i: number, wall: number, d: number, rh: number, dz: number, edgeOnly: boolean, hs: number, lane = NOISE.sourceOffset): number {
-  let t = 1;
+/** Screened fraction of cell `i` (side `s`) by its edge (cut top, crown or deck edge) for a point (d, rh, dz). */
+function cellScreen(s: SideScreen, i: number, d: number, rh: number, dz: number, hs: number, lane: number): number {
   const eo = s.edgeOff[i];
-  if (eo === eo) {
-    if (s.edgeLane[i]) {
-      // The road's own edge at road level sits near grazing for the axis source of §1.11 a (a wall-design
-      // convention), where the manual's 4.1 dB step decides. The near lane is the source it screens least:
-      // the ray from there (conservative; research/36 §2).
-      const dl = d - lane;
-      if (dl > 0) t = obstacleTransmission(eo - lane, s.edgeTop[i], dl, Math.sqrt(Math.max(0, rh * rh - d * d) + dl * dl), dz, hs);
-    } else t = obstacleTransmission(eo, s.edgeTop[i], d, rh, dz, hs);
+  if (eo !== eo) return 1;
+  const top = s.edgeTop[i];
+  if (s.edgeLane[i]) {
+    // The road's own edge at road level sits near grazing for the axis source of §1.11 a (a wall-design
+    // convention), where the manual's 4.1 dB step decides. The near lane is the source it screens least:
+    // the ray from there (conservative; research/36 §2).
+    const dl = d - lane, o = eo - lane;
+    // (obstacleTransmission's own early outs, before the lane ray's horizontal length is computed)
+    if (!(dl > 0) || !(o > 0) || o >= dl || top <= hs + (dz - hs) * (o / dl)) return 1;
+    return obstacleTransmission(o, top, dl, Math.sqrt(Math.max(0, rh * rh - d * d) + dl * dl), dz, hs);
   }
-  if (!edgeOnly && wall > 0) {
-    const w = obstacleTransmission(s.wallOff[i], s.wallFoot[i] + wall, d, rh, dz, hs);
-    if (w < t) t = w;
-  }
-  return t;
+  return obstacleTransmission(eo, top, d, rh, dz, hs);
 }
+/** TE[k] = cell i's edge transmission along the current geometry, every storey. */
+function edgeScreens(src: AcousticSource, s: SideScreen, i: number, z: ArrayLike<number>) {
+  const d = GEO[G_D], rh = GEO[G_RH], g = src.grade[i], hs = src.sourceHeight, lane = src.laneOffset;
+  for (let k = 0; k < z.length; k++) TE[k] = cellScreen(s, i, d, rh, z[k] - g, hs, lane);
+}
+/** TS[k] = cell i's transmission with a wall of `wall` m over TE[k], every storey. */
+function wallScreens(src: AcousticSource, s: SideScreen, i: number, wall: number, z: ArrayLike<number>) {
+  const d = GEO[G_D], rh = GEO[G_RH], g = src.grade[i], hs = src.sourceHeight;
+  for (let k = 0; k < z.length; k++) TS[k] = wallScreen(s, i, wall, d, rh, z[k] - g, hs, TE[k]);
+}
+
+// ---- walkers -------------------------------------------------------------------------------------
+
+// traversal stacks (level, index pairs; depth ≤ 2 per tree level), one per walker
+const STACK_P = new Int32Array(128), STACK_D = new Int32Array(128), STACK_O = new Int32Array(128), STACK_B = new Int32Array(128);
 
 /**
  * Energy transfer from the whole source to a point (px, py) at absolute elevations `z[]` (one per storey),
  * accumulated into `out` (cleared first). `wallL/R` = built wall heights per station (0 = none).
  * Cells [w0, w1] (and the chunks they touch) are always summed one by one — the same arithmetic as
  * `cellOptions` — or left out entirely when `skip` (the caller adds them itself). `visit` sees every
- * near cell with its per-height raw / screened contributions (for breakdowns).
+ * cell with its per-height raw / screened contributions (for breakdowns); with it, every cell within
+ * NOISE_REACH is summed one by one.
  */
 export function pointTransfer(f: NoiseField, px: number, py: number, z: ArrayLike<number>,
   wallL: ArrayLike<number> | null, wallR: ArrayLike<number> | null, out: Transfer,
   w0 = -1, w1 = -2, skip = false, visit?: (k: number, left: boolean, d: number, rh: number, raw: Float64Array, screened: Float64Array) => void): void {
-  const src = f.src, H = z.length;
+  const src = f.src, H = z.length, T = f.levels, st = STACK_P;
   out.raw.fill(0); out.earth.fill(0); out.screened.fill(0);
   const rawK = visit ? new Float64Array(H) : null, scrK = visit ? new Float64Array(H) : null;
-  const G = f.groups, C = f.chunks;
-  for (let g = 0; g < G.n; g++) {
-    const gx = px - G.cx[g], gy = py - G.cy[g], gd = Math.sqrt(gx * gx + gy * gy);
-    const gi0 = G.i0[g], gi1 = G.i1[g];
-    if (gd - G.radius[g] > NOISE_REACH && !(w1 >= gi0 && w0 <= gi1)) { farOpen(f, G, g, px, py, z, out); continue; }
-    if (gd - G.radius[g] > FAR && !visit && !(w1 >= gi0 && w0 <= gi1)) { far(f, G, g, px, py, z, wallL, wallR, out); continue; }
-    for (let c = Math.floor(gi0 / CHUNK); c <= Math.floor(gi1 / CHUNK) && c < C.n; c++) {
-      const cx = px - C.cx[c], cy = py - C.cy[c], cd = Math.sqrt(cx * cx + cy * cy);
-      const ci0 = C.i0[c], ci1 = C.i1[c];
-      const exact = w1 >= ci0 && w0 <= ci1;
-      if (!exact && cd - C.radius[c] > NOISE_REACH) { farOpen(f, C, c, px, py, z, out); continue; }
-      if (!exact && !visit && cd - C.radius[c] > NEAR) { far(f, C, c, px, py, z, wallL, wallR, out); continue; }
-      for (let i = ci0; i <= ci1; i++) {
-        if (skip && i >= w0 && i <= w1) continue;
-        segmentGeometry(px, py, src.x[i], src.y[i], src.tx[i], src.ty[i], src.len[i] / 2);
-        const left = scratch.left, d = scratch.d, rh = scratch.rh, w = scratch.w, alt = scratch.alt;
-        const s = left ? src.L : src.R;
-        if (s.shield[i]) continue;
-        const open = rh > NOISE_REACH, wall = open ? 0 : (left ? wallL : wallR)?.[i] ?? 0;
-        for (let k = 0; k < H; k++) {
-          const dz = z[k] - src.grade[i];
-          const base = energy(f, w, d, alt, rh, dz) * (src.weight ? src.weight[i] : 1);
-          const te = open ? 1 : cellScreen(s, i, 0, d, rh, dz, true, src.sourceHeight, src.laneOffset);
-          const ts = wall > 0 ? wallScreen(s, i, wall, d, rh, dz, src.sourceHeight, te) : te;
-          out.raw[k] += base; out.earth[k] += base * te; out.screened[k] += base * ts;
-          if (rawK) { rawK[k] = base; scrK![k] = base * ts; }
-        }
-        if (visit) visit(i, left, d, rh, rawK!, scrK!);
+  GEO[G_PX] = px; GEO[G_PY] = py;
+  let sp = 0;
+  st[sp++] = T.length - 1; st[sp++] = 0;
+  while (sp > 0) {
+    const c = st[--sp], k = st[--sp], S = T[k], i0 = S.i0[c], i1 = S.i1[c];
+    if (!(w1 >= i0 && w0 <= i1)) {
+      const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
+      if (gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) { farOpen(f, S, c, z, out); continue; }
+      const fits = k === 0 || 2 * S.radius[c] <= THETA * gap;
+      if (fits && gap > NEAR && !visit) { far(f, S, c, z, wallL, wallR, out); continue; }
+    }
+    if (k > 0) {
+      const b = 2 * c + 1;
+      if (b < T[k - 1].n) { st[sp++] = k - 1; st[sp++] = b; }
+      st[sp++] = k - 1; st[sp++] = 2 * c;
+      continue;
+    }
+    for (let i = i0; i <= i1; i++) {
+      if (skip && i >= w0 && i <= w1) continue;
+      cellGeometry(src, i);
+      const left = GEO[G_LEFT] === 1, s = left ? src.L : src.R;
+      if (s.shield[i]) continue;
+      const open = GEO[G_RH] > NOISE_REACH, wall = open ? 0 : (left ? wallL : wallR)?.[i] ?? 0;
+      cellEnergies(f, z, i);
+      if (open) for (let h = 0; h < H; h++) TE[h] = 1; else edgeScreens(src, s, i, z);
+      if (wall > 0) wallScreens(src, s, i, wall, z); else for (let h = 0; h < H; h++) TS[h] = TE[h];
+      for (let h = 0; h < H; h++) {
+        const base = EN[h];
+        out.raw[h] += base; out.earth[h] += base * TE[h]; out.screened[h] += base * TS[h];
+        if (rawK) { rawK[h] = base; scrK![h] = base * TS[h]; }
       }
+      if (visit) visit(i, left, GEO[G_D], GEO[G_RH], rawK!, scrK!);
     }
   }
 }
 
 /**
- * Change of `out.screened` when the walls go from `oldL/R` to `newL/R` at the cells flagged in `changed`:
- * the same near / far arithmetic as `pointTransfer` with the same exact window, touching only chunks that
- * contain a changed cell (cells in [w0, w1] left out when `skip`). raw / earth do not depend on walls.
+ * Change of `out.screened` when the walls go from `oldL/R` to `newL/R` at the cells flagged in `changed`
+ * (`flags` = segmentFlags of it): the same near / far arithmetic as `pointTransfer` with the same exact
+ * window, touching only segments that contain a changed cell (cells in [w0, w1] left out when `skip`).
+ * raw / earth do not depend on walls.
  */
 export function transferDelta(f: NoiseField, px: number, py: number, z: ArrayLike<number>,
   oldL: ArrayLike<number>, oldR: ArrayLike<number>, newL: ArrayLike<number>, newR: ArrayLike<number>,
-  changed: Uint8Array, chunkChanged: Uint8Array, out: Transfer, w0 = -1, w1 = -2, skip = false): void {
-  const src = f.src, H = z.length, C = f.chunks, G = f.groups;
+  changed: Uint8Array, flags: Uint8Array[], out: Transfer, w0 = -1, w1 = -2, skip = false): void {
+  const src = f.src, H = z.length, T = f.levels, st = STACK_D;
   const screened = out.screened;
-  const farDeltaOf = (S: Segments, c: number) => farDelta(f, S, c, px, py, z, oldL, oldR, newL, newR, screened);
-  for (let g = 0; g < G.n; g++) {
-    const c0 = Math.floor(G.i0[g] / CHUNK), c1 = Math.min(C.n - 1, Math.floor(G.i1[g] / CHUNK));
-    let any = false;
-    for (let c = c0; c <= c1; c++) if (chunkChanged[c]) { any = true; break; }
-    if (!any) continue;
-    const gx = px - G.cx[g], gy = py - G.cy[g], gd = Math.sqrt(gx * gx + gy * gy);
-    const exactG = w1 >= G.i0[g] && w0 <= G.i1[g];
-    if (gd - G.radius[g] > NOISE_REACH && !exactG) continue; // counted unscreened: walls change nothing
-    if (gd - G.radius[g] > FAR && !exactG) { farDeltaOf(G, g); continue; }
-    for (let c = c0; c <= c1; c++) {
-      if (!chunkChanged[c]) continue;
-      const cx = px - C.cx[c], cy = py - C.cy[c], cd = Math.sqrt(cx * cx + cy * cy);
-      const ci0 = C.i0[c], ci1 = C.i1[c];
-      const exact = w1 >= ci0 && w0 <= ci1;
-      if (!exact && cd - C.radius[c] > NOISE_REACH) continue;
-      if (!exact && cd - C.radius[c] > NEAR) { farDeltaOf(C, c); continue; }
-      for (let i = ci0; i <= ci1; i++) {
-        if (!changed[i] || (skip && i >= w0 && i <= w1)) continue;
-        segmentGeometry(px, py, src.x[i], src.y[i], src.tx[i], src.ty[i], src.len[i] / 2);
-        const left = scratch.left, d = scratch.d, rh = scratch.rh, w = scratch.w, alt = scratch.alt;
-        if (rh > NOISE_REACH) continue; // unscreened there
-        const s = left ? src.L : src.R;
-        if (s.shield[i]) continue;
-        const wo = (left ? oldL : oldR)[i], wn = (left ? newL : newR)[i];
-        if (wo === wn) continue;
-        for (let k = 0; k < H; k++) {
-          const dz = z[k] - src.grade[i];
-          const base = energy(f, w, d, alt, rh, dz) * (src.weight ? src.weight[i] : 1);
-          const te = cellScreen(s, i, 0, d, rh, dz, true, src.sourceHeight, src.laneOffset);
-          const to = wo > 0 ? wallScreen(s, i, wo, d, rh, dz, src.sourceHeight, te) : te;
-          const tn = wn > 0 ? wallScreen(s, i, wn, d, rh, dz, src.sourceHeight, te) : te;
-          screened[k] += base * (tn - to);
-        }
-      }
+  GEO[G_PX] = px; GEO[G_PY] = py;
+  let sp = 0;
+  st[sp++] = T.length - 1; st[sp++] = 0;
+  while (sp > 0) {
+    const c = st[--sp], k = st[--sp];
+    if (!flags[k][c]) continue;
+    const S = T[k], i0 = S.i0[c], i1 = S.i1[c];
+    if (!(w1 >= i0 && w0 <= i1)) {
+      const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
+      if (gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) continue; // counted unscreened: walls change nothing
+      const fits = k === 0 || 2 * S.radius[c] <= THETA * gap;
+      if (fits && gap > NEAR) { farDelta(f, S, c, z, oldL, oldR, newL, newR, screened); continue; }
+    }
+    if (k > 0) {
+      const b = 2 * c + 1;
+      if (b < T[k - 1].n) { st[sp++] = k - 1; st[sp++] = b; }
+      st[sp++] = k - 1; st[sp++] = 2 * c;
+      continue;
+    }
+    for (let i = i0; i <= i1; i++) {
+      if (!changed[i] || (skip && i >= w0 && i <= w1)) continue;
+      cellGeometry(src, i);
+      if (GEO[G_RH] > NOISE_REACH) continue; // unscreened there
+      const left = GEO[G_LEFT] === 1, s = left ? src.L : src.R;
+      if (s.shield[i]) continue;
+      const wo = (left ? oldL : oldR)[i], wn = (left ? newL : newR)[i];
+      if (wo === wn) continue;
+      cellEnergies(f, z, i);
+      edgeScreens(src, s, i, z);
+      if (wo > 0) wallScreens(src, s, i, wo, z); else for (let h = 0; h < H; h++) TS[h] = TE[h];
+      for (let h = 0; h < H; h++) FS[h] = TS[h];
+      if (wn > 0) wallScreens(src, s, i, wn, z); else for (let h = 0; h < H; h++) TS[h] = TE[h];
+      for (let h = 0; h < H; h++) screened[h] += EN[h] * (TS[h] - FS[h]);
     }
   }
 }
 
-/** Per chunk: does it contain a flagged cell? */
-export function chunkFlags(f: NoiseField, flag: ArrayLike<number>): Uint8Array {
-  const C = f.chunks, out = new Uint8Array(C.n);
-  for (let c = 0; c < C.n; c++) for (let i = C.i0[c]; i <= C.i1[c]; i++) if (flag[i]) { out[c] = 1; break; }
+/** Per tree level and segment: does it contain a flagged cell? */
+export function segmentFlags(f: NoiseField, flag: ArrayLike<number>): Uint8Array[] {
+  const T = f.levels, C = T[0], out = [new Uint8Array(C.n)];
+  for (let c = 0; c < C.n; c++) for (let i = C.i0[c]; i <= C.i1[c]; i++) if (flag[i]) { out[0][c] = 1; break; }
+  for (let k = 1; k < T.length; k++) {
+    const a = out[k - 1], o = new Uint8Array(T[k].n);
+    for (let c = 0; c < o.length; c++) o[c] = a[2 * c] | (2 * c + 1 < a.length ? a[2 * c + 1] : 0);
+    out.push(o);
+  }
   return out;
 }
 
-/** A far straight segment (4-cell chunk beyond NEAR, 32-cell group beyond FAR) as one for its geometry
- * (angle, distance, U), each cell with its own screening seen along that geometry. Edges: the whole segment
- * at once when none can rise above any cell's sightline, else cell by cell (a group samples every
- * SAMPLE-th cell); then every walled cell's own gain over its edge
- * (so a wall changes exactly its own cells: farWallGain, used by transferDelta). */
-function far(f: NoiseField, S: Segments, c: number, px: number, py: number, z: ArrayLike<number>,
+/** per storey: the far segment's sampled edge sums (length-weighted), lengths seen, whether to sample */
+const FS = new Float64Array(MAX_STOREYS), FW = new Float64Array(MAX_STOREYS), FN = new Uint8Array(MAX_STOREYS);
+
+/** A far straight segment as one for its geometry (angle, distance, U), each cell with its own screening
+ * seen along that geometry. Edges: the whole segment at once when none can rise above any cell's
+ * sightline, else at every `step`-th cell (two samples per segment); then the walls' gain over the edges
+ * (farWalls, the same terms as transferDelta's farDelta). */
+function far(f: NoiseField, S: Segments, c: number, z: ArrayLike<number>,
   wallL: ArrayLike<number> | null, wallR: ArrayLike<number> | null, out: Transfer) {
   const src = f.src, H = z.length, hs = src.sourceHeight;
-  segmentGeometry(px, py, S.cx[c], S.cy[c], S.ux[c], S.uy[c], S.half[c]);
-  const left = scratch.left, d = scratch.d, rh = scratch.rh, w = scratch.w, alt = scratch.alt;
+  nodeGeometry(S, c);
+  const left = GEO[G_LEFT] === 1;
   const s = left ? src.L : src.R, walls = left ? wallL : wallR;
   const i0 = S.i0[c], i1 = S.i1[c];
   const e = S.edges, eb = (c * 2 + (left ? 0 : 1)) * 8;
   const total = e[eb], open = e[eb + 1];
   if (!(total > 0) || !(open > 0)) return;
   const maxRel = e[eb + 2], minOff = e[eb + 3], maxGrade = e[eb + 4], maxOff = e[eb + 5];
-  const step = S === f.groups ? SAMPLE : 1;
+  const step = S.step, d = GEO[G_D];
+  // every cell's sightline at its nearest edge clears the highest edge top: nothing screens
+  // ((z − g − hs)·o/d ≥ clear·o/d ≥ clear·(minOff or, below the source, maxOff)/d for every cell)
+  let sample = false;
   for (let k = 0; k < H; k++) {
-    const base = energy(f, w, d, alt, rh, z[k] - S.z[c]) * S.w[c] / total;
-    let te: number;
-    // every cell's sightline at its nearest edge clears the highest edge top: nothing screens
-    // ((z − g − hs)·o/d ≥ clear·o/d ≥ clear·(minOff or, below the source, maxOff)/d for every cell)
     const clear = z[k] - maxGrade - hs;
-    if (maxRel === -Infinity || maxRel <= clear * (clear >= 0 ? minOff : maxOff) / d) te = open;
-    else {
-      let sum = 0, seen = 0;
-      for (let i = i0 + (step >> 1); i <= i1; i += step) {
-        if (s.shield[i]) continue;
-        const l = src.len[i];
-        seen += l; sum += l * cellScreen(s, i, 0, d, rh, z[k] - src.grade[i], true, hs, src.laneOffset);
-      }
-      if (!(seen > 0)) for (let i = i0; i <= i1; i++) if (!s.shield[i]) {
-        const l = src.len[i];
-        seen += l; sum += l * cellScreen(s, i, 0, d, rh, z[k] - src.grade[i], true, hs, src.laneOffset);
-      }
-      te = sum * open / seen;
+    FN[k] = maxRel === -Infinity || maxRel <= clear * (clear >= 0 ? minOff : maxOff) / d ? 0 : 1;
+    if (FN[k]) sample = true;
+    FS[k] = 0; FW[k] = 0;
+  }
+  if (sample) {
+    let seen = 0;
+    for (let i = i0 + (step >> 1); i <= i1; i += step) {
+      if (s.shield[i]) continue;
+      const l = src.len[i];
+      seen += l;
+      edgeScreens(src, s, i, z);
+      for (let k = 0; k < H; k++) FS[k] += l * TE[k];
     }
-    let ts = te;
-    if (walls) for (let i = i0; i <= i1; i++) if (walls[i] > 0 && !s.shield[i]) ts += farWallGain(s, i, walls[i], d, rh, z[k] - src.grade[i], hs, src);
+    if (!(seen > 0)) for (let i = i0; i <= i1; i++) if (!s.shield[i]) {
+      const l = src.len[i];
+      seen += l;
+      edgeScreens(src, s, i, z);
+      for (let k = 0; k < H; k++) FS[k] += l * TE[k];
+    }
+    for (let k = 0; k < H; k++) FW[k] = seen;
+  }
+  if (walls) farWalls(src, s, walls, i0, i1, step, z);
+  nodeEnergies(f, z, S, c, false);
+  const wc = S.w[c];
+  for (let k = 0; k < H; k++) {
+    const base = EN[k] * wc / total;
+    const te = FN[k] ? FS[k] * open / FW[k] : open;
+    const ts = walls ? te + WG[k] : te;
     out.raw[k] += base * open; out.earth[k] += base * te; out.screened[k] += base * ts;
   }
 }
 
-/** A wall of `wall` m at far cell i: its length times its screening below its edge's (≤ 0). */
-function farWallGain(s: SideScreen, i: number, wall: number, d: number, rh: number, dz: number, hs: number, src: AcousticSource): number {
-  const t1 = cellScreen(s, i, 0, d, rh, dz, true, hs, src.laneOffset);
-  return src.len[i] * (wallScreen(s, i, wall, d, rh, dz, hs, t1) - t1);
+/** per storey: the walls' gain over the edges of a far segment (farWalls) */
+const WG = new Float64Array(MAX_STOREYS);
+
+/** The walls of a far segment: WG[k] = their gain over the edges (≤ 0), Σ l·(t_wall − t_edge), along the
+ * segment's ray. Each block of `step` cells (the edge samples' blocks: two per segment) counts each
+ * wall height in it once, at its cell nearest the block's middle, times the length of its cells there. */
+function farWalls(src: AcousticSource, s: SideScreen, walls: ArrayLike<number>, i0: number, i1: number, step: number,
+  z: ArrayLike<number>) {
+  const H = z.length;
+  for (let k = 0; k < H; k++) WG[k] = 0;
+  for (let b0 = i0; b0 <= i1; b0 += step) {
+    const b1 = Math.min(i1, b0 + step - 1), mid = b0 + (step >> 1);
+    for (let i = b0; i <= b1; i++) {
+      const h = walls[i];
+      if (!(h > 0) || s.shield[i]) continue;
+      let first = true;
+      for (let j = b0; j < i; j++) if (walls[j] === h && !s.shield[j]) { first = false; break; }
+      if (!first) continue;
+      let len = 0, rep = i, near = Math.abs(i - mid);
+      for (let j = i; j <= b1; j++) if (walls[j] === h && !s.shield[j]) {
+        len += src.len[j];
+        const q = Math.abs(j - mid);
+        if (q < near) { near = q; rep = j; }
+      }
+      edgeScreens(src, s, rep, z);
+      wallScreens(src, s, rep, h, z);
+      for (let k = 0; k < H; k++) WG[k] += len * (TS[k] - TE[k]);
+    }
+  }
 }
 
 /** The change of a far segment's screened energy when its walls go from old to new (far()'s own terms). */
-function farDelta(f: NoiseField, S: Segments, c: number, px: number, py: number, z: ArrayLike<number>,
+function farDelta(f: NoiseField, S: Segments, c: number, z: ArrayLike<number>,
   oldL: ArrayLike<number>, oldR: ArrayLike<number>, newL: ArrayLike<number>, newR: ArrayLike<number>, screened: Float64Array) {
-  const src = f.src, H = z.length, hs = src.sourceHeight;
-  segmentGeometry(px, py, S.cx[c], S.cy[c], S.ux[c], S.uy[c], S.half[c]);
-  const left = scratch.left, d = scratch.d, rh = scratch.rh, w = scratch.w, alt = scratch.alt;
+  const src = f.src, H = z.length;
+  nodeGeometry(S, c);
+  const left = GEO[G_LEFT] === 1;
   const s = left ? src.L : src.R, wo = left ? oldL : oldR, wn = left ? newL : newR;
   const e = S.edges, eb = (c * 2 + (left ? 0 : 1)) * 8, total = e[eb];
   if (!(total > 0) || !(e[eb + 1] > 0)) return;
+  const i0 = S.i0[c], i1 = S.i1[c];
+  let changed = false;
+  for (let i = i0; i <= i1 && !changed; i++) if (wo[i] !== wn[i] && !s.shield[i]) changed = true;
+  if (!changed) return;
+  farWalls(src, s, wn, i0, i1, S.step, z);
+  for (let k = 0; k < H; k++) FS[k] = WG[k];
+  farWalls(src, s, wo, i0, i1, S.step, z);
+  nodeEnergies(f, z, S, c, false);
+  const wc = S.w[c];
   for (let k = 0; k < H; k++) {
-    let dts = 0;
-    for (let i = S.i0[c]; i <= S.i1[c]; i++) {
-      if (wo[i] === wn[i] || s.shield[i]) continue;
-      const dz = z[k] - src.grade[i];
-      dts += (wn[i] > 0 ? farWallGain(s, i, wn[i], d, rh, dz, hs, src) : 0) - (wo[i] > 0 ? farWallGain(s, i, wo[i], d, rh, dz, hs, src) : 0);
-    }
-    if (dts !== 0) screened[k] += energy(f, w, d, alt, rh, z[k] - S.z[c]) * S.w[c] / total * dts;
+    const dts = FS[k] - WG[k];
+    if (dts !== 0) screened[k] += EN[k] * wc / total * dts;
   }
 }
 
-/** Open-road energy (no screening at all) at a point, per height: cells within NEAR one by one, chunks and
- * groups beyond as straight segments. An upper bound of every screened level up to the segment geometry's
- * small error (no obstacle is evaluated: cheap enough for a first look at every house near the road). */
+/** Open-road energy (no screening at all) at a point, per height: cells within 60 m one by one, tree
+ * segments beyond as straight ones once 1.5 of their lengths away. An upper bound of every screened level
+ * up to the segment geometry's small error (no obstacle is evaluated: cheap enough for a first look at
+ * every house near the road). */
 export function openTransfer(f: NoiseField, px: number, py: number, z: ArrayLike<number>, out: Float64Array): void {
-  const src = f.src, H = z.length, G = f.groups, C = f.chunks;
+  const src = f.src, H = z.length, T = f.levels, st = STACK_O;
   out.fill(0);
-  const add = (S: Segments, c: number) => {
-    segmentGeometry(px, py, S.cx[c], S.cy[c], S.ux[c], S.uy[c], S.half[c]);
-    const e = S.edges, eb = (c * 2 + (scratch.left ? 0 : 1)) * 8, total = e[eb], open = e[eb + 1];
-    if (!(total > 0) || !(open > 0)) return;
-    const d = scratch.d, rh = scratch.rh, alt = scratch.alt * S.w[c] * open / total, w = scratch.w * S.w[c] * open / total;
-    for (let k = 0; k < H; k++) out[k] += energy(f, w, d, alt, rh, z[k] - S.z[c]);
-  };
-  for (let g = 0; g < G.n; g++) {
-    const gx = px - G.cx[g], gy = py - G.cy[g], gd = Math.sqrt(gx * gx + gy * gy);
-    // unscreened, only the geometry is grouped: whole 320 m groups ≥ 1.5 lengths away, 40 m chunks ≥ 60 m away
-    if (gd - G.radius[g] > 1.5 * 2 * G.half[g]) { add(G, g); continue; }
-    for (let c = Math.floor(G.i0[g] / CHUNK); c <= Math.floor(G.i1[g] / CHUNK) && c < C.n; c++) {
-      const cx = px - C.cx[c], cy = py - C.cy[c];
-      if (Math.sqrt(cx * cx + cy * cy) - C.radius[c] > 60) { add(C, c); continue; }
-      for (let i = C.i0[c]; i <= C.i1[c]; i++) {
-        const s = src.L.shield[i] && src.R.shield[i];
-        segmentGeometry(px, py, src.x[i], src.y[i], src.tx[i], src.ty[i], src.len[i] / 2);
-        if (s || (scratch.left ? src.L : src.R).shield[i]) continue;
-        const d = scratch.d, rh = scratch.rh, wt = src.weight ? src.weight[i] : 1, alt = scratch.alt * wt, w = scratch.w * wt;
-        for (let k = 0; k < H; k++) out[k] += energy(f, w, d, alt, rh, z[k] - src.grade[i]);
-      }
+  GEO[G_PX] = px; GEO[G_PY] = py;
+  let sp = 0;
+  st[sp++] = T.length - 1; st[sp++] = 0;
+  while (sp > 0) {
+    const c = st[--sp], k = st[--sp], S = T[k];
+    const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
+    // unscreened, only the geometry is grouped: segments ≥ 1.5 lengths away, 40 m chunks ≥ 60 m away
+    if (k === 0 ? gap > 60 : gap > 3 * S.half[c]) {
+      nodeGeometry(S, c);
+      const e = S.edges, eb = (c * 2 + (GEO[G_LEFT] === 1 ? 0 : 1)) * 8, total = e[eb], open = e[eb + 1];
+      if (!(total > 0) || !(open > 0)) continue;
+      nodeEnergies(f, z, S, c, true);
+      for (let h = 0; h < H; h++) out[h] += EN[h];
+      continue;
+    }
+    if (k > 0) {
+      const b = 2 * c + 1;
+      if (b < T[k - 1].n) { st[sp++] = k - 1; st[sp++] = b; }
+      st[sp++] = k - 1; st[sp++] = 2 * c;
+      continue;
+    }
+    for (let i = S.i0[c]; i <= S.i1[c]; i++) {
+      const s = src.L.shield[i] && src.R.shield[i];
+      cellGeometry(src, i);
+      if (s || (GEO[G_LEFT] === 1 ? src.L : src.R).shield[i]) continue;
+      openCellEnergies(f, z, i);
+      for (let h = 0; h < H; h++) out[h] += EN[h];
     }
   }
+}
+
+/** g(d) = d·10^(−U(d)/10) at the loudest receiver height (hard ground: level with the source; mixed:
+ * scanned), on a 0.5 m grid to 3 km: its maximum M and running maxima from below (`up`) and from above
+ * (`down`), which bound g over any interval of d (openBound). */
+export interface LineEnvelope { M: number; up: Float64Array; down: Float64Array }
+const ENV_STEP = 0.5, ENV_N = 5999;
+const envelopes = new Map<string, LineEnvelope>();
+export function lineEnvelope(ground: 'hard' | 'mixed' = NOISE.ground): LineEnvelope {
+  let e = envelopes.get(ground);
+  if (!e) {
+    const g = new Float64Array(ENV_N).fill(0);
+    for (let dz = ground === 'hard' ? NOISE.sourceHeight : -30; dz <= (ground === 'hard' ? NOISE.sourceHeight : 40); dz += 0.5)
+      for (let k = 0; k < ENV_N; k++) { const d = (k + 1) * ENV_STEP; g[k] = Math.max(g[k], d * lineTransfer(d, dz, ground)); }
+    const up = new Float64Array(ENV_N), down = new Float64Array(ENV_N);
+    let m = 0;
+    for (let k = 0; k < ENV_N; k++) up[k] = m = Math.max(m, g[k]);
+    let q = 0;
+    for (let k = ENV_N - 1; k >= 0; k--) down[k] = q = Math.max(q, g[k]);
+    envelopes.set(ground, e = { M: m, up, down });
+  }
+  return e;
+}
+/** max of g over [lo, hi] (bounded from the grid's running maxima; beyond 3 km: hard ground's g falls,
+ * d/(d − source offset) under the 1/r law; mixed: M) */
+function envelopeMax(e: LineEnvelope, ground: 'hard' | 'mixed', lo: number, hi: number): number {
+  const kh = Math.ceil(hi / ENV_STEP) - 1, kl = Math.floor(lo / ENV_STEP) - 1;
+  const up = kh >= ENV_N ? e.M : e.up[Math.max(0, kh)];
+  const down = kl < 0 ? e.M : kl >= ENV_N ? (ground === 'hard' ? e.down[ENV_N - 1] : e.M) : e.down[kl];
+  return Math.min(up, down);
 }
 
 /**
- * A rigorous upper bound of the open-road energy at a point, from segment bounding circles only: a cell of
- * length l whose centre is r away adds at most l·M/(π (r − l/2)²), M = max_d d·10^(−U(d)/10) (its angle
- * α ≤ l·d/(r − l/2)², research/36 §2), for any point within `spread` of (px, py). Infinity when it may lie
- * within a segment's reach.
+ * A rigorous upper bound of the open-road energy at a point, from the tree's segments: a cell of length l
+ * whose centre is r away and whose line passes d from the point adds at most l·g(d)/(π (r − l/2)²) in band
+ * (its angle α ≤ l·d/(r − l/2)², g(d) = d·10^(−U(d)/10)) and l·g(r')/(π r'²) transformed (r' ≥ r − l/2 its
+ * true distance): research/36 §2. Per segment, d is bounded from its chord, its cells' tangent deviation and
+ * their distance from the chord. `wMax` = the largest emission weight, for any point within `spread` of
+ * (px, py). Infinity when it may lie within a segment's reach.
  */
-export function openBound(f: NoiseField, px: number, py: number, M: number, spread = 0): number {
-  const G = f.groups, C = f.chunks;
-  let q = 0;
-  for (let g = 0; g < G.n; g++) {
-    const gx = px - G.cx[g], gy = py - G.cy[g], r = Math.sqrt(gx * gx + gy * gy) - G.radius[g] - 5 - spread;
-    if (r > G.radius[g]) { q += G.len[g] / (r * r); continue; }
-    for (let c = Math.floor(G.i0[g] / CHUNK); c <= Math.floor(G.i1[g] / CHUNK) && c < C.n; c++) {
-      const cx = px - C.cx[c], cy = py - C.cy[c], rc = Math.sqrt(cx * cx + cy * cy) - C.radius[c] - 5 - spread;
-      if (!(rc > 0)) return Infinity;
-      q += C.len[c] / (rc * rc);
+export function openBound(f: NoiseField, px: number, py: number, env: LineEnvelope, wMax: number, spread = 0): number {
+  const T = f.levels, st = STACK_B, ground = f.ground;
+  let q = 0, sp = 0;
+  st[sp++] = T.length - 1; st[sp++] = 0;
+  while (sp > 0) {
+    const c = st[--sp], k = st[--sp], S = T[k];
+    const dx = px - S.cx[c], dy = py - S.cy[c], pc = Math.sqrt(dx * dx + dy * dy), r = pc - S.radius[c] - 5 - spread;
+    if (k === 0 ? r > 0 : r > 4 * S.radius[c]) {
+      const dc = Math.abs(-dx * S.uy[c] + dy * S.ux[c]);
+      const slack = (pc + spread + S.radius[c]) * S.dev[c] + S.lat[c] + spread;
+      const g = Math.max(envelopeMax(env, ground, Math.max(0.5, dc - slack), Math.max(0.5, dc + slack)), envelopeMax(env, ground, r, Infinity));
+      q += S.len[c] * g / (r * r);
+      continue;
     }
+    if (k === 0) return Infinity;
+    const b = 2 * c + 1;
+    if (b < T[k - 1].n) { st[sp++] = k - 1; st[sp++] = b; }
+    st[sp++] = k - 1; st[sp++] = 2 * c;
   }
-  return q * M / Math.PI;
+  return q * wMax / Math.PI;
 }
 
 /** A segment beyond NOISE_REACH: unscreened (an upper bound), shared geometry. */
-function farOpen(f: NoiseField, S: Segments, c: number, px: number, py: number, z: ArrayLike<number>, out: Transfer) {
+function farOpen(f: NoiseField, S: Segments, c: number, z: ArrayLike<number>, out: Transfer) {
   const H = z.length;
-  segmentGeometry(px, py, S.cx[c], S.cy[c], S.ux[c], S.uy[c], S.half[c]);
-  const e = S.edges, eb = (c * 2 + (scratch.left ? 0 : 1)) * 8, total = e[eb], open = e[eb + 1];
+  nodeGeometry(S, c);
+  const e = S.edges, eb = (c * 2 + (GEO[G_LEFT] === 1 ? 0 : 1)) * 8, total = e[eb], open = e[eb + 1];
   if (!(total > 0) || !(open > 0)) return;
-  const d = scratch.d, rh = scratch.rh, alt = scratch.alt * S.w[c] * open / total, w = scratch.w * S.w[c] * open / total;
+  nodeEnergies(f, z, S, c, true);
   for (let k = 0; k < H; k++) {
-    const q = energy(f, w, d, alt, rh, z[k] - S.z[c]);
+    const q = EN[k];
     out.raw[k] += q; out.earth[k] += q; out.screened[k] += q;
   }
 }
-
 
 /**
  * Per-cell decision data for one point over cells i0…i1: energy per storey with each cell's actual screening
@@ -540,27 +748,28 @@ export interface CellOptions {
 }
 export function cellOptions(f: NoiseField, px: number, py: number, z: ArrayLike<number>, i0: number, i1: number,
   heights: readonly number[], fixedL?: ArrayLike<number>, fixedR?: ArrayLike<number>): CellOptions {
-  const src = f.src, H = z.length, m = i1 - i0 + 1, hs = src.sourceHeight;
+  const src = f.src, H = z.length, m = i1 - i0 + 1;
   // one slab each: these are allocated for every house near the road
   const slab = new Float64Array(m * (4 * H + 2)), flags = new Uint8Array(2 * m);
   const raw = slab.subarray(0, m * H), edge = slab.subarray(m * H, 2 * m * H), te = slab.subarray(2 * m * H, 3 * m * H);
   const base0 = slab.subarray(3 * m * H, 4 * m * H), dd = slab.subarray(4 * m * H, 4 * m * H + m), rr = slab.subarray(4 * m * H + m);
   const wallable = flags.subarray(0, m), side = flags.subarray(m);
+  GEO[G_PX] = px; GEO[G_PY] = py;
   for (let i = i0; i <= i1; i++) {
-    segmentGeometry(px, py, src.x[i], src.y[i], src.tx[i], src.ty[i], src.len[i] / 2);
-    const sl = scratch.left, d = scratch.d, rh = scratch.rh, w = scratch.w, alt = scratch.alt;
-    const s = sl ? src.L : src.R, c = i - i0;
+    cellGeometry(src, i);
+    const sl = GEO[G_LEFT] === 1, s = sl ? src.L : src.R, c = i - i0;
     side[c] = sl ? 1 : 0;
     if (s.shield[i]) continue;
-    dd[c] = d; rr[c] = rh;
-    const open = rh > NOISE_REACH, fixed = open ? NaN : (sl ? fixedL : fixedR)?.[i] ?? NaN, isFixed = fixed === fixed;
+    dd[c] = GEO[G_D]; rr[c] = GEO[G_RH];
+    const open = GEO[G_RH] > NOISE_REACH, fixed = open ? NaN : (sl ? fixedL : fixedR)?.[i] ?? NaN, isFixed = fixed === fixed;
     wallable[c] = !s.gap[i] && !isFixed && !open ? 1 : 0;
+    cellEnergies(f, z, i);
+    if (open) for (let h = 0; h < H; h++) TE[h] = 1; else edgeScreens(src, s, i, z);
+    if (isFixed && fixed > 0) wallScreens(src, s, i, fixed, z);
     for (let k = 0; k < H; k++) {
-      const dz = z[k] - src.grade[i], q = c * H + k;
-      const base = energy(f, w, d, alt, rh, dz) * (src.weight ? src.weight[i] : 1);
-      const t = open ? 1 : cellScreen(s, i, 0, d, rh, dz, true, hs, src.laneOffset);
+      const q = c * H + k, base = EN[k], t = TE[k];
       raw[q] = base; te[q] = t; edge[q] = base * t;
-      base0[q] = isFixed && fixed > 0 ? base * wallScreen(s, i, fixed, d, rh, dz, hs, t) : base * t;
+      base0[q] = isFixed && fixed > 0 ? base * TS[k] : base * t;
     }
   }
   const cache: Float64Array[] = [base0];
@@ -572,7 +781,10 @@ export function cellOptions(f: NoiseField, px: number, py: number, z: ArrayLike<
     for (let c = 0; c < m; c++) {
       if (!wallable[c]) continue;
       const i = i0 + c, s = side[c] ? src.L : src.R;
-      for (let k = 0; k < H; k++) { const q = c * H + k; e[q] = raw[q] * wallScreen(s, i, h, dd[c], rr[c], z[k] - src.grade[i], hs, te[q]); }
+      GEO[G_D] = dd[c]; GEO[G_RH] = rr[c];
+      for (let k = 0; k < H; k++) TE[k] = te[c * H + k];
+      wallScreens(src, s, i, h, z);
+      for (let k = 0; k < H; k++) { const q = c * H + k; e[q] = raw[q] * TS[k]; }
     }
     return (cache[o] = e);
   };
