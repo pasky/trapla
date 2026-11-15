@@ -2,7 +2,8 @@
 
 The API checkpoint was approved at `c554f55`. The following storage/legacy-adapter checkpoint implements
 safe migration, atomic project history and explicit endpoint/policy seams. This is **not completion of
-C0 or C1**: worker dispatch, network accounting and UI integration remain pending. Cost model stays 18.
+C0 or C1**: network accounting and final UI integration remain pending. Additive project worker dispatch
+now supports the exact one-road facade and honest incomplete multi-road proposals. Cost model stays 18.
 
 ## Modules
 
@@ -12,7 +13,13 @@ C0 or C1**: worker dispatch, network accounting and UI integration remain pendin
 - `src/core/project-transport.ts`: proposed additive `TransportMeta` / `TransportGraphData` pack
   contract. Joint C/S/U/M review still required before pipeline writes it.
 - `src/core/project-protocol.ts`: additive `ProjectWorkerIn` / `ProjectWorkerOut`, stale/active-route
-  acceptance helper and score gate. These messages are **not yet dispatched by worker.ts**.
+  acceptance helper and score gate. `worker.ts` dispatches these alongside unchanged legacy messages.
+  Init must provide `projectEnvironment` (object/transport/terrain/pricing/water identities and terrain class).
+  `project-eval` includes the last displayed `{epoch, revision}` or null. `project-preview` includes route ID,
+  optional material value, and optional `gesture: {id, sequence}`. Full results remain exact-current;
+  `acceptsProjectMessage(snapshot, message, activeId, {id, lastDisplayedSequence})` permits monotonically
+  newer in-flight previews only inside that active gesture. Clear the window on commit/cancel, undo/redo,
+  reload and route switch. Without a window, previews also require exact-current revision.
 - `src/project-store-contract.ts`: commands, load outcomes, storage/recovery bytes, `ProjectStoreApi`,
   best/save envelopes and UI-only selection repair. Control selection must carry `routeRevision`; otherwise
   repair clears it rather than interpreting a shifted pin/PI index after undo.
@@ -25,14 +32,22 @@ C0 or C1**: worker dispatch, network accounting and UI integration remain pendin
   are rejected before serialization. Resolved mission anchors must match their actual port XYZ.
   `subscribe` returns unsubscribe. Storage errors propagate; migration recovery must persist first.
 - `src/core/project-validation.ts`: runtime schema and corridor/route authority checks before publication.
-- `src/core/project-legacy.ts`: `projectFromLegacyDesign`, `legacyDesignForRoute` and
+- `src/core/project-legacy.ts`: `makeLegacyProjectContext(ctx, {presetId, packId, objectData, transportData})`
+  constructs the legacy mission/endpoints/operations for bootstrap. `projectFromLegacyDesign`, `legacyDesignForRoute` and
   `replaceRouteFromLegacy` preserve stable identity and separate project building choices. Imported/exact
   paths and foreign crossing bindings are refused by the legacy adapter, never fitted silently.
+  Legacy design-speed edits also update operating speed unless `operations.speedPolicy` is explicitly
+  `independent`; no-op edits preserve operations. Defaults/preset seed PIs apply only through fresh initial().
 - `src/core/project-road.ts`: `evaluateProjectRoad` dispatches before road defaults, returns a route result
   or machine-readable incomplete reason. It is NOT project accounting. Modes/source replacements/tangent
   constraints not supported here cannot get a road bill. Mission goals do not apply to auxiliary routes.
 - `evaluate` / `autoProfile` now accept explicit endpoint elevations separately from terrain. Existing
   calls default identically. Operating speed and mission capacity demand are separately optional.
+- `src/core/project-evaluate.ts`: `evaluateProject({legacy, environment}, snapshot)` publishes a complete
+  single legacy mission with its unchanged bill and absolute day/night receiver levels. Multiple routes,
+  mode foundations, source replacements and unsupported interactions have `cost.total = null`, no best,
+  and proposed geometry only. `previewProjectRoute` evaluates just the active route; reference road paths
+  remain explicit sampled proposals, never fitted to PIs. No route independence/cache claim yet.
 
 ## Important choices
 

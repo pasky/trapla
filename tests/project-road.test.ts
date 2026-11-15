@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design } from '../src/core/evaluate';
-import { projectFromLegacyDesign, type LegacyProjectContext } from '../src/core/project-legacy';
+import { legacyDesignForRoute, projectFromLegacyDesign, replaceRouteFromLegacy, type LegacyProjectContext } from '../src/core/project-legacy';
 import { evaluateProjectRoad } from '../src/core/project-road';
 import { assertProjectDesign } from '../src/core/project-validation';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -24,6 +24,20 @@ it('preserves the legacy kernel bill, grade and geometry through the project ada
   if (adapted.status !== 'evaluated') throw new Error('adapter');
   const { timing: _a, ...a } = legacy, { timing: _b, ...b } = adapted.result;
   expect(b).toEqual(a);
+});
+
+it('keeps legacy speed edits acoustically identical unless separate operations were explicitly chosen', () => {
+  const p = projectFromLegacyDesign(design, context), id = p.routes[0].id;
+  const edited = replaceRouteFromLegacy(p, id, { ...legacyDesignForRoute(p, id), speed: 80 });
+  const result = evaluateProjectRoad(ctx, edited, id, 'objects');
+  if (result.status !== 'evaluated') throw new Error('adapter');
+  const { timing: _a, ...actual } = result.result;
+  const { timing: _b, ...expected } = evaluate(ctx, { ...design, speed: 80 });
+  expect(actual).toEqual(expected);
+  const route = p.routes[0]; if (route.kind !== 'road') throw new Error('fixture');
+  route.specification.operations.speedPolicy = 'independent'; route.specification.operations.speed = 40;
+  const independent = replaceRouteFromLegacy(p, id, { ...legacyDesignForRoute(p, id), speed: 80 });
+  expect(independent.routes[0].specification.operations).toEqual(route.specification.operations);
 });
 
 it('refuses a mission shortcut whose anchor ID names a different endpoint position', () => {
@@ -57,6 +71,12 @@ it('separates auxiliary operations from mission goals and refuses mode/policy fa
   const mission = evaluateProjectRoad(ctx, p, r.id, 'objects');
   if (mission.status !== 'evaluated') throw new Error('mission');
   expect(mission.result.violations.some(v => v.kind === 'category')).toBe(true);
+  if (r.alignment.kind !== 'pi') throw new Error('fixture');
+  r.alignment.controls.crossings = [{ choice: 'bridge', target: { kind: 'legacy-way', objectData: 'old', roadId: 2 } }];
+  expect(evaluateProjectRoad(ctx, p, r.id, 'objects')).toEqual({ status: 'incomplete', reason: 'unresolved-binding' });
+  r.alignment.controls.crossings = [{ choice: 'bridge', target: { kind: 'source',
+    interval: { transportData: 'transport', sourceId: 'way:1', s0: 0, s1: 5 } } }];
+  expect(evaluateProjectRoad(ctx, p, r.id, 'objects')).toEqual({ status: 'incomplete', reason: 'unsupported-crossing' });
   r.specification.policy = 'track';
   expect(evaluateProjectRoad(ctx, p, r.id, 'objects')).toEqual({ status: 'incomplete', reason: 'unsupported-policy' });
   (r as unknown as { kind: string }).kind = 'railway';

@@ -69,16 +69,18 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
       const save = parsed as ProjectSave;
       assertProjectDesign(save.design, true);
       if (save.design.scenarioId !== options.namespace.scenarioId || save.design.presetId !== options.namespace.presetId) throw new Error('Save namespace mismatch');
+      let originalProject: string | undefined;
       if (save.best) {
-        // Validate shape first, then reject stale scores by bindings/semantics. A stale best must
-        // not turn repairable current work into an unsupported envelope.
-        assertProjectDesign(save.best.design, true);
-        if (!compatibleProjectBest(save.best, options)) save.best = null;
+        try {
+          // Best is optional: malformed best bytes must not block valid current work.
+          assertProjectDesign(save.best.design, true);
+          if (!compatibleProjectBest(save.best, options)) save.best = null;
+        } catch { originalProject = raw; save.best = null; }
       } else save.best = null;
       const reasons = bindingRepairs(save.design, options);
       assertProjectDesign(save.design);
-      if (reasons.length) { save.best = null; return { status: 'needs-repair', save, original: null, reasons }; }
-      return { status: 'loaded', save, original: null };
+      if (reasons.length) { save.best = null; return { status: 'needs-repair', save, original: null, reasons, ...(originalProject ? { originalProject } : {}) }; }
+      return { status: 'loaded', save, original: null, ...(originalProject ? { originalProject } : {}) };
     } catch (e) { return { status: 'unsupported', raw, reason: String(e) }; }
   }
   if (!options.legacy) return { status: 'empty' };
@@ -108,6 +110,8 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
 /** Recovery must succeed before the new slot is written. Never modifies legacy .design/.best. */
 export function persistProjectSave(options: ProjectLoadOptions, save: ProjectSave, load?: ProjectLoadResult): void {
   const keys = projectStorageKeys(options.namespace);
+  if (load && 'originalProject' in load && load.originalProject && options.storage.getItem(keys.projectRecovery) === null)
+    options.storage.setItem(keys.projectRecovery, load.originalProject);
   if (load && 'original' in load && load.original && options.storage.getItem(keys.recovery) === null) {
     options.storage.setItem(keys.recovery, JSON.stringify(load.original));
   }

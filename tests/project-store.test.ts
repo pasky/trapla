@@ -64,6 +64,13 @@ it('never overwrites malformed or newer project/legacy saves, including quota fa
   expect(() => openProjectStore({ ...options, storage: failing })).toThrow('quota');
   expect(data.has(keys.project)).toBe(false);
   expect(JSON.parse(data.get('old.design')!)).toEqual(original);
+  const corruptBest = JSON.stringify({ schemaVersion: 1, design: options.initial(), best: { design: {} } });
+  data.set(keys.project, corruptBest);
+  const recovered = openProjectStore(options);
+  expect(recovered.load.status).toBe('loaded');
+  expect(recovered.store!.snapshot.design).toEqual(options.initial());
+  expect(recovered.store!.best).toBeNull();
+  expect(data.get(keys.projectRecovery)).toBe(corruptBest);
 });
 
 it('keeps source geometry and decisions unresolved on pack changes instead of rebinding indices', () => {

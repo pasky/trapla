@@ -6,7 +6,7 @@ import type { ProjectDesign } from './project';
 export type ProjectRoadEvaluation =
   | { status: 'evaluated'; result: Result }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
-      | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' };
+      | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 
 export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, routeId: string,
   objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue'> = {}): ProjectRoadEvaluation {
@@ -36,6 +36,10 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   }
   const goal = mission ? goals[0] : undefined;
   if (goal?.demand && goal.demand.kind !== 'road') return { status: 'incomplete', reason: 'mission-needs-network' };
+  for (const c of route.alignment.controls.crossings ?? []) {
+    if (c.target.kind !== 'legacy-way') return { status: 'incomplete', reason: 'unsupported-crossing' };
+    if (c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
+  }
   const design = legacyDesignForRoute(project, routeId);
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   const result = evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario,

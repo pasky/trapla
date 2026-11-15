@@ -18,6 +18,22 @@ it('preserves malformed/newer legacy bytes before the compatibility constructor 
   } finally { vi.unstubAllGlobals(); }
 });
 
+it('keeps readable current work read-only when recovery writing or optional best parsing fails', () => {
+  const saved = { ...startDesign(), speed: 80, pis: [{ x: 300, y: 200, r: null }] };
+  for (const quota of [true, false]) {
+    const values = new Map([['test.design', JSON.stringify(saved)], ['test.best', '{broken best']]);
+    vi.stubGlobal('localStorage', { getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { if (quota) throw new Error('quota'); values.set(key, value); } });
+    try {
+      const store = new Store('test', startDesign);
+      expect(store.design.speed).toBe(80); expect(store.design.pis).toEqual(saved.pis);
+      expect(store.storageProblem).not.toBeNull(); expect(store.best).toBeNull();
+      store.update(d => { d.speed = 70; });
+      expect(JSON.parse(values.get('test.design')!).speed).toBe(80);
+    } finally { vi.unstubAllGlobals(); }
+  }
+});
+
 it('keeps the design but resets incomparable best scores when the ground pack changes', () => {
   const values = new Map<string, string>();
   vi.stubGlobal('localStorage', {
