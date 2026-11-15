@@ -661,7 +661,7 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   used for every cell (≥ the §1.10.2 transformation), far cells are grouped, the best single obstacle per
   cell counts (no multi-edge path), no reflections, vegetation, building screening or terrain beyond the
   road's own cut / crown / deck edge. One receiver point per dwelling (façade nearest the road), every
-  storey. Auto walls are grown per house, loudest first, within 300 m of route: greedy, not a global optimum;
+  storey. Auto walls are grown per house, loudest first (the search window widens while a wider one could change the choice): greedy, not a global optimum;
   no foot-of-cut walls (widened cut) or earth bunds. Civic buildings with protected uses are not classified.
   Buyout is the only fallback; covered roads, property reuse, parcel geometry and relocation are not
   optimised. **Fallback-only buyout is discontinuous**: moving closer to a cheap house can replace an
@@ -873,9 +873,11 @@ the bill change: **research/36**.
 - **One calculator** (`core/noise-field.ts`): every station cell (≤ 10 m, Manuál 2018 §1.10.2) is a finite
   segment, `Y − U(d) − Du(α) − DB`, energy-summed over the road (§1.19), day and night separately.
   Du = 10 log(180°/α) with the true angle of view; U is research/11's calibrated hard Uo at the perpendicular
-  distance from the cell's line (a straight road gives exactly the manual's in-band result). Screening per
-  cell and side by the manual's DB (§1.11) over the best of the wall top, a cut's top edge and the crown /
-  deck edge, along the actual ray, source on the axis 1 m up. Every storey of every dwelling near the road.
+  distance from the cell's line (a straight road gives exactly the manual's in-band result), or the §1.10.2
+  transformation where that is larger (end-on cells). Screening per cell and side by the manual's DB (§1.11)
+  over the best of the wall top, a cut's top edge and the crown / deck edge, along the actual ray, source on
+  the axis 1 m up (the road's own edge from the near lane). The whole road is summed; every cut-off is a
+  stated bound (research/36 §2). Every storey of every dwelling near the road.
 - **Walls where the cross-section puts them** (TP 104/2024 §3.4, Fig. 7b): crown / deck edge + 1.5 m on
   embankments and bridges, on the cut's top edge in a cut (never inside the slope); none where the cut
   already screens. The same per-station line and foot feed the acoustics, the bill (length along the drawn
@@ -883,7 +885,8 @@ the bill change: **research/36**.
 - **Auto, cheapest legal option**: houses loudest first; each of 2 / 3 / 4 / 5 m grows one wall from its most
   useful cell until every storey meets the limit, at least twice the house's distance long (§1.11 h); the
   height adding the least area wins; walls built for other houses count. Buyout when 5 m over the whole
-  300 m reach cannot do it, as before. Junction openings and tunnels carry no wall.
+  reach cannot do it (the window widens as far as it could matter), as before. Junction openings and
+  tunnels carry no wall.
 - **Noise view**: the band is the same sum at the deciding height, computed by the worker only when the
   view is on (`noise-band` message), so the full evaluation does not pay for it. House cards show every
   floor's level (open ground → as built), a plan with a line from every piece of road weighted by what it
@@ -897,6 +900,8 @@ the bill change: **research/36**.
   at the same house and storey add; splitting a route splits its cells, it never adds +3 dB (tested). A
   motorway is two directional sources on their lane axes (laneOffset 0), a railway its own mode
   (emission / propagation of that mode not implemented here). Joint wall decisions across roads remain C1.
-- Performance: the noise step stays a few ms per full evaluation (spatial cell grid for candidates, exact
-  cells within the decision reach, grouped far cells, change-only final pass); numbers in
-  docs/evaluate-performance.md.
+- Performance (open): the exact sum costs more than the old per-station maximum — the noise step of a
+  full evaluation is ≈ 6 / 7 / 13 / 10 / 27 ms for best / demo / direct-80 / direct-90 / town-centre
+  against 5 / 5 / 5 / 5 / 7 ms before (quiet host, minimum of 8 warm runs); measures so far: spatial cell
+  grid for candidates, rigorous bounds before any sum, cell-by-cell only within 160 m, change-only final
+  pass, closed forms instead of fdlibm pow. See docs/evaluate-performance.md.
