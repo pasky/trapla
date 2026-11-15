@@ -11,12 +11,12 @@ import json
 import math
 import numpy as np
 
-# Nominal centreline style widths in render/landcover.ts. The renderer must expand its actual
-# pass (casing/minPx) when masking; these are not surveyed paved widths or rail clearances.
-WIDTHS = {"motorway": 11, "primary": 9, "secondary": 8, "tertiary": 7, "minor": 5.5,
+# Nominal style widths in render/landcover.ts, including the 0.45 m casing per side where
+# present. The renderer also expands minPx when masking; these are not engineering widths.
+WIDTHS = {"motorway": 11.9, "primary": 9.9, "secondary": 8.9, "tertiary": 7.9, "minor": 6.4,
           "service": 3.4, "track": 2.6, "rail": 3, "rail_side": 1.8}
 TAGS = ("highway", "railway", "name", "ref", "lanes", "tracks", "gauge", "electrified",
-        "voltage", "frequency", "maxspeed", "oneway", "service", "usage")
+        "voltage", "frequency", "maxspeed", "oneway", "service", "usage", "covered")
 
 
 def stations(xy):
@@ -41,7 +41,11 @@ def clipped_stations(original, clipped):
                 continue
             t = max(0., min(1., float(np.dot(point - a, delta)) / length2))
             distance = float(np.linalg.norm(point - (a + t * delta)))
-            s = float(cumulative[i] + t * math.sqrt(length2))
+            # Use canonical cumulative values at vertices; independently taking sqrt can
+            # otherwise put the final render interval a few ulps beyond the source end.
+            s = float(cumulative[i] if np.array_equal(point, a) else cumulative[i + 1]
+                      if np.array_equal(point, b) else cumulative[i] + t * (cumulative[i + 1] - cumulative[i]))
+            s = min(float(cumulative[-1]), max(0., s))
             if distance < 1e-5 and s >= previous - 1e-7:
                 candidates.append(s)
         if not candidates:
@@ -53,9 +57,10 @@ def clipped_stations(original, clipped):
 
 def build(out, elements, project, render_lines, legacy_ids, log=print):
     sources, nodes, render_features = {}, {}, []
+    node_sources, conflicting_nodes, conflicting_sources = {}, set(), set()
     legacy = {}
     for i, wid in enumerate(legacy_ids):
-        legacy.setdefault(str(wid), i)
+        legacy.setdefault(str(wid), []).append(i)
     for el in elements:
         tags = el.get("tags", {})
         if el.get("type") != "way" or not (tags.get("highway") in
@@ -82,23 +87,39 @@ def build(out, elements, project, render_lines, legacy_ids, log=print):
                   "elevation": "unknown" if bridge or tunnel or covered or layer != 0 else "terrain",
                   "tags": {key: tags[key] for key in TAGS if key in tags}, "render": []}
         if wid in legacy:
-            source["legacyNetIndex"] = legacy[wid]
-        if sid in sources:
-            # Repeated query results must agree before they can share identity.
-            if source != sources[sid]:
-                raise ValueError(f"conflicting snapshots for transport source {sid}")
-            continue
-        sources[sid] = source
+            source["legacyNetIndex"] = legacy[wid][0]
+        if sid in sources and source != sources[sid]:
+            conflicting_sources.add(sid)
+        else:
+            sources[sid] = source
         for node, point in zip(node_ids, xy.tolist()):
-            if node in nodes and math.dist(nodes[node], point) > .05:
-                raise ValueError(f"conflicting coordinates for transport node {node}")
-            nodes[node] = point
+            node_sources.setdefault(node, set()).add(sid)
+            if node in nodes and nodes[node] != point:
+                conflicting_nodes.add(node)
+            else:
+                nodes[node] = point
+    for node in conflicting_nodes:
+        conflicting_sources.update(node_sources[node])
+    unresolved = {}
+    for sid in sorted(conflicting_sources):
+        source = sources.pop(sid)
+        item = {"id": sid, "osmWayId": source["osmWayId"], "kind": source["kind"],
+                "reason": "conflicting-snapshots", "renderFeatureIds": []}
+        if source["osmWayId"] in legacy:
+            item["legacyNetIndices"] = legacy[source["osmWayId"]]
+        unresolved[sid] = item
+    used_nodes = {node for source in sources.values() for node in source["nodes"]}
+    nodes = {node: point for node, point in nodes.items() if node in used_nodes}
     for line in render_lines:
         sid = f"osm:way:{line['osmWayId']}"
-        if sid not in sources:
+        if sid not in sources and sid not in unresolved:
             raise ValueError(f"rendered transport source absent from graph: {sid}")
         fid = f"{line['layer']}:{line['polylineIndex']}"
         render_features.append({"id": fid, "layer": line["layer"], "polylineIndex": line["polylineIndex"]})
+        if sid in unresolved:
+            # Visible/pickable but not promotable: no invented canonical geometry/connectivity.
+            unresolved[sid]["renderFeatureIds"].append(fid)
+            continue
         rendered_s = stations(np.asarray(line["xy"]))
         source_s = line["sourceS"]
         if len(source_s) != len(rendered_s) or any(b < a - 1e-6 for a, b in zip(source_s, source_s[1:])):
@@ -110,10 +131,13 @@ def build(out, elements, project, render_lines, legacy_ids, log=print):
     data = {"version": 1, "vectorData": hashlib.sha256(vector).hexdigest(), "renderFeatures": render_features,
             "nodes": [{"id": key, "xy": value} for key, value in sorted(nodes.items())],
             "sources": [sources[key] for key in sorted(sources)]}
+    if unresolved:
+        data["unresolvedSources"] = list(unresolved.values())
     raw = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode()
     file = "transport.json.gz"
     (out / file).write_bytes(gzip.compress(raw, 9, mtime=0))
     meta = {"file": file, "version": 1, "fingerprint": hashlib.sha256(raw).hexdigest()}
     (out / "transport-meta.json").write_text(json.dumps(meta))
-    log(f"transport: {len(sources)} sources, {len(nodes)} nodes, {len(render_features)} render features; {len(raw)/1e6:.1f} MB raw")
+    log(f"transport: {len(sources)} sources, {len(nodes)} nodes, {len(render_features)} render features, "
+        f"{len(unresolved)} unresolved sources; {len(raw)/1e6:.1f} MB raw")
     return meta

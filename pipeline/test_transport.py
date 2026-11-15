@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import numpy as np
-from transport import build, clipped_stations
+from transport import build, clipped_stations, stations
 from vectors import chaikin, thin
 
 
@@ -16,6 +16,15 @@ class TransportTests(unittest.TestCase):
         smooth = chaikin(np.column_stack([s, s]))[:, 0]
         kept = thin(chaikin(xy), indices=True)
         self.assertTrue(np.all(np.diff(smooth[kept]) >= 0))
+
+    def test_clipped_endpoints_stay_exactly_inside_canonical_bounds(self):
+        random = np.random.default_rng(19)
+        for _ in range(32):
+            xy = np.cumsum(random.normal(size=(8, 2)) * 100, axis=0) + 12000
+            result = clipped_stations(xy, xy)
+            self.assertEqual(result[0], 0)
+            self.assertEqual(result[-1], stations(xy)[-1])
+            self.assertLessEqual(result.max(), stations(xy)[-1])
 
     def test_sources_preserve_identity_unknown_rail_and_own_render_interval(self):
         road = {"type": "way", "id": 7, "nodes": [1, 2], "xy": [[0., 0.], [10., 0.]],
@@ -45,12 +54,19 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(a["render"][0]["correspondence"][-1], {"sourceS": 8., "renderS": 6.})
         self.assertEqual([f["id"] for f in data["renderFeatures"]], ["primary:0", "rail:0"])
 
-    def test_node_geometry_mismatch_fails_instead_of_guessing_connectivity(self):
+    def test_node_geometry_mismatch_is_explicitly_unresolved_without_fake_connectivity(self):
         first = {"type": "way", "id": 1, "nodes": [1, 2], "xy": [[0., 0.], [10., 0.]], "tags": {"highway": "track"}}
-        second = {**first, "id": 2, "xy": [[1., 0.], [10., 0.]]}
+        second = {**first, "id": 2, "xy": [[.01, 0.], [10., 0.]]}
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ValueError, "conflicting coordinates"):
-                build(Path(directory), [first, second], lambda e: e["xy"], [], [], lambda _: None)
+            out = Path(directory)
+            (out / "vector.bin.gz").write_bytes(gzip.compress(b"legacy"))
+            meta = build(out, [first, second], lambda e: e["xy"], [], [1, 2], lambda _: None)
+            graph = json.loads(gzip.decompress((out / meta["file"]).read_bytes()))
+        self.assertEqual(graph["sources"], [])
+        self.assertEqual(graph["nodes"], [])
+        self.assertEqual([s["reason"] for s in graph["unresolvedSources"]], ["conflicting-snapshots"] * 2)
+        self.assertEqual(graph["unresolvedSources"][0]["legacyNetIndices"], [0])
+        self.assertNotIn("xy", graph["unresolvedSources"][0])
 
 
 if __name__ == "__main__":

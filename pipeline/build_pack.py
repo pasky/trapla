@@ -385,7 +385,8 @@ def road_network(lines: dict) -> dict:
     """
     from shapely.geometry import LineString
 
-    extra = overpass("roads2", 'way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];')
+    extra = {"elements": []} if SCENARIO.get("coherentTransport") else overpass(
+        "roads2", 'way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];')
     ways = []
     LEGACY_SOURCE_IDS.clear()
     w, h = X_MAX - X_MIN, Y_MAX - Y_MIN
@@ -467,6 +468,8 @@ def build_overlays():
   way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link)$"];
   way["railway"="rail"];
 );""")
+    if SCENARIO.get("coherentTransport"):
+        lines = coherent_lines(lines)
     road_w = {"motorway": 4, "trunk": 4, "primary": 3, "secondary": 3, "tertiary": 2,
               "unclassified": 1, "residential": 1}
     roads_out = []
@@ -612,12 +615,26 @@ def official_line():
 # Vector render data (pipeline/vectors.py): the browser shades the relief from the height grid and
 # rasterises land cover / roads / buildings from vectors, so no drape texture is baked any more.
 # ------------------------------------------------------------------------------------------------
+def coherent_lines(lines: dict) -> dict:
+    """One transport snapshot for new packs; never combine old road-class/node variants.
+
+    Legacy D11 keeps its separate cached queries, with unresolved additive identity where
+    those snapshots disagree. A dedicated current response cannot rewrite its frozen net.
+    """
+    body = '(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];way["railway"="rail"];);'
+    transport = overpass("transport_v1", body, allow_split=False)
+    ids = {(e["type"], e["id"]) for e in transport["elements"]}
+    water = [e for e in lines["elements"] if "waterway" in e.get("tags", {}) and (e["type"], e["id"]) not in ids]
+    return {"elements": water + transport["elements"]}
+
+
 def cached_osm(name: str) -> dict:
     """Raw Overpass result fetched earlier by build_overlays()."""
     f = osm_cache(name)
     if not f.exists():
         raise RuntimeError(f"{f} missing: run the full pipeline (npm run data) first")
-    return baseline_osm(json.loads(f.read_text()))
+    data = baseline_osm(json.loads(f.read_text()))
+    return coherent_lines(data) if name == "lines" and SCENARIO.get("coherentTransport") else data
 
 
 def extra_cover() -> list:
@@ -633,7 +650,7 @@ def extra_cover() -> list:
 
 def extra_lines() -> list:
     """Tracks and service roads: the same Overpass result road_network() uses for crossings."""
-    return [cached_osm("roads2")["elements"]]
+    return [] if SCENARIO.get("coherentTransport") else [cached_osm("roads2")["elements"]]
 
 
 def build_vectors(transport_lines=None) -> dict:
@@ -644,7 +661,9 @@ def build_vectors(transport_lines=None) -> dict:
 
 def build_transport(render_lines):
     import transport
-    elements = cached_osm("lines")["elements"] + cached_osm("roads2")["elements"]
+    elements = cached_osm("lines")["elements"]
+    if not SCENARIO.get("coherentTransport"):
+        elements += cached_osm("roads2")["elements"]
     return transport.build(OUT, elements, way_xy, render_lines, LEGACY_SOURCE_IDS, log)
 
 

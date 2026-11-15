@@ -20,6 +20,9 @@ class GeologyTests(unittest.TestCase):
             "červenohnědé řídčeji pestrobarevné, vzácně šedé aleuropelity, polohy slepenců, pískovců"}), "carb_mixed")
         self.assertEqual(classify({"utvar": "PERM", "hor_karto":
             "arkózovité pískovce s polohami slepenců a vložkami červenohnědých i pestrobarevných aleuropelitů"}), "perm_sand")
+        # Nová Paka volcanic rocks must not fall through the Permian clastic-only branch.
+        self.assertEqual(classify({"utvar": "PERM", "hor_karto": "dacity a ryodacity, vzácně tufy a aglomeráty"}), "igneous")
+        self.assertEqual(classify({"hor_karto": "metarkóza"}), "hard")
 
     def test_posazavi_descriptions_use_broad_rock_priors_not_norm_mix(self):
         for rock, expected in [
