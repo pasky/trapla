@@ -73,6 +73,22 @@ export function existingRoadColor(cls: string): number {
   const rgb = [...PASSES].reverse().find(p => p.layer === layer)?.color ?? ROAD;
   return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2];
 }
+/** Over the orthophoto: the roads / tracks / railways the game knows, thin and semi-transparent in the same
+ * class palette (dark casing so they read on any photo), railways dashed. Drawn from the SAME line
+ * geometry and source cuts as the map, and only features the transport graph maps (what is clickable). */
+const NET_CASING: RGB = [34, 30, 28];
+const netPass = (layer: string, width: number, minPx: number): Pass[] => {
+  const color = PASSES.filter(p => p.layer === layer && p.kind === 'line').find(p => p.color !== CASING)?.color ?? ROAD;
+  return [{ layer, kind: 'line', color: NET_CASING, alpha: 0.45, width: width + 1.5, minPx: minPx + 1.6 },
+    { layer, kind: 'line', color, alpha: 0.75, width, minPx }];
+};
+const NET_PASSES: Pass[] = [
+  ...netPass('track', 1.2, 1.1), ...netPass('service', 1.6, 1.2), ...netPass('rail_side', 1.2, 1.0),
+  { layer: 'rail', kind: 'line', color: NET_CASING, alpha: 0.5, width: 3, minPx: 2.8 },
+  { layer: 'rail', kind: 'line', color: [236, 232, 226], alpha: 0.85, width: 1.4, minPx: 1.2, dash: [14, 0.5] },
+  ...netPass('minor', 2.2, 1.4), ...netPass('tertiary', 2.6, 1.6), ...netPass('secondary', 3, 1.8),
+  ...netPass('primary', 3.4, 2.0), ...netPass('motorway', 4, 2.4),
+];
 /** layers whose polylines get round caps and joins (wide enough for gaps to show) */
 const CAPPED = new Set(['minor', 'tertiary', 'secondary', 'primary', 'motorway', 'service', 'rail', 'river']);
 
@@ -155,7 +171,7 @@ class ChunkAcc {
 }
 
 /** expand polylines into quads (mitred) plus optional round caps / joins; offsets are applied in the shader */
-export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, cuts?: LineCuts): Generator<void, Geo[]> {
+export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, cuts?: LineCuts, only?: ReadonlySet<number>): Generator<void, Geo[]> {
   const accs = new Map<number, ChunkAcc>();
   const acc = (x: number, y: number) => {
     const key = Math.floor(y / chunk) * 4096 + Math.floor(x / chunk);
@@ -172,6 +188,7 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
   const V = layer.verts, S = layer.starts;
   for (let p = 0; p + 1 < S.length; p++) {
     if (p % 64 === 0) yield;
+    if (only && !only.has(p)) continue;
     const removed = cuts?.get(p) ?? [];
     const capped = (s: number) => caps && !removed.some(([a, b]) => s >= a && s <= b);
     const i0 = S[p], n = S[p + 1] - i0;
@@ -332,6 +349,10 @@ export class LandCover {
   private res = { value: 1 };
   private passes: { pass: Pass; mat: THREE.ShaderMaterial; meshes: THREE.Mesh[] }[] = [];
   private sourceCuts = new Map<string, LineCuts>();
+  /** the known-network overlay over the photo (built on first use): its own scene / materials, same cuts */
+  private net: { scene: THREE.Scene; passes: { pass: Pass; mat: THREE.ShaderMaterial; meshes: THREE.Mesh[] }[] } | null = null;
+  private overMat!: THREE.ShaderMaterial;
+  private overScene = new THREE.Scene();
   private scratch: THREE.WebGLRenderTarget;
   private size: number;
   private base: THREE.WebGLRenderTarget;
@@ -367,37 +388,14 @@ export class LandCover {
   onChange: (() => void) | null = null;
 
   constructor(private renderer: THREE.WebGLRenderer, private vectors: VectorPack, private width: number, private height: number,
-    private uniforms: TerrainUniforms) {
+    private uniforms: TerrainUniforms, private network: TransportGraphData | null = null) {
     const maxTex = renderer.capabilities.maxTextureSize;
     this.size = Math.min(2048, maxTex);
     const geos = new Map<string, Geo[]>();
     for (const l of vectors.polys) geos.set(l.name, polyGeos(l.verts, l.idx, l.chunks));
     for (const l of vectors.lines) geos.set(l.name, finish(buildLineGeos(l, vectors.chunk, CAPPED.has(l.name))));
     if (vectors.buildings) geos.set('buildings', buildingGeos(vectors.buildings, vectors.chunk));
-    PASSES.forEach((pass, order) => {
-      const gl = geos.get(pass.layer);
-      if (!gl) return;
-      const line = pass.kind === 'line';
-      const mat = new THREE.ShaderMaterial({
-        uniforms: {
-          box: this.box, res: this.res, color: { value: new THREE.Vector4() },
-          wpar: { value: new THREE.Vector4((pass.width ?? 0) / 2, (pass.minPx ?? 0) / 2, pass.extra ?? 0, pass.extraPx ?? 0) },
-          dash: { value: new THREE.Vector2(pass.dash?.[0] ?? 0, pass.dash?.[1] ?? 1) },
-        },
-        vertexShader: line ? LINE_VERT : POLY_VERT, fragmentShader: line ? FRAG : POLY_FRAG,
-        blending: THREE.NoBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-      });
-      const meshes = gl.map((g) => {
-        const m = new THREE.Mesh(g.geo, mat);
-        m.frustumCulled = false;
-        m.matrixAutoUpdate = false;
-        m.renderOrder = order;
-        m.userData.bbox = g.bbox;
-        this.scene.add(m);
-        return m;
-      });
-      this.passes.push({ pass, mat, meshes });
-    });
+    this.passes = this.makePasses(PASSES, geos, this.scene);
     const samples = Math.min(4, renderer.capabilities.maxSamples);
     this.scratch = new THREE.WebGLRenderTarget(this.size, this.size, {
       samples, depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
@@ -427,6 +425,14 @@ export class LandCover {
     const bg = new THREE.Mesh(flat(quad), this.bgMat);
     bg.frustumCulled = false;
     this.photoScene.add(bg);
+    // premultiplied "over" copy: the overlay keeps its anti-aliasing from the multisampled scratch target
+    this.overMat = new THREE.ShaderMaterial({
+      uniforms: { src: { value: this.scratch.texture }, srcRect: { value: new THREE.Vector4(0, 0, 1, 1) } },
+      vertexShader: 'uniform vec4 srcRect; varying vec2 vUv; void main() { vUv = srcRect.xy + (position.xy * 0.5 + 0.5) * srcRect.zw; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: 'uniform sampler2D src; varying vec2 vUv; void main() { gl_FragColor = texture2D(src, vUv); }',
+      blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+      blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor, depthTest: false, depthWrite: false,
+    });
     this.blitMat = new THREE.ShaderMaterial({
       uniforms: { src: { value: this.scratch.texture }, srcRect: { value: new THREE.Vector4(0, 0, 1, 1) } },
       vertexShader: 'uniform vec4 srcRect; varying vec2 vUv; void main() { vUv = srcRect.xy + (position.xy * 0.5 + 0.5) * srcRect.zw; gl_Position = vec4(position.xy, 0.0, 1.0); }',
@@ -438,16 +444,81 @@ export class LandCover {
     const blit = new THREE.Mesh(flat(tri), this.blitMat);
     blit.frustumCulled = false;
     this.blitScene.add(blit);
+    const over = new THREE.Mesh(flat(tri), this.overMat);
+    over.frustumCulled = false;
+    this.overScene.add(over);
     uniforms.lcBase.value = this.base.texture;
   }
 
+  private makePasses(passes: readonly Pass[], geos: ReadonlyMap<string, Geo[]>, scene: THREE.Scene) {
+    const out: { pass: Pass; mat: THREE.ShaderMaterial; meshes: THREE.Mesh[] }[] = [];
+    passes.forEach((pass, order) => {
+      const gl = geos.get(pass.layer);
+      if (!gl) return;
+      const line = pass.kind === 'line';
+      const mat = new THREE.ShaderMaterial({
+        uniforms: {
+          box: this.box, res: this.res, color: { value: new THREE.Vector4() },
+          wpar: { value: new THREE.Vector4((pass.width ?? 0) / 2, (pass.minPx ?? 0) / 2, pass.extra ?? 0, pass.extraPx ?? 0) },
+          dash: { value: new THREE.Vector2(pass.dash?.[0] ?? 0, pass.dash?.[1] ?? 1) },
+        },
+        vertexShader: line ? LINE_VERT : POLY_VERT, fragmentShader: line ? FRAG : POLY_FRAG,
+        blending: THREE.NoBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const meshes = gl.map((g) => this.mesh(g, mat, order, scene));
+      out.push({ pass, mat, meshes });
+    });
+    return out;
+  }
+  private mesh(g: Geo, mat: THREE.Material, order: number, scene: THREE.Scene) {
+    const m = new THREE.Mesh(g.geo, mat);
+    m.frustumCulled = false; m.matrixAutoUpdate = false; m.renderOrder = order; m.userData.bbox = g.bbox;
+    scene.add(m); return m;
+  }
+  /** polylines of a line layer the transport graph maps (null: no graph, all of them) */
+  private mapped(layer: string): ReadonlySet<number> | null {
+    if (!this.network) return null;
+    let owned = this.owned;
+    if (!owned) { owned = this.owned = new Set(); for (const source of this.network.sources) for (const r of source.render) owned.add(r.featureId); }
+    const out = new Set<number>();
+    for (const f of this.network.renderFeatures) if (f.layer === layer && owned.has(f.id)) out.add(f.polylineIndex);
+    return out;
+  }
+  private owned: Set<string> | null = null;
+  private netLayers() { return new Set(NET_PASSES.map(p => p.layer)); }
+  /** build the known-network overlay once, from the current accepted cuts */
+  private ensureNetwork() {
+    if (this.net) return;
+    const geos = new Map<string, Geo[]>(), layers = this.netLayers();
+    for (const l of this.vectors.lines) if (layers.has(l.name))
+      geos.set(l.name, finish(buildLineGeos(l, this.vectors.chunk, CAPPED.has(l.name), this.sourceCuts.get(l.name), this.mapped(l.name) ?? undefined)));
+    const scene = new THREE.Scene();
+    this.net = { scene, passes: this.makePasses(NET_PASSES, geos, scene) };
+  }
+  /** composite the network overlay of the slot window c (texels) over what the level holds there */
+  private overlayNetwork(rt: THREE.WebGLRenderTarget, c: Rect, t: number, pieces: [number, number, number, number, number, number][], mips: boolean) {
+    if (!this.net) return;
+    this.drawVectors(c[0] * t, c[1] * t, c[2] * t, c[3] * t, c[2], c[3], this.net);
+    const S = this.size;
+    for (const [x, y, w, h, tx, ty] of pieces) {
+      this.overMat.uniforms.srcRect.value.set((x - c[0]) / S, (y - c[1]) / S, w / S, h / S);
+      rt.viewport.set(tx, ty, w, h);
+      rt.texture.mipmapsAutoUpdate = mips;
+      this.renderer.setRenderTarget(rt);
+      this.renderer.autoClear = false;
+      this.renderer.render(this.overScene, this.cam);
+      this.renders++;
+    }
+  }
+
   /** draw the vector layers of the window (x0, y0, w, h) in local metres into the lower-left vw × vh texels of the scratch target */
-  private drawVectors(x0: number, y0: number, w: number, h: number, vw: number, vh: number) {
+  private drawVectors(x0: number, y0: number, w: number, h: number, vw: number, vh: number,
+    layers: { scene: THREE.Scene; passes: LandCover['passes'] } = { scene: this.scene, passes: this.passes }) {
     const res = w / vw;
     this.box.value.set(x0, y0, 1 / w, 1 / h);
     this.res.value = res;
     const pad = 40 + 8 * res; // widest line half-width incl. minimum texel widths
-    for (const { pass, mat, meshes } of this.passes) {
+    for (const { pass, mat, meshes } of layers.passes) {
       // fades out over the octave below maxRes
       const fade = pass.maxRes === undefined ? 1 : Math.max(0, Math.min(1, 2 - (2 * res) / pass.maxRes));
       const a = pass.alpha * fade;
@@ -461,7 +532,7 @@ export class LandCover {
     this.renderer.setRenderTarget(this.scratch);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.autoClear = true;
-    this.renderer.render(this.scene, this.cam);
+    this.renderer.render(layers.scene, this.cam);
   }
 
   /** copy the vw × vh texels at (sx, sy) of the resolved scratch target into a texture at (vx, vy) */
@@ -506,6 +577,7 @@ export class LandCover {
       for (const [x, y, w, h, tx, ty] of pieces) this.blit(s.rt, x - c[0], y - c[1], tx, ty, w, h, false);
     } else {
       for (const [x, y, w, h, tx, ty] of pieces) this.drawPhoto(s.rt, tx, ty, w, h, [x * t, y * t, w * t, h * t], src, false);
+      this.overlayNetwork(s.rt, c, t, pieces, false);
     }
   }
 
@@ -532,8 +604,18 @@ export class LandCover {
     const bw = this.base.width, bh = this.base.height, S = this.size;
     const rx = this.width / bw, ry = this.height / bh;
     this.withState(() => {
-      if (photo && rect) this.drawPhoto(this.base, 0, 0, bw, bh, [0, 0, this.width, this.height], { tex: photo, rect }, true);
-      else for (let ty = 0; ty < bh; ty += S) {
+      if (photo && rect) {
+        this.drawPhoto(this.base, 0, 0, bw, bh, [0, 0, this.width, this.height], { tex: photo, rect }, true);
+        // the network over the base photo, drawn in scratch-sized tiles like the map
+        if (this.net) for (let ty = 0; ty < bh; ty += S) {
+          const th = Math.min(S, bh - ty);
+          this.drawVectors(0, ty * ry, S * rx, S * ry, S, S, this.net);
+          this.overMat.uniforms.srcRect.value.set(0, 0, bw / S, th / S);
+          this.base.viewport.set(0, ty, bw, th); this.base.texture.mipmapsAutoUpdate = true;
+          this.renderer.setRenderTarget(this.base); this.renderer.autoClear = false;
+          this.renderer.render(this.overScene, this.cam); this.renders++;
+        }
+      } else for (let ty = 0; ty < bh; ty += S) {
         const th = Math.min(S, bh - ty);
         this.drawVectors(0, ty * ry, S * rx, S * ry, S, S);
         this.blit(this.base, 0, 0, 0, ty, bw, th, true);
@@ -558,18 +640,22 @@ export class LandCover {
   /** Stage exact accepted source removals before expansion by each style pass. Casing, minimum-pixel
    * widths and railway dashes therefore agree, without erasing another source at the same pixels. */
   *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
-    const next = sourceReplacementCuts(graph, accepted), changed = new Map<string, Geo[]>();
+    const next = sourceReplacementCuts(graph, accepted), changed = new Map<string, Geo[]>(), changedNet = new Map<string, Geo[]>();
     const key = (cuts?: LineCuts) => JSON.stringify(cuts ? [...cuts] : []);
     let handedOver = false, settled = false;
     const dispose = () => {
       if (settled) return; settled = true;
-      for (const geos of changed.values()) for (const g of geos) g.geo.dispose();
+      for (const geos of [...changed.values(), ...changedNet.values()]) for (const g of geos) g.geo.dispose();
     };
+    const netLayers = this.netLayers();
     try {
       for (const layer of this.vectors.lines) {
         if (key(this.sourceCuts.get(layer.name)) === key(next.get(layer.name))) continue;
         changed.set(layer.name, yield* buildLineGeos(layer, this.vectors.chunk, CAPPED.has(layer.name), next.get(layer.name)));
+        if (this.net && netLayers.has(layer.name))
+          changedNet.set(layer.name, yield* buildLineGeos(layer, this.vectors.chunk, CAPPED.has(layer.name), next.get(layer.name), this.mapped(layer.name) ?? undefined));
       }
+      const net = this.net; // a network built while this was staged already has the old cuts: rebuild it below
       handedOver = true;
       return { dispose, commit: () => {
         if (settled) return;
@@ -585,14 +671,30 @@ export class LandCover {
             this.scene.add(mesh); return mesh;
           });
         }
+        if (this.net && this.net === net) for (const entry of this.net.passes) {
+          const geos = changedNet.get(entry.pass.layer);
+          if (!geos) continue;
+          const order = entry.meshes[0]?.renderOrder ?? NET_PASSES.indexOf(entry.pass);
+          for (const mesh of entry.meshes) { this.net.scene.remove(mesh); old.add(mesh.geometry); }
+          entry.meshes = geos.map(g => this.mesh(g, entry.mat, order, this.net!.scene));
+        } else for (const geos of changedNet.values()) for (const g of geos) g.geo.dispose();
+        const stale = this.net && this.net !== net;
         for (const geometry of old) geometry.dispose();
         this.sourceCuts = next;
+        if (stale) { this.disposeNetwork(); this.ensureNetwork(); }
         if (changed.size) { this.reset(); this.onChange?.(); }
         settled = true;
       } };
     } finally { if (!handedOver) dispose(); }
   }
 
+  private disposeNetwork() {
+    if (!this.net) return;
+    const geos = new Set<THREE.BufferGeometry>();
+    for (const entry of this.net.passes) { entry.mat.dispose(); for (const m of entry.meshes) geos.add(m.geometry); }
+    for (const g of geos) g.dispose();
+    this.net = null;
+  }
   /** the GPU lost everything (WebGL context loss): redraw, and do not trust the cached photo textures */
   invalidate() {
     this.texCache.clear();
@@ -609,6 +711,7 @@ export class LandCover {
     on = on && !!this.photoUrl;
     if (on === this.photoOn) return;
     this.photoOn = on;
+    if (on) this.ensureNetwork();
     this.uniforms.lcPhoto.value = this.showPhoto ? 1 : 0;
     this.reset();
   }

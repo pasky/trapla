@@ -15,6 +15,7 @@ import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { ProjectTransportIndex } from './core/project-network';
 import { SourceEditor } from './ui/source-editor';
+import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
 import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { DecisionList } from './ui/build-tools';
@@ -420,7 +421,7 @@ async function main() {
     hud.setRouteState(!!rd, !!r && !!rd);
     document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = store.route ? `Profile · ${store.route.name}` : 'Profile';
     if (!r || !rd) {
-      profile.clear(); if (!sourceEditor?.selected) routeCard();
+      profile.clear(store.route && !store.read() ? 'No heights yet: this change is not checked.' : ''); if (!sourceEditor?.selected) routeCard();
       view.clearDesign(activeEndpoints()); return;
     }
     revalidate(r, rd);
@@ -869,11 +870,36 @@ async function main() {
     renderRoutes: () => view.routeGeometryStats(),
     groundHeight: (x: number, y: number) => pack.terrain.heightAt(x, y),
     routeScreen: (id: RouteId, s: number) => {
-      const r = projectFull?.routes[id]?.legacy; if (!r) return null;
+      const route = projectFull?.routes[id], r = route?.legacy;
+      if (!r) { // an unaccepted proposal: its drawn reference line
+        const p = route?.surface?.points; if (!p?.length) return null;
+        const q = p.reduce((a, b) => (Math.abs(b.s - s) < Math.abs(a.s - s) ? b : a));
+        return view.project(q.x, q.y, view.drape(q.x, q.y) + 2.5);
+      }
       const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
       return view.project(r.x[i], r.y[i], r.kind[i] === KIND.tunnel ? view.drape(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5);
     },
     handledRequest: () => received,
+    /** promotable ground base roads at least minLength long, with their distance from the routes (m) */
+    baseRoads: (minLength = 600) => {
+      if (!transportIndex) return [];
+      const routes = Object.values(projectFull?.routes ?? {}).flatMap(r => r.legacy ? [r.legacy] : []);
+      return transportIndex.graph.sources.flatMap(source => {
+        const length = source.stations[source.stations.length - 1];
+        if (source.kind !== 'road' || length < minLength) return [];
+        let info; try { info = groundRoadSourceInfo(transportIndex!, source.id); } catch { return []; }
+        let clear = Infinity;
+        for (let i = 0; i < source.xy.length; i += 2) for (const r of routes) for (let k = 0; k < r.n; k += 10)
+          clear = Math.min(clear, Math.hypot(r.x[k] - source.xy[i], r.y[k] - source.xy[i + 1]));
+        const mid = transportIndex!.branches({ transportData: transportIndex!.transportData, sourceId: source.id, s0: 0, s1: length })
+          .filter(b => b.s > 50 && b.s < length - 50).map(b => b.s);
+        return [{ id: source.id, name: info.name, length, clear, branches: mid }];
+      });
+    },
+    sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
+    sourceSelection: () => sourceEditor?.selection ?? null,
+    lookAtSource: (id: string, s: number, dist = 900) => { const p = transportIndex?.position(id, s); if (p) view.lookAt(p.x, p.y, dist, 0, 55); },
+    proposalLines: () => view.proposalCount,
     setActiveRoute: switchRoute,
     projectSelection: () => structuredClone(qualifiedSelection),
     setProject: (design: ProjectDesign) => {
@@ -911,6 +937,7 @@ async function main() {
     profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
     profileFit: () => profile.fit(),
     profileView: () => profile.view,
+    profileHasRoad: () => profile.hasRoad,
     profileHover: () => profile.hover,
     profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
     bendStations: () => last && bendStations(last, store.design),

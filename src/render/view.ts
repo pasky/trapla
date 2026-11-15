@@ -81,6 +81,7 @@ export class View {
   private routeInputs = new Map<string, { result: Result; surfaces: readonly CrossingSurface[] }>();
   private polyLine: Line2 | null = null;
   private proposalLines = new Map<string, { key: string; line: Line2 }>();
+  get proposalCount() { return this.proposalLines.size; }
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
   private piMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
   private endpointMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
@@ -276,7 +277,7 @@ export class View {
     u.contour.value.w = this.renderer.getPixelRatio();
     const mat = makeTerrainMaterial(u, this.maskUniforms);
     if (this.pack.vectors) {
-      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u);
+      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u, this.pack.transport ?? null);
       lc.onChange = () => { this.dirty = true; };
       const ortho = this.pack.meta.orthophoto, [ox, oy] = this.pack.meta.origin;
       if (ortho) {
@@ -518,6 +519,22 @@ export class View {
       const line = this.makeLine(arr, null, p.active ? 5 : 3.5, { color: 0xff9f1c, opacity: 0.95, depthTest: false, dashed: true, dashSize: 10, gapSize: 6, order: 3 });
       line.name = 'proposal';
       this.world.add(line); this.proposalLines.set(p.id, { key, line });
+    }
+    this.dirty = true;
+  }
+
+  private sourceSelectionLine: Line2 | null = null;
+  /** the base-road stretch chosen with the Change road handles (display only) */
+  setSourceSelection(points: readonly { x: number; y: number }[] | null) {
+    if (this.sourceSelectionLine) {
+      this.world.remove(this.sourceSelectionLine); this.sourceSelectionLine.geometry.dispose(); this.retire(this.sourceSelectionLine.material);
+      this.sourceSelectionLine = null;
+    }
+    const arr: number[] = [];
+    for (const q of points ?? []) { const v = this.local(q.x, q.y, this.drapeHeight(q.x, q.y) + 2.5); arr.push(v.x, v.y, v.z); }
+    if (arr.length >= 6) {
+      this.sourceSelectionLine = this.makeLine(arr, null, 6, { color: 0xff9f1c, opacity: 0.8, depthTest: false, order: 3 });
+      this.sourceSelectionLine.name = 'source-selection'; this.world.add(this.sourceSelectionLine);
     }
     this.dirty = true;
   }

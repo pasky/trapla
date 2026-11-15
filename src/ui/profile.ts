@@ -129,7 +129,10 @@ export class ProfilePanel {
     this.install();
   }
 
-  clear() {
+  /** shown on an empty profile (e.g. a proposed change that has no checked heights yet) */
+  private emptyNote = '';
+  clear(note = '') {
+    this.emptyNote = note;
     this.r = null; this.preview = null; this.vpis = []; this.bends = []; this.sel = null;
     this.selected = this.selectedBend = this.pinStation = this.selCrossing = null;
     this.tip.style.display = 'none'; this.draw();
@@ -139,7 +142,7 @@ export class ProfilePanel {
     this.overrides = overrides;
     this.pins = pins;
     this.wallOverrides = walls;
-    this.r = r;
+    this.r = r; this.emptyNote = '';
     this.vpis = vpis;
     // prefix sums of the bill
     const n = r.n;
@@ -210,6 +213,8 @@ export class ProfilePanel {
 
   /** visible station range (diagnostics) */
   get view() { return { v0: this.v0, v1: this.v1 }; }
+  /** a road is drawn (false after clear()) */
+  get hasRoad() { return !!this.r; }
 
   /** the whole route is visible */
   get isWhole() { return this.whole; }
@@ -314,7 +319,10 @@ export class ProfilePanel {
     g.fillStyle = '#f7f5f0';
     g.fillRect(0, 0, W, H);
     const r = this.r;
-    if (!r) return;
+    if (!r) {
+      if (this.emptyNote) { g.fillStyle = '#667'; g.font = '13px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText(this.emptyNote, W / 2, H / 2); g.textAlign = 'start'; }
+      return;
+    }
     // visible station range and elevation range
     const i0 = Math.max(0, Math.floor(this.v0 / r.ds) - 1), i1 = Math.min(r.n - 1, Math.ceil(this.v1 / r.ds) + 1);
     let lo = Infinity, hi = -Infinity;

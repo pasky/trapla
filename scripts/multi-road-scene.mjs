@@ -15,10 +15,12 @@ try {
   browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: process.argv.includes('--gpu')
     ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
     : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+  const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const page = await context.newPage();
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('trapla.intro.v2', '1'); });
   await page.goto(`${server.resolvedUrls.local[0]}?scenario=d11`);
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('trapla.intro.v2', '1'); });
+  await page.reload();
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 120000 });
   const idle = async () => {
     await page.evaluate(() => window.trapla.whenIdle());
@@ -66,8 +68,8 @@ try {
   assert.equal(project.routes.find(r => r.id === ids.side).alignment.pis.length, 0);
   assert.equal(await page.evaluate(() => window.trapla.activeRoute()), ids.mission, 'undo does not switch the editor');
   await page.locator('#redo').click(); await idle();
-  // The page's startup hook clears only fresh contexts; remove it by reloading in a new page in the same context.
-  const next = await page.context().newPage(); await page.close();
+  // reload in a new page of the same context (same storage)
+  const next = await context.newPage(); next.on('pageerror', error => errors.push(error.message)); await page.close();
   await next.goto(`${server.resolvedUrls.local[0]}?scenario=d11`);
   await next.waitForFunction(() => !!window.trapla, null, { timeout: 120000 });
   await next.evaluate(() => window.trapla.whenIdle());

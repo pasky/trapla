@@ -62,6 +62,7 @@ export class SourceEditor {
   get choosingEnds() { return this.editing; }
   get selection() { return this.interval && { kind: 'source' as const, interval: { ...this.interval } }; }
   clear() {
+    if (this.handles.length) this.view.setSourceSelection(null);
     this.endDrag?.(); this.endDrag = null;
     this.hit = null; this.interval = null; this.editing = false;
     for (const handle of this.handles) handle.remove(); this.handles = [];
@@ -80,12 +81,16 @@ export class SourceEditor {
     this.values = { speed: this.info?.taggedSpeed?.toString() ?? '', traffic: '', heavy: '' };
     this.render();
   }
+  private name(source: TransportSource) {
+    const name = this.info?.name ?? source.tags.name ?? source.tags.ref ?? (source.kind === 'railway' ? 'Railway' : 'Road');
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
   render() {
     if (!this.hit || !this.interval) return;
     const source = this.base.source(this.hit.sourceId)!, root = this.root();
     root.replaceChildren(); root.className = 'card ctx inspector k-source';
     const header = el('div'); header.className = 'ctx-h';
-    const title = this.info?.name ?? source.tags.name ?? source.tags.ref ?? (source.kind === 'railway' ? 'Railway' : 'Road');
+    const title = this.name(source);
     const close = el('button', '✕'); close.className = 'x'; close.title = 'Close';
     close.onclick = () => { this.clear(); this.onClose?.(); };
     header.append(el('b', title), close); root.append(header);
@@ -120,7 +125,7 @@ export class SourceEditor {
         operations: { aadt: Number(this.values.traffic), heavyShare: Number(this.values.heavy) / 100, speed: Number(this.values.speed), speedPolicy: 'design' } };
       try {
         const command = promoteGroundRoad(this.base, { routeId: id, acousticSourceId: `acoustic:${crypto.randomUUID()}`,
-          interval: this.interval, specification, name: this.info.name });
+          interval: this.interval, specification, name: this.name(source) });
         this.onApply?.(command, id); this.clear();
       } catch (error) {
         console.warn('Source promotion was not applied', error);
@@ -144,7 +149,7 @@ export class SourceEditor {
           if (i === 0 && s < this.interval.s1 - 1) this.interval.s0 = s;
           if (i === 1 && s > this.interval.s0 + 1) this.interval.s1 = s;
           const length = this.root().querySelector('#source-length'); if (length) length.textContent = `${Math.round(this.interval.s1 - this.interval.s0)} m`;
-          this.position(); this.view.requestRender();
+          this.highlight(); this.position(); this.view.requestRender();
         };
         const end = () => {
           button.removeEventListener('pointermove', move); button.removeEventListener('pointerup', end); button.removeEventListener('pointercancel', end);
@@ -155,7 +160,11 @@ export class SourceEditor {
       };
       this.overlay.append(button); this.handles.push(button);
     }
-    this.position();
+    this.highlight(); this.position();
+  }
+  private highlight() {
+    if (!this.interval) return;
+    try { this.view.setSourceSelection(this.base.path(this.interval)); } catch { this.view.setSourceSelection(null); }
   }
   private position() {
     if (!this.interval) return;

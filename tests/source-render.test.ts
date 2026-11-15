@@ -106,4 +106,15 @@ describe('accepted source pavement rendering', () => {
       geo.dispose();
     }
   });
+  it('the photo overlay draws only mapped polylines, with the same accepted cuts as the map', () => {
+    // polyline 1 is not in the transport graph: it must not appear; polyline 0 keeps its accepted cut
+    const geos = finish(buildLineGeos(layer, 2500, true, new Map([[0, [[40, 60] as const]]]), new Set([0])));
+    let n = 0;
+    for (const { geo } of geos) {
+      const p = geo.getAttribute('position');
+      for (let i = 0; i < p.count; i++) { n++; expect(p.getY(i)).toBe(0); expect(p.getX(i) <= 40 || p.getX(i) >= 60).toBe(true); }
+      geo.dispose();
+    }
+    expect(n).toBeGreaterThan(0);
+  });
 });
