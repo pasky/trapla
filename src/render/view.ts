@@ -49,6 +49,13 @@ const COL = {
 };
 
 const SKY = 0xc9d6e2;
+/** camera height above the rendered ground (m; the near plane is 5 m) and the ground probed around it */
+const CAMERA_CLEARANCE = 25;
+const CAMERA_PROBE = 60;
+const CAMERA_PROBES: [number, number][] = [[0, 0], ...[0, 1, 2, 3, 4, 5, 6, 7].flatMap((k): [number, number][] => {
+  const a = (k * Math.PI) / 4;
+  return [[Math.cos(a) * CAMERA_PROBE / 2, Math.sin(a) * CAMERA_PROBE / 2], [Math.cos(a) * CAMERA_PROBE, Math.sin(a) * CAMERA_PROBE]];
+})];
 const LEGACY_ROUTE = 'legacy';
 export interface StagedRoute extends Staged { context: RouteSurfaceContext }
 export interface RenderEndpoints {
@@ -206,6 +213,7 @@ export class View {
     const loop = () => {
       requestAnimationFrame(loop);
       if (this.controls.enabled) this.controls.update();
+      if (this.keepCameraAboveGround()) this.dirty = true;
       if (this.dirty) { this.dirty = false; this.render(); }
     };
     loop();
@@ -455,6 +463,25 @@ export class View {
   }
 
   private drapeHeight(x: number, y: number) { return Math.max(this.terrain.heightAt(x, y), this.meshHeight(x, y)); }
+
+  /**
+   * The camera never goes below the ground: tilting, panning towards a hill or zooming into a slope
+   * would otherwise put it under the terrain and show the map from beneath. Raises the camera (the
+   * orbit target stays) to CAMERA_CLEARANCE above the highest rendered ground within CAMERA_PROBE m.
+   */
+  private keepCameraAboveGround(): boolean {
+    const p = this.camera.position, T = this.terrain;
+    const x = Math.min(T.width, Math.max(0, p.x + this.cx)), y = Math.min(T.height, Math.max(0, this.cy - p.z));
+    let g = -Infinity;
+    for (const [dx, dy] of CAMERA_PROBES) {
+      const sx = Math.min(T.width, Math.max(0, x + dx)), sy = Math.min(T.height, Math.max(0, y + dy));
+      g = Math.max(g, this.drapeHeight(sx, sy));
+    }
+    const min = g * this.exag + CAMERA_CLEARANCE;
+    if (!(p.y < min)) return false;
+    p.y = min;
+    return true;
+  }
   /** height that clears both the true and the rendered terrain (for draped overlays) */
   drape(x: number, y: number) { return this.drapeHeight(x, y); }
   groundHeight(x: number, y: number) { return this.terrain.heightAt(x, y); }
