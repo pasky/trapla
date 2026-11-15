@@ -89,8 +89,6 @@ async function main() {
   document.getElementById('attrib')!.title = [document.getElementById('attrib')!.textContent,
     meta.baselineNote].filter(Boolean).join(' · ');
   document.getElementById('legend-official')!.textContent = scenario.labels.official;
-  document.getElementById('legend-route')!.textContent = scenario.mode ?? 'road';
-  if (scenario.mode === 'railway') document.getElementById('legend-height')!.textContent = 'track height';
   document.getElementById('legend-official')!.parentElement!.hidden = meta.official.xy.length < 2;
 
   const presetId = scenario.presetId ?? scenario.id;
@@ -177,13 +175,22 @@ async function main() {
   };
   /** the active road's live drag price (≈), until the next full result */
   let activePreviewPrice: number | null = null;
+  /** player names of the routes; a motorway's two directions are one motorway (its forward name) */
+  const routeNames = () => {
+    const d = projectStore.snapshot.design, names = Object.fromEntries(d.routes.map(r => [r.id, r.name]));
+    for (const c of d.corridors) if (names[c.children.forward]) names[c.children.reverse] = names[c.children.forward];
+    return names;
+  };
   const projectScore = (pending: boolean) => {
     const mission = missionRouteId(), active = store.activeRouteId, alone = projectFull?.cost.alone ?? {};
-    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: active === mission ? 'Our road only' : 'This road only' }
-      : active && active in alone ? { total: alone[active], approx: false, label: active === mission ? 'Our road only' : 'This road only' }
-        : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only' } : null;
+    // "Our road only" / "This railway only": what the price shown is for, in the active line's own word
+    const word = (id: RouteId | null | undefined) => { const k = projectStore.snapshot.design.routes.find(r => r.id === id)?.kind; return k === 'railway' ? 'railway' : k === 'motorway' ? 'motorway' : 'road'; };
+    const only = (id: RouteId | null | undefined) => `${id === mission ? 'Our' : 'This'} ${word(id)} only`;
+    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: only(active) }
+      : active && active in alone ? { total: alone[active], approx: false, label: only(active) }
+        : mission && mission in alone ? { total: alone[mission], approx: false, label: only(mission) } : null;
     hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own,
-      activeRouteId: active ?? undefined, names: Object.fromEntries(projectStore.snapshot.design.routes.map(r => [r.id, r.name])),
+      activeRouteId: active ?? undefined, names: routeNames(),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
       })) });
@@ -789,9 +796,15 @@ async function main() {
   const syncDirections = () => {
     const design = projectStore.snapshot.design, route = store.route, corridor = route ? corridorOfRoute(design, route.id) : undefined;
     inspector.oneDirection = corridor?.mode === 'independent';
+    // the legend names the line being edited (a motorway built in a railway mission is a motorway)
+    const kind = route?.kind ?? scenario.mode ?? 'road';
+    document.getElementById('legend-route')!.textContent = kind;
+    document.getElementById('legend-height')!.textContent = kind === 'railway' ? 'track height' : 'road height';
     if (!corridor) { hud.setDirections(null); return; }
+    // the mission's motorway runs between the scenario's places; any other between its own start and end
+    const mission = route!.role === 'mission';
     hud.setDirections({ split: corridor.mode === 'independent', active: corridor.children.reverse === route!.id ? 'reverse' : 'forward',
-      places: { forward: scenario.labels.b, reverse: scenario.labels.a } });
+      places: mission ? { forward: scenario.labels.b, reverse: scenario.labels.a } : { forward: 'its end', reverse: 'its start' } });
   };
   /** a reroute's shape (null: its automatic path again); shaping a crossing makes it a reroute */
   const setVia = (roadId: number, via: LinkVia | null, commit: boolean, to?: number) => store.update((d) => {
@@ -833,7 +846,7 @@ async function main() {
       store.editProject(d => { for (const key of Object.keys(d)) delete (d as unknown as Record<string, unknown>)[key]; Object.assign(d, next); });
     } catch (error) { console.warn('New road was not created', error); toast('This road could not be made here.'); return; }
     switchRoute(made.activeRouteId); select(null);
-    toast('Drag the road to bend it.');
+    toast(`Drag the ${building.kind === 'road' ? 'road' : building.kind} to bend it.`);
   };
   /** the kind being built (Build menu), which decides where its ends may go */
   let building: BuildKind = registeredBuildKinds()[0];
@@ -852,7 +865,7 @@ async function main() {
     if (source?.kind === 'source' && transportIndex) return building.onSource(transportIndex, source.hit.sourceId, source.hit.s);
     if (pack.terrain.isOob(x, y)) return { ok: false, why: 'Put the end on the map.' };
     if (legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
-    return { ok: true, label: 'open ground (joins no road)', end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
+    return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
   };
   routeBar.onSelect = switchRoute;
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);

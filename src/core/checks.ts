@@ -379,7 +379,8 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
   const last = p.pts.length - 1;
   // "height point k (km …)": the points carry no numbers in the profile, the station finds them
   const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `height point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
-  const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
+  // track grades in per mille, road grades in per cent
+  const G = (g: number) => rail ? `${fmt(Math.abs(g) * 1000, 1)} ‰` : `${fmt(Math.abs(g) * 100, 1)} %`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
   const gradeRule = rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
     : `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
@@ -402,7 +403,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     cands.sort((x, y) => x.other - y.other);
     const h = Math.ceil(dz * 10 - 1e-6) / 10;
     const needL = Math.abs(b.z - a.z) / maxGradient;
-    const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${pct(maxGradient)} %; it has ${fmt(L)} m.`;
+    const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${G(maxGradient)}; it has ${fmt(L)} m.`;
     out.push({
       kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,

@@ -4,7 +4,9 @@
 import { evaluate, type Design, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { FREIGHT_TRAIN, PASSENGER_EMU, RAIL_TRAFFIC_PRIOR, type RailTrafficGroup } from './rail-noise';
 import { modeCapability } from './mode-policy';
-import { designSpeeds } from './data/norms';
+import { designSpeeds, horizontalRules, speedNorms } from './data/norms';
+import { buildAlignment } from './horizontal';
+import { ROAD_CHECKS } from './checks';
 import { RAIL_TIE_IN_M } from './data/railway';
 import type { ConnectionDesign, EndpointPair, ProjectDesign, RouteDesign, SourceInterval, SourceLocation, XYZ } from './project';
 import type { ProjectTransportIndex } from './project-network';
@@ -108,7 +110,8 @@ export function promoteGroundRailway(base: ProjectTransportIndex, input: { route
   const route: RailwayRoute = { ...fresh, acousticSourceId: input.acousticSourceId,
     ...(keep ? { specification: structuredClone(keep.specification), name: keep.name } : {}),
     source: { binding: 'resolved', intervals: [{ ...input.interval }], transferredWorkIds: [] },
-    alignment: { kind: 'pi', pis: bends(path.map(p => ({ x: p.x, y: p.y, s: p.s }))), controls: {}, vertical: { kind: 'auto', pins: [] } } };
+    alignment: { kind: 'pi', pis: fittingBends(path[0], path[path.length - 1], bends(path.map(p => ({ x: p.x, y: p.y, s: p.s }))),
+      keep ? categoryOf(keep) : 'R1', keep?.specification.designSpeed ?? 120), controls: {}, vertical: { kind: 'auto', pins: [] } } };
   const connections: ConnectionDesign[] = [];
   const connect = (id: string, s: number, location: SourceLocation, position: XYZ) => connections.push({ id, revision: 0, kind: 'continuation',
     position: { ...position }, ports: [{ kind: 'route', routeId: route.id, s }, { kind: 'source', location: { ...location } }] });
@@ -120,6 +123,20 @@ export function promoteGroundRailway(base: ProjectTransportIndex, input: { route
     connect(`connection:${route.id}:branch:${branch.nodeId}:${branch.s}:${other.sourceId}:${other.s}`, branch.s - start, other, p);
   }
   return { type: 'promote', routes: [route], connections };
+}
+
+/** The old line's bends that track curves fit between: a bend whose curve would not fit (too close to an
+ * end or to its neighbour at this speed) is left out, so a fresh rebuild starts without a geometry
+ * violation the player did not make. */
+export function fittingBends(a: { x: number; y: number }, b: { x: number; y: number }, pis: PI[], category: 'R1' | 'R2', speed: number): PI[] {
+  const out = [...pis];
+  for (let guard = 0; guard <= pis.length && out.length; guard++) {
+    const al = buildAlignment(a, b, out, horizontalRules(speed, category));
+    const bad = ROAD_CHECKS.horizontal(al, speedNorms(speed, category), { a, b, pis: out, category }).find(v => v.pi !== undefined);
+    if (!bad) break;
+    out.splice(bad.pi!, 1);
+  }
+  return out;
 }
 
 export type RailwayEvaluation = { status: 'evaluated'; result: Result; unpriced?: 'track-removal-unpriced'[] } | { status: 'incomplete'; reason: 'unsupported-policy'

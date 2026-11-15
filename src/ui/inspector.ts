@@ -220,7 +220,7 @@ export class Inspector {
     const top = topPieces(r, 5);
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${km(p.s0)}–${km(p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
-      <div class="sub hint">Drag the ${this.d && CATEGORIES[this.d.category].mode === 'railway' ? 'railway' : 'road'} to bend it. Click anything to inspect it.</div>`;
+      <div class="sub hint">Drag the ${this.d ? CATEGORIES[this.d.category].mode : 'road'} to bend it. Click anything to inspect it.</div>`;
   }
 
   // ---- a piece of road / a dragged stretch ----
