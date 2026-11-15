@@ -225,6 +225,20 @@ Also: [two roads crossing, not priced](docs/screenshots/82-two-roads-not-priced.
 [track diversion](docs/screenshots/45-crossing-diversion.png),
 [at-grade junction](docs/screenshots/46-crossing-junction.png).
 [Junction detail, with noise-wall openings](docs/screenshots/48-crossing-junction-detail.png).
+
+Model 19: a crossing's own earthworks leave other roads usable. A street joining a raised junction approach is
+raised to meet it instead of being buried under its slope:
+
+| Before (street under the slope) | After (street regraded to meet the junction) |
+|---|---|
+| ![Before](docs/screenshots/110-crossing-works-before-junction-street-tie.png) | ![After](docs/screenshots/111-crossing-works-after-junction-street-tie.png) |
+
+[Ramp to a track bridge over us, before](docs/screenshots/112-crossing-works-before-ramp-wall.png) /
+[after: the side street regraded, a retaining wall at the corner](docs/screenshots/113-crossing-works-after-ramp-wall.png);
+[demo junction, before](docs/screenshots/114-crossing-works-before-junction-street-tie-demo.png) /
+[after](docs/screenshots/115-crossing-works-after-junction-street-tie-demo.png);
+[a click on a reroute far from the crossing opens its card](docs/screenshots/116-crossing-pick-link.png).
+(`node scripts/crossing-works-shots.mjs`, `--before` on the older code.)
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
