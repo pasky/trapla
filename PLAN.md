@@ -218,6 +218,9 @@ What exists (details and commands in `README.md`):
 - Clicking any geometry a crossing owns (rebuilt stretch, reroute links, turning heads, underpass box,
   regraded side roads) opens its card, on the drawn width plus 3 px like mapped roads; elsewhere a mapped road
   keeps its base-road card.
+- Known gap: a crossed way whose cut ends stay connected over other roads is rerouted instead of closed (crossings
+  have no "closed" outcome; footprint rebuilds do). Example: the service-loop fixture's 1.4 + 1.4 km reroute
+  of a 100 m loop chord (`docs/footprint-conflicts.md` § Model 19).
 
 ### Travel-time target X and traffic Y
 

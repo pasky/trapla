@@ -164,7 +164,15 @@ best-drag/-pin/-structures/-manual move with best (+2.4–2.7 M), town-controls 
 `tests/fixtures/service-loop-design.json` changes outcome: the service-road bridge over us landed 7 m up on
 the junction with class III road 2054, which falls away at 8 % and cannot be regraded within 250 m; Auto
 now cuts and reconnects the service road (a 1.4 + 1.4 km reroute, the existing long-reroute limitation) and
-rebuilds the loop branch, instead of silently burying that junction. Random designs (24): violation counts
+rebuilds the loop branch, instead of silently burying that junction. **A designer would not reroute here; this is an engine gap:**
+service road 4826 is only a 100 m chord between two nodes that service road 4829 also joins (120 m over 4829,
+`RoadNet.networkDistance` avoiding 4826), and 4829 is rebuilt beside our earthworks anyway (3.7 M). The real
+answer is to close 4826 at our road (two short dead ends, or remove the chord) at about no cost, not 68.75 M of
+new road. Crossings have no such "closed" outcome: the footprint pass can close a loop stretch
+(`RoadRealignmentPlan.closed`), but crossings are resolved before it and cannot yet know which neighbouring
+ways survive (here 4829 survives only through its own relocation). Fix: let a severed crossed way whose cut
+ends stay connected over other surviving roads be closed (with the footprint pass's closure rules), resolving
+crossings and relocations together. Random designs (24): violation counts
 unchanged, totals −1.3 to +3.8 M (the decrease: a regraded side road replaces a costlier rebuild beside our earthworks).
 
 Not checked yet: buildings, railways and water under a crossing's slopes; second-order effects of a tie's own
