@@ -1,10 +1,11 @@
+import { RAILWAY_EVIDENCE, railRouteBasePerKm, SPOZES, TRACK_CENTRES_M } from './railway';
 // Route categories as data rows (policy rows): the road Type list offers the single-carriageway S rows;
 // the D 27.5 row is the paired motorway corridor (mode 'motorway'), never offered as a road width.
 //
 // Sources: SFDI SPK CN 2026 (research/data/spk-cn-2026-oceneni.csv), "defined standard" column, CZK
 // excl. VAT, 2026 price level. ČSN 73 6101 (2018) design speeds per research/00 §4.1.
 
-export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'D27.5' | 'D27.5-1';
+export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'D27.5' | 'D27.5-1' | 'R1' | 'R2';
 export type TerrainClass = 'hilly' | 'mountainous';
 
 /**
@@ -30,7 +31,7 @@ export interface Category {
   /** offered in the road Type list (single-carriageway roads only) */
   enabled: boolean;
   /** infrastructure kind: decides norms, junction rules, noise source and drawing (core/mode-policy.ts) */
-  mode: 'road' | 'motorway';
+  mode: 'road' | 'motorway' | 'railway';
   /** No at-grade junction or access anywhere along the route: every crossed road is grade-separated or
    * rerouted to such a crossing, never to the route's ends (motorway: ČSN 73 6101, research/08). */
   gradeSeparated?: boolean;
@@ -41,7 +42,7 @@ export interface Category {
   /** design speeds the player may pick, km/h (base speed lowered by 10 or 20 where justified) */
   speeds: number[];
   /** road class used for the earthworks allowance included in the norm */
-  roadClass: 'I' | 'II' | 'motorway' | 'motorway-carriageway';
+  roadClass: 'I' | 'II' | 'motorway' | 'motorway-carriageway' | 'rail';
   /** SPK CN road price per km, CZK. 'hilly' = flat+hilly rows (…NER), 'mountainous' = …NEH */
   normPerKm: Record<TerrainClass, number>;
   normCodes: Record<TerrainClass, string>;
@@ -54,6 +55,12 @@ export interface Category {
   section?: CrossSection;
   /** two carriageways about the spine (motorway): see data/motorway.ts D275_SECTION */
   paired?: boolean;
+  /** railway: number of tracks (drawn and priced per track) */
+  tracks?: 1 | 2;
+  /** Price-book markups by kind of work, replacing SPK's "other objects" surcharge (railway: SPOŽES P1). */
+  markup?: { base: number; earth: number; bridge: number; tunnel: number };
+  /** Own tunnel price per km of tube (railway: SPOŽES J rows), replacing the SPK road tube rows. */
+  tunnelPerKm?: { rural: number; urban: number };
   /** one carriageway of a split motorway; its axis is the middle of its half of the formation, the
    * median lies on its left (the travel direction's inside) */
   carriageway?: boolean;
@@ -110,6 +117,28 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     normPerKm: { hilly: 0.6 * 187_632_000, mountainous: 0.6 * 214_512_000 },
     normCodes: { hilly: '60 % × A.1.D.27,5.NER', mountainous: '60 % × A.1.D.27,5.NEH' },
     bridgePerKm: 1_495_178_000 / 2, bridgeCode: '½ × A.2.D.27,5.N', tunnelTubes: 1,
+  },
+  // New electrified (25 kV) conventional line, mixed traffic, ≤ 160 km/h. Formation: SŽDC S3 X fig. 4
+  // uncanted single-track half-width 3.1 m (research/23); double track adds the PROVISIONAL 4.0 m track
+  // centres (data/railway.ts). Base per route-km and structures: SPOŽES 2026 items (data/railway.ts);
+  // bridge = H02 per m² over the formation width (PROVISIONAL deck width); double track: one 2-track tube.
+  'R1': {
+    id: 'R1', mode: 'railway', label: 'Single-track railway', enabled: false, crownWidth: 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM,
+    tracks: 1, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: 0.04, mountainous: 0.04 },
+    normPerKm: { hilly: railRouteBasePerKm(1), mountainous: railRouteBasePerKm(1) },
+    normCodes: { hilly: 'SPOŽES 2026', mountainous: 'SPOŽES 2026' },
+    bridgePerKm: SPOZES.bridgeLongPerM2 * 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM * 1000, bridgeCode: 'SPOŽES H02', tunnelTubes: 1,
+    tunnelPerKm: { rural: SPOZES.tunnelSinglePerKm, urban: SPOZES.tunnelSingleUrbanPerKm },
+    markup: { base: 0, earth: SPOZES.markup.substructure, bridge: SPOZES.markup.bridges, tunnel: SPOZES.markup.tunnels },
+  },
+  'R2': {
+    id: 'R2', mode: 'railway', label: 'Double-track railway', enabled: false, crownWidth: 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM + TRACK_CENTRES_M,
+    tracks: 2, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: 0.04, mountainous: 0.04 },
+    normPerKm: { hilly: railRouteBasePerKm(2), mountainous: railRouteBasePerKm(2) },
+    normCodes: { hilly: 'SPOŽES 2026', mountainous: 'SPOŽES 2026' },
+    bridgePerKm: SPOZES.bridgeLongPerM2 * (2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM + TRACK_CENTRES_M) * 1000, bridgeCode: 'SPOŽES H02', tunnelTubes: 1,
+    tunnelPerKm: { rural: SPOZES.tunnelDoublePerKm, urban: SPOZES.tunnelDoubleUrbanPerKm },
+    markup: { base: 0, earth: SPOZES.markup.substructure, bridge: SPOZES.markup.bridges, tunnel: SPOZES.markup.tunnels },
   },
 };
 

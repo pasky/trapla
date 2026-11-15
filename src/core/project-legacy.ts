@@ -3,6 +3,7 @@ import type { Design, EvalContext } from './evaluate';
 import { NOISE } from './data/urban';
 import type { EndpointPair, MissionRequirements, ProjectDesign, RoadOperations, RouteDesign } from './project';
 import { assertProjectDesign } from './project-validation';
+import { railwayDesign, replaceRailwayFromDesign } from './project-railway';
 import { carriagewayDesign, corridorDesign, corridorOfRoute, replaceCarriagewayFromDesign, replaceCorridorFromDesign } from './project-motorway';
 
 export interface LegacyProjectContext {
@@ -68,6 +69,7 @@ export function legacyDesignForRoute(project: ProjectDesign, routeId: string): D
   }
   // A separate direction of a split motorway has its own bends and heights.
   if (r?.kind === 'motorway' && r.alignment.kind === 'pi') return carriagewayDesign(project, r);
+  if (r?.kind === 'railway' && r.alignment.kind === 'pi') return railwayDesign(project, r);
   if (!r || r.kind !== 'road' || r.specification.policy !== 'legacy-road' || r.specification.crossSection === 'existing'
     || r.alignment.kind !== 'pi' || !['auto', 'manual'].includes(r.alignment.vertical.kind)) throw new Error('Route needs a non-legacy kernel');
   const a = r.alignment, v = a.vertical;
@@ -90,6 +92,11 @@ export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, 
     const corridor = corridorOfRoute(project, routeId);
     if (!corridor) throw new Error('Unknown corridor');
     const next = replaceCorridorFromDesign(project, corridor.id, design);
+    assertProjectDesign(next);
+    return next;
+  }
+  if (old?.kind === 'railway' && old.alignment.kind === 'pi') {
+    const next = replaceRailwayFromDesign(project, routeId, design);
     assertProjectDesign(next);
     return next;
   }

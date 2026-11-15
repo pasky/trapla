@@ -8,6 +8,7 @@ import { routeContacts, screenIndependence, type RouteContact } from './project-
 import { evaluateProjectRoad } from './project-road';
 import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
+import { evaluateProjectRailway, railwayPendingIssues, type RailwayEvaluation } from './project-railway';
 import { corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 
@@ -18,6 +19,7 @@ const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: {
     rule: 'Engine limit: this foundation does not yet check shared construction, connections and combined noise for this design.' } });
 function crownOf(route: RouteDesign): number {
   if (route.kind === 'motorway') return CATEGORIES[MOTORWAY_CATEGORY].crownWidth;
+  if (route.kind === 'railway') return CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth;
   return route.kind === 'road' && route.specification.crossSection !== 'existing' ? CATEGORIES[route.specification.crossSection].crownWidth : 0;
 }
 function roadSurface(route: RouteDesign, result: Result): TransportSurface {
@@ -59,14 +61,15 @@ type CorridorCache = Map<string, CorridorEvaluation>;
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
   preview = false, materialValue?: number, corridors: CorridorCache = new Map()): { route: RouteResult; issue?: ProjectIssue } {
   const corridor = route.kind === 'motorway' ? corridorOfRoute(snapshot.design, route.id) : undefined;
-  let evaluated: CorridorEvaluation | ReturnType<typeof evaluateProjectRoad>;
+  let evaluated: CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
   if (corridor) {
     let cached = corridors.get(corridor.id);
     // A drag preview of one separate direction evaluates only that direction.
     if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(ctx.legacy, snapshot.design, corridor.id, ctx.environment.objectData,
       { preview, materialValue, ...(preview ? { only: route.id } : {}) }));
     evaluated = cached;
-  } else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
+  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, { preview, materialValue });
+  else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
   return { route: { routeId: route.id, revision: route.revision,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
@@ -182,6 +185,11 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const ledger = evaluation.ledger;
     unit.total -= ledger.credit; unit.valid &&= ledger.violations.length === 0;
     unit.issues.push(...routeIssues(unit.parts[0].route, { violations: ledger.violations } as Result));
+  }
+  // A railway is engineered and billed, but its noise and freight grade cannot be checked yet.
+  for (const route of design.routes) if (route.kind === 'railway' && result.routes[route.id].legacy) {
+    result.issues.push(...railwayPendingIssues(route.id));
+    if (!result.cost.unpriced.some(u => u.routeId === route.id)) result.cost.unpriced.push({ routeId: route.id, reason: 'railway-checks-pending' });
   }
   // Keep each road's own bill and problems visible even while the project cannot be priced.
   for (const unit of priced) for (const { route, legacy } of unit.parts) defineRoute(result.cost.alone, route.id, legacy.cost.total);

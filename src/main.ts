@@ -468,8 +468,9 @@ async function main() {
     for (const route of projectStore.snapshot.design.routes) {
       const r = result.routes[route.id]?.legacy;
       const splitDirection = route.kind === 'motorway' && route.alignment.kind === 'pi';
-      if (!r || (route.kind !== 'road' && !splitDirection)) continue;
-      const crown = route.kind !== 'road' ? CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth
+      if (!r || (route.kind !== 'road' && route.kind !== 'railway' && !splitDirection)) continue;
+      const crown = route.kind === 'railway' ? CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth
+        : route.kind !== 'road' ? CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth
         : route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
       const controls = route.alignment.kind === 'corridor' ? {} : route.alignment.controls;
       const entry = otherExtras.get(route.id);
@@ -541,6 +542,7 @@ async function main() {
     const inputs = projectStore.snapshot.design.routes.flatMap(route => {
       const legacy = result.routes[route.id]?.legacy;
       if (!legacy) return [];
+      if (route.kind === 'railway') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth, buildingMarkers: result.complete }];
       // A paired motorway is ONE body drawn once (its forward direction carries the shared result).
       if (route.kind === 'motorway') {
         // split: each direction is its own body

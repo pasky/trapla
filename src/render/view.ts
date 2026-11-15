@@ -22,8 +22,9 @@ import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
 import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
-import { CARRIAGEWAY_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
+import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
 import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
+import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
 import { CATEGORIES } from '../core/data/categories';
@@ -82,6 +83,7 @@ function sectionIndex(crownWidth: number) {
   const cat = Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth);
   if (cat?.paired) return PAIRED_SECTION;
   if (cat?.carriageway) return CARRIAGEWAY_SECTION;
+  if (cat?.mode === 'railway') return cat.tracks === 2 ? RAIL2_SECTION : RAIL_SECTION;
   return Math.max(0, SECTIONS.indexOf(cat?.section));
 }
 
@@ -152,6 +154,7 @@ export class View {
     if (dash) u.roadDash.value.set(dash.dash, dash.gap);
     u.roadPaired.value.set(D275_SECTION.median / 2, D275_SECTION.innerPavedShoulder, D275_SECTION.laneWidth, D275_SECTION.outerPavedShoulder);
     u.roadCarriageway.value = CATEGORIES['D27.5-1'].crownWidth / 2;
+    u.roadRail.value.set(1, TRACK_CENTRES_M, RAILWAY_EVIDENCE.ballastTopHalfWidthM, (RAILWAY_EVIDENCE.standardGaugeMm + 72) / 2000);
     u.roadPairedLines.value.set(MOTORWAY_MARKINGS.edgeLine, MOTORWAY_MARKINGS.laneLine, MOTORWAY_MARKINGS.dash, MOTORWAY_MARKINGS.gap);
     return u;
   })();

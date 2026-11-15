@@ -8,7 +8,7 @@ import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
 import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
-import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
+import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
 import { DIRECTIONS_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
@@ -329,11 +329,11 @@ export class Hud {
     const catSelect = this.$<HTMLSelectElement>('cat'), speedSelect = this.$<HTMLSelectElement>('speed');
     if (key !== this.optionsFor) {
       this.optionsFor = key;
-      const types = cat.mode === 'road' ? PLAYABLE_CATEGORIES : [d.category];
+      const types: CategoryId[] = cat.mode === 'road' ? PLAYABLE_CATEGORIES : cat.mode === 'railway' ? ['R1', 'R2'] : [d.category];
       catSelect.innerHTML = types.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('');
       catSelect.disabled = types.length < 2;
       speedSelect.innerHTML = speeds.map((s) => `<option value="${s}">${s} km/h</option>`).join('');
-      this.$('design-h').textContent = cat.mode === 'motorway' ? 'Motorway' : 'Road';
+      this.$('design-h').textContent = cat.mode === 'motorway' ? 'Motorway' : cat.mode === 'railway' ? 'Railway' : 'Road';
     }
     catSelect.value = d.category;
     speedSelect.value = String(d.speed);

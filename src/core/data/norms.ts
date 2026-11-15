@@ -41,9 +41,27 @@ export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
   110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 10000, minSagRadius: 5000 },
 };
 
-/** Norm table for a category: motorway rows are separate (never borrowed from the 90 km/h road rows). */
+/** Railway (new conventional mixed line, ≤ 160 km/h), PROVISIONAL older teaching values (research/23, /30;
+ * current ČSN 73 6360-1 tables not public):
+ * - min radius from the cant envelope: R ≥ 11.8·V² / (D + I) with ordinary cant D 150 mm and deficiency
+ *   I 80 mm (VUT 2009 pp. 4, 9); a 100 km/h freight train then stays within the 80 mm excess (p. 7);
+ * - easing curve = linear cant ramp n = 10·V at the full 150 mm: L = 10·V·150/1000 (p. 14), always needed;
+ * - vertical rounding: max(2,000 m, 0.4·V²) (Plášek, Úvod do železničních staveb, 2009, p. 28) for crests
+ *   and dips. Train noise and the freight ruling gradient have no sourced Czech values: not checked. */
+const railNorms = (v: number): SpeedNorms => {
+  const rv = Math.max(2000, Math.ceil(0.4 * v * v / 100) * 100);
+  return { speed: v, minRadius: Math.ceil(11.8 * v * v / (150 + 80)), noSuperelevationRadius: Infinity,
+    minTransition: 10 * v * 150 / 1000, minCrestRadius: rv, minSagRadius: rv };
+};
+export const RAIL_SPEED_NORMS: Record<number, SpeedNorms> = { 160: railNorms(160), 140: railNorms(140), 120: railNorms(120) };
+/** PROVISIONAL: the teaching source's general ceiling "nemá přesáhnout 40 ‰" (Plášek 2009 p. 27), NOT
+ * a mixed-traffic ruling gradient (unknown, so railway designs are not scored). */
+export const RAIL_MAX_GRADIENT = 0.04;
+
+/** Norm table for a category: motorway and railway rows are separate (never borrowed from road rows). */
 function normTable(category?: CategoryId): Record<number, SpeedNorms> {
-  return category && CATEGORIES[category].mode === 'motorway' ? MOTORWAY_SPEED_NORMS : SPEED_NORMS;
+  const mode = category ? CATEGORIES[category].mode : 'road';
+  return mode === 'motorway' ? MOTORWAY_SPEED_NORMS : mode === 'railway' ? RAIL_SPEED_NORMS : SPEED_NORMS;
 }
 export function speedNorms(speed: number, category?: CategoryId): SpeedNorms {
   const n = normTable(category)[speed];
@@ -84,7 +102,11 @@ export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
 
 /** Everything the horizontal geometry and its checks need for a design speed. */
 export function horizontalRules(speed: number, category?: CategoryId): HorizontalRules {
-  const n = speedNorms(speed, category), h = HORIZONTAL_NORMS[speed];
+  const n = speedNorms(speed, category);
+  // Track: every curve gets its cant ramp (no omission threshold); compound ratio as for roads (PROVISIONAL).
+  if (category && CATEGORIES[category].mode === 'railway')
+    return { minRadius: n.minRadius, transition: n.minTransition, plainRadius: Infinity, compoundRatio: 2, reverseStraight: 0 };
+  const h = HORIZONTAL_NORMS[speed];
   if (!h) throw new Error(`no horizontal rules for design speed ${speed}`);
   return {
     minRadius: n.minRadius,

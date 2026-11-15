@@ -94,9 +94,13 @@ export interface TerrainUniforms {
   roadPairedLines: { value: THREE.Vector4 };
   /** half-width of one direction's own formation (split motorway), m */
   roadCarriageway: { value: number };
+  /** railway: (on), track-centre distance, ballast top half-width, half the rail spacing (m) */
+  roadRail: { value: THREE.Vector4 };
 }
 /** `roadSections` slot reserved for the paired motorway cross-section (two carriageways and a median). */
 export const PAIRED_SECTION = ROAD_SECTIONS - 1;
+/** Slots of a railway formation (single / double track): ballast beds, sleepers and rails (`roadRail`). */
+export const RAIL_SECTION = ROAD_SECTIONS - 3, RAIL2_SECTION = ROAD_SECTIONS - 4;
 /** Slot of one direction of a split motorway: the same paint, the median on its left (travel inside). */
 export const CARRIAGEWAY_SECTION = ROAD_SECTIONS - 2;
 
@@ -122,6 +126,7 @@ export function terrainUniforms(): TerrainUniforms {
     roadPaired: { value: new THREE.Vector4(0, 0, 0, 0) },
     roadPairedLines: { value: new THREE.Vector4(0, 0, 1, 1) },
     roadCarriageway: { value: 0 },
+    roadRail: { value: new THREE.Vector4(0, 0, 0, 0) },
   };
 }
 
@@ -355,6 +360,7 @@ uniform vec2 roadDash;
 uniform vec4 roadPaired;
 uniform vec4 roadPairedLines;
 uniform float roadCarriageway;
+uniform vec4 roadRail;
 // offset from the motorway's centre line: paired sections are symmetric about it, a split direction's
 // axis lies roadCarriageway to the right of it (geo.x left-positive, the median on the left)
 float rdSpine(int k, float gx) { return k == ${ROAD_SECTIONS - 1} ? abs(gx) : roadCarriageway - gx; }
@@ -383,7 +389,19 @@ vec3 roadAlbedo(vec3 p, vec3 geo, float fw, float fx, float fs, float bad) {
   float x = abs(geo.x), lane = roadSection.x, paved = roadSection.y;
   float fine = ewOctave(p + 11.1, 0.45, fw), mid = ewOctave(p + 3.7, 2.3, fw), big = ewOctave(p, 9.0, fw);
   vec3 col = vec3(0.33, 0.33, 0.34) * (1.0 + 0.10 * big + 0.07 * mid + 0.09 * fine);
-  if (k >= ${ROAD_SECTIONS - 2} && roadPaired.z > 0.0) {
+  if ((k == ${ROAD_SECTIONS - 3} || k == ${ROAD_SECTIONS - 4}) && roadRail.x > 0.0) {
+    // railway: gravel walkway shoulders, ballast bed per track, concrete sleepers every 0.6 m, two rails
+    float c = k == ${ROAD_SECTIONS - 4} ? 0.5 * roadRail.y : 0.0, u = abs(abs(geo.x) - c);
+    vec3 walk = mix(vec3(0.50, 0.46, 0.40), vec3(0.44, 0.47, 0.36), smoothstep(-0.2, 0.3, big + mid)) * (1.0 + 0.15 * fine);
+    vec3 ballast = vec3(0.47, 0.45, 0.43) * (1.0 + 0.25 * fine + 0.08 * mid);
+    col = mix(walk, ballast, rdCover(u, -1.0, roadRail.z, fx));
+    float sleeper = rdCover(u, -1.0, 1.3, fx) * rdDashes(geo.z, 0.3, 0.6, fs);
+    col = mix(col, vec3(0.62, 0.61, 0.58), sleeper * 0.9);
+    float rail = rdCover(abs(u - roadRail.w), 0.0, 0.035, fx);
+    col = mix(col, vec3(0.30, 0.29, 0.28), rdCover(abs(u - roadRail.w), 0.0, 0.08, fx));
+    col = mix(col, vec3(0.80, 0.80, 0.82), rail * 0.8);
+    if (bridge > 0.5) col = mix(col, vec3(0.70, 0.69, 0.66) * (1.0 + 0.05 * mid), rdCover(abs(geo.x), c + roadRail.z + 0.6, 1e3, fx));
+  } else if (k >= ${ROAD_SECTIONS - 2} && roadPaired.z > 0.0) {
     // two carriageways about the spine: median (grass, concrete barrier), inner shoulder, two lanes, hard shoulder, verge
     x = rdSpine(k, geo.x);
     float m = roadPaired.x, l0 = m + roadPaired.y, l1 = l0 + 2.0 * roadPaired.z, paved = l1 + roadPaired.w;
@@ -436,6 +454,7 @@ export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLamb
     shader.uniforms.roadPaired = u.roadPaired;
     shader.uniforms.roadPairedLines = u.roadPairedLines;
     shader.uniforms.roadCarriageway = u.roadCarriageway;
+    shader.uniforms.roadRail = u.roadRail;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', /* glsl */ `#include <common>
         attribute float elev;

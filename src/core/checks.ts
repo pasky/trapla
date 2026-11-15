@@ -80,7 +80,7 @@ export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: Categ
 
 export interface CheckFamily {
   horizontal(al: Alignment, norms: SpeedNorms, input?: HorizontalInput): Violation[];
-  vertical(p: Profile, norms: SpeedNorms, maxGradient: number): Violation[];
+  vertical(p: Profile, norms: SpeedNorms, maxGradient: number, rail?: boolean): Violation[];
 }
 
 const fmt = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -148,13 +148,18 @@ const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i)
 const R = (r: number) => `R ${fmt(r)} m`;
 const MAX_RADIUS_SEARCHES = 4;
 
+/** Source line for railway geometry rules: older teaching values, not the current norm (research/23, /30). */
+export const RAIL_NORM = 'ČSN 73 6360-1 as taught at VUT (2009 lectures, provisional)';
 export function horizontalViolations(al: Alignment, speed: number, input?: HorizontalInput): Violation[] {
   const out: Violation[] = [];
+  const rail = !!input?.category && CATEGORIES[input.category].mode === 'railway';
   const RR = al.rules, lt = RR.transition, tol = 1e-6;
   const plain = Math.ceil(RR.plainRadius);
   const rules = {
-    minRadius: `ČSN 73 6101: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
-    easing: `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
+    minRadius: rail ? `${RAIL_NORM}: at ${speed} km/h a curve needs a radius of at least ${fmt(RR.minRadius)} m (150 mm cant, 80 mm cant deficiency)`
+      : `ČSN 73 6101: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
+    easing: rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
+      : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
     reverse: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
     compound: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`,
     uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
@@ -369,14 +374,15 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
 
 // ---- vertical (roads) ----------------------------------------------------------------------------
 
-export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number): Violation[] {
+export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number, rail = false): Violation[] {
   const out: Violation[] = [];
   const last = p.pts.length - 1;
   // "height point k (km …)": the points carry no numbers in the profile, the station finds them
   const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `height point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
   const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
-  const gradeRule = `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
+  const gradeRule = rail ? `Plášek, VUT 2009: a railway gradient should not exceed ${pct(maxGradient)} % (general ceiling, provisional; freight trains need less)`
+    : `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
   for (let i = 0; i < p.grades.length; i++) {
     const g = p.grades[i];
     if (Math.abs(g) <= maxGradient + 1e-6) continue;
@@ -418,7 +424,8 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
         title: `${word} too sharp`,
         fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to ≥ ${fmt(min)} m`,
         detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
-        basis: 'norm', rule: `ČSN 73 6101 (older edition, provisional): ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
+        basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
+          : `ČSN 73 6101 (older edition, provisional): ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
       });
     }
     if (c.lenEff < c.len - 1e-3) {
@@ -451,8 +458,8 @@ export const ROAD_CHECKS: CheckFamily = {
   horizontal(al, norms, input) {
     return horizontalViolations(al, norms.speed, input);
   },
-  vertical(p, norms, maxGradient) {
-    return verticalViolations(p, norms, maxGradient);
+  vertical(p, norms, maxGradient, rail) {
+    return verticalViolations(p, norms, maxGradient, rail);
   },
 };
 
