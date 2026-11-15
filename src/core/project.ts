@@ -244,6 +244,11 @@ export interface ProjectCost {
   total: number | null;
   routes: Record<RouteId, number>; shared: number;
   materialBalance: 'per-route';
+  /** Each evaluated road's OWN bill against the unchanged existing network, for display only. Never add
+   * these up: only `total` (set when the whole project was priced together) is a project price. */
+  alone: Record<RouteId, number>;
+  /** Road changes not covered by a project price yet. Non-empty ⇒ total === null, no verdict, no best. */
+  unpriced: { routeId: RouteId; reason: string }[];
 }
 export interface ProjectBuildingOutcome {
   buildingIndex: number; action: 'retain' | 'demolish' | 'buy';

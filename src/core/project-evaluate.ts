@@ -3,7 +3,8 @@
 import { CATEGORIES } from './data/categories';
 import { NOISE } from './data/urban';
 import type { EvalContext, Result } from './evaluate';
-import type { ProjectEnvironment, ProjectIssue, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
+import type { ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectReceiver, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
+import { screenIndependence } from './project-ledger';
 import { evaluateProjectRoad } from './project-road';
 import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
@@ -63,45 +64,24 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
   return routeProposal(ctx, snapshot, route, true, materialValue).route;
 }
 
-export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapshot): ProjectResult {
-  assertProjectDesign(snapshot.design);
-  const result: ProjectResult = { epoch: snapshot.epoch, revision: snapshot.revision, routes: {}, works: { items: [] },
-    cost: { total: null, routes: {}, shared: 0, materialBalance: 'per-route' }, issues: [], acceptedReplacements: [], acceptedRenderReplacements: [],
-    buildings: [], receivers: [], complete: false, valid: false,
-    acousticScreen: { bounds: [], omittedDayEnergyUpperBound: Infinity, omittedNightEnergyUpperBound: Infinity, complete: false } };
-  for (const route of snapshot.design.routes) {
-    const proposal = routeProposal(ctx, snapshot, route);
-    // Define arbitrary stable IDs safely, including object-prototype names.
-    Object.defineProperty(result.routes, route.id, { value: proposal.route, enumerable: true, configurable: true, writable: true });
-    if (proposal.issue) result.issues.push(proposal.issue);
-  }
-  const route = snapshot.design.routes[0], r = route ? result.routes[route.id]?.legacy : undefined;
-  const legacyOnly = snapshot.design.routes.length === 1 && route.role === 'mission' && !route.source
-    && snapshot.design.corridors.length === 0 && snapshot.design.connections.length === 0 && !!r && result.issues.length === 0;
-  if (!legacyOnly || !r || route.kind !== 'road') {
-    if (!result.issues.length) result.issues.push(issue(route?.id ?? '', 'network-accounting-pending'));
-    return result;
-  }
-  // Compatibility facade only. There is exactly one kernel bill and one physical source;
-  // this branch is NEVER used to add separate route bills or acquire a building twice.
-  const rr = result.routes[route.id];
-  rr.complete = true; rr.valid = r.valid; rr.accepted = r.valid; rr.attributedCost = r.cost.total;
-  result.complete = true; result.valid = r.valid;
-  result.cost.total = r.cost.total;
-  Object.defineProperty(result.cost.routes, route.id, { value: r.cost.total, enumerable: true, configurable: true, writable: true });
-  result.issues = r.violations.map(v => ({ code: v.kind, blocking: 'invalid', scope: { routeIds: [route.id] },
-    locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
-    violation: { kind: v.kind, title: v.title, fix: v.fix, basis: v.basis, rule: v.rule, ...(v.detail ? { detail: v.detail } : {}) } }));
-  result.buildings = [...r.demolished.map(b => ({ buildingIndex: b.j, action: 'demolish' as const, cost: b.cost })),
+const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
+  // Define arbitrary stable IDs safely, including object-prototype names.
+  Object.defineProperty(record, id, { value, enumerable: true, configurable: true, writable: true });
+const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', scope: { routeIds: [route.id] },
+  locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
+  violation: { kind: v.kind, title: v.title, fix: v.fix, basis: v.basis, rule: v.rule, ...(v.detail ? { detail: v.detail } : {}) } }));
+function routeOutcome(ctx: ProjectEvalContext, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
+  const buildings = [...r.demolished.map(b => ({ buildingIndex: b.j, action: 'demolish' as const, cost: b.cost })),
     ...r.boughtOut.map(b => ({ buildingIndex: b.j, action: 'buy' as const, cost: b.cost })),
     ...r.kept.map(b => ({ buildingIndex: b.j, action: 'retain' as const, cost: 0 }))];
   // Road periods share propagation/attenuation; recover their absolute levels from the legacy
   // controlling excess and fixed source offset. No multi-source inference is made from excess.
-  const op = route.specification.operations, source = noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare });
-  const levels = (excess: number) => Number.isFinite(source.excessDb) ? {
+  const op = route.specification.kind === 'road' ? route.specification.operations : null;
+  const source = op ? noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare }) : null;
+  const levels = (excess: number) => source && Number.isFinite(source.excessDb) ? {
     day: source.dayDb - source.excessDb + excess, night: source.nightDb - source.excessDb + excess,
   } : { day: -Infinity, night: -Infinity };
-  result.receivers = r.noise.receivers.map(receiver => {
+  const receivers = r.noise.receivers.map(receiver => {
     const raw = levels(receiver.raw), built = levels(receiver.mitigated);
     const height = NOISE.receiverHeight + ((ctx.legacy.buildings?.levels[receiver.j] ?? 1) - 1) * NOISE.storeyHeight;
     return { buildingIndex: receiver.j, height, contributions: [{ sourceId: route.acousticSourceId, routeId: route.id,
@@ -109,9 +89,96 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
       dayDb: built.day, nightDb: built.night, dayLimit: NOISE.limitDayDb, nightLimit: NOISE.limitNightDb,
       action: receiver.status === 'bought' ? 'buy' as const : 'retain' as const };
   });
-  // Legacy's all-height screen excludes only sub-limit receivers. One physical source means
-  // that bound is sufficient; it is NOT a valid aggregate screen for two or more sources.
-  result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: 10 ** (NOISE.limitDayDb / 10),
-    omittedNightEnergyUpperBound: 10 ** (NOISE.limitNightDb / 10), complete: true };
+  return { buildings, receivers };
+}
+const interactionIssue = (routeIds: string[], code: string, buildingIndex?: number): ProjectIssue => ({ code, blocking: 'incomplete',
+  scope: { routeIds, ...(buildingIndex === undefined ? {} : { buildingIndex }) }, locations: [],
+  violation: { kind: 'crossing', basis: 'engine', title: 'These roads affect each other',
+    fix: 'Move them further apart to price them together',
+    rule: 'Engine limit: roads are priced together only when they share no land, houses, noise or existing road; checking them jointly is not finished.' } });
+
+export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapshot): ProjectResult {
+  assertProjectDesign(snapshot.design);
+  const design = snapshot.design;
+  const result: ProjectResult = { epoch: snapshot.epoch, revision: snapshot.revision, routes: {}, works: { items: [] },
+    cost: { total: null, routes: {}, shared: 0, materialBalance: 'per-route', alone: {}, unpriced: [] }, issues: [],
+    acceptedReplacements: [], acceptedRenderReplacements: [], buildings: [], receivers: [], complete: false, valid: false,
+    acousticScreen: { bounds: [], omittedDayEnergyUpperBound: Infinity, omittedNightEnergyUpperBound: Infinity, complete: false } };
+  const priced: { route: RouteDesign; legacy: Result }[] = [];
+  for (const route of design.routes) {
+    const proposal = routeProposal(ctx, snapshot, route);
+    defineRoute(result.routes, route.id, proposal.route);
+    if (proposal.issue) { result.issues.push(proposal.issue); result.cost.unpriced.push({ routeId: route.id, reason: proposal.issue.code }); }
+    else if (proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
+  }
+  // Keep each road's own bill and problems visible even while the project cannot be priced.
+  for (const { route, legacy } of priced) defineRoute(result.cost.alone, route.id, legacy.cost.total);
+  const unprice = (routeIds: string[], reason: string) => {
+    for (const routeId of routeIds) if (!result.cost.unpriced.some(u => u.routeId === routeId)) result.cost.unpriced.push({ routeId, reason });
+  };
+  const missionRoutes = design.routes.filter(r => r.role === 'mission');
+  if (design.mission.connections.length && missionRoutes.length !== 1) {
+    result.issues.push(issue(missionRoutes[0]?.id ?? '', 'mission-needs-network'));
+    unprice(missionRoutes.map(r => r.id), 'mission-needs-network');
+  }
+  // Joined roads share a junction nobody has checked yet.
+  const joined = new Set<string>();
+  for (const c of design.connections) for (const p of c.ports) if (p.kind === 'route') joined.add(p.routeId);
+  for (const r of design.routes) for (const e of [r.endpoints.a, r.endpoints.b]) if (e.anchor.kind === 'route') joined.add(r.id).add(e.anchor.routeId);
+  if (joined.size) { result.issues.push(issue([...joined][0], 'connection-pending')); unprice([...joined], 'connection-pending'); }
+  if (design.corridors.length) unprice(design.corridors.flatMap(c => [c.children.forward, c.children.reverse]), 'unsupported-mode');
+  if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
+  const finish = () => {
+    for (const { route, legacy } of priced) result.issues.push(...routeIssues(route, legacy));
+    return result;
+  };
+  if (result.cost.unpriced.length || result.issues.length) return finish();
+  if (priced.length === 1) {
+    // Compatibility facade. One kernel bill and one physical source; never several bills added up.
+    const { route, legacy: r } = priced[0], rr = result.routes[route.id];
+    rr.complete = true; rr.valid = r.valid; rr.accepted = r.valid; rr.attributedCost = r.cost.total;
+    result.complete = true; result.valid = r.valid; result.cost.total = r.cost.total;
+    defineRoute(result.cost.routes, route.id, r.cost.total);
+    result.issues = routeIssues(route, r);
+    ({ buildings: result.buildings, receivers: result.receivers } = routeOutcome(ctx, route, r));
+    // Legacy's all-height screen excludes only sub-limit receivers. One physical source means
+    // that bound is sufficient; it is NOT a valid aggregate screen for two or more sources.
+    result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: 10 ** (NOISE.limitDayDb / 10),
+      omittedNightEnergyUpperBound: 10 ** (NOISE.limitNightDb / 10), complete: true };
+    return result;
+  }
+  // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.
+  const screen = screenIndependence(priced.map(({ route, legacy }) => {
+    const spec = route.specification, op = spec.kind === 'road' ? spec.operations : { aadt: Infinity, speed: Infinity, heavyShare: 1 };
+    const halfWidth = spec.kind === 'road' && spec.crossSection !== 'existing' ? CATEGORIES[spec.crossSection].crownWidth / 2 : Infinity;
+    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth };
+  }), ctx.legacy.buildings);
+  if (!screen.independent) {
+    for (const i of screen.interactions) { result.issues.push(interactionIssue(i.routeIds, i.reason, i.buildingIndex)); unprice(i.routeIds, i.reason); }
+    return finish();
+  }
+  let total = 0, valid = true;
+  const receivers = new Map<number, ProjectReceiver>();
+  for (const { route, legacy } of priced) {
+    const rr = result.routes[route.id];
+    rr.complete = true; rr.valid = legacy.valid; rr.accepted = legacy.valid; rr.attributedCost = legacy.cost.total;
+    defineRoute(result.cost.routes, route.id, legacy.cost.total);
+    total += legacy.cost.total; valid &&= legacy.valid;
+    result.issues.push(...routeIssues(route, legacy));
+    const outcome = routeOutcome(ctx, route, legacy);
+    result.buildings.push(...outcome.buildings);
+    for (const r of outcome.receivers) {
+      const seen = receivers.get(r.buildingIndex);
+      if (!seen) { receivers.set(r.buildingIndex, r); continue; }
+      // Distinct physical sources add as energy, never as dB or excess.
+      const add = (a: number, b: number) => 10 * Math.log10(10 ** (a / 10) + 10 ** (b / 10));
+      receivers.set(r.buildingIndex, { ...seen, contributions: [...seen.contributions, ...r.contributions],
+        dayDb: add(seen.dayDb, r.dayDb), nightDb: add(seen.nightDb, r.nightDb), action: seen.action === 'buy' || r.action === 'buy' ? 'buy' : 'retain' });
+    }
+  }
+  result.receivers = [...receivers.values()];
+  result.cost.total = total; result.complete = true; result.valid = valid;
+  result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: screen.omittedDayEnergy,
+    omittedNightEnergyUpperBound: screen.omittedNightEnergy, complete: true };
   return result;
 }

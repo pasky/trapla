@@ -196,7 +196,7 @@ it('accepts best only for the current committed whole-project snapshot and recon
   const result: ProjectResult = { epoch: snapshot.epoch, revision: snapshot.revision,
     routes: { [route.id]: { routeId: route.id, revision: route.revision, engineeringRevision: 'settled', surface: null, geometry: null,
       complete: true, valid: true, accepted: true, attributedCost: 100, dependencies: [], influence: [] } },
-    works: { items: [] }, cost: { total: 100, routes: { [route.id]: 100 }, shared: 0, materialBalance: 'per-route' }, issues: [],
+    works: { items: [] }, cost: { total: 100, routes: { [route.id]: 100 }, shared: 0, materialBalance: 'per-route', alone: {}, unpriced: [] }, issues: [],
     acceptedReplacements: [], acceptedRenderReplacements: [], buildings: [], receivers: [], complete: true, valid: true,
     acousticScreen: { complete: true, bounds: [], omittedDayEnergyUpperBound: 0, omittedNightEnergyUpperBound: 0 } };
   store.begin(); expect(store.offerBest(result)).toBe(false); store.cancel();

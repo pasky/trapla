@@ -21,7 +21,7 @@ function routeResult(id: string): RouteResult {
 }
 function result(): ProjectResult {
   return { epoch: 'load-a', revision: 4, routes: { a: routeResult('a'), b: routeResult('b') }, works: { items: [] },
-    cost: { total: 200, routes: { a: 100, b: 100 }, shared: 0, materialBalance: 'per-route' }, issues: [],
+    cost: { total: 200, routes: { a: 100, b: 100 }, shared: 0, materialBalance: 'per-route', alone: {}, unpriced: [] }, issues: [],
     acceptedReplacements: [], acceptedRenderReplacements: [], buildings: [], receivers: [], complete: true, valid: true,
     acousticScreen: { bounds: [], omittedDayEnergyUpperBound: 0, omittedNightEnergyUpperBound: 0, complete: true } };
 }

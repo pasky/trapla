@@ -42,6 +42,7 @@ export function noiseSource(traffic: number, speed: number, options: NoiseTraffi
 
 /** Manual Uo, d=8…1000 m. Below 8 m use its line-source near-distance expression;
  * below 3.75 m clamp (outside method domain), beyond 1 km continue with geometric divergence. */
+export function hardGroundLoss(d: number): number { return hardGround(d); }
 function hardGround(d: number): number {
   const r = Math.max(3.75, d);
   if (r < 8) return 10 * Math.log10(r / 8);
