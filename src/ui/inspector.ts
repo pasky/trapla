@@ -8,7 +8,7 @@ import { CROSSING_CHOICE_TEXT, crossingOutcome } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, NOISE, ROAD_CLASSES } from '../core/data/urban';
-import type { BuildingOverride } from '../core/build-controls';
+import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
 import type { Design, Result } from '../core/evaluate';
 import type { StructureKind } from '../core/overrides';
 import type { NoiseModel } from '../core/road-noise';
@@ -118,8 +118,11 @@ export class Inspector {
     const range = this.el.querySelector<HTMLElement>('.wall-row')?.dataset.range?.split(',').map(Number);
     const rec = this.r.noise.receivers.find((p) => p.j === (this.sel as { j: number }).j);
     if (!box || !rec?.key) return;
-    const r = this.r, wall = v === null || v === 'auto' || !side || !range ? undefined
-      : { side, height: Number(v), at: (i: number) => r.s[i] >= range[0] && r.s[i] < range[1] };
+    // the stations the choice would paint: the same mask as applying it
+    const mask = side && range ? wallOverrideMasks(this.r.s, [{ side, s0: range[0], s1: range[1], height: 1 }])[side] : null;
+    const wall = v === null || v === 'auto' || !side || !mask ? undefined
+      : { side, height: Number(v), at: (i: number) => !Number.isNaN(mask[i]) };
+    const r = this.r;
     box.innerHTML = this.noiseViews(r, this.d, rec, wall);
   }
 
@@ -129,13 +132,18 @@ export class Inspector {
     const info = this.ctx.building(rec.j), crown = CATEGORIES[d.category].crownWidth;
     const limit = r.noise.footprint?.limit ?? NOISE.limitNightDb;
     let rays = noiseRays(rec), key = rec.key!, level = rec.mitigated;
+    const quiet = rec.quiet;
     if (wall && rays.length) {
       rays = raysWithWall(rays, wall.side, wall.at, wall.height, noiseBarrier(crown));
       const worst = rays.reduce((a, p) => (p.residual > a.residual ? p : a));
-      key = { i: worst.i, side: worst.side, d: worst.d, h: worst.h, wall: worst.wall, ...(worst.edge ? { edge: worst.edge } : {}), ...(worst.gap ? { gap: true } : {}) };
-      level = worst.residual;
+      // as noiseReceivers: the quiet maximum decides when every exposed line is lower (no wall counted there)
+      if (quiet && quiet.level > worst.residual) { key = { i: quiet.i, side: quiet.side, d: quiet.d, h: quiet.h, wall: 0 }; level = quiet.level; }
+      else {
+        key = { i: worst.i, side: worst.side, d: worst.d, h: worst.h, wall: worst.wall, ...(worst.edge ? { edge: worst.edge } : {}), ...(worst.gap ? { gap: true } : {}) };
+        level = worst.residual;
+      }
     }
-    const plan = info.rect ? noisePlan(r, info.rect, rays, crown, level, wall) : null;
+    const plan = info.rect ? noisePlan(r, info.rect, rays, crown, level, wall, quiet && { s: r.s[quiet.i], level: quiet.level }) : null;
     const section = noiseSectionSvg({ ...rec, key }, info.levels, this.ctx.noiseModel(d), crown, limit, r.s[key.i]);
     return `${plan ? `${plan.svg}<div class="why plan-why">${esc(plan.caption)}</div>` : ''}${section}`;
   }

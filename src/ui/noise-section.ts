@@ -49,12 +49,13 @@ const f1 = (v: number) => v.toFixed(1);
 /** the house's rectangle as the noise model measures it: centre, half length / width, m; angle, degrees */
 export interface HouseRect { x: number; y: number; hl: number; hw: number; angle: number }
 
-export type PlanRoute = Pick<Result, 'n' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'walls' | 'crossings' | 'noise'>;
+export type PlanRoute = Pick<Result, 'n' | 'ds' | 'length' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'walls' | 'crossings' | 'noise'>;
 
 const kmText = (s: number) => (s / 1000).toFixed(2);
 
 /** One sentence: where the loudest noise comes from and what (fails to) stop it. */
-function planCaption(worst: NoiseRay, s: number, wallNear: boolean): string {
+function planCaption(worst: NoiseRay, s: number, wallNear: boolean, quiet?: { s: number; level: number }): string {
+  if (quiet && quiet.level > worst.residual) return `Loudest from km ${kmText(quiet.s)}, within the limit.`;
   const from = `Loudest from km ${kmText(s)}`;
   if (worst.residual <= 1e-6) return `${from}, now within the limit.`;
   if (worst.gap) return `${from}: through the gap in the wall where the side road joins. A wall cannot close it.`;
@@ -69,7 +70,7 @@ function planCaption(worst: NoiseRay, s: number, wallNear: boolean): string {
  * loud from there, grey = stopped by a wall or a cutting. `preview`: a wall choice being hovered.
  */
 export function noisePlan(r: PlanRoute, rect: HouseRect, rays: readonly NoiseRay[], crownWidth: number, level: number,
-  preview?: { side: 'L' | 'R'; at: (i: number) => boolean; height: number }): { svg: string; caption: string } | null {
+  preview?: { side: 'L' | 'R'; at: (i: number) => boolean; height: number }, quiet?: { s: number; level: number }): { svg: string; caption: string } | null {
   if (!rays.length) return null;
   const W = 316, Hmax = 170, pad = 12;
   let worst = rays[0], lo = Infinity, hi = -Infinity;
@@ -81,6 +82,13 @@ export function noisePlan(r: PlanRoute, rect: HouseRect, rays: readonly NoiseRay
   const ox = r.x[c], oy = r.y[c], tx = r.tx[c], ty = r.ty[c];
   const U = (x: number, y: number) => (x - ox) * tx + (y - oy) * ty, V = (x: number, y: number) => -(x - ox) * ty + (y - oy) * tx;
   const at = (i: number, off: number) => [r.x[i] - r.ty[i] * off, r.y[i] + r.tx[i] * off];
+  // a point at chainage s (between stations), as the 3D walls are drawn
+  const atS = (s: number, off: number) => {
+    const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[i]) / r.ds;
+    const f = (a: ArrayLike<number>) => a[i] + t * (a[i + 1] - a[i]);
+    const tx = f(r.tx), ty = f(r.ty), norm = Math.hypot(tx, ty) || 1;
+    return [f(r.x) - (ty / norm) * off, f(r.y) + (tx / norm) * off];
+  };
   // house corners and the nearest façade point to a source (BuildingIndex.facadeDistance)
   const a = (rect.angle * Math.PI) / 180, ux = Math.cos(a), uy = Math.sin(a);
   const corner = (p: number, q: number) => [rect.x + ux * rect.hl * p - uy * rect.hw * q, rect.y + uy * rect.hl * p + ux * rect.hw * q];
@@ -124,9 +132,10 @@ export function noisePlan(r: PlanRoute, rect: HouseRect, rays: readonly NoiseRay
       if (!h[i]) continue;
       let j = i;
       while (j + 1 < h.length && h[j + 1] === h[i]) j++;
-      const pts: number[][] = [];
+      // the cells' extent, as built and billed (wallStretches)
+      const pts: number[][] = [atS(Math.max(0, (i0 + i - 0.5) * r.ds), off)];
       for (let q = i; q <= j; q++) pts.push(at(i0 + q, off));
-      if (pts.length === 1) pts.push(at(Math.min(r.n - 1, i0 + i + 1), off));
+      pts.push(atS(Math.min(r.length, (i0 + j + 0.5) * r.ds), off));
       parts.push(`<path d="${line(pts)}" fill="none" stroke="#18b0b0" stroke-width="${near ? 3 : 2}"${near ? '' : ' opacity=".35"'}/>`);
       const m = at(i0 + Math.round((i + j) / 2), off + (s === 'L' ? 1 : -1) * 7 / k);
       if (near && (j - i) * (r.s[1] - r.s[0]) * k > 34) parts.push(`<text x="${X(m[0], m[1])}" y="${(Number(Y(m[0], m[1])) + 4).toFixed(1)}" class="lbl" fill="#0b5e5e" text-anchor="middle">${f1(h[i]).replace('.0', '')} m</text>`);
@@ -155,7 +164,7 @@ export function noisePlan(r: PlanRoute, rect: HouseRect, rays: readonly NoiseRay
   for (const v of wall[worst.side]) if (v > 0) wallNear = true;
   return {
     svg: `<svg class="noise-plan" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Plan: our road, walls and the house, lines from where the noise comes">${parts.join('')}</svg>`,
-    caption: planCaption(worst, r.s[worst.i], wallNear),
+    caption: planCaption(worst, r.s[worst.i], wallNear, quiet),
   };
 }
 

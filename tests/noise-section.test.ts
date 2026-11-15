@@ -30,7 +30,12 @@ describe('noise cross-section', () => {
         const floors = floorLevels(p, Math.max(1, info[p.j][1]), model, CATEGORIES['S9.5'].crownWidth);
         expect(floors[floors.length - 1].after).toBeCloseTo(p.mitigated, 6);
         // the card's wall preview recomputes each line the way the game did
-        if (walls) for (const [q, ray] of raysWithWall(noiseRays(p), 'L', () => true, 6).entries()) expect(ray.residual).toBeCloseTo(noiseRays(p)[q].residual, 4);
+        if (walls && p.rays) {
+          const rays = raysWithWall(noiseRays(p), 'L', () => true, 6);
+          rays.forEach((ray, q) => expect(ray.residual).toBeCloseTo(noiseRays(p)[q].residual, 4));
+          // the level it previews: the loudest line, or the quiet maximum where walls bring every line lower
+          expect(Math.max(...rays.map((x) => x.residual), p.quiet?.level ?? -Infinity)).toBeCloseTo(p.mitigated, 4);
+        }
       }
     });
   }

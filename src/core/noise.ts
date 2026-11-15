@@ -224,6 +224,9 @@ export interface NoiseReceiver {
   /** every station where the top floor is over the limit unmitigated, packed (RAY_STRIDE per station;
    * read with `noiseRays`): where the noise comes from, and what stops it — for the house card's plan */
   rays?: Float32Array;
+  /** the loudest station where the top floor is within the limit even without walls (level over the limit,
+   * ≤ 0 dB, and its geometry): it decides when walls bring every exposed station lower */
+  quiet?: { level: number; i: number; side: 'L' | 'R'; d: number; h: number };
 }
 
 /** One station's exposure of a house (see NoiseReceiver.rays). */
@@ -288,6 +291,7 @@ export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wa
       mitigated: f ? f.deficit : r.mitigated, need: f ? Infinity : r.need, wall: f ? 0 : r.wall, at: f ? f.i : r.at,
       ...(!f && r.mitigated > 1e-7 && r.worst ? { unresolved: r.worst } : {}),
       ...(r.rays.length ? { rays: Float32Array.from(r.rays) } : {}),
+      ...(r.rays.length && ex.quietI && ex.quietI[j] >= 0 ? { quiet: { level: ex.quiet[j], i: ex.quietI[j], side: ex.quietLeft![j] ? 'L' as const : 'R' as const, d: ex.quietD![j], h: ex.quietH![j] } } : {}),
       key: (r.key && r.keyLevel >= r.mitigated - 1e-9) || !ex.quietI || ex.quietI[j] < 0 ? r.key ?? { i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], wall: (ex.rawLeft[j] ? wallL : wallR)[ex.rawI[j]] ?? 0 }
         // a quiet station decides (walls brought the exposed ones lower): the model counts no wall there
         : { i: ex.quietI[j], side: ex.quietLeft![j] ? 'L' : 'R', d: ex.quietD![j], h: ex.quietH![j], wall: 0 },
