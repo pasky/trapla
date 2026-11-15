@@ -181,6 +181,19 @@ export class RouteExtras {
         this.view.local(x, y, z + w.height, v); pos.push(v.x, v.y, v.z); uv.push(stations[j], z + w.height - foot);
         if (j > 0) { const k = pos.length / 3 - 4; idx.push(k, k + 2, k + 1, k + 2, k + 3, k + 1); }
       }
+      // on a bridge the wall stands on the deck's edge beam: draw the beam out from the crown to the
+      // wall (top and outer face), else the wall would hang in the air beside the deck
+      const crownEdge = this.wallPath(w, this.crown / 2, 0, stations);
+      for (let j = 0; j + 1 < stations.length; j++) {
+        const onBridge = (s: number) => r.kind[Math.min(r.n - 1, Math.round(s / r.ds))] === KIND.bridge;
+        if (!onBridge(stations[j]) || !onBridge(stations[j + 1])) continue;
+        const out = this.wallPath(w, off + POST_W, 0, [stations[j], stations[j + 1]]), k = pos.length / 3;
+        for (const [p, a] of [[crownEdge, 3 * j], [crownEdge, 3 * j + 3], [out, 0], [out, 3]] as const) {
+          this.view.local(p[a], p[a + 1], p[a + 2] + 0.35, v); pos.push(v.x, v.y, v.z); uv.push(0, 0);
+        }
+        for (const a of [0, 3]) { this.view.local(out[a], out[a + 1], out[a + 2] - 0.6, v); pos.push(v.x, v.y, v.z); uv.push(0, 0); }
+        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3, k + 2, k + 4, k + 3, k + 3, k + 4, k + 5);
+      }
       // posts on the 4 m module, from the panel's foot to just above its top (stations are along the
       // axis; the wall is beside it, so the module is right within a few per cent)
       const n = Math.max(1, Math.round((w.s1 - w.s0) / POST_MODULE)), at: number[] = [];

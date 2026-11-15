@@ -496,12 +496,13 @@ export class View {
       if (along > 150) { this.officialPts.push({ x, y, z }); along = 0; }
     }
     if (pts.length >= 6) {
-      // a reference, not a road: white dashes on a dark casing (cartographic, unlike any road colour or
-      // marking), the dashes a constant 12 px on screen (render() scales them with the zoom)
-      const casing = this.makeLine(pts, null, 4, { color: 0x1d232a, opacity: 0.45 });
-      const l = this.makeLine(pts, null, 2, { color: 0xffffff, opacity: 0.95, dashed: true, dashSize: 12, gapSize: 8 });
-      casing.name = 'official-casing'; l.name = 'official';
-      this.world.add(casing, l);
+      // a reference, not a road: dark pencil dashes (unlike any road colour or marking, and not the
+      // black-and-white of a railway), a constant 10 px on screen (render() scales them with the zoom)
+      // a faint continuous halo keeps it legible over dark forest
+      const halo = this.makeLine(pts, null, 4.5, { color: 0xffffff, opacity: 0.35 });
+      const l = this.makeLine(pts, null, 2, { color: 0x2b3440, opacity: 0.85, dashed: true, dashSize: 10, gapSize: 7 });
+      halo.name = 'official-halo'; l.name = 'official';
+      this.world.add(halo, l);
       this.officialLine = l;
     }
   }

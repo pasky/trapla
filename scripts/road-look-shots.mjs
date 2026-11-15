@@ -18,7 +18,7 @@ const args = process.env.GPU
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-  await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
+  await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v2', '1'); } catch { /* opaque origin */ } });
   page.on('pageerror', (e) => console.log('pageerror', e.message));
   page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text()); });
   await page.goto(`http://localhost:${PORT}/`);
@@ -56,8 +56,8 @@ try {
     if (!p) continue;
     const b = await bearingAt(p.i);
     // looking across the road at 50° to its direction, close and medium
-    shots.push([`${name}-close`, p.x, p.y, 260, b + 50, 35]);
-    shots.push([`${name}-medium`, p.x, p.y, 900, b + 50, 45]);
+    shots.push([`${name}-close`, p.x, p.y, 110, b + 50, 30]);
+    shots.push([`${name}-medium`, p.x, p.y, 450, b + 50, 40]);
   }
   for (const [name, x, y, dist, bearing, elev] of shots) {
     await page.evaluate((a) => window.trapla.lookAt(...a), [x, y, dist, bearing, elev]);

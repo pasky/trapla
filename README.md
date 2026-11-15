@@ -113,7 +113,11 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   valid); *Got it*, <kbd>Esc</kbd> or the first click dismiss it; *Help → Show the intro* brings it back.
 - **Colours** are the same on the map, in the profile and in the cards: road orange, bridge blue, tunnel purple,
   noise wall teal, problems red, demolished buildings dark grey squares, bought-out magenta diamonds, kept
-  green. Noise uses one ramp everywhere (pale → yellow at the limit → red).
+  green. On the map these are symbols for the zoomed-out view (from 2.5 m per pixel, where the road is a few
+  pixels wide) and for a road being dragged; closer, the road is drawn as built: asphalt with white Czech
+  markings, noise walls as panels between posts, tunnels as a purple dashed trace on the ground, problem
+  stretches tinted red. The tangent lines of a bend show only while it is dragged, hovered or selected. The
+  official line is a dark dashed pencil line with its label riding along it. Noise uses one ramp everywhere (pale → yellow at the limit → red).
 - **Noise view** <kbd>N</kbd>: the band along the road shows the night level (the controlling period for the
   scenario traffic) **at the height that decides walls and buyouts — the top floor of the tallest house beside
   each 30 m station and side** (1.5 m where there is none), continuously shaded with one dark line on the limit,
@@ -289,6 +293,15 @@ Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overvie
   mottled green-yellow grass. `node scripts/earthworks.mjs [design.json] [outdir]`
   renders the deepest cut and the highest embankment with contours at 1× and 2× relief
   (`docs/screenshots/24…27-*.png`).
+- **Carriageway** (same material, `ewKind` road): the category's cross-section from MD VL 1 (2022) sheets
+  12-04…06 — lanes, hard shoulders, 0.5 m gravel verge (concrete edge beam on bridges) — and TP 133 markings:
+  V 4 edge lines on the inner edge of the guide strip (0.25 m, 0.125 m where the hard shoulder is ≤ 0.5 m) and
+  the V 2a centre line, 3 m dash / 6 m gap, 0.125 m (solid lines need sight distances, not modelled). Drawn
+  in the shader from per-vertex offset and station, box-filtered over the pixel, so no geometry per mark.
+  **Noise walls** stand where they are billed (line, foot on the slope, top): wood-cement absorber panels on
+  a concrete plinth between steel posts on a 4 m module (instanced), as in the M-S system; on a bridge on the
+  deck's edge beam. Before / after: `docs/screenshots/87…94-road-look-*.png`, the bend guide `95`, the
+  official line `96` (`node scripts/road-look-shots.mjs design.json outdir [prefix]`).
 - **Land cover, existing roads, railways, water, building footprints** are vectors (`vector.bin.gz`), rasterised
   on the GPU with 4× MSAA into one base texture of the whole area (≈ 8.5 m/texel, drawn once) and four 2048²
   *clip levels* around the camera focus at 0.125 … 4 m/texel, each twice as coarse as the previous. The levels
@@ -365,7 +378,8 @@ Pipeline geometry/cache tests: `uv run --with numpy --with shapely python -m uni
 
 ![long curve](docs/screenshots/19-long-curve-selected.png)
 
-- **Bends are corners of the dashed tangent polygon, not waypoints**: the road cuts each corner with a circular arc.
+- **Bends are corners of the tangent polygon, not waypoints**: the road cuts each corner with a circular arc. The
+  two tangent lines through a bend are drawn (dashed) while it is dragged, hovered or selected.
 - **One bend, long curve**: select a bend and drag one of the two diamond grips along its leg, or press
   <kbd>+</kbd> / <kbd>−</kbd> (or type it in the bend card). The radius is shown next to the curve;
   **max** sets the largest radius that fits between the neighbours, **auto** returns to the smallest the rules allow.
