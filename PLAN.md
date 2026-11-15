@@ -169,6 +169,18 @@ What exists (details and commands in `README.md`):
   The ≤3 ms added / ≤50 ms total targets remain unmet despite an exact-output cache/allocation pass.
   Attributable `work.*` timings identify repeated retaining work and the direct-90 DP retry.
 
+### Underpasses and evaluate latency (cost model 17, 2026-11-15)
+
+- Tracks, service roads and local streets may pass through our embankment in a measured RC box
+  (5 × 4.5 m / 8 × 4.5 m clear, ≥ 5.5 / 5.65 m of fill, ≤ 100 m): Auto option and an "Underpass" crossing
+  choice, OTSKP-assembled price (research/19), drawn as portals in the slope. It replaces 5 long diversions
+  and 2 street bridges on the published designs (−2.6 to −88.5 M each; all still VALID). Details:
+  `docs/footprint-conflicts.md` § Underpasses.
+- `evaluate()` is 70–95 ms steady and 80–108 ms mean during drags (was 81–108 / 88–115): bit-identical
+  table sharing, pruning and memoisation (`docs/evaluate-performance.md`). **≤ 60 ms is not met**; the
+  profile panel now shows a provisional grade on the moved route while the worker lags behind a drag.
+  `scripts/bench-drag.ts` measures drags without repeating identical inputs.
+
 ### Travel-time target X and traffic Y
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.
@@ -581,7 +593,8 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   boundary can therefore save money. This discontinuity is not a network-connectivity optimisation.
   Skew is ignored: span is the footprint width square to the new road; a forced bridge is the 30 m minimum.
   For 0 < h < 6, the conservative overbridge spans the whole embankment footprint and raises the crossed road
-  by 6 + h; lowering it into an underpass / inserting our own bridge is not an additional cost option.
+  by 6 + h; lowering the crossed road into a deeper underpass is not an option (model 17 underpasses keep its
+  level and need ≥ 5.5 / 5.65 m of fill).
 - The structure choice compares each option at the rates of its own footprint, but the balance search's
   estimate takes the built-up share at the centreline only.
 - Buildings: only OSM ways (no multipolygon buildings); the rectangle over-covers L-shaped footprints; no

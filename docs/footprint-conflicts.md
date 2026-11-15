@@ -1,4 +1,4 @@
-# Automatic footprint engineering (cost model 16)
+# Automatic footprint engineering (cost models 16–17)
 
 The evaluator now **builds and prices remedies**, rather than simply invalidating every design
 whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
@@ -46,6 +46,32 @@ route at shallow angles, 24 M of 12 m walls keeping a doomed track stub, and a +
 - `bridgeMinHeight` is an economic threshold, not a physical limit: a clear abutment may be set into
   a cut of up to 5 m, and the bank under an end span is regraded (`Run.regradeM3`, OTSKP class II
   excavation) rather than lifting the grade. Deck/obstacle clearances are still enforced.
+
+### Underpasses (model 17)
+
+A track, service road or local street (`unclassified`/`residential`/`living_street`) may keep its own
+level through our embankment in a closed cast-in-place RC box — the realistic alternative to a 1.5–1.8 km
+diversion or a bridge on our road ([research/19](../research/19-track-underpass.md)). Clear opening
+5 × 4.5 m (track/service) or 8 × 4.5 m (local road); our grade must be ≥ clear height + roof + 0.5 m cover
+above the crossed road (5.5 / 5.65 m), measured under the whole crown; box ≤ 100 m. Length is measured
+toe to toe along the actual (skewed, bent) way; price = length × (OTSKP 389385 frame concrete incl.
+reinforcement + 711442 roof waterproofing + 451315 bedding + the way's own SPK pavement) + two
+provisional portal heads (0.3 / 0.45 M). The way's in-box stretch is built, not removed, so the footprint
+screen owns it. Auto picks it where it is the cheapest of link/overbridge/underpass (estimate, then the
+measured geometry feedback loop); Auto local roads under ≥ 6 m fill are no longer forced onto our bridge —
+the structure selector weighs the estimated box against the bridge. Auto never lifts the grade for a box
+(a player choice does: like a chosen bridge it sets a minimum height). Rendered as a concrete box with
+headwall frames, splayed wings and a dark opening at the slope toes over the terrain-level way.
+
+Published designs (all still VALID): 5 diversions replaced (best 2: 25.8 + 21.4 M → 10.0 + 11.1 M; demo 1:
+26.0 → 9.1 M; direct-90 1: 15.3 → 9.3 M; town-centre 1: 19.1 → 17.1 M) and 2 street bridges replaced
+(demo km 7.00, direct-80 km 4.00, 10.9 / 11.7 M boxes). Totals bn CZK, model 16 → 17: straight 10.051833 →
+10.013398, best 4.325765 → 4.291626, demo 4.986752 → 4.898255, direct-80 5.018385 → 4.978590, direct-90
+5.575139 → 5.565410, town-centre 11.447356 → 11.444752. A player-chosen underpass for demo's service road
+4742 (Auto keeps its 41.7 M, 1.7 km reconnection because 5.6 m of fill is too little under the crown) lifts
+the grade and saves a further 22.6 M. The tables below are model-16 numbers. On the older original pack,
+indirect mass-balance shifts move direct-80 (+58 M, 2 more blocked class-I relocations) and town-controls
+(one more violation); both inputs were already invalid.
 
 Manual grades are not lifted, pins remain constraints, and manual structure ranges are not
 silently moved. Retaining walls can protect a manually specified earthwork without changing its

@@ -1,5 +1,60 @@
 # Evaluate performance regression
 
+## Model 16 → 17 pass (2026-11-15)
+
+Same machine/pack, median of 30 warm runs per design (`ROOT=… N=30` paired script, model-16 HEAD `f7fe117`
+versus this branch), plus the new **drag** benchmark `npx tsx scripts/bench-drag.ts` (24 consecutive
+evaluations with one bend moved 1.5 m/0.9 m per step; nothing is ever repeated, so caches of identical
+inputs cannot flatter it). Exclusive ms per phase; `sections` = all engineering passes (incl. a strict
+retry's first pass). Shared host, ±5–10 % noise.
+
+| Steady, ms | Profile | Engineering | Crossings | Footprint | Town | Total |
+|---|---:|---:|---:|---:|---:|---:|
+| best | 26.5 → 22.8 | 16.0 → 15.6 | 17.3 → 14.1 | 5.9 → 5.7 | 5.2 → 4.4 | **80.9 → 69.7** |
+| demo | 26.9 → 23.7 | 23.1 → 43.9¹ | 14.5 → 12.1 | 5.9 → 5.4 | 5.2 → 5.0 | **81.1 → 94.7¹** |
+| direct-80 | 27.8 → 24.7 | 16.9 → 17.9 | 20.6 → 19.0 | 6.2 → 5.9 | 4.7 → 4.8 | **82.6 → 78.7** |
+| direct-90 | 22.7 → 20.0 | 31.3 → 30.9 | 14.9 → 13.5 | 3.1 → 3.3 | 4.4 → 4.3 | **81.9 → 76.8** |
+| town-centre | 27.7 → 22.7 | 49.6 → 38.7 | 13.0 → 11.4 | 5.2 → 5.6 | 6.3 → 6.1 | **107.6 → 88.0** |
+
+| Drag mean (median), ms | best | demo | direct-80 | direct-90 | town-centre |
+|---|---:|---:|---:|---:|---:|
+| model 16 | 99.8 (108) | 88.5 (80) | 108.2 (91) | 114.7 (110) | 112.9 (111) |
+| this branch | 87.2 (88) | 80.1 (69) | 100.4 (85) | 107.8 (100) | 98.6 (102) |
+
+¹ Model 17 behaviour, not a slowdown: demo's new street underpass (km 7.00) widens the embankment over a
+service road whose relocation then needs the strict re-engineering pass. On model-16 inputs the perf
+commit alone gives demo 81.1 → 77.5 ms.
+
+**The ≤ 60 ms target is still not met** (steady 70–95 ms, drags 80–108 ms mean). The UI therefore no
+longer waits on it: while the worker lags behind a drag (an older request still running), the profile
+panel immediately shows the moved route's ground with the previous heights stretched to its length
+(Automatic) or the player's own height points (By hand), washed over the last result and labelled
+provisional (`src/ui/provisional.ts`, ≈ 0.3 ms on the main thread). The plan line already moves live.
+
+Bit-identical changes (frozen model-16 bills/geometry passed on both recognized packs before the model
+change; model-17 fixtures re-verified after every later step):
+
+- Auto-profile: dry-ground height-cost tables and flat geometry rows are route independent, so they are
+  shared across evaluations per terrain (key: category, terrain class, material value, pack ground id,
+  kind; LRU of 8 material values). Water classes share tables only within an evaluation (clearance
+  retries, retry DP). The DP accumulates segment costs only for grades some reachable state can use.
+- Crossings: route projection uses typed per-segment terms, a previous-query segment hint and per-cell
+  distance pruning (exact minimum and tie-break preserved); link-smoothing probes reuse one scratch point;
+  station windows use binary search; distance-sorted way paths are cached.
+- Retaining: each station's screening outcome is recorded and replayed when everything it read is
+  unchanged (same candidate set, section widths, grade, connected barrels and crossing-way membership),
+  across engineering passes, barrel re-screens and the strict retry; allocation-free loops in `select`.
+- Strict retry: the first pass stops after the footprint screen; it is completed (noise, bill, checks)
+  only if the retry still has violations, since every blocked road is itself a violation.
+
+Not done, and why: caching crossing links or cost tables by route *position* across drag evaluations
+cannot be bit-identical — `station()` spreads `L/ceil(L/10)` evenly, so any length change moves every
+station (and every crossing intersection) by a few ulps or metres. Remaining time: the DP inner loop
+(≈ 2 M interpolations, ~10 ms), first-pass retaining feature queries (≈ 3.6 ms), two full crossing
+builds (≈ 4.6 ms each) and strict retries (≈ 30 ms when triggered, 0–50 % of drag steps).
+
+---
+
 The timings below document the **historical model-13 optimization**, not current model-16
 automatic footprint engineering. Current engineering, saved-design validity and performance limits
 are in [footprint-conflicts.md](footprint-conflicts.md). Model 15 deliberately changes profiles,
