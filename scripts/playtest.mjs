@@ -63,7 +63,7 @@ const fresh = async (design) => {
 };
 
 try {
-  await page.goto(`http://localhost:${PORT}/`);
+  await page.goto(`http://localhost:${PORT}/?scenario=d11`);
   await T(() => localStorage.clear());
   await page.reload();
   await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });

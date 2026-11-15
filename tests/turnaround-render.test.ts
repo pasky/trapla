@@ -40,7 +40,7 @@ describe('explicit turning disks', () => {
     };
     const renderer = new CrossingRenderer(mock as unknown as View);
     renderer.setResult({ crossings: [], grade: Float64Array.of(98), ground: Float64Array.of(100), footprintConflicts: [c] });
-    let diskArea = 0, rimTriangles = 0;
+    let diskArea = 0, rimTriangles = 0, innerCollar = 0;
     mock.world.traverse(object => {
       const mesh = object as THREE.Mesh<THREE.BufferGeometry>;
       if (!mesh.geometry?.index) return;
@@ -59,13 +59,19 @@ describe('explicit turning disks', () => {
           expect(ids.some(j => Math.abs(p.getY(j)-(natural(p.getX(j),-p.getZ(j))+.015))<1e-4)).toBe(true);
         }
         // Other road collars cannot sit over the excavated disk, including on its cut side.
-        if (mesh.name === 'crossing-terrain') for (const j of ids) expect(radial(j)).toBeGreaterThanOrEqual(9-1e-4);
+        if (mesh.name === 'crossing-terrain') for (const j of ids) {
+          expect(radial(j)).toBeGreaterThanOrEqual(9-1e-4);
+          // The disk's own collar must meet its rim: excluding it along with overlapping
+          // road collars leaves the first 2.5 m uncovered above the terrain cut-out.
+          if (p.getX(j) < -8 && Math.abs(radial(j)-9)<1e-4) innerCollar++;
+        }
       }
     });
     const sectors = turnaroundSurfaces(surfaces,natural)[0].sections.length;
     expect(diskArea).toBeCloseTo(sectors*9*9*Math.sin(2*Math.PI/sectors)/2,3);
     expect(diskArea).toBeGreaterThan(Math.PI*9*9*.99);
     expect(rimTriangles).toBe(sectors*2);
+    expect(innerCollar).toBeGreaterThan(0);
     renderer.dispose();
   });
 });

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { Result } from '../src/core/evaluate';
 import { KIND } from '../src/core/structures';
 import { structureFootprints } from '../src/core/footprint';
-import { View } from '../src/render/view';
+import { renderView } from './fixtures/render-view';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from '../src/render/bridge-surface';
 
 // Isolate mesh construction from the core support planner, which has its own tests.
@@ -33,16 +33,12 @@ describe('bridge span rendering', () => {
       runs: [{ kind: KIND.bridge, i0: 1, i1: 3, s0: 10, s1: 70, length: 60, pierStations: [25] }],
       geology: { ids: new Uint8Array(5), profiles: [{ normMix: true }] },
     } as unknown as Result;
-    // View's own helpers (sliced build, shared materials, centreline) on a mock without a WebGL context
-    const mock = Object.assign(Object.create(View.prototype) as object, { routeGroup: new THREE.Group(), terrain: { heightAt: () => 0 }, terrainU: {},
-      local: (x: number, y: number, z: number, v = new THREE.Vector3()) => v.set(x,z,-y),
-      replacementHeight: () => 0, buildMask: vi.fn(), makeLine: () => new THREE.Group(),
-    });
+    const mock = renderView();
     vi.mocked(structureFootprints).mockReturnValue([
       { structure: 'pier', s: 25, i: 1, x: 25, y: 0, tx: 1, ty: 0, along: 1.2, left: 2.75, right: 2.75 },
     ]);
-    View.prototype.setResult.call(mock as unknown as View,r,10);
-    const g = (mock.routeGroup.getObjectByName('ribbon') as THREE.Mesh<THREE.BufferGeometry>).geometry;
+    mock.view.setResult(r, 10);
+    const g = (mock.groups.get('legacy')!.getObjectByName('ribbon') as THREE.Mesh<THREE.BufferGeometry>).geometry;
     const p = g.getAttribute('position'), triangles = g.index!.array;
     let shallow = 0, deep = 0, step = 0, endCaps = 0, pierTop = false;
     for (let i = 0; i < triangles.length; i += 3) {
@@ -65,10 +61,6 @@ describe('bridge span rendering', () => {
     }
     expect(shallow).toBeGreaterThan(0); expect(deep).toBeGreaterThan(0); expect(step).toBe(2);
     expect(endCaps).toBe(4); expect(pierTop).toBe(true);
-    mock.routeGroup.traverse(o => {
-      const m = o as THREE.Mesh;
-      m.geometry?.dispose();
-      if (Array.isArray(m.material)) m.material.forEach(material => material.dispose()); else m.material?.dispose();
-    });
+    mock.dispose();
   });
 });

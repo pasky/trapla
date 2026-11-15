@@ -16,7 +16,7 @@ const errors = []; page.on('pageerror', e => errors.push(e.message));
 const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
 const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); await page.waitForTimeout(500); };
 try {
-  await page.goto(`http://localhost:${port}/`);
+  await page.goto(`http://localhost:${port}/?scenario=d11`);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
   await page.evaluate(d => window.trapla.setDesign(d), design); await idle();
   const boxes = await page.evaluate(() => window.trapla.result().crossings.filter(c => c.type === 'underpass' && !c.issues?.length)

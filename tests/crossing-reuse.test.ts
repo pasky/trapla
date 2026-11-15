@@ -6,6 +6,9 @@ import type { View } from '../src/render/view';
 import { footprintSurfaces, groundSegment, type CrossingSurface } from '../src/render/crossing-surface';
 import { CrossingRenderer } from '../src/render/crossings';
 import { groundBlend } from '../src/render/earthwork-surface';
+import { routeSurfaceContext } from '../src/render/route-surfaces';
+import { finish } from '../src/render/slices';
+import type { Result } from '../src/core/evaluate';
 
 // CrossingRenderer keeps a surface's meshes while its key is unchanged. The key must cover the
 // shared ground blend: a neighbour's embankment corridor reaches its toe width + 12.5 m.
@@ -47,6 +50,24 @@ const terrainOf = (world: THREE.Object3D, y0: number, y1: number) => {
 };
 
 describe('crossing mesh reuse', () => {
+  it('keys actual nearby main-road footprints, not result identities or distant edits', () => {
+    const view = mockView(), renderer = new CrossingRenderer(view as unknown as View);
+    view.show([relocation(1, 0, 100)]);
+    const main = { n: 3, x: Float64Array.of(0, 20, 40), y: Float64Array.of(-40, -40, -40),
+      tx: Float64Array.of(1, 1, 1), ty: new Float64Array(3), grade: Float64Array.of(100, 100, 100),
+      kind: new Uint8Array(3), dayL: Float64Array.of(10, 10, 10), dayR: Float64Array.of(10, 10, 10) } as Result;
+    const far = structuredClone(main); far.y.fill(1000);
+    const build = (roads: Result[]) => finish(renderer.build({ crossings: [], grade: Float64Array.of(100), ground: Float64Array.of(100) },
+      routeSurfaceContext(view.crossingSurfaces, view.crossingSurfaces, natural, () => 105, roads))).commit();
+    const meshes = () => { const out = new Set<THREE.Object3D>(); view.world.traverse(o => { if ((o as THREE.Mesh).isMesh) out.add(o); }); return out; };
+    build([main, far]); const initial = meshes(); expect(initial.size).toBeGreaterThan(0);
+    const sameGeometry = structuredClone(main); far.dayL.fill(30);
+    build([sameGeometry, far]); expect(meshes()).toEqual(initial);
+    sameGeometry.dayL.fill(20);
+    build([sameGeometry, far]); expect(meshes()).not.toEqual(initial);
+    renderer.dispose();
+  });
+
   it('reuses unchanged surfaces, and rebuilds one whose collars a changed neighbouring embankment reaches', () => {
     const view = mockView(), renderer = new CrossingRenderer(view as unknown as View);
     const flat = relocation(1, 0, 100);

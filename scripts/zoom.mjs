@@ -20,7 +20,7 @@ const T = (fn, arg) => page.evaluate(fn, arg);
 const frames = () => T(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
 try {
-  await page.goto(`http://localhost:${PORT}/`);
+  await page.goto(`http://localhost:${PORT}/?scenario=d11`);
   await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
   await T(() => window.trapla.whenIdle());
   // the demo route with hand-set 50 m radii: bend violations to click

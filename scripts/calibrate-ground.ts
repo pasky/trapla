@@ -10,6 +10,8 @@ const { meta, scenario, terrain, buildings, roads } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
 const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads };
 const off = meta.official.xy as [number, number][];
+if (meta.id !== 'd11') throw new Error('This calibration uses D11 excavation evidence. Supply local evidence before calibrating another scenario.');
+if (off.length < 2) throw new Error('D11 calibration needs its mapped reference line. Rebuild the complete D11 pack first.');
 const distance = (p: number[], q: { x: number; y: number }) => Math.hypot(p[0] - q.x, p[1] - q.y);
 let ia = 0, ib = 0;
 off.forEach((p, i) => { if (distance(p, a) < distance(off[ia], a)) ia = i; if (distance(p, b) < distance(off[ib], b)) ib = i; });

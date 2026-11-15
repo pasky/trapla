@@ -43,6 +43,10 @@ if (meta.id === 'd11') report('reference bypass (scripts/demo-design.json)', JSO
 
 // follow the official line: take points every ~1.5 km between A and B
 const off = meta.official.xy as [number, number][];
+if (off.length < 2) {
+  console.log('No mapped reference line; skipping the reference design. Pass a saved design to benchmark another route.');
+  process.exit(0);
+}
 const dist = (p: number[], q: { x: number; y: number }) => Math.hypot(p[0] - q.x, p[1] - q.y);
 let ia = 0, ib = 0;
 off.forEach((p, i) => { if (dist(p, a) < dist(off[ia], a)) ia = i; if (dist(p, b) < dist(off[ib], b)) ib = i; });

@@ -1,5 +1,5 @@
 // three.js terrain view: draped terrain chunks, route ribbon (cut/fill slopes, bridges, tunnels),
-// centreline, tangent polygon, official D11, DOM markers and labels, heightfield picking.
+// tangent guide of the active bend, official line, DOM markers and labels, heightfield picking.
 
 import * as THREE from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
@@ -7,6 +7,7 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { Design, Result } from '../core/evaluate';
+import type { TransportGraphData, TransportRenderInterval } from '../core/project-transport';
 import { KIND } from '../core/structures';
 import { OOB_BIT, type Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
@@ -14,12 +15,17 @@ import { Buildings } from './buildings';
 import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
-import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, groundSegment, turnaroundSurfaces, turnaroundMaskRing, type CrossingSurface } from './crossing-surface';
+import type { CrossingSurface } from './crossing-surface';
+import { routeMask, type RouteMaskInput } from './route-mask';
+import { buildRouteSurfaces, routeSurfaceContext, type RouteSurfaceContext } from './route-surfaces';
+import { RouteGroups } from './route-groups';
+import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
+import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
+import { CATEGORIES } from '../core/data/categories';
 
 export interface ViewEvents {
   /** a click on the map (not a drag) at ground point x, y */
@@ -43,6 +49,30 @@ const COL = {
 };
 
 const SKY = 0xc9d6e2;
+const LEGACY_ROUTE = 'legacy';
+export interface StagedRoute extends Staged { context: RouteSurfaceContext }
+export interface RenderEndpoints {
+  a: { x: number; y: number; z?: number; label?: string };
+  b: { x: number; y: number; z?: number; label?: string };
+  /** another road's ends (not the scenario's A / B): plain end markers without the A / B discs */
+  plain?: boolean;
+}
+
+/**
+ * The coloured structure line (road / bridge / tunnel / problem) is a map symbol for orientation: drawn
+ * from this many metres per pixel on, where the road itself is only a few pixels wide. Closer, the
+ * carriageway shows its real surface and markings, and the line would read as (yellow) paint on it; it
+ * is then drawn only while the road is being changed (its body follows when the drag pauses). Tunnels,
+ * invisible close up, keep a dashed trace on the ground.
+ */
+const STRUCTURE_LINE_FROM = 2.5;
+
+/** Carriageway cross-sections by index (`roadSections`; 0 = none: plain asphalt) and the index of a
+ * crown width's category. All have the same centre-line dash (TP 133: 3 / 6 m outside motorways). */
+const SECTIONS = [undefined, ...Object.values(CATEGORIES).map((c) => c.section).filter((s) => s)];
+function sectionIndex(crownWidth: number) {
+  return Math.max(0, SECTIONS.indexOf(Object.values(CATEGORIES).find((c) => c.crownWidth === crownWidth)?.section));
+}
 
 /** stations within a (non-goal) violation, drawn red */
 function badStations(r: Result) {
@@ -65,10 +95,25 @@ export class View {
   private readonly cy: number;
   private exag = 1;
   private dirty = true;
-  private routeGroup = new THREE.Group();
-  private polyLine: Line2 | null = null;
+  private routeGroups = new RouteGroups(this.world,
+    () => new Set([this.collarMaterial(), this.ribbonMaterial()]), (material) => this.retire(material));
+  private routeInputs = new Map<string, { result: Result; surfaces: readonly CrossingSurface[] }>();
+  /** editing guide: the tangent lines through the active bend (dragged, hovered or selected) */
+  private guide: THREE.Group | null = null;
+  private guideFor: number | null = null;
+  private designPts: { x: number; y: number }[] = [];
+  private hoverPi: number | null = null;
+  /** a drag preview's centreline is newer than the road body */
+  private stale = false;
+  private officialPts: { x: number; y: number; z: number }[] = [];
+  private officialLabel: HTMLElement | null = null;
+  private officialLine: Line2 | null = null;
+  private proposalLines = new Map<string, { key: string; line: Line2 }>();
+  get proposalCount() { return this.proposalLines.size; }
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
   private piMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
+  private endpointMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
+  private endpoints: RenderEndpoints;
   private hoverEl: HTMLElement;
   private hoverPos: { x: number; y: number; z: number } | null = null;
   private selected: number | null = null;
@@ -89,15 +134,21 @@ export class View {
     maskOn: { value: 0 },
   };
   // terrain surface: shaded per pixel from the height texture, land cover from GPU-rasterised vectors
-  private terrainU = terrainUniforms();
+  private terrainU = (() => {
+    const u = terrainUniforms();
+    SECTIONS.forEach((s, k) => { if (s) u.roadSections.value[k].set(s.lane, s.lane + s.hardShoulder, s.edgeLine, s.centreLine); });
+    const dash = SECTIONS[1];
+    if (dash) u.roadDash.value.set(dash.dash, dash.gap);
+    return u;
+  })();
   private landcover: LandCover | null = null;
   private buildings: Buildings | null = null;
   private contours = false;
   private contourStep = 0;
   private contourLabels: ContourLabels | null = null;
   private maxTex = 0;
-  /** the result the footprint mask was last drawn from (to redraw it after a lost WebGL context) */
-  private maskSource: Result | null = null;
+  /** Settled inputs only, also used to restore the GPU-only masks after a lost context. */
+  private maskSources: readonly RouteMaskInput[] = [];
   private maskMat: THREE.ShaderMaterial | null = null;
   private retired: THREE.Material[] = [];
   /** one material per shader program that would otherwise lose its last user (see release) */
@@ -107,10 +158,16 @@ export class View {
   ev: ViewEvents = {};
   /** called after every render, for overlays managed outside the view (curve handles) */
   onRender: (() => void) | null = null;
+  private renderListeners = new Set<() => void>();
+  addRenderListener(listener: () => void) { this.renderListeners.add(listener); return () => { this.renderListeners.delete(listener); }; }
 
   constructor(private container: HTMLElement, private overlay: HTMLElement, private pack: Pack,
     private labels: { a: string; b: string; official: string } = { a: 'A', b: 'B', official: 'official line' }) {
     this.terrain = pack.terrain;
+    this.endpoints = {
+      a: { x: pack.meta.A.xy[0], y: pack.meta.A.xy[1], label: labels.a },
+      b: { x: pack.meta.B.xy[0], y: pack.meta.B.xy[1], label: labels.b },
+    };
     this.cx = this.terrain.width / 2;
     this.cy = this.terrain.height / 2;
     this.meshStep = Number(new URLSearchParams(location.search).get('mesh') ?? 4);
@@ -121,7 +178,6 @@ export class View {
     this.camera = new THREE.PerspectiveCamera(45, 1, 5, 200000);
     this.scene.add(this.world);
     this.scene.fog = new THREE.Fog(SKY, 30000, 90000);
-    this.world.add(this.routeGroup);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8470, 1.7));
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
     sun.position.set(-1, 1.6, -0.8);
@@ -159,12 +215,13 @@ export class View {
   /** local (x east, y north, z elevation) → position inside `world` (scaled by exaggeration) */
   local(x: number, y: number, z: number, v = new THREE.Vector3()) { return v.set(x - this.cx, z, -(y - this.cy)); }
 
-  private screenOf(x: number, y: number, z: number): { sx: number; sy: number; vis: boolean; dist: number } {
+  private screenOf(x: number, y: number, z: number): { sx: number; sy: number; vis: boolean; dist: number; depth: number } {
     const v = this.local(x, y, z * this.exag);
-    const dist = v.distanceTo(this.camera.position);
+    const dist = v.distanceTo(this.camera.position), matrix = this.camera.matrixWorldInverse.elements;
+    const depth = -(matrix[2] * v.x + matrix[6] * v.y + matrix[10] * v.z + matrix[14]);
     v.project(this.camera);
     const w = this.container.clientWidth, h = this.container.clientHeight;
-    return { sx: (v.x * 0.5 + 0.5) * w, sy: (-v.y * 0.5 + 0.5) * h, vis: v.z < 1 && v.z > -1, dist };
+    return { sx: (v.x * 0.5 + 0.5) * w, sy: (-v.y * 0.5 + 0.5) * h, vis: v.z < 1 && v.z > -1, dist, depth };
   }
 
   /** screen position (px inside the view) of a local point; `vis` = in front of the camera */
@@ -254,7 +311,7 @@ export class View {
     u.contour.value.w = this.renderer.getPixelRatio();
     const mat = makeTerrainMaterial(u, this.maskUniforms);
     if (this.pack.vectors) {
-      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u);
+      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u, this.pack.transport ?? null);
       lc.onChange = () => { this.dirty = true; };
       const ortho = this.pack.meta.orthophoto, [ox, oy] = this.pack.meta.origin;
       if (ortho) {
@@ -322,15 +379,13 @@ export class View {
     this.landcover?.invalidate();
     // three.js forgot every program with the context: kept materials would only block new keepers
     this.keepers.clear();
-    if (this.maskSource) this.buildMask(this.maskSource);
+    this.drawMask(this.maskSources);
     this.dirty = true;
   }
 
   /** inside the at-grade footprint of the designed road, where the terrain is cut away */
   private inFootprint(x: number, y: number): boolean {
-    const r = this.maskSource;
-    if (!r) return false;
-    for (let i = 0; i < r.n; i++) {
+    for (const { result: r } of this.maskSources) for (let i = 0; i < r.n; i++) {
       if (r.kind[i] !== KIND.earth) continue;
       const d = Math.max(r.dayL[i], r.dayR[i]) + GROUND_COLLAR;
       if (Math.abs(x - r.x[i]) < d && Math.abs(y - r.y[i]) < d && Math.hypot(x - r.x[i], y - r.y[i]) < d) return true;
@@ -350,6 +405,11 @@ export class View {
     this.dirty = true;
   }
   get hasPhoto() { return !!this.landcover?.hasPhotoSource; }
+  get photoWithNetwork() { return !!this.landcover?.photoWithNetwork; }
+  *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
+    if (this.landcover) return yield* this.landcover.buildSourceReplacements(graph, accepted);
+    return { commit() {}, dispose() {} };
+  }
   /** true while land-cover textures for the current camera are still being drawn or fetched */
   get busy() { return this.lcPending || !!this.landcover?.loadingPhotos; }
   private lcPending = false;
@@ -393,11 +453,7 @@ export class View {
   /** height that clears both the true and the rendered terrain (for draped overlays) */
   drape(x: number, y: number) { return this.drapeHeight(x, y); }
   groundHeight(x: number, y: number) { return this.terrain.heightAt(x, y); }
-  private groundBlend = (_x: number, _y: number) => 1;
-  replacementHeight(x: number, y: number) {
-    const z = this.groundHeight(x,y);
-    return z + (this.drape(x,y)-z)*this.groundBlend(x,y);
-  }
+  replacementHeight = (x: number, y: number) => this.drape(x, y);
   crossingGeology(x: number, y: number, z: number) {
     const profile = this.terrain.groundAt(x,y), depth = this.terrain.heightAt(x,y)-z;
     return profile.normMix ? [-3,-3] : [depth-profile.classIto, depth-profile.classIIto];
@@ -428,17 +484,43 @@ export class View {
   private buildOfficial() {
     const pts: number[] = [];
     const xy = this.pack.meta.official.xy;
+    let along = Infinity;
     for (let i = 0; i < xy.length; i++) {
       const [x, y] = xy[i];
       if (x < 0 || y < 0 || x > this.terrain.width || y > this.terrain.height) continue;
-      const v = this.local(x, y, this.drapeHeight(x, y) + 3);
+      const z = this.drapeHeight(x, y) + 3, v = this.local(x, y, z);
       pts.push(v.x, v.y, v.z);
+      // label anchors every ~150 m
+      const last = this.officialPts[this.officialPts.length - 1];
+      along = last ? along + Math.hypot(x - last.x, y - last.y) : Infinity;
+      if (along > 150) { this.officialPts.push({ x, y, z }); along = 0; }
     }
     if (pts.length >= 6) {
-      const l = this.makeLine(pts, null, 2.5, { color: 0xffffff, opacity: 0.55, dashed: true, dashSize: 60, gapSize: 40 });
-      l.name = 'official';
-      this.world.add(l);
+      // a reference, not a road: dark pencil dashes (unlike any road colour or marking, and not the
+      // black-and-white of a railway), a constant 10 px on screen (render() scales them with the zoom)
+      // a faint continuous halo keeps it legible over dark forest
+      const halo = this.makeLine(pts, null, 4.5, { color: 0xffffff, opacity: 0.35 });
+      const l = this.makeLine(pts, null, 2, { color: 0x2b3440, opacity: 0.85, dashed: true, dashSize: 10, gapSize: 7 });
+      halo.name = 'official-halo'; l.name = 'official';
+      this.world.add(halo, l);
+      this.officialLine = l;
     }
+  }
+
+  /** the official line's label rides along it: at its point nearest the middle of the view */
+  private placeOfficialLabel() {
+    const el = this.officialLabel;
+    if (!el) return;
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    let best: { sx: number; sy: number } | null = null, bd = Infinity;
+    for (const p of this.officialPts) {
+      const s = this.screenOf(p.x, p.y, p.z);
+      if (!s.vis || s.sx < 40 || s.sy < 40 || s.sx > w - 160 || s.sy > h - 60) continue;
+      const d = Math.hypot(s.sx - w / 2, s.sy - h / 2);
+      if (d < bd) { bd = d; best = s; }
+    }
+    el.style.display = best ? '' : 'none';
+    if (best) el.style.transform = `translate(${best.sx.toFixed(1)}px, ${best.sy.toFixed(1)}px)`;
   }
 
   private buildLabels() {
@@ -455,32 +537,85 @@ export class View {
       else if (p.kind === 'suburb') add('place suburb', p.name, p.x, p.y, 12000);
       else if (p.kind === 'hamlet') add('place hamlet', p.name, p.x, p.y, 7000);
     }
-    const { A, B } = this.pack.meta;
-    add('endpoint', `<b>A</b><span>${this.labels.a}</span>`, A.xy[0], A.xy[1]);
-    add('endpoint', `<b>B</b><span>${this.labels.b}</span>`, B.xy[0], B.xy[1]);
-    const legend = this.pack.meta.official.xy[Math.floor(this.pack.meta.official.xy.length * 0.33)];
-    add('official-label', this.labels.official, legend[0] + 150, legend[1], 25000);
+    for (const letter of ['A', 'B']) {
+      const el = document.createElement('div'); el.className = 'endpoint';
+      const badge = document.createElement('b'); badge.textContent = letter;
+      el.append(badge, document.createElement('span')); this.overlay.appendChild(el);
+      this.endpointMarkers.push({ el, x: 0, y: 0, z: 0 });
+    }
+    this.setEndpoints(this.endpoints);
+    if ((this.pack.meta.official?.xy ?? []).length >= 2) {
+      const el = this.officialLabel = document.createElement('div');
+      el.className = 'official-label';
+      el.innerHTML = `<span>${this.labels.official}</span>`;
+      this.overlay.appendChild(el);
+    }
   }
 
   // ---- route ---------------------------------------------------------------------------------
-  setDesign(d: Design, selected: number | null) {
-    const A = this.pack.meta.A.xy, B = this.pack.meta.B.xy;
-    const pts = [{ x: A[0], y: A[1] }, ...d.pis, { x: B[0], y: B[1] }];
-    // tangent polygon draped on terrain
-    const arr: number[] = [];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const L = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
-      const n = Math.max(1, Math.ceil(L / 60));
-      for (let k = 0; k <= n; k++) {
-        if (k === 0 && i > 0) continue;
-        const x = pts[i].x + (pts[i + 1].x - pts[i].x) * (k / n), y = pts[i].y + (pts[i + 1].y - pts[i].y) * (k / n);
-        const v = this.local(x, y, this.drapeHeight(x, y) + 4);
-        arr.push(v.x, v.y, v.z);
-      }
+  setEndpoints(endpoints: RenderEndpoints) {
+    this.endpoints = endpoints;
+    for (const [i, point] of [endpoints.a, endpoints.b].entries()) {
+      const marker = this.endpointMarkers[i];
+      if (!marker) continue;
+      marker.x = point.x; marker.y = point.y; marker.z = point.z ?? this.terrain.heightAt(point.x, point.y);
+      marker.el.querySelector('span')!.textContent = point.label ?? '';
+      marker.el.classList.toggle('plain', !!endpoints.plain);
     }
-    if (this.polyLine) { this.world.remove(this.polyLine); this.polyLine.geometry.dispose(); this.retire(this.polyLine.material); }
-    this.polyLine = this.makeLine(arr, null, 1.5, { color: 0xffffff, opacity: 0.8, depthTest: false, dashed: true, dashSize: 8, gapSize: 6, order: 3 });
-    this.world.add(this.polyLine);
+    this.dirty = true;
+  }
+
+  /** Unaccepted route proposals on reference geometry: a distinct dashed line above the ground, no road
+   * body or earthworks (none were engineered). The old road under it stays drawn until accepted. */
+  setProposals(proposals: readonly { id: string; key: string; active: boolean; points: readonly { x: number; y: number }[] }[]) {
+    const keep = new Set(proposals.map(p => p.id));
+    const drop = (id: string) => {
+      const old = this.proposalLines.get(id); if (!old) return;
+      this.world.remove(old.line); old.line.geometry.dispose(); this.retire(old.line.material); this.proposalLines.delete(id);
+    };
+    for (const id of [...this.proposalLines.keys()]) if (!keep.has(id)) drop(id);
+    for (const p of proposals) {
+      const key = `${p.key}:${p.active}`;
+      if (this.proposalLines.get(p.id)?.key === key) continue;
+      drop(p.id);
+      const arr: number[] = [];
+      for (const q of p.points) { const v = this.local(q.x, q.y, this.drapeHeight(q.x, q.y) + 2.5); arr.push(v.x, v.y, v.z); }
+      if (arr.length < 6) continue;
+      const line = this.makeLine(arr, null, p.active ? 5 : 3.5, { color: 0xff9f1c, opacity: 0.95, depthTest: false, dashed: true, dashSize: 10, gapSize: 6, order: 3 });
+      line.name = 'proposal';
+      this.world.add(line); this.proposalLines.set(p.id, { key, line });
+    }
+    this.dirty = true;
+  }
+
+  private sourceSelectionLine: Line2 | null = null;
+  /** the base-road stretch chosen with the Change road handles (display only) */
+  setSourceSelection(points: readonly { x: number; y: number }[] | null) {
+    if (this.sourceSelectionLine) {
+      this.world.remove(this.sourceSelectionLine); this.sourceSelectionLine.geometry.dispose(); this.retire(this.sourceSelectionLine.material);
+      this.sourceSelectionLine = null;
+    }
+    const arr: number[] = [];
+    for (const q of points ?? []) { const v = this.local(q.x, q.y, this.drapeHeight(q.x, q.y) + 2.5); arr.push(v.x, v.y, v.z); }
+    if (arr.length >= 6) {
+      this.sourceSelectionLine = this.makeLine(arr, null, 6, { color: 0xff9f1c, opacity: 0.8, depthTest: false, order: 3 });
+      this.sourceSelectionLine.name = 'source-selection'; this.world.add(this.sourceSelectionLine);
+    }
+    this.dirty = true;
+  }
+
+  clearDesign(endpoints = this.endpoints) {
+    this.setEndpoints(endpoints);
+    this.designPts = []; this.hoverPi = null; this.buildGuide();
+    for (const marker of this.piMarkers) marker.el.remove(); this.piMarkers = [];
+    this.selected = null; this.dirty = true;
+  }
+
+  setDesign(d: Design, selected: number | null, endpoints = this.endpoints) {
+    this.setEndpoints(endpoints);
+    this.designPts = [endpoints.a, ...d.pis, endpoints.b].map((p) => ({ x: p.x, y: p.y }));
+    this.selected = selected;
+    this.buildGuide();
     // PI markers
     while (this.piMarkers.length > d.pis.length) this.piMarkers.pop()!.el.remove();
     while (this.piMarkers.length < d.pis.length) {
@@ -488,6 +623,8 @@ export class View {
       el.className = 'pi';
       const idx = this.piMarkers.length;
       el.dataset.i = String(idx);
+      el.addEventListener('pointerenter', () => { this.hoverPi = idx; this.dirty = true; });
+      el.addEventListener('pointerleave', () => { if (this.hoverPi === idx) { this.hoverPi = null; this.dirty = true; } });
       this.overlay.appendChild(el);
       this.piMarkers.push({ el, x: 0, y: 0, z: 0 });
     }
@@ -498,8 +635,43 @@ export class View {
       m.el.title = `Bend ${i + 1}`;
       m.el.classList.toggle('sel', selected === i);
     });
-    this.selected = selected;
+    if (this.hoverPi !== null && this.hoverPi >= d.pis.length) this.hoverPi = null;
     this.dirty = true;
+  }
+
+  /** the bend whose tangent lines are shown: dragged, else hovered, else selected */
+  private get activeBend() {
+    const i = this.dragging ?? this.hoverPi ?? this.selected;
+    return i !== null && i + 2 < this.designPts.length ? i : null;
+  }
+
+  /**
+   * Editing guide: the two tangent lines through the active bend (to the neighbouring bends or A / B),
+   * where the curve between them is fitted. Hidden when no bend is being worked on.
+   */
+  private buildGuide() {
+    if (this.guide) {
+      this.world.remove(this.guide);
+      for (const c of this.guide.children as Line2[]) { c.geometry.dispose(); this.retire(c.material); }
+      this.guide = null;
+    }
+    const i = this.guideFor = this.activeBend;
+    if (i === null) return;
+    const pts = this.designPts.slice(i, i + 3), arr: number[] = [];
+    for (let j = 0; j < pts.length - 1; j++) {
+      const L = Math.hypot(pts[j + 1].x - pts[j].x, pts[j + 1].y - pts[j].y);
+      const n = Math.max(1, Math.ceil(L / 60));
+      for (let k = j > 0 ? 1 : 0; k <= n; k++) {
+        const x = pts[j].x + (pts[j + 1].x - pts[j].x) * (k / n), y = pts[j].y + (pts[j + 1].y - pts[j].y) * (k / n);
+        const v = this.local(x, y, this.drapeHeight(x, y) + 4);
+        arr.push(v.x, v.y, v.z);
+      }
+    }
+    const g = this.guide = new THREE.Group();
+    g.name = 'bend-guide';
+    g.add(this.makeLine(arr, null, 3, { color: 0x1d232a, opacity: 0.35, depthTest: false, order: 3 }),
+      this.makeLine(arr, null, 1.5, { color: 0xffffff, opacity: 0.9, depthTest: false, dashed: true, dashSize: 8, gapSize: 6, order: 3 }));
+    this.world.add(g);
   }
 
   setResult(r: Result, crownWidth: number) { finish(this.buildResult(r, crownWidth)).commit(); }
@@ -508,45 +680,25 @@ export class View {
    * The full result's route geometry, built in steps (each `yield` is a point where a cooperative
    * scheduler may hand the main thread back to input and rendering) without changing what is
    * shown. The result is staged: `commit()` swaps it in, `dispose()` throws it away. Abandoning the
-   * generator (`return()`) disposes too. `crossingSurfaces` and the ground blend are staged on the
-   * view while building (the crossing renderer builds from them; nothing displayed reads them until
-   * the commit's buildMask); a dispose restores the previous ones.
+   * generator (`return()`) disposes too. The returned context belongs to this generation; crossing
+   * builders consume it explicitly rather than reading mutable staging state from View.
    */
-  *buildResult(r: Result, crownWidth: number): Generator<void, Staged> {
-    const previous = { surfaces: this.crossingSurfaces, blend: this.groundBlend };
+  *buildResult(r: Result, crownWidth: number, routeId = LEGACY_ROUTE,
+    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true): Generator<void, StagedRoute> {
     const out: THREE.Object3D[] = [];
+    const owned = this.routeGroups.stage(routeId, out);
     let handedOver = false, settled = false;
     const dispose = () => {
       if (settled) return;
-      settled = true;
-      const keep = [this.collarMaterial(), this.ribbonMaterial()];
-      for (const o of out) {
-        (o as THREE.Mesh).geometry?.dispose();
-        const mats = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-        // never drawn: no program shared with a successor yet, dispose at once
-        for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) if (!keep.includes(mat)) mat.dispose();
-      }
-      this.crossingSurfaces = previous.surfaces; this.groundBlend = previous.blend;
+      settled = true; owned.dispose();
     };
     try {
     const natural = (x: number, y: number) => this.terrain.heightAt(x, y);
-    const surfaces: CrossingSurface[] = [], base = crossingBaseHeight(r, crownWidth, natural);
-    for (const c of r.crossings) { surfaces.push(...crossingSurfaces([c], natural, base)); yield; }
-    for (const c of r.footprintConflicts ?? []) { surfaces.push(...footprintSurfaces([c], natural)); yield; }
-    this.crossingSurfaces = surfaces;
-    yield;
-    const corridors: GroundCorridor[] = [];
-    for (const surface of this.crossingSurfaces) for (let i = 0; i+1 < surface.sections.length; i++) {
-      if (!groundSegment(surface,i)) continue;
-      const a = surface.sections[i], b = surface.sections[i+1];
-      const width = Math.max(...[a,b].flatMap(s => s.toe.map(p => Math.hypot(p.x-s.p.x,p.y-s.p.y))));
-      corridors.push({ a: a.p, b: b.p, width });
-    }
-    for (const head of turnaroundSurfaces(this.crossingSurfaces,natural)) corridors.push({ a: head.center, b: head.center, width: head.radius });
-    this.groundBlend = groundBlend(corridors);
+    const surfaces = sharedContext?.surfaces ?? (yield* buildRouteSurfaces(r, crownWidth, natural));
+    const context = sharedContext ?? routeSurfaceContext(surfaces, surfaces, natural, (x, y) => this.drape(x, y));
     yield;
     const n = r.n, w = crownWidth / 2;
-    const bad = badStations(r);
+    const bad = badStations(r), section = sectionIndex(crownWidth);
     // ---- ribbon (crown + slopes) and bridge decks ----
     const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
     const kinds: number[] = [], geo: number[] = [];
@@ -582,8 +734,9 @@ export class View {
         dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
-        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.crown),
-        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.crown),
+        // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
         dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
@@ -591,7 +744,7 @@ export class View {
     }
     const quad = (a: number, b: number, c: number, d: number) => { idx.push(a, b, c, b, d, c); };
     const groundPos: number[] = [], groundIdx: number[] = [];
-    const coarse = (x: number, y: number) => this.replacementHeight(x, y);
+    const coarse = context.replacementHeight;
     const flushGround = () => {
       if (!groundIdx.length) return;
       const geometry = new THREE.BufferGeometry();
@@ -601,18 +754,23 @@ export class View {
       collar.name = 'daylight-ground'; out.push(collar);
       groundPos.length = 0; groundIdx.length = 0;
     };
+    // earthworks, and a bridge end's abutment set into a bank (groundStations): its sides are concrete
+    // wing walls out to the engine's daylight points
+    const ground = groundStations(r, natural);
     for (let i = 0; i < n - 1; i++) {
       if (i % 32 === 0) { flushGround(); yield; } // corridor-local frustum culling, not one route-wide mesh
       const k0 = r.kind[i], k1 = r.kind[i + 1];
       if (k0 === KIND.tunnel || k1 === KIND.tunnel) continue;
       const a = sv[i], b = sv[i + 1];
       quad(a.cl, b.cl, a.cr, b.cr);
-      if (k0 === KIND.earth && k1 === KIND.earth) for (const side of [1, -1]) {
-        const sections = daylightSections(r, i, side, w, natural);
+      const abutment = k0 !== KIND.earth || k1 !== KIND.earth;
+      if (ground[i] && ground[i + 1]) for (const side of [1, -1]) {
+        const sections = daylightSections(r, i, side, w, natural, ground);
         let prev: { day: number; edge: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
         for (let j = 0; j < sections.length; j++) {
           const s = sections[j], t = j / (sections.length - 1), toe = s.slopeDay ?? s.day;
-          const fill = s.edge.z > s.day.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
+          const fill = s.edge.z > s.day.z, kind = abutment ? EW_KIND.structure : fill ? EW_KIND.fill : EW_KIND.cut;
+          const color = abutment ? concrete : fill ? fillC : cutC;
           const gp = r.geology.profiles[r.geology.ids[i]];
           const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
           const day = push(toe.x, toe.y, toe.z+groundLift, color, toe.z, slopeInk, kind, geology(s.day.z-toe.z));
@@ -636,21 +794,29 @@ export class View {
       }
     }
     flushGround();
-    // Close the embankment cross-section at structure transitions. Without these faces the
-    // terrain cut-out is visible as a sky-coloured hole beside the first/last bridge span.
+    // Close the ground works' cross-section at structure transitions: the abutment's front wall under
+    // the crown and its wing walls out to the toes, in concrete. Without these faces the terrain
+    // cut-out is visible as a sky-coloured hole beside the first/last bridge span.
+    const again = (k: number) => { // vertex k once more, as concrete
+      pos.push(pos[3*k], pos[3*k+1], pos[3*k+2]); col.push(concrete.r, concrete.g, concrete.b); elev.push(elev[k]); ink.push(0);
+      kinds.push(EW_KIND.structure); geo.push(...noGeo);
+      return pos.length / 3 - 1;
+    };
     for (let i = 0; i < n; i++) {
-      if (r.kind[i] !== KIND.earth || !((i > 0 && r.kind[i-1] !== KIND.earth) || (i+1 < n && r.kind[i+1] !== KIND.earth))) continue;
+      if (!ground[i] || !((i > 0 && !ground[i-1]) || (i+1 < n && !ground[i+1]))) continue;
       const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
       const zl = this.terrain.heightAt(x+nx*w, y+ny*w), zr = this.terrain.heightAt(x-nx*w, y-ny*w);
       if (z <= Math.max(zl, zr)) continue;
-      const l = push(x+nx*w, y+ny*w, zl, fillC, zl, slopeInk, EW_KIND.fill), rr = push(x-nx*w, y-ny*w, zr, fillC, zr, slopeInk, EW_KIND.fill);
-      quad(sv[i].el, l, sv[i].er, rr);
-      const station = sv[i];
-      idx.push(station.wl ?? station.dl, l, station.el, station.er, rr, station.wr ?? station.dr);
+      const l = push(x+nx*w, y+ny*w, zl, concrete, zl), rr = push(x-nx*w, y-ny*w, zr, concrete, zr);
+      const station = sv[i], el = again(station.el), er = again(station.er);
+      const dl = again(station.dl), dr = again(station.dr);
+      const wl = station.wl === undefined ? undefined : again(station.wl), wr = station.wr === undefined ? undefined : again(station.wr);
+      quad(el, l, er, rr);
+      idx.push(wl ?? dl, l, el, er, rr, wr ?? dr);
       // Retained toes need the lower part of the end cap too, otherwise the bridge
       // transition exposes a hole between the vertical wall and ground under the crown.
-      if (station.wl !== undefined) idx.push(station.dl, l, station.wl);
-      if (station.wr !== undefined) idx.push(station.wr, rr, station.dr);
+      if (wl !== undefined) idx.push(dl, l, wl);
+      if (wr !== undefined) idx.push(wr, rr, dr);
     }
     // bridge deck edges and piers, tunnel portals
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
@@ -740,10 +906,8 @@ export class View {
 
     out.push(...this.centreline(r, bad));
 
-    // demolished buildings are gone from the map (their dark squares mark the spots)
-    const demolished = new Set(r.demolished.map((p) => this.buildingMesh(p.j)).filter((k) => k >= 0));
     // ---- footprint demolitions (red squares) / noise buyouts (magenta diamonds) ----
-    for (const [buildings, buyout] of [[r.demolished, false], [r.boughtOut, true]] as const) {
+    for (const [buildings, buyout] of [[buildingMarkers ? r.demolished : [], false], [buildingMarkers ? r.boughtOut : [], true]] as const) {
       if (!buildings.length) continue;
       const bp: number[] = [];
       for (const { j } of buildings) {
@@ -770,20 +934,13 @@ export class View {
     const commit = () => {
       if (settled) return;
       settled = true;
-      const keep = new Set<THREE.Material>([this.collarMaterial(), this.ribbonMaterial()]);
-      for (const c of [...this.routeGroup.children]) {
-        this.routeGroup.remove(c);
-        const m = c as THREE.Mesh;
-        m.geometry?.dispose();
-        const mats = m.material as THREE.Material | THREE.Material[] | undefined;
-        for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) if (!keep.has(mat)) this.retire(mat);
-      }
-      for (const o of out) this.routeGroup.add(o);
-      this.buildMask(r);
-      if (this.buildings) this.buildings.hide(demolished);
+      owned.commit();
+      this.routeInputs.set(routeId, { result: r, surfaces });
+      this.stale = false;
+      if (!batch) this.commitRouteScene(new Set(this.routeInputs.keys()));
       this.dirty = true;
     };
-    return { commit, dispose };
+    return { commit, dispose, context };
     } finally {
       // abandoned (or failed) before handing the staged result over: nothing was shown
       if (!handedOver) dispose();
@@ -794,7 +951,9 @@ export class View {
    * per 32 stations per result: a program lookup each, and churn for the retire queue). */
   private collarMaterial() {
     if (!this.collarMat) {
-      this.collarMat = makeTerrainMaterial(this.terrainU, { maskTex: { value: null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } });
+      // A replacement collar is ground, not pavement: it must not bury another route's cut or
+      // fill when their collars overlap. The shared mask contains every settled road footprint.
+      this.collarMat = makeTerrainMaterial(this.terrainU, this.originalMask);
       this.collarMat.side = THREE.DoubleSide;
     }
     return this.collarMat;
@@ -828,7 +987,7 @@ export class View {
     const cp: number[] = [], cc: number[] = [], v = new THREE.Vector3();
     for (let i = 0; i < r.n; i++) {
       const tun = r.kind[i] === KIND.tunnel;
-      const z = tun ? this.drapeHeight(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5;
+      const z = routeIndicationHeight(r, i, (x, y) => this.drapeHeight(x, y));
       this.local(r.x[i], r.y[i], z, v);
       cp.push(v.x, v.y, v.z);
       const c = bad[i] ? COL.bad : r.kind[i] === KIND.bridge ? COL.bridge : tun ? COL.tunnel : COL.earth;
@@ -838,85 +997,67 @@ export class View {
     line.name = 'centre';
     const ghost = this.makeLine(cp, cc, 2, { opacity: 0.35, depthTest: false, order: 2 });
     ghost.name = 'ghost';
-    return [line, ghost];
+    const out: THREE.Object3D[] = [line, ghost];
+    // tunnels on the ground above them, for close up (where the structure line is not drawn)
+    for (const run of r.runs) {
+      if (run.kind !== KIND.tunnel) continue;
+      const tp = cp.slice(3 * Math.max(0, run.i0 - 1), 3 * (Math.min(r.n - 1, run.i1 + 1) + 1));
+      if (tp.length < 6) continue;
+      const trace = this.makeLine(tp, null, 2, { color: COL.tunnel.getHex(), opacity: 0.85, dashed: true, dashSize: 10, gapSize: 8, order: 4 });
+      trace.name = 'tunnel-trace';
+      out.push(trace);
+    }
+    return out;
   }
 
   /**
    * Drag preview: only the centreline follows the moved route (a few ms). The earthwork ribbon,
    * terrain cut-out, collars and crossings stay at the last full result until the next one.
    */
-  setPreview(r: Result) {
-    for (const name of ['centre', 'ghost']) {
-      const old = this.routeGroup.getObjectByName(name) as Line2 | undefined;
-      if (!old) continue;
-      this.routeGroup.remove(old); old.geometry.dispose(); this.retire(old.material);
+  routeGeometryStats() {
+    return [...this.routeGroups.values()].map(group => ({
+      routeId: group.userData.routeId as string,
+      ribbonTriangles: ((group.getObjectByName('ribbon') as THREE.Mesh | undefined)?.geometry.index?.count ?? 0) / 3,
+      collars: group.children.filter(child => child.name === 'daylight-ground').length,
+    }));
+  }
+
+  setPreview(r: Result, routeId = LEGACY_ROUTE) {
+    const group = this.routeGroups.get(routeId);
+    if (!group) return;
+    for (const old of [...group.children] as Line2[]) {
+      if (old.name !== 'centre' && old.name !== 'ghost' && old.name !== 'tunnel-trace') continue;
+      group.remove(old); old.geometry.dispose(); this.retire(old.material);
     }
-    for (const o of this.centreline(r, badStations(r))) this.routeGroup.add(o);
+    for (const o of this.centreline(r, badStations(r))) { o.userData.routeId = routeId; group.add(o); }
+    this.stale = true;
     this.dirty = true;
   }
 
-  /** Cut out to the replacement ground collar, not into the exposed slope. */
-  private buildMask(r: Result) {
-    this.maskSource = r;
-    this.contourLabels?.schedule(this.contourStep * 5); // labels keep off the carved footprint
-    const n = r.n;
-    const pos: number[] = [];
-    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
-    const P: [number, number][] = [], exact: [number, number][] = [];
-    for (let i = 0; i < n; i++) {
-      const nx = -r.ty[i], ny = r.tx[i];
-      const L = r.dayL[i] + GROUND_COLLAR - COLLAR_OVERLAP, R = r.dayR[i] + GROUND_COLLAR - COLLAR_OVERLAP;
-      for (const side of [1, -1]) {
-        const p = daylightPoint(r, i, side);
-        exact.push([p.x-this.cx, this.cy-p.y]);
-      }
-      const a: [number, number] = [r.x[i] + nx * L - this.cx, -(r.y[i] + ny * L - this.cy)];
-      const b: [number, number] = [r.x[i] - nx * R - this.cx, -(r.y[i] - ny * R - this.cy)];
-      P.push(a, b);
-      for (const p of [a, b]) { minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); minZ = Math.min(minZ, p[1]); maxZ = Math.max(maxZ, p[1]); }
+  /** Complete a staged scene swap once, after all route and crossing groups commit synchronously. */
+  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[]) {
+    this.routeGroups.retain(ids);
+    for (const id of this.routeInputs.keys()) if (!ids.has(id)) this.routeInputs.delete(id);
+    this.maskSources = [...this.routeInputs.values()];
+    this.crossingSurfaces = this.maskSources.flatMap(input => [...input.surfaces]);
+    this.replacementHeight = routeSurfaceContext(this.crossingSurfaces, this.crossingSurfaces,
+      (x, y) => this.groundHeight(x, y), (x, y) => this.drape(x, y)).replacementHeight;
+    this.contourLabels?.schedule(this.contourStep * 5);
+    this.drawMask(this.maskSources);
+    const demolished = new Set<number>();
+    const indices = globalDemolished ?? [...this.routeInputs.values()].flatMap(({ result }) => result.demolished.map(b => b.j));
+    for (const j of indices) { const mesh = this.buildingMesh(j); if (mesh >= 0) demolished.add(mesh); }
+    this.buildings?.hide(demolished);
+    this.dirty = true;
+  }
+
+  private drawMask(inputs: readonly RouteMaskInput[]) {
+    const { terrain: pos, original, cuts, box: bounds } = routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
+    if (!bounds) {
+      this.maskUniforms.maskOn.value = this.originalMask.maskOn.value = this.crossingCut.maskOn.value = 0;
+      return;
     }
-    const original: number[] = [], cuts: number[] = [];
-    for (let i = 0; i < n - 1; i++) {
-      if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
-      for (const [points, out] of [[P, pos], [exact, original]] as const) {
-        const a0 = points[2*i], b0 = points[2*i+1], a1 = points[2*i+2], b1 = points[2*i+3];
-        for (const p of [a0,b0,a1,b0,b1,a1]) out.push(p[0],0,p[1]);
-      }
-    }
-    const addQuad = (out: number[], a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }, d: { x: number; y: number }) => {
-      for (const p of [a, b, c, b, d, c]) {
-        const x = p.x - this.cx, z = this.cy - p.y;
-        out.push(x, 0, z); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
-      }
-    };
-    for (const surface of this.crossingSurfaces) for (let i = 0; i + 1 < surface.sections.length; i++) {
-      if (!groundSegment(surface, i)) continue;
-      const a = surface.sections[i], b = surface.sections[i + 1];
-      // Inset the terrain hole into its replacement collar to hide raster-mask antialiasing.
-      const inset = (p: typeof a.p, q: typeof a.p) => {
-        const t = Math.max(0, 1 - 2*COLLAR_OVERLAP/Math.hypot(q.x-p.x,q.y-p.y));
-        return { x: p.x+(q.x-p.x)*t, y: p.y+(q.y-p.y)*t };
-      };
-      addQuad(pos, inset(a.p, a.outer[0]), inset(a.p, a.outer[1]), inset(b.p, b.outer[0]), inset(b.p, b.outer[1]));
-      if (surface.crossing.type === 'junction') addQuad(cuts, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
-    }
-    for (const surface of this.crossingSurfaces) for (const [a, b, c, d] of endCollars(surface, (x, y) => this.terrain.heightAt(x, y))) {
-      const inset = (p: typeof a, q: typeof a, metres: number) => {
-        const t = Math.min(.45, metres/Math.hypot(q.x-p.x,q.y-p.y));
-        return { ...p, x: p.x+(q.x-p.x)*t, y: p.y+(q.y-p.y)*t };
-      };
-      const l = inset(a,b,2*COLLAR_OVERLAP), rr = inset(b,a,2*COLLAR_OVERLAP);
-      const endL = inset(c,d,2*COLLAR_OVERLAP), endR = inset(d,c,2*COLLAR_OVERLAP);
-      addQuad(pos, l, rr, inset(endL,l,2*COLLAR_OVERLAP), inset(endR,rr,2*COLLAR_OVERLAP));
-    }
-    for (const head of turnaroundSurfaces(this.crossingSurfaces,(x,y) => this.terrain.heightAt(x,y))) {
-      const ring = turnaroundMaskRing(head);
-      for (let j = 0; j < ring.length; j++) for (const p of [head.center,ring[j],ring[(j+1)%ring.length]]) {
-        const x = p.x-this.cx, z = this.cy-p.y;
-        pos.push(x,0,z); minX = Math.min(minX,x); maxX = Math.max(maxX,x); minZ = Math.min(minZ,z); maxZ = Math.max(maxZ,z);
-      }
-    }
-    minX -= 20; minZ -= 20; maxX += 20; maxZ += 20;
+    const { minX, minZ, maxX, maxZ } = bounds;
     const maxTex = Math.min(8192, this.renderer.capabilities.maxTextureSize);
     const w = Math.min(maxTex, Math.ceil((maxX - minX) / 2.5 / 256) * 256);
     const h = Math.min(maxTex, Math.ceil((maxZ - minZ) / 2.5 / 256) * 256);
@@ -1126,12 +1267,17 @@ export class View {
   private render() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     this.world.traverse((o) => { if ((o as Line2).isLine2) ((o as Line2).material as LineMaterial).resolution.set(w, h); });
-    // the screen-space centreline is for orientation; close up it would hide the ribbon
-    const dist = this.camera.position.distanceTo(this.controls.target);
-    const centre = this.routeGroup.getObjectByName('centre') as Line2 | undefined;
-    const ghost = this.routeGroup.getObjectByName('ghost') as Line2 | undefined;
-    if (centre) (centre.material as LineMaterial).linewidth = dist < 1200 ? 1 : dist < 4000 ? 2.5 : 3.5;
-    if (ghost) ghost.visible = dist > 1200;
+    // the structure line: see STRUCTURE_LINE_FROM
+    const mpp = this.metresPerPixel, far = mpp > STRUCTURE_LINE_FROM, editing = this.stale || this.dragging !== null;
+    for (const group of this.routeGroups.values()) for (const o of group.children) {
+      if (o.name === 'centre') {
+        o.visible = far || editing;
+        ((o as Line2).material as LineMaterial).linewidth = far ? (mpp < 8 ? 2.5 : 3.5) : 2;
+      } else if (o.name === 'ghost') o.visible = far;
+      else if (o.name === 'tunnel-trace') o.visible = !far;
+    }
+    if (this.activeBend !== this.guideFor) this.buildGuide();
+    if (this.officialLine) (this.officialLine.material as LineMaterial).dashScale = 1 / mpp;
     this.updateSurface();
     this.renderer.render(this.scene, this.camera);
     if (this.retired.length) { for (const m of this.retired) this.release(m); this.retired.length = 0; }
@@ -1142,14 +1288,15 @@ export class View {
       if (show) el.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px)`;
     };
     for (const m of this.markers) place(m.el, m.x, m.y, m.z, m.minDist);
+    for (const m of this.endpointMarkers) place(m.el, m.x, m.y, m.z);
+    this.placeOfficialLabel();
     // zoom class for the overlay's CSS (small symbols from afar)
-    const mpp = this.metresPerPixel;
     const zoom = mpp > 12 ? 'far' : mpp > 3 ? 'mid' : 'near';
     if (this.overlay.dataset.zoom !== zoom) this.overlay.dataset.zoom = zoom;
     // bends: one too close to an already drawn one (or to A / B) shrinks to a dot, its number in the
     // tooltip; the selected bend is drawn first, so it always keeps its number
     const taken: { sx: number; sy: number }[] = [];
-    for (const e of [this.pack.meta.A.xy, this.pack.meta.B.xy]) { const s = this.screenOf(e[0], e[1], this.terrain.heightAt(e[0], e[1])); if (s.vis) taken.push(s); }
+    for (const m of this.endpointMarkers) { const s = this.screenOf(m.x, m.y, m.z); if (s.vis) taken.push(s); }
     const order = this.piMarkers.map((_, i) => i);
     if (this.selected !== null && this.selected < order.length) { order.splice(this.selected, 1); order.unshift(this.selected); }
     for (const i of order) {
@@ -1165,6 +1312,7 @@ export class View {
     if (this.hoverPos) place(this.hoverEl, this.hoverPos.x, this.hoverPos.y, this.hoverPos.z);
     else this.hoverEl.style.display = 'none';
     this.onRender?.();
+    for (const listener of this.renderListeners) listener();
   }
 
   // ---- pointer -------------------------------------------------------------------------------

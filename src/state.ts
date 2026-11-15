@@ -6,6 +6,7 @@ import { normalizeOverrides } from './core/overrides';
 import { normalizeGradePins } from './core/grade-pins';
 import { normalizeCrossingOverrides } from './core/crossings';
 import { normalizeBuildingOverrides, normalizeWallOverrides } from './core/build-controls';
+import { readLegacyBytes } from './legacy-storage';
 
 /** Score compatibility includes both code rules and the ground pack used to price the design. */
 export interface Best { cost: number; design: Design; at: string; model?: number; pricingData?: string }
@@ -26,24 +27,38 @@ export class Store {
   private listeners: ((d: Design, committed: boolean) => void)[] = [];
   best: Best | null = null;
   objectDataChanged = false;
+  /** Unknown/malformed bytes are recoverable, never overwritten by the constructor or later edits. */
+  storageProblem: string | null = null;
+  private persistAllowed = true;
 
   constructor(private key: string, private initial: () => Design, private pricingData = 'unmapped', private objectData = '') {
     let d: Design | null = null;
     try {
-      const raw = localStorage.getItem(key + '.design');
-      if (raw) d = JSON.parse(raw);
-      const b = localStorage.getItem(key + '.best');
-      if (b) this.best = JSON.parse(b);
+      const original = readLegacyBytes(localStorage, key);
+      if (original.design !== null) {
+        try {
+          const parsed = JSON.parse(original.design);
+          if (!parsed || typeof parsed !== 'object' || 'schemaVersion' in parsed || !Array.isArray(parsed.pis)
+            || !Array.isArray(parsed.vpis) || !Number.isFinite(parsed.speed) || !['auto', 'manual'].includes(parsed.profileMode)
+            || !['S7.5', 'S9.5', 'S11.5', 'D27.5'].includes(parsed.category)) throw new Error('Saved design needs recovery');
+          d = parsed;
+        } catch (error) { this.persistAllowed = false; this.storageProblem = String(error); }
+      }
+      // Read usable current work BEFORE a backup write can fail (quota/read-only storage).
+      // Failure below keeps that design in memory, read-only, rather than displaying defaults.
+      if ((original.design !== null || original.best !== null) && localStorage.getItem(key + '.legacy-original') === null)
+        localStorage.setItem(key + '.legacy-original', JSON.stringify(original));
+      if (original.best !== null) this.best = JSON.parse(original.best);
       // a best score from an older cost model is not comparable with today's bills: forget it
       if (this.best && (this.best.model !== COST_MODEL_VERSION || this.best.pricingData !== pricingData
         || (objectData && this.best.design.objectData && this.best.design.objectData !== objectData))) this.best = null;
       // Once accepted, legacy bests must acquire the SAME identity as the current design. Leaving
       // them unstamped would let Load best rebind old positional IDs after a later pack rebuild.
-      if (this.best && objectData && !this.best.design.objectData) {
+      if (this.persistAllowed && this.best && objectData && !this.best.design.objectData) {
         this.best.design.objectData = objectData;
         try { localStorage.setItem(key + '.best', JSON.stringify(this.best)); } catch { /* quota */ }
       }
-    } catch { d = null; }
+    } catch (error) { this.best = null; this.persistAllowed = false; this.storageProblem = String(error); }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
     this.prepare(this.design);
@@ -69,7 +84,7 @@ export class Store {
     this.history.push(clone(this.design));
     if (this.history.length > 200) this.history.shift();
     this.idx = this.history.length - 1;
-    try { localStorage.setItem(this.key + '.design', JSON.stringify(this.design)); } catch { /* quota */ }
+    this.persist();
   }
 
   /** transient update (e.g. while dragging); call commit() at the end */
@@ -96,10 +111,10 @@ export class Store {
   redo() { if (this.canRedo()) { this.idx++; this.design = clone(this.history[this.idx]); this.persist(); this.emit(true); } }
   reset() { this.replace(this.initial()); }
 
-  private persist() { try { localStorage.setItem(this.key + '.design', JSON.stringify(this.design)); } catch { /* */ } }
+  private persist() { if (this.persistAllowed) try { localStorage.setItem(this.key + '.design', JSON.stringify(this.design)); } catch { /* */ } }
 
   offerBest(cost: number, d: Design) {
-    if (this.best && this.best.cost <= cost) return false;
+    if (!this.persistAllowed || this.best && this.best.cost <= cost) return false;
     this.best = { cost, design: clone(d), at: new Date().toISOString(), model: COST_MODEL_VERSION, pricingData: this.pricingData };
     try { localStorage.setItem(this.key + '.best', JSON.stringify(this.best)); } catch { /* */ }
     return true;

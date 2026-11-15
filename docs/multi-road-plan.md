@@ -60,7 +60,8 @@ type RouteId = string;
 type RouteKind = 'road' | 'motorway' | 'railway';
 interface ProjectDesign {
   schemaVersion: number;
-  scenarioId: string;
+  scenarioId: string;                 // data pack / place
+  presetId: string;                   // stable mission identity; road/motorway saves coexist
   objectData: string;                 // identity of source objects/topology
   routes: RouteDesign[];              // only constructed/changed routes
   buildingOverrides: BuildingOverride[]; // one project-wide owner
@@ -75,7 +76,8 @@ interface RouteDesign {
   role: 'mission' | 'auxiliary';
   endpoints: EndpointPair;            // fixed world positions; anchors carry source/route refs
   source?: SourceReplacement;         // pack fingerprint + way IDs + exact station intervals
-  alignment: AlignmentDesign;         // PI/VPI/pins/structures/walls, no global building decisions
+  alignment: OwnedAlignment | DerivedAlignment; // owned PI/imported path OR corridor-child reference
+  controls: RouteControls;             // pins/structures/walls, no global building decisions
   specification: RoadSpec | MotorwaySpec | RailwaySpec;
 }
 interface ProjectResult {
@@ -104,6 +106,10 @@ interface ProjectResult {
   **unchanged bill**. Lift building choices to the project. Keep a recoverable old save and do not
   overwrite malformed/unknown newer schemas with defaults. Migrate current and best consistently;
   old bests survive only when model, pack, mission and evaluation semantics really match.
+- Save namespace includes stable preset identity separately from the shared pack/place. Road and motorway
+  missions on D3 must have independent current and best saves. C owns the storage-key and Continue-detection
+  helper consumed by S/U; migrate legacy `trapla.d11` only into the original road preset. Preset changes
+  never overwrite a sibling mission or merely reinterpret its geometry.
 - Source-dependent rebuilds cannot be silently dropped when a pack changes: keep the user's geometry
   and mark the anchor/source binding unresolved until repaired. Invalidate the score. Station-based
   edits remain attached to their route. Schema version is separate from `COST_MODEL_VERSION`.
@@ -128,8 +134,11 @@ or regenerated masks must preserve another road/rail crossing the same pixels.
 Candidate evaluation provisionally excludes its own claimed source intervals to avoid self-collision.
 Accepted ownership is separate: replacement intervals are committed only for a feasible built connection.
 On failure the old usable network remains authoritative, with the proposed geometry shown as unaccepted;
-conflicting claims and lost branches block acceptance. The effective network is the
-base minus accepted source intervals plus designed geometry. Roads removed from rendering must also be
+conflicting claims and lost branches block acceptance. The authoritative effective network is the base minus accepted source intervals plus **accepted**
+replacement geometry and new non-replacement routes. Rejected candidates are diagnostic geometry, not
+usable transport. Candidate queries use a separate provisional network excluding all jointly claimed
+intervals and including their proposals. Accept connected dependent replacements atomically from the
+current snapshot, independent of evaluation/cache order; never reuse last revision's acceptance as fact. Roads removed from rendering must also be
 removed from crossings/footprints and vice versa. Raster rail protection must be replaced only inside
 owned rail intervals, never erased globally or under unrelated tracks. The vector base-map renderer must
 mask old pavement/track in the same owned interval, including its display width.
@@ -160,9 +169,8 @@ construction route; cross-route spoil exchange is out of scope and stated, not a
 3. Resolve pair crossings, branches, overlapping footprints and shared structures with deterministic
    ownership. Re-run affected routes in a bounded stable order when a remedy changes their constraints.
    Detect nonconvergence and report it; never accept a cache-dependent or route-order-dependent score.
-4. Reconcile shared land, property, connectors and structures into a ledger. Charge every physical work
-   once; attribute its cost to a route or explicit shared item. Per-route attribution plus shared rows
-   must equal the total. Do not merge unrelated objects solely because their geometry hashes match.
+4. Assign **provisional** shared-work ownership to land, property, connectors and structures. Do not
+   finalize prices yet. Do not merge unrelated objects solely because their geometry hashes match.
 5. Apply building decisions once, then check combined exposure. Road-source energies add across routes
    for a given day/night receiver; do not add dB, take a network maximum, or bill several acquisitions
    of one house. This needs raw day/night contributions at common receiver heights before acquisition,
@@ -174,7 +182,10 @@ construction route; cross-route spoil exchange is out of scope and stated, not a
    of excess values relative to different limits. Preserve today's max-over-stations approximation
    within a physical source; finite-segment correction remains separate. Project house/noise views show
    the combined deciding exposure, not contradictory safe-looking independent bands.
-6. Validate mission connectivity/time/capacity, all modified routes and final geometry. Untouched base
+6. After acquisition/mitigation decisions settle, finalize quantities, pricing and ledger reconciliation.
+   Geometry-affecting mitigation returns through the bounded engineering loop. Charge each physical work
+   once; per-route attribution plus explicit shared rows must equal the total.
+7. Validate mission connectivity/time/capacity, all modified routes and final geometry. Untouched base
    roads do not acquire arbitrary new-build violations. Publish only a coherent project revision.
 
 An initial foundation may expose unsupported interactions as incomplete (not scored), but the playable
@@ -263,7 +274,7 @@ honest operational/noise policy and explicit game assumptions. Never silently pr
 | 1 `d11` | Trutnov → Polish border; existing cheapest-road mission | preserve the exact legacy pack and default, model-18 fixtures and saves |
 | 2 `d3` | Posázaví, Jílové/Hostěradice → Václavice; cross the Sázava landscape while choosing valleys, bridges and tunnels | retain PLAN's D3 choice; include the river crossing (do not pick a section south of it by accident). Inspect 0302+0303 reference and choose A/B within a roughly 20–25 km-wide playable envelope. Clearly state the actual endpoint names/subsection. |
 | 3 `d35` | Opatovec → Mohelnice corridor; negotiate the ridge and settlements | full corridor is about 35 km. Prefer the full named connection if measured memory/eval budgets permit; otherwise explicitly name the first playable stage Opatovec → Staré Město (16.6 km, Dětřichov tunnel reference), with Mohelnice as a later extension—not a falsely labelled endpoint. Report this decision before merge. |
-| 4 `i16-nova-paka` | I/16 Nová Paka; take through traffic around the town without excessive earthworks | real class-I southeast bypass, 8.479 km reference, S11.5/70. Short introductory/urban exercise; roughly 15 km square initial envelope. The actual new bypass is already present in current OSM: exclude its owned reference corridor from the baseline or explicitly use a sourced historical snapshot, so the player is not building a duplicate alongside a free completed bypass. Preserve the old town road. |
+| 4 `i16-nova-paka` | I/16 Nová Paka; take through traffic around the town without excessive earthworks | real class-I southeast bypass, 8.479 km reference, S11.5/70. Short introductory/urban exercise; roughly 15 km square initial envelope. The actual new bypass opened in 2025 and may be present in current OSM: verify the extract and exclude its owned reference corridor from the baseline or explicitly use a sourced historical snapshot, so the player is not building a duplicate alongside a free completed bypass. Preserve the old town road. |
 
 For Nová Paka, removing a completed OSM bypass does not restore pre-build ground: inspect DMR/orthophoto
 dates and disclose any residual built-earthwork advantage, or use sourced historical terrain. Exclusions
@@ -392,6 +403,100 @@ Worktrees must copy `/home/pasky/projects/trapla/public/scenarios/` and `pipelin
 running. Use `uv` for Python. Bound memory and dimensions for raster/mesh scripts. Commit tested code in
 the worktree, report gates/screenshots/limitations, await parent review; merge only after approval, then
 parent closes the agent with a separate `/quit`.
+
+## 9. C1 scope: what pricing each case needs (ordered, 2026-11-15)
+
+State after C0 (`3514bce`): the single mission road is priced exactly. Every other road change stays
+unpriced. A road with a free end "ends nowhere"; a tied-in end is `connection-pending`; a promoted stretch is
+`source-needs-network`. The independence screen in `project-ledger.ts` exists, but no project reaches it
+yet. Do the cases in this order: each one makes the next cheaper, and (a) alone already makes the ledger
+reachable.
+
+### (a) A new road tied into the network at its ends (smallest; no kernel split needed)
+
+1. **End junction as a priced work of the new road.** A source anchor or another road's station, both with
+   exact XYZ, replaces the legacy A/B collector. Reuse the `junction` crossing machinery, but keyed by the
+   exact source location instead of a pack way index, so tie-ins work on any ground road and on
+   designed-road ground segments. Refuse ties to bridges, tunnels and motorways: a motorway needs an
+   interchange, which is M1.
+2. **Junction form.** T/X junction, or a roundabout where it is selected (player choice, Auto by host
+   class). Footprint geometry includes turning lanes and the roundabout diameter, and is billed as one work.
+   Prices: research/08 has T/X ≈ 25 M CZK (low confidence) and roundabout ≈ 32 M CZK (medium, from ŘSD awards).
+3. **Checks.**
+   - Spacing to other junctions on the host road: class I outside built-up areas 1.5 km (ČSN 73 6101:2018,
+     research/12, medium-high); class II/III UNVERIFIED.
+   - Approach gradient and vertical match to the host's real XYZ.
+   - Sight triangles.
+   - Host speed/class decides which forms are allowed.
+4. **Ledger.** The host way counts as a touched road, so two roads tying into the same way, or within
+   spacing of each other, interact and stay unpriced. A free end stays "ends nowhere". Traffic on the new
+   road is an explicit player input. No traffic assignment: the host road's traffic and noise are unchanged,
+   and that assumption must be stated.
+5. **Research.**
+   - ČSN 73 6102 (paid): approach gradients, sight distances, form selection. Look for public reproductions
+     in lecture notes and theses, as research/12 did.
+   - TP 135 roundabouts (free, PJPK).
+   - TP 188 junction capacity (free).
+   - ŘSD/OTSKP T-junction awards, to replace the low-confidence 25 M CZK.
+
+### (b) A "Change road" replacement of an existing stretch
+
+1. **Policy by class.**
+   - Class I–III: ČSN 73 6101 applies to rebuilt sections.
+   - Local roads: ČSN 73 6110 (public PDF).
+   - Field tracks: ČSN 73 6109.
+   - Forest roads: ČSN 73 6108 (research/20).
+   Untouched or retained geometry gets no new-build violations. Only player-modified parts must meet the
+   class norms. Needed research: what Czech practice treats as a reconstruction that triggers the current
+   norm, versus maintenance that keeps the existing parameters.
+2. **Editable reference path.** Edit the imported polyline/profile directly, or fit it with visible changes
+   and revalidation; never fit it silently. The vertical stays terrain-reference until the player changes it.
+   Earthworks are measured only against actual change.
+3. **Costs.**
+   - Retained alignment: resurfacing and repair (milling and overlay, or full-depth reconstruction). Needs TP
+     87 (repairs of flexible pavements), TP 170 (pavement design) and OTSKP rows.
+   - Realigned parts: new build, plus removal of the old pavement (OTSKP removal items).
+   - Land: only beyond the existing road land. This needs an existing land-width prior; the current class
+     width is a study prior, not cadastral data.
+4. **Network.** Every branch and continuation is a priced junction tie-in (as in (a)). Accept the
+   replacement atomically: `acceptedReplacements` and render masks are published, and the old road leaves
+   crossings and footprints only inside the accepted interval. Bridges and tunnels inside the stretch stay
+   refused until there is surveyed elevation data (S) or structure modelling.
+5. **Noise.** A relocated stretch replaces the old acoustic source; it is never added to it. Traffic comes
+   from the ŘSD national traffic census (scitani.rsd.cz, free; S could attach per-way AADT) or explicit
+   player input. **Legal policy to research before scoring:** NV 272/2011 annex 3 A corrections for existing
+   roads, i.e. whether a reconstructed road keeps the old-load correction or gets the 60/50 dB new-road
+   limits. research/09 flags that status matters; MZd guidance and EIA practice are needed.
+
+### (c) Two interacting roads (needs the kernel split)
+
+1. **Kernel split.** Split `evaluate` into an engineering proposal (geometry, sections, footprints,
+   structures, raw acoustic contributions), then project decisions, then final pricing. The D11 facade must
+   stay bit-exact under `eval-regression` and the drag budget must not regress. The parts:
+   - Today's internal acquisition, wall and remedy choices become explicit policies.
+   - Raw day/night energy for every receiver height, not only the max-excess top floor.
+2. **Crossings between designed roads.** Bridge or underpass between two engineered 3D roads, with 4.8 m
+   clearance (research/08, high). An at-grade junction uses (a). Each crossing has one owner and bounded
+   re-runs of affected roads; nonconvergence is reported, never hidden.
+3. **Joint decisions.**
+   - One footprint/property owner per shared work.
+   - One acquisition per house.
+   - Combined noise as energy at common receivers.
+   - Project-level wall choice: either road's wall may protect a house.
+   - Mitigation that changes geometry goes back through the engineering loop.
+4. **Ledger.** Each physical work is charged once, and per-road attributions plus shared rows sum to the
+   total. Tests prove the result is independent of evaluation/cache order. The incremental cache uses old and
+   new influence bounds (§8).
+5. **Research.**
+   - Whether Manuál 2018 / NV 272/2011 practice assesses several road sources cumulatively at one receiver
+     (EIA "kumulativní vlivy", HLUK+ studies).
+   - Wall ownership/cost sharing between two schemes.
+   - Policy for mixed road/rail limits (research/23) before rail is scored.
+
+### Not in C1
+
+Traffic reassignment between roads; spoil exchange between roads; motorway interchanges (M1); stations
+and signalling on rail; finite-segment noise correction (see below).
 
 ## Separate candidate, not this change
 

@@ -24,7 +24,7 @@ await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '
 const errors = []; page.on('pageerror', e => errors.push(e.message));
 const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); await page.waitForTimeout(500); };
 try {
-  await page.goto(`http://localhost:${port}/`);
+  await page.goto(`http://localhost:${port}/?scenario=d11`);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
   for (const [file, roadId, name, size, bearing, elev] of shots) {
     await page.evaluate(d => window.trapla.setDesign(d), JSON.parse(readFileSync(file, 'utf8')).design); await idle();

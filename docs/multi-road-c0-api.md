@@ -1,8 +1,9 @@
 # C0 API checkpoint
 
-This is an early, unintegrated contract checkpoint, **not completion of C0 or C1**. No legacy
-kernel, Store constructor, worker dispatch, scenario values or renderer changes yet. Cost model stays 18.
-Parent review is required before UI/mode/pipeline consumers freeze these names.
+The API checkpoint was approved at `c554f55`. The following storage/legacy-adapter checkpoint implements
+safe migration, atomic project history and explicit endpoint/policy seams. This is **not completion of
+C0 or C1**: network accounting and final UI integration remain pending. Additive project worker dispatch
+now supports the exact one-road facade and honest incomplete multi-road proposals. Cost model stays 18.
 
 ## Modules
 
@@ -12,9 +13,41 @@ Parent review is required before UI/mode/pipeline consumers freeze these names.
 - `src/core/project-transport.ts`: proposed additive `TransportMeta` / `TransportGraphData` pack
   contract. Joint C/S/U/M review still required before pipeline writes it.
 - `src/core/project-protocol.ts`: additive `ProjectWorkerIn` / `ProjectWorkerOut`, stale/active-route
-  acceptance helper and score gate. These messages are **not yet dispatched by worker.ts**.
+  acceptance helper and score gate. `worker.ts` dispatches these alongside unchanged legacy messages.
+  Init must provide `projectEnvironment` (object/transport/terrain/pricing/water identities and terrain class).
+  `project-eval` includes the last displayed `{epoch, revision}` or null. `project-preview` includes route ID,
+  optional material value, and optional `gesture: {id, sequence}`. Full results remain exact-current;
+  `acceptsProjectMessage(snapshot, message, activeId, {id, lastDisplayedSequence})` permits monotonically
+  newer in-flight previews only inside that active gesture. Clear the window on commit/cancel, undo/redo,
+  reload and route switch. Without a window, previews also require exact-current revision.
 - `src/project-store-contract.ts`: commands, load outcomes, storage/recovery bytes, `ProjectStoreApi`,
-  best/save envelopes and UI-only selection repair. Store implementation follows review.
+  best/save envelopes and UI-only selection repair. Control selection must carry `routeRevision`; otherwise
+  repair clears it rather than interpreting a shifted pin/PI index after undo.
+- `src/project-persistence.ts`: `loadProjectSave(options)` reads/migrates before any legacy Store is created;
+  returns loaded/migrated/needs-repair/unsupported/empty. Reads are pure. Unknown bytes never fall back.
+- `src/project-store.ts`: `openProjectStore(options)` returns `{load, store}` (null store for unsupported).
+  `initial()` applies scenario defaults only to empty storage. Frozen snapshots, copy-on-write drafts,
+  atomic commands/cancel/undo/redo, bounded 200-entry history, monotone revisions and guarded best scores.
+  An out-and-back drag settles without adding history or truncating redo. Sparse/non-JSON control arrays
+  are rejected before serialization. Resolved mission anchors must match their actual port XYZ.
+  `subscribe` returns unsubscribe. Storage errors propagate; migration recovery must persist first.
+- `src/core/project-validation.ts`: runtime schema and corridor/route authority checks before publication.
+- `src/core/project-legacy.ts`: `makeLegacyProjectContext(ctx, {presetId, packId, objectData, transportData})`
+  constructs the legacy mission/endpoints/operations for bootstrap. `projectFromLegacyDesign`, `legacyDesignForRoute` and
+  `replaceRouteFromLegacy` preserve stable identity and separate project building choices. Imported/exact
+  paths and foreign crossing bindings are refused by the legacy adapter, never fitted silently.
+  Legacy design-speed edits also update operating speed unless `operations.speedPolicy` is explicitly
+  `independent`; no-op edits preserve operations. Defaults/preset seed PIs apply only through fresh initial().
+- `src/core/project-road.ts`: `evaluateProjectRoad` dispatches before road defaults, returns a route result
+  or machine-readable incomplete reason. It is NOT project accounting. Modes/source replacements/tangent
+  constraints not supported here cannot get a road bill. Mission goals do not apply to auxiliary routes.
+- `evaluate` / `autoProfile` now accept explicit endpoint elevations separately from terrain. Existing
+  calls default identically. Operating speed and mission capacity demand are separately optional.
+- `src/core/project-evaluate.ts`: `evaluateProject({legacy, environment}, snapshot)` publishes a complete
+  single legacy mission with its unchanged bill and absolute day/night receiver levels. Multiple routes,
+  mode foundations, source replacements and unsupported interactions have `cost.total = null`, no best,
+  and proposed geometry only. `previewProjectRoute` evaluates just the active route; reference road paths
+  remain explicit sampled proposals, never fitted to PIs. No route independence/cache claim yet.
 
 ## Important choices
 
@@ -38,7 +71,10 @@ source interval, or designed route interval. Diagnostics carry separately route-
 A corridor is discriminated: paired owns `spine`; independent owns `retainedSpine`. Paired children
 carry `alignment.kind = 'corridor'`; independent children own materialised `exact` alignment paths/controls.
 Stable directional IDs survive both transitions; there is never a competing PI and spine authority.
-Split/rejoin commands carry corridor and both children for one atomic edit. Mode owner
+Split/rejoin commands carry corridor and both children for one atomic edit. The store validates/applies
+M's materialisation; it does not generate geometry. Direction-specific controls require an explicit split
+first. Paired child-local control fields are rejected. Spine R maps to forward R; spine L maps to reverse R,
+not extra median walls. All station/side remapping and frozen child elevations come from mode engineering. Mode owner
 may export `modeCapability(kind)` as proposed; the project dispatcher must call it before constructing
 legacy road defaults. Unknown policy or incomplete mode physics cannot return a priced valid route.
 `CorridorKernel.propose` engineers a common formation with both child specifications; `RouteKernel`
@@ -56,12 +92,21 @@ Ground eligibility is explicit (`elevation: 'terrain'`); bridges/tunnels must be
 Surveyed source elevations carry matching z values and evidence. Shared OSM node IDs—not rounded XY—
 are topology evidence. Gauge/electrification are never inferred; `tracks` is a raw tag, not way count.
 `parallelSourceIds` preserves neighbour identity; own accepted replacement never masks that neighbour.
+`vectorData` hashes decompressed vector bytes; nominal display width is not an engineering width.
+Conflicting cache snapshots are listed in `unresolvedSources` with visible feature references, without
+fabricated nodes/stations/mappings. Promotion must refuse these sources. D11 metadata is an optional
+sidecar so frozen legacy `meta.json` and vector/net bytes remain unchanged.
 
 Physical `acousticSourceId` is independent of editor route ID. Contributions are raw day/night energy
 at common building/height receivers before acquisitions. Preserve max-over-stations within one physical
 source (including editor splits), sum across distinct physical sources. Screening includes individually
 quiet contributions and exposes an omitted **aggregate** energy bound. Mixed legal policies need a
 policy decision; no addition of limit-relative excess. Finite-segment correction is out of scope.
+
+Whenever loading drops a best (malformed, stale, newer build) or repairs bindings, the exact original
+envelope is kept in project recovery first: `trapla.project-recovery:…`, then `…:2` … `…:16` for distinct
+originals; full slots refuse to overwrite. Legacy `state.ts` may become read-only (`storageProblem`): the UI
+must tell the player, otherwise edits are silently lost on reload.
 
 Save/Continue helpers are `projectStorageKeys({scenarioId, presetId})` and
 `hasProjectSave(storage, {scenarioId, presetId})` in `src/project-store-contract.ts`. The stable project
@@ -82,15 +127,99 @@ best score. Initial material balance remains independent per construction route.
 
 ## Next implementation steps
 
-1. Runtime schema validation and safe read/migrate BEFORE current Store's destructive initial persist;
-   separate project key/recovery bytes, current+best compatibility and atomic draft/undo/reload.
-2. Legacy facade adapter and explicit endpoint/policy/staging seams; verify frozen D11 bills and geometry.
-3. Immutable transport index, bounded promotion preserving branches, candidate/accepted source ownership,
-   effective designed 3D network and shared ledger; real ground-road reconnection vertical slice.
-4. Worker dispatch/cache with bounded old+new influence invalidation, project acoustic/property decisions.
+1. Integrate the implemented persistence/adapter API in U bootstrap. Never construct legacy Store first.
+   The old Store now additionally preserves `.legacy-original` and refuses writes for unknown/malformed
+   saved designs, but new bootstrap should use the separate project namespace and loader.
+2. Extract engineering/acquisition/noise decision stages before any global ledger. The current route
+   adapter still runs legacy internal decisions; it cannot be summed into a network score.
+3. Complete C1 in the order of `docs/multi-road-plan.md` §9 ((a) end tie-ins, (b) replacements, (c) interactions): class-specific reference-path engineering,
+   actual branch connectors/relocations, joint footprint/crossing checks, acquisition/noise decisions,
+   then final ledger pricing and accepted replacement publication. Do not sum route-kernel bills.
+4. Add bounded old+new influence cache invalidation after dependency semantics are implemented. Current
+   full project publication recomputes routes; drag preview evaluates only the active route.
 
 Per-scenario `initial` category/speed is only a new-project default. Existing/current/best legacy designs
 retain their category/speed; an unknown or malformed newer save is never overwritten with those defaults.
 
-No browser/GPU gates requested for this unintegrated types/API checkpoint. Integration/full gates and
+## Project price: own bills, unpriced changes and the independence ledger
+
+`ProjectResult.cost` always carries data for the UI, never guesses:
+
+- `alone[routeId]`: each evaluated road's OWN bill against the unchanged existing network (display only,
+  label it as covering only that road). Never add these up yourself.
+- `unpriced: {routeId, reason}[]`: road changes not covered by a project price. Non-empty ⇒ `total === null`,
+  `complete/valid === false`, no best save (`isScorableProject` also checks it). Show e.g. "N road changes not
+  priced yet". Reasons: the route's incomplete code (`source-needs-network`, `unsupported-mode`, …),
+  `connection-pending`, `mission-needs-network`, or an interaction (`shared-land`, `shared-road`,
+  `shared-building`, `shared-noise`, `too-many-roads`).
+- Each evaluated road's own violations stay in `issues` (`blocking: 'invalid'`, route-qualified) even while
+  unpriced. Interactions add `blocking: 'incomplete'` issues scoped to both roads (and the house, if any).
+- Every `ProjectIssue` has `check: 'violation' | 'not-checked'`. 'violation' is a checked rule the design breaks
+  (norm, game rule such as "Road ends nowhere", or an engine limit of a checked design); 'not-checked' means
+  the engine cannot check it yet. Show the two separately. `blocking` still says what it does to the score.
+- Every crossing or carriageway overlap between two designed roads' surfaces is its own not-checked issue
+  (`roads-cross` "Roads cross here" / `roads-overlap` "Roads overlap here", engine limit), scoped to both
+  roads, with one route-qualified location per road and plan position `at`, whatever else is wrong.
+  A tie-in at another road also shows here until junctions between new roads are checked (C1 (a)).
+- Undo/discard is just a new snapshot: removing the unpriced change restores the scored single-road result.
+
+One road: the exact legacy facade, bit-identical to `evaluate` (`eval-regression` checks every frozen D11
+fixture through `evaluateProject` too). Ground-level endpoints keep the kernel's own end-station terrain
+sample; only an explicit non-ground XYZ overrides it. Several roads (once their tie-ins can be priced):
+`screenIndependence` (`src/core/project-ledger.ts`) prices them together (`total` = sum of their own bills,
+`cost.routes` the per-road shares) only when a conservative screen finds no interaction:
+land take, works and removed old roads (plus a 1:2 toe bound on links and a PROVISIONAL 10 m clearance) do
+not touch; no existing road is changed by two roads (crossed, relocated or removed ways), and no closure's
+detour can be affected; no building is demolished/bought/kept-in-the-way by two roads; and every house
+belongs to at most one road for noise (in its own noise list, or within 20 + 10·log10(N − 1) dB of the limit
+by a monotone all-height hard-ground upper bound). Further roads are neglected, not proven absent: together
+≤ 1 % of one limit (≤ +0.043 dB at a house exactly at the limit, below reported precision), published in
+`acousticScreen`. Nearer roads stay unpriced until joint noise/wall decisions exist (C1). For D11 traffic
+(9000/day, 90 km/h) that reach is ≈ 3.6 km per road (≈ 1 km at 3000/day, 70 km/h), so most second roads in
+the D11 pack stay unpriced. Max 10 roads. The screen itself adds ≈ 15–22 ms to a multi-road full evaluation
+(26 567 buildings), on top of each road's own evaluation; single-road and preview paths are unchanged.
+A non-mission road with any free end is never scorable (`road-ends-nowhere`, "Road ends nowhere / Connect
+both ends to a road"); together with unpriced tie-ins this means NO multi-road project is priced in this wave:
+the summed branch becomes reachable only once C1 prices connections. Unpriced, beyond the route's own
+incomplete reasons: any end tied to an existing road, another road or (for
+a non-mission road) a mission port, and any connection row (`connection-pending`); promoted/source roads,
+corridors and modes. A null `total` with empty `unpriced` means a project-level issue (no mission road,
+empty project). Known limitation: project-wide manual building buys are passed to every road's kernel, which
+bills them regardless of distance, so a manual buy leaves any multi-road project unpriced (fails safe) and
+shows inside each road's own bill.
+
+## Source proposal foundation
+
+`src/core/project-network.ts` provides `ProjectTransportIndex`, `ProjectSurfaceIndex`,
+`EffectiveProjectNetwork` and `projectNetworkViews`. `new ProjectTransportIndex(graph, transportData,
+vectorData, terrain)` takes the real `Terrain` (or any `{heightAt, isOob}`); `heightAt` is display-filled
+outside data, so ground positions where `isOob` holds are unresolved (null), never a usable road height. The source graph is cloned/frozen, canonical station
+bounds are checked, unknown bridge/tunnel elevations stay unknown, render intervals clip through their
+explicit correspondence, and candidate exclusions remain separate from the accepted network. Spatial
+queries have cell/work budgets, inclusive diagonal-corner coverage and unsafe-coordinate rejection.
+
+`src/core/project-promotion.ts` exports:
+
+- `groundRoadSourceInfo(base, sourceId)`: source name/class, existing study-width prior and numeric tagged
+  speed or null. It does not copy mission speed/traffic onto a track or treat missing traffic as silence.
+- `promoteGroundRoad(base, {routeId, acousticSourceId, interval, specification, name})`: an atomic
+  `promote` command preserving the exact bounded reference path, endpoint source identities and every
+  real branch occurrence (including another station on the same source). Caller supplies explicit road
+  operation assumptions; unresolved/conflicting sources and unsupported structures are refused.
+- `assessReplacementConnections(base, project, proposedSurfaces)`: **topology feasibility only**, not
+  engineering acceptance. It checks branches, source continuations, conflicting claims, current proposed
+  XYZ, fingerprints, and connected dependency failures. An endpoint anchored to a source point that another
+  route replaces fails (`source-endpoint-replaced`): re-anchor it to that route. Two adjacent promotions
+  need one explicit connection naming both routes; separate promotions sharing a boundary fail conservatively.
+  A stretch sharing a node with a railway (level crossing) is refused for now. Its `feasibleIntervals` MUST NOT directly become
+  accepted render/source replacements or a valid score before the remaining engineering stages finish.
+
+The first UI wave may edit, undo and reload these proposals; it remains unscored. Invalid new-road
+geometry and its route bill remain visible. `RouteResult.accepted` is not a visibility filter;
+only final `acceptedReplacements` may remove base infrastructure. The worker deliberately publishes none
+for multi-road/source proposals in this foundation. Tests exercise source promotion/branches,
+reconnection to another proposed road's XYZ, separation from stale accepted surfaces, undo/reload,
+repeated-node identities and conservative refusal—not completed C1 construction/accounting.
+
+No browser/GPU gates were run for the initial unintegrated types/API checkpoint. Integration/full gates and
 screenshots are still required before feature merge. No claim of playable multi-road scoring yet.

@@ -46,8 +46,8 @@ export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrid
     crossings?: { target: CrossingTarget; choice: CrossingChoice }[];
   };
 export type DesignedVertical =
-  | { kind: 'auto'; pins: NonNullable<Design['gradePins']> }
-  | { kind: 'manual'; vpis: Design['vpis'] }
+  | { kind: 'auto'; pins: NonNullable<Design['gradePins']>; /** Dormant legacy manual controls, not grade authority. */ manualVpis?: Design['vpis'] }
+  | { kind: 'manual'; vpis: Design['vpis']; /** Retained but inactive while By hand. */ autoPins?: NonNullable<Design['gradePins']> }
   /** Frozen built geometry; interpolation is linear in horizontal station. */
   | { kind: 'frozen'; points: { s: number; z: number }[] };
 export type AlignmentDesign =
@@ -65,7 +65,11 @@ export interface ReferencePoint extends Vec2 {
   s: number;
   elevation: { kind: 'ground' } | { kind: 'known'; z: number; evidence: string } | { kind: 'unresolved' };
 }
-export interface RoadOperations { aadt: number; heavyShare: number; speed: number }
+export interface RoadOperations {
+  aadt: number; heavyShare: number; speed: number;
+  /** Legacy speed edits remain coupled unless separate operating assumptions are explicitly chosen. */
+  speedPolicy?: 'design' | 'independent';
+}
 export interface RoadSpec {
   kind: 'road';
   legalClass: 'I' | 'II' | 'III' | 'local' | 'service' | 'track';
@@ -82,8 +86,10 @@ export interface MotorwaySpec {
   operations: RoadOperations;
 }
 export interface RailwaySpec {
-  kind: 'railway'; policy: string; designSpeed: number; gaugeMm: number;
-  tracks: 1 | 2; electrification: 'none' | 'AC25kV' | 'DC3kV' | 'other';
+  kind: 'railway'; policy: string; designSpeed: number;
+  /** Imported unknowns are preserved; unresolved operating data blocks scoring. */
+  gaugeMm: number | null;
+  tracks: 1 | 2; electrification: 'unknown' | 'none' | 'AC25kV' | 'DC3kV' | 'other';
   operations: { passengerDay: number; passengerNight: number; freightDay: number; freightNight: number;
     passengerSpeed: number; freightSpeed: number };
 }
@@ -163,6 +169,11 @@ export interface ProjectIssue {
   /** Legacy station/index/target fields are deliberately excluded. IDs/codes are not player labels. */
   violation: Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'basis' | 'rule'>;
   blocking: 'invalid' | 'incomplete';
+  /** 'violation': a checked rule the design breaks (norm, game rule or engine limit of a checked design).
+   * 'not-checked': the engine cannot check this yet (e.g. road-road crossings); show separately. */
+  check: 'violation' | 'not-checked';
+  /** Plan position of a point finding (e.g. where two roads cross), for locating it on the map. */
+  at?: { x: number; y: number };
 }
 export interface TransportSurface {
   routeId: RouteId; revision: number;
@@ -185,6 +196,7 @@ export interface WorkProposal {
   geometry: EngineeringGeometry;
   claims: SourceInterval[];
   /** Final priced quantities must use this same geometry. */
+  /** Provisional in EngineeringProposal; final only in the ledger after global decisions. */
   cost: number;
   dependencies: ProjectDependency[];
 }
@@ -237,6 +249,11 @@ export interface ProjectCost {
   total: number | null;
   routes: Record<RouteId, number>; shared: number;
   materialBalance: 'per-route';
+  /** Each evaluated road's OWN bill against the unchanged existing network, for display only. Never add
+   * these up: only `total` (set when the whole project was priced together) is a project price. */
+  alone: Record<RouteId, number>;
+  /** Road changes not covered by a project price yet. Non-empty ⇒ total === null, no verdict, no best. */
+  unpriced: { routeId: RouteId; reason: string }[];
 }
 export interface ProjectBuildingOutcome {
   buildingIndex: number; action: 'retain' | 'demolish' | 'buy';
@@ -300,7 +317,7 @@ export interface ProjectDecisions {
 /** UI selection lives outside saved/undoable ProjectDesign. */
 export type ProjectSelection =
   | { kind: 'route'; routeId: RouteId; target: { kind: 'range'; s0: number; s1: number }
-      | { kind: 'pi' | 'vpi' | 'pin'; index: number } }
+      | { kind: 'pi' | 'vpi' | 'pin'; index: number; /** Required to retain selection across publication; absent clears safely. */ routeRevision?: number } }
   | { kind: 'building'; objectData: string; index: number }
   | { kind: 'source'; interval: SourceInterval }
   | { kind: 'work'; workId: WorkId }

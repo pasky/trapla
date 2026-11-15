@@ -148,6 +148,14 @@ export interface Result {
 }
 
 export interface EvalOptions {
+  /** Explicit transport heights; never replace the Terrain height query. Omitted preserves legacy. */
+  endpointElevations?: { a?: number; b?: number };
+  /** Project checks goals on the required connection, not every auxiliary route. */
+  goals?: { time: boolean; capacity: boolean };
+  /** Operating speed is independent of design speed. Omitted preserves legacy emissions. */
+  operatingSpeed?: number;
+  /** Required mission demand, separate from this route's acoustic operations. */
+  capacityTraffic?: number;
   /** Drag preview: one fixed-price auto-profile solve (no mass-balance search or clearance
    * retries), one engineering pass (no retaining walls or support lifts, no strict retry), no
    * crossing geometry, footprint remedies or noise. Plan, grade line, structures and an approximate bill only;
@@ -552,7 +560,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   let autoOptions: AutoProfileOptions | undefined;
   let pinViolations: Violation[] = [];
   let materialValue = MATERIAL_VALUE.start;
-  const zA = ground[0], zB = ground[n - 1];
+  const zA = opts.endpointElevations?.a ?? ground[0], zB = opts.endpointElevations?.b ?? ground[n - 1];
+  if (!Number.isFinite(zA) || !Number.isFinite(zB)) throw new Error('Non-finite endpoint elevation');
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
     const minH = clearance.slice();
     const maxH = new Float64Array(n).fill(NaN);
@@ -575,6 +584,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
     }
     const apOpt = {
+      endpointElevations: opts.endpointElevations,
       maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: { above: waterMin.slice(), below: waterBelow }, structureKind: manualStructures, pins: d.gradePins,
       costClass: profileCostClass, costClassCount: costClasses.length,
@@ -959,7 +969,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const noiseBuyouts = new Float64Array(n);
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
-  const noiseModel = createNoiseModel(scenario.traffic, d.speed, { heavyShare: scenario.heavyShare });
+  const noiseModel = createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
@@ -1105,11 +1115,12 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
   const travelMin = al.length / (d.speed / 3.6) / 60;
-  const minCategory = minCategoryForTraffic(scenario.traffic);
-  if (CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
-    violations.push(categoryViolation(al.length, d.category, scenario.traffic, minCategory));
+  const capacityTraffic = opts.capacityTraffic ?? scenario.traffic;
+  const minCategory = minCategoryForTraffic(capacityTraffic);
+  if ((opts.goals?.capacity ?? true) && CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
+    violations.push(categoryViolation(al.length, d.category, capacityTraffic, minCategory));
   }
-  if (travelMin > scenario.maxTravelMin + 1e-9) {
+  if ((opts.goals?.time ?? true) && travelMin > scenario.maxTravelMin + 1e-9) {
     violations.push(timeViolation(al.length, d.speed, travelMin, scenario.maxTravelMin));
   }
   violations.push(...noiseViolations); // grouped noise issues never hide geometric/goal constraints

@@ -8,6 +8,8 @@ import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
 import { PART_KEYS } from '../src/core/cost';
 import { COST_MODEL_VERSION } from '../src/core/data/prices';
 import { loadPack } from './loadpack';
+import { evaluateProject } from '../src/core/project-evaluate';
+import { makeLegacyProjectContext, projectFromLegacyDesign } from '../src/core/project-legacy';
 
 const packPath = process.env.PACK ?? 'public/scenarios/d11';
 const sets = {
@@ -110,6 +112,14 @@ if (process.argv[1]?.endsWith('/eval-regression.ts')) {
     }
     for (const key of ['vpis', 'materialValue', 'valid', 'violations', 'geometryHash'] as const)
       if (JSON.stringify(actual[key]) !== JSON.stringify(f.expected[key])) throw new Error(`${f.name}: ${key} changed`);
-    console.log(`PASS ${f.name}: ${actual.cost.total.toFixed(2)} CZK`);
+    // The project facade must reproduce the legacy kernel bit for bit, not merely within tolerance.
+    const project = makeLegacyProjectContext(ctx, { presetId: 'legacy-road', packId: 'd11', objectData: 'regression', transportData: null });
+    const design = projectFromLegacyDesign(f.design, project);
+    const published = evaluateProject({ legacy: ctx, environment: { objectData: 'regression', transportData: null, terrainData: 'pack',
+      pricingData: 'pricing', waterData: 'water', terrainClass: 'hilly' } }, { epoch: 'regression', revision: 0, design });
+    const viaProject = published.routes[design.routes[0].id]?.legacy;
+    if (!viaProject || JSON.stringify(bill(viaProject)) !== JSON.stringify(actual) || published.cost.total !== actual.cost.total)
+      throw new Error(`${f.name}: project facade differs from the legacy evaluation`);
+    console.log(`PASS ${f.name}: ${actual.cost.total.toFixed(2)} CZK (project facade identical)`);
   }
 }

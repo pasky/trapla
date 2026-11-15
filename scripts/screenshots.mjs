@@ -9,7 +9,7 @@ mkdirSync(OUT, { recursive: true });
 const PORT = Number(process.env.PORT ?? 5199); // set PORT when several checkouts run at once
 const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
 await server.listen();
-const url = `http://localhost:${PORT}/`;
+const url = `http://localhost:${PORT}/?scenario=d11`;
 // GPU=1: use the hardware GPU (Vulkan) instead of SwiftShader — much faster where one is available
 const browser = await chromium.launch({
   executablePath: process.env.CHROME ?? '/usr/bin/chromium',

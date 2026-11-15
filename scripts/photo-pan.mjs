@@ -25,7 +25,7 @@ const urls = new Map();
 page.on('request', (r) => { if (r.url().includes('/export?')) { started++; urls.set(r.url(), (urls.get(r.url()) ?? 0) + 1); } });
 page.on('requestfinished', (r) => { if (r.url().includes('/export?')) done++; });
 page.on('requestfailed', (r) => { if (r.url().includes('/export?')) failed++; });
-await page.goto(`http://localhost:${PORT}/`);
+await page.goto(`http://localhost:${PORT}/?scenario=d11`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });

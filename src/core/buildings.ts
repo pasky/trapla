@@ -100,6 +100,12 @@ export class BuildingIndex {
     }
   }
 
+  /** Radius about `items[j]` (x, y) enclosing the vertex circle AND the oriented façade rectangle. */
+  extent(j: number): number {
+    const b = this.items[j];
+    return Math.max(b[2], Math.hypot(this.ox[j] - b[0], this.oy[j] - b[1]) + Math.hypot(this.hl[j], this.hw[j]));
+  }
+
   /** Horizontal distance to the nearest façade of the oriented rectangle (zero inside it). */
   facadeDistance(j: number, x: number, y: number): number {
     const dx = x - this.ox[j], dy = y - this.oy[j];

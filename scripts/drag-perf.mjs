@@ -26,25 +26,29 @@ const shot = arg('--shot'); // screenshot path, taken once in the middle of the 
 // other agents / scripts may hold the port: take the next free one
 const server = await createServer({ root, server: { port, strictPort: false }, logLevel: 'warn' });
 await server.listen();
-const url = server.resolvedUrls.local[0];
+const url = `${server.resolvedUrls.local[0]}?scenario=d11`;
 const args = gpu
   ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
   : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
+try {
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 await page.addInitScript(() => {
   try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ }
   const D = window.__drag = { on: false, posts: new Map(), results: [], frames: [], longtasks: [], moves: [] };
   const Orig = window.Worker;
   window.Worker = class extends Orig {
-    postMessage(m, t) { if (m && m.type === 'eval' && D.on) D.posts.set(m.id, performance.now()); return super.postMessage(m, t); }
+    postMessage(m, t) { if (m && ['eval', 'project-eval', 'project-preview'].includes(m.type) && D.on) D.posts.set(m.id, performance.now()); return super.postMessage(m, t); }
     set onmessage(fn) {
       super.onmessage = (ev) => {
         const t0 = performance.now();
         fn(ev);
         const t1 = performance.now();
         const m = ev.data;
-        if (D.on && m && m.type === 'result') D.results.push({ id: m.id, t0, t1, preview: !!(m.preview ?? m.result?.preview), worker: m.result?.timing?.total, parts: window.trapla?.handlerTiming?.() });
+        const r = m?.type === 'project-preview' ? m.result?.legacy
+          : m?.type === 'project-result' ? m.result?.routes[window.trapla?.activeRoute?.()]?.legacy : m?.type === 'result' ? m.result : null;
+        const handled = !window.trapla?.handledRequest || window.trapla.handledRequest() === m?.id;
+        if (D.on && r && handled) D.results.push({ id: m.id, t0, t1, preview: m.type === 'project-preview' || !!(m.preview ?? r.preview), worker: r.timing?.total, parts: window.trapla?.handlerTiming?.() });
       };
     }
     get onmessage() { return super.onmessage; }
@@ -237,8 +241,6 @@ const out = {
   maxResultGap: `${resultGap.toFixed(0)} ms between displayed results during the drag`,
 };
 console.log(JSON.stringify(out, null, 1));
-await browser.close();
-await server.close();
 if (check) {
   // Budgets (ms). GPU: what the player sees. SwiftShader rasterises the whole scene on the CPU
   // (frames of ~0.5 s regardless of the app), so there only main-thread work is checked.
@@ -257,6 +259,7 @@ if (check) {
   if (afterLong.length) fails.push(`${afterLong.length} long task(s) ≥ 50 ms after release`);
   over('longest gap between displayed results', resultGap, env('DRAG_RESULT_GAP', gpu ? 250 : 1000));
   if (compiled.length) fails.push(`shader programs compiled during the drag: ${compiled.join(', ')}`);
-  if (fails.length) { console.log('FAIL:', fails.join('; ')); process.exit(1); }
-  console.log('OK');
+  if (fails.length) { console.log('FAIL:', fails.join('; ')); process.exitCode = 1; }
+  else console.log('OK');
 }
+} finally { await browser.close(); await server.close(); }

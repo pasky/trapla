@@ -7,6 +7,23 @@
 export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'D27.5';
 export type TerrainClass = 'hilly' | 'mountainous';
 
+/**
+ * Two-lane cross-section inside the crown, per side of the axis (drawn by the renderer: lanes, hard
+ * shoulder, gravel verge, painted lines). MD VL 1 (2022) sheets 12-04 … 12-06: lane `a`, hard shoulder `c`
+ * (its inner 0.25 m is the guide strip, vodicí proužek), unpaved verge `e` = 0.50 m counted in the crown.
+ * Markings, TP 133 (2013): edge line V 4 on the inner edge of the guide strip, 0.25 m wide where the
+ * hard shoulder is wider than 0.5 m, otherwise 0.125 m; centre line V 2a 3 m dash / 6 m gap, 0.125 m
+ * (outside motorways). Solid V 1a needs sight distances, which are not modelled: always V 2a.
+ */
+export interface CrossSection {
+  lane: number;
+  hardShoulder: number;
+  edgeLine: number;
+  centreLine: number;
+  dash: number;
+  gap: number;
+}
+
 export interface Category {
   id: CategoryId;
   label: string;
@@ -25,6 +42,8 @@ export interface Category {
   bridgeCode: string;
   /** number of tunnel tubes for this category (motorway = 2) */
   tunnelTubes: number;
+  /** lanes and markings (single carriageway only; the motorway has none yet) */
+  section?: CrossSection;
 }
 
 export const CATEGORIES: Record<CategoryId, Category> = {
@@ -34,6 +53,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     normPerKm: { hilly: 36_142_000, mountainous: 41_448_000 },
     normCodes: { hilly: 'A.1.S2.7,5.NER', mountainous: 'A.1.S2.7,5.NEH' },
     bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', tunnelTubes: 1,
+    section: { lane: 3.0, hardShoulder: 0.25, edgeLine: 0.125, centreLine: 0.125, dash: 3, gap: 6 },
   },
   'S9.5': {
     id: 'S9.5', label: 'S 9.5 (class I road)', enabled: true, crownWidth: 9.5,
@@ -41,6 +61,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     normPerKm: { hilly: 56_912_000, mountainous: 67_982_000 },
     normCodes: { hilly: 'A.1.S1.9,5.NER', mountainous: 'A.1.S1.9,5.NEH' },
     bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', tunnelTubes: 1,
+    section: { lane: 3.5, hardShoulder: 0.75, edgeLine: 0.25, centreLine: 0.125, dash: 3, gap: 6 },
   },
   'S11.5': {
     id: 'S11.5', label: 'S 11.5 (class I road)', enabled: true, crownWidth: 11.5,
@@ -48,6 +69,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     normPerKm: { hilly: 68_894_000, mountainous: 82_163_000 },
     normCodes: { hilly: 'A.1.S1.11,5.NER', mountainous: 'A.1.S1.11,5.NEH' },
     bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', tunnelTubes: 1,
+    section: { lane: 3.5, hardShoulder: 1.75, edgeLine: 0.25, centreLine: 0.125, dash: 3, gap: 6 },
   },
   // Not playable in v1 (needs interchanges, twin tubes, motorway norms).
   'D27.5': {

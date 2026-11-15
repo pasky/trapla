@@ -21,7 +21,7 @@ function routeResult(id: string): RouteResult {
 }
 function result(): ProjectResult {
   return { epoch: 'load-a', revision: 4, routes: { a: routeResult('a'), b: routeResult('b') }, works: { items: [] },
-    cost: { total: 200, routes: { a: 100, b: 100 }, shared: 0, materialBalance: 'per-route' }, issues: [],
+    cost: { total: 200, routes: { a: 100, b: 100 }, shared: 0, materialBalance: 'per-route', alone: {}, unpriced: [] }, issues: [],
     acceptedReplacements: [], acceptedRenderReplacements: [], buildings: [], receivers: [], complete: true, valid: true,
     acousticScreen: { bounds: [], omittedDayEnergyUpperBound: 0, omittedNightEnergyUpperBound: 0, complete: true } };
 }
@@ -36,6 +36,15 @@ it('rejects delayed results across edits, reload epochs, and active-route switch
   expect(acceptsProjectMessage({ ...current, epoch: 'reload' }, message, 'a')).toBe(false);
   expect(acceptsProjectMessage(current, { ...message, routeRevision: 1 }, 'a')).toBe(false);
   expect(acceptsProjectMessage(current, { ...message, result: routeResult('b') }, 'a')).toBe(false);
+  const inFlight = { ...message, gesture: { id: 'drag-1', sequence: 4 } };
+  const ahead = { ...current, revision: 7 }, window = { id: 'drag-1', lastDisplayedSequence: 3 };
+  expect(acceptsProjectMessage(ahead, inFlight, 'a', window)).toBe(true);
+  expect(acceptsProjectMessage(ahead, inFlight, 'a', { ...window, lastDisplayedSequence: 4 })).toBe(false);
+  expect(acceptsProjectMessage(ahead, inFlight, 'a', { ...window, id: 'drag-2' })).toBe(false);
+  expect(acceptsProjectMessage(ahead, inFlight, 'b', window)).toBe(false);
+  expect(acceptsProjectMessage({ ...ahead, epoch: 'reload' }, inFlight, 'a', window)).toBe(false);
+  expect(acceptsProjectMessage({ ...current, revision: 3 }, inFlight, 'a', window)).toBe(false);
+  expect(acceptsProjectMessage(ahead, inFlight, 'a')).toBe(false); // gesture ended/undone/switched
   const full: ProjectWorkerOut = { type: 'project-result', id: 10, result: result(), baseIdentity: null, changedRouteIds: ['a'], removedRouteIds: [], dependentRouteIds: [] };
   // Complete project publication does not depend on which route happens to be selected.
   expect(acceptsProjectMessage(current, full, 'b')).toBe(true);

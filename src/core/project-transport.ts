@@ -8,7 +8,7 @@ export interface TransportTags {
   lanes?: string;
   /** Raw OSM tags; absence means unknown. tracks is NOT the count of mapped way geometries. */
   tracks?: string; gauge?: string; electrified?: string; voltage?: string; frequency?: string;
-  maxspeed?: string; oneway?: string; service?: string; usage?: string;
+  maxspeed?: string; oneway?: string; service?: string; usage?: string; covered?: string;
 }
 export interface TransportRenderFeature {
   id: string;
@@ -23,7 +23,8 @@ export interface TransportRenderInterval {
   /** Piecewise-linear mapping to cumulative metres along the rendered polyline, measured from its
    * first vertex. Source s increases; renderS may decrease for reversed features. Includes both ends. */
   correspondence: { sourceS: number; renderS: number }[];
-  /** Centreline display width; masking retains other sources sharing the same pixels. */
+  /** Nominal display width including casing, NOT engineering width. Renderer expands to the actual
+   * pass width (including zoom minPx); masking retains other sources sharing the same pixels. */
   width: number;
 }
 interface TransportSourceBase {
@@ -49,13 +50,22 @@ export type TransportSource = TransportSourceBase & (
   | { elevation: 'unknown' }
   | { elevation: 'surveyed'; z: number[]; elevationEvidence: string }
 );
+export interface UnresolvedTransportSource {
+  id: SourceId; osmWayId: string; kind: 'road' | 'railway';
+  reason: 'conflicting-snapshots';
+  /** Visible/pickable source without fabricated chainage/connectivity; promotion is refused. */
+  renderFeatureIds: string[];
+  legacyNetIndices?: number[];
+}
 export interface TransportGraphData {
   version: 1;
-  /** Fingerprint of vector.bin content whose line-layer/feature indices the mapping addresses. */
+  /** SHA256 of DECOMPRESSED vector.bin content (gzip timestamps are not identity), whose
+   * line-layer/feature indices the mapping addresses. */
   vectorData: string;
   renderFeatures: TransportRenderFeature[];
   nodes: TransportNode[];
   sources: TransportSource[];
+  unresolvedSources?: UnresolvedTransportSource[];
 }
 /** Runtime adapter separates ground sampling from usable transport elevations. null means unknown. */
 export interface TransportSurfaceQuery {

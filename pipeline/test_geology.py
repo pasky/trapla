@@ -35,6 +35,17 @@ class GeologyTests(unittest.TestCase):
         ]:
             self.assertEqual(classify({"hor_karto": rock}), expected)
 
+    def test_posazavi_descriptions_use_broad_rock_priors_not_norm_mix(self):
+        for rock, expected in [
+            ("granodiorit, tonalit, křemenný diorit (sázavský typ)", "igneous"),
+            ("biotitové rohovce s polohami metadrob", "hard"),
+            ("droby, prachovce, břidlice", "hard"),
+            ("jílovité břidlice", "phyllite"),
+            ("intermediální až kyselé metatufy se sulfidy", "tuff"),
+            ("neznámá hornina", "unknown"),
+        ]:
+            self.assertEqual(classify({"hor_karto": rock}), expected)
+
     def test_keyset_pagination_and_offline_cache(self):
         requests = []
 

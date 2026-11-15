@@ -10,7 +10,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   // the first-run intro would cover the map in the screenshots
   await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
-  await page.goto(server.resolvedUrls.local[0]);
+  await page.goto(`${server.resolvedUrls.local[0]}?scenario=d11`);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 });
   const design = JSON.parse(readFileSync(process.argv[3] ?? 'scripts/best-design.json', 'utf8')).design;
   await page.evaluate(async (d) => { window.trapla.setDesign(d); await window.trapla.whenIdle(); }, design);

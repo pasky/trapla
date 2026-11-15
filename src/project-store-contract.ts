@@ -22,8 +22,8 @@ export interface ProjectSave {
   schemaVersion: 1; design: ProjectDesign; best: ProjectBest | null;
 }
 export type ProjectLoadResult =
-  | { status: 'loaded' | 'migrated'; save: ProjectSave; original: LegacyBytes | null }
-  | { status: 'needs-repair'; save: ProjectSave; original: LegacyBytes | null; reasons: string[] }
+  | { status: 'loaded' | 'migrated'; save: ProjectSave; original: LegacyBytes | null; originalProject?: string }
+  | { status: 'needs-repair'; save: ProjectSave; original: LegacyBytes | null; originalProject?: string; reasons: string[] }
   | { status: 'unsupported'; raw: string; reason: string }
   | { status: 'empty' };
 /** Read these BEFORE constructing legacy Store (its constructor persists immediately).
@@ -36,9 +36,9 @@ export interface ProjectStorage {
 export interface ProjectSaveNamespace { scenarioId: string; presetId: string }
 /** Pack fingerprint is deliberately NOT in the key: changed packs must recover the user's geometry,
  * not hide it behind a fresh namespace. Keep schemas in one stable slot so newer saves are detected. */
-export function projectStorageKeys(namespace: ProjectSaveNamespace): { project: string; recovery: string } {
+export function projectStorageKeys(namespace: ProjectSaveNamespace): { project: string; recovery: string; projectRecovery: string } {
   const suffix = `${encodeURIComponent(namespace.scenarioId)}:${encodeURIComponent(namespace.presetId)}`;
-  return { project: `trapla.project:${suffix}`, recovery: `trapla.recovery:${suffix}` };
+  return { project: `trapla.project:${suffix}`, recovery: `trapla.recovery:${suffix}`, projectRecovery: `trapla.project-recovery:${suffix}` };
 }
 /** Continue means there are bytes to load/recover, NOT proof they are valid or scored.
  * Even malformed/newer saves must reach the recovery UI rather than being overwritten by Start. */
@@ -83,7 +83,9 @@ export function repairProjectEditor(state: ProjectEditorState, design: ProjectDe
           : alignment.kind === 'corridor' ? 0
           : target.kind === 'vpi' ? (alignment.vertical.kind === 'manual' ? alignment.vertical.vpis.length : 0)
           : alignment.vertical.kind === 'auto' ? alignment.vertical.pins.length : 0;
-        if (!Number.isInteger(target.index) || target.index < 0 || target.index >= count) selection = null;
+        // An index is not a control identity: undo may insert a pin before it. Without a matching
+        // route revision, clear rather than silently selecting a different surviving index.
+        if (target.routeRevision !== route.revision || !Number.isInteger(target.index) || target.index < 0 || target.index >= count) selection = null;
       }
     }
   }

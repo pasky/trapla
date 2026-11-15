@@ -6,6 +6,8 @@
 import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
+import type { ProjectResult, RouteId } from '../core/project';
+import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
@@ -40,7 +42,7 @@ export interface HudEvents {
 }
 
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const whyKey = (v: Violation) => `${v.kind}|${v.title}`;
+const whyKey = (v: Pick<Violation, 'kind' | 'title'>) => `${v.kind}|${v.title}`;
 
 const pct = (v: number) => `${(v * 100).toFixed(1)} %`;
 
@@ -81,11 +83,96 @@ const MANUAL_LONG = 'By hand: drag the ◆ height points in the profile; double-
 export class Hud {
   ev: HudEvents = {};
   private last: { r: Result; d: Design } | null = null;
+  private projectIssuesFor: ProjectResult | null | undefined;
+  private issuesActive: RouteId | undefined;
+  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId;
+    ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId } | null = null;
+  setRouteState(editable: boolean, hasResult: boolean) {
+    this.$('sec-design').hidden = !editable;
+    for (const id of ['sec-cost', 'sec-stats', 'sec-decisions']) this.$(id).hidden = !hasResult;
+    if (!hasResult) { this.last = null; this.renderProjectScore(); }
+  }
+  /** `legacy`: the project is exactly one legacy road (the facade): the unchanged single-road score shows,
+   * including its live ≈ preview total. Otherwise the project score owns the total and verdict. */
+  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; legacy?: boolean;
+    /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
+     * shown only while there is no project total, never added up */
+    ownPrice?: { total: number; approx: boolean; label: string } | null;
+    /** road names, to say which road an issue belongs to when it is not the active one */
+    names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number> } = {}) {
+    const { missionRouteId, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {} } = opts;
+    if (legacy) {
+      const was = this.project; this.project = null; this.projectIssuesFor = undefined;
+      this.$('best').style.display = '';
+      if (was) this.$('cost-scope').textContent = 'Total cost';
+      // re-render the legacy score when leaving project mode or when a new best arrived
+      if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
+      return;
+    }
+    this.project = { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId }; this.renderProjectScore();
+  }
+  /** the listed project issue k */
+  listedIssue(k: number) { return this.project?.result?.issues[k] ?? null; }
+  private renderProjectScore() {
+    if (!this.project) return;
+    const { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId } = this.project, total = result?.cost.total;
+    const priced = total !== null && total !== undefined, unpriced = result?.cost.unpriced.length ?? 0;
+    // An unpriced network keeps one road's own price visible, plainly labelled, never as a total.
+    this.$('cost-scope').textContent = priced ? 'Total cost' : ownPrice ? ownPrice.label : 'Total cost';
+    this.$('total').textContent = priced ? `${pending ? '≈ ' : ''}${czk(total)}`
+      : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : '—';
+    this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
+    this.$('score').classList.toggle('preview', pending);
+    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, missionRouteId, names) : this.goalText;
+    const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
+    this.$('chip-time').hidden = time === undefined;
+    if (time !== undefined) {
+      const ok = time <= this.sc.maxTravelMin;
+      this.$('chip-time').innerHTML = `${ok ? '✓' : '✗'} ${num(time, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
+      this.$('chip-time').className = `chip ${ok ? 'ok' : 'bad'}`;
+    }
+    const chip = this.$('chip-viol');
+    const { violations, notChecked } = listProjectIssues(result?.issues ?? [], activeRouteId, names, lengths);
+    const badge = projectBadge(result, pending, violations.length);
+    this.$('valid').textContent = badge.text; this.$('valid').className = `badge ${badge.cls}`;
+    const n = violations.length;
+    chip.className = `chip ${pending ? 'pending' : n ? 'bad' : result?.complete ? 'ok' : 'pending'}`;
+    chip.innerHTML = pending ? '⋯ checked when you pause' : n ? `⚠ ${n} violation${n === 1 ? '' : 's'} <small>show ›</small>`
+      : result?.complete ? '✓ no violations' : notChecked.length ? `${notChecked.length} not checked yet <small>show ›</small>` : 'Checks not finished';
+    chip.toggleAttribute('disabled', pending || !(n + notChecked.length));
+    if (this.projectIssuesFor !== result || this.issuesActive !== activeRouteId) {
+      this.projectIssuesFor = result; this.issuesActive = activeRouteId;
+      this.$('viol-count').textContent = String(n);
+      this.$('viol-count').className = `count${n ? '' : ' ok'}`;
+      this.$('sec-viol').hidden = !(n + notChecked.length);
+      const line = (v: ListedIssue, cls: string) => {
+        const open = this.openWhy.has(whyKey(v));
+        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.s0 !== undefined ? `km ${num(v.s0 / 1000, 2)}` : ''}</span>
+        <div><div class="vt">${esc(v.title)}</div><div class="vfix">${esc(v.fix)} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
+        <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(v.detail) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
+      };
+      this.$('viol').innerHTML = violations.slice(0, 60).map(v => line(v, '')).join('')
+        + (notChecked.length ? `<li class="not-checked-h">Not checked yet</li>${notChecked.slice(0, 20).map(v => line(v, 'not-checked')).join('')}` : '');
+    }
+    if (!pending) {
+      const delta = this.baseline !== null && priced ? total - this.baseline : 0;
+      this.$('delta').textContent = Math.abs(delta) >= 5e5 ? `${delta < 0 ? '−' : '+'}${czk(Math.abs(delta))}` : '';
+      this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
+      this.lastTotal = priced ? total : null;
+    }
+    // no best while the project is not priced: a stored best is not comparable to an unpriced change
+    this.$('best').style.display = priced ? '' : 'none';
+    const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
+    this.$('best').innerHTML = best ? `${isBest ? '★ your best' : `best ${czk(best.cost)}`}${isBest ? '' : ' <button type="button" id="load-best">Load</button>'}` : '<small>no valid design yet</small>';
+    this.$('best').classList.toggle('stale', pending);
+    const load = this.root.querySelector<HTMLButtonElement>('#load-best'); if (load) load.onclick = () => this.ev.onLoadBest?.();
+  }
   private range: StationRange | null = null;
   /** violations whose explanation the player unfolded */
   private openWhy = new Set<string>();
   /** the violations the list shows: the last full result's (a drag preview keeps them) */
   private listed: Result['violations'] | null = null;
+  private legacyBest: Pick<Best, 'cost'> | null = null;
   private folds: Record<string, boolean> = {};
   private goalText = '';
   /** total before the edit in progress (the change chip compares against it) */
@@ -160,13 +247,18 @@ export class Hud {
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
-    this.$('chip-viol').onclick = () => this.ev.onViolation?.(0);
+    // the first listed item (project mode: the first real violation, else the first not-checked item)
+    this.$('chip-viol').onclick = () => {
+      const first = this.root.querySelector<HTMLElement>('#viol li[data-k]');
+      this.ev.onViolation?.(this.project && first ? Number(first.dataset.k) : 0);
+    };
     this.$('viol').onclick = (e) => {
       const why = (e.target as HTMLElement).closest('.why') as HTMLElement | null;
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;
       if (why && li) {
         // "why?" unfolds the explanation (kept open across recomputes) instead of jumping to the place
-        const x = this.listed?.[Number(why.dataset.why)];
+        const k = Number(why.dataset.why), listed = this.project ? this.listedIssue(k) : null;
+        const x = this.project ? listed?.violation : this.listed?.[k];
         const box = li.querySelector<HTMLElement>('.vdetail')!;
         box.hidden = !box.hidden;
         why.textContent = box.hidden ? 'why?' : 'less';
@@ -319,11 +411,14 @@ export class Hud {
       <tr title="ČGS GEOCR50 / IG 1:50k lithology + estimated local loose/weathered/competent layers, not measured borehole profiles. Hover the profile for ground names. Unmapped cells use norm mix 75/20/5."><td>Excavation class</td><td>${cls} % <small>I / II / III</small></td></tr>
       <tr><td>Mass balance</td><td>${q.surplus > 1 ? `surplus ${kvol(q.surplus)} to tip` : q.deficit > 1 ? `deficit ${kvol(q.deficit)} bought` : 'balanced'} <small>· reused ${kvol(q.reused)}, avg haul ${num(q.avgHaul / 1000, 1)} km, 15 % of cut unsuitable</small></td></tr>
       <tr><td><small>recompute</small></td><td><small>${num(r.timing.total ?? 0, 0)} ms</small></td></tr>`;
+    this.renderProjectScore();
   }
 
-  setResult(r: Result, d: Design, best: Best | null) {
+  setResult(r: Result, d: Design, best: Pick<Best, 'cost'> | null) {
     this.last = { r, d };
     this.renderCost(r, d);
+    if (this.project) return; // active-route widgets never overwrite the project score/violations
+    this.legacyBest = best;
     // Violations and the best score belong to full evaluations: during a drag preview the chip
     // says they are pending and the best chip is dimmed (the list keeps the last full verdict).
     const chip = this.$('chip-viol');
@@ -369,6 +464,7 @@ export class Hud {
     b.title = best ? 'Your cheapest valid design so far' : '';
     const lb = this.root.querySelector<HTMLButtonElement>('#load-best');
     if (lb) lb.onclick = () => this.ev.onLoadBest?.();
+    this.renderProjectScore();
   }
 
   /** an edit started (a drag counts once, from its start); the change chip compares with the total before it */

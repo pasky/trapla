@@ -18,6 +18,14 @@ import type { StationRange } from '../state';
 import type { View } from './view';
 
 const HIGHLIGHT = 0xffe000, WALL = 0x18b0b0;
+/**
+ * The 3D noise wall (its symbol from afar stays teal): steel H posts at a 4 m module carrying absorptive
+ * wood-cement panels on a concrete plinth, as in the M-S system (prefa-nb.cz/protihlukove-steny-m-s:
+ * HEA / HEB posts, 4000 mm module, plinth panels up to 1.5 m, wood-cement absorber of 500 x 250 mm blocks).
+ * Illustrative only (the bill prices m² of wall): post width (HEB 160) and a 0.5 m plinth. The wall's
+ * line and top are exactly the billed ones.
+ */
+const POST_MODULE = 4, POST_W = 0.16, PLINTH = 0.5;
 /** wall symbols from this many metres per pixel on (a 3 m wall is then under ~5 px), offset ≥ this many px */
 const SYMBOL_FROM = 1, SYMBOL_PX = 5;
 
@@ -31,6 +39,8 @@ export class RouteExtras {
   private r: Result | null = null;
   private crown = 9.5;
   private range: StationRange | null = null;
+  private visible = true;
+  private removeFrame: () => void;
 
   constructor(private view: View) {
     this.walls.name = 'noise-walls';
@@ -38,8 +48,22 @@ export class RouteExtras {
     this.highlight.name = 'range-highlight';
     this.manual.name = 'manual-structures';
     view.world.add(this.walls, this.symbols, this.highlight, this.manual);
-    const prev = view.onRender;
-    view.onRender = () => { prev?.(); this.updateSymbols(); };
+    this.removeFrame = view.addRenderListener(() => this.updateSymbols());
+  }
+
+  setVisible(visible: boolean) {
+    this.visible = visible;
+    for (const group of [this.walls, this.symbols, this.highlight, this.manual]) group.visible = visible;
+    if (visible) this.symbolScale = -1;
+    this.view.requestRender();
+  }
+  reset() {
+    this.r = null; this.range = null; this.wallHits = [];
+    for (const group of [this.walls, this.symbols, this.highlight, this.manual]) this.clear(group);
+  }
+  dispose() {
+    this.reset(); this.removeFrame();
+    this.view.world.remove(this.walls, this.symbols, this.highlight, this.manual); this.view.requestRender();
   }
 
   setResult(r: Result, crownWidth: number, overrides: readonly StructureOverride[] = [], wallOverrides: readonly WallOverride[] = []) {
@@ -102,16 +126,16 @@ export class RouteExtras {
       group.remove(c);
       const m = c as THREE.Mesh;
       m.geometry?.dispose();
+      if ((c as THREE.InstancedMesh).isInstancedMesh) (c as THREE.InstancedMesh).dispose();
       this.view.retire(m.material as THREE.Material | undefined); // disposed after the next frame, see View.retire
     }
   }
 
   /** Points along a wall stretch at `off` metres from the axis, `dz` above grade: local x, y, z triplets.
    * Includes the cell boundaries so even a single-cell wall has a visible, full-length face. */
-  private wallPath(w: WallStretch, off: number, dz: number): number[] {
+  private wallPath(w: WallStretch, off: number, dz: number, at?: readonly number[]): number[] {
     const r = this.r!, sgn = w.side === 'L' ? 1 : -1, out: number[] = [];
-    const stations = [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1]
-      .filter((s, i, a) => i === 0 || s !== a[i - 1]);
+    const stations = at ?? this.wallStations(w);
     for (const s of stations) {
       const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[i]) / r.ds;
       const at = (a: Float64Array) => a[i] + t * (a[i + 1] - a[i]);
@@ -121,7 +145,23 @@ export class RouteExtras {
     return out;
   }
 
-  /** noise walls: a thin wall along the crown edge plus a line along its top */
+  /** stations of a wall's outline: its ends and the cell boundaries between */
+  private wallStations(w: WallStretch): number[] {
+    const r = this.r!;
+    return [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1]
+      .filter((s, i, a) => i === 0 || s !== a[i - 1]);
+  }
+
+  /** The wall sits outside the crown: its base reaches down onto the actual side slope instead of
+   * leaving a grade-height panel suspended above a descending embankment. */
+  private wallFoot(w: WallStretch, s: number, z: number): number {
+    const r = this.r!, i = Math.min(r.n - 1, Math.max(0, Math.round(s / r.ds)));
+    const day = w.side === 'L' ? r.dayL[i] : r.dayR[i], zDay = w.side === 'L' ? r.zDayL[i] : r.zDayR[i];
+    const t = Math.max(0, Math.min(1, NOISE.wallEdgeOffset / Math.max(.1, day - this.crown / 2)));
+    return r.kind[i] === KIND.earth ? Math.min(z, z + (zDay - r.grade[i]) * t) : z;
+  }
+
+  /** noise walls: lit panels along the crown edge from the slope to the billed top, steel posts */
   private buildWalls() {
     this.clear(this.walls);
     this.symbolScale = -1;
@@ -129,32 +169,60 @@ export class RouteExtras {
     if (!r) return;
     const v = new THREE.Vector3();
     const off = this.crown / 2 + NOISE.wallEdgeOffset;
-    const pos: number[] = [], idx: number[] = [];
+    // panels: `wallUV` = metres along the wall, metres above its foot (plinth, absorber courses)
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+    const posts: THREE.Matrix4[] = [];
     for (const w of r.walls) {
-      const base = this.wallPath(w, off, 0), top: number[] = [];
-      for (let j = 0; j < base.length / 3; j++) {
-        const [x, y, z] = base.slice(3 * j, 3 * j + 3);
-        // The wall sits outside the crown. Extend its base onto the actual side slope instead
-        // of leaving a grade-height panel suspended above a descending embankment.
-        const station = w.s0 + (w.s1 - w.s0) * j / Math.max(1, base.length / 3 - 1);
-        const i = Math.min(r.n - 1, Math.max(0, Math.round(station / r.ds)));
-        const day = w.side === 'L' ? r.dayL[i] : r.dayR[i], zDay = w.side === 'L' ? r.zDayL[i] : r.zDayR[i];
-        const t = Math.max(0, Math.min(1, NOISE.wallEdgeOffset / Math.max(.1, day - this.crown / 2)));
-        const foot = r.kind[i] === KIND.earth ? Math.min(z, z + (zDay - r.grade[i]) * t) : z;
-        this.view.local(x, y, foot, v); pos.push(v.x, v.y, v.z);
-        this.view.local(x, y, z + w.height, v); pos.push(v.x, v.y, v.z);
-        top.push(v.x, v.y, v.z);
+      const stations = this.wallStations(w), base = this.wallPath(w, off, 0, stations), feet: number[] = [];
+      for (let j = 0; j < stations.length; j++) {
+        const x = base[3 * j], y = base[3 * j + 1], z = base[3 * j + 2], foot = this.wallFoot(w, stations[j], z);
+        feet.push(foot);
+        this.view.local(x, y, foot, v); pos.push(v.x, v.y, v.z); uv.push(stations[j], 0);
+        this.view.local(x, y, z + w.height, v); pos.push(v.x, v.y, v.z); uv.push(stations[j], z + w.height - foot);
         if (j > 0) { const k = pos.length / 3 - 4; idx.push(k, k + 2, k + 1, k + 2, k + 3, k + 1); }
       }
-      if (top.length >= 6) this.walls.add(this.line(top, WALL, 2, 0.9, 5));
+      // on a bridge the wall stands on the deck's edge beam: draw the beam out from the crown to the
+      // wall (top and outer face), else the wall would hang in the air beside the deck
+      const crownEdge = this.wallPath(w, this.crown / 2, 0, stations);
+      for (let j = 0; j + 1 < stations.length; j++) {
+        const onBridge = (s: number) => r.kind[Math.min(r.n - 1, Math.round(s / r.ds))] === KIND.bridge;
+        if (!onBridge(stations[j]) || !onBridge(stations[j + 1])) continue;
+        const out = this.wallPath(w, off + POST_W, 0, [stations[j], stations[j + 1]]), k = pos.length / 3;
+        for (const [p, a] of [[crownEdge, 3 * j], [crownEdge, 3 * j + 3], [out, 0], [out, 3]] as const) {
+          this.view.local(p[a], p[a + 1], p[a + 2] + 0.35, v); pos.push(v.x, v.y, v.z); uv.push(0, 0);
+        }
+        for (const a of [0, 3]) { this.view.local(out[a], out[a + 1], out[a + 2] - 0.6, v); pos.push(v.x, v.y, v.z); uv.push(0, 0); }
+        idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3, k + 2, k + 4, k + 3, k + 3, k + 4, k + 5);
+      }
+      // posts on the 4 m module, from the panel's foot to just above its top (stations are along the
+      // axis; the wall is beside it, so the module is right within a few per cent)
+      const n = Math.max(1, Math.round((w.s1 - w.s0) / POST_MODULE)), at: number[] = [];
+      for (let k = 0; k <= n; k++) at.push(w.s0 + (w.s1 - w.s0) * k / n);
+      const pp = this.wallPath(w, off, 0, at);
+      for (let k = 0, j = 0; k <= n; k++) {
+        while (j < stations.length - 2 && stations[j + 1] < at[k]) j++;
+        const t = Math.max(0, Math.min(1, (at[k] - stations[j]) / Math.max(1e-6, stations[j + 1] - stations[j])));
+        const foot = stations.length > 1 ? feet[j] + (feet[j + 1] - feet[j]) * t : feet[0];
+        const top = pp[3 * k + 2] + w.height + 0.05;
+        this.view.local(pp[3 * k], pp[3 * k + 1], (foot + top) / 2, v);
+        posts.push(new THREE.Matrix4().compose(v, new THREE.Quaternion(), new THREE.Vector3(POST_W, top - foot, POST_W)));
+      }
     }
     if (idx.length) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('wallUV', new THREE.Float32BufferAttribute(uv, 2));
       g.setIndex(idx);
-      const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: WALL, side: THREE.DoubleSide, transparent: true, opacity: 0.85 }));
-      mesh.renderOrder = 4;
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, this.panelMaterial());
+      mesh.name = 'noise-wall-panels';
       this.walls.add(mesh);
+      const box = new THREE.BoxGeometry(1, 1, 1);
+      const inst = new THREE.InstancedMesh(box, new THREE.MeshLambertMaterial({ color: 0x5b6066 }), posts.length);
+      posts.forEach((p, k) => inst.setMatrixAt(k, p));
+      inst.computeBoundingSphere();
+      inst.name = 'noise-wall-posts';
+      this.walls.add(inst);
     }
     this.updateSymbols();
     this.view.requestRender();
@@ -166,6 +234,7 @@ export class RouteExtras {
    * Rebuilt when the zoom changes by a quarter octave; hidden close up, where the wall itself reads.
    */
   private updateSymbols() {
+    if (!this.visible) return;
     const r = this.r, mpp = this.view.metresPerPixel;
     const scale = Math.round(Math.log2(Math.max(1e-3, mpp)) * 4);
     if (scale === this.symbolScale) return;
@@ -190,6 +259,35 @@ export class RouteExtras {
       else this.symbols.add(this.line(world, 0x0e4a4a, 4.5, 1, 5), this.line(world, WALL, 2.5, 1, 6));
     }
     this.view.requestRender();
+  }
+
+  /** wood-cement absorber courses on a concrete plinth, lit by the scene (both faces) */
+  private panelMaterial() {
+    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec2 wallUV;\nvarying vec2 vWallUV;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWallUV = wallUV;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vWallUV;')
+        .replace('#include <color_fragment>', /* glsl */ `#include <color_fragment>
+          {
+            // absorber blocks 0.5 m x 0.25 m in staggered courses: thin joints, box-filtered over the
+            // pixel and gone once a pixel covers a course; bays between posts differ a little in tone
+            vec2 f = max(fwidth(vWallUV), vec2(1e-4));
+            float course = floor(vWallUV.y / 0.25);
+            vec2 cell = vec2(vWallUV.x / 0.5 + 0.5 * mod(course, 2.0), vWallUV.y / 0.25);
+            vec2 d = (0.5 - abs(fract(cell) - 0.5)) * vec2(0.5, 0.25); // metres to the nearest joint
+            vec2 j = clamp((0.0075 - d) / f + 0.5, 0.0, 1.0) * (1.0 - smoothstep(0.04, 0.12, f));
+            float joint = max(j.x, j.y);
+            float tone = 0.92 + 0.16 * fract(sin(dot(floor(vWallUV / vec2(${POST_MODULE.toFixed(1)}, 1e4)), vec2(12.9898, 78.233))) * 43758.5453);
+            vec3 panel = vec3(0.24, 0.21, 0.17) * tone * (1.0 - 0.45 * joint);
+            vec3 plinth = vec3(0.42, 0.41, 0.38);
+            diffuseColor.rgb = mix(panel, plinth, 1.0 - smoothstep(${PLINTH.toFixed(2)} - 0.02, ${PLINTH.toFixed(2)} + 0.02, vWallUV.y));
+          }`);
+    };
+    mat.customProgramCacheKey = () => 'noise-wall-panels';
+    return mat;
   }
 
   /** the wall stretch drawn under a screen point (within `tol` px), for the hover label */

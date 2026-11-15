@@ -30,8 +30,10 @@ export interface BalanceSearch {
 }
 
 export interface AutoProfileOptions {
+  /** Transport-surface endpoint constraints, independent of the real ground used for earthworks. */
+  endpointElevations?: { a?: number; b?: number };
   /** Absolute-chainage heights on the smoothed grade (±0.5 m). Out-of-route pins are inactive.
-   * Endpoint pins constrain, but never replace, the fixed ground tie-ins. */
+   * Endpoint pins constrain, but never replace, the fixed transport endpoints. */
   pins?: readonly GradePin[];
   maxGradient: number;
   minCrest: number;
@@ -116,7 +118,8 @@ export function profileOk(vpis: VPI[], maxGradient: number, minCrest: number, mi
 export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: AutoProfileOptions): AutoProfileResult {
   const n = s.length;
   const L = s[n - 1];
-  const zA = g[0], zB = g[n - 1];
+  const zA = opt.endpointElevations?.a ?? g[0], zB = opt.endpointElevations?.b ?? g[n - 1];
+  if (!Number.isFinite(zA) || !Number.isFinite(zB)) throw new Error('Non-finite endpoint elevation');
   const straight: VPI[] = [{ s: 0, z: zA, r: null }, { s: L, z: zB, r: null }];
   const straightOk = Math.abs(zB - zA) <= opt.maxGradient * L + 1e-9;
   // Keep the no-pin path (including empty/inactive saved pins) numerically unchanged.

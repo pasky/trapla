@@ -10,6 +10,7 @@ import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
 import { collarPoint } from './earthwork-surface';
 import { finish, type Staged } from './slices';
+import type { RouteSurfaceContext } from './route-surfaces';
 
 /** linear-space colour components per hex (THREE.Color converts sRGB on every construction) */
 const colorCache = new Map<number, THREE.Color>();
@@ -139,9 +140,13 @@ export class CrossingRenderer {
    * without touching the scene, staged for commit() or dispose(). Surfaces whose key is unchanged
    * keep their meshes. Abandoning the generator disposes what it built.
    */
-  *build(r: CrossingInput): Generator<void, Staged> {
-    const surfaces = this.view.crossingSurfaces;
-    const heads = turnaroundSurfaces(surfaces,(x,y) => this.view.groundHeight(x,y));
+  *build(r: CrossingInput, context?: RouteSurfaceContext): Generator<void, Staged> {
+    const surfaces = context?.surfaces ?? this.view.crossingSurfaces;
+    const neighbours = context?.neighbours ?? surfaces;
+    const replacement = context?.replacementHeight ?? ((x: number, y: number) => this.view.replacementHeight(x, y));
+    const allHeads = turnaroundSurfaces(neighbours,(x,y) => this.view.groundHeight(x,y));
+    const ownGeometry = new Set(surfaces.map(s => s.crossing.geometry));
+    const heads = allHeads.filter(head => ownGeometry.has(head.crossing.geometry));
     const materials = this.materials ??= { ground: this.view.crossingGroundMaterial(), earth: this.view.crossingEarthMaterial(), structure: this.view.crossingEarthMaterial() };
     const fresh: THREE.Object3D[] = [];
     let handedOver = false, settled = false;
@@ -162,15 +167,15 @@ export class CrossingRenderer {
     // outer collar edge, end collars 18 m beyond) and on the turning heads (cells under a disk are
     // dropped). Its key covers all of these.
     const headKey = new SurfaceKey();
-    for (const head of heads) { headKey.num(head.center.x); headKey.num(head.center.y); headKey.num(head.radius); }
-    const own = surfaces.map(surfaceKey);
+    for (const head of allHeads) { headKey.num(head.center.x); headKey.num(head.center.y); headKey.num(head.radius); }
+    const own = surfaces.map(surfaceKey), neighbourKeys = neighbours.map(surfaceKey);
     const sample = surfaces.map(s => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const q of s.sections) for (const p of [q.outer[0], q.outer[1], q.toe[0], q.toe[1], q.p]) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
       const m = 18 + 1;
       return { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m };
     });
-    const reach = surfaces.map(s => {
+    const reach = neighbours.map(s => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, width = 0;
       for (const q of s.sections) {
         x0 = Math.min(x0, q.p.x); y0 = Math.min(y0, q.p.y); x1 = Math.max(x1, q.p.x); y1 = Math.max(y1, q.p.y);
@@ -183,14 +188,16 @@ export class CrossingRenderer {
     try {
       for (let k = 0; k < surfaces.length; k++) {
         const b = sample[k], near: string[] = [];
-        reach.forEach((o, j) => { if (j !== k && o.x0 <= b.x1 && o.x1 >= b.x0 && o.y0 <= b.y1 && o.y1 >= b.y0) near.push(own[j]); });
-        let key = `${own[k]}|${near.sort().join(',')}|${heads.length ? headKey.key : ''}`;
+        reach.forEach((o, j) => { if (neighbours[j] !== surfaces[k] && o.x0 <= b.x1 && o.x1 >= b.x0 && o.y0 <= b.y1 && o.y1 >= b.y0) near.push(neighbourKeys[j]); });
+        const ground = context?.groundFootprints?.filter(o => o.x0 <= b.x1 && o.x1 >= b.x0 && o.y0 <= b.y1 && o.y1 >= b.y0)
+          .map(o => o.key).sort() ?? [];
+        let key = `${own[k]}|${near.sort().join(',')}|${allHeads.length ? headKey.key : ''}|${ground.join(';')}`;
         while (next.has(key)) key += '+';
         const kept = this.surfaces.get(key);
         if (kept) { next.set(key, kept); continue; }
         const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
-        terrain.groundHoles = heads;
-        yield* this.surface(surfaces[k], earth, terrain, structure);
+        terrain.groundHoles = allHeads;
+        yield* this.surface(surfaces[k], earth, terrain, structure, replacement);
         const meshes: THREE.Object3D[] = [];
         yield* emit(earth, terrain, structure, meshes);
         next.set(key, meshes);
@@ -198,7 +205,7 @@ export class CrossingRenderer {
       const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
       for (const c of r.crossings) if (c.type === 'underpass' && c.geometry?.underpass && c.geometry.road) this.underpass(c.geometry.road, c.geometry.underpass, structure);
       for (const head of heads) {
-        terrain.groundHoles = heads.filter(other => other !== head);
+        terrain.groundHoles = allHeads.filter(other => other !== head);
         const color = existingRoadColor(head.crossing.cls), center = earth.vertex(head.center,color,0,.12,EW_KIND.crown);
         for (let j = 0; j < head.sections.length; j++) {
           const a = head.sections[j], b = head.sections[(j+1)%head.sections.length];
@@ -208,7 +215,7 @@ export class CrossingRenderer {
           const rim = (p: typeof a.day, lift: number) => roadPoint({ ...p, z: p.z+lift });
           structure.quad(rim(a.edge,.12),rim(a.day,.015),rim(b.edge,.12),rim(b.day,.015),0xb7b4a9,0,0);
           const collar = (s: typeof a, t: number) => roadPoint(collarPoint(s,t,
-            (x,y) => this.view.groundHeight(x,y),(x,y) => this.view.replacementHeight(x,y)));
+            (x,y) => this.view.groundHeight(x,y),replacement));
           for (let k = 0; k < 8; k++) terrain.quad(collar(a,k/8),collar(a,(k+1)/8),collar(b,k/8),collar(b,(k+1)/8),0xffffff,0,.015);
         }
         yield;
@@ -282,12 +289,13 @@ export class CrossingRenderer {
     line.renderOrder = 5; out.push(line);
   }
   /** one crossing surface's quads (yields every 64 sections: long diversions take a while) */
-  private *surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder): Generator<void, void> {
+  private *surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder,
+    replacement: (x: number, y: number) => number): Generator<void, void> {
     const g = s.crossing.geometry!, color = existingRoadColor(s.crossing.cls), casing = 0x807468;
     const below = (p: CrossingPoint, dz: number) => ({ ...p, z: p.z - dz });
     const collars = [new Map<object, CrossingPoint[]>(), new Map<object, CrossingPoint[]>()];
     const stripRows = new Map<object, { casing: CrossingPoint[]; crown: CrossingPoint[] }>();
-    const natural = (x: number, y: number) => this.view.groundHeight(x,y), replacement = (x: number, y: number) => this.view.replacementHeight(x,y);
+    const natural = (x: number, y: number) => this.view.groundHeight(x,y);
     for (let i = 0; i + 1 < s.sections.length; i++) {
       if (i && i % 64 === 0) yield;
       const a = s.sections[i], b = s.sections[i + 1], ground = groundSegment(s, i), target = ground ? earth : structure;
@@ -363,7 +371,7 @@ export class CrossingRenderer {
         const x = a.x * (1-u)*(1-v) + b.x*u*(1-v) + c.x*(1-u)*v + d.x*u*v;
         const y = a.y * (1-u)*(1-v) + b.y*u*(1-v) + c.y*(1-u)*v + d.y*u*v;
         const ground = this.view.groundHeight(x, y), blend = Math.max(Math.min(1,v/.65), Math.max(0, Math.abs(u-.5)*4-1));
-        return { ...a, x, y, z: ground + (this.view.replacementHeight(x, y)-ground)*blend };
+        return { ...a, x, y, z: ground + (replacement(x, y)-ground)*blend };
       };
       for (let i = 0; i < across; i++) for (let j = 0; j < along; j++) terrain.quad(point(i/across,j/along), point((i+1)/across,j/along), point(i/across,(j+1)/along), point((i+1)/across,(j+1)/along), 0xffffff, 0, .015);
     }

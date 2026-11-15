@@ -18,6 +18,7 @@ let d: Design = start && start !== '-' && start !== 'official' ? JSON.parse(read
   : { category: 'S9.5', speed, pis: [], profileMode: 'auto', vpis: [] };
 if (start === 'official') {
   const off = meta.official.xy as [number, number][];
+  if (off.length < 2) throw new Error('This scenario has no mapped reference line. Use - for a straight start or pass a saved design.');
   const distance = (p: number[], q: { x: number; y: number }) => Math.hypot(p[0] - q.x, p[1] - q.y);
   let ia = 0, ib = 0;
   off.forEach((p, i) => { if (distance(p, a) < distance(off[ia], a)) ia = i; if (distance(p, b) < distance(off[ib], b)) ib = i; });
