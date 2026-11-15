@@ -45,6 +45,32 @@ describe('accepted source pavement rendering', () => {
     expect(sourceReplacementCuts(g, []).size).toBe(0); // cancel/undo restores untouched vectors
   });
 
+  it.each([['road', 4.5], ['casing', 6.325], ['far-width', 20], ['rail', 1.5]] as const)(
+    'clips expanded %s cap pixels at an accepted cut, not only cap centres', (_name, halfWidth) => {
+      const straight: LineLayer = { name: 'primary', verts: Float32Array.of(0, 0, 100, 0), starts: Uint32Array.of(0, 2) };
+      const geos = finish(buildLineGeos(straight, 2500, true, new Map([[0, [[1, 90] as const]]])));
+      let clipped = 0, kept = 0;
+      for (const { geo } of geos) {
+        const p = geo.getAttribute('position'), dir = geo.getAttribute('dir'), a = geo.getAttribute('trim0'), b = geo.getAttribute('trim1');
+        const indices = geo.index!.array;
+        for (let t = 0; t < indices.length; t += 3) for (const weights of [[1, 0, 0], [0, 1, 0], [0, 0, 1], [.2, .4, .4], [.6, .2, .2]]) {
+          let x = 0, y = 0;
+          const planes = [0, 0, 0, 0, 0, 0];
+          for (let k = 0; k < 3; k++) {
+            const i = indices[t + k], w = weights[k];
+            x += w * (p.getX(i) + dir.getX(i) * halfWidth); y += w * (p.getY(i) + dir.getY(i) * halfWidth);
+            planes[0] += w * a.getX(i); planes[1] += w * a.getY(i); planes[2] += w * a.getZ(i);
+            planes[3] += w * b.getX(i); planes[4] += w * b.getY(i); planes[5] += w * b.getZ(i);
+          }
+          // The fragment shader applies these planes AFTER style width/minPx expansion.
+          if (planes[0] * x + planes[1] * y + planes[2] < -.001 || planes[3] * x + planes[4] * y + planes[5] < -.001) clipped++;
+          else { kept++; expect(x <= 1.001 || x >= 89.999).toBe(true); }
+        }
+        geo.dispose();
+      }
+      expect(clipped).toBeGreaterThan(0); expect(kept).toBeGreaterThan(0);
+    });
+
   it('does not erase a shared render feature while another source still owns its interval', () => {
     const g = graph(); g.sources.push(source('other-road', 'horizontal'));
     expect(sourceReplacementCuts(g, [mapping('road', 'horizontal', 50, 150)]).size).toBe(0);

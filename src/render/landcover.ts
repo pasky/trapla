@@ -82,20 +82,30 @@ void main() { gl_Position = vec4((position.xy - box.xy) * box.zw * 2.0 - 1.0, 0.
 const LINE_VERT = /* glsl */ `
 attribute vec2 dir;
 attribute float dist;
+attribute vec3 trim0;
+attribute vec3 trim1;
 uniform vec4 box;
 uniform float res;
 uniform vec4 wpar;
 varying float vDist;
+varying vec2 vLineXY;
+varying vec3 vTrim0;
+varying vec3 vTrim1;
 void main() {
   float hw = max(wpar.x, wpar.y * res) + max(wpar.z, wpar.w * res);
-  vDist = dist;
-  gl_Position = vec4((position.xy + dir * hw - box.xy) * box.zw * 2.0 - 1.0, 0.0, 1.0);
+  vDist = dist; vTrim0 = trim0; vTrim1 = trim1;
+  vLineXY = position.xy + dir * hw;
+  gl_Position = vec4((vLineXY - box.xy) * box.zw * 2.0 - 1.0, 0.0, 1.0);
 }`;
 const FRAG = /* glsl */ `
 uniform vec4 color;
 uniform vec2 dash;
 varying float vDist;
+varying vec2 vLineXY;
+varying vec3 vTrim0;
+varying vec3 vTrim1;
 void main() {
+  if (dot(vTrim0.xy, vLineXY) + vTrim0.z < -0.001 || dot(vTrim1.xy, vLineXY) + vTrim1.z < -0.001) discard;
   if (dash.x > 0.0 && fract(vDist / dash.x) > dash.y) discard;
   gl_FragColor = color;
 }`;
@@ -129,11 +139,15 @@ function polyGeos(verts: Float32Array, idx: Uint32Array, chunks: [number, number
   return out;
 }
 
+type TrimPlane = readonly [number, number, number];
+const NO_TRIM: TrimPlane = [0, 0, 0];
 class ChunkAcc {
   pos: number[] = []; dir: number[] = []; dist: number[] = []; idx: number[] = [];
+  trim0: number[] = []; trim1: number[] = [];
   bbox: BBox = [Infinity, Infinity, -Infinity, -Infinity];
-  vert(x: number, y: number, dx: number, dy: number, d: number): number {
+  vert(x: number, y: number, dx: number, dy: number, d: number, trim0 = NO_TRIM, trim1 = NO_TRIM): number {
     this.pos.push(x, y); this.dir.push(dx, dy); this.dist.push(d);
+    this.trim0.push(...trim0); this.trim1.push(...trim1);
     const b = this.bbox;
     if (x < b[0]) b[0] = x; if (x > b[2]) b[2] = x; if (y < b[1]) b[1] = y; if (y > b[3]) b[3] = y;
     return this.dist.length - 1;
@@ -149,10 +163,10 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
     if (!a) accs.set(key, a = new ChunkAcc());
     return a;
   };
-  const disc = (x: number, y: number, d: number) => {
-    const a = acc(x, y), c = a.vert(x, y, 0, 0, d), N = 10;
+  const disc = (x: number, y: number, d: number, trim0: TrimPlane, trim1: TrimPlane) => {
+    const a = acc(x, y), c = a.vert(x, y, 0, 0, d, trim0, trim1), N = 10;
     const rim: number[] = [];
-    for (let k = 0; k < N; k++) rim.push(a.vert(x, y, Math.cos((2 * Math.PI * k) / N), Math.sin((2 * Math.PI * k) / N), d));
+    for (let k = 0; k < N; k++) rim.push(a.vert(x, y, Math.cos((2 * Math.PI * k) / N), Math.sin((2 * Math.PI * k) / N), d, trim0, trim1));
     for (let k = 0; k < N; k++) a.idx.push(c, rim[k], rim[(k + 1) % N]);
   };
   const V = layer.verts, S = layer.starts;
@@ -164,6 +178,7 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
     if (n < 2) continue;
     // per-vertex mitre vector (left normal, lengthened at bends) and distance along the line
     const mx = new Float64Array(n), my = new Float64Array(n), dd = new Float64Array(n);
+    const disks: { x: number; y: number; s: number }[] = [];
     let pnx = 0, pny = 0;
     for (let j = 0; j < n; j++) {
       const x = V[2 * (i0 + j)], y = V[2 * (i0 + j) + 1];
@@ -173,7 +188,7 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
         nx = -ey / L; ny = ex / L;
         dd[j + 1] = dd[j] + L;
       }
-      if (j === 0 || j === n - 1) { mx[j] = nx; my[j] = ny; if (capped(dd[j])) disc(x, y, dd[j]); }
+      if (j === 0 || j === n - 1) { mx[j] = nx; my[j] = ny; if (capped(dd[j])) disks.push({ x, y, s: dd[j] }); }
       else {
         let sx = pnx + nx, sy = pny + ny;
         const sl = Math.hypot(sx, sy);
@@ -181,9 +196,27 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
         const cos = sx * nx + sy * ny; // cos of half the turn angle
         const k = 1 / Math.max(0.6, cos);
         mx[j] = sx * k; my[j] = sy * k;
-        if (capped(dd[j]) && cos < 0.92) disc(x, y, dd[j]);
+        if (capped(dd[j]) && cos < 0.92) disks.push({ x, y, s: dd[j] });
       }
       pnx = nx; pny = ny;
+    }
+    const plane = (s: number, sign: number): TrimPlane => {
+      let j = 0; while (j + 2 < n && dd[j + 1] < s) j++;
+      const ax = V[2 * (i0 + j)], ay = V[2 * (i0 + j) + 1], bx = V[2 * (i0 + j + 1)], by = V[2 * (i0 + j + 1) + 1];
+      const length = dd[j + 1] - dd[j], t = (s - dd[j]) / length;
+      const nx = sign * (bx - ax) / length, ny = sign * (by - ay) / length;
+      return [nx, ny, -nx * (ax + t * (bx - ax)) - ny * (ay + t * (by - ay))];
+    };
+    for (const disk of disks) {
+      let before = NO_TRIM, after = NO_TRIM;
+      for (const [a, b] of removed) {
+        if (b <= disk.s && b >= 0) before = plane(b, 1);
+        if (a >= disk.s && a <= dd[n - 1]) { after = plane(a, -1); break; }
+      }
+      // A distant bend can put an unrelated end plane behind this centre. Only clip disks
+      // on its retained side; never move an untouched disk to another part of the road.
+      const local = (p: TrimPlane) => p[0] * disk.x + p[1] * disk.y + p[2] >= -1e-8 ? p : NO_TRIM;
+      disc(disk.x, disk.y, disk.s, local(before), local(after));
     }
     for (let j = 0; j < n - 1; j++) {
       const x0 = V[2 * (i0 + j)], y0 = V[2 * (i0 + j) + 1], x1 = V[2 * (i0 + j + 1)], y1 = V[2 * (i0 + j + 1) + 1];
@@ -194,8 +227,9 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
         const amx = lerp(mx[j], mx[j + 1], t0), amy = lerp(my[j], my[j + 1], t0);
         const bmx = lerp(mx[j], mx[j + 1], t1), bmy = lerp(my[j], my[j + 1], t1);
         const a = acc(0.5 * (ax + bx), 0.5 * (ay + by));
-        const v0 = a.vert(ax, ay, amx, amy, s0), v1 = a.vert(ax, ay, -amx, -amy, s0);
-        const v2 = a.vert(bx, by, bmx, bmy, s1), v3 = a.vert(bx, by, -bmx, -bmy, s1);
+        const trim0 = s0 > dd[j] ? plane(s0, 1) : NO_TRIM, trim1 = s1 < dd[j + 1] ? plane(s1, -1) : NO_TRIM;
+        const v0 = a.vert(ax, ay, amx, amy, s0, trim0, trim1), v1 = a.vert(ax, ay, -amx, -amy, s0, trim0, trim1);
+        const v2 = a.vert(bx, by, bmx, bmy, s1, trim0, trim1), v3 = a.vert(bx, by, -bmx, -bmy, s1, trim0, trim1);
         a.idx.push(v0, v1, v2, v1, v3, v2);
       }
     }
@@ -206,6 +240,8 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(a.pos), 2));
     geo.setAttribute('dir', new THREE.BufferAttribute(new Float32Array(a.dir), 2));
     geo.setAttribute('dist', new THREE.BufferAttribute(new Float32Array(a.dist), 1));
+    geo.setAttribute('trim0', new THREE.BufferAttribute(new Float32Array(a.trim0), 3));
+    geo.setAttribute('trim1', new THREE.BufferAttribute(new Float32Array(a.trim1), 3));
     geo.setIndex(a.dist.length > 65535 ? new THREE.BufferAttribute(new Uint32Array(a.idx), 1) : new THREE.BufferAttribute(new Uint16Array(a.idx), 1));
     out.push({ geo: flat(geo), bbox: a.bbox });
   }
