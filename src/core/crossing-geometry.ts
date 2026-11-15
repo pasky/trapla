@@ -211,7 +211,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   if (message === UNDERPASS_TOO_LOW) return { title: 'Embankment too low for an underpass',
     fix: 'Raise our road here, or choose another crossing',
     detail: `Somewhere under our road the box would stick out of the embankment, even with the ${what} lowered by ${LOWERING_RULES.maxDepth} m: it needs room for its height, roof and earth cover.`,
-    basis: 'game', rule: `Game estimate (research/19, 36): an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` };
+    basis: 'game', rule: `Game estimate (research/19, 37): an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` };
   if (message === 'This road class cannot pass in a small underpass') return { title: `A ${what} cannot pass through a small underpass`,
     fix: 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"', detail: 'Underpass boxes are sized for tracks, service roads and local roads only.',
     basis: 'game', rule: 'Game estimate (research/19): underpass boxes for tracks, service roads and local roads' };
@@ -627,7 +627,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     } else if (c.type === 'underpass') {
       // The way keeps its own terrain level through a closed box spanning the earthwork
       // footprint toe to toe along the way (skew and bends included); under a low embankment it is
-      // lowered into a cut on ramps at its class gradient (research/36), its low point drained.
+      // lowered into a cut on ramps at its class gradient (research/37), its low point drained.
       const row = ROAD_CLASSES[c.cls], box = row.underpass ? underpassAssembly(row.underpass, (c.roadPerKm ?? row.roadPerKm[0]) / 1000) : undefined;
       let centre = 0;
       for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;

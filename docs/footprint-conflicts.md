@@ -221,7 +221,7 @@ because they were cheap, and nothing checked them.
 - The crossing card says what the new road needed (culverts, houses, the steepest grade where the class's
   justified maximum was used).
 
-**Lowered underpass** (research/36). Under an embankment too low for a box (5.5 m for the track box, 5.65 m
+**Lowered underpass** (research/37). Under an embankment too low for a box (5.5 m for the track box, 5.65 m
 for the local-road box: clear height, roof and cover, research/19), the crossed way is lowered into a cut:
 
 - A straight floor through the box, as high as leaves the box its room under our road everywhere under the
@@ -230,7 +230,7 @@ for the local-road box: clear height, roof and cover, research/19), the crossed 
   (`rampLimit`, research/20), at most 250 m each (`MAX_RAMP_LENGTH`).
 - Deepest lowering 6 m (`LOWERING_RULES.maxDepth`, PROVISIONAL: no norm gives one; level-crossing
   replacement underpasses drop the road by the whole clearance plus structure, e.g. Studénka ≈ 5.47 m road to
-  structure top, research/36 §7). Rebuilt-railway-bridge lowerings in the sample were only 0.65–1.40 m, but
+  structure top, research/37 §7). Rebuilt-railway-bridge lowerings in the sample were only 0.65–1.40 m, but
   they needed only that much.
 - Drainage of the low point (TP 83 §6.1: by gravity where the fall allows, else pumped): two street gullies
   (OTSKP 89712) and either a DN 300 concrete pipe (9183A1) at 0.5 % fall (PROVISIONAL: TP 83's ditch minimum)

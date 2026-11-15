@@ -257,7 +257,7 @@ What exists (details and commands in `README.md`):
   violation with its reasons and a computed fix, and Auto picks another treatment. Before: 730 of 871 automatic
   reroutes on the audit designs were silently unbuildable; now 24 are reported and 1 slips through (a stream
   touching only a link's edge).
-- Lowered underpass (research/36): under a low embankment the crossed track or road is lowered into a cut (at
+- Lowered underpass (research/37): under a low embankment the crossed track or road is lowered into a cut (at
   most 6 m, PROVISIONAL) on class-gradient ramps, its low point drained by a gravity pipe or a pumped sump
   (TP 83). The D11 straight start line and town-centre are VALID on their own (local road 2244 lowered 3.3 m,
   service road 5162 lowered 2.9 m). A bridge over us may slope like its road.

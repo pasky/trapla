@@ -81,30 +81,30 @@ export const UNDERPASS_RULES = {
   /** Beyond this the crossed road is in a tunnel, not a small underpass (cf. CULVERT_RULES.maxBoxLength). */
   maxLength: 100,
 };
-/** The crossed way lowered into a cut so that the box fits under a low embankment (research/36). */
+/** The crossed way lowered into a cut so that the box fits under a low embankment (research/37). */
 export const LOWERING_RULES = {
-  /** Deepest lowering below the old road level, m. PROVISIONAL game cap (research/36 §7): no norm
+  /** Deepest lowering below the old road level, m. PROVISIONAL game cap (research/37 §7): no norm
    * gives one; level-crossing replacement underpasses drop the road by the whole clear height plus
    * structure (Studénka, ≈ 5.47 m road to structure top), and 6 m rounds above that design. */
   maxDepth: 6,
   /** Drain-pipe invert below the low point's road surface (gully outlet), m. PROVISIONAL: no
-   * sourced pipe-cover rule was found (research/36 §2). */
+   * sourced pipe-cover rule was found (research/37 §2). */
   drainDepth: 1,
   /** Fall of the gravity outfall pipe. PROVISIONAL: TP 83 §4.7's ditch minimum (0.5 %) used for the
-   * pipe (research/36 §2). */
+   * pipe (research/37 §2). */
   drainFall: 0.005,
   /** Longest gravity outfall searched along the crossed way from the low point, m. Engine bound;
    * beyond it the low point is pumped (TP 83 §6.1). */
   maxOutfall: 500,
 };
-/** OTSKP April 2026, CZK excl. VAT (research/36 §3), and one equipment price (§6B). */
+/** OTSKP April 2026, CZK excl. VAT (research/37 §3), and one equipment price (§6B). */
 export const DRAINAGE_RATES = {
   gully: 11_745.37, // 89712 complete street gully, precast concrete; two at the low point
   pipe: 2_501.53, // 9183A1 DN 300 concrete pipe, m (gravity outfall)
   outlet: 8_044.73, // 89516 outlet head, precast
   wetWell: 27_487.38, // 894146 concrete shaft on DN ≤ 400 pipe (pump sump)
   /** Duplex packaged pump chamber with controls and alarm, equipment only (Dešťovka.eu listing,
-   * research/36 §6B). PROVISIONAL as a station price: installation and the power connection are not
+   * research/37 §6B). PROVISIONAL as a station price: installation and the power connection are not
    * included, no installed price was found. */
   pumps: 74_355.4,
   risingMain: 1_436.48, // 9183A3 DN 300 plastic pipe, m: PROVISIONAL proxy for the pumped main (no pressure-pipe item extracted)
