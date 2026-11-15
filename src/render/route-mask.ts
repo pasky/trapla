@@ -1,8 +1,7 @@
 // Display masks only: all geometry comes from evaluated roads and their engineered side roads.
 // One collection per scene generation, never whichever route finished rebuilding last.
 import type { Result } from '../core/evaluate';
-import { KIND } from '../core/structures';
-import { COLLAR_OVERLAP, GROUND_COLLAR, daylightPoint } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, daylightPoint, groundStations } from './earthwork-surface';
 import { endCollars, groundSegment, turnaroundMaskRing, turnaroundSurfaces, type CrossingSurface } from './crossing-surface';
 
 export interface RouteMaskInput {
@@ -43,8 +42,9 @@ export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: num
       const b: [number, number] = [r.x[i] - nx * R - cx, cy - r.y[i] + ny * R];
       P.push(a, b); bounds(a[0], a[1]); bounds(b[0], b[1]);
     }
+    const ground = groundStations(r, natural);
     for (let i = 0; i < r.n - 1; i++) {
-      if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
+      if (!ground[i] || !ground[i + 1]) continue;
       for (const [points, out] of [[P, terrain], [exact, original]] as const) {
         const a0 = points[2 * i], b0 = points[2 * i + 1], a1 = points[2 * i + 2], b1 = points[2 * i + 3];
         for (const p of [a0, b0, a1, b0, b1, a1]) out.push(p[0], 0, p[1]);

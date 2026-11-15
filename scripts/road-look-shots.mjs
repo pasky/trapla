@@ -21,7 +21,7 @@ try {
   await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v2', '1'); } catch { /* opaque origin */ } });
   page.on('pageerror', (e) => console.log('pageerror', e.message));
   page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text()); });
-  await page.goto(`http://localhost:${PORT}/`);
+  await page.goto(`http://localhost:${PORT}/?scenario=d11`);
   await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
   await page.evaluate((d) => window.trapla.setDesign(d), design);
   await page.evaluate(() => window.trapla.whenIdle());
@@ -40,6 +40,9 @@ try {
     const wall = [...r.walls].sort((a, b) => (b.s1 - b.s0) - (a.s1 - a.s0))[0];
     const bridge = r.runs.filter((u) => u.kind === 1).sort((a, b) => (b.s1 - b.s0) - (a.s1 - a.s0))[0];
     const curve = [...r.curves].sort((a, b) => a.r - b.r)[0];
+    // a bridge end set into a bank (ground above the deck at its first / last station): the abutment
+    let abut = null;
+    for (const u of r.runs) if (u.kind === 1) for (const i of [u.i0, u.i1]) if (!abut && r.ground[i] > r.grade[i]) abut = i;
     const at = (i) => ({ x: r.x[i], y: r.y[i], i });
     const mid = (s0, s1) => at(Math.round((s0 + s1) / 2 / r.ds));
     return {
@@ -47,6 +50,7 @@ try {
       wall: wall && { ...mid(wall.s0, wall.s1), side: wall.side, h: wall.height },
       bridge: bridge && mid(bridge.s0, bridge.s1),
       curve: curve && { ...at(near(curve.x, curve.y)), index: curve.index },
+      abutment: abut !== null ? at(abut) : null,
     };
   });
   console.log(JSON.stringify(t));
@@ -58,6 +62,7 @@ try {
     // looking across the road at 50° to its direction, close and medium
     shots.push([`${name}-close`, p.x, p.y, 110, b + 50, 30]);
     shots.push([`${name}-medium`, p.x, p.y, 450, b + 50, 40]);
+    if (name === 'abutment') shots.push([`${name}-across`, p.x, p.y, 110, b - 70, 25]);
   }
   for (const [name, x, y, dist, bearing, elev] of shots) {
     await page.evaluate((a) => window.trapla.lookAt(...a), [x, y, dist, bearing, elev]);

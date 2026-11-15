@@ -1,5 +1,5 @@
 // three.js terrain view: draped terrain chunks, route ribbon (cut/fill slopes, bridges, tunnels),
-// centreline, tangent polygon, official D11, DOM markers and labels, heightfield picking.
+// tangent guide of the active bend, official line, DOM markers and labels, heightfield picking.
 
 import * as THREE from 'three';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
@@ -21,7 +21,7 @@ import { buildRouteSurfaces, routeSurfaceContext, type RouteSurfaceContext } fro
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { GROUND_COLLAR, collarPoint, daylightSections } from './earthwork-surface';
+import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
@@ -754,18 +754,23 @@ export class View {
       collar.name = 'daylight-ground'; out.push(collar);
       groundPos.length = 0; groundIdx.length = 0;
     };
+    // earthworks, and a bridge end's abutment set into a bank (groundStations): its sides are concrete
+    // wing walls out to the engine's daylight points
+    const ground = groundStations(r, natural);
     for (let i = 0; i < n - 1; i++) {
       if (i % 32 === 0) { flushGround(); yield; } // corridor-local frustum culling, not one route-wide mesh
       const k0 = r.kind[i], k1 = r.kind[i + 1];
       if (k0 === KIND.tunnel || k1 === KIND.tunnel) continue;
       const a = sv[i], b = sv[i + 1];
       quad(a.cl, b.cl, a.cr, b.cr);
-      if (k0 === KIND.earth && k1 === KIND.earth) for (const side of [1, -1]) {
-        const sections = daylightSections(r, i, side, w, natural);
+      const abutment = k0 !== KIND.earth || k1 !== KIND.earth;
+      if (ground[i] && ground[i + 1]) for (const side of [1, -1]) {
+        const sections = daylightSections(r, i, side, w, natural, ground);
         let prev: { day: number; edge: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
         for (let j = 0; j < sections.length; j++) {
           const s = sections[j], t = j / (sections.length - 1), toe = s.slopeDay ?? s.day;
-          const fill = s.edge.z > s.day.z, kind = fill ? EW_KIND.fill : EW_KIND.cut, color = fill ? fillC : cutC;
+          const fill = s.edge.z > s.day.z, kind = abutment ? EW_KIND.structure : fill ? EW_KIND.fill : EW_KIND.cut;
+          const color = abutment ? concrete : fill ? fillC : cutC;
           const gp = r.geology.profiles[r.geology.ids[i]];
           const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
           const day = push(toe.x, toe.y, toe.z+groundLift, color, toe.z, slopeInk, kind, geology(s.day.z-toe.z));
@@ -789,21 +794,29 @@ export class View {
       }
     }
     flushGround();
-    // Close the embankment cross-section at structure transitions. Without these faces the
-    // terrain cut-out is visible as a sky-coloured hole beside the first/last bridge span.
+    // Close the ground works' cross-section at structure transitions: the abutment's front wall under
+    // the crown and its wing walls out to the toes, in concrete. Without these faces the terrain
+    // cut-out is visible as a sky-coloured hole beside the first/last bridge span.
+    const again = (k: number) => { // vertex k once more, as concrete
+      pos.push(pos[3*k], pos[3*k+1], pos[3*k+2]); col.push(concrete.r, concrete.g, concrete.b); elev.push(elev[k]); ink.push(0);
+      kinds.push(EW_KIND.structure); geo.push(...noGeo);
+      return pos.length / 3 - 1;
+    };
     for (let i = 0; i < n; i++) {
-      if (r.kind[i] !== KIND.earth || !((i > 0 && r.kind[i-1] !== KIND.earth) || (i+1 < n && r.kind[i+1] !== KIND.earth))) continue;
+      if (!ground[i] || !((i > 0 && !ground[i-1]) || (i+1 < n && !ground[i+1]))) continue;
       const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
       const zl = this.terrain.heightAt(x+nx*w, y+ny*w), zr = this.terrain.heightAt(x-nx*w, y-ny*w);
       if (z <= Math.max(zl, zr)) continue;
-      const l = push(x+nx*w, y+ny*w, zl, fillC, zl, slopeInk, EW_KIND.fill), rr = push(x-nx*w, y-ny*w, zr, fillC, zr, slopeInk, EW_KIND.fill);
-      quad(sv[i].el, l, sv[i].er, rr);
-      const station = sv[i];
-      idx.push(station.wl ?? station.dl, l, station.el, station.er, rr, station.wr ?? station.dr);
+      const l = push(x+nx*w, y+ny*w, zl, concrete, zl), rr = push(x-nx*w, y-ny*w, zr, concrete, zr);
+      const station = sv[i], el = again(station.el), er = again(station.er);
+      const dl = again(station.dl), dr = again(station.dr);
+      const wl = station.wl === undefined ? undefined : again(station.wl), wr = station.wr === undefined ? undefined : again(station.wr);
+      quad(el, l, er, rr);
+      idx.push(wl ?? dl, l, el, er, rr, wr ?? dr);
       // Retained toes need the lower part of the end cap too, otherwise the bridge
       // transition exposes a hole between the vertical wall and ground under the crown.
-      if (station.wl !== undefined) idx.push(station.dl, l, station.wl);
-      if (station.wr !== undefined) idx.push(station.wr, rr, station.dr);
+      if (wl !== undefined) idx.push(dl, l, wl);
+      if (wr !== undefined) idx.push(wr, rr, dr);
     }
     // bridge deck edges and piers, tunnel portals
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {

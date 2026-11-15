@@ -29,7 +29,9 @@ describe('retaining wall meshes', () => {
     let faces = 0, slopes = 0;
     for (let i = 0; i < triangles.length; i += 3) {
       const ids = Array.from(triangles.slice(i,i+3));
-      if (ids.every(j => kinds.getX(j) === EW_KIND.structure)) {
+      // the retaining faces of the earthwork cell (not the concrete end cap or, in the cut, the
+      // bridge's abutment set into the bank)
+      if (ids.every(j => kinds.getX(j) === EW_KIND.structure && Math.abs(p.getZ(j)) === 15 && p.getX(j) <= 20)) {
         faces++;
         expect(new Set(ids.map(j => p.getZ(j))).size).toBe(1); // vertical, same plan offset
         expect(Math.abs(p.getZ(ids[0]))).toBe(15);

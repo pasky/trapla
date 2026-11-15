@@ -300,8 +300,12 @@ Nothing is baked at the 5 m grid any more; close-ups are as sharp as the overvie
   in the shader from per-vertex offset and station, box-filtered over the pixel, so no geometry per mark.
   **Noise walls** stand where they are billed (line, foot on the slope, top): wood-cement absorber panels on
   a concrete plinth between steel posts on a 4 m module (instanced), as in the M-S system; on a bridge on the
-  deck's edge beam. Before / after: `docs/screenshots/87…94-road-look-*.png`, the bend guide `95`, the
-  official line `96` (`node scripts/road-look-shots.mjs design.json outdir [prefix]`).
+  deck's edge beam. **Bridge ends set into a bank** (natural ground still above the deck at the first
+  stations) are drawn as the abutment (`groundStations`): the terrain is cut away there too, the sides are
+  concrete wing walls out to the engine's daylight points and the front wall under the crown is concrete,
+  so the bank no longer covers the deck. Before / after: `docs/screenshots/84…91-road-look-*.png`, the bend
+  guide `92`, the official line `93`, a bridge end in a bank `94`/`95` and in a cut `96`
+  (`node scripts/road-look-shots.mjs design.json outdir [prefix]`).
 - **Land cover, existing roads, railways, water, building footprints** are vectors (`vector.bin.gz`), rasterised
   on the GPU with 4× MSAA into one base texture of the whole area (≈ 8.5 m/texel, drawn once) and four 2048²
   *clip levels* around the camera focus at 0.125 … 4 m/texel, each twice as coarse as the previous. The levels

@@ -13,11 +13,35 @@ export function daylightPoint(r: EarthworkRoute, i: number, side: number, extra 
   const off = ((side > 0 ? r.dayL[i] : r.dayR[i]) + extra) * side;
   return { x: r.x[i] - r.ty[i] * off, y: r.y[i] + r.tx[i] * off };
 }
+/**
+ * Stations drawn as ground works (terrain cut away, side faces, replacement ground): the earthwork
+ * stations and, at a bridge end set into a bank, the abutment. Its stations run from the earthworks
+ * while the natural ground (on the axis or at a daylight point) is still above the deck, plus the first
+ * one clear of it, where the abutment's front wall stands. Without them the bank covers the first metres
+ * of the deck and the end of the cut is open. Display only: the engine's daylight points, nothing billed.
+ */
+export function groundStations(r: EarthworkRoute, natural: (x: number, y: number) => number): Uint8Array {
+  const out = new Uint8Array(r.n);
+  for (let i = 0; i < r.n; i++) out[i] = r.kind[i] === KIND.earth ? 1 : 0;
+  const buried = (j: number) => r.kind[j] === KIND.bridge && Math.max(natural(r.x[j], r.y[j]),
+    ...[1, -1].map((side) => { const p = daylightPoint(r, j, side); return natural(p.x, p.y); })) > r.grade[j];
+  for (let i = 0; i < r.n; i++) {
+    if (r.kind[i] !== KIND.earth) continue;
+    for (const step of [1, -1]) {
+      let j = i + step, abutment = false;
+      while (j >= 0 && j < r.n && buried(j)) { out[j] = 1; j += step; abutment = true; }
+      if (abutment && j >= 0 && j < r.n && r.kind[j] === KIND.bridge) out[j] = 1;
+    }
+  }
+  return out;
+}
+
 /** Fine replacement ground, rebuilt only on evaluation. The inner edge meets the slope or
- * vertical retaining face; the outer edge returns to the existing 20 m triangles. */
+ * vertical retaining face; the outer edge returns to the existing 20 m triangles. `ground` =
+ * groundStations (default: the earthwork stations). */
 export function daylightSections(r: EarthworkRoute, i: number, side: number, halfWidth: number,
-  natural: (x: number, y: number) => number): DaylightSection[] {
-  if (i + 1 >= r.n || r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) return [];
+  natural: (x: number, y: number) => number, ground?: ArrayLike<number>): DaylightSection[] {
+  if (i + 1 >= r.n || (ground ? !ground[i] || !ground[i + 1] : r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth)) return [];
   const a = daylightPoint(r, i, side), b = daylightPoint(r, i + 1, side);
   const ao = daylightPoint(r, i, side, GROUND_COLLAR), bo = daylightPoint(r, i + 1, side, GROUND_COLLAR);
   const edge = (j: number) => ({ x: r.x[j] - r.ty[j] * halfWidth * side, y: r.y[j] + r.tx[j] * halfWidth * side, z: r.grade[j] });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collarPoint, daylightSections, groundBlend, type EarthworkRoute } from '../src/render/earthwork-surface';
+import { collarPoint, daylightSections, groundBlend, groundStations, type EarthworkRoute } from '../src/render/earthwork-surface';
 
 describe('daylight stitching', () => {
   const f = (v: number[]) => Float64Array.from(v);
@@ -67,5 +67,15 @@ describe('daylight stitching', () => {
   });
   it('does not lay replacement ground across a bridge or tunnel void', () => {
     for (const kind of [1,2]) expect(daylightSections({ ...route, kind: new Uint8Array([0,kind]) },0,1,5,natural)).toEqual([]);
+  });
+  it('draws a bridge end set into a bank as the abutment, up to the first station clear of the ground', () => {
+    // cut, two bridge stations still under the bank, the abutment front, the open span, a normal far end
+    const n = 8, bridge = Uint8Array.of(0,1,1,1,1,1,1,0), ground = [102,101,100.5,98,90,90,95,99];
+    const r: EarthworkRoute = { n, x: f(Array.from({ length: n }, (_, i) => 10*i)), y: f(Array(n).fill(0)), tx: f(Array(n).fill(1)),
+      ty: f(Array(n).fill(0)), grade: f(Array(n).fill(100)), kind: bridge, dayL: f(Array(n).fill(6)), dayR: f(Array(n).fill(6)) };
+    const at = (x: number) => ground[Math.round(x/10)];
+    expect([...groundStations(r, at)]).toEqual([1,1,1,1,0,0,0,1]);
+    expect(daylightSections(r, 2, 1, 5, at, groundStations(r, at)).length).toBeGreaterThan(0);
+    expect(daylightSections(r, 4, 1, 5, at, groundStations(r, at))).toEqual([]);
   });
 });
