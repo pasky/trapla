@@ -61,13 +61,15 @@ class SegmentGrid<T extends { a: { x: number; y: number }; b: { x: number; y: nu
   }
 }
 
+/** Real terrain only. Outside known data `heightAt` is display-filled, so `isOob` must veto it. */
+export interface ProjectGround { heightAt(x: number, y: number): number; isOob(x: number, y: number): boolean }
 export class ProjectTransportIndex implements TransportSurfaceQuery {
   readonly graph: TransportGraphData;
   private readonly sources = new Map<string, TransportSource>();
   private readonly nodeUses = new Map<string, SourceLocation[]>();
   private readonly grid: SegmentGrid<SourceSegment>;
   constructor(graph: TransportGraphData, readonly transportData: string, vectorData: string,
-    private readonly groundHeight: (x: number, y: number) => number) {
+    private readonly ground: ProjectGround) {
     const errors = validateTransportGraph(graph, vectorData);
     if (errors.length) throw new Error(errors.join('\n'));
     this.graph = freezeProjectValue(cloneProjectValue(graph));
@@ -102,7 +104,7 @@ export class ProjectTransportIndex implements TransportSurfaceQuery {
   position(id: string, s: number): XYZ | null {
     const source = this.sources.get(id); if (!source || source.elevation === 'unknown') return null;
     const p = this.sample(source, s); if (!p) return null;
-    const z = source.elevation === 'terrain' ? this.groundHeight(p.x, p.y) : lerp(source.z[p.i], source.z[p.i + 1], p.t);
+    const z = source.elevation === 'terrain' ? (this.ground.isOob(p.x, p.y) ? NaN : this.ground.heightAt(p.x, p.y)) : lerp(source.z[p.i], source.z[p.i + 1], p.t);
     return Number.isFinite(z) ? { x: p.x, y: p.y, z } : null;
   }
   checkInterval(interval: SourceInterval): void {

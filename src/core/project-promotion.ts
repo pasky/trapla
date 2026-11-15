@@ -49,6 +49,7 @@ export function promoteGroundRoad(base: ProjectTransportIndex, input: {
   connect(`connection:${route.id}:end`, length, sourceLocation(input.interval.s1), route.endpoints.b.position);
   for (const branch of base.branches(input.interval)) for (const other of branch.other) {
     const otherSource = base.source(other.sourceId)!, p = base.position(other.sourceId, other.s);
+    if (otherSource.kind === 'railway') throw new Error('Level crossing with a railway is not supported yet');
     if (otherSource.kind !== 'road' || !p || otherSource.elevation !== 'terrain') throw new Error('Branch connection needs resolved ground-road data');
     connect(`connection:${route.id}:branch:${branch.nodeId}:${branch.s}:${other.sourceId}:${other.s}`, branch.s - start, other, p);
   }
@@ -146,7 +147,14 @@ export function assessReplacementConnections(base: ProjectTransportIndex, projec
         const p = surfaces.position(target, endpoint.anchor.s);
         if (!p || distance(p, endpoint.position) > 1e-6) fail(route.id, 'designed-endpoint-does-not-meet');
       } else if (endpoint.anchor.kind === 'source') {
-        const l = endpoint.anchor.location, p = l.transportData === base.transportData ? base.position(l.sourceId, l.s) : null;
+        const l = endpoint.anchor.location;
+        // Another route replacing this source point removes the old road here; its ground XYZ is stale.
+        const foreign = [...removedOwners(l) ?? []].filter(id => id !== route.id);
+        for (const target of foreign) for (const [from, to] of [[route.id, target], [target, route.id]]) {
+          let neighbours = dependencies.get(from); if (!neighbours) dependencies.set(from, neighbours = new Set()); neighbours.add(to);
+        }
+        if (foreign.length) { fail(route.id, 'source-endpoint-replaced', l); continue; }
+        const p = l.transportData === base.transportData ? base.position(l.sourceId, l.s) : null;
         if (!p || distance(p, endpoint.position) > 1e-6) fail(route.id, 'source-endpoint-does-not-meet');
       }
     }
