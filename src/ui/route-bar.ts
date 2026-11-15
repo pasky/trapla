@@ -1,6 +1,7 @@
 import type { ProjectDesign, RouteId, RouteKind } from '../core/project';
 
-/** Only constructed/changed project routes live here; base roads are selected directly on the map. */
+/** Only constructed/changed project routes live here; base roads are selected directly on the map.
+ * The list shows only when there are two or more roads to switch between. */
 export class RouteBar {
   readonly root = document.createElement('div');
   private select = document.createElement('select');
@@ -8,7 +9,8 @@ export class RouteBar {
   private choices = document.createElement('div');
   onSelect?: (id: RouteId) => void;
   onBuild?: (kind: RouteKind) => void;
-  constructor(parent: HTMLElement) {
+  /** Build menu entries that have a working flow (Motorway/Railway wait for their mode kernels). */
+  constructor(parent: HTMLElement, private kinds: readonly RouteKind[] = ['road']) {
     this.root.className = 'route-bar'; this.select.setAttribute('aria-label', 'Road to edit');
     this.select.id = 'active-route';
     this.select.onchange = () => this.onSelect?.(this.select.value);
@@ -16,6 +18,7 @@ export class RouteBar {
     this.build.setAttribute('aria-expanded', 'false'); this.choices.className = 'route-build-choices'; this.choices.hidden = true;
     this.build.onclick = () => { this.choices.hidden = !this.choices.hidden; this.build.setAttribute('aria-expanded', String(!this.choices.hidden)); };
     for (const [kind, label] of [['road', 'Road'], ['motorway', 'Motorway'], ['railway', 'Railway']] as const) {
+      if (!this.kinds.includes(kind)) continue;
       const button = document.createElement('button'); button.textContent = label; button.type = 'button'; button.dataset.kind = kind;
       button.onclick = () => { this.choices.hidden = true; this.build.setAttribute('aria-expanded', 'false'); this.onBuild?.(kind); };
       this.choices.append(button);
@@ -29,6 +32,8 @@ export class RouteBar {
       this.select.dataset.options = JSON.stringify(options);
     }
     this.select.value = activeRouteId ?? ''; this.select.disabled = editing || !options.length;
+    // One road: nothing to switch between (a click on a road on the map selects it anyway).
+    this.select.hidden = options.length < 2;
     this.build.hidden = !this.onBuild; this.build.disabled = editing;
   }
 }

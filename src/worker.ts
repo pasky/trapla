@@ -18,13 +18,16 @@ export type WorkerIn =
       binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData; scenario: ScenarioParams; watercourses?: WaterData;
       projectEnvironment?: ProjectEnvironment }
   | { type: 'eval'; id: number; design: Design; preview?: boolean; materialValue?: number }
+  /** Legacy road-net way of each mapped source, whenever the pack's road links are loaded. */
+  | { type: 'source-ways'; ways: [string, number][] }
   | ProjectWorkerIn;
 
 let ctx: EvalContext | null = null;
-let pending: Exclude<WorkerIn, { type: 'init' }> | null = null;
+let pending: Exclude<WorkerIn, { type: 'init' | 'source-ways' }> | null = null;
 let scheduled = false;
 let projectEnvironment: ProjectEnvironment | null = null;
 let lastProject: ProjectResult | null = null;
+let sourceWays: Map<string, number> | undefined;
 
 function run() {
   scheduled = false;
@@ -37,7 +40,7 @@ function run() {
       (self as unknown as Worker).postMessage({ type: 'result', id: job.id, result });
     } else {
       if (!projectEnvironment) throw new Error('Project environment missing from worker init');
-      const projectContext = { legacy: ctx, environment: projectEnvironment };
+      const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays };
       if (job.type === 'project-preview') {
         const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, job.materialValue);
         (self as unknown as Worker).postMessage({ type: 'project-preview', id: job.id,
@@ -64,13 +67,15 @@ function run() {
 self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const m = ev.data;
   if (m.type === 'init') {
-    pending = null; lastProject = null; projectEnvironment = m.projectEnvironment ?? null;
+    pending = null; lastProject = null; sourceWays = undefined; projectEnvironment = m.projectEnvironment ?? null;
     const terrain = new Terrain({ nx: m.nx, ny: m.ny, cell: m.cell, base: m.base, scale: m.scale, q: m.q, lc: m.lc, ground: m.ground, watercourses: m.watercourses });
     ctx = {
       terrain, scenario: m.scenario, a: m.a, b: m.b, buildings: new BuildingIndex(m.buildings, m.binfo),
       roads: m.net ? new RoadNet(m.net) : undefined,
     };
     (self as unknown as Worker).postMessage({ type: 'ready' });
+  } else if (m.type === 'source-ways') {
+    sourceWays = new Map(m.ways);
   } else {
     pending = m;
     if (!scheduled) { scheduled = true; setTimeout(run, 0); }

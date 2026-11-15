@@ -5,11 +5,11 @@ import { NOISE } from './data/urban';
 import type { EvalContext, Result } from './evaluate';
 import type { ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectReceiver, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
 import { routeContacts, screenIndependence, type RouteContact } from './project-ledger';
-import { evaluateProjectRoad } from './project-road';
+import { evaluateProjectRoad, type SourceWays } from './project-road';
 import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
 
-export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment }
+export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays }
 const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete', check: 'not-checked',
   violation: { kind: 'crossing', basis: 'engine', title: 'Road checks are not finished',
     fix: 'Keep the existing road until its replacement is checked',
@@ -48,15 +48,25 @@ export function referenceRoadSurface(ctx: EvalContext, route: RouteDesign): Tran
   }
   return { routeId: route.id, revision: route.revision, points };
 }
+/** The road itself is engineered and shown with its own price; the project cannot price it yet. */
+const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectIssue, 'check'> & { violation: ProjectIssue['violation'] }> = {
+  'source-needs-network': { check: 'not-checked', violation: { kind: 'crossing', basis: 'engine', title: 'Replacing the old road is not priced yet',
+    fix: 'Its new line is checked; removing the old road and reconnecting its side roads is not priced yet',
+    rule: 'Engine limit: the price of a rebuilt stretch still lacks removing the old road and reconnecting the roads that joined it.' } },
+  'traffic-unknown': { check: 'violation', violation: { kind: 'crossing', basis: 'game', title: 'Traffic not set',
+    fix: 'Enter how many vehicles a day use this road in its card',
+    rule: 'Game rule: noise and capacity depend on traffic, so a road without traffic cannot be priced.' } },
+};
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
   preview = false, materialValue?: number): { route: RouteResult; issue?: ProjectIssue } {
-  const evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
+  const evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays });
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : undefined;
   return { route: { routeId: route.id, revision: route.revision,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
     surface: legacy ? roadSurface(route, legacy) : referenceRoadSurface(ctx.legacy, route), geometry: null,
     ...(legacy ? { legacy } : {}), complete: false, valid: false, accepted: false, attributedCost: null, dependencies: [], influence: [] },
-    ...(evaluated.status === 'incomplete' ? { issue: issue(route.id, evaluated.reason) } : {}) };
+    ...(evaluated.status === 'incomplete' ? { issue: issue(route.id, evaluated.reason) }
+      : evaluated.unpriced ? { issue: { code: evaluated.unpriced, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[evaluated.unpriced] } } : {}) };
 }
 export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, materialValue?: number): RouteResult {
   assertProjectDesign(snapshot.design);
@@ -116,15 +126,16 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     cost: { total: null, routes: {}, shared: 0, materialBalance: 'per-route', alone: {}, unpriced: [] }, issues: [],
     acceptedReplacements: [], acceptedRenderReplacements: [], buildings: [], receivers: [], complete: false, valid: false,
     acousticScreen: { bounds: [], omittedDayEnergyUpperBound: Infinity, omittedNightEnergyUpperBound: Infinity, complete: false } };
-  const priced: { route: RouteDesign; legacy: Result }[] = [];
+  const priced: { route: RouteDesign; legacy: Result }[] = [], engineered: typeof priced = [];
   for (const route of design.routes) {
     const proposal = routeProposal(ctx, snapshot, route);
     defineRoute(result.routes, route.id, proposal.route);
+    if (proposal.route.legacy) engineered.push({ route, legacy: proposal.route.legacy });
     if (proposal.issue) { result.issues.push(proposal.issue); result.cost.unpriced.push({ routeId: route.id, reason: proposal.issue.code }); }
     else if (proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
   }
   // Keep each road's own bill and problems visible even while the project cannot be priced.
-  for (const { route, legacy } of priced) defineRoute(result.cost.alone, route.id, legacy.cost.total);
+  for (const { route, legacy } of engineered) defineRoute(result.cost.alone, route.id, legacy.cost.total);
   const unprice = (routeIds: string[], reason: string) => {
     for (const routeId of routeIds) if (!result.cost.unpriced.some(u => u.routeId === routeId)) result.cost.unpriced.push({ routeId, reason });
   };
@@ -159,7 +170,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   if (design.corridors.length) unprice(design.corridors.flatMap(c => [c.children.forward, c.children.reverse]), 'unsupported-mode');
   if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
   const finish = () => {
-    for (const { route, legacy } of priced) result.issues.push(...routeIssues(route, legacy));
+    for (const { route, legacy } of engineered) result.issues.push(...routeIssues(route, legacy));
     return result;
   };
   if (result.cost.unpriced.length || result.issues.length) return finish();

@@ -31,9 +31,10 @@ export class ActiveRouteStore {
   get best() { return this.project.best; }
   /** Changed bindings remain in project state for repair; never clear choices to rebind indices. */
   get objectDataChanged() { return false; }
-  switchRoute(id: RouteId): boolean {
+  /** `created`: a road this open transaction just created (e.g. by the first drag of a mapped road). */
+  switchRoute(id: RouteId, created = false): boolean {
     if (!this.project.snapshot.design.routes.some(r => r.id === id)) return false;
-    if (this.project.inTransaction) return false;
+    if (this.project.inTransaction && !created) return false;
     this.activeRouteId = id;
     return true;
   }

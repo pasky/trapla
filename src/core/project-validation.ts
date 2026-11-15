@@ -80,7 +80,8 @@ function spec(v: unknown, kind: unknown): boolean {
   const o = v.operations;
   if (kind === 'road' || kind === 'motorway') {
     if (!number(o.aadt) || o.aadt < 0 || !number(o.heavyShare) || o.heavyShare < 0 || o.heavyShare > 1 || !number(o.speed) || o.speed <= 0
-      || o.speedPolicy !== undefined && !choice(o.speedPolicy, ['design', 'independent'])) return false;
+      || o.speedPolicy !== undefined && !choice(o.speedPolicy, ['design', 'independent'])
+      || o.trafficUnknown !== undefined && (o.trafficUnknown !== true || o.aadt !== 0)) return false;
     return kind === 'motorway' ? text(v.crossSection) : choice(v.legalClass, ['I', 'II', 'III', 'local', 'service', 'track'])
       && choice(v.crossSection, ['S7.5', 'S9.5', 'S11.5', 'existing'])
       && (v.crossSection !== 'existing' || number(v.existingWidth) && v.existingWidth > 0);

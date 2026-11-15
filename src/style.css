@@ -448,7 +448,15 @@ button.link i.pk-fill { background: #8fbf5a; } button.link i.pk-cut { background
 .route-build-choices[hidden] { display: none; }
 .save-recovery { margin: 12px; }
 .save-recovery button { margin-right: 6px; }
-/* base-road card: Change road with two visible handles along the mapped road */
+/* Build → Road: the placed start, and a crosshair while placing ends */
+.build-end { position: absolute; transform: translate(-50%, -100%); pointer-events: none; padding: 3px 8px; border-radius: 10px;
+  border: 2px solid #1d232a; background: #fff; color: #1d232a; font: 700 12px system-ui, sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+canvas.placing { cursor: crosshair !important; }
+.inspector .build-step { font-weight: 600; margin: 4px 0; }
+.inspector #cancel-build, .inspector #remove-route { margin-top: 6px; }
+.inspector .route-head { border-bottom: 1px solid #e3e6ea; padding-bottom: 6px; margin-bottom: 6px; }
+.inspector .mapped-how { font-weight: 600; margin: 4px 0; }
+/* a rebuilt stretch's end handles along the old road */
 .source-endpoint { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; cursor: grab; touch-action: none;
   padding: 3px 8px; border-radius: 10px; border: 2px solid #1d232a; background: #ff9f1c; color: #1d232a; font: 700 12px system-ui, sans-serif;
   box-shadow: 0 1px 4px rgba(0,0,0,0.4); user-select: none; }

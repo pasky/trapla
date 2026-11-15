@@ -69,6 +69,9 @@ export interface RoadOperations {
   aadt: number; heavyShare: number; speed: number;
   /** Legacy speed edits remain coupled unless separate operating assumptions are explicitly chosen. */
   speedPolicy?: 'design' | 'independent';
+  /** The player has not said how much traffic uses this road yet: aadt is 0 and nothing that depends
+   * on traffic (noise, capacity) is checked; the project cannot be priced. */
+  trafficUnknown?: true;
 }
 export interface RoadSpec {
   kind: 'road';

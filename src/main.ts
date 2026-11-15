@@ -15,7 +15,10 @@ import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
-import { SourceEditor } from './ui/source-editor';
+import { MappedRoadCard } from './ui/mapped-road';
+import { BuildRoadTool, type Placement } from './ui/build-road';
+import { newRoad, rebuildable, rebuildCommand, strayDistance } from './ui/road-edit';
+import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
 import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
@@ -31,7 +34,7 @@ import { startDesign } from './state';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
-import type { ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult } from './core/project';
+import type { ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
 import { acceptsProjectMessage, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
@@ -184,7 +187,17 @@ async function main() {
   }
   const inspectorEl = document.getElementById('inspector')!;
   const claimedSources = () => projectStore.snapshot.design.routes.flatMap(r => r.source?.intervals ?? []);
-  const sourceEditor = transportIndex ? new SourceEditor(() => inspectorEl, document.getElementById('overlay')!, view, transportIndex, claimedSources) : null;
+  const sourceEditor = transportIndex ? new MappedRoadCard(() => inspectorEl, view, transportIndex, claimedSources) : null;
+  // Road links let the game change mapped roads; tell the worker which legacy way each mapped road is.
+  if (pack.transport) worker.postMessage({ type: 'source-ways', ways: pack.transport.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]) } satisfies WorkerIn);
+  const buildTool = new BuildRoadTool(() => inspector.host(), document.getElementById('overlay')!, view);
+  /** Without road links (an older map pack) mapped roads are still recognised, to say why they cannot change. */
+  let legacyNet: RoadNet | null = null;
+  const legacyRoadAt = (x: number, y: number) => {
+    if (transportIndex || !pack.overlays.net) return false;
+    legacyNet ??= new RoadNet(pack.overlays.net);
+    return legacyNet.nearestWay(x, y, Math.max(4, 4 * view.metresPerPixel)) !== undefined;
+  };
   const activeEndpoints = () => ({
     a: { ...(store.route?.endpoints.a.position ?? positionA), label: store.route?.role === 'mission' ? scenario.labels.a : 'Start' },
     b: { ...(store.route?.endpoints.b.position ?? positionB), label: store.route?.role === 'mission' ? scenario.labels.b : 'End' },
@@ -219,6 +232,7 @@ async function main() {
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   const select = (next: Sel | null, fly = false) => {
     if (sourceEditor?.selected) sourceEditor.clear();
+    if (buildTool.active) buildTool.cancel(false);
     // a house belongs to the project: its card shows the road whose noise reaches it most
     if (next?.kind === 'building' && projectFull?.complete && Object.keys(projectFull.routes).length > 1) {
       const contributions = projectFull.receivers.find(r => r.buildingIndex === next.j)?.contributions ?? [];
@@ -275,9 +289,84 @@ async function main() {
     };
     root.append(h, state, note, size, remove);
   };
+  /** A side road's own header (nothing selected): what it is, its traffic, and how to undo it. */
+  let strayKey = '', stray = 0;
+  inspector.routeHead = () => {
+    const route = store.route, r = last;
+    if (!route || route.role === 'mission' || route.kind !== 'road' || !r) return null;
+    const op = route.specification.operations;
+    const head = document.createElement('div'); head.className = 'route-head';
+    const h = document.createElement('div'); h.className = 'ctx-h';
+    const title = document.createElement('b'); title.textContent = route.name;
+    const sub = document.createElement('small'); sub.textContent = `${(r.length / 1000).toFixed(2)} km`;
+    h.append(title, sub);
+    const what = document.createElement('div'); what.className = 'sub';
+    const interval = route.source?.intervals[0];
+    if (interval && transportIndex) {
+      const key = `${route.id}:${route.revision}:${r.n}:${r.x[r.n >> 1]}`;
+      if (key !== strayKey) {
+        strayKey = key;
+        try {
+          const old = transportIndex.path(interval), line = Array.from({ length: Math.ceil(r.n / 2) }, (_, k) => ({ x: r.x[2 * k], y: r.y[2 * k] }));
+          stray = strayDistance(line, old);
+        } catch { stray = NaN; }
+      }
+      what.textContent = `Rebuilt stretch: its line is drawn as bends${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. The old road stays until the change can be priced.`;
+    } else {
+      const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
+        : e.anchor.kind === 'route' ? projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId)?.name ?? 'a road'
+        : e.anchor.kind === 'source' ? (transportIndex?.source(e.anchor.location.sourceId)?.tags.name || 'a road') : 'a scenario end';
+      what.textContent = `New road from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
+    }
+    const form = document.createElement('form'); form.className = 'source-operations route-traffic';
+    const fields: HTMLInputElement[] = [];
+    for (const [key, label, unit, value] of [
+      ['traffic', 'Traffic', 'vehicles/day', op.trafficUnknown ? '' : String(op.aadt)],
+      ['heavy', 'Heavy vehicles', '%', op.trafficUnknown ? '' : String(Math.round(op.heavyShare * 1000) / 10)],
+    ] as const) {
+      const row = document.createElement('label'); row.textContent = label;
+      const input = document.createElement('input'); input.type = 'number'; input.required = true; input.min = '0';
+      input.max = key === 'traffic' ? '100000' : '100'; input.step = key === 'traffic' ? '1' : 'any'; input.name = key; input.value = value;
+      const small = document.createElement('small'); small.textContent = unit;
+      row.append(input, small); form.append(row); fields.push(input);
+    }
+    const apply = () => {
+      const [traffic, heavy] = fields.map(f => f.value === '' ? NaN : Number(f.value));
+      if (!(traffic >= 0 && traffic <= 100000 && heavy >= 0 && heavy <= 100)) return;
+      const id = route.id;
+      store.editProject(d => {
+        const q = d.routes.find(x => x.id === id); if (!q || q.kind !== 'road') return;
+        const { trafficUnknown: _unknown, ...rest } = q.specification.operations;
+        q.specification.operations = { ...rest, aadt: Math.round(traffic), heavyShare: heavy / 100 };
+      });
+    };
+    for (const f of fields) f.onchange = apply;
+    form.onsubmit = e => { e.preventDefault(); apply(); };
+    const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route';
+    remove.textContent = route.source ? 'Keep the old road' : 'Remove road';
+    remove.onclick = () => {
+      if (projectStore.inTransaction) return;
+      const mission = missionRouteId();
+      try { projectStore.dispatch({ type: 'delete-route', routeId: route.id }); }
+      catch { toast('Another road joins this one: remove that road first.'); return; }
+      if (mission) switchRoute(mission);
+      toast(route.source ? 'The old road is kept.' : 'Road removed.', 'Undo', () => store.undo());
+    };
+    head.append(h, what, form, remove);
+    return head;
+  };
   const showSource = (hit: SourceHit) => {
     if (!sourceEditor) return;
     select(null); inspector.host(); sourceEditor.show(hit); hud.revealContext('inspector');
+  };
+  const showNoLinks = () => {
+    select(null);
+    const root = inspector.host(), h = document.createElement('div'), title = document.createElement('b'), close = document.createElement('button');
+    root.replaceChildren(); root.className = 'card ctx inspector k-source';
+    h.className = 'ctx-h'; title.textContent = 'Road'; close.className = 'x'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.type = 'button';
+    close.onclick = () => select(null); h.append(title, close);
+    const p = document.createElement('p'); p.textContent = 'This map’s roads cannot be changed yet: its road links are missing.';
+    root.append(h, p); hud.revealContext('inspector');
   };
   const selectPiece = (s: number, fly = false) => {
     if (!last) return;
@@ -540,8 +629,8 @@ async function main() {
     commit: () => store.commit(),
   });
 
-  const switchRoute = (id: RouteId) => {
-    if (!store.switchRoute(id)) return false;
+  const switchRoute = (id: RouteId, created = false) => {
+    if (!store.switchRoute(id, created)) return false;
     previewGesture = null; activePreviewPrice = null;
     if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
     sel = activeSelection(id, qualifiedSelection); qualifiedSelection = qualifySelection(id, sel);
@@ -555,11 +644,41 @@ async function main() {
     return true;
   };
   store.onHistory = () => select(null);
-  if (sourceEditor) {
-    sourceEditor.onClose = () => select(null);
-    // One atomic, undoable promote command; the proposal stays unscored until core accepts it.
-    sourceEditor.onApply = (command, id) => { projectStore.dispatch(command); switchRoute(id); };
-  }
+  if (sourceEditor) sourceEditor.onClose = () => select(null);
+  buildTool.onClose = () => select(null);
+  buildTool.onDone = (a, b) => {
+    const route = newRoad(projectStore.snapshot.design, a, b, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` });
+    if (projectStore.inTransaction) projectStore.commit();
+    try { projectStore.dispatch({ type: 'create-route', route }); }
+    catch (error) { console.warn('New road was not created', error); toast('This road could not be made here.'); return; }
+    switchRoute(route.id); select(null);
+    toast('Drag the road to bend it.');
+  };
+  routeBar.onBuild = kind => { if (kind !== 'road') return; select(null); buildTool.begin(); hud.revealContext('inspector'); };
+  /** where a click while building puts a road end: on a road (joins it), else free ground */
+  const placeAt = (clientX: number, clientY: number, x: number, y: number): Placement => {
+    const hit = routeAt(clientX, clientY, 10), rr = hit && projectFull?.routes[hit.routeId];
+    const route = hit && projectStore.snapshot.design.routes.find(r => r.id === hit.routeId);
+    if (hit && rr?.legacy && route) {
+      const r = rr.legacy, i = Math.max(0, Math.min(r.n - 1, Math.round(hit.s / r.ds)));
+      if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
+      return { ok: true, label: route.name, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };
+    }
+    if (hit) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
+    const source = sourceAt(clientX, clientY);
+    if (source?.kind === 'route-hit') return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
+    if (source?.kind === 'source' && transportIndex) {
+      const s = transportIndex.source(source.hit.sourceId);
+      if (!s || s.kind !== 'road') return { ok: false, why: 'A road cannot end on a railway.' };
+      if (ROAD_CLASSES[s.tags.highway ?? '']?.noAtGrade) return { ok: false, why: 'A motorway can only be joined at an interchange; those are not in the game yet.' };
+      const p = s.elevation === 'terrain' && !s.bridge && !s.tunnel ? transportIndex.position(s.id, source.hit.s) : null;
+      if (!p) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
+      const name = s.tags.name || s.tags.ref || ROAD_CLASSES[s.tags.highway ?? '']?.label || 'road';
+      return { ok: true, label: `joins ${name}`, end: { position: p, anchor: { kind: 'source', location: { transportData: transportIndex.transportData, sourceId: s.id, s: source.hit.s } } } };
+    }
+    if (pack.terrain.isOob(x, y)) return { ok: false, why: 'Put the end on the map.' };
+    return { ok: true, label: 'open ground (joins no road)', end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
+  };
   routeBar.onSelect = switchRoute;
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
 
@@ -651,6 +770,30 @@ async function main() {
     if (w) return { kind: 'stretch', s0: w.s0, s1: w.s1 };
     return sourceAt(clientX, clientY);
   };
+  /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
+  let grabbing: SourceInterval | null = null;
+  const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
+    const interval = sourceEditor?.interval; if (!interval) return null;
+    const g = view.pick(clientX, clientY);
+    return g && sourceEditor!.covers(g.x, g.y, Math.max(6, 8 * view.metresPerPixel)) ? { ...interval } : null;
+  };
+  /** The first drag of a mapped road: its stretch becomes a project road (line converted to bends that
+   * follow the old road) and the drag bends it, all ONE undo step (committed when the drag ends). */
+  const rebuildByDrag = (interval: SourceInterval, x: number, y: number): number | null => {
+    if (!transportIndex) return null;
+    let command;
+    try { command = rebuildCommand(transportIndex, interval, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` }); }
+    catch (error) { console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
+    const id = command.routes[0].id;
+    intro.hide(); sourceEditor?.clear();
+    if (projectStore.inTransaction) projectStore.commit();
+    projectStore.begin();
+    try { projectStore.dispatch(command); }
+    catch (error) { projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
+    switchRoute(id, true);
+    const k = insertBend(x, y, false); select({ kind: 'bend', i: k });
+    return k;
+  };
   const insertBend = (x: number, y: number, commit: boolean) => {
     const k = nearestLeg(A, B, store.design.pis, { x, y });
     store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); }, commit);
@@ -659,15 +802,27 @@ async function main() {
   view.ev = {
     onPickTerrain: (_x, _y, clientX, clientY) => {
       intro.hide();
+      if (buildTool.active) { buildTool.place(placeAt(clientX, clientY, _x, _y)); return; }
       const t = thingAt(clientX, clientY);
       if (t?.kind === 'route-hit') { if (switchRoute(t.routeId) && store.read()) selectPiece(t.s); }
       else if (t?.kind === 'source') showSource(t.hit);
+      else if (!t && legacyRoadAt(_x, _y)) showNoLinks();
       else select(t);
     },
     onDoublePick: (x, y) => { if (!store.read() || routeAt(lastClient.x, lastClient.y, 10)) return; select({ kind: 'bend', i: insertBend(x, y, true) }); },
-    // a drag from the road always bends it (a click there still inspects the nearest thing)
-    hitRoad: (clientX, clientY) => roadAt(clientX, clientY, 9) >= 0,
-    onRoadDrag: (x, y) => { if (!store.read()) return null; intro.hide(); const k = insertBend(x, y, false); select({ kind: 'bend', i: k }); return k; },
+    // a drag from the road always bends it (a click there still inspects the nearest thing); so does a
+    // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch
+    hitRoad: (clientX, clientY) => {
+      grabbing = null;
+      if (buildTool.active) return false;
+      if (roadAt(clientX, clientY, 9) >= 0) return true;
+      grabbing = mappedGrab(clientX, clientY);
+      return !!grabbing;
+    },
+    onRoadDrag: (x, y) => {
+      if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
+      if (!store.read()) return null; intro.hide(); const k = insertBend(x, y, false); select({ kind: 'bend', i: k }); return k;
+    },
     onPiSelect: (i) => select(i === null ? null : { kind: 'bend', i }),
     onPiDrag: (i, x, y) => store.update((d) => { d.pis[i].x = x; d.pis[i].y = y; }, false),
     onPiDragEnd: () => store.commit(),
@@ -741,7 +896,10 @@ async function main() {
     mapHoverFrame = 0;
     const at = mapHoverAt, r = last, canvas = view.renderer.domElement;
     let cursor = '', key = '';
-    if (at && r) {
+    if (at && !buildTool.active && mappedGrab(at.x, at.y) && !(r && roadAt(at.x, at.y, 10) >= 0)) {
+      cursor = 'grab'; key = 'mapped';
+      if (key !== mapHoverKey) { const g = view.pick(at.x, at.y); if (g) view.setHover({ x: g.x, y: g.y, z: view.drape(g.x, g.y) }, 'drag to change'); }
+    } else if (at && r && !buildTool.active) {
       const cross = crossingAt(at.x, at.y);
       const k = cross ? -1 : roadAt(at.x, at.y, 10);
       const building = cross || k >= 0 ? null : buildingAt(at.x, at.y);
@@ -758,7 +916,7 @@ async function main() {
     }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     if (key === mapHoverKey) return;
-    if (!key.startsWith('x') && !key.startsWith('r')) { view.setHover(null); profile.setHover(null, true); }
+    if (!key.startsWith('x') && !key.startsWith('r') && key !== 'mapped') { view.setHover(null); profile.setHover(null, true); }
     mapHoverKey = key;
   };
   view.renderer.domElement.addEventListener('pointermove', (e) => {
@@ -864,7 +1022,7 @@ async function main() {
   window.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
     // Escape closes the base-road card even from its typed fields (nothing was changed yet)
-    if (e.key === 'Escape' && sourceEditor?.selected) { e.preventDefault(); select(null); return; }
+    if (e.key === 'Escape' && (sourceEditor?.selected || buildTool.active)) { e.preventDefault(); buildTool.cancel(false); select(null); return; }
     // Undo / Redo also right after choosing in a select or ticking a box; text fields keep their own undo
     const typing = t.closest('textarea, [contenteditable="true"]') || (t.matches('input') && !t.matches('[type=checkbox], [type=radio], [type=range]'));
     const mod = e.ctrlKey || e.metaKey;
@@ -940,11 +1098,23 @@ async function main() {
           clear = Math.min(clear, Math.hypot(r.x[k] - source.xy[i], r.y[k] - source.xy[i + 1]));
         const mid = transportIndex!.branches({ transportData: transportIndex!.transportData, sourceId: source.id, s0: 0, s1: length })
           .filter(b => b.s > 50 && b.s < length - 50).map(b => b.s);
-        return [{ id: source.id, name: info.name, length, clear, branches: mid }];
+        return [{ id: source.id, name: info.name, length, clear, branches: mid, rebuildable: rebuildable(transportIndex!, source.id).ok }];
       });
     },
     sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
     sourceSelection: () => sourceEditor?.selection ?? null,
+    building: () => buildTool.active,
+    /** a point on a drawn road away from ours (for checking the no-road-links card) */
+    legacyRoadPoint: () => {
+      const net = pack.overlays.net, r = last; if (!net || !r) return null;
+      for (const w of net.ways) {
+        if (!['tertiary', 'secondary', 'residential', 'unclassified'].includes(net.cls[w[0]]) || w.length < 5) continue;
+        const x = (w[1] + w[3]) / 2, y = (w[2] + w[4]) / 2;
+        let near = Infinity; for (let i = 0; i < r.n; i += 5) near = Math.min(near, Math.hypot(r.x[i] - x, r.y[i] - y));
+        if (near > 400 && Math.hypot(w[3] - w[1], w[4] - w[2]) > 30) return { x, y };
+      }
+      return null;
+    },
     lookAtSource: (id: string, s: number, dist = 900) => { const p = transportIndex?.position(id, s); if (p) view.lookAt(p.x, p.y, dist, 0, 55); },
     proposalLines: () => view.proposalCount,
     photoWithNetwork: () => view.photoWithNetwork,
