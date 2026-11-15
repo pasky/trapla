@@ -71,10 +71,13 @@ export class CrossingPicker {
     let hit: CrossingHit | null = null, best = pixels;
     for (const id of candidates) {
       if (id < 0) {
-        const d = this.disks[~id], c = project(d.c.x, d.c.y, d.c.z), e = project(d.c.x + d.radius, d.c.y, d.c.z), f = project(d.c.x, d.c.y + d.radius, d.c.z);
-        if (!c.vis || !e.vis || !f.vis) continue;
-        const radius = (Math.hypot(e.sx - c.sx, e.sy - c.sy) + Math.hypot(f.sx - c.sx, f.sy - c.sy)) / 2;
-        const edge = Math.hypot(screenX - c.sx, screenY - c.sy) - radius;
+        // a turning disk lies on the ground: measure on the ground under the pointer, in pixels along
+        // the direction from its centre to the pointer
+        const d = this.disks[~id], gap = Math.hypot(worldX - d.c.x, worldY - d.c.y);
+        const ux = gap > 1e-9 ? (worldX - d.c.x) / gap : 1, uy = gap > 1e-9 ? (worldY - d.c.y) / gap : 0;
+        const c = project(d.c.x, d.c.y, d.c.z), e = project(d.c.x + ux, d.c.y + uy, d.c.z);
+        if (!c.vis || !e.vis) continue;
+        const edge = (gap - d.radius) * Math.hypot(e.sx - c.sx, e.sy - c.sy);
         if (edge <= best) { best = edge; hit = { crossing: d.crossing, x: d.c.x, y: d.c.y, z: d.c.z, distance: Math.max(0, edge) }; }
         continue;
       }
@@ -82,9 +85,14 @@ export class CrossingPicker {
       if (!a.vis || !b.vis) continue;
       const dx = b.sx - a.sx, dy = b.sy - a.sy, length2 = dx * dx + dy * dy;
       const t = length2 ? Math.max(0, Math.min(1, ((screenX - a.sx) * dx + (screenY - a.sy) * dy) / length2)) : 0;
-      const edge = Math.hypot(screenX - a.sx - t * dx, screenY - a.sy - t * dy) - seg.half * Math.sqrt(length2) / seg.length;
+      // the drawn half-width across the road, projected at the nearest point (not its foreshortened length)
+      const along0 = perspectiveFraction(t, a.depth, b.depth), mx = seg.a.x + along0 * (seg.b.x - seg.a.x), my = seg.a.y + along0 * (seg.b.y - seg.a.y);
+      const mz = seg.a.z + along0 * (seg.b.z - seg.a.z), plan = Math.hypot(seg.b.x - seg.a.x, seg.b.y - seg.a.y) || 1;
+      const m = project(mx, my, mz), side = project(mx - (seg.b.y - seg.a.y) / plan * seg.half, my + (seg.b.x - seg.a.x) / plan * seg.half, mz);
+      const halfPx = m.vis && side.vis ? Math.hypot(side.sx - m.sx, side.sy - m.sy) : seg.half * Math.sqrt(length2) / seg.length;
+      const edge = Math.hypot(screenX - a.sx - t * dx, screenY - a.sy - t * dy) - halfPx;
       if (edge > best) continue;
-      const along = perspectiveFraction(t, a.depth, b.depth);
+      const along = along0;
       best = edge;
       hit = { crossing: seg.crossing, x: seg.a.x + along * (seg.b.x - seg.a.x), y: seg.a.y + along * (seg.b.y - seg.a.y),
         z: seg.a.z + along * (seg.b.z - seg.a.z), distance: Math.max(0, edge) };

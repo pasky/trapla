@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCrossingGeometry, type CrossingResult } from '../src/core/crossings';
+import { auditCrossingGeometry, buildCrossingGeometry, type CrossingResult } from '../src/core/crossings';
 import { RoadNet } from '../src/core/roadnet';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { retainingAssembly } from '../src/core/data/remedies';
@@ -55,14 +55,47 @@ describe('earthworks of a raised crossing approach leave other roads usable', ()
       expect(s.wallTop![k]!.z).toBeGreaterThan(100); // its top on the slope
     }
     expect(crossingOutcome(c).explain).toMatch(/A retaining wall \(\d+ m\) keeps its slope off a road beside it/);
+    // the independent audit remeasures the wall (and ties) from the drawn geometry: the bill agrees
+    const both = build([1, 110, 30, 110, 90], [0, 100, 50, 400, 50]);
+    expect(both.tieLength).toBeGreaterThan(0); expect(both.wallLength).toBeGreaterThan(0);
+    const roads = new RoadNet({ cls: ['residential', 'track'], ways: [street, [1, 110, 30, 110, 90], [0, 100, 50, 400, 50]] });
+    expect(auditCrossingGeometry([both], route, ground, roads).filter(v => v.message.includes('bill'))).toEqual([]);
+    expect(auditCrossingGeometry([{ ...both, cost: both.cost + 1000 }], route, ground, roads).map(v => v.message)).toContain('Junction bill differs from measured quantities');
   });
 
   it('reports a road lying under the raised road itself, and leaves distant roads alone', () => {
     const c = build([1, 104, 30, 104, 90]); // its pavement overlaps the street's: no wall fits between
     expect(c.geometry!.diagnostics).toContain('Approach earthworks would cover another road');
-    expect(c.issues?.some(v => v.title === "The junction's approach would bury another road" && v.fix && v.rule)).toBe(true);
+    expect(c.issues?.some(v => v.title === "The junction's approach runs over another road" && v.fix && v.rule)).toBe(true);
     const far = build([1, 160, 30, 160, 90]);
     expect(far.geometry!.diagnostics).toBeUndefined(); expect(far.worksCost).toBeUndefined(); expect(far.cost).toBe(25e6);
+  });
+
+  it('a regraded side road resolves only its own line, not other roads near the junction', () => {
+    const side = [0, 100, 50, 400, 50];
+    expect(build([1, 110, 30, 110, 90], side).wallLength).toBeCloseTo(build([1, 110, 30, 110, 90]).wallLength!, 6);
+    expect(build([1, 104, 30, 104, 90], side).geometry!.diagnostics).toContain('Approach earthworks would cover another road');
+  });
+
+  it('two crossings never regrade (and bill) the same side road twice', () => {
+    // the player's junctions (Auto would choose another treatment for one of them)
+    const a: CrossingResult = { ...junction(), requestedType: 'junction' }, b: CrossingResult = { ...a, s: 180, x: 180, roadId: 1 };
+    const roads = new RoadNet({ cls: ['residential'], ways: [street, [0, 180, -500, 180, 500], [0, 100, 50, 180, 50]] });
+    buildCrossingGeometry([a, b], { ...route, s: [0, 100, 180, 300], x: [0, 100, 180, 300], y: [0, 0, 0, 0], tx: [1, 1, 1, 1], ty: [0, 0, 0, 0],
+      grade: [106, 106, 106, 106], width: [40, 40, 40, 40] }, ground, roads);
+    const ties = [a, b].map(c => c.geometry!.ties?.length ?? 0);
+    expect(ties.filter(Boolean)).toHaveLength(1); // the first one regrades the street towards the other
+    expect([a, b].some(c => c.geometry!.diagnostics?.includes('Two crossings would regrade the same side road'))).toBe(true);
+  });
+
+  it('an automatic junction whose approach cannot avoid another road gives way to another treatment', () => {
+    // a second street at x = 300 passes under our bridge: the first one can be cut and reconnected to it
+    const a = junction(), b: CrossingResult = { s: 300, i: 3, x: 300, y: 0, roadId: 1, cls: 'residential', h: 6, cost: 0, type: 'bridge' };
+    const roads = new RoadNet({ cls: ['residential', 'track'], ways: [street, [0, 300, -500, 300, 500], [1, 104, 30, 104, 90]] });
+    const long = { s: [0, 100, 200, 300, 400], x: [0, 100, 200, 300, 400], y: [0, 0, 0, 0, 0], tx: [1, 1, 1, 1, 1], ty: [0, 0, 0, 0, 0],
+      grade: [106, 106, 106, 106, 106], width: [40, 40, 40, 40, 40], kind: [0, 0, 0, 1, 0] };
+    buildCrossingGeometry([a, b], long, ground, roads);
+    expect(a.type).toBe('reconnection'); expect(a.targetS).toBe(300); expect(a.issues ?? []).toEqual([]);
   });
 
   it('remeasures the works on every build without accumulating them', () => {

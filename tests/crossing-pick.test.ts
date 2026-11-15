@@ -34,6 +34,16 @@ describe('crossing picking on the geometry it owns', () => {
     expect(both.at(50, 3, 50, 3, 40, 3, project)?.crossing.roadId).toBe(7);
     expect(both.at(50, 5, 50, 5, 40, 3, project)?.crossing.roadId).toBe(9);
   });
+  it('measures the drawn width across the road in an oblique view, and turning disks on the ground', () => {
+    // seen at a grazing angle: y is squeezed tenfold on screen, x is not
+    const oblique = (x: number, y: number) => ({ sx: x, sy: y * 0.1, vis: true });
+    const along = { ...base(10, 900, 'junction'), geometry: { width: 10, schematic: false as const, road: [pt(0, 0), pt(0, 100)] } };
+    const p = new CrossingPicker(); p.set([along]);
+    expect(p.at(4, 5, 4, 50, 40, 3, oblique)?.crossing.roadId).toBe(10); // 4 m off the centre of a 10 m road
+    expect(p.at(9, 5, 9, 50, 40, 3, oblique)).toBeNull();
+    const disk = new CrossingPicker(); disk.set([reroute]);
+    expect(disk.at(200, 6.0, 200, 60 - 11, 40, 3, oblique)?.crossing.roadId).toBe(8); // on the disk on the ground
+  });
   it('the rest of the mapped road stays the base road: crossing works first, base road beyond them', () => {
     // the same mapped road y = 0 runs on to x = 200 past the junction's rebuilt stretch
     const graph: TransportGraphData = { version: 1, vectorData: 'fixture', nodes: [], sources: [{ id: 'service-road', osmWayId: '1', kind: 'road',

@@ -129,8 +129,10 @@ Owner report (D11 near bend 24): the fill slopes of a junction approach lay over
 road, with nothing resolving it and no violation. Cause: only *our* road's earthworks were checked against
 other roads; the raised or lowered stretch of a crossed road (junction approach, ramps to a bridge over us)
 was drawn with 1:1.5 slopes that nobody checked. `scripts/crossing-footprint-audit.ts` (same designs as the
-outcome audit) found 72 such overlaps before; the remaining 4–6 hits are explained (a road joining exactly at
-our junction, an arm running into our own earthworks, a pre-existing ramp-too-long violation).
+outcome audit; a rough independent screen that skips whole ways once they are regraded or handled by our own
+footprint works, so it finds problems rather than proving their absence) reported 72 such overlaps before
+and 5 after, each checked by hand: a road joining exactly at our junction, a side road running on into our own
+earthworks (left to our road's footprint works), and one pre-existing ramp-too-long violation.
 
 `src/core/crossing-works.ts`, called by the geometry pass for every junction and bridge over us, does what a
 designer does:
@@ -138,18 +140,22 @@ designer does:
 - **Side roads joining the rebuilt stretch are regraded** ("ties"): from the new level at the junction node
   (≤ 2 m: pack ways are simplified by 1 m and rounded) down along the side road's own line to its ground, no
   steeper than its class allows (`rampLimit`, research/20), at most 250 m (`MAX_RAMP_LENGTH`). Each arm of a
-  node is regraded once. Priced at the side road's SPK new-road rate per metre (`roadPerKm`, urban row when
+  node is regraded once, and only along that road's own line (no other road near the junction counts as
+  resolved). A road that two crossings would both regrade is an engine limit (reported; Auto chooses another
+  treatment for one of them). Priced at the side road's SPK new-road rate per metre (`roadPerKm`, urban row when
   the crossing is in town), drawn as a road of its own class with its own slopes, picked with the crossing,
   and owned (its source interval) so our road's footprint check does not rebuild it again. An arm that runs
   into our own earthworks is left to our road's footprint works (moved beside them / its own crossing).
 - **A road beside the slope gets a retaining wall** 1.5 m clear of its edge (constrained: 0.1 m, at least
   at the paved edge), the same rules and OTSKP assembly as our own walls (`RETAINING_RULES`,
-  `retainingAssembly`, research/18), at most 15 m high; measured where the slope would still stand above the
-  wall line, drawn as a concrete face (the slope stops at its top), billed per metre of its mean height.
-- **Otherwise the treatment is infeasible** ("The junction's approach would bury another road" /
-  "The ramps to the bridge over our road would bury another road", game rule): Auto tries an underpass, a
-  bridge over us or a reroute instead, exactly as for other geometry failures; a player's choice stays and
-  shows the violation.
+  `retainingAssembly`, research/18), at most 15 m high. A wall line spans whole sections; where the slope stops
+  short of it the face tapers to nothing, exactly as drawn; billed per metre of its mean height. The geometry
+  audit (`auditCrossingGeometry`) remeasures ties and walls from the drawn geometry and checks the bill.
+- **Motorways and expressways** are protected too (a wall may stand beside them); one is never met at grade.
+- **Otherwise the treatment is infeasible** ("The junction's approach runs over another road" /
+  "The ramps to the bridge over our road run over another road", game rule): Auto tries an underpass, a
+  bridge over us or a reroute instead (for an automatic junction too, only in this case), exactly as for other
+  geometry failures; a player's choice stays and shows the violation.
 - Earth no thicker than 0.3 m on the other road's edge is not a burial (the engine's existing draped-road
   tolerance, `crossing-geometry.ts`).
 - The ties and walls are construction (`CrossingResult.worksCost`, other-objects surcharge), never part of

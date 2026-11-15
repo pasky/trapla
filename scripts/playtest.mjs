@@ -220,11 +220,11 @@ try {
     const road = []; for (let i = 0; i < r.n; i += 2) road.push(window.trapla.project(r.x[i], r.y[i], r.grade[i]));
     for (const c of r.crossings) {
       const g = c.geometry, mark = window.trapla.project(c.x, c.y, r.grade[c.i]);
-      for (const p of [...(g?.links ?? []), ...(g?.road ? [g.road] : [])]) for (let k = 1; k + 1 < p.length; k++) {
+      for (const p of [...(g?.road ? [g.road] : []), ...(g?.links ?? [])]) for (let k = 1; k + 1 < p.length; k++) {
         const q = window.trapla.project(p[k].x, p[k].y, p[k].z);
         if (!q.vis || q.sx < 80 || q.sy < 80 || q.sx > box.width - 80 || q.sy > box.height - 80) continue;
         if (Math.hypot(q.sx - mark.sx, q.sy - mark.sy) < 60 || road.some((o) => o.vis && Math.hypot(o.sx - q.sx, o.sy - q.sy) < 30)) continue;
-        return { roadId: c.roadId, type: c.type, sx: q.sx, sy: q.sy };
+        return { roadId: c.roadId, type: c.type, sx: q.sx, sy: q.sy, link: p !== g.road };
       }
     }
     return null;

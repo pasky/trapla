@@ -12,6 +12,7 @@ type XY = { x: number; y: number };
 /** Engine diagnostics (internal; diagnosticText in crossing-geometry.ts gives the player words). */
 export const WORKS_COVER_ROAD = 'Approach earthworks would cover another road';
 export const WORKS_TIE_TOO_LONG = 'A side road joining the approach cannot be regraded to meet it';
+export const WORKS_TIE_SHARED = 'Two crossings would regrade the same side road';
 /** Same 1:1.5 earth slopes as the drawn crossing surfaces (render/crossing-surface.ts). */
 const SLOPE = 1.5;
 /** Below this the drawn surface has no slope (render/crossing-surface.ts). */
@@ -47,6 +48,8 @@ export interface WorksContext {
   maxTie: number;
   /** Urban (1) or rural (0) SPK price row. */
   urban: 0 | 1;
+  /** Side-road regrades already accepted for other crossings in this build (shared and extended). */
+  claimed?: XY[][];
 }
 
 const segDist = (q: XY, a: XY, b: XY) => {
@@ -115,7 +118,6 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
       if (seen.has(key)) return;
       seen.add(key);
       if (s.length <= 0 || (onPath({ x: s.ax, y: s.ay }, source) && onPath({ x: s.bx, y: s.by }, source))) return;
-      if (ROAD_CLASSES[s.cls]?.noAtGrade) return; // a motorway under a minor road's ramp is not modelled here
       (segments.get(s.way) ?? segments.set(s.way, []).get(s.way)!).push(s);
     });
   }
@@ -163,14 +165,24 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
       w[side] = Math.min(w[side] ?? Infinity, offset); works.walls.set(i, w);
     }
   };
-  // Regraded arms and junction mouths, shared by the ways meeting at one node.
-  const resolved: { p: XY; reach: number }[] = [], arms = new Set<string>();
+  // Regraded arms and junction mouths: the stretch of each arm's own line they take, from the node.
+  const resolved: XY[][] = [], arms = new Set<string>(), joined = new Set<number>();
+  const stretch = (p: XY, arm: readonly (XY & { d: number })[], reach: number): XY[] => {
+    const out: XY[] = [p];
+    for (let k = 0; k < arm.length; k++) {
+      if (Math.abs(arm[k].d) <= reach) { out.push(arm[k]); continue; }
+      const a = k ? arm[k - 1] : { ...p, d: 0 }, t = (reach - Math.abs(a.d)) / (Math.abs(arm[k].d) - Math.abs(a.d) || 1);
+      out.push({ x: a.x + (arm[k].x - a.x) * t, y: a.y + (arm[k].y - a.y) * t }); break;
+    }
+    return out;
+  };
   for (const [way, list] of hits) {
-    const cls = list[0].segment.cls, row = ROAD_CLASSES[cls], other = row.width / 2;
+    const cls = list[0].segment.cls;
     // Where it joins the rebuilt stretch: a node of this way on the crossed road's line.
     const joins: XY[] = [];
     for (const s of segments.get(way) ?? []) for (const p of [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }])
       if (onPath(p, road, JOIN) && !joins.some(o => Math.hypot(o.x - p.x, o.y - p.y) < 1)) joins.push(p);
+    if (joins.length) joined.add(way);
     for (const p of joins) {
       const z = zAt(p), g0 = heightAt(p.x, p.y);
       // Mouth: the junction itself lies within the rebuilt road's width plus its slope.
@@ -181,7 +193,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
         const vertices = path.filter(q => direction * q.d > 1e-6).sort((a, b) => Math.abs(a.d) - Math.abs(b.d));
         if (!vertices.length || Math.abs(vertices[vertices.length - 1].d) < 1) continue;
         // One arm of a node is one regrade, whichever way's traversal reaches it first.
-        const key = `${Math.round(vertices[0].x)},${Math.round(vertices[0].y)}`;
+        const key = `${Math.round(p.x)},${Math.round(p.y)}>${Math.round(vertices[0].x)},${Math.round(vertices[0].y)}`;
         if (arms.has(key)) continue;
         arms.add(key);
         // Dense samples along the arm (its own vertices kept): the foot is searched every 5 m.
@@ -192,9 +204,11 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
         }
         // only an arm that leaves the crossed road (not one running along it)
         if (onPath(arm[Math.min(arm.length - 1, 1)], road, JOIN) && onPath(arm[0], road, JOIN)) continue;
-        if (Math.abs(z - g0) < FLAT) { resolved.push({ p, reach: mouth + other }); continue; }
         // the way this arm actually runs on (a traversal may continue onto another way at the node)
-        const own = roads.sourceInterval(p, arm[0]), armCls = own?.cls ?? cls, armRow = ROAD_CLASSES[armCls];
+        const own = roads.sourceInterval(p, arm[0]), armCls = own?.cls ?? cls, armRow = ROAD_CLASSES[armCls], armHalf = armRow.width / 2;
+        if (Math.abs(z - g0) < FLAT) { resolved.push(stretch(p, arm, mouth + armHalf)); continue; }
+        // a motorway or expressway is never met at the same level
+        if (armRow.noAtGrade) { if (!works.problems.includes(WORKS_COVER_ROAD)) works.problems.push(WORKS_COVER_ROAD); continue; }
         let foot: (typeof arm)[number] | undefined;
         const short = (q: XY & { d: number }) => {
           const ground = heightAt(q.x, q.y), run = Math.abs(q.d);
@@ -214,7 +228,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
         // An arm running into our own earthworks is rebuilt by our road's footprint works (moved
         // beside them, reconnected to this crossing); it is not regraded twice.
         const reach = Math.max(foot ? Math.abs(foot.d) : ctx.maxTie, mouth);
-        if (arm.some(q => Math.abs(q.d) <= reach && ctx.ours(q, armRow.width / 2))) { resolved.push({ p, reach: reach + other }); continue; }
+        if (arm.some(q => Math.abs(q.d) <= reach && ctx.ours(q, armHalf))) { resolved.push(stretch(p, arm, reach + armHalf)); continue; }
         if (!foot) { if (!works.problems.includes(WORKS_TIE_TOO_LONG)) works.problems.push(WORKS_TIE_TOO_LONG); continue; }
         const run = Math.abs(foot.d), points: CrossingPoint[] = [];
         const corners = [{ x: p.x, y: p.y, d: 0 }, ...vertices.filter(q => Math.abs(q.d) < run), foot];
@@ -228,10 +242,14 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
             points.push(point);
           }
         }
+        // Another crossing already regrades this road here (to its own level): not modelled.
+        if (ctx.claimed?.some(path => points.some(q => onPath(q, path, 1)))) {
+          if (!works.problems.includes(WORKS_TIE_SHARED)) works.problems.push(WORKS_TIE_SHARED); continue;
+        }
         works.ties.push({ cls: armCls, way: own?.way ?? way, path: points });
         works.tieLength += run;
         works.cost += run * armRow.roadPerKm[ctx.urban] / 1000;
-        resolved.push({ p, reach: Math.max(run, mouth) + other });
+        resolved.push(stretch(p, arm, Math.max(run, mouth) + armHalf));
       }
     }
   }
@@ -239,7 +257,9 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
   for (const list of hits.values()) {
     const other = ROAD_CLASSES[list[0].segment.cls].width / 2;
     for (const h of list) {
-      if (resolved.some(r => Math.hypot(h.q.x - r.p.x, h.q.y - r.p.y) <= r.reach)) continue;
+      if (resolved.some(r => onPath(h.q, r))) continue;
+      // a road joining it that runs on under its pavement (mapped a metre or two beside it) is part of it
+      if (h.lateral <= half && joined.has(h.segment.way)) continue;
       const edge = h.lateral - other;
       let offset = edge - RETAINING_RULES.clearance;
       // a constrained face may stand right at the paved edge (as beside our own road)
@@ -256,12 +276,8 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
     const fill = p.z >= e, slope = (offset - half) / SLOPE;
     return Math.max(0, fill ? p.z - slope - g : g - (p.z + slope));
   };
-  for (const [i, w] of [...works.walls]) for (const side of [0, 1] as const) if (w[side] !== undefined && height(i, side, w[side]!) <= 0) {
-    // the slope stops short of the wall line here: no wall
-    if (!(i > 0 && works.walls.get(i - 1)?.[side] !== undefined && height(i - 1, side, works.walls.get(i - 1)![side]!) > 0)
-      && !(i + 1 < n && works.walls.get(i + 1)?.[side] !== undefined && height(i + 1, side, works.walls.get(i + 1)![side]!) > 0)) w[side] = undefined;
-  }
-  for (const [i, w] of [...works.walls]) if (w[0] === undefined && w[1] === undefined) works.walls.delete(i);
+  // A wall line spans whole sections (both ends of every section a road beside it needs); where the
+  // slope stops short of it the face tapers to nothing, as drawn (render/crossing-surface.ts).
   for (let i = 0; i + 1 < n; i++) for (const side of [0, 1] as const) {
     const a = works.walls.get(i)?.[side], b = works.walls.get(i + 1)?.[side];
     if (a === undefined || b === undefined) continue;
@@ -272,5 +288,6 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
     works.wallLength += length; works.wallArea += length * h;
     works.cost += length * retainingAssembly(h).perM;
   }
+  if (!works.problems.length) ctx.claimed?.push(...works.ties.map(t => t.path));
   return works;
 }
