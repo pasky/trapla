@@ -137,6 +137,9 @@ it('rolls back failed commands without half-created routes or undo entries', () 
     if (d.routes[0].alignment.kind === 'pi') d.routes[0].alignment.pis = new Array(2);
   })).toThrow('sparse');
   expect(data.get(keys.project)).toBe(before);
+  expect(() => store.update(d => {
+    Object.assign(d.routes[0].specification.operations, { speedPolicy: 'independant' });
+  })).toThrow('route');
   store.cancel();
 });
 
