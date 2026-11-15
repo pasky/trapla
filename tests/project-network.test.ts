@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { referenceRoadSurface } from '../src/core/project-evaluate';
 import { EffectiveProjectNetwork, ProjectSurfaceIndex, ProjectTransportIndex, projectNetworkViews } from '../src/core/project-network';
-import { assessReplacementConnections, promoteGroundRoad } from '../src/core/project-promotion';
+import { assessReplacementConnections, groundRoadSourceInfo, promoteGroundRoad } from '../src/core/project-promotion';
 import type { ProjectDesign, RoadSpec, SourceInterval } from '../src/core/project';
 import type { TransportGraphData } from '../src/core/project-transport';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -33,6 +33,15 @@ function fixture() {
   return { graph, base, ctx, interval, project, command };
 }
 const bounds = { minX: 0, minY: 0, maxX: 300, maxY: 300 };
+it('reads numeric tagged speed without inventing a speed for symbolic or missing tags', () => {
+  const { graph, ctx } = fixture();
+  for (const [tag, expected] of [['70', 70], ['12.5', 12.5], [' CZ:urban ', null], ['30 mph', null], [undefined, null]] as const) {
+    graph.sources[0].tags.maxspeed = tag;
+    const base = new ProjectTransportIndex(graph, 'transport', 'vectors', (x, y) => ctx.terrain.heightAt(x, y));
+    expect(groundRoadSourceInfo(base, 'main').taggedSpeed).toBe(expected);
+  }
+});
+
 it('promotes only the bounded source, preserves true branches and exact geometry, and undo/reload keeps identities', () => {
   const { base, ctx, interval, project, command } = fixture();
   expect(base.branches(interval).map(b => b.other.map(o => o.sourceId))).toEqual([['branch']]); // same XY is NOT a junction

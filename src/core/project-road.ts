@@ -1,6 +1,7 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
 import { evaluate, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { legacyDesignForRoute } from './project-legacy';
+import { modeCapability } from './mode-policy';
 import type { ProjectDesign } from './project';
 
 export type ProjectRoadEvaluation =
@@ -13,7 +14,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const route = project.routes.find(r => r.id === routeId);
   if (!route) throw new Error('Unknown project route');
   // BEFORE categories, horizontal/vertical norms, AADT, pricing or emissions are selected.
-  if (route.kind !== 'road') return { status: 'incomplete', reason: 'unsupported-mode' };
+  if (!modeCapability(route.kind).scoring || route.kind !== 'road') return { status: 'incomplete', reason: 'unsupported-mode' };
   const spec = route.specification;
   if (spec.policy !== 'legacy-road' || ![70, 80, 90].includes(spec.designSpeed) || spec.crossSection === 'existing'
     || spec.legalClass !== (spec.crossSection === 'S7.5' ? 'II' : 'I')) return { status: 'incomplete', reason: 'unsupported-policy' };
