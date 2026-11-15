@@ -211,7 +211,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   if (message === UNDERPASS_TOO_LOW) return { title: 'Embankment too low for an underpass',
     fix: 'Raise our road here, or choose another crossing',
     detail: `Somewhere under our road the box would stick out of the embankment, even with the ${what} lowered by ${LOWERING_RULES.maxDepth} m: it needs room for its height, roof and earth cover.`,
-    basis: 'game', rule: `Game estimate (research/19, 29): an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` };
+    basis: 'game', rule: `Game estimate (research/19, 36): an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` };
   if (message === 'This road class cannot pass in a small underpass') return { title: `A ${what} cannot pass through a small underpass`,
     fix: 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"', detail: 'Underpass boxes are sized for tracks, service roads and local roads only.',
     basis: 'game', rule: 'Game estimate (research/19): underpass boxes for tracks, service roads and local roads' };
@@ -627,7 +627,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     } else if (c.type === 'underpass') {
       // The way keeps its own terrain level through a closed box spanning the earthwork
       // footprint toe to toe along the way (skew and bends included); under a low embankment it is
-      // lowered into a cut on ramps at its class gradient (research/29), its low point drained.
+      // lowered into a cut on ramps at its class gradient (research/36), its low point drained.
       const row = ROAD_CLASSES[c.cls], box = row.underpass ? underpassAssembly(row.underpass, (c.roadPerKm ?? row.roadPerKm[0]) / 1000) : undefined;
       let centre = 0;
       for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;
@@ -772,14 +772,18 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     return out;
   };
-  for (const c of crossings) if (rawPaths.has(c)) anchors.set(c, groundAnchors(rawPaths.get(c)!, maxLinkWidth(c)));
+  // (only the crossings a link starts or ends at need their anchors)
+  const anchorOf = (c: CrossingResult) => {
+    if (!anchors.has(c) && rawPaths.has(c)) anchors.set(c, groundAnchors(rawPaths.get(c)!, maxLinkWidth(c)));
+    return anchors.get(c);
+  };
   const endAnchors = new Map<string, [CrossingPoint | undefined, CrossingPoint | undefined]>();
   const linkEnv: LinkEnv = { heightAt, margin: (q, extra) => margin(q, extra, false), roads, obstacle: route.obstacle, streams: route.streams,
     houses: route.houses, houseCost: route.houseCost, memo: linkMemo };
   for (const c of crossings) if (c.targetS !== undefined && (c.type === 'reconnection' || c.type === 'diversion')) {
     const g = c.geometry!;
     const target = crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId && !t.issues?.length && !ROAD_CLASSES[t.cls].noAtGrade);
-    let finish = target ? anchors.get(target) : undefined;
+    let finish = target ? anchorOf(target) : undefined;
     if (!target) {
       const key = `${c.targetS}:${g.width}`, p = at(c.targetS);
       if (!endAnchors.has(key)) {
@@ -788,7 +792,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       }
       finish = endAnchors.get(key);
     }
-    const start = anchors.get(c);
+    const start = anchorOf(c);
     const required = survivingSides.get(c) ?? [true, true];
     if (required.some((needed, k) => needed && (!start?.[k] || !finish?.[k])))
       diagnose(g, 'No real ground-level anchor exists for a surviving road branch');

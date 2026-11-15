@@ -229,7 +229,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         structure: 'Game rule: the crossing choice and what our road does there (bridge, tunnel, earthworks) must agree',
         reach: `Game limit: a reroute reaches at most ${CROSSING_RULES.linkHardReach} m along our road to the next crossing`,
         geometry: 'Game rule: crossed roads keep their real line and meet the ground at both ends',
-        underpass: `Game estimate (research/19, 29): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road (the crossed road may be lowered by up to ${LOWERING_RULES.maxDepth} m to make it), and is at most ${UNDERPASS_RULES.maxLength} m long`,
+        underpass: `Game estimate (research/19, 36): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road (the crossed road may be lowered by up to ${LOWERING_RULES.maxDepth} m to make it), and is at most ${UNDERPASS_RULES.maxLength} m long`,
         shape: 'Game rule: a reroute the player shaped must be buildable where it is drawn',
         reroute: 'Game rule: a reroute must be buildable',
       }[code],
