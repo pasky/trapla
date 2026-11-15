@@ -16,6 +16,7 @@ import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
 import type { WallOverride } from '../core/build-controls';
 import type { VPI } from '../core/vertical';
+import type { ProvisionalProfile } from './provisional';
 import type { StationRange } from '../state';
 import { COST_GROUPS, czk, perM } from './costgroups';
 import { footprintConflictsInRange, footprintConflictText } from './footprint';
@@ -72,6 +73,8 @@ export class ProfilePanel {
   private ctx: CanvasRenderingContext2D;
   private r: Result | null = null;
   private vpis: VPI[] = [];
+  /** Provisional ground/grade of a newer design than `r` (drag in progress); display only. */
+  private preview: ProvisionalProfile | null = null;
   private overrides: readonly StructureOverride[] = [];
   private pins: readonly { s: number; z: number }[] = [];
   private wallOverrides: readonly WallOverride[] = [];
@@ -180,6 +183,7 @@ export class ProfilePanel {
   selectStation(s: number | null) { this.pinStation = s; this.draw(); }
   /** the crossed road whose options are open (highlighted) */
   selectCrossing(roadId: number | null) { this.selCrossing = roadId; this.draw(); }
+  setPreview(p: ProvisionalProfile | null) { if (p !== this.preview) { this.preview = p; this.draw(); } }
 
   /** show the selected station range (set by the owner of the selection state) */
   setSelection(r: StationRange | null) { this.sel = r; this.draw(); }
@@ -574,6 +578,20 @@ export class ProfilePanel {
       g.strokeStyle = 'rgba(0,0,0,0.07)'; g.beginPath(); g.moveTo(L, y); g.lineTo(R, y); g.stroke();
     }
     g.save(); g.translate(12, (T + B) / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.fillText('height above sea, m', 0, 0); g.restore();
+    const p = this.preview;
+    if (p) {
+      // The worker lags behind a drag: wash out the last result and show the moved route's ground
+      // with the previous heights stretched over it until the evaluation catches up.
+      g.save(); g.beginPath(); g.rect(L, T - 4, R - L, B - T + 4); g.clip();
+      g.fillStyle = 'rgba(247,245,240,0.7)'; g.fillRect(L, T - 4, R - L, B - T + 4);
+      const j0 = Math.max(0, Math.floor(this.v0 / p.ds) - 1), j1 = Math.min(p.s.length - 1, Math.ceil(this.v1 / p.ds) + 1);
+      const line = (v: Float64Array) => { g.beginPath(); for (let j = j0; j <= j1; j++) { const x = this.X(p.s[j]), y = this.Y(v[j]); if (j === j0) g.moveTo(x, y); else g.lineTo(x, y); } g.stroke(); };
+      g.strokeStyle = '#8a7148'; g.lineWidth = 1.5; line(p.ground);
+      g.strokeStyle = '#1d232a'; g.lineWidth = 2; g.setLineDash([6, 4]); line(p.grade); g.setLineDash([]);
+      g.font = '11px system-ui, sans-serif'; g.textAlign = 'left'; g.fillStyle = '#5a5040';
+      g.fillText(this.mode === 'manual' ? 'Provisional: your heights on the moved route — computing…' : 'Provisional: previous automatic heights on the moved route — computing…', L + 6, T + 12);
+      g.restore();
+    }
     // one line on how to change the road height in this mode
     const hints = this.mode === 'manual'
       ? ['By hand: drag a ◆ to change the road height · double-click the line to add a point · right-click a ◆ to delete it', 'By hand: drag a ◆ · double-click the line adds one']

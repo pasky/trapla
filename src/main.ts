@@ -20,6 +20,7 @@ import { RangeSelection, startDesign, Store } from './state';
 import { CurveEditor } from './ui/curve-edit';
 import { Hud } from './ui/hud';
 import { ProfilePanel } from './ui/profile';
+import { provisionalProfile } from './ui/provisional';
 import { ViewBar, type ViewPrefs } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
 import { SelectionBar } from './ui/selection-bar';
@@ -145,11 +146,22 @@ async function main() {
   // designs of in-flight requests: intermediate results are shown (live feedback while dragging), but
   // always rendered with the design they were computed for
   const inflight = new Map<number, Design>();
+  // While the worker lags behind a drag (an older request is still running), show the moved
+  // route's ground with the previous heights at once, at most once per frame. Display only.
+  let previewFrame = 0;
+  const schedulePreview = () => {
+    if (previewFrame || received >= posted - 1 || !last) return;
+    previewFrame = requestAnimationFrame(() => {
+      previewFrame = 0;
+      if (received < posted && last) profile.setPreview(provisionalProfile(A, B, store.design, last, (x, y) => pack.terrain.heightAt(x, y)));
+    });
+  };
   const requestEval = () => {
     hud.setProfileBusy(true);
     posted++;
     inflight.set(posted, JSON.parse(JSON.stringify(store.design)));
     worker.postMessage({ type: 'eval', id: posted, design: store.design } satisfies WorkerIn);
+    schedulePreview();
   };
 
   worker.onmessage = (ev: MessageEvent) => {
@@ -157,7 +169,7 @@ async function main() {
     if (m.type === 'error') {
       console.error('worker error', m.message); received = m.id;
       setStatus('This design could not be computed (a bug, see the console). Undo the last change.');
-      if (received === posted) { hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
+      if (received === posted) { profile.setPreview(null); hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
       return;
     }
     if (m.type !== 'result') return;
@@ -188,6 +200,7 @@ async function main() {
     hud.setSelectedVpi(selectedVpi, r);
     curveEdit.refresh();
     setStatus('');
+    if (received === posted) profile.setPreview(null); else schedulePreview();
     if (received === posted) { hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
   };
 
