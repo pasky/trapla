@@ -2,24 +2,22 @@
 // and vertical curves, cut/fill areas, bridges, tunnels, crossings, violations, the plan's bends as
 // numbered markers; below it, on the same horizontal scale, the alignment elements (straights / curves)
 // and a stacked "cost per metre" strip.
-// Mouse, no modifiers: click = zoom in there (the map follows), drag = select a stretch, click a curve /
-// straight in the band = select it, drag a height point = edit the height (switches to By hand), click
-// the road line = pin its height (Automatic) or add a height point (By hand), wheel = zoom,
-// right/middle-drag = scroll. Hovering shows the cost split at that spot and the place on the map.
+// Mouse, no modifiers — the same verbs as on the map: click = select the piece of road there (the map
+// follows), drag sideways = select any stretch, click a curve / straight in the band = select it, drag the
+// road line up / down = pin its height there (Auto), drag a height point (By hand), wheel = zoom,
+// right/middle-drag = scroll. Hovering shows what is there and the place on the map.
 
 import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
-import { groundDescription } from '../core/ground';
 import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
 import type { WallOverride } from '../core/build-controls';
 import type { VPI } from '../core/vertical';
 import type { ProvisionalProfile } from './provisional';
 import type { StationRange } from '../state';
-import { COST_GROUPS, czk, perM } from './costgroups';
-import { footprintConflictsInRange, footprintConflictText } from './footprint';
+import { COST_GROUPS, perM } from './costgroups';
 
 export interface ProfileEvents {
   onVpiDrag?: (i: number, s: number, z: number) => void;
@@ -38,8 +36,10 @@ export interface ProfileEvents {
   onCrossingSelect?: (roadId: number) => void;
   /** a station range was picked for the cost breakdown (null = whole route) */
   onSelect?: (r: StationRange | null) => void;
-  /** a click zoomed the profile to `span` metres around station s (the map should follow) */
-  onZoomTo?: (s: number, span: number) => void;
+  /** a click at station s (select the piece of road there) */
+  onPick?: (s: number) => void;
+  /** Auto: the road line dragged up / down at station s — pin it there at height z (transient), and released */
+  onLineDrag?: (s: number, z: number) => void;
   /** the visible stretch changed (zoom buttons, the floating selection bar) */
   onView?: () => void;
   /** after every redraw (overlays that follow the profile's scale) */
@@ -58,8 +58,8 @@ type Under =
   | { kind: 'line'; s: number }
   | { kind: 'band'; el: Element };
 
-/** narrowest zoom, m; a click zooms in by CLICK_ZOOM */
-const MIN_SPAN = 300, CLICK_ZOOM = 3;
+/** narrowest zoom, m */
+const MIN_SPAN = 300;
 /** centre line of the bend markers, in the top padding */
 const BEND_Y = 12;
 
@@ -99,6 +99,8 @@ export class ProfilePanel {
   private dragging = false;
   private flash: { s0: number; s1: number } | null = null;
   private sel: StationRange | null = null;
+  /** the part of the route the map shows (light window), null when it shows all of it */
+  private mapWindow: { s0: number; s1: number } | null = null;
   private zr = { lo: 0, hi: 1 };
   private pad = { l: 52, r: 14, t: 26, b: 22 };
   /** prefix sums over station cells: one per cost group, plus cell length; and per part key */
@@ -187,6 +189,18 @@ export class ProfilePanel {
 
   /** show the selected station range (set by the owner of the selection state) */
   setSelection(r: StationRange | null) { this.sel = r; this.draw(); }
+  setMapWindow(w: { s0: number; s1: number } | null) {
+    const a = this.mapWindow;
+    if (a === w || (a && w && Math.abs(a.s0 - w.s0) < 1 && Math.abs(a.s1 - w.s1) < 1)) return;
+    this.mapWindow = w; this.draw();
+  }
+  /** make the stretch visible: zoom out / scroll only if it is not already in view */
+  reveal(s0: number, s1: number) {
+    if (!this.r) return;
+    const span = this.v1 - this.v0;
+    if (s0 >= this.v0 && s1 <= this.v1) { this.draw(); return; }
+    if (s1 - s0 < span * 0.9) this.show((s0 + s1) / 2, span); else this.show((s0 + s1) / 2, (s1 - s0) * 1.4);
+  }
 
   /** visible station range (diagnostics) */
   get view() { return { v0: this.v0, v1: this.v1 }; }
@@ -470,8 +484,8 @@ export class ProfilePanel {
     for (const c of r.waterCrossings) if ((c.structure === 'pipe' || c.structure === 'box') && c.s >= this.v0 && c.s <= this.v1) {
       g.beginPath(); g.arc(this.X(c.s), this.Y(c.bed) - 4, 4, 0, 2 * Math.PI); g.stroke();
     }
-    // demolished buildings: red squares on the ground
-    g.fillStyle = '#d7301f';
+    // demolished buildings: dark squares on the ground
+    g.fillStyle = '#3d434b';
     for (const b of r.demolished) {
       if (b.i < i0 || b.i > i1) continue;
       g.fillRect(this.X(r.s[b.i]) - 2, this.Y(r.ground[b.i]) - 7, 4, 4);
@@ -550,6 +564,13 @@ export class ProfilePanel {
     // selected range and hover line span the chart and the strip
     g.save();
     g.beginPath(); g.rect(L, T - 4, R - L, this.stripB - T + 4); g.clip();
+    if (this.mapWindow) {
+      const a = this.X(this.mapWindow.s0), b = this.X(this.mapWindow.s1);
+      g.fillStyle = 'rgba(31,111,235,0.07)';
+      g.fillRect(a, T, b - a, this.stripB - T);
+      g.fillStyle = 'rgba(31,111,235,0.55)';
+      g.fillRect(a, T - 3, Math.max(2, b - a), 3);
+    }
     if (this.sel) {
       const a = this.X(this.sel.s0), b = this.X(this.sel.s1);
       g.fillStyle = 'rgba(255,214,0,0.16)';
@@ -605,13 +626,13 @@ export class ProfilePanel {
       g.strokeStyle = '#8a7148'; g.lineWidth = 1.5; line(p.ground);
       g.strokeStyle = '#1d232a'; g.lineWidth = 2; g.setLineDash([6, 4]); line(p.grade); g.setLineDash([]);
       g.font = '11px system-ui, sans-serif'; g.textAlign = 'left'; g.fillStyle = '#5a5040';
-      g.fillText(this.mode === 'manual' ? 'Provisional: your heights on the moved route — computing…' : 'Provisional: previous automatic heights on the moved route — computing…', L + 6, T + 12);
+      g.fillText('computing…', L + 6, T + 12);
       g.restore();
     }
     // one line on how to change the road height in this mode
     const hints = this.mode === 'manual'
-      ? ['By hand: drag a ◆ to change the road height · double-click the line to add a point · right-click a ◆ to delete it', 'By hand: drag a ◆ · double-click the line adds one']
-      : ['Automatic road height · click the line to pin its height there, then drag the pin', 'click the line to pin its height'];
+      ? ['By hand: drag a ◆ · double-click the line adds one · right-click deletes', 'drag a ◆']
+      : ['drag the line up / down to pin a height', 'drag the line to pin'];
     // bottom left of the chart, over the ground (the floating bar sits over the selection)
     g.font = '11px system-ui, sans-serif'; g.textAlign = 'left';
     const hint = hints.find((t) => g.measureText(t).width < (R - L) * 0.7) ?? hints[hints.length - 1];
@@ -779,107 +800,55 @@ export class ProfilePanel {
     g.fillText('CZK/m', L - 6, bot);
     g.strokeStyle = 'rgba(0,0,0,0.25)';
     g.strokeRect(L + 0.5, top + 0.5, R - L - 1, h - 1);
-    if (!this.sel) {
-      g.fillStyle = 'rgba(0,0,0,0.42)';
-      g.textAlign = 'right';
-      // the longest hint that fits (narrow windows get the short one)
-      const hints = ['drag across the profile to select a stretch · click a curve / straight in the band above to select it', 'drag across the profile to select a stretch'];
-      const hint = hints.find((t) => g.measureText(t).width < R - L - 80);
-      if (hint) g.fillText(hint, R - 6, top + 11);
-    }
   }
 
-  /** tooltip: key facts and the cost split at the hovered station */
+  /** tooltip: three short lines — where and what, the cost per metre, one notable thing */
   private updateTip() {
     const r = this.r, s = this.hoverS, at = this.hoverClient;
     if (!r || s === null || !at) { this.tip.style.display = 'none'; return; }
     const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
     const hgt = r.grade[i] - r.ground[i];
     const k = r.kind[i];
-    const how = k === KIND.bridge ? `bridge, ${hgt.toFixed(1)} m above the ground`
-      : k === KIND.tunnel ? `tunnel, ${(-hgt).toFixed(1)} m below the ground`
-        : hgt >= 0 ? `embankment ${hgt.toFixed(1)} m high` : `cut ${(-hgt).toFixed(1)} m deep`;
-    const u = r.cell.urban[i], f = r.cell.forest[i];
-    const land = [u > 0.02 ? `built-up area${u < 0.98 ? ` ${(u * 100).toFixed(0)} %` : ''}` : '', f > 0.02 ? `forest${f < 0.98 ? ` ${(f * 100).toFixed(0)} %` : ''}` : '']
-      .filter(Boolean).join(', ') || 'open land';
+    const how = k === KIND.bridge ? `bridge ${hgt.toFixed(0)} m high`
+      : k === KIND.tunnel ? `tunnel ${(-hgt).toFixed(0)} m under ground`
+        : hgt >= 0 ? `embankment ${hgt.toFixed(1)} m` : `cut ${(-hgt).toFixed(1)} m deep`;
     const wPx = (this.v1 - this.v0) / (this.W - this.pad.l - this.pad.r);
     const [a, b] = this.window(s, wPx);
     const len = this.cumLen[b + 1] - this.cumLen[a];
-    const facts: string[] = [];
-    const geology = groundDescription(r.geology.profiles[r.geology.ids[i]]);
-    // Pack names can come from service attributes; do not interpolate them as HTML.
-    const escapedGeology = geology.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-    for (const o of this.wallOverrides) if (s >= o.s0 && s <= o.s1) facts.push(`player ${o.side === 'L' ? 'left' : 'right'} wall: ${o.height ? `${o.height} m` : 'removed'} (clear to restore Auto)`);
-    for (const w of r.walls) {
-      if (i >= w.i0 && i <= w.i1) facts.push(`noise wall: ${w.side === 'L' ? 'left' : 'right'}, ${w.height} m high (provisional)`);
-    }
-    for (const x of r.crossings) {
-      if (x.i < a || x.i > b) continue;
-      const row = ROAD_CLASSES[x.cls];
-      facts.push(`crosses a ${row.label} (${x.h >= 0 ? '+' : '−'}${Math.abs(x.h).toFixed(1)} m): ${crossingLabel(x)}${x.cost > 0 ? ` — ${czk(x.cost)}` : ''}`);
-    }
-    for (const c of footprintConflictsInRange(r.footprintConflicts ?? [], Math.max(0, r.s[a] - r.ds / 2), Math.min(r.length, r.s[b] + r.ds / 2))) {
-      facts.push(footprintConflictText(c));
-    }
-    for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) {
-      facts.push(`${c.waterKind}: ${c.structure} ${c.opening}, ${c.length.toFixed(0)} m long; ${c.catchmentKm2.toFixed(2)} km² of land drains into it${c.truncated ? ' (rough: it runs off the map)' : ''}, about ${c.q100.toFixed(2)} m³/s in a 100-year flood`);
-    }
-    let nb = 0, cb = 0;
-    for (const d of r.demolished) if (d.i >= a && d.i <= b) { nb++; cb += d.cost; }
-    if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} under the road demolished — ${czk(cb)}`);
-    let nBuy = 0, cBuy = 0;
-    for (const d of r.boughtOut) if (d.i >= a && d.i <= b) { nBuy++; cBuy += d.cost; }
-    if (nBuy) facts.push(`${nBuy} off-corridor buyout${nBuy > 1 ? 's' : ''} — ${czk(cBuy)} (noise or player acquisition + demolition)`);
-    for (const kept of r.kept) if (kept.i >= a && kept.i <= b) facts.push(`kept building #${kept.j}${kept.hit ? ': the road runs through it' : ''}`);
     let total = 0;
-    const rows = COST_GROUPS.map((gr, gi) => {
-      const v = (this.cum[gi][b + 1] - this.cum[gi][a]) / len;
-      total += v;
-      if (!(v > 0.5)) return '';
-      let detail = '';
-      if (gr.id === 'earthworks') {
-        const names: [PartKey, string][] = [['excavation', 'excavation'], ['fillPlacing', 'fill'], ['borrow', 'bought fill'], ['haul', 'haul'], ['surplusHaul', 'surplus to tip'], ['unsuitable', 'unsuitable to tip'], ['topsoil', 'topsoil'], ['geotechnical', 'geotechnical']];
-        detail = names.map(([key, name]) => [name, (this.cumKey[key][b + 1] - this.cumKey[key][a]) / len] as [string, number])
-          .filter((p) => p[1] > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 3).map((p) => `${p[0]} ${perM(p[1])}`).join(', ');
-      }
-      return `<tr><td><i style="background:${gr.color}"></i>${gr.label}${detail ? `<small>${detail}</small>` : ''}</td><td>${perM(v)}</td></tr>`;
-    }).join('');
-    // over a handle or a bend marker: just what it is and what to do (the map highlight must stay visible)
+    const groups = COST_GROUPS.map((gr, gi) => { const v = (this.cum[gi][b + 1] - this.cum[gi][a]) / len; total += v; return [gr, v] as const; })
+      .filter(([, v]) => v > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 2);
+    const facts: string[] = [];
+    for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x)}`);
+    for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(`${c.waterKind}: ${c.structure}`);
+    let nb = 0;
+    for (const d of r.demolished) if (d.i >= a && d.i <= b) nb++;
+    if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} demolished`);
+    const v = r.violations.find((x) => !x.goal && x.s0 <= r.s[b] + r.ds && x.s1 >= r.s[a] - r.ds);
+    const e = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
     const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin';
     if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
-    else this.tip.innerHTML = `<div class="tip-h"><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
-      <div class="tip-sub">ground ${r.ground[i].toFixed(1)} m · road ${r.grade[i].toFixed(1)} m · ${land}</div>
-      <div class="tip-fact">${escapedGeology}</div>
-      ${facts.map((t) => `<div class="tip-fact">${t.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)}</div>`).join('')}
-      <table>${rows}<tr class="tip-total"><td>Cost per metre <small>average over ${len.toFixed(0)} m</small></td><td>${perM(total)} CZK</td></tr></table>
-      <div class="tip-hint">${this.hint()}</div>`;
+    else this.tip.innerHTML = `<div><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
+      <div class="tip-sub"><b>${perM(total)} CZK/m</b> · ${groups.map(([gr, v]) => `<i style="background:${gr.color}"></i>${gr.short} ${perM(v)}`).join(' ')}</div>
+      ${v ? `<div class="tip-bad">⚠ ${e(v.title)}</div>` : facts.length ? `<div class="tip-fact">${e(facts[0])}${facts.length > 1 ? ` +${facts.length - 1}` : ''}</div>` : ''}`;
     this.tip.style.display = '';
-    // above the panel, next to the cursor; never over the profile itself
+    // inside the profile, above the cursor (the map's spot it marks stays visible)
     const box = this.canvas.getBoundingClientRect();
     const tw = this.tip.offsetWidth, th = this.tip.offsetHeight;
     let left = at.x + 14;
     if (left + tw > box.right - 4) left = at.x - 14 - tw;
-    this.tip.style.left = `${Math.max(4, left)}px`;
-    this.tip.style.top = `${Math.max(4, box.top - 30 - th)}px`;
+    this.tip.style.left = `${Math.max(box.left + 4, left)}px`;
+    this.tip.style.top = `${Math.max(box.top + 2, at.y - th - 12)}px`;
   }
 
-  /** what a click / drag does at the thing under the mouse (last line of the tooltip) */
+  /** what a click / drag does at the thing under the mouse (the tooltip over handles) */
   private hint(): string {
     const u = this.under, manual = this.mode === 'manual';
     switch (u.kind) {
-      case 'vpi': {
-        const v = this.vpis[u.k];
-        if (!v) return '';
-        return `<b>◆ Height point ${u.k}</b>: the road is at ${v.z.toFixed(1)} m here (shown on the map). It is not a bend — bends are the numbered circles above.<br>`
-          + (manual ? 'Drag it to raise / lower the road · right-click deletes it' : 'Drag it to raise / lower the road (switches the road height to By hand)');
-      }
-      case 'line': return manual ? 'Double-click to add a height point here' : 'Click to pin the road height here, then drag the pin up or down';
-      case 'band': return `Click to select this ${u.el.curve ? 'curve' : 'straight'} · drag to select a stretch`;
-      case 'bend': return `<b>Bend ${u.i + 1}</b> — the numbered circle ${u.i + 1} on the map (highlighted there). Click it to select it and to ${manual ? 'add a height point' : 'pin the road height'} there`;
-      case 'pin': return manual ? 'Pinned height: only Automatic uses pins · click to change or remove it'
-        : '<b>Pinned height</b>: Automatic keeps the road at this height here. Drag it up / down · click to type a height or unpin';
-      case 'crossing': return 'Click for the options of this road crossing';
-      default: return this.v1 - this.v0 <= MIN_SPAN + 1 ? 'Click to centre here · drag to select a stretch' : 'Click to zoom in here · drag to select a stretch';
+      case 'vpi': { const v = this.vpis[u.k]; return v ? `<b>◆ ${v.z.toFixed(1)} m</b> · drag up / down${manual ? ' · right-click deletes' : ''}` : ''; }
+      case 'bend': return `<b>Bend ${u.i + 1}</b> · click to select`;
+      case 'pin': { const p = this.pins.find((q) => Math.abs(q.s - u.s) < 0.1); return `<b>Pinned ${p ? p.z.toFixed(1) : ''} m</b> · drag up / down · click for options`; }
+      default: return '';
     }
   }
 
@@ -944,11 +913,10 @@ export class ProfilePanel {
   private install() {
     const c = this.canvas;
     const rel = (e: MouseEvent) => { const b = c.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
-    const cursor = (u: Under) => u.kind === 'vpi' || (u.kind === 'pin' && this.mode === 'auto') ? 'ns-resize' : u.kind === 'line' ? (this.mode === 'manual' ? 'copy' : 'cell')
-      : u.kind === 'bend' || u.kind === 'band' || u.kind === 'pin' || u.kind === 'crossing' ? 'pointer'
-        : u.kind === 'chart' || u.kind === 'strip' ? 'zoom-in' : 'default';
+    const cursor = (u: Under) => u.kind === 'vpi' || (u.kind === 'pin' && this.mode === 'auto') || (u.kind === 'line' && this.mode === 'auto') ? 'ns-resize'
+      : u.kind === 'line' ? 'copy' : u.kind === 'none' ? 'default' : 'pointer';
     // 'press': a left button down on the chart / band / strip — a click if it does not move, else a range drag
-    let drag: { mode: 'vpi' | 'pin' | 'pan' | 'press' | 'select'; under: Under; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean; y0: number; dy: number } | null = null;
+    let drag: { mode: 'vpi' | 'pin' | 'pan' | 'press' | 'select' | 'line'; under: Under; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean; y0: number; dy: number } | null = null;
     c.addEventListener('pointerdown', (e) => {
       if (!this.r) return;
       const p = rel(e);
@@ -978,6 +946,7 @@ export class ProfilePanel {
         c.style.cursor = 'grabbing';
       } else drag = { ...base, mode: 'press' };
       this.draw();
+      // the road line in Auto: dragging it up / down pins the height there (decided by the first move)
     });
     c.addEventListener('pointermove', (e) => {
       if (!this.r) return;
@@ -1013,6 +982,21 @@ export class ProfilePanel {
         return;
       }
       const s = this.S(p.x);
+      if (drag?.mode === 'press' && drag.under.kind === 'line' && this.mode === 'auto' && Math.abs(p.y - drag.y0) > 3 && Math.abs(p.y - drag.y0) > Math.abs(p.x - drag.x0)) {
+        drag.mode = 'line';
+        drag.s0 = Math.round(drag.under.s);
+        drag.dy = drag.y0 - this.Y(this.gradeAt(drag.s0));
+      }
+      if (drag?.mode === 'line') {
+        drag.moved = true;
+        this.dragging = true;
+        const z = Math.round(this.Z(p.y - drag.dy) * 10) / 10, s0 = drag.s0;
+        this.pins = [...this.pins.filter((q) => Math.abs(q.s - s0) >= 0.1), { s: s0, z }];
+        this.draw();
+        this.ev.onLineDrag?.(s0, z);
+        c.style.cursor = 'ns-resize';
+        return;
+      }
       if (drag?.mode === 'press' && Math.abs(p.x - drag.x0) > 4) drag.mode = 'select';
       if (drag?.mode === 'select') {
         drag.moved = true;
@@ -1038,6 +1022,7 @@ export class ProfilePanel {
       if (!d || !this.r) return;
       if (d.mode === 'vpi' && d.moved) this.ev.onVpiDragEnd?.();
       if (d.mode === 'pin') { if (d.moved) this.ev.onPinDragEnd?.(); else this.ev.onStationSelect?.(d.s0); }
+      if (d.mode === 'line') { this.ev.onPinDragEnd?.(); this.ev.onStationSelect?.(d.s0); }
       if (d.mode === 'press' && e.type === 'pointerup') {
         const u = d.under;
         if (u.kind === 'band') {
@@ -1045,16 +1030,9 @@ export class ProfilePanel {
           const pick = this.snap(u.el.s0, u.el.s1);
           const same = this.sel && Math.abs(this.sel.s0 - pick.s0) < 1 && Math.abs(this.sel.s1 - pick.s1) < 1;
           this.ev.onSelect?.(same ? null : pick);
-        } else if (u.kind === 'line') {
-          // Automatic: pin the height here; By hand a double-click adds a point (a single click does nothing,
-          // so the double-click does not zoom first)
-          if (this.mode === 'auto') this.ev.onPinAdd?.(Math.round(u.s));
         } else {
           if (this.selected !== null) { this.selected = null; this.ev.onVpiSelect?.(null); }
-          const s = Math.max(0, Math.min(this.r.length, d.s0));
-          const span = Math.max(MIN_SPAN, (this.v1 - this.v0) / CLICK_ZOOM);
-          this.show(s, span);
-          this.ev.onZoomTo?.(s, this.v1 - this.v0);
+          this.ev.onPick?.(Math.max(0, Math.min(this.r.length, d.s0)));
         }
       }
       const p = rel(e);

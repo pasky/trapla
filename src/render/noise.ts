@@ -1,5 +1,7 @@
-// Noise view (key N): the road's ground-floor noise footprint as a translucent band, continuously shaded
-// by the level relative to the limit (with one crisp contour on the limit itself), dwellings coloured by their noise outcome, wall height labels, a legend, and hover details.
+// Noise view (key N): the road's noise at the height that decides — the top floors of the houses beside it —
+// as a translucent band, continuously shaded by the level relative to the limit (with one crisp contour on
+// the limit itself); every dwelling coloured by its own worst level on the same ramp; wall height labels,
+// a one-line legend and a short hover tip (the building's card has the cross-section).
 // Everything comes from Result.noise (computed in the worker by the cost model's own calculator);
 // the main thread only draws. Hover over a noise wall works with the view off too.
 
@@ -12,15 +14,13 @@ import type { Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import type { RouteExtras } from './extras';
 import type { View } from './view';
-import { czk } from '../ui/costgroups';
+import { NOISE_RAMP, noiseColor } from '../ui/noise-section';
 
 /** building colours (sRGB) by noise outcome; walls / buyouts / demolitions match their map symbols */
-export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: 0xc43c9b, demolished: 0xd7301f };
-/** band colour ramp: [dB relative to the limit (ground-floor receivers), colour, opacity], interpolated
- * per pixel; transparent at the first stop (where the worker's footprint fades out), clamped past the last */
-const RAMP: [number, string, number][] = [
-  [-6, '#fff4c2', 0], [-2, '#fbe27a', 0.32], [0, '#f8c22c', 0.48], [5, '#ee7a1c', 0.56], [10, '#d0281e', 0.62], [15, '#6e0026', 0.7],
-];
+export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: 0xc43c9b, demolished: 0x3d434b };
+/** band colour ramp: [dB relative to the limit, colour, opacity], interpolated per pixel; transparent at the
+ * first stop (where the worker's footprint fades out), clamped past the last */
+const RAMP = NOISE_RAMP;
 /** limit contour colour */
 const LIMIT_LINE = '#590019';
 /** legend tick positions, dB relative to the limit */
@@ -30,8 +30,6 @@ const TICKS = [-5, 0, 5, 10, 15];
 const glsl = (c: string) => { const k = new THREE.Color().setStyle(c, THREE.LinearSRGBColorSpace); return `vec3(${k.r.toFixed(3)}, ${k.g.toFixed(3)}, ${k.b.toFixed(3)})`; };
 
 const fmt = (v: number, d = 1) => v.toFixed(d).replace('-', '−');
-const signed = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}`;
-const km = (s: number) => `km ${(s / 1000).toFixed(2)}`;
 
 
 export class NoiseLayer {
@@ -163,13 +161,11 @@ export class NoiseLayer {
     const lo = RAMP[0][0], hi = RAMP[RAMP.length - 1][0], at = (t: number) => ((t - lo) / (hi - lo)) * 100;
     const rgba = (c: string, a: number) => { const k = new THREE.Color().setStyle(c, THREE.LinearSRGBColorSpace); return `rgba(${Math.round(k.r * 255)},${Math.round(k.g * 255)},${Math.round(k.b * 255)},${a})`; };
     const bar = `linear-gradient(to right, ${RAMP.map(([t, c, a]) => `${rgba(c, a)} ${at(t).toFixed(1)}%`).join(', ')})`;
-    const ticks = TICKS.map((t) => `<em style="left:${at(t).toFixed(1)}%"${t === 0 ? ' class="lim"' : ''}>${t === 0 ? `${limit} dB limit` : `${t > 0 ? '+' : '−'}${Math.abs(t)}${t === hi ? ' dB' : ''}`}</em>`).join('');
+    const ticks = TICKS.map((t) => `<em style="left:${at(t).toFixed(1)}%"${t === 0 ? ' class="lim"' : ''}>${t === 0 ? `${limit} limit` : `${limit + t}${t === hi ? ' dB' : ''}`}</em>`).join('');
     this.legend.innerHTML = `
-      <div><b>Noise</b> — ${period} L<sub>Aeq</sub> relative to the ${limit} dB limit, ground floor (1.5 m), walls and cuts included</div>
+      <div><b>${period[0].toUpperCase()}${period.slice(1)} noise at the top floors</b> · houses in their own colour</div>
       <div class="ramp"><div class="bar" style="background:${bar}"><u style="left:${at(0).toFixed(1)}%"></u></div><div class="ticks">${ticks}</div></div>
-      <div>Dwellings: ${b(NOISE_COLORS.wall, 'behind a wall')}${b(NOISE_COLORS.cut, 'screened by a cut')}${b(NOISE_COLORS.ok, 'within limit')}
-        ${b(NOISE_COLORS.bought, 'bought out')}${b(NOISE_COLORS.demolished, 'demolished (in the road\'s way)')}${b(0xe87718, 'retained, over limit')}</div>
-      <div class="hint">Top-floor façade decides walls and buyouts. Hover a building or a wall for details.</div>`;
+      <div>${b(NOISE_COLORS.bought, 'bought out')}${b(0x6fa05a, 'quiet')}</div>`;
   }
 
   // ---- buildings ---------------------------------------------------------------------------
@@ -181,7 +177,7 @@ export class NoiseLayer {
     const colors = new Map<number, number>();
     const r = this.r;
     if (this.on && r) {
-      for (const p of r.noise?.receivers ?? []) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, p.unresolved ? 0xe87718 : NOISE_COLORS[p.status]); }
+      for (const p of r.noise?.receivers ?? []) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, parseInt(noiseColor(p.mitigated).slice(1), 16)); }
       for (const p of r.boughtOut) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.bought); }
       for (const p of r.demolished) { const k = this.mesh(p.j); if (k >= 0) colors.set(k, NOISE_COLORS.demolished); }
     }
@@ -222,7 +218,7 @@ export class NoiseLayer {
     const p = this.pending;
     this.pending = null;
     if (!p || !this.r) return;
-    const html = (this.on ? this.buildingTip(p.x, p.y) : null) ?? this.wallTip(this.extras.wallAt(p.x, p.y));
+    const html = (this.on ? this.buildingTip(p.x, p.y) : null) ?? (this.on || this.view.metresPerPixel < 3 ? this.wallTip(this.extras.wallAt(p.x, p.y)) : null);
     if (!html) { this.hideTip(); return; }
     this.tip.innerHTML = html;
     this.tip.style.display = '';
@@ -235,9 +231,7 @@ export class NoiseLayer {
     const r = this.r;
     if (!w || !r) return null;
     const n = (r.noise?.receivers ?? []).filter((p) => p.status === 'wall' && p.side === w.side && p.at >= w.i0 && p.at <= w.i1).length;
-    return `<b>Noise wall ${w.height} m high</b>
-      <div class="tip-sub">${w.side === 'L' ? 'left' : 'right'} of travel, ${km(w.s0)}–${(w.s1 / 1000).toFixed(2)} (${Math.round(w.s1 - w.s0)} m)</div>
-      ${n ? `protects ${n} dwelling${n > 1 ? 's' : ''}; ` : ''}actual built height. Auto uses 3 / 4 / 5 m with ${NOISE.margin} m margins; player walls can be 2–6 m and keep their exact selected extent`;
+    return `<b>${w.height} m wall</b> <span class="tip-sub">${w.side === 'L' ? 'left' : 'right'} · ${Math.round(w.s1 - w.s0)} m${n ? ` · protects ${n} house${n > 1 ? 's' : ''}` : ''}</span>`;
   }
 
   /** building hit by the camera ray under the cursor: oriented footprint box, ground to roof */
@@ -276,32 +270,11 @@ export class NoiseLayer {
   private describe(j: number, rec?: NoiseReceiver): string {
     const r = this.r!, fp = r.noise?.footprint, f = this.pack.overlays.binfo?.[j];
     const kind = BUILDING_KINDS[f ? f[2] : 0]?.label ?? 'building', levels = buildingLevels(f ? f[1] : 0, f ? f[2] : 0);
-    const head = `<b>${kind[0].toUpperCase()}${kind.slice(1)}</b> <span class="tip-sub">${levels} storey${levels > 1 ? 's' : ''}</span>`;
-    const dem = r.demolished.find((p) => p.j === j);
-    if (dem) return `${head}<div class="tip-fact">In the road footprint (${km(r.s[dem.i])}): demolished, ${czk(dem.cost)}</div>`;
-    const purchase = r.boughtOut.find((p) => p.j === j);
-    if (purchase?.reason === 'manual') return `${head}<div class="tip-fact">Player buyout: acquired and demolished, ${czk(purchase.cost)} including the provisional plot allowance.</div>`;
+    const head = `<b>${kind[0].toUpperCase()}${kind.slice(1)}</b> <span class="tip-sub">${levels} floor${levels > 1 ? 's' : ''}</span>`;
+    if (r.demolished.some((p) => p.j === j)) return `${head} · demolished`;
+    if (r.boughtOut.some((p) => p.j === j)) return `${head} · bought out`;
     if (!rec) return head;
-    const period = fp?.controlling ?? 'night', limit = fp?.limit ?? NOISE.limitNightDb;
-    const lvl = (e: number) => `${fmt(limit + e)} dB (${signed(e)})`;
-    const side = (s: 'L' | 'R') => (s === 'L' ? 'left' : 'right');
-    const lines = [
-      `<div class="tip-sub">top-floor receiver ${fmt(Math.abs(rec.h))} m ${rec.h >= 0 ? 'above' : 'below'} the road, ${Math.round(rec.d)} m from the axis (${km(r.s[rec.i])}, ${side(rec.side)})</div>`,
-      `<div>${period[0].toUpperCase()}${period.slice(1)} L<sub>Aeq</sub> without mitigation: <b>${lvl(rec.raw)}</b>, limit ${limit} dB</div>`,
-    ];
-    if (rec.unresolved) lines.push(`<div>With actual mitigation: <b>${lvl(rec.mitigated)}</b></div><div class="tip-fact">Retained by your keep/wall decision: ${fmt(rec.unresolved.excess)} dB over the limit. Add adequate walls, change the route, or explicitly buy out this dwelling. This is a blocking violation, not an automatic purchase.</div>`);
-    else if (rec.status === 'ok') lines.push('<div>Within the limit — nothing needed.</div>');
-    else if (rec.status === 'cut') lines.push(`<div>With mitigation: <b>${lvl(rec.mitigated)}</b></div><div class="tip-fact">Screened by the cut edge: the road runs low enough that no wall is needed.</div>`);
-    else if (rec.status === 'wall') {
-      const w = r.walls.find((x) => x.side === rec.side && rec.at >= x.i0 && rec.at <= x.i1)
-        ?? r.walls.find((x) => rec.at >= x.i0 && rec.at <= x.i1);
-      lines.push(`<div>With mitigation: <b>${lvl(rec.mitigated)}</b></div>`,
-        `<div class="tip-fact">Protected with the actual ${rec.wall} m wall${w ? ` (${km(w.s0)}–${(w.s1 / 1000).toFixed(2)})` : ''}. ${Number.isFinite(rec.need) ? `The automatic menu recommends ${rec.need} m at the binding receiver.` : 'The automatic 3–5 m menu was insufficient; the player wall now passes.'}</div>`);
-    } else {
-      const buy = r.boughtOut.find((p) => p.j === j);
-      lines.push(`<div>Best mitigation (${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall or cut edge): <b>${lvl(rec.mitigated)}</b></div>`,
-        `<div class="tip-fact">No wall protects it (${rec.raw > NOISE.maxAttenuationDb ? `the excess is more than the ${NOISE.maxAttenuationDb} dB a wall can give` : 'the top floor sees over the wall or is too little shadowed by it'}) → bought out and demolished${buy ? `, ${czk(buy.cost)}` : ''} (${km(r.s[rec.at])}).</div>`);
-    }
-    return `${head}${lines.join('')}<div class="tip-sub" style="margin-top:4px">Provisional screening model, not an acoustic assessment.</div>`;
+    const limit = fp?.limit ?? NOISE.limitNightDb, level = limit + rec.mitigated;
+    return `${head}<div><b class="${rec.mitigated > 1e-6 ? 'tip-bad' : ''}">${fmt(level)} dB</b> at the top floor (limit ${limit})${rec.status === 'wall' ? ` · behind a ${rec.wall} m wall` : rec.status === 'cut' ? ' · shielded by a cut' : ''}</div><div class="tip-sub">click for the cross-section</div>`;
   }
 }

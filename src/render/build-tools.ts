@@ -31,24 +31,24 @@ export class BuildAnnotations {
       const grade = r.grade[i] + t * (r.grade[i + 1] - r.grade[i]);
       const anchor = r.kind[i] === KIND.tunnel ? this.pack.terrain.heightAt(x, y) : grade;
       this.add(x, y, anchor + .15, '●', 'grade-pin',
-        `Pinned road height ${pin.z.toFixed(1)} m at km ${(pin.s / 1000).toFixed(2)}${d.profileMode === 'manual' ? ' (not used while the height is set by hand)' : ''} — click to edit`,
+        `Pinned height ${pin.z.toFixed(1)} m`,
         () => this.onPin?.(pin.s));
     }
     for (const c of r.waterCrossings) if (c.structure === 'pipe' || c.structure === 'box') {
       this.add(c.x, c.y, c.bed + Math.max(c.h, 0) + 3, '○', 'culvert',
-        `Watercourse culvert ${c.opening} at km ${(c.s / 1000).toFixed(2)}: ${c.length.toFixed(0)} m long, estimated Q100 ${c.q100.toFixed(2)} m³/s${c.truncated ? ' (incomplete catchment)' : ''} — click to show it in the profile`, () => this.onCulvert?.(c.s));
+        `Culvert ${c.opening}, ${c.length.toFixed(0)} m`, () => this.onCulvert?.(c.s));
     }
     const xing = this.selectedCrossing === null ? undefined : r.crossings.find((c) => c.roadId === this.selectedCrossing);
-    if (xing) this.add(xing.x, xing.y, Math.max(r.grade[xing.i], r.grade[xing.i] - xing.h) + 2, '', 'selected-crossing', 'The crossed road whose options are open on the right', () => {});
+    if (xing) this.add(xing.x, xing.y, Math.max(r.grade[xing.i], r.grade[xing.i] - xing.h) + 2, '', 'selected-crossing', 'Selected', () => {});
     const buildings = new Map<number, 'buy' | 'keep' | undefined>((d.buildingOverrides ?? []).map((o) => [o.j, o.action]));
     if (this.selectedBuilding !== null && !buildings.has(this.selectedBuilding)) buildings.set(this.selectedBuilding, undefined);
     for (const [j, action] of buildings) {
       const b = this.pack.overlays.buildings[j];
       if (!b) continue;
       this.add(b[0], b[1], this.pack.terrain.heightAt(b[0], b[1]) + 12,
-        action === 'keep' ? 'KEEP' : action === 'buy' ? 'BUY' : '?',
+        action === 'keep' ? 'KEEP' : action === 'buy' ? 'BUY' : '',
         action === 'keep' ? 'kept-building' : action === 'buy' ? 'bought-building' : 'selected-building',
-        `Building #${j}: ${action === 'keep' ? 'you keep it' : action === 'buy' ? 'you buy it out' : 'automatic'} — click for the options`, () => this.onBuilding?.(j));
+        action === 'keep' ? 'You keep it' : action === 'buy' ? 'You buy it out' : 'Selected', () => this.onBuilding?.(j));
     }
     this.position();
   }
@@ -56,13 +56,7 @@ export class BuildAnnotations {
     const el = document.createElement('button');
     el.className = `build-annotation ${cls}`; el.textContent = text; el.title = title;
     el.onpointerdown = (e) => e.stopPropagation();
-    el.onclick = (e) => {
-      e.stopPropagation();
-      if (e.shiftKey) {
-        const p = this.view.pick(e.clientX, e.clientY);
-        if (p) this.view.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY, true);
-      } else click();
-    };
+    el.onclick = (e) => { e.stopPropagation(); click(); };
     this.overlay.appendChild(el); this.points.push({ el, x, y, z });
   }
   private position() {

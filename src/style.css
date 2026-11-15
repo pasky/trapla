@@ -291,7 +291,7 @@ p.warn { color: #8a4a00; background: #fff4dc; border-radius: 5px; padding: 5px 7
 #toast button { background: transparent; color: #ffd400; border-color: rgba(255,255,255,0.3); font-weight: 600; padding: 2px 9px; }
 #toast button:hover { background: rgba(255,255,255,0.12) !important; }
 #toast button.x { color: #aab; border: 0; }
-#intro { position: absolute; right: 12px; top: 48px; z-index: 11; width: min(400px, calc(100% - 24px)); background: rgba(255,255,255,0.97); border-radius: 10px; padding: 14px 16px 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+#intro { position: absolute; left: 12px; top: 48px; z-index: 11; width: min(370px, calc(100% - 24px)); background: rgba(255,255,255,0.97); border-radius: 10px; padding: 14px 16px 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
 #intro[hidden] { display: none; }
 #intro .intro-h { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
 #intro ol { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
@@ -336,7 +336,7 @@ button.primary:hover:not(:disabled) { background: #1a5fd0 !important; }
 .sw.xing { width: 9px; height: 6px; border: 1.2px solid #222; background: #fff; border-radius: 0; }
 .sw.xing.paid { background: #e0a800; } .sw.xing.yours { border: 2.5px solid #b45800; background: #e0a800; } .sw.xing.bad { background: #d33; }
 .sw.culvert { width: 9px; height: 9px; border: 2px solid #167d9a; border-radius: 50%; background: none; }
-.sw.demo { width: 5px; height: 5px; background: #d7301f; border-radius: 0; }
+.sw.demo { width: 5px; height: 5px; background: #3d434b; border-radius: 0; }
 .sw.buy { width: 7px; height: 7px; background: #c43c9b; transform: rotate(45deg); border-radius: 0; }
 .sw.keep { width: 8px; height: 8px; border: 2px solid #467d19; background: none; border-radius: 0; }
 
@@ -373,6 +373,7 @@ button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choic
   #brand small { display: none; }
   #editbar { left: 84px; }
   #intro { top: 84px; }
+
   #legend { bottom: 22px; font-size: 10px; }
   #attrib { font-size: 9px; max-width: 60%; }
 }
@@ -382,3 +383,56 @@ button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choic
 @container profile (max-width: 560px) {
   .profile-bar .legend { display: none; }
 }
+
+/* ---- the inspector: one card for whatever is selected ---- */
+.card.ctx.inspector { border: 1.5px solid #1d232a; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+.card.ctx.inspector.idle { border-color: transparent; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.card.ctx.inspector.k-stretch { border-color: #e6c200; }
+.card.ctx.inspector.k-crossing { border-color: #b45800; }
+.card.ctx.inspector.k-building { border-color: #7a4a9a; }
+.inspector .ctx-state { margin: 0 0 8px; }
+.inspector .ctx-state > b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.inspector .why { color: #556; font-size: 12px; margin-top: 1px; }
+.inspector .seg.choice { display: flex; flex-wrap: wrap; padding: 2px; gap: 2px; margin: 4px 0; }
+.inspector .seg.choice button { flex: 1 1 auto; padding: 4px 6px; font-size: 12px; border: 0; white-space: nowrap; }
+.inspector .seg.choice button.on { background: #1f6feb; color: #fff; box-shadow: none; }
+.inspector .wall-row { display: grid; grid-template-columns: 44px 1fr; align-items: center; column-gap: 6px; margin: 2px 0 4px; }
+.inspector .wall-row .lbl { font-size: 12px; color: #556; }
+.inspector .wall-row .seg.choice { margin: 0; }
+.inspector .wall-row .seg.choice button { padding: 3px 4px; }
+.inspector .wall-row small { grid-column: 2; color: #778; font-size: 11px; }
+.inspector .more-box { display: none; border-top: 1px solid #eceff3; margin-top: 6px; padding-top: 2px; }
+.inspector.more .more-box { display: block; }
+.inspector .more-box .ctx-lbl:first-child { margin-top: 6px; }
+.inspector .ctx-foot { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.inspector .ctx-foot .more-t { margin-left: auto; border: 0; background: none; color: #1f5fbf; font-size: 12px; padding: 2px 4px; }
+.inspector .ctx-issue { background: #fdecea; border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; color: #8c1a0c; }
+.inspector .ctx-issue .fixes { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.inspector .ctx-issue .vfix { color: #5a2a22; font-size: 12px; margin-top: 2px; }
+.inspector button.fix { background: #fff; border-color: #d7301f; color: #a3200f; font-weight: 600; font-size: 12px; padding: 3px 9px; }
+.inspector button.fix:hover:not(:disabled) { background: #fbd9d4; }
+.inspector table.mini td { font-size: 12px; padding: 1px 0; }
+.inspector .ctx-row input[type=number] { width: 70px; }
+#pi-slider { width: 100%; }
+ol.money { list-style: none; margin: 0 0 6px; padding: 0; }
+ol.money button.link { display: flex; align-items: baseline; gap: 6px; padding: 4px 4px; font-size: 13px; color: #1d232a; }
+ol.money button.link small { color: #889; flex: 1; }
+ol.money button.link span { font-variant-numeric: tabular-nums; font-weight: 600; }
+button.link i.pk-bridge { background: #2f8fff; } button.link i.pk-tunnel { background: #a070ff; }
+button.link i.pk-fill { background: #8fbf5a; } button.link i.pk-cut { background: #d78c32; }
+.inspector .hint { margin: 4px 0 0; color: #778; }
+.noise-section { display: block; margin: 2px 0 6px; background: #f6f9fc; border-radius: 6px; }
+.noise-section text { font: 11px system-ui, sans-serif; fill: #1d232a; }
+.noise-section text.bad { fill: #a3200f; font-weight: 700; }
+.noise-section text.ok { fill: #17663a; font-weight: 700; }
+.noise-section tspan.was { fill: #889; font-weight: 400; font-size: 10px; }
+.noise-section text.lbl { fill: #667; font-size: 10px; }
+.score-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.delta { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; min-height: 17px; }
+.delta.down { color: #17663a; } .delta.up { color: #a3200f; }
+#sec-viol[hidden] { display: none; }
+.profile-tip { width: auto; max-width: 320px; padding: 5px 8px; }
+.profile-tip .tip-bad { color: #a3200f; font-weight: 600; }
+.profile-tip .tip-sub i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin: 0 3px 0 6px; }
+.rlabel button { display: none; }
+.build-annotation.selected-building { width: 22px; height: 22px; padding: 0; border: 3px solid #1d232a; background: rgba(255,212,0,0.35); box-shadow: 0 0 0 2px #ffd400; border-radius: 50%; }

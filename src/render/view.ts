@@ -22,7 +22,14 @@ import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
 
 export interface ViewEvents {
-  onPickTerrain?: (x: number, y: number, clientX: number, clientY: number, forceBend: boolean) => void;
+  /** a click on the map (not a drag) at ground point x, y */
+  onPickTerrain?: (x: number, y: number, clientX: number, clientY: number) => void;
+  /** a double-click on the ground */
+  onDoublePick?: (x: number, y: number) => void;
+  /** is the road under this screen point? (a press there drags a new bend instead of panning) */
+  hitRoad?: (clientX: number, clientY: number) => boolean;
+  /** the road was dragged from ground point x, y: insert a bend there, return its index (null: none) */
+  onRoadDrag?: (x: number, y: number) => number | null;
   onPiDragStart?: (i: number) => void;
   onPiDrag?: (i: number, x: number, y: number) => void;
   onPiDragEnd?: (i: number) => void;
@@ -488,7 +495,7 @@ export class View {
       const m = this.piMarkers[i];
       m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y);
       m.el.textContent = String(i + 1);
-      m.el.title = `Bend ${i + 1}: drag to move it, click to select it (radius grips), right-click to delete`;
+      m.el.title = `Bend ${i + 1}`;
       m.el.classList.toggle('sel', selected === i);
     });
     this.selected = selected;
@@ -733,7 +740,7 @@ export class View {
 
     out.push(...this.centreline(r, bad));
 
-    // demolished buildings are gone from the map (their red squares mark the spots)
+    // demolished buildings are gone from the map (their dark squares mark the spots)
     const demolished = new Set(r.demolished.map((p) => this.buildingMesh(p.j)).filter((k) => k >= 0));
     // ---- footprint demolitions (red squares) / noise buyouts (magenta diamonds) ----
     for (const [buildings, buyout] of [[r.demolished, false], [r.boughtOut, true]] as const) {
@@ -746,7 +753,7 @@ export class View {
       }
       const pg = new THREE.BufferGeometry();
       pg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
-      const material = new THREE.PointsMaterial({ color: buyout ? 0xc43c9b : 0xd7301f, size: buyout ? 11 : 8, sizeAttenuation: false, depthTest: false, depthWrite: false });
+      const material = new THREE.PointsMaterial({ color: buyout ? 0xc43c9b : 0x3d434b, size: buyout ? 11 : 8, sizeAttenuation: false, depthTest: false, depthWrite: false });
       if (buyout) {
         material.onBeforeCompile = (shader) => {
           shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>',
@@ -1170,10 +1177,56 @@ export class View {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       if (down.btn === 0 && moved < 5) {
         const p = this.pick(e.clientX, e.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY, e.shiftKey);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY);
       }
       down = null;
     });
+    canvas.addEventListener('dblclick', (e) => {
+      const p = this.pick(e.clientX, e.clientY);
+      if (p) this.ev.onDoublePick?.(p.x, p.y);
+    });
+    // a press on the road: a drag bends it (a new bend follows the mouse), a click selects; the map
+    // controls never see it (capture phase on the container, before the canvas' own listeners)
+    this.container.addEventListener('pointerdown', (e) => {
+      if (e.target !== canvas || e.button !== 0 || !this.ev.hitRoad?.(e.clientX, e.clientY)) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+      canvas.setPointerCapture(id);
+      const g0 = this.pick(x0, y0);
+      let i: number | null = null;
+      const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        if (i === null) {
+          if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5 || !g0) return;
+          i = this.ev.onRoadDrag?.(g0.x, g0.y) ?? null;
+          if (i === null) { stop(); return; }
+          this.dragging = i;
+          this.ev.onPiDragStart?.(i);
+        }
+        const p = this.pick(ev.clientX, ev.clientY);
+        if (!p) return;
+        const m = this.piMarkers[i];
+        if (m) { m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y); }
+        this.dirty = true;
+        this.ev.onPiDrag?.(i, p.x, p.y);
+      };
+      const stop = () => {
+        canvas.removeEventListener('pointermove', move);
+        canvas.removeEventListener('pointerup', up);
+        canvas.removeEventListener('pointercancel', stop);
+        if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+      };
+      const up = (ev: PointerEvent) => {
+        stop();
+        if (i !== null) { this.dragging = null; this.ev.onPiDragEnd?.(i); return; }
+        const p = this.pick(ev.clientX, ev.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY);
+      };
+      canvas.addEventListener('pointermove', move);
+      canvas.addEventListener('pointerup', up);
+      canvas.addEventListener('pointercancel', stop);
+    }, { capture: true });
     this.overlay.addEventListener('pointerdown', (e) => {
       const el = (e.target as HTMLElement).closest('.pi') as HTMLElement | null;
       if (!el) return;

@@ -17,10 +17,9 @@
           <span><i style="background:#ffb000"></i>road</span>
           <span><i style="background:#2f8fff"></i>bridge</span>
           <span><i style="background:#a070ff"></i>tunnel</span>
-          <span><i style="background:transparent;border:2px solid #167d9a;width:7px;height:7px;border-radius:50%"></i>culvert</span>
-          <span><i style="background:#ff2a2a"></i>violation</span>
           <span><i class="wall"></i>noise wall</span>
-          <span title="Buildings in the road's way are demolished: they disappear, a red square marks the spot"><i style="background:#d7301f;width:7px;height:7px;border-radius:0"></i>demolished</span>
+          <span><i style="background:#ff2a2a"></i>problem</span>
+          <span><i style="background:#3d434b;width:7px;height:7px;border-radius:0"></i>demolished</span>
           <span><i class="diamond"></i>bought out</span>
           <span><i class="dash"></i><span id="legend-official">official line</span></span>
         </div>
@@ -28,10 +27,10 @@
         <div id="status">loading…</div>
       </div>
       <div id="profile">
-        <div class="profile-bar"><b title="The road's height along the route (left = A, right = B) over the ground, with the cost per metre below">Longitudinal profile</b>
+        <div class="profile-bar"><b title="The road's height from A (left) to B (right), the cost per metre below">Profile</b>
           <span class="legend"><span><i class="sw ground"></i>ground</span><span><i class="sw road"></i>road height</span><span class="lg-hp"><i class="sw hp"></i>height point</span><span><i class="sw fill"></i>embankment</span><span><i class="sw cut"></i>cut</span><span><i class="sw br"></i>bridge</span><span><i class="sw tn"></i>tunnel</span></span>
           <button id="key-toggle" class="key-toggle" aria-expanded="false" aria-controls="profile-key" title="What every mark and colour in the profile means">Key ▾</button>
-          <span class="zoom" role="group" aria-label="Profile zoom"><button id="fit" title="Zoom out to the whole route" hidden>⤢ Whole route</button><button id="zoom-out" title="Zoom out (or turn the mouse wheel over the profile)">−</button><button id="zoom-in" title="Zoom in (or click the profile where you want to look closer)">+</button></span></div>
+          <span class="zoom" role="group" aria-label="Profile zoom"><button id="fit" title="Zoom out to the whole route" hidden>⤢ Whole route</button><button id="zoom-out" title="Zoom out (or the mouse wheel)">−</button><button id="zoom-in" title="Zoom in (or the mouse wheel)">+</button></span></div>
         <div id="profile-key" class="profile-key" hidden>
           <div class="key-col"><h3>Route</h3>
             <div><i class="sw bendmk">1</i>bend of the route (as on the map)</div>

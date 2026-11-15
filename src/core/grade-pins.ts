@@ -87,10 +87,10 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
     out.push({
       kind: 'profile', basis: outside ? 'norm' : 'engine',
       s0: Number.isFinite(p.s) ? p.s : a.s, s1: Number.isFinite(p.s) ? p.s : a.s,
-      title: reason === 'invalid' ? 'Pinned height is not finite'
-        : outside ? 'Pinned height cannot be reached within the steepest allowed slope' : 'Automatic found no legal road height through the pinned height',
-      fix: suggested ? `Set pinned height ${index + 1} (km ${(suggested.s / 1000).toFixed(3)}) to ${suggested.z.toFixed(2)} m`
-        : `Remove pinned height ${index + 1} or enter a valid km position and height`,
+      title: reason === 'invalid' ? 'Pinned height is not a number'
+        : outside ? 'Pinned height out of reach: too steep' : 'Pinned height: no legal road found',
+      fix: suggested ? `Set it to ${suggested.z.toFixed(2)} m, or unpin`
+        : 'Unpin it',
       detail: bound ? `You asked for ${p.z.toFixed(2)} m; the road is at ${actualZ!.toFixed(2)} m. Slopes alone allow ${bound.min.toFixed(2)}–${bound.max.toFixed(2)} m here (counting your other pins, but not the room the roundings need). ${outside ? 'Pins that conflict may need changing together.' : 'Automatic tries a limited set of heights; a legal one may still exist. The suggested height is where the road is now.'}` : 'A pin stays at its km position when you move the route; it is never moved for you.',
       rule: `The finished road must pass within ±${tol} m of each pinned height; the heights at A and B are fixed.`,
       size: actualZ !== null ? Math.abs(actualZ - p.z) : undefined,

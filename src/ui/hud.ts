@@ -3,13 +3,13 @@
 // building), then foldable sections: scenario goals, design controls, violations, cost breakdown,
 // quantities, the list of the player's decisions and how to play. Fold state is remembered.
 
-import { BASIS_LABEL, type Violation } from '../core/checks';
+import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import { CATEGORIES, PLAYABLE_CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
-import { minCategoryForTraffic, SCENARIOS, TRAFFIC_THRESHOLDS, type ScenarioParams } from '../core/data/scenario';
+import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
 import type { Best, StationRange } from '../state';
@@ -33,17 +33,8 @@ export interface HudEvents {
   onProfileMode?: (mode: 'auto' | 'manual') => void;
   onReset?: () => void;
   onLoadBest?: () => void;
-  onRadius?: (i: number, r: number | null) => void;
-  onDeletePi?: (i: number) => void;
-  /** pin the road height (Automatic) / add a height point (By hand) at bend i */
-  onBendHeight?: (i: number) => void;
   onViolation?: (k: number) => void;
   onExaggeration?: (e: number) => void;
-  onVpiRadius?: (i: number, r: number | null) => void;
-  onDeleteVpi?: (i: number) => void;
-  /** close the bend / height point card */
-  onClosePi?: () => void;
-  onCloseVpi?: () => void;
   /** show the first-run introduction again */
   onIntro?: () => void;
 }
@@ -73,9 +64,9 @@ export const ROW_HELP: Record<string, (c: CostBreakdown, sc: ScenarioParams) => 
 };
 
 
-const FOLD_KEY = 'trapla.folds';
+const FOLD_KEY = 'trapla.folds.v2';
 /** sections folded by default (the rest start open) */
-const FOLDED = new Set(['stats', 'decisions', 'help']);
+const FOLDED = new Set(['cost', 'design', 'stats', 'decisions', 'help']);
 
 /** a foldable HUD section: a header button and a body; `extra` goes into the header (e.g. a count) */
 function fold(id: string, title: string, body: string, extra = '') {
@@ -96,6 +87,11 @@ export class Hud {
   /** the violations the list shows: the last full result's (a drag preview keeps them) */
   private listed: Result['violations'] | null = null;
   private folds: Record<string, boolean> = {};
+  private goalText = '';
+  /** total before the edit in progress (the change chip compares against it) */
+  private baseline: number | null = null;
+  private editOpen = false;
+  private lastTotal: number | null = null;
   private $ = <T extends HTMLElement = HTMLElement>(id: string) => this.root.querySelector<T>(`#${id}`)!;
   /** where the contextual cards go (the bend / height point cards here, the build tools' cards too) */
   readonly context: HTMLElement;
@@ -104,63 +100,52 @@ export class Hud {
 
   constructor(private root: HTMLElement, private sc: ScenarioParams) {
     const minCat = minCategoryForTraffic(sc.traffic);
-    const n = Object.keys(SCENARIOS).indexOf(sc.id) + 1;
     root.innerHTML = `
       <section class="card score" id="score" aria-live="polite">
         <div class="total-row">
           <div><div class="kicker" id="cost-scope">Total cost</div><div id="total" class="total">—</div></div>
-          <div id="valid" class="badge" title="Valid = all norm checks pass and both goals are met">…</div>
+          <div class="score-r"><div id="valid" class="badge" title="Valid: every rule passes and the travel time is met. Only a valid design's cost counts.">…</div><div id="delta" class="delta"></div></div>
         </div>
-        <div id="invalid-note" class="invalid-note" hidden>Not valid yet — this cost does not count until the violations are fixed.</div>
         <div class="chips">
-          <span id="chip-time" class="chip" title="Travel time = route length ÷ design speed; the goal is ≤ ${sc.maxTravelMin.toFixed(1)} min"></span>
-          <button type="button" id="chip-viol" class="chip" title="Show the violations"></button>
+          <span id="chip-time" class="chip" title="Travel time: length ÷ design speed"></span>
+          <button type="button" id="chip-viol" class="chip" title="Show the first one"></button>
           <span id="best" class="chip best"></span>
         </div>
         <div id="perkm" class="sub"></div>
       </section>
       <div id="context" class="context"></div>
-      ${fold('goal', `<span class="kicker">Scenario ${n}</span> ${esc(sc.title)}`, `
-        <p>Build the <b>cheapest</b> norm-abiding road from ${sc.labels.brief}.</p>
-        <div class="goals">
-          <div><span>Traffic Y</span><b>${num(sc.traffic)} veh/day</b><small>needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]} <i title="Class I road at LOS C (TP 188 / TP 189, hilly, 15 % heavy; research/14): ${TRAFFIC_THRESHOLDS.filter((t) => isFinite(t.maxAadt)).map((t) => `${t.category} ≤ ${num(t.maxAadt)}`).join(', ')}">(TP 188)</i></small></div>
-          <div><span>Travel time X</span><b>≤ ${sc.maxTravelMin.toFixed(1)} min</b><small>length ÷ design speed</small></div>
-        </div>`)}
-      ${fold('design', 'Design', `
-        <label>Category <select id="cat" title="Road category (cross-section): wider roads cost more but carry more traffic">${PLAYABLE_CATEGORIES.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('')}</select></label>
-        <label>Design speed <select id="speed" title="Faster: shorter travel time, but larger curves and gentler rounding are required">${[90, 80, 70].map((s) => `<option value="${s}">${s} km/h</option>`).join('')}</select></label>
+      ${fold('viol', 'Violations', '<ol id="viol"></ol>', '<span class="count" id="viol-count"></span>')}
+      ${fold('cost', '<span id="cost-h">Cost</span>', '<table id="breakdown"></table>')}
+      ${fold('design', 'Road', `
+        <label>Type <select id="cat" title="Wider roads cost more, carry more traffic">${PLAYABLE_CATEGORIES.map((c) => `<option value="${c}">${CATEGORIES[c].label}</option>`).join('')}</select></label>
+        <label>Design speed <select id="speed" title="Faster: shorter travel time, wider curves">${[90, 80, 70].map((s) => `<option value="${s}">${s} km/h</option>`).join('')}</select></label>
         <div class="norms" id="norms"></div>
         <div class="mode">
-          <div class="mode-h"><b>Road height</b><small>the black line in the profile</small><span class="q" id="mode-help" tabindex="0">?</span></div>
+          <div class="mode-h"><b>Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
-            <button type="button" id="grade-auto" role="radio" title="The game picks the cheapest legal heights and redoes them after every change of the route">Automatic</button><button type="button" id="grade-manual" role="radio" title="Start from the current automatic heights and drag the height points yourself">By hand</button>
+            <button type="button" id="grade-auto" role="radio" title="The game picks the cheapest legal heights">Auto</button><button type="button" id="grade-manual" role="radio" title="Drag the height points yourself">By hand</button>
           </div>
           <p id="mode-explain" class="mode-explain"></p>
         </div>
-        <div class="btns"><button type="button" id="reset" title="Throw the design away and start again from the straight line (Undo brings it back)">Start over</button></div>`, '<small class="fold-note" id="design-note"></small>')}
-      ${fold('viol', 'Violations', '<ol id="viol"></ol>', '<span class="count" id="viol-count"></span>')}
-      ${fold('cost', '<span id="cost-h">Cost breakdown</span>', '<table id="breakdown"></table>')}
-      ${fold('stats', 'Quantities', `<table id="stats"></table><div class="sub">Noise: provisional screening, not an acoustic assessment. On the map: teal = noise walls; red squares = buildings under the road, demolished; magenta diamonds = noise / player buyouts; KEEP labels = buildings you keep.</div>`)}
-      ${fold('decisions', 'Your decisions', '<div id="decisions"></div>', '<span class="count neutral" id="decisions-count"></span>')}
-      ${fold('help', 'How to play', `
+        <div class="btns"><button type="button" id="reset" title="Back to the straight line (Undo brings it back)">Start over</button></div>`, '<small class="fold-note" id="design-note"></small>')}
+      ${fold('decisions', 'Your choices', '<div id="decisions"></div>', '<span class="count neutral" id="decisions-count"></span>')}
+      ${fold('stats', 'Quantities', '<table id="stats"></table>')}
+      ${fold('help', 'Help', `
         <ul>
-          <li><b>Move the route:</b> click the map to add a bend, drag a numbered bend to move it, right-click it (or <kbd>Del</kbd>) to delete it.</li>
-          <li><b>Wider or tighter curve:</b> click a bend, then drag its ◇ grips or press + / −.</li>
-          <li><b>Look around the map:</b> drag to pan, right-drag to rotate, wheel or pinch to zoom.</li>
-          <li><b>Look along the profile:</b> click it to zoom in there (the map follows), wheel to zoom, right-drag to scroll.</li>
-          <li><b>Bridge or tunnel somewhere:</b> drag across the profile to select a stretch, then pick <b>Bridge</b>, <b>Tunnel</b>, <b>Earthwork</b> or <b>Automatic</b> (keys <kbd>B</kbd> <kbd>T</kbd> <kbd>E</kbd> <kbd>C</kbd>).</li>
-          <li><b>Raise or lower the road:</b> in Automatic, click the road line in the profile to pin its height there, then drag the pin. By hand, drag the height points (◆); double-click the line to add one.</li>
-          <li><b>Why so expensive?</b> Hover the profile for the costs at that spot; a selected stretch shows its own bill.</li>
-          <li><b>Crossed roads, buildings:</b> click one on the map (or the ▪ mark of a crossed road in the profile) and choose what happens to it right here at the top (<kbd>Shift</kbd>+click adds a bend there instead).</li>
-          <li><b>Noise walls:</b> select a stretch, then choose a wall. <kbd>N</kbd> = noise view: the road's noise relative to the limit, dwellings coloured by outcome; hover a building or wall for details.</li>
-          <li><b>Map views:</b> <kbd>C</kbd> contours, <kbd>S</kbd> slope tint, <kbd>E</kbd> relief exaggeration, <kbd>O</kbd> aerial photo, <kbd>N</kbd> noise.</li>
-          <li><b>Made a mistake?</b> Undo / Redo at the top left of the map, <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd>.</li>
+          <li><b>Bend the road:</b> drag the orange road. Drag a numbered bend to move it; right-click deletes it. Double-click the map adds a bend there. A selected bend's ◇ grips or <kbd>+</kbd> / <kbd>−</kbd> change its curve.</li>
+          <li><b>Inspect anything:</b> click the road, a bridge, a bend, a house or a crossed road — on the map or in the profile. The card on the right says what it costs and offers the choices.</li>
+          <li><b>Any stretch:</b> drag sideways across the profile.</li>
+          <li><b>Road height:</b> drag the black line in the profile up or down to pin it.</li>
+          <li><b>Map:</b> drag pans, right-drag rotates, wheel or pinch zooms. <kbd>C</kbd> contours, <kbd>S</kbd> slope, <kbd>R</kbd> relief, <kbd>O</kbd> photo, <kbd>N</kbd> noise.</li>
+          <li><b>Keys:</b> <kbd>Esc</kbd> deselect, <kbd>Del</kbd> delete a bend, <kbd>Ctrl+Z</kbd> undo; on a stretch <kbd>A</kbd> <kbd>B</kbd> <kbd>T</kbd> <kbd>E</kbd> = Auto / Bridge / Tunnel / Earthwork.</li>
+          <li><b>The model:</b> real terrain, Czech prices and norms; noise and some crossings are study-stage estimates.</li>
         </ul>
-        <div class="btns"><button type="button" id="show-intro" title="Show the three-step introduction over the map again">Show the intro again</button></div>
-        <label class="exag">Vertical exaggeration <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
+        <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>
+        <label class="exag">Relief <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
+    this.goalText = `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
     this.context = this.$('context');
     this.decisions = this.$('decisions');
-    this.context.innerHTML = '<section class="card ctx" id="pi-card" style="display:none"></section><section class="card ctx" id="vpi-card" style="display:none"></section>';
+    this.context.innerHTML = '<section class="card ctx inspector" id="inspector"></section>';
     // fold state: remembered per section
     try { this.folds = JSON.parse(localStorage.getItem(FOLD_KEY) ?? '{}'); } catch { this.folds = {}; }
     for (const sec of root.querySelectorAll<HTMLElement>('[data-fold]')) {
@@ -175,7 +160,7 @@ export class Hud {
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
-    this.$('chip-viol').onclick = () => this.reveal('viol');
+    this.$('chip-viol').onclick = () => this.ev.onViolation?.(0);
     this.$('viol').onclick = (e) => {
       const why = (e.target as HTMLElement).closest('.why') as HTMLElement | null;
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;
@@ -237,7 +222,7 @@ export class Hud {
     this.$<HTMLSelectElement>('speed').value = String(d.speed);
     const n = speedNorms(d.speed);
     const norms = this.$('norms');
-    norms.innerHTML = `At ${d.speed} km/h: curves ≥ <b>${n.minRadius} m</b> radius · slopes ≤ <b>${(this.sc.maxGradient * 100).toFixed(0)} %</b> · hilltops rounded ≥ ${num(n.minCrestRadius)} m, dips ≥ ${num(n.minSagRadius)} m <span class="prov" title="The rounding radii come from an older edition of ČSN 73 6101, not confirmed for 2018">(provisional)</span>`;
+    norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${(this.sc.maxGradient * 100).toFixed(0)} %</b>`;
     norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${(this.sc.maxGradient * 100).toFixed(0)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
@@ -246,16 +231,16 @@ export class Hud {
     }
     const auto = d.profileMode === 'auto';
     this.$('mode-explain').innerHTML = auto
-      ? '<b>Automatic</b> — the lowest-cost legal heights; click the road line in the profile to pin one.'
-      : '<b>By hand</b> — drag the ◆ height points in the profile; double-click the line to add one.';
+      ? 'Cheapest legal heights. Drag the line in the profile to pin one.'
+      : 'Drag the ◆ points in the profile; double-click the line adds one.';
     this.$('mode-help').title = auto ? AUTO_LONG : MANUAL_LONG;
-    this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'automatic height' : 'height by hand'}`;
+    this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'Auto height' : 'height by hand'}`;
   }
 
   setProfileBusy(busy: boolean) {
     const manual = this.$<HTMLButtonElement>('grade-manual');
     manual.disabled = busy;
-    manual.title = busy ? 'One moment: the automatic heights are still being computed' : 'Start from the current automatic heights and drag the height points yourself';
+    manual.title = busy ? 'One moment: still computing' : 'Drag the height points yourself';
     this.$('score').classList.toggle('busy', busy);
   }
 
@@ -265,7 +250,7 @@ export class Hud {
     if (this.last) this.renderCost(this.last.r, this.last.d);
   }
 
-  private renderCost(r: Result, d: Design) {
+  private renderCost(r: Result, _d: Design) {
     const whole = r.cost;
     const total = this.$('total');
     // A drag preview is approximate and never a verdict: "≈" total, a neutral badge, no ✓ / ✗.
@@ -273,25 +258,24 @@ export class Hud {
     total.textContent = (preview ? '≈ ' : '') + czk(whole.total);
     total.classList.toggle('invalid', !preview && !r.valid);
     this.$('score').classList.toggle('preview', preview);
-    this.$('invalid-note').hidden = preview || r.valid;
     const valid = this.$('valid');
     valid.textContent = preview ? '≈ PREVIEW' : r.valid ? '✓ VALID' : '✗ NOT VALID';
     valid.className = 'badge ' + (preview ? 'preview' : r.valid ? 'ok' : 'bad');
-    valid.title = preview ? 'Approximate while you drag: crossings, roads and streams next to our earthworks, noise and bridge support heights are worked out (and validity checked) when you pause or let go'
-      : 'Valid = all norm checks pass and both goals are met';
-    this.$('perkm').textContent = `${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)} · ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h`;
+    valid.title = preview ? 'Approximate while you drag; checked when you pause or let go'
+      : 'Valid: every rule passes and the travel time is met. Only a valid design\'s cost counts.';
+    this.$('perkm').textContent = this.goalText;
     const tOk = r.travelMin <= this.sc.maxTravelMin;
     const time = this.$('chip-time');
     time.className = `chip ${tOk ? 'ok' : 'bad'}`;
     time.innerHTML = `${tOk ? '✓' : '✗'} ${num(r.travelMin, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
     const sel = this.range && this.range.s0 < r.length ? rangeSummary(r, this.range.s0, Math.min(this.range.s1, r.length)) : null;
-    this.$('cost-h').innerHTML = sel ? `Cost breakdown <small class="sel-tag">selected km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : 'Cost breakdown <small>whole route</small>';
+    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : `Cost <small>${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
       const v = g.of(c);
-      const label = g.id === 'surcharge' ? `Other objects <small>+${(PRICES.otherObjectsSurcharge * 100).toFixed(0)} / ${(URBAN_RATES.otherObjectsSurcharge * 100).toFixed(0)} %</small>` : g.label;
+      const label = g.id === 'surcharge' ? 'Other (drainage, safety…)' : g.label;
       return `<tr title="${ROW_HELP[g.id](c, this.sc).replace(/"/g, '&quot;')}" class="${v > 0 ? '' : 'zero'}"><td><i class="sw" style="background:${g.color}"></i>${label}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%;background:${g.color}"></span></td></tr>`;
-    }).join('') + (sel ? `<tr class="sum"><td>Selected stretch</td><td>${czk(sel.cost.total)}</td><td></td></tr>` : '');
+    }).join('') + (sel ? `<tr class="sum"><td>Selected</td><td>${czk(sel.cost.total)}</td><td></td></tr>` : '');
     const q = r.quantities;
     const x = { bridge: 0, tunnel: 0, overbridge: 0, atGrade: 0, junction: 0, reconnection: 0, diversion: 0, underpass: 0 };
     let reconnectM = 0, divertM = 0, underpassM = 0;
@@ -359,72 +343,38 @@ export class Hud {
     chip.className = `chip ${v.length ? 'bad' : 'ok'}`;
     chip.innerHTML = v.length ? `⚠ ${v.length} violation${v.length === 1 ? '' : 's'} <small>show ›</small>` : '✓ no violations';
     chip.toggleAttribute('disabled', !v.length);
-    this.$('viol').innerHTML = v.length
-      ? v.slice(0, 60).map((x, k) => {
-        const open = this.openWhy.has(whyKey(x));
-        return `<li data-k="${k}" class="${x.goal ? 'goal' : ''}" title="Click to show the place on the map and in the profile">
+    this.root.querySelector<HTMLElement>('#sec-viol')!.hidden = !v.length;
+    this.$('viol').innerHTML = v.slice(0, 60).map((x, k) => {
+      const open = this.openWhy.has(whyKey(x));
+      return `<li data-k="${k}" class="${x.goal ? 'goal' : ''}">
           <span class="where">${x.goal ? 'goal' : `km ${num(x.s0 / 1000, 2)}`}</span>
           <div><div class="vt">${esc(x.title)}</div>
-          <div class="vfix">→ ${esc(x.fix)}</div>
-          <div class="vmeta"><span class="basis ${x.basis}" title="${esc(x.rule)}">${BASIS_LABEL[x.basis]}</span><button type="button" class="why" data-why="${k}">${open ? 'less' : 'why?'}</button></div>
+          <div class="vfix">${esc(x.fix)} <button type="button" class="why" data-why="${k}">${open ? 'less' : 'why?'}</button></div>
           <div class="vdetail"${open ? '' : ' hidden'}>${x.detail ? esc(x.detail) : ''}<small>${esc(x.rule)}</small></div></div>
         </li>`;
-      }).join('')
-      : '<li class="none">All norm checks pass.</li>';
+    }).join('');
+    // the change the last edit made
+    const delta = this.$('delta');
+    if (this.baseline !== null && Math.abs(r.cost.total - this.baseline) >= 5e5) {
+      const dv = r.cost.total - this.baseline;
+      delta.textContent = `${dv < 0 ? '−' : '+'}${czk(Math.abs(dv))}`;
+      delta.className = `delta ${dv < 0 ? 'down' : 'up'}`;
+      delta.title = 'Change made by your last edit';
+    } else { delta.textContent = ''; delta.className = 'delta'; }
+    this.lastTotal = r.cost.total;
     const b = this.$('best');
     const isBest = !!best && r.valid && Math.abs(best.cost - r.cost.total) < 1;
     b.innerHTML = best
-      ? `${isBest ? '★ best' : `best ${czk(best.cost)}`}${isBest ? '' : ' <button type="button" id="load-best" title="Load your cheapest valid design (Undo brings this one back)">Load</button>'}`
+      ? `${isBest ? '★ your best' : `best ${czk(best.cost)}`}${isBest ? '' : ' <button type="button" id="load-best" title="Load your cheapest valid design (Undo brings this one back)">Load</button>'}`
       : '<small>no valid design yet</small>';
-    b.title = best ? `${isBest ? 'This is' : 'Your best:'} your cheapest valid design so far: ${czk(best.cost)}` : 'Your cheapest valid design is kept here once you have one';
+    b.title = best ? 'Your cheapest valid design so far' : '';
     const lb = this.root.querySelector<HTMLButtonElement>('#load-best');
     if (lb) lb.onclick = () => this.ev.onLoadBest?.();
   }
 
-  setSelectedPi(i: number | null, r: Result | null, d: Design) {
-    const card = this.$('pi-card');
-    if (i === null || !d.pis[i]) { card.style.display = 'none'; return; }
-    card.style.display = '';
-    const cv = r?.curves[i];
-    const n = speedNorms(d.speed);
-    const auto = d.pis[i].r === null;
-    const rv = d.pis[i].r ?? cv?.r ?? n.minRadius;
-    card.innerHTML = `<div class="ctx-h"><b>Bend ${i + 1}</b><small>${cv ? `turns ${num((cv.delta * 180) / Math.PI, 1)}°` : ''}</small><button type="button" class="x" title="Deselect the bend (Esc)">✕</button></div>
-      <div class="pi-row">
-        <label title="Curve radius: larger is smoother (and needs more room)">Radius <input id="pi-r" type="number" min="50" step="5" value="${Math.round(rv)}" ${auto ? 'disabled' : ''}> m</label>
-        <label title="Use the smallest radius the rules allow (${n.minRadius} m at ${d.speed} km/h)"><input id="pi-auto" type="checkbox" ${auto ? 'checked' : ''}> smallest allowed</label>
-      </div>
-      <input id="pi-slider" type="range" min="${Math.round(n.minRadius * 0.5)}" max="5000" step="5" value="${Math.round(rv)}" title="Drag to change the radius (or drag the ◇ grips on the map)">
-      <div class="btns"><button type="button" id="pi-height" title="${d.profileMode === 'auto' ? 'Keep the road at its current height here; then drag the pin in the profile' : 'A height point at the bend; then drag it in the profile'}">${d.profileMode === 'auto' ? 'Pin road height here' : 'Add a height point here'}</button><button type="button" id="pi-del" class="danger" title="Delete this bend (Del, or right-click it on the map)">Delete bend</button></div>
-      <div class="sub">curve ${cv ? num(cv.delta * cv.rEff, 0) : '—'} m long, starts ${cv ? num(cv.t, 0) : '—'} m before the bend${cv && cv.rEff < cv.r - 1 ? ' · <span class="badtxt">runs into the next curve</span>' : ''}</div>`;
-    const inp = card.querySelector<HTMLInputElement>('#pi-r')!;
-    const sl = card.querySelector<HTMLInputElement>('#pi-slider')!;
-    inp.onchange = () => this.ev.onRadius?.(i, Math.max(10, Number(inp.value)));
-    sl.oninput = () => { inp.value = sl.value; this.ev.onRadius?.(i, Number(sl.value)); };
-    card.querySelector<HTMLInputElement>('#pi-auto')!.onchange = (e) => this.ev.onRadius?.(i, (e.target as HTMLInputElement).checked ? null : Math.round(rv));
-    card.querySelector<HTMLButtonElement>('#pi-del')!.onclick = () => this.ev.onDeletePi?.(i);
-    card.querySelector<HTMLButtonElement>('#pi-height')!.onclick = () => this.ev.onBendHeight?.(i);
-    card.querySelector<HTMLButtonElement>('.x')!.onclick = () => this.ev.onClosePi?.();
-  }
-
-  setSelectedVpi(i: number | null, r: Result | null) {
-    const card = this.$('vpi-card');
-    if (i === null || !r || i <= 0 || i >= r.vpis.length - 1) { card.style.display = 'none'; return; }
-    card.style.display = '';
-    const vc = r.vcurves[i - 1];
-    const v = r.vpis[i];
-    const what = vc?.type === 'crest' ? 'Hilltop' : vc?.type === 'sag' ? 'Dip' : 'Bend';
-    card.innerHTML = `<div class="ctx-h"><b>Height point ${i}</b><small>km ${num(v.s / 1000, 2)} · ${num(v.z, 1)} m</small><button type="button" class="x" title="Close">✕</button></div>
-      <div class="pi-row">
-        <label title="How gently the road rounds over this point (vertical curve radius)">${what} rounding <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
-        <label title="The smallest rounding the rules allow"><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> smallest allowed</label>
-      </div>
-      <div class="btns"><button type="button" id="vpi-del" class="danger" title="Delete this height point (or right-click it in the profile)">Delete point</button></div>
-      <div class="sub">the rounding is ${num(vc?.len ?? 0, 0)} m long</div>`;
-    const inp = card.querySelector<HTMLInputElement>('#vpi-r')!;
-    inp.onchange = () => this.ev.onVpiRadius?.(i, Number(inp.value));
-    card.querySelector<HTMLInputElement>('#vpi-auto')!.onchange = (e) => this.ev.onVpiRadius?.(i, (e.target as HTMLInputElement).checked ? null : Math.round(vc?.r ?? 0));
-    card.querySelector<HTMLButtonElement>('#vpi-del')!.onclick = () => this.ev.onDeleteVpi?.(i);
-    card.querySelector<HTMLButtonElement>('.x')!.onclick = () => this.ev.onCloseVpi?.();
+  /** an edit started (a drag counts once, from its start); the change chip compares with the total before it */
+  noteEdit(committed: boolean) {
+    if (!this.editOpen) { this.baseline = this.lastTotal; this.editOpen = true; }
+    if (committed) this.editOpen = false;
   }
 }

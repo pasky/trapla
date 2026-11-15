@@ -399,7 +399,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     out.push({
       kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
-      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : `Add a height point here (click the road line in the profile) or make the route longer here`,
+      fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : 'Pin a lower / higher height here, or make the route longer',
       detail: `Between ${vpi(i)} and ${vpi(i + 1)} the road ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Automatic road height stays within the limit when it can.`,
       basis: 'norm', rule: gradeRule,
     });
@@ -415,7 +415,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
       out.push({
         kind: c.type, ...where,
         title: `${word} too sharp`,
-        fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to at least ${fmt(min)} m (tick "smallest allowed" in its card)`,
+        fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to ≥ ${fmt(min)} m`,
         detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
         basis: 'norm', rule: `ČSN 73 6101 (older edition, provisional): ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
       });
@@ -544,8 +544,8 @@ export function oobViolation(s0: number, s1: number, length: number): Violation 
 export function profileViolation(length: number, maxGradient: number): Violation {
   return {
     kind: 'profile', s0: 0, s1: length,
-    title: 'Automatic road height found no legal solution',
-    fix: 'Make the route climb more gently (longer, or along the hillside), or set the road height By hand',
+    title: 'Auto found no legal road height',
+    fix: 'Climb more gently (longer route), or set heights by hand',
     detail: `None of the road heights it tried stays within ${fmt(maxGradient * 100, 0)} % with the minimum hilltop and dip roundings and the required clearances. The other messages show where it fails.`,
     basis: 'engine', rule: 'Engine limitation: Automatic tries a limited set of road heights; a legal one may still exist',
   };
