@@ -3,7 +3,7 @@ import type { ProjectIssue, ProjectResult } from '../src/core/project';
 import { listProjectIssues, notCheckedYet, projectBadge } from '../src/ui/project-issues';
 
 const issue = (title: string, routeIds: string[], blocking: ProjectIssue['blocking'], basis: 'engine' | 'game' | 'norm', s0?: number): ProjectIssue => ({
-  code: title, blocking, scope: { routeIds }, locations: s0 === undefined ? [] : [{ routeId: routeIds[0], s0, s1: s0 + 10 }],
+  code: title, blocking, check: basis === 'engine' ? 'not-checked' : 'violation', scope: { routeIds }, locations: s0 === undefined ? [] : [{ routeId: routeIds[0], s0, s1: s0 + 10 }],
   violation: { kind: 'crossing', basis, title, fix: 'fix', rule: 'rule' },
 });
 const unfinished = issue('Road checks are not finished', ['side'], 'incomplete', 'engine');
@@ -18,9 +18,15 @@ describe('project issue list', () => {
       [2, 'Road ends nowhere', 'Valley road'], [3, 'Too steep: 8 % climb', 'Valley road'], [4, 'Too steep: 8 % climb', null]]);
   });
 
-  it("follows core's explicit marker over the fallback", () => {
-    expect(notCheckedYet({ ...issues[2], notChecked: true } as ProjectIssue)).toBe(true);
-    expect(notCheckedYet({ ...unfinished, notChecked: false } as ProjectIssue)).toBe(false);
+  it("follows core's check kind, and words a meeting at a road's end as a join", () => {
+    expect(notCheckedYet({ ...issues[3], check: 'not-checked' })).toBe(true);
+    expect(notCheckedYet({ ...unfinished, check: 'violation' })).toBe(false);
+    const meet = (s: number): ProjectIssue => ({ ...issue('Roads cross here', ['road', 'side'], 'incomplete', 'engine'), code: 'roads-cross',
+      locations: [{ routeId: 'road', s0: 500, s1: 500 }, { routeId: 'side', s0: s, s1: s }], at: { x: 1, y: 2 } });
+    const names = { road: 'Road', side: 'Valley road' }, lengths = { road: 1000, side: 800 };
+    expect(listProjectIssues([meet(400)], 'road', names, lengths).notChecked[0]).toMatchObject({ title: 'Roads cross here', s0: 500 });
+    expect(listProjectIssues([meet(800)], 'road', names, lengths).notChecked[0]).toMatchObject({ title: 'Roads join here', fix: 'This join is not checked yet' });
+    expect(listProjectIssues([meet(0)], 'side', names, lengths).notChecked[0]).toMatchObject({ title: 'Roads join here', s0: 0 });
   });
 
   it('shows a verdict only for a priced project; only not-checked items give a neutral NOT PRICED', () => {

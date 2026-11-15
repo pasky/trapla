@@ -217,3 +217,14 @@ gates bend/road/radius/pin/vpi all `--check` OK: frame p95 17 ms in every mode, 
 no long tasks, no shader compiles. Screenshots 79–83 inspected. Gesture end always posts a full
 evaluation after the last preview (commit → `requestEval(false)`; every preview also arms the 150 ms
 full timer), so a full job replaced in the worker's single slot is re-sent.
+
+### Not checked yet (core 657439a)
+
+Issues carry core's `check`: `'not-checked'` items (engine limits such as "Road checks are not finished",
+"Roads cross here", "Roads overlap here") are listed in a separate grey **Not checked yet** group, are not
+counted as violations, and alone give a grey **NOT PRICED** badge; real violations still give red
+**✗ NOT VALID**. A crossing/overlap reported at a road's end station is worded "Roads join here / This
+join is not checked yet". Clicking a not-checked item flies to its `at` map position. Other roads' ends
+are drawn as small square ticks, never the scenario's A / B discs. Scenes 79/81/82 re-run with `--docs`
+(82 now shows "Roads cross here" and a click flies there); bend/road drag gates re-run OK (p95 17 ms).
+One of five `base-road-scene` runs failed an assertion that was not captured; four reruns passed.

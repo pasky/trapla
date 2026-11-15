@@ -110,6 +110,12 @@ try {
   assert(crossing.cost.unpriced.length >= 1);
   console.log('crossing roads:', crossing.cost.unpriced, crossing.issues.filter(i => i.blocking === 'incomplete').map(i => i.violation.title));
   assert.match(await next.locator('#valid').textContent(), /NOT VALID|NOT PRICED/);
+  assert(crossing.issues.some(i => i.code === 'roads-cross' && i.check === 'not-checked' && i.at), 'core marks where the roads cross');
+  assert.match(await next.locator('#viol li.not-checked').allTextContents().then(t => t.join(' ')), /Roads cross here/, 'shown as not checked yet, not as a violation');
+  const crossK = await next.locator('#viol li.not-checked', { hasText: 'Roads cross here' }).first().getAttribute('data-k');
+  await next.locator(`#viol li[data-k="${crossK}"] .vt`).click();
+  const at = crossing.issues[Number(crossK)].at, target = await next.evaluate(() => new Promise(r => setTimeout(() => r(window.trapla.cameraTarget()), 700)));
+  assert(Math.hypot(target.x - at.x, target.y - at.y) < 60, 'clicking it shows the place');
   assert.match(await next.locator('#cost-scope').textContent(), /road only/);
   assert.match(await next.locator('#perkm').textContent(), /road changes? not priced yet/);
   await next.screenshot({ path: `${out}/82-two-roads-not-priced.png` });

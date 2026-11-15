@@ -2,11 +2,18 @@
 // Pure (no DOM) so the wording and counting are testable.
 import type { ProjectIssue, ProjectResult, RouteId } from '../core/project';
 
-/** An engine limit ("not checked yet"), not a fault of the design: never counted or shown as a violation.
- * Core's explicit marker decides; older results fall back to engine-basis incomplete issues. */
-export function notCheckedYet(issue: ProjectIssue): boolean {
-  const marked = (issue as ProjectIssue & { notChecked?: boolean }).notChecked;
-  return marked ?? (issue.blocking === 'incomplete' && issue.violation.basis === 'engine');
+/** An engine limit ("not checked yet"), not a fault of the design: never counted or shown as a violation. */
+export function notCheckedYet(issue: ProjectIssue): boolean { return issue.check === 'not-checked'; }
+
+/** Core reports where two new roads meet as a crossing / overlap; at a road's end that is a join. */
+const JOIN_TOLERANCE_M = 1;
+function joinWording(issue: ProjectIssue, lengths: Readonly<Record<RouteId, number>>) {
+  if (issue.code !== 'roads-cross' && issue.code !== 'roads-overlap') return null;
+  const atEnd = issue.locations.some(l => {
+    const length = lengths[l.routeId];
+    return l.s0 <= JOIN_TOLERANCE_M || (length !== undefined && l.s1 >= length - JOIN_TOLERANCE_M);
+  });
+  return atEnd ? { title: 'Roads join here', fix: 'This join is not checked yet' } : null;
 }
 
 export interface ListedIssue {
@@ -21,10 +28,11 @@ export interface ListedIssue {
 /** One line per distinct message and road (core may report the same unfinished check twice), split
  * into real violations and not-checked-yet items. */
 export function listProjectIssues(issues: readonly ProjectIssue[], activeRouteId: RouteId | undefined,
-  names: Readonly<Record<RouteId, string>>): { violations: ListedIssue[]; notChecked: ListedIssue[] } {
+  names: Readonly<Record<RouteId, string>>, lengths: Readonly<Record<RouteId, number>> = {}): { violations: ListedIssue[]; notChecked: ListedIssue[] } {
   const seen = new Set<string>(), violations: ListedIssue[] = [], notChecked: ListedIssue[] = [];
   issues.forEach((issue, k) => {
-    const s0 = issue.locations[0]?.s0, v = issue.violation;
+    const s0 = issue.locations.find(l => l.routeId === activeRouteId)?.s0 ?? issue.locations[0]?.s0;
+    const v = { ...issue.violation, ...joinWording(issue, lengths) };
     const key = JSON.stringify([v.title, v.fix, issue.scope.routeIds, s0]);
     if (seen.has(key)) return; seen.add(key);
     const own = activeRouteId !== undefined && issue.scope.routeIds.includes(activeRouteId);

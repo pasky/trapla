@@ -151,7 +151,10 @@ async function main() {
       : active && active in alone ? { total: alone[active], approx: false, label: active === mission ? 'Our road only' : 'This road only' }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only' } : null;
     hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own,
-      activeRouteId: active ?? undefined, names: Object.fromEntries(projectStore.snapshot.design.routes.map(r => [r.id, r.name])) });
+      activeRouteId: active ?? undefined, names: Object.fromEntries(projectStore.snapshot.design.routes.map(r => [r.id, r.name])),
+      lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
+        const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
+      })) });
   };
   let posted = 0, received = 0;
   /** main-thread ms per consumer of the last handled result (drag-perf probe) */
@@ -805,6 +808,14 @@ async function main() {
       if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }
       const issue = hud.listedIssue(k), owner = issue?.scope.routeIds[0];
       if (!issue) return;
+      // not checked yet (e.g. where two new roads meet): show the place; there is nothing to select or fix there
+      if (issue.check === 'not-checked') {
+        if (issue.at) view.flyTo(issue.at.x, issue.at.y, 1200);
+        const here = issue.locations.find(l => l.routeId === store.activeRouteId);
+        if (here && last) profile.focus(Math.max(0, here.s0 - 150), Math.min(last.length, here.s1 + 150));
+        if (!issue.at && !here) hud.reveal('viol');
+        return;
+      }
       if (owner && owner !== store.activeRouteId) switchRoute(owner);
       if (issue.scope.buildingIndex !== undefined) { select({ kind: 'building', j: issue.scope.buildingIndex }, true); return; }
       // A road's own check: core lists each road's kernel violations in order, route-qualified. Its
