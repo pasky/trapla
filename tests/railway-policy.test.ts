@@ -46,26 +46,36 @@ describe('railway-specific operating envelopes', () => {
 
 describe('physical track assembly and source preservation', () => {
   it('places ballast toes on the actual sloping formation with enough depth under both rails', () => {
-    const input = { sleeperDepthM: 0.2, railBearingOffsetM: 0.75, formationCrossfall: 0.04, extraDepthM: 0 };
+    // Synthetic top profile/path requirement, not assumed universal SŽ S4 values.
+    const input = { sleeperDepthM: 0.2, railBearingOffsetM: 0.75, formationCrossfall: 0.04, extraDepthM: 0,
+      minimumMaintenancePathM: 0.4, topProfile: [{ offset: -1.7, z: 0 }, { offset: 0, z: -0.05 }, { offset: 1.7, z: 0 }] };
     const section = uncantedBallastSection(input);
     const [a, b] = section.formation;
     const ground = (u: number) => a.z + (b.z - a.z) * (u - a.offset) / (b.offset - a.offset);
-    for (const toe of [section.polygon[0], section.polygon[3]]) expect(toe.z).toBeCloseTo(ground(toe.offset), 9);
+    for (const toe of [section.polygon[0], section.polygon[section.polygon.length - 1]]) expect(toe.z).toBeCloseTo(ground(toe.offset), 9);
     for (const u of [-input.railBearingOffsetM, input.railBearingOffsetM]) expect(-input.sleeperDepthM - ground(u)).toBeGreaterThanOrEqual(0.35 - 1e-10);
-    expect(section.polygon[0].offset).not.toBe(-section.polygon[3].offset);
+    expect(section.polygon[0].offset).not.toBe(-section.polygon[section.polygon.length - 1].offset);
     expect(section.fitsFormation).toBe(true);
+    expect(uncantedBallastSection({ ...input, minimumMaintenancePathM: 0.8 }).fitsFormation).toBe(false);
     expect(uncantedBallastSection({ ...input, sleeperDepthM: 1 }).fitsFormation).toBe(false);
+    const envelope = uncantedBallastSection({ ...input, topProfile: [{ offset: -1.7, z: 0 }, { offset: 1.7, z: 0 }] });
+    expect(envelope.grossAreaM2 - section.grossAreaM2).toBeCloseTo(3.4 * 0.05 / 2, 9);
   });
 
   it('keeps rail, sleeper and ballast quantities unchanged when editor ownership is split', () => {
     // Explicit synthetic component dimensions exercise quantity maths; these are not adopted data values.
-    const ballast = uncantedBallastSection({ sleeperDepthM: 0.2, railBearingOffsetM: 0.75, formationCrossfall: 0, extraDepthM: 0 });
-    const input = { ballastAreaM2: ballast.grossAreaM2, sleeperPitchM: 0.6, sleeperEmbeddedM3: 0.1, railKgPerM: 60, sleeperPhaseM: 0.2 };
+    const ballast = uncantedBallastSection({ sleeperDepthM: 0.2, railBearingOffsetM: 0.75, formationCrossfall: 0, extraDepthM: 0,
+      minimumMaintenancePathM: 0.4, topProfile: [{ offset: -1.7, z: 0 }, { offset: 1.7, z: 0 }] });
+    const input = { ballastAreaM2: ballast.grossAreaM2, sleeperPitchM: 0.6, sleeperEmbeddedM3: 0.1, sleeperAlongTrackM: 0.25, railKgPerM: 60, sleeperPhaseM: 0.2 };
     const whole = trackAssemblyQuantities(0, 1000, input);
     const a = trackAssemblyQuantities(0, 431.6, input), b = trackAssemblyQuantities(431.6, 1000, input);
     for (const key of Object.keys(whole) as (keyof typeof whole)[]) expect(a[key] + b[key]).toBeCloseTo(whole[key], 8);
     expect(whole.railMetres).toBe(2 * whole.trackMetres);
     expect(whole.ballastM3).toBeLessThan(ballast.grossAreaM2 * whole.trackMetres);
+    const breaks = [0, 0.2, 0.201, 1000];
+    const pieces = breaks.slice(1).map((s, i) => trackAssemblyQuantities(breaks[i], s, input));
+    expect(pieces.every(p => p.ballastM3 >= 0)).toBe(true);
+    for (const key of Object.keys(whole) as (keyof typeof whole)[]) expect(pieces.reduce((sum, p) => sum + p[key], 0)).toBeCloseTo(whole[key], 8);
   });
 
   it('never silently removes electrification, neighbours or ambiguity on an imported line', () => {

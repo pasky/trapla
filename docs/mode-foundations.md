@@ -38,12 +38,14 @@ and missing capability codes. Codes are not player text.
   rail; no road emissions or AADT model is used. Relocation legal status remains unresolved unless
   established; new-line ordinary residential limits60/55 are limits, not emissions. Imported gauge,
   track count and electrification ambiguity blocks compatibility; neighbour IDs are preserved.
-- `core/rail-trackbed.ts`: primary SŽ S3X no-cant single-track ballast/formation polygon, actual toe
-  intersections with explicitly supplied formation crossfall, shallower-rail ballast-depth check and
-  maintenance-path fit. Sleeper/rail selected-component dimensions are explicit caller inputs (no
-  invented universal sleeper or rail mass). Track/rail length, sleeper count and ballast displacement
-  are measured. Physical-track chainage and half-open sleeper ownership preserve quantities across
-  editor splits. No rail construction prices are supplied.
+- `core/rail-trackbed.ts`: SŽ S3X no-cant single-track ballast/formation polygon for an **explicit
+  selected upper profile**, actual toe intersections with supplied formation crossfall, shallower-rail
+  ballast-depth check and an explicit applicable maintenance-path requirement. A supplied flat top is
+  only a gross envelope, not S3 clause45's shaped inter-sleeper surface. Sleeper/rail component dimensions
+  are caller inputs (no invented universal sleeper or rail mass). Physical-track chainage and half-open
+  ownership preserve procurement count; a separately clipped periodic prismatic sleeper solid preserves
+  displaced ballast even across millimetre-long editor splits. This measures the selected section/solid
+  model, not every sleeper catalogue's detailed geometry. No rail construction prices are supplied.
 
 All geometry inputs use metres/radians; cant uses millimetres, train speeds km/h. Synthetic component
 values in tests exercise mathematics and are **not** adopted construction assumptions.
@@ -81,8 +83,10 @@ Research was delegated only for source retrieval, then key claims were personall
   standard ramp `n=10V` through160km/h. Initial extraction errors were corrected. These remain explicit
   **older secondary/provisional** evidence, not claims about current ČSN certification. Figures and
   protected table layouts are not reproduced.
-- SŽ S3X clause38 and figures3/4/6: concrete-through-track ballast depth350mm, no-cant formation6.2m,
-  ballast top3.4m, side slope1:1.25, maintenance path400mm; exceptions/cant widening are not ignored.
+- SŽ S3X clauses11/38/45 and figures3/4/6: concrete-through-track ballast depth350mm, no-cant
+  formation6.2m, ballast top3.4m, side slope1:1.25. The400mm path is a constrained-reconstruction
+  exception without formation-width change, not a new-line minimum; SŽ S4 applicability stays explicit.
+  The shaped upper ballast surface is supplied, not silently replaced by a full-width flat envelope.
 - Current NV272/2011 §12 and annex3A:50dB base, +10 after2000 placed/permitted infrastructure,
   railway night−5 in the annex. Older-line/modernisation and relocation classification is not guessed.
 

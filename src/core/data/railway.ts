@@ -12,8 +12,10 @@ export const RAILWAY_EVIDENCE = {
   uncantedFormationHalfWidthM: 3.1,
   ballastTopHalfWidthM: 1.7,
   ballastSlopeHorizontalPerVertical: 1.25,
-  /** S3 X fig3/6: minimum maintenance path width. */
-  minimumMaintenancePathM: 0.4,
+  /** S3 X cl11/fig3/6: constrained reconstruction WITHOUT formation-width change only.
+   * New/modified formations require an applicable SŽ S4 minimum, not this exception.
+   */
+  constrainedReconstructionMaintenancePathM: 0.4,
   /** Standard-gauge equilibrium cant: 1500 mm contact-circle convention, rounded coefficient. */
   equilibriumCantCoefficient: 11.8,
   /** PROVISIONAL old VUT/ČSN teaching ordinary design values, not exceptional maxima.
