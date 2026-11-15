@@ -135,3 +135,47 @@ Next: fix four review repros + publication safety; consume C endpoint fix/U boot
 Paka/D35 defaults with disclosed raw diagnostics; measure full D35 GPU/eval/load and report corridor
 choice; repeat final gates/screens, review commits, await parent LGTM before copying ignored packs
 and merging. Do not claim completed multi-road/motorway/rail scoring.
+
+## Critical review by the follow-up agent (2026-11-15, after 71b455f)
+
+Independent inspection of code, caches and actual packs, not of the claims above.
+
+**Implementation defects confirmed (beyond the reviewer repros):**
+- The clipping bug was live in every pack, not hypothetical: 5 D11, 1 D3, 6 D35 and 2 Paka render
+  parts (closed loops crossed by their own way) mapped to `0…L` instead of starting at the crossing,
+  so one source owned overlapping render intervals. Zero parts are ambiguous with exact provenance.
+- Cache mixing was worse than the D35 class conflict: Overpass snapshot dates inside one new pack
+  differed by up to 5.5 months (D3 buildings 2026-06-01 vs roads 2026-11-15; D35 roads2 2026-07-24;
+  Paka places 2026-06-01) because the fallback mirror lags. The Paka reference cache was not an
+  Overpass response at all (hand-assembled from OSM API tiles). `coherentTransport` fixed one symptom.
+- The hydrology watercourse snapshot was a second unvalidated cache, derived from whatever `lines`
+  file existed; refetching inputs would have silently kept the old derived snapshot.
+- A legacy full build left a stale graph next to a rebuilt vector binary; the loader would then reject
+  the whole D11 pack. Full builds now drop and rebuild sidecars; D11 meta stays byte-identical.
+
+**Strategy corrections:**
+1. *Junction endpoints are an engine gap, not a tuning problem.* Both remaining invalid starters fail
+   at a connection with a retained road: Paka B on the I/16 roundabout (class-I/service contact in the
+   final metres), D35 B where the proposed line merges into existing D35/I/35 (straight run: motorway,
+   expressway, bridge-end and pier conflicts at km 30.55–30.58; reference: piers on the expressway at
+   km 33.2–33.6). The evaluator owns only a 1 m endpoint crown cell. A real bypass arm or merge needs
+   connected-endpoint ownership (approach taper/arm built on the retained road). C's `paka-endpoint`
+   agent produced no commit and is no longer running. No starter can be honestly valid here without
+   that core work; moving B into a field or nudging bends would hide the gap. Staging D35 to Staré
+   Město does not avoid it either (that stage also ends at an existing-road junction).
+2. *D35 full-vs-stage is not yet budget-decidable and leans to stage.* Node full-evaluate medians are
+   223–289 ms for 30.6–33.7 km routes versus ≈78 ms for D3's 15.4 km and D11's ≈90–150 ms: evaluation
+   scales with length, so the full corridor is ≈2–3× the documented budget. The decisive gates are
+   GPU preview latency (p50 ≤60/p95 ≤120 ms) with a valid design; `drag-perf.mjs` has no scenario
+   option yet (U-owned script). Recommendation: measure, but expect the first stage.
+3. *One OSM policy for all new packs:* D3 and Paka now also use `coherentTransport`, all new caches
+   are bound/refetched, stale mirror snapshots are rejected. D3's starter must be revalidated after
+   the refetch; that is a rebuild consequence, not a model change.
+4. *Proportionality of the transport graph:* the loader always fetches/parses/hashes the 4–6 MB gzip
+   graph (≈18 MB JSON) even though nothing in S's tree consumes it yet; D11 load grows accordingly.
+   Recommend U/C load it lazily on first source edit; S keeps the integrity check at the boundary.
+5. *Unresolved sources (item 5)* are a C/U consumer obligation; the pipeline already publishes their
+   render-feature IDs and legacy net indices without topology. Nothing further for S.
+6. Endpoint/reference scopes otherwise hold up: D3 includes the Sázava (0302+0303), Paka's 7.4 km
+   anchored branch is honestly distinguished from the 8.479 km project, and the modern-junction
+   baseline retains III/28425 continuity.

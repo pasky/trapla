@@ -23,36 +23,78 @@ def stations(xy):
     return np.concatenate([[0.], np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))])
 
 
-def clipped_stations(original, clipped):
-    """Map exact clipped vertices to source metres, monotonically, including closed ways.
+class AmbiguousCorrespondence(ValueError):
+    """A clipped part matches no, or more than one, forward walk along its source."""
 
-    Streaming point/segment scan (no point×segment array). A shared crossing position can occur
-    at several source metres; choose the first forward occurrence, never connect sources by XY.
+
+def clipped_stations(original, clipped, tolerance=1e-5):
+    """Map one clipped part's vertices to source metres by source-segment provenance.
+
+    Overlay clipping splits self-crossing ways at the crossing, so one XY can lie at several
+    source metres. A part is a contiguous forward walk along source segments: its first vertex
+    is located on every segment it touches, then each start is walked vertex by vertex, staying
+    on the current segment or stepping to the next one only from its end vertex. Exactly one
+    distinct walk must survive; otherwise raise rather than guess. O(segments + part length ×
+    branching), no point×segment array.
     """
+    original = np.asarray(original, dtype=float)
+    clipped = np.asarray(clipped, dtype=float)
     cumulative = stations(original)
-    previous = -1e-7
-    result = []
-    for point in clipped:
-        candidates = []
-        for i, (a, b) in enumerate(zip(original, original[1:])):
-            delta = b - a
-            length2 = float(np.dot(delta, delta))
-            if length2 == 0:
-                continue
-            t = max(0., min(1., float(np.dot(point - a, delta)) / length2))
-            distance = float(np.linalg.norm(point - (a + t * delta)))
-            # Use canonical cumulative values at vertices; independently taking sqrt can
-            # otherwise put the final render interval a few ulps beyond the source end.
-            s = float(cumulative[i] if np.array_equal(point, a) else cumulative[i + 1]
-                      if np.array_equal(point, b) else cumulative[i] + t * (cumulative[i + 1] - cumulative[i]))
-            s = min(float(cumulative[-1]), max(0., s))
-            if distance < 1e-5 and s >= previous - 1e-7:
-                candidates.append(s)
-        if not candidates:
-            raise ValueError("render clipping lost monotone source correspondence")
-        previous = min(candidates)
-        result.append(previous)
-    return np.asarray(result)
+    count = len(original) - 1
+    if not len(clipped):
+        return np.empty(0)  # empty clip result: nothing rendered, nothing owned
+
+    def on_segment(point, i, t_min):
+        a, b = original[i], original[i + 1]
+        delta = b - a
+        length2 = float(np.dot(delta, delta))
+        if length2 == 0:
+            return None
+        length = math.sqrt(length2)
+        t = max(0., min(1., float(np.dot(point - a, delta)) / length2))
+        if float(np.linalg.norm(point - (a + t * delta))) >= tolerance or (t - t_min) * length < -tolerance:
+            return None
+        # Snap to canonical cumulative values at vertices; independently taking sqrt can
+        # otherwise put the final render interval a few ulps beyond the source end.
+        if np.array_equal(point, b) or (1 - t) * length <= tolerance:
+            return 1., float(cumulative[i + 1])
+        if np.array_equal(point, a) or t * length <= tolerance:
+            return max(0., t_min), float(cumulative[i])
+        return t, min(float(cumulative[-1]), float(cumulative[i] + t * (cumulative[i + 1] - cumulative[i])))
+
+    def advance(state, point):
+        """Next states: same segment forward, or later segments reached through end vertices."""
+        i, t = state
+        while i < count:
+            hit = on_segment(point, i, t)
+            if hit is not None:
+                # An end-vertex hit (t=1) is continued onto the next segment by the next step.
+                return [((i, hit[0]), hit[1])]
+            if cumulative[i + 1] > cumulative[i] and t < 1:
+                return []
+            i, t = i + 1, 0.
+        return []
+
+    # States are (segment, parameter); level-by-level with deduplication keeps this bounded.
+    level = {}
+    for i in range(count):
+        hit = on_segment(clipped[0], i, 0.)
+        if hit is not None:
+            state = (i, hit[0]) if hit[0] < 1 or i + 1 == count else (i + 1, 0.)
+            level.setdefault(state, (hit[1],))
+    for point in clipped[1:]:
+        following = {}
+        for state, path in level.items():
+            for next_state, s in advance(state, point):
+                following.setdefault(next_state, path + (s,))
+        level = following
+        if len(level) > 64:
+            raise AmbiguousCorrespondence("clipped part has too many source walks")
+    distinct = {tuple(round(s, 6) for s in path): path for path in level.values()}
+    if len(distinct) != 1:
+        raise AmbiguousCorrespondence(
+            f"clipped part has {len(distinct)} source walks; render provenance is ambiguous")
+    return np.asarray(next(iter(distinct.values())))
 
 
 def build(out, elements, project, render_lines, legacy_ids, log=print):
@@ -127,6 +169,11 @@ def build(out, elements, project, render_lines, legacy_ids, log=print):
         sources[sid]["render"].append({"featureId": fid, "sourceId": sid,
             "s0": source_s[0], "s1": source_s[-1], "width": WIDTHS[line["layer"]],
             "correspondence": [{"sourceS": s, "renderS": float(r)} for s, r in zip(source_s, rendered_s)]})
+    for sid, source in sources.items():
+        # Clipped parts of one source are disjoint pieces of it; overlap means lost provenance.
+        intervals = sorted((r["s0"], r["s1"]) for r in source["render"])
+        if any(b0 < a1 - 1e-6 for (_, a1), (b0, _) in zip(intervals, intervals[1:])):
+            raise ValueError(f"overlapping render intervals for {sid}")
     vector = gzip.decompress((out / "vector.bin.gz").read_bytes())
     data = {"version": 1, "vectorData": hashlib.sha256(vector).hexdigest(), "renderFeatures": render_features,
             "nodes": [{"id": key, "xy": value} for key, value in sorted(nodes.items())],

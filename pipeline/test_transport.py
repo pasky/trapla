@@ -26,6 +26,28 @@ class TransportTests(unittest.TestCase):
             self.assertEqual(result[-1], stations(xy)[-1])
             self.assertLessEqual(result.max(), stations(xy)[-1])
 
+    def test_self_crossing_parts_keep_source_segment_provenance(self):
+        from shapely.geometry import LineString, box
+        xy = np.asarray([[0., 0.], [10., 10.], [0., 10.], [10., 0.]])
+        total = stations(xy)[-1]
+        # Reviewer repro: the final part restarts at the crossing XY that the first pass also visits.
+        np.testing.assert_allclose(clipped_stations(xy, np.asarray([[5., 5.], [10., 0.]])),
+                                   [total - 50 ** .5, total])
+        # Actual overlay output, including the closed middle loop starting/ending at the crossing.
+        parts = LineString(xy).intersection(box(-5, -5, 20, 20)).geoms
+        intervals = [clipped_stations(xy, np.asarray(p.coords)) for p in parts]
+        np.testing.assert_allclose([(s[0], s[-1]) for s in intervals],
+                                   [(0, 50 ** .5), (50 ** .5, total - 50 ** .5), (total - 50 ** .5, total)])
+
+    def test_ambiguous_or_unmatched_clipped_part_is_rejected(self):
+        from transport import AmbiguousCorrespondence
+        # The same segment is traversed twice in the same direction: two equally valid walks.
+        xy = np.asarray([[0., 0.], [10., 0.], [10., 5.], [0., 0.], [10., 0.]])
+        with self.assertRaises(AmbiguousCorrespondence):
+            clipped_stations(xy, np.asarray([[2., 0.], [8., 0.]]))
+        with self.assertRaises(AmbiguousCorrespondence):
+            clipped_stations(xy, np.asarray([[2., 1.], [8., 1.]]))
+
     def test_sources_preserve_identity_unknown_rail_and_own_render_interval(self):
         road = {"type": "way", "id": 7, "nodes": [1, 2], "xy": [[0., 0.], [10., 0.]],
                 "tags": {"highway": "primary", "bridge": "yes", "layer": "1"}}
