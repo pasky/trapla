@@ -65,7 +65,11 @@ export interface ReferencePoint extends Vec2 {
   s: number;
   elevation: { kind: 'ground' } | { kind: 'known'; z: number; evidence: string } | { kind: 'unresolved' };
 }
-export interface RoadOperations { aadt: number; heavyShare: number; speed: number }
+export interface RoadOperations {
+  aadt: number; heavyShare: number; speed: number;
+  /** Legacy speed edits remain coupled unless separate operating assumptions are explicitly chosen. */
+  speedPolicy?: 'design' | 'independent';
+}
 export interface RoadSpec {
   kind: 'road';
   legalClass: 'I' | 'II' | 'III' | 'local' | 'service' | 'track';

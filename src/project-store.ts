@@ -39,7 +39,7 @@ export class ProjectStore implements ProjectStoreApi {
     assertProjectDesign(save.design);
     if (save.design.scenarioId !== options.namespace.scenarioId || save.design.presetId !== options.namespace.presetId) throw new Error('Initial namespace mismatch');
     // On a migration, recovery is durable BEFORE the new save. Quota failures propagate; old bytes remain.
-    if (load.status !== 'loaded') persistProjectSave(options, save, load);
+    if (load.status !== 'loaded' || load.originalProject) persistProjectSave(options, save, load);
     return { load, store: new ProjectStore(options, save) };
   }
   get snapshot(): ProjectSnapshot { return this.current; }

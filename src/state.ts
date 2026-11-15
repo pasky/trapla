@@ -35,27 +35,30 @@ export class Store {
     let d: Design | null = null;
     try {
       const original = readLegacyBytes(localStorage, key);
-      // Compatibility safety net for old bootstrap callers. New bootstrap uses loadProjectSave first.
+      if (original.design !== null) {
+        try {
+          const parsed = JSON.parse(original.design);
+          if (!parsed || typeof parsed !== 'object' || 'schemaVersion' in parsed || !Array.isArray(parsed.pis)
+            || !Array.isArray(parsed.vpis) || !Number.isFinite(parsed.speed) || !['auto', 'manual'].includes(parsed.profileMode)
+            || !['S7.5', 'S9.5', 'S11.5', 'D27.5'].includes(parsed.category)) throw new Error('Saved design needs recovery');
+          d = parsed;
+        } catch (error) { this.persistAllowed = false; this.storageProblem = String(error); }
+      }
+      // Read usable current work BEFORE a backup write can fail (quota/read-only storage).
+      // Failure below keeps that design in memory, read-only, rather than displaying defaults.
       if ((original.design !== null || original.best !== null) && localStorage.getItem(key + '.legacy-original') === null)
         localStorage.setItem(key + '.legacy-original', JSON.stringify(original));
-      if (original.design !== null) {
-        const parsed = JSON.parse(original.design);
-        if (!parsed || typeof parsed !== 'object' || 'schemaVersion' in parsed || !Array.isArray(parsed.pis)
-          || !Array.isArray(parsed.vpis) || !Number.isFinite(parsed.speed) || !['auto', 'manual'].includes(parsed.profileMode)
-          || !['S7.5', 'S9.5', 'S11.5', 'D27.5'].includes(parsed.category)) throw new Error('Saved design needs recovery');
-        d = parsed;
-      }
       if (original.best !== null) this.best = JSON.parse(original.best);
       // a best score from an older cost model is not comparable with today's bills: forget it
       if (this.best && (this.best.model !== COST_MODEL_VERSION || this.best.pricingData !== pricingData
         || (objectData && this.best.design.objectData && this.best.design.objectData !== objectData))) this.best = null;
       // Once accepted, legacy bests must acquire the SAME identity as the current design. Leaving
       // them unstamped would let Load best rebind old positional IDs after a later pack rebuild.
-      if (this.best && objectData && !this.best.design.objectData) {
+      if (this.persistAllowed && this.best && objectData && !this.best.design.objectData) {
         this.best.design.objectData = objectData;
         try { localStorage.setItem(key + '.best', JSON.stringify(this.best)); } catch { /* quota */ }
       }
-    } catch (error) { d = null; this.best = null; this.persistAllowed = false; this.storageProblem = String(error); }
+    } catch (error) { this.best = null; this.persistAllowed = false; this.storageProblem = String(error); }
     // designs saved by the first prototype started from a terrain-hugging (invalid) profile: drop those
     this.design = d && Array.isArray(d.pis) && !(d as { naive?: boolean }).naive ? d : initial();
     this.prepare(this.design);
