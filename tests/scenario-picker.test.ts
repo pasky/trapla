@@ -25,6 +25,16 @@ describe('scenario availability', () => {
     expect(fetch.mock.calls.some(([url]) => url.endsWith('/ground.u8.gz'))).toBe(true);
   });
 
+  it('does not offer a partially rebuilt new pack with old metadata', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('meta.json')
+      ? Response.json({ ...meta, id: 'd35' }) : new Response(null, { status: 404 })));
+    expect(await scenarioAvailable('d35')).toBe(false);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('meta.json')
+      ? Response.json({ ...meta, id: 'd35' }) : url.endsWith('ready.json')
+        ? Response.json({ id: 'd35', ready: true }) : new Response(null)));
+    expect(await scenarioAvailable('d35')).toBe(true);
+  });
+
   it('rejects wrong identity or unsafe file names', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ...meta, id: 'other' })));
     expect(await scenarioAvailable('d11')).toBe(false);

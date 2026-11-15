@@ -34,6 +34,12 @@ def chain_reference(elements, cfg, project):
         nodes, geometry = el.get("nodes", []), el.get("geometry", [])
         if len(nodes) < 2 or len(nodes) != len(geometry) or len(set(nodes)) != len(nodes):
             raise ValueError(f"reference way {el['id']}: missing nodes/geometry or loop")
+        node_range = cfg.get("wayNodeRanges", {}).get(str(el["id"]))
+        if node_range is not None:
+            if len(node_range) != 2 or node_range[0] == node_range[1] or any(n not in nodes for n in node_range):
+                raise ValueError(f"reference way {el['id']}: invalid node range")
+            lo, hi = sorted(nodes.index(n) for n in node_range)
+            nodes, geometry = nodes[lo:hi + 1], geometry[lo:hi + 1]
         xy = np.asarray([project(p["lon"], p["lat"]) for p in geometry], dtype=float)
         if not np.isfinite(xy).all() or np.any(np.linalg.norm(np.diff(xy, axis=0), axis=1) <= 0):
             raise ValueError(f"reference way {el['id']}: invalid or duplicate coordinates")

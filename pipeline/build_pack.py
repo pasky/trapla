@@ -624,6 +624,9 @@ def build_vectors() -> dict:
 def main():
     CACHE.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
+    if SCENARIO.get("requireComplete", False):
+        # A failed rebuild may leave mixed old/new files. Never advertise that as playable.
+        (OUT / "ready.json").unlink(missing_ok=True)
     # Resolve references before expensive raster work; bad manifests must fail early.
     pts, kinds, cum, a, b = official_line()
     h = fetch_terrain()
@@ -709,18 +712,23 @@ def main():
         meta["baselineNote"] = SCENARIO["baselineNote"]
     if SCENARIO.get("sources"):
         meta["sources"] = SCENARIO["sources"]
-    (OUT / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
+    meta_path = OUT / "meta.json"
+    # Frozen legacy pack fingerprints include formatting bytes. Do not rewrite equal metadata.
+    if not meta_path.exists() or json.loads(meta_path.read_text()) != meta:
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False))
     (OUT / "overlays.json").write_text(json.dumps(
         {"buildings": buildings, "places": places, "roads": roads, **ENGINE_OVERLAYS}, ensure_ascii=False, separators=(",", ":")))
     if SCENARIO.get("requireComplete", False):
         # Separate manifest leaves legacy D11 metadata/fingerprint semantics untouched.
         manifest = {"config": SCENARIO, "files": {}, "inputs": {}}
         for path in sorted(OUT.iterdir()):
-            if path.is_file() and path.name != "manifest.json":
+            if path.is_file() and path.name not in ("manifest.json", "ready.json"):
                 manifest["files"][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted(CACHE.glob(f"osm_{SCENARIO['id']}_*.json")):
             manifest["inputs"][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
         (OUT / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+        # Written last; the picker requires this for new packs (legacy D11 is unchanged).
+        (OUT / "ready.json").write_text(json.dumps({"id": SCENARIO["id"], "ready": True}))
     tot = sum(p.stat().st_size for p in OUT.iterdir())
     log(f"pack written to {OUT}: {tot / 1e6:.1f} MB; A={meta['A']} B={meta['B']}; "
         f"{len(buildings)} buildings, {len(places)} places")
