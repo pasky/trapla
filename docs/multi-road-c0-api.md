@@ -132,7 +132,7 @@ best score. Initial material balance remains independent per construction route.
    saved designs, but new bootstrap should use the separate project namespace and loader.
 2. Extract engineering/acquisition/noise decision stages before any global ledger. The current route
    adapter still runs legacy internal decisions; it cannot be summed into a network score.
-3. Complete C1 beyond the implemented topology foundation: class-specific reference-path engineering,
+3. Complete C1 in the order of `docs/multi-road-plan.md` §9 ((a) end tie-ins, (b) replacements, (c) interactions): class-specific reference-path engineering,
    actual branch connectors/relocations, joint footprint/crossing checks, acquisition/noise decisions,
    then final ledger pricing and accepted replacement publication. Do not sum route-kernel bills.
 4. Add bounded old+new influence cache invalidation after dependency semantics are implemented. Current
@@ -154,6 +154,13 @@ retain their category/speed; an unknown or malformed newer save is never overwri
   `shared-building`, `shared-noise`, `too-many-roads`).
 - Each evaluated road's own violations stay in `issues` (`blocking: 'invalid'`, route-qualified) even while
   unpriced. Interactions add `blocking: 'incomplete'` issues scoped to both roads (and the house, if any).
+- Every `ProjectIssue` has `check: 'violation' | 'not-checked'`. 'violation' is a checked rule the design breaks
+  (norm, game rule such as "Road ends nowhere", or an engine limit of a checked design); 'not-checked' means
+  the engine cannot check it yet. Show the two separately. `blocking` still says what it does to the score.
+- Every crossing or carriageway overlap between two designed roads' surfaces is its own not-checked issue
+  (`roads-cross` "Roads cross here" / `roads-overlap` "Roads overlap here", engine limit), scoped to both
+  roads, with one route-qualified location per road and plan position `at`, whatever else is wrong.
+  A tie-in at another road also shows here until junctions between new roads are checked (C1 (a)).
 - Undo/discard is just a new snapshot: removing the unpriced change restores the scored single-road result.
 
 One road: the exact legacy facade, bit-identical to `evaluate` (`eval-regression` checks every frozen D11

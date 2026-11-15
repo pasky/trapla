@@ -169,6 +169,11 @@ export interface ProjectIssue {
   /** Legacy station/index/target fields are deliberately excluded. IDs/codes are not player labels. */
   violation: Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'basis' | 'rule'>;
   blocking: 'invalid' | 'incomplete';
+  /** 'violation': a checked rule the design breaks (norm, game rule or engine limit of a checked design).
+   * 'not-checked': the engine cannot check this yet (e.g. road-road crossings); show separately. */
+  check: 'violation' | 'not-checked';
+  /** Plan position of a point finding (e.g. where two roads cross), for locating it on the map. */
+  at?: { x: number; y: number };
 }
 export interface TransportSurface {
   routeId: RouteId; revision: number;

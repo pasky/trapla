@@ -4,13 +4,13 @@ import { CATEGORIES } from './data/categories';
 import { NOISE } from './data/urban';
 import type { EvalContext, Result } from './evaluate';
 import type { ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectReceiver, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
-import { screenIndependence } from './project-ledger';
+import { routeContacts, screenIndependence, type RouteContact } from './project-ledger';
 import { evaluateProjectRoad } from './project-road';
 import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment }
-const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete',
+const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete', check: 'not-checked',
   violation: { kind: 'crossing', basis: 'engine', title: 'Road checks are not finished',
     fix: 'Keep the existing road until its replacement is checked',
     rule: 'Engine limit: this foundation does not yet check shared construction, connections and combined noise for this design.' } });
@@ -67,7 +67,7 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
 const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
   // Define arbitrary stable IDs safely, including object-prototype names.
   Object.defineProperty(record, id, { value, enumerable: true, configurable: true, writable: true });
-const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', scope: { routeIds: [route.id] },
+const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', check: 'violation', scope: { routeIds: [route.id] },
   locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
   violation: { kind: v.kind, title: v.title, fix: v.fix, basis: v.basis, rule: v.rule, ...(v.detail ? { detail: v.detail } : {}) } }));
 function routeOutcome(ctx: ProjectEvalContext, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
@@ -91,16 +91,23 @@ function routeOutcome(ctx: ProjectEvalContext, route: RouteDesign, r: Result): {
   });
   return { buildings, receivers };
 }
-const interactionIssue = (routeIds: string[], code: string, buildingIndex?: number): ProjectIssue => ({ code, blocking: 'incomplete',
+const interactionIssue = (routeIds: string[], code: string, buildingIndex?: number): ProjectIssue => ({ code, blocking: 'incomplete', check: 'not-checked',
   scope: { routeIds, ...(buildingIndex === undefined ? {} : { buildingIndex }) }, locations: [],
   violation: { kind: 'crossing', basis: 'engine', title: 'These roads affect each other',
     fix: 'Move them further apart to price them together',
     rule: 'Engine limit: roads are priced together only when they share no land, houses, noise or existing road; checking them jointly is not finished.' } });
 
-const endsNowhere = (routeId: string): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'incomplete',
+const endsNowhere = (routeId: string): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'incomplete', check: 'violation',
   scope: { routeIds: [routeId] }, locations: [],
   violation: { kind: 'crossing', basis: 'game', title: 'Road ends nowhere', fix: 'Connect both ends to a road',
     rule: 'Game rule: a new road is priced only when both ends join a road or a scenario end.' } });
+
+const contactIssue = (c: RouteContact): ProjectIssue => ({ code: c.kind === 'crossing' ? 'roads-cross' : 'roads-overlap',
+  blocking: 'incomplete', check: 'not-checked', scope: { routeIds: [...c.routeIds] }, at: { ...c.at },
+  locations: c.routeIds.map((routeId, k) => ({ routeId, ...c.stations[k] })),
+  violation: { kind: 'crossing', basis: 'engine', title: c.kind === 'crossing' ? 'Roads cross here' : 'Roads overlap here',
+    fix: c.kind === 'crossing' ? 'Move one road so they do not cross' : 'Move the roads apart',
+    rule: 'Engine limit: crossings between new roads cannot be checked yet.' } });
 
 export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapshot): ProjectResult {
   assertProjectDesign(snapshot.design);
@@ -121,6 +128,12 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   const unprice = (routeIds: string[], reason: string) => {
     for (const routeId of routeIds) if (!result.cost.unpriced.some(u => u.routeId === routeId)) result.cost.unpriced.push({ routeId, reason });
   };
+  // Every crossing/overlap between designed roads is reported on its own, whatever else is wrong.
+  const corridorOf = new Map(design.corridors.flatMap(c => [[c.children.forward, c.id], [c.children.reverse, c.id]] as const));
+  const surfaces = design.routes.flatMap(r => result.routes[r.id].surface ?? []);
+  for (const c of routeContacts(surfaces, (a, b) => corridorOf.has(a) && corridorOf.get(a) === corridorOf.get(b))) {
+    result.issues.push(contactIssue(c)); unprice(c.routeIds, contactIssue(c).code);
+  }
   const missionRoutes = design.routes.filter(r => r.role === 'mission');
   if (design.mission.connections.length && missionRoutes.length !== 1) {
     result.issues.push(issue(missionRoutes[0]?.id ?? '', 'mission-needs-network'));

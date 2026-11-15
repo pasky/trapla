@@ -6,7 +6,7 @@ import type { BuildingIndex } from './buildings';
 import type { CrossingGeometry, CrossingPoint } from './crossings';
 import { NOISE } from './data/urban';
 import type { Result } from './evaluate';
-import type { RouteId } from './project';
+import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
@@ -221,4 +221,57 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     // (≤ +0.043 dB at a house exactly at the limit), published as omittedEnergy.
   }
   return out();
+}
+
+/** Where two designed roads' centrelines cross, or their carriageways overlap without crossing. Plan
+ * geometry only: whether the crossing could be built (bridge, junction, clearance) is NOT checked here. */
+export interface RouteContact {
+  kind: 'crossing' | 'overlap'; routeIds: [RouteId, RouteId];
+  /** Station on each road: a point for a crossing, the overlapping range for an overlap. */
+  stations: [{ s0: number; s1: number }, { s0: number; s1: number }];
+  at: { x: number; y: number };
+}
+interface Piece extends Capsule { i: number; s0: number; s1: number }
+function pieces(surface: TransportSurface): { chunks: (Chunk & { items: Piece[] })[] } {
+  const out: Piece[] = [], p = surface.points;
+  for (let i = 1; i < p.length; i++) out.push({ ax: p[i - 1].x, ay: p[i - 1].y, bx: p[i].x, by: p[i].y,
+    r: Math.max(p[i - 1].halfWidth, p[i].halfWidth), i, s0: p[i - 1].s, s1: p[i].s });
+  return { chunks: chunks(out) as (Chunk & { items: Piece[] })[] };
+}
+export function routeContacts(surfaces: readonly TransportSurface[], sameGroup: (a: RouteId, b: RouteId) => boolean = () => false): RouteContact[] {
+  const all = surfaces.map(pieces), contacts: RouteContact[] = [];
+  for (let a = 0; a < surfaces.length; a++) for (let b = a + 1; b < surfaces.length; b++) {
+    const A = surfaces[a].routeId, B = surfaces[b].routeId;
+    if (sameGroup(A, B)) continue;
+    const crossings: RouteContact[] = [], crossingSegments = new Set<number>(), near: [Piece, Piece][] = [];
+    for (const p of all[a].chunks) for (const q of all[b].chunks) if (boxGap(p, q) <= 0) for (const u of p.items) for (const v of q.items) {
+      const dx = u.bx - u.ax, dy = u.by - u.ay, ex = v.bx - v.ax, ey = v.by - v.ay, den = dx * ey - dy * ex;
+      if (Math.abs(den) > 1e-12) {
+        const wx = v.ax - u.ax, wy = v.ay - u.ay, t = (wx * ey - wy * ex) / den, w = (wx * dy - wy * dx) / den;
+        if (t >= 0 && t <= 1 && w >= 0 && w <= 1) {
+          const at = { x: u.ax + t * dx, y: u.ay + t * dy };
+          crossingSegments.add(u.i);
+          // A crossing exactly at a shared vertex is found by both neighbouring segments: keep one.
+          if (!crossings.some(c => Math.hypot(c.at.x - at.x, c.at.y - at.y) < 1e-6)) crossings.push({ kind: 'crossing', routeIds: [A, B], at,
+            stations: [{ s0: u.s0 + t * (u.s1 - u.s0), s1: u.s0 + t * (u.s1 - u.s0) }, { s0: v.s0 + w * (v.s1 - v.s0), s1: v.s0 + w * (v.s1 - v.s0) }] });
+          continue;
+        }
+      }
+      if (!(segmentSegment(u, v) >= u.r + v.r)) near.push([u, v]); // NaN fails closed
+    }
+    contacts.push(...crossings);
+    // Overlap runs along road A; a run around a reported crossing is that crossing, not a second finding.
+    near.sort((x, y) => x[0].i - y[0].i);
+    for (let k = 0; k < near.length;) {
+      let end = k;
+      while (end + 1 < near.length && near[end + 1][0].i - near[end][0].i <= 1) end++;
+      const run = near.slice(k, end + 1); k = end + 1;
+      if (run.some(([u]) => crossingSegments.has(u.i))) continue;
+      const first = run[0][0];
+      contacts.push({ kind: 'overlap', routeIds: [A, B], at: { x: (first.ax + first.bx) / 2, y: (first.ay + first.by) / 2 },
+        stations: [{ s0: Math.min(...run.map(([u]) => u.s0)), s1: Math.max(...run.map(([u]) => u.s1)) },
+          { s0: Math.min(...run.map(([, v]) => v.s0)), s1: Math.max(...run.map(([, v]) => v.s1)) }] });
+    }
+  }
+  return contacts;
 }
