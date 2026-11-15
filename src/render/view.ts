@@ -939,9 +939,10 @@ export class View {
 
   /**
    * Zoom by `s` (new distance = old × s) about the point under the screen position: the cursor ray's
-   * crossing with the orbit target's level, which keeps its place on screen. Both camera and target are
-   * scaled about it, so the target stays on its level (never sinks below the ground) and the distance
-   * changes by exactly `s` (within min/max distance) from any distance and any cursor position.
+   * crossing with the orbit target's horizontal plane, which keeps its place on screen (towards the
+   * horizon, or above it, a point at most 3 distances from the target, then the target itself). Both
+   * camera and target are scaled about it, so the target keeps its height and the distance changes by
+   * exactly `s` (within min/max distance) from any distance and any cursor position.
    */
   zoomAt(clientX: number, clientY: number, s: number) {
     this.flight++; // a glide in progress stops

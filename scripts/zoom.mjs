@@ -41,6 +41,13 @@ try {
   };
   // a pinch's fingers ≈ 3 % per event of deltaY 3, a wheel notch (100 px) 10–50 %; out as fast as in
   const sane = async (tag, at) => {
+    // the ground under the cursor stays under it
+    const q0 = await T(({ x, y }) => window.trapla.pick(x, y), at);
+    await factor(at, -3, true, 8);
+    const q1 = await T(({ x, y }) => window.trapla.pick(x, y), at);
+    await factor(at, 3, true, 8);
+    const slip = Math.hypot(q1.x - q0.x, q1.y - q0.y), d = await dist();
+    ok(slip < d * 0.02, `${tag}: the ground under the cursor stays there (${slip.toFixed(1)} m off at ${d.toFixed(0)} m)`);
     const pin = await factor(at, -3, true), pout = await factor(at, 3, true);
     const win = await factor(at, -100, false), wout = await factor(at, 100, false);
     ok(pin > 0.94 && pin < 0.985 && pout > 1.015 && pout < 1.06 && Math.abs(pin * pout - 1) < 0.005,
@@ -59,6 +66,7 @@ try {
   await sane('after a violation click, cursor off-centre', { x: centre.x + 200, y: centre.y - 150 });
   await sane('cursor near the top of the map', { x: centre.x, y: view.y + 40 });
   const bend = await T(() => { const el = document.querySelector('.pi.sel'); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  ok(bend && /\bpi sel\b/.test(await T(({ x, y }) => document.elementFromPoint(x, y)?.className ?? '', bend ?? {})), 'the clicked violation selects its bend');
   if (bend) {
     const r0 = (await T(() => window.trapla.getDesign())).pis.map((p) => p.r).join();
     const f = await factor(bend, 3, true);
@@ -78,17 +86,36 @@ try {
   const need = 100 * Math.log(20000 / near) / 4;
   ok(near < 100 && n < need * 1.15, `from ${near.toFixed(0)} m out to 20 km takes ${n} pinch events of deltaY 4 (fingers: ${need.toFixed(0)})`);
 
-  // 3. after a profile click's glide, and a wheel during the glide stops it
-  await T(() => window.trapla.profileFit());
-  await T(() => window.trapla.whenIdle());
-  const p = await T(() => window.trapla.profilePoint(16000));
-  await page.mouse.click(p.x, p.y - 60);
-  await wheel(centre, -100, false); // mid-glide: the player takes over
-  const g0 = await dist();
-  await page.waitForTimeout(700);
-  const g1 = await dist();
-  ok(Math.abs(g1 / g0 - 1) < 0.01, `a wheel during the glide stops it (${g0.toFixed(0)} → ${g1.toFixed(0)} m after 0.7 s)`);
+  // 3. after a profile click's glide; a wheel during the glide stops it
+  const station = (s) => T((s) => { const r = window.trapla.result(), i = Math.round(s / r.ds); return { x: r.x[i], y: r.y[i] }; }, s);
+  const target = () => T(() => window.trapla.cameraTarget());
+  const profileClick = async (s) => {
+    await T(() => window.trapla.profileFit());
+    await T(() => window.trapla.whenIdle());
+    const p = await T((s) => window.trapla.profilePoint(s), s);
+    await page.mouse.click(p.x, p.y - 60);
+  };
+  await profileClick(16000);
+  const at = await station(16000);
+  let t1 = await target();
+  for (let k = 0; k < 50 && Math.hypot(t1.x - at.x, t1.y - at.y) > 50; k++) { await page.waitForTimeout(100); t1 = await target(); }
+  ok(Math.hypot(t1.x - at.x, t1.y - at.y) < 50, 'a profile click glides the map there');
   await sane('after a profile click', { x: centre.x - 250, y: centre.y + 120 });
+
+  // the wheel lands in the same task as the click (software rendering may finish a timed glide before a
+  // separately sent event arrives): the glide has only just started
+  await T(() => window.addEventListener('pointerup', () => {
+    document.querySelector('#view canvas').dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: innerWidth / 3, clientY: innerHeight / 2, bubbles: true, cancelable: true }));
+  }, { once: true }));
+  await profileClick(6000);
+  const to = await station(6000);
+  const g0 = { d: await dist(), t: await target() };
+  await page.waitForTimeout(700);
+  await frames();
+  const g1 = { d: await dist(), t: await target() };
+  const moved = Math.hypot(g1.t.x - g0.t.x, g1.t.y - g0.t.y), left = Math.hypot(g1.t.x - to.x, g1.t.y - to.y);
+  ok(Math.hypot(t1.x - to.x, t1.y - to.y) > 1000 && left > 1000 && moved < 1 && Math.abs(g1.d / g0.d - 1) < 0.001,
+    `a wheel during the glide stops it (target ${left.toFixed(0)} m short of the clicked spot, moves ${moved.toFixed(1)} m, distance ${g0.d.toFixed(0)} → ${g1.d.toFixed(0)} m)`);
 
   // 4. a ctrl-wheel (pinch) over the HUD does not zoom the page itself
   const pageZoom = await T(() => document.getElementById('hud').dispatchEvent(new WheelEvent('wheel', { deltaY: -3, ctrlKey: true, bubbles: true, cancelable: true })));
