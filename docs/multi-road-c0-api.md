@@ -127,12 +127,43 @@ best score. Initial material balance remains independent per construction route.
    saved designs, but new bootstrap should use the separate project namespace and loader.
 2. Extract engineering/acquisition/noise decision stages before any global ledger. The current route
    adapter still runs legacy internal decisions; it cannot be summed into a network score.
-3. Immutable transport index, bounded promotion preserving branches, joint candidate-surface queries,
-   candidate/accepted source ownership, effective 3D network and shared ledger; C1 reconnection slice.
-4. Worker dispatch/cache with bounded old+new influence invalidation, project acoustic/property decisions.
+3. Complete C1 beyond the implemented topology foundation: class-specific reference-path engineering,
+   actual branch connectors/relocations, joint footprint/crossing checks, acquisition/noise decisions,
+   then final ledger pricing and accepted replacement publication. Do not sum route-kernel bills.
+4. Add bounded old+new influence cache invalidation after dependency semantics are implemented. Current
+   full project publication recomputes routes; drag preview evaluates only the active route.
 
 Per-scenario `initial` category/speed is only a new-project default. Existing/current/best legacy designs
 retain their category/speed; an unknown or malformed newer save is never overwritten with those defaults.
 
-No browser/GPU gates requested for this unintegrated types/API checkpoint. Integration/full gates and
+## Source proposal foundation
+
+`src/core/project-network.ts` provides `ProjectTransportIndex`, `ProjectSurfaceIndex`,
+`EffectiveProjectNetwork` and `projectNetworkViews`. Source callbacks must report unavailable terrain as
+non-finite, not clamp it into a usable road height. The source graph is cloned/frozen, canonical station
+bounds are checked, unknown bridge/tunnel elevations stay unknown, render intervals clip through their
+explicit correspondence, and candidate exclusions remain separate from the accepted network. Spatial
+queries have cell/work budgets, inclusive diagonal-corner coverage and unsafe-coordinate rejection.
+
+`src/core/project-promotion.ts` exports:
+
+- `groundRoadSourceInfo(base, sourceId)`: source name/class, existing study-width prior and numeric tagged
+  speed or null. It does not copy mission speed/traffic onto a track or treat missing traffic as silence.
+- `promoteGroundRoad(base, {routeId, acousticSourceId, interval, specification, name})`: an atomic
+  `promote` command preserving the exact bounded reference path, endpoint source identities and every
+  real branch occurrence (including another station on the same source). Caller supplies explicit road
+  operation assumptions; unresolved/conflicting sources and unsupported structures are refused.
+- `assessReplacementConnections(base, project, proposedSurfaces)`: **topology feasibility only**, not
+  engineering acceptance. It checks branches, source continuations, conflicting claims, current proposed
+  XYZ, fingerprints, and connected dependency failures. Its `feasibleIntervals` MUST NOT directly become
+  accepted render/source replacements or a valid score before the remaining engineering stages finish.
+
+The first UI wave may edit, undo and reload these proposals; it remains unscored. Invalid new-road
+geometry and its route bill remain visible. `RouteResult.accepted` is not a visibility filter;
+only final `acceptedReplacements` may remove base infrastructure. The worker deliberately publishes none
+for multi-road/source proposals in this foundation. Tests exercise source promotion/branches,
+reconnection to another proposed road's XYZ, separation from stale accepted surfaces, undo/reload,
+repeated-node identities and conservative refusal—not completed C1 construction/accounting.
+
+No browser/GPU gates were run for the initial unintegrated types/API checkpoint. Integration/full gates and
 screenshots are still required before feature merge. No claim of playable multi-road scoring yet.

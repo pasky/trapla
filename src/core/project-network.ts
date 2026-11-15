@@ -22,18 +22,27 @@ class SegmentGrid<T extends { a: { x: number; y: number }; b: { x: number; y: nu
       const { a, b } = segment, dx = b.x - a.x, dy = b.y - a.y;
       let x = Math.floor(a.x / this.size), y = Math.floor(a.y / this.size);
       const endX = Math.floor(b.x / this.size), endY = Math.floor(b.y / this.size), sx = Math.sign(dx), sy = Math.sign(dy);
+      if (![x, y, endX, endY].every(Number.isSafeInteger)) throw new Error('Unsafe transport grid coordinates');
       let tx = dx ? ((x + (sx > 0 ? 1 : 0)) * this.size - a.x) / dx : Infinity;
       let ty = dy ? ((y + (sy > 0 ? 1 : 0)) * this.size - a.y) / dy : Infinity;
       const stepX = dx ? this.size / Math.abs(dx) : Infinity, stepY = dy ? this.size / Math.abs(dy) : Infinity;
       const steps = Math.abs(endX - x) + Math.abs(endY - y) + 1;
       if (steps > 100000) throw new Error('Transport segment exceeds spatial-index budget');
-      for (let i = 0; i < steps; i++) {
-        const key = `${x}:${y}`;
+      const put = (cx: number, cy: number) => {
+        const key = `${cx}:${cy}`;
         let bucket = this.cells.get(key); if (!bucket) this.cells.set(key, bucket = []);
         if (++entries > 2000000) throw new Error('Transport spatial index exceeds memory budget');
         bucket.push(segment);
+      };
+      for (let i = 0; i < steps; i++) {
+        put(x, y);
         if (x === endX && y === endY) break;
-        if (tx < ty) { x += sx; tx += stepX; } else { y += sy; ty += stepY; }
+        if (Number.isFinite(tx) && Number.isFinite(ty) && Math.abs(tx - ty) <= 1e-12) {
+          // Inclusive broad-phase queries must see both side cells touched at a grid corner,
+          // especially mixed-sign diagonals whose canonical corner cell is not on the traversal.
+          put(x + sx, y); put(x, y + sy);
+          x += sx; y += sy; tx += stepX; ty += stepY;
+        } else if (tx < ty) { x += sx; tx += stepX; } else { y += sy; ty += stepY; }
       }
     }
   }
@@ -42,6 +51,7 @@ class SegmentGrid<T extends { a: { x: number; y: number }; b: { x: number; y: nu
       || bounds.maxX < bounds.minX || bounds.maxY < bounds.minY) throw new Error('Invalid spatial query');
     const x0 = Math.floor(bounds.minX / this.size), x1 = Math.floor(bounds.maxX / this.size);
     const y0 = Math.floor(bounds.minY / this.size), y1 = Math.floor(bounds.maxY / this.size);
+    if (![x0, x1, y0, y1].every(Number.isSafeInteger)) throw new Error('Unsafe transport query coordinates');
     if ((x1 - x0 + 1) * (y1 - y0 + 1) > 100000) throw new Error('Transport query exceeds spatial-index budget');
     const seen = new Set<T>();
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (const segment of this.cells.get(`${x}:${y}`) ?? []) {
@@ -113,7 +123,7 @@ export class ProjectTransportIndex implements TransportSurfaceQuery {
     const source = this.sources.get(interval.sourceId)!, out: { nodeId: string; s: number; other: SourceLocation[] }[] = [];
     for (let i = 0; i < source.nodes.length; i++) {
       const s = source.stations[i]; if (s < interval.s0 || s > interval.s1) continue;
-      const other = (this.nodeUses.get(source.nodes[i]) ?? []).filter(u => u.sourceId !== source.id);
+      const other = (this.nodeUses.get(source.nodes[i]) ?? []).filter(u => u.sourceId !== source.id || u.s !== s);
       if (other.length) out.push({ nodeId: source.nodes[i], s, other: other.map(u => ({ ...u })) });
     }
     return out;
