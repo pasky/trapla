@@ -24,7 +24,7 @@ export const REMOVAL = {
 const UNDER = 1;
 
 export interface ReplacementWork {
-  kind: 'removal' | 'reconnection' | 'junction' | 'land';
+  kind: 'removal' | 'reconnection' | 'junction' | 'land' | 'noise-wall' | 'buyout';
   /** where along the new road, for display */
   s: number; x: number; y: number;
   /** removed old road length, or link length (0: the side road meets the new road where it is), m */

@@ -8,11 +8,15 @@ import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type RouteConta
 import { evaluateProjectRoad, type SourceWays } from './project-road';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
+import { combineNoise, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
 import * as dm from './detmath';
 
-export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays }
+export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
+  /** Combined noise of several roads (C1 c): answers each road's per-storey energy at a house from its
+   * physical source, and project walls. Absent: houses heard by two roads keep the project unpriced. */
+  combinedNoise?: (routes: readonly { route: RouteDesign; result: Result }[]) => NoiseDecider | null }
 const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete', check: 'not-checked',
   violation: { kind: 'crossing', basis: 'engine', title: 'Road checks are not finished',
     fix: 'Keep the existing road until its replacement is checked',
@@ -304,9 +308,28 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
           const n = nearestStation(legacy, w.x, w.y); return { ax: w.x, ay: w.y, bx: legacy.x[n], by: legacy.y[n], r: (ROAD_CLASSES[w.cls ?? '']?.width ?? 6.5) / 2 };
         }) } : {}) };
   }), ctx.legacy.buildings);
-  if (!screen.independent) {
-    for (const i of screen.interactions) { result.issues.push(interactionIssue(i.routeIds, i.reason, i.buildingIndex)); unprice(i.routeIds, i.reason); }
+  // Houses heard by two or more roads are decided together when the combined-noise calculator is there;
+  // every other interaction (shared land, roads, buildings) still keeps the project unpriced.
+  const heard = screen.interactions.filter(i => i.reason === 'shared-noise' && i.buildingIndex !== undefined);
+  const decider = heard.length && ctx.legacy.buildings ? ctx.combinedNoise?.(priced.map(({ route, legacy }) => ({ route, result: legacy }))) ?? null : null;
+  const blocking = screen.interactions.filter(i => !(decider && heard.includes(i)));
+  if (blocking.length) {
+    for (const i of blocking) { result.issues.push(interactionIssue(i.routeIds, i.reason, i.buildingIndex)); unprice(i.routeIds, i.reason); }
     return finish();
+  }
+  const together = decider ? combineNoise(heard.map(i => i.buildingIndex!), decider, ctx.legacy.buildings!,
+    new Set(priced.flatMap(({ legacy }) => [...legacy.demolished, ...legacy.boughtOut].map(b => b.j)))) : [];
+  for (const h of together) {
+    const owner = h.wall?.routeId ?? h.buyout?.routeId; if (!owner) continue;
+    const r = priced.find(p => p.route.id === owner)!.legacy, b = ctx.legacy.buildings!.items[h.buildingIndex];
+    const k = nearestStation(r, b[0], b[1]);
+    let list = ownWorks.get(owner); if (!list) ownWorks.set(owner, list = []);
+    const work: ReplacementWork = h.wall
+      ? { kind: 'noise-wall', s: r.s[k], x: b[0], y: b[1], length: h.wall.length, cost: h.wall.cost,
+        label: `Noise wall ${h.wall.height} m for a house both roads are heard at (${Math.round(h.wall.length)} m)` }
+      : { kind: 'buyout', s: r.s[k], x: b[0], y: b[1], length: 0, cost: h.buyout!.cost, label: 'House bought out: too loud with both roads together' };
+    list.push(work);
+    result.works.items.push({ ...replacementWork(priced.find(p => p.route.id === owner)!.route, list.length - 1, work), id: `${owner}:noise:${h.buildingIndex}` });
   }
   let total = 0, valid = true;
   const receivers = new Map<number, ProjectReceiver>();
@@ -331,6 +354,16 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
         dayDb: add(seen.dayDb, r.dayDb), nightDb: add(seen.nightDb, r.nightDb), action: seen.action === 'buy' || r.action === 'buy' ? 'buy' : 'retain' });
     }
   }
+  // a house decided together: its combined level per the project's decision (energy sum, prevailing limit)
+  for (const h of together) {
+    const seen = receivers.get(h.buildingIndex);
+    receivers.set(h.buildingIndex, { buildingIndex: h.buildingIndex, height: seen?.height ?? NOISE.receiverHeight,
+      contributions: h.sources.map(s => { const top = s.storeys[s.storeys.length - 1];
+        return { sourceId: s.sourceId, routeId: s.routeId, buildingIndex: h.buildingIndex, height: top?.height ?? NOISE.receiverHeight,
+          dayEnergy: top?.rawDay ?? 0, nightEnergy: top?.rawNight ?? 0, policy: 'combined' }; }),
+      dayDb: h.dayDb, nightDb: h.nightDb, dayLimit: h.dayLimit, nightLimit: h.nightLimit, action: h.decision === 'buy' ? 'buy' : 'retain' });
+    if (h.decision === 'buy') result.buildings.push({ buildingIndex: h.buildingIndex, action: 'buy', cost: h.buyout!.cost });
+  }
   result.receivers = [...receivers.values()];
   result.cost.total = total; result.complete = true; result.valid = valid;
   result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: screen.omittedDayEnergy,
@@ -350,7 +383,7 @@ const SHARED_PARTS = ['roadBase', 'excavation', 'fillPlacing', 'haul', 'surplusH
 /** One replacement work in the shared ledger, owned and paid by its rebuilt road. */
 function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][number]): SharedWork {
   return { id: `${route.id}:${w.kind}:${k}`, owner: { kind: 'route', id: route.id }, participants: [route.id],
-    kind: w.kind === 'removal' ? 'formation' : w.kind === 'land' ? 'land' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
+    kind: w.kind === 'removal' ? 'formation' : w.kind === 'land' ? 'land' : w.kind === 'noise-wall' ? 'noise' : w.kind === 'buyout' ? 'property' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
     geometry: { meshes: [], terrainMasks: [], measurements: [{ id: `${route.id}:${w.kind}:${k}:length`, meshIds: [], quantity: w.length, unit: 'm' }] },
     cost: w.cost, dependencies: [], accepted: false, label: w.label, at: { x: w.x, y: w.y, s: w.s } };
 }

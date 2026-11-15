@@ -150,3 +150,26 @@ describe('a roundabout where the player chooses it', () => {
     expect(evaluateProject(f.ctx, f.snapshot).routes.side.legacy!.violations.some(v => /A roundabout cannot be built on a track/.test(v.title))).toBe(true);
   });
 });
+
+describe('houses heard by both roads', () => {
+  const at = (routeId: string, db: number) => ({ routeId, sourceId: `physical-${routeId}`, dayLimit: 60, nightLimit: 50,
+    storeys: [{ height: 1.5, rawDay: 10 ** (db / 10), rawNight: 10 ** ((db - 10) / 10), day: 10 ** (db / 10), night: 10 ** ((db - 10) / 10) }] });
+  it('stay unpriced without the combined-noise calculator, and are decided once with it', () => {
+    const house = new BuildingIndex([[650, 550, 5]]); // between our road (y = 250) and the side road (y = 850)
+    const { ctx, snapshot } = fixture('tertiary', [], house);
+    const alone = evaluateProject(ctx, snapshot);
+    expect(alone.cost.unpriced.map(u => u.reason)).toContain('shared-noise');
+    const mission = snapshot.design.routes[0].id;
+    const decided = evaluateProject({ ...ctx, combinedNoise: routes => {
+      expect(routes.map(r => r.route.id).sort()).toEqual([mission, 'side'].sort());
+      return { sources: () => [at(mission, 58), at('side', 57)], tryWall: () => null };
+    } }, snapshot);
+    expect(decided.cost.unpriced).toEqual([]);
+    const buy = decided.works.items.find(w => w.kind === 'property')!;
+    expect(buy).toMatchObject({ owner: { id: mission }, accepted: true, label: 'House bought out: too loud with both roads together' });
+    expect(decided.cost.total).toBeCloseTo(decided.cost.routes[mission] + decided.cost.routes.side, 3);
+    expect(decided.cost.routes[mission]).toBeCloseTo(decided.cost.alone[mission] + buy.cost, 3);
+    expect(decided.receivers.find(r => r.buildingIndex === 0)).toMatchObject({ action: 'buy', dayLimit: 60 });
+    expect(decided.buildings.filter(b => b.buildingIndex === 0 && b.action === 'buy')).toHaveLength(1);
+  });
+});
