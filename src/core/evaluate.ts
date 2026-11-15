@@ -880,9 +880,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       if (keptIds.has(j)) {
         buildingViolations.push({ kind: 'building', basis: 'game', s0: st.s[p.i], s1: st.s[p.i],
           title: 'The road runs through a building you kept',
-          fix: `Buy out building #${j}, or move the road and its working strip clear of its footprint`,
-          detail: `Building #${j} is retained: no acquisition is billed. The collision includes slopes/deck and the ${BUILDING_RULES.clearance} m working strip.`,
-          rule: 'A kept building cannot be demolished by the road footprint or working strip.' });
+          fix: `Buy out building #${j}, or move the road so that it and its ${BUILDING_RULES.clearance} m working strip miss the building`,
+          detail: `You chose to keep building #${j}, so it is not bought. Our slopes or bridge deck, plus a ${BUILDING_RULES.clearance} m working strip, reach it.`,
+          rule: 'Game rule: a building you keep must stay clear of our road, its slopes and its working strip.' });
         continue;
       }
       gone[j] = 1;
@@ -1030,11 +1030,11 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const need = kind[i] === KIND.bridge ? STRUCTURE_RULES.riverClearance : size.minHeight;
     const ok = isTunnel || (waterCoverFits(above, need) && (kind[i] === KIND.bridge ? clearBridge : kind[i] === KIND.earth && size.type !== 'bridge'));
     if (!ok) violations.push({ kind: 'crossing', s0: c.s, s1: c.s,
-      title: shortTunnel ? 'Watercourse tunnel is too short' : above < 0 ? 'Cut intercepts a watercourse' : 'Watercourse crossing is obstructed',
-      fix: shortTunnel ? `Provide at least ${STRUCTURE_RULES.minTunnelLength} m of bored tunnel with sufficient cover, or pass above the channel` : size.type === 'bridge' || kind[i] === KIND.bridge ? `Provide a bridge clearing the channel and banks (${bridgeSpan.toFixed(1)} m opening along the road), at least ${need.toFixed(1)} m above the bed`
-        : `Raise the road to at least ${need.toFixed(1)} m over the stream for ${waterOpening(size)}, or use a bridge`,
-      detail: `Estimated Q100 ${size.q100.toFixed(2)} m³/s, DEM catchment ${c.catchmentKm2.toFixed(2)} km²${c.truncated ? ' (incomplete/uncertain)' : ''}. No automatic channel diversion is included. A deep bored tunnel can retain the surface watercourse.`,
-      basis: 'game', rule: 'Provisional flood-capacity, cover and ecological screening; not a hydraulic design (research/17)',
+      title: shortTunnel ? 'Tunnel under a stream is too short' : above < 0 ? 'Our cutting runs through a stream' : `Our road blocks a ${c.waterKind === 'river' ? 'river' : 'stream'}`,
+      fix: shortTunnel ? `Make the tunnel at least ${STRUCTURE_RULES.minTunnelLength} m long and deep enough, or pass above the stream` : size.type === 'bridge' || kind[i] === KIND.bridge ? `Put our road on a bridge spanning the water and its banks (${bridgeSpan.toFixed(0)} m along our road), at least ${need.toFixed(1)} m above the bed`
+        : `Raise our road here to at least ${need.toFixed(1)} m above the stream bed for a ${waterOpening(size)} culvert, or use a bridge`,
+      detail: `It may carry about ${size.q100.toFixed(1)} m³/s in a 100-year flood, from ${c.catchmentKm2.toFixed(1)} km² of land draining into it${c.truncated ? ' (a rough estimate: its area runs off the map)' : ''}. The game does not move streams for you; a deep tunnel can pass under it.`,
+      basis: 'game', rule: 'Game estimate (research/17): flood size, culvert cover and fish passage are screened, not a hydraulic design',
     });
     let cost = kind[i] === KIND.earth && above > 0 ? culvertCost(c, wd) : 0;
     if (run) {

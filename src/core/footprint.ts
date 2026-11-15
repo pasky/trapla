@@ -13,6 +13,7 @@ import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
 import { barrelLength, culvertEnvelope, barrelContains, barrelIntervals, waterOpening, waterSize, waterWidth, waterCoverFits, type WaterCrossing, type WaterSegment } from './watercourses';
+import { realignmentReason, roadRemedyDetail, roadRemedySource } from './terms';
 import { cellBounds, clipFootprint, FootprintGrid, insideFootprint, type FootprintCell, type Point2 } from './footprint-geometry';
 
 export interface FootprintConflict {
@@ -38,6 +39,10 @@ export interface FootprintConflict {
   /** Multiple removed old roads can share one independently accepted, priced connector. */
   originals?: CrossingPoint[][];
   sourceIntervals?: RoadSourceInterval[];
+  /** Where the price comes from (price-list items, research notes): pricing tooltips only. */
+  source?: string;
+  /** A road stretch closed instead of rebuilt; its ends stay connected over `detour` m of roads. */
+  closed?: { length: number; detour: number };
 }
 export interface FootprintRoute {
   n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
@@ -50,6 +55,7 @@ export interface FootprintRoute {
    * except these strictly retried ways. */
   strictWays?: ReadonlySet<number>;
 }
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
 /** OSM motorways are separate one-direction carriageways; D27.5 is the whole divided road. */
@@ -131,9 +137,29 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     return list;
   };
   const point = (p: Point2): CrossingPoint => ({ ...p, z: terrain.heightAt(p.x, p.y), ground: terrain.heightAt(p.x, p.y), surface: 'terrain' });
-  const block = (c: FootprintConflict, title: string, fix: string, rule: string) => {
+  const block = (c: FootprintConflict, title: string, fix: string, rule: string, basis: Violation['basis'] = 'game') => {
     conflicts.push(c);
-    violations.push({ kind: 'footprint', basis: 'game', s0: c.s0, s1: c.s1, title, fix, detail: c.detail, rule });
+    violations.push({ kind: 'footprint', basis, s0: c.s0, s1: c.s1, title, fix, detail: c.detail, rule });
+  };
+  const kmText = (s: number) => (s / 1000).toFixed(2);
+  const bridgeIt = (c: FootprintConflict) => `put our road on a bridge from km ${kmText(Math.max(0, c.s0 - 20))} to km ${kmText(Math.min(r.s[r.n - 1], c.s1 + 20))}`;
+  /** How far the route must move sideways so that our slope (plus half the feature and 3 m) clears
+   * these points; undefined when they lie on both sides (moving cannot clear them). */
+  const sideClearance = (points: readonly Point2[], i0: number, i1: number, half: number) => {
+    let need = 0, left = false, right = false;
+    for (const p of points) for (let i = Math.max(0, i0 - 2); i <= Math.min(r.n - 1, i1 + 2); i++) {
+      if (Math.abs((p.x - r.x[i]) * r.tx[i] + (p.y - r.y[i]) * r.ty[i]) > r.ds) continue;
+      const lateral = -(p.x - r.x[i]) * r.ty[i] + (p.y - r.y[i]) * r.tx[i];
+      const gap = (lateral >= 0 ? r.dayL[i] : r.dayR[i]) + half + TIE_IN_SETBACK - Math.abs(lateral);
+      if (gap <= 0) continue;
+      need = Math.max(need, gap); if (lateral >= 0) left = true; else right = true;
+    }
+    return left && right ? undefined : { metres: Math.max(1, Math.ceil(need)), away: left ? 'right' : 'left' };
+  };
+  const moveOrBridge = (c: FootprintConflict, points: readonly Point2[], half: number, what: string) => {
+    const move = sideClearance(points, c.i, c.i + Math.round((c.s1 - c.s0) / r.ds), half);
+    return move ? `Move the route at km ${kmText(c.s0)} about ${move.metres} m to the ${move.away} (away from the ${what}), or ${bridgeIt(c)}`
+      : `${cap(bridgeIt(c))} (the ${what} lies on both sides of our road here)`;
   };
   const roadCovered = new Map<number, [number, number][]>(), tieInCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
   const screened = (way: number) => [...roadCovered.get(way) ?? [], ...tieInCovered.get(way) ?? []];
@@ -253,8 +279,16 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       feature: 'road', action: 'blocked', roadId: way, cls, i: h.i, s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2),
       x: p.x, y: p.y, affectedLength: h.b - h.a, length: h.b - h.a, cost: 0, original, detail: '' };
     if (row.noAtGrade || h.structure) {
-      base.detail = `${row.label}: ${(h.b - h.a).toFixed(1)} m intersects ${h.structure ?? 'earthwork footprint'}. No cheap relocation allowance.`;
-      block(base, `${h.structure ?? 'Earthwork'} conflicts with ${row.label}`, 'Move the alignment/support clear, or provide a clear bridge span', 'Motorways and structure foundations cannot be silently displaced by the footprint');
+      if (h.structure) {
+        const support = h.structure === 'pier' ? 'bridge pier' : h.structure === 'abutment' ? 'bridge end' : 'tunnel entrance';
+        base.detail = `${(h.b - h.a).toFixed(0)} m of the ${row.label} lies where our ${support} must stand, and the game found no clear spot for it nearby.`;
+        block(base, `A ${support} stands on a ${row.label}`, `Move the route at km ${kmText(base.s0)} a little so the ${support} misses the ${row.label}, or make our ${h.structure === 'portal' ? 'tunnel' : 'bridge'} longer here`,
+          'Engine limit: bridge supports and tunnel entrances are moved up to 300 m and spans stretched up to 180 m to stand clear of roads, railways and water', 'engine');
+      } else {
+        base.detail = `Our earthworks cover ${(h.b - h.a).toFixed(0)} m of the ${row.label}; a ${row.label} cannot be moved aside or crossed at the same level.`;
+        block(base, `Our earthworks cover a ${row.label}`, moveOrBridge(base, original, existingHalfWidth(cls), row.label),
+          'ČSN 73 6101: motorways and expressways keep their own space and are crossed only at a different level (research/08)');
+      }
       continue;
     }
     const planned = planRoadRealignment({ route: r, terrain, roads: roads!, grid, way, cls, hit: h, covered: roadCovered, crossings, fixedConnections,
@@ -262,14 +296,14 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
     base.length = planned.length; base.cost = planned.cost; base.roadCode = planned.roadCode;
     base.geometry = planned.geometry; base.geometry.turnaroundRadius = planned.turnaroundRadius;
     base.original = planned.original ?? original; base.lumpCost = planned.lumpCost;
+    if (planned.closed) base.closed = planned.closed;
     const invalid = planned.problems.length > 0;
-    base.detail = `${row.label}: ${base.affectedLength!.toFixed(1)} m affected; ${planned.length.toFixed(1)} m realignment × SPK ${planned.roadCode}`
-      + (planned.retainingArea ? `; ${planned.retainingArea.toFixed(1)} m² additional retaining faces` : '')
-      + (planned.turnaroundArea ? `; ${planned.turnaroundArea.toFixed(1)} m² turning apron` : '')
-      + (planned.lumpCost ? '; existing service-access tie-in rebuilt (all-in allowance)' : '')
-      + `. ${invalid ? `Proposed path needs engineering: ${planned.problems.join('; ')}.` : 'Real-network tie-ins and any surviving branches are retained outside the footprint.'}`;
-    if (invalid) block(base, 'Road realignment needs engineering', `Move the alignment at km ${(base.s0 / 1000).toFixed(2)} clear of this ${base.affectedLength!.toFixed(1)} m road stretch, or bridge it; ${planned.problems[0]}`,
-      'A priced realignment must preserve network connections, clear other features and meet real roads at feasible grades');
+    base.detail = invalid
+      ? `${base.affectedLength!.toFixed(0)} m of the ${row.label} lies under our earthworks. The game tried to rebuild it beside them, but ${realignmentReason(planned.problems)}.`
+      : roadRemedyDetail(row.label, base.affectedLength!, planned);
+    base.source = invalid ? undefined : roadRemedySource(planned);
+    if (invalid) block(base, `Our earthworks cover ${base.affectedLength!.toFixed(0)} m of a ${row.label}`, moveOrBridge(base, base.original ?? original, row.width / 2, row.label),
+      'Engine limit: the game moves a road aside only along its own line (within 2 km), keeping its connections, at most 10 m above or below the ground and no steeper than its class allows; it found no such way here', 'engine');
     else {
       // At a shared outside junction, independently validate companion source roads BEFORE
       // reserving either plan. Otherwise the second plan can incorrectly treat the first
@@ -391,13 +425,21 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       h.structure ? `${h.structure} intersects the channel` : '', size.type === 'bridge' ? 'exceeds practical culvert opening/length limits' : '',
       !compatible ? 'incompatible existing barrel' : '', !outlets ? 'no clear outlet' : '', !waterCoverFits(minCover, size.minHeight) ? `barrel cover ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'missing'} m, needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
     const ok = reasons.length === 0;
+    const plainReasons = [bankOnly ? 'only its bank lies under our slope, so there is no line for a culvert' : '',
+      h.structure ? 'a bridge support would stand in it' : '', size.type === 'bridge' ? 'it is too big for a culvert' : '',
+      !compatible ? 'it would have to join a culvert of a different size' : '', !outlets ? 'its outlet would be buried' : '',
+      !waterCoverFits(minCover, size.minHeight) ? `there is only ${Number.isFinite(minCover) ? minCover.toFixed(1) : 'no'} m of earth over it, a culvert needs ${size.minHeight.toFixed(1)} m` : ''].filter(Boolean);
     const conflict: FootprintConflict = { id: `stream:${w.id}:${h.a.toFixed(2)}:${h.structure ?? 'earth'}`, feature: 'stream', action: ok ? 'culvert' : 'blocked', i: h.i,
       s0: Math.max(0, r.s[h.i] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[h.j] + r.ds / 2), x: p.x, y: p.y, length, affectedLength,
       cost: ok ? length * size.perM + (existing.length ? 0 : 2 * size.head) : 0, original,
-      detail: `${length.toFixed(1)} m channel outside priced centreline barrels; ${ok ? `${waterOpening(size)} longitudinal culvert (research/17)` : reasons.join('; ')}. No feasible priced channel diversion was found.` };
+      detail: ok ? `The stream runs ${length.toFixed(0)} m under our slope in a ${waterOpening(size)} culvert.`
+        : `${affectedLength.toFixed(0)} m of the stream lies under our ${h.structure ? `bridge ${h.structure === 'pier' ? 'pier' : 'end'}` : 'earthworks'}, and no culvert works here: ${plainReasons.join('; ')}.`,
+      source: ok ? 'Culvert sizes and prices per research/17' : undefined };
     if (ok) conflicts.push(conflict);
-    else block(conflict, h.structure ? `${h.structure} obstructs a watercourse` : 'Earthwork footprint intercepts a watercourse',
-      'Move the alignment/support clear of the channel, or provide a clear bridge span', 'No unpriced channel diversion; sourced culvert assemblies must meet their cover and length limits (research/17)');
+    else block(conflict, h.structure ? `A bridge ${h.structure === 'pier' ? 'pier' : 'support'} stands in a stream` : 'Our earthworks block a stream',
+      h.structure ? `Move the route at km ${kmText(conflict.s0)} a little so the support misses the stream, or make the bridge longer here` : moveOrBridge(conflict, original, waterWidth(w) / 2, 'stream'),
+      'Game rule (research/17): a stream under our earthworks needs a culvert with enough earth over it and open ends; the game does not move streams it cannot reroute safely',
+      h.structure ? 'engine' : 'game');
   }
   for (const { feature, structure, hits } of rasterHits.values()) {
     const indices = [...hits.keys()].sort((a, b) => a - b);
@@ -405,12 +447,15 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       const i = indices[k]; let j = i, count = hits.get(i)!.count;
       while (k + 1 < indices.length && indices[k + 1] <= j + 1) { j = indices[++k]; count += hits.get(j)!.count; }
       const p = hits.get(i)!, s0 = Math.max(0, r.s[i] - r.ds / 2), s1 = Math.min(r.s[r.n - 1], r.s[j] + r.ds / 2);
+      const what = feature === 'water' ? 'water' : feature;
       const c: FootprintConflict = { id: `${feature}:${structure ?? 'earth'}:${i}`, feature, action: 'blocked', i, s0, s1, x: p.x, y: p.y, length: s1 - s0, cost: 0,
-        detail: `${structure ?? 'Slope-to-slope footprint'} intersects ${feature}; approximately ${count * terrain.cell ** 2} m² of protected raster cells. No relocation/compensation allowance.` };
-      block(c, `${structure ?? 'Earthwork footprint'} conflicts with ${feature === 'water' ? 'a water area' : feature}`,
-        'Move the alignment/support clear, or bridge the feature with supports outside it', feature === 'railway'
-          ? 'Railways require clearance, not an ordinary road relocation rate'
-          : 'Water Act 254/2001 §§5, 8, 17: water protection/consent required; game rejects unmodelled pond filling or water works, not a universal legal ban');
+        detail: `About ${count * terrain.cell ** 2} m² of ${what} lies under our ${structure ? `bridge ${structure === 'pier' ? 'pier' : structure === 'abutment' ? 'end' : 'tunnel entrance'}` : 'earthworks'}, and no retaining wall could hold the slope back.` };
+      block(c, structure ? `A ${structure === 'pier' ? 'bridge pier' : structure === 'abutment' ? 'bridge end' : 'tunnel entrance'} stands on a ${feature === 'water' ? 'pond or river' : feature}` : `Our earthworks cover a ${feature === 'water' ? 'pond or river' : feature}`,
+        structure ? `Move the route at km ${kmText(s0)} a little so the support misses the ${what}, or make the ${structure === 'portal' ? 'tunnel' : 'bridge'} longer here`
+          : `Move the route at km ${kmText(s0)} away from the ${what}, or ${bridgeIt(c)}`, feature === 'railway'
+          ? 'Game rule: a railway keeps its own space; the game does not move railways'
+          : 'Water Act 254/2001 §§5, 8, 17: filling water needs a permit and water works the game does not model (not a universal legal ban)',
+        structure ? 'engine' : 'game');
     }
   }
   conflicts.sort((a, b) => a.s0 - b.s0 || a.id.localeCompare(b.id));

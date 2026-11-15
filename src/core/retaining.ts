@@ -60,7 +60,9 @@ export function retainingConflicts(walls: readonly RetainingWall[]): FootprintCo
     group.conflict.s1 = wall.s1; group.conflict.length += wall.s1 - wall.s0; group.conflict.cost += wall.cost;
     group.conflict.allocations!.push({ i: wall.i, cost: wall.cost });
     group.area += wall.area; group.height = Math.max(group.height, wall.height);
-    group.conflict.detail = `${wall.side === 'L' ? 'Left' : 'Right'} retaining wall: ${group.area.toFixed(1)} m² exposed face, up to ${group.height.toFixed(1)} m high; height-dependent RC/foundation assembly (OTSKP 327325 + 327365 + 13173 + 17411)${wall.watertight ? ', pressure-water membrane/cutoff (711122 + 711519), no pond drainage' : ', rear drain/filter (212625 + 214613)'}. The slope and earthwork volume are truncated at the wall, preserving the ${wall.feature}.`;
+    const what = wall.feature === 'road' ? 'road' : wall.feature === 'railway' ? 'railway' : wall.feature === 'water' ? 'water' : 'stream';
+    group.conflict.detail = `A concrete wall on the ${wall.side === 'L' ? 'left' : 'right'}, up to ${group.height.toFixed(1)} m high (${group.area.toFixed(0)} m² of wall), ends our slope before it covers the ${what}${wall.watertight ? '; it is sealed against the water behind it' : ''}.`;
+    group.conflict.source = `Height-dependent concrete wall with foundation (OTSKP 327325 + 327365 + 13173 + 17411)${wall.watertight ? ', waterproofing and cutoff (711122 + 711519)' : ', rear drain and filter (212625 + 214613)'}; research/18`;
   }
   return out;
 }

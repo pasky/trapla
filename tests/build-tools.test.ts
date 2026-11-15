@@ -110,7 +110,7 @@ describe('crossing choices through the full bill', () => {
     d.profileMode = 'manual'; d.vpis = [{ s: 0, z: 400, r: null }, { s: 4000, z: 400, r: null }];
     const unsafe = evaluate(context, d);
     expect(unsafe.cost.bridges).toBeGreaterThan(0);
-    expect(unsafe.violations.some((v) => v.title === 'Bridge has insufficient road clearance')).toBe(true);
+    expect(unsafe.violations.some((v) => v.title === 'Our bridge is too low over this road')).toBe(true);
     d.profileMode = 'auto'; d.crossingOverrides = [];
     expect(evaluate(context, d).cost).toEqual(before.cost);
   });

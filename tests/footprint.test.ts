@@ -75,10 +75,10 @@ describe('constructed footprint conflicts', () => {
     const row = Math.floor((t.height - abutment.y) / t.cell), col = Math.floor(abutment.x / t.cell);
     t.lc[row * t.nx + col] = LC.road | RAIL_CROSSING_BIT;
     const blocked = footprintConflicts(r, t, undefined, [], []);
-    expect(blocked.conflicts.some(c => c.feature === 'railway' && c.detail.includes('abutment'))).toBe(true);
+    expect(blocked.conflicts.some(c => c.feature === 'railway' && c.detail.includes('bridge end'))).toBe(true);
     r.runs[0].kind = KIND.tunnel; r.kind = new Uint8Array(r.n).fill(KIND.tunnel);
     expect(structureFootprints(r).every(c => c.structure === 'portal')).toBe(true);
-    expect(footprintConflicts(r, t, undefined, [], []).violations[0].title).toContain('portal');
+    expect(footprintConflicts(r, t, undefined, [], []).violations[0].title).toContain('tunnel entrance');
   });
   it('detects side-footprint ponds and railway cells that never intersect the centreline', () => {
     const t = terrain();
@@ -118,7 +118,7 @@ describe('constructed footprint conflicts', () => {
       q: new Uint16Array(26000), lc: new Uint8Array(26000), watercourses: { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
         points, catchmentKm2: [0.1, 0.1], truncated: [false, false] }] } });
     const displaced = check(route(), road(), withChannel([[600, 272], [600, 290]]));
-    expect(displaced.conflicts.some(c => c.feature === 'road' && c.action === 'blocked' && c.detail.includes('water/rail'))).toBe(true);
+    expect(displaced.conflicts.some(c => c.feature === 'road' && c.action === 'blocked' && c.detail.includes('water or a railway'))).toBe(true);
     const tail = check(route(), road(), withChannel([[50, 250], [50, 270]]));
     expect(tail.conflicts.find(c => c.feature === 'road')!.action).toBe('relocation');
     expect(tail.violations).toEqual([]);
@@ -132,7 +132,7 @@ describe('constructed footprint conflicts', () => {
     const result = footprintConflicts(r, t, undefined, [], water);
     expect(result.conflicts.reduce((sum, c) => sum + c.affectedLength!, 0)).toBeGreaterThanOrEqual(25);
     expect(result.violations.length).toBeGreaterThan(0);
-    expect(result.conflicts.some(c => c.detail.includes('no clear outlet'))).toBe(true);
+    expect(result.conflicts.some(c => c.detail.includes('outlet would be buried'))).toBe(true);
   });
   it('prices a short lengthwise stream barrel once and rejects long channels or insufficient cover', () => {
     const run = (end: number, grade = 105) => {

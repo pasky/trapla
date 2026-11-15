@@ -184,7 +184,8 @@ export function planChannelRelocations(r: ChannelRoute, terrain: Terrain, roads:
       s0: Math.max(0, r.s[hit.i0] - r.ds / 2), s1: Math.min(r.s[r.n - 1], r.s[hit.i1] + r.ds / 2), x: path[Math.floor(path.length / 2)].x, y: path[Math.floor(path.length / 2)].y,
       length, affectedLength: hit.b - hit.a, cost, landCost, geometry: { road: path, width: maxWidth, schematic: false },
       original,
-      detail: `${length.toFixed(1)} m open-channel realignment with real bed-level tie-ins, ${assembly.bottom.toFixed(1)} m bed × ${assembly.depth.toFixed(1)} m depth, Q100 ${q100.toFixed(2)} m³/s. Measured excavation/haul ≤1 km, stone lining/filter, bank restoration, old-channel backfill and land (OTSKP 124731/831/931, 46451, 28997, 18221, 18242, 17120); no new culvert billed.` };
+      detail: `The stream gets ${length.toFixed(0)} m of new stone-lined bed outside our earthworks (${assembly.bottom.toFixed(1)} m wide at the bottom, ${assembly.depth.toFixed(1)} m deep, sized for a 100-year flood of ${q100.toFixed(1)} m³/s); the old bed is filled in.`,
+      source: 'Excavation and haul up to 1 km, stone lining, filter, bank restoration, old-bed backfill and land (OTSKP 124731/831/931, 46451, 28997, 18221, 18242, 17120)' };
     out.push({ id: reach.id, a: removedStart, b: removedEnd, i0: hit.i0, i1: hit.i1, conflict });
   }
   return out;

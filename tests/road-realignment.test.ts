@@ -18,11 +18,13 @@ function setup(ways = [[0, 20, 260, 1250, 260]], cls = ['service']): RoadRealign
 }
 function assertClear(plan: ReturnType<typeof planRoadRealignment>, cells: FootprintCell[], terrainEnds = true) {
   expect(plan.problems).toEqual([]);
+  // The steepest class gradient of this ribbon width (research/20).
+  const grade = Math.max(...Object.values(ROAD_CLASSES).filter(row => row.width === plan.geometry.width).map(row => row.rampGradient));
   for (const path of plan.geometry.links ?? [plan.geometry.road!]) {
   for (let i = 1; i < path.length; i++) {
     const a = path[i - 1], b = path[i], length = Math.hypot(b.x - a.x, b.y - a.y);
     for (const cell of cells) expect(clipFootprint({ ax: a.x, ay: a.y, bx: b.x, by: b.y, d: 0, length }, cell, plan.geometry.width / 2)).toBeUndefined();
-    expect(Math.abs(a.z - b.z)).toBeLessThanOrEqual(length * 0.06 + 1e-7);
+    expect(Math.abs(a.z - b.z)).toBeLessThanOrEqual(length * grade + 1e-7);
     expect(Math.abs(b.z - b.ground)).toBeLessThanOrEqual(10 + 1e-7);
   }
   if (terrainEnds) {
@@ -267,4 +269,49 @@ describe('bounded real road relocation', () => {
       watercourses: { version: 1, method: 'test', reaches: [{ id: 1, kind: 'ditch', width: 0.5, points: [[40, 240], [40, 280]], catchmentKm2: [0.1, 0.1], truncated: [false, false] }] } });
     expect(planRoadRealignment(tail).problems).toEqual([]);
   });
+
+  it('closes a covered stretch of a loop when it cannot be rebuilt beside us and its ends stay connected', () => {
+    // Way 0 dips under our slope between two junctions that a parallel way 1 also joins (a loop).
+    const ways = [[0, 300, 290, 330, 262, 370, 262, 400, 290], [0, 300, 290, 300, 340, 400, 340, 400, 290], [0, 300, 290, 150, 290], [0, 400, 290, 600, 290]];
+    const rail = (input: ReturnType<typeof setup>) => { // a railway right beside our slope: no room to rebuild it there
+      for (let x = 280; x <= 420; x += 5) for (const y of [276, 281, 286]) {
+        const t = input.terrain; t.lc[Math.floor((t.height - y) / t.cell) * t.nx + Math.floor(x / t.cell)] = LC.rail;
+      }
+    };
+    const a = 18 / 28 * Math.hypot(30, 28), b = 2 * Math.hypot(30, 28) + 40 - a;
+    const input = setup(ways); rail(input);
+    input.hit = { a, b, i: 20, j: 30 };
+    const plan = planRoadRealignment(input);
+    expect(plan.problems).toEqual([]);
+    expect(plan.closed).toEqual({ length: expect.closeTo(2 * Math.hypot(30, 28) + 40, 6), detour: expect.closeTo(200, 6) });
+    expect(plan.cost).toBe(0);
+    expect(plan.sourceIntervals).toEqual([{ way: 0, a: 0, b: expect.closeTo(2 * Math.hypot(30, 28) + 40, 6) }]);
+    // Without the parallel way the ends are not otherwise connected: no closure, the failure stays visible.
+    const alone = setup([ways[0], ways[2], ways[3]]); rail(alone);
+    alone.hit = { a, b, i: 20, j: 30 };
+    const blocked = planRoadRealignment(alone);
+    expect(blocked.closed).toBeUndefined();
+    expect(blocked.problems.length).toBeGreaterThan(0);
+    // A detour that itself runs under our earthworks does not count.
+    const buried = setup([ways[0], [0, 300, 290, 300, 250, 400, 250, 400, 290], ways[2], ways[3]]); rail(buried);
+    buried.hit = { a, b, i: 20, j: 30 };
+    expect(planRoadRealignment(buried).closed).toBeUndefined();
+  });
+
+  it('joins another road its rebuilt stretch crosses at that road\'s own ground level', () => {
+    // The rebuilt service road runs along our slope and crosses a track standing off our road;
+    // the crossing is pinned to the ground and priced as one junction, not a hidden ramp over it.
+    // A 3 m hump steeper than the service road may climb: unpinned, the profile would cut through
+    // it and pass under the track's level.
+    const input = setup([[0, 20, 260, 1250, 260], [1, 600, 320, 600, 273]], ['service', 'track']);
+    input.terrain = syntheticTerrain(260, 100, 5, (x) => 100 + Math.max(0, 3 - 0.2 * Math.abs(x - 600)));
+    const plan = planRoadRealignment(input);
+    expect(plan.problems).toEqual([]);
+    const path = plan.geometry.road!;
+    const contact = path.find(p => Math.abs(p.x - 600) < 1e-6 && p.y > 270 && p.y < 280);
+    expect(contact).toBeDefined();
+    expect(contact!.z).toBe(contact!.ground);
+    expect(plan.accessKeys).toHaveLength(1);
+  });
 });
+

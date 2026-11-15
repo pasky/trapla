@@ -1,7 +1,8 @@
 // Norm checks as per-family functions (roads now; rail would add its own family using cant), and the
 // player-facing violation messages: a short headline, ONE concrete fix with a number wherever one can be
 // computed, a plain-words explanation, and what the requirement rests on (a norm, a game rule, or a
-// limitation of the game's own solvers).
+// limitation of the game's own solvers). Words: src/core/terms.ts (glossary + banned jargon), enforced
+// for every violation kind by tests/player-text.test.ts.
 
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, SPEED_NORMS, type SpeedNorms } from './data/norms';
@@ -9,9 +10,9 @@ import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
 import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
 import type { Profile } from './vertical';
 
-export type ViolationKind =
-  | 'radius' | 'transition' | 'arcShort' | 'compound' | 'gradient' | 'crest' | 'sag' | 'vcOverlap' | 'oob'
-  | 'category' | 'time' | 'profile' | 'section' | 'crossing' | 'structure' | 'building' | 'noise' | 'footprint';
+export const VIOLATION_KINDS = ['radius', 'transition', 'arcShort', 'compound', 'gradient', 'crest', 'sag', 'vcOverlap', 'oob',
+  'category', 'time', 'profile', 'section', 'crossing', 'structure', 'building', 'noise', 'footprint'] as const;
+export type ViolationKind = typeof VIOLATION_KINDS[number];
 
 /** what a requirement rests on: a design norm, a rule / simplification of the game, or a limitation of
  *  the game's solvers (they found no valid shape although one may exist) */
@@ -479,7 +480,7 @@ export function crossingViolation(s: number, what: string, above: number, need: 
     kind: 'crossing', s0: s, s1: s,
     title: `The ${what} cannot be crossed on the level`,
     fix: raise <= lower ? `${r} (or ${l})` : `${cap(l)} (or ${r.charAt(0).toLowerCase()}${r.slice(1)})`,
-    detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (an overbridge carries it over our cutting); it is ${h(above)}.`,
+    detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (then its own bridge carries it over our cutting); it is ${h(above)}.`,
     basis: 'norm', rule: `ČSN 73 6101: motorways and expressways are crossed only at a different level (research/08). The ${fmt(need, 1)} m / ${fmt(below, 1)} m heights are game estimates`,
     size: Math.min(raise, lower),
   };

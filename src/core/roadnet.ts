@@ -263,6 +263,39 @@ export class RoadNet {
     return out;
   }
 
+  /** Shortest network distance between two road points over real segments (endpoints and
+   * interior T-attachments), skipping `avoid`ed segments. Bounded by `maxDistance` and a node
+   * budget; undefined when no such path is found within them. */
+  networkDistance(from: { x: number; y: number }, to: { x: number; y: number }, maxDistance: number,
+    avoid: (segment: RoadSegment) => boolean, maxNodes = 400): number | undefined {
+    const key = (p: { x: number; y: number }) => pointKey(p.x, p.y), goal = key(to);
+    const best = new Map<string, number>([[key(from), 0]]);
+    const queue: { p: { x: number; y: number }; d: number }[] = [{ p: from, d: 0 }];
+    for (let visited = 0; queue.length && visited < maxNodes; visited++) {
+      let k = 0;
+      for (let i = 1; i < queue.length; i++) if (queue[i].d < queue[k].d) k = i;
+      const { p, d } = queue.splice(k, 1)[0];
+      if (d > (best.get(key(p)) ?? Infinity) + 1e-9) continue;
+      if (key(p) === goal || Math.hypot(p.x - to.x, p.y - to.y) <= 0.02) return d;
+      this.nearSegments([p.x - 0.02, p.y - 0.02, p.x + 0.02, p.y + 0.02], s => {
+        const dx = s.bx - s.ax, dy = s.by - s.ay;
+        const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / (s.length * s.length || 1)));
+        if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > 0.02 || avoid(s)) return;
+        for (const q of [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }]) {
+          // The goal may lie in the interior of this segment (an unsplit T-junction).
+          const u = ((to.x - s.ax) * dx + (to.y - s.ay) * dy) / (s.length * s.length || 1);
+          const onSegment = u > 0 && u < 1 && Math.hypot(to.x - s.ax - u * dx, to.y - s.ay - u * dy) <= 0.02
+            && (q.x - p.x) * (to.x - p.x) + (q.y - p.y) * (to.y - p.y) > 0;
+          const next = onSegment ? to : q, step = Math.hypot(next.x - p.x, next.y - p.y);
+          if (step < 1e-6 || d + step > maxDistance) continue;
+          const nextKey = key(next);
+          if (d + step < (best.get(nextKey) ?? Infinity) - 1e-9) { best.set(nextKey, d + step); queue.push({ p: next, d: d + step }); }
+        }
+      });
+    }
+    return undefined;
+  }
+
   /** Closest real way at a route tie-in, using the existing segment grid. */
   nearestWay(x: number, y: number, radius = 30): number | undefined {
     let best = radius, way: number | undefined;

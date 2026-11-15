@@ -204,7 +204,7 @@ describe('automatic bridge support remedies', () => {
     for (const result of [automatic, painted]) {
       expect(result.valid).toBe(false);
       expect(result.violations).toContainEqual(expect.objectContaining({ kind: 'structure',
-        title: 'Obstacle-clearing bridge span needs more height', fix: expect.stringContaining('by at least 0.2 m') }));
+        title: 'A long bridge span is too low over what it crosses', fix: expect.stringContaining('by at least 0.2 m') }));
     }
     const autoProfile = evaluate(ctx, { ...design, profileMode: 'auto',
       structureOverrides: [{ s0: 490, s1: 520, kind: KIND.bridge }] });

@@ -131,7 +131,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       if (length < min && (manual || shortened)) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
         title: `${manual ? 'Your' : 'Remaining'} ${r.kind === KIND.bridge ? 'bridge' : 'tunnel'} is too short`,
         fix: `Extend it to the ${min} m minimum (now ${length.toFixed(0)} m), or set the stretch back to Automatic`,
-        basis: 'game', rule: `Structure runs must be at least ${min} m long (game simplification)`,
+        basis: 'game', rule: `Game rule: a bridge or tunnel is at least ${min} m long`,
         detail: 'Your choice stays as you made it and is priced; the game does not extend it for you.' });
     }
     const flagRanges = (bad: (i: number) => boolean, title: string, fix: string, rule: string) => {
@@ -150,11 +150,11 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       'Your tunnel has too little cover', `Lower the road to at least ${rules.tunnelMinDepth} m below ground, or shorten the tunnel / set it back to Automatic`,
       `Tunnels you choose need ${rules.tunnelMinDepth} m of depth (game simplification)`);
     flagRanges((i) => !!inp.forcedTunnel?.[i] && inp.overrides![i] >= 0 && kind[i] !== KIND.tunnel,
-      'Watercourse requires a bored tunnel', 'Set this stretch back to Automatic, or retain a tunnel below the channel',
-      'An open cut cannot intercept the surface watercourse');
+      'A stream needs our road in a tunnel here', 'Set this stretch back to Automatic, or keep a tunnel under the stream',
+      'Game rule: an open cutting cannot cut through a stream');
     flagRanges((i) => !!inp.forced?.[i] && inp.overrides![i] >= 0 && kind[i] !== KIND.bridge,
-      'Crossing requires a bridge', 'Set this stretch back to Automatic (or Bridge), or choose "Our bridge over it" for the crossing',
-      'River, railway and separated-road crossings cannot be buried under earthwork (game crossing rule)');
+      'A bridge is needed here', 'Set this stretch back to Automatic (or Bridge), or choose "Our bridge over it" for the crossed road',
+      'Game rule: rivers, railways and roads that must be crossed at a different level cannot be buried under earthworks');
   }
   return { kind, runs, violations };
 }

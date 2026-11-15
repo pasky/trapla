@@ -160,7 +160,7 @@ describe('watercourse crossing assemblies', () => {
     const thin = new Terrain({ nx, ny, cell: 5, base: 0, scale: 0.01, q, lc: new Uint8Array(q.length), watercourses: data(0.1) });
     const short = evaluate({ ...context(0.1), terrain: thin }, design);
     expect(short.waterCrossings[0].structure).toBe('blocked');
-    expect(short.violations.some(v => v.title === 'Watercourse tunnel is too short')).toBe(true);
+    expect(short.violations.some(v => v.title === 'Tunnel under a stream is too short')).toBe(true);
   });
   it('detects a parallel channel in the earthwork footprint without a centreline crossing', () => {
     const water = data(0.1, [[750, 260], [1750, 260]]);
@@ -186,7 +186,7 @@ describe('watercourse crossing assemblies', () => {
     const cut = evaluate(context(0.1, -3), design);
     expect(cut.cost.earthDetail.culverts).toBe(0);
     expect(cut.waterCrossings[0].structure).toBe('blocked');
-    expect(cut.violations.some(v => v.title === 'Cut intercepts a watercourse')).toBe(true);
+    expect(cut.violations.some(v => v.title === 'Our cutting runs through a stream')).toBe(true);
     const auto = evaluate(context(0.1, 0), { ...design, profileMode: 'auto' });
     expect(auto.waterCrossings[0].structure).not.toBe('blocked');
     expect(auto.grade[auto.waterCrossings[0].i] - auto.ground[auto.waterCrossings[0].i]).toBeGreaterThan(1.7);

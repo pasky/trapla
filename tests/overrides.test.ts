@@ -101,7 +101,7 @@ describe('manual structure decisions', () => {
     const forced = new Uint8Array(101); forced[40] = 1;
     const r = chooseStructures({ ...input(10), forced, overrides: overrideMask(s, [{ s0: 300, s1: 600, kind: 0 }]) });
     expect(r.kind[40]).toBe(0);
-    expect(r.violations.some((v) => v.title === 'Crossing requires a bridge')).toBe(true);
+    expect(r.violations.some((v) => v.title === 'A bridge is needed here')).toBe(true);
   });
 
   it('evaluation exposes crossing conflicts and bills the requested earthwork', () => {
@@ -113,7 +113,7 @@ describe('manual structure decisions', () => {
     const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } }, d);
     expect(r.kind[Math.round(1000 / r.ds)]).toBe(0);
     expect(r.valid).toBe(false);
-    expect(r.violations.some((v) => v.kind === 'structure' && v.title === 'Crossing requires a bridge')).toBe(true);
+    expect(r.violations.some((v) => v.kind === 'structure' && v.title === 'A bridge is needed here')).toBe(true);
     expect(r.cost.earthworks).toBeGreaterThan(0);
   });
 });

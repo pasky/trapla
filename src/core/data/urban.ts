@@ -125,8 +125,6 @@ export const CROSSING_RULES = {
   linkHardReach: 2000,
   /** PROVISIONAL minimum realignment length per side, including the tie-in, m. */
   linkMinLength: 25,
-  /** PROVISIONAL approach gradient for raising the crossed road onto an overbridge. */
-  approachGradient: 0.06,
 };
 
 export interface RoadClassRow {
@@ -149,6 +147,13 @@ export interface RoadClassRow {
    * Includes standard road earthworks; no second embankment allowance is added. */
   roadPerKm: [number, number];
   roadCodes: [string, string];
+  /** Steepest gradient of a rebuilt piece of this road: overbridge ramps, raised junction
+   * approaches and relocated stretches. Ordinary (not exceptional) design maxima —
+   * research/20: track 10 % (ČSN 73 6109 unpaved field track), service 9 % (ČSN 73 6110 group C,
+   * which also governs public-purpose access roads, §8.1.4), streets/local roads 8 % (between
+   * group C 9 % and D1 8.33 % justified), class III 7 % and class I/II 6 % (indicative older
+   * ČSN 73 6101 table, S 7.5/S 9.5 in hilly terrain; unchanged game value for I/II). */
+  rampGradient: number;
   /** Box size when the way may pass through our embankment in a small underpass (research/19).
    * Class I–III roads keep bridges/junctions; motorways never. */
   underpass?: UnderpassSize;
@@ -167,18 +172,18 @@ const LOCAL_ROAD = {
 
 /** keyed by OSM highway class (the pack's `net.cls` list); order = rank, most important first */
 export const ROAD_CLASSES: Record<string, RoadClassRow> = {
-  motorway: { label: 'motorway', width: 27.5, bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', separable: true, noAtGrade: true, roadPerKm: [187_632_000, 187_632_000], roadCodes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NER'] },
-  trunk: { label: 'expressway', width: 11.5, bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', separable: true, noAtGrade: true, roadPerKm: [68_894_000, 82_035_000], roadCodes: ['A.1.S1.11,5.NER', 'A.1.S1.11,5.NIR'] },
-  primary: { label: 'class I road', width: 9.5, bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', separable: true, junction: true, roadPerKm: [56_912_000, 67_852_000], roadCodes: ['A.1.S1.9,5.NER', 'A.1.S1.9,5.NIR'] },
-  secondary: { label: 'class II road', width: 7.5, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, junction: true, roadPerKm: [36_142_000, 42_883_000], roadCodes: ['A.1.S2.7,5.NER', 'A.1.S2.7,5.NIR'] },
-  tertiary: { label: 'class III road', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, junction: true, roadPerKm: [26_616_000, 34_903_000], roadCodes: ['A.1.S3.6,5.NER', 'A.1.S3.6,5.NIR'] },
-  unclassified: { label: 'local road', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
-  residential: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
-  living_street: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
-  service: { label: 'service road', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', ...LOCAL_ROAD },
+  motorway: { label: 'motorway', width: 27.5, rampGradient: 0.04, bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', separable: true, noAtGrade: true, roadPerKm: [187_632_000, 187_632_000], roadCodes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NER'] },
+  trunk: { label: 'expressway', width: 11.5, rampGradient: 0.05, bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', separable: true, noAtGrade: true, roadPerKm: [68_894_000, 82_035_000], roadCodes: ['A.1.S1.11,5.NER', 'A.1.S1.11,5.NIR'] },
+  primary: { label: 'class I road', width: 9.5, rampGradient: 0.06, bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', separable: true, junction: true, roadPerKm: [56_912_000, 67_852_000], roadCodes: ['A.1.S1.9,5.NER', 'A.1.S1.9,5.NIR'] },
+  secondary: { label: 'class II road', width: 7.5, rampGradient: 0.06, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, junction: true, roadPerKm: [36_142_000, 42_883_000], roadCodes: ['A.1.S2.7,5.NER', 'A.1.S2.7,5.NIR'] },
+  tertiary: { label: 'class III road', width: 6.5, rampGradient: 0.07, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, junction: true, roadPerKm: [26_616_000, 34_903_000], roadCodes: ['A.1.S3.6,5.NER', 'A.1.S3.6,5.NIR'] },
+  unclassified: { label: 'local road', width: 6.5, rampGradient: 0.08, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  residential: { label: 'street', width: 6.5, rampGradient: 0.08, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  living_street: { label: 'street', width: 6.5, rampGradient: 0.08, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  service: { label: 'service road', width: 4, rampGradient: 0.09, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', ...LOCAL_ROAD },
   /** Paved P4 standard, not the unsupported 1.5 M/km gravel allowance (research/13).
    * Conservative for forest/unpaved tracks, but a reproducible SPK 2026 unit price. */
-  track: { label: 'track', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', roadPerKm: [13_985_684.5, 13_985_684.5], roadCodes: ['A.1.P4.NE', 'A.1.P4.NE'] },
+  track: { label: 'track', width: 4, rampGradient: 0.1, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', roadPerKm: [13_985_684.5, 13_985_684.5], roadCodes: ['A.1.P4.NE', 'A.1.P4.NE'] },
 };
 
 // ---------------------------------------------------------------------------------------------

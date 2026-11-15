@@ -46,10 +46,15 @@ export interface RoadRealignmentPlan {
   lumpCost?: number;
   /** Actual service junctions rebuilt; shared connectors book each allowance only once. */
   accessKeys?: string[];
+  /** The stretch is closed instead of rebuilt: its two junctions stay connected over existing
+   * roads (`detour` m of network path versus the closed `length` m). No new pavement. */
+  closed?: { length: number; detour: number };
 }
 type WayPoint = Point2 & { d: number };
 type SourceSpan = RoadSourceInterval & { lo: number; hi: number; cls: string };
 const STEP = 5, SETBACK = 3, MAX_POINTS = 1600, MAX_SUPPORT = 10;
+/** PROVISIONAL longest junction-to-junction stretch that may be closed instead of rebuilt, m. */
+const MAX_CLOSURE = 400;
 const distance = (a: Point2, b: Point2) => Math.hypot(b.x - a.x, b.y - a.y);
 const mix = (a: WayPoint, b: WayPoint, t: number): WayPoint => ({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), d: a.d + t * (b.d - a.d) });
 function along(path: readonly WayPoint[], d: number): WayPoint {
@@ -241,7 +246,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         const d = distance(boundary, q);
         if (q.surface === 'deck' || d > CROSSING_RULES.linkHardReach || grid.hits(q, pad)
           || side * routeSide(q) <= 0 || Math.abs(q.z - q.ground) > MAX_SUPPORT) continue;
-        const needed = Math.abs(q.z - terrain.heightAt(toward.x, toward.y)) / CROSSING_RULES.approachGradient;
+        const needed = Math.abs(q.z - terrain.heightAt(toward.x, toward.y)) / row.rampGradient;
         const value = d + distance(toward, q) * 0.25 + Math.max(0, needed - distance(toward, q)) * 1000;
         if (value < score) { score = value; best = { ...q, d: boundary.d }; }
       }
@@ -349,9 +354,64 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       }
       return part;
     });
-    const path = parts.flat().map(point), gap = parts.length === 2 ? parts[0].length : -1;
+    const sourceIntervals: RoadSourceInterval[] = [];
+    const ownLo = removedLo ?? a, ownHi = removedHi ?? b;
+    for (const span of spans) {
+      const start = Math.max(ownLo, span.lo), end = Math.min(ownHi, span.hi);
+      if (end <= start + 1e-6) continue;
+      const da = span.a + (span.b - span.a) * (start - span.lo) / (span.hi - span.lo);
+      const db = span.a + (span.b - span.a) * (end - span.lo) / (span.hi - span.lo);
+      const interval = { way: span.way, a: Math.min(da, db), b: Math.max(da, db) };
+      const prev = sourceIntervals[sourceIntervals.length - 1];
+      if (prev?.way === interval.way && interval.a <= prev.b + 1e-5 && interval.b >= prev.a - 1e-5) { prev.a = Math.min(prev.a, interval.a); prev.b = Math.max(prev.b, interval.b); }
+      else sourceIntervals.push(interval);
+    }
+    // Where the new pavement crosses another existing road (or its own surviving continuation)
+    // outside the footprint, it joins that road at its own ground level: pin the profile there
+    // instead of passing over it on a ramp. Engineered crossing surfaces keep their own levels.
+    const pins = new Map<WayPoint, number>();
+    parts = parts.map(part => {
+      const out: WayPoint[] = [part[0]];
+      for (let i = 1; i < part.length; i++) {
+        const p = part[i - 1], q = part[i], dx = q.x - p.x, dy = q.y - p.y, len = Math.hypot(dx, dy);
+        if (len > 1e-6 && (distance(p, along(raw, p.d)) > 0.01 || distance(q, along(raw, q.d)) > 0.01)) {
+          const hits: { t: number; way: number }[] = [];
+          roads.nearSegments([Math.min(p.x, q.x) - 1, Math.min(p.y, q.y) - 1, Math.max(p.x, q.x) + 1, Math.max(p.y, q.y) + 1], segment => {
+            if (ROAD_CLASSES[segment.cls].noAtGrade) return;
+            const ex = segment.bx - segment.ax, ey = segment.by - segment.ay, den = dx * ey - dy * ex;
+            if (Math.abs(den) < 1e-9) return;
+            const t = ((segment.ax - p.x) * ey - (segment.ay - p.y) * ex) / den, u = ((segment.ax - p.x) * dy - (segment.ay - p.y) * dx) / den;
+            if (t < 0 || t > 1 || u < 0 || u > 1) return;
+            const d = segment.d + u * segment.length;
+            // Its own replaced stretch and other owned/engineered intervals are not junctions.
+            if (sourceIntervals.some(s => s.way === segment.way && d >= s.a - 1 && d <= s.b + 1)) return;
+            if ((covered?.get(segment.way) ?? []).some(([lo, hi]) => d >= lo && d <= hi)) return;
+            if ((input.crossings ?? []).some(c => crossingSource(c, roads)?.intervals.some(s => s.way === segment.way && d >= s.a - 1 && d <= s.b + 1))) return;
+            if (!grid.hits({ x: p.x + t * dx, y: p.y + t * dy }, half)) hits.push({ t, way: segment.way });
+          });
+          for (const { t, way: other } of hits.sort((x, y) => x.t - y.t)) {
+            // A crossing at a vertex pins that vertex (never a part's fixed end).
+            if (t <= 0.02 && i > 1) { pins.set(p, other); continue; }
+            if (t >= 0.98 && i + 1 < part.length) { pins.set(q, other); continue; }
+            if (t <= 0.02 || t >= 0.98) continue;
+            const contact = mix(p, q, t);
+            if (distance(out[out.length - 1], contact) < 1) continue;
+            pins.set(contact, other); out.push(contact);
+          }
+        }
+        out.push(q);
+      }
+      return out;
+    });
+    const flat = parts.flat();
+    const path = flat.map(point), gap = parts.length === 2 ? parts[0].length : -1;
     const fixed = new Map([[0, anchorA?.z ?? path[0].ground], [path.length - 1, anchorB?.z ?? path[path.length - 1].ground]]);
     if (gap > 0) { fixed.set(gap - 1, linkA!.z); fixed.set(gap, linkB!.z); }
+    const pinned: (Point2 & { way: number })[] = [];
+    flat.forEach((p, i) => {
+      const other = pins.get(p);
+      if (other !== undefined && !fixed.has(i)) { fixed.set(i, path[i].ground); pinned.push({ x: p.x, y: p.y, way: other }); }
+    });
     for (const index of fixed.keys()) if (grid.hits(path[index], half)) problems.add('tie-in inside the footprint');
     // Solve a bounded Lipschitz profile with fixed terrain tie-ins. Explicit wall-supported
     // ramps keep earthworks inside the checked ribbon; their measured faces are priced below.
@@ -361,18 +421,18 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     for (const [i, z] of fixed) lower[i] = upper[i] = z;
     for (let i = 1; i < path.length; i++) {
       if (i === gap) continue;
-      const dz = (chain[i] - chain[i - 1]) * CROSSING_RULES.approachGradient;
+      const dz = (chain[i] - chain[i - 1]) * row.rampGradient;
       lower[i] = Math.max(lower[i], lower[i - 1] - dz); upper[i] = Math.min(upper[i], upper[i - 1] + dz);
     }
     for (let i = path.length - 2; i >= 0; i--) {
       if (i + 1 === gap) continue;
-      const dz = (chain[i + 1] - chain[i]) * CROSSING_RULES.approachGradient;
+      const dz = (chain[i + 1] - chain[i]) * row.rampGradient;
       lower[i] = Math.max(lower[i], lower[i + 1] - dz); upper[i] = Math.min(upper[i], upper[i + 1] + dz);
     }
     for (let i = 0; i < path.length; i++) {
       let min = lower[i], max = upper[i];
       if (i && i !== gap) {
-        const dz = (chain[i] - chain[i - 1]) * CROSSING_RULES.approachGradient;
+        const dz = (chain[i] - chain[i - 1]) * row.rampGradient;
         min = Math.max(min, path[i - 1].z - dz); max = Math.min(max, path[i - 1].z + dz);
       }
       if (min > max + 1e-7) problems.add('6% grade needs support exceeding 10 m or a longer real-way tie-in');
@@ -418,7 +478,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       const p = path[i - 1], q = path[i], len = distance(p, q), mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
       length += len; pavementCosts.push(price(mid, len, (p.d! + q.d!) / 2));
       if (chordHits(p, q)) problems.add('path intersects the footprint');
-      if (Math.abs(q.z - p.z) > len * CROSSING_RULES.approachGradient + 1e-6) problems.add('tie-in heights exceed 6% gradient');
+      if (Math.abs(q.z - p.z) > len * row.rampGradient + 1e-6) problems.add('tie-in heights exceed 6% gradient');
       const originalA = along(raw, p.d!), originalB = along(raw, q.d!);
       const changed = distance(p, originalA) > 0.01 || distance(q, originalB) > 0.01
         || Math.abs(p.z - p.ground) > 0.01 || Math.abs(q.z - q.ground) > 0.01;
@@ -471,18 +531,6 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       }
     }
     cost += retainingCost;
-    const sourceIntervals: RoadSourceInterval[] = [];
-    const ownLo = removedLo ?? a, ownHi = removedHi ?? b;
-    for (const span of spans) {
-      const start = Math.max(ownLo, span.lo), end = Math.min(ownHi, span.hi);
-      if (end <= start + 1e-6) continue;
-      const da = span.a + (span.b - span.a) * (start - span.lo) / (span.hi - span.lo);
-      const db = span.a + (span.b - span.a) * (end - span.lo) / (span.hi - span.lo);
-      const interval = { way: span.way, a: Math.min(da, db), b: Math.max(da, db) };
-      const prev = sourceIntervals[sourceIntervals.length - 1];
-      if (prev?.way === interval.way && interval.a <= prev.b + 1e-5 && interval.b >= prev.a - 1e-5) { prev.a = Math.min(prev.a, interval.a); prev.b = Math.max(prev.b, interval.b); }
-      else sourceIntervals.push(interval);
-    }
     let lumpCost = 0;
     const rebuiltAccesses = new Set<string>();
     // Contacts measured along the NEW path (part offset keeps two-link plans apart), so OSM way
@@ -499,6 +547,21 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         || (covered?.get(segment.way) ?? []).some(([a, b]) => contains(a, b))) return;
       // A deliberate join onto a complete paid crossing is already an engineered surface.
       if ((input.crossings ?? []).some(c => crossingSource(c, roads)?.intervals.some(s => s.way === segment.way && contains(s.a, s.b)))) return;
+      // The mouth of a junction pinned above: the two ribbons overlap around the pinned
+      // contact, where the new pavement meets that road at its own ground level.
+      const mouth = pinned.find(pin => pin.way === segment.way
+        && Math.hypot(pin.x - cell.x, pin.y - cell.y) <= cell.along + 2 * (half + otherHalf));
+      if (mouth) {
+        const key = `${Math.round(mouth.x)},${Math.round(mouth.y)}`;
+        if ((cls === 'service' || segment.cls !== 'track') && !rebuiltAccesses.has(key)) { rebuiltAccesses.add(key); lumpCost += ACCESS; }
+        return;
+      }
+      if (!p && turn && !grid.hits(turn, radius)) {
+        // A turning disk is paved at ground level: another ordinary road touching it simply joins it.
+        const key = `${Math.round(turn.x)},${Math.round(turn.y)}`;
+        if ((cls === 'service' || segment.cls !== 'track') && !rebuiltAccesses.has(key)) { rebuiltAccesses.add(key); lumpCost += ACCESS; }
+        return;
+      }
       if (p && q) {
         // Preserve a real existing junction at its own ground level. A taper into that
         // unchanged through road is not an unrelated new crossing requiring separation.
@@ -518,11 +581,11 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
             return;
           }
         }
-        // A minor (non-separable) relocated way may meet another track/service road or local street
-        // in a new ordinary at-grade junction outside the acquired corridor, where the new pavement
-        // is at that road's own ground level. Only a short contact qualifies (whole path, below),
-        // never pavement laid along the other road; class I–III junctions are not invented here.
-        if (!row.separable && !other.junction) {
+        // A relocated way may meet another ordinary road (or its own surviving continuation) in a
+        // new at-grade junction outside the acquired corridor, where the new pavement is at that
+        // road's own ground level (contacts are pinned to it above). Only a short contact
+        // qualifies (whole path, below), never pavement laid along the other road.
+        {
           const ends = [overlap[0], overlap[1]].map(d => {
             const u = (d - segment.d) / (segment.length || 1), x = segment.ax + u * (segment.bx - segment.ax), y = segment.ay + u * (segment.by - segment.ay);
             return { x, y, t: Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / (len2 || 1))) };
@@ -537,6 +600,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
           }
         }
       }
+      if ((globalThis as any).__dbg && way === 4829) console.log('UNHANDLED', reach, pins.size, JSON.stringify(overlap), p && q ? `${p.x.toFixed(1)},${p.y.toFixed(1)} -> ${q.x.toFixed(1)},${q.y.toFixed(1)} zg ${(p.z-p.ground).toFixed(2)} ${(q.z-q.ground).toFixed(2)} seg ${segment.ax.toFixed(1)},${segment.ay.toFixed(1)} -> ${segment.bx.toFixed(1)},${segment.by.toFixed(1)}` : 'turn');
       problems.add('new pavement intersects an unhandled road');
     });
     for (let i = 1; i < path.length; i++) {
@@ -645,8 +709,60 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     }
     if (boundedLo > lo + 1e-5 || boundedHi < hi - 1e-5) {
       const retry = planRoadRealignment({ ...input, bounds: [boundedLo, boundedHi] }, false);
-      if (!retry.problems.length || retry.problems.length < best.problems.length) return retry;
+      if (!retry.problems.length) return retry;
+      if (retry.problems.length < best.problems.length) best = retry;
     }
   }
+  if (junctionRetry && best?.problems.length) return closeRedundantStretch() ?? best;
   return best!;
+
+  /** Fallback when no new pavement works: a stretch between two junctions whose ends stay
+   * connected through other existing roads (a loop, a parallel branch) is simply closed. The
+   * detour must be short and must not itself pass through our earthworks, except over a
+   * crossing that keeps that road (bridge, tunnel, overbridge, underpass or junction). */
+  function closeRedundantStretch(): RoadRealignmentPlan | undefined {
+    let j0 = -Infinity, j1 = Infinity, inside = false;
+    const nodes = new Map<number, Point2>();
+    for (const span of spans) {
+      if (span.hi < h.a - MAX_CLOSURE || span.lo > h.b + MAX_CLOSURE) continue;
+      const sa = along(raw, span.lo), sb = along(raw, span.hi), dx = sb.x - sa.x, dy = sb.y - sa.y;
+      let junctions = junctionCache.get(span);
+      if (!junctions) { junctions = roads.junctions(sa, sb); junctionCache.set(span, junctions); }
+      for (const j of junctions) {
+        const t = Math.max(0, Math.min(1, ((j.x - sa.x) * dx + (j.y - sa.y) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(j.x - sa.x - t * dx, j.y - sa.y - t * dy) > 0.02) continue;
+        const d = span.lo + t * (span.hi - span.lo);
+        if (d <= h.a && d > j0) j0 = d;
+        else if (d >= h.b && d < j1) j1 = d;
+        else if (d > h.a && d < h.b) inside = true;
+        nodes.set(d, j);
+      }
+    }
+    if (inside || !Number.isFinite(j0) || !Number.isFinite(j1) || j1 - j0 > MAX_CLOSURE) return;
+    const a = nodes.get(j0)!, b = nodes.get(j1)!;
+    if (grid.hits(a, half) || grid.hits(b, half)) return;
+    const closed: RoadSourceInterval[] = [];
+    for (const span of spans) {
+      const start = Math.max(j0, span.lo), end = Math.min(j1, span.hi);
+      if (end <= start + 1e-6) continue;
+      const da = span.a + (span.b - span.a) * (start - span.lo) / (span.hi - span.lo);
+      const db = span.a + (span.b - span.a) * (end - span.lo) / (span.hi - span.lo);
+      closed.push({ way: span.way, a: Math.min(da, db), b: Math.max(da, db) });
+    }
+    const kept = new Set((input.crossings ?? []).filter(c => c.roadId !== undefined && !c.issues?.length
+      && ['bridge', 'tunnel', 'overbridge', 'underpass', 'junction'].includes(c.type)).map(c => c.roadId!));
+    const length = j1 - j0;
+    const detour = roads.networkDistance(a, b, Math.max(2 * length, length + 300), segment => {
+      const lo = Math.min(segment.d, segment.d + segment.length), hi = lo + segment.length;
+      if (closed.some(c => c.way === segment.way && hi > c.a + 1e-3 && lo < c.b - 1e-3)) return true;
+      if (ROAD_CLASSES[segment.cls].noAtGrade) return false;
+      if (kept.has(segment.way)) return false;
+      return chordHits({ x: segment.ax, y: segment.ay }, { x: segment.bx, y: segment.by }, 0);
+    });
+    if (detour === undefined) return;
+    const original = mergeIntervals(closed).flatMap(c => roads.wayPath(c.way, c.a, c.b).map(point));
+    return { geometry: { width: row.width, schematic: false, road: [] }, original, length: 0, cost: 0, roadCode: '', problems: [],
+      pavementCosts: [], apronCost: 0, sourceIntervals: mergeIntervals(closed), turnaroundArea: 0, retainingArea: 0, retainingCost: 0,
+      closed: { length, detour } };
+  }
 }

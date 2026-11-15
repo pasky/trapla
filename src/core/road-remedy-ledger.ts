@@ -2,6 +2,7 @@ import type { CrossingPoint } from './crossings';
 import type { FootprintConflict } from './footprint';
 import type { RoadRealignmentPlan, RoadSourceInterval } from './road-realignment';
 import { ACCESS, ROAD_CLASSES } from './data/urban';
+import { roadRemedyDetail, roadRemedySource } from './terms';
 
 // Sub-millimetre equality absorbs arithmetic reversal only; it never snaps network anchors.
 const pointKey = (p: CrossingPoint) => `${p.x.toFixed(4)},${p.y.toFixed(4)},${p.z.toFixed(4)},${p.surface}`;
@@ -13,6 +14,8 @@ function paths(plan: RoadRealignmentPlan) {
   return [plan.geometry.road, ...(plan.geometry.links ?? [])].filter((p): p is CrossingPoint[] => !!p?.length);
 }
 function physicalKey(plan: RoadRealignmentPlan): string {
+  // A closure builds nothing: it is identified by the stretch it closes, never shared.
+  if (plan.closed) return JSON.stringify(['closed', mergeSources(plan.sourceIntervals)]);
   return JSON.stringify([plan.geometry.width, plan.turnaroundRadius ?? 0, paths(plan).map(p => canonicalPath(p).key).sort(),
     (plan.geometry.turnarounds ?? []).map(pointKey).sort()]);
 }
@@ -65,10 +68,10 @@ export class RoadRemedyLedger {
     target.roadCode = [...previous.codes].sort().join(' / ');
     target.lumpCost = previous.accesses.size * ACCESS;
     target.cost = previous.pavement.reduce((a, b) => a + b, 0) + previous.apron + previous.retaining + target.lumpCost;
-    target.detail = `${ROAD_CLASSES[target.cls!].label}: ${target.affectedLength.toFixed(1)} m affected on ${new Set(target.sourceIntervals.map(s => s.way)).size} independently accepted source roads; ${target.length.toFixed(1)} m shared connector × SPK ${target.roadCode}`
-      + (previous.retainingArea ? `; ${previous.retainingArea.toFixed(1)} m² additional retaining faces` : '')
-      + (previous.turnaroundArea ? `; ${previous.turnaroundArea.toFixed(1)} m² turning apron` : '')
-      + `; ${previous.accesses.size} unique access allowance(s). Pavement/support work is booked once; real surviving connections are preserved.`;
+    const shared = new Set(target.sourceIntervals.map(s => s.way)).size;
+    target.detail = roadRemedyDetail(ROAD_CLASSES[target.cls!].label, target.affectedLength, { length: target.length, retainingArea: previous.retainingArea,
+      turnaroundArea: previous.turnaroundArea, lumpCost: target.lumpCost }, shared) + ' The new road is built and paid for once.';
+    target.source = roadRemedySource({ roadCode: target.roadCode, retainingArea: previous.retainingArea, lumpCost: target.lumpCost });
     return target;
   }
 }

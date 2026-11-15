@@ -28,21 +28,14 @@ describe('footprint conflict presentation', () => {
 
   it('explains the mitigation and existing billing bucket without billing blocked work', () => {
     const c = conflict({ roadCode: 'III/123' });
-    expect(footprintConflictText(c)).toContain('III/123: relocation, 40 m');
-    expect(footprintConflictText(c)).toContain('included in road crossings, before surcharge');
+    expect(footprintConflictText(c)).toContain('Moved aside: class III road: 40 m under our earthworks');
+    expect(footprintConflictText(c)).toContain('(in Road crossings, before the other-objects surcharge)');
     expect(footprintConflictText(c)).toContain(c.detail);
-    expect(footprintConflictText(conflict({ feature: 'stream', action: 'culvert' }))).toContain('included in culverts');
-    expect(footprintConflictText(conflict({ feature: 'railway', action: 'blocked', cost: 0 }))).not.toContain('included in');
-    for (const action of ['retaining-wall','channel-relocation'] as const) {
-      const text = footprintConflictText(conflict({ feature: 'stream', action }));
-      expect(text).toContain(action.replace('-', ' '));
-      if (action === 'retaining-wall') expect(text).toContain('included in footprint works under crossings');
-      else {
-        expect(text).toContain('total includes land and construction before surcharge');
-        expect(text).toContain('construction under Road crossings, land under Land without surcharge');
-        expect(text).not.toContain('included in footprint works under crossings');
-      }
-    }
+    expect(footprintConflictText(conflict({ feature: 'stream', action: 'culvert' }))).toContain('in Watercourse culverts');
+    expect(footprintConflictText(conflict({ feature: 'railway', action: 'blocked', cost: 0 }))).not.toContain('(in ');
+    expect(footprintConflictText(conflict({ feature: 'stream', action: 'retaining-wall' }))).toContain('Retaining wall');
+    expect(footprintConflictText(conflict({ feature: 'stream', action: 'channel-relocation' }))).toContain('its land under Land');
+    expect(footprintConflictText(conflict({ action: 'relocation', closed: { length: 60, detour: 140 }, cost: 0 }))).toContain('Closed');
   });
 
   it('renders only road relocations as continuous terrain roads at their class width', () => {

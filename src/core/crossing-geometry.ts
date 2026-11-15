@@ -8,6 +8,8 @@ import { underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { KIND } from './structures';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
+/** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
+export const RAMP_TOO_LONG = 'Approach ramp cannot get back down to the old road within its steepest allowed slope';
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
@@ -43,6 +45,48 @@ function underpassLowest(road: readonly CrossingPoint[], start: number, end: num
 export function underpassFits(c: Pick<CrossingResult, 'cls' | 'h'>, length: number): boolean {
   const size = ROAD_CLASSES[c.cls].underpass;
   return !!size && c.h >= underpassAssembly(size, 0).minHeight && length <= UNDERPASS_RULES.maxLength;
+}
+
+const MAX_RAMP = 0.15;
+/** Steepest straight ramp allowed from height `z` at a deck/junction edge (old ground `g0` there)
+ * to the old road's ground `g` at distance `run`: the class gradient (research/20). Where the ramp
+ * runs the same way as the old road's own slope, that road was already this steep: the ramp may
+ * follow it, steeper by at most half the class gradient, but never steeper than 15 % (ČSN 73 6110
+ * extraordinary maximum for access roads; paved main field tracks, ČSN 73 6109). */
+export function rampLimit(cls: string, z: number, g0: number, g: number, run: number): number {
+  const grade = ROAD_CLASSES[cls].rampGradient, ramp = g - z, old = g - g0;
+  return Math.max(grade, run > 0 && ramp * old > 0 ? Math.min(MAX_RAMP, Math.abs(old) / run + grade / 2) : 0);
+}
+
+/** Plain-language violation text for a geometry diagnostic (the diagnostic string stays internal). */
+function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue, 'title' | 'fix' | 'detail' | 'basis' | 'rule'> {
+  const what = ROAD_CLASSES[c.cls]?.label ?? 'road', choice = c.requestedType ? 'your crossing choice' : 'this crossing';
+  const ramps = { fix: 'Lower our road here (a cutting makes the ramps shorter), or choose "Our bridge over it", an underpass or "Cut and reroute"',
+    rule: `Game rule (research/20): ramps no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} % for a ${what}, at most 10 m high` };
+  const trace = { title: `The game cannot trace where this ${what} goes`, fix: 'Set this crossing to "Our bridge over it", or move our road a little',
+    detail: `The map data of this ${what} is too short or too detailed for the game to build ${choice}.`, basis: 'engine' as const,
+    rule: 'Engine limit: crossings are built only along the real line of the crossed road, within 2 km of our road' };
+  if (message === RAMP_TOO_LONG) return { title: `Ramps up to the bridge over our road never get back down to the ${what}`, ...ramps,
+    detail: `The ${what} runs on downhill (or uphill) away from the bridge, so a ramp within the allowed slope does not meet it again before it ends.`, basis: 'game' };
+  if (message.startsWith('Approach earthwork exceeds')) return { title: 'Ramps up to the bridge over our road would be more than 10 m high', ...ramps,
+    detail: `The ${what} would have to climb more than 10 m above the ground to cross over our road here.`, basis: 'game' };
+  if (message === 'Existing way ends inside the crossing footprint') return { title: `The ${what} ends under our earthworks`,
+    fix: c.type === 'underpass' ? 'Choose "Cut and reroute" or "Our bridge over it"' : 'Choose "Cut and reroute", or "Our bridge over it" if our road is high enough',
+    detail: `A dead-end ${what} has no far side for ${c.type === 'underpass' ? 'an underpass' : 'a bridge over our road'} to reach.`, basis: 'game', rule: 'Game rule: a crossing must reach the crossed road on both sides of our road' };
+  if (message.startsWith('Underpass would exceed')) return { title: `Underpass would be longer than ${UNDERPASS_RULES.maxLength} m`,
+    fix: 'Choose "Our bridge over it", or make our embankment here lower and narrower', detail: 'Our embankment is too wide here for a short concrete box.',
+    basis: 'game', rule: `Game estimate (research/19): an underpass box is at most ${UNDERPASS_RULES.maxLength} m long` };
+  if (message === 'Embankment is too low over the underpass box') return { title: 'Embankment too low for an underpass',
+    fix: 'Raise our road here, or choose another crossing', detail: 'Somewhere under our road the box would stick out of the embankment: it needs room for its height, roof and earth cover.',
+    basis: 'game', rule: 'Game estimate (research/19): an underpass needs its inside height plus roof and 0.5 m of earth below our road' };
+  if (message === 'This road class cannot pass in a small underpass') return { title: `A ${what} cannot pass through a small underpass`,
+    fix: 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"', detail: 'Underpass boxes are sized for tracks, service roads and local roads only.',
+    basis: 'game', rule: 'Game estimate (research/19): underpass boxes for tracks, service roads and local roads' };
+  if (message === 'No real ground-level anchor exists for a surviving road branch') return { title: `No place to reconnect the ${what}`,
+    fix: 'Choose "Its bridge over us" or an underpass, or "Our bridge over it" if our road is high enough',
+    detail: `A cut-off end of the ${what} has no road on the ground nearby to be reconnected to.`, basis: 'game',
+    rule: 'Game rule: every cut-off part of a road that still leads somewhere must be reconnected' };
+  return trace;
 }
 
 export function crossingPlanLength(path: readonly XY[]): number {
@@ -349,9 +393,12 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         if (c.type === 'junction' && Math.abs(edge - endpoint.d) < 1e-6 && margin(endpoint, 0) <= 0) return edge;
         const candidates = path.filter(q => direction * (q.d - edge) > 1e-4);
         if (direction < 0) candidates.reverse();
-        const z = edgeZ(edge);
-        for (const q of candidates) if (Math.abs(heightAt(q.x, q.y) - z) <= Math.abs(q.d - edge) * CROSSING_RULES.approachGradient + 1e-8) return q.d;
-        diagnose(g, 'Approach cannot meet the 6% gradient before the real way endpoint');
+        const z = edgeZ(edge), e = along(path, edge), g0 = heightAt(e.x, e.y);
+        for (const q of candidates) {
+          const ground = heightAt(q.x, q.y), run = Math.abs(q.d - edge);
+          if (Math.abs(ground - z) <= run * rampLimit(c.cls, z, g0, ground, run) + 1e-8) return q.d;
+        }
+        diagnose(g, RAMP_TOO_LONG);
         return direction < 0 ? path[0].d : path[path.length - 1].d;
       };
       const f0 = foot(d0, -1), f1 = foot(d1, 1);
@@ -595,10 +642,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   }
   const issues: CrossingIssue[] = [];
   for (const c of crossings) for (const message of c.geometry?.diagnostics ?? []) {
-    const issue: CrossingIssue = { kind: 'crossing', s0: c.s, s1: c.s, title: message,
-      fix: 'Change the crossing treatment or main-road grade; this OSM alignment cannot support the requested geometry',
-      basis: 'game', rule: 'Crossed roads retain their real alignment, tie to terrain and require supported approaches with a 6% design gradient',
-      detail: 'No existing-road endpoint is extrapolated. Incomplete geometry is not a feasible crossing.',
+    const text = diagnosticText(message, c);
+    const issue: CrossingIssue = { kind: 'crossing', s0: c.s, s1: c.s, ...text,
       crossing: { roadId: c.roadId, requested: c.requestedType ?? (c.type === 'diversion' ? 'reconnection' : c.type === 'tunnel' || c.type === 'atGrade' ? 'bridge' : c.type), code: 'geometry' } };
     (c.issues ??= []).push(issue); issues.push(issue);
   }
@@ -660,13 +705,18 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       continue;
     }
     // Long detours are a feasibility fallback, not a way to shave a tiny amount off an already
-    // workable overbridge. Keep ordinary economic swaps within the 750 m shortlist.
-    const reach = feasible(best) ? CROSSING_RULES.linkMaxReach : CROSSING_RULES.linkHardReach;
+    // workable structure: beyond the 750 m shortlist a link must cost at most half of it (a 150 m
+    // track overbridge over a deep cutting is not worth keeping a 760 m reroute away).
     const targets = crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && !ROAD_CLASSES[t.cls].noAtGrade
       && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
-      && Math.abs(t.s - c.s) <= reach && !dependsOn(t, c))
+      && Math.abs(t.s - c.s) <= CROSSING_RULES.linkHardReach && !dependsOn(t, c))
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
+    const worth = (link: CrossingResult, target: CrossingResult) => !feasible(best)
+      || link.cost < best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1);
     for (const target of targets.slice(0, originalFeasible ? 1 : 3)) {
+      // A feasible structure is not swapped for a long link that cannot be worth it on length alone.
+      if (feasible(best) && Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach
+        && 2 * Math.abs(target.s - c.s) * ROAD_CLASSES[c.cls].roadPerKm[0] / 1000 >= best.cost * 0.5) break;
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
       link.targetS = target.s; link.targetRoadId = target.roadId;
@@ -675,7 +725,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       // not be rebuilt to evaluate a new branch arriving at that source.
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link]);
-      if (feasible(link) && (!feasible(best) || link.cost < best.cost)) { best = link; break; }
+      if (feasible(link) && worth(link, target)) { best = link; break; }
     }
     if (best !== c) {
       delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
@@ -748,13 +798,15 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
     }
     if (g.approaches && g.road) {
       let length = 0;
-      for (const { start, end } of g.approaches) {
+      for (const [k, { start, end }] of g.approaches.entries()) {
         if (start < 0 || end < start || end >= g.road.length) { report('Invalid approach bounds'); continue; }
-        length += crossingPlanLength(g.road.slice(start, end + 1));
+        const run = crossingPlanLength(g.road.slice(start, end + 1));
+        length += run;
+        const edge = g.road[k === 0 ? end : start], foot = g.road[k === 0 ? start : end];
+        const limit = rampLimit(c.cls, edge.z, edge.ground, foot.ground, run);
         for (let i = start + 1; i <= end; i++) {
-          const a = g.road[i - 1], b = g.road[i], run = Math.hypot(b.x - a.x, b.y - a.y);
-          if (Math.abs(b.z - a.z) > run * CROSSING_RULES.approachGradient + 0.01
-            && !g.diagnostics?.some(message => message.includes('6% gradient'))) report('Undiagnosed excessive approach gradient');
+          const a = g.road[i - 1], b = g.road[i], step = Math.hypot(b.x - a.x, b.y - a.y);
+          if (Math.abs(b.z - a.z) > step * limit + 0.01 && !g.diagnostics?.includes(RAMP_TOO_LONG)) report('Undiagnosed excessive approach gradient');
         }
       }
       if (c.type === 'overbridge' && Math.abs(length - (c.approachLength ?? 0)) > 0.01) report('Approach quantity differs from geometry');

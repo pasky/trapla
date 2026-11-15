@@ -5,7 +5,8 @@
 // secondary way in. Every edit goes through the owner's Store, so all of it can be undone.
 import './build-tools.css';
 import type { Design, Result } from '../core/evaluate';
-import { crossingChoice, crossingLabel, type CrossingChoice } from '../core/crossings';
+import { crossingChoice, type CrossingChoice } from '../core/crossings';
+import { CROSSING_CHOICE_TEXT, crossingOutcome } from '../core/terms';
 import { BUILDING_KINDS, ROAD_CLASSES } from '../core/data/urban';
 import type { BuildingOverride } from '../core/build-controls';
 import type { StructureKind } from '../core/overrides';
@@ -37,18 +38,7 @@ export interface BuildToolEvents {
 const km = (s: number) => (s / 1000).toFixed(2);
 const num = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const CROSSING_OPTIONS: [CrossingChoice | '', string, string][] = [
-  ['', 'Automatic', 'Keep existing bridges, junctions at least 1.5 km apart, otherwise the cheapest of a bridge, an underpass through a high enough embankment or a link to a nearby crossing road'],
-  ['junction', 'Junction', 'An at-grade junction with our road (class I–III roads only, ≥ 1.5 km from the next junction)'],
-  ['bridge', 'Our bridge over it', 'Our road bridges over the crossed road (needs clearance above it)'],
-  ['overbridge', 'Its bridge over us', 'The crossed road bridges over ours, with raised approach ramps (a motorway only over a ≥ 6 m cut)'],
-  ['reconnection', 'Close + reconnect', 'Close the crossed road at our road and link both ends to the nearest crossing road'],
-  ['underpass', 'Underpass', 'The crossed track / local road keeps its level and passes through our embankment in a concrete box (5 × 4.5 m for tracks, 8 × 4.5 m for local roads; needs ≥ 5.5 / 5.65 m of fill above it)'],
-];
-const TYPE_NAME: Record<string, string> = {
-  bridge: 'under our bridge', tunnel: 'above our tunnel', overbridge: 'its bridge over us', junction: 'junction',
-  reconnection: 'closed + reconnected', diversion: 'diverted', underpass: 'underpass through our embankment', atGrade: 'at grade (not allowed)',
-};
+const CROSSING_OPTIONS = CROSSING_CHOICE_TEXT;
 
 export class BuildTools {
   ev: BuildToolEvents = {};
@@ -173,11 +163,12 @@ export class BuildTools {
     const roads = this.crossedRoads(r);
     const k = roads.findIndex((x) => x.roadId === c.roadId);
     const bad = c.issues?.length || (c.type === 'atGrade' && ROAD_CLASSES[c.cls].noAtGrade);
+    const outcome = crossingOutcome(c);
     card.innerHTML = `<div class="ctx-h"><b>Crossed road</b><small title="${esc(ROAD_CLASSES[c.cls].label)} #${c.roadId} (OpenStreetMap way in the map data), crossed at km ${km(c.s)}">${esc(ROAD_CLASSES[c.cls].label)} · km ${km(c.s)}</small>
         <button type="button" class="nav" data-nav="-1" title="Previous crossed road along the route" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road along the route" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button><button type="button" class="x" title="Close (Esc)">✕</button></div>
-      <div class="ctx-state"><span class="tag ${bad ? 'bad' : 'ok'}">${TYPE_NAME[c.type] ?? c.type}</span> ${esc(crossingLabel(c))}${cost > 0 ? ` · <b>${czk(cost)}</b>` : ''}<br><small>our road ${Math.abs(c.h).toFixed(1)} m ${c.h >= 0 ? 'above' : 'below'} it${all.length > 1 ? ` · crossed ${all.length}× (km ${all.map((x) => km(x.s)).join(', ')})` : ''}</small></div>
+      <div class="ctx-state" title="${esc(outcome.explain)}"><span class="tag ${bad ? 'bad' : 'ok'}">${esc(outcome.tag)}</span> ${esc(outcome.label)}${cost > 0 ? ` · <b>${czk(cost)}</b>` : ''}<br><small class="explain">${esc(outcome.explain)}</small><br><small>our road ${Math.abs(c.h).toFixed(1)} m ${c.h >= 0 ? 'above' : 'below'} it${all.length > 1 ? ` · crossed ${all.length}× (km ${all.map((x) => km(x.s)).join(', ')})` : ''}</small></div>
       ${c.issues?.length ? `<div class="ctx-issue">⚠ ${c.issues.map((v) => esc(v.title)).join('; ')}</div>` : ''}
-      <div class="ctx-row choice" id="crossing-choice" role="group" aria-label="How to cross it">${CROSSING_OPTIONS.map(([v, label, title]) => `<button type="button" data-crossing="${v}" class="${choice === v ? 'on' : ''}" aria-pressed="${choice === v}" title="${title}">${label}</button>`).join('')}</div>
+      <div class="ctx-row choice" id="crossing-choice" role="group" aria-label="How to cross it">${CROSSING_OPTIONS.map(([v, label, title]) => `<button type="button" data-crossing="${v}" class="${choice === v ? 'on' : ''}" aria-pressed="${choice === v}" title="${esc(title)}">${label}</button>`).join('')}</div>
       <div class="sub">Applies wherever we cross this road. Choices that do not work are kept and shown as violations.</div>`;
     card.onclick = (e) => {
       const b = (e.target as HTMLElement).closest('button');
@@ -214,7 +205,7 @@ export class BuildTools {
     this.list.innerHTML = `${this.objectDataChanged ? '<p class="warn">The map data changed: your building and road-crossing choices were cleared so they cannot land on different objects. Choices tied to km positions are kept.</p>' : ''}
       ${items.length ? `<ul class="decisions">${items.join('')}</ul>` : '<div class="sub">No choices of your own yet: everything is automatic. Select a stretch in the profile, or click a crossed road or a building on the map.</div>'}
       ${inactive.map((id) => `<button type="button" class="forget" data-forget="${id}" title="This road is no longer crossed. Its saved choice would apply again if you reroute across it.">Forget the choice for road #${id} (no longer crossed)</button>`).join('')}
-      <label class="all-crossings">Crossed roads <select id="crossing-select" title="Pick a crossed road to see its options"><option value="">${range ? `${inRange.length} in the selected stretch…` : `all ${roads.length} along the route…`}</option>${inRange.map((c) => `<option value="${c.roadId}" ${c.roadId === this.crossing ? 'selected' : ''}>km ${km(c.s)} · ${esc(ROAD_CLASSES[c.cls].label)} · ${TYPE_NAME[c.type] ?? c.type}</option>`).join('')}</select></label>`;
+      <label class="all-crossings">Crossed roads <select id="crossing-select" title="Pick a crossed road to see its options"><option value="">${range ? `${inRange.length} in the selected stretch…` : `all ${roads.length} along the route…`}</option>${inRange.map((c) => `<option value="${c.roadId}" ${c.roadId === this.crossing ? 'selected' : ''}>km ${km(c.s)} · ${esc(ROAD_CLASSES[c.cls].label)} · ${esc(crossingOutcome(c).tag)}</option>`).join('')}</select></label>`;
     this.onCount?.(items.length);
     this.list.onclick = (e) => {
       const b = (e.target as HTMLElement).closest('button');

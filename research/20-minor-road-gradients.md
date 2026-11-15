@@ -16,6 +16,15 @@
 
 For conservative overbridge approach ramps, using ordinary (not exceptional) design values: **track 10%** (unpaved; paved main/secondary may be 15%/18%, but 10% is the conservative shared game value); **service 9%** (group C / public-purpose access); **residential, unclassified, living_street 5%** (D1 ordinary); **tertiary 7%** (class III at 60 km/h in hilly terrain, indicative); **secondary 6%**; **primary 4%**. The last two road-class game mappings are conservative approximations informed by the road-design table, not a verified class-by-class extraction from ČSN 73 6101:2018. Values are representative maxima, not recommendations for comfortable everyday grades.
 
+**Adopted in cost model 18** (`ROAD_CLASSES[...].rampGradient`, reviewed against the table above): track **10 %**
+(unpaved field-track limit), service **9 %** (group C, which also governs public-purpose access roads, §8.1.4),
+residential / unclassified / living_street **8 %** — OSM `residential` streets in the D11 villages are ordinary access
+streets (group C, 9 %) rather than traffic-calmed D1 zones, so the D1 5 % "běžné" value would be wrong for most of them;
+8 % stays below C and at the D1 justified 8.33 % — tertiary **7 %**, secondary and primary **6 %** (unchanged game value;
+the older ČSN 73 6101 table gives 4.5–7 % for S 7.5 / S 9.5 by terrain). Where the crossed road itself already falls
+away from a bridge more steeply, its ramp may follow it, at most half the class gradient steeper and never above
+**15 %** (ČSN 73 6110 extraordinary maximum for group C; paved main field tracks, ČSN 73 6109).
+
 ## Sources
 
 - ČSN 73 6110:2006 public norm PDF (directly read), https://unmz.gov.cz/files/normalizace/%C4%8CSN%2073%206110/74506.pdf

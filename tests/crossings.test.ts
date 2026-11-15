@@ -383,18 +383,23 @@ describe('crossing geometry and map overlay', () => {
     expect(manual[1].cost).toBeCloseTo(c.cost, 6); // choosing the same >750 m link explicitly stays valid
   });
 
-  it('keeps a feasible overbridge instead of buying a cheaper long detour outside the economic shortlist', () => {
+  it('swaps a feasible bridge over our road for a reroute beyond the 750 m shortlist only when that costs at most half', () => {
     const net = new RoadNet({ cls: ['primary', 'residential'], ways: [
       [0,3000,-600,3000,600], [1,3800,-600,3800,600],
     ] });
-    const wide = { ...route, width: new Float64Array(s.length).fill(500) };
-    const automatic = [cross(0,3000), cross(1,3800,'residential')];
-    resolve(automatic); expect(buildCrossingGeometry(automatic,wide,()=>400,net)).toEqual([]);
-    expect(automatic[1].type).toBe('overbridge');
-    const explicit = [cross(0,3000), cross(1,3800,'residential')];
-    resolve(explicit,[{ roadId: 1,type: 'reconnection' }]);
-    expect(buildCrossingGeometry(explicit,wide,()=>400,net)).toEqual([]);
-    expect(explicit[1].cost).toBeLessThan(automatic[1].cost);
+    const build = (width: number, overrides: CrossingOverride[] = []) => {
+      const cs = [cross(0,3000), cross(1,3800,'residential')];
+      resolve(cs, overrides); expect(buildCrossingGeometry(cs, { ...route, width: new Float64Array(s.length).fill(width) }, ()=>400, net)).toEqual([]);
+      return cs[1];
+    };
+    // A 500 m span over a huge cutting: the 800 m reroute is far cheaper and replaces it.
+    const huge = build(500), hugeBridge = build(500, [{ roadId: 1, type: 'overbridge' }]);
+    expect(huge.type).toBe('reconnection');
+    expect(huge.cost).toBeLessThan(hugeBridge.cost / 2);
+    // An ordinary 40 m span stays: the long reroute could never cost less than half of it.
+    const ordinary = build(40), link = build(40, [{ roadId: 1, type: 'reconnection' }]);
+    expect(ordinary.type).toBe('overbridge');
+    expect(link.cost).toBeGreaterThan(ordinary.cost / 2);
   });
 
   it('consumes tiny dead-end remnants in connection works but still requires anchors for surviving branches', () => {
@@ -409,10 +414,36 @@ describe('crossing geometry and map overlay', () => {
     expect(stub.issues).toEqual([]);
     expect(stub.c.geometry!.links![0].length).toBeGreaterThan(1); expect(stub.c.geometry!.links![1]).toEqual([]);
     const surviving = run(-200, 30); // real positive-side road survives, but the target T has no such branch
-    expect(surviving.issues.some(v => v.title.includes('surviving road branch'))).toBe(true);
+    expect(surviving.issues.some(v => v.title.startsWith('No place to reconnect'))).toBe(true);
     const consumed = run(-14, 14, 'service');
     expect(consumed.issues).toEqual([]); expect(consumed.c.geometry!.links).toEqual([[], []]);
     expect(consumed.c.linkLength).toBe(0); expect(consumed.c.cost).toBe(0); // no phantom service ACCESS lump
+  });
+
+  it('ramps up to a bridge over our road at the crossed road class gradient, following a road already steeper', () => {
+    const rampOf = (cls: string, terrain: (x: number, y: number) => number) => {
+      const net = new RoadNet({ cls: [cls], ways: [[0, 3000, -900, 3000, 900]] });
+      const c = cross(0, 3000, cls); resolve([c], [{ roadId: 0, type: 'overbridge' }]);
+      const issues = buildCrossingGeometry([c], route, terrain, net);
+      const g = c.geometry!, deck = g.road![g.deck!.start].z;
+      return { c, issues, rise: deck - terrain(3000, 0) };
+    };
+    // Flat ground: each ramp is the deck height over the class gradient (research/20), not 6 % for all.
+    for (const cls of ['track', 'service', 'residential', 'primary']) {
+      const { c, issues, rise } = rampOf(cls, () => 400);
+      expect(issues).toEqual([]);
+      const ideal = 2 * rise / ROAD_CLASSES[cls].rampGradient;
+      expect(c.approachLength!).toBeGreaterThanOrEqual(ideal - 1);
+      expect(c.approachLength!).toBeLessThanOrEqual(ideal + 20); // ramp feet sit on 10 m way samples
+    }
+    expect(rampOf('track', () => 400).c.approachLength!).toBeLessThan(150); // was ≈ 220 m at 6 %
+    // The old track falls 8 % away on both sides: the ramp follows it, 5 % steeper (13 %), and
+    // closes the height in ≈ 2 × 150 m instead of never; at 20 % no ramp within 15 % meets it again.
+    const fall = (_x: number, y: number) => 400 - 0.08 * Math.abs(y), falling = rampOf('track', fall);
+    expect(falling.issues).toEqual([]);
+    expect(falling.c.approachLength!).toBeLessThan(320); // the deck edges stand on ≈ 1 m lower ground
+    expect(auditCrossingGeometry([falling.c], route, fall, undefined).filter(v => v.severity === 'error')).toEqual([]);
+    expect(rampOf('track', (_x, y) => 400 - 0.2 * Math.abs(y)).issues.map(v => v.title)).toContain('Ramps up to the bridge over our road never get back down to the track');
   });
 
   it('does not treat viaduct-scale approach fill as ordinary priced road embankment', () => {
@@ -420,7 +451,7 @@ describe('crossing geometry and map overlay', () => {
     const terrain = (_x: number, y: number) => 400 - 55 * Math.exp(-(((Math.abs(y) - 250) / 100) ** 2));
     const c = cross(0, 3000, 'residential'); resolve([c], [{ roadId: 0, type: 'overbridge' }]);
     const issues = buildCrossingGeometry([c], route, terrain, net);
-    expect(issues.some(v => v.title.includes('10 m'))).toBe(true);
+    expect(issues.some(v => v.title.includes('more than 10 m high') || v.title.includes('never get back down'))).toBe(true);
     expect(c.type).toBe('overbridge'); // explicit choice retained, unlike Auto fallback
     expect(auditCrossingGeometry([c], route, terrain, net).filter(v => v.severity === 'error')).toEqual([]);
   });

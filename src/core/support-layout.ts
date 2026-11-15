@@ -260,10 +260,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     if (raiseM > 0.01) {
       diagnostics.push({ s: r.s[worstI], reason: 'span-depth', extensionM: 0, raiseM, requiredZ });
       violations.push({ kind: 'structure', basis: 'game', s0: r.s[worstI], s1: r.s[worstI],
-        title: 'Obstacle-clearing bridge span needs more height',
-        fix: `Raise the bridge at km ${(r.s[worstI] / 1000).toFixed(2)} by at least ${raiseM.toFixed(1)} m, or move the alignment to shorten its ${layout.span.toFixed(1)} m clear span`,
-        rule: 'Existing crossing clearances plus the bridge model’s span/20 structural-depth allowance',
-        detail: 'The obstacle-free support arrangement and each local span’s deck section remain fully priced; no colliding pier is hidden.' });
+        title: 'A long bridge span is too low over what it crosses',
+        fix: `Raise the bridge at km ${(r.s[worstI] / 1000).toFixed(2)} by at least ${raiseM.toFixed(1)} m, or move the route so the ${layout.span.toFixed(0)} m span can be shorter`,
+        rule: 'Game rule: the clearance under the bridge, plus a deck about 1/20 of the span deep',
+        detail: 'To keep its supports off the roads, railways or water below, this bridge has a long span; a long span needs a deeper deck, which eats into the clearance.' });
     }
   }
   return { kind, runs, diagnostics, violations,
