@@ -918,8 +918,8 @@ the bill change: **research/36**.
   at the same house and storey add; splitting a route splits its cells, it never adds +3 dB (tested). A
   motorway is two directional sources on their lane axes (laneOffset 0), a railway its own mode
   (emission / propagation of that mode not implemented here). Joint wall decisions across roads remain C1.
-- Performance (open): the exact sum costs more than the old per-station maximum — the noise step of a
-  full evaluation is ≈ 6 / 7 / 13 / 10 / 27 ms for best / demo / direct-80 / direct-90 / town-centre
-  against 5 / 5 / 5 / 5 / 7 ms before (quiet host, minimum of 8 warm runs); measures so far: spatial cell
-  grid for candidates, rigorous bounds before any sum, cell-by-cell only within 160 m, change-only final
-  pass, closed forms instead of fdlibm pow. See docs/evaluate-performance.md.
+- Performance (open): after the performance pass (segment tree, two samples per far segment, a rigorous open-road
+  bound from each segment's own distance, typed scratch kernels) the noise step is faster than main on
+  best and demo, +1–3 ms on direct-80/90, and still ≈ 8 ms slower on town-centre (367 dwellings at the
+  road; whole evaluation ≈ 6 % slower there, equal or faster elsewhere within noise). Numbers and what is
+  left: docs/evaluate-performance.md.
