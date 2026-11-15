@@ -131,3 +131,39 @@ it; no claim that original national 2009–2013 acquisition dates prove preconst
 Final new-scenario gates, final fingerprints, integrated picker/default/Start-over checks and D35
 full-corridor decision are still required before merge. Screenshots 73–78 are reserved for this stream;
 no global README changes are made here.
+
+## Refetch with bound caches (2026-11-15, after 71b455f)
+
+All new-pack Overpass caches were unbound (and one mirror lagged months), so they were moved aside
+as `*.unbound~` and fetched again with query bindings; D3 and Paka now also use the coherent
+transport query. Every Overpass snapshot used is from 2026-11-15. D11 is unchanged: its caches are
+accepted by frozen byte hash, and a full D11 rebuild reproduced every scoring/render file
+byte-identically; only its graph sidecar changed (5 corrected self-crossing render intervals).
+
+- **D3:** same reference (15,680 m), graph 7,011 sources / 0 unresolved, C validator clean. The
+  committed seven-bend starter stays **VALID**: 15,443.5517 m, **4,743,380,449.49 CZK** (was
+  4,743,443,003.13 on the older snapshot), parts error 0, warm medians 73–81 ms. Raw straight:
+  14,079.0008 m, 5,226,142,984.09 CZK, NOT VALID, the same 11 diagnostics, median 173 ms.
+- **Paka:** reference 7,402 m, graph 4,696 / 0 unresolved, validator clean. Straight and reference
+  diagnostics unchanged (straight 6,120.73 m, 2,510,979,627.25 CZK; final roundabout contact).
+- **D35:** reference 33,900 m, graph 7,732 / 0 unresolved, validator clean, peak RSS 1.36 GB.
+  Straight 30,580.9 m, 13.348 bn CZK, 16 diagnostics, median 251–288 ms (max 352 ms); reference
+  sampler 33,695 m, 9.927 bn, 32 diagnostics, median 209 ms.
+
+### D35 Mohelnice end: a merge, not a crossing
+
+All ten reference ways are `highway=proposed` (one carriageway, oneway). The last, 22768453, runs
+alongside the existing I/35 for its final ≈0.4–0.6 km and ends 0.4 m from the existing motorway
+carriageway: the centre line is 19.7 m from the trunk at 33.49 km and 6.5 m at 33.63 km. A
+diagnostic (not a fixture) with the reference bends and the end moved back along the mapped line:
+
+| end along reference | length | diagnostics |
+|---|---|---|
+| 33,900 m (current B) | 33,695 m | 33, of which 25 at km 33.2–33.6 (piers/ends/earthworks on I/35, D35, service, stream) |
+| 33,500 m | 33,295 m | 10 |
+| 33,300 m | 33,094 m | 1 (1 m track contact at km 13.58) |
+| 33,100 m | 32,895 m | 3 |
+
+So almost every D35 conflict is the final merge onto a retained road, the same connected-endpoint
+gap as Paka's roundabout arm. Neither is solved by tuning bends; the engine has no merge/arm
+ownership beyond a 1 m endpoint cell. Moving B back is a scope decision for the parent, not adopted.
