@@ -25,7 +25,7 @@ function fixture() {
         layer: 1, bridge: true, tunnel: false, elevation: 'unknown', tags: { highway: 'service' }, render: [] }],
     unresolvedSources: [{ id: 'conflict', osmWayId: '4', kind: 'road', reason: 'conflicting-snapshots', renderFeatureIds: ['main-drawing'] }] };
   const terrain = syntheticTerrain(100, 80, 5, () => 100);
-  const base = new ProjectTransportIndex(graph, 'transport', 'vectors', (x, y) => terrain.heightAt(x, y));
+  const base = new ProjectTransportIndex(graph, 'transport', 'vectors', terrain);
   const ctx = { terrain, scenario: D11_SCENARIO, a: { x: 50, y: 100 }, b: { x: 250, y: 100 } };
   const interval: SourceInterval = { transportData: 'transport', sourceId: 'main', s0: 25, s1: 175 };
   const project: ProjectDesign = { schemaVersion: 1, scenarioId: 'test', presetId: 'network', packId: 'test', objectData: 'objects', transportData: 'transport',
@@ -38,7 +38,7 @@ it('reads numeric tagged speed without inventing a speed for symbolic or missing
   const { graph, ctx } = fixture();
   for (const [tag, expected] of [['70', 70], ['12.5', 12.5], [' CZ:urban ', null], ['30 mph', null], [undefined, null]] as const) {
     graph.sources[0].tags.maxspeed = tag;
-    const base = new ProjectTransportIndex(graph, 'transport', 'vectors', (x, y) => ctx.terrain.heightAt(x, y));
+    const base = new ProjectTransportIndex(graph, 'transport', 'vectors', ctx.terrain);
     expect(groundRoadSourceInfo(base, 'main').taggedSpeed).toBe(expected);
   }
 });
@@ -137,7 +137,7 @@ it('retains different station occurrences of the same source node and gives clos
   for (let i = 2; i < main.xy.length; i += 2) main.stations.push(main.stations[main.stations.length - 1]
     + Math.hypot(main.xy[i] - main.xy[i - 2], main.xy[i + 1] - main.xy[i - 1]));
   main.render = [];
-  let base = new ProjectTransportIndex(graph, 'transport', 'vectors', (x, y) => ctx.terrain.heightAt(x, y));
+  let base = new ProjectTransportIndex(graph, 'transport', 'vectors', ctx.terrain);
   const branches = base.branches({ ...interval, s0: 90, s1: 110 });
   expect(branches[0].other).toContainEqual({ transportData: 'transport', sourceId: 'main', s: main.stations[4] });
   graph.sources = [main, graph.sources[1]];
@@ -146,7 +146,7 @@ it('retains different station occurrences of the same source node and gives clos
   for (let i = 2; i < main.xy.length; i += 2) main.stations.push(main.stations[main.stations.length - 1]
     + Math.hypot(main.xy[i] - main.xy[i - 2], main.xy[i + 1] - main.xy[i - 1]));
   graph.sources[1].nodes = ['a', 'branch-end']; graph.sources[1].xy = [50, 100, 150, 200]; graph.sources[1].stations = [0, Math.hypot(100, 100)];
-  base = new ProjectTransportIndex(graph, 'transport', 'vectors', (x, y) => ctx.terrain.heightAt(x, y));
+  base = new ProjectTransportIndex(graph, 'transport', 'vectors', ctx.terrain);
   const command = promoteGroundRoad(base, { routeId: 'loop', acousticSourceId: 'physical-loop', specification, name: 'Track',
     interval: { ...interval, s0: 0, s1: main.stations[main.stations.length - 1] } });
   expect(new Set(command.connections.map(c => c.id)).size).toBe(command.connections.length);
@@ -159,7 +159,7 @@ it('finds inclusive corner contacts in either diagonal direction and rejects uns
     const { graph } = fixture();
     graph.nodes = [{ id: 'a', xy: [xy[0], xy[1]] }, { id: 'b', xy: [xy[2], xy[3]] }];
     graph.sources = [{ ...graph.sources[0], nodes: ['a', 'b'], xy, stations: [0, Math.hypot(xy[2] - xy[0], xy[3] - xy[1])], render: [] }];
-    const base = new ProjectTransportIndex(graph, 'transport', 'vectors', () => 100), found: string[] = [];
+    const base = new ProjectTransportIndex(graph, 'transport', 'vectors', { heightAt: () => 100, isOob: () => false }), found: string[] = [];
     base.near({ minX: 100, maxX: 100, minY: 100, maxY: 100 }, s => found.push(s.sourceId));
     expect(found).toEqual(['main']);
     expect(() => base.near({ minX: 1e20, maxX: 1e20, minY: 0, maxY: 0 }, () => {})).toThrow('Unsafe');
@@ -168,4 +168,30 @@ it('finds inclusive corner contacts in either diagonal direction and rejects uns
     { s: 0, x: 1e20, y: 0, z: 100, halfWidth: 2, structure: 'ground' },
     { s: 100, x: 1e20, y: 100, z: 100, halfWidth: 2, structure: 'ground' },
   ] }])).toThrow('Unsafe');
+});
+
+it('treats a source anchor inside another replacement as stale, and never drapes source roads over unknown terrain', () => {
+  const { base, ctx, project, command } = fixture(), c = command();
+  project.routes = c.routes; project.connections = c.connections;
+  const spur = structuredClone(c.routes[0]); spur.id = 'spur'; spur.source = undefined; spur.acousticSourceId = 'physical-spur';
+  spur.endpoints = { a: { position: { x: 100, y: 100, z: 100 }, binding: 'resolved',
+    anchor: { kind: 'source', location: { transportData: 'transport', sourceId: 'main', s: 50 } } },
+  b: { position: { x: 100, y: 200, z: 100 }, binding: 'resolved', anchor: { kind: 'free' } } };
+  spur.alignment = { kind: 'reference', provenance: 'imported', vertical: { kind: 'reference' }, controls: {},
+    path: [{ x: 100, y: 100, s: 0, elevation: { kind: 'ground' } }, { x: 100, y: 200, s: 100, elevation: { kind: 'ground' } }] };
+  project.routes.push(spur);
+  const surfaces = () => project.routes.map(r => referenceRoadSurface(ctx, r)!);
+  // The old ground road still lies at this XYZ, but route 'rebuilt' owns and replaces it here.
+  const stale = assessReplacementConnections(base, project, surfaces());
+  expect(stale.failures).toContainEqual(expect.objectContaining({ routeId: 'spur', reason: 'source-endpoint-replaced' }));
+  expect(stale.feasibleIntervals).toEqual([]);
+  spur.endpoints.a.anchor = { kind: 'source', location: { transportData: 'transport', sourceId: 'main', s: 10 } };
+  spur.endpoints.a.position = { x: 60, y: 100, z: 100 }; spur.alignment.kind === 'reference' && (spur.alignment.path[0].x = 60);
+  expect(assessReplacementConnections(base, project, surfaces()).failures).toEqual([]); // retained stretch is still authoritative
+
+  const { graph } = fixture();
+  const edge = new ProjectTransportIndex(graph, 'transport', 'vectors', { heightAt: () => 100, isOob: x => x > 200 });
+  expect(edge.position('main', 100)?.z).toBe(100);
+  expect(edge.position('main', 190)).toBeNull(); // display-filled height outside data is not ground
+  expect(() => edge.path({ transportData: 'transport', sourceId: 'main', s0: 100, s1: 190 })).toThrow('unresolved');
 });

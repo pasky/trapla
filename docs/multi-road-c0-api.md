@@ -139,8 +139,9 @@ retain their category/speed; an unknown or malformed newer save is never overwri
 ## Source proposal foundation
 
 `src/core/project-network.ts` provides `ProjectTransportIndex`, `ProjectSurfaceIndex`,
-`EffectiveProjectNetwork` and `projectNetworkViews`. Source callbacks must report unavailable terrain as
-non-finite, not clamp it into a usable road height. The source graph is cloned/frozen, canonical station
+`EffectiveProjectNetwork` and `projectNetworkViews`. `new ProjectTransportIndex(graph, transportData,
+vectorData, terrain)` takes the real `Terrain` (or any `{heightAt, isOob}`); `heightAt` is display-filled
+outside data, so ground positions where `isOob` holds are unresolved (null), never a usable road height. The source graph is cloned/frozen, canonical station
 bounds are checked, unknown bridge/tunnel elevations stay unknown, render intervals clip through their
 explicit correspondence, and candidate exclusions remain separate from the accepted network. Spatial
 queries have cell/work budgets, inclusive diagonal-corner coverage and unsafe-coordinate rejection.
@@ -155,7 +156,10 @@ queries have cell/work budgets, inclusive diagonal-corner coverage and unsafe-co
   operation assumptions; unresolved/conflicting sources and unsupported structures are refused.
 - `assessReplacementConnections(base, project, proposedSurfaces)`: **topology feasibility only**, not
   engineering acceptance. It checks branches, source continuations, conflicting claims, current proposed
-  XYZ, fingerprints, and connected dependency failures. Its `feasibleIntervals` MUST NOT directly become
+  XYZ, fingerprints, and connected dependency failures. An endpoint anchored to a source point that another
+  route replaces fails (`source-endpoint-replaced`): re-anchor it to that route. Two adjacent promotions
+  need one explicit connection naming both routes; separate promotions sharing a boundary fail conservatively.
+  A stretch sharing a node with a railway (level crossing) is refused for now. Its `feasibleIntervals` MUST NOT directly become
   accepted render/source replacements or a valid score before the remaining engineering stages finish.
 
 The first UI wave may edit, undo and reload these proposals; it remains unscored. Invalid new-road
