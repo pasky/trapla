@@ -49,7 +49,8 @@ export function derivedStretch(base: ProjectTransportIndex, sourceId: string, s:
   let lo = Math.max(span.lo, ...junctions.filter(j => j <= s - STRETCH_PAST_JUNCTION));
   let hi = Math.min(span.hi, ...junctions.filter(j => j >= s + STRETCH_PAST_JUNCTION));
   // A level crossing, or a bridge/tunnel joining, cannot be rebuilt yet: the stretch stops short of it.
-  for (const b of branches) if (b.other.some(o => { const q = base.source(o.sourceId); return !q || q.kind !== 'road' || q.elevation !== 'terrain'; })) {
+  // (a level crossing: another kind of line; a branch of the same kind is an ordinary junction or switch)
+  for (const b of branches) if (b.other.some(o => { const q = base.source(o.sourceId); return !q || q.kind !== source.kind || q.elevation !== 'terrain'; })) {
     if (Math.abs(b.s - s) <= KEEP_CLEAR) return null;
     if (b.s < s) lo = Math.max(lo, b.s + KEEP_CLEAR); else hi = Math.min(hi, b.s - KEEP_CLEAR);
   }
@@ -161,19 +162,25 @@ const nearestStation = (path: readonly { x: number; y: number; s: number }[], p:
  * a fresh exact claim, end anchors and branch connections (core promotion), its bends kept where
  * they still lie inside, bends of a newly included old stretch added, and its station-based choices
  * (height pins, structures, walls, hand heights) shifted with the start. */
-export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string, s0: number, s1: number): ProjectDesign {
+export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string, s0: number, s1: number,
+  /** the exact claim, end anchors and branch connections for the new interval (another kind's own promotion,
+   * e.g. a railway's); default: the ground-road promotion. Only its endpoints and connections are used. */
+  promote?: (interval: SourceInterval, route: RouteDesign) => Extract<ProjectCommand, { type: 'promote' }>): ProjectDesign {
   const route = project.routes.find(r => r.id === routeId);
   const old = route?.source?.intervals[0];
-  if (!route || !old || route.kind !== 'road' || route.alignment.kind !== 'pi' || route.source!.intervals.length !== 1) throw new Error('Not a rebuilt stretch');
+  if (!route || !old || route.alignment.kind !== 'pi' || route.source!.intervals.length !== 1) throw new Error('Not a rebuilt stretch');
   if (!(s1 - s0 >= MIN_STRETCH)) throw new Error('Stretch too short');
   const interval = { ...old, s0, s1 };
   // Promotion re-derives the exact claim, end anchors and branch connections; the rebuilt road keeps its own specification.
-  const info = groundRoadSourceInfo(base, old.sourceId);
-  const command = promoteGroundRoad(base, { routeId: route.id, acousticSourceId: route.acousticSourceId, interval, name: route.name,
-    specification: { kind: 'road', policy: 'existing-ground', legalClass: info.legalClass, crossSection: 'existing', existingWidth: info.width,
-      designSpeed: route.specification.designSpeed, operations: route.specification.operations } });
+  const command = promote ? promote(interval, route) : (() => {
+    if (route.kind !== 'road') throw new Error('A non-road stretch needs its own promotion');
+    const info = groundRoadSourceInfo(base, old.sourceId);
+    return promoteGroundRoad(base, { routeId: route.id, acousticSourceId: route.acousticSourceId, interval, name: route.name,
+      specification: { kind: 'road', policy: 'existing-ground', legalClass: info.legalClass, crossSection: 'existing', existingWidth: info.width,
+        designSpeed: route.specification.designSpeed, operations: route.specification.operations } });
+  })();
   const fresh = command.routes[0];
-  if (fresh.alignment.kind !== 'reference') throw new Error('Unexpected promotion');
+  if (fresh.id !== route.id) throw new Error('Promotion must keep the route');
   const wide = base.path({ ...old, s0: Math.min(s0, old.s0), s1: Math.max(s1, old.s1) });
   const kept = route.alignment.pis.filter(p => { const s = nearestStation(wide, p); return s > s0 + 1 && s < s1 - 1; });
   const added = (from: number, to: number) => to - from > 1 ? fitBends(base.path({ ...old, s0: from, s1: to })) : [];
