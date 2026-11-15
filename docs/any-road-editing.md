@@ -69,6 +69,66 @@ cohesive experience, usable end-to-end on D11 and the new scenarios; no foundati
 Research added for this work: research/29 (tie-in junctions), research/30 (rebuilding a stretch),
 research/31 (noise from several roads). Screenshots: next free numbers after the merged galleries.
 
-## 4. State
+## 4. State (2026-11-15, branch side-agent/any-road-editing)
 
-(Updated as milestones land.)
+Playable now (D11 with its road links sidecar, D3, D35, Nová Paka):
+
+- **Any mapped road**: click selects it (card, highlighted stretch, no edit; Esc closes). A drag on the
+  highlighted stretch rebuilds it in one undo step (`ui/mapped-road.ts`, `ui/road-edit.ts`): exact source
+  claim and every branch kept as a connection (core promotion), its line converted once into bends that
+  follow the old road (`fitBends`: Douglas–Peucker 8 m, bends closer than 80 m merged; the card says how far
+  the new line strays), then bent under the pointer. Class I → S 9.5, class II/III → S 7.5, 70 km/h at
+  first. Local roads, service roads, tracks, motorways, bridges, tunnels and railways are refused with a
+  plain reason. A stretch stops 5 m short of a level crossing or a joining bridge/tunnel. Undo restores the
+  untouched project exactly. Its two ends are drag handles along the old road (`ui/stretch-ends.ts`): one
+  edit; bends inside are kept, newly included old road gets its bends, pins/structures/walls shift with the
+  start, hand heights return to Auto with the pins.
+- **Build → Road** (`ui/build-road.ts`): click start and end; a click on a mapped road joins it, on our road
+  (or another new road) joins it at that point, on open ground leaves a free end ("Road ends nowhere").
+  Refusals in plain words (motorway, bridge, tunnel, railway, off the map, a stretch being rebuilt).
+- **Road list** only with two or more roads; a click on a road selects it. A side road's card: what it
+  is, its traffic (explicit field; until set: "Traffic not set", unpriced), its works, Remove road / Keep
+  the old road. A pack without road links says so in the card.
+- **Kind-generic hooks** for motorway/railway (`ui/route-kinds.ts`): `registerMappedLineKind`
+  (rebuildable verdict, atomic promote command, moving ends) and `registerBuildKind` (end on a mapped
+  source, end on a project route, create). The Build menu lists exactly the registered kinds.
+
+Priced now (core):
+
+- **(a) Ends on existing ground roads** (`core/tie-in.ts`): one junction per end, billed in the road's
+  own bill through the endpoint-junction zone (`ENDPOINT_JUNCTIONS` `tie-in` 25 M onto class I/II, `tie-in-
+  minor` 7 M PROVISIONAL onto minor roads; 30 m zone, MODELLING ASSUMPTION). Checks: no at-grade end on a
+  motorway/expressway; class I spacing 1.5 km to existing junctions and to its own other end (an existing
+  junction rebuilt in place is allowed); grade ≤ 6 % in the junction (VL 3 to ČSN 73 6102); sight triangle
+  XB/XC by the joined road's legal speed (90/50, Act 361/2000 §18), eye 3.0/2.5 m behind its edge, on our
+  designed grade, the seen car on the joined road itself, ground or a house within 0.25 m of the line blocks.
+- **(b) A rebuilt stretch** (`core/project-replacement.ts`): engineered by the kernel against the network
+  without its old stretch (`RoadNet.without`); old pavement removed where the new road leaves it (OTSKP
+  113131 + 11333 + 18231 + 18242, research/30; layer thicknesses PROVISIONAL); every side road that joined
+  it stays connected (a crossing/rebuild the kernel already does, else a straight link at its class's SPK
+  rate plus its junction/access); ends continue as the old road (no junction). Once the project is priced
+  the stretch is accepted: the old road leaves the map, crossings and picking.
+- **(c, first part) Ends on another designed road**: the end follows that road's current line; the
+  junction is built and billed by the side road, checked for spacing (that road's ends and junctions count),
+  grade, bridges/tunnels and sight against the designed road; the side road's first metres inside that
+  road's earthworks are credited (not built twice); their meeting is no longer an unchecked crossing and
+  the land test ignores the junction area.
+- A project of independent roads is priced (`screenIndependence`): our road + a side road / rebuilt
+  stretch anywhere their land, roads, houses and noise do not interact.
+
+Not yet (honest in the game):
+
+- **Combined noise** (C1 c): two roads whose noise reaches the same houses stay unpriced ("These roads
+  affect each other"). In D11 that is most side roads within ~3.6 km of our road. Waits for the noise
+  agent's per-house, per-storey energy per physical road; then energy sum at each receiver, limit of the
+  prevailing road (research/31), one buy-out per house, project-level walls.
+- Road crossings between designed roads (bridge/underpass), shared works beyond junctions.
+- Old road land under a rebuilt stretch is bought again (conservative; existing land width unknown).
+- A rebuilt alignment is assessed with new-road noise limits (it is relocated, research/30); traffic for
+  mapped roads is the player's (CSD 2020 census per way could prefill it later).
+- Roundabout as a junction choice; ČSN 73 6102 turning-lane lengths; local-road/track design rules.
+- Rebuilding across several mapped ways (one way per stretch today).
+
+Gates on 6ae171b: any-road-scene (D3), smoke, playtest, GPU drag gates all pass. Later commits (merge with
+lazy road links, kinds, C1 a/b/c) passed tsc, vitest (557) and eval-regression (D11 bills bit-identical);
+browser gates pending.
