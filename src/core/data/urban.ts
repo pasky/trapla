@@ -171,7 +171,8 @@ export const JUNCTION = 25_000_000;
 /** Scenario-declared connection of our route's end to a retained road (research/28). Inside the zone,
  * our earthworks over THAT road are the junction's own works, paid by `cost`; anything else still counts.
  * - roundabout arm: TP 135 (2017) §1.7.1 places the splitter island over 5–25 m of the arm before the
- *   entry; the upper bound is the arm length that belongs to the roundabout design.
+ *   entry. MODELLING ASSUMPTION: the arm's works reach as far as its longest splitter island; TP 135
+ *   does not define an earthworks ownership length.
  * - merge (end-to-end join onto a retained carriageway): PROVISIONAL. ČSN 73 6102 tab. 35 rows for
  *   80/90 km/h were not verified; 90 m is the end taper (Lz) of a documented 130 km/h connector (MD
  *   technical report), used as an upper bound for a slower road.

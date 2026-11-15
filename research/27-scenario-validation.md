@@ -171,8 +171,8 @@ ownership beyond a 1 m endpoint cell. Moving B back is a scope decision for the 
 ## Junction ends, D35 stage decision and final starters (2026-11-15, after main a121a92)
 
 **Junction ends (research/28).** Paka's B declares a roundabout arm onto the four ring ways of the
-retained I/16 roundabout and way 1418615945, an `access=no` service apron drawn across its central
-island with the ring (flagged for review: it is counted as part of the same junction). Inside 25 m of
+retained I/16 roundabout and way 1418615945, an `access=no` service chord joining two ring nodes across
+the central island (its purpose is not tagged; flagged for review: it is counted as part of the junction). Inside 25 m of
 B, our earthworks over those ways become one priced junction (25 M CZK allowance, 21–23 m of ring
 rebuilt); the raw straight run then keeps only its two street footprints (km 2.04, 2.81).
 
