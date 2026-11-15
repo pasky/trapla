@@ -241,7 +241,7 @@ What exists (details and commands in `README.md`):
   height point and made both directions clash downstream); motorway bests are kept (the store was keyed by the
   road mission). Drag budget holds on D3 motorway, paired and split (`drag-perf --scenario d3 --preset
   d3-motorway [--split forward]`).
-- Railway mission `d11-rail-kralovec` (cost model 21, research/36): Trutnov hl.n. → Královec on the mapped
+- Railway mission `d11-rail-kralovec` (cost model 21, research/38): Trutnov hl.n. → Královec on the mapped
   line (owner: a railway mission must start and end on the rail network). A game proposal (no announced
   upgrade); trains a labelled prior (an hourly passenger train each way, 36 a day; 2022 ran 4 each way);
   9 min target a mission choice. Starter VALID at 9.9 bn CZK. A railway between two points of an existing

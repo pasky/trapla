@@ -224,7 +224,7 @@ keeps its height points on their ground and runs as one body with the other wher
 "Railway: Trutnov → Královec" starts and ends on the rail network: at Trutnov hlavní nádraží and at Královec,
 the last station before the Polish border, on today's single-track, non-electrified line (passenger trains
 run on to Lubawka; 26 min with four stops in the 2022 timetable). No upgrade of it has been announced
-(research/36): the card says it is a game proposal. A single-track electric line at up to 120 km/h, slopes
+(research/38): the card says it is a game proposal. A single-track electric line at up to 120 km/h, slopes
 ≤ 12.5 ‰ (‰ in the profile), no level crossings, CNOSSOS train noise. The new line joins the old track in both
 stations and rebuilds it where it runs along it; elsewhere the old line stays. The first railway card (between
 the motorway's ends) is retired; its saves still load (`?scenario=d11&preset=d11-railway`).

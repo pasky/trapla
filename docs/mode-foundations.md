@@ -221,7 +221,7 @@ red above the category's own maximum; legend / hint / "Track height" wording), s
 `scripts/railway-shots.mjs`. Split "By hand" density checked: same as roads (every auto grade break, each real).
 
 Then (cost model 21): the railway mission moved onto the rail network (`d11-rail-kralovec`, Trutnov hl.n. →
-Královec, research/36; `d11-railway` retired); `railTrackOurs` (tie-in / rebuild-along) and `railRetired`
+Královec, research/38; `d11-railway` retired); `railTrackOurs` (tie-in / rebuild-along) and `railRetired`
 (a rebuilt stretch's old track) in evaluate.ts / footprint.ts; autoprofile 0.5 m grid for gentle limits.
 Build flow done (`ui/mode-kinds.ts`: MOTORWAY_BUILD via `addMotorwayCorridor`, RAIL_BUILD, RAIL_LINE via
 `promoteGroundRailway`; the worker receives mapped rail lines with `source-ways`).

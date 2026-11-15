@@ -158,14 +158,14 @@ export const D11_RAILWAY: ScenarioParams = {
   picker: { kind: 'Railway · 160 km/h', goal: 'Lay a double-track electric line through the pass to the border.' },
   maxTravelMin: 9,
 };
-// Railway Trutnov hl.n. → Královec (research/36). Today: the single-track, non-electrified cross-border line
+// Railway Trutnov hl.n. → Královec (research/38). Today: the single-track, non-electrified cross-border line
 // (OSM: tracks=1, electrified=no, 40–80 km/h; 16.9 km along the mapped track) via Trutnov střed, Libeč,
 // Křenov and Bernartice, with passenger trains on to Lubawka and Sędzisław (GW Train Regio timetable
 // 2025/26). No announced upgrade of this section was found (an SŽ 2018 study targets Hradec Králové–Trutnov
 // only; the RS5 Wrocław studies name no route over Královec): the mission is a game proposal, a new
 // single-track electric line between the two stations. It joins the existing track in both stations and
 // rebuilds it where it runs along it; elsewhere the old line stays as it is. Ends: OSM station nodes
-// (Nominatim, research/36) snapped onto the mapped line (≤ 2.4 m). Time target: a mission choice, 9 min
+// (Nominatim, research/38) snapped onto the mapped line (≤ 2.4 m). Time target: a mission choice, 9 min
 // running time = 18 km at 120 km/h (stations 12.7 km apart); today's trains take 26 min with four stops
 // (KHK D26 timetable 2022). Traffic: PROVISIONAL prior, an hourly passenger train each way by day (16 h) and
 // two each way at night, no freight (that 2022 summer timetable ran 4 trains each way).
