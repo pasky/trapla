@@ -202,3 +202,43 @@ rule). Train noise: CNOSSOS-EU rolling + traction source from the Annex II Appen
 propagation over hard ground, new-line limits 60/55 dB (research/35); compositions and train counts are
 explicit PROVISIONAL game priors. Rendering: ballast beds, sleepers and rails for one or two tracks.
 New railways join the project through the generic Build / drag-to-rebuild flow (any-road-editing).
+
+## M1 continuation notes (handoff, 2026-11-15 22:20)
+
+Branch `side-agent/motorway-rail` (worktree-0004), all committed; tsc / 550 tests / build / eval-regression
+(11 D11 fixtures identical) green. `side-agent/scenario-expansion` (e201845) is merged in (D3/D35 code);
+packs copied into `public/scenarios/` (d3, d35, i16-nova-paka, d11 transport sidecar).
+
+Pending, in order:
+1. **Browser slot** (parent pings; order crossing-links → us → noise-walls-seams). Then run, one at a time,
+   closing Chromium after each: `node scripts/motorway-shots.mjs d3` (picker, paired motorway, carriageways,
+   twin bridge, twin tunnel, split via `#dir-forward`, bend via `trapla.setDesign`, join via `#dir-both`;
+   prints project state JSON per step; `--docs 130` copies to docs/screenshots/130-…, range 130–139), then
+   `node scripts/drag-perf.mjs --gpu --check` for all modes (bend|road|radius|pin|vpi) on D11 and with
+   `--scenario d3 --preset d3-motorway` (design scripts/scenarios/d3/d3-motorway.json). LOOK at every
+   screenshot: shader paint (terrainMaterial.ts PAIRED/CARRIAGEWAY/RAIL sections), twin decks (view.ts
+   `strips`), one portal per tube. Not yet seen in a browser at all. Node timing: motorway full eval
+   ≈ 240 ms vs road 103 ms (sections/retaining 2×, noise 50 ms); previews 30–65 ms. Add README/PLAN refs.
+2. **Rebase onto main** after crossing-links (cost model 19) merges: our bump becomes **20** ("motorway and
+   railway scoring enabled; road bills unchanged"); re-stamp `tests/fixtures/evaluate-remedies-current.json`
+   with `npx tsx scripts/eval-regression.ts --capture=current --reviewed-model-change` ONLY after checking
+   the diff is the version number alone. GIT_EDITOR=true, never stash. Expect conflicts in evaluate.ts,
+   project-evaluate.ts, main.ts, crossings.ts.
+3. **Build flow** (any-road-editing, not merged yet): hook Build → Motorway (`createMotorwayProject`-like
+   corridor creation at picked ends; non-port ends stay unpriced) and Build → Railway
+   (`createRailwayRoute(id, name, endpoints, tracks)`); railway rerouting = their generic drag-to-rebuild
+   with kind `railway` (we supply `project-railway.ts` kernel/rules), not a separate stub.
+4. **Noise contract** (noise-walls-seams, cost model 21): move motorway (two directional sources, half
+   traffic each on lane axes ±6.0 m; `MOTORWAY_NOISE` emission) and railway (`rail-noise.ts`
+   `railLinePower` per period, CNOSSOS source) onto its per-source per-storey day/night energy model;
+   then drop the split "full traffic per direction" bound and the `leftJoined` shield in evaluate.ts.
+
+Key code map: `core/project-motorway.ts` (corridor eval, split/rejoin, `splitLedger`, shared crossings via
+`EvalOptions.sharedCrossings`), `core/project-railway.ts`, `core/rail-noise.ts` + `data/cnossos-rail.ts`,
+`data/categories.ts` rows D27.5 / D27.5-1 / R1 / R2 (`markup`, `everywherePerKm`, `normShareOf`,
+`tunnelPerKm`), `data/norms.ts` (category-aware), `data/railway.ts` (SPOŽES), `road-noise.ts`
+(`MOTORWAY_NOISE`), `crossings.ts` (`gradeSeparated`), `ui/hud.ts` direction switch, `ui/active-route-store.ts`
+(paired edited as forward), `data/scenario.ts` presets `d3-motorway` / `d35-stage1-motorway`.
+Known limits: motorway sag 130 km/h UNVERIFIED; no interchanges (ends = ports); crossings near but not
+joined between split directions are separate structures; rail bridge deck width = formation (PROVISIONAL);
+rail traffic counts and compositions are game priors.
