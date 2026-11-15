@@ -12,23 +12,40 @@ The official [OPD project record](https://opd3.opd.cz/projekt/Silnice-I-16-Nova-
 
 Nominatim's OSM result for Nová Paka town relation 440014 gives town center 50.4947616, 15.5149801. EPSG:5514 transform (pyproj, `always_xy=True`) is x=-659677.956, y=-1008150.005 m. A centered, 15 km square rounded outward to 500 m is **[-667500, -1016000, -652500, -1001000]** (xmin,ymin,xmax,ymax). This is a useful initial envelope, not a verified endpoint-derived envelope; its margins need checking against the full alignment and tie-ins before being called final.
 
-**Exact A/B lat/lon are not verified in this pass.** The official sources retrieved state project length and orientation but the accessible text does not publish chainage endpoints as coordinates. I did not infer endpoints from town centroid, map thumbnails, or census section endpoints. CSD 2025 describes the tie-in sections as Úlibice / existing I/16 at the west and an existing-I/16 connection by Vidochov to the east, but those census descriptions are not surveyed point coordinates. Do not freeze `A`, `B`, `startNode`, or claim the bbox completely contains the full route until coordinates are checked against official project map geometry or a complete OSM chain.
+Current OSM API tiles now establish a **connected candidate** bypass chain with exact topological endpoints: start node **6939405849**, lat/lon **50.4695643, 15.5015253**, to node **6556049779**, lat/lon **50.5129921, 15.5544880**. All 22 ordered `ref=16` ways in this path carry `opening_date=2025`; they form a connected sequence and the endpoint/way/node evidence is cached below. This is a current OSM-derived candidate, not an official survey endpoint confirmation. Its geodesic length from node geometry is **7,402.267 m**, which is **1,076.733 m shorter** than OPD/ŘSD's 8,479–8,480 m project length. Thus the OSM chain may omit project tie-ins/work length or the project-length scope differs; do not silently claim it is the full official 8.479 km reference. The bbox covers these endpoints but still needs extension check if the authoritative 8.479 km geometry has additional works/tie-ins.
 
 ## OSM state and reproducible query
 
-OpenStreetMap current-state `map` API requests confirm at least one candidate current `highway=primary, ref=16` way in the southwest area: **way 342016060**, 11 ordered nodes, version 5, timestamp 2026-08-15T09:27:52Z. Its fetched way geometry starts at node 387834632 (50.4584269, 15.4857480) and ends at 74228403 (50.4646491, 15.4932583). This individual segment is **not established as the complete bypass**, so do not use this as the official reference chain or as a sufficient exclusion list. Cached exact response: `pipeline/cache/np-osm-way-342016060-full.osm` (OSM API `/api/0.6/way/342016060/full`, retrieved 2026-11-15). OSM data © OpenStreetMap contributors, ODbL.
+Twelve bounded OSM API `.json` map tiles were fetched, each 0.03° × 0.03° except the north-edge row (0.03° × 0.01°), to cover exactly 15.46–15.58° E, 50.47–50.54° N. Every tile returned below the API's 50,000-node ceiling. These are full map extracts, with overlap; way identities were deduplicated and connected by exact shared node IDs. Raw ignored cache paths:
 
-The exact bounded Overpass query requested for reference ways was attempted as GET against `overpass.private.coffee` (with the pipeline User-Agent, IPv4 and default address selection); both GET attempts timed out without a response (90 s and 45 s). Earlier attempts against `overpass-api.de` returned HTTP 406 and `overpass.kumi.systems` timed out. Therefore no bounded Overpass result, complete ordered way/node chain, or verified per-way topology is obtained here. Do not mistake the cached single-way OSM API response for a successful Overpass extraction. This is an environment retrieval failure, not evidence the query returns no ways.
+- `pipeline/cache/np-osm-map-15.46_50.47_15.49_50.50.json`
+- `pipeline/cache/np-osm-map-15.46_50.50_15.49_50.53.json`
+- `pipeline/cache/np-osm-map-15.46_50.53_15.49_50.54.json`
+- `pipeline/cache/np-osm-map-15.49_50.47_15.52_50.50.json`
+- `pipeline/cache/np-osm-map-15.49_50.50_15.52_50.53.json`
+- `pipeline/cache/np-osm-map-15.49_50.53_15.52_50.54.json`
+- `pipeline/cache/np-osm-map-15.52_50.47_15.55_50.50.json`
+- `pipeline/cache/np-osm-map-15.52_50.50_15.55_50.53.json`
+- `pipeline/cache/np-osm-map-15.52_50.53_15.55_50.54.json`
+- `pipeline/cache/np-osm-map-15.55_50.47_15.58_50.50.json`
+- `pipeline/cache/np-osm-map-15.55_50.50_15.58_50.53.json`
+- `pipeline/cache/np-osm-map-15.55_50.53_15.58_50.54.json`
 
-Exact requested Overpass QL (bbox order is south,west,north,east):
+The derived ignored cache `pipeline/cache/np-i16-osm-candidate-chain.json` records the **full ordered 22-way / 176-node candidate chain**, node coordinates, per-way OSM tags and measured lengths, each raw tile path, and other current `ref=16` ways to retain/review. OSM data © OpenStreetMap contributors, ODbL. Candidate ordered way IDs, west-to-east (way node orders are oriented as needed):
+
+`1078890633, 741260109, 1078890627, 1078890626, 1078890628, 1078890623, 1131933470, 992470366, 1131933448, 1131933447, 1131933440, 33853225, 992470367, 992470368, 992470369, 992470370, 992470371, 992470372, 992470374, 992470377, 992470380, 992470381`.
+
+Current `ref=16` ways not in that chain (do **not** bulk-exclude these; they include the existing continuation, branches and endpoint roundabout pieces) are `9521223, 37618494, 37618495, 165420111, 165434718, 206830821, 206830823, 206833815, 236165648, 236165656, 236165657, 698086270, 698086272, 698086273, 832612488, 832612490, 992470382, 992470383, 1396541589, 1396541595, 1396541596, 1396541597, 1575740599`. Other untagged old-town/branch roads remain in the raw map tiles too.
+
+For the pipeline strict reference query, use explicit way IDs, not a broad `ref=16` bbox query that also selects the old route:
 
 ```overpass
 [out:json][timeout:60];
-way[ref=16](50.44,15.43,50.56,15.61);
+way(id:1078890633,741260109,1078890627,1078890626,1078890628,1078890623,1131933470,992470366,1131933448,1131933447,1131933440,33853225,992470367,992470368,992470369,992470370,992470371,992470372,992470374,992470377,992470380,992470381);
 out geom;
 ```
 
-For a future topology-preservation pass, expand with relevant highway/ref ways around the initial axis, plus proposed/construction line features; the simple query above is not enough to distinguish historic town I/16, bypass mainline, and attached ramps.
+Set `startNode=6939405849`; the measured current OSM chain is 7,402.267 m. Query bounded attachments separately: way `698085714` is `highway=primary_link` attached at mainline node `9169734253`, running toward a new `opening_date=2025` I/284 roundabout (way `86312392`); these are a plausible bypass ramp/junction set, but inspect the linked road and project layout before removing it. At the east endpoint node `6556049779`, the mainline meets roundabout arcs `698086273, 1396541595, 1396541596, 1396541597`. Keep their outbound roads/branches unless the exact roundabout footprint is explicitly removed as bypass work. Mainline versus ramp/roundabout exclusions must stay separate. In particular, retain the old town road and branches; do not remove every `ref=16` way. The earlier single-way cache `pipeline/cache/np-osm-way-342016060-full.osm` lies outside these tiles and is not part of this candidate chain.
 
 For the actual bypass chain, constrain the query to the precisely verified official route identity and then supply its way IDs/start node to the pipeline's strict official-line mode. The query above is reconnaissance only and may include both historic town I/16 ways and the bypass. Preserve all old-road ways and connected branches; exclude only the built bypass's confirmed mainline ownership plus its actual bypass ramps/roundabout connectors as a separately justified set. The full ordered chain and disjoint exclusion IDs remain **UNVERIFIED / not delivered** in this research pass. Keep old-town I/16 and its branch links in the baseline; indiscriminately excluding every `ref=16` way would erase the challenge and surrounding access.
 
@@ -70,4 +87,4 @@ Regional geology should be inspected from ČGS GEOCR50 lithology and IG rajon da
 - DMR 5G product and ImageServer metadata URLs above; local tile provenance/profile not obtained.
 - Orthophoto REST metadata: https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer?f=pjson; no image inspection performed.
 
-**Not yet verified and required before freezing scenario data:** exact endpoints (lat/lon and source node IDs); current complete ordered bypass way/node IDs; fetched Overpass cache (retries against the build's private.coffee endpoint timed out); separate exact bypass mainline vs attached ramp/roundabout exclusion IDs; old town road/branch retention via topology check; local DMR tile provenance and sampled profile relative to project earthworks; local orthophoto acquisition year/image contents; local ČGS predominant lithologies/project geotechnical evidence. This note intentionally does not guess these.
+**Still required before freezing scenario data:** reconcile the topologically connected OSM mainline candidate's 7.402 km against the official 8.479 km project scope and obtain authoritative endpoint confirmation; confirm whether `698085714` / `86312392` and the eastern roundabout are project-owned works and define their exact separate exclusion footprints; validate old-town/branch continuity after masking; inspect local DMR tile provenance and sampled profile relative to project earthworks; verify local orthophoto acquisition year/image contents; inspect local ČGS predominant lithologies/project geotechnical evidence. OSM chain and branches are now reproducibly cached, but length/scope mismatch means the official reference is not yet frozen.
