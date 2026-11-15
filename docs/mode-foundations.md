@@ -117,3 +117,37 @@ integration, ballast-ground contact, split-invariant track quantities and unknow
 An independent review of the first geometry commit found three edge cases; all were fixed and covered
 before this checkpoint. Full project/browser/GPU integration gates remain necessary once consumers wire
 these modules into the app; no browser is needed to test these currently unimported pure kernels.
+
+# M1 plan: playable, scored paired motorway and railway (2026-11-15)
+
+Goal: a motorway and a railway the player can build and that get a real price and verdict, built on the
+legacy route kernel through an explicit **mode policy row** (category), never by pretending a mode is a
+road width. Increments, each committed green:
+
+1. **Mode policy rows.** `data/categories.ts` rows gain `mode`, per-speed norms (horizontal, vertical,
+   max gradient), structure/tunnel rows, noise source and `gradeSeparated`. Road rows and D11 bills stay
+   bit-exact. Motorway: D27.5 VL1 section, Radimský radii, vertical/grade per research/29 (current values
+   where found, otherwise PROVISIONAL older-edition values flagged like today's road rows). Railway:
+   single/double track per research/23, /30; prices per research/31 or explicitly unpriced.
+2. **Paired motorway kernel.** One evaluation on the corridor spine (shared formation once, SPK D27.5
+   whole-category norm, D27.5 bridge row = average of both decks, two tunnel tubes), no at-grade
+   junctions anywhere (every crossed road is bridged, passes over us, goes through an underpass or is
+   rerouted to such a crossing; never to our ends), motorway noise (directional traffic, no doubled AADT).
+   Ends are scenario ports (the motorway continues beyond the map); anything else is unpriced.
+   `modeCapability('motorway')` becomes scoring for the paired corridor policy; COST_MODEL_VERSION 19.
+3. **Project wiring.** A motorway is a paired corridor + two directional child routes (C0). The road
+   widgets edit the spine through the active-route adapter; `evaluateProject` evaluates a corridor once
+   and publishes it under the corridor's children; the bill is the corridor's, never a sum of children.
+4. **Scenarios.** Separate `d3-motorway` / `d35-motorway` presets (own save namespaces) next to the
+   unchanged road presets; D11 untouched and bit-exact.
+5. **Rendering + UI.** Two carriageways with median and markings, twin decks, two tunnel portals; Build
+   menu Motorway / Railway; mode-appropriate cards and profile; plain words in `terms.ts`.
+6. **Split / rejoin.** Whole-corridor split per C0 (atomic helpers): each direction becomes its own
+   editable alignment and profile (offset bends with exact radii, mapped heights); Rejoin is an explicit
+   undoable reset. Each direction is engineered as its own carriageway body. Priced only once the union
+   of the two bodies (shared median earthworks, combined noise, one building owner) is engineered;
+   until then split corridors are shown, checked and listed as unpriced (no VALID, no best).
+7. **Railway kernel.** Track policy (cant-derived radii, rail gradient/vertical curves, trackbed and
+   formation quantities, rail bridges/tunnels, no level crossings: every road crossing grade-separated),
+   rail noise per research/31 or explicitly unpriced; scored only if every needed check and price exists.
+8. Gates: full AGENTS.md list, drag-perf all modes plus a motorway design, screenshots (next free numbers).
