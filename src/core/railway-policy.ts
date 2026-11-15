@@ -1,6 +1,7 @@
 import { RAILWAY_EVIDENCE as E } from './data/railway';
 import type { RailwaySpec } from './project';
 import type { TransportSource } from './project-transport';
+import * as dm from './detmath';
 
 export interface RailTrainGroup { speed: number; day: number; night: number }
 export interface CantPolicy { maxCantMm: number; deficiencyMm: number; excessMm: number }
@@ -64,13 +65,13 @@ export function railEquivalentExposure(events: readonly RailPassByExposure[]) {
   if (!events.length || events.some(e => !Number.isFinite(e.selDb) || ![e.dayTrains, e.nightTrains].every(finiteNonnegative))) throw new Error('Explicit train-event exposures required');
   let dayEnergy = 0, nightEnergy = 0;
   for (const event of events) {
-    const energy = 10 ** (event.selDb / 10);
+    const energy = dm.pow(10, event.selDb / 10);
     dayEnergy += event.dayTrains * energy / (16 * 3600);
     nightEnergy += event.nightTrains * energy / (8 * 3600);
   }
   if (![dayEnergy, nightEnergy].every(Number.isFinite)) throw new Error('Train exposure overflow');
-  return { dayEnergy, nightEnergy, dayDb: dayEnergy > 0 ? 10 * Math.log10(dayEnergy) : null,
-    nightDb: nightEnergy > 0 ? 10 * Math.log10(nightEnergy) : null };
+  return { dayEnergy, nightEnergy, dayDb: dayEnergy > 0 ? 10 * dm.log10(dayEnergy) : null,
+    nightDb: nightEnergy > 0 ? 10 * dm.log10(nightEnergy) : null };
 }
 
 /** Relocation permit/history needs explicit classification; unknown is never silently assigned new-line limits. */

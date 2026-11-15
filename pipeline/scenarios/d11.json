@@ -5,6 +5,16 @@
   "bbox5514": [-637500, -1011500, -620000, -989000],
   "cell": 5,
   "osmCache": "osm_{name}.json",
+  "frozenOverpassCaches": {
+    "lines": "b9f1f6d09a9a9be0cf837817c689d945e1dc20b294f2e559cbc15888e5f2cb60",
+    "roads2": "1a7b2792d9fc767205d22593dbe7a4cc441ffcc0f19720eba62a8f2048cf9c04",
+    "cover": "7f8604bcf472830856d4b21bbda6db21350a99ce7ba4055b5545fe37ab04dc49",
+    "cover2": "054b30a4c3116562b9a5d3073ba3c9cc49389f0a606b3ad8dfa0806f630f4811",
+    "buildings": "98db9de48ef4a1966c19e237e00627c5b3251532a54f09daa8c76634532d2b47",
+    "places": "ce5b669e7d33976d441c2f597eff550f6e7719dba3e072d5bcde2b0b23f519c3",
+    "watercourses_v1": "d191eec0bf14238ef584c91a08272da499288c05acd4c68b5c42788d82444fe1"
+  },
+  "frozenOverpassAbout": "Original D11 caches predate query bindings. Their exact bytes are accepted by hash, never rebound or refetched; a mismatch fails instead of drifting the frozen pack.",
   "official": {
     "extract": "research/data/d11-osm-extract.json",
     "ref": "D11",

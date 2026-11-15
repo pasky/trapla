@@ -45,6 +45,7 @@ try {
   const routes = () => page.evaluate(() => window.trapla.getProject().routes.map(r => r.id));
 
   // a long ground road well clear of our road, preferably with a side road joining it mid-way
+  await page.evaluate(() => window.trapla.whenTransport());
   const roads = await page.evaluate(() => window.trapla.baseRoads(900));
   const far = roads.filter(r => r.clear > 1200).sort((a, b) => (b.branches.length > 0) - (a.branches.length > 0) || b.length - a.length);
   assert(far.length, 'a promotable base road away from our road exists');

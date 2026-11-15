@@ -32,8 +32,8 @@ export function regressionPackKey(): PackKey {
 }
 export function regressionContext(checkPack = true): EvalContext {
   if (checkPack) regressionPackKey();
-  const { meta, terrain, scenario, buildings, roads } = loadPack(packPath);
-  return { terrain, scenario, buildings, roads, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
+  const { meta, terrain, scenario, buildings, roads, junctions } = loadPack(packPath);
+  return { terrain, scenario, buildings, roads, junctions, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
 }
 function ordered(value: unknown): unknown {
   if (ArrayBuffer.isView(value)) return Array.from(value as Float64Array);
