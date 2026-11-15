@@ -6,6 +6,7 @@ import { assessReplacementConnections, groundRoadSourceInfo, promoteGroundRoad }
 import type { ProjectDesign, RoadSpec, SourceInterval } from '../src/core/project';
 import type { TransportGraphData } from '../src/core/project-transport';
 import { syntheticTerrain } from '../src/core/terrain';
+import { assertProjectDesign } from '../src/core/project-validation';
 import { openProjectStore } from '../src/project-store';
 
 const specification: RoadSpec = { kind: 'road', policy: 'existing-ground', legalClass: 'track', crossSection: 'existing', existingWidth: 4,
@@ -91,6 +92,10 @@ it('checks reconnection against the proposed designed elevation, not terrain or 
     ports: [{ kind: 'route', routeId: 'rebuilt', s: 150 }, { kind: 'route', routeId: 'other', s: 0 }] });
   const surfaces = project.routes.map(r => referenceRoadSurface(ctx, r)!);
   expect(assessReplacementConnections(base, project, surfaces).failures).toEqual([]);
+  project.connections = project.connections.filter(c => c.id !== 'join-designed');
+  other.revision++; // Endpoint anchor alone is still a dependency, even without an explicit join row.
+  expect(assessReplacementConnections(base, project, surfaces).feasibleIntervals).toEqual([]);
+  other.revision--;
   const raised = structuredClone(surfaces); raised[1].points.forEach(p => { p.z += 5; });
   const views = projectNetworkViews(base, project, raised, [], surfaces);
   expect(views.candidate.surfaces.position('other', 0)?.z).toBe(105);
@@ -114,4 +119,53 @@ it('rejects lost branches, conflicting claims, unknown bridge heights and confli
   expect(() => promoteGroundRoad(base, { routeId: 'bad', acousticSourceId: 'bad', specification, name: 'Road',
     interval: { ...interval, sourceId: 'conflict' } })).toThrow('conflicting-snapshots');
   expect(() => base.path({ ...interval, s1: 201 })).toThrow('binding');
+  const full = promoteGroundRoad(base, { routeId: 'full', acousticSourceId: 'physical', specification, name: 'Track',
+    interval: { ...interval, s0: 0, s1: 200 } });
+  project.routes = full.routes; project.connections = full.connections;
+  for (const c of project.connections) for (const p of c.ports) if (p.kind === 'source' && p.location.sourceId === 'main') p.location.transportData = 'FOREIGN';
+  const assessment = assessReplacementConnections(base, project, project.routes.map(r => referenceRoadSurface(ctx, r)!));
+  expect(assessment.feasibleIntervals).toEqual([]);
+  expect(assessment.failures.some(f => f.reason === 'connection-does-not-meet')).toBe(true);
+});
+
+it('retains different station occurrences of the same source node and gives closed-way contacts distinct identities', () => {
+  const { graph, ctx, interval, project } = fixture(), main = graph.sources[0];
+  graph.nodes.push({ id: 'c', xy: [150, 150] }, { id: 'd', xy: [200, 150] });
+  main.nodes = ['a', 'junction', 'c', 'd', 'junction', 'b'];
+  main.xy = [50, 100, 150, 100, 150, 150, 200, 150, 150, 100, 250, 100];
+  main.stations = [0];
+  for (let i = 2; i < main.xy.length; i += 2) main.stations.push(main.stations[main.stations.length - 1]
+    + Math.hypot(main.xy[i] - main.xy[i - 2], main.xy[i + 1] - main.xy[i - 1]));
+  main.render = [];
+  let base = new ProjectTransportIndex(graph, 'transport', 'vectors', (x, y) => ctx.terrain.heightAt(x, y));
+  const branches = base.branches({ ...interval, s0: 90, s1: 110 });
+  expect(branches[0].other).toContainEqual({ transportData: 'transport', sourceId: 'main', s: main.stations[4] });
+  graph.sources = [main, graph.sources[1]];
+  main.nodes = ['a', 'junction', 'c', 'd', 'a']; main.xy = [50, 100, 150, 100, 150, 150, 200, 150, 50, 100];
+  main.stations = [0];
+  for (let i = 2; i < main.xy.length; i += 2) main.stations.push(main.stations[main.stations.length - 1]
+    + Math.hypot(main.xy[i] - main.xy[i - 2], main.xy[i + 1] - main.xy[i - 1]));
+  graph.sources[1].nodes = ['a', 'branch-end']; graph.sources[1].xy = [50, 100, 150, 200]; graph.sources[1].stations = [0, Math.hypot(100, 100)];
+  base = new ProjectTransportIndex(graph, 'transport', 'vectors', (x, y) => ctx.terrain.heightAt(x, y));
+  const command = promoteGroundRoad(base, { routeId: 'loop', acousticSourceId: 'physical-loop', specification, name: 'Track',
+    interval: { ...interval, s0: 0, s1: main.stations[main.stations.length - 1] } });
+  expect(new Set(command.connections.map(c => c.id)).size).toBe(command.connections.length);
+  project.routes = command.routes; project.connections = command.connections;
+  expect(() => assertProjectDesign(project)).not.toThrow();
+});
+
+it('finds inclusive corner contacts in either diagonal direction and rejects unsafe grid coordinates promptly', () => {
+  for (const xy of [[50, 150, 150, 50], [150, 50, 50, 150], [50, 50, 150, 150], [150, 150, 50, 50]]) {
+    const { graph } = fixture();
+    graph.nodes = [{ id: 'a', xy: [xy[0], xy[1]] }, { id: 'b', xy: [xy[2], xy[3]] }];
+    graph.sources = [{ ...graph.sources[0], nodes: ['a', 'b'], xy, stations: [0, Math.hypot(xy[2] - xy[0], xy[3] - xy[1])], render: [] }];
+    const base = new ProjectTransportIndex(graph, 'transport', 'vectors', () => 100), found: string[] = [];
+    base.near({ minX: 100, maxX: 100, minY: 100, maxY: 100 }, s => found.push(s.sourceId));
+    expect(found).toEqual(['main']);
+    expect(() => base.near({ minX: 1e20, maxX: 1e20, minY: 0, maxY: 0 }, () => {})).toThrow('Unsafe');
+  }
+  expect(() => new ProjectSurfaceIndex([{ routeId: 'huge', revision: 0, points: [
+    { s: 0, x: 1e20, y: 0, z: 100, halfWidth: 2, structure: 'ground' },
+    { s: 100, x: 1e20, y: 100, z: 100, halfWidth: 2, structure: 'ground' },
+  ] }])).toThrow('Unsafe');
 });
