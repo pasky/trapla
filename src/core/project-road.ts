@@ -43,10 +43,13 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   }
   const design = legacyDesignForRoute(project, routeId);
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
+  // A ground-level end keeps the kernel's own terrain sample at its end station (legacy, bit-exact);
+  // only an explicit non-ground XYZ (e.g. another road's deck) overrides it.
+  const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   const result = evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, design,
-  { ...options, endpointElevations: { a: a.z, b: b.z }, operatingSpeed: spec.operations.speed,
+  { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
   return { status: 'evaluated', result };

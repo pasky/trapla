@@ -31,7 +31,7 @@ export interface BalanceSearch {
 
 export interface AutoProfileOptions {
   /** Transport-surface endpoint constraints, independent of the real ground used for earthworks. */
-  endpointElevations?: { a: number; b: number };
+  endpointElevations?: { a?: number; b?: number };
   /** Absolute-chainage heights on the smoothed grade (±0.5 m). Out-of-route pins are inactive.
    * Endpoint pins constrain, but never replace, the fixed transport endpoints. */
   pins?: readonly GradePin[];

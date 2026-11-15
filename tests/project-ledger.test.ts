@@ -42,6 +42,21 @@ it('prices separate roads together only as one coherent project bill', () => {
   expect(overlapping.cost.unpriced.map(u => u.reason)).toEqual(['shared-land', 'shared-land']);
 });
 
+it('never prices a road tied into an existing road or a mission port as if its ends were free', () => {
+  const { ctx, snapshot, side } = fixture();
+  snapshot.design.routes.push(side);
+  for (const anchor of [{ kind: 'source' as const, location: { transportData: 'transport', sourceId: 'way:1', s: 0 } },
+    { kind: 'mission' as const, portId: 'a' }]) {
+    side.endpoints.a.anchor = anchor;
+    if (anchor.kind === 'source') snapshot.design.transportData = 'transport';
+    else side.endpoints.a.position = { ...snapshot.design.mission.ports[0].position };
+    const project = evaluateProject(ctx, snapshot);
+    expect(project.cost.total).toBeNull(); expect(isScorableProject(project)).toBe(false);
+    expect(project.cost.unpriced).toContainEqual({ routeId: 'side', reason: 'connection-pending' });
+    expect(Object.keys(project.cost.alone)).toHaveLength(2); // own bills stay visible
+  }
+});
+
 it('leaves roads unpriced when one house hears both, while keeping each road\'s own bill visible', () => {
   const house = new BuildingIndex([[600, 350, 5]], [[100, 2, BUILDING_KIND.house, 600, 350, 4, 4, 0]]);
   const { ctx, snapshot, side } = fixture(house);
@@ -70,7 +85,7 @@ it('keeps the mission road\'s own result while a road change is unpriced; removi
   expect(restored.cost.total).toBe(legacy.cost.total); expect(isScorableProject(restored)).toBe(legacy.valid);
 });
 
-it('lets a house near the limit belong to one road only; a second road must stay 10 dB below there', async () => {
+it('lets a house near the limit belong to one road only; a second road must stay 20 dB below there', async () => {
   const { INDEPENDENCE_SCREEN, screenIndependence } = await import('../src/core/project-ledger');
   const { hardGroundLoss, noiseSource } = await import('../src/core/road-noise');
   const { NOISE } = await import('../src/core/data/urban');
@@ -85,13 +100,13 @@ it('lets a house near the limit belong to one road only; a second road must stay
   const near = { routeId: 'near', result: road(0, [{ j: 0, status: 'ok', mitigated: -0.001 }]), ...op };
   const screen = (y: number) => screenIndependence([near, { routeId: 'other', result: road(y, []), ...op }], house);
   expect(screen(150).interactions.map(i => i.reason)).toEqual(['shared-noise']);
-  expect(screen(20000).independent).toBe(true);
-  let lo = 150, hi = 20000;
+  expect(screen(50000).independent).toBe(true);
+  let lo = 150, hi = 50000;
   while (hi - lo > 0.01) { const mid = (lo + hi) / 2; if (screen(mid).independent) hi = mid; else lo = mid; }
   // Boundary: the other road's all-height upper bound at the house's nearest façade is the margin below the limit.
   const excess = noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare }).excessDb;
   const other = excess - hardGroundLoss(hi - 100 - house.extent(0) - NOISE.facadeOffset - NOISE.sourceOffset);
   expect(other).toBeCloseTo(-INDEPENDENCE_SCREEN.noiseMargin - INDEPENDENCE_SCREEN.noiseTolerance, 2);
   // What the rule neglects is reported, never hidden: N roads × margin below each limit.
-  expect(screen(20000).omittedDayEnergy).toBeCloseTo(2 * 10 ** ((NOISE.limitDayDb - 10) / 10), 6);
+  expect(screen(50000).omittedDayEnergy).toBeCloseTo(2 * 10 ** ((NOISE.limitDayDb - 20) / 10), 6);
 });

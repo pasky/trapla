@@ -10,7 +10,7 @@ import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment }
-const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: [routeId] }, locations: [], blocking: 'incomplete',
+const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete',
   violation: { kind: 'crossing', basis: 'engine', title: 'Road checks are not finished',
     fix: 'Keep the existing road until its replacement is checked',
     rule: 'Engine limit: this foundation does not yet check shared construction, connections and combined noise for this design.' } });
@@ -123,8 +123,16 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   }
   // Joined roads share a junction nobody has checked yet.
   const joined = new Set<string>();
-  for (const c of design.connections) for (const p of c.ports) if (p.kind === 'route') joined.add(p.routeId);
-  for (const r of design.routes) for (const e of [r.endpoints.a, r.endpoints.b]) if (e.anchor.kind === 'route') joined.add(r.id).add(e.anchor.routeId);
+  // Only the mission road's own mission ports and free ends are evaluated as the legacy kernel does;
+  // a tie-in to an existing road, another road or a mission port is a junction nobody has built or billed.
+  for (const c of design.connections) {
+    const routes = c.ports.flatMap(p => p.kind === 'route' ? [p.routeId] : []);
+    for (const id of routes.length ? routes : design.routes.map(r => r.id)) joined.add(id);
+  }
+  for (const r of design.routes) for (const e of [r.endpoints.a, r.endpoints.b]) {
+    if (e.anchor.kind === 'free' || (e.anchor.kind === 'mission' && r.role === 'mission')) continue;
+    joined.add(r.id); if (e.anchor.kind === 'route') joined.add(e.anchor.routeId);
+  }
   if (joined.size) { result.issues.push(issue([...joined][0], 'connection-pending')); unprice([...joined], 'connection-pending'); }
   if (design.corridors.length) unprice(design.corridors.flatMap(c => [c.children.forward, c.children.reverse]), 'unsupported-mode');
   if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
