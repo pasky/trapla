@@ -60,6 +60,23 @@ export function rampLimit(cls: string, z: number, g0: number, g: number, run: nu
   return run > 0 && ramp * old > 0 ? Math.max(grade, Math.min(row.rampSteepest, Math.abs(old) / run + grade / 2)) : grade;
 }
 
+/** Diagnostics of a reroute the player shaped (crossing override `via`). */
+export const LINK_OVER_OUR_ROAD = 'Shaped link enters our earthworks';
+export const LINK_TOO_STEEP = 'Shaped link is steeper than its class allows';
+/** Steepest grade of a draped path over stretches of at least 20 m (shorter terrain wrinkles are
+ * smoothed by its formation), m/m. */
+export function linkSteepest(path: readonly { x: number; y: number; z: number }[]): number {
+  const d = [0];
+  for (let i = 1; i < path.length; i++) d.push(d[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
+  let steepest = 0;
+  for (let i = 0, j = 0; i < path.length; i++) {
+    while (j < path.length && d[j] - d[i] < 20) j++;
+    if (j === path.length) break;
+    steepest = Math.max(steepest, Math.abs(path[j].z - path[i].z) / (d[j] - d[i]));
+  }
+  return steepest;
+}
+
 /** Plain-language violation text for a geometry diagnostic (the diagnostic string stays internal). */
 function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue, 'title' | 'fix' | 'detail' | 'basis' | 'rule'> {
   const what = ROAD_CLASSES[c.cls]?.label ?? 'road', choice = c.requestedType ? 'your crossing choice' : 'this crossing';
@@ -72,6 +89,14 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Move the junction where the two roads are closer in height, or choose "Our bridge over it" or "Its bridge over us"',
     detail: `Within the allowed slope, the ${what} would have to be raised or lowered all the way to where it ends.`, basis: 'game',
     rule: `Game rule (research/20): a ${what} raised or lowered to a junction is no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} %` };
+  if (message === LINK_OVER_OUR_ROAD) return { title: `Your path for the new ${what} runs onto our road's earthworks`,
+    fix: 'Drag its bend points clear of our road\'s slopes, or choose "Automatic path" on the crossing card',
+    detail: `The new piece of ${what} must run outside our earthworks to reach the next crossing.`, basis: 'game',
+    rule: 'Game rule: a reroute runs on the ground outside our earthworks' };
+  if (message === LINK_TOO_STEEP) return { title: `Your path for the new ${what} is too steep in places`,
+    fix: 'Drag its bend points so that it runs more along the slope, or choose "Automatic path" on the crossing card',
+    detail: `It follows the ground where you drew it, which is steeper than a ${what} may be.`, basis: 'game',
+    rule: `Research/20: a ${what} is at most ${Math.round(ROAD_CLASSES[c.cls].rampSteepest * 100)} % steep (over any 20 m)` };
   if (message === WORKS_COVER_ROAD || message === WORKS_TIE_TOO_LONG || message === WORKS_TIE_SHARED) {
     const junction = c.type === 'junction', raised = junction ? 'raised or lowered for the junction' : 'raised onto the bridge over our road';
     const others = junction ? 'choose "Our bridge over it", an underpass or "Cut and reroute", or move the junction'
@@ -602,14 +627,23 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       // Candidate treatments rebuild the same link between the same anchors; within one call the
       // route and terrain are immutable, so reuse the smoothed controls (copied, never shared).
       const key = `${a.x},${a.y},${b.x},${b.y},${side},${g.width},${stations.length}`;
+      const shape = c.via?.[k];
       let cached = smoothed.get(key);
-      if (!cached) {
+      if (!cached && !shape?.length) {
         cached = smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
           // One-off chord probes must not evict reusable anchor/bisection projections.
           q => margin(q, g.width / 2, false), terrainPoint, SETBACK - 1e-5);
         smoothed.set(key, cached);
       }
-      const controls = cached.map((p, i) => i === 0 ? a : i === cached!.length - 1 ? b : { ...p });
+      // The player's shape: straight legs through their bend points between the same real anchors.
+      const controls = shape?.length ? [a, ...shape.map(p => terrainPoint(p)), b]
+        : cached!.map((p, i) => i === 0 ? a : i === cached!.length - 1 ? b : { ...p });
+      if (shape?.length) for (let i = 1; i < controls.length; i++) {
+        const p = controls[i - 1], q = controls[i], count = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 2.5));
+        for (let j = 0; j <= count; j++) if (margin({ x: p.x + (q.x - p.x) * j / count, y: p.y + (q.y - p.y) * j / count }, g.width / 2, false) < 0) {
+          diagnose(g, LINK_OVER_OUR_ROAD); break;
+        }
+      }
       const link: CrossingPoint[] = [a];
       const length = crossingPlanLength(controls), budget = Math.max(0, MAX_POINTS - controls.length);
       for (let i = 1; i < controls.length; i++) {
@@ -669,6 +703,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       g.road = road;
     }
     if (g.links) g.links = g.links.map(path => refineTerrain(path, g)) as [CrossingPoint[], CrossingPoint[]];
+    // A shaped link follows the ground where the player put it: no steeper than its class allows.
+    if (g.links && c.via) g.links.forEach((path, k) => { if (c.via![k]?.length && linkSteepest(path) > ROAD_CLASSES[c.cls].rampSteepest + 1e-9) diagnose(g, LINK_TOO_STEEP); });
   }
   // The rebuilt stretch's own slopes must leave other roads usable: regrade side roads joining it,
   // hold the slope back from roads beside it, or report the treatment infeasible (crossing-works.ts).

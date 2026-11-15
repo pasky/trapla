@@ -46,7 +46,7 @@ export class DecisionList {
     const inactive: number[] = [];
     for (const o of d.crossingOverrides ?? []) {
       const c = r.crossings.find((c) => c.roadId === o.roadId);
-      if (c) li(`data-road="${o.roadId}"`, `<i class="xing"></i>${CHOICE[o.type]} · ${esc(ROAD_CLASSES[c.cls].label)} <small>km ${km(c.s)}</small>`);
+      if (c) li(`data-road="${o.roadId}"`, `<i class="xing"></i>${CHOICE[o.type]}${o.via ? ' (your path)' : ''} · ${esc(ROAD_CLASSES[c.cls].label)} <small>km ${km(c.s)}</small>`);
       else inactive.push(o.roadId);
     }
     for (const o of d.buildingOverrides ?? []) li(`data-building-j="${o.j}"`, `<i class="${o.action === 'keep' ? 'keep' : 'buy'}"></i>${o.action === 'keep' ? 'Keep' : 'Buy out'} ${esc(kind(o.j))}`);

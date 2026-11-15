@@ -14,6 +14,8 @@ import { RouteScene } from './render/route-scene';
 import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { CrossingPicker } from './render/crossing-pick';
+import { LinkEditor } from './ui/link-edit';
+import { crossingVia, type LinkVia } from './core/crossings';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
 import { SourceEditor } from './ui/source-editor';
@@ -164,6 +166,8 @@ async function main() {
 
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   let sel: Sel | null = null;
+  /** shaping reroutes on the map (constructed once the store hooks exist) */
+  let linkEdit: LinkEditor | undefined;
   let models: { key: string; model: ReturnType<typeof createNoiseModel> } | null = null;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     noiseModel: (d) => {
@@ -234,6 +238,7 @@ async function main() {
     if (store.read()) view.setDesign(store.design, selectedPi(), activeEndpoints());
     else view.clearDesign(activeEndpoints());
     profile.selectBend(selectedPi()); if (store.read()) curveEdit.refresh();
+    linkEdit?.refresh();
     const road = next?.kind === 'crossing' ? next.roadId : null;
     profile.selectCrossing(road); annotations.selectCrossing(road);
     annotations.selectBuilding(next?.kind === 'building' ? next.j : null);
@@ -345,9 +350,12 @@ async function main() {
     wall: setWall,
     pin: (s, z) => setPin(s, z),
     crossing: (roadId, type) => store.update((d) => {
+      // a reroute keeps the player's shape while it stays a reroute
+      const via = type === 'reconnection' ? crossingVia(roadId, d.crossingOverrides ?? []) : undefined;
       d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      if (type !== null) d.crossingOverrides.push({ roadId, type });
+      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(via ? { via } : {}) });
     }),
+    crossingPathAuto: (roadId) => setVia(roadId, null, true),
     building: (js, action) => store.editProject(d => { for (const j of js) d.buildingOverrides = setBuildingOverride(d.buildingOverrides, j, action); }),
     unpin: (s0, s1) => store.update((d) => { d.gradePins = (d.gradePins ?? []).filter((p) => p.s < s0 || p.s > s1); }),
     heightAt: (s) => addHeightAt(s),
@@ -463,7 +471,7 @@ async function main() {
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
-    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh();
+    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
   };
 
   worker.onmessage = (ev: MessageEvent<ProjectWorkerOut | { type: 'ready' }>) => {
@@ -541,6 +549,19 @@ async function main() {
     commit: () => store.commit(),
   });
 
+  /** a reroute's shape (null: its automatic path again); shaping a crossing makes it a reroute */
+  const setVia = (roadId: number, via: LinkVia | null, commit: boolean) => store.update((d) => {
+    const list = d.crossingOverrides ??= [];
+    let o = list.find((x) => x.roadId === roadId);
+    if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
+    if (via) { o.type = 'reconnection'; o.via = via; } else delete o.via;
+  }, commit);
+  linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
+    selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull, design: () => store.design,
+    select: (roadId) => { if (sel?.kind !== 'crossing' || sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
+    setVia, commit: () => store.commit(), heightAt: (x, y) => pack.terrain.heightAt(x, y),
+  });
+
   const switchRoute = (id: RouteId) => {
     if (!store.switchRoute(id)) return false;
     previewGesture = null; activePreviewPrice = null;
@@ -572,7 +593,7 @@ async function main() {
     if (d) {
       if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
-      profile.selectBend(selectedPi()); curveEdit.refresh();
+      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh();
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
@@ -688,6 +709,12 @@ async function main() {
     onPiDrag: (i, x, y) => store.update((d) => { d.pis[i].x = x; d.pis[i].y = y; }, false),
     onPiDragEnd: () => store.commit(),
     onPiDelete: (i) => deletePi(i),
+    // a reroute link: dragging it shapes it (adds a bend point there)
+    grab: (clientX, clientY) => {
+      if (!store.read()) return null;
+      const w = crossingWorksAt(clientX, clientY);
+      return w?.link !== undefined && linkEdit ? linkEdit.grab(w) : null;
+    },
   };
   const lastClient = { x: 0, y: 0 };
 
@@ -770,9 +797,9 @@ async function main() {
         if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, 'drag to bend'); profile.setHover(r.s[k], true); }
       } else if (routeAt(at.x, at.y, 10)) { cursor = 'pointer'; key = 'other-route'; }
       else if ((works = crossingWorksAt(at.x, at.y))) {
-        const c = works.crossing;
-        cursor = 'pointer'; key = `x${c.roadId}`;
-        if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, ROAD_CLASSES[c.cls].label); profile.setHover(c.s, true); }
+        const c = works.crossing, link = works.link !== undefined;
+        cursor = link ? 'grab' : 'pointer'; key = `x${c.roadId}${link ? 'l' : ''}`;
+        if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${link ? ' · drag to reshape' : ''}`); profile.setHover(c.s, true); }
       } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
       else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }

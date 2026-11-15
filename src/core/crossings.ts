@@ -14,7 +14,13 @@ export const CROSSING_CHOICES = ['junction', 'bridge', 'overbridge', 'reconnecti
 export type CrossingChoice = typeof CROSSING_CHOICES[number];
 /** Pack way index, stable within a scenario pack, not a station or merged-list index.
  * One choice applies to every intersection of that way. Omission restores Auto. */
-export interface CrossingOverride { roadId: number; type: CrossingChoice }
+export interface CrossingOverride { roadId: number; type: CrossingChoice;
+  /** A reroute the player shaped: bend points of its two new pieces (the [-normal, +normal] sides of our
+   * road, like `CrossingGeometry.links`); an empty side keeps its automatic path. Only with 'reconnection'. */
+  via?: LinkVia }
+export type LinkVia = [{ x: number; y: number }[], { x: number; y: number }[]];
+/** At most this many bend points per shaped reroute piece. */
+export const MAX_LINK_VIA = 16;
 export interface CrossingPoint {
   x: number; y: number; z: number;
   ground: number;
@@ -76,6 +82,8 @@ export interface CrossingResult {
   /** Both sides together, measured in plan from the built link geometry, m. */
   linkLength?: number;
   targetS?: number;
+  /** The player's shape of the reroute (see CrossingOverride.via). */
+  via?: LinkVia;
   /** Disambiguates independently selected roads at the same station; absent for A/B collectors. */
   targetRoadId?: number;
   span?: number;
@@ -96,8 +104,23 @@ export function normalizeCrossingOverrides(value: unknown): CrossingOverride[] {
   if (!Array.isArray(value)) return [];
   const byRoad = new Map<number, CrossingOverride>();
   for (const o of value) if (o && Number.isSafeInteger(o.roadId) && o.roadId >= 0
-    && CROSSING_CHOICES.includes(o.type)) byRoad.set(o.roadId, { roadId: o.roadId, type: o.type });
+    && CROSSING_CHOICES.includes(o.type)) {
+    const via = o.type === 'reconnection' ? normalizeLinkVia(o.via) : undefined;
+    byRoad.set(o.roadId, { roadId: o.roadId, type: o.type, ...(via ? { via } : {}) });
+  }
   return [...byRoad.values()].sort((a, b) => a.roadId - b.roadId);
+}
+
+export function normalizeLinkVia(value: unknown): LinkVia | undefined {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+  const side = (v: unknown) => Array.isArray(v) && v.length <= MAX_LINK_VIA && v.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+    ? v.map(p => ({ x: p.x, y: p.y })) : undefined;
+  const a = side(value[0]), b = side(value[1]);
+  return a && b && (a.length || b.length) ? [a, b] : undefined;
+}
+export function crossingVia(roadId: number | undefined, overrides: readonly CrossingOverride[] = []): LinkVia | undefined {
+  for (let i = overrides.length - 1; i >= 0; i--) if (overrides[i].roadId === roadId) return overrides[i].type === 'reconnection' ? overrides[i].via : undefined;
+  return undefined;
 }
 
 export function crossingChoice(roadId: number | undefined, overrides: readonly CrossingOverride[] = []): CrossingChoice | undefined {
@@ -188,8 +211,9 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
-    delete c.tieLength; delete c.wallLength; delete c.worksCost;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via;
     c.requestedType = crossingChoice(c.roadId, overrides);
+    const via = crossingVia(c.roadId, overrides); if (via) c.via = via;
   }
   for (const c of priority) {
     const choice = c.requestedType, row = ROAD_CLASSES[c.cls];

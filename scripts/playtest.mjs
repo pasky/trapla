@@ -236,6 +236,33 @@ try {
     const picked = await sel();
     ok(picked?.kind === 'crossing' && picked.roadId === works.roadId && await visible('#crossing-choice'), `C: a click on its ${works.type} works, away from the crossing, opens its card`);
   } else ok(false, 'C: no crossing works on screen to click');
+  // shape a reroute: drag its new road sideways, then back to the automatic path, undo
+  await page.keyboard.press('Escape'); await idle(200);
+  const link = await T(() => {
+    const r = window.trapla.result(), c = r.crossings.find((c) => (c.type === 'reconnection' || c.type === 'diversion') && c.geometry?.links?.some((l) => l.length > 6));
+    if (!c) return null;
+    const l = c.geometry.links.find((l) => l.length > 6), q = l[Math.floor(l.length / 2)];
+    window.trapla.lookAt(q.x, q.y, 700, 20, 55);
+    return { roadId: c.roadId, x: q.x, y: q.y, z: q.z };
+  });
+  if (link) {
+    await idle(400);
+    const lp = at(await T((q) => window.trapla.project(q.x, q.y, q.z), link));
+    await page.mouse.move(lp.x, lp.y); await page.waitForTimeout(250);
+    ok(await T(() => document.querySelector('#view canvas').style.cursor) === 'grab', 'C: a reroute under the mouse can be grabbed');
+    await page.mouse.down();
+    for (let k = 1; k <= 10; k++) await page.mouse.move(lp.x + 6 * k, lp.y - 4 * k);
+    await page.mouse.up(); await idle(600);
+    const shaped = (await get()).crossingOverrides?.find((o) => o.roadId === link.roadId);
+    ok(shaped?.via?.flat().length === 1 && (await sel())?.roadId === link.roadId && await visible('#inspector .link-path button'),
+      'C: dragging it adds a bend point, selects the crossing and offers "Automatic path"');
+    ok(await T(() => document.querySelectorAll('#overlay .via').length) >= 1, 'C: the bend point is shown on the map');
+    await shot('link-shape');
+    await page.click('#inspector .link-path button'); await idle(500);
+    ok(!(await get()).crossingOverrides?.find((o) => o.roadId === link.roadId)?.via, 'C: "Automatic path" takes the shape back');
+    await page.keyboard.press('Control+z'); await idle(500);
+    ok(!!(await get()).crossingOverrides?.find((o) => o.roadId === link.roadId)?.via, 'C: Ctrl+Z brings the shape back');
+  } else ok(false, 'C: no reroute to shape');
   // a pinned height: drag the profile's line up
   await T(() => window.trapla.profileFit());
   const sPin = await T(() => { const r = window.trapla.result(); for (let s = r.length * 0.8; s > r.length * 0.3; s -= 50) if (!r.crossings.some((c) => Math.abs(c.s - s) < 150) && !r.waterCrossings.some((c) => Math.abs(c.s - s) < 150)) return Math.round(s); return Math.round(r.length * 0.8); });

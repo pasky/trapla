@@ -3,7 +3,7 @@
 // what the game decided (numbers first), its violations with the fix as a button where one exists, the
 // choices (Auto first), and "More" for the numbers. With nothing selected: where the money goes.
 import type { Violation } from '../core/checks';
-import { crossingChoice, type CrossingChoice } from '../core/crossings';
+import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
 import { CROSSING_CHOICE_TEXT, crossingOutcome } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
@@ -36,6 +36,8 @@ export interface InspectorEvents {
   wall?: (sides: ('L' | 'R')[], height: number | null, s0: number, s1: number) => void;
   pin?: (s: number, z: number | null) => void;
   crossing?: (roadId: number, type: CrossingChoice | null) => void;
+  /** back to the automatic path of a reroute the player shaped */
+  crossingPathAuto?: (roadId: number) => void;
   /** one decision for these buildings, one edit */
   building?: (js: number[], action: BuildingOverride['action'] | null) => void;
   /** remove the pins between s0 and s1, one edit */
@@ -364,7 +366,16 @@ export class Inspector {
     return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div><div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
+      ${this.linkPath(c, d)}
       ${this.choices('crossing-choice', 'data-crossing', CROSSING_OPTIONS, choice)}`;
+  }
+  /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
+  private linkPath(c: Result['crossings'][number], d: Design) {
+    if (c.type !== 'reconnection' && c.type !== 'diversion') return '';
+    const via = crossingVia(c.roadId, d.crossingOverrides ?? []), bends = via ? via[0].length + via[1].length : 0;
+    return bends ? `<div class="ctx-row link-path"><span>Path: your shape, ${bends} bend point${bends === 1 ? '' : 's'}</span>
+        <button type="button" data-crossing-path="auto" title="Let the game route the new road again">Automatic path</button></div>`
+      : `<div class="why link-path">Drag the new road on the map to reshape it.</div>`;
   }
 
   // ---- building ----
@@ -429,6 +440,7 @@ export class Inspector {
     if (b.dataset.fixBuy) { this.ev.building?.(b.dataset.fixBuy.split(',').map(Number), 'buy'); return; }
     if (b.dataset.fixUnkeep) { this.ev.building?.(b.dataset.fixUnkeep.split(',').map(Number), null); return; }
     if (b.dataset.fixCrossing) { this.ev.crossing?.(Number(b.dataset.fixCrossing), null); return; }
+    if (b.dataset.crossingPath !== undefined && sel?.kind === 'crossing') { this.ev.crossingPathAuto?.(sel.roadId); return; }
     if (b.dataset.fixBridge) { const [s0, s1] = b.dataset.fixBridge.split(',').map(Number); this.ev.structure?.(1, s0, s1); return; }
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }

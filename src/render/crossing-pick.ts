@@ -3,15 +3,17 @@ import { ROAD_CLASSES } from '../core/data/urban';
 import { perspectiveFraction } from './route-pick';
 
 type Project = (x: number, y: number, z: number) => { sx: number; sy: number; vis: boolean; depth?: number };
-export interface CrossingHit { crossing: CrossingResult; x: number; y: number; z: number; distance: number }
-interface Segment { a: CrossingPoint; b: CrossingPoint; half: number; crossing: CrossingResult; length: number }
+export interface CrossingHit { crossing: CrossingResult; x: number; y: number; z: number; distance: number;
+  /** on one of its reroute links: which (the index into geometry.links) */
+  link?: 0 | 1 }
+interface Segment { a: CrossingPoint; b: CrossingPoint; half: number; crossing: CrossingResult; length: number; link?: 0 | 1 }
 interface Disk { c: CrossingPoint; radius: number; crossing: CrossingResult }
 
 /** Everything a crossing draws on the map: the crossed road's rebuilt stretch (junction approach,
  * ramps and deck over our road, underpass box), side roads regraded to meet it, reroute links and
  * turning heads. Width per path: the
  * drawn pavement (an underpass box is wider than the road it carries). */
-function owned(c: CrossingResult): { paths: { points: CrossingPoint[]; half: (i: number) => number }[]; disks: { c: CrossingPoint; radius: number }[] } {
+function owned(c: CrossingResult): { paths: { points: CrossingPoint[]; half: (i: number) => number; link?: 0 | 1 }[]; disks: { c: CrossingPoint; radius: number }[] } {
   const g = c.geometry, paths: ReturnType<typeof owned>['paths'] = [], disks: ReturnType<typeof owned>['disks'] = [];
   if (!g) return { paths, disks };
   const half = g.width / 2;
@@ -19,7 +21,7 @@ function owned(c: CrossingResult): { paths: { points: CrossingPoint[]; half: (i:
     const box = g.underpass, outer = box ? box.width / 2 + box.wall : 0;
     paths.push({ points: g.road, half: i => box && i >= box.start && i < box.end ? Math.max(half, outer) : half });
   }
-  for (const link of g.links ?? []) if (link.length >= 2) paths.push({ points: link, half: () => half });
+  (g.links ?? []).forEach((link, k) => { if (link.length >= 2) paths.push({ points: link, half: () => half, link: k as 0 | 1 }); });
   for (const tie of g.ties ?? []) if (tie.path.length >= 2) paths.push({ points: tie.path, half: () => (ROAD_CLASSES[tie.cls]?.width ?? g.width) / 2 });
   // Turning heads: explicit priced disks, else the small drawn heads at severed link starts.
   if (g.turnaroundRadius !== undefined && Number.isFinite(g.turnaroundRadius) && g.turnaroundRadius > 0)
@@ -45,11 +47,11 @@ export class CrossingPicker {
       if (c.roadId === undefined) continue;
       const { paths, disks } = owned(c);
       for (const d of disks) this.add(this.disks.push({ ...d, crossing: c }) - 1, d.c.x - d.radius, d.c.y - d.radius, d.c.x + d.radius, d.c.y + d.radius, true);
-      for (const { points, half } of paths) for (let i = 1; i < points.length; i++) {
+      for (const { points, half, link } of paths) for (let i = 1; i < points.length; i++) {
         const a = points[i - 1], b = points[i], length = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
         if (!(length > 0)) continue;
         const w = half(i - 1);
-        this.add(this.segments.push({ a, b, half: w, crossing: c, length }) - 1,
+        this.add(this.segments.push({ a, b, half: w, crossing: c, length, ...(link !== undefined ? { link } : {}) }) - 1,
           Math.min(a.x, b.x) - w, Math.min(a.y, b.y) - w, Math.max(a.x, b.x) + w, Math.max(a.y, b.y) + w, false);
       }
     }
@@ -95,7 +97,7 @@ export class CrossingPicker {
       const along = along0;
       best = edge;
       hit = { crossing: seg.crossing, x: seg.a.x + along * (seg.b.x - seg.a.x), y: seg.a.y + along * (seg.b.y - seg.a.y),
-        z: seg.a.z + along * (seg.b.z - seg.a.z), distance: Math.max(0, edge) };
+        z: seg.a.z + along * (seg.b.z - seg.a.z), distance: Math.max(0, edge), ...(seg.link !== undefined ? { link: seg.link } : {}) };
     }
     return hit;
   }
