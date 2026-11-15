@@ -149,8 +149,9 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   }
   // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.
   const screen = screenIndependence(priced.map(({ route, legacy }) => {
-    const op = route.specification.kind === 'road' ? route.specification.operations : { aadt: Infinity, speed: Infinity, heavyShare: 1 };
-    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare };
+    const spec = route.specification, op = spec.kind === 'road' ? spec.operations : { aadt: Infinity, speed: Infinity, heavyShare: 1 };
+    const halfWidth = spec.kind === 'road' && spec.crossSection !== 'existing' ? CATEGORIES[spec.crossSection].crownWidth / 2 : Infinity;
+    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth };
   }), ctx.legacy.buildings);
   if (!screen.independent) {
     for (const i of screen.interactions) { result.issues.push(interactionIssue(i.routeIds, i.reason, i.buildingIndex)); unprice(i.routeIds, i.reason); }

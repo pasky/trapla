@@ -24,7 +24,8 @@ export const INDEPENDENCE_SCREEN = {
   maxRoutes: 10,
 } as const;
 
-export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; speed: number; heavyShare: number }
+export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; speed: number; heavyShare: number;
+  /** Built half-width at least (crown), also where a bridge/tunnel takes no land. */ halfWidth: number }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number }
 export interface IndependenceScreen {
@@ -75,10 +76,10 @@ function touches(a: Chunk[], b: Chunk[]): boolean {
 }
 
 /** Land take, works and removed old roads of one evaluated road, each padded by half the clearance. */
-function envelope(result: Result): Capsule[] {
+function envelope(result: Result, halfWidth: number): Capsule[] {
   const pad = INDEPENDENCE_SCREEN.clearance / 2, out: Capsule[] = [];
   const reach = (i: number) => {
-    let r = result.cell.width[i];
+    let r = Math.max(result.cell.width[i], halfWidth);
     for (const v of [result.dayL[i], result.dayR[i]]) if (Number.isFinite(v)) r = Math.max(r, Math.abs(v));
     return r;
   };
@@ -162,7 +163,7 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     omittedDayEnergy: omitted(NOISE.limitDayDb), omittedNightEnergy: omitted(NOISE.limitNightDb) });
   if (routes.length > S.maxRoutes) { interactions.push({ routeIds: routes.map(r => r.routeId), reason: 'too-many-roads' }); return out(); }
   // Land, works and removed old roads.
-  const envelopes = routes.map(r => chunks(envelope(r.result)));
+  const envelopes = routes.map(r => chunks(envelope(r.result, r.halfWidth)));
   for (let a = 0; a < routes.length; a++) for (let b = a + 1; b < routes.length; b++)
     if (touches(envelopes[a], envelopes[b])) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land' });
   // Existing roads: two roads changing one way, or a closure relying on a detour while another road changes any road.

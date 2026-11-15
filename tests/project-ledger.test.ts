@@ -81,7 +81,7 @@ it('lets a house near the limit belong to one road only; a second road must stay
       cell: { width: new Float64Array(n).fill(16) }, crossings: [], footprintConflicts: [], demolished: [], boughtOut: [], kept: [],
       noise: { receivers } } as unknown as import('../src/core/evaluate').Result;
   };
-  const op = { aadt: D11_SCENARIO.traffic, speed: 90, heavyShare: 0.15 };
+  const op = { aadt: D11_SCENARIO.traffic, speed: 90, heavyShare: 0.15, halfWidth: 4.75 };
   const near = { routeId: 'near', result: road(0, [{ j: 0, status: 'ok', mitigated: -0.001 }]), ...op };
   const screen = (y: number) => screenIndependence([near, { routeId: 'other', result: road(y, []), ...op }], house);
   expect(screen(150).interactions.map(i => i.reason)).toEqual(['shared-noise']);
