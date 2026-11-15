@@ -31,7 +31,7 @@ describe('railway mode', () => {
     expect(rail.cost.total).toBeGreaterThan(0);
     expect(result.cost.total).toBeNull();
     expect(result.cost.unpriced.some(u => u.routeId === 'route:rail' && u.reason === 'railway-checks-pending')).toBe(true);
-    expect(result.issues.filter(i => i.check === 'not-checked' && i.scope.routeIds.includes('route:rail')).map(i => i.code)).toEqual(expect.arrayContaining(['rail-noise', 'rail-gradient']));
+    expect(result.issues.filter(i => i.check === 'not-checked' && i.scope.routeIds.includes('route:rail')).map(i => i.code)).toEqual(['rail-noise']);
     expect(rail.noise.receivers).toEqual([]);
     // track geometry: minimum radius from the cant envelope at 160 km/h, never a road row
     expect(speedNorms(160, 'R2').minRadius).toBe(Math.ceil(11.8 * 160 * 160 / 230));

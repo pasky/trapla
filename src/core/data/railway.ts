@@ -79,3 +79,9 @@ export function railRouteBasePerKm(tracks: 1 | 2, urban = false): number {
     + (tracks === 1 ? s.signallingSinglePerKm : s.signallingDoublePerKm) + s.cablesPerKm + s.gsmrPerKm
     + (urban ? s.utilitiesUrbanPerKm : s.utilitiesPerKm);
 }
+
+/** TSI INF (1299/2014 consolidated 2023) annex §4.2.3.3: main-track maximum gradients "shall be defined
+ * taking into account the characteristics of the traffic" — a project parameter, no general number.
+ * For a new mixed passenger + freight line the game uses 12.5 ‰, the value SŽDC's feasibility study of
+ * the new Prague link adopted ("maximální podélný sklon 12,5 ‰", Čech 2018 p. 7; research/34 §7). */
+export const RAIL_MAX_GRADIENT = 0.0125;

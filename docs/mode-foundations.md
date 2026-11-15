@@ -192,6 +192,6 @@ geometry; editable directions use ordinary bends (validation accepts `pi` for in
 line ≤ 160 km/h: min radius 11.8·V²/(150+80) (cant envelope, VUT 2009), cant ramp easing 10·V·150/1000,
 vertical radius max(2,000, 0.4·V²) (Plášek 2009), formation S3 X 6.2 m (+4.0 m track centres, PROVISIONAL),
 SPOŽES 2026 items (track, layers, ditches, catenary, signalling, ETCS, cables, GSM-R, utilities; H02 bridges,
-J01/J03 tunnels) with SPOŽES P1 markups (research/32). No level crossings (game rule). Train noise and the
-freight ruling gradient are listed as not checked, so a railway never yields a project price yet;
+J01/J03 tunnels) with SPOŽES P1 markups (research/32). Max grade 12.5 ‰ (TSI INF §4.2.3.3 leaves it to the project; SŽDC new-link study value, research/34 §7). No level crossings (game rule). Train noise is
+listed as not checked, so a railway never yields a project price yet;
 research in progress (research/34 §7, /35).

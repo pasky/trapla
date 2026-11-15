@@ -1,4 +1,4 @@
-import { RAILWAY_EVIDENCE, railRouteBasePerKm, SPOZES, TRACK_CENTRES_M } from './railway';
+import { RAIL_MAX_GRADIENT, RAILWAY_EVIDENCE, railRouteBasePerKm, SPOZES, TRACK_CENTRES_M } from './railway';
 // Route categories as data rows (policy rows): the road Type list offers the single-carriageway S rows;
 // the D 27.5 row is the paired motorway corridor (mode 'motorway'), never offered as a road width.
 //
@@ -124,7 +124,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   // bridge = H02 per m² over the formation width (PROVISIONAL deck width); double track: one 2-track tube.
   'R1': {
     id: 'R1', mode: 'railway', label: 'Single-track railway', enabled: false, crownWidth: 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM,
-    tracks: 1, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: 0.04, mountainous: 0.04 },
+    tracks: 1, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: RAIL_MAX_GRADIENT, mountainous: RAIL_MAX_GRADIENT },
     normPerKm: { hilly: railRouteBasePerKm(1), mountainous: railRouteBasePerKm(1) },
     normCodes: { hilly: 'SPOŽES 2026', mountainous: 'SPOŽES 2026' },
     bridgePerKm: SPOZES.bridgeLongPerM2 * 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM * 1000, bridgeCode: 'SPOŽES H02', tunnelTubes: 1,
@@ -133,7 +133,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   },
   'R2': {
     id: 'R2', mode: 'railway', label: 'Double-track railway', enabled: false, crownWidth: 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM + TRACK_CENTRES_M,
-    tracks: 2, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: 0.04, mountainous: 0.04 },
+    tracks: 2, gradeSeparated: true, speeds: [160, 140, 120], roadClass: 'rail', maxGradient: { hilly: RAIL_MAX_GRADIENT, mountainous: RAIL_MAX_GRADIENT },
     normPerKm: { hilly: railRouteBasePerKm(2), mountainous: railRouteBasePerKm(2) },
     normCodes: { hilly: 'SPOŽES 2026', mountainous: 'SPOŽES 2026' },
     bridgePerKm: SPOZES.bridgeLongPerM2 * (2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM + TRACK_CENTRES_M) * 1000, bridgeCode: 'SPOŽES H02', tunnelTubes: 1,

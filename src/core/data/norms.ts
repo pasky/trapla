@@ -54,9 +54,6 @@ const railNorms = (v: number): SpeedNorms => {
     minTransition: 10 * v * 150 / 1000, minCrestRadius: rv, minSagRadius: rv };
 };
 export const RAIL_SPEED_NORMS: Record<number, SpeedNorms> = { 160: railNorms(160), 140: railNorms(140), 120: railNorms(120) };
-/** PROVISIONAL: the teaching source's general ceiling "nemá přesáhnout 40 ‰" (Plášek 2009 p. 27), NOT
- * a mixed-traffic ruling gradient (unknown, so railway designs are not scored). */
-export const RAIL_MAX_GRADIENT = 0.04;
 
 /** Norm table for a category: motorway and railway rows are separate (never borrowed from road rows). */
 function normTable(category?: CategoryId): Record<number, SpeedNorms> {
