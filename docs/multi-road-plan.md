@@ -60,7 +60,8 @@ type RouteId = string;
 type RouteKind = 'road' | 'motorway' | 'railway';
 interface ProjectDesign {
   schemaVersion: number;
-  scenarioId: string;
+  scenarioId: string;                 // data pack / place
+  presetId: string;                   // stable mission identity; road/motorway saves coexist
   objectData: string;                 // identity of source objects/topology
   routes: RouteDesign[];              // only constructed/changed routes
   buildingOverrides: BuildingOverride[]; // one project-wide owner
@@ -75,7 +76,8 @@ interface RouteDesign {
   role: 'mission' | 'auxiliary';
   endpoints: EndpointPair;            // fixed world positions; anchors carry source/route refs
   source?: SourceReplacement;         // pack fingerprint + way IDs + exact station intervals
-  alignment: AlignmentDesign;         // PI/VPI/pins/structures/walls, no global building decisions
+  alignment: OwnedAlignment | DerivedAlignment; // owned PI/imported path OR corridor-child reference
+  controls: RouteControls;             // pins/structures/walls, no global building decisions
   specification: RoadSpec | MotorwaySpec | RailwaySpec;
 }
 interface ProjectResult {
@@ -104,6 +106,10 @@ interface ProjectResult {
   **unchanged bill**. Lift building choices to the project. Keep a recoverable old save and do not
   overwrite malformed/unknown newer schemas with defaults. Migrate current and best consistently;
   old bests survive only when model, pack, mission and evaluation semantics really match.
+- Save namespace includes stable preset identity separately from the shared pack/place. Road and motorway
+  missions on D3 must have independent current and best saves. C owns the storage-key and Continue-detection
+  helper consumed by S/U; migrate legacy `trapla.d11` only into the original road preset. Preset changes
+  never overwrite a sibling mission or merely reinterpret its geometry.
 - Source-dependent rebuilds cannot be silently dropped when a pack changes: keep the user's geometry
   and mark the anchor/source binding unresolved until repaired. Invalidate the score. Station-based
   edits remain attached to their route. Schema version is separate from `COST_MODEL_VERSION`.
@@ -128,8 +134,11 @@ or regenerated masks must preserve another road/rail crossing the same pixels.
 Candidate evaluation provisionally excludes its own claimed source intervals to avoid self-collision.
 Accepted ownership is separate: replacement intervals are committed only for a feasible built connection.
 On failure the old usable network remains authoritative, with the proposed geometry shown as unaccepted;
-conflicting claims and lost branches block acceptance. The effective network is the
-base minus accepted source intervals plus designed geometry. Roads removed from rendering must also be
+conflicting claims and lost branches block acceptance. The authoritative effective network is the base minus accepted source intervals plus **accepted**
+replacement geometry and new non-replacement routes. Rejected candidates are diagnostic geometry, not
+usable transport. Candidate queries use a separate provisional network excluding all jointly claimed
+intervals and including their proposals. Accept connected dependent replacements atomically from the
+current snapshot, independent of evaluation/cache order; never reuse last revision's acceptance as fact. Roads removed from rendering must also be
 removed from crossings/footprints and vice versa. Raster rail protection must be replaced only inside
 owned rail intervals, never erased globally or under unrelated tracks. The vector base-map renderer must
 mask old pavement/track in the same owned interval, including its display width.
@@ -160,9 +169,8 @@ construction route; cross-route spoil exchange is out of scope and stated, not a
 3. Resolve pair crossings, branches, overlapping footprints and shared structures with deterministic
    ownership. Re-run affected routes in a bounded stable order when a remedy changes their constraints.
    Detect nonconvergence and report it; never accept a cache-dependent or route-order-dependent score.
-4. Reconcile shared land, property, connectors and structures into a ledger. Charge every physical work
-   once; attribute its cost to a route or explicit shared item. Per-route attribution plus shared rows
-   must equal the total. Do not merge unrelated objects solely because their geometry hashes match.
+4. Assign **provisional** shared-work ownership to land, property, connectors and structures. Do not
+   finalize prices yet. Do not merge unrelated objects solely because their geometry hashes match.
 5. Apply building decisions once, then check combined exposure. Road-source energies add across routes
    for a given day/night receiver; do not add dB, take a network maximum, or bill several acquisitions
    of one house. This needs raw day/night contributions at common receiver heights before acquisition,
@@ -174,7 +182,10 @@ construction route; cross-route spoil exchange is out of scope and stated, not a
    of excess values relative to different limits. Preserve today's max-over-stations approximation
    within a physical source; finite-segment correction remains separate. Project house/noise views show
    the combined deciding exposure, not contradictory safe-looking independent bands.
-6. Validate mission connectivity/time/capacity, all modified routes and final geometry. Untouched base
+6. After acquisition/mitigation decisions settle, finalize quantities, pricing and ledger reconciliation.
+   Geometry-affecting mitigation returns through the bounded engineering loop. Charge each physical work
+   once; per-route attribution plus explicit shared rows must equal the total.
+7. Validate mission connectivity/time/capacity, all modified routes and final geometry. Untouched base
    roads do not acquire arbitrary new-build violations. Publish only a coherent project revision.
 
 An initial foundation may expose unsupported interactions as incomplete (not scored), but the playable
@@ -263,7 +274,7 @@ honest operational/noise policy and explicit game assumptions. Never silently pr
 | 1 `d11` | Trutnov → Polish border; existing cheapest-road mission | preserve the exact legacy pack and default, model-18 fixtures and saves |
 | 2 `d3` | Posázaví, Jílové/Hostěradice → Václavice; cross the Sázava landscape while choosing valleys, bridges and tunnels | retain PLAN's D3 choice; include the river crossing (do not pick a section south of it by accident). Inspect 0302+0303 reference and choose A/B within a roughly 20–25 km-wide playable envelope. Clearly state the actual endpoint names/subsection. |
 | 3 `d35` | Opatovec → Mohelnice corridor; negotiate the ridge and settlements | full corridor is about 35 km. Prefer the full named connection if measured memory/eval budgets permit; otherwise explicitly name the first playable stage Opatovec → Staré Město (16.6 km, Dětřichov tunnel reference), with Mohelnice as a later extension—not a falsely labelled endpoint. Report this decision before merge. |
-| 4 `i16-nova-paka` | I/16 Nová Paka; take through traffic around the town without excessive earthworks | real class-I southeast bypass, 8.479 km reference, S11.5/70. Short introductory/urban exercise; roughly 15 km square initial envelope. The actual new bypass is already present in current OSM: exclude its owned reference corridor from the baseline or explicitly use a sourced historical snapshot, so the player is not building a duplicate alongside a free completed bypass. Preserve the old town road. |
+| 4 `i16-nova-paka` | I/16 Nová Paka; take through traffic around the town without excessive earthworks | real class-I southeast bypass, 8.479 km reference, S11.5/70. Short introductory/urban exercise; roughly 15 km square initial envelope. The actual new bypass opened in 2025 and may be present in current OSM: verify the extract and exclude its owned reference corridor from the baseline or explicitly use a sourced historical snapshot, so the player is not building a duplicate alongside a free completed bypass. Preserve the old town road. |
 
 For Nová Paka, removing a completed OSM bypass does not restore pre-build ground: inspect DMR/orthophoto
 dates and disclose any residual built-earthwork advantage, or use sourced historical terrain. Exclusions
