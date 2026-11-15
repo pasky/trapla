@@ -5,6 +5,7 @@ import { auditCrossingGeometry, buildCrossingGeometry, crossingPlanLength, cross
 import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet';
 import { bridgeModel } from '../src/core/bridge';
 import { ROAD_CLASSES } from '../src/core/data/urban';
+import { underpassAssembly } from '../src/core/data/remedies';
 import { chooseStructures, KIND } from '../src/core/structures';
 import { CrossingRenderer } from '../src/render/crossings';
 import type { View } from '../src/render/view';
@@ -207,6 +208,40 @@ describe('crossing geometry and map overlay', () => {
     expect(over.approachLength).toBeCloseTo(approaches, 6);
     expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(over.span!, 0, { span: over.span!, pierDensity: 0 }) + approaches * over.roadPerKm! / 1000, 5);
     expect(auditCrossingGeometry(cs, route, () => 400, roads)).toEqual([]);
+  });
+
+  it('carries a track through a measured underpass box, and rejects low fills and unsupported classes', () => {
+    const box = underpassAssembly('track', ROAD_CLASSES.track.roadPerKm[0] / 1000);
+    const high = [cross(2, 3200, 'track', 7)];
+    expect(resolve(high, [{ roadId: 2, type: 'underpass' }])).toEqual([]);
+    buildCrossingGeometry(high, { ...route, kind: new Uint8Array(s.length) }, () => 393, roads);
+    const c = high[0], g = c.geometry!, u = g.underpass!;
+    expect(c.type).toBe('underpass'); expect(g.diagnostics).toBeUndefined();
+    expect(c.underpassLength).toBeCloseTo(20, 4); // toe to toe across the 20 m footprint
+    expect(crossingPlanLength(g.road!.slice(u.start, u.end + 1))).toBeCloseTo(c.underpassLength!, 6);
+    expect(g.road!.every(p => p.z === 393 && p.surface === 'terrain')).toBe(true); // the way keeps its level
+    expect(c.cost).toBeCloseTo(c.underpassLength! * box.perM + 2 * box.head, 6);
+    expect(auditCrossingGeometry(high, route, () => 393, roads)).toEqual([]);
+    const low = [cross(2, 3200, 'track', 4)];
+    expect(resolve(low, [{ roadId: 2, type: 'underpass' }])[0].crossing).toMatchObject({ code: 'underpass', actual: 4, required: box.minHeight });
+    buildCrossingGeometry(low, route, () => 396, roads);
+    expect(low[0].geometry!.diagnostics).toContain('Embankment is too low over the underpass box');
+    const primary = [cross(0, 3000, 'primary', 9)];
+    expect(resolve(primary, [{ roadId: 0, type: 'underpass' }])[0].crossing.code).toBe('underpass');
+    // Drawn as a concrete box between the portals over the terrain-level way, with a dark opening.
+    const mock = { world: new THREE.Group(), local: (x: number, y: number, z: number, v = new THREE.Vector3()) => v.set(x, z, -y),
+      crossingSurfaces: crossingSurfaces(high, () => 393), groundHeight: () => 393, drape: () => 394, replacementHeight: () => 393,
+      crossingEarthMaterial: () => new THREE.MeshBasicMaterial(), crossingGroundMaterial: () => new THREE.MeshBasicMaterial(),
+      requestRender: vi.fn(), retire: vi.fn() };
+    new CrossingRenderer(mock as unknown as View).setResult({ crossings: high, grade: Float64Array.of(400), ground: Float64Array.of(393) });
+    const decks = mock.world.getObjectsByProperty('name', 'crossing-decks') as THREE.Mesh[];
+    const heights = decks.flatMap(m => Array.from((m.geometry.getAttribute('position') as THREE.BufferAttribute).array).filter((_, i) => i % 3 === 1));
+    expect(Math.max(...heights)).toBeCloseTo(393 + u.height + u.roof + .2, 3); // Float32 vertices
+    expect(Math.min(...heights)).toBeLessThan(393);
+    // Auto prefers the box to a long link or an overbridge when it is cheaper; never under a bridge.
+    const auto = [cross(2, 3200, 'track', 7)];
+    resolve(auto); expect(auto[0].type).toBe('underpass');
+    resolve(auto, [], [KIND.bridge]); expect(auto[0].type).toBe('bridge');
   });
 
   it('draws two opposite side links to the resolved real-road anchors, including chained diversions', () => {

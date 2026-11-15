@@ -4,6 +4,8 @@ import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { smoothLink } from './crossing-link';
+import { underpassAssembly, UNDERPASS_RULES } from './data/remedies';
+import { KIND } from './structures';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
@@ -20,6 +22,12 @@ const byDistance = (path: readonly Readonly<WayPoint>[]) => {
 // Match the main bridge model's clear-span overbridge layout: abutments on the banks, no
 // piers in our traffic corridor. Raised earth approaches are billed separately below.
 const deckPrice = (c: CrossingResult, span: number) => bridgeModel(ROAD_CLASSES[c.cls]).total(span, 0, { span, pierDensity: 0 });
+
+/** Auto may use an underpass: eligible class, enough fill and a box no longer than the limit. */
+export function underpassFits(c: Pick<CrossingResult, 'cls' | 'h'>, length: number): boolean {
+  const size = ROAD_CLASSES[c.cls].underpass;
+  return !!size && c.h >= underpassAssembly(size, 0).minHeight && length <= UNDERPASS_RULES.maxLength;
+}
 
 export function crossingPlanLength(path: readonly XY[]): number {
   let length = 0;
@@ -388,9 +396,43 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       while (lo > 0 && margin(path[lo], corridor + STEP) < 0) lo--;
       while (hi + 1 < path.length && margin(path[hi], corridor + STEP) < 0) hi++;
       road = path.slice(Math.max(0, lo - 1), Math.min(path.length, hi + 2)).map(terrainPoint);
+    } else if (c.type === 'underpass') {
+      // The way keeps its own terrain level through a closed box spanning the earthwork
+      // footprint toe to toe along the way (skew and bends included).
+      const row = ROAD_CLASSES[c.cls], box = row.underpass ? underpassAssembly(row.underpass, (c.roadPerKm ?? row.roadPerKm[0]) / 1000) : undefined;
+      let centre = 0;
+      for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;
+      let first = centre, last = centre;
+      while (first > 0 && margin(path[first - 1], 0) <= 0) first--;
+      while (last + 1 < path.length && margin(path[last + 1], 0) <= 0) last++;
+      const boundary = (inside: number, outside: number) => {
+        let a = path[inside].d, b = path[outside].d;
+        for (let k = 0; k < 24; k++) { const m = (a + b) / 2; if (margin(along(path, m), 0) <= 0) a = m; else b = m; }
+        return (a + b) / 2;
+      };
+      if (!box) diagnose(g, 'This road class cannot pass in a small underpass');
+      else if (first === 0 || last === path.length - 1) diagnose(g, 'Existing way ends inside the crossing footprint');
+      else {
+        const d0 = boundary(first, first - 1), d1 = boundary(last, last + 1), length = d1 - d0;
+        if (length > UNDERPASS_RULES.maxLength) diagnose(g, `Underpass would exceed the ${UNDERPASS_RULES.maxLength} m box limit`);
+        // Under the carriageway the box needs its clear height + roof + cover below our grade.
+        const crown = (route.crownWidth ?? 0) / 2 + g.width / 2;
+        let lowest = Infinity;
+        for (const q of [along(path, d0), ...path.filter(q => q.d > d0 && q.d < d1), along(path, d1)]) {
+          const p = project(q);
+          if (Math.abs(p.lateral) <= crown) lowest = Math.min(lowest, p.z - heightAt(q.x, q.y));
+        }
+        if (lowest < box.minHeight - 1e-6) diagnose(g, 'Embankment is too low over the underpass box');
+        const a = Math.max(path[0].d, d0 - 2 * STEP), b = Math.min(path[path.length - 1].d, d1 + 2 * STEP);
+        const distances = [...new Set([a, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, b])].sort((p, q) => p - q);
+        road = distances.map(d => terrainPoint(along(path, d)));
+        g.underpass = { start: distances.indexOf(d0), end: distances.indexOf(d1), width: box.width, height: box.height, roof: box.roof, wall: box.wall };
+        c.underpassLength = length;
+        c.cost = length * box.perM + 2 * box.head;
+      }
     }
     rawPaths.set(c, adjusted ? road : path);
-    if (['bridge', 'overbridge', 'tunnel', 'junction'].includes(c.type)) g.road = road;
+    if (['bridge', 'overbridge', 'tunnel', 'junction', 'underpass'].includes(c.type)) g.road = road;
   }
 
   // A ground anchor must actually lie on the crossed alignment, beyond every engineered approach
@@ -524,6 +566,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       const old = g.road, road = refineTerrain(old, g);
       if (g.deck) { g.deck.start = road.indexOf(old[g.deck.start]); g.deck.end = road.indexOf(old[g.deck.end]); }
       if (g.approaches) for (const range of g.approaches) { range.start = road.indexOf(old[range.start]); range.end = road.indexOf(old[range.end]); }
+      if (g.underpass) { g.underpass.start = road.indexOf(old[g.underpass.start]); g.underpass.end = road.indexOf(old[g.underpass.end]); }
       g.road = road;
     }
     if (g.links) g.links = g.links.map(path => refineTerrain(path, g)) as [CrossingPoint[], CrossingPoint[]];
@@ -570,17 +613,24 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   };
   let changed = false;
   for (const c of crossings) {
-    if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !['overbridge', 'reconnection', 'diversion'].includes(c.type)) continue;
+    if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !['overbridge', 'reconnection', 'diversion', 'underpass'].includes(c.type)) continue;
     let best = c;
     const originalFeasible = feasible(c);
+    // A measured box through our embankment, when the class, the fill and the structure allow it.
+    if (c.type !== 'underpass' && route.kind?.[c.i] === KIND.earth && underpassFits(c, 0)) {
+      const box = clone(c); box.type = 'underpass';
+      delete box.targetS; delete box.targetRoadId; delete box.linkLength; delete box.span; delete box.approachLength;
+      build([box]);
+      if (feasible(box) && (!feasible(best) || box.cost < best.cost)) best = box;
+    }
     if (c.type !== 'overbridge' && (!originalFeasible || c.cost > deckPrice(c, route.width[c.i]))) {
-      const over = clone(c); over.type = 'overbridge'; delete over.targetS; delete over.targetRoadId; delete over.linkLength;
+      const over = clone(c); over.type = 'overbridge'; delete over.targetS; delete over.targetRoadId; delete over.linkLength; delete over.underpassLength;
       build([over]);
-      if (feasible(over) && (!originalFeasible || over.cost < best.cost)) best = over;
+      if (feasible(over) && (!feasible(best) || over.cost < best.cost)) best = over;
     }
     if (c.type !== 'overbridge' && originalFeasible) {
       if (best !== c) {
-        delete c.linkLength; delete c.targetS; delete c.targetRoadId;
+        delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
         Object.assign(c, best); changed = true;
       }
       continue;
@@ -594,7 +644,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
     for (const target of targets.slice(0, originalFeasible ? 1 : 3)) {
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
-      delete link.span; delete link.approachLength;
+      delete link.span; delete link.approachLength; delete link.underpassLength;
       link.targetS = target.s; link.targetRoadId = target.roadId;
       const anchor = clone(target);
       // A resolved diversion's source is a real ground-level road node; its downstream link need
@@ -604,7 +654,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       if (feasible(link) && (!feasible(best) || link.cost < best.cost)) { best = link; break; }
     }
     if (best !== c) {
-      delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId;
+      delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
       Object.assign(c, best); changed = true;
     }
   }
@@ -614,7 +664,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // local option by breaking a previously feasible connection elsewhere in the network.
   if (crossings.some((c,i) => baseline[i].feasible && !feasible(c))) {
     crossings.forEach((c,i) => {
-      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId'] as const) delete c[key];
+      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength'] as const) delete c[key];
       Object.assign(c, baseline[i].state);
     });
     return build(crossings);
@@ -695,6 +745,16 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       const price = (c.linkLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000
         + (c.cls === 'service' && (c.linkLength ?? 0) > 0 ? ACCESS : 0);
       if (Math.abs(price - c.cost) > 0.01) report('Link bill differs from measured quantities');
+    }
+    if (c.type === 'underpass' && g.underpass && g.road) {
+      const { start, end } = g.underpass, size = ROAD_CLASSES[c.cls].underpass;
+      if (start < 0 || end <= start || end >= g.road.length || !size) report('Invalid underpass bounds');
+      else {
+        const box = underpassAssembly(size, (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000);
+        if (Math.abs(crossingPlanLength(g.road.slice(start, end + 1)) - (c.underpassLength ?? 0)) > 0.01) report('Underpass quantity differs from geometry');
+        if (Math.abs((c.underpassLength ?? 0) * box.perM + 2 * box.head - c.cost) > 0.01) report('Underpass bill differs from measured quantities');
+        if (g.road.some(q => q.surface !== 'terrain')) report('Underpass way leaves its terrain level');
+      }
     }
     if (c.type === 'overbridge') {
       const price = deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;

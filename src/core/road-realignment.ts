@@ -79,7 +79,8 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
   const cached = crossingSources.get(g);
   if (cached?.roads === roads) return cached.source;
   let path: WayPoint[] = [], targets: CrossingPoint[] = [];
-  if ((c.type === 'overbridge' || c.type === 'junction') && g.road) {
+  // An underpass keeps the way at its own level through the box: its stretch is built, not removed.
+  if ((c.type === 'overbridge' || c.type === 'junction' || c.type === 'underpass') && g.road) {
     path = g.road.map((p, i) => ({ x: p.x, y: p.y, d: i })); targets = g.road;
   } else if ((c.type === 'reconnection' || c.type === 'diversion') && g.turnarounds?.length) {
     const raw = roads.connectedCrossingPath(c.roadId, c.x, c.y, CROSSING_RULES.linkHardReach, MAX_POINTS);

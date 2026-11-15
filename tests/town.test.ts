@@ -8,6 +8,7 @@ import { CATEGORIES } from '../src/core/data/categories';
 import { crossingPlanLength, resolveCrossings, type CrossingResult } from '../src/core/crossings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
+import { underpassAssembly } from '../src/core/data/remedies';
 import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { barrierAttenuation, dwellingExposure, noiseBarrier, requiredWall, wallFlags } from '../src/core/noise';
@@ -271,7 +272,7 @@ describe('evaluate on a synthetic town', () => {
   const roads = new RoadNet({
     cls: ['residential', 'track', 'primary'],
     ways: [
-      [0, 2000, 500, 2000, 1500], // street in the valley floor → passes under a forced bridge
+      [0, 2000, 500, 2000, 1500], // street in the valley floor → under our bridge (chosen; Auto: underpass)
       [0, 4000, 500, 4000, 1500], // street on the ridge → overbridge across the cut
       [0, 3000, 500, 3000, 1500], // street on the plain → reconnection
       [1, 3200, 500, 3200, 1500], // track → diversion
@@ -294,8 +295,31 @@ describe('evaluate on a synthetic town', () => {
   const design: Design = {
     category: 'S9.5', speed: 90, pis: [], profileMode: 'manual',
     vpis: [{ s: 0, z: 400, r: null }, { s: 6000, z: 400, r: null }],
+    // Auto now keeps the valley street at its level in an underpass (below); these deck,
+    // demolition and noise cases keep the chosen bridge.
+    crossingOverrides: [{ roadId: 0, type: 'bridge' }],
   };
   const r = evaluate(ctx, design);
+
+  it('keeps a valley street at its level in a priced underpass through a high fill (Auto)', () => {
+    const auto = evaluate(ctx, { ...design, crossingOverrides: [] });
+    const c = auto.crossings.find(c => c.roadId === 0)!;
+    expect(c.type).toBe('underpass');
+    expect(auto.kind[c.i]).toBe(KIND.earth);
+    const g = c.geometry!, box = g.underpass!;
+    // Toe to toe along the (perpendicular) street: the built footprint width at that station.
+    expect(c.underpassLength).toBeCloseTo(crossingPlanLength(g.road!.slice(box.start, box.end + 1)), 6);
+    expect(Math.abs(c.underpassLength! - (auto.dayL[c.i] + auto.dayR[c.i]))).toBeLessThan(1);
+    const assembly = underpassAssembly('local', ROAD_CLASSES.residential.roadPerKm[0] / 1000);
+    expect(c.cost).toBeCloseTo(c.underpassLength! * assembly.perM + 2 * assembly.head, 3);
+    expect(c.h).toBeGreaterThanOrEqual(assembly.minHeight);
+    // The street survives through the box: neither removed nor reported under the fill.
+    expect(g.removed).toBeUndefined();
+    expect(auto.footprintConflicts.some(f => f.roadId === 0)).toBe(false);
+    // No new violation; the chosen bridge stays available (and keeps the minor building beside it).
+    expect(auto.violations.map(v => v.title)).toEqual(r.violations.map(v => v.title));
+    expect(r.crossings.find(x => x.roadId === 0)!.type).toBe('bridge');
+  });
 
   it('resolves each crossing by the height of the grade above the crossed road', () => {
     expect(r.crossings.map((c) => [Math.round(c.s), c.cls, c.type])).toEqual([

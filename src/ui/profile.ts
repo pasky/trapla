@@ -439,6 +439,11 @@ export class ProfilePanel {
       }
       g.beginPath(); g.rect(px - hw, yr - hh, 2 * hw, 2 * hh); g.fill(); g.stroke();
       if (x.type === 'overbridge') { g.beginPath(); g.moveTo(px - 8, yr); g.lineTo(px + 8, yr); g.lineWidth = 2.5; g.stroke(); }
+      const box = x.type === 'underpass' ? x.geometry?.underpass : undefined;
+      if (box) { // the clear opening of the box through our embankment, at the crossed road
+        const top = this.Y(r.grade[x.i] - x.h + box.height);
+        g.save(); g.strokeStyle = '#6f6c64'; g.lineWidth = 2; g.strokeRect(px - 7, top, 14, yr - top); g.restore();
+      }
     }
     // Watercourse culverts: blue rings at stream-bed elevation (not a second road crossing).
     g.strokeStyle = '#167d9a'; g.lineWidth = 2;

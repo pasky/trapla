@@ -56,3 +56,37 @@ export function channelAssembly(bottom: number, q100: number, classMix: readonly
     + bankRestoration * (REMEDY_RATES.topsoil + REMEDY_RATES.hydroseed);
   return { bottom: b, depth, area, perimeter, topWidth: b + 2 * z * totalDepth, excavation, perM };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Underpass carrying a crossed track / local road through our embankment (research/19).
+// ---------------------------------------------------------------------------------------------
+/** OTSKP April 2026, CZK excl. VAT (research/19 §2). */
+export const UNDERPASS_RATES = {
+  frameConcrete: 21_572.46, // 389385, RC bridge frame C30/37 INCLUDING reinforcement, m³
+  roofWaterproofing: 806.81, // 711442, full-area asphalt strip waterproofing with sealing layer, m²
+  bedding: 5_205.89, // 451315, plain concrete bedding C30/37, m³
+};
+export type UnderpassSize = 'track' | 'local';
+/** Closed cast-in-place RC box. Clear heights: ČSN 73 6201 (via research/19 §1) 4.20 m for public
+ * purpose/service routes, 4.50 m for class III / collector local roads; the track box uses the
+ * 4.50 m agricultural-vehicle design target, not a verified norm minimum. Clear widths and all
+ * thicknesses are PROVISIONAL estimating assumptions; `cover` (waterproofing, protection and
+ * pavement above the roof) is not a normative minimum. Heads: research/19 §4 central allowance
+ * per portal (wings, headwall, foundations), low confidence. */
+export const UNDERPASS_SIZES: Record<UnderpassSize, { width: number; height: number; wall: number; roof: number; invert: number; cover: number; bedding: number; head: number }> = {
+  track: { width: 5, height: 4.5, wall: 0.5, roof: 0.5, invert: 0.45, cover: 0.5, bedding: 0.15, head: 300_000 },
+  local: { width: 8, height: 4.5, wall: 0.6, roof: 0.65, invert: 0.5, cover: 0.5, bedding: 0.15, head: 450_000 },
+};
+export const UNDERPASS_RULES = {
+  /** Beyond this the crossed road is in a tunnel, not a small underpass (cf. CULVERT_RULES.maxBoxLength). */
+  maxLength: 100,
+};
+/** Per-metre box assembly (concrete incl. rebar, roof waterproofing, bedding) plus the crossed
+ * road's own SPK pavement through the box; heads are separate. */
+export function underpassAssembly(size: UnderpassSize, roadPerM: number) {
+  const s = UNDERPASS_SIZES[size], outer = s.width + 2 * s.wall;
+  const concrete = outer * (s.height + s.roof + s.invert) - s.width * s.height;
+  const perM = concrete * UNDERPASS_RATES.frameConcrete + outer * UNDERPASS_RATES.roofWaterproofing
+    + outer * s.bedding * UNDERPASS_RATES.bedding + roadPerM;
+  return { ...s, concrete, perM, minHeight: s.height + s.roof + s.cover };
+}

@@ -69,6 +69,7 @@ export class CrossingRenderer {
     const heads = turnaroundSurfaces(this.view.crossingSurfaces,(x,y) => this.view.groundHeight(x,y));
     terrain.groundHoles = heads;
     for (const surface of this.view.crossingSurfaces) this.surface(surface, earth, terrain, structure);
+    for (const c of r.crossings) if (c.type === 'underpass' && c.geometry?.underpass && c.geometry.road) this.underpass(c.geometry.road, c.geometry.underpass, structure);
     for (const head of heads) {
       terrain.groundHoles = heads.filter(other => other !== head);
       const color = existingRoadColor(head.crossing.cls), center = earth.vertex(head.center,color,0,.12,EW_KIND.crown);
@@ -225,6 +226,50 @@ export class CrossingRenderer {
         };
         const a = earth.vertex(p, color, 0, .12, EW_KIND.crown), b = earth.vertex(pt(k), color, 0, .12, EW_KIND.crown), c = earth.vertex(pt(k + 1), color, 0, .12, EW_KIND.crown);
         earth.indices.push(a, b, c);
+      }
+    }
+  }
+  /** Closed RC box under our embankment: shell along the crossed way between its two portals,
+   * headwall frames and splayed wings at the slope toes, and a dark opening. The track keeps its
+   * terrain-level surface through it; our embankment mesh hides the buried middle. */
+  private underpass(road: CrossingPoint[], box: NonNullable<NonNullable<Result['crossings'][number]['geometry']>['underpass']>, mesh: MeshBuilder) {
+    if (box.start < 0 || box.end <= box.start || box.end >= road.length) return;
+    const concrete = 0xb7b4a9, shade = 0x8b8982, dark = 0x1f1f1d;
+    const inner = box.width / 2, outer = inner + box.wall, top = box.height + box.roof;
+    const normal = (i: number) => {
+      const a = road[Math.max(box.start, i - 1)], b = road[Math.min(box.end, i + 1)];
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      return { nx: -(b.y - a.y) / len, ny: (b.x - a.x) / len, tx: (b.x - a.x) / len, ty: (b.y - a.y) / len };
+    };
+    const at = (i: number, lateral: number, dz: number): CrossingPoint => {
+      const p = road[i], { nx, ny } = normal(i);
+      return { ...p, x: p.x + nx * lateral, y: p.y + ny * lateral, z: p.z + dz };
+    };
+    for (let i = box.start; i < box.end; i++) {
+      for (const side of [-1, 1]) {
+        mesh.quad(at(i, side * outer, -.3), at(i, side * outer, top), at(i + 1, side * outer, -.3), at(i + 1, side * outer, top), side < 0 ? concrete : shade, 0, 0);
+        mesh.quad(at(i, side * inner, 0), at(i, side * inner, box.height), at(i + 1, side * inner, 0), at(i + 1, side * inner, box.height), dark, 0, 0);
+      }
+      mesh.quad(at(i, -outer, top), at(i, outer, top), at(i + 1, -outer, top), at(i + 1, outer, top), concrete, 0, 0);
+      mesh.quad(at(i, -inner, box.height), at(i, inner, box.height), at(i + 1, -inner, box.height), at(i + 1, inner, box.height), dark, 0, 0);
+    }
+    for (const [i, outward] of [[box.start, -1], [box.end, 1]] as const) {
+      // Headwall frame around the opening, then a dark plug just inside it: the slope surface
+      // crossing the box interior near the toe must not show through the opening.
+      const head = (lateral: number, dz: number, along = 0) => {
+        const p = at(i, lateral, dz), { tx, ty } = normal(i);
+        return { ...p, x: p.x + tx * outward * along, y: p.y + ty * outward * along };
+      };
+      const lip = .25, plug = .6;
+      for (const side of [-1, 1]) mesh.quad(head(side * inner, -.3, lip), head(side * inner, top + .2, lip), head(side * (outer + .3), -.3, lip), head(side * (outer + .3), top + .2, lip), concrete, 0, 0);
+      mesh.quad(head(-inner, box.height, lip), head(inner, box.height, lip), head(-inner, top + .2, lip), head(inner, top + .2, lip), concrete, 0, 0);
+      mesh.quad(head(-inner, 0, -plug), head(inner, 0, -plug), head(-inner, box.height, -plug), head(inner, box.height, -plug), dark, 0, 0);
+      // Splayed wing walls retaining the slope beside the portal, falling to the toe.
+      for (const side of [-1, 1]) {
+        const reach = top * .9, base = head(side * (outer + .3), 0, lip);
+        const end = head(side * (outer + .3 + reach * .5), 0, lip + reach);
+        const ground = this.view.groundHeight(end.x, end.y);
+        mesh.quad({ ...base, z: base.z - .3 }, { ...base, z: base.z + top + .2 }, { ...end, z: ground - .3 }, { ...end, z: ground + .6 }, side < 0 ? concrete : shade, 0, 0);
       }
     }
   }

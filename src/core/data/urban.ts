@@ -6,6 +6,7 @@
 // game rule standing in for a real calculation.
 
 import type { CategoryId } from './categories';
+import type { UnderpassSize } from './remedies';
 
 // ---------------------------------------------------------------------------------------------
 // Buildings in the footprint: floor area × (building-only estimate × 1.5 + demolition); land separate
@@ -148,6 +149,9 @@ export interface RoadClassRow {
    * Includes standard road earthworks; no second embankment allowance is added. */
   roadPerKm: [number, number];
   roadCodes: [string, string];
+  /** Box size when the way may pass through our embankment in a small underpass (research/19).
+   * Class I–III roads keep bridges/junctions; motorways never. */
+  underpass?: UnderpassSize;
 }
 
 /** PROVISIONAL research-informed estimate for a through-road junction, all-in: based on ŘSD
@@ -168,13 +172,13 @@ export const ROAD_CLASSES: Record<string, RoadClassRow> = {
   primary: { label: 'class I road', width: 9.5, bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', separable: true, junction: true, roadPerKm: [56_912_000, 67_852_000], roadCodes: ['A.1.S1.9,5.NER', 'A.1.S1.9,5.NIR'] },
   secondary: { label: 'class II road', width: 7.5, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, junction: true, roadPerKm: [36_142_000, 42_883_000], roadCodes: ['A.1.S2.7,5.NER', 'A.1.S2.7,5.NIR'] },
   tertiary: { label: 'class III road', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, junction: true, roadPerKm: [26_616_000, 34_903_000], roadCodes: ['A.1.S3.6,5.NER', 'A.1.S3.6,5.NIR'] },
-  unclassified: { label: 'local road', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, ...LOCAL_ROAD },
-  residential: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, ...LOCAL_ROAD },
-  living_street: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, ...LOCAL_ROAD },
-  service: { label: 'service road', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, ...LOCAL_ROAD },
+  unclassified: { label: 'local road', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  residential: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  living_street: { label: 'street', width: 6.5, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  service: { label: 'service road', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', ...LOCAL_ROAD },
   /** Paved P4 standard, not the unsupported 1.5 M/km gravel allowance (research/13).
    * Conservative for forest/unpaved tracks, but a reproducible SPK 2026 unit price. */
-  track: { label: 'track', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, roadPerKm: [13_985_684.5, 13_985_684.5], roadCodes: ['A.1.P4.NE', 'A.1.P4.NE'] },
+  track: { label: 'track', width: 4, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', roadPerKm: [13_985_684.5, 13_985_684.5], roadCodes: ['A.1.P4.NE', 'A.1.P4.NE'] },
 };
 
 // ---------------------------------------------------------------------------------------------

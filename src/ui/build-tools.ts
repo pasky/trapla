@@ -38,15 +38,16 @@ const km = (s: number) => (s / 1000).toFixed(2);
 const num = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const CROSSING_OPTIONS: [CrossingChoice | '', string, string][] = [
-  ['', 'Automatic', 'Keep existing bridges, junctions at least 1.5 km apart, otherwise the cheaper of a bridge or a link to a nearby crossing road'],
+  ['', 'Automatic', 'Keep existing bridges, junctions at least 1.5 km apart, otherwise the cheapest of a bridge, an underpass through a high enough embankment or a link to a nearby crossing road'],
   ['junction', 'Junction', 'An at-grade junction with our road (class I–III roads only, ≥ 1.5 km from the next junction)'],
   ['bridge', 'Our bridge over it', 'Our road bridges over the crossed road (needs clearance above it)'],
   ['overbridge', 'Its bridge over us', 'The crossed road bridges over ours, with raised approach ramps (a motorway only over a ≥ 6 m cut)'],
   ['reconnection', 'Close + reconnect', 'Close the crossed road at our road and link both ends to the nearest crossing road'],
+  ['underpass', 'Underpass', 'The crossed track / local road keeps its level and passes through our embankment in a concrete box (5 × 4.5 m for tracks, 8 × 4.5 m for local roads; needs ≥ 5.5 / 5.65 m of fill above it)'],
 ];
 const TYPE_NAME: Record<string, string> = {
   bridge: 'under our bridge', tunnel: 'above our tunnel', overbridge: 'its bridge over us', junction: 'junction',
-  reconnection: 'closed + reconnected', diversion: 'diverted', atGrade: 'at grade (not allowed)',
+  reconnection: 'closed + reconnected', diversion: 'diverted', underpass: 'underpass through our embankment', atGrade: 'at grade (not allowed)',
 };
 
 export class BuildTools {

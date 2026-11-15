@@ -3,11 +3,13 @@ import { surchargeRate } from './cost';
 import { bridgeModel } from './bridge';
 import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
+import { underpassAssembly, UNDERPASS_RULES } from './data/remedies';
+import { underpassFits } from './crossing-geometry';
 import { KIND } from './structures';
 import type { Violation } from './checks';
 import type { RoadCrossing } from './roadnet';
 
-export const CROSSING_CHOICES = ['junction', 'bridge', 'overbridge', 'reconnection'] as const;
+export const CROSSING_CHOICES = ['junction', 'bridge', 'overbridge', 'reconnection', 'underpass'] as const;
 export type CrossingChoice = typeof CROSSING_CHOICES[number];
 /** Pack way index, stable within a scenario pack, not a station or merged-list index.
  * One choice applies to every intersection of that way. Omission restores Auto. */
@@ -33,6 +35,9 @@ export interface CrossingGeometry {
   deck?: { start: number; end: number; depth: number };
   /** Inclusive road-index ranges from each terrain tie-in to the adjusted footprint. */
   approaches?: [{ start: number; end: number }, { start: number; end: number }];
+  /** Underpass: inclusive road indices of the two portals (the way's footprint toe crossings);
+   * the way keeps its terrain level through a closed RC box of this clear opening. */
+  underpass?: { start: number; end: number; width: number; height: number; roof: number; wall: number };
   /** Reconnection/diversion: signed way chainages where the severed way leaves the footprint. */
   removed?: [number, number];
   /** Severed existing-road ends at the sources of the two links. */
@@ -46,7 +51,7 @@ export interface CrossingGeometry {
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
-    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry';
+    code: 'spacing' | 'class' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass';
     actual?: number; required?: number; targetS?: number };
 }
 export interface CrossingResult {
@@ -59,7 +64,7 @@ export interface CrossingResult {
   geometry?: CrossingGeometry;
   /** New grade minus crossed-road ground, m. */
   h: number;
-  type: 'bridge' | 'tunnel' | 'overbridge' | 'junction' | 'reconnection' | 'diversion' | 'atGrade';
+  type: 'bridge' | 'tunnel' | 'overbridge' | 'junction' | 'reconnection' | 'diversion' | 'underpass' | 'atGrade';
   /** Crossing-only cost excluding surcharge. Main-road structures are billed in their own runs. */
   cost: number;
   /** Both sides together, measured in plan from the built link geometry, m. */
@@ -69,6 +74,8 @@ export interface CrossingResult {
   targetRoadId?: number;
   span?: number;
   approachLength?: number;
+  /** Underpass box length along the crossed way, toe to toe, m (measured from the geometry). */
+  underpassLength?: number;
   roadCode?: string;
   roadPerKm?: number;
 }
@@ -123,6 +130,17 @@ export function reconnectionPrice(c: CrossingResult, gap: number, urban: number)
     cost: linkCost + (c.cls === 'service' ? ACCESS : 0) };
 }
 
+/** Small RC box carrying the crossed way through our embankment, or undefined when its class
+ * has no underpass size. `length` is the box length along the crossed way. */
+export function underpassPrice(c: Pick<CrossingResult, 'cls'>, length: number, urban: number) {
+  const row = ROAD_CLASSES[c.cls], u = urban >= 0.5 ? 1 : 0;
+  if (!row.underpass) return undefined;
+  const box = underpassAssembly(row.underpass, row.roadPerKm[u] / 1000);
+  return { underpassLength: length, roadCode: row.roadCodes[u], roadPerKm: row.roadPerKm[u], cost: length * box.perM + 2 * box.head,
+    minHeight: box.minHeight, box };
+}
+const priced = (p: NonNullable<ReturnType<typeof underpassPrice>>) => ({ underpassLength: p.underpassLength, roadCode: p.roadCode, roadPerKm: p.roadPerKm, cost: p.cost });
+
 const rank = Object.fromEntries(Object.keys(ROAD_CLASSES).map((key, i) => [key, i]));
 
 /** Mutates results, retaining station order. A/B consume junction spacing and include a collector,
@@ -144,6 +162,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         structure: 'The crossing choice and the built main-road structure must agree (game crossing rule)',
         reach: `Reconnections reach at most ${CROSSING_RULES.linkHardReach} m along the route to their target (shared manual/Auto study-stage limit)`,
         geometry: 'Crossing geometry must tie to real roads at terrain level',
+        underpass: `A small underpass carries only tracks, service and local roads, needs the grade at least clear height + roof + cover above them and is at most ${UNDERPASS_RULES.maxLength} m long (research/19, provisional)`,
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
@@ -155,7 +174,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   const separated = (c: CrossingResult) => overbridgePrice(c, footprint[c.i], urban[c.i]);
   for (const c of crossings) {
     c.type = 'atGrade'; c.cost = 0;
-    delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength;
+    delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
     c.requestedType = crossingChoice(c.roadId, overrides);
   }
@@ -191,6 +210,14 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       if (c.h >= CROSSING_RULES.overHeight) issue(c, 'clearance', 'Junction lies above the existing road',
         `Lower the new road by more than ${(c.h - CROSSING_RULES.overHeight).toFixed(1)} m out of the ${CROSSING_RULES.overHeight} m bridge range, or choose a bridge`, c.h, CROSSING_RULES.overHeight);
       if (!row.noAtGrade) junctions.push(c.s);
+    } else if (choice === 'underpass') {
+      const box = underpassPrice(c, footprint[c.i], urban[c.i]);
+      if (!box) issue(c, 'underpass', `A ${row.label} cannot pass in a small underpass`, 'Choose a bridge, an overbridge or a reconnection');
+      else {
+        Object.assign(c, priced(box));
+        if (c.h < box.minHeight - 1e-6) issue(c, 'underpass', 'Underpass needs a higher embankment',
+          `Raise the new road by ${(box.minHeight - c.h).toFixed(1)} m to at least ${box.minHeight.toFixed(2)} m above the crossed road (${box.box.height} m clear + roof + cover)`, c.h, box.minHeight);
+      }
     }
     if (choice !== 'reconnection' && !row.noAtGrade && !c.issues?.length) anchors.push(c);
   }
@@ -233,12 +260,18 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     const linkCost = link.linkCost;
     const over = separated(c);
     const surcharge = 1 + surchargeRate(billingUrban[c.i]);
-    if (c.requestedType === 'reconnection' || (gap <= CROSSING_RULES.linkMaxReach && linkCost * surcharge + access < over.cost * surcharge)) {
+    // Footprint width is the box-length estimate; the geometry pass measures it along the way.
+    const box = kind[c.i] === KIND.earth && underpassFits(c, footprint[c.i]) ? underpassPrice(c, footprint[c.i], urban[c.i]) : undefined;
+    const linkTotal = gap <= CROSSING_RULES.linkMaxReach ? linkCost * surcharge + access : Infinity;
+    const overTotal = over.cost * surcharge, boxTotal = box ? box.cost * surcharge : Infinity;
+    if (c.requestedType === 'reconnection' || (linkTotal < overTotal && linkTotal <= boxTotal)) {
       c.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       const { linkCost: _linkCost, ...priced } = link;
       Object.assign(c, priced); c.targetS = target.s; c.targetRoadId = target.roadId;
       if (c.requestedType && gap > CROSSING_RULES.linkHardReach) issue(c, 'reach', 'Reconnection is too far from a usable crossing',
         `Choose an overbridge or provide a compatible crossing within ${CROSSING_RULES.linkHardReach} m (now ${gap.toFixed(0)} m)`, gap, CROSSING_RULES.linkHardReach, target.s);
+    } else if (box && boxTotal < overTotal) {
+      c.type = 'underpass'; Object.assign(c, priced(box));
     } else {
       c.type = 'overbridge'; Object.assign(c, over);
     }
@@ -262,6 +295,11 @@ export function crossingLabel(c: CrossingResult): string {
     case 'overbridge': return `overbridge ${Math.round(c.span!)} m${c.approachLength ? ` + approaches ${Math.round(c.approachLength)} m` : ''}`;
     case 'junction': return 'junction';
     case 'reconnection': case 'diversion': return `${c.type} ${Math.round(c.linkLength!)} m (both sides, to km ${(c.targetS! / 1000).toFixed(2)})`;
+    case 'underpass': {
+      const size = ROAD_CLASSES[c.cls].underpass;
+      const box = size ? underpassAssembly(size, 0) : undefined;
+      return `underpass ${Math.round(c.underpassLength ?? 0)} m${box ? ` (${box.width} × ${box.height} m clear box)` : ''}`;
+    }
     case 'atGrade': return 'at grade — not allowed';
   }
 }
@@ -275,6 +313,8 @@ export interface CrossingRoute {
   /** Optional asymmetric built footprint distances, positive to either side. */
   left?: ArrayLike<number>; right?: ArrayLike<number>;
   crownWidth?: number;
+  /** Built structure kind per station; Auto considers an underpass only under earthwork. */
+  kind?: ArrayLike<number>;
 }
 
-export { buildCrossingGeometry, crossingPlanLength, auditCrossingGeometry } from './crossing-geometry';
+export { buildCrossingGeometry, crossingPlanLength, auditCrossingGeometry, underpassFits } from './crossing-geometry';

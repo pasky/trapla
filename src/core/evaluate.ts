@@ -16,7 +16,7 @@ import {
   basePerKm, basePerKmUrban, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate, tunnelPerKm,
   type CostBreakdown, type CostParts,
 } from './cost';
-import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, type CrossingOverride, type CrossingResult } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
@@ -514,7 +514,11 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
       roadX.forEach((c, j) => {
         const k = Math.min(sub - 1, Math.round(c.s / subDs));
         const choice = crossingChoice(c.way, crossingOverrides);
-        if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0) must[k] = 1;
+        if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && rz[j] - roadG[j] >= CROSSING_RULES.overHeight && hh[k] > 0)) return;
+        // Auto local roads may instead pass through the embankment in a priced underpass.
+        const wd = sc.dayL[k] + sc.dayR[k], box = !choice && underpassFits({ cls: c.cls, h: rz[j] - roadG[j] }, wd) ? underpassPrice(c, wd, subUrban[k]) : undefined;
+        if (box) earth[k] += box.cost * (1 + surchargeRate(subUrban[k])) / subW[k];
+        else must[k] = 1;
       });
     }
     const input = { ds: subDs, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, forced: must, forcedTunnel: tunnelWater(subS, z), overrides: subOverrides,
@@ -543,10 +547,13 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
     }
     for (const c of rawRoadX) {
       const choice = crossingChoice(c.way, crossingOverrides);
-      if (choice !== 'bridge' && choice !== 'overbridge') continue;
+      if (choice !== 'bridge' && choice !== 'overbridge' && choice !== 'underpass') continue;
       const g = terrain.heightAt(c.x, c.y), i0 = Math.min(n - 1, Math.floor(c.s / ds));
+      const box = choice === 'underpass' ? underpassPrice(c, 0, 0) : undefined;
+      if (choice === 'underpass' && !box) continue;
       for (const i of [i0, Math.min(n - 1, i0 + 1)]) {
-        if (choice === 'bridge') {
+        if (box) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + box.minHeight - ground[i]);
+        else if (choice === 'bridge') {
           const need = ROAD_CLASSES[c.cls].noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight;
           minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + need - ground[i]);
         } else if (ROAD_CLASSES[c.cls].noAtGrade) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
@@ -708,7 +715,12 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   }));
   for (const c of crossings) {
     const choice = crossingChoice(c.roadId!, crossingOverrides);
-    if ((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0) forced[c.i] = 1;
+    if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0)) continue;
+    // An Auto local road may instead keep its level in an underpass: the selector weighs that
+    // box (estimated over the footprint width) against our bridge; crossings price the built one.
+    const wd = sec.dayL[c.i] + sec.dayR[c.i], box = !choice && underpassFits(c, wd) ? underpassPrice(c, wd, urbanCentre[c.i]) : undefined;
+    if (box) earthPerM[c.i] += box.cost * (1 + surchargeRate(urbanEarth[c.i])) / cellLength(c.i, n, ds);
+    else forced[c.i] = 1;
   }
   const forcedTunnel = tunnelWater(st.s, grade);
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
@@ -878,7 +890,7 @@ export function evaluate(ctx: EvalContext, d: Design): Result {
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides);
-  crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b,
+  crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind,
     left: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayL[i] : width[i] / 2),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
   }, (x, y) => terrain.heightAt(x, y), ctx.roads));
