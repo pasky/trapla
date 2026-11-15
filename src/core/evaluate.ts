@@ -22,7 +22,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { ACCESS, BUILDING_RULES, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
+import { ACCESS, BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
@@ -879,9 +879,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     for (const [j, p] of best) {
       if (keptIds.has(j)) {
         buildingViolations.push({ kind: 'building', basis: 'game', s0: st.s[p.i], s1: st.s[p.i],
-          title: 'The road runs through a building you kept',
-          fix: `Buy out building #${j}, or move the road so that it and its ${BUILDING_RULES.clearance} m working strip miss the building`,
-          detail: `You chose to keep building #${j}, so it is not bought. Our slopes or bridge deck, plus a ${BUILDING_RULES.clearance} m working strip, reach it.`,
+          title: 'Road through a kept building',
+          fix: 'Buy it out, or move the road',
+          detail: `Kept: it cannot be demolished. The road's slopes and its ${BUILDING_RULES.clearance} m working strip touch it.`,
+          target: { buildings: [j] },
           rule: 'Game rule: a building you keep must stay clear of our road, its slopes and its working strip.' });
         continue;
       }
@@ -990,7 +991,19 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     receivers = resolved.receivers;
     noiseViolations.push(...noiseControlViolations(receivers, ex.scratch, st.s, cat.crownWidth));
     footprintMap = noiseFootprint(n, st.x, st.y, st.tx, st.ty, grade, (x, y) => terrain.heightAt(x, y), noiseModel,
-      shieldL, shieldR, fl, fr, (i, left) => (kind[i] === KIND.earth ? (left ? sec.dayL[i] : sec.dayR[i]) : w), barrier, edges);
+      shieldL, shieldR, fl, fr, (i, left) => (kind[i] === KIND.earth ? (left ? sec.dayL[i] : sec.dayR[i]) : w), barrier, edges,
+      undefined, undefined, undefined, (i, left, reach) => {
+        // the band shows the height that decides: the top floor of the tallest dwelling beside this station
+        let up: number = NOISE.receiverHeight;
+        const px = st.x[i], py = st.y[i], tx = st.tx[i], ty = st.ty[i], items = noiseBuildings.items;
+        noiseBuildings.near(px, py, reach, (j) => {
+          if (!noiseBuildings.dwelling[j] || gone[j]) return;
+          const dx = items[j][0] - px, dy = items[j][1] - py;
+          if (Math.abs(dx * tx + dy * ty) > 45 || (-dx * ty + dy * tx >= 0) !== left) return;
+          up = Math.max(up, NOISE.receiverHeight + (noiseBuildings.levels[j] - 1) * NOISE.storeyHeight);
+        });
+        return up;
+      });
   }
   lap('town');
 

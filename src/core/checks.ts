@@ -57,6 +57,17 @@ export interface Violation {
   /** how much the fix asks for (m); of nearby entries merged into one, the largest is kept */
   size?: number;
   horizontal?: HorizontalConstraint;
+  /** what the violation is about, so the UI can select it and offer the fix as a button */
+  target?: ViolationTarget;
+}
+
+export interface ViolationTarget {
+  /** buildings (pack indices) */
+  buildings?: number[];
+  /** crossed road (pack road id) */
+  road?: number;
+  /** a wall that fixes it: sides, height (m) and station range */
+  wall?: { sides: ('L' | 'R')[]; height: number; s0: number; s1: number };
 }
 
 /** one-line form for logs and scripts */

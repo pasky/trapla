@@ -20,7 +20,8 @@ describe('wall decisions through the full bill', () => {
     expect(r.boughtOut).toEqual([]);
     const issues = r.violations.filter((v) => v.kind === 'noise');
     expect(issues).toHaveLength(1);
-    expect(issues[0].fix).toContain('20 dwellings');
+    expect(issues[0].title).toContain('20 houses');
+    expect(issues[0].target?.buildings).toHaveLength(20);
     expect(r.violations.findIndex((v) => v.kind === 'time')).toBeLessThan(r.violations.findIndex((v) => v.kind === 'noise'));
   });
   it('builds/prices player walls without a building layer and uses their actual fractional height', () => {
@@ -44,7 +45,7 @@ describe('wall decisions through the full bill', () => {
     const removed = evaluate(context, d);
     expect(removed.boughtOut).toEqual([]);
     expect(removed.walls.filter((w) => w.side === 'L')).toEqual([]);
-    expect(removed.violations.some((v) => v.kind === 'noise' && /Add \d m walls/.test(v.fix))).toBe(true);
+    expect(removed.violations.some((v) => v.kind === 'noise' && v.target?.wall?.sides.includes('L') && v.target.wall.height >= 3)).toBe(true);
     d.buildingOverrides = [{ j: 0, action: 'buy' }];
     const bought = evaluate(context, d);
     expect(bought.boughtOut[0].reason).toBe('manual');
@@ -81,7 +82,7 @@ describe('building decisions through the full bill', () => {
     const r = evaluate(context, { ...startDesign(), buildingOverrides: [{ j: 2, action: 'keep' }] });
     expect(r.boughtOut.some((p) => p.j === 2)).toBe(false);
     expect(r.noise.receivers.find((p) => p.j === 2)?.unresolved?.excess).toBeGreaterThan(0);
-    expect(r.violations.some((v) => v.kind === 'noise' && v.title.includes('dB') && v.fix.includes('#2'))).toBe(true);
+    expect(r.violations.some((v) => v.kind === 'noise' && v.title.includes('dB') && !!v.target?.buildings?.includes(2))).toBe(true);
     expect(r.valid).toBe(false);
   });
 });

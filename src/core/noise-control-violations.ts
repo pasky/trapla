@@ -41,15 +41,16 @@ export function noiseControlViolations(receivers: readonly NoiseReceiver[], scra
       for (const side of v.sides) sides.add(side);
     }
     from = Math.max(0, from - NOISE.margin); to = Math.min(s[s.length - 1], to + NOISE.margin);
-    const what = count === 1 ? `dwelling #${ids[0]}` : `${count} dwellings`;
+    const what = count === 1 ? 'House' : `${count} houses`;
+    const wallSides = [...sides].map((x) => (x === 'left' ? 'L' : 'R') as 'L' | 'R');
+    const canWall = Number.isFinite(height) && height > 0;
     return {
       kind: 'noise', basis: 'game', s0: from, s1: to, size: excess,
-      title: `${count === 1 ? 'A dwelling' : `${count} dwellings`} you kept ${count === 1 ? 'is' : 'are'} too loud by up to ${excess.toFixed(1)} dB`,
-      fix: Number.isFinite(height) && height > 0
-        ? `Add ${height} m walls on the ${[...sides].join(' and ')} from km ${(from / 1000).toFixed(2)} to ${(to / 1000).toFixed(2)}, or buy out ${what}`
-        : `Buy out ${what}, or change the road to reduce the worst exposure by ${excess.toFixed(1)} dB`,
-      detail: `Buildings: ${ids.map((j) => `#${j}`).join(', ')}. Because you chose to keep them, or set the walls here yourself, the game does not buy them out. Noise is checked at the top floor, with the walls and cuttings as built.`,
-      rule: 'Government Order 272/2011: 60 dB by day and 50 dB at night at the façade for a new road (game estimate, not an acoustic study)',
+      title: `${what} ${excess.toFixed(1)} dB too loud`,
+      fix: canWall ? `${height} m wall ${[...sides].join(' + ')}, or buy out` : 'Buy out, or move the road away',
+      detail: 'Your wall or Keep choice stops the automatic buyout. Levels are at the top floor, walls and cuts included.',
+      rule: 'Government Order 272/2011: 60 dB by day, 50 dB at night at the façade (game estimate, not an acoustic study)',
+      target: { buildings: ids, ...(canWall ? { wall: { sides: wallSides, height, s0: from, s1: to } } : {}) },
     };
   }).sort((a, b) => a.s0 - b.s0);
 }
