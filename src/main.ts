@@ -15,6 +15,7 @@ import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
+import type { TransportGraphData } from './core/project-transport';
 import { SourceEditor } from './ui/source-editor';
 import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
@@ -26,7 +27,7 @@ import { createNoiseModel } from './core/road-noise';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
-import { loadPack } from './scenario';
+import { endpointJunctions, loadPack } from './scenario';
 import { startDesign } from './state';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
@@ -103,7 +104,7 @@ async function main() {
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
-    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario,
+    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario, junctions: endpointJunctions(meta),
     projectEnvironment: { objectData, transportData, pricingData, waterData: meta.watercourses?.sha256 ?? 'raster-water',
       terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
   };
@@ -174,17 +175,33 @@ async function main() {
     maxRadius: (i) => curveEdit.maxRadius(i),
   });
   // ---- base roads: any mapped road can be inspected and offered for change (one inspector card) ----
+  // The transport graph is not part of startup: its bytes are fetched when idle after the first frame
+  // and parsed on first need (base-road click, photo overlay, a project that already rebuilds roads).
   let transportIndex: ProjectTransportIndex | null = null, sourcePicker: SourcePicker | null = null;
-  if (pack.transport && pack.vectors && transportData) {
-    try {
-      transportIndex = new ProjectTransportIndex(pack.transport, transportData, pack.transport.vectorData, pack.terrain);
-      // only the drawn road is clickable: its drawn width at the local scale (map or photo overlay), plus slack
-      sourcePicker = new SourcePicker(pack.transport, pack.vectors, (layer, res) => lineHalfWidth(layer, res, view.photoWithNetwork));
-    } catch (error) { console.warn('Road map links are unavailable', error); transportIndex = null; sourcePicker = null; }
-  }
+  let transportGraph: TransportGraphData | null = null, sourceEditor: SourceEditor | null = null;
   const inspectorEl = document.getElementById('inspector')!;
   const claimedSources = () => projectStore.snapshot.design.routes.flatMap(r => r.source?.intervals ?? []);
-  const sourceEditor = transportIndex ? new SourceEditor(() => inspectorEl, document.getElementById('overlay')!, view, transportIndex, claimedSources) : null;
+  let transportReady: Promise<void> | null = null;
+  const ensureTransport = () => transportReady ??= (async () => {
+    let graph: TransportGraphData | null;
+    try { graph = await pack.loadTransport(); } catch (error) { console.warn('Road map links are unavailable', error); return; }
+    if (!graph || !pack.vectors || !transportData) return;
+    try {
+      transportIndex = new ProjectTransportIndex(graph, transportData, graph.vectorData, pack.terrain);
+      // only the drawn road is clickable: its drawn width at the local scale (map or photo overlay), plus slack
+      sourcePicker = new SourcePicker(graph, pack.vectors, (layer, res) => lineHalfWidth(layer, res, view.photoWithNetwork));
+    } catch (error) { console.warn('Road map links are unavailable', error); transportIndex = null; sourcePicker = null; return; }
+    transportGraph = graph;
+    const editor = sourceEditor = new SourceEditor(() => inspectorEl, document.getElementById('overlay')!, view, transportIndex, claimedSources);
+    editor.onClose = () => select(null);
+    // One atomic, undoable promote command; the proposal stays unscored until core accepts it.
+    editor.onApply = (command, id) => { projectStore.dispatch(command); switchRoute(id); };
+    view.setTransport(graph);
+  })();
+  // A saved project that already rebuilds mapped roads needs the graph before its first scene.
+  if (claimedSources().length) await ensureTransport();
+  view.onNeedTransport = () => { void ensureTransport(); };
+  if (viewBar.photo) void ensureTransport(); // the photo was already on from the saved view
   const activeEndpoints = () => ({
     a: { ...(store.route?.endpoints.a.position ?? positionA), label: store.route?.role === 'mission' ? scenario.labels.a : 'Start' },
     b: { ...(store.route?.endpoints.b.position ?? positionB), label: store.route?.role === 'mission' ? scenario.labels.b : 'End' },
@@ -422,7 +439,14 @@ async function main() {
     hud.setProfileBusy(false);
     if (!sceneIdle()) return;
     const w = idleWaiters; idleWaiters = []; w.forEach((f) => f());
+    if (!transportPrefetched && pack.transportMeta) {
+      // After the first settled scene, in idle time: download + verify the graph bytes only.
+      transportPrefetched = true;
+      const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
+      idle(() => { pack.prefetchTransport().catch(error => console.warn('Road map links are unavailable', error)); });
+    }
   };
+  let transportPrefetched = false;
 
   const syncDecorations = (result: ProjectResult) => {
     view.setProposals(projectStore.snapshot.design.routes.flatMap(route => {
@@ -512,7 +536,9 @@ async function main() {
       let geometry: Staged | undefined, sources: Staged | undefined, handedOver = false;
       try {
         geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex));
-        const graph = pack.transport;
+        const graph = transportGraph;
+        // A project with rebuilt mapped roads (e.g. after undo/reload) whose graph is not parsed yet.
+        if (!graph && result.acceptedRenderReplacements.length) void ensureTransport().then(() => { if (transportGraph) requestEval(false); });
         if (graph) sources = yield* view.buildSourceReplacements(graph, result.acceptedRenderReplacements);
         handedOver = true; return [geometry, sources] as const;
       } finally { if (!handedOver) { sources?.dispose(); geometry?.dispose(); } }
@@ -555,11 +581,6 @@ async function main() {
     return true;
   };
   store.onHistory = () => select(null);
-  if (sourceEditor) {
-    sourceEditor.onClose = () => select(null);
-    // One atomic, undoable promote command; the proposal stays unscored until core accepts it.
-    sourceEditor.onApply = (command, id) => { projectStore.dispatch(command); switchRoute(id); };
-  }
   routeBar.onSelect = switchRoute;
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
 
@@ -660,6 +681,11 @@ async function main() {
     onPickTerrain: (_x, _y, clientX, clientY) => {
       intro.hide();
       const t = thingAt(clientX, clientY);
+      // First click on a base road before the graph is parsed: parse it, then pick that road.
+      if (!t && !transportGraph && pack.transportMeta) void ensureTransport().then(() => {
+        const late = sourceAt(clientX, clientY);
+        if (late?.kind === 'source') showSource(late.hit);
+      });
       if (t?.kind === 'route-hit') { if (switchRoute(t.routeId) && store.read()) selectPiece(t.s); }
       else if (t?.kind === 'source') showSource(t.hit);
       else select(t);
@@ -962,6 +988,8 @@ async function main() {
       runs: last.runs, timing: last.timing, vpis: last.vpis.length, crossings: last.crossings, walls: last.walls,
     },
     whenIdle: () => new Promise<void>((res) => { if (sceneIdle()) res(); else idleWaiters.push(res); }),
+    /** parse the lazily loaded transport graph now (base-road hooks below need it) */
+    whenTransport: () => ensureTransport().then(() => !!transportGraph),
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
     resetCamera: () => view.resetCamera(),
     /** select something (as a click would): a bend, pin, crossing, building, stretch or piece at a station */

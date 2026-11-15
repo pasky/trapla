@@ -146,11 +146,14 @@ def latlon_bbox():
     return min(lat) - 0.002, min(lon) - 0.002, max(lat) + 0.002, max(lon) + 0.002
 
 
-OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"]
+# Public instances; responses are rejected for new packs when their snapshot is stale (one former
+# fallback lagged months behind). The cache binding records which endpoint answered.
+OVERPASS = ["https://overpass-api.de/api/interpreter", "https://z.overpass-api.de/api/interpreter",
+            "https://maps.mail.ru/osm/tools/overpass/api/interpreter"]
 
 
 def osm_cache(name: str) -> Path:
-    """Overpass results are keyed by query name only, so each scenario needs its own file pattern."""
+    """Overpass results are keyed by query name per scenario and bound to their exact query."""
     return CACHE / SCENARIO.get("osmCache", "osm_{id}_{name}.json").format(id=SCENARIO["id"], name=name)
 
 
@@ -159,30 +162,82 @@ def baseline_osm(data: dict) -> dict:
     return baseline(data, SCENARIO.get("baselineExcludeWayIds", []))
 
 
-def overpass(name: str, body: str, *, reference=False, bounds=None, allow_split=True) -> dict:
+# Query bodies by cache name, so standalone readers check the same identity as the fetcher.
+QUERIES = {
+    "cover": """(
+  way["landuse"~"^(forest|residential|industrial|commercial|retail|farmyard)$"];
+  relation["landuse"~"^(forest|residential|industrial|commercial|retail)$"];
+  way["natural"~"^(wood|water)$"];
+  relation["natural"~"^(wood|water)$"];
+  way["waterway"="riverbank"];
+);""",
+    "lines": """(
+  way["waterway"~"^(river|stream|canal)$"];
+  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link)$"];
+  way["railway"="rail"];
+);""",
+    "roads2": 'way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];',
+    "buildings": 'way["building"];',
+    "places": 'node["place"~"^(town|village|hamlet|suburb|city)$"];',
+    "cover2": """(
+  way["landuse"~"^(meadow|farmland|grass|orchard|cemetery|allotments|village_green|recreation_ground|reservoir|basin)$"];
+  relation["landuse"~"^(meadow|farmland|grass|orchard)$"];
+  way["leisure"~"^(park|garden|pitch|golf_course|playground)$"];
+  way["natural"~"^(grassland|heath|scrub)$"];
+);""",
+    "transport_v1": '(way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link)$"];way["railway"="rail"];);',
+}
+
+
+USED_INPUTS: set[Path] = set()  # cache files (and bindings) this build actually read
+
+
+def use_input(path: Path) -> None:
+    import overpass_cache
+    USED_INPUTS.add(path)
+    if overpass_cache.binding_path(path).exists():
+        USED_INPUTS.add(overpass_cache.binding_path(path))
+
+
+def bound_cache(name: str, body: str, bounds=None):
+    """Validated cache hit for exactly this query, or None (absent/unbound caches are moved aside)."""
+    import overpass_cache
+    query = overpass_cache.canonical_query(body, bounds or latlon_bbox())
+    frozen = SCENARIO.get("frozenOverpassCaches", {}).get(name)
+    data = overpass_cache.load(osm_cache(name), query, frozen_sha256=frozen)
+    if data is not None:
+        use_input(osm_cache(name))
+    return data
+
+
+def overpass(name: str, body: str | None = None, *, reference=False, bounds=None, allow_split=True) -> dict:
+    import overpass_cache
+    body = QUERIES[name] if body is None else body
     f = osm_cache(name)
-    if f.exists():
-        data = json.loads(f.read_text())
-        return data if reference else baseline_osm(data)
     s, w, n, e = bounds or latlon_bbox()
-    seconds = 90 if SCENARIO.get("requireComplete", False) else 240
+    data = bound_cache(name, body, (s, w, n, e))
+    if data is not None:
+        return data if reference else baseline_osm(data)
+    query = overpass_cache.canonical_query(body, (s, w, n, e))
+    complete = SCENARIO.get("requireComplete", False)
+    seconds = 90 if complete else 240
+    max_age = SCENARIO.get("maxSnapshotAgeDays", 30) if complete else None
     q = f"[out:json][timeout:{seconds}][bbox:{s:.5f},{w:.5f},{n:.5f},{e:.5f}];\n{body}\nout geom qt;"
     last = None
     for attempt in range(6):
-        url = OVERPASS[attempt % 2]
+        url = OVERPASS[attempt % len(OVERPASS)]
         try:
             log("overpass", name, url)
-            data = http_get(url, urllib.parse.urlencode({"data": q}).encode(), timeout=seconds + 60)
-            d = json.loads(data)
-            if "remark" in d or "elements" not in d:
-                raise RuntimeError(f"incomplete Overpass response: {d.get('remark', 'no elements')}")
-            f.write_bytes(data)
+            raw = http_get(url, urllib.parse.urlencode({"data": q}).encode(), timeout=seconds + 60)
+            d = overpass_cache.validate(json.loads(raw), max_age_days=max_age)
+            overpass_cache.store(f, raw, query, url)
+            use_input(f)
             time.sleep(3)
             return d if reference else baseline_osm(d)
-        except Exception as ex:  # 429/5xx: back off and try the other mirror
+        except Exception as ex:  # 429/5xx/incomplete/stale mirror: back off and try the other one
             last = ex
             log("  failed:", ex)
-            if attempt == 1 and allow_split and SCENARIO.get("requireComplete", False):
+            if attempt == 1 and allow_split and complete:
                 # Large region queries can exhaust the public service's time allowance. Fetch
                 # four bounded tiles, preserving full source geometry/IDs and raw exclusions.
                 mid_lat, mid_lon = (s + n) / 2, (w + e) / 2
@@ -197,7 +252,8 @@ def overpass(name: str, body: str, *, reference=False, bounds=None, allow_split=
                             raise RuntimeError(f"OSM changed between tiles: {key}; refresh these query caches")
                         merged[key] = el
                 combined = {"elements": list(merged.values()), "tileSnapshots": snapshots, "query": q}
-                f.write_text(json.dumps(combined, ensure_ascii=False))
+                overpass_cache.store(f, json.dumps(combined, ensure_ascii=False).encode(), query, "tiles")
+                use_input(f)
                 return combined if reference else baseline_osm(combined)
             time.sleep(20 * (attempt + 1))
     raise RuntimeError(f"overpass {name} failed: {last}")
@@ -385,7 +441,7 @@ def road_network(lines: dict) -> dict:
     """
     from shapely.geometry import LineString
 
-    extra = overpass("roads2", 'way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];')
+    extra = {"elements": []} if SCENARIO.get("coherentTransport") else overpass("roads2")
     ways = []
     LEGACY_SOURCE_IDS.clear()
     w, h = X_MAX - X_MIN, Y_MAX - Y_MIN
@@ -420,13 +476,7 @@ def build_overlays():
     dc = ImageDraw.Draw(cross_w)
     cross_r = Image.new("L", (NX, NY), 0)
     dr = ImageDraw.Draw(cross_r)
-    cover = overpass("cover", """(
-  way["landuse"~"^(forest|residential|industrial|commercial|retail|farmyard)$"];
-  relation["landuse"~"^(forest|residential|industrial|commercial|retail)$"];
-  way["natural"~"^(wood|water)$"];
-  relation["natural"~"^(wood|water)$"];
-  way["waterway"="riverbank"];
-);""")
+    cover = overpass("cover")
     urban_tags = ("residential", "industrial", "commercial", "retail", "farmyard")
 
     def cls(tags):
@@ -462,11 +512,9 @@ def build_overlays():
                               ZONE_RES if lu == "residential" else ZONE_FARM if lu == "farmyard" else ZONE_IND)
 
     # draw order matters: later classes win (roads/rail over streams over cover)
-    lines = overpass("lines", """(
-  way["waterway"~"^(river|stream|canal)$"];
-  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link)$"];
-  way["railway"="rail"];
-);""")
+    lines = overpass("lines")
+    if SCENARIO.get("coherentTransport"):
+        lines = coherent_lines(lines)
     road_w = {"motorway": 4, "trunk": 4, "primary": 3, "secondary": 3, "tertiary": 2,
               "unclassified": 1, "residential": 1}
     roads_out = []
@@ -497,7 +545,7 @@ def build_overlays():
     binfo = ENGINE_OVERLAYS.setdefault("binfo", [])
     binfo.clear()
 
-    blds = overpass("buildings", 'way["building"];')
+    blds = overpass("buildings")
     bout = []
     for el in blds["elements"]:
         xy = way_xy(el)
@@ -512,7 +560,7 @@ def build_overlays():
             # parallel to `buildings`; None (unusable geometry) → the engine falls back to the circle
             binfo.append(building_info(el, xy, int(zone_a[zr, zc])))
 
-    places = overpass("places", 'node["place"~"^(town|village|hamlet|suburb|city)$"];')
+    places = overpass("places")
     pout = []
     for el in places["elements"]:
         x, y = to_local(el["lon"], el["lat"])
@@ -612,28 +660,36 @@ def official_line():
 # Vector render data (pipeline/vectors.py): the browser shades the relief from the height grid and
 # rasterises land cover / roads / buildings from vectors, so no drape texture is baked any more.
 # ------------------------------------------------------------------------------------------------
+def coherent_lines(lines: dict) -> dict:
+    """One transport snapshot for new packs; never combine old road-class/node variants.
+
+    Legacy D11 keeps its separate cached queries, with unresolved additive identity where
+    those snapshots disagree. A dedicated current response cannot rewrite its frozen net.
+    """
+    transport = overpass("transport_v1", allow_split=False)
+    ids = {(e["type"], e["id"]) for e in transport["elements"]}
+    water = [e for e in lines["elements"] if "waterway" in e.get("tags", {}) and (e["type"], e["id"]) not in ids]
+    return {"elements": water + transport["elements"]}
+
+
 def cached_osm(name: str) -> dict:
     """Raw Overpass result fetched earlier by build_overlays()."""
-    f = osm_cache(name)
-    if not f.exists():
-        raise RuntimeError(f"{f} missing: run the full pipeline (npm run data) first")
-    return baseline_osm(json.loads(f.read_text()))
+    data = bound_cache(name, QUERIES[name])
+    if data is None:
+        raise RuntimeError(f"{osm_cache(name)} missing or unbound: run the full pipeline (npm run data) first")
+    data = baseline_osm(data)
+    return coherent_lines(data) if name == "lines" and SCENARIO.get("coherentTransport") else data
 
 
 def extra_cover() -> list:
     """Render-only OSM extras (not used by the game rules): fields / meadows / parks, minor ways."""
-    cover2 = overpass("cover2", """(
-  way["landuse"~"^(meadow|farmland|grass|orchard|cemetery|allotments|village_green|recreation_ground|reservoir|basin)$"];
-  relation["landuse"~"^(meadow|farmland|grass|orchard)$"];
-  way["leisure"~"^(park|garden|pitch|golf_course|playground)$"];
-  way["natural"~"^(grassland|heath|scrub)$"];
-);""")
+    cover2 = overpass("cover2")
     return [cover2["elements"]]
 
 
 def extra_lines() -> list:
     """Tracks and service roads: the same Overpass result road_network() uses for crossings."""
-    return [cached_osm("roads2")["elements"]]
+    return [] if SCENARIO.get("coherentTransport") else [cached_osm("roads2")["elements"]]
 
 
 def build_vectors(transport_lines=None) -> dict:
@@ -644,23 +700,121 @@ def build_vectors(transport_lines=None) -> dict:
 
 def build_transport(render_lines):
     import transport
-    elements = cached_osm("lines")["elements"] + cached_osm("roads2")["elements"]
+    elements = cached_osm("lines")["elements"]
+    if not SCENARIO.get("coherentTransport"):
+        elements += cached_osm("roads2")["elements"]
     return transport.build(OUT, elements, way_xy, render_lines, LEGACY_SOURCE_IDS, log)
 
 
+def waterways(hydrology) -> list:
+    """Hydrology's derived snapshot, bound to the validated inputs it was derived from.
+
+    D11 keeps its frozen snapshot bytes. New packs only reuse a snapshot whose derivation record
+    matches its bytes and the current bound `lines` cache; otherwise it is moved aside and rederived.
+    """
+    import overpass_cache
+    snapshot = osm_cache("watercourses_v1")
+    record = snapshot.with_name(snapshot.stem + ".derived.json")
+    sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    frozen = SCENARIO.get("frozenOverpassCaches", {}).get("watercourses_v1")
+    if frozen is not None:
+        overpass_cache.load_frozen(snapshot, frozen)
+        return hydrology.fetch_waterways(osm_cache, overpass)
+    lines_present = bound_cache("lines", QUERIES["lines"]) is not None  # moves an unbound one aside
+    # Extent identity: a snapshot derived for another rectangle is never reused.
+    extent = overpass_cache.fingerprint(overpass_cache.canonical_query("watercourses derivation v1", latlon_bbox()))
+    if snapshot.exists():
+        derived = overpass_cache.read_record(record)
+        # A snapshot derived from its own complete query (linesSha256 null) stays independent of lines.
+        if derived.get("extent") != extent or "sha256" not in derived or derived["sha256"] != sha(snapshot) or \
+                derived.get("linesSha256") not in (None, sha(osm_cache("lines"))):
+            for stale in (snapshot, record, overpass_cache.binding_path(snapshot)):
+                if stale.exists():
+                    stale.rename(stale.with_name(stale.name + ".unbound~"))
+    if not snapshot.exists():
+        # The raw watercourse response shares this file name and is replaced by the snapshot.
+        lines_sha = sha(osm_cache("lines")) if lines_present else None
+        result = hydrology.fetch_waterways(osm_cache, overpass)
+        overpass_cache.binding_path(snapshot).unlink(missing_ok=True)
+        overpass_cache.write_atomic(record, json.dumps(
+            {"extent": extent, "sha256": sha(snapshot), "linesSha256": lines_sha}).encode())
+        USED_INPUTS.discard(overpass_cache.binding_path(snapshot))
+        USED_INPUTS.update((snapshot, record))
+        return result
+    USED_INPUTS.update((snapshot, record))
+    return hydrology.fetch_waterways(osm_cache, overpass)
+
+
+def endpoint_junction(end: str) -> dict:
+    """Scenario-declared connection of an end to retained roads: OSM ways -> legacy net indices.
+    The evaluator prices it as one junction; each declared way must be in this pack's network."""
+    spec = SCENARIO[end].get("junction")
+    if spec is None:
+        return {}
+    if spec.get("kind") not in ("roundabout-arm", "merge") or not spec.get("osmWayIds"):
+        raise ValueError(f"endpoint {end}: junction needs kind roundabout-arm|merge and osmWayIds")
+    ways = []
+    for wid in spec["osmWayIds"]:
+        found = [i for i, source in enumerate(LEGACY_SOURCE_IDS) if source == wid]
+        if len(found) != 1:
+            raise ValueError(f"endpoint {end}: joined way {wid} is not exactly one network way")
+        ways.append(found[0])
+    return {"junction": {"kind": spec["kind"], "osmWayIds": spec["osmWayIds"], "ways": ways}}
+
+
+def cache_inputs(names=None) -> dict:
+    """Hashes of the cache inputs used by this build (or of the named recorded ones)."""
+    paths = sorted(USED_INPUTS) if names is None else [CACHE / name for name in names]
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None for p in paths}
+
+
+def verify_published_generation() -> dict:
+    import generation
+    manifest = OUT / "manifest.json"
+    recorded = json.loads(manifest.read_text()).get("inputs", {}) if manifest.exists() else {}
+    return generation.verify(OUT, SCENARIO, cache_inputs(recorded))
+
+
+def publish_manifest(inputs: dict) -> None:
+    import generation
+    generation.publish(OUT, SCENARIO, inputs)
+
+
+def is_integrity_error(ex: Exception) -> bool:
+    """Frozen/bound input identity failures abort; they never degrade into an empty legacy pack."""
+    import overpass_cache
+    return isinstance(ex, overpass_cache.FrozenInputError)
+
+
+def preflight_frozen() -> None:
+    """Check every frozen legacy input before any output is touched."""
+    import overpass_cache
+    for name, digest in SCENARIO.get("frozenOverpassCaches", {}).items():
+        overpass_cache.load_frozen(osm_cache(name), digest)
+
+
 def main():
+    import generation
+    with generation.lock(OUT):
+        build()
+
+
+def build():
     CACHE.mkdir(parents=True, exist_ok=True)
+    preflight_frozen()
     OUT.mkdir(parents=True, exist_ok=True)
     if SCENARIO.get("requireComplete", False):
         # A failed rebuild may leave mixed old/new files. Never advertise that as playable.
         (OUT / "ready.json").unlink(missing_ok=True)
+    # The graph is bound to vector.bin; a rebuilt vector must never keep an old graph.
+    for stale in ("transport-meta.json", "transport.json.gz"):
+        (OUT / stale).unlink(missing_ok=True)
     # Resolve references before expensive raster work; bad manifests must fail early.
     pts, kinds, cum, a, b = official_line()
     h = fetch_terrain()
     # Hydrology uses raw DMR nodata, never the display fill or painted land cover.
     import hydrology
-    watercourses = hydrology.build(h, CELL, hydrology.fetch_waterways(osm_cache, overpass),
-                                   way_xy, OUT, log)
+    watercourses = hydrology.build(h, CELL, waterways(hydrology), way_xy, OUT, log)
     oob = np.isnan(h)
     import geology
     ground = geology.build(CACHE, OUT, (X_MIN, Y_MIN, X_MAX, Y_MAX), http_get, log, oob,
@@ -682,7 +836,7 @@ def main():
         lc, cross, buildings, places, roads = build_overlays()
         have_osm = True
     except Exception as ex:  # legacy fallback only; new published packs require complete data
-        if SCENARIO.get("requireComplete", False):
+        if SCENARIO.get("requireComplete", False) or is_integrity_error(ex):
             raise
         log("OSM overlays failed:", ex)
         lc, cross, buildings, places, roads = np.zeros((NY, NX), np.uint8), np.zeros((NY, NX), np.uint8), [], [], []
@@ -692,16 +846,25 @@ def main():
 
     for stale in list(OUT.glob("tex_*.jpg")) + [OUT / "overview.jpg"]:  # baked drape of older packs
         stale.unlink(missing_ok=True)
-    transport_lines = [] if SCENARIO.get("requireComplete", False) else None
+    transport_lines = []
     try:
         vector = build_vectors(transport_lines) if have_osm else None
     except Exception as ex:  # legacy fallback only
-        if SCENARIO.get("requireComplete", False):
+        if SCENARIO.get("requireComplete", False) or is_integrity_error(ex):
             raise
         log("vector render data failed:", ex)
         vector = None
 
-    transport_meta = build_transport(transport_lines) if transport_lines is not None and vector else None
+    transport_meta = None
+    if vector:
+        try:
+            transport_meta = build_transport(transport_lines)
+        except Exception as ex:  # legacy packs stay playable without the additive graph
+            if SCENARIO.get("requireComplete", False) or is_integrity_error(ex):
+                raise
+            log("transport graph failed:", ex)
+            for stale in ("transport-meta.json", "transport.json.gz"):
+                (OUT / stale).unlink(missing_ok=True)
     loc = lambda p: [round(float(p[0] - X_MIN), 1), round(float(p[1] - Y_MIN), 1)]
     a_lon, a_lat = TO_WGS.transform(a[0], a[1])
     b_lon, b_lat = TO_WGS.transform(b[0], b[1])
@@ -729,9 +892,9 @@ def main():
         "orthophoto": {"export": "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer/export",
                        "sr": 5514, "attribution": "© ČÚZK, Ortofoto ČR, CC BY 4.0"},
         "A": {"xy": loc(a), "latlon": [round(a_lat, 6), round(a_lon, 6)],
-              "note": SCENARIO["A"]["note"]},
+              "note": SCENARIO["A"]["note"], **endpoint_junction("A")},
         "B": {"xy": loc(b), "latlon": [round(b_lat, 6), round(b_lon, 6)],
-              "note": SCENARIO["B"]["note"]},
+              "note": SCENARIO["B"]["note"], **endpoint_junction("B")},
         "official": {"xy": [loc(pts[i]) for i in keep], "lengthM": round(float(cum[-1]), 1),
                      "kinds": [int(max(kinds[keep[j - 1]:keep[j]] or [0])) for j in range(1, len(keep))]},
         "attribution": ["© ČÚZK, DMR 5G, CC BY 4.0", "© OpenStreetMap contributors, ODbL", "© ČGS, GEOCR50 + IG rajony 1:50 000"],
@@ -739,7 +902,8 @@ def main():
     }
     if (SCENARIO.get("official") or {}).get("publishedProjectLengthM"):
         meta["official"]["publishedProjectLengthM"] = SCENARIO["official"]["publishedProjectLengthM"]
-    if transport_meta:
+    if transport_meta and SCENARIO.get("requireComplete", False):
+        # Legacy D11 meta bytes stay frozen; its graph is found through transport-meta.json.
         meta["transport"] = transport_meta
     if SCENARIO.get("baselineNote"):
         meta["baselineNote"] = SCENARIO["baselineNote"]
@@ -752,16 +916,9 @@ def main():
     (OUT / "overlays.json").write_text(json.dumps(
         {"buildings": buildings, "places": places, "roads": roads, **ENGINE_OVERLAYS}, ensure_ascii=False, separators=(",", ":")))
     if SCENARIO.get("requireComplete", False):
-        # Separate manifest leaves legacy D11 metadata/fingerprint semantics untouched.
-        manifest = {"config": SCENARIO, "files": {}, "inputs": {}}
-        for path in sorted(OUT.iterdir()):
-            if path.is_file() and path.name not in ("manifest.json", "ready.json"):
-                manifest["files"][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in sorted(CACHE.glob(f"osm_{SCENARIO['id']}_*.json")):
-            manifest["inputs"][path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
-        (OUT / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-        # Written last; the picker requires this for new packs (legacy D11 is unchanged).
-        (OUT / "ready.json").write_text(json.dumps({"id": SCENARIO["id"], "ready": True}))
+        # Separate manifest leaves legacy D11 metadata/fingerprint semantics untouched; the ready
+        # marker is written last and the picker requires it for new packs.
+        publish_manifest(cache_inputs())
     tot = sum(p.stat().st_size for p in OUT.iterdir())
     log(f"pack written to {OUT}: {tot / 1e6:.1f} MB; A={meta['A']} B={meta['B']}; "
         f"{len(buildings)} buildings, {len(places)} places")

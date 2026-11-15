@@ -4,6 +4,7 @@
   "bbox5514": [-667500, -1016000, -652500, -1001000],
   "cell": 5,
   "requireComplete": true,
+  "coherentTransport": true,
   "official": {
     "strategy": "strict",
     "query": "way(id:1078890633,741260109,1078890627,1078890626,1078890628,1078890623,1131933470,992470366,1131933448,1131933447,1131933440,33853225,992470367,992470368,992470369,992470370,992470371,992470372,992470374,992470377,992470380,992470381);",
@@ -14,7 +15,9 @@
     "publishedProjectLengthM": 8479
   },
   "A": {"alongOfficial": 0, "note": "Kumburský Újezd: new bypass leaves the old through-town road"},
-  "B": {"latlon": [50.5129921, 15.5544880], "note": "Vidochov: new bypass reaches the retained old-road roundabout; official project includes additional existing-road works"},
+  "B": {"latlon": [50.5129921, 15.5544880], "note": "Vidochov: new bypass reaches the retained old-road roundabout; official project includes additional existing-road works",
+        "junction": {"kind": "roundabout-arm", "osmWayIds": [698086273, 1396541595, 1396541596, 1396541597, 1418615945],
+                     "about": "The four ring ways of the retained I/16 roundabout at node 6556049779, plus way 1418615945, an access=no service apron drawn across its central island with the ring (part of the same junction). The bypass joins as a new arm."}},
   "baselineExcludeWayIds": [1078890633,741260109,1078890627,1078890626,1078890628,1078890623,1131933470,992470366,1131933448,1131933447,1131933440,33853225,992470367,992470368,992470369,992470370,992470371,992470372,992470374,992470377,992470380,992470381,698085714],
   "groundProfileOverrides": {
     "perm_sand": {"classIto": 2, "classIIto": 6},

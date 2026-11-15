@@ -22,7 +22,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { ACCESS, BUILDING_RULES, CROSSING_RULES, NOISE, ROAD_CLASSES } from './data/urban';
+import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
@@ -71,7 +71,12 @@ export interface EvalContext {
   buildings?: BuildingIndex;
   /** existing road network (crossings) */
   roads?: RoadNet;
+  /** Scenario-declared connections of the mission ends to retained roads (pack meta A/B.junction).
+   * Applied only to a route end lying exactly at `x, y`. Absent for D11. */
+  junctions?: readonly EndpointJunction[];
 }
+
+export interface EndpointJunction { x: number; y: number; kind: EndpointJunctionKind; ways: readonly number[] }
 
 export interface Result {
   length: number;
@@ -940,7 +945,12 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
 
   lap('crossings');
-  const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict }, terrain, ctx.roads, crossings, water,
+  const endJunctions = (ctx.junctions ?? []).flatMap(j => {
+    const end = Math.hypot(j.x - ctx.a.x, j.y - ctx.a.y) < 1e-6 ? 'a' as const : Math.hypot(j.x - ctx.b.x, j.y - ctx.b.y) < 1e-6 ? 'b' as const : null;
+    return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
+  });
+  const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
+    ...(endJunctions.length ? { junctions: endJunctions } : {}) }, terrain, ctx.roads, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));
   footprintCheck.conflicts.push(...retainingConflicts(retainingWalls), ...channelRelocations.map(c => c.conflict));
   const remedyLand = new Float64Array(n);

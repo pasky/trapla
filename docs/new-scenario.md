@@ -44,6 +44,17 @@ by the actual rectangle or feature extent, never a mesh/ray or route/building Ca
 
 Configs live in `pipeline/scenarios/<id>.json`. Raw OSM/TIFF/ČGS data stay ignored in `pipeline/cache/`.
 Do not commit extracts. New scenario cache names are `osm_<id>_<query>.json`; D11 retains legacy names.
+Each Overpass cache is reused only when its `.query.json` binding names the same canonical query (body,
+bbox, output mode) and the cached bytes' SHA-256; hits pass the same completeness check as fresh
+responses (an element list, no runtime-error `remark`). D11's original caches predate bindings and are
+accepted only by the exact byte hashes in `frozenOverpassCaches`; those hashes are checked first, before
+any output is touched, and a missing or changed frozen file aborts the build (never refetched, never an
+empty legacy fallback). Any other cache is moved aside as `*.unbound~` and fetched again; an
+interrupted binding counts as unbound. The hydrology snapshot carries a derivation record bound to the
+rectangle and, when derived from `lines`, to its bytes. All writers of one pack directory (full build,
+`build_transport.py`, `vectors.py`) hold an exclusive per-pack lock. New packs reject mirror snapshots older than `maxSnapshotAgeDays`
+(default 30): one public mirror lagged months behind, mixing June buildings with November roads.
+New packs set `coherentTransport`, so roads/rails for network, raster and rendering come from one query.
 
 ```json
 {
@@ -122,8 +133,23 @@ road width; masking must also honor the renderer's casing/minimum-pixel passes a
 New packs can declare `meta.transport`; legacy D11 uses a separate `transport-meta.json` sidecar so its
 frozen raw metadata, network and scoring identity do not change. `pipeline/build_transport.py <id>` builds
 sidecars against an existing pack in a temporary folder and checks identical legacy net/vector content
-before publishing. Different cache snapshots can contain conflicting node/way geometry: such source
+before publishing. For a complete pack it first verifies one coherent generation (ready marker, manifest
+config/files/cache inputs byte-identical), removes the ready marker before writing and rewrites it last;
+it never certifies an incomplete or mixed pack. `vectors.py` alone refuses complete packs (rebuild them
+whole) and drops a legacy pack's graph sidecars before rewriting its vectors. Clipped render parts keep
+source-segment provenance: overlay clipping splits self-crossing ways at the crossing, and each part is
+matched to exactly one forward walk along its source, or the build fails. Different cache snapshots can contain conflicting node/way geometry: such source
 bindings need explicit unresolved handling, never invented connectivity or snapping the frozen map.
+
+### Ends that join a retained road
+
+An end may declare the retained road it joins: `"B": {..., "junction": {"kind": "roundabout-arm" | "merge",
+"osmWayIds": [...]}}`. The builder maps the ways to network indices in `meta.B.junction`; the evaluator
+treats our earthworks over exactly those ways, within the sourced zone of that end (`ENDPOINT_JUNCTIONS`,
+research/28), as the junction's own works priced once by the junction allowance. Everything else stays a
+conflict. `scripts/scenarios/check.ts` fails when no declared way comes within the zone. Nová Paka's
+bypass joins the I/16 roundabout this way. D11 declares none, so its bills are unchanged and the cost
+model version is not bumped.
 
 ## 4. Defaults are evidence or explicit game choices
 

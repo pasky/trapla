@@ -84,19 +84,31 @@ export const D3_SCENARIO: ScenarioParams = {
 };
 
 export const D35_SCENARIO: ScenarioParams = {
-  id: 'd35', presetId: 'd35-road', title: 'Opatovec → Mohelnice',
-  initial: { category: 'S9.5', speed: 90 },
-  picker: { kind: 'Road across the hills', goal: 'Pass the ridges and villages on the way to Mohelnice.' },
-  traffic: 9_000, heavyShare: 0.15, maxTravelMin: 24,
+  // First stage only: the full 34 km corridor to Mohelnice missed the live-drag budget (research/27).
+  id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město',
+  // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
+  // bend 7 by 7.6 m to clear a track (research/27). No junction: B is the section boundary.
+  initial: { category: 'S9.5', speed: 90, pis: [
+    { x: 3911.6, y: 4138.6, r: null }, { x: 5364.7, y: 4523.8, r: null }, { x: 7643.7, y: 4336.4, r: null },
+    { x: 9356.7, y: 4036.3, r: null }, { x: 11092.7, y: 3524, r: null }, { x: 12724.6, y: 3498.3, r: null },
+    { x: 14565.1, y: 3794.8, r: null }, { x: 16198, y: 3345, r: null }, { x: 17709.9, y: 2719.1, r: null },
+  ] },
+  picker: { kind: 'Road across the hills', goal: 'Pass the ridge and villages to Staré Město.' },
+  // 12 min allows 18 km at 90 or 16 km at 80 (project section 16.6 km); a mission choice, not a norm.
+  traffic: 9_000, heavyShare: 0.15, maxTravelMin: 12,
   terrainClass: 'hilly', maxGradient: 0.06,
-  labels: { a: 'Opatovec', b: 'Mohelnice', official: 'planned D35', brief: '<b>Opatovec</b> to <b>Mohelnice</b>' },
+  labels: { a: 'Opatovec', b: 'Staré Město', official: 'planned D35', brief: '<b>Opatovec</b> to <b>Staré Město</b>, first stage of D35' },
 };
 
 export const NOVA_PAKA_SCENARIO: ScenarioParams = {
   id: 'i16-nova-paka', presetId: 'i16-nova-paka-road', title: 'Nová Paka bypass',
   // S11.5/70 is the actual project's category (OPD entry); 10,000/day is a GAME PRIOR,
   // not the project's forecast. Eight minutes permits 9.33 km at 70 km/h (reference 8.479 km).
-  initial: { category: 'S11.5', speed: 70 },
+  // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
+  // bends 0/1 by 23.1/6.6 m (research/27). Not cost-optimised; the roundabout arm is a declared junction.
+  initial: { category: 'S11.5', speed: 70, pis: [
+    { x: 7832, y: 5962, r: null }, { x: 8841, y: 6871, r: null }, { x: 10208.9, y: 7474.7, r: null }, { x: 10894.3, y: 8418.4, r: null },
+  ] },
   picker: { kind: 'Class I road · 70 km/h', goal: 'Take traffic around town without moving too much earth.',
     note: 'Ground includes the real bypass’s cuts. Photo shows construction.' },
   traffic: 10_000, heavyShare: 0.15, maxTravelMin: 8,

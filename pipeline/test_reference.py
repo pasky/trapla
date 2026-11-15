@@ -53,6 +53,13 @@ class ReferenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "disconnected"):
             chain_reference([self.a, self.b, *cycle], self.cfg, self.project)
 
+    def test_assembled_interior_loop_is_rejected(self):
+        # Reviewer repro: ways [1,2,3] + [3,4,2,5] have valid endpoint degrees but revisit node 2.
+        first = way(30, [1, 2, 3], [(0, 0), (10, 0), (20, 0)])
+        second = way(40, [3, 4, 2, 5], [(20, 0), (15, 5), (10, 0), (10, -10)])
+        with self.assertRaisesRegex(ValueError, "revisits a node"):
+            chain_reference([first, second], {**self.cfg, "lengthRangeM": [0, 100]}, self.project)
+
     def test_missing_manifest_way_and_inconsistent_shared_coordinate(self):
         with self.assertRaisesRegex(ValueError, "missing"):
             chain_reference([self.a], {**self.cfg, "wayIds": [10, 20]}, self.project)

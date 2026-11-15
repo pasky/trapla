@@ -7,9 +7,9 @@ import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
 import { loadPack } from './loadpack';
 import { describe } from './report';
 
-const { meta, scenario, terrain, buildings, roads } = loadPack();
+const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
-const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads };
+const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads, junctions };
 function report(name: string, d: Design) {
   let r = evaluate(ctx, d);
   for (let i = 1; i < Number(process.env.BENCH_WARMUP ?? 1); i++) r = evaluate(ctx, d);

@@ -7,8 +7,8 @@ import { COST_MODEL_VERSION } from '../src/core/data/prices';
 import { loadPack } from './loadpack';
 const args = process.argv.slice(2), budget = Number(args.find(a => a.startsWith('--budget='))?.split('=')[1] ?? 400);
 const files = args.filter(a => !a.startsWith('--'));
-const { meta, terrain, scenario, buildings, roads } = loadPack(process.env.PACK);
-const ctx = { terrain, scenario, buildings, roads, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
+const { meta, terrain, scenario, buildings, roads, junctions } = loadPack(process.env.PACK);
+const ctx = { terrain, scenario, buildings, roads, junctions, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
 const hard = (r: Result) => r.violations.filter(v => v.kind !== 'footprint' && v.kind !== 'structure').length;
 const severity = (r: Result) => r.violations.reduce((sum, v) => sum + (v.kind === 'structure'
   ? 100 * Number(v.fix.match(/by at least ([\d.]+) m/)?.[1] ?? 1) : Math.max(1, v.s1 - v.s0)), 0);

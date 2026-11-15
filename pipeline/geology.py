@@ -128,6 +128,11 @@ def classify(a):
         return "carbonate"
     if rock.startswith(("kvarcit", "metalydit", "erlan", "břidlice, porfyroid", "pískovec,droba")):
         return "hard"
+    if rock.startswith(("dacit", "limburgit", "nef. bazanit", "ol. sodalitit", "olivinický",
+                        "pyroxenické andezity", "subvulk. bazalt")):
+        return "igneous"
+    if rock.startswith("metarkóza"):
+        return "hard"
     if age in ("KŘÍDA", "TRIAS"):
         return "cret_sand" if "pískovce" in rock[:35] else "marl"
     if age in ("PERM", "KARBON"):

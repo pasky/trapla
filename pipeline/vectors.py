@@ -281,7 +281,10 @@ def build(out_dir: Path, osm, way_xy, rings_of, width: float, height: float, ext
                 and ("highway" in el.get("tags", {}) or "railway" in el.get("tags", {}))
             if tracked:
                 from transport import clipped_stations
-                source_s = clipped_stations(xy, a)
+                try:
+                    source_s = clipped_stations(xy, a)
+                except ValueError as ex:  # fail closed: never guess which pass of a loop is drawn
+                    raise ValueError(f"way {el['id']}: {ex}") from ex
             if name in ("river", "stream", "rail", "rail_side"):
                 a = chaikin(a)
                 if tracked:
@@ -344,5 +347,14 @@ if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import build_pack as b
 
-    b.OUT.mkdir(parents=True, exist_ok=True)
-    b.build_vectors()
+    # vector.bin is bound to the transport graph and, for complete packs, to their manifest and
+    # ready marker. A standalone rewrite may not keep those identities.
+    if b.SCENARIO.get("requireComplete", False):
+        raise SystemExit("complete scenario packs are rebuilt as a whole: npm run data -- " + b.SCENARIO["id"])
+    import generation
+    with generation.lock(b.OUT):
+        b.preflight_frozen()
+        b.OUT.mkdir(parents=True, exist_ok=True)
+        for stale in ("transport-meta.json", "transport.json.gz"):
+            (b.OUT / stale).unlink(missing_ok=True)  # invalidate before writing; rerun build_transport.py
+        b.build_vectors()
