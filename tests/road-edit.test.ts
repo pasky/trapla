@@ -75,7 +75,9 @@ describe('rebuilding a mapped road', () => {
     const withLinks = evaluateProjectRoad(ctx, p, 'r', 'objects', { sourceWays: new Map([['main', 0], ['side1', 1], ['side2', 2]]) });
     expect(withLinks.status).toBe('evaluated');
     if (withLinks.status !== 'evaluated') return;
-    expect(withLinks.unpriced).toEqual(['source-needs-network', 'traffic-unknown']);
+    // the replacement itself is priced (C1 b); only its traffic is still unknown
+    expect(withLinks.unpriced).toEqual(['traffic-unknown']);
+    expect(withLinks.replacement).toBeDefined();
     // its own old road is no crossing of its own, nor a conflict along it
     expect(withLinks.result.crossings.filter(c => c.roadId === 0)).toEqual([]);
     expect(withLinks.result.violations.some(v => /class III road/.test(v.title) && v.s0 > 50 && v.s1 < withLinks.result.length - 50)).toBe(false);
@@ -112,4 +114,35 @@ it('a road net without a stretch keeps every other way index and the rest of the
   expect(cut.nearestWay(500, 0, 5)).toBe(1); // only the crossing way remains at x = 500
   expect(cut.nearestWay(100, 0, 5)).toBe(0); // the part before the cut keeps its index
   expect(cut.nearestWay(900, 0, 5)).toBe(2); // the part after is a new way
+});
+
+describe('pricing a rebuilt stretch (C1 b)', () => {
+  it('adds removing the old road where the new line leaves it and keeps every side road joined; the stretch is accepted', async () => {
+    const { evaluateProject } = await import('../src/core/project-evaluate');
+    const { REMOVAL } = await import('../src/core/project-replacement');
+    const { ROAD_CLASSES } = await import('../src/core/data/urban');
+    const { base, terrain, net, project } = fixture();
+    const interval = derivedStretch(base, 'main', 900, [])!;
+    const command = rebuildCommand(base, interval, { routeId: 'r', acousticSourceId: 'a' });
+    const route = command.routes[0];
+    if (route.kind !== 'road' || route.alignment.kind !== 'pi') throw new Error('fixture');
+    route.specification.operations = { aadt: 2000, heavyShare: 0.05, speed: 70, speedPolicy: 'design' };
+    route.alignment.pis = [{ x: 1000, y: 1090, r: null }]; // pulled 60 m off the old road's kink
+    const p = structuredClone(project); p.routes.push(route); p.connections.push(...command.connections);
+    const ctx = { legacy: { terrain, scenario: D11_SCENARIO, a: { x: 0, y: 0 }, b: { x: 1, y: 1 }, roads: new RoadNet(net) },
+      environment: { objectData: 'objects', transportData: 'transport', terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' as const },
+      sourceWays: new Map([['main', 0], ['side1', 1], ['side2', 2]]) };
+    const result = evaluateProject(ctx, { epoch: 'e', revision: 1, design: p });
+    expect(result.cost.unpriced).toEqual([]);
+    const works = result.works.items;
+    const removal = works.find(w => w.id.includes(':removal:'))!;
+    const removed = removal.geometry.measurements[0].quantity;
+    expect(removed).toBeGreaterThan(100);
+    expect(removal.cost).toBeCloseTo(removed * ROAD_CLASSES.tertiary.width * (REMOVAL.coverDepth * REMOVAL.coverPerM3 + REMOVAL.baseDepth * REMOVAL.basePerM3 + REMOVAL.restorePerM2), 3);
+    // both side roads stay joined, each with its junction (never dropped)
+    expect(works.filter(w => w.id.includes(':reconnection:'))).toHaveLength(2);
+    expect(result.cost.total).toBeCloseTo(result.cost.alone.r + works.reduce((t, w) => t + w.cost, 0), 3);
+    expect(result.cost.routes.r).toBe(result.cost.total);
+    expect(result.acceptedReplacements).toEqual([interval]);
+  });
 });

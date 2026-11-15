@@ -203,7 +203,9 @@ export interface WorkProposal {
   cost: number;
   dependencies: ProjectDependency[];
 }
-export interface SharedWork extends WorkProposal { accepted: boolean }
+export interface SharedWork extends WorkProposal { accepted: boolean;
+  /** Player words for the work (e.g. "Old road removed …") and where it is, for its road's card. */
+  label?: string; at?: { x: number; y: number; s: number } }
 export interface SharedWorkLedger { items: SharedWork[] }
 export interface ProjectDependency {
   kind: 'route' | 'source' | 'work' | 'building' | 'corridor'; id: string; revision: string;

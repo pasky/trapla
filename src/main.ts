@@ -345,7 +345,9 @@ async function main() {
           stray = strayDistance(line, old);
         } catch { stray = NaN; }
       }
-      what.textContent = `Rebuilt stretch: its line is drawn as bends${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. The old road stays until the change can be priced.`;
+      const accepted = projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
+      what.textContent = `Rebuilt stretch: its line is drawn as bends${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
+        ? 'The old road is gone where the new line leaves it.' : 'The old road stays until the change can be priced.'}`;
     } else {
       const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
         : e.anchor.kind === 'route' ? projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId)?.name ?? 'a road'
@@ -387,7 +389,17 @@ async function main() {
       if (mission) switchRoute(mission);
       toast(route.source ? 'The old road is kept.' : 'Road removed.', 'Undo', () => store.undo());
     };
-    head.append(h, what, form, remove);
+    // what replacing the old stretch adds to this road's own price (C1 b)
+    const works = projectFull?.works.items.filter(w => w.owner.kind === 'route' && w.owner.id === route.id && w.label) ?? [];
+    const list = document.createElement('ul'); list.className = 'route-works';
+    for (const w of works) {
+      const li = document.createElement('li'), label = document.createElement('span'), cost = document.createElement('b');
+      label.textContent = w.label!; cost.textContent = `${(w.cost / 1e6).toFixed(w.cost < 1e7 ? 1 : 0)} M CZK`;
+      li.append(label, cost);
+      if (w.at) li.onclick = () => { view.flyTo(w.at!.x, w.at!.y, 700); };
+      list.append(li);
+    }
+    head.append(h, what, ...(works.length ? [list] : []), form, remove);
     return head;
   };
   const showSource = (hit: SourceHit) => {
@@ -626,6 +638,11 @@ async function main() {
       if (received < posted) schedulePreview(); settle(); return;
     }
     projectFull = m.result; activePreviewPrice = null;
+    // Accepted rebuilt stretches leave the map: their drawn features follow from the road links here.
+    if (!m.result.acceptedRenderReplacements.length && m.result.acceptedReplacements.length && transportIndex) {
+      const base = transportIndex;
+      m.result.acceptedRenderReplacements = m.result.acceptedReplacements.flatMap(i => { try { return base.renderIntervals(i); } catch { return []; } });
+    }
     const result = m.result;
     // complete: one road, or roads core priced together after proving they share no houses or noise
     noise.setAvailable(result.complete && result.acousticScreen.complete);

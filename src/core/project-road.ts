@@ -5,12 +5,15 @@ import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, RouteDesign } from './project';
 import type { RoadNet } from './roadnet';
 import { tieInChecks, tieIns } from './tie-in';
+import { replacementWorks, type Replacement } from './project-replacement';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
   | { status: 'evaluated'; result: Result; unpriced?: ('source-needs-network' | 'traffic-unknown')[];
       /** Ends joined to an existing ground road whose junction this road's bill includes. */
-      junctionEnds?: ('a' | 'b')[] }
+      junctionEnds?: ('a' | 'b')[];
+      /** A rebuilt stretch: removing its old road and reconnecting its side roads (C1 b). */
+      replacement?: Replacement }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
       | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 
@@ -52,8 +55,9 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (route.endpoints.a.tangent || route.endpoints.b.tangent) return { status: 'incomplete', reason: 'unimplemented-tangent' };
   // A rebuilt stretch is engineered against the network without its own old stretch; it needs the
   // sidecar's link to the legacy road net, and its replacement is not priced yet (C1 b).
-  let roads = ctx.roads;
+  let roads = ctx.roads, sourceWay: number | undefined;
   if (route.source) {
+    sourceWay = options.sourceWays?.get(route.source.intervals[0]?.sourceId ?? '');
     const cut = route.role === 'auxiliary' && ctx.roads ? networkWithout(ctx.roads, route, options.sourceWays) : null;
     if (!cut) return { status: 'incomplete', reason: 'source-needs-network' };
     roads = cut;
@@ -96,7 +100,12 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     const found = tieInChecks(ties, result, roads, ctx.terrain, ctx.buildings);
     if (found.length) { result.violations.push(...found); result.valid = false; }
   }
-  const unpriced = [...route.source ? ['source-needs-network' as const] : [], ...spec.operations.trafficUnknown ? ['traffic-unknown' as const] : []];
+  // The replacement's own works; without the old road's link (no road links) it cannot be priced.
+  const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview
+    ? replacementWorks(route, result, ctx.roads, sourceWay, project.connections, id => options.sourceWays?.get(id)) : undefined;
+  if (replacement?.violations.length) { result.violations.push(...replacement.violations); result.valid = false; }
+  const unpriced = [...route.source && !replacement && !options.preview ? ['source-needs-network' as const] : [], ...spec.operations.trafficUnknown ? ['traffic-unknown' as const] : []];
   const junctionEnds = ties.filter(t => t.junction.kind !== 'continuation').map(t => t.end);
-  return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}) };
+  return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}),
+    ...(replacement ? { replacement } : {}) };
 }

@@ -10,6 +10,8 @@ import { freeSpan } from './source-editor';
 
 /** A grab this close to a junction does not stop there (no 20 m stubs): it extends to the next one, m. */
 export const STRETCH_PAST_JUNCTION = 150;
+/** A rebuilt stretch stops this far short of a level crossing or a joining bridge/tunnel, m. */
+const KEEP_CLEAR = 5;
 /** Shorter rebuilt stretches are refused: too short to carry a bend, m. */
 export const MIN_STRETCH = 60;
 /** The old line is drawn as bends where it strays more than this from a straight chord, m. A display/edit
@@ -42,9 +44,15 @@ export function derivedStretch(base: ProjectTransportIndex, sourceId: string, s:
   const source = base.source(sourceId); if (!source) return null;
   const length = source.stations[source.stations.length - 1];
   const span = freeSpan(claimed, base.transportData, sourceId, s, length); if (!span) return null;
-  const junctions = base.branches({ transportData: base.transportData, sourceId, s0: 0, s1: length }).map(b => b.s);
+  const branches = base.branches({ transportData: base.transportData, sourceId, s0: 0, s1: length });
+  const junctions = branches.map(b => b.s);
   let lo = Math.max(span.lo, ...junctions.filter(j => j <= s - STRETCH_PAST_JUNCTION));
   let hi = Math.min(span.hi, ...junctions.filter(j => j >= s + STRETCH_PAST_JUNCTION));
+  // A level crossing, or a bridge/tunnel joining, cannot be rebuilt yet: the stretch stops short of it.
+  for (const b of branches) if (b.other.some(o => { const q = base.source(o.sourceId); return !q || q.kind !== 'road' || q.elevation !== 'terrain'; })) {
+    if (Math.abs(b.s - s) <= KEEP_CLEAR) return null;
+    if (b.s < s) lo = Math.max(lo, b.s + KEEP_CLEAR); else hi = Math.min(hi, b.s - KEEP_CLEAR);
+  }
   // Only where the map has ground under it (a road leaving the map is cut at its last known point).
   if (!base.position(sourceId, s)) return null;
   for (const node of source.stations) if (!base.position(sourceId, node)) {

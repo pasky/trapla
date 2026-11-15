@@ -28,7 +28,11 @@ export const INDEPENDENCE_SCREEN = {
 } as const;
 
 export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; speed: number; heavyShare: number;
-  /** Built half-width at least (crown), also where a bridge/tunnel takes no land. */ halfWidth: number }
+  /** Built half-width at least (crown), also where a bridge/tunnel takes no land. */ halfWidth: number;
+  /** Existing roads this road changes beyond its own result (a rebuilt stretch's old road). */
+  extraRoads?: number[];
+  /** Works beyond its own result (side-road links), each a centreline with half-width. */
+  extraLines?: { ax: number; ay: number; bx: number; by: number; r: number }[] }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number }
 export interface IndependenceScreen {
@@ -175,11 +179,12 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     omittedDayEnergy: omitted(NOISE.limitDayDb), omittedNightEnergy: omitted(NOISE.limitNightDb) });
   if (routes.length > S.maxRoutes) { interactions.push({ routeIds: routes.map(r => r.routeId), reason: 'too-many-roads' }); return out(); }
   // Land, works and removed old roads.
-  const envelopes = routes.map(r => chunks(envelope(r.result, r.halfWidth)));
+  const envelopes = routes.map(r => chunks([...envelope(r.result, r.halfWidth),
+    ...(r.extraLines ?? []).map(l => ({ ...l, r: l.r + INDEPENDENCE_SCREEN.clearance / 2 }))]));
   for (let a = 0; a < routes.length; a++) for (let b = a + 1; b < routes.length; b++)
     if (touches(envelopes[a], envelopes[b])) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land' });
   // Existing roads: two roads changing one way, or a closure relying on a detour while another road changes any road.
-  const touched = routes.map(r => touchedRoads(r.result));
+  const touched = routes.map(r => { const t = touchedRoads(r.result); for (const id of r.extraRoads ?? []) t.roads.add(id); return t; });
   for (let a = 0; a < routes.length; a++) for (let b = a + 1; b < routes.length; b++) {
     const ta = touched[a], tb = touched[b];
     if ([...ta.roads].some(id => tb.roads.has(id)) || (ta.closes && tb.roads.size) || (tb.closes && ta.roads.size))
