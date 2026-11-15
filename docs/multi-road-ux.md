@@ -192,3 +192,8 @@ intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixtu
 - Open: reference-path editing (bend/profile of a promoted road), C1 acceptance/pricing, Build tool.
   A Change road stretch is limited to one mapped way (core promotes one source interval); a player's
   "road" spanning several ways needs multi-interval promotion.
+- Independent deep review (since `dfe66a3`) found six defects, all fixed: a removed proposal's card
+  surviving Undo; Escape not closing Change road from its typed fields; a stored best shown beside an
+  unpriced project; a photo overlay built mid-staging keeping stale cuts; the overlay composited over
+  missing (transparent) photo tiles, compounding opacity; and an overlay drawn on packs without a
+  transport map (nothing is clickable there, so nothing is highlighted — D11 gets it with S's sidecar).

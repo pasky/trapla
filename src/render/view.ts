@@ -371,6 +371,7 @@ export class View {
     this.dirty = true;
   }
   get hasPhoto() { return !!this.landcover?.hasPhotoSource; }
+  get photoWithNetwork() { return !!this.landcover?.photoWithNetwork; }
   *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
     if (this.landcover) return yield* this.landcover.buildSourceReplacements(graph, accepted);
     return { commit() {}, dispose() {} };

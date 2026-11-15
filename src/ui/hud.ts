@@ -99,6 +99,7 @@ export class Hud {
     const { missionRouteId, legacy = false, ownPrice = null } = opts;
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
+      this.$('best').hidden = false;
       if (was) this.$('cost-scope').textContent = 'Total cost';
       // re-render the legacy score when leaving project mode or when a new best arrived
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
@@ -152,6 +153,8 @@ export class Hud {
       this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
       this.lastTotal = priced ? total : null;
     }
+    // no best while the project is not priced: a stored best is not comparable to an unpriced change
+    this.$('best').hidden = !priced;
     const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
     this.$('best').innerHTML = best ? `${isBest ? '★ your best' : `best ${czk(best.cost)}`}${isBest ? '' : ' <button type="button" id="load-best">Load</button>'}` : '<small>no valid design yet</small>';
     this.$('best').classList.toggle('stale', pending);

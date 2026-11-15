@@ -475,9 +475,9 @@ export class LandCover {
     m.frustumCulled = false; m.matrixAutoUpdate = false; m.renderOrder = order; m.userData.bbox = g.bbox;
     scene.add(m); return m;
   }
-  /** polylines of a line layer the transport graph maps (null: no graph, all of them) */
-  private mapped(layer: string): ReadonlySet<number> | null {
-    if (!this.network) return null;
+  /** polylines of a line layer the transport graph maps (no graph: none — nothing is clickable) */
+  private mapped(layer: string): ReadonlySet<number> {
+    if (!this.network) return new Set();
     let owned = this.owned;
     if (!owned) { owned = this.owned = new Set(); for (const source of this.network.sources) for (const r of source.render) owned.add(r.featureId); }
     const out = new Set<number>();
@@ -491,7 +491,7 @@ export class LandCover {
     if (this.net) return;
     const geos = new Map<string, Geo[]>(), layers = this.netLayers();
     for (const l of this.vectors.lines) if (layers.has(l.name))
-      geos.set(l.name, finish(buildLineGeos(l, this.vectors.chunk, CAPPED.has(l.name), this.sourceCuts.get(l.name), this.mapped(l.name) ?? undefined)));
+      geos.set(l.name, finish(buildLineGeos(l, this.vectors.chunk, CAPPED.has(l.name), this.sourceCuts.get(l.name), this.mapped(l.name))));
     const scene = new THREE.Scene();
     this.net = { scene, passes: this.makePasses(NET_PASSES, geos, scene) };
   }
@@ -577,7 +577,8 @@ export class LandCover {
       for (const [x, y, w, h, tx, ty] of pieces) this.blit(s.rt, x - c[0], y - c[1], tx, ty, w, h, false);
     } else {
       for (const [x, y, w, h, tx, ty] of pieces) this.drawPhoto(s.rt, tx, ty, w, h, [x * t, y * t, w * t, h * t], src, false);
-      this.overlayNetwork(s.rt, c, t, pieces, false);
+      // a missing tile stays transparent (the coarser level, with its network, shows through)
+      if (src !== 'blank') this.overlayNetwork(s.rt, c, t, pieces, false);
     }
   }
 
@@ -648,14 +649,15 @@ export class LandCover {
       for (const geos of [...changed.values(), ...changedNet.values()]) for (const g of geos) g.geo.dispose();
     };
     const netLayers = this.netLayers();
+    // the network as it was when staging began: one built meanwhile has the old cuts and is rebuilt at commit
+    const net = this.net;
     try {
       for (const layer of this.vectors.lines) {
         if (key(this.sourceCuts.get(layer.name)) === key(next.get(layer.name))) continue;
         changed.set(layer.name, yield* buildLineGeos(layer, this.vectors.chunk, CAPPED.has(layer.name), next.get(layer.name)));
-        if (this.net && netLayers.has(layer.name))
-          changedNet.set(layer.name, yield* buildLineGeos(layer, this.vectors.chunk, CAPPED.has(layer.name), next.get(layer.name), this.mapped(layer.name) ?? undefined));
+        if (net && netLayers.has(layer.name))
+          changedNet.set(layer.name, yield* buildLineGeos(layer, this.vectors.chunk, CAPPED.has(layer.name), next.get(layer.name), this.mapped(layer.name)));
       }
-      const net = this.net; // a network built while this was staged already has the old cuts: rebuild it below
       handedOver = true;
       return { dispose, commit: () => {
         if (settled) return;
@@ -681,7 +683,7 @@ export class LandCover {
         const stale = this.net && this.net !== net;
         for (const geometry of old) geometry.dispose();
         this.sourceCuts = next;
-        if (stale) { this.disposeNetwork(); this.ensureNetwork(); }
+        if (stale && changed.size) { this.disposeNetwork(); this.ensureNetwork(); }
         if (changed.size) { this.reset(); this.onChange?.(); }
         settled = true;
       } };
@@ -711,13 +713,15 @@ export class LandCover {
     on = on && !!this.photoUrl;
     if (on === this.photoOn) return;
     this.photoOn = on;
-    if (on) this.ensureNetwork();
+    if (on && this.network) this.ensureNetwork();
     this.uniforms.lcPhoto.value = this.showPhoto ? 1 : 0;
     this.reset();
   }
 
   /** the levels hold photo tiles (else the map) */
   private get showPhoto() { return this.photoOn && !!this.photoUrl && !this.down; }
+  /** the photo is shown with the known-network overlay (diagnostics) */
+  get photoWithNetwork() { return this.showPhoto && this.loadedAny && !!this.net; }
 
   private setDown(down: boolean) {
     if (down === this.down) return;

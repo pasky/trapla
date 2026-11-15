@@ -83,7 +83,12 @@ try {
   assert.equal(await revision(), before, 'moving handles is not an edit');
   await page.screenshot({ path: `${out}/80-base-road-handles.png` });
 
-  // 3. Cancel leaves nothing changed
+  // 3. Escape from a typed field, then Cancel, leave nothing changed
+  await page.locator('.source-operations input[name=speed]').focus(); await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.source-endpoint').count(), 0, 'Escape closes Change road from its fields');
+  assert.equal(await page.locator('#inspector.k-source').count(), 0);
+  point = await screen('sourceScreen', road.id, near); await page.mouse.click(point.x, point.y);
+  await page.locator('#change-source').click();
   await page.locator('#cancel-source').click();
   assert.equal(await page.locator('.source-endpoint').count(), 0);
   assert.equal(await revision(), before); assert.equal((await routes()).length, 1);
@@ -132,9 +137,10 @@ try {
   assert.equal(await page.evaluate(() => window.trapla.activeRoute()), proposal, 'the proposal is pickable');
   assert.equal(await revision(), afterApply, 'switching roads is not an edit');
 
-  // 6. undo removes the change atomically, redo restores it
+  // 6. undo removes the change atomically (no stale proposal card), redo restores it
   await page.locator('#undo').click(); await idle();
   assert.equal((await routes()).length, 1);
+  assert.equal(await page.locator('#inspector.k-proposal').count(), 0, 'no card of a removed change remains');
   assert.equal((await page.evaluate(() => window.trapla.getProject())).connections.length, 0);
   assert.equal(await page.evaluate(() => window.trapla.proposalLines()), 0);
   await page.locator('#redo').click(); await idle();
@@ -150,7 +156,8 @@ try {
   // 8. with the photo on, the roads the game knows stay visible as a thin overlay (what is clickable)
   await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, mid]);
   await page.evaluate(() => window.trapla.setView({ photo: true }));
-  await page.waitForFunction(() => !window.trapla.viewBusy(), null, { timeout: 60000 }).catch(() => console.log('photo tiles still loading'));
+  await page.waitForFunction(() => !window.trapla.viewBusy(), null, { timeout: 90000 });
+  assert.equal(await page.evaluate(() => window.trapla.photoWithNetwork()), true, 'the photo arrived and the mapped roads are drawn over it');
   await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   await page.screenshot({ path: `${out}/83-photo-mapped-roads.png` });
   await page.evaluate(() => window.trapla.setView({ photo: false }));

@@ -245,6 +245,7 @@ async function main() {
     const size = document.createElement('div'); size.className = 'sub'; size.textContent = length ? `${Math.round(length)} m` : '';
     const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route'; remove.textContent = 'Remove change';
     remove.onclick = () => {
+      if (!projectStore.snapshot.design.routes.some(r => r.id === route.id) || projectStore.inTransaction) return;
       const mission = missionRouteId(); projectStore.dispatch({ type: 'delete-route', routeId: route.id });
       if (mission && mission !== route.id) switchRoute(mission);
     };
@@ -550,6 +551,8 @@ async function main() {
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
+    // a borrowed card (a proposal's) may belong to a road undo just removed: restore the right card
+    if (committed && inspector.isHosting && !sourceEditor?.selected) { if (d) inspector.set(sel); else routeCard(); }
     requestEval(!committed);
   });
 
@@ -828,6 +831,8 @@ async function main() {
   };
   window.addEventListener('keydown', (e) => {
     const t = e.target as HTMLElement;
+    // Escape closes the base-road card even from its typed fields (nothing was changed yet)
+    if (e.key === 'Escape' && sourceEditor?.selected) { e.preventDefault(); select(null); return; }
     // Undo / Redo also right after choosing in a select or ticking a box; text fields keep their own undo
     const typing = t.closest('textarea, [contenteditable="true"]') || (t.matches('input') && !t.matches('[type=checkbox], [type=radio], [type=range]'));
     const mod = e.ctrlKey || e.metaKey;
@@ -910,6 +915,7 @@ async function main() {
     sourceSelection: () => sourceEditor?.selection ?? null,
     lookAtSource: (id: string, s: number, dist = 900) => { const p = transportIndex?.position(id, s); if (p) view.lookAt(p.x, p.y, dist, 0, 55); },
     proposalLines: () => view.proposalCount,
+    photoWithNetwork: () => view.photoWithNetwork,
     setActiveRoute: switchRoute,
     projectSelection: () => structuredClone(qualifiedSelection),
     setProject: (design: ProjectDesign) => {
