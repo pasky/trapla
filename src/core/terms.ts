@@ -71,7 +71,7 @@ export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' 
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };
     case 'overbridge': return { tag: 'its bridge over us',
       label: `Carried over our road on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}`,
-      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}, bring it back down to its old level.` };
+      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.` };
     case 'junction': return { tag: 'junction', label: 'Junction with our road',
       explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.` };
     case 'reconnection': return { tag: 'reconnected',
@@ -86,14 +86,14 @@ export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' 
         explain: `The ${what} keeps its level and passes through our embankment in a concrete box.` };
     }
     case 'atGrade': return { tag: 'not allowed', label: 'Crosses our road at the same level — not allowed',
-      explain: `Only class I–III roads may meet our road at the same level; the ${what} needs a bridge, an underpass or a reroute.` };
+      explain: `Roads may cross ours at the same level only in a junction; the ${what} needs a junction, a bridge, an underpass or a reroute.` };
   }
 }
 
 /** The player's choices on the crossing card: [value, button label, what gets built]. */
 export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overbridge' | 'reconnection' | 'underpass', string, string][] = [
   ['', 'Automatic', 'The game decides: existing bridges stay; class I–III roads get a junction at least 1.5 km from the next one; other roads get the cheapest of a bridge over our road, an underpass through a high enough embankment or a reroute to a nearby crossing.'],
-  ['junction', 'Junction', 'The crossed road meets ours at the same level in a junction (class I–III roads only, at least 1.5 km from the next junction).'],
+  ['junction', 'Junction', 'The crossed road meets ours at the same level in a junction, at least 1.5 km from the next junction (Automatic offers this to class I–III roads only; motorways never).'],
   ['bridge', 'Our bridge over it', 'Our road crosses over the crossed road on a bridge; it needs enough height above it.'],
   ['overbridge', 'Its bridge over us', 'The crossed road is raised onto a new bridge over our road, with earth ramps on both sides (a motorway only over a cutting at least 6 m deep).'],
   ['reconnection', 'Cut and reroute', 'The crossed road is cut at our road; on each side a new piece of road runs along the outside of our earthworks to the nearest place where it can cross, and the cut ends get a turning area.'],

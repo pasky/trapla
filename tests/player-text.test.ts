@@ -1,6 +1,6 @@
 // Guard: player-facing text stays in plain words (src/core/terms.ts). Generates every violation kind
 // and every crossing / footprint outcome, and fails on internal terms or a missing title / fix / basis.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildAlignment, type PI } from '../src/core/horizontal';
 import { horizontalRules, speedNorms } from '../src/core/data/norms';
@@ -119,4 +119,77 @@ describe('player-facing text', () => {
     }
     expect(problems).toEqual([]);
   }, 120_000);
+});
+
+/** String and template-literal texts of a TypeScript source (template placeholders become "…"),
+ * each with the source text just before it. Comments are skipped; enough for our own sources. */
+function literals(src: string): { text: string; before: string }[] {
+  const out: { text: string; before: string }[] = [];
+  let i = 0;
+  const skipString = (q: string) => { let text = ''; i++; while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; text += src[i++]; } i++; return text; };
+  const template = (): string => {
+    let text = ''; i++;
+    while (i < src.length && src[i] !== '`') {
+      if (src[i] === '\\') { text += src[i + 1]; i += 2; continue; }
+      if (src[i] === '$' && src[i + 1] === '{') { i += 2; expression('}'); text += '…'; continue; }
+      text += src[i++];
+    }
+    i++; return text;
+  };
+  const expression = (end: string) => {
+    let depth = 0;
+    while (i < src.length) {
+      const ch = src[i];
+      if (ch === '{') depth++;
+      if (ch === '}' && depth === 0 && end === '}') { i++; return; }
+      if (ch === '}') depth--;
+      if (ch === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+      if (ch === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2) + 2; continue; }
+      if (ch === '/' && /[(,=:[!&|?{};]$|^$/.test(src.slice(0, i).trimEnd().slice(-1))) { // a regex literal
+        i++; let cls = false;
+        while (i < src.length && (cls || src[i] !== '/')) { if (src[i] === '\\') i++; else if (src[i] === '[') cls = true; else if (src[i] === ']') cls = false; i++; }
+        i++; continue;
+      }
+      if (ch === '\'' || ch === '"' || ch === '`') {
+        const start = i, text = ch === '`' ? template() : skipString(ch);
+        out.push({ text, before: src.slice(Math.max(0, start - 400), start) }); continue;
+      }
+      i++;
+    }
+  };
+  expression('');
+  return out;
+}
+
+describe('player-facing text in the sources', () => {
+  const read = (file: string) => readFileSync(file, 'utf8');
+  it('every human-readable literal in the UI is plain words (source names only in pricing tooltips)', () => {
+    const files = ['src/ui/build-tools.ts', 'src/ui/footprint.ts', 'src/ui/hud.ts', 'src/ui/profile.ts', 'src/ui/structure-bar.ts',
+      'src/ui/selection-bar.ts', 'src/ui/viewbar.ts', 'src/ui/editbar.ts', 'src/ui/intro.ts', 'src/ui/curve-edit.ts', 'src/ui/costgroups.ts'];
+    for (const file of files) for (const { text } of literals(read(file))) {
+      if (!/[a-z] [a-z]/i.test(text)) continue; // identifiers, selectors, CSS
+      const titles = [...text.matchAll(/title="([^"]*)"/g)].map(m => m[1]);
+      for (const t of [text.replace(/<[^>]*>/g, ' '), ...titles]) check(file, t, false);
+    }
+    const html = read('index.html').replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, '');
+    check('index.html', html.replace(/<[^>]*>/g, ' '), false);
+    expect(problems.splice(0)).toEqual([]);
+  });
+
+  it('every violation title, fix and detail written in the core is plain words', () => {
+    const files = readdirSync('src/core').filter(f => f.endsWith('.ts') && f !== 'terms.ts').map(f => `src/core/${f}`);
+    let count = 0;
+    for (const file of files) for (const { text, before } of literals(read(file))) {
+      // Values of title / fix / detail properties, including the branches of a conditional value,
+      // and the message arguments of the crossing/footprint/structure violation helpers.
+      const line = before.slice(before.lastIndexOf('\n') + 1);
+      const property = /\b(title|fix|detail)\s*:\s*(?:[^,]*\?\s*|[^,]*:\s*)?$/.test(line);
+      // Helper arguments mix title, fix and the rule line (which may name its source).
+      if (!property && !/\b(issue|block|flagRanges)\([^;]*$/.test(before)) continue;
+      if (!/[a-z] [a-z]/i.test(text)) continue;
+      count++; check(`${file}: ${line.trim().slice(0, 40)}`, text, property);
+    }
+    expect(count).toBeGreaterThan(60);
+    expect(problems.splice(0)).toEqual([]);
+  });
 });

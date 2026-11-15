@@ -420,7 +420,7 @@ describe('crossing geometry and map overlay', () => {
     expect(consumed.c.linkLength).toBe(0); expect(consumed.c.cost).toBe(0); // no phantom service ACCESS lump
   });
 
-  it('ramps up to a bridge over our road at the crossed road class gradient, following a road already steeper', () => {
+  it('ramps up to a bridge over our road at the crossed road class gradient, following the road\'s own slope', () => {
     const rampOf = (cls: string, terrain: (x: number, y: number) => number) => {
       const net = new RoadNet({ cls: [cls], ways: [[0, 3000, -900, 3000, 900]] });
       const c = cross(0, 3000, cls); resolve([c], [{ roadId: 0, type: 'overbridge' }]);
@@ -437,13 +437,14 @@ describe('crossing geometry and map overlay', () => {
       expect(c.approachLength!).toBeLessThanOrEqual(ideal + 20); // ramp feet sit on 10 m way samples
     }
     expect(rampOf('track', () => 400).c.approachLength!).toBeLessThan(150); // was ≈ 220 m at 6 %
-    // The old track falls 8 % away on both sides: the ramp follows it, 5 % steeper (13 %), and
-    // closes the height in ≈ 2 × 150 m instead of never; at 20 % no ramp within 15 % meets it again.
+    // The old track falls 8 % away on both sides: the ramp follows it, 5 % steeper (13 %, within the
+    // 15 % track maximum), and closes the height in ≈ 2 × 150 m instead of ≈ 2 × 350 m at a flat 10 %.
+    // At 20 % no ramp within 15 % ever meets it again: rejected.
     const fall = (_x: number, y: number) => 400 - 0.08 * Math.abs(y), falling = rampOf('track', fall);
     expect(falling.issues).toEqual([]);
-    expect(falling.c.approachLength!).toBeLessThan(320); // the deck edges stand on ≈ 1 m lower ground
+    expect(falling.c.approachLength!).toBeLessThan(2 * 170);
     expect(auditCrossingGeometry([falling.c], route, fall, undefined).filter(v => v.severity === 'error')).toEqual([]);
-    expect(rampOf('track', (_x, y) => 400 - 0.2 * Math.abs(y)).issues.map(v => v.title)).toContain('Ramps up to the bridge over our road never get back down to the track');
+    expect(rampOf('track', (_x, y) => 400 - 0.2 * Math.abs(y)).issues.map(v => v.title)).toContain('Ramps up to the bridge over our road would be longer than 250 m');
   });
 
   it('does not treat viaduct-scale approach fill as ordinary priced road embankment', () => {
@@ -451,7 +452,7 @@ describe('crossing geometry and map overlay', () => {
     const terrain = (_x: number, y: number) => 400 - 55 * Math.exp(-(((Math.abs(y) - 250) / 100) ** 2));
     const c = cross(0, 3000, 'residential'); resolve([c], [{ roadId: 0, type: 'overbridge' }]);
     const issues = buildCrossingGeometry([c], route, terrain, net);
-    expect(issues.some(v => v.title.includes('more than 10 m high') || v.title.includes('never get back down'))).toBe(true);
+    expect(issues.some(v => v.title.includes('more than 10 m high') || v.title.includes('longer than 250 m'))).toBe(true);
     expect(c.type).toBe('overbridge'); // explicit choice retained, unlike Auto fallback
     expect(auditCrossingGeometry([c], route, terrain, net).filter(v => v.severity === 'error')).toEqual([]);
   });

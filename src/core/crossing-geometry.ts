@@ -10,6 +10,8 @@ import { KIND } from './structures';
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
 export const RAMP_TOO_LONG = 'Approach ramp cannot get back down to the old road within its steepest allowed slope';
+/** PROVISIONAL game limit: longest ramp on either side of a bridge over our road, m. */
+export const MAX_RAMP_LENGTH = 250;
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
@@ -47,15 +49,14 @@ export function underpassFits(c: Pick<CrossingResult, 'cls' | 'h'>, length: numb
   return !!size && c.h >= underpassAssembly(size, 0).minHeight && length <= UNDERPASS_RULES.maxLength;
 }
 
-const MAX_RAMP = 0.15;
 /** Steepest straight ramp allowed from height `z` at a deck/junction edge (old ground `g0` there)
- * to the old road's ground `g` at distance `run`: the class gradient (research/20). Where the ramp
- * runs the same way as the old road's own slope, that road was already this steep: the ramp may
- * follow it, steeper by at most half the class gradient, but never steeper than 15 % (ČSN 73 6110
- * extraordinary maximum for access roads; paved main field tracks, ČSN 73 6109). */
+ * to the old road's ground `g` at distance `run`: the class gradient (research/20). Where the ramp runs
+ * the same way as the old road's own slope (the road falls away from a bridge, or climbs to a cutting),
+ * it may be steeper than that road by half the class gradient, but never beyond the class's
+ * justified-case maximum (`rampSteepest`; PROVISIONAL game rule). */
 export function rampLimit(cls: string, z: number, g0: number, g: number, run: number): number {
-  const grade = ROAD_CLASSES[cls].rampGradient, ramp = g - z, old = g - g0;
-  return Math.max(grade, run > 0 && ramp * old > 0 ? Math.min(MAX_RAMP, Math.abs(old) / run + grade / 2) : 0);
+  const row = ROAD_CLASSES[cls], grade = row.rampGradient, ramp = g - z, old = g - g0;
+  return run > 0 && ramp * old > 0 ? Math.max(grade, Math.min(row.rampSteepest, Math.abs(old) / run + grade / 2)) : grade;
 }
 
 /** Plain-language violation text for a geometry diagnostic (the diagnostic string stays internal). */
@@ -66,8 +67,13 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   const trace = { title: `The game cannot trace where this ${what} goes`, fix: 'Set this crossing to "Our bridge over it", or move our road a little',
     detail: `The map data of this ${what} is too short or too detailed for the game to build ${choice}.`, basis: 'engine' as const,
     rule: 'Engine limit: crossings are built only along the real line of the crossed road, within 2 km of our road' };
-  if (message === RAMP_TOO_LONG) return { title: `Ramps up to the bridge over our road never get back down to the ${what}`, ...ramps,
-    detail: `The ${what} runs on downhill (or uphill) away from the bridge, so a ramp within the allowed slope does not meet it again before it ends.`, basis: 'game' };
+  if (message === RAMP_TOO_LONG && c.type === 'junction') return { title: `The ${what} cannot be brought to our road's height for the junction`,
+    fix: 'Move the junction where the two roads are closer in height, or choose "Our bridge over it" or "Its bridge over us"',
+    detail: `Within the allowed slope, the ${what} would have to be raised or lowered all the way to where it ends.`, basis: 'game',
+    rule: `Game rule (research/20): a ${what} raised or lowered to a junction is no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} %` };
+  if (message === RAMP_TOO_LONG) return { title: `Ramps up to the bridge over our road would be longer than ${MAX_RAMP_LENGTH} m`, ...ramps,
+    detail: `The ${what} itself runs downhill (or uphill) away from the bridge, so a ramp within the allowed slope meets it again only far away, if at all.`, basis: 'game',
+    rule: `${ramps.rule}, at most ${MAX_RAMP_LENGTH} m long on each side` };
   if (message.startsWith('Approach earthwork exceeds')) return { title: 'Ramps up to the bridge over our road would be more than 10 m high', ...ramps,
     detail: `The ${what} would have to climb more than 10 m above the ground to cross over our road here.`, basis: 'game' };
   if (message === 'Existing way ends inside the crossing footprint') return { title: `The ${what} ends under our earthworks`,
@@ -402,6 +408,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         return direction < 0 ? path[0].d : path[path.length - 1].d;
       };
       const f0 = foot(d0, -1), f1 = foot(d1, 1);
+      // A crossing whose ramps would run on for hundreds of metres is not a sensible bridge over us.
+      if (isRaised && Math.max(d0 - f0, f1 - d1) > MAX_RAMP_LENGTH) diagnose(g, RAMP_TOO_LONG);
       // Short terrain tails make the actual joins visible; tails are maintenance, not new approaches.
       const a = Math.max(path[0].d, f0 - STEP), b = Math.min(path[path.length - 1].d, f1 + STEP);
       const distances = [...new Set([a, f0, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, f1, b])].sort((p, q) => p - q);
@@ -714,9 +722,6 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     const worth = (link: CrossingResult, target: CrossingResult) => !feasible(best)
       || link.cost < best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1);
     for (const target of targets.slice(0, originalFeasible ? 1 : 3)) {
-      // A feasible structure is not swapped for a long link that cannot be worth it on length alone.
-      if (feasible(best) && Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach
-        && 2 * Math.abs(target.s - c.s) * ROAD_CLASSES[c.cls].roadPerKm[0] / 1000 >= best.cost * 0.5) break;
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
       link.targetS = target.s; link.targetRoadId = target.roadId;

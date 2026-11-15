@@ -21,9 +21,11 @@ For conservative overbridge approach ramps, using ordinary (not exceptional) des
 residential / unclassified / living_street **8 %** — OSM `residential` streets in the D11 villages are ordinary access
 streets (group C, 9 %) rather than traffic-calmed D1 zones, so the D1 5 % "běžné" value would be wrong for most of them;
 8 % stays below C and at the D1 justified 8.33 % — tertiary **7 %**, secondary and primary **6 %** (unchanged game value;
-the older ČSN 73 6101 table gives 4.5–7 % for S 7.5 / S 9.5 by terrain). Where the crossed road itself already falls
-away from a bridge more steeply, its ramp may follow it, at most half the class gradient steeper and never above
-**15 %** (ČSN 73 6110 extraordinary maximum for group C; paved main field tracks, ČSN 73 6109).
+the older ČSN 73 6101 table gives 4.5–7 % for S 7.5 / S 9.5 by terrain). Where the crossed road itself slopes the same way as a ramp, the ramp may be up to half the class gradient steeper than
+that road, capped per class at a justified-case maximum (`rampSteepest`): track 15 % (paved main field tracks,
+ČSN 73 6109), service roads and streets 12 % (ČSN 73 6110 group C, justified cases; the 15 % extraordinary value is
+for ≤ 50 m only and is not used), living streets 8 % (D1 justified 8.33 %), class III 9 % and class I/II 7 % (older
+ČSN 73 6101 table, indicative only). This relaxation is a PROVISIONAL game rule, not a norm clause.
 
 ## Sources
 

@@ -4,7 +4,7 @@ import { FootprintGrid, clipFootprint, type FootprintCell } from '../src/core/fo
 import type { FootprintRoute } from '../src/core/footprint';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain, Terrain, BUILTUP_BIT, LC, RAIL_CROSSING_BIT } from '../src/core/terrain';
-import { ROAD_CLASSES } from '../src/core/data/urban';
+import { ACCESS, ROAD_CLASSES } from '../src/core/data/urban';
 import type { CrossingResult } from '../src/core/crossings';
 
 function setup(ways = [[0, 20, 260, 1250, 260]], cls = ['service']): RoadRealignmentInput & { cells: FootprintCell[] } {
@@ -292,10 +292,33 @@ describe('bounded real road relocation', () => {
     const blocked = planRoadRealignment(alone);
     expect(blocked.closed).toBeUndefined();
     expect(blocked.problems.length).toBeGreaterThan(0);
-    // A detour that itself runs under our earthworks does not count.
+    // A detour that itself runs under our earthworks does not count — not even when the same way
+    // is kept by a crossing elsewhere (only its engineered stretch counts as surviving).
     const buried = setup([ways[0], [0, 300, 290, 300, 250, 400, 250, 400, 290], ways[2], ways[3]]); rail(buried);
     buried.hit = { a, b, i: 20, j: 30 };
     expect(planRoadRealignment(buried).closed).toBeUndefined();
+    buried.crossings = [{ roadId: 1, type: 'bridge', s: 200, i: 20, x: 300, y: 250, cls: 'service', h: 10, cost: 0, issues: [] }];
+    expect(planRoadRealignment(buried).closed).toBeUndefined();
+    // Closure respects the same ownership as a rebuild: another remedy's interval, adjacent-group
+    // bounds and an accepted connector attached to the stretch all keep it.
+    const owned = (patch: Partial<RoadRealignmentInput>) => { const i = setup(ways); rail(i); i.hit = { a, b, i: 20, j: 30 }; return planRoadRealignment({ ...i, ...patch }); };
+    expect(owned({ covered: new Map([[0, [[0, 10]]]]) }).closed).toBeUndefined();
+    expect(owned({ bounds: [10, 110] }).closed).toBeUndefined();
+    const f = 10 / Math.hypot(30, 28);
+    expect(owned({ fixedConnections: [{ way: 0, d: 10, point: { x: 300 + 30 * f, y: 290 - 28 * f, z: 100, ground: 100, surface: 'terrain' } }] }).closed).toBeUndefined();
+    // A class I road is never closed, and a street is never sent along a track.
+    for (const [cls, alt] of [['primary', 'primary'], ['residential', 'track']]) {
+      const i = setup([ways[0], [1, ...ways[1].slice(1)], ways[2], ways[3]], [cls, alt]); rail(i);
+      i.hit = { a, b, i: 20, j: 30 };
+      expect(planRoadRealignment(i).closed).toBeUndefined();
+    }
+  });
+
+  it('finds network detours through unsplit T-junctions in either direction', () => {
+    const net = new RoadNet({ cls: ['service'], ways: [[0, 0, 0, 100, 0], [0, 50, 0, 50, 50]] });
+    expect(net.networkDistance({ x: 0, y: 0 }, { x: 50, y: 50 }, 500, () => false)).toBeCloseTo(100, 9);
+    expect(net.networkDistance({ x: 50, y: 50 }, { x: 0, y: 0 }, 500, () => false)).toBeCloseTo(100, 9);
+    expect(net.networkDistance({ x: 0, y: 0 }, { x: 50, y: 50 }, 90, () => false)).toBeUndefined();
   });
 
   it('joins another road its rebuilt stretch crosses at that road\'s own ground level', () => {
@@ -312,6 +335,23 @@ describe('bounded real road relocation', () => {
     expect(contact).toBeDefined();
     expect(contact!.z).toBe(contact!.ground);
     expect(plan.accessKeys).toHaveLength(1);
+  });
+
+  it('does not accept a junction mouth or turning area whose roads stand at different heights', () => {
+    // The track crosses the rebuilt road twice and runs along it between, on a 2 m higher bank.
+    const mouth = setup([[0, 20, 260, 1250, 260], [1, 600, 320, 600, 273, 610, 273, 610, 320]], ['service', 'track']);
+    mouth.terrain = syntheticTerrain(260, 100, 5, (x) => 100 + Math.max(0, 10 - 2 * Math.abs(x - 605)));
+    expect(planRoadRealignment(mouth).problems).toContain('new pavement intersects an unhandled road');
+    // A turning disk on a steep slope touching a road 4 m above its centre.
+    const disk = setup([[0, 350, 260, 350, 350], [0, 355, 275, 355, 350]]);
+    disk.hit = { a: 0, b: 12, i: 25, j: 25 };
+    disk.terrain = syntheticTerrain(260, 100, 5, (x) => 100 + 0.8 * (x - 350));
+    expect(planRoadRealignment(disk).problems).toContain('new pavement intersects an unhandled road');
+    // A rebuilt class I road joining a track pays for that junction.
+    const access = setup([[0, 20, 260, 1250, 260], [1, 600, 320, 600, 273]], ['primary', 'track']);
+    const plan = planRoadRealignment(access);
+    expect(plan.problems).toEqual([]);
+    expect(plan.lumpCost).toBe(ACCESS);
   });
 });
 

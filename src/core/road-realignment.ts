@@ -55,6 +55,8 @@ type SourceSpan = RoadSourceInterval & { lo: number; hi: number; cls: string };
 const STEP = 5, SETBACK = 3, MAX_POINTS = 1600, MAX_SUPPORT = 10;
 /** PROVISIONAL longest junction-to-junction stretch that may be closed instead of rebuilt, m. */
 const MAX_CLOSURE = 400;
+/** PROVISIONAL height difference a new junction mouth or turning area may regrade, m. */
+const MOUTH_TOLERANCE = 1;
 const distance = (a: Point2, b: Point2) => Math.hypot(b.x - a.x, b.y - a.y);
 const mix = (a: WayPoint, b: WayPoint, t: number): WayPoint => ({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), d: a.d + t * (b.d - a.d) });
 function along(path: readonly WayPoint[], d: number): WayPoint {
@@ -175,6 +177,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     else return failure('affected source interval is already covered');
   }
   if (lo > h.a + 1e-4 || hi < h.b - 1e-4 || hi <= lo) return failure('source interval boundaries exclude the affected road');
+  const boundLo = lo, boundHi = hi; // ownership bounds before any dead-end trimming (closure fallback)
   const source = slice(raw, lo, hi);
   const ends = [source[0], source[source.length - 1]];
   const commonSources = new Map<CrossingSource, boolean>();
@@ -547,20 +550,18 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         || (covered?.get(segment.way) ?? []).some(([a, b]) => contains(a, b))) return;
       // A deliberate join onto a complete paid crossing is already an engineered surface.
       if ((input.crossings ?? []).some(c => crossingSource(c, roads)?.intervals.some(s => s.way === segment.way && contains(s.a, s.b)))) return;
-      // The mouth of a junction pinned above: the two ribbons overlap around the pinned
-      // contact, where the new pavement meets that road at its own ground level.
-      const mouth = pinned.find(pin => pin.way === segment.way
-        && Math.hypot(pin.x - cell.x, pin.y - cell.y) <= cell.along + 2 * (half + otherHalf));
-      if (mouth) {
-        const key = `${Math.round(mouth.x)},${Math.round(mouth.y)}`;
-        if ((cls === 'service' || segment.cls !== 'track') && !rebuiltAccesses.has(key)) { rebuiltAccesses.add(key); lumpCost += ACCESS; }
-        return;
-      }
+      // One access estimate per new physical junction, unless both roads are tracks.
+      const access = cls !== 'track' || segment.cls !== 'track';
+      const pointAt = (d: number) => { const u = (d - segment.d) / (segment.length || 1); return { x: segment.ax + u * (segment.bx - segment.ax), y: segment.ay + u * (segment.by - segment.ay) }; };
       if (!p && turn && !grid.hits(turn, radius)) {
-        // A turning disk is paved at ground level: another ordinary road touching it simply joins it.
-        const key = `${Math.round(turn.x)},${Math.round(turn.y)}`;
-        if ((cls === 'service' || segment.cls !== 'track') && !rebuiltAccesses.has(key)) { rebuiltAccesses.add(key); lumpCost += ACCESS; }
-        return;
+        // A turning disk is paved at its centre's ground level: another ordinary road that touches
+        // it where the ground is within the regrading tolerance simply joins it.
+        const touch = pointAt((overlap[0] + overlap[1]) / 2);
+        if (Math.abs(terrain.heightAt(touch.x, touch.y) - terrain.heightAt(turn.x, turn.y)) <= MOUTH_TOLERANCE) {
+          const key = `${Math.round(turn.x)},${Math.round(turn.y)}`;
+          if (access && !rebuiltAccesses.has(key)) { rebuiltAccesses.add(key); lumpCost += ACCESS; }
+          return;
+        }
       }
       if (p && q) {
         // Preserve a real existing junction at its own ground level. A taper into that
@@ -591,16 +592,18 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
             return { x, y, t: Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / (len2 || 1))) };
           });
           const t = (ends[0].t + ends[1].t) / 2, mid = { x: p.x + t * dx, y: p.y + t * dy };
-          // The junction is on the new pavement, which is itself screened clear of the footprint.
-          if (Math.abs(p.z + t * (q.z - p.z) - terrain.heightAt(mid.x, mid.y)) <= 0.25 && !grid.hits(mid, half)) {
+          // In the mouth of a junction pinned above, the ribbons overlap next to the pinned contact:
+          // the mouth may be regraded by up to MOUTH_TOLERANCE; elsewhere the pavement must already
+          // be at that road's ground. The junction is on the new pavement, screened clear of the footprint.
+          const mouth = pinned.some(pin => pin.way === segment.way && distance(pin, mid) <= half + otherHalf + 1);
+          if (Math.abs(p.z + t * (q.z - p.z) - terrain.heightAt(mid.x, mid.y)) <= (mouth ? MOUTH_TOLERANCE : 0.25) && !grid.hits(mid, half)) {
             const length = Math.sqrt(len2);
             minorContacts.push({ lo: at + Math.min(ends[0].t, ends[1].t) * length - otherHalf, hi: at + Math.max(ends[0].t, ends[1].t) * length + otherHalf,
-              reach: 4 * (half + otherHalf), access: cls === 'service' || segment.cls !== 'track', ...mid });
+              reach: 4 * (half + otherHalf), access, ...mid });
             return;
           }
         }
       }
-      if ((globalThis as any).__dbg && way === 4829) console.log('UNHANDLED', reach, pins.size, JSON.stringify(overlap), p && q ? `${p.x.toFixed(1)},${p.y.toFixed(1)} -> ${q.x.toFixed(1)},${q.y.toFixed(1)} zg ${(p.z-p.ground).toFixed(2)} ${(q.z-q.ground).toFixed(2)} seg ${segment.ax.toFixed(1)},${segment.ay.toFixed(1)} -> ${segment.bx.toFixed(1)},${segment.by.toFixed(1)}` : 'turn');
       problems.add('new pavement intersects an unhandled road');
     });
     for (let i = 1; i < path.length; i++) {
@@ -721,6 +724,8 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
    * detour must be short and must not itself pass through our earthworks, except over a
    * crossing that keeps that road (bridge, tunnel, overbridge, underpass or junction). */
   function closeRedundantStretch(): RoadRealignmentPlan | undefined {
+    // Class I–III roads are through routes: never closed in favour of whatever else connects.
+    if (row.junction) return;
     let j0 = -Infinity, j1 = Infinity, inside = false;
     const nodes = new Map<number, Point2>();
     for (const span of spans) {
@@ -738,7 +743,9 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         nodes.set(d, j);
       }
     }
-    if (inside || !Number.isFinite(j0) || !Number.isFinite(j1) || j1 - j0 > MAX_CLOSURE) return;
+    // The closed stretch must lie within this plan's own bounds (adjacent groups, other owners).
+    if (inside || !Number.isFinite(j0) || !Number.isFinite(j1) || j1 - j0 > MAX_CLOSURE
+      || j0 < boundLo - 1e-6 || j1 > boundHi + 1e-6) return;
     const a = nodes.get(j0)!, b = nodes.get(j1)!;
     if (grid.hits(a, half) || grid.hits(b, half)) return;
     const closed: RoadSourceInterval[] = [];
@@ -749,15 +756,31 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       const db = span.a + (span.b - span.a) * (end - span.lo) / (span.hi - span.lo);
       closed.push({ way: span.way, a: Math.min(da, db), b: Math.max(da, db) });
     }
-    const kept = new Set((input.crossings ?? []).filter(c => c.roadId !== undefined && !c.issues?.length
-      && ['bridge', 'tunnel', 'overbridge', 'underpass', 'junction'].includes(c.type)).map(c => c.roadId!));
+    const inClosed = (way: number, d: number) => closed.some(c => c.way === way && d > c.a + 1e-3 && d < c.b - 1e-3);
+    // An accepted connector attached to this stretch keeps it.
+    if ((input.fixedConnections ?? []).some(c => inClosed(c.way, c.d))) return;
+    // Engineered intervals of feasible crossings that keep their road (bridge over us, underpass, junction).
+    const engineered = (input.crossings ?? []).filter(c => !c.issues?.length && ['overbridge', 'underpass', 'junction'].includes(c.type))
+      .flatMap(c => crossingSource(c, roads)?.intervals ?? []);
     const length = j1 - j0;
     const detour = roads.networkDistance(a, b, Math.max(2 * length, length + 300), segment => {
-      const lo = Math.min(segment.d, segment.d + segment.length), hi = lo + segment.length;
+      const lo = Math.min(segment.d, segment.d + segment.length), hi = lo + segment.length, other = ROAD_CLASSES[segment.cls];
       if (closed.some(c => c.way === segment.way && hi > c.a + 1e-3 && lo < c.b - 1e-3)) return true;
-      if (ROAD_CLASSES[segment.cls].noAtGrade) return false;
-      if (kept.has(segment.way)) return false;
-      return chordHits({ x: segment.ax, y: segment.ay }, { x: segment.bx, y: segment.by }, 0);
+      // No access onto a motorway, and no street traffic sent along a narrower track or driveway.
+      if (other.noAtGrade || other.width < row.width) return true;
+      // Removed or rebuilt by another remedy is not a road the traffic can use, unless it is the
+      // kept, rebuilt stretch of a crossing (a bridge over us, an underpass, a junction).
+      const kept = (d0: number, d1: number) => engineered.some(e => e.way === segment.way && d0 >= e.a - 1 && d1 <= e.b + 1);
+      if ((covered?.get(segment.way) ?? []).some(([ca, cb]) => hi > ca + 1e-3 && lo < cb - 1e-3 && !kept(Math.max(lo, ca), Math.min(hi, cb)))) return true;
+      // Every part under our earthworks must be a kept, engineered crossing of that road.
+      const count = Math.max(1, Math.ceil(segment.length / STEP));
+      for (let k = 0; k <= count; k++) {
+        const t = k / count, p = { x: segment.ax + t * (segment.bx - segment.ax), y: segment.ay + t * (segment.by - segment.ay) };
+        if (!grid.near(p).some(c => insideFootprint(p, c))) continue;
+        const d = segment.d + t * segment.length;
+        if (!kept(d, d)) return true;
+      }
+      return false;
     });
     if (detour === undefined) return;
     const original = mergeIntervals(closed).flatMap(c => roads.wayPath(c.way, c.a, c.b).map(point));

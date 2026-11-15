@@ -196,14 +196,15 @@ What exists (details and commands in `README.md`):
   "Carried over our road on a 23 m bridge with 124 m of ramps", "Moved aside", "Closed"), each with a
   one-sentence explanation on the crossing card; footprint/crossing violations were rewritten (see the rule
   under *Working mode*). Failures of the automatic rebuild are tagged *engine limit*.
-- Ramps use per-class gradients (research/20: track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 %),
-  following an existing road already steeper up to 15 %. Published-design ramps now ≤ 130 m per side
-  (were up to 386 m).
+- Ramps use per-class gradients (research/20: track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 %);
+  where the crossed road itself slopes the same way, up to half that steeper, capped at the class's
+  justified-case maximum (track 15 %, service/streets 12 %, class III 9 %, I/II 7 %); a bridge over us
+  with a ramp over 250 m is rejected. Published-design bridge ramps now ≤ 196 m per side (were up to 386 m).
 - Automatic road rebuilds join the roads they cross at ground level, and as a fallback close a loop
   stretch whose ends stay connected over other roads; the owner's km 8.64 case ("realignment … intersects an
   unhandled road" beside a service-road bridge) is gone. A reroute beyond 750 m replaces a feasible bridge
   over us when it costs at most half.
-- All published designs stay VALID and get 2.7–38.7 M cheaper. Audit: `npx tsx scripts/outcome-audit.ts
+- All published designs stay VALID and get 2.7–38.2 M cheaper. Audit: `npx tsx scripts/outcome-audit.ts
   --straight scripts/*-design.json --random 24`; details in `docs/footprint-conflicts.md` § Model 18.
 
 ### Travel-time target X and traffic Y

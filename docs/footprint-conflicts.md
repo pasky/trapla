@@ -80,29 +80,44 @@ An audit of every crossing/footprint outcome (`scripts/outcome-audit.ts`: five p
 cutting (90.7 M) instead of a 21.5 M reroute 759 m away, and automatic road rebuilds failing as "realignment
 needs engineering … intersects an unhandled road" next to a service-road bridge (owner report, km 8.64).
 
-- **Ramps** (overbridges and raised junction roads, and rebuilt roads): `ROAD_CLASSES[cls].rampGradient`,
-  research/20 — track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 % (unchanged). Where the crossed
-  road already runs the same way more steeply, the ramp may follow it, at most half the class gradient
-  steeper and never above 15 % (`rampLimit`); the audit check uses the same limit. Track ramp at best km 3.69:
-  330 + 51 → 82 + 42 m; direct-80 street km 15.97: 386 + 35 → 144 + 26 m. Random designs: ramps > 250 m 66 → 4.
+- **Ramps** (overbridges, raised junction roads and rebuilt roads): `ROAD_CLASSES[cls].rampGradient`,
+  research/20 — track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 % (unchanged). Where the ramp
+  runs the same way as the crossed road's own slope, it may be up to half the class gradient steeper than
+  that road, never beyond the class's justified-case maximum `rampSteepest` (track 15 %, service and
+  streets 12 %, living streets 8 %, class III 9 %, I/II 7 %; PROVISIONAL game rule, `rampLimit`); the audit
+  check uses the same limit. A bridge over us whose ramp on either side exceeds 250 m (PROVISIONAL) is
+  rejected ("ramps would be longer than 250 m"); Auto then reroutes or builds an underpass. Track ramp at best
+  km 3.69: 330 + 51 → 82 + 42 m; direct-80 street km 15.97: 386 + 35 → 144 + 26 m. Random designs: ramps over
+  250 m 66 → 6, all of them class I/III junction approaches (not capped: regrading a through road over
+  ~300 m at a junction is ordinary).
 - **Joining, not failing.** Where a rebuilt road's new line crosses another ordinary road (or its own
   continuation) outside our earthworks, its profile is pinned to that road's ground level there and the
-  contact is a junction (one 0.5 M access estimate unless both are tracks), as is a turning area touching
-  another road. If no rebuild works, a stretch between two junctions (≤ 400 m) whose ends stay connected over
-  other roads — not themselves under our earthworks unless kept by a bridge, tunnel, underpass, junction or
-  their own bridge over us — is **closed** at no cost (`RoadRealignmentPlan.closed`, shown as "Closed"). Random
-  designs: blocked rebuilds 191 → 140, "unhandled road" failures 53 → 14 (each now with another real problem).
+  contact is a junction; its mouth may be regraded by up to 1 m (PROVISIONAL) next to the pin, and a long
+  parallel overlap still fails. A turning area touching another road whose ground is within 1 m of the
+  disk's is a junction too. Each new junction books the 0.5 M access estimate unless both roads are tracks.
+- **Closing a loop stretch.** Only if no rebuild works, a track, service road or street stretch between two
+  junctions (≤ 400 m, PROVISIONAL), inside the plan's own ownership bounds and not carrying an accepted
+  connector, is **closed** at no cost (`RoadRealignmentPlan.closed`, shown as "Closed") when its ends stay
+  connected over at most max(2 × its length, its length + 300 m) of other roads that are at least as wide,
+  not motorways, not removed by another remedy, and not under our earthworks except on the kept, rebuilt
+  stretch of a feasible bridge over us, underpass or junction (`RoadNet.networkDistance`, including unsplit
+  T-junctions). Class I–III roads are never closed. Closing assumes the remaining roads carry the traffic as
+  they are (no upgrade is priced). Random designs: blocked rebuilds 191 → 149, "unhandled road" failures
+  53 → ≈ 15 (each now with another real problem).
 - **Long reroutes vs structures.** A feasible bridge over our road (or underpass) is replaced by a reroute up to
-  2 km away only when that costs at most half of it; within 750 m the cheaper wins as before.
+  2 km away only when that measured reroute costs at most half of it; within 750 m the cheaper wins as before.
 - **Words.** Outcomes, violations and footprint details are written in `src/core/terms.ts` vocabulary; a
   failed automatic rebuild is an *engine limit* with a computed fix ("Move the route at km 1.27 about 26 m to
   the right (away from the track), or put our road on a bridge from km 1.25 to km 1.31") and a plain reason
   ("there is no room for it beside our earthworks"). Price sources moved to `FootprintConflict.source`
-  (pricing tooltip). `tests/player-text.test.ts` guards all of it.
+  (pricing tooltip). `tests/player-text.test.ts` generates every violation kind and outcome at run time and
+  statically scans every UI string literal and every core `title` / `fix` / `detail` literal and violation
+  helper argument.
 
-Totals bn CZK, model 17 → 18 (all still VALID): straight 10.013398 → 10.009393, best 4.291626 → 4.253391, demo
-4.898255 → 4.879866, direct-80 4.978590 → 4.939882, direct-90 5.565410 → 5.555314, town-centre 11.444752 →
-11.442013. Remaining flagged outcomes on published designs are links > 1 km where no structure fits: service
+Totals bn CZK, model 17 → 18 (all still VALID): straight 10.013398 → 10.009893, best 4.291626 → 4.253391, demo
+4.898255 → 4.879753, direct-80 4.978590 → 4.941034, direct-90 5.565410 → 5.555314, town-centre 11.444752 →
+11.442013. The original-pack fixture (`evaluate-remedies-original.json`) still holds model-17 bills: it can only
+be recaptured on that older pack, which is not installed here. Remaining flagged outcomes on published designs are links > 1 km where no structure fits: service
 4742 (demo, 5.6 m fill: too little for a box, an 11.6 m climb over us), track 2705 (direct-80/90, 4.3–5.1 m
 fill), service 5162 (town-centre); lowering a way into a shallow cut under a box is not modelled. In random
 designs the remaining automatic-remedy violations are piers that find no clear spot (railway/street at the

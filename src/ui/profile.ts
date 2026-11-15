@@ -822,15 +822,15 @@ export class ProfilePanel {
       facts.push(footprintConflictText(c));
     }
     for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) {
-      facts.push(`${c.waterKind}: ${c.structure} ${c.opening}, ${c.length.toFixed(0)} m long; catchment ${c.catchmentKm2.toFixed(2)} km²${c.truncated ? ' (incomplete)' : ''}, estimated Q100 ${c.q100.toFixed(2)} m³/s`);
+      facts.push(`${c.waterKind}: ${c.structure} ${c.opening}, ${c.length.toFixed(0)} m long; ${c.catchmentKm2.toFixed(2)} km² of land drains into it${c.truncated ? ' (rough: it runs off the map)' : ''}, about ${c.q100.toFixed(2)} m³/s in a 100-year flood`);
     }
     let nb = 0, cb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) { nb++; cb += d.cost; }
-    if (nb) facts.push(`${nb} footprint demolition${nb > 1 ? 's' : ''} — ${czk(cb)}`);
+    if (nb) facts.push(`${nb} building${nb > 1 ? 's' : ''} under the road demolished — ${czk(cb)}`);
     let nBuy = 0, cBuy = 0;
     for (const d of r.boughtOut) if (d.i >= a && d.i <= b) { nBuy++; cBuy += d.cost; }
     if (nBuy) facts.push(`${nBuy} off-corridor buyout${nBuy > 1 ? 's' : ''} — ${czk(cBuy)} (noise or player acquisition + demolition)`);
-    for (const kept of r.kept) if (kept.i >= a && kept.i <= b) facts.push(`kept building #${kept.j}${kept.hit ? ': footprint conflict' : ''}`);
+    for (const kept of r.kept) if (kept.i >= a && kept.i <= b) facts.push(`kept building #${kept.j}${kept.hit ? ': the road runs through it' : ''}`);
     let total = 0;
     const rows = COST_GROUPS.map((gr, gi) => {
       const v = (this.cum[gi][b + 1] - this.cum[gi][a]) / len;

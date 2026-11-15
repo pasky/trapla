@@ -129,7 +129,7 @@ export class BuildTools {
     const action = d.buildingOverrides?.find((o) => o.j === j)?.action ?? '';
     const removed = r.demolished.find((p) => p.j === j), bought = r.boughtOut.find((p) => p.j === j);
     const kept = r.kept.find((p) => p.j === j), receiver = r.noise.receivers.find((p) => p.j === j);
-    const state = removed ? `<span class="tag bad">demolished</span> in the road's footprint · ${czk(removed.cost)}`
+    const state = removed ? `<span class="tag bad">demolished</span> under the road or its slopes · ${czk(removed.cost)}`
       : bought ? `<span class="tag buy">bought out</span> ${bought.reason === 'manual' ? 'by you' : 'for noise'} + demolished · ${czk(bought.cost)}`
         : kept?.hit ? '<span class="tag bad">kept — in the road\'s way</span> (violation)'
           : receiver?.unresolved ? `<span class="tag bad">${receiver.unresolved.excess.toFixed(1)} dB too loud</span> a violation: ${action === 'keep' ? 'you keep it' : 'your wall choice here leaves it'} over the noise limit`

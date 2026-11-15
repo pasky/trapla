@@ -277,21 +277,35 @@ export class RoadNet {
       const { p, d } = queue.splice(k, 1)[0];
       if (d > (best.get(key(p)) ?? Infinity) + 1e-9) continue;
       if (key(p) === goal || Math.hypot(p.x - to.x, p.y - to.y) <= 0.02) return d;
-      this.nearSegments([p.x - 0.02, p.y - 0.02, p.x + 0.02, p.y + 0.02], s => {
-        const dx = s.bx - s.ax, dy = s.by - s.ay;
-        const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / (s.length * s.length || 1)));
-        if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > 0.02 || avoid(s)) return;
-        for (const q of [{ x: s.ax, y: s.ay }, { x: s.bx, y: s.by }]) {
-          // The goal may lie in the interior of this segment (an unsplit T-junction).
-          const u = ((to.x - s.ax) * dx + (to.y - s.ay) * dy) / (s.length * s.length || 1);
-          const onSegment = u > 0 && u < 1 && Math.hypot(to.x - s.ax - u * dx, to.y - s.ay - u * dy) <= 0.02
-            && (q.x - p.x) * (to.x - p.x) + (q.y - p.y) * (to.y - p.y) > 0;
-          const next = onSegment ? to : q, step = Math.hypot(next.x - p.x, next.y - p.y);
+      const segments: RoadSegment[] = [];
+      this.nearSegments([p.x - 0.02, p.y - 0.02, p.x + 0.02, p.y + 0.02], s => segments.push(s));
+      for (const s of segments) {
+        const dx = s.bx - s.ax, dy = s.by - s.ay, len2 = s.length * s.length || 1;
+        const t = Math.max(0, Math.min(1, ((p.x - s.ax) * dx + (p.y - s.ay) * dy) / len2));
+        if (Math.hypot(p.x - s.ax - t * dx, p.y - s.ay - t * dy) > 0.02 || avoid(s)) continue;
+        // Next nodes in both directions: the segment ends, the goal, and every other way attached
+        // inside this segment (an unsplit T-junction), so traversal is the same either way round.
+        const stops: { x: number; y: number; u: number }[] = [{ x: s.ax, y: s.ay, u: 0 }, { x: s.bx, y: s.by, u: 1 }];
+        const attach = (x: number, y: number) => {
+          const u = ((x - s.ax) * dx + (y - s.ay) * dy) / len2;
+          if (u > 0 && u < 1 && Math.hypot(x - s.ax - u * dx, y - s.ay - u * dy) <= 0.02) stops.push({ x, y, u });
+        };
+        attach(to.x, to.y);
+        this.nearSegments([Math.min(s.ax, s.bx) - 0.02, Math.min(s.ay, s.by) - 0.02, Math.max(s.ax, s.bx) + 0.02, Math.max(s.ay, s.by) + 0.02], o => {
+          if (o.ax === s.ax && o.ay === s.ay && o.bx === s.bx && o.by === s.by) return;
+          attach(o.ax, o.ay); attach(o.bx, o.by);
+        });
+        for (const direction of [-1, 1]) {
+          // The nearest stop beyond p in this direction along the segment.
+          let next: { x: number; y: number; u: number } | undefined;
+          for (const q of stops) if (direction * (q.u - t) > 1e-9 && (!next || direction * (q.u - next.u) < 0)) next = q;
+          if (!next) continue;
+          const step = Math.hypot(next.x - p.x, next.y - p.y);
           if (step < 1e-6 || d + step > maxDistance) continue;
           const nextKey = key(next);
-          if (d + step < (best.get(nextKey) ?? Infinity) - 1e-9) { best.set(nextKey, d + step); queue.push({ p: next, d: d + step }); }
+          if (d + step < (best.get(nextKey) ?? Infinity) - 1e-9) { best.set(nextKey, d + step); queue.push({ p: { x: next.x, y: next.y }, d: d + step }); }
         }
-      });
+      }
     }
     return undefined;
   }
