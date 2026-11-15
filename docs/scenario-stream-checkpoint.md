@@ -212,3 +212,16 @@ stale/down) replaced by z.overpass-api.de and maps.mail.ru; stale snapshots are 
   `base-road-scene.mjs` passes.
 - All three new starters VALID; screenshots 73–78 refreshed and inspected.
 - Open: Paka browser-vs-Node reconnection cost difference (109,595 CZK; research/27).
+
+## Ready for parent review (ef3ede6+)
+
+Final gates on this branch: tsc, 539 vitest, build, 42 Python tests, eval-regression 11/11 bit-exact
+(both paths), bench 5/5 VALID, outcome audit identical to main a121a92 (3001 lines), smoke, playtest,
+D11 GPU bend/road/radius/pin/vpi all pass, D35 stage five modes pass, Start/Continue/Start over on
+D3/D35/Paka (VALID starters), base-road scene on D3, lazy-graph first click + retry on D3 and D11.
+Packs (ignored) to copy from this worktree: `public/scenarios/{d11,d3,d35,i16-nova-paka}` (D11 only
+gains `transport-meta.json` + `transport.json.gz`; its other files are byte-identical) and the bound
+caches `pipeline/cache/osm_{d3,d35,i16-nova-paka}_*` incl. `*.query.json`/`*.derived.json`; `*.unbound~`
+files are superseded raw caches kept for inspection. All three new manifests verify (config, files,
+inputs). `base-road-scene.mjs` (U's script) picks a D11 road ~9.7 km from our road that does not come on
+screen after `lookAtSource`; script robustness, not covered by the D11 lazy check, left as is.
