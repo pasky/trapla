@@ -205,7 +205,10 @@ export function splitCorridor(project: ProjectDesign, corridorId: string, spine:
     const id = corridor.children[direction], route = next.routes.find(r => r.id === id) as MotorwayRoute;
     const offset = direction === 'forward' ? -CARRIAGEWAY_OFFSET : CARRIAGEWAY_OFFSET, sign = direction === 'forward' ? 1 : -1;
     const bends = offsetBends(A, B, d.pis, al, offset);
-    for (const p of bends.pis) if (p.r !== null) p.r = Math.max(minR, Math.round(p.r * 100) / 100);
+    // The inside direction's radius is the shared one less the offset: never below what this
+    // direction's own norm and easing curves need (its own Auto radius), else keep the exact offset.
+    const auto = buildAlignment(bends.a, bends.b, bends.pis.map(p => ({ ...p, r: null })), horizontalRules(d.speed, CARRIAGEWAY_CATEGORY));
+    bends.pis.forEach((p, i) => { if (p.r !== null) p.r = Math.max(minR, auto.curves[i]?.rEff ?? 0, Math.round(p.r * 100) / 100); });
     const axis = offsetCurvePath(al, offset, sign);
     // Heights: every shared height point at its own chainage; By hand keeps exactly this line.
     const map = (s: number) => childStationAt(axis, s);
@@ -347,6 +350,8 @@ export interface SplitLedger {
   credit: number;
   parts: { joinedBase: number; overlapEarth: number; overlapLand: number; buildings: number };
   joinedLength: number;
+  /** Earth counted by both directions, m³ (credited once) */
+  overlapFill: number; overlapCut: number;
   violations: Violation[];
 }
 
@@ -355,7 +360,7 @@ export interface SplitLedger {
  * A slope of one direction must not land on the other's carriageway. Station-wise transverse check on
  * the forward direction's normal (linear slope faces; benches ignored). */
 export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: number) => number): SplitLedger {
-  const w = CARRIAGEWAY_OFFSET, p = pairStations(f, r), out: SplitLedger = { credit: 0, parts: { joinedBase: 0, overlapEarth: 0, overlapLand: 0, buildings: 0 }, joinedLength: 0, violations: [] };
+  const w = CARRIAGEWAY_OFFSET, p = pairStations(f, r), out: SplitLedger = { credit: 0, parts: { joinedBase: 0, overlapEarth: 0, overlapLand: 0, buildings: 0 }, joinedLength: 0, overlapFill: 0, overlapCut: 0, violations: [] };
   const rate = (res: Result) => ({
     fill: res.quantities.fill > 0 ? (res.cost.earthDetail.fillPlacing + res.cost.earthDetail.borrow) / res.quantities.fill : 0,
     cut: res.quantities.cut > 0 ? (res.cost.earthDetail.excavation + res.cost.earthDetail.surplusHaul + res.cost.earthDetail.unsuitable) / res.quantities.cut : 0,
@@ -391,22 +396,29 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
     if (kf !== KIND.earth || kr !== KIND.earth) continue;
     // Bodies in f's frame, left of f: f's crown edge w, slope to dayL; r's crown edge d − w, slope to d − dayL_r.
     const dayF = f.dayL[i], dayR = at(r, p.sb[i], r.dayL), zDayF = f.zDayL[i], zDayR = at(r, p.sb[i], r.zDayL);
-    const topF = (x: number) => x <= w ? zf : zf + (zDayF - zf) * (x - w) / Math.max(1e-6, dayF - w);
-    const topR = (x: number) => x >= d - w ? zr : zr + (zDayR - zr) * (d - w - x) / Math.max(1e-6, dayR - w);
-    const lo = d - dayR, hi = dayF;
+    // Each body's top surface across f's normal: crown, then its slope faces on both sides (NaN outside it).
+    const farF = f.dayR[i], zFarF = f.zDayR[i], farR = at(r, p.sb[i], r.dayR), zFarR = at(r, p.sb[i], r.zDayR);
+    const face = (z: number, zDay: number, u: number, day: number) => u <= w ? z : u <= day ? z + (zDay - z) * (u - w) / Math.max(1e-6, day - w) : NaN;
+    const topF = (x: number) => x >= 0 ? face(zf, zDayF, x, dayF) : face(zf, zFarF, -x, farF);
+    const topR = (x: number) => x <= d ? face(zr, zDayR, d - x, dayR) : face(zr, zFarR, x - d, farR);
+    const lo = d - dayR, hi = dayF, fillF = zDayF <= zf, fillR = zDayR <= zr;
     if (hi - lo > 1e-6) {
       const steps = Math.max(2, Math.ceil((hi - lo) / 0.5)), dx = (hi - lo) / steps;
       let fill = 0, cut = 0, worst = 0;
       for (let k = 0; k < steps; k++) {
         const x = lo + (k + 0.5) * dx, g = heightAt(f.x[i] - f.ty[i] * x, f.y[i] + f.tx[i] * x), a = topF(x), b = topR(x);
+        if (Number.isNaN(a) || Number.isNaN(b)) continue;
         if (a > g && b > g) fill += (Math.min(a, b) - g) * dx; else if (a < g && b < g) cut += (g - Math.max(a, b)) * dx;
         // a slope face standing on the other's carriageway (or the other's slope on ours)
-        if (x > w && x >= d - w && Math.abs(a - zr) > 0.3) worst = Math.max(worst, hi - (d - w));
-        if (x < d - w && x <= w && Math.abs(b - zf) > 0.3) worst = Math.max(worst, w - lo);
+        // An embankment face standing on the other carriageway, or a cutting face undermining it.
+        // (A face buried in the other's embankment, or cut away by the other's cutting, is one body.)
+        if (x > w && x >= d - w && x <= d + w && (fillF ? a > zr + 0.3 : a < zr - 0.3)) worst = Math.max(worst, hi - (d - w));
+        if (x < d - w && x <= w && x >= -w && (fillR ? b > zf + 0.3 : b < zf - 0.3)) worst = Math.max(worst, w - lo);
       }
       if (worst > 0) clash(f.s[i], worst, false);
       const u = f.cell.urban[i], sur = 1 + surchargeRate(u);
       out.parts.overlapEarth += (fill * (rf.fill + rf.haul) + cut * (rf.cut + rf.haul)) * len * sur;
+      out.overlapFill += fill * len; out.overlapCut += cut * len;
       out.parts.overlapLand += (hi - lo) * len * (landPerM2(u) + f.cell.forest[i] * LAND.forestExtraPerM2 + PRICES.topsoilDepth * PRICES.topsoil * sur);
     }
   }

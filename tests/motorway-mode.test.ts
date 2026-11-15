@@ -85,3 +85,34 @@ describe('motorway noise source', () => {
     expect(mw.nightDb - mw.dayDb).toBeGreaterThan(-6);
   });
 });
+
+describe('split motorway', () => {
+  it('splits into two editable directions that price like the pair, and joins back exactly', async () => {
+    const { splitCorridor, rejoinCorridor } = await import('../src/core/project-motorway');
+    const { ctx, snapshot } = fixture();
+    snapshot.design = replaceRouteFromLegacy(snapshot.design, snapshot.design.routes[0].id,
+      { ...legacyDesignForRoute(snapshot.design, snapshot.design.routes[0].id), pis: [{ x: 1200, y: 420, r: null }] });
+    const paired = evaluateProject(ctx, snapshot);
+    const spine = paired.routes[snapshot.design.routes[0].id].legacy!;
+    const split = splitCorridor(snapshot.design, 'corridor:motorway', spine);
+    assertProjectDesign(split);
+    const [f, r] = split.routes;
+    // each direction edits its own bends; the shared line is kept for joining again
+    expect(legacyDesignForRoute(split, f.id).category).toBe('D27.5-1');
+    expect(legacyDesignForRoute(split, f.id).pis).not.toEqual(legacyDesignForRoute(split, r.id).pis);
+    const result = evaluateProject(ctx, { ...snapshot, revision: 2, design: split });
+    expect(result.complete).toBe(true);
+    expect(result.cost.unpriced).toEqual([]);
+    expect(result.issues.filter(i => /directions/.test(i.violation.title))).toEqual([]);
+    // shared formation priced once: within a few % of the pair (twin structures, own noise bound)
+    expect(Math.abs(result.cost.total! / paired.cost.total! - 1)).toBeLessThan(0.08);
+    expect(result.cost.total!).toBeLessThan(result.cost.alone[f.id] + result.cost.alone[r.id]);
+    expect(rejoinCorridor(split, 'corridor:motorway')).toEqual(snapshot.design);
+    // moving one direction 3 m higher alongside the other: its slope stands on the other carriageway
+    const raised = structuredClone(split), v = (raised.routes[0].alignment as { vertical: { vpis: { z: number }[] } }).vertical;
+    v.vpis.forEach(p => { p.z += 3; });
+    const clash = evaluateProject(ctx, { ...snapshot, revision: 3, design: raised });
+    expect(clash.issues.some(i => i.violation.title === 'Slopes of the two directions clash')).toBe(true);
+    expect(clash.valid).toBe(false);
+  });
+});
