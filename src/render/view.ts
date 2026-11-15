@@ -136,7 +136,10 @@ export class View {
   private crossingCutRT: THREE.WebGLRenderTarget | null = null;
   private originalMaskRT: THREE.WebGLRenderTarget | null = null;
   readonly crossingCut = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } };
-  readonly originalMask = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } };
+  /** Settled footprints (exact daylight polygons) that replacement ground must not cover. Their own
+   * collars and crossing ground share the footprint's edge: discard only fully covered texels, else the
+   * ≈ 2.5 m mask raster bleeds over the edge and opens a sky-coloured seam beside the slope's toe. */
+  readonly originalMask = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 }, maskCut: { value: 0.999 } };
   crossingSurfaces: CrossingSurface[] = [];
   private maskScene = new THREE.Scene();
   private maskCam = new THREE.Camera();

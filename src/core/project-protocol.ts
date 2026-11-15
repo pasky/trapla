@@ -1,11 +1,16 @@
 import type { ProjectIdentity, ProjectResult, ProjectSnapshot, RouteId, RouteResult } from './project';
+import type { NoiseFootprint } from './noise';
 
 export interface PreviewGesture { id: string; sequence: number }
 export interface PreviewWindow { id: string; lastDisplayedSequence: number }
 /** Additive worker messages; legacy init/eval/result remain unchanged. */
 export type ProjectWorkerIn =
   | { type: 'project-eval'; id: number; snapshot: ProjectSnapshot; displayedResult: ProjectIdentity | null }
-  | { type: 'project-preview'; id: number; snapshot: ProjectSnapshot; routeId: RouteId; materialValue?: number; gesture?: PreviewGesture };
+  | { type: 'project-preview'; id: number; snapshot: ProjectSnapshot; routeId: RouteId; materialValue?: number; gesture?: PreviewGesture }
+  /** The noise view's band for a route of the last full result (computed on demand, after evaluations). */
+  | { type: 'noise-band'; id: number; identity: ProjectIdentity; routeId: RouteId; crownWidth: number };
+/** Reply to `noise-band`: null when that result is no longer the worker's last one. */
+export interface NoiseBandOut { type: 'noise-band'; id: number; identity: ProjectIdentity; routeId: RouteId; footprint: NoiseFootprint | null }
 export type ProjectWorkerOut =
   | { type: 'project-result'; id: number; result: ProjectResult;
       /** Change lists are relative to this last acknowledged DISPLAYED snapshot, not the last eval.

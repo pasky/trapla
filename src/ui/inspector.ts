@@ -12,11 +12,10 @@ import { BUILDING_KINDS, NOISE, ROAD_CLASSES } from '../core/data/urban';
 import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
 import type { Design, Result } from '../core/evaluate';
 import type { StructureKind } from '../core/overrides';
-import type { NoiseModel } from '../core/road-noise';
-import { noiseBarrier, noiseRays, raysWithWall, type NoiseReceiver } from '../core/noise';
+import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
 import { KIND } from '../core/structures';
 import { czk } from './costgroups';
-import { noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
+import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
 import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './pieces';
 import { activeStructure } from './structure-bar';
 
@@ -81,7 +80,6 @@ export class Inspector {
   private pending = false;
 
   constructor(private el: HTMLElement, private ctx: {
-    noiseModel: (d: Design) => NoiseModel;
     building: (j: number) => { kind: string; levels: number; dwelling: boolean; rect?: HouseRect };
     maxRadius: (i: number) => number | null;
   }) {
@@ -121,8 +119,8 @@ export class Inspector {
     this.previewing = v;
     const box = this.el.querySelector('.noise-views');
     const range = this.el.querySelector<HTMLElement>('.wall-row')?.dataset.range?.split(',').map(Number);
-    const rec = this.r.noise.receivers.find((p) => p.j === (this.sel as { j: number }).j);
-    if (!box || !rec?.key) return;
+    const r0 = this.r, rec = r0.noise.receivers.find((p) => p.j === (this.sel as { j: number }).j);
+    if (!box || !rec || !r0.noise.source) return;
     // the stations the choice would paint: the same mask as applying it
     const mask = side && range ? wallOverrideMasks(this.r.s, [{ side, s0: range[0], s1: range[1], height: 1 }])[side] : null;
     const wall = v === null || v === 'auto' || !side || !mask ? undefined
@@ -131,25 +129,31 @@ export class Inspector {
     box.innerHTML = this.noiseViews(r, this.d, rec, wall);
   }
 
+  private field: { r: Result; f: NoiseField } | null = null;
+  private noiseFieldOf(r: Result): NoiseField {
+    if (this.field?.r !== r) this.field = { r, f: noiseField(r.noise.source!) };
+    return this.field.f;
+  }
+
   /** the house's plan (where the noise comes from) and cross-section (its floors), as built or with a
-   * previewed wall choice: the section follows the loudest line */
+   * previewed wall choice: the same sum the game decided with */
   private noiseViews(r: Result, d: Design, rec: NoiseReceiver, wall?: { side: 'L' | 'R'; height: number; at: (i: number) => boolean }) {
-    const info = this.ctx.building(rec.j), crown = CATEGORIES[d.category].crownWidth;
-    const limit = r.noise.footprint?.limit ?? NOISE.limitNightDb;
-    let rays = noiseRays(rec), key = rec.key!, level = rec.mitigated;
-    const quiet = rec.quiet;
-    if (wall && rays.length) {
-      rays = raysWithWall(rays, wall.side, wall.at, wall.height, noiseBarrier(crown));
-      const worst = rays.reduce((a, p) => (p.residual > a.residual ? p : a));
-      // as noiseReceivers: the quiet maximum decides when every exposed line is lower (no wall counted there)
-      if (quiet && quiet.level > worst.residual) { key = { i: quiet.i, side: quiet.side, d: quiet.d, h: quiet.h, wall: 0 }; level = quiet.level; }
-      else {
-        key = { i: worst.i, side: worst.side, d: worst.d, h: worst.h, wall: worst.wall, ...(worst.edge ? { edge: worst.edge } : {}), ...(worst.gap ? { gap: true } : {}) };
-        level = worst.residual;
-      }
+    const info = this.ctx.building(rec.j), crown = CATEGORIES[d.category].crownWidth, src = r.noise.source;
+    if (!src) return '';
+    const limit = r.noise.limit;
+    const walls = { L: Float64Array.from(r.noise.L), R: Float64Array.from(r.noise.R) };
+    if (wall) {
+      const gap = (wall.side === 'L' ? src.L : src.R).gap;
+      for (let i = 0; i < r.n; i++) if (wall.at(i)) walls[wall.side][i] = gap[i] ? 0 : wall.height;
     }
-    const plan = info.rect ? noisePlan(r, info.rect, rays, crown, level, wall, quiet && { s: r.s[quiet.i], level: quiet.level }) : null;
-    const section = noiseSectionSvg({ ...rec, key }, info.levels, this.ctx.noiseModel(d), crown, limit, r.s[key.i]);
+    const field = this.noiseFieldOf(r);
+    const floors = floorLevels(field, rec, walls.L, walls.R);
+    let loud = floors[0];
+    for (const f of floors) if (f.after > loud.after) loud = f;
+    const z = rec.ground + NOISE.receiverHeight + loud.floor * NOISE.storeyHeight;
+    const { rays } = noiseBreakdown(field, rec.x, rec.y, z, walls.L, walls.R);
+    const plan = info.rect ? noisePlan(r, info.rect, rec, rays, crown, loud.after, walls) : null;
+    const section = noiseSectionSvg(r, rec, floors, crown, limit, walls[rec.side][rec.i], r.s[rec.i]);
     return `${plan ? `${plan.svg}<div class="why plan-why">${esc(plan.caption)}</div>` : ''}${section}`;
   }
   setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
@@ -391,29 +395,31 @@ export class Inspector {
       ${this.choices('building-choice', 'data-building', [['', 'Auto', 'Let the game choose'], ['buy', 'Buy out', 'Buy and demolish it'], ['keep', 'Keep', 'Keep this building']], action)}`;
     const removed = r.demolished.find((p) => p.j === j), bought = r.boughtOut.find((p) => p.j === j);
     const kept = r.kept.find((p) => p.j === j), rec = r.noise.receivers.find((p) => p.j === j);
-    const limit = r.noise.footprint?.limit ?? NOISE.limitNightDb;
+    const limit = r.noise.limit, period = r.noise.controlling === 'night' ? 'at night' : 'by day';
     let state: string, why = '';
     if (removed) { state = `Demolished · ${czk(removed.cost)}`; why = 'In the road\'s way.'; }
     else if (bought) { state = `Bought out · ${czk(bought.cost)}`; why = bought.reason === 'manual' ? 'Your choice.' : `Too loud even behind a ${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall.`; }
     else if (kept?.hit) state = 'Kept — in the road\'s way';
-    else if (rec?.unresolved) { state = `Stays · ${(limit + rec.mitigated).toFixed(1)} dB at night (limit ${limit})`; why = action === 'keep' ? 'You keep it, so it is not bought out.' : 'Your wall choice stops the automatic buyout.'; }
+    else if (rec?.unresolved) { state = `Stays · ${(limit + rec.mitigated).toFixed(1)} dB ${period} (limit ${limit})`; why = action === 'keep' ? 'You keep it, so it is not bought out.' : 'Your wall choice stops the automatic buyout.'; }
     else if (rec) {
-      state = rec.status === 'wall' ? `Stays · behind a ${rec.wall} m wall` : rec.status === 'cut' ? 'Stays · shielded by a cut' : 'Stays · quiet enough';
-      why = `${(limit + rec.mitigated).toFixed(1)} dB at night at the top floor (limit ${limit}).`;
+      state = rec.status === 'wall' ? (rec.wall > 0 ? `Stays · behind a ${rec.wall} m wall` : 'Stays · behind walls') : rec.status === 'cut' ? 'Stays · shielded by a cut' : 'Stays · quiet enough';
+      why = `${(limit + rec.mitigated).toFixed(1)} dB ${period} on the ${rec.storeys === 1 ? 'only' : rec.floor === rec.storeys - 1 ? 'top' : 'loudest'} floor (limit ${limit}).`;
     } else state = 'Stays · far from the road';
     if (action === 'keep' && !kept?.hit && !rec?.unresolved) why = (why ? `${why} ` : '') + 'You keep it.';
     const vio = r.violations.filter((v) => v.target?.buildings?.includes(j)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     let section = '', walls = '';
-    if (rec?.key && !removed && !(bought && bought.reason === 'manual')) {
+    if (rec && r.noise.source && !removed && !(bought && bought.reason === 'manual')) {
       section = `<div class="noise-views">${this.noiseViews(r, d, rec)}</div>`;
-      // the wall on that side, next to the house: its stretch, or the house's exposure ± the wall margin
-      const side = rec.key.side, i = rec.key.i;
+      // the wall on that side, next to the house: its stretch, the computed fix, or the shortest wall the
+      // house would need (twice its distance from the wall line)
+      const side = rec.side, i = rec.i, src = r.noise.source;
       const w = r.walls.find((x) => x.side === side && i >= x.i0 && i <= x.i1);
       const fix = vio.find(({ v }) => v.target?.wall)?.v.target?.wall;
-      const s0 = w?.s0 ?? fix?.s0 ?? Math.max(0, r.s[i] - NOISE.margin), s1 = w?.s1 ?? fix?.s1 ?? Math.min(r.length, r.s[i] + NOISE.margin);
+      const half = Math.max(25, NOISE.minWallLengthFactor * Math.max(0, rec.d - (side === 'L' ? src.L : src.R).wallOff[i]) / 2);
+      const s0 = w?.s0 ?? fix?.s0 ?? Math.max(0, r.s[i] - half), s1 = w?.s1 ?? fix?.s1 ?? Math.min(r.length, r.s[i] + half);
       const mine = (d.wallOverrides ?? []).find((o) => o.side === side && o.s0 <= r.s[i] && o.s1 >= r.s[i]);
       const active = mine ? String(mine.height) : 'auto';
-      const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...[3, 4, 5, 6].map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];
+      const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...[2, 3, 4, 5, 6].map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];
       walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[side]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>km ${km(s0)}–${km(s1)}</small></div>`;
     }
     const opt: [string, string, string][] = [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];

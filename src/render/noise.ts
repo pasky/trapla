@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { buildingLevels } from '../core/buildings';
 import { BUILDING_KINDS, NOISE } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
-import type { NoiseReceiver, WallStretch } from '../core/noise';
+import type { NoiseFootprint, NoiseReceiver, WallStretch } from '../core/noise';
 import type { Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import type { RouteExtras } from './extras';
@@ -36,6 +36,11 @@ export class NoiseLayer {
   private on = false;
   private available = true;
   private r: Result | null = null;
+  /** the band of `r` (asked from the worker when the view needs it; null until it arrives) */
+  private fp: NoiseFootprint | null = null;
+  /** set by the app: ask the worker for the displayed result's band (answered with setBand) */
+  requestBand: (() => void) | null = null;
+  private asked: Result | null = null;
   private crown = 9.5;
   private band = new THREE.Group();
   private built = false;
@@ -88,10 +93,18 @@ export class NoiseLayer {
   }
 
   setResult(r: Result, crownWidth: number) {
+    if (r !== this.r) this.fp = null;
     this.r = r;
     this.crown = crownWidth;
     this.built = false;
     if (this.on && this.available) { this.build(); this.tintBuildings(); this.buildLabels(); }
+  }
+
+  /** the worker's band for result `r` */
+  setBand(r: Result, fp: NoiseFootprint | null) {
+    if (r !== this.r) return;
+    this.fp = fp; this.built = false;
+    if (this.on && this.available) this.build();
   }
 
   // ---- band --------------------------------------------------------------------------------
@@ -103,8 +116,9 @@ export class NoiseLayer {
       m.geometry.dispose();
       this.view.retire(m.material as THREE.Material);
     }
-    const fp = this.r?.noise?.footprint, r = this.r;
+    const fp = this.fp, r = this.r;
     this.paintLegend();
+    if (r && !fp) { if (this.asked !== r) { this.asked = r; this.requestBand?.(); } return; }
     if (!fp || !r) return;
     const K = fp.offsets.length, m = fp.stations.length;
     const pos = new Float32Array(m * 2 * K * 3), db = new Float32Array(m * 2 * K), idx: number[] = [];
@@ -160,8 +174,7 @@ export class NoiseLayer {
   }
 
   private paintLegend() {
-    const fp = this.r?.noise?.footprint;
-    const period = fp?.controlling ?? 'night', limit = fp?.limit ?? NOISE.limitNightDb;
+    const period = this.r?.noise?.controlling ?? 'night', limit = this.r?.noise?.limit ?? NOISE.limitNightDb;
     const sw = (c: string, extra = '') => `<i style="background:${c};${extra}"></i>`;
     const b = (c: number, label: string) => `<span>${sw(`#${c.toString(16).padStart(6, '0')}`, 'width:10px;height:10px')}${label}</span>`;
     // the bar shows the ramp at its drawn opacity over the legend's white
@@ -198,14 +211,16 @@ export class NoiseLayer {
     this.labels = [];
     const r = this.r;
     if (!this.on || !this.available || !r) return;
-    const off = this.crown / 2 + NOISE.wallEdgeOffset;
+    const src = r.noise?.source;
     for (const w of r.walls) {
       const i = Math.round((w.i0 + w.i1) / 2), sgn = w.side === 'L' ? 1 : -1;
+      const side = src ? (w.side === 'L' ? src.L : src.R) : null;
+      const off = side ? side.wallOff[i] : this.crown / 2 + NOISE.wallEdgeOffset, foot = side ? side.wallFoot[i] : 0;
       const el = document.createElement('div');
       el.className = 'wall-label';
       el.textContent = `${w.height} m`;
       this.overlay.appendChild(el);
-      this.labels.push({ el, x: r.x[i] - r.ty[i] * off * sgn, y: r.y[i] + r.tx[i] * off * sgn, z: r.grade[i] + w.height });
+      this.labels.push({ el, x: r.x[i] - r.ty[i] * off * sgn, y: r.y[i] + r.tx[i] * off * sgn, z: r.grade[i] + foot + w.height });
     }
     this.view.requestRender();
   }
@@ -237,7 +252,7 @@ export class NoiseLayer {
   private wallTip(w: WallStretch | null): string | null {
     const r = this.r;
     if (!w || !r) return null;
-    const n = (r.noise?.receivers ?? []).filter((p) => p.status === 'wall' && p.side === w.side && p.at >= w.i0 && p.at <= w.i1).length;
+    const n = (r.noise?.receivers ?? []).filter((p) => p.status === 'wall' && p.side === w.side && p.i >= w.i0 && p.i <= w.i1).length;
     return `<b>${w.height} m wall</b> <span class="tip-sub">${w.side === 'L' ? 'left' : 'right'} · ${Math.round(w.s1 - w.s0)} m${n ? ` · protects ${n} house${n > 1 ? 's' : ''}` : ''}</span>`;
   }
 
@@ -275,13 +290,13 @@ export class NoiseLayer {
   }
 
   private describe(j: number, rec?: NoiseReceiver): string {
-    const r = this.r!, fp = r.noise?.footprint, f = this.pack.overlays.binfo?.[j];
+    const r = this.r!, f = this.pack.overlays.binfo?.[j];
     const kind = BUILDING_KINDS[f ? f[2] : 0]?.label ?? 'building', levels = buildingLevels(f ? f[1] : 0, f ? f[2] : 0);
     const head = `<b>${kind[0].toUpperCase()}${kind.slice(1)}</b> <span class="tip-sub">${levels} floor${levels > 1 ? 's' : ''}</span>`;
     if (r.demolished.some((p) => p.j === j)) return `${head} · demolished`;
     if (r.boughtOut.some((p) => p.j === j)) return `${head} · bought out`;
     if (!rec) return head;
-    const limit = fp?.limit ?? NOISE.limitNightDb, level = limit + rec.mitigated;
+    const limit = r.noise?.limit ?? NOISE.limitNightDb, level = limit + rec.mitigated;
     return `${head}<div><b class="${rec.mitigated > 1e-6 ? 'tip-bad' : ''}">${fmt(level)} dB</b> at the top floor (limit ${limit})${rec.status === 'wall' ? ` · behind a ${rec.wall} m wall` : rec.status === 'cut' ? ' · shielded by a cut' : ''}</div><div class="tip-sub">click for the cross-section</div>`;
   }
 }

@@ -101,6 +101,33 @@ export class BuildingIndex {
     }
   }
 
+  /** Every building registered in a hash cell within `r` of any of the points, once per cell it is
+   * registered in (dedupe by index), with the index of the point nearest that cell's centre. */
+  alongPoints(x: ArrayLike<number>, y: ArrayLike<number>, n: number, r: number, fn: (j: number, near: number) => void) {
+    if (!n) return;
+    // every other point, reaching the one between too (and the last one)
+    const reach = n > 1 ? Math.hypot(x[1] - x[0], y[1] - y[0]) : 0, rr = r + reach;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < n; i++) { x0 = Math.min(x0, x[i]); x1 = Math.max(x1, x[i]); y0 = Math.min(y0, y[i]); y1 = Math.max(y1, y[i]); }
+    const c0 = Math.floor((x0 - rr) / this.cell), r0 = Math.floor((y0 - rr) / this.cell);
+    const nc = Math.floor((x1 + rr) / this.cell) - c0 + 1, nr = Math.floor((y1 + rr) / this.cell) - r0 + 1;
+    const near = new Int32Array(nc * nr).fill(-1), dist = new Float64Array(nc * nr);
+    for (let i = 0; i < n; i = i + 2 < n || i === n - 1 ? i + 2 : n - 1) {
+      const a0 = Math.floor((x[i] - rr) / this.cell) - c0, a1 = Math.floor((x[i] + rr) / this.cell) - c0;
+      const b0 = Math.floor((y[i] - rr) / this.cell) - r0, b1 = Math.floor((y[i] + rr) / this.cell) - r0;
+      for (let cx = a0; cx <= a1; cx++) for (let cy = b0; cy <= b1; cy++) {
+        const k = cy * nc + cx, d = ((cx + c0 + 0.5) * this.cell - x[i]) ** 2 + ((cy + r0 + 0.5) * this.cell - y[i]) ** 2;
+        if (near[k] < 0 || d < dist[k]) { near[k] = i; dist[k] = d; }
+      }
+    }
+    for (let cy = 0; cy < nr; cy++) for (let cx = 0; cx < nc; cx++) {
+      const i = near[cy * nc + cx];
+      if (i < 0) continue;
+      const a = this.map.get(this.key(cx + c0, cy + r0));
+      if (a) for (const j of a) fn(j, i);
+    }
+  }
+
   /** Radius about `items[j]` (x, y) enclosing the vertex circle AND the oriented façade rectangle. */
   extent(j: number): number {
     const b = this.items[j];
@@ -113,6 +140,14 @@ export class BuildingIndex {
     const along = Math.max(0, Math.abs(dx * this.ux[j] + dy * this.uy[j]) - this.hl[j]);
     const across = Math.max(0, Math.abs(-dx * this.uy[j] + dy * this.ux[j]) - this.hw[j]);
     return Math.hypot(along, across);
+  }
+
+  /** The façade point of the oriented rectangle nearest to (x, y) (the point itself when inside). */
+  facadePoint(j: number, x: number, y: number): [number, number] {
+    const dx = x - this.ox[j], dy = y - this.oy[j], ux = this.ux[j], uy = this.uy[j];
+    const p = Math.max(-this.hl[j], Math.min(this.hl[j], dx * ux + dy * uy));
+    const q = Math.max(-this.hw[j], Math.min(this.hw[j], -dx * uy + dy * ux));
+    return [this.ox[j] + ux * p - uy * q, this.oy[j] + uy * p + ux * q];
   }
 
   /**

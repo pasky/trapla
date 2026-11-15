@@ -7,7 +7,6 @@ import type { ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectR
 import { routeContacts, screenIndependence, type RouteContact } from './project-ledger';
 import { evaluateProjectRoad } from './project-road';
 import { assertProjectDesign } from './project-validation';
-import { noiseSource } from './road-noise';
 import * as dm from './detmath';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment }
@@ -71,23 +70,20 @@ const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
 const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', check: 'violation', scope: { routeIds: [route.id] },
   locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
   violation: { kind: v.kind, title: v.title, fix: v.fix, basis: v.basis, rule: v.rule, ...(v.detail ? { detail: v.detail } : {}) } }));
-function routeOutcome(ctx: ProjectEvalContext, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
+function routeOutcome(_ctx: ProjectEvalContext, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
   const buildings = [...r.demolished.map(b => ({ buildingIndex: b.j, action: 'demolish' as const, cost: b.cost })),
     ...r.boughtOut.map(b => ({ buildingIndex: b.j, action: 'buy' as const, cost: b.cost })),
     ...r.kept.map(b => ({ buildingIndex: b.j, action: 'retain' as const, cost: 0 }))];
-  // Road periods share propagation/attenuation; recover their absolute levels from the legacy
-  // controlling excess and fixed source offset. No multi-source inference is made from excess.
-  const op = route.specification.kind === 'road' ? route.specification.operations : null;
-  const source = op ? noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare }) : null;
-  const levels = (excess: number) => source && Number.isFinite(source.excessDb) ? {
-    day: source.dayDb - source.excessDb + excess, night: source.nightDb - source.excessDb + excess,
-  } : { day: -Infinity, night: -Infinity };
+  // Energies per storey come from the route's own finite-segment sum (day and night separately).
   const receivers = r.noise.receivers.map(receiver => {
-    const raw = levels(receiver.raw), built = levels(receiver.mitigated);
-    const height = NOISE.receiverHeight + ((ctx.legacy.buildings?.levels[receiver.j] ?? 1) - 1) * NOISE.storeyHeight;
+    const e = receiver.energy, k = receiver.floor;
+    const height = NOISE.receiverHeight + k * NOISE.storeyHeight;
+    const db = (v: number) => (v > 0 ? 10 * dm.log10(v) : -Infinity);
     return { buildingIndex: receiver.j, height, contributions: [{ sourceId: route.acousticSourceId, routeId: route.id,
-      buildingIndex: receiver.j, height, dayEnergy: dm.pow(10, raw.day / 10), nightEnergy: dm.pow(10, raw.night / 10), policy: 'legacy-road' }],
-      dayDb: built.day, nightDb: built.night, dayLimit: NOISE.limitDayDb, nightLimit: NOISE.limitNightDb,
+      buildingIndex: receiver.j, height, dayEnergy: e.rawDay[k], nightEnergy: e.rawNight[k], policy: 'legacy-road',
+      position: { x: receiver.x, y: receiver.y, z: receiver.ground },
+      storeys: Array.from(e.day, (_, q) => ({ height: NOISE.receiverHeight + q * NOISE.storeyHeight, rawDay: e.rawDay[q], rawNight: e.rawNight[q], day: e.day[q], night: e.night[q] })) }],
+      dayDb: db(e.day[k]), nightDb: db(e.night[k]), dayLimit: NOISE.limitDayDb, nightLimit: NOISE.limitNightDb,
       action: receiver.status === 'bought' ? 'buy' as const : 'retain' as const };
   });
   return { buildings, receivers };

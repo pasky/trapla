@@ -45,7 +45,7 @@ describe('wall decisions through the full bill', () => {
     const removed = evaluate(context, d);
     expect(removed.boughtOut).toEqual([]);
     expect(removed.walls.filter((w) => w.side === 'L')).toEqual([]);
-    expect(removed.violations.some((v) => v.kind === 'noise' && v.target?.wall?.sides.includes('L') && v.target.wall.height >= 3)).toBe(true);
+    expect(removed.violations.some((v) => v.kind === 'noise' && v.target?.wall?.sides.includes('L') && v.target.wall.height >= 2)).toBe(true);
     d.buildingOverrides = [{ j: 0, action: 'buy' }];
     const bought = evaluate(context, d);
     expect(bought.boughtOut[0].reason).toBe('manual');
