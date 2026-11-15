@@ -31,6 +31,8 @@ function controls(v: unknown): boolean {
   if (v.wallOverrides !== undefined && (!list(v.wallOverrides) || !v.wallOverrides.every(p => object(p)
     && number(p.s0) && p.s0 >= 0 && number(p.s1) && p.s1 > p.s0 && choice(p.side, ['L', 'R']) && number(p.height)
     && (p.height === 0 || p.height >= 2 && p.height <= 6)))) return false;
+  if (v.junctionForms !== undefined && (!object(v.junctionForms)
+    || !Object.entries(v.junctionForms).every(([end, form]) => choice(end, ['a', 'b']) && form === 'roundabout'))) return false;
   if (v.crossings !== undefined && (!list(v.crossings) || !v.crossings.every(c => {
     if (!object(c) || !choice(c.choice, CROSSING_CHOICES) || !object(c.target)) return false;
     const t = c.target;

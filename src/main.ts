@@ -6,7 +6,8 @@ import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
-import { ROAD_CLASSES } from './core/data/urban';
+import { ENDPOINT_JUNCTIONS, ROAD_CLASSES } from './core/data/urban';
+import { ROUNDABOUT_HOSTS } from './core/tie-in';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
@@ -37,7 +38,7 @@ import { startDesign } from './state';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
-import type { ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
+import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
 import { acceptsProjectMessage, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
@@ -405,7 +406,37 @@ async function main() {
       if (w.at) li.onclick = () => { view.flyTo(w.at!.x, w.at!.y, 700); };
       list.append(li);
     }
-    head.append(h, what, ...(works.length ? [list] : []), form, remove);
+    // each end that joins a road: its junction, Auto (a priority T) or a roundabout — plain choices
+    const junctions = document.createElement('div'); junctions.className = 'route-junctions';
+    if (!route.source && route.alignment.kind === 'pi') for (const end of ['a', 'b'] as const) {
+      const anchor: Anchor = route.endpoints[end].anchor;
+      const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : anchor.kind === 'route' ? 'designed' : undefined;
+      if (!cls || ROAD_CLASSES[cls]?.noAtGrade) continue;
+      const row = document.createElement('div'); row.className = 'ctx-row';
+      const label = document.createElement('span'); label.textContent = end === 'a' ? 'Start junction' : 'End junction';
+      const choice = document.createElement('div'); choice.className = 'seg choice';
+      const current = route.alignment.controls.junctionForms?.[end];
+      const options: [string, 'roundabout' | undefined, string][] = [['Auto', undefined, 'A priority T junction (research/29)']];
+      if (cls === 'designed' || ROUNDABOUT_HOSTS.includes(cls)) options.push(['Roundabout', 'roundabout', `A roundabout, ${Math.round(ENDPOINT_JUNCTIONS.roundabout.cost / 1e6)} M CZK plus its ring's land (ŘSD awards, research/08)`]);
+      if (options.length < 2) continue;
+      for (const [text, value, title] of options) {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.dataset.end = end;
+        b.className = current === value ? 'on' : ''; b.setAttribute('aria-pressed', String(current === value));
+        b.onclick = () => {
+          if (current === value) return;
+          const id = route.id;
+          store.editProject(d => {
+            const q = d.routes.find(x => x.id === id); if (!q || q.alignment.kind !== 'pi') return;
+            const forms = { ...q.alignment.controls.junctionForms };
+            if (value) forms[end] = value; else delete forms[end];
+            if (Object.keys(forms).length) q.alignment.controls.junctionForms = forms; else delete q.alignment.controls.junctionForms;
+          });
+        };
+        choice.append(b);
+      }
+      row.append(label, choice); junctions.append(row);
+    }
+    head.append(h, what, ...(junctions.childElementCount ? [junctions] : []), ...(works.length ? [list] : []), form, remove);
     return head;
   };
   const showSource = (hit: SourceHit) => {

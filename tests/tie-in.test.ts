@@ -125,3 +125,28 @@ describe('a side road joined to our road', () => {
     expect(moved.grade[0]).toBeCloseTo(ours.grade[Math.round(Math.hypot(moved.x[0] - 100, moved.y[0] - 250) / ours.ds)], 0);
   });
 });
+
+describe('a roundabout where the player chooses it', () => {
+  const choose = (f: ReturnType<typeof fixture>, end: 'a' | 'b') => {
+    const side = f.snapshot.design.routes[1];
+    if (side.alignment.kind !== 'pi') throw new Error('fixture');
+    side.alignment.controls.junctionForms = { [end]: 'roundabout' };
+    return f;
+  };
+  it('prices the roundabout and its ring (land, a house on it removed) instead of a T', () => {
+    const f = choose(fixture('secondary', [], new BuildingIndex([[292, 866, 4]])), 'a'); // a house on the ring, west of the joined road
+    const project = evaluateProject(f.ctx, f.snapshot), side = project.routes.side.legacy!;
+    expect(side.footprintConflicts.filter(c => c.action === 'junction').map(c => c.cost)).toEqual([ENDPOINT_JUNCTIONS.roundabout.cost, ENDPOINT_JUNCTIONS['tie-in-minor'].cost]);
+    const ring = project.works.items.find(w => w.owner.id === 'side' && /^Roundabout's ring/.test(w.label ?? ''))!;
+    expect(ring.label).toMatch(/1 building removed/);
+    expect(ring.cost).toBeGreaterThan(new BuildingIndex([[292, 866, 4]]).cost[0]);
+    // (the removed house is also within our road's noise reach: that interaction keeps this project unpriced)
+    expect(project.cost.unpriced.map(u => u.reason)).toContain('shared-noise');
+    // no T-junction sight triangle at a roundabout
+    expect(side.violations.some(v => /No clear view/.test(v.title))).toBe(false);
+  });
+  it('refuses a roundabout on a track', () => {
+    const f = choose(fixture('track'), 'a');
+    expect(evaluateProject(f.ctx, f.snapshot).routes.side.legacy!.violations.some(v => /A roundabout cannot be built on a track/.test(v.title))).toBe(true);
+  });
+});

@@ -190,6 +190,12 @@ export const ENDPOINT_JUNCTIONS = {
   // 5–10 M range, research/29 §6, PROVISIONAL, very low confidence).
   'tie-in': { zone: 30, cost: JUNCTION, source: 'priority T onto a class I/II road; junction allowance, research/08 (PROVISIONAL)' },
   'tie-in-minor': { zone: 30, cost: 7_000_000, source: 'simple priority T onto a minor road, 5–10 M CZK, research/29 (PROVISIONAL)' },
+  // A roundabout where a road's end joins (the player's choice; Auto builds a T, research/29 §1).
+  // Zone: a roundabout arm (TP 135 splitter island ≤ 25 m) plus the ring's radius at 40 m outer diameter,
+  // the middle of the 30–50 m PROVISIONAL compact rural envelope (research/29 §4). Price: ŘSD awards for
+  // roundabouts on class I roads, 32 M CZK, range 20–40 M (research/08, medium; also used on class II/III
+  // roads, low confidence there). The ring's own land and any house on it are priced with the junction.
+  roundabout: { zone: 45, cost: 32_000_000, source: 'roundabout, ŘSD awards 20–40 M CZK (research/08); 40 m ring PROVISIONAL (research/29)' },
   // A rebuilt stretch continuing as the old road beyond its end: the joint is part of the new
   // pavement, no junction is built. Same zone as a T (MODELLING ASSUMPTION), no lump cost.
   continuation: { zone: 30, cost: 0, continuation: true, source: 'the rebuilt stretch continues as the old road (MODELLING ASSUMPTION)' },

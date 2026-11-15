@@ -61,7 +61,8 @@ const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectI
     rule: 'Game rule: noise and capacity depend on traffic, so a road without traffic cannot be priced.' } },
 };
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
-  preview = false, materialValue?: number, ends?: { a?: XYZ; b?: XYZ }): { route: RouteResult; issues: ProjectIssue[]; junctionEnds: ('a' | 'b')[]; replacement?: Replacement } {
+  preview = false, materialValue?: number, ends?: { a?: XYZ; b?: XYZ }): { route: RouteResult; issues: ProjectIssue[]; junctionEnds: ('a' | 'b')[];
+    replacement?: Replacement; ringWorks?: ReplacementWork[] } {
   const evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays,
     ...(ends ? { ends } : {}) });
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : undefined;
@@ -71,6 +72,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     ...(legacy ? { legacy } : {}), complete: false, valid: false, accepted: false, attributedCost: null, dependencies: [], influence: [] },
     junctionEnds: evaluated.status === 'evaluated' ? evaluated.junctionEnds ?? [] : [],
     ...(evaluated.status === 'evaluated' && evaluated.replacement ? { replacement: evaluated.replacement } : {}),
+    ...(evaluated.status === 'evaluated' && evaluated.ringWorks ? { ringWorks: evaluated.ringWorks } : {}),
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
       : (evaluated.unpriced ?? []).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
 }
@@ -145,6 +147,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   const builtJunctions = new Set<string>();
   /** a rebuilt stretch's own works: old road removed, side roads reconnected (C1 b) */
   const replacements = new Map<string, Replacement>();
+  const ringsOf = new Map<string, ReplacementWork[]>();
   // A side road ending on another designed road follows that road's current line: the joined road is
   // evaluated first (dependency order, stable otherwise). A cycle of such ends is not built yet.
   const hostOf = (r: RouteDesign) => [r.endpoints.a.anchor, r.endpoints.b.anchor].flatMap(x => x.kind === 'route' ? [x.routeId] : []);
@@ -171,6 +174,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     if (proposal.route.legacy) engineered.push({ route, legacy: proposal.route.legacy });
     for (const end of proposal.junctionEnds) builtJunctions.add(`${route.id}:${end}`);
     if (proposal.replacement) replacements.set(route.id, proposal.replacement);
+    if (proposal.ringWorks) ringsOf.set(route.id, proposal.ringWorks);
     for (const i of proposal.issues) { result.issues.push(i); result.cost.unpriced.push({ routeId: route.id, reason: i.code }); }
     if (!proposal.issues.length && proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
   }
@@ -187,12 +191,15 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     let stations = junctionsOn.get(hostRoute.id);
     if (!stations) junctionsOn.set(hostRoute.id, stations = [0, host.length, ...host.crossings.filter(c => c.type === 'junction').map(c => c.s)]);
     const t = designedTieIn(legacy, end, { name: hostRoute.role === 'mission' ? 'our road' : hostRoute.name, legalClass: spec.legalClass,
-      crownWidth: crown, result: host, junctions: stations }, ctx.legacy.terrain, ctx.legacy.buildings);
+      crownWidth: crown, result: host, junctions: stations }, ctx.legacy.terrain, ctx.legacy.buildings,
+      route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms?.[end] : undefined);
     stations.push(t.s);
     if (t.violations.length) { legacy.violations.push(...t.violations); legacy.valid = false; }
     const i = end === 'a' ? 0 : legacy.n - 1, k = Math.max(0, Math.min(host.n - 1, Math.round(t.s / host.ds)));
     let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
+    if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost,
+      label: `Roundabout's ring: ${Math.round(t.ring.area)} m² of land${t.ring.removed.length ? `, ${t.ring.removed.length} building${t.ring.removed.length > 1 ? 's' : ''} removed` : ''}` });
     // The side road's first metres lie inside the joined road's own earthworks: built (and bought) once.
     const inside = host.cell.width[k] / 2;
     let credit = 0;
@@ -202,12 +209,15 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
       for (const key of SHARED_PARTS) credit += legacy.parts[key][q];
     }
     if (credit > 0) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: inside, cost: -credit,
-      label: `Its first ${Math.round(inside)} m are inside ${t.label.replace('Junction with ', '')}’s earthworks: not built twice` });
+      label: `Its first ${Math.round(inside)} m are inside ${hostRoute.role === 'mission' ? 'our road' : hostRoute.name}’s earthworks: not built twice` });
     let j = designedJunctions.get(route.id); if (!j) designedJunctions.set(route.id, j = []);
     j.push({ routeId: hostRoute.id, x: legacy.x[i], y: legacy.y[i], r: host.cell.width[k] / 2 + ENDPOINT_JUNCTIONS['tie-in'].zone + INDEPENDENCE_SCREEN.clearance });
     builtJunctions.add(`${route.id}:${end}`);
   }
   for (const [id, rep] of replacements) ownWorks.set(id, [...ownWorks.get(id) ?? [], ...rep.works]);
+  for (const [id, rings] of ringsOf) ownWorks.set(id, [...ownWorks.get(id) ?? [], ...rings]);
+  // Every road's own works are listed (its card shows them); they count in a price only once accepted below.
+  for (const { route } of engineered) for (const [k, w] of (ownWorks.get(route.id) ?? []).entries()) result.works.items.push(replacementWork(route, k, w));
   // Keep each road's own bill and problems visible even while the project cannot be priced.
   for (const { route, legacy } of engineered) defineRoute(result.cost.alone, route.id, legacy.cost.total);
   const unprice = (routeIds: string[], reason: string) => {
@@ -307,7 +317,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     rr.complete = true; rr.valid = legacy.valid; rr.accepted = legacy.valid; rr.attributedCost = own;
     defineRoute(result.cost.routes, route.id, own);
     total += own; valid &&= legacy.valid;
-    for (const [k, w] of (works ?? []).entries()) result.works.items.push(replacementWork(route, k, w));
+    for (const item of result.works.items) if (item.owner.id === route.id) item.accepted = true;
     if (route.source && replacements.has(route.id)) result.acceptedReplacements.push(...route.source.intervals.map(i => ({ ...i })));
     result.issues.push(...routeIssues(route, legacy));
     const outcome = routeOutcome(ctx, route, legacy);
@@ -342,5 +352,5 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
   return { id: `${route.id}:${w.kind}:${k}`, owner: { kind: 'route', id: route.id }, participants: [route.id],
     kind: w.kind === 'removal' ? 'formation' : w.kind === 'land' ? 'land' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
     geometry: { meshes: [], terrainMasks: [], measurements: [{ id: `${route.id}:${w.kind}:${k}:length`, meshIds: [], quantity: w.length, unit: 'm' }] },
-    cost: w.cost, dependencies: [], accepted: true, label: w.label, at: { x: w.x, y: w.y, s: w.s } };
+    cost: w.cost, dependencies: [], accepted: false, label: w.label, at: { x: w.x, y: w.y, s: w.s } };
 }

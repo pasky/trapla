@@ -4,8 +4,9 @@ import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, RouteDesign, XYZ } from './project';
 import type { RoadNet } from './roadnet';
-import { tieInChecks, tieIns } from './tie-in';
-import { replacementWorks, type Replacement } from './project-replacement';
+import { ringWorks, tieInChecks, tieIns } from './tie-in';
+import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
+import { ROAD_CLASSES } from './data/urban';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
@@ -13,7 +14,9 @@ export type ProjectRoadEvaluation =
       /** Ends joined to an existing ground road whose junction this road's bill includes. */
       junctionEnds?: ('a' | 'b')[];
       /** A rebuilt stretch: removing its old road and reconnecting its side roads (C1 b). */
-      replacement?: Replacement }
+      replacement?: Replacement;
+      /** A roundabout's ring at an end: its land and the houses on it. */
+      ringWorks?: ReplacementWork[] }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
       | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 
@@ -90,7 +93,8 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   // A side road's ends on existing ground roads are junction works of this road (C1 a); a rebuilt
   // stretch's ends continue as its old road.
-  const ties = route.role === 'auxiliary' && roads ? tieIns(roads, route.endpoints, !!route.source) : [];
+  const forms = route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms ?? {} : {};
+  const ties = route.role === 'auxiliary' && roads ? tieIns(roads, route.endpoints, !!route.source, forms) : [];
   const junctions = ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => t.junction)] } : {};
   const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
@@ -108,6 +112,12 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   if (replacement?.violations.length) { result.violations.push(...replacement.violations); result.valid = false; }
   const unpriced = [...route.source && !replacement && !options.preview ? ['source-needs-network' as const] : [], ...spec.operations.trafficUnknown ? ['traffic-unknown' as const] : []];
   const junctionEnds = ties.filter(t => t.junction.kind !== 'continuation').map(t => t.end);
+  const gone = new Set([...result.demolished, ...result.boughtOut].map(b => b.j));
+  const rings: ReplacementWork[] = options.preview ? [] : ties.filter(t => t.junction.kind === 'roundabout').map(t => {
+    const i = t.end === 'a' ? 0 : result.n - 1, w = ringWorks(t.x, t.y, ROAD_CLASSES[t.cls]?.width ?? 6.5, result.cell.urban[i], ctx.buildings, gone);
+    return { kind: 'junction' as const, s: result.s[i], x: t.x, y: t.y, length: 0, cost: w.cost,
+      label: `Roundabout's ring: ${Math.round(w.area)} m² of land${w.removed.length ? `, ${w.removed.length} building${w.removed.length > 1 ? 's' : ''} removed` : ''}` };
+  });
   return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}),
-    ...(replacement ? { replacement } : {}) };
+    ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}) };
 }

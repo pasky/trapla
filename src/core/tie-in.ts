@@ -9,9 +9,27 @@ import type { EndpointJunction, Result } from './evaluate';
 import type { EndpointConstraint } from './project';
 import type { RoadNet } from './roadnet';
 import type { Terrain } from './terrain';
+import { landPerM2 } from './cost';
 
 /** A road end this close to a legacy way joins it (legacy coordinates are rounded to 1 m), m. */
 const JOIN_TOLERANCE = 1.5;
+
+/** Roads a roundabout may be built on (public roads). */
+export const ROUNDABOUT_HOSTS = ['primary', 'secondary', 'tertiary', 'unclassified', 'residential'];
+/** A roundabout's ring: 40 m outer diameter, the middle of the 30–50 m compact rural envelope (research/29
+ * §4, PROVISIONAL). Its land beyond the joined road, and any house on it, belong to the junction. */
+export const ROUNDABOUT_RING = { outerDiameter: 40 } as const;
+/** The ring's own works around (x, y): land beyond the joined road's pavement at the local land price,
+ * and the houses on it removed (not those a road already removes). */
+export function ringWorks(x: number, y: number, joinedWidth: number, urban: number, buildings: BuildingIndex | undefined,
+  gone: ReadonlySet<number>): { cost: number; area: number; removed: number[] } {
+  const r = ROUNDABOUT_RING.outerDiameter / 2, area = Math.max(0, Math.PI * r * r - joinedWidth * 2 * r);
+  let cost = area * landPerM2(urban);
+  const removed: number[] = [];
+  buildings?.near(x, y, r, j => { if (!gone.has(j) && !removed.includes(j) && buildings.facadeDistance(j, x, y) < r) removed.push(j); });
+  for (const j of removed) cost += buildings!.cost[j];
+  return { cost, area, removed };
+}
 
 export const TIE_IN_RULES = {
   /** Steepest grade of the joining road within the junction (its zone). VL 3 (2010), sheet note to
@@ -47,7 +65,8 @@ export interface TieIn {
 
 /** The junctions at this route's ends that join existing ground roads. Ends on motorways/expressways are
  * returned too (with the class), so the caller can refuse them. */
-export function tieIns(roads: RoadNet, ends: { a: EndpointConstraint; b: EndpointConstraint }, rebuilt = false): TieIn[] {
+export function tieIns(roads: RoadNet, ends: { a: EndpointConstraint; b: EndpointConstraint }, rebuilt = false,
+  forms: { a?: 'roundabout'; b?: 'roundabout' } = {}): TieIn[] {
   const out: TieIn[] = [];
   for (const end of ['a', 'b'] as const) {
     const e = ends[end];
@@ -59,7 +78,7 @@ export function tieIns(roads: RoadNet, ends: { a: EndpointConstraint; b: Endpoin
     const directions = new Set(connections.map(c => `${c.dx.toFixed(3)},${c.dy.toFixed(3)}`));
     const minor = !['primary', 'secondary'].includes(cls);
     out.push({ end, x: p.x, y: p.y, way, cls, ways, existing: directions.size > 2,
-      junction: { x: p.x, y: p.y, kind: rebuilt ? 'continuation' : minor ? 'tie-in-minor' : 'tie-in', ways } });
+      junction: { x: p.x, y: p.y, kind: rebuilt ? 'continuation' : forms[end] === 'roundabout' ? 'roundabout' : minor ? 'tie-in-minor' : 'tie-in', ways } });
   }
   return out;
 }
@@ -98,7 +117,11 @@ export function tieInChecks(ties: readonly TieIn[], r: Result, roads: RoadNet, t
     if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins the ${what}`,
       `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
       'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction (research/29)'));
-    const blocked = sightBlocked(t, r, wayLine(roads, t.way, terrain), terrain, buildings);
+    if (t.junction.kind === 'roundabout' && !ROUNDABOUT_HOSTS.includes(t.cls)) out.push(issue(s0, s1, `A roundabout cannot be built on a ${what}`,
+      'Set this junction back to Auto', 'Game rule: roundabouts join public roads (class I–III and local roads), not tracks or service roads.', 'game'));
+    // A roundabout's entries see to the left around the ring (TP 135), not along a through road: the T
+    // junction's sight triangle does not apply to it.
+    const blocked = t.junction.kind === 'roundabout' ? null : sightBlocked(t, r, wayLine(roads, t.way, terrain), terrain, buildings);
     if (blocked) out.push({ ...issue(s0, s1, `No clear view along the ${what}`, blocked.fix,
       `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along the ${what} (sight triangle, research/29)`),
       ...(blocked.building !== undefined ? { target: { buildings: [blocked.building] } } : {}) });
@@ -200,7 +223,7 @@ function inTriangle(px: number, py: number, a: { x: number; y: number }, b: { x:
  * one onto an existing road of the same class, and the same checks against the designed road. */
 export function designedTieIn(side: Result, end: 'a' | 'b', host: { name: string; legalClass: string; crownWidth: number; result: Result;
   /** stations of the other junctions on the designed road (its ends count, as for our road's own junctions) */
-  junctions: number[] }, terrain: Terrain, buildings?: BuildingIndex): { violations: Violation[]; cost: number; label: string; s: number } {
+  junctions: number[] }, terrain: Terrain, buildings?: BuildingIndex, form?: 'roundabout'): { violations: Violation[]; cost: number; label: string; s: number; ring?: ReturnType<typeof ringWorks> } {
   const h = host.result, i = end === 'a' ? 0 : side.n - 1, line = resultLine(h, host.crownWidth / 2);
   const s = line.station(side.x[i], side.y[i]), k = Math.max(0, Math.min(h.n - 1, Math.round(s / h.ds)));
   const zone = ENDPOINT_JUNCTIONS['tie-in'].zone, atStart = end === 'a';
@@ -219,10 +242,15 @@ export function designedTieIn(side: Result, end: 'a' | 'b', host: { name: string
   if (steep > TIE_IN_RULES.maxGrade + 1e-9) out.push(issue(s0, s1, `Too steep where it joins ${what}`,
     `Flatten the last ${zone} m to at most ${TIE_IN_RULES.maxGrade * 100} % (now ${(steep * 100).toFixed(1)} %)`,
     'VL 3 (2010) to ČSN 73 6102: crossing roads best below 3 %, not over 6 % at a junction (research/29)'));
-  const blocked = sightBlocked({ end, x: side.x[i], y: side.y[i] }, side, line, terrain, buildings);
+  const blocked = form === 'roundabout' ? null : sightBlocked({ end, x: side.x[i], y: side.y[i] }, side, line, terrain, buildings);
   if (blocked) out.push({ ...issue(s0, s1, `No clear view along ${what}`, blocked.fix,
     `ČSN 73 6102: a driver waiting at the junction must see ${blocked.legs} m along ${what} (sight triangle, research/29)`),
     ...(blocked.building !== undefined ? { target: { buildings: [blocked.building] } } : {}) });
   const major = host.legalClass === 'I' || host.legalClass === 'II';
+  if (form === 'roundabout') {
+    const gone = new Set([...side.demolished, ...side.boughtOut, ...h.demolished, ...h.boughtOut].map(b => b.j));
+    const ring = ringWorks(side.x[i], side.y[i], host.crownWidth, side.cell.urban[i], buildings, gone);
+    return { violations: out, cost: ENDPOINT_JUNCTIONS.roundabout.cost, label: `Roundabout on ${what}`, s, ring };
+  }
   return { violations: out, cost: ENDPOINT_JUNCTIONS[major ? 'tie-in' : 'tie-in-minor'].cost, label: `Junction with ${what}`, s };
 }
