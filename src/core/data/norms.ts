@@ -30,13 +30,15 @@ export const PROVISIONAL_NORMS = {
 /** Motorway design speeds: D 27.5 base 130, lowered by 10 or 20 in justified cases (Radimský 2019 slide 4).
  * Radii at 6 % superelevation and no-superelevation radii: Radimský slide 6 (data/motorway.ts).
  * Transition minimum = vn metres (slide 15; runoff length not modelled, as for roads).
- * Vertical radii: PROVISIONAL older-edition values (VUT "Aplikace ČSN 73 6101" p. 11, D categories,
- * 120 km/h column: crest 11,000 m, sag 5,000 m); the 2018 table is not public (research/22 §2, /29 §1).
- * 110 uses the 120 column (conservative, as roads use the 100 column at 90). */
+ * Vertical radii: the 2018 table is not public (research/22 §2, /29 §1, §6), so PROVISIONAL older-edition
+ * values, as for the road rows: crest = ČSN 73 6101:2004 "Rv zast. dovolené" 15,000 / 12,000 / 10,000 m
+ * at 130 / 120 / 110 (reproduced in Mahdal, VUT 2012, p. 8; research/29 §6). Sag: the older VUT
+ * "Aplikace ČSN 73 6101" p. 11 gives 5,000 m at 120 only; 110 uses it (conservative); 130 has no older
+ * column found and reuses 5,000 m: UNVERIFIED, may be too lenient at 130. */
 export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
-  130: { speed: 130, minRadius: 840, noSuperelevationRadius: 2420, minTransition: 130, minCrestRadius: 11000, minSagRadius: 5000 },
-  120: { speed: 120, minRadius: 690, noSuperelevationRadius: 2060, minTransition: 120, minCrestRadius: 11000, minSagRadius: 5000 },
-  110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 11000, minSagRadius: 5000 },
+  130: { speed: 130, minRadius: 840, noSuperelevationRadius: 2420, minTransition: 130, minCrestRadius: 15000, minSagRadius: 5000 },
+  120: { speed: 120, minRadius: 690, noSuperelevationRadius: 2060, minTransition: 120, minCrestRadius: 12000, minSagRadius: 5000 },
+  110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 10000, minSagRadius: 5000 },
 };
 
 /** Norm table for a category: motorway rows are separate (never borrowed from the 90 km/h road rows). */
