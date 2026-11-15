@@ -1,4 +1,4 @@
-# Automatic footprint engineering (cost models 16–17)
+# Automatic footprint engineering (cost models 16–18)
 
 The evaluator now **builds and prices remedies**, rather than simply invalidating every design
 whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
@@ -72,6 +72,41 @@ Published designs (all still VALID): 5 diversions replaced (best 2: 25.8 + 21.4 
 the grade and saves a further 22.6 M. The tables below are model-16 numbers. On the older original pack,
 indirect mass-balance shifts move direct-80 (+58 M, 2 more blocked class-I relocations) and town-controls
 (one more violation); both inputs were already invalid.
+
+### Model 18: plain words, class-gradient ramps, joining instead of failing
+
+An audit of every crossing/footprint outcome (`scripts/outcome-audit.ts`: five published designs, straight,
+104 random-bend Automatic designs) found ramps of 250–1,020 m, Auto keeping a 148 m track bridge over a 31 m
+cutting (90.7 M) instead of a 21.5 M reroute 759 m away, and automatic road rebuilds failing as "realignment
+needs engineering … intersects an unhandled road" next to a service-road bridge (owner report, km 8.64).
+
+- **Ramps** (overbridges and raised junction roads, and rebuilt roads): `ROAD_CLASSES[cls].rampGradient`,
+  research/20 — track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 % (unchanged). Where the crossed
+  road already runs the same way more steeply, the ramp may follow it, at most half the class gradient
+  steeper and never above 15 % (`rampLimit`); the audit check uses the same limit. Track ramp at best km 3.69:
+  330 + 51 → 82 + 42 m; direct-80 street km 15.97: 386 + 35 → 144 + 26 m. Random designs: ramps > 250 m 66 → 4.
+- **Joining, not failing.** Where a rebuilt road's new line crosses another ordinary road (or its own
+  continuation) outside our earthworks, its profile is pinned to that road's ground level there and the
+  contact is a junction (one 0.5 M access estimate unless both are tracks), as is a turning area touching
+  another road. If no rebuild works, a stretch between two junctions (≤ 400 m) whose ends stay connected over
+  other roads — not themselves under our earthworks unless kept by a bridge, tunnel, underpass, junction or
+  their own bridge over us — is **closed** at no cost (`RoadRealignmentPlan.closed`, shown as "Closed"). Random
+  designs: blocked rebuilds 191 → 140, "unhandled road" failures 53 → 14 (each now with another real problem).
+- **Long reroutes vs structures.** A feasible bridge over our road (or underpass) is replaced by a reroute up to
+  2 km away only when that costs at most half of it; within 750 m the cheaper wins as before.
+- **Words.** Outcomes, violations and footprint details are written in `src/core/terms.ts` vocabulary; a
+  failed automatic rebuild is an *engine limit* with a computed fix ("Move the route at km 1.27 about 26 m to
+  the right (away from the track), or put our road on a bridge from km 1.25 to km 1.31") and a plain reason
+  ("there is no room for it beside our earthworks"). Price sources moved to `FootprintConflict.source`
+  (pricing tooltip). `tests/player-text.test.ts` guards all of it.
+
+Totals bn CZK, model 17 → 18 (all still VALID): straight 10.013398 → 10.009393, best 4.291626 → 4.253391, demo
+4.898255 → 4.879866, direct-80 4.978590 → 4.939882, direct-90 5.565410 → 5.555314, town-centre 11.444752 →
+11.442013. Remaining flagged outcomes on published designs are links > 1 km where no structure fits: service
+4742 (demo, 5.6 m fill: too little for a box, an 11.6 m climb over us), track 2705 (direct-80/90, 4.3–5.1 m
+fill), service 5162 (town-centre); lowering a way into a shallow cut under a box is not modelled. In random
+designs the remaining automatic-remedy violations are piers that find no clear spot (railway/street at the
+Polish border) and rebuilds with no room or too steep ground; both are tagged *engine limit*.
 
 Manual grades are not lifted, pins remain constraints, and manual structure ranges are not
 silently moved. Retaining walls can protect a manually specified earthwork without changing its

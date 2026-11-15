@@ -98,6 +98,15 @@ functions (road radius from speed and superelevation, rail radius from cant); co
 Implementation and iterations run in `smart` mode; reviews are done in `deep` mode, called by the
 implementing agent.
 
+**Player-facing words (rule, 2026-11-15).** Every message the player reads — violation title / fix / detail,
+crossing card labels and tooltips, profile and bill tooltips — says in everyday words what is wrong or what
+is built, where, one concrete computed fix and why, with a norm / game rule / engine limit tag. The
+vocabulary lives in one place, `src/core/terms.ts` (glossary, outcome labels and explanations, banned jargon);
+`tests/player-text.test.ts` generates every violation kind and outcome and fails on internal terms (SPK/OTSKP
+codes, "tie-in", "realignment", "engineering", "faces", "allowance", "overbridge", "diversion", …) or a missing
+title / fix / basis / rule. Price sources may be named only in the `rule` line and pricing tooltips. An earlier
+plain-language pass was undone by later features precisely because nothing enforced this.
+
 ## First playable prototype (built 2026-11-13)
 
 What exists (details and commands in `README.md`):
@@ -180,6 +189,22 @@ What exists (details and commands in `README.md`):
   table sharing, pruning and memoisation (`docs/evaluate-performance.md`). **≤ 60 ms is not met**; the
   profile panel now shows a provisional grade on the moved route while the worker lags behind a drag.
   `scripts/bench-drag.ts` measures drags without repeating identical inputs.
+
+### Crossing outcomes in plain words, sane ramps (cost model 18, 2026-11-15)
+
+- Outcomes are named for what is built ("Rerouted to the nearest crossing at km 2.31 (+412 m of new track)",
+  "Carried over our road on a 23 m bridge with 124 m of ramps", "Moved aside", "Closed"), each with a
+  one-sentence explanation on the crossing card; footprint/crossing violations were rewritten (see the rule
+  under *Working mode*). Failures of the automatic rebuild are tagged *engine limit*.
+- Ramps use per-class gradients (research/20: track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 %),
+  following an existing road already steeper up to 15 %. Published-design ramps now ≤ 130 m per side
+  (were up to 386 m).
+- Automatic road rebuilds join the roads they cross at ground level, and as a fallback close a loop
+  stretch whose ends stay connected over other roads; the owner's km 8.64 case ("realignment … intersects an
+  unhandled road" beside a service-road bridge) is gone. A reroute beyond 750 m replaces a feasible bridge
+  over us when it costs at most half.
+- All published designs stay VALID and get 2.7–38.7 M cheaper. Audit: `npx tsx scripts/outcome-audit.ts
+  --straight scripts/*-design.json --random 24`; details in `docs/footprint-conflicts.md` § Model 18.
 
 ### Travel-time target X and traffic Y
 

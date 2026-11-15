@@ -10,6 +10,7 @@ mkdirSync(out, { recursive: true });
 // [file, roadId, name, camera distance, bearing, elevation]
 const shots = [
   ['tests/fixtures/service-overbridge-design.json', 4826, 'km847-service-overbridge', 520, 200, 32],
+  ['tests/fixtures/service-loop-design.json', 4826, 'km846-service-loop', 520, 200, 32],
   ['scripts/best-design.json', 4174, 'best-km369-track-overbridge', 700, 30, 40],
   ['scripts/direct-80-design.json', 2182, 'direct80-km1597-street-overbridge', 800, 30, 40],
   ['scripts/demo-design.json', 5116, 'demo-km1217-track-reroute', 2600, 30, 58],

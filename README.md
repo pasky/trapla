@@ -45,6 +45,8 @@ Other commands:
 | `node scripts/photo-pan.mjs [--gpu]` | aerial photo while panning: requests made, refetches on revisits, mid-pan screenshots |
 | `node scripts/build-tools.mjs [--docs]` | real HUD/map checks for click-to-pin, the crossing / building / stretch cards (buy / keep, wall add / remove / Auto), undo and reload; `--docs` writes screenshots 30–35 |
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
+| `npx tsx scripts/outcome-audit.ts [--straight] [--random N --seed S] [--quiet] [designs…]` | every crossing / footprint outcome with ramp, link and box lengths and costs, every violation; flags ramps > 250 m, links > 1 km and footprint / crossing violations |
+| `node scripts/crossing-sanity-shots.mjs [--out dir]` | the owner-reported service-road bridge (km 8.47 fixtures) and four typical crossings with their cards open; writes `docs/screenshots/crossing-sanity/` |
 | `node --max-old-space-size=2048 --import tsx scripts/crossing-audit.ts` | audits every saved design: terrain tie-ins ≤0.3 m, unsupported segment flotation ≤0.5 m, rendered road edges/side slopes, clearance and measured quantities; `--strict` also fails blocked designs |
 | `node scripts/noise-view.mjs [--gpu] [--docs] [outdir]` | noise view on a town-fringe and the town-centre design: hovers a walled / bought-out dwelling and a wall, prints the tooltips; `--docs` writes `docs/screenshots/28…29-*.png` |
 | `node scripts/perf.mjs [--gpu] [--photo] [--contours]` | load time and frame times while orbiting / panning / zooming |
@@ -114,13 +116,16 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 - **Crossing tools:** click a crossed road on the map (pointer cursor and a label when the mouse is on one; from
   afar a click near the road adds a bend instead) or its ▪ mark in the profile; its card opens under the score
   (‹ › step to the previous / next crossed road; *Your decisions* lists them all). Choose **Automatic / Junction /
-  Our bridge over it / Its bridge over us / Close + reconnect**; the chosen one is highlighted and a ring marks
+  Our bridge over it / Its bridge over us / Cut and reroute / Underpass**; each button's tooltip says what gets
+  built, and the card names the outcome with its quantities and a one-sentence explanation (e.g. *Rerouted to the
+  nearest crossing at km 2.31 (+412 m of new track)*); the chosen one is highlighted and a ring marks
   the road on the map. The choice follows the existing road's pack ID, including every intersection of that way.
   Our bridge overrides overlapping structure paint locally; Auto seeks its clearance. Ordinary-road
   overbridges use the same priced raised approaches as Auto; fixed-level motorways/expressways require
   our road in a ≥6 m cut. Unsafe choices remain built, priced and invalid rather than silently replaced.
   Crossed roads retain their OSM alignment. Overbridges have a 1.2 m deck, ≥4.8 m clearance over our crown,
-  abutments, railings and terrain-ended approaches with earthwork side slopes and contours. Junction roads
+  abutments, railings and terrain-ended approaches with earthwork side slopes and contours; ramps climb at the
+  crossed road's class gradient (track 10 %, service 9 %, streets 8 %, class III 7 %, I/II 6 %, research/20). Junction roads
   ramp to our grade; roads under our bridges remain on the ground. Reconnection/diversion links run outside
   our footprint with turning heads, use the base-map road-class palette, and meet real road anchors.
   Deck/approach/link quantities are measured from the displayed geometry, not station-gap proxies.
@@ -232,6 +237,10 @@ Reproduce the build-tool interactions with `node scripts/build-tools.mjs --docs`
 [track diversion](docs/screenshots/45-crossing-diversion.png),
 [at-grade junction](docs/screenshots/46-crossing-junction.png).
 [Junction detail, with noise-wall openings](docs/screenshots/48-crossing-junction-detail.png).
+Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
+km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
+[street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
+[service reconnection, best km 7.96 (1.6 km → 461 m)](docs/screenshots/crossing-sanity/best-km796-service-reconnection.png).
 Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall
@@ -241,6 +250,19 @@ leakage and return-wall design are not modelled. Auto tries bounded, real-road
 alternatives when a provisional crossing is infeasible. Approach fill/cut beyond 10 m is flagged for
 redesign rather than presented as a normal local road. The 1.2 m decks and abutments remain study-stage
 representations, not structural designs for long spans.
+
+## Contributing notes
+
+- **Player-facing text is plain words.** Every violation (title, one concrete fix, why, basis tag), crossing
+  card label and tooltip, profile tooltip and bill line uses the vocabulary in `src/core/terms.ts`.
+  `tests/player-text.test.ts` generates every violation kind and outcome and fails on internal terms (price-list
+  codes, "tie-in", "realignment", "engineering", "faces", "allowance", "overbridge", …) or a missing
+  title / fix / basis / rule. A new feature adds its outcome words to `terms.ts`; sources (ČSN, SPK, OTSKP,
+  research notes) go only in the `rule` line or pricing tooltips.
+- Price or rule changes bump `COST_MODEL_VERSION` and recapture fixtures with
+  `npx tsx scripts/eval-regression.ts --capture=current --reviewed-model-change` after review.
+- `npx tsx scripts/outcome-audit.ts --straight scripts/*-design.json --random 24` lists every crossing and
+  footprint outcome with ramp / link / box lengths and costs and flags absurd ones.
 
 ## Architecture
 
