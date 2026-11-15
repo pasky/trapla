@@ -137,3 +137,64 @@ export function newRoad(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids:
     endpoints: { a: end(a), b: end(b) }, specification: spec,
     alignment: { kind: 'pi', pis: [], vertical: { kind: 'auto', pins: [] }, controls: { structureOverrides: [] } } };
 }
+
+const nearestStation = (path: readonly { x: number; y: number; s: number }[], p: { x: number; y: number }) => {
+  let best = Infinity, at = path[0]?.s ?? 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i], dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    const d = Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+    if (d < best) { best = d; at = a.s + t * (b.s - a.s); }
+  }
+  return at;
+};
+
+/** The rebuilt road with its ends moved along the old road to [s0, s1] (one undoable edit):
+ * a fresh exact claim, end anchors and branch connections (core promotion), its bends kept where
+ * they still lie inside, bends of a newly included old stretch added, and its station-based choices
+ * (height pins, structures, walls, hand heights) shifted with the start. */
+export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDesign, routeId: string, s0: number, s1: number): ProjectDesign {
+  const route = project.routes.find(r => r.id === routeId);
+  const old = route?.source?.intervals[0];
+  if (!route || !old || route.kind !== 'road' || route.alignment.kind !== 'pi' || route.source!.intervals.length !== 1) throw new Error('Not a rebuilt stretch');
+  if (!(s1 - s0 >= MIN_STRETCH)) throw new Error('Stretch too short');
+  const interval = { ...old, s0, s1 };
+  // Promotion re-derives the exact claim, end anchors and branch connections; the rebuilt road keeps its own specification.
+  const info = groundRoadSourceInfo(base, old.sourceId);
+  const command = promoteGroundRoad(base, { routeId: route.id, acousticSourceId: route.acousticSourceId, interval, name: route.name,
+    specification: { kind: 'road', policy: 'existing-ground', legalClass: info.legalClass, crossSection: 'existing', existingWidth: info.width,
+      designSpeed: route.specification.designSpeed, operations: route.specification.operations } });
+  const fresh = command.routes[0];
+  if (fresh.alignment.kind !== 'reference') throw new Error('Unexpected promotion');
+  const wide = base.path({ ...old, s0: Math.min(s0, old.s0), s1: Math.max(s1, old.s1) });
+  const kept = route.alignment.pis.filter(p => { const s = nearestStation(wide, p); return s > s0 + 1 && s < s1 - 1; });
+  const added = (from: number, to: number) => to - from > 1 ? fitBends(base.path({ ...old, s0: from, s1: to })) : [];
+  // bends of the newly included old road at either end, then the kept ones, in order along the road
+  const head = s0 < old.s0 ? added(s0, old.s0) : [], tail = s1 > old.s1 ? added(old.s1, s1) : [];
+  const joinHead = s0 < old.s0 ? [{ ...base.position(old.sourceId, old.s0)!, r: null }] : [];
+  const joinTail = s1 > old.s1 ? [{ ...base.position(old.sourceId, old.s1)!, r: null }] : [];
+  // A join point (the old end, now inside) is a bend only where the line actually turns there.
+  const a = fresh.endpoints.a.position, z = fresh.endpoints.b.position;
+  const turns = (prev: { x: number; y: number }, p: { x: number; y: number }, next: { x: number; y: number }) =>
+    Math.abs(Math.atan2((p.x - prev.x) * (next.y - p.y) - (p.y - prev.y) * (next.x - p.x), (p.x - prev.x) * (next.x - p.x) + (p.y - prev.y) * (next.y - p.y))) > Math.PI / 180;
+  const inner = [...kept];
+  const pis0 = [...head, ...joinHead.filter(j => turns(head.at(-1) ?? a, j, inner[0] ?? joinTail[0] ?? tail[0] ?? z)), ...inner];
+  const pis = [...pis0, ...joinTail.filter(j => turns(pis0.at(-1) ?? a, j, tail[0] ?? z)), ...tail].map(p => ({ x: p.x, y: p.y, r: p.r }));
+  const shift = old.s0 - s0, length = s1 - s0;
+  const moveRange = <T extends { s0: number; s1: number }>(list: readonly T[] | undefined) => list?.flatMap(r => {
+    const a = Math.max(0, r.s0 + shift), b = Math.min(length, r.s1 + shift); return b > a ? [{ ...r, s0: a, s1: b }] : [];
+  });
+  const controls = structuredClone(route.alignment.controls);
+  if (controls.structureOverrides) controls.structureOverrides = moveRange(controls.structureOverrides)!;
+  if (controls.wallOverrides) controls.wallOverrides = moveRange(controls.wallOverrides)!;
+  const v = structuredClone(route.alignment.vertical);
+  const movePins = (pins: { s: number; z: number }[] | undefined) => pins?.flatMap(p => p.s + shift > 0 && p.s + shift < length ? [{ ...p, s: p.s + shift }] : []);
+  if (v.kind === 'auto') { v.pins = movePins(v.pins)!; delete v.manualVpis; }
+  // Hand heights cannot follow a moved end exactly: the profile returns to Auto with the pins kept.
+  const vertical = v.kind === 'manual' ? { kind: 'auto' as const, pins: movePins(v.autoPins) ?? [] } : v;
+  const next = structuredClone(project);
+  next.routes = next.routes.map(r => r.id !== routeId ? r : { ...r, endpoints: fresh.endpoints, source: { ...route.source!, intervals: [interval] },
+    alignment: { kind: 'pi', pis, vertical, controls } } as RouteDesign);
+  next.connections = [...next.connections.filter(c => !c.ports.some(p => p.kind === 'route' && p.routeId === routeId)), ...command.connections];
+  return next;
+}

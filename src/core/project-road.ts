@@ -7,7 +7,7 @@ import type { RoadNet } from './roadnet';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
-  | { status: 'evaluated'; result: Result; unpriced?: 'source-needs-network' | 'traffic-unknown' }
+  | { status: 'evaluated'; result: Result; unpriced?: ('source-needs-network' | 'traffic-unknown')[] }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
       | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 
@@ -85,6 +85,6 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
-  const unpriced = route.source ? 'source-needs-network' as const : spec.operations.trafficUnknown ? 'traffic-unknown' as const : undefined;
-  return { status: 'evaluated', result, ...(unpriced ? { unpriced } : {}) };
+  const unpriced = [...route.source ? ['source-needs-network' as const] : [], ...spec.operations.trafficUnknown ? ['traffic-unknown' as const] : []];
+  return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}) };
 }

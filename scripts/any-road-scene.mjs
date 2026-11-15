@@ -58,11 +58,15 @@ try {
 
   // a long rebuildable road well clear of our road
   const roads = await page.evaluate(() => window.trapla.baseRoads(700));
-  const far = roads.filter(r => r.rebuildable && r.clear > 1200).sort((a, b) => b.length - a.length);
-  assert(far.length, 'a rebuildable mapped road away from our road exists');
-  const road = far[0], mid = road.length / 2;
+  const far = roads.filter(r => r.rebuildable && r.clear > 1200 && r.clear < 5000).sort((a, b) => b.length - a.length);
+  let road = null;
+  for (const r of far) {
+    await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 900), [r.id, r.length / 2]);
+    if ((await page.evaluate(([id, s]) => window.trapla.sourceScreen(id, s), [r.id, r.length / 2]))?.vis) { road = r; break; }
+  }
+  assert(road, 'a rebuildable mapped road away from our road exists');
+  const mid = road.length / 2;
   console.log(`mapped road ${road.name} ${Math.round(road.length)} m, ${Math.round(road.clear)} m from our road`);
-  await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 900), [road.id, mid]);
   await idle();
 
   // 1. click: its card and highlighted stretch, no edit; Escape closes it
@@ -100,13 +104,34 @@ try {
   await page.evaluate(() => window.trapla.select(null));
   await page.screenshot({ path: shot(first + 1, 'mapped-road-rebuilt') });
 
-  // 3. one undo step removes it; redo restores it
+  // 3. one undo step restores the untouched mapped road exactly; redo brings the change back
+  const untouched = await page.evaluate(() => window.trapla.getProject());
   await page.locator('#undo').click(); await idle();
   assert.equal((await routes()).length, 1, 'one undo removes the whole first drag');
+  const restored = await page.evaluate(() => window.trapla.getProject());
+  assert.deepEqual(restored.connections, [], 'no connection of the change survives');
+  assert.deepEqual(restored.routes, [untouched.routes[0]], 'our road is exactly as before');
+  assert.equal(await page.locator('.stretch-end').count(), 0, 'no stretch handles remain');
   await page.locator('#redo').click(); await idle();
   assert.equal((await routes()).length, 2);
   await page.evaluate(id => window.trapla.setActiveRoute(id), rebuilt); await idle();
   await page.evaluate(() => window.trapla.select(null));
+
+  // 3b. drag its End handle further along the old road: one edit, the stretch grows, side roads stay joined
+  assert.equal(await page.locator('.stretch-end:visible').count(), 2, 'a rebuilt stretch shows its two end handles');
+  const iv0 = (await page.evaluate(() => window.trapla.getProject())).routes[1].source.intervals[0];
+  if (iv0.s1 + 150 < road.length || iv0.s0 > 150) {
+    const handle = iv0.s1 + 150 < road.length ? 1 : 0, target = handle ? iv0.s1 + 120 : iv0.s0 - 120;
+    await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 900), [road.id, handle ? iv0.s1 : iv0.s0]); await idle();
+    const h = await page.locator(`.stretch-end[data-end="${handle}"]`).boundingBox(), to = await screen('sourceScreen', road.id, target);
+    const r0 = await revision();
+    await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2); await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 15 }); await page.mouse.up(); await idle();
+    const iv1 = (await page.evaluate(() => window.trapla.getProject())).routes[1].source.intervals[0];
+    assert(handle ? iv1.s1 > iv0.s1 + 60 : iv1.s0 < iv0.s0 - 60, `the ${handle ? 'End' : 'Start'} handle moved along the old road (${JSON.stringify(iv0)} → ${JSON.stringify(iv1)})`);
+    assert(await revision() > r0, 'an edit');
+    assert((await page.evaluate(() => window.trapla.projectResult())).routes[rebuilt].legacy, 'still engineered');
+  }
 
   // 4. its traffic, typed into its card
   await page.fill('.route-traffic input[name=traffic]', '2500');
@@ -126,12 +151,14 @@ try {
   assert.deepEqual(await page.locator('.route-build-choices button').allTextContents(), ['Road'], 'only Road can be built yet');
   await page.locator('.route-build-choices button', { hasText: 'Road' }).click();
   assert.equal(await page.evaluate(() => window.trapla.building()), true);
-  const sOn = stretch.s1 + 80 < road.length ? stretch.s1 + 60 : stretch.s0 - 60;
+  const now = (await page.evaluate(() => window.trapla.getProject())).routes[1].source.intervals[0];
+  const sOn = now.s1 + 100 < road.length ? now.s1 + 70 : now.s0 - 70;
   await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, sOn]); await idle();
   point = await screen('sourceScreen', road.id, sOn); await page.mouse.click(point.x, point.y);
   assert.match(await page.locator('#inspector').textContent(), /Click where it ends/);
-  await page.mouse.click(point.x + 220, point.y + 120); await idle();
+  await page.mouse.click(point.x - 160, point.y - 90); await idle();
   const built = await page.evaluate(() => window.trapla.getProject());
+  if (built.routes.length !== 3) { console.log('inspector:', await page.locator('#inspector').textContent()); await page.screenshot({ path: `${out}/fail-build.png` }); }
   assert.equal(built.routes.length, 3, 'Build made a third road');
   const fresh = built.routes[2];
   assert.equal(fresh.endpoints.a.anchor.kind, 'source'); assert.equal(fresh.endpoints.b.anchor.kind, 'free');

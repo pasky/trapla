@@ -39,7 +39,8 @@ export class MappedRoadCard {
     const root = this.root();
     root.replaceChildren(); root.className = 'card ctx inspector k-source';
     const header = el('div'); header.className = 'ctx-h';
-    const name = source.tags.name || source.tags.ref || ROAD_CLASSES[source.tags.highway ?? '']?.label || (source.kind === 'railway' ? 'railway' : 'road');
+    const label = ROAD_CLASSES[source.tags.highway ?? '']?.label ?? (source.kind === 'railway' ? 'railway' : 'road');
+    const name = source.tags.name || [label, source.tags.ref].filter(Boolean).join(' ');
     const close = el('button', '✕'); close.className = 'x'; close.title = 'Close (Esc)'; close.type = 'button';
     close.onclick = () => { this.clear(); this.onClose?.(); };
     header.append(el('b', cap(name)), el('small', cap(ROAD_CLASSES[source.tags.highway ?? '']?.label ?? source.kind)), close);

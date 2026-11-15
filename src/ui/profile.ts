@@ -617,7 +617,8 @@ export class ProfilePanel {
     const kstep = niceStep(span / 8);
     for (let s = Math.ceil(this.v0 / kstep) * kstep; s <= this.v1; s += kstep) {
       const x = this.X(s);
-      g.fillText(kstep >= 1000 ? `${(s / 1000).toFixed(0)} km` : `${(s / 1000).toFixed(1)}`, x, H - 6);
+      // as many decimals as the step needs (a short side road steps by 50 m: 0.05, 0.10, …)
+      g.fillText(kstep >= 1000 ? `${(s / 1000).toFixed(0)} km` : `${(s / 1000).toFixed(kstep >= 100 ? 1 : kstep >= 10 ? 2 : 3)}`, x, H - 6);
       g.strokeStyle = 'rgba(0,0,0,0.07)'; g.beginPath(); g.moveTo(x, T); g.lineTo(x, B); g.stroke();
     }
     g.textAlign = 'right';

@@ -58,15 +58,15 @@ const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectI
     rule: 'Game rule: noise and capacity depend on traffic, so a road without traffic cannot be priced.' } },
 };
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
-  preview = false, materialValue?: number): { route: RouteResult; issue?: ProjectIssue } {
+  preview = false, materialValue?: number): { route: RouteResult; issues: ProjectIssue[] } {
   const evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays });
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : undefined;
   return { route: { routeId: route.id, revision: route.revision,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
     surface: legacy ? roadSurface(route, legacy) : referenceRoadSurface(ctx.legacy, route), geometry: null,
     ...(legacy ? { legacy } : {}), complete: false, valid: false, accepted: false, attributedCost: null, dependencies: [], influence: [] },
-    ...(evaluated.status === 'incomplete' ? { issue: issue(route.id, evaluated.reason) }
-      : evaluated.unpriced ? { issue: { code: evaluated.unpriced, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[evaluated.unpriced] } } : {}) };
+    issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
+      : (evaluated.unpriced ?? []).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
 }
 export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, materialValue?: number): RouteResult {
   assertProjectDesign(snapshot.design);
@@ -77,9 +77,12 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
 const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
   // Define arbitrary stable IDs safely, including object-prototype names.
   Object.defineProperty(record, id, { value, enumerable: true, configurable: true, writable: true });
+/** The kernel names the mission's ends A and B; any other road's ends are its start and end. */
+const endWords = (route: RouteDesign, text: string) => route.role === 'mission' ? text
+  : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end');
 const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', check: 'violation', scope: { routeIds: [route.id] },
   locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
-  violation: { kind: v.kind, title: v.title, fix: v.fix, basis: v.basis, rule: v.rule, ...(v.detail ? { detail: v.detail } : {}) } }));
+  violation: { kind: v.kind, title: endWords(route, v.title), fix: endWords(route, v.fix), basis: v.basis, rule: v.rule, ...(v.detail ? { detail: endWords(route, v.detail) } : {}) } }));
 function routeOutcome(ctx: ProjectEvalContext, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
   const buildings = [...r.demolished.map(b => ({ buildingIndex: b.j, action: 'demolish' as const, cost: b.cost })),
     ...r.boughtOut.map(b => ({ buildingIndex: b.j, action: 'buy' as const, cost: b.cost })),
@@ -107,6 +110,11 @@ const interactionIssue = (routeIds: string[], code: string, buildingIndex?: numb
     fix: 'Move them further apart to price them together',
     rule: 'Engine limit: roads are priced together only when they share no land, houses, noise or existing road; checking them jointly is not finished.' } });
 
+const junctionsPending = (routeIds: string[]): ProjectIssue => ({ code: 'connection-pending', blocking: 'incomplete', check: 'not-checked',
+  scope: { routeIds }, locations: [],
+  violation: { kind: 'crossing', basis: 'engine', title: 'Junctions are not priced yet',
+    fix: 'Where this road joins another road, the junction is not built or priced yet',
+    rule: 'Engine limit: junctions where a new or rebuilt road meets another road are not designed or priced yet.' } });
 const endsNowhere = (routeId: string): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'incomplete', check: 'violation',
   scope: { routeIds: [routeId] }, locations: [],
   violation: { kind: 'crossing', basis: 'game', title: 'Road ends nowhere', fix: 'Connect both ends to a road',
@@ -131,8 +139,8 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const proposal = routeProposal(ctx, snapshot, route);
     defineRoute(result.routes, route.id, proposal.route);
     if (proposal.route.legacy) engineered.push({ route, legacy: proposal.route.legacy });
-    if (proposal.issue) { result.issues.push(proposal.issue); result.cost.unpriced.push({ routeId: route.id, reason: proposal.issue.code }); }
-    else if (proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
+    for (const i of proposal.issues) { result.issues.push(i); result.cost.unpriced.push({ routeId: route.id, reason: i.code }); }
+    if (!proposal.issues.length && proposal.route.legacy) priced.push({ route, legacy: proposal.route.legacy });
   }
   // Keep each road's own bill and problems visible even while the project cannot be priced.
   for (const { route, legacy } of engineered) defineRoute(result.cost.alone, route.id, legacy.cost.total);
@@ -162,7 +170,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     if (e.anchor.kind === 'free' || (e.anchor.kind === 'mission' && r.role === 'mission')) continue;
     joined.add(r.id); if (e.anchor.kind === 'route') joined.add(e.anchor.routeId);
   }
-  if (joined.size) { result.issues.push(issue([...joined][0], 'connection-pending')); unprice([...joined], 'connection-pending'); }
+  if (joined.size) { result.issues.push(junctionsPending([...joined])); unprice([...joined], 'connection-pending'); }
   // A new road that ends nowhere is not a project: every end must reach a road or a scenario end.
   for (const r of design.routes) if (r.role !== 'mission' && [r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'free')) {
     result.issues.push(endsNowhere(r.id)); unprice([r.id], 'road-ends-nowhere');
