@@ -1,0 +1,34 @@
+{
+  "id": "i16-nova-paka",
+  "name": "Nová Paka bypass",
+  "bbox5514": [-667500, -1016000, -652500, -1001000],
+  "cell": 5,
+  "requireComplete": true,
+  "official": {
+    "strategy": "strict",
+    "query": "way(id:1078890633,741260109,1078890627,1078890626,1078890628,1078890623,1131933470,992470366,1131933448,1131933447,1131933440,33853225,992470367,992470368,992470369,992470370,992470371,992470372,992470374,992470377,992470380,992470381);",
+    "ref": "16", "highway": "primary",
+    "wayIds": [1078890633,741260109,1078890627,1078890626,1078890628,1078890623,1131933470,992470366,1131933448,1131933447,1131933440,33853225,992470367,992470368,992470369,992470370,992470371,992470372,992470374,992470377,992470380,992470381],
+    "startNode": 6939405849,
+    "lengthRangeM": [7350, 7500],
+    "publishedProjectLengthM": 8479
+  },
+  "A": {"alongOfficial": 0, "note": "Kumburský Újezd: new bypass leaves the old through-town road"},
+  "B": {"latlon": [50.5129921, 15.5544880], "note": "Vidochov: new bypass reaches the retained old-road roundabout; official project includes additional existing-road works"},
+  "baselineExcludeWayIds": [1078890633,741260109,1078890627,1078890626,1078890628,1078890623,1131933470,992470366,1131933448,1131933447,1131933440,33853225,992470367,992470368,992470369,992470370,992470371,992470372,992470374,992470377,992470380,992470381,698085714],
+  "groundProfileOverrides": {
+    "perm_sand": {"classIto": 2, "classIIto": 6},
+    "perm_congl": {"classIto": 1.5, "classIIto": 4},
+    "perm_fine": {"classIto": 3, "classIIto": 9},
+    "carb_sand": {"classIto": 2, "classIIto": 6},
+    "carb_mixed": {"classIto": 2.5, "classIIto": 7}
+  },
+  "baselineNote": "The 2025 bypass mainline and its dedicated ramp are excluded before network, raster and vector generation. Old town roads and serving roundabouts remain. This is not a historical reconstruction: the inspected DMR contains the bypass cutting (about 6–8 m below adjacent ground near 50.49429 N, 15.54335 E), and the aerial image shows construction earthworks. These give the mapped corridor an existing-earthwork advantage. Exact local acquisition dates are unverified; excluding OSM ways does not remove those built works. Official project reference is 8.479 km S11.5/70; the mapped new mainline between old-road connections is about 7.4 km, excluding existing-road reconstruction at the ends. Ground depths are uncalibrated regional priors.",
+  "sources": [
+    "https://opd3.opd.cz/projekt/Silnice-I-16-Nova-Paka-obchvat",
+    "https://kraje.rsd.cz/kralovehradecky/stavba-i-16-nova-paka-obchvat/",
+    "https://www.munovapaka.cz/assets/File.ashx?id_org=10512&id_dokumenty=312225",
+    "https://www.openstreetmap.org/way/1078890633",
+    "https://www.openstreetmap.org/way/992470381"
+  ]
+}

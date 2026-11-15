@@ -5,12 +5,14 @@
 .scenario-picker-content { max-width: 1060px; margin: 0 auto; padding: 40px 28px; }
 .scenario-picker-brand { color: #61766c; text-transform: uppercase; letter-spacing: .15em; font-size: 13px; font-weight: 700; }
 .scenario-picker h1 { margin: 8px 0; font-size: clamp(28px, 4vw, 42px); line-height: 1.2; }
+.scenario-picker h1:focus { outline: none; }
 .scenario-picker-lead { margin: 8px 0 30px; color: #50645a; }
 .scenario-picker-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .scenario-picker-card { display: flex; flex-direction: column; padding: 24px; border: 1px solid #ccd6cd; border-radius: 12px; background: #fffefa; }
 .scenario-picker-card h2 { margin: 4px 0 10px; font-size: 23px; line-height: 1.25; }
 .scenario-picker-card p { margin: 6px 0; }
 .scenario-picker-kind { color: #61766c; font-size: 13px; }
+.scenario-picker-note { color: #6a5a39; font-size: 13px; }
 .scenario-picker-state { color: #6a5a39; font-size: 14px; }
 .scenario-picker-state:empty { display: none; }
 .scenario-picker-actions { display: flex; gap: 10px; margin-top: auto; padding-top: 20px; }

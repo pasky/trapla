@@ -1,0 +1,36 @@
+{
+  "id": "d3",
+  "name": "Jílové → Václavice, across the Sázava",
+  "bbox5514": [-746000, -1079000, -733000, -1060000],
+  "cell": 5,
+  "requireComplete": true,
+  "official": {
+    "strategy": "strict",
+    "query": "way[\"ref\"=\"D3\"];",
+    "ref": "D3",
+    "highway": "motorway",
+    "wayIds": [149101901],
+    "wayNodeRanges": {"149101901": [6393863317, 5108369461]},
+    "startNode": 6393863317,
+    "lengthRangeM": [15300, 15900]
+  },
+  "A": {"alongOfficial": 0, "note": "Jílové side: mapped planned D3 near the II/104 connection, north of the Sázava"},
+  "B": {"latlon": [49.8036931, 14.5813856], "note": "Václavice side: mapped planned D3 at the southern end of the 0302 + 0303 road exercise"},
+  "groundProfileOverrides": {
+    "perm_sand": {"classIto": 2, "classIIto": 6},
+    "perm_congl": {"classIto": 1.5, "classIIto": 4},
+    "perm_fine": {"classIto": 3, "classIIto": 9},
+    "carb_sand": {"classIto": 2, "classIIto": 6},
+    "carb_mixed": {"classIto": 2.5, "classIIto": 7},
+    "phyllite": {"name": "Shale / phyllite — uncalibrated regional prior", "classIto": 2, "classIIto": 6},
+    "hard": {"name": "Hornfels / greywacke / quartzite — uncalibrated regional prior", "classIto": 1, "classIIto": 3},
+    "igneous": {"name": "Granitoid / volcanic rock — uncalibrated regional prior", "classIto": 1, "classIIto": 3}
+  },
+  "baselineNote": "Two-lane road exercise through Posázaví, not a forecast for the planned motorway. Includes the Sázava crossing in section 0302 and the adjoining 0303 towards Václavice. Proposed OSM line is context, not surveyed design geometry. Ground depths are uncalibrated regional priors.",
+  "sources": [
+    "https://www.stredoceskad3.cz/usek-0302-jilove-hosteradice/",
+    "https://apdos.roadmedia.cz/Upload/Stavby/44/infoletak_d3-0302-jilove-hosteradice.pdf",
+    "https://apdos.roadmedia.cz/Upload/Stavby/43/infoletak_d3-0303-hosteradice-vaclavice.pdf",
+    "https://www.openstreetmap.org/way/149101901"
+  ]
+}
