@@ -96,7 +96,7 @@ functions (road radius from speed and superelevation, rail radius from cant); co
 ## Working mode
 
 Implementation and iterations run in `smart` mode; reviews are done in `deep` mode, called by the
-implementing agent.
+implementing agent. The owner's principles, quality gates and workflow gotchas are in `AGENTS.md`.
 
 **Player-facing words (rule, 2026-11-15).** Every message the player reads — violation title / fix / detail,
 crossing card labels and tooltips, profile and bill tooltips — says in everyday words what is wrong or what
@@ -291,7 +291,10 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
 4. Land cost by BPEJ / cadastre, protection areas, geology hazards (active landslides / undermining),
    detailed borehole/weathering and fill suitability, finite-segment/terrain noise propagation, junction layouts.
 5. Official-line comparison (digitise its profile), motorway category row, scenarios #2 and #3.
-6. LOD terrain mesh (5 m near the camera); pitched roofs; demolished buildings shown on the 3D boxes.
+6. LOD terrain mesh (5 m near the camera); pitched roofs.
+7. Full-evaluation latency after a drag (≈ 90–150 ms) and the 3D road body following the drag live; open
+   crossing cases (long reroutes where nothing fits, border pier placement, junction approach ramps) — see
+   `AGENTS.md` "Open items".
 
 ## Town cost model and cost breakdown (2026-11-14)
 

@@ -1,0 +1,60 @@
+# Trapla — working notes for agents
+
+Read this first. Longer background: `PLAN.md` (decisions, cost models, known issues), `README.md`
+(controls, architecture, contributing), `docs/` (performance, footprint engineering, interface rethink, new
+scenarios), `research/` (sources for every number).
+
+## What the owner wants (pasky, 2026-11-13 … 15)
+
+- **Realism, pragmatically.** Every number comes from a source (research/NN-*.md, cited in
+  `src/core/data/*`), or is marked PROVISIONAL / UNVERIFIED with the reason. If a value is googleable (ČSN
+  tables quoted in theses/lecture notes, TP documents, OTSKP/SPK, ŘSD awards, EIA studies), look it up instead of
+  guessing. Never hard-tune a number to hit a desired outcome. If a result looks wrong (e.g. a route through town
+  barely dearer than a bypass), find the missing mechanism rather than adding a fudge multiplier.
+- **The automatic design must be valid and sensible on its own.** It resolves ordinary conflicts the way real
+  designers do (bridges, culverts, underpasses, retaining walls, relocations). Violations are for genuinely
+  unsolvable cases and for the player's own overrides. Overrides may create violations; that's allowed.
+- **Powerful but simple.** Every realistic decision can be overridden by the player, but the interface stays
+  simple: map-first, click anything to inspect it, one card with what it is / what Auto chose and why / cost /
+  alternatives as buttons; map and profile selection always in sync; drag the road to bend it; no hidden
+  gestures or modifier keys. See `docs/interface-rethink.md`.
+- **Few, plain words.** Default to deleting text. No internal terms, codes or IDs in player text. One
+  vocabulary: `src/core/terms.ts`; guard: `tests/player-text.test.ts`. Each violation: short title, one
+  concrete computed fix, optional "why", basis tag (norm / game rule / engine limit). If something is an engine
+  limitation, fix the engine rather than burden the player.
+- **Visuals must be truthful and look like engineering.** Nothing floats or dangles; crossings, ramps and links
+  meet real ground; what's drawn is what's billed; the noise view shows the floor that decides.
+- **Drags must feel live.** This is non-negotiable: `node scripts/drag-perf.mjs --gpu --check` (all modes) must
+  pass, and the full `evaluate()` time must not creep (see `docs/evaluate-performance.md`). A feature that
+  breaks the budget is not done.
+
+## Quality gates before merging anything
+
+`npx tsc --noEmit`, `npx vitest run`, `npm run build`, `node scripts/smoke.mjs`, `node scripts/playtest.mjs`,
+`node scripts/drag-perf.mjs --gpu --check` (all modes), `npx tsx scripts/bench.ts scripts/*.json` (all saved
+designs VALID, parts sums match), `npx tsx scripts/eval-regression.ts` (bills frozen unless a reviewed model
+change: bump `COST_MODEL_VERSION`), `npx tsx scripts/outcome-audit.ts --straight scripts/*-design.json
+--random 24` for crossing/footprint changes. Look at the screenshots yourself; reviews of numbers alone missed
+broken visuals and jargon before.
+
+## Workflow gotchas
+
+- Work happens in side-agent worktrees. The scenario pack (`public/scenarios/`) and `pipeline/cache/` are
+  gitignored: copy them from the main checkout into a new worktree, otherwise results are wrong (older packs
+  lack e.g. watercourses).
+- Never use `git stash`: it is shared across all worktrees and has swapped work between agents.
+- Screenshot galleries in `docs/screenshots/` are numbered; continue after the highest number and update
+  README references.
+- Close headless Chromium after each scripted run; persistent SwiftShader browsers eat CPU and skew timings.
+- Raw data is never committed; this is a localhost game, licences of fetched data are not a concern.
+
+## Open items (2026-11-15)
+
+- Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
+  crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
+- Some reroutes > 1 km remain where neither underpass nor bridge fits (lowering the crossed road into a
+  shallow cut under a box is not modelled); pier placement near the Polish border can fail (engine limit).
+- Junction approaches on class I–III roads are not ramp-capped.
+- Vertical-curve minima and max gradient are older-edition (pre-2018) values; transition curves not drawn;
+  no superelevation / sight-distance checks.
+- See PLAN.md "Next steps" and each section's "Known issues".
