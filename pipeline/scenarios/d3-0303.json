@@ -81,7 +81,7 @@
       "classIIto": 4
     }
   },
-  "baselineNote": "Section 0303 of the Středočeská D3 (ŘSD leaflet 09/2025, D 27.5). Section boundaries are placed on the mapped proposed line by the leaflet chainage, anchored to mapped crossings (research/36); the proposed OSM line is context, not surveyed design geometry. Ground depths are uncalibrated regional priors.",
+  "baselineNote": "Section 0303 of the Středočeská D3 (ŘSD leaflet 09/2025, D 27.5). Section boundaries are placed on the mapped proposed line by the leaflet chainage, anchored to mapped crossings (research/39); the proposed OSM line is context, not surveyed design geometry. Ground depths are uncalibrated regional priors.",
   "sources": [
     "https://apdos.roadmedia.cz/Upload/Stavby/43/infoletak_d3-0303-hosteradice-vaclavice.pdf",
     "https://www.stredoceskad3.cz/usek-0303-hosteradice-vaclavice/",
