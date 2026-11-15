@@ -78,6 +78,16 @@ describe('physical track assembly and source preservation', () => {
     for (const key of Object.keys(whole) as (keyof typeof whole)[]) expect(pieces.reduce((sum, p) => sum + p[key], 0)).toBeCloseTo(whole[key], 8);
   });
 
+  it('assigns an exact sleeper boundary to the following half-open interval despite decimal roundoff', () => {
+    const input = { ballastAreaM2: 2, sleeperPitchM: 0.6, sleeperEmbeddedM3: 0.1, sleeperAlongTrackM: 0.25, railKgPerM: 60, sleeperPhaseM: 0.2 };
+    expect(trackAssemblyQuantities(0, 0.8, input).sleepers).toBe(1);
+    expect(trackAssemblyQuantities(0.8, 0.81, input).sleepers).toBe(1);
+    expect(trackAssemblyQuantities(0, input.sleeperPhaseM + input.sleeperPitchM, input).sleepers).toBe(1);
+    // A physically displaced boundary outside the roundoff window must not get snapped.
+    expect(trackAssemblyQuantities(0, 0.8 - 1e-10, input).sleepers).toBe(1);
+    expect(trackAssemblyQuantities(0, 0.8 + 1e-10, input).sleepers).toBe(2);
+  });
+
   it('never silently removes electrification, neighbours or ambiguity on an imported line', () => {
     const source: TransportSource = { id: 'track-a', osmWayId: '123', kind: 'railway', nodes: ['a', 'b'], xy: [0, 0, 100, 0], stations: [0, 100],
       layer: 0, bridge: false, tunnel: false, elevation: 'terrain', render: [], parallelSourceIds: ['track-b'],

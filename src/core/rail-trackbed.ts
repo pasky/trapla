@@ -78,7 +78,16 @@ export function trackAssemblyQuantities(s0: number, s1: number, input: TrackAsse
     || input.sleeperPhaseM < 0 || input.sleeperPhaseM >= input.sleeperPitchM
     || input.sleeperEmbeddedM3 / input.sleeperAlongTrackM > input.ballastAreaM2) throw new Error('Invalid track assembly measurement');
   const length = s1 - s0;
-  const sleepers = Math.ceil((s1 - input.sleeperPhaseM) / input.sleeperPitchM) - Math.ceil((s0 - input.sleeperPhaseM) / input.sleeperPitchM);
+  const sleeperIndex = (s: number) => {
+    const q = (s - input.sleeperPhaseM) / input.sleeperPitchM, nearest = Math.round(q);
+    if (!Number.isFinite(q) || Math.abs(q) > Number.MAX_SAFE_INTEGER) throw new Error('Sleeper station index exceeds numeric precision');
+    // Subtraction/division can put an exact leading edge a few ulps above its integer.
+    // Snap only arithmetic roundoff: at most four relative epsilons, capped at 1e-9
+    // of a sleeper pitch. This is NOT a physical ownership tolerance.
+    const tolerance = Math.min(1e-9, 4 * Number.EPSILON * Math.max(1, Math.abs(q)));
+    return Math.ceil(Math.abs(q - nearest) <= tolerance ? nearest : q);
+  };
+  const sleepers = sleeperIndex(s1) - sleeperIndex(s0);
   // Integral of a periodic prismatic sleeper solid, bounded O(1) even for long source intervals.
   const occupied = (s: number) => {
     const x = Math.max(0, s - input.sleeperPhaseM), periods = Math.floor(x / input.sleeperPitchM);

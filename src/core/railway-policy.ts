@@ -45,10 +45,13 @@ export function provisionalConventionalCantPolicy(radiusM: number, maximumOperat
     deficiencyMm: E.ordinaryDeficiencyMm, excessMm: E.ordinaryExcessMm };
 }
 
-/** Only the cant-ramp part of the transition requirement. Curvature/deficiency-rate checks remain missing. */
+/** Only the cant-ramp part of the transition requirement. Curvature/deficiency-rate checks remain missing.
+ * The 445 low-speed floor is an explicitly conservative policy extension from the source's
+ * limit-column footnote, not a sourced standard-column requirement (research/23).
+ */
 export function provisionalLinearCantRampMetres(deltaCantMm: number, speedKmh: number): number {
   if (!Number.isFinite(deltaCantMm) || !(speedKmh > 0 && speedKmh <= 160)) throw new Error('Cant ramp prototype supports positive speeds up to 160 km/h');
-  const n = Math.max(E.linearCantRampFactor * speedKmh, speedKmh <= 80 ? E.ordinaryRampMinimumInverseSlope : 0);
+  const n = Math.max(E.linearCantRampFactor * speedKmh, speedKmh <= 80 ? E.conservativeRampMinimumInverseSlope : 0);
   return n * Math.abs(deltaCantMm) / 1000;
 }
 

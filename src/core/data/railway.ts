@@ -27,7 +27,12 @@ export const RAILWAY_EVIDENCE = {
   ordinaryDeficiencyMm: 80,
   ordinaryExcessMm: 80,
   linearCantRampFactor: 10, // n=10*V, L=n*ΔD/1000, ordinary ≤160 km/h
-  ordinaryRampMinimumInverseSlope: 445, // simultaneous ≤80 km/h limit, VUT p14 footnote a
+  /** PROVISIONAL conservative policy: apply the ≤80 km/h LIMIT-column floor (6V,
+   * VUT p14 footnote a) to the ordinary 10V calculation too. The source does NOT attach
+   * this footnote to its standard column. Avoids a steeper low-speed standard ramp
+   * than that limit; not claimed as a sourced standard-column minimum.
+   */
+  conservativeRampMinimumInverseSlope: 445,
   /** NV272/2011 §12(3) + annex3 A: post-2000 permitted ordinary residential railway case.
    * Railway night −5 is in annex3 A; relocation/legal classification must be resolved separately.
    * Not an emission model.

@@ -90,7 +90,9 @@ Research was delegated only for source retrieval, then key claims were personall
 - SPK2026 scope report: whole-category norm, earthwork/normal-interchange scope, average paired bridge
   length and tunnel-tube basis. Prices remain the existing frozen road data; rail prices remain unknown.
 - VUT2009 cant/ramp table images: merged cells mean standard deficiency80mm through230km/h and
-  standard ramp `n=10V` through160km/h. Initial extraction errors were corrected. These remain explicit
+  standard ramp `n=10V` through160km/h. The helper's low-speed445 floor is a conservative policy
+  extension from the **limit-column** footnote, not a sourced standard-column requirement.
+  Initial extraction errors were corrected. These remain explicit
   **older secondary/provisional** evidence, not claims about current ČSN certification. Figures and
   protected table layouts are not reproduced.
 - SŽ S3X clauses11/38/45 and figures3/4/6: concrete-through-track ballast depth350mm, no-cant
