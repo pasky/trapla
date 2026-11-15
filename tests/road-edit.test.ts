@@ -139,6 +139,12 @@ describe('pricing a rebuilt stretch (C1 b)', () => {
     const removed = removal.geometry.measurements[0].quantity;
     expect(removed).toBeGreaterThan(100);
     expect(removal.cost).toBeCloseTo(removed * ROAD_CLASSES.tertiary.width * (REMOVAL.coverDepth * REMOVAL.coverPerM3 + REMOVAL.baseDepth * REMOVAL.basePerM3 + REMOVAL.restorePerM2), 3);
+    // where the new road covers the old one, the old road's land (its pavement width) is not bought again
+    const land = works.find(w => w.id.includes(':land:'))!;
+    const own = result.routes.r.legacy!;
+    expect(land.cost).toBeLessThan(0);
+    expect(-land.cost).toBeLessThan(own.cost.land);
+    expect(land.geometry.measurements[0].quantity + removed).toBeCloseTo(interval.s1 - interval.s0, -1);
     // both side roads stay joined, each with its junction (never dropped)
     expect(works.filter(w => w.id.includes(':reconnection:'))).toHaveLength(2);
     expect(result.cost.total).toBeCloseTo(result.cost.alone.r + works.reduce((t, w) => t + w.cost, 0), 3);

@@ -340,7 +340,7 @@ const SHARED_PARTS = ['roadBase', 'excavation', 'fillPlacing', 'haul', 'surplusH
 /** One replacement work in the shared ledger, owned and paid by its rebuilt road. */
 function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][number]): SharedWork {
   return { id: `${route.id}:${w.kind}:${k}`, owner: { kind: 'route', id: route.id }, participants: [route.id],
-    kind: w.kind === 'removal' ? 'land' : 'connection', surfaces: [], claims: w.kind === 'removal' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
+    kind: w.kind === 'removal' ? 'formation' : w.kind === 'land' ? 'land' : 'connection', surfaces: [], claims: w.kind === 'removal' || w.kind === 'land' ? (route.source?.intervals ?? []).map(i => ({ ...i })) : [],
     geometry: { meshes: [], terrainMasks: [], measurements: [{ id: `${route.id}:${w.kind}:${k}:length`, meshIds: [], quantity: w.length, unit: 'm' }] },
     cost: w.cost, dependencies: [], accepted: true, label: w.label, at: { x: w.x, y: w.y, s: w.s } };
 }

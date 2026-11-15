@@ -24,7 +24,7 @@ export const REMOVAL = {
 const UNDER = 1;
 
 export interface ReplacementWork {
-  kind: 'removal' | 'reconnection' | 'junction';
+  kind: 'removal' | 'reconnection' | 'junction' | 'land';
   /** where along the new road, for display */
   s: number; x: number; y: number;
   /** removed old road length, or link length (0: the side road meets the new road where it is), m */
@@ -55,13 +55,21 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
   const da = base.wayStation(way, a.x, a.y), db = base.wayStation(way, b.x, b.y);
   const old = base.wayPath(way, Math.min(da, db), Math.max(da, db));
   const cls = base.wayClass(way), width = ROAD_CLASSES[cls]?.width ?? 6.5;
-  // Old pavement left outside the new road: removed and its ground restored.
-  let removed = 0, at: { x: number; y: number } | null = null;
+  // Old pavement left outside the new road: removed and its ground restored. Where the new road covers
+  // the old one, the road authority already owns that land: not bought again (Act 13/1997 §11 road land;
+  // research/30 §3). Its cadastral width is unknown, so only the old pavement's width is credited (the
+  // least it certainly owns; the class's study width), at the price the new road paid for land there.
+  let removed = 0, at: { x: number; y: number } | null = null, owned = 0, ownedLength = 0;
+  const credited = new Float64Array(r.n);
   for (let k = 1; k < old.length; k++) {
     const p = old[k - 1], q = old[k], len = Math.hypot(q.x - p.x, q.y - p.y), steps = Math.max(1, Math.ceil(len / 5));
     for (let j = 0; j < steps; j++) {
       const t = (j + 0.5) / steps, x = p.x + t * (q.x - p.x), y = p.y + t * (q.y - p.y), n = nearest(r, x, y);
-      if (n.d > r.cell.width[n.i] / 2 + UNDER) { removed += len / steps; at ??= { x, y }; }
+      if (n.d > r.cell.width[n.i] / 2 + UNDER) { removed += len / steps; at ??= { x, y }; continue; }
+      // land credit: this piece of old road inside the new road's land take, at that station's land price
+      const area = (len / steps) * Math.min(width, r.cell.width[n.i]), rate = r.cell.width[n.i] > 0 ? r.parts.land[n.i] / (r.cell.width[n.i] * r.ds) : 0;
+      const credit = Math.min(area * rate, Math.max(0, r.parts.land[n.i] - credited[n.i]));
+      credited[n.i] += credit; owned += credit; ownedLength += len / steps;
     }
   }
   if (removed > 0.5) {
@@ -70,6 +78,8 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
     works.push({ kind: 'removal', s: r.s[n.i], x: at!.x, y: at!.y, length: removed, cost: removed * perM,
       label: `Old road removed and its ground restored: ${Math.round(removed)} m` });
   }
+  if (owned > 0) works.push({ kind: 'land', s: r.s[0], x: old[0].x, y: old[0].y, length: ownedLength, cost: -owned,
+    label: `Land under the old road, already the road's: not bought again (${Math.round(ownedLength)} m)` });
   // Every side road that joined the old stretch stays connected.
   const crossed = new Set<number>();
   // (a free at-grade meeting right at the stretch's end is that end's old junction: reconnected below)
