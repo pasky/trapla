@@ -56,9 +56,10 @@ The headless scripts expect Chromium at `/usr/bin/chromium` (override with `CHRO
 
 - **Move the route:** click the map to add a bend, drag a numbered bend to move it, right-click it (or
   <kbd>Del</kbd>) to delete it. Clicking a building or crossed road selects it instead; **Shift+click** adds a
-  bend there anyway. Click a bend to change its curve radius (◇ grips, mouse wheel, <kbd>+</kbd> / <kbd>−</kbd>,
+  bend there anyway. Click a bend to change its curve radius (◇ grips, <kbd>+</kbd> / <kbd>−</kbd>, the bend card,
   **max**; "smallest allowed" = the smallest radius the rules allow, incl. room for transition curves).
-- Map: left-drag pans, right-drag rotates, wheel zooms.
+- Map: left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms (always, also over a bend or a
+  marker), about the point under the cursor, equally fast at any distance.
 - **First run:** a three-step intro over the map (click to add a bend, drag a bend, watch the cost); *Got it*,
   <kbd>Esc</kbd> or the first click on the map dismiss it for good; *How to play → Show the intro again* brings it back.
 - **Undo / Redo** sit at the top left of the map (tooltips say what they undo); <kbd>Ctrl+Z</kbd> /
@@ -374,10 +375,10 @@ Pipeline geometry/cache tests: `uv run --with numpy --with shapely python -m uni
 ![long curve](docs/screenshots/19-long-curve-selected.png)
 
 - **Bends are corners of the dashed tangent polygon, not waypoints**: the road cuts each corner with a circular arc.
-- **One bend, long curve**: select a bend and drag one of the two diamond grips along its leg, turn the mouse wheel over
-  the bend (or its grips / label), or press <kbd>+</kbd> / <kbd>−</kbd>. The radius is shown next to the curve;
+- **One bend, long curve**: select a bend and drag one of the two diamond grips along its leg, or press
+  <kbd>+</kbd> / <kbd>−</kbd> (or type it in the bend card). The radius is shown next to the curve;
   **max** sets the largest radius that fits between the neighbours, **auto** returns to the smallest the rules allow.
-  The HUD radius field shows the same value; a drag or a burst of wheel steps is one undo step.
+  The HUD radius field shows the same value; a drag or a burst of <kbd>+</kbd> / <kbd>−</kbd> steps is one undo step.
 - **Several bends, long curve**: bends that turn the same way and are too close for a straight between them are
   joined into one compound curve automatically (the label says "one curve with bends …"). Uneven spacing is fine: the
   solver keeps the minimum radius and a radius ratio ≤ 2 between neighbouring arcs, moving the arc junctions off the
@@ -389,7 +390,7 @@ Pipeline geometry/cache tests: `uv run --with numpy --with shapely python -m uni
   room required and available, and a fix.
 - In the profile's curve band a compound curve is one stretch (labelled with its range of radii): a click selects
   the whole curve for the cost breakdown. Bends left out have no stretch of their own.
-- `npm run curves` replays this with real mouse events (multi-point curve, curve band, grips, wheel, keys, max, auto,
+- `npm run curves` replays this with real mouse events (multi-point curve, curve band, grips, keys, max, auto,
   undo, relief 1–3× with contours / photo). The bends it uses are derived from `scripts/demo-design.json` (the
   25–50° bend with the longest legs becomes six points on its tangent circle; the radius handles go on the ≥ 30°
   turn with the longest legs). Screenshots go to `/tmp/trapla-curves`; `--docs` writes `docs/screenshots/18…23-*.png`

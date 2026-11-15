@@ -1,6 +1,6 @@
 // On-map editing of the selected bend's curve: two grips at the arc ends (drag along the leg), a live
-// radius label with "max" (largest radius that fits) and "auto", mouse wheel on the bend / grips / label,
-// and the + / − keys. Works on a main-thread copy of the alignment (cheap) so it is in step with the drag;
+// radius label with "max" (largest radius that fits) and "auto", and the + / − keys (the mouse wheel always
+// zooms the map). Works on a main-thread copy of the alignment (cheap) so it is in step with the drag;
 // all changes go through the store, so the HUD radius field, undo/redo and persistence stay in sync.
 
 import './curve-edit.css';
@@ -39,7 +39,7 @@ export class CurveEditor {
   private shown = false;
   /** grip drag in progress: its bend, the design as the drag last left it, and how to call it off */
   private drag: { i: number; design: string; abort: (restore: boolean) => void } | null = null;
-  /** wheel / key steps not yet committed as an undo step: the design they left behind */
+  /** + / − key steps not yet committed as an undo step: the design they left behind */
   private pending: { timer: number; design: string } | null = null;
   /** true while this editor itself is changing the design */
   private own = false;
@@ -48,7 +48,7 @@ export class CurveEditor {
     for (const side of [0, 1]) {
       const g = document.createElement('div');
       g.className = 'rgrip';
-      g.title = 'Drag along the leg to change the radius (mouse wheel and + / − work too)';
+      g.title = 'Drag along the leg to change the radius (+ / − work too)';
       g.style.display = 'none';
       overlay.appendChild(g);
       this.grips.push(g);
@@ -66,14 +66,6 @@ export class CurveEditor {
     this.autoBtn = this.label.querySelector('.rauto')!;
     this.maxBtn.onclick = () => this.toMax();
     this.autoBtn.onclick = () => this.toAuto();
-    // wheel over the selected bend, a grip or the label changes the radius instead of zooming the map;
-    // a trackpad pinch (ctrlKey) always zooms the map (a violation click centres the map on the bend)
-    overlay.addEventListener('wheel', (e) => {
-      const t = e.target as HTMLElement;
-      if (e.ctrlKey || !t.closest('.pi.sel, .rgrip, .rlabel') || !this.curve()) return;
-      e.preventDefault();
-      this.scale(Math.exp(-Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 120) * 0.0005));
-    }, { passive: false });
     const radiusKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || e.ctrlKey || e.metaKey || e.altKey || !this.curve()) return 0;
@@ -252,7 +244,7 @@ export class CurveEditor {
     try { this.host.setRadius(i, r, false); } finally { this.own = false; }
   }
 
-  /** wheel / keys: scale the radius; a burst of steps becomes one undo step */
+  /** + / − keys: scale the radius; a burst of steps becomes one undo step */
   private scale(f: number) {
     const c = this.curve(), i = this.host.selected();
     if (!c || i === null || this.drag) return;
@@ -263,7 +255,7 @@ export class CurveEditor {
     this.pending = { timer: window.setTimeout(() => this.flushCommit(), 500), design: JSON.stringify(this.host.design()) };
   }
 
-  /** commit the pending wheel / key steps now — unless the design has since been changed from elsewhere */
+  /** commit the pending key steps now — unless the design has since been changed from elsewhere */
   private flushCommit() {
     const p = this.pending;
     if (!p) return;

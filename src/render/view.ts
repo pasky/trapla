@@ -972,8 +972,8 @@ export class View {
    * 100·ln(finger scale)) zoom the map multiplicatively: exp(k·delta) per event, k = 1/100 for a pinch
    * (follows the fingers) and 1/450 for a wheel (≈ ×1.25 per 100 px notch). This replaces OrbitControls'
    * wheel zoom (0.95^(delta/100): a 5 % notch and ≈ 0.5 % pinch steps, slower still with the cursor high
-   * on the screen). Wheels over overlay markers zoom too, unless a handle used them (the selected bend's
-   * radius); a ctrl-wheel anywhere on the page never zooms the page itself.
+   * on the screen). Wheels over overlay markers (bends, grips, labels) zoom too; a ctrl-wheel anywhere on
+   * the page never zooms the page itself.
    */
   private installWheel() {
     const canvas = this.renderer.domElement;

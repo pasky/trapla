@@ -137,8 +137,8 @@ export class Hud {
       ${fold('help', 'How to play', `
         <ul>
           <li><b>Move the route:</b> click the map to add a bend, drag a numbered bend to move it, right-click it (or <kbd>Del</kbd>) to delete it.</li>
-          <li><b>Wider or tighter curve:</b> click a bend, then drag its ◇ grips or turn the mouse wheel over it.</li>
-          <li><b>Look around the map:</b> drag to pan, right-drag to rotate, wheel to zoom.</li>
+          <li><b>Wider or tighter curve:</b> click a bend, then drag its ◇ grips or press + / −.</li>
+          <li><b>Look around the map:</b> drag to pan, right-drag to rotate, wheel or pinch to zoom.</li>
           <li><b>Look along the profile:</b> click it to zoom in there (the map follows), wheel to zoom, right-drag to scroll.</li>
           <li><b>Bridge or tunnel somewhere:</b> drag across the profile to select a stretch, then pick <b>Bridge</b>, <b>Tunnel</b>, <b>Earthwork</b> or <b>Automatic</b> (keys <kbd>B</kbd> <kbd>T</kbd> <kbd>E</kbd> <kbd>C</kbd>).</li>
           <li><b>Raise or lower the road:</b> in Automatic, click the road line in the profile to pin its height there, then drag the pin. By hand, drag the height points (◆); double-click the line to add one.</li>

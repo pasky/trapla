@@ -204,7 +204,7 @@ async function main() {
     if (received === posted) { hud.setProfileBusy(false); const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); }
   };
 
-  // on-map radius handles for the selected bend (grips, wheel, + / −, max, auto)
+  // on-map radius handles for the selected bend (grips, + / −, max, auto)
   const curveEdit = new CurveEditor(view, document.getElementById('overlay')!, pack.terrain, {
     a: A, b: B, design: () => store.design, selected: () => selectedPi, result: () => last,
     setRadius: (i, r, commit) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),

@@ -69,8 +69,9 @@ try {
   ok(bend && /\bpi sel\b/.test(await T(({ x, y }) => document.elementFromPoint(x, y)?.className ?? '', bend ?? {})), 'the clicked violation selects its bend');
   if (bend) {
     const r0 = (await T(() => window.trapla.getDesign())).pis.map((p) => p.r).join();
-    const f = await factor(bend, 3, true);
-    ok(f > 1.015 && (await T(() => window.trapla.getDesign())).pis.map((p) => p.r).join() === r0, `a pinch over the selected bend zooms the map (×${f.toFixed(3)}), the radius stays`);
+    const f = await factor(bend, 3, true), w = await factor(bend, 100, false, 2);
+    ok(f > 1.015 && w > 1.1 && (await T(() => window.trapla.getDesign())).pis.map((p) => p.r).join() === r0,
+      `a pinch (×${f.toFixed(3)}) and a wheel notch (×${w.toFixed(3)}) over the selected bend zoom the map, the radius stays`);
   }
 
   // 2. a long zoom out from the minimum distance is as fast as the fingers move

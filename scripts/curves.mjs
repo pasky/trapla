@@ -1,5 +1,5 @@
 // Long-curve check with real mouse events: a multi-point curve between two bends is valid, and the
-// on-map radius handles (grips, wheel, + / −, max, auto) work and stay in sync with the HUD and undo.
+// on-map radius handles (grips, + / −, max, auto; the wheel zooms the map) work and stay in sync with the HUD and undo.
 // Bend positions are derived from scripts/demo-design.json, so the check follows the design file.
 // Usage: node scripts/curves.mjs [--docs] [outdir]   (screenshots into outdir, default /tmp/trapla-curves;
 // --docs writes docs/screenshots/18–23; starts its own Vite dev server)
@@ -171,34 +171,31 @@ ok(Math.hypot(g1.x - (g0.x + ux * 90), g1.y - (g0.y + uy * 90)) < 12, 'the grip 
 await page.keyboard.press('Control+z');
 await idle(200);
 ok((await state()).d.pis[I].r === null, 'one undo step takes the whole drag back');
-// wheel over the selected bend (a real wheel event, then a quick burst: one undo step)
+// the wheel over the selected bend zooms the map; + / − change the radius, a quick burst is one undo step
 await page.mouse.move(piC.x, piC.y);
+const camD = () => page.evaluate(() => window.trapla.cameraDistance());
+const dz0 = await camD();
 await page.mouse.wheel(0, -100);
 await idle(700);
-s = await state();
-const rWheel = s.d.pis[I].r;
-ok(rWheel > MIN_R && rWheel < MIN_R * 1.15, `mouse wheel on the bend changes the radius instead of zooming (${rWheel} m)`);
-await page.evaluate(() => {
-  const el = document.querySelector('.pi.sel');
-  for (let k = 0; k < 4; k++) el.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
-});
-await idle(700);
-s = await state();
-const rBurst = s.d.pis[I].r;
-ok(rBurst > rWheel * 1.15, `a burst of four notches (${rBurst} m)`);
+ok((await state()).d.pis[I].r === null && await camD() < dz0 * 0.95, `the mouse wheel over the bend zooms the map (${dz0.toFixed(0)} → ${(await camD()).toFixed(0)} m), the radius stays`);
+await page.mouse.wheel(0, 100);
+await idle(200);
 await page.keyboard.press('+');
 await idle(700);
 s = await state();
-ok(s.d.pis[I].r > rBurst, `+ key enlarges it (${s.d.pis[I].r} m)`);
+const rKey = s.d.pis[I].r;
+ok(rKey > MIN_R && rKey < MIN_R * 1.15, `+ key enlarges it (${rKey} m)`);
+for (let k = 0; k < 4; k++) await page.keyboard.press('+');
+await idle(700);
+s = await state();
+const rBurst = s.d.pis[I].r;
+ok(rBurst > rKey * 1.15, `a burst of four + (${rBurst} m)`);
 await page.keyboard.press('Control+z');
 await idle(100);
-ok((await state()).d.pis[I].r === rBurst, 'undo takes the key step back');
-await page.keyboard.press('Control+z');
-await idle(100);
-ok((await state()).d.pis[I].r === rWheel, 'the wheel burst is one undo step');
+ok((await state()).d.pis[I].r === rKey, 'the key burst is one undo step');
 await page.keyboard.press('Control+z');
 await idle(200);
-ok((await state()).d.pis[I].r === null, 'and the first notch another');
+ok((await state()).d.pis[I].r === null, 'and the first step another');
 // largest radius that fits, back to auto
 await page.click('.rlabel .rmax');
 await idle(300);
@@ -216,17 +213,17 @@ await page.click('.rlabel .rauto');
 await idle(300);
 ok((await state()).d.pis[I].r === null, '"auto" returns to the automatic radius');
 
-// ---- 3. history stays intact around uncommitted wheel steps, and a drag gives way to outside changes
+// ---- 3. history stays intact around uncommitted + / − steps, and a drag gives way to outside changes
 await page.evaluate((p) => window.trapla.lookAt(p.x, p.y, 1700, 0, 65), PI);
 await idle(300);
 await page.keyboard.press('+');
 await idle(700); // committed
 const rPlus = (await state()).d.pis[I].r;
-const notch = () => page.evaluate(() => document.querySelector('.pi.sel').dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })));
+const notch = () => page.keyboard.press('+');
 await notch();
 const rT = (await state()).d.pis[I].r;
 await page.keyboard.press('Control+z'); // within the 500 ms debounce
-ok((await state()).d.pis[I].r === rPlus, `undo right after a wheel step takes back just that step (${rT} → ${(await state()).d.pis[I].r} m)`);
+ok((await state()).d.pis[I].r === rPlus, `undo right after a + step takes back just that step (${rT} → ${(await state()).d.pis[I].r} m)`);
 await page.waitForTimeout(800);
 await page.keyboard.press('Control+y');
 ok((await state()).d.pis[I].r === rT, `… and redo still brings it back (${(await state()).d.pis[I].r} m)`);
@@ -234,7 +231,7 @@ await notch();
 await page.evaluate((I) => { const t = window.trapla, d = t.getDesign(); d.pis[I].r = 600; t.setDesign(d); }, I); // replaced from outside
 await page.waitForTimeout(800);
 await page.keyboard.press('Control+z');
-ok((await state()).d.pis[I].r === rT, 'a design replaced from outside is not committed a second time by the pending wheel step');
+ok((await state()).d.pis[I].r === rT, 'a design replaced from outside is not committed a second time by the pending + step');
 await page.keyboard.press('Control+y');
 await idle(300);
 const gA = await centre('.rgrip'), pA = await centre('.pi.sel');
