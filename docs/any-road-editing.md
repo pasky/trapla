@@ -156,3 +156,49 @@ Jičínská stretch priced, total 10.114 bn CZK with removal 71 m, land credit 1
 GPU drag gates bend/road/radius/pin/vpi/link all `--check` OK (frame p95 17 ms; preview p50 28–35 ms, p95
 43–81 ms) on a quiet machine, bench (5 saved designs VALID), outcome-audit run, eval-regression (11 frozen D11
 bills bit-identical), vitest 598. Screenshots 100–105 inspected.
+
+## 5. Handoff (2026-11-16, after main 217cfa4)
+
+Branch `side-agent/any-road-editing` = main 217cfa4 (merged by fast-forward; the finish script's rebase
+cannot replay this branch's merge commits — when main already is an ancestor, fast-forward main directly).
+Packs: copy `public/scenarios/` from the main checkout (D11 has its road-links sidecar). Browser/GPU runs are
+serial: ask the parent for the slot; `pgrep` wait loops match their own command line, filter by cwd.
+
+Map of the code: `ui/road-edit.ts` (stretch, `fitBends`, `rebuildCommand`, `newRoad`, `moveStretchEnds`),
+`ui/route-kinds.ts` (kind registry, `buildInProject`), `ui/mapped-road.ts`, `ui/build-road.ts`,
+`ui/stretch-ends.ts`, `main.ts` (`rebuildByDrag`, `placeAt`, `inspector.routeHead` side-road card,
+traffic/junction/works UI); core: `project-road.ts` (cut network, tie-ins, ring works, `unpriced`),
+`tie-in.ts`, `project-replacement.ts`, `project-evaluate.ts` (order by hosts, designed junctions, units,
+works ledger, combined-noise hook), `project-noise.ts`, `RoadNet.without`. Tests: road-edit, tie-in,
+project-noise, route-kinds. Real-mouse: `scripts/any-road-scene.mjs` (D11 default, `SCENARIO=d3`).
+
+Follow-ups requested by the parent (in order, each end-to-end polished):
+
+1. **No inherited violations after the first drag** (screenshot 101: "Bends 3 and 4 too close for an S-bend").
+   `rebuildCommand` currently uses S 9.5/S 7.5 at 70 km/h and `fitBends` (DP 8 m, merge < 80 m) with r = null.
+   Wanted: category/speed from the road's class and `maxspeed` tag (`groundRoadSourceInfo().taggedSpeed`;
+   game rules exist for 70/80/90 only — below 70 needs sourced local-road norms or clamp to 70 and say so),
+   then a bounded validity-first repair of the fitted bends (see `scripts/repair-designs.ts` and the
+   scenarios' bounded repair, research/27) within a tolerance from the old line; where the old road itself
+   cannot meet the norm, report it as inherited in plain words ("the old road is tighter than the norm here"),
+   e.g. a separate violation basis/title, not the generic bend violation.
+2. **Traffic default**: research the ŘSD national census (CSD 2020/2025; research/30 §5 found a free XLSX of
+   RPDI per section and a map, no shapefile; research its section geometry/IDs and how to match a mapped way:
+   same road number `ref` + nearest section). Pre-fill `operations` from it per mapped road; else an explicit
+   class-based GAME PRIOR (labelled in the card). Remove the red "Traffic not set" (keep the field editable;
+   `trafficUnknown` stays for honest unknowns only if no prior applies). New roads: prior by class too.
+3. **Rebuilt Jičínská flat in a ~6 m cut for 0.85 km** (screenshot 104, D11, any-road-scene's road): find
+   why. Suspects: end heights (`project-road.ts` `explicitZ` compares endpoint z with terrain — source
+   positions come from `ProjectTransportIndex.position` = terrain, so should be equal), the cut network
+   (`RoadNet.without`) leaving a crossing that forces depth, vertical-curve minima at the chosen speed, a
+   grade pin, or the screenshot showing a preview result. Reproduce in Node: build the project like
+   `tests/road-edit.test.ts` / earlier `_try-rebuild` scripts on D11 (pack + transport.json.gz +
+   `sourceWays` from `legacyNetIndex`), print grade vs ground and crossings. A rebuilt road should hug the
+   old road's profile where it can (consider pins seeded from the old road's ground at the fitted bends).
+4. **Combined noise** once noise-walls-seams merges: implement `ProjectEvalContext.combinedNoise` with their
+   `pointTransfer` on `Result.noise.source` (steps in §4), pass it from `worker.ts`, draw project walls.
+   Motorway-rail will hook Build → Motorway/Railway into `createInProject` / `registerMappedLineKind`.
+
+Gates before every merge: tsc, vitest, build, eval-regression (11 D11 bills bit-identical), smoke, playtest,
+drag-perf `--gpu --check` for bend/road/radius/pin/vpi/link, bench, any-road-scene on D11 and D3; screenshots
+from 106 on (100–105 used; 110–139 belong to other streams), inspect them.
