@@ -9,16 +9,15 @@ export class RouteBar {
   private choices = document.createElement('div');
   onSelect?: (id: RouteId) => void;
   onBuild?: (kind: RouteKind) => void;
-  /** Build menu entries that have a working flow (Motorway/Railway wait for their mode kernels). */
-  constructor(parent: HTMLElement, private kinds: readonly RouteKind[] = ['road']) {
+  /** Build menu entries: the registered build kinds (ui/route-kinds.ts), in order. */
+  constructor(parent: HTMLElement, private kinds: readonly { kind: RouteKind; label: string }[]) {
     this.root.className = 'route-bar'; this.select.setAttribute('aria-label', 'Road to edit');
     this.select.id = 'active-route';
     this.select.onchange = () => this.onSelect?.(this.select.value);
     this.build.textContent = 'Build'; this.build.type = 'button'; this.build.id = 'build-route';
     this.build.setAttribute('aria-expanded', 'false'); this.choices.className = 'route-build-choices'; this.choices.hidden = true;
     this.build.onclick = () => { this.choices.hidden = !this.choices.hidden; this.build.setAttribute('aria-expanded', String(!this.choices.hidden)); };
-    for (const [kind, label] of [['road', 'Road'], ['motorway', 'Motorway'], ['railway', 'Railway']] as const) {
-      if (!this.kinds.includes(kind)) continue;
+    for (const { kind, label } of this.kinds) {
       const button = document.createElement('button'); button.textContent = label; button.type = 'button'; button.dataset.kind = kind;
       button.onclick = () => { this.choices.hidden = true; this.build.setAttribute('aria-expanded', 'false'); this.onBuild?.(kind); };
       this.choices.append(button);

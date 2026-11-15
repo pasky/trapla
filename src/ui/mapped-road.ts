@@ -6,7 +6,8 @@ import type { ProjectTransportIndex } from '../core/project-network';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { SourceHit } from '../render/source-pick';
 import type { View } from '../render/view';
-import { derivedStretch, rebuildable } from './road-edit';
+import { derivedStretch } from './road-edit';
+import { mappedLineKindFor, type MappedLineKind } from './route-kinds';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
   const node = document.createElement(tag); node.textContent = text; return node;
@@ -18,6 +19,8 @@ export class MappedRoadCard {
   /** the stretch a drag would rebuild (null: this road cannot be rebuilt, see the card) */
   interval: SourceInterval | null = null;
   private path: { x: number; y: number }[] = [];
+  /** the kind that rebuilds the selected line (road today; railway when registered) */
+  lineKind: MappedLineKind | null = null;
   onClose?: () => void;
   constructor(private root: () => HTMLElement, private view: View, private base: ProjectTransportIndex,
     private claimed: () => readonly SourceInterval[]) {}
@@ -25,13 +28,14 @@ export class MappedRoadCard {
   get selection() { return this.interval && { kind: 'source' as const, interval: { ...this.interval } }; }
   clear() {
     if (this.hit) this.view.setSourceSelection(null);
-    this.hit = null; this.interval = null; this.path = [];
+    this.hit = null; this.interval = null; this.path = []; this.lineKind = null;
   }
   show(hit: SourceHit) {
     this.clear(); this.hit = hit;
     const source = this.base.source(hit.sourceId);
     if (!source) return;
-    const what = rebuildable(this.base, source.id);
+    const { kind, verdict: what } = mappedLineKindFor(this.base, source.id);
+    this.lineKind = what.ok ? kind : null;
     this.interval = what.ok ? derivedStretch(this.base, source.id, hit.s, this.claimed()) : null;
     if (this.interval) {
       try { this.path = this.base.path(this.interval); this.view.setSourceSelection(this.path); } catch { this.interval = null; this.path = []; }
@@ -48,7 +52,7 @@ export class MappedRoadCard {
     if (!what.ok) { root.append(el('p', what.why)); return; }
     if (!this.interval) { root.append(el('p', 'Too short to change here: pick it further from its junctions or from the map edge.')); return; }
     const how = el('p', 'Drag it to change its line.'); how.className = 'mapped-how';
-    const stretch = el('div', `The highlighted ${Math.round(this.interval.s1 - this.interval.s0)} m, between its junctions, would be rebuilt as a ${what.spec.crossSection === 'S9.5' ? 'class I road (S 9.5)' : `class ${what.spec.legalClass} road (S 7.5)`}.`);
+    const stretch = el('div', `The highlighted ${Math.round(this.interval.s1 - this.interval.s0)} m, between its junctions, would be rebuilt as a ${what.becomes}.`);
     stretch.className = 'sub';
     root.append(how, stretch);
   }

@@ -19,7 +19,8 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from './ui/road-edit';
+import { strayDistance } from './ui/road-edit';
+import { mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
@@ -125,7 +126,7 @@ async function main() {
   const editBar = new EditBar(document.getElementById('editbar')!, () => store.undo(), () => store.redo());
   addScenariosButton(document.getElementById('editbar')!);
   const hud = new Hud(document.getElementById('hud')!, scenario);
-  const routeBar = new RouteBar(document.getElementById('view')!);
+  const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
   const intro = new Intro(document.getElementById('view')!);
   const decisions = new DecisionList(hud.decisions, (n) => { document.getElementById('decisions-count')!.textContent = n ? String(n) : ''; });
   decisions.objectDataChanged = store.objectDataChanged;
@@ -207,7 +208,8 @@ async function main() {
     const ends = stretchEnds = new StretchEnds(document.getElementById('overlay')!, view, transportIndex,
       () => projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))));
     ends.onMove = (id, s0, s1) => {
-      try { store.editProject(d => { const next = moveStretchEnds(transportIndex!, d, id, s0, s1); Object.assign(d, next); }); }
+      const kind = mappedLineKindOf(store.route!);
+      try { if (!kind) throw new Error('No kind moves these ends'); store.editProject(d => { const next = kind.moveEnds(transportIndex!, d, id, s0, s1); Object.assign(d, next); }); }
       catch (error) { console.warn('Stretch ends not moved', error); toast('The rebuilt stretch cannot end there.'); ends.sync(store.route); }
     };
     ends.sync(store.route);
@@ -689,35 +691,28 @@ async function main() {
   store.onHistory = () => select(null);
   buildTool.onClose = () => select(null);
   buildTool.onDone = (a, b) => {
-    const route = newRoad(projectStore.snapshot.design, a, b, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` });
+    const route = building.create(projectStore.snapshot.design, a, b, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` });
     if (projectStore.inTransaction) projectStore.commit();
     try { projectStore.dispatch({ type: 'create-route', route }); }
     catch (error) { console.warn('New road was not created', error); toast('This road could not be made here.'); return; }
     switchRoute(route.id); select(null);
     toast('Drag the road to bend it.');
   };
-  routeBar.onBuild = kind => { if (kind !== 'road') return; select(null); buildTool.begin(); hud.revealContext('inspector'); };
+  /** the kind being built (Build menu), which decides where its ends may go */
+  let building: BuildKind = registeredBuildKinds()[0];
+  routeBar.onBuild = kind => {
+    const k = registeredBuildKinds().find(b => b.kind === kind); if (!k) return;
+    building = k; select(null); buildTool.begin(k.label); hud.revealContext('inspector');
+    if (pack.transportMeta) void ensureTransport(); // ends may join mapped lines
+  };
   /** where a click while building puts a road end: on a road (joins it), else free ground */
   const placeAt = (clientX: number, clientY: number, x: number, y: number): Placement => {
     const hit = routeAt(clientX, clientY, 10), rr = hit && projectFull?.routes[hit.routeId];
     const route = hit && projectStore.snapshot.design.routes.find(r => r.id === hit.routeId);
-    if (hit && rr?.legacy && route) {
-      const r = rr.legacy, i = Math.max(0, Math.min(r.n - 1, Math.round(hit.s / r.ds)));
-      if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
-      return { ok: true, label: route.name, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };
-    }
-    if (hit) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
+    if (hit && rr && route) return building.onRoute(route, rr, hit.s);
     const source = sourceAt(clientX, clientY);
     if (source?.kind === 'route-hit') return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
-    if (source?.kind === 'source' && transportIndex) {
-      const s = transportIndex.source(source.hit.sourceId);
-      if (!s || s.kind !== 'road') return { ok: false, why: 'A road cannot end on a railway.' };
-      if (ROAD_CLASSES[s.tags.highway ?? '']?.noAtGrade) return { ok: false, why: 'A motorway can only be joined at an interchange; those are not in the game yet.' };
-      const p = s.elevation === 'terrain' && !s.bridge && !s.tunnel ? transportIndex.position(s.id, source.hit.s) : null;
-      if (!p) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
-      const name = s.tags.name || [ROAD_CLASSES[s.tags.highway ?? '']?.label ?? 'road', s.tags.ref].filter(Boolean).join(' ');
-      return { ok: true, label: `joins ${name}`, end: { position: p, anchor: { kind: 'source', location: { transportData: transportIndex.transportData, sourceId: s.id, s: source.hit.s } } } };
-    }
+    if (source?.kind === 'source' && transportIndex) return building.onSource(transportIndex, source.hit.sourceId, source.hit.s);
     if (pack.terrain.isOob(x, y)) return { ok: false, why: 'Put the end on the map.' };
     if (legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: 'open ground (joins no road)', end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
@@ -825,9 +820,10 @@ async function main() {
   /** The first drag of a mapped road: its stretch becomes a project road (line converted to bends that
    * follow the old road) and the drag bends it, all ONE undo step (committed when the drag ends). */
   const rebuildByDrag = (interval: SourceInterval, x: number, y: number): number | null => {
-    if (!transportIndex) return null;
+    const lineKind = sourceEditor?.lineKind;
+    if (!transportIndex || !lineKind) return null;
     let command;
-    try { command = rebuildCommand(transportIndex, interval, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` }); }
+    try { command = lineKind.rebuild(transportIndex, interval, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` }); }
     catch (error) { console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
     const id = command.routes[0].id;
     intro.hide(); sourceEditor?.clear();
@@ -1155,7 +1151,7 @@ async function main() {
           clear = Math.min(clear, Math.hypot(r.x[k] - source.xy[i], r.y[k] - source.xy[i + 1]));
         const mid = transportIndex!.branches({ transportData: transportIndex!.transportData, sourceId: source.id, s0: 0, s1: length })
           .filter(b => b.s > 50 && b.s < length - 50).map(b => b.s);
-        return [{ id: source.id, name: info.name, length, clear, branches: mid, rebuildable: rebuildable(transportIndex!, source.id).ok }];
+        return [{ id: source.id, name: info.name, length, clear, branches: mid, rebuildable: mappedLineKindFor(transportIndex!, source.id).verdict.ok }];
       });
     },
     sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },

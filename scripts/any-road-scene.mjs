@@ -1,8 +1,9 @@
 // Real-mouse "edit any road" on a pack with road links (D3): one road → no road list; click a mapped
 // road away from ours (card, highlighted stretch, no edit); drag it → the stretch becomes a project road
 // bent under the pointer, with its profile and own price (one undo step); its traffic; the road list;
-// undo/redo; reload; Build → Road with one end on a mapped road and one on open ground; then D11 without
-// road links says so plainly. node scripts/any-road-scene.mjs [--gpu] [--docs]
+// undo/redo; an end handle; reload; Build → Road with one end on a mapped road and one on open ground;
+// the photo with the mapped roads. Run on D11 (default) and D3: SCENARIO=d3 node scripts/any-road-scene.mjs.
+// NO_LINKS_SCENARIO=<id> also checks a pack without road links says so. [--gpu] [--docs]
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -13,7 +14,7 @@ const out = docs ? 'docs/screenshots' : '/tmp/trapla-any-road';
 const shot = (n, name) => `${out}/${docs ? `${n}-` : ''}${name}.png`;
 const first = Number(process.env.SHOT ?? 100);
 mkdirSync(out, { recursive: true });
-const scenario = process.env.SCENARIO ?? 'd3';
+const scenario = process.env.SCENARIO ?? 'd11';
 const server = await createServer({ server: { port: Number(process.env.PORT ?? 5244), strictPort: true }, logLevel: 'warn' });
 await server.listen();
 let browser;
@@ -43,6 +44,7 @@ try {
     }));
   };
   await idle();
+  assert.equal(await page.evaluate(() => window.trapla.whenTransport()), true, 'the road links load');
   const box = await page.locator('#view').boundingBox();
   const screen = async (fn, ...args) => {
     const p = await page.evaluate(([fn, args]) => window.trapla[fn](...args), [fn, args]);
@@ -58,7 +60,7 @@ try {
 
   // a long rebuildable road well clear of our road
   const roads = await page.evaluate(() => window.trapla.baseRoads(700));
-  const far = roads.filter(r => r.rebuildable && r.clear > 1200 && r.clear < 5000).sort((a, b) => b.length - a.length);
+  const far = roads.filter(r => r.rebuildable && r.clear > 800 && r.clear < 4000).sort((a, b) => b.length - a.length);
   let road = null;
   for (const r of far) {
     await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 900), [r.id, r.length / 2]);
@@ -144,6 +146,7 @@ try {
   // 5. reload keeps it
   await page.close(); page = await context.newPage(); watch(page);
   url = await open(scenario); await idle();
+  assert.equal(await page.evaluate(() => window.trapla.whenTransport()), true);
   assert.equal((await page.evaluate(() => window.trapla.getProject())).routes.length, 2);
 
   // 6. Build → Road: start on the mapped road beyond the rebuilt stretch, end on open ground
@@ -175,10 +178,18 @@ try {
   await page.screenshot({ path: shot(first + 2, 'new-road-built') });
   assert.deepEqual(errors, []);
 
-  // 7. a map without road links says so instead of doing nothing
-  if (process.env.NO_LINKS !== '0') {
+  // 7. the photo keeps the mapped roads drawn (what is clickable)
+  await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, mid]);
+  await page.evaluate(() => window.trapla.setView({ photo: true }));
+  await page.waitForFunction(() => !window.trapla.viewBusy(), null, { timeout: 90000 });
+  if (await page.evaluate(() => window.trapla.photoWithNetwork())) await page.screenshot({ path: shot(first + 3, 'photo-mapped-roads') });
+  else console.log('photo tiles did not arrive (external service): overlay not checked');
+  await page.evaluate(() => window.trapla.setView({ photo: false }));
+
+  // 8. a map without road links says so instead of doing nothing
+  if (process.env.NO_LINKS_SCENARIO) {
     await page.close(); page = await context.newPage(); watch(page);
-    await open('d11'); await idle();
+    await open(process.env.NO_LINKS_SCENARIO); await idle();
     const hasLinks = await page.evaluate(() => window.trapla.baseRoads(1).length > 0);
     if (!hasLinks) {
       const roadPoint = await page.evaluate(() => window.trapla.legacyRoadPoint());
@@ -186,8 +197,8 @@ try {
       const q = await page.evaluate(([x, y]) => window.trapla.project(x, y, window.trapla.groundHeight(x, y)), [roadPoint.x, roadPoint.y]);
       await page.mouse.click(box.x + q.sx, box.y + q.sy);
       assert.match(await page.locator('#inspector').textContent(), /road links are missing/);
-      console.log('D11: no road links, said plainly');
-    } else console.log('D11 has road links now: skipped the missing-links card');
+      console.log('no road links: said plainly');
+    } else console.log('that map has road links: missing-links card not checked');
   }
   assert.deepEqual(errors, []);
   console.log('PASS any road: click / drag-rebuild / one undo / traffic / road list / reload / Build → Road / bend');

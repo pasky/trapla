@@ -1,5 +1,6 @@
-// Build → Road: click where the new road starts and where it ends. A click on a road joins it there; a
-// click on open ground leaves a free end. The road is then created straight and bent like any road.
+// Build → <kind>: click where the new route starts and where it ends. A click on a road joins it there; a
+// click on open ground leaves a free end. It is then created straight and bent like any road. What an
+// end may join is the kind's (ui/route-kinds.ts BuildKind); this tool only collects the two clicks.
 import type { View } from '../render/view';
 import type { PlacedEnd } from './road-edit';
 
@@ -13,6 +14,8 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
 };
 
 export class BuildRoadTool {
+  /** what is being built: its menu label, lower-case in the card ("New road") */
+  label = 'Road';
   private start: (PlacedEnd & { label: string }) | null = null;
   private marker: HTMLElement | null = null;
   private note = '';
@@ -22,7 +25,7 @@ export class BuildRoadTool {
   constructor(private root: () => HTMLElement, private overlay: HTMLElement, private view: View) {
     view.addRenderListener(() => this.position());
   }
-  begin() { this.cancel(false); this.active = true; this.render(); this.view.renderer.domElement.classList.add('placing'); }
+  begin(label = 'Road') { this.cancel(false); this.label = label; this.active = true; this.render(); this.view.renderer.domElement.classList.add('placing'); }
   cancel(notify = true) {
     const was = this.active;
     this.active = false; this.start = null; this.note = '';
@@ -51,7 +54,7 @@ export class BuildRoadTool {
     const header = el('div'); header.className = 'ctx-h';
     const close = el('button', '✕'); close.className = 'x'; close.title = 'Cancel (Esc)'; close.type = 'button';
     close.onclick = () => this.cancel();
-    header.append(el('b', 'New road'), close);
+    header.append(el('b', `New ${this.label.toLowerCase()}`), close);
     const step = el('p', this.start ? 'Click where it ends.' : 'Click where it starts.'); step.className = 'build-step';
     const hint = el('div', 'A click on a road joins it there.'); hint.className = 'sub';
     root.append(header, step);
