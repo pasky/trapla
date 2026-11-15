@@ -1214,9 +1214,11 @@ export class View {
       const stop = () => {
         canvas.removeEventListener('pointermove', move);
         canvas.removeEventListener('pointerup', up);
-        canvas.removeEventListener('pointercancel', stop);
+        canvas.removeEventListener('pointercancel', cancel);
         if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
       };
+      // a cancelled drag (pointer lost) keeps the bend where it got to, as one undo step
+      const cancel = () => { stop(); if (i !== null) { this.dragging = null; this.ev.onPiDragEnd?.(i); } };
       const up = (ev: PointerEvent) => {
         stop();
         if (i !== null) { this.dragging = null; this.ev.onPiDragEnd?.(i); return; }
@@ -1225,7 +1227,7 @@ export class View {
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);
-      canvas.addEventListener('pointercancel', stop);
+      canvas.addEventListener('pointercancel', cancel);
     }, { capture: true });
     this.overlay.addEventListener('pointerdown', (e) => {
       const el = (e.target as HTMLElement).closest('.pi') as HTMLElement | null;

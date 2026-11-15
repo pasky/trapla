@@ -122,14 +122,18 @@ if (mode === 'bend') {
   await T(() => window.trapla.profileFit());
   await page.waitForTimeout(200);
   if (mode === 'pin') {
-    // pin the road height at the bend (a click on the road line), then drag the pin's head
+    // pin the road height at the bend (a short vertical drag of the road line), then drag the pin's head
     const s = await T((i) => window.trapla.bendStations()[i].s, bend);
     const p = await T((s) => window.trapla.profilePoint(s), s);
-    await page.mouse.click(p.x, p.y);
+    await page.mouse.move(p.x, p.y); await page.mouse.down();
+    for (let k = 1; k <= 3; k++) await page.mouse.move(p.x, p.y - 2 * k);
+    await page.mouse.up();
     await T(() => window.trapla.whenIdle());
     grab = async () => { const pin = (await T(() => window.trapla.getDesign())).gradePins[0]; const q = await T((pin) => window.trapla.profilePoint(pin.s, pin.z), pin); return { x: q.x, y: q.y - 14 }; };
   } else {
-    // a height point of the automatic line (the drag switches to By hand, as a player would)
+    // a height point By hand (in Auto, dragging the line pins it instead)
+    await T(() => document.getElementById('grade-manual').click());
+    await T(() => window.trapla.whenIdle());
     grab = async () => T(() => { const r = window.trapla.result(), v = r.vpis[Math.floor(r.vpis.length / 2)]; return window.trapla.profilePoint(v.s, v.z); });
   }
   path = (u, size) => ({ x: 0, y: -size * 0.4 * Math.sin(u * 2 * Math.PI) });

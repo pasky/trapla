@@ -5,6 +5,7 @@ import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/eva
 import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
+import { KIND } from './core/structures';
 import { ROAD_CLASSES } from './core/data/urban';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
@@ -212,8 +213,11 @@ async function main() {
       d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
       if (type !== null) d.crossingOverrides.push({ roadId, type });
     }),
-    building: (j, action) => store.update((d) => { d.buildingOverrides = setBuildingOverride(d.buildingOverrides ?? [], j, action); }),
-    radius: (i, r) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }),
+    building: (js, action) => store.update((d) => { for (const j of js) d.buildingOverrides = setBuildingOverride(d.buildingOverrides ?? [], j, action); }),
+    unpin: (s0, s1) => store.update((d) => { d.gradePins = (d.gradePins ?? []).filter((p) => p.s < s0 || p.s > s1); }),
+    heightAt: (s) => addHeightAt(s),
+    commit: () => store.commit(),
+    radius: (i, r, commit = true) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
     deletePi,
     bendHeight: (i) => { const b = last && bendStations(last, store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     vpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
@@ -379,7 +383,7 @@ async function main() {
     uncommitted = !committed;
     hideToast(); // its Undo belongs to the edit before this one
     hud.noteEdit(committed);
-    if (sel?.kind === 'bend' && sel.i >= d.pis.length) sel = null;
+    if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
     view.setDesign(d, selectedPi());
     hud.setDesign(d);
     editBar.set(store.undoLabel(), store.redoLabel());
@@ -394,22 +398,25 @@ async function main() {
   // crossed roads are clickable once they are drawn big enough; from afar a click on the road picks its piece
   const crossingPickPx = () => (view.metresPerPixel < 4 ? 12 : view.metresPerPixel < 10 ? 6 : 0);
   const canvasBox = () => view.renderer.domElement.getBoundingClientRect();
-  /** station index of the road drawn within `px` of a client point, −1 if none */
+  /** station index of the road drawn within `px` of a client point, −1 if none: distance to the drawn
+   * line between consecutive stations (tunnels are drawn on the ground above them) */
   const roadAt = (clientX: number, clientY: number, px: number) => {
     const r = last;
     if (!r) return -1;
     const box = canvasBox(), mx = clientX - box.left, my = clientY - box.top;
+    const z = (i: number) => (r.kind[i] === KIND.tunnel ? r.ground[i] : r.grade[i]);
     let bd = px * px, k = -1;
     const step = Math.max(1, Math.floor(r.n / 1500));
-    for (let i = 0; i < r.n; i += step) {
-      const p = view.project(r.x[i], r.y[i], r.grade[i]);
-      const d = (p.sx - mx) ** 2 + (p.sy - my) ** 2;
-      if (p.vis && d < bd) { bd = d; k = i; }
-    }
-    if (k >= 0 && step > 1) for (let i = Math.max(0, k - step); i <= Math.min(r.n - 1, k + step); i++) {
-      const p = view.project(r.x[i], r.y[i], r.grade[i]);
-      const d = (p.sx - mx) ** 2 + (p.sy - my) ** 2;
-      if (d < bd) { bd = d; k = i; }
+    let prev = view.project(r.x[0], r.y[0], z(0)), pi = 0;
+    for (let i = step; i < r.n + step - 1; i += step) {
+      const j = Math.min(r.n - 1, i), p = view.project(r.x[j], r.y[j], z(j));
+      if (p.vis && prev.vis) {
+        const dx = p.sx - prev.sx, dy = p.sy - prev.sy, L2 = dx * dx + dy * dy;
+        const t = L2 > 0 ? Math.max(0, Math.min(1, ((mx - prev.sx) * dx + (my - prev.sy) * dy) / L2)) : 0;
+        const d = (prev.sx + t * dx - mx) ** 2 + (prev.sy + t * dy - my) ** 2;
+        if (d < bd) { bd = d; k = Math.round(pi + t * (j - pi)); }
+      }
+      prev = p; pi = j;
     }
     return k;
   };
@@ -541,7 +548,7 @@ async function main() {
         if (key !== mapHoverKey) { view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); profile.setHover(cross.s, true); }
       } else if (k >= 0) {
         cursor = 'grab'; key = `r${k}`;
-        if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.grade[k] }, 'drag to bend'); profile.setHover(r.s[k], true); }
+        if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, 'drag to bend'); profile.setHover(r.s[k], true); }
       } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
     }
@@ -601,6 +608,7 @@ async function main() {
       const t: Sel | null = v.target?.buildings?.length ? { kind: 'building', j: v.target.buildings[0] }
         : roadId !== undefined ? { kind: 'crossing', roadId }
           : v.pi !== undefined ? { kind: 'bend', i: v.pi } : v.pis?.length ? { kind: 'bend', i: v.pis[0] }
+            : v.vpi !== undefined && store.design.profileMode === 'manual' && v.vpi > 0 && v.vpi < r.vpis.length - 1 ? { kind: 'vpi', i: v.vpi }
             : pin ? { kind: 'pin', s: pin.s } : v.goal ? null
               : v.s1 - v.s0 < 60 ? (() => { const p = pieceAt(r, (v.s0 + v.s1) / 2); return { kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind } as Sel; })()
                 : { kind: 'stretch', s0: v.s0, s1: v.s1 };

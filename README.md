@@ -114,9 +114,9 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   scenario traffic) **at the height that decides walls and buyouts — the top floor of the tallest house beside
   each 30 m station and side** (1.5 m where there is none), continuously shaded with one dark line on the limit,
   computed in the worker by the same calculator as the bill with the built walls and cut edges. Every house is
-  coloured by **its own** worst level on the same ramp; bought-out houses magenta, demolished ones are gone. So a
-  house that is too loud is never drawn in a quiet band, and raising a wall visibly cools the band where its
-  shadow reaches the top floors. Hover a house for its level, click it for the cross-section.
+  coloured by **its own** worst level on the same ramp; bought-out houses magenta, demolished ones are gone. The
+  band and the houses now use the same height, so they agree beside the road (the band is per station, a house
+  takes its worst station), and raising a wall visibly cools the band where its shadow reaches the top floors. Hover a house for its level, click it for the cross-section.
 
 ### Model notes
 

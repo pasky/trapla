@@ -120,6 +120,8 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
   // Per-dwelling diagnostics for the noise view (worst unmitigated pair, every exposed pair).
   const visited: number[] = [], raw = new Float64Array(buildings.n), rawI = new Int32Array(buildings.n);
   const quiet = new Float64Array(buildings.n), rawD = new Float64Array(buildings.n), rawH = new Float64Array(buildings.n), rawLeft = new Uint8Array(buildings.n);
+  // where the quiet maximum is (geometry for the noise view's cross-section only)
+  const quietI = new Int32Array(buildings.n).fill(-1), quietD = new Float64Array(buildings.n), quietH = new Float64Array(buildings.n), quietLeft = new Uint8Array(buildings.n);
   const pairs: ExposedPair[] = [];
   for (let i = 0; i < n; i++) {
     if (shieldL[i] && shieldR[i]) continue;
@@ -148,7 +150,7 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
         // A manual decision at ANY exposing station retains the whole dwelling, even when the
         // automatic failure is at another station visited earlier or later.
         if (manualWall(policy, left, i) !== undefined) retained.add(j);
-      } else if (excess > quiet[j]) quiet[j] = excess;
+      } else if (excess > quiet[j]) { quiet[j] = excess; quietI[j] = i; quietD[j] = d; quietH[j] = height; quietLeft[j] = left ? 1 : 0; }
       if (h === Infinity) {
         const k = NOISE.wallHeights.length - 1;
         const loss = Math.max(gap ? 0 : barrierAttenuation(d, height, k, barrier), attenuation(earthDelta(d, height, edge, direct)));
@@ -169,7 +171,7 @@ export function dwellingExposure(n: number, x: ArrayLike<number>, y: ArrayLike<n
     side[i] = Math.max(side[i], heights[k]);
   }
   const boughtOut = [...failed].map(([j, { i }]) => ({ j, i, cost: noiseBuyoutCost(buildings.cost[j], buildings.area[j]) })).sort((a, b) => a.i - b.i);
-  return { L, R, boughtOut, scratch: { visited, raw, quiet, rawI, rawD, rawH, rawLeft, pairs, failed, ...(policy ? { policy } : {}) } };
+  return { L, R, boughtOut, scratch: { visited, raw, quiet, quietI, quietD, quietH, quietLeft, rawI, rawD, rawH, rawLeft, pairs, failed, ...(policy ? { policy } : {}) } };
 }
 
 interface ExposedPair { i: number; j: number; left: boolean; d: number; height: number; excess: number; need: number }
@@ -178,6 +180,8 @@ export interface ExposureScratch {
   visited: number[]; raw: Float64Array;
   /** highest excess at stations where the dwelling is not exposed (≤ 0), −Infinity if none */
   quiet: Float64Array; rawI: Int32Array; rawD: Float64Array; rawH: Float64Array; rawLeft: Uint8Array;
+  /** station (−1: none), façade distance, height and side of the quiet maximum (cross-section only) */
+  quietI?: Int32Array; quietD?: Float64Array; quietH?: Float64Array; quietLeft?: Uint8Array;
   pairs: ExposedPair[]; failed: Map<number, { i: number; deficit: number }>;
   /** Same decisions used to suppress buyouts must also paint the final walls. */
   policy?: NoisePolicy;
@@ -246,7 +250,9 @@ export function noiseReceivers(ex: ExposureScratch, wallL: ArrayLike<number>, wa
       j, status, i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], raw: ex.raw[j],
       mitigated: f ? f.deficit : r.mitigated, need: f ? Infinity : r.need, wall: f ? 0 : r.wall, at: f ? f.i : r.at,
       ...(!f && r.mitigated > 1e-7 && r.worst ? { unresolved: r.worst } : {}),
-      key: r.key ?? { i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], wall: (ex.rawLeft[j] ? wallL : wallR)[ex.rawI[j]] ?? 0 },
+      key: (r.key && r.keyLevel >= r.mitigated - 1e-9) || !ex.quietI || ex.quietI[j] < 0 ? r.key ?? { i: ex.rawI[j], side: ex.rawLeft[j] ? 'L' : 'R', d: ex.rawD[j], h: ex.rawH[j], wall: (ex.rawLeft[j] ? wallL : wallR)[ex.rawI[j]] ?? 0 }
+        // a quiet station decides (walls brought the exposed ones lower): the model counts no wall there
+        : { i: ex.quietI[j], side: ex.quietLeft![j] ? 'L' : 'R', d: ex.quietD![j], h: ex.quietH![j], wall: 0 },
     });
   }
   return out;

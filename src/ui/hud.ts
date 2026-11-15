@@ -75,8 +75,8 @@ function fold(id: string, title: string, body: string, extra = '') {
     <div class="fold-body">${body}</div></section>`;
 }
 
-const AUTO_LONG = 'Automatic: the game sets the road\'s height along the whole route for the lowest cost and redoes it after every change of the route. To force a height somewhere, click the road line in the profile: that pins it there, and you can drag the pin up or down (or type the height). Pins stay at their km when you move the route.';
-const MANUAL_LONG = 'By hand: you drag the height points (◆) in the profile yourself; double-click the road line to add one, right-click one to delete it. Moving the route keeps your points. Switching back to Automatic replaces them (Undo brings them back).';
+const AUTO_LONG = 'Auto: the cheapest legal heights, redone after every change. Drag the black line in the profile up or down to pin a height there; pins stay at their km.';
+const MANUAL_LONG = 'By hand: drag the ◆ height points in the profile; double-click the line adds one, right-click deletes. Back to Auto replaces them (Undo brings them back).';
 
 export class Hud {
   ev: HudEvents = {};

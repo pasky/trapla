@@ -34,8 +34,15 @@ export interface InspectorEvents {
   wall?: (sides: ('L' | 'R')[], height: number | null, s0: number, s1: number) => void;
   pin?: (s: number, z: number | null) => void;
   crossing?: (roadId: number, type: CrossingChoice | null) => void;
-  building?: (j: number, action: BuildingOverride['action'] | null) => void;
-  radius?: (i: number, r: number | null) => void;
+  /** one decision for these buildings, one edit */
+  building?: (js: number[], action: BuildingOverride['action'] | null) => void;
+  /** remove the pins between s0 and s1, one edit */
+  unpin?: (s0: number, s1: number) => void;
+  /** By hand: a height point at station s */
+  heightAt?: (s: number) => void;
+  /** a radius drag (slider) ended */
+  commit?: () => void;
+  radius?: (i: number, r: number | null, commit?: boolean) => void;
   deletePi?: (i: number) => void;
   /** pin the road's height at bend i (Auto) / add a height point there (By hand) */
   bendHeight?: (i: number) => void;
@@ -95,14 +102,20 @@ export class Inspector {
       if (t.id === 'pi-slider' && this.sel?.kind === 'bend') {
         const f = this.el.querySelector<HTMLInputElement>('#pi-r');
         if (f) f.value = t.value;
-        this.ev.radius?.(this.sel.i, Number(t.value));
+        this.ev.radius?.(this.sel.i, Number(t.value), false);
       }
     });
     // do not redraw under the player's fingers while they type; redraw once they leave the field
     el.addEventListener('focusout', () => queueMicrotask(() => { if (this.pending && !el.contains(document.activeElement)) this.render(); }));
   }
 
-  set(sel: Sel | null) { this.sel = sel; this.render(); }
+  set(sel: Sel | null) {
+    // a field being typed into belongs to the old selection: let it apply there (change on blur) first
+    const a = document.activeElement as HTMLElement | null;
+    if (a && this.el.contains(a)) a.blur();
+    this.sel = sel; this.pending = false; this.previewing = null;
+    this.render(true);
+  }
 
   private previewing: string | null = null;
   /** redraw the building's cross-section with a wall of height `v` (m, 'auto' = as built) */
@@ -118,8 +131,9 @@ export class Inspector {
   }
   setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
 
-  render() {
-    if (document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number]')) { this.pending = true; return; }
+  /** `force`: the selection changed (redraw even under a focused field) */
+  render(force = false) {
+    if (!force && document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number]')) { this.pending = true; return; }
     this.pending = false;
     const r = this.r, d = this.d, sel = this.sel;
     if (!r || !d) { this.el.innerHTML = ''; return; }
@@ -209,7 +223,8 @@ export class Inspector {
       <div class="more-box">
         ${near ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow('L')}${wallRow('R')}`}
         <div class="ctx-lbl">Road height</div>
-        <div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>
+        ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
+          : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height point here</button></div>`}
         ${this.costLines(r, i0, i1)}
       </div>
       <div class="ctx-foot">${this.moreToggle()}</div>`;
@@ -289,8 +304,10 @@ export class Inspector {
     if (i <= 0 || i >= r.vpis.length - 1) return '';
     const vc = r.vcurves[i - 1], v = r.vpis[i];
     const what = vc?.type === 'crest' ? 'Hilltop' : vc?.type === 'sag' ? 'Dip' : 'Height point';
+    const vio = r.violations.filter((x) => x.vpi === i).map((x) => ({ v: x, fixes: '' }));
     return `${this.head(`${what} ${i}`, `km ${km(v.s)}`)}
       <div class="ctx-state"><b>${v.z.toFixed(1)} m</b> · rounding R ${m0(vc?.r ?? 0)}<div class="why">Drag it in the profile.</div></div>
+      ${this.issues(vio)}
       <div class="ctx-row"><label>Rounding <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
         <label><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> smallest</label></div>
       <div class="ctx-foot"><button type="button" id="vpi-del" class="danger">Delete</button></div>`;
@@ -356,7 +373,7 @@ export class Inspector {
   private click(e: MouseEvent) {
     const b = (e.target as HTMLElement).closest('button');
     if (!b || !this.r || !this.d) return;
-    const sel = this.sel, r = this.r, d = this.d;
+    const sel = this.sel, r = this.r;
     if (b.classList.contains('x')) { this.ev.close?.(); return; }
     if (b.classList.contains('more-t')) {
       this.more = !this.more;
@@ -368,12 +385,12 @@ export class Inspector {
       const [sides, h, s0, s1] = b.dataset.fixWall.split(',');
       this.ev.wall?.(sides.split('') as ('L' | 'R')[], Number(h), Number(s0), Number(s1)); return;
     }
-    if (b.dataset.fixBuy) { for (const j of b.dataset.fixBuy.split(',').map(Number)) this.ev.building?.(j, 'buy'); return; }
-    if (b.dataset.fixUnkeep) { for (const j of b.dataset.fixUnkeep.split(',').map(Number)) this.ev.building?.(j, null); return; }
+    if (b.dataset.fixBuy) { this.ev.building?.(b.dataset.fixBuy.split(',').map(Number), 'buy'); return; }
+    if (b.dataset.fixUnkeep) { this.ev.building?.(b.dataset.fixUnkeep.split(',').map(Number), null); return; }
     if (b.dataset.fixCrossing) { this.ev.crossing?.(Number(b.dataset.fixCrossing), null); return; }
     if (b.dataset.fixBridge) { const [s0, s1] = b.dataset.fixBridge.split(',').map(Number); this.ev.structure?.(1, s0, s1); return; }
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
-    if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); for (const p of d.gradePins ?? []) if (p.s >= s0 - 1 && p.s <= s1 + 1) this.ev.pin?.(p.s, null); return; }
+    if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }
     }
@@ -388,6 +405,7 @@ export class Inspector {
     }
     if (b.id === 'pin-set') { const z = this.el.querySelector<HTMLInputElement>('#pin-z')?.valueAsNumber; if (Number.isFinite(z)) this.ev.pin?.(Number(b.dataset.s), z!); return; }
     if (b.id === 'pin-clear') { this.ev.pin?.(Number(b.dataset.s), null); return; }
+    if (b.id === 'hp-add') { this.ev.heightAt?.(Number(b.dataset.s)); return; }
     if (sel?.kind === 'bend') {
       if (b.dataset.radius === 'auto') this.ev.radius?.(sel.i, null);
       else if (b.dataset.radius === 'max') { const m = this.ctx.maxRadius(sel.i); if (m !== null) this.ev.radius?.(sel.i, m); }
@@ -401,12 +419,13 @@ export class Inspector {
       else if (b.dataset.crossing !== undefined) this.ev.crossing?.(sel.roadId, (b.dataset.crossing || null) as CrossingChoice | null);
       return;
     }
-    if (sel?.kind === 'building' && b.dataset.building !== undefined) this.ev.building?.(sel.j, (b.dataset.building || null) as BuildingOverride['action'] | null);
+    if (sel?.kind === 'building' && b.dataset.building !== undefined) this.ev.building?.([sel.j], (b.dataset.building || null) as BuildingOverride['action'] | null);
   }
 
   private change(e: Event) {
     const t = e.target as HTMLInputElement, sel = this.sel;
     if (sel?.kind === 'bend' && t.id === 'pi-r' && Number.isFinite(t.valueAsNumber)) this.ev.radius?.(sel.i, Math.max(10, t.valueAsNumber));
+    if (sel?.kind === 'bend' && t.id === 'pi-slider') this.ev.commit?.();
     if (sel?.kind === 'vpi' && t.id === 'vpi-r') this.ev.vpiRadius?.(sel.i, t.valueAsNumber);
     if (sel?.kind === 'vpi' && t.id === 'vpi-auto') this.ev.vpiRadius?.(sel.i, t.checked ? null : Math.round(this.r?.vcurves[sel.i - 1]?.r ?? 0));
     if (t.id === 'pin-z') this.el.querySelector<HTMLButtonElement>('#pin-set')?.click();
