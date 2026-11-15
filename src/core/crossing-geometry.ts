@@ -301,7 +301,8 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
 
 function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
   heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
-  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>): CrossingIssue[] {
+  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>,
+  sidesOf = new Map<string, [boolean, boolean]>()): CrossingIssue[] {
   const { at, project, margin } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => v.crossing.code !== 'geometry');
   const terrainPoint = (q: XY & { d?: number }): CrossingPoint => {
@@ -354,7 +355,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       if (Math.abs(p.lateral) > (p.lateral > 0 ? p.left : p.right) + corridor) sides[p.lateral < 0 ? 0 : 1] = true;
       if (sides[0] && sides[1]) break;
     }
-    survivingSides.set(c, sides);
+    survivingSides.set(c, sides); sidesOf.set(`${c.roadId}:${c.x},${c.y}`, sides);
     const isRaised = c.type === 'overbridge', adjusted = isRaised || c.type === 'junction';
     let road: CrossingPoint[] = [];
     if (adjusted) {
@@ -668,8 +669,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const spatial = routeGeometry(route);
   // Candidate treatments and the final rebuild use the same immutable OSM alignment. Share only
   // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
-  const paths = new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>();
-  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed);
+  const paths = new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>(), sidesOf = new Map<string, [boolean, boolean]>();
+  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, sidesOf);
   build(crossings);
   const clone = (c: CrossingResult): CrossingResult => ({ ...c, geometry: undefined,
     issues: c.issues?.filter(v => v.crossing.code !== 'geometry') });
@@ -721,7 +722,14 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
     const worth = (link: CrossingResult, target: CrossingResult) => !feasible(best)
       || link.cost < best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1);
+    // Surviving road sides each need a link running about as far along our road as the target
+    // (less up to 250 m where a skewed way leaves our corridor further along): skip a long link that
+    // cannot cost half a feasible structure.
+    const sides = (sidesOf.get(`${c.roadId}:${c.x},${c.y}`) ?? [true, true]).filter(Boolean).length;
+    const cannotPay = (target: CrossingResult) => feasible(best) && Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach
+      && sides * Math.max(0, Math.abs(target.s - c.s) - 250) * Math.min(...ROAD_CLASSES[c.cls].roadPerKm) / 1000 >= best.cost * 0.5;
     for (const target of targets.slice(0, originalFeasible ? 1 : 3)) {
+      if (cannotPay(target)) break;
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
       link.targetS = target.s; link.targetRoadId = target.roadId;
