@@ -31,7 +31,8 @@ import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
 import { strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
-import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
+import './ui/mode-kinds';
+import { routeIndicationHeight } from './render/route-indication'; // Build → Motorway / Railway, rebuilding mapped railways
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
@@ -1420,7 +1421,8 @@ async function main() {
     selectRange: (s0: number | null, s1?: number) => select(s0 === null || s1 === undefined ? null : { kind: 'stretch', s0, s1 }),
     range: () => (sel?.kind === 'stretch' ? { s0: sel.s0, s1: sel.s1 } : null),
     /** the road's screen point (px inside the view) at station s */
-    roadScreen: (s: number) => { if (!last) return null; const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds))); return view.project(last.x[i], last.y[i], last.grade[i]); },
+    // where the road is drawn to grab: a tunnel at its ground-level indication, as picking uses
+    roadScreen: (s: number) => { if (!last) return null; const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds))); return view.project(last.x[i], last.y[i], routeIndicationHeight(last, i, (x, y) => view.drape(x, y))); },
     mapWindow: () => (profile as unknown as { mapWindow: unknown }).mapWindow,
     setExaggeration: (e: number) => viewBar.set({ exag: e }),
     setView: (p: Partial<ViewPrefs>) => viewBar.set(p),

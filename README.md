@@ -228,7 +228,9 @@ run on to Lubawka; 26 min with four stops in the 2022 timetable). No upgrade of 
 ≤ 12.5 ‰ (‰ in the profile), no level crossings, CNOSSOS train noise. The new line joins the old track in both
 stations and rebuilds it where it runs along it; elsewhere the old line stays. The first railway card (between
 the motorway's ends) is retired; its saves still load (`?scenario=d11&preset=d11-railway`).
-Screenshots 136–139 (`node scripts/railway-shots.mjs --docs 136`).
+[Overview](docs/screenshots/136-railway-overview.png), [out of Trutnov in a cut to the first tunnel](docs/screenshots/137-railway-trutnov.png),
+[the viaduct over Poříčí](docs/screenshots/138-railway-bridge.png), [joining the old line at Královec](docs/screenshots/139-railway-kralovec.png)
+(`node scripts/railway-shots.mjs --docs 136`; played end to end with `node scripts/mode-play.mjs --gpu`).
 
 Build → Motorway makes both directions of a D 27.5 between two points of open ground (shown, not priced: the
 game has no interchanges). Build → Railway ends on a mapped railway or open ground. A mapped railway can be
