@@ -35,7 +35,11 @@ export function shapeable(r: Result | null, d: Design, roadId: number): boolean 
 }
 
 /** The automatic path's own bend points (Douglas–Peucker, ends excluded), so that shaping it starts
- * from where it is and a drag changes it only near the pointer. Coarser until it fits the point limit. */
+ * from where it is and a drag changes it only near the pointer. */
+/** The bend points a first drag starts from keep the shape within this many metres of the automatic
+ * path (Douglas–Peucker): about a lane's width, few enough points to grab (doubled only if they would
+ * still exceed the point limit). */
+export const SHAPE_TOLERANCE = 2;
 export function simplifyLink(path: readonly XY[], limit = MAX_LINK_VIA - 4): XY[] {
   const dp = (lo: number, hi: number, tolerance: number, out: number[]) => {
     let far = -1, worst = tolerance;
@@ -47,7 +51,7 @@ export function simplifyLink(path: readonly XY[], limit = MAX_LINK_VIA - 4): XY[
     if (far < 0) return;
     dp(lo, far, tolerance, out); out.push(far); dp(far, hi, tolerance, out);
   };
-  for (let tolerance = 1; ; tolerance *= 2) {
+  for (let tolerance = SHAPE_TOLERANCE; ; tolerance *= 2) {
     const kept: number[] = [];
     if (path.length > 2) dp(0, path.length - 1, tolerance, kept);
     if (kept.length <= limit) return kept.map(i => ({ x: path[i].x, y: path[i].y }));

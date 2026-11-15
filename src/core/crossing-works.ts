@@ -56,6 +56,28 @@ const segDist = (q: XY, a: XY, b: XY) => {
   const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
   return Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy);
 };
+/** The crossed road's own line, bucketed on a grid: is a point within `ON_PATH` of it. Cached per
+ * (immutable, shared) source path: Auto rebuilds the same crossing several times. */
+const CELL = 20;
+const sourceIndex = new WeakMap<readonly XY[], Map<number, number[]>>();
+const cellKey = (cx: number, cy: number) => cx * 1_000_003 + cy;
+function onSource(q: XY, source: readonly XY[]): boolean {
+  let grid = sourceIndex.get(source);
+  if (!grid) {
+    grid = new Map();
+    for (let i = 1; i < source.length; i++) {
+      const a = source[i - 1], b = source[i];
+      for (let cx = Math.floor((Math.min(a.x, b.x) - ON_PATH) / CELL); cx <= Math.floor((Math.max(a.x, b.x) + ON_PATH) / CELL); cx++)
+        for (let cy = Math.floor((Math.min(a.y, b.y) - ON_PATH) / CELL); cy <= Math.floor((Math.max(a.y, b.y) + ON_PATH) / CELL); cy++) {
+          const key = cellKey(cx, cy), list = grid.get(key);
+          if (list) list.push(i); else grid.set(key, [i]);
+        }
+    }
+    sourceIndex.set(source, grid);
+  }
+  for (const i of grid.get(cellKey(Math.floor(q.x / CELL), Math.floor(q.y / CELL))) ?? []) if (segDist(q, source[i - 1], source[i]) < ON_PATH) return true;
+  return false;
+}
 /** Section normal exactly as the renderer builds it (neighbouring samples). */
 function normal(road: readonly CrossingPoint[], i: number) {
   const a = road[Math.max(0, i - 1)], b = road[Math.min(road.length - 1, i + 1)];
@@ -94,7 +116,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
     const r = half + Math.abs(road[i].z - road[i].ground) * SLOPE * 4 + 30;
     x0 = Math.min(x0, road[i].x - r); y0 = Math.min(y0, road[i].y - r); x1 = Math.max(x1, road[i].x + r); y1 = Math.max(y1, road[i].y + r);
   }
-  if (x0 < x1) roads.nearSegments([x0, y0, x1, y1], s => { if (!any && !(onPath({ x: s.ax, y: s.ay }, source) && onPath({ x: s.bx, y: s.by }, source))) any = true; });
+  if (x0 < x1) roads.nearSegments([x0, y0, x1, y1], s => { if (!any && !(onSource({ x: s.ax, y: s.ay }, source) && onSource({ x: s.bx, y: s.by }, source))) any = true; });
   if (!any) return works;
   const normals = road.map((_, i) => normal(road, i));
   const toes: [number, number][] = road.map((p, i) => engineered(i)
@@ -117,7 +139,7 @@ export function crossingWorks(road: readonly CrossingPoint[], width: number,
       const key = `${s.ax},${s.ay},${s.bx},${s.by}`;
       if (seen.has(key)) return;
       seen.add(key);
-      if (s.length <= 0 || (onPath({ x: s.ax, y: s.ay }, source) && onPath({ x: s.bx, y: s.by }, source))) return;
+      if (s.length <= 0 || (onSource({ x: s.ax, y: s.ay }, source) && onSource({ x: s.bx, y: s.by }, source))) return;
       (segments.get(s.way) ?? segments.set(s.way, []).get(s.way)!).push(s);
     });
   }
