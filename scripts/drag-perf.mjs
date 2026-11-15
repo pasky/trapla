@@ -80,7 +80,7 @@ const renderer = await page.evaluate(() => {
 const saved = JSON.parse(readFileSync(designFile, 'utf8'));
 if (saved.scenario && saved.scenario !== scenarioId) throw new Error(`${designFile} belongs to ${saved.scenario}, not ${scenarioId}`);
 const design = saved.design;
-const bend = bendArg !== null ? Number(bendArg) : scenarioId === 'd11' ? 9 : Math.floor(design.pis.length / 2);
+const bend = bendArg !== null ? Number(bendArg) : scenarioId === 'd11' && !presetId ? 9 : Math.floor(design.pis.length / 2);
 await page.evaluate((d) => window.trapla.setDesign(d), design);
 await page.evaluate(() => window.trapla.whenIdle());
 if (split) {

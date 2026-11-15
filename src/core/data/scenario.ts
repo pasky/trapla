@@ -37,8 +37,9 @@ export interface ScenarioParams {
   title: string;
   /** Stable mission/preset identity, separate from the terrain pack id. Legacy D11 uses d11. */
   presetId?: string;
-  /** What the mission builds: a road (default) or a paired motorway corridor (core/project-motorway.ts). */
-  mode?: 'road' | 'motorway';
+  /** What the mission builds: a road (default), a paired motorway corridor (core/project-motorway.ts) or a
+   * railway (core/project-railway.ts). */
+  mode?: 'road' | 'motorway' | 'railway';
   /** Fresh designs only; loading an existing design must never overwrite its specification. */
   initial?: { category: CategoryId; speed: number; pis?: PI[] };
   /** Short catalogue copy; D3/D35 road exercises are not motorway demand forecasts. */
@@ -143,8 +144,19 @@ export const D35_MOTORWAY: ScenarioParams = {
   picker: { kind: 'Motorway · 130 km/h', goal: 'Carry the motorway over the ridge to Staré Město.', note: 'Built as D 27.5; the planned section is D 26.0.' },
   ...MOTORWAY_TRAFFIC, maxTravelMin: 8.3, // 18 km at 130 (project section 16.6 km)
 };
+// Railway exercise in the D11 pass, between the road mission's ports (own saves). Not a planned project:
+// the line through the pass today is single-track and not electrified (OSM tags in the pack's transport
+// data: tracks=1, electrified=no, maxspeed 40–100). Trains: the PROVISIONAL prior of rail-noise.ts (128 a
+// day). Time target: a mission choice, 9 min = 24 km at 160 km/h or 21 km at 140 (A–B 18.6 km in a line).
+export const D11_RAILWAY: ScenarioParams = {
+  ...D11_SCENARIO, presetId: 'd11-railway', mode: 'railway', title: 'Railway: Trutnov → Polish border',
+  initial: { category: 'R2', speed: 160 },
+  picker: { kind: 'Railway · 160 km/h', goal: 'Lay a double-track electric line through the pass to the border.',
+    note: 'An exercise, not a planned line. The line there today is single-track, without wires.' },
+  maxTravelMin: 9,
+};
 /** Every playable mission, in picker order. */
-export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D3_SCENARIO, D3_MOTORWAY, D35_SCENARIO, D35_MOTORWAY, NOVA_PAKA_SCENARIO];
+export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D11_RAILWAY, D3_SCENARIO, D3_MOTORWAY, D35_SCENARIO, D35_MOTORWAY, NOVA_PAKA_SCENARIO];
 
 /** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.
  * D11 intentionally retains its exact legacy parameters and default. */

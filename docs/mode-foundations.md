@@ -216,6 +216,10 @@ store keyed by the motorway mission (bests were never kept), split cost card say
 main at a2bd5a6 (crossing-links, detmath): cost model **20**, fixture re-stamped after checking the diff was
 the version alone; motorway/rail noise uses detmath.
 
+Then: railway mission preset `d11-railway` (`createRailwayProject`, `railwayMission`; profile grades in ‰ and
+red above the category's own maximum; legend / hint / "Track height" wording), screenshots 136–139,
+`scripts/railway-shots.mjs`. Split "By hand" density checked: same as roads (every auto grade break, each real).
+
 Pending, in order:
 1. **Build flow** (any-road-editing, not merged yet): hook Build → Motorway (`createMotorwayProject`-like
    corridor creation at picked ends; non-port ends stay unpriced) and Build → Railway

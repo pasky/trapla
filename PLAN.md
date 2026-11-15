@@ -241,6 +241,12 @@ What exists (details and commands in `README.md`):
   height point and made both directions clash downstream); motorway bests are kept (the store was keyed by the
   road mission). Drag budget holds on D3 motorway, paired and split (`drag-perf --scenario d3 --preset
   d3-motorway [--split forward]`).
+- Railway mission (preset `d11-railway`, screenshots 136–139): the D11 ports joined by an R1/R2 railway, an
+  honest exercise (OSM: today's line is tracks=1, electrified=no); trains = the PROVISIONAL prior (128 a day);
+  time target 9 min is a mission choice. Straight starter VALID at 27.9 bn CZK; perf design
+  `scripts/scenarios/d11/d11-railway.json` 25.4 bn CZK. Drag budget holds in all five modes.
+- "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
+  ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
 
 ### Travel-time target X and traffic Y
 
