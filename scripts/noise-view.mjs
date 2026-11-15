@@ -1,5 +1,6 @@
 // Noise view (N) check: a town-fringe stretch of a design with walls, and the town-centre design with
-// buyouts; hovers a walled dwelling, a bought-out one and a wall. Prints what the tooltips say.
+// buyouts; hovers a walled dwelling, a bought-out one and a wall, clicks a house for its cross-section.
+// Prints what the tooltips say.
 // Usage: node scripts/noise-view.mjs [--gpu] [--docs] [outdir=/tmp/trapla-noise]
 // --docs also writes docs/screenshots/28-noise-view-fringe.png and 29-noise-view-town-centre.png
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -19,7 +20,7 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 // the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
+await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v2', '1'); } catch { /* opaque origin */ } });
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(e.message));
@@ -35,14 +36,13 @@ const settle = async () => {
   }));
   await page.waitForTimeout(400);
 };
-const DOCS = { 'fringe-close-hover': '28-noise-view-fringe', 'centre-close-hover': '29-noise-view-town-centre' };
+const DOCS = { 'fringe-section': '28-noise-view-fringe', 'centre-section': '29-noise-view-town-centre' };
 const shot = async (name) => {
   await settle();
   await page.screenshot({ path: `${OUT}/${name}.png` });
   console.log('saved', `${OUT}/${name}.png`);
   if (process.argv.includes('--docs') && DOCS[name]) {
-    // the map only: small enough to commit without quantising away the legend colours
-    await page.screenshot({ path: `docs/screenshots/${DOCS[name]}.png`, clip: await page.locator('#view').boundingBox() });
+    await page.screenshot({ path: `docs/screenshots/${DOCS[name]}.png` });
     console.log('saved', `docs/screenshots/${DOCS[name]}.png`);
   }
 };
@@ -98,7 +98,7 @@ for (const [file, tag] of [['scripts/direct-80-design.json', 'fringe'], ['script
     const cx = el.clientWidth * 0.5, cy = el.clientHeight * 0.4;
     let best = null, bd = Infinity;
     for (const p of r.noise.receivers) {
-      if (p.status !== (tag === 'centre' ? 'bought' : 'wall')) continue;
+      if (p.status !== (tag === 'centre' && r.noise.receivers.some((q) => q.status === 'bought') ? 'bought' : 'wall')) continue;
       const s = window.trapla.buildingScreen(p.j, 2);
       const d = Math.hypot(s.sx - cx, s.sy - cy);
       if (s.vis && d < bd) { bd = d; best = s; }
@@ -112,8 +112,17 @@ for (const [file, tag] of [['scripts/direct-80-design.json', 'fringe'], ['script
     console.log(`${tag} close tip at ${JSON.stringify(scr2)}: ${(await tip())?.split("\n")[0]}`);
   }
   await shot(`${tag}-close-hover`);
-  // a wall from afar with the noise view off
-  await page.evaluate(() => window.trapla.setView({ noise: false }));
+  // a walled house (or the hovered one): click it for the card with its cross-section
+  if (scr2) {
+    const box = await page.locator('#view canvas').boundingBox();
+    await page.mouse.click(box.x + scr2.sx, box.y + scr2.sy);
+    await page.evaluate(() => window.trapla.whenIdle());
+    const card = await page.evaluate(() => ({ sel: window.trapla.selection(), floors: [...document.querySelectorAll('#inspector .noise-section text.bad, #inspector .noise-section text.ok')].map((t) => t.textContent) }));
+    console.log(`${tag} card: ${JSON.stringify(card)}`);
+    await shot(`${tag}-section`);
+    await page.keyboard.press('Escape');
+  }
+  // a wall from afar (wall tips from afar come with the noise view on)
   await page.evaluate(([x, y, b]) => window.trapla.lookAt(x, y, 5000, b, 50), [pick.x, pick.y, bearing]);
   await shot(`${tag}-far-walls`);
   // hover a wall symbol: scan the screen around the stretch centre for a wall tooltip
@@ -124,11 +133,12 @@ for (const [file, tag] of [['scripts/direct-80-design.json', 'fringe'], ['script
     await page.mouse.move(box.x + c.sx + dx, box.y + c.sy + dy);
     await page.waitForTimeout(20);
     const t = await tip();
-    if (t && t.startsWith('Noise wall')) wallTip = t;
+    if (t && /^\d+(\.\d)? m wall/.test(t)) wallTip = t;
   }
   console.log(`${tag} wall tip:\n${wallTip}`);
   if (wallTip) await shot(`${tag}-far-walls-hover`);
 }
 console.log('errors:', errors.length ? errors : 'none');
+if (errors.length) process.exitCode = 1;
 await browser.close();
 await server.close();

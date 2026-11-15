@@ -200,5 +200,35 @@ inspector builds on its strings.
 
 ## 4. Result
 
-See the README's gallery (screenshots 60+) and `node scripts/playtest.mjs`, which replays the three
-personas with real mouse events.
+Implemented as decided above (owner: "just fix everything yourself"). What changed, concretely:
+
+- **Gone:** click-to-add-bend, Shift+click, the floating selection bar over the profile, the profile's
+  click-to-zoom, the separate bend / height point / stretch / crossing / building cards (one inspector now),
+  the scenario section (one goal line under the score), the "not valid yet" sentence (the struck-through
+  cost and the badge say it), the "How to play" wall of text (a short *Help*).
+- **Map:** drag the road = new bend under the mouse; click = inspect (crossing → road piece → house → wall);
+  empty click = deselect; double-click = bend there. Crossed roads are clickable once they are drawn
+  (< 10 m per pixel); from afar a click on the road picks its piece. Hover: grab cursor and "drag to bend"
+  over the road, pointer over houses / crossings / walls.
+- **Inspector** (`src/ui/inspector.ts`): pieces of road (`src/ui/pieces.ts`: bridge / tunnel / cut /
+  embankment runs, earthwork pieces under 120 m merged), dragged stretches, bends, pins, height points, crossed
+  roads, houses; violations as banners with fix buttons (wall of the needed height over the needed km,
+  buy out, stop keeping, back to Auto, bridge it, unpin). Violations carry a structured `target`
+  (`src/core/checks.ts`) so the list and the chip select the right thing.
+- **Score:** the change of the last edit (a drag counts once); the best design is only offered for designs the
+  player let go of, not positions half-way through a drag.
+- **Profile:** click selects, the line drags to pin, short tooltip inside the panel, the map's view as a light
+  blue window.
+- **Keys:** relief moved from E to <kbd>R</kbd> and "Automatic" on a stretch from C to <kbd>A</kbd>, so the
+  stretch keys A / B / T / E never collide with map views.
+- **Noise:** band at the top floor of the tallest dwelling within ±40 m on that side (from the evaluated
+  receivers, no extra spatial queries: the evaluation's town lap is unchanged), houses in their own level,
+  cross-section in the house's card with a live wall-height preview, one-line legend.
+- **Copy:** the before/after table above is applied, plus the footprint, watercourse, structure, pin and
+  support texts in `src/core`. Crossing texts (`crossings.ts`, `crossing-geometry.ts`) are left to the
+  concurrent crossing-sanity work.
+- **Checks:** `npm run smoke` (new interaction model) and `node scripts/playtest.mjs` (the three personas,
+  ~70 checks) replace `ux.mjs` and `build-tools.mjs`; `layout.mjs`, `curves.mjs`, `noise-view.mjs` pass.
+
+Screenshots: before the rethink in `docs/screenshots/rethink-before/`, after it the README's gallery 60–71
+and the noise views 28–29.
