@@ -8,6 +8,7 @@ import { cellBounds, clipFootprint, insideFootprint, type FootprintCell, type Fo
 import type { RoadNet } from './roadnet';
 import { waterWidth } from './watercourses';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
+import * as dm from './detmath';
 
 export interface RoadSourceInterval { way: number; a: number; b: number }
 export interface PreservedRoadConnection { way: number; d: number; point: CrossingPoint }
@@ -516,7 +517,7 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     let turnaroundArea = 0, apronCost = 0;
     if (turn) {
       // A full disk minus the incoming half-ribbon's disk intersection: no double pavement bill.
-      turnaroundArea = Math.PI * radius * radius - half * Math.sqrt(radius * radius - half * half) - radius * radius * Math.asin(half / radius);
+      turnaroundArea = Math.PI * radius * radius - half * Math.sqrt(radius * radius - half * half) - radius * radius * dm.asin(half / radius);
       apronCost = price(turn, turnaroundArea / row.width);
       if (grid.hits(turn, radius)) problems.add('turnaround intersects the footprint');
       const diskCell: FootprintCell = { ...turn, i: h.i, s: r.s[h.i], tx: 1, ty: 0, along: radius, left: radius, right: radius };
@@ -529,10 +530,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
       const other = dead[0] ? path[1] : path[path.length - 2], norm = distance(turn, other) || 1;
       const tx = (other.x - turn.x) / norm, ty = (other.y - turn.y) / norm;
       for (let k = 0; k < 16; k++) {
-        const x = turn.x + radius * Math.cos(k * Math.PI / 8), y = turn.y + radius * Math.sin(k * Math.PI / 8);
+        const x = turn.x + radius * dm.cos(k * Math.PI / 8), y = turn.y + radius * dm.sin(k * Math.PI / 8);
         if (terrain.isOob(x, y)) problems.add('turnaround leaves terrain data');
         if (Math.abs(terrain.heightAt(x, y) - z) > MAX_SUPPORT) problems.add('turnaround support exceeds 10 m');
-        const angle = (k + 0.5) * Math.PI / 8, dx = radius * Math.cos(angle), dy = radius * Math.sin(angle);
+        const angle = (k + 0.5) * Math.PI / 8, dx = radius * dm.cos(angle), dy = radius * dm.sin(angle);
         // The opening into the incoming ribbon is not an exposed disk face.
         if (dx * tx + dy * ty <= 0 || Math.abs(-dx * ty + dy * tx) >= half)
           wall(Math.abs(z - terrain.heightAt(turn.x + dx, turn.y + dy)), radius * Math.PI / 8);

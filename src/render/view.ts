@@ -324,7 +324,7 @@ export class View {
     u.contour.value.w = this.renderer.getPixelRatio();
     const mat = makeTerrainMaterial(u, this.maskUniforms);
     if (this.pack.vectors) {
-      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u, this.pack.transport ?? null);
+      const lc = this.landcover = new LandCover(this.renderer, this.pack.vectors, T.width, T.height, u, null);
       lc.onChange = () => { this.dirty = true; };
       const ortho = this.pack.meta.orthophoto, [ox, oy] = this.pack.meta.origin;
       if (ortho) {
@@ -412,13 +412,18 @@ export class View {
   /** tint the ground by slope class (yellow from 8 %, orange 15 %, red 25 %, purple 40 %) */
   setSlopeTint(on: boolean) { this.terrainU.slopeTint.value = on ? 1 : 0; this.dirty = true; }
   /** drape the orthophoto (streamed per view from the scenario's image service) instead of the map layers */
+  /** the photo's known-network overlay needs the lazily loaded transport graph */
+  onNeedTransport?: () => void;
   setPhoto(on: boolean) {
+    if (on) this.onNeedTransport?.();
     this.landcover?.setPhoto(on);
     this.terrainU.shadeAmt.value = on && this.landcover?.hasPhotoSource ? 0.45 : 1;
     this.dirty = true;
   }
   get hasPhoto() { return !!this.landcover?.hasPhotoSource; }
   get photoWithNetwork() { return !!this.landcover?.photoWithNetwork; }
+  /** the transport graph arrived (loaded lazily after startup): the photo's known-network overlay can use it */
+  setTransport(graph: TransportGraphData | null) { this.landcover?.setNetwork(graph); }
   *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
     if (this.landcover) return yield* this.landcover.buildSourceReplacements(graph, accepted);
     return { commit() {}, dispose() {} };

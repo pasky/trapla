@@ -90,6 +90,14 @@ def chain_reference(elements, cfg, project):
         node = nodes[-1]
     if len(used) != len(ways):
         raise ValueError("disconnected reference ways remain")
+    # Endpoint degrees cannot see interior revisits such as [1,2,3] + [3,4,2,5]: the
+    # assembled route itself must be a simple node path.
+    assembled = [start]
+    for wid in ordered:
+        nodes = ways[wid][0]
+        assembled.extend(nodes[1:] if nodes[0] == assembled[-1] else nodes[-2::-1])
+    if len(set(assembled)) != len(assembled):
+        raise ValueError("reference revisits a node; the assembled chain is not a simple path")
     pts = np.asarray(points)
     length = float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())
     if "lengthRangeM" in cfg and not cfg["lengthRangeM"][0] <= length <= cfg["lengthRangeM"][1]:

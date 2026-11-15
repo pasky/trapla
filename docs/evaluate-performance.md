@@ -1,5 +1,22 @@
 # Evaluate performance regression
 
+## New scenarios: route length sets the cost (2026-11-15)
+
+Evaluation time grows with route length. Node, warm, median of 10 full evaluations on the same host:
+D3 starter 15.4 km **73–81 ms**; Nová Paka starter 6.6 km **29 ms**; D35 first stage 16.5 km
+**55–62 ms**. The full D35 corridor (Opatovec → Mohelnice, 30.6–33.7 km) took **209–300 ms** per full
+evaluation (straight 245–300, reference 209–223, junction starter 156–169), about two to three times
+D11's 90–150 ms. On the GPU drag gate it passed bend/road/radius/vpi, but **pin** missed the median
+preview latency budget in 2 of 3 runs (69 / 59 / 75 ms > 60). Per the agreed rule the scenario ships as
+the first stage, which passes all five modes with margin (preview p50/p95 ms: bend 20/43, road 21/60,
+radius 19/50, pin 28/61, vpi 12/22). `node scripts/drag-perf.mjs --gpu --scenario <id> --mode <m> --check`
+measures any pack with unchanged budgets. Mohelnice needs a cheaper long-route auto-profile first.
+
+D11 startup no longer waits for the 18 MB transport graph (lazy: bytes fetched when idle after the
+first settled scene, parsed on first need). `scripts/startup-perf.mjs --gpu`, median of 5: ready
+1577 → 1151 ms, first settled scene 2367 → 2000 ms, longest long task 952 → 622 ms, JS heap
+425 → 336 MB.
+
 ## Interactive dragging (2026-11-15)
 
 The owner reported waypoint drags taking hundreds of milliseconds up to a second per step. The

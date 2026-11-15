@@ -1,5 +1,6 @@
 import type { Element, Vec2 } from './horizontal';
 import type { CurvePath } from './offset-path';
+import * as dm from './detmath';
 
 const EPS = 1e-6; // numerical position tolerance (m), not an engineering clearance
 const TAU = 2 * Math.PI;
@@ -9,10 +10,10 @@ const sub = (a: Vec2, b: Vec2) => ({ x: a.x - b.x, y: a.y - b.y });
 function end(e: Element, last: boolean): Vec2 {
   if (e.kind === 'line') return { x: e.x0 + (last ? e.len * e.dx : 0), y: e.y0 + (last ? e.len * e.dy : 0) };
   const a = e.a0 + (last ? e.dir * e.len / e.r : 0);
-  return { x: e.cx + e.r * Math.cos(a), y: e.cy + e.r * Math.sin(a) };
+  return { x: e.cx + e.r * dm.cos(a), y: e.cy + e.r * dm.sin(a) };
 }
 function onArc(e: Extract<Element, { kind: 'arc' }>, p: Vec2): boolean {
-  const a = Math.atan2(p.y - e.cy, p.x - e.cx), sweep = mod(e.dir * (a - e.a0));
+  const a = dm.atan2(p.y - e.cy, p.x - e.cx), sweep = mod(e.dir * (a - e.a0));
   return sweep <= e.len / e.r + EPS / e.r || TAU - sweep <= EPS / e.r;
 }
 function onLine(e: Extract<Element, { kind: 'line' }>, p: Vec2): boolean {
@@ -51,7 +52,7 @@ function intersect(a: Element, b: Element): Vec2[] {
 function bounds(e: Element) {
   const pts = [end(e, false), end(e, true)];
   if (e.kind === 'arc') for (let i = 0; i < 4; i++) {
-    const a = i * Math.PI / 2, p = { x: e.cx + e.r * Math.cos(a), y: e.cy + e.r * Math.sin(a) };
+    const a = i * Math.PI / 2, p = { x: e.cx + e.r * dm.cos(a), y: e.cy + e.r * dm.sin(a) };
     if (onArc(e, p)) pts.push(p);
   }
   return { minX: Math.min(...pts.map(p => p.x)), maxX: Math.max(...pts.map(p => p.x)), minY: Math.min(...pts.map(p => p.y)), maxY: Math.max(...pts.map(p => p.y)) };

@@ -2,6 +2,7 @@
 // footprint rectangles for hit tests, and a spatial hash for footprint / noise queries.
 
 import { BUILDING_KIND, BUILDING_KINDS, BUILDING_RULES, URBAN_LAND } from './data/urban';
+import * as dm from './detmath';
 
 /** pack row `binfo[j]`: [footprint m², tagged levels (0 = none), kind, bbox centre x, y, half-length,
  * half-width, angle of the long axis in degrees] */
@@ -66,7 +67,7 @@ export class BuildingIndex {
         this.area[i] = f[0]; levels = f[1]; this.kind[i] = f[2];
         this.ox[i] = f[3]; this.oy[i] = f[4]; this.hl[i] = f[5]; this.hw[i] = f[6];
         const a = (f[7] * Math.PI) / 180;
-        this.ux[i] = Math.cos(a); this.uy[i] = Math.sin(a);
+        this.ux[i] = dm.cos(a); this.uy[i] = dm.sin(a);
       } else {
         const h = b[2] / Math.SQRT2;
         this.area[i] = b[2] * b[2]; this.kind[i] = BUILDING_KIND.house;

@@ -194,6 +194,16 @@ Also: [the most expensive piece](docs/screenshots/62-playtest-money.png),
 [the reference design](docs/screenshots/71-playtest-overview.png).
 Before the rethink: [docs/screenshots/rethink-before](docs/screenshots/rethink-before).
 
+### Scenarios
+
+Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scenario-picker.png),
+[Posázaví across the Sázava](docs/screenshots/74-d3-posazavi.png),
+[D35 first stage, Opatovec → Staré Město](docs/screenshots/75-d35-opatovec-stare-mesto.png),
+[Nová Paka bypass](docs/screenshots/76-nova-paka.png),
+[its end joining the retained roundabout](docs/screenshots/77-nova-paka-roundabout-junction.png),
+[the aerial photo showing the real bypass under construction](docs/screenshots/78-nova-paka-photo.png).
+See `docs/new-scenario.md`.
+
 ### Several roads (foundation, not priced together yet)
 
 | A second road: our road keeps its own price, the other is not priced yet | Change road: Start and End along a mapped road |

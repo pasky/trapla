@@ -4,6 +4,7 @@
   "bbox5514": [-746000, -1079000, -733000, -1060000],
   "cell": 5,
   "requireComplete": true,
+  "coherentTransport": true,
   "official": {
     "strategy": "strict",
     "query": "way[\"ref\"=\"D3\"];",
