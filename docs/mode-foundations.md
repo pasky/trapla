@@ -22,6 +22,12 @@ and missing capability codes. Codes are not player text.
   radii, boundary/self-intersections and terminal-cross-section overlap. Terminal cross-sections are
   collision boundaries, **not constructed caps or connections**. `connectionMismatch` compares actual
   XYZ/grade/tangent ports against explicit tolerances; it never snaps a road to an unbuilt connector.
+- `core/motorway-commands.ts`: emits C0 atomic split/rejoin commands from revision-qualified resolved
+  corridor geometry and **actual child profiles**. Split freezes exact curves/heights, maps structures
+  by true station correspondence, transfers outer walls only to the owning child's outside (no extra
+  median walls), and retains original spine controls/pins for rejoin. Rejoin requires explicit reset.
+  Route and physical acoustic-source IDs survive; stale profiles are rejected and displaced external
+  endpoint anchors become unresolved instead of being silently moved. Store still owns undo/reload.
 - `core/formation-quantities.ts`: integrates **one** supplied transverse formation including median,
   cut/fill zero crossings and the circular-offset Jacobian `1−κ*u`. Caller supplies actual ground and
   design vertices (including slopes), not two overlapping road volumes. Longitudinal average-end-area
@@ -57,8 +63,9 @@ Paired children carry only a corridor-derived alignment reference. Independent c
 materialized horizontal paths and explicit resolved vertical authority, preserving directional route
 IDs and physical acoustic-source IDs. Frozen profile stations, structure ranges and wall side ownership
 must be remapped, never copied as if the two paths had equal lengths. Rejoin explicitly restores the
-retained spine, discarding independent edits in one undo transaction. This checkpoint supplies plan
-geometry but does not yet wire those transactions into Store/UI.
+retained spine, discarding independent edits in one undo transaction. The command helper consumes
+resolved geometry, not a substitute vertical solver. This checkpoint emits the complete commands but
+does not yet wire their user interaction or actual undo/reload integration into Store/UI.
 
 `CorridorKernel` must engineer shared formation once. D27.5 SPK is a **whole-category** tariff; the source
 also says half of a future divided road is60%, not a universal50% split. Four-lane bridge reference
