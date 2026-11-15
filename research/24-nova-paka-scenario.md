@@ -18,21 +18,17 @@ Nominatim's OSM result for Nová Paka town relation 440014 gives town center 50.
 
 OpenStreetMap current-state `map` API requests confirm at least one candidate current `highway=primary, ref=16` way in the southwest area: **way 342016060**, 11 ordered nodes, version 5, timestamp 2026-08-15T09:27:52Z. Its fetched way geometry starts at node 387834632 (50.4584269, 15.4857480) and ends at 74228403 (50.4646491, 15.4932583). This individual segment is **not established as the complete bypass**, so do not use this as the official reference chain or as a sufficient exclusion list. Cached exact response: `pipeline/cache/np-osm-way-342016060-full.osm` (OSM API `/api/0.6/way/342016060/full`, retrieved 2026-11-15). OSM data © OpenStreetMap contributors, ODbL.
 
-The requested bounded Overpass query for reference ways was attempted against `overpass-api.de` and `overpass.kumi.systems`; the first returned HTTP 406 and the other timed out in this environment. Thus no bounded Overpass result, complete ordered way/node chain, or verified per-way topology was obtained. Do not mistake the cached single-way OSM API response for a successful Overpass extraction.
+The exact bounded Overpass query requested for reference ways was attempted as GET against `overpass.private.coffee` (with the pipeline User-Agent, IPv4 and default address selection); both GET attempts timed out without a response (90 s and 45 s). Earlier attempts against `overpass-api.de` returned HTTP 406 and `overpass.kumi.systems` timed out. Therefore no bounded Overpass result, complete ordered way/node chain, or verified per-way topology is obtained here. Do not mistake the cached single-way OSM API response for a successful Overpass extraction. This is an environment retrieval failure, not evidence the query returns no ways.
 
-Reproducible Overpass QL to retrieve the bounded reference and adjacent primary roads after endpoint coordinates/query service are available (bbox values are south,west,north,east; proposed alternative included for continuity checks):
+Exact requested Overpass QL (bbox order is south,west,north,east):
 
 ```overpass
-[out:json][timeout:90][bbox:50.44,15.43,50.56,15.61];
-(
-  way["highway"]["ref"~"(^|;)(I/16|16)(;|$)"];
-  way["highway"="proposed"]["proposed"="primary"];
-  way["highway"="construction"]["construction"="primary"];
-);
-out body geom;
->;
-out skel qt;
+[out:json][timeout:60];
+way[ref=16](50.44,15.43,50.56,15.61);
+out geom;
 ```
+
+For a future topology-preservation pass, expand with relevant highway/ref ways around the initial axis, plus proposed/construction line features; the simple query above is not enough to distinguish historic town I/16, bypass mainline, and attached ramps.
 
 For the actual bypass chain, constrain the query to the precisely verified official route identity and then supply its way IDs/start node to the pipeline's strict official-line mode. The query above is reconnaissance only and may include both historic town I/16 ways and the bypass. Preserve all old-road ways and connected branches; exclude only the built bypass's confirmed mainline ownership plus its actual bypass ramps/roundabout connectors as a separately justified set. The full ordered chain and disjoint exclusion IDs remain **UNVERIFIED / not delivered** in this research pass. Keep old-town I/16 and its branch links in the baseline; indiscriminately excluding every `ref=16` way would erase the challenge and surrounding access.
 
@@ -56,9 +52,9 @@ The first three bypass-related through counts (9,644 west access / 6,253 and 5,5
 
 ## Terrain / aerial evidence and residual earthworks
 
-ČÚZK [DMR 5G product metadata](https://geoportal.cuzk.cz/Default.aspx?lng=EN&mode=TextMeta&side=vyskopis&metadataID=CZ-CUZK-DMR5G-V) describes the national bare-earth terrain model derived from classified airborne LiDAR acquired 2009–2013 (national completion 2016; see also `research/01-terrain.md`). The DMR 5G ImageServer metadata endpoint is [here](https://ags.cuzk.gov.cz/arcgis2/rest/services/dmr5g/ImageServer?f=pjson); it reports coverage/technical service metadata, not a tile-specific acquisition date. Therefore this input predates the 2022–25 bypass construction and does **not** encode its new embankments/cuts as the terrain baseline. It is the best existing evidence found for preconstruction ground elevations in the bypass corridor, though it is not a bespoke historical survey and may contain other intervening change outside the project area.
+ČÚZK [DMR 5G product metadata](https://geoportal.cuzk.cz/Default.aspx?lng=EN&mode=TextMeta&side=vyskopis&metadataID=CZ-CUZK-DMR5G-V) describes the national bare-earth terrain model and its original classified airborne LiDAR acquisition (2009–2013; national completion 2016; see also `research/01-terrain.md`). The DMR 5G ImageServer metadata endpoint is [here](https://ags.cuzk.gov.cz/arcgis2/rest/services/dmr5g/ImageServer?f=pjson); it reports coverage/technical service metadata, not the provenance/acquisition date of a specific returned tile or sampled ground profile. **The original national acquisition dates alone do not establish the vintage of the service's current Nová Paka pixels**: tiles/data may have been updated or otherwise changed. I did not inspect tile-specific provenance, request/sample the local elevation profile, or compare it with project earthworks. Consequently it is unresolved whether current served DMR 5G encodes any bypass-era terrain changes; neither a preconstruction surface nor a residual-earthworks advantage is established by this pass.
 
-ČÚZK [ORTOFOTO MapServer metadata](https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer?f=pjson) identifies a current national viewing service but has no imagery acquisition date in layer metadata. The current official service is a mosaic with no historical layer exposed in the inspected REST metadata; the aerial source year for the Nová Paka tiles was **not verified**. The orthophoto is for visual inspection/rendering, not ground elevation. Because the bypass is open and present in current imagery, masking its OSM pavement alone will still leave the newly built road visible in an orthophoto base layer. Conversely the older DMR is pre-road and does not gift the bypass earthworks to the player. If using current orthophoto in-game, remove/mask the road corridor in the imagery or state that the photo is contextual and displays the real completed project; do not suggest it is a pristine pre-build view. No postconstruction surface raster was found or used.
+ČÚZK [ORTOFOTO MapServer metadata](https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer?f=pjson) identifies a national viewing service but the inspected service/layer metadata expose no local acquisition date. The imagery acquisition year at Nová Paka is **not verified**, and I did not inspect an orthophoto image. Thus presence/absence of the completed bypass in the actual served image is **not verified**. The orthophoto is imagery, not ground elevation; before asserting that an OSM exclusion leaves a completed-road image behind, inspect the precise served tile and its date. No postconstruction surface raster was found or used.
 
 ## Geology confidence
 
@@ -71,7 +67,7 @@ Regional geology should be inspected from ČGS GEOCR50 lithology and IG rajon da
 - OSM Nominatim town anchor (not project endpoint): https://nominatim.openstreetmap.org/search?q=Nov%C3%A1%20Paka&format=jsonv2&limit=1
 - OSM current way response: `pipeline/cache/np-osm-way-342016060-full.osm`
 - CSD 2025 workbook URL above; local scratch download `/tmp/csd2025.xlsx` (not committed/cache).
-- DMR 5G metadata: https://geoportal.cuzk.cz/Default.aspx?lng=EN&mode=TextMeta&side=vyskopis&metadataID=CZ-CUZK-DMR5G-V and ImageServer metadata above.
-- Orthophoto REST metadata: https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer?f=pjson
+- DMR 5G product and ImageServer metadata URLs above; local tile provenance/profile not obtained.
+- Orthophoto REST metadata: https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO/MapServer?f=pjson; no image inspection performed.
 
-**Not yet verified and required before freezing scenario data:** exact endpoints (lat/lon and source node IDs); current complete ordered bypass way/node IDs; strict-mode query and actual fetched Overpass cache; separate exact bypass mainline vs attached ramp/roundabout exclusion IDs; old town road/branch retention via topology check; local orthophoto acquisition year; local ČGS predominant lithologies/project geotechnical evidence. This note intentionally does not guess these.
+**Not yet verified and required before freezing scenario data:** exact endpoints (lat/lon and source node IDs); current complete ordered bypass way/node IDs; fetched Overpass cache (retries against the build's private.coffee endpoint timed out); separate exact bypass mainline vs attached ramp/roundabout exclusion IDs; old town road/branch retention via topology check; local DMR tile provenance and sampled profile relative to project earthworks; local orthophoto acquisition year/image contents; local ČGS predominant lithologies/project geotechnical evidence. This note intentionally does not guess these.
