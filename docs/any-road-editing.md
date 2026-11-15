@@ -202,3 +202,41 @@ Follow-ups requested by the parent (in order, each end-to-end polished):
 Gates before every merge: tsc, vitest, build, eval-regression (11 D11 bills bit-identical), smoke, playtest,
 drag-perf `--gpu --check` for bend/road/radius/pin/vpi/link, bench, any-road-scene on D11 and D3; screenshots
 from 106 on (100–105 used; 110–139 belong to other streams), inspect them.
+
+## 6. Edited network (2026-11-16, commit 7ad2c26)
+
+Owner's D3 bug: III/1057 rebuilt away from our bridge, yet our motorway still reported "A bridge pier stands
+on a class III road" and an at-grade red ✕ where the new line crossed it. Fixed in the engine:
+
+- **Every road is checked against the map as the player edited it** (`core/project-roadnet.ts`,
+  `RoadNet.edited`): every rebuilt stretch is cut out of every road's network (several cuts per way allowed)
+  as soon as its new line is engineered — priced or not (`acceptedReplacements` now means "gone from the
+  map": render, picking, every road's crossings, piers, footprint). "Unpriced" only withholds the total.
+- **Designed roads are crossed by the same crossing engine as mapped roads.** Each designed side road is a
+  way of its class at slot `netSize + k` (k = its index among `designedSlots`) in the network of every road
+  that outranks it (motorway/railway > mission road > side roads by class I > II > III > earlier in the
+  project), except roads joined end to end (their junction handles them). Auto picks bridge / its bridge over
+  us / underpass / junction; a designed road is never cut and rerouted (`resolveCrossings` `designed`). The
+  owner bills the crossing; the crossed road is evaluated after its owner with a height band at the crossing
+  (`EvalOptions.holds`: under our bridge ≤ grade − 6 m, on its deck ±0.5 m with its own bridge over the
+  span, level in a junction/underpass), a violation if By-hand heights miss it (PROVISIONAL slack 0.5 m), and
+  a credit for its own body on the owner's bridge (deck + ramps are the owner's work). The crossing zone is
+  that work's land in the independence screen; the owner's crossing geometry is not drawn or screened for a
+  designed road (it draws itself). Crossing choices on a designed road are stored as
+  `{ kind: 'route', routeId }` (`crossingOverridesOf` / `crossingTargetsOf`; pack net size registered per
+  objectData by the evaluator; a choice on a removed road is dropped). Card: the road's name, no "Cut and reroute".
+- A side road's violations say "its start/end", never the mission's A/B (card and map, previews too).
+- Tests: `tests/edited-network.test.ts` (cuts/slots, overbridge + deck + credit, stored choice, end words,
+  and the exact D3 case on the pack, skipped without it). D11 bills bit-identical.
+- Still blocking a priced D3 project with that rebuild: shared noise (combined noise waits for
+  noise-walls-seams, §4), a shared-land touch at the stretch's start with the motorway's 127 m wide earthworks,
+  and a coarse shared-road screen (both touch way 1489 at different places).
+
+Remaining, in the parent's order (2026-11-16): **B** road-level settings (traffic, junction choice) visible on
+the road's card whenever it is selected, not hidden under the bend card; **D** (= follow-up 1) no inherited
+violations after the first drag; **E** (= follow-up 2) census traffic: `pipeline/fetch_census.py` +
+research/36 (ŘSD Geoportal CSD 2025 layer, EPSG:5514 lines, `CIS_SU`/`PSILNICE`/`SV`/`TV`; note the script keeps
+only `paths[0]` of multi-path sections — fix before use); class III roads such as 1057 are often not counted
+→ labelled class prior; remove the "Traffic not set" issue entirely; name roads the Czech way ("road III/1057"
+or its name); **F** (= follow-up 3) flat 6 m cut. Then the owner's exact D3 steps in a real-mouse scene, a
+first-time-player pass, and playtest-qa on the integrated tree before merge.
