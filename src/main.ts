@@ -7,7 +7,7 @@ import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { ROAD_CLASSES } from './core/data/urban';
 import { RouteExtras } from './render/extras';
-import { runSliced, type SlicedJob } from './render/slices';
+import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
 import { CrossingRenderer } from './render/crossings';
 import { BuildingPicker } from './render/building-pick';
@@ -168,7 +168,10 @@ async function main() {
   let lastPost: { full: boolean; design: string } | null = null;
   /** last full result: the preview's single auto-profile solve is priced at its material value */
   let lastFull: Result | null = null;
+  /** the newest request is a full one and its result is in (the 3D rebuild may still run) */
   const settled = () => received === posted && !fullTimer;
+  /** …and its 3D scene is up (whenIdle) */
+  const sceneIdle = () => settled() && !heavy;
   /** the full result's 3D rebuild, run in slices between frames (see render/slices.ts) */
   let heavy: SlicedJob | null = null;
   let heavyStats = { slices: 0, busy: 0, maxSlice: 0, wall: 0, commit: 0, commitView: 0, commitCrossings: 0, overlays: 0 };
@@ -187,9 +190,11 @@ async function main() {
     schedulePreview();
   };
   const settle = () => {
+    // the worker caught up with the newest request: no stretched provisional profile any more
+    if (received === posted) profile.setPreview(null);
     if (!settled()) return;
-    profile.setPreview(null); hud.setProfileBusy(false);
-    if (heavy) return; // whenIdle(): the 3D scene too
+    hud.setProfileBusy(false);
+    if (!sceneIdle()) return;
     const w = idleWaiters; idleWaiters = []; w.forEach((f) => f());
   };
 
@@ -240,13 +245,20 @@ async function main() {
     heavy?.cancel();
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {
-      const commitView = yield* view.buildResult(r, crown);
-      const commitCrossings = yield* crossingRenderer.build(r);
-      return [commitView, commitCrossings] as const;
-    })(), ([commitView, commitCrossings]) => {
+      // both parts stay owned here until handed over: a cancel between them disposes the first
+      let routeGeometry: Staged | undefined, crossingGeometry: Staged | undefined, handedOver = false;
+      try {
+        routeGeometry = yield* view.buildResult(r, crown);
+        crossingGeometry = yield* crossingRenderer.build(r);
+        handedOver = true;
+        return [routeGeometry, crossingGeometry] as const;
+      } finally {
+        if (!handedOver) { crossingGeometry?.dispose(); routeGeometry?.dispose(); }
+      }
+    })(), ([routeGeometry, crossingGeometry]) => {
       const t0 = performance.now();
-      commitView(); const t1 = performance.now();
-      commitCrossings(); const t2 = performance.now();
+      routeGeometry.commit(); const t1 = performance.now();
+      crossingGeometry.commit(); const t2 = performance.now();
       extras.setResult(r, crown, rd.structureOverrides, rd.wallOverrides);
       noise.setResult(r, crown);
       annotations.setResult(r, rd);
@@ -256,7 +268,9 @@ async function main() {
       settle();
     }, (e) => {
       console.error('3D rebuild failed', e);
-      heavy = null; settle();
+      setStatus('The 3D view could not be updated (a bug, see the console).');
+      heavy = null; lastPost = null; // the same design may be requested again
+      settle();
     }, 8, stats); took('view');
     // a range beyond the end of a shortened route is gone
     if (selection.range && selection.range.s0 >= r.length) selection.set(null);
@@ -549,10 +563,11 @@ async function main() {
     onDeleteVpi: (i) => { store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); selectedVpi = null; hud.setSelectedVpi(null, last); },
     onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {
-      const v = last?.violations[k];
-      if (!v || !last) return;
-      const i = Math.max(0, Math.min(last.n - 1, Math.round((v.s0 + v.s1) / 2 / last.ds)));
-      view.lookAt(last.x[i], last.y[i], Math.max(1500, (v.s1 - v.s0) * 1.5), 20, 45);
+      // the list shows the last full result's violations (previews do not replace it)
+      const f = lastFull, v = f?.violations[k];
+      if (!v || !f) return;
+      const i = Math.max(0, Math.min(f.n - 1, Math.round((v.s0 + v.s1) / 2 / f.ds)));
+      view.lookAt(f.x[i], f.y[i], Math.max(1500, (v.s1 - v.s0) * 1.5), 20, 45);
       profile.focus(v.s0, v.s1);
       if (v.pi !== undefined) selectPi(v.pi);
     },
@@ -629,7 +644,7 @@ async function main() {
       quantities: { ...last.quantities, massHaul: undefined, hitBuildings: last.quantities.hitBuildings.length },
       runs: last.runs, timing: last.timing, vpis: last.vpis.length, crossings: last.crossings, walls: last.walls,
     },
-    whenIdle: () => new Promise<void>((res) => { if (settled()) res(); else idleWaiters.push(res); }),
+    whenIdle: () => new Promise<void>((res) => { if (sceneIdle()) res(); else idleWaiters.push(res); }),
     lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
     resetCamera: () => view.resetCamera(),
     selectPi,

@@ -15,7 +15,7 @@ import { ContourLabels } from './contourLabels';
 import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import { crossingBaseHeight, crossingSurfaces, endCollars, footprintSurfaces, groundSegment, turnaroundSurfaces, turnaroundMaskRing, type CrossingSurface } from './crossing-surface';
-import { finish } from './slices';
+import { finish, type Staged } from './slices';
 import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightPoint, daylightSections, groundBlend, type GroundCorridor } from './earthwork-surface';
 import { EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, terrainUniforms } from './terrainMaterial';
 import { structureFootprints } from '../core/footprint';
@@ -313,6 +313,8 @@ export class View {
     (tex.image as { data: unknown }).data = lv.mipmaps[0].data;
     tex.needsUpdate = true;
     this.landcover?.invalidate();
+    // three.js forgot every program with the context: kept materials would only block new keepers
+    this.keepers.clear();
     if (this.maskSource) this.buildMask(this.maskSource);
     this.dirty = true;
   }
@@ -493,25 +495,39 @@ export class View {
     this.dirty = true;
   }
 
-  setResult(r: Result, crownWidth: number) { finish(this.buildResult(r, crownWidth))(); }
+  setResult(r: Result, crownWidth: number) { finish(this.buildResult(r, crownWidth)).commit(); }
 
   /**
-   * The full result's route geometry, built in slices (each `yield` is a point where the caller
-   * may hand the main thread back to input and rendering) without touching what is shown; the
-   * returned commit swaps it in. Abandoning the generator (`return()`) disposes what it built.
-   * `crossingSurfaces` and the ground blend are replaced at the start: the crossing renderer
-   * builds from them, and nothing displayed reads them until the commit (buildMask).
+   * The full result's route geometry, built in steps (each `yield` is a point where a cooperative
+   * scheduler may hand the main thread back to input and rendering) without changing what is
+   * shown. The result is staged: `commit()` swaps it in, `dispose()` throws it away. Abandoning the
+   * generator (`return()`) disposes too. `crossingSurfaces` and the ground blend are staged on the
+   * view while building (the crossing renderer builds from them; nothing displayed reads them until
+   * the commit's buildMask); a dispose restores the previous ones.
    */
-  *buildResult(r: Result, crownWidth: number): Generator<void, () => void> {
+  *buildResult(r: Result, crownWidth: number): Generator<void, Staged> {
+    const previous = { surfaces: this.crossingSurfaces, blend: this.groundBlend };
+    const out: THREE.Object3D[] = [];
+    let handedOver = false, settled = false;
+    const dispose = () => {
+      if (settled) return;
+      settled = true;
+      const keep = [this.collarMaterial(), this.ribbonMaterial()];
+      for (const o of out) {
+        (o as THREE.Mesh).geometry?.dispose();
+        const mats = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        // never drawn: no program shared with a successor yet, dispose at once
+        for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) if (!keep.includes(mat)) mat.dispose();
+      }
+      this.crossingSurfaces = previous.surfaces; this.groundBlend = previous.blend;
+    };
+    try {
     const natural = (x: number, y: number) => this.terrain.heightAt(x, y);
     const surfaces: CrossingSurface[] = [], base = crossingBaseHeight(r, crownWidth, natural);
     for (const c of r.crossings) { surfaces.push(...crossingSurfaces([c], natural, base)); yield; }
-    for (const c of r.footprintConflicts ?? []) surfaces.push(...footprintSurfaces([c], natural));
+    for (const c of r.footprintConflicts ?? []) { surfaces.push(...footprintSurfaces([c], natural)); yield; }
     this.crossingSurfaces = surfaces;
     yield;
-    const out: THREE.Object3D[] = [];
-    let committed = false;
-    try {
     const corridors: GroundCorridor[] = [];
     for (const surface of this.crossingSurfaces) for (let i = 0; i+1 < surface.sections.length; i++) {
       if (!groundSegment(surface,i)) continue;
@@ -708,12 +724,12 @@ export class View {
     g.setAttribute('ewKind', new THREE.Float32BufferAttribute(kinds, 1));
     g.setAttribute('ewGeo', new THREE.Float32BufferAttribute(geo, 3));
     g.setIndex(idx);
+    const ribbon = new THREE.Mesh(g, this.ribbonMaterial());
+    ribbon.name = 'ribbon';
+    out.push(ribbon); // owned (disposed on abort) before the next yield
     g.computeBoundingSphere();
     g.computeVertexNormals();
     yield;
-    const ribbon = new THREE.Mesh(g, this.ribbonMaterial());
-    ribbon.name = 'ribbon';
-    out.push(ribbon);
 
     out.push(...this.centreline(r, bad));
 
@@ -743,8 +759,10 @@ export class View {
       pts.renderOrder = 5;
       out.push(pts);
     }
-    committed = true;
-    return () => {
+    handedOver = true;
+    const commit = () => {
+      if (settled) return;
+      settled = true;
       const keep = new Set<THREE.Material>([this.collarMaterial(), this.ribbonMaterial()]);
       for (const c of [...this.routeGroup.children]) {
         this.routeGroup.remove(c);
@@ -758,14 +776,10 @@ export class View {
       if (this.buildings) this.buildings.hide(demolished);
       this.dirty = true;
     };
+    return { commit, dispose };
     } finally {
-      // abandoned before the commit: nothing was shown, dispose it now
-      if (!committed) for (const o of out) {
-        (o as THREE.Mesh).geometry?.dispose();
-        const mats = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-        const keep = [this.collarMaterial(), this.ribbonMaterial()];
-        for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) if (!keep.includes(mat)) mat.dispose();
-      }
+      // abandoned (or failed) before handing the staged result over: nothing was shown
+      if (!handedOver) dispose();
     }
   }
 
@@ -1081,8 +1095,9 @@ export class View {
   requestRender() { this.dirty = true; }
 
   /**
-   * Dispose a retired material, unless it is the last user of its shader program: then it is kept
-   * (one per program, so bounded by the few program variants) and the program survives. Results
+   * Dispose a retired material, unless it is the last user of the shader program it was last drawn
+   * with: then it is kept (one per program, so bounded by the few program variants) and that program
+   * survives. Results
    * without, say, blocked-conflict markers or noise walls would otherwise delete those programs
    * and the next result with some would compile them again (≈ 10 ms on a GPU, ≈ 1 s in SwiftShader).
    */

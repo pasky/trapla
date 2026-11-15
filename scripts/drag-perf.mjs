@@ -145,9 +145,10 @@ const drag = async (secs, size, shotAt = null) => {
   while (Date.now() - t0 < secs * 1000) {
     const o = path((Date.now() - t0) / 1000 / secs, size);
     await page.mouse.move(c.x + o.x, c.y + o.y);
+    // next slot of the timeline: missed slots are skipped, not sent in a burst
     k++;
     if (shotAt && Date.now() - t0 > secs * 500) { await page.screenshot({ path: shotAt }); shotAt = null; }
-    const next = t0 + k * 16.7;
+    const next = t0 + (Math.floor((Date.now() - t0) / 16.7) + 1) * 16.7;
     if (next > Date.now()) await page.waitForTimeout(next - Date.now());
   }
   await page.mouse.up();
@@ -171,8 +172,12 @@ const tIdle = await page.evaluate(() => performance.now());
 const rebuild = await page.evaluate(() => window.trapla.rebuildStats?.());
 await page.waitForTimeout(300);
 const programsAfter = await page.evaluate(() => window.trapla.programs?.() ?? []);
-const id = (p) => p.split(':').slice(0, 2).join(':');
-const compiled = programsAfter.filter((p) => !programsBefore.map(id).includes(id(p)));
+// three.js numbers programs in creation order: any id above the highest before the drag was
+// compiled during it (even if deleted again since)
+const pid = (p) => Number(p.split(':')[0]);
+const maxBefore = Math.max(-1, ...programsBefore.map(pid));
+const compiledCount = programsAfter.length ? Math.max(-1, ...programsAfter.map(pid)) - maxBefore : 0;
+const compiled = compiledCount > 0 ? programsAfter.filter((p) => pid(p) > maxBefore).concat(compiledCount > programsAfter.filter((p) => pid(p) > maxBefore).length ? ['(+ deleted again)'] : []) : [];
 await page.waitForTimeout(300);
 const D = await page.evaluate(() => { const D = window.__drag; D.on = false; return { ...D, posts: [...D.posts] }; });
 if (traceOut) await browser.stopTracing();
@@ -192,6 +197,13 @@ const parts = (rs) => {
   for (const r of rs) for (const [k, v] of Object.entries(r.parts ?? {})) sum[k] = (sum[k] ?? 0) + v / rs.length;
   return Object.entries(sum).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', ') || '—';
 };
+const dragLong = D.longtasks.filter((e) => e.t <= tUp), afterLong = D.longtasks.filter((e) => e.t > tUp);
+const shownAt = during.map((r) => r.t1);
+// from the first evaluation request (the pointer's first move), not from the probe's mouse-down
+const first = Math.min(...posts.values());
+const gaps = [...shownAt, tUp].map((t, i, a) => ({ at: (i ? a[i - 1] : first) - D.start, gap: t - (i ? a[i - 1] : first), full: i < during.length && !during[i].preview }));
+const resultGap = Math.max(0, ...gaps.map((g) => g.gap));
+if (process.env.DRAG_DEBUG) console.log('gaps', JSON.stringify(gaps.filter((g) => g.gap > 60).map((g) => [Math.round(g.at), Math.round(g.gap), g.full])));
 const out = {
   mode, renderer, moves, evalsPosted: posts.size, resultsDuringDrag: during.length, previewResults: previews.length,
   frames: dragFrames.length, framesPerSec: dragFrames.length / ((tUp - D.start) / 1000),
@@ -202,7 +214,9 @@ const out = {
   settleAfterRelease: `${(tIdle - tUp).toFixed(0)} ms`,
   fullRebuild: rebuild ? `${rebuild.slices} slices, busy ${rebuild.busy.toFixed(0)} ms, longest slice ${rebuild.maxSlice.toFixed(0)} ms, commit ${rebuild.commit.toFixed(0)} ms (view ${rebuild.commitView?.toFixed(0)}, crossings ${rebuild.commitCrossings?.toFixed(0)}, overlays ${rebuild.overlays?.toFixed(0)}), wall ${rebuild.wall.toFixed(0)} ms` : '—',
   programsCompiled: compiled.length ? compiled.join(', ') : 'none',
-  longtasks: `${D.longtasks.length} (sum ${D.longtasks.reduce((a, e) => a + e.d, 0).toFixed(0)} ms over ${(tUp - D.start).toFixed(0)} ms drag)`,
+  longtasksDrag: `${dragLong.length} (sum ${dragLong.reduce((a, e) => a + e.d, 0).toFixed(0)} ms over ${(tUp - D.start).toFixed(0)} ms drag)`,
+  longtasksAfterRelease: `${afterLong.length} (sum ${afterLong.reduce((a, e) => a + e.d, 0).toFixed(0)} ms until settled + 300 ms)`,
+  maxResultGap: `${resultGap.toFixed(0)} ms between displayed results during the drag`,
 };
 console.log(JSON.stringify(out, null, 1));
 await browser.close();
@@ -221,7 +235,9 @@ if (check) {
   over('median preview latency', q(lp, 0.5), budget.latencyP50);
   over('p95 preview latency', q(lp, 0.95), budget.latencyP95);
   over('p95 main-thread time per preview result', q(hp, 0.95), budget.handlerP95);
-  if (D.longtasks.length) fails.push(`${D.longtasks.length} long task(s) ≥ 50 ms during the drag`);
+  if (dragLong.length) fails.push(`${dragLong.length} long task(s) ≥ 50 ms during the drag`);
+  if (afterLong.length) fails.push(`${afterLong.length} long task(s) ≥ 50 ms after release`);
+  over('longest gap between displayed results', resultGap, env('DRAG_RESULT_GAP', gpu ? 250 : 1000));
   if (compiled.length) fails.push(`shader programs compiled during the drag: ${compiled.join(', ')}`);
   if (fails.length) { console.log('FAIL:', fails.join('; ')); process.exit(1); }
   console.log('OK');

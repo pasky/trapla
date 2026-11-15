@@ -152,7 +152,8 @@ export interface EvalOptions {
    * crossing geometry, footprint remedies or noise. Plan, grade line, structures and an approximate bill only;
    * validity is provisional. The full evaluation follows when the drag pauses or ends. */
   preview?: boolean;
-  /** Material value to price the preview's single solve at (the last full result's). */
+  /** Material value to price the preview's single solve at (the last full result's; default the
+   * mass-balance search's starting value). */
   materialValue?: number;
 }
 
@@ -582,7 +583,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       },
     };
     autoOptions = apOpt;
-    const fixed = preview && opts.materialValue !== undefined ? opts.materialValue : undefined;
+    // a preview always solves once, at the given (else the starting) material value
+    const fixed = preview ? opts.materialValue ?? MATERIAL_VALUE.start : undefined;
     let ap = fixed === undefined ? autoProfile(st.s, ground, apOpt)
       : { ...autoProfile(st.s, ground, { ...apOpt, costPerM: costFor(fixed), balance: undefined }), materialValue: fixed };
     // vertical curves can shave the clearance the polyline search provided: retry asking for more

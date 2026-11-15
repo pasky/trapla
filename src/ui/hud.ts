@@ -93,6 +93,8 @@ export class Hud {
   private range: StationRange | null = null;
   /** violations whose explanation the player unfolded */
   private openWhy = new Set<string>();
+  /** the violations the list shows: the last full result's (a drag preview keeps them) */
+  private listed: Result['violations'] | null = null;
   private folds: Record<string, boolean> = {};
   private $ = <T extends HTMLElement = HTMLElement>(id: string) => this.root.querySelector<T>(`#${id}`)!;
   /** where the contextual cards go (the bend / height point cards here, the build tools' cards too) */
@@ -179,7 +181,7 @@ export class Hud {
       const li = (e.target as HTMLElement).closest('li') as HTMLElement | null;
       if (why && li) {
         // "why?" unfolds the explanation (kept open across recomputes) instead of jumping to the place
-        const x = this.last?.r.violations[Number(why.dataset.why)];
+        const x = this.listed?.[Number(why.dataset.why)];
         const box = li.querySelector<HTMLElement>('.vdetail')!;
         box.hidden = !box.hidden;
         why.textContent = box.hidden ? 'why?' : 'less';
@@ -345,6 +347,7 @@ export class Hud {
       return;
     }
     const v = r.violations;
+    this.listed = v;
     const count = this.$('viol-count');
     count.textContent = String(v.length);
     count.className = `count${v.length ? '' : ' ok'}`;

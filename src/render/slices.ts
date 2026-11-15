@@ -1,6 +1,7 @@
 // Sliced main-thread work: heavy 3D rebuilds are generators that `yield` between bounded steps.
-// A job runs in slices of a few milliseconds, handing the thread back to input and rendering in
-// between, and can be abandoned (a newer result supersedes it) without having shown anything.
+// A job runs cooperatively in time-budgeted slices (separate tasks, so input and rendering get
+// their turn between them as the browser schedules them), and can be abandoned (a newer result
+// supersedes it) without having shown anything.
 
 /** run a sliced build to its end (synchronous callers, tests) and return its result */
 export function finish<T>(job: Generator<void, T>): T {
@@ -14,6 +15,9 @@ if (channel) channel.port1.onmessage = () => queue.shift()?.();
 const nextTask = (f: () => void) => { if (channel) { queue.push(f); channel.port2.postMessage(0); } else setTimeout(f, 0); };
 
 export interface SlicedJob { cancel(): void; readonly done: boolean }
+
+/** A built but not yet shown result: exactly one of commit() (swap it in) or dispose() takes effect. */
+export interface Staged { commit(): void; dispose(): void }
 
 /**
  * Run `job` in slices of at most ~`budgetMs`, then `onDone(result)` (or `onError` if it throws).

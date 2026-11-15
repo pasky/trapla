@@ -9,7 +9,7 @@ import { existingRoadColor } from './landcover';
 import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
 import { collarPoint } from './earthwork-surface';
-import { finish } from './slices';
+import { finish, type Staged } from './slices';
 
 /** linear-space colour components per hex (THREE.Color converts sRGB on every construction) */
 const colorCache = new Map<number, THREE.Color>();
@@ -133,43 +133,57 @@ export class CrossingRenderer {
    * program lookup and, once the last user is disposed, a shader recompile) */
   private materials: { ground: THREE.Material; earth: THREE.Material; structure: THREE.Material } | null = null;
   constructor(private view: View) { this.group.name = 'crossing-roads'; view.world.add(this.group); }
-  setResult(r: CrossingInput) { finish(this.build(r))(); }
+  setResult(r: CrossingInput) { finish(this.build(r)).commit(); }
   /**
-   * Builds the crossing meshes for `view.crossingSurfaces` in slices (see View.buildResult)
-   * without touching the scene; the returned commit swaps them in. Surfaces whose key is
-   * unchanged keep their meshes. Abandoning the generator disposes what it built.
+   * Builds the crossing meshes for `view.crossingSurfaces` in steps (see View.buildResult)
+   * without touching the scene, staged for commit() or dispose(). Surfaces whose key is unchanged
+   * keep their meshes. Abandoning the generator disposes what it built.
    */
-  *build(r: CrossingInput): Generator<void, () => void> {
+  *build(r: CrossingInput): Generator<void, Staged> {
     const surfaces = this.view.crossingSurfaces;
     const heads = turnaroundSurfaces(surfaces,(x,y) => this.view.groundHeight(x,y));
     const materials = this.materials ??= { ground: this.view.crossingGroundMaterial(), earth: this.view.crossingEarthMaterial(), structure: this.view.crossingEarthMaterial() };
     const fresh: THREE.Object3D[] = [];
-    const emit = (earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder, into: THREE.Object3D[]) => {
+    let handedOver = false, settled = false;
+    const dispose = () => { if (!settled) { settled = true; this.dispose3D(fresh, false); } };
+    /** meshes of finished builders, one geometry chunk per step */
+    const emit = function* (earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder, into: THREE.Object3D[]): Generator<void, void> {
       for (const [builder, material, name] of [[terrain, materials.ground, 'crossing-terrain'],
         [earth, materials.earth, 'crossing-earthworks'], [structure, materials.structure, 'crossing-decks']] as const) {
         if (!builder.indices.length) continue;
         for (const geometry of builder.geometries()) {
           const mesh = new THREE.Mesh(geometry, material); mesh.name = name; into.push(mesh); fresh.push(mesh);
+          yield;
         }
       }
     };
-    // A surface's collars read the shared ground blend of every corridor near it and drop cells
-    // under turning heads: its key covers its own inputs, its neighbours' and the heads'.
+    // A surface's meshes depend on its own inputs, on the shared ground blend (View.groundBlend:
+    // every ground corridor reaches its toe width + 12.5 m) wherever its collars sample it (its
+    // outer collar edge, end collars 18 m beyond) and on the turning heads (cells under a disk are
+    // dropped). Its key covers all of these.
     const headKey = new SurfaceKey();
     for (const head of heads) { headKey.num(head.center.x); headKey.num(head.center.y); headKey.num(head.radius); }
     const own = surfaces.map(surfaceKey);
-    const boxes = surfaces.map(s => {
+    const sample = surfaces.map(s => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const q of s.sections) for (const p of [q.outer[0], q.outer[1], q.p]) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-      return { x0, y0, x1, y1 };
+      for (const q of s.sections) for (const p of [q.outer[0], q.outer[1], q.toe[0], q.toe[1], q.p]) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+      const m = 18 + 1;
+      return { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m };
     });
-    const reach = 60;
+    const reach = surfaces.map(s => {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, width = 0;
+      for (const q of s.sections) {
+        x0 = Math.min(x0, q.p.x); y0 = Math.min(y0, q.p.y); x1 = Math.max(x1, q.p.x); y1 = Math.max(y1, q.p.y);
+        for (const t of q.toe) width = Math.max(width, Math.hypot(t.x - q.p.x, t.y - q.p.y));
+      }
+      const m = width + 12.5 + 1;
+      return { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m };
+    });
     const next = new Map<string, THREE.Object3D[]>(), misc: THREE.Object3D[] = [];
-    let committed = false;
     try {
       for (let k = 0; k < surfaces.length; k++) {
-        const b = boxes[k], near: string[] = [];
-        boxes.forEach((o, j) => { if (j !== k && o.x0 <= b.x1 + reach && o.x1 >= b.x0 - reach && o.y0 <= b.y1 + reach && o.y1 >= b.y0 - reach) near.push(own[j]); });
+        const b = sample[k], near: string[] = [];
+        reach.forEach((o, j) => { if (j !== k && o.x0 <= b.x1 && o.x1 >= b.x0 && o.y0 <= b.y1 && o.y1 >= b.y0) near.push(own[j]); });
         let key = `${own[k]}|${near.sort().join(',')}|${heads.length ? headKey.key : ''}`;
         while (next.has(key)) key += '+';
         const kept = this.surfaces.get(key);
@@ -178,9 +192,8 @@ export class CrossingRenderer {
         terrain.groundHoles = heads;
         yield* this.surface(surfaces[k], earth, terrain, structure);
         const meshes: THREE.Object3D[] = [];
-        emit(earth, terrain, structure, meshes);
+        yield* emit(earth, terrain, structure, meshes);
         next.set(key, meshes);
-        yield;
       }
       const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
       for (const c of r.crossings) if (c.type === 'underpass' && c.geometry?.underpass && c.geometry.road) this.underpass(c.geometry.road, c.geometry.underpass, structure);
@@ -198,17 +211,20 @@ export class CrossingRenderer {
             (x,y) => this.view.groundHeight(x,y),(x,y) => this.view.replacementHeight(x,y)));
           for (let k = 0; k < 8; k++) terrain.quad(collar(a,k/8),collar(a,(k+1)/8),collar(b,k/8),collar(b,(k+1)/8),0xffffff,0,.015);
         }
+        yield;
       }
-      emit(earth, terrain, structure, misc);
+      yield* emit(earth, terrain, structure, misc);
       const annotations: THREE.Object3D[] = [];
       this.conflicts(r.footprintConflicts ?? [], annotations);
       fresh.push(...annotations); misc.push(...annotations);
-      committed = true;
+      handedOver = true;
     } finally {
-      // abandoned before the commit: nothing was shown, dispose it now
-      if (!committed) this.dispose3D(fresh, false);
+      // abandoned (or failed) before handing the staged result over: nothing was shown
+      if (!handedOver) dispose();
     }
-    return () => {
+    const commit = () => {
+      if (settled) return;
+      settled = true;
       this.clearMisc();
       for (const [key, meshes] of this.surfaces) if (next.get(key) !== meshes) this.drop(meshes);
       for (const meshes of next.values()) for (const m of meshes) if (m.parent !== this.group) this.group.add(m);
@@ -219,6 +235,7 @@ export class CrossingRenderer {
       if (!this.group.children.some(c => c instanceof THREE.Mesh)) this.releaseMaterials();
       this.view.requestRender();
     };
+    return { commit, dispose };
   }
   private conflicts(conflicts: readonly FootprintConflict[], out: THREE.Object3D[]) {
     const blocked: number[] = [];

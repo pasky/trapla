@@ -26,43 +26,60 @@ Chromium trace; result deserialisation, GC, layout and GPU were minor):
   dimmed; it is never offered as a best score. A full result that the drag has already moved past is
   shown as provisional too. Full evaluations are unchanged (`scripts/eval-regression.ts` passes).
 - **Sliced 3D rebuild.** Only the newest full result rebuilds the earthwork ribbon, collars and
-  crossings: generators (`View.buildResult`, `CrossingRenderer.build`) run in ≈ 8 ms slices between
-  frames (`src/render/slices.ts`) and swap in atomically; any newer request cancels the rebuild.
+  crossings: generators (`View.buildResult`, `CrossingRenderer.build`) run cooperatively in ≈ 8 ms
+  time-budgeted tasks (`src/render/slices.ts`; input and rendering get their turn between tasks as
+  the browser schedules them), staged until both are complete and then swapped in together; any newer
+  request cancels the rebuild and disposes what it built.
 - **Hot spots.** Fine numeric-key blend grid with a squared-distance reject; `collarPoint` skips
-  zero-weight lookups; crossing surfaces keep their meshes while a 1 mm input hash (incl. neighbours
-  and turning heads) is unchanged; terrain collars share vertices and carry positions only (the
+  zero-weight lookups; crossing surfaces keep their meshes while a 1 mm input hash is unchanged (it
+  covers every surface whose blend corridor — toe width + 12.5 m — reaches this one's collars, and
+  the turning heads; `tests/crossing-reuse.test.ts`); terrain collars share vertices and carry positions only (the
   terrain material reads nothing else); strip/collar rows computed once; persistent shared materials.
-- **No shader recompiles.** A retired material that is the last user of its program is kept (one per
-  program) instead of disposed: results without blocked markers / walls / buyouts no longer delete
+- **No shader recompiles.** A retired material that is the last user of the program it was last
+  drawn with is kept (one per program; reset when the WebGL context is restored) instead of disposed: results without blocked markers / walls / buyouts no longer delete
   those programs for the next result to recompile (≈ 10 ms GPU, ≈ 1 s SwiftShader).
-- Profile panel paints once per frame (readers of its scales flush a pending paint).
+- The profile panel's redraw requests are coalesced into one paint per animation frame (readers of
+  its scales — hit tests, `toClient`, the selection bar — flush a pending paint).
 
 ### Measured
 
 `node scripts/drag-perf.mjs --gpu [--mode bend|radius|pin|vpi] [--root DIR] [--check]`: a real
 mouse drag of bend 10 (index 9) of `best-design` for 2 s (60 Hz pointer timeline) after a short warm-up
-drag; frame intervals, main-thread time per worker result, worker time and latency from posting the
-evaluation (in the pointer-move handler) to its handled result. integrated AMD Radeon (RADV GFX1150, Vulkan), the
-same host for every row, **under heavy concurrent load (load average 25–34 on 24 threads: worker
-times ≈ 2× a quiet run)**, two runs each, ranges shown:
+drag; frame intervals, main-thread time per worker result, worker time, latency from posting the
+evaluation (in the pointer-move handler) to its handled result, the longest gap between displayed
+results, long tasks during the drag and after release, shader programs compiled. Integrated AMD
+Radeon (RADV GFX1150, Vulkan); every row on the same host.
+
+Quiet host (load average ≈ 5 on 24 threads), one run each:
+
+| Bend drag, GPU | fps | p95 frame | main thread / result | worker | latency p50 / p95 | release → settled |
+|---|---:|---:|---:|---:|---:|---:|
+| `dd31e08` (before the feature burst) | 60 | 17 ms | 11 ms | 26 ms | 45 / 70 ms | 23 ms |
+| `17dac0a` (perf merge) | 23 | 150 ms | 131 ms | 53 ms | 259 / 383 ms | 300 ms |
+| `4061314` (before this fix) | 5 | 1.8 s | 1.76 s | 104 ms | 3.8 / 3.8 s | 3.3 s |
+| this fix | **60** | **17 ms** | **5 ms** (p95 7) | 19 ms (previews) | **25 / 34 ms** | 0.32 s |
+
+Heavily loaded host (load average 25–34: other agents' SwiftShader browsers; worker times ≈ 2×),
+two runs each, ranges:
 
 | Bend drag, GPU | fps | p95 frame | main thread / result | worker | latency p50 | release → settled |
 |---|---:|---:|---:|---:|---:|---:|
-| `dd31e08` (before the feature burst) | 57–60 | 17–33 ms | 16–22 ms | 41–60 ms | 67–96 ms | 65 ms |
-| `17dac0a` (perf merge) | 20–23 | 150–183 ms | 130–174 ms | 57–101 ms | 278–356 ms | 230–390 ms |
-| `4061314` (before this fix) | 2.3–2.6 | 2.7–3.1 s | 2.7–3.1 s | 78–102 ms | 5.4–6.2 s | 2.6 s |
-| this fix | **58–60** | **17 ms** | **9 ms** (p95 15) | 40–41 ms (previews) | **65 ms** (p95 92–102) | 0.64–0.74 s |
+| `dd31e08` | 57–60 | 17–33 ms | 16–22 ms | 41–60 ms | 67–96 ms | 65 ms |
+| `17dac0a` | 20–23 | 150–183 ms | 130–174 ms | 57–101 ms | 278–356 ms | 230–390 ms |
+| `4061314` | 2.3–2.6 | 2.7–3.1 s | 2.7–3.1 s | 78–102 ms | 5.4–6.2 s | 2.6 s |
+| this fix | 58–60 | 17 ms | 9 ms (p95 15) | 40–41 ms | 65 ms (p95 92–102) | 0.64–0.74 s |
 
-No long tasks (≥ 50 ms) during the fixed drag; none of the old ones survived. Release → settled is
-the full evaluation plus the sliced rebuild (≈ 430 ms busy in ≈ 43 slices of ≤ 17–35 ms, commit
-≈ 20–30 ms): smooth, but slower to complete than before the crossing/collar 3D detail existed.
-Other drag kinds (`--mode`, same host): radius grip, pin and height point all run at 60 fps, p95
-frame 17 ms, main thread 8–9 ms per preview, latency p50 50–59 ms; their full rebuilds are smaller
-(113–179 ms busy) because most crossing surfaces are reused.
+No long tasks (≥ 50 ms) during the drag or after release with the fix. Release → settled is the
+full evaluation plus the sliced rebuild (quiet: ≈ 200 ms busy in ≈ 23 slices of ≤ 12–32 ms, commit
+≈ 10–20 ms): no frame drops, but it takes longer to complete than before the crossing/collar 3D
+detail existed. Other drag kinds (`--mode`, quiet host): radius grip, pin and height point all run at
+60 fps, p95 frame 17 ms, main thread 5–9 ms per preview, latency p50 29–39 ms / p95 51–66 ms,
+longest gap between displayed results 63–79 ms; their full rebuilds are smaller (148–264 ms busy)
+because most crossing surfaces are reused.
 
-Worker per drag step (`STEPS=16 [PREVIEW=1] npx tsx scripts/bench-drag.ts`, same load): full
-124–245 ms median, **preview 27–51 ms** (auto-profile ≈ 21–28 ms of it); on the quiet host of the
-model 16 → 17 table below that is ≈ 15–25 ms.
+Worker per drag step (`STEPS=16 [PREVIEW=1] npx tsx scripts/bench-drag.ts`, quiet host): full
+104–148 ms median, **preview 21–27 ms median** (the single auto-profile solve is most of it). Under the
+heavy load above: full 124–245 ms, preview 27–51 ms.
 
 Preview accuracy (10 bend steps per design): the bill is −8 to −18 % against the full one (no
 retaining walls, footprint remedies, noise walls or measured crossing geometry; town-centre up to
@@ -73,11 +90,14 @@ shows it as an approximation only.
 SwiftShader (no GPU): frames are ≈ 0.4–0.6 s whatever the app does (CPU rasterisation of the scene),
 so `--check` there budgets the main thread only (preview handler p95 ≤ 50 ms, latency p50 ≤ 150 ms,
 no long tasks, no shader compiles). GPU budgets: p95 frame ≤ 34 ms, preview latency p50 ≤ 60 ms /
-p95 ≤ 120 ms, main thread per preview p95 ≤ 25 ms, no long tasks, no compiles; all four modes pass
-on the host above. Budgets can be overridden (`DRAG_FRAME_P95`, `DRAG_LATENCY_P50`, …).
+p95 ≤ 120 ms, main thread per preview p95 ≤ 25 ms, longest gap between displayed results ≤ 250 ms,
+no long tasks during the drag or after release, no compiles. All four modes pass on the quiet host;
+under the heavy load above the bend drag's median latency (65 ms) exceeds the 60 ms budget, so a
+`--check` on a busy machine can fail on latency alone. Budgets can be overridden (`DRAG_FRAME_P95`,
+`DRAG_LATENCY_P50`, …).
 
 Not done: building the crossing / collar geometry in a worker (would remove the remaining
-≈ 0.3–0.5 s main-thread rebuild after release; needs the geometry code split from three.js objects),
+≈ 0.2–0.45 s of sliced main-thread rebuild after release; needs the geometry code split from three.js objects),
 and a second worker so that a preview never waits behind a full evaluation started by a pause.
 
 ## Model 16 → 17 pass (2026-11-15)
