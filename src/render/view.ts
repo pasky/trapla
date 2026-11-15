@@ -80,6 +80,7 @@ export class View {
     () => new Set([this.collarMaterial(), this.ribbonMaterial()]), (material) => this.retire(material));
   private routeInputs = new Map<string, { result: Result; surfaces: readonly CrossingSurface[] }>();
   private polyLine: Line2 | null = null;
+  private proposalLines = new Map<string, { key: string; line: Line2 }>();
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
   private piMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
   private endpointMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
@@ -494,6 +495,29 @@ export class View {
       if (!marker) continue;
       marker.x = point.x; marker.y = point.y; marker.z = point.z ?? this.terrain.heightAt(point.x, point.y);
       marker.el.querySelector('span')!.textContent = point.label ?? '';
+    }
+    this.dirty = true;
+  }
+
+  /** Unaccepted route proposals on reference geometry: a distinct dashed line above the ground, no road
+   * body or earthworks (none were engineered). The old road under it stays drawn until accepted. */
+  setProposals(proposals: readonly { id: string; key: string; active: boolean; points: readonly { x: number; y: number }[] }[]) {
+    const keep = new Set(proposals.map(p => p.id));
+    const drop = (id: string) => {
+      const old = this.proposalLines.get(id); if (!old) return;
+      this.world.remove(old.line); old.line.geometry.dispose(); this.retire(old.line.material); this.proposalLines.delete(id);
+    };
+    for (const id of [...this.proposalLines.keys()]) if (!keep.has(id)) drop(id);
+    for (const p of proposals) {
+      const key = `${p.key}:${p.active}`;
+      if (this.proposalLines.get(p.id)?.key === key) continue;
+      drop(p.id);
+      const arr: number[] = [];
+      for (const q of p.points) { const v = this.local(q.x, q.y, this.drapeHeight(q.x, q.y) + 2.5); arr.push(v.x, v.y, v.z); }
+      if (arr.length < 6) continue;
+      const line = this.makeLine(arr, null, p.active ? 5 : 3.5, { color: 0xff9f1c, opacity: 0.95, depthTest: false, dashed: true, dashSize: 10, gapSize: 6, order: 3 });
+      line.name = 'proposal';
+      this.world.add(line); this.proposalLines.set(p.id, { key, line });
     }
     this.dirty = true;
   }

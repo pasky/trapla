@@ -11,7 +11,10 @@ import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
-import { pickRoute } from './render/route-pick';
+import { pickRoute, type PickRoute } from './render/route-pick';
+import { SourcePicker, type SourceHit } from './render/source-pick';
+import { ProjectTransportIndex } from './core/project-network';
+import { SourceEditor } from './ui/source-editor';
 import { BuildingPicker } from './render/building-pick';
 import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { DecisionList } from './ui/build-tools';
@@ -26,7 +29,7 @@ import { startDesign } from './state';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
-import type { ProjectDesign, ProjectResult, ProjectSnapshot, RouteId } from './core/project';
+import type { ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult } from './core/project';
 import { acceptsProjectMessage, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
@@ -121,7 +124,14 @@ async function main() {
     return d.routes.length === 1 && !d.corridors.length && !d.connections.length && only.role === 'mission' && !only.source
       && store.activeRouteId === only.id && store.read() !== null;
   };
-  const projectScore = (pending: boolean) => hud.setProject(projectFull, pending, projectStore.best, missionRouteId(), legacyFacade());
+  /** our road's live drag price (≈), until the next full result */
+  let missionPreviewPrice: number | null = null;
+  const projectScore = (pending: boolean) => {
+    const mission = missionRouteId(), own = mission ? projectFull?.routes[mission]?.legacy?.cost.total : undefined;
+    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(),
+      missionPrice: missionPreviewPrice !== null ? { total: missionPreviewPrice, approx: true } : own !== undefined ? { total: own, approx: false } : null,
+      unpriced: projectStore.snapshot.design.routes.filter(r => r.id !== mission).length });
+  };
   let posted = 0, received = 0;
   /** main-thread ms per consumer of the last handled result (drag-perf probe) */
   const handlerTiming: Record<string, number> = {};
@@ -139,6 +149,17 @@ async function main() {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
   });
+  // ---- base roads: any mapped road can be inspected and offered for change (one inspector card) ----
+  let transportIndex: ProjectTransportIndex | null = null, sourcePicker: SourcePicker | null = null;
+  if (pack.transport && pack.vectors && transportData) {
+    try {
+      transportIndex = new ProjectTransportIndex(pack.transport, transportData, pack.transport.vectorData, pack.terrain);
+      sourcePicker = new SourcePicker(pack.transport, pack.vectors);
+    } catch (error) { console.warn('Road map links are unavailable', error); transportIndex = null; sourcePicker = null; }
+  }
+  const inspectorEl = document.getElementById('inspector')!;
+  const claimedSources = () => projectStore.snapshot.design.routes.flatMap(r => r.source?.intervals ?? []);
+  const sourceEditor = transportIndex ? new SourceEditor(() => inspectorEl, document.getElementById('overlay')!, view, transportIndex, claimedSources) : null;
   const activeEndpoints = () => ({
     a: { ...(store.route?.endpoints.a.position ?? positionA), label: store.route?.role === 'mission' ? scenario.labels.a : 'Start' },
     b: { ...(store.route?.endpoints.b.position ?? positionB), label: store.route?.role === 'mission' ? scenario.labels.b : 'End' },
@@ -171,6 +192,7 @@ async function main() {
   };
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   const select = (next: Sel | null, fly = false) => {
+    if (sourceEditor?.selected) sourceEditor.clear();
     qualifiedSelection = store.activeRouteId ? qualifySelection(store.activeRouteId, next) : null;
     sel = activeSelection(store.activeRouteId, qualifiedSelection);
     if (next) intro.hide();
@@ -185,6 +207,7 @@ async function main() {
     profile.selectStation(next?.kind === 'pin' ? next.s : null);
     profile.select(next?.kind === 'vpi' ? next.i : null);
     inspector.set(next);
+    if (!next && !store.read()) routeCard();
     if (next) {
       const p = placeOf(next);
       if (p) {
@@ -198,6 +221,30 @@ async function main() {
       }
       hud.revealContext('inspector');
     }
+  };
+  /** the active route's card when the road widgets cannot edit it: a proposed change on map geometry */
+  const routeCard = () => {
+    const route = store.route, result = route ? projectFull?.routes[route.id] : undefined;
+    if (!route || store.read()) { inspector.clear(route ? 'This road has not been checked yet.' : 'Choose a road to inspect.'); return; }
+    const root = inspector.host(), h = document.createElement('div'), title = document.createElement('b'), close = document.createElement('button');
+    root.replaceChildren(); root.className = 'card ctx inspector k-proposal';
+    h.className = 'ctx-h'; title.textContent = route.name; close.className = 'x'; close.textContent = '✕'; close.title = 'Close';
+    close.onclick = () => { const mission = missionRouteId(); if (mission) switchRoute(mission); };
+    h.append(title, close);
+    const state = document.createElement('div'); state.className = 'ctx-state'; state.textContent = 'Proposed change · not checked yet';
+    const note = document.createElement('p'); note.textContent = 'The old road stays until this change is checked.';
+    const length = route.alignment.kind === 'reference' ? route.alignment.path[route.alignment.path.length - 1].s : result?.surface?.points.at(-1)?.s;
+    const size = document.createElement('div'); size.className = 'sub'; size.textContent = length ? `${Math.round(length)} m` : '';
+    const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route'; remove.textContent = 'Remove change';
+    remove.onclick = () => {
+      const mission = missionRouteId(); projectStore.dispatch({ type: 'delete-route', routeId: route.id });
+      if (mission && mission !== route.id) switchRoute(mission);
+    };
+    root.append(h, state, note, size, remove);
+  };
+  const showSource = (hit: SourceHit) => {
+    if (!sourceEditor) return;
+    select(null); inspector.host(); sourceEditor.show(hit); hud.revealContext('inspector');
   };
   const selectPiece = (s: number, fly = false) => {
     if (!last) return;
@@ -345,6 +392,10 @@ async function main() {
   };
 
   const syncDecorations = (result: ProjectResult) => {
+    view.setProposals(projectStore.snapshot.design.routes.flatMap(route => {
+      const rr = result.routes[route.id];
+      return rr && !rr.legacy && rr.surface ? [{ id: route.id, key: rr.engineeringRevision, active: route.id === store.activeRouteId, points: rr.surface.points }] : [];
+    }));
     for (const [id, entry] of otherExtras) if (!result.routes[id]?.legacy) { entry.overlay.dispose(); otherExtras.delete(id); }
     for (const route of projectStore.snapshot.design.routes) {
       const r = result.routes[route.id]?.legacy;
@@ -369,7 +420,7 @@ async function main() {
     hud.setRouteState(!!rd, !!r && !!rd);
     document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = store.route ? `Profile · ${store.route.name}` : 'Profile';
     if (!r || !rd) {
-      profile.clear(); inspector.clear(store.route ? 'This road has not been checked yet.' : 'Choose a road to inspect.');
+      profile.clear(); if (!sourceEditor?.selected) routeCard();
       view.clearDesign(activeEndpoints()); return;
     }
     revalidate(r, rd);
@@ -404,12 +455,13 @@ async function main() {
         profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
+        if (m.routeId === missionRouteId()) missionPreviewPrice = shown.cost.total;
         hud.setResult(shown, rd, store.best); projectScore(true); took('hud');
         curveEdit.refresh(); took('curveEdit');
       }
       if (received < posted) schedulePreview(); settle(); return;
     }
-    projectFull = m.result;
+    projectFull = m.result; missionPreviewPrice = null;
     const result = m.result;
     noise.setAvailable(result.acousticScreen.complete && projectStore.snapshot.design.routes.length === 1);
     heavy?.cancel();
@@ -432,6 +484,7 @@ async function main() {
       } finally { if (!handedOver) { sources?.dispose(); geometry?.dispose(); } }
     })(), ([geometry, sources]) => {
       const t0 = performance.now(); geometry.commit(); const t1 = performance.now(); sources?.commit(); const t2 = performance.now();
+      sourcePicker?.setAccepted(result.acceptedRenderReplacements);
       syncDecorations(result);
       displayedProject = result; heavy = null;
       projectStore.offerBest(result); projectScore(false);
@@ -468,6 +521,11 @@ async function main() {
     return true;
   };
   store.onHistory = () => select(null);
+  if (sourceEditor) {
+    sourceEditor.onClose = () => select(null);
+    // One atomic, undoable promote command; the proposal stays unscored until core accepts it.
+    sourceEditor.onApply = (command, id) => { projectStore.dispatch(command); switchRoute(id); };
+  }
   routeBar.onSelect = switchRoute;
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
 
@@ -480,7 +538,7 @@ async function main() {
       if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
       profile.selectBend(selectedPi()); curveEdit.refresh();
-    } else { view.clearDesign(activeEndpoints()); profile.clear(); inspector.clear(); curveEdit.hide(); }
+    } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
     requestEval(!committed);
@@ -492,10 +550,20 @@ async function main() {
   // crossed roads are clickable once they are drawn big enough; from afar a click on the road picks its piece
   const crossingPickPx = () => (view.metresPerPixel < 4 ? 12 : view.metresPerPixel < 10 ? 6 : 0);
   const canvasBox = () => view.renderer.domElement.getBoundingClientRect();
+  const surfacePicks = new Map<RouteId, { key: string; result: PickRoute['result'] }>();
+  /** an unaccepted proposal is picked on the reference line it is drawn on */
+  const surfacePick = (route: RouteResult): PickRoute['result'] | null => {
+    const p = route.surface?.points; if (!p || p.length < 2) return null;
+    const cached = surfacePicks.get(route.routeId); if (cached?.key === route.engineeringRevision) return cached.result;
+    const z = p.map(q => q.z);
+    const result = { n: p.length, s: p.map(q => q.s), x: p.map(q => q.x), y: p.map(q => q.y), grade: z, ground: z, kind: p.map(() => 0) };
+    surfacePicks.set(route.routeId, { key: route.engineeringRevision, result: result as unknown as PickRoute['result'] });
+    return surfacePicks.get(route.routeId)!.result;
+  };
   const routeAt = (clientX: number, clientY: number, px: number) => {
     const box = canvasBox();
     const routes = Object.values(projectFull?.routes ?? {}).flatMap(route => {
-      const r = route.routeId === store.activeRouteId ? last : route.legacy;
+      const r = route.routeId === store.activeRouteId && last ? last : route.legacy ?? surfacePick(route);
       return r ? [{ id: route.routeId, result: r }] : [];
     });
     return pickRoute(routes, clientX - box.left, clientY - box.top, px,
@@ -523,8 +591,20 @@ async function main() {
     const g = view.pick(clientX, clientY);
     return g ? buildingPicker.at(clientX, clientY, { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) }) : null;
   };
+  /** a mapped base road under the cursor; a stretch a project road already claims selects that road */
+  const sourceAt = (clientX: number, clientY: number): { kind: 'source'; hit: SourceHit } | { kind: 'route-hit'; routeId: RouteId; s: number } | null => {
+    if (!sourcePicker || !sourceEditor) return null;
+    const g = view.pick(clientX, clientY); if (!g) return null;
+    const box = canvasBox(), px = 8;
+    const hit = sourcePicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(30, px * view.metresPerPixel * 3), px,
+      (x, y) => view.project(x, y, view.drape(x, y)));
+    if (!hit) return null;
+    for (const route of projectStore.snapshot.design.routes) for (const c of route.source?.intervals ?? [])
+      if (c.sourceId === hit.sourceId && c.transportData === transportData && hit.s >= c.s0 && hit.s <= c.s1) return { kind: 'route-hit', routeId: route.id, s: hit.s - c.s0 };
+    return { kind: 'source', hit };
+  };
   /** what a click at a client point means */
-  const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | null => {
+  const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | { kind: 'source'; hit: SourceHit } | null => {
     const c = crossingAt(clientX, clientY);
     if (c) return { kind: 'crossing', roadId: c.roadId! };
     const hit = routeAt(clientX, clientY, 10);
@@ -533,7 +613,7 @@ async function main() {
     if (b !== null) return { kind: 'building', j: b };
     const w = extras.wallAt(clientX, clientY);
     if (w) return { kind: 'stretch', s0: w.s0, s1: w.s1 };
-    return null;
+    return sourceAt(clientX, clientY);
   };
   const insertBend = (x: number, y: number, commit: boolean) => {
     const k = nearestLeg(A, B, store.design.pis, { x, y });
@@ -544,7 +624,8 @@ async function main() {
     onPickTerrain: (_x, _y, clientX, clientY) => {
       intro.hide();
       const t = thingAt(clientX, clientY);
-      if (t?.kind === 'route-hit') { if (switchRoute(t.routeId)) selectPiece(t.s); }
+      if (t?.kind === 'route-hit') { if (switchRoute(t.routeId) && store.read()) selectPiece(t.s); }
+      else if (t?.kind === 'source') showSource(t.hit);
       else select(t);
     },
     onDoublePick: (x, y) => { if (!store.read() || routeAt(lastClient.x, lastClient.y, 10)) return; select({ kind: 'bend', i: insertBend(x, y, true) }); },
@@ -637,6 +718,7 @@ async function main() {
       } else if (routeAt(at.x, at.y, 10)) { cursor = 'pointer'; key = 'other-route'; }
       else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
+      else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }
     }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     if (key === mapHoverKey) return;

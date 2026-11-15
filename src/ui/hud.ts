@@ -83,7 +83,8 @@ export class Hud {
   ev: HudEvents = {};
   private last: { r: Result; d: Design } | null = null;
   private projectIssuesFor: ProjectResult | null | undefined;
-  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId } | null = null;
+  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId;
+    missionPrice: { total: number; approx: boolean } | null; unpriced: number } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
     for (const id of ['sec-cost', 'sec-stats', 'sec-decisions']) this.$(id).hidden = !hasResult;
@@ -91,7 +92,10 @@ export class Hud {
   }
   /** `legacy`: the project is exactly one legacy road (the facade): the unchanged single-road score shows,
    * including its live ≈ preview total. Otherwise the project score owns the total and verdict. */
-  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, missionRouteId?: RouteId, legacy = false) {
+  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; legacy?: boolean;
+    /** our road's own kernel price (a live ≈ during its drag); never a project total */
+    missionPrice?: { total: number; approx: boolean } | null; unpriced?: number } = {}) {
+    const { missionRouteId, legacy = false, missionPrice = null, unpriced = 0 } = opts;
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       if (was) this.$('cost-scope').textContent = 'Total cost';
@@ -99,7 +103,7 @@ export class Hud {
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
       return;
     }
-    this.project = { result, pending, best, missionRouteId }; this.renderProjectScore();
+    this.project = { result, pending, best, missionRouteId, missionPrice, unpriced }; this.renderProjectScore();
   }
   /** the listed project issues followed by the active road's own checks (k indexes this list) */
   listedIssue(k: number): { issue?: ProjectResult['issues'][number]; routeViolation?: number } | null {
@@ -109,18 +113,23 @@ export class Hud {
   }
   private renderProjectScore() {
     if (!this.project) return;
-    const { result, pending, best, missionRouteId } = this.project, total = result?.cost.total;
-    this.$('cost-scope').textContent = 'Project cost';
-    this.$('total').textContent = total === null || total === undefined ? '—' : `${pending ? '≈ ' : ''}${czk(total)}`;
-    this.$('total').classList.toggle('invalid', !pending && !result?.valid);
+    const { result, pending, best, missionRouteId, missionPrice, unpriced } = this.project, total = result?.cost.total;
+    const priced = total !== null && total !== undefined;
+    // An unpriced network keeps our road's own price visible, plainly labelled, never as a total.
+    this.$('cost-scope').textContent = priced ? 'Total cost' : 'Our road only';
+    this.$('total').textContent = priced ? `${pending ? '≈ ' : ''}${czk(total)}`
+      : missionPrice ? `${missionPrice.approx || pending ? '≈ ' : ''}${czk(missionPrice.total)}` : '—';
+    this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
     this.$('valid').textContent = pending ? '≈ CHECKING' : !result?.complete ? 'NOT CHECKED' : result.valid ? '✓ VALID' : '✗ NOT VALID';
     this.$('valid').className = `badge ${pending ? 'preview' : result?.complete && result.valid ? 'ok' : 'bad'}`;
+    this.$('perkm').textContent = !priced && unpriced ? `${unpriced} road change${unpriced === 1 ? '' : 's'} not priced yet` : this.goalText;
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {
-      this.$('chip-time').textContent = `${num(time, 1)} / ${this.sc.maxTravelMin.toFixed(1)} min`;
-      this.$('chip-time').className = `chip ${time <= this.sc.maxTravelMin ? 'ok' : 'bad'}`;
+      const ok = time <= this.sc.maxTravelMin;
+      this.$('chip-time').innerHTML = `${ok ? '✓' : '✗'} ${num(time, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
+      this.$('chip-time').className = `chip ${ok ? 'ok' : 'bad'}`;
     }
     const issues = result?.issues ?? [], chip = this.$('chip-viol'), own = this.routeViolations;
     const listed: (Pick<Violation, 'kind' | 'title' | 'fix' | 'detail' | 'rule'> & { s0?: number; goal?: boolean })[] = [
@@ -141,10 +150,10 @@ export class Hud {
       }).join('');
     }
     if (!pending) {
-      const delta = this.baseline !== null && total !== null && total !== undefined ? total - this.baseline : 0;
+      const delta = this.baseline !== null && priced ? total - this.baseline : 0;
       this.$('delta').textContent = Math.abs(delta) >= 5e5 ? `${delta < 0 ? '−' : '+'}${czk(Math.abs(delta))}` : '';
       this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
-      this.lastTotal = total ?? null;
+      this.lastTotal = priced ? total : null;
     }
     const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
     this.$('best').innerHTML = best ? `${isBest ? '★ your best' : `best ${czk(best.cost)}`}${isBest ? '' : ' <button type="button" id="load-best">Load</button>'}` : '<small>no valid design yet</small>';

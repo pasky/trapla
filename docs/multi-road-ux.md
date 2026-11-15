@@ -162,3 +162,20 @@ intro key `trapla.intro.v2` is current (older scripts set a stale v1 key). Fixtu
   undo, not a player creation flow. Real-mouse base-road coverage is added below; Build coverage awaits Build.
 - `RouteExtras` noise/wall overlays for inactive routes and the active-only noise band are legacy
   single-source views; they are suppressed/marked unfinished for networks, never combined in the UI.
+
+### U1 continuation: base-road Change road wired (unscored)
+
+- Any mapped base road (vector feature with a transport-graph mapping) is clickable when nothing designed
+  is hit: one inspector card (name, width basis, **Change road**). Change road shows Start/End handles
+  that follow the road; explicit speed/traffic/heavy inputs; **Apply** dispatches core's single atomic
+  `promote` command (branches become explicit connections), **Cancel**/✕/Esc changes nothing. Showing
+  the card or switching roads creates no undo entry. A stretch already claimed by a project road selects
+  that road. Accepted render intervals feed the picker cuts with the scene swap.
+- The promoted road is a reference proposal: core returns `source-needs-network`, so it has no bill,
+  no body and no profile. It is drawn as an orange dashed line over the still-visible old road, is
+  pickable and selectable from the route list, and its card says "Proposed change · not checked yet"
+  with an undoable **Remove change**. Multi-road HUD: no total/VALID/best; the kicker reads "Our road
+  only" with our road's own kernel price (live ≈ during its drag) and "N road changes not priced yet".
+- Requires a pack with `transport-meta.json`; D11 currently has none (S is regenerating it), so the
+  real-mouse base-road test runs on D3. No D11 behaviour changes without the sidecar.
+- Open: reference-path editing (bend/profile of a promoted road), C1 acceptance/pricing, Build tool.

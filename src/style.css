@@ -447,3 +447,13 @@ button.link i.pk-fill { background: #8fbf5a; } button.link i.pk-cut { background
 .route-build-choices[hidden] { display: none; }
 .save-recovery { margin: 12px; }
 .save-recovery button { margin-right: 6px; }
+/* base-road card: Change road with two visible handles along the mapped road */
+.source-endpoint { position: absolute; transform: translate(-50%, -100%); pointer-events: auto; cursor: grab; touch-action: none;
+  padding: 3px 8px; border-radius: 10px; border: 2px solid #1d232a; background: #ff9f1c; color: #1d232a; font: 700 12px system-ui, sans-serif;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4); user-select: none; }
+.source-endpoint:active { cursor: grabbing; }
+.source-operations label { display: flex; align-items: center; gap: 6px; font-size: 12px; margin: 4px 0; }
+.source-operations input { width: 80px; }
+.source-operations small { color: #667; }
+.inspector .source-error { color: #b0281a; font-size: 12px; }
+.inspector.k-source #change-source, .inspector.k-proposal #remove-route { margin-top: 4px; }

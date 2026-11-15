@@ -107,7 +107,7 @@ export class Inspector {
     // a field being typed into belongs to the old selection: let it apply there (change on blur) first
     const a = document.activeElement as HTMLElement | null;
     if (a && this.el.contains(a)) a.blur();
-    this.sel = sel; this.pending = false; this.previewing = null;
+    this.sel = sel; this.pending = false; this.previewing = null; this.hosted = false;
     this.render(true);
   }
 
@@ -150,7 +150,16 @@ export class Inspector {
     return `${plan ? `${plan.svg}<div class="why plan-why">${esc(plan.caption)}</div>` : ''}${section}`;
   }
   setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
+  /** Another card (a base road, a proposed change) borrows this ONE inspector until the next selection. */
+  private hosted = false;
+  host(): HTMLElement {
+    const a = document.activeElement as HTMLElement | null;
+    if (a && this.el.contains(a)) a.blur();
+    this.hosted = true; this.sel = null; this.pending = false; return this.el;
+  }
+  get isHosting() { return this.hosted; }
   clear(message = 'Choose a road to inspect.') {
+    this.hosted = false;
     this.r = null; this.d = null; this.sel = null;
     this.el.replaceChildren(); this.el.className = 'card ctx inspector idle';
     const text = document.createElement('p'); text.textContent = message; this.el.append(text);
@@ -158,6 +167,7 @@ export class Inspector {
 
   /** `force`: the selection changed (redraw even under a focused field) */
   render(force = false) {
+    if (this.hosted) return;
     // not under the player's fingers: a field being typed into, a slider being dragged
     if (!force && document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=range]')) { this.pending = true; return; }
     this.pending = false;
@@ -401,6 +411,7 @@ export class Inspector {
 
   // ---- events ----
   private click(e: MouseEvent) {
+    if (this.hosted) return;
     const b = (e.target as HTMLElement).closest('button');
     if (!b || !this.r || !this.d) return;
     const sel = this.sel, r = this.r;
@@ -453,6 +464,7 @@ export class Inspector {
   }
 
   private change(e: Event) {
+    if (this.hosted) return;
     const t = e.target as HTMLInputElement, sel = this.sel;
     if (sel?.kind === 'bend' && t.id === 'pi-r' && Number.isFinite(t.valueAsNumber)) this.ev.radius?.(sel.i, Math.max(10, t.valueAsNumber));
     if (sel?.kind === 'bend' && t.id === 'pi-slider') { this.ev.commit?.(); t.blur(); }
