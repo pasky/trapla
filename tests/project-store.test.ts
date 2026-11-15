@@ -4,7 +4,7 @@ import type { CorridorDesign, ProjectResult, RouteDesign } from '../src/core/pro
 import type { Design } from '../src/core/evaluate';
 import { legacyDesignForRoute, projectFromLegacyDesign, replaceRouteFromLegacy, type LegacyProjectContext } from '../src/core/project-legacy';
 import { assertProjectDesign } from '../src/core/project-validation';
-import { loadProjectSave } from '../src/project-persistence';
+import { loadProjectSave, projectMissionKey } from '../src/project-persistence';
 import { openProjectStore, type ProjectStoreOptions } from '../src/project-store';
 import { projectStorageKeys, repairProjectEditor } from '../src/project-store-contract';
 
@@ -159,6 +159,11 @@ it('repairs stale per-anchor source fingerprints even when the project fingerpri
   if (loaded.status !== 'needs-repair') throw new Error('fixture');
   expect(loaded.save.design.routes[0].endpoints.a.binding).toBe('unresolved');
   expect(() => assertProjectDesign(d)).toThrow('source fingerprint');
+  data.set(keys.project, JSON.stringify({ schemaVersion: 1, design: d, best: { design: d, cost: 100, at: 'then',
+    model: COST_MODEL_VERSION, evaluationVersion: 1, pricingData: 'prices', missionData: projectMissionKey(d) } }));
+  expect(openProjectStore({ ...options, transportData: 'transport-a' })).toMatchObject({
+    load: { status: 'needs-repair' }, store: { best: null },
+  });
 });
 
 it('does not reinterpret a selected pin index after undo restores another pin before it', () => {
