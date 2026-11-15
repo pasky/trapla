@@ -158,7 +158,7 @@ async function main() {
       || (sel.kind === 'crossing' && !r.crossings.some((c) => c.roadId === (sel as { roadId: number }).roadId))
       || (sel.kind === 'vpi' && (d.profileMode !== 'manual' || sel.i >= r.vpis.length - 1))
       || (sel.kind === 'stretch' && sel.s0 >= r.length)) { select(null); return; }
-    if (sel.kind === 'stretch' && sel.piece) sel = { ...sel, piece: pieceAt(r, (sel.s0 + sel.s1) / 2).kind };
+    if (sel.kind === 'stretch' && sel.piece) { sel = { ...sel, piece: pieceAt(r, (sel.s0 + sel.s1) / 2).kind }; inspector.sel = sel; }
   };
 
   // ---- edits ----
@@ -391,7 +391,8 @@ async function main() {
   // ---- map: click inspects, dragging the road bends it, empty ground deselects ----
   // buildings are pickable once they are a few pixels big
   const buildingsPickable = () => view.metresPerPixel < 3;
-  const crossingPickPx = () => (view.metresPerPixel < 4 ? 12 : 6);
+  // crossed roads are clickable once they are drawn big enough; from afar a click on the road picks its piece
+  const crossingPickPx = () => (view.metresPerPixel < 4 ? 12 : view.metresPerPixel < 10 ? 6 : 0);
   const canvasBox = () => view.renderer.domElement.getBoundingClientRect();
   /** station index of the road drawn within `px` of a client point, −1 if none */
   const roadAt = (clientX: number, clientY: number, px: number) => {
@@ -467,7 +468,7 @@ async function main() {
 
   // ---- profile: the same verbs ----
   profile.ev = {
-    onStationSelect: (s) => select({ kind: 'pin', s }),
+    onStationSelect: (s) => select({ kind: 'pin', s }, true),
     onCrossingSelect: (roadId) => select({ kind: 'crossing', roadId }, true),
     onPick: (s) => selectPiece(s, true),
     onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
