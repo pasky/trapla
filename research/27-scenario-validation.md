@@ -197,8 +197,16 @@ D35's raw straight line is itself VALID (15,846.4 m, 5.742 bn) and cheaper than 
 starter only seeds the mapped corridor. Paka's starter buys out more buildings (792 M) than the
 unrepaired seed; the player can do better.
 
-**Open discrepancy:** in the browser Paka's starter totals 2,666,492,493.77 CZK, 109,595 CZK less
-than Node (legacy and project paths agree with each other). The difference is one reconnection link
-(way 2559, km 3.05: 26,765,262 vs 26,849,179 CZK) plus its surcharge; footprint conflicts and the
-junction are identical, and D3/D35 match to the cent. Not reproduced in Node by evaluation order,
-previews, material value or endpoint z. Needs a core look.
+**Browser ≠ Node, found and fixed.** A recorded browser worker session (every message to the worker)
+replayed in Node had identical inputs (terrain, land cover, ground, buildings, network, watercourses,
+scenario, junctions, snapshot) yet gave Node's total: the difference was in the JavaScript engines.
+Chromium 156's V8 and Node's V8 (20 and 22 agree with each other) implement transcendental functions
+differently: on 100,000 arguments each, native results differed in 2.4–16 % of cases for sin, cos, tan,
+atan, atan2, log, log10, exp, asin, acos and in 10 % for `**`. One last-bit difference moved a discrete
+choice in the reconnection link at km 3.05. `src/core/detmath.ts` now holds fdlibm ports built only
+from IEEE arithmetic and bit operations, used by every billed `src/core` call (a test forbids native
+transcendentals and non-square `**` there). They equal Node's native results bit-for-bit for every
+function but pow on 400k+ arguments each (so all frozen D11 bills stay bit-identical); pow is the fdlibm
+algorithm, which differs from Node's libm `**` in the last bit for ~3 % of arguments, yet all 11 frozen
+D11 bills, the three new starters, the five saved designs and the outcome audit are unchanged.
+`scripts/detmath-browser-check.mjs` verifies identical bits in Chromium.

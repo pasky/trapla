@@ -8,6 +8,7 @@ import { NOISE } from './data/urban';
 import type { Result } from './evaluate';
 import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
+import * as dm from './detmath';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
  * unpriced; none of them can make an interacting project priced. */
@@ -166,10 +167,10 @@ function noiseRoute(route: ScreenRoute, margin: number): NoiseRoute {
 export function screenIndependence(routes: readonly ScreenRoute[], buildings: BuildingIndex | undefined): IndependenceScreen {
   const interactions: RouteInteraction[] = [];
   const S = INDEPENDENCE_SCREEN;
-  const margin = S.noiseMargin + 10 * Math.log10(Math.max(1, routes.length - 1));
+  const margin = S.noiseMargin + 10 * dm.log10(Math.max(1, routes.length - 1));
   // Neglected roads at a house each stay ≥ margin below its limits: ≤ 1 % beside its own road, and
   // ≤ N/(N − 1) % at a house no road owns (where nothing is near the limit anyway).
-  const omitted = (db: number) => routes.length * 10 ** ((db - margin) / 10);
+  const omitted = (db: number) => routes.length * dm.pow(10, (db - margin) / 10);
   const out = () => ({ independent: interactions.length === 0, interactions,
     omittedDayEnergy: omitted(NOISE.limitDayDb), omittedNightEnergy: omitted(NOISE.limitNightDb) });
   if (routes.length > S.maxRoutes) { interactions.push({ routeIds: routes.map(r => r.routeId), reason: 'too-many-roads' }); return out(); }

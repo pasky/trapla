@@ -1,4 +1,5 @@
 import type { Element, PointOnAlignment } from './horizontal';
+import * as dm from './detmath';
 
 /** Exact built plan geometry, not a second PI control polygon. Units: metres and radians. */
 export interface CurvePath { elements: readonly Element[]; length: number }
@@ -18,7 +19,7 @@ const TANGENT_EPS = 1e-8;
 function elementPoint(e: Element, u: number): PointOnAlignment {
   if (e.kind === 'line') return { x: e.x0 + e.dx * u, y: e.y0 + e.dy * u, tx: e.dx, ty: e.dy, curvature: 0 };
   const a = e.a0 + e.dir * u / e.r;
-  return { x: e.cx + e.r * Math.cos(a), y: e.cy + e.r * Math.sin(a), tx: -e.dir * Math.sin(a), ty: e.dir * Math.cos(a), curvature: e.dir / e.r };
+  return { x: e.cx + e.r * dm.cos(a), y: e.cy + e.r * dm.sin(a), tx: -e.dir * dm.sin(a), ty: e.dir * dm.cos(a), curvature: e.dir / e.r };
 }
 
 /** Reject malformed paths and corners: a discontinuous normal has no continuous exact offset. */

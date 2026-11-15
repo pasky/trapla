@@ -1,3 +1,4 @@
+import * as dm from './detmath';
 // Horizontal alignment: polyline of tangent-intersection points (PIs, "bends") from A to B with a
 // circular arc at every bend. Transition curves are not drawn, but the room they need is tracked.
 //
@@ -149,13 +150,13 @@ export function transitionTangent(r: number, delta: number, lt: number): number 
   if (delta < 1e-9) return 0;
   const p = (lt * lt) / (24 * r);
   const k = lt / 2 - (lt * lt * lt) / (240 * r * r);
-  return (r + p) * Math.tan(delta / 2) + k;
+  return (r + p) * dm.tan(delta / 2) + k;
 }
 
 /** room a transition takes on the tangent beyond the plain-arc tangent point (≈ L/2) */
 export function transitionExtra(r: number, delta: number, lt: number): number {
   if (delta < 1e-9 || lt <= 0 || !(r > 0)) return 0;
-  return Math.max(0, transitionTangent(r, delta, lt) - r * Math.tan(delta / 2));
+  return Math.max(0, transitionTangent(r, delta, lt) - r * dm.tan(delta / 2));
 }
 
 /**
@@ -353,9 +354,9 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
       x = xi;
       if (!freeRadii) break;
       let lg = 0, positive = true;
-      for (let i = 1; i <= m; i++) { if (xi[i] >= floorR) lg += Math.log(xi[i]); else positive = false; }
+      for (let i = 1; i <= m; i++) { if (xi[i] >= floorR) lg += dm.log(xi[i]); else positive = false; }
       if (!positive) break;
-      const g2 = Math.exp((2 * lg) / m);
+      const g2 = dm.exp((2 * lg) / m);
       let change = 0;
       for (let j = 0; j < m - 1; j++) {
         const nw = g2 / (xi[j + 1] * xi[j + 2]);
@@ -427,7 +428,7 @@ export function solveChain(inp: ChainInput, rules: HorizontalRules, fixIn: numbe
         [lo, Math.min(hi, rules.plainRadius - 1e-8), 1],
         [Math.max(lo, rules.plainRadius), hi, 0],
       ]);
-      const angle = (i: number) => 2 * Math.atan(tau[i]);
+      const angle = (i: number) => 2 * dm.atan(tau[i]);
       for (const [start, end, autoTransition] of segments) {
         let lo = start, hi = end;
         const bound = (v: number, d: number, min: number, max: number) => {
@@ -531,7 +532,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     keep = keep.filter((_, i) => {
       const p0 = pt(i - 1), p1 = pt(i), p2 = pt(i + 1);
       const ax = p1.x - p0.x, ay = p1.y - p0.y, bx = p2.x - p1.x, by = p2.y - p1.y;
-      return Math.abs(Math.atan2(ax * by - ay * bx, ax * bx + ay * by)) >= EPS_ANG;
+      return Math.abs(dm.atan2(ax * by - ay * bx, ax * bx + ay * by)) >= EPS_ANG;
     });
   }
   // ---- layout for the current set of bends; bends that only wiggle are then left out and it is redone ----
@@ -559,11 +560,11 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     for (let i = 0; i < nv; i++) {
       const cross = U[i].x * U[i + 1].y - U[i].y * U[i + 1].x;
       const dot = U[i].x * U[i + 1].x + U[i].y * U[i + 1].y;
-      const rw = Math.abs(Math.atan2(cross, dot));
+      const rw = Math.abs(dm.atan2(cross, dot));
       raw.push(rw);
       d.push(rw > MAX_DEFLECTION ? 0 : rw); // near-reversal: no arc (geometry stays continuous)
       dir.push(cross >= 0 ? 1 : -1);
-      tau.push(Math.tan(d[i] / 2));
+      tau.push(dm.tan(d[i] / 2));
       const r = pis[keep[i]].r;
       manual.push(r !== null && Number.isFinite(r) && r > 0 ? Math.min(r, MAX_RADIUS) : null);
       Rreq.push(manual[i] ?? autoRadius(d[i], rules));
@@ -846,7 +847,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
         const nx = -U[i].y * dir[i], ny = U[i].x * dir[i];
         const cx = cur.x + nx * rEff, cy = cur.y + ny * rEff;
         const len = rEff * d[i];
-        elements.push({ kind: 'arc', s0: s, len, cx, cy, r: rEff, a0: Math.atan2(cur.y - cy, cur.x - cx), dir: dir[i], pi: k });
+        elements.push({ kind: 'arc', s0: s, len, cx, cy, r: rEff, a0: dm.atan2(cur.y - cy, cur.x - cx), dir: dir[i], pi: k });
         s += len;
         arcTotal += len;
         const ox = -U[i + 1].y * dir[i], oy = U[i + 1].x * dir[i];
@@ -948,11 +949,11 @@ export function pointAt(al: Alignment, s: number, out?: PointOnAlignment, hint =
     o.x = e.x0 + e.dx * u; o.y = e.y0 + e.dy * u; o.tx = e.dx; o.ty = e.dy; o.curvature = 0;
   } else {
     const ang = e.a0 + e.dir * (u / e.r);
-    o.x = e.cx + e.r * Math.cos(ang);
-    o.y = e.cy + e.r * Math.sin(ang);
+    o.x = e.cx + e.r * dm.cos(ang);
+    o.y = e.cy + e.r * dm.sin(ang);
     // tangent is perpendicular to radius vector, rotated by dir
-    o.tx = -Math.sin(ang) * e.dir;
-    o.ty = Math.cos(ang) * e.dir;
+    o.tx = -dm.sin(ang) * e.dir;
+    o.ty = dm.cos(ang) * e.dir;
     o.curvature = e.dir / e.r;
   }
   return o;

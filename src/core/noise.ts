@@ -6,6 +6,7 @@ import { NOISE } from './data/urban';
 import { CATEGORIES } from './data/categories';
 
 import { noiseExcess, noiseLevels, type NoiseModel } from './road-noise';
+import * as dm from './detmath';
 export { noiseDistance } from './road-noise';
 
 /** Equivalent 2D source → wall → receiver section. The axis-to-façade distance is its horizontal
@@ -45,7 +46,7 @@ export function edgeAttenuation(distance: number, height: number, edge: EarthEdg
 
 function attenuation(delta: number): number {
   return delta < 0 ? 0 : Math.max(0, Math.min(NOISE.maxAttenuationDb,
-    10 * Math.log10(3 + 40 * delta / NOISE.wavelength) - NOISE.trafficCorrectionDb));
+    10 * dm.log10(3 + 40 * delta / NOISE.wavelength) - NOISE.trafficCorrectionDb));
 }
 
 /** Corrected Maekawa-style IL = 10 log10(3 + 20 N), N = 2δ/λ; practical traffic cap.
@@ -69,7 +70,7 @@ export function requiredWall(distance: number, excess: number, height: number, b
   if (excess <= 0) return 0;
   const direct = Math.hypot(distance - NOISE.sourceOffset, height - NOISE.sourceHeight);
   if (excess > NOISE.maxAttenuationDb) return Infinity;
-  const neededDelta = NOISE.wavelength / 40 * (10 ** ((excess + NOISE.trafficCorrectionDb) / 10) - 3);
+  const neededDelta = NOISE.wavelength / 40 * (dm.pow(10, (excess + NOISE.trafficCorrectionDb) / 10) - 3);
   // Earth edge and wall are alternative single barriers: take the better, never sum attenuation.
   const earth = earthDelta(distance, height, edge, direct);
   if (earth >= 0 && earth >= neededDelta) return 0;
@@ -374,7 +375,7 @@ export function noiseFootprint(n: number, x: ArrayLike<number>, y: ArrayLike<num
   for (let k = 0; k < m; k++) stations[k] = Math.min(n - 1, k * stride);
   const span = Math.max(20, fadeDistance(model, fadeDb) - barrier.wallOffset);
   const offsets = new Float32Array(samples);
-  for (let o = 0; o < samples; o++) offsets[o] = span * (o / (samples - 1)) ** 1.7;
+  for (let o = 0; o < samples; o++) offsets[o] = span * dm.pow(o / (samples - 1), 1.7);
   const start = new Float32Array(2 * m), excess = new Float32Array(2 * m * samples), receiver = new Float32Array(2 * m);
   for (let k = 0; k < m; k++) {
     const i = stations[k], nx = -ty[i], ny = tx[i];
