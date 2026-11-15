@@ -188,10 +188,13 @@ kept shared line (Undo restores the separate edits). Unchanged, a split D3 price
 (twin crossing structures, slightly longer tube runs). C0's `exact`/frozen helpers stay for materialised
 geometry; editable directions use ordinary bends (validation accepts `pi` for independent children).
 
-**Railway (engineered and billed; unpriced).** Rows `R1`/`R2`, `core/project-railway.ts`. Electrified new
+**Railway (scored).** Rows `R1`/`R2`, `core/project-railway.ts`, `core/rail-noise.ts`. Electrified new
 line ≤ 160 km/h: min radius 11.8·V²/(150+80) (cant envelope, VUT 2009), cant ramp easing 10·V·150/1000,
-vertical radius max(2,000, 0.4·V²) (Plášek 2009), formation S3 X 6.2 m (+4.0 m track centres, PROVISIONAL),
-SPOŽES 2026 items (track, layers, ditches, catenary, signalling, ETCS, cables, GSM-R, utilities; H02 bridges,
-J01/J03 tunnels) with SPOŽES P1 markups (research/32). Max grade 12.5 ‰ (TSI INF §4.2.3.3 leaves it to the project; SŽDC new-link study value, research/34 §7). No level crossings (game rule). Train noise is
-listed as not checked, so a railway never yields a project price yet;
-research in progress (research/34 §7, /35).
+vertical radius max(2,000, 0.4·V²) (Plášek 2009), max grade 12.5 ‰ (TSI INF §4.2.3.3 leaves it to the
+project; SŽDC new-link study value, research/34 §7), formation S3 X 6.2 m (+4.0 m track centres,
+PROVISIONAL), SPOŽES 2026 items (track, layers, ditches, catenary, signalling, ETCS, cables, GSM-R,
+utilities; H02 bridges, J01/J03 tunnels) with SPOŽES P1 markups (research/32). No level crossings (game
+rule). Train noise: CNOSSOS-EU rolling + traction source from the Annex II Appendix G tables, line
+propagation over hard ground, new-line limits 60/55 dB (research/35); compositions and train counts are
+explicit PROVISIONAL game priors. Rendering: ballast beds, sleepers and rails for one or two tracks.
+New railways join the project through the generic Build / drag-to-rebuild flow (any-road-editing).
