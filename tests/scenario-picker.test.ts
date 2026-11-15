@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { scenarioAvailable } from '../src/ui/scenario-picker';
+import { pickerGroups, scenarioAvailable } from '../src/ui/scenario-picker';
+import { PRESETS } from '../src/core/data/scenario';
 
 const meta = { id: 'd11', nx: 2, ny: 2, heights: { file: 'height.i16.gz' }, landcover: { file: 'landcover.u8.gz' } };
 afterEach(() => vi.unstubAllGlobals());
@@ -40,5 +41,15 @@ describe('scenario availability', () => {
     expect(await scenarioAvailable('d11')).toBe(false);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ ...meta, heights: { file: '../outside' } })));
     expect(await scenarioAvailable('d11')).toBe(false);
+  });
+});
+
+describe('picker cards', () => {
+  it('groups the D3 sections in order and offers the earlier D3 map only to continue a save', () => {
+    const titles = (saved: boolean) => pickerGroups(PRESETS, () => saved).map(g => [g.group, g.presets.map(p => p.presetId ?? p.id)]);
+    const fresh = titles(false), d3 = fresh.find(([group]) => group === 'Středočeská D3')!;
+    expect(d3[1]).toEqual(['d3-0301-motorway', 'd3-0302-motorway', 'd3-0303-motorway', 'd3-0304-motorway', 'd3-0305-motorway']);
+    expect(titles(true).find(([group]) => group === 'Středočeská D3')![1]).toContain('d3-motorway');
+    expect(fresh.flatMap(([, ids]) => ids)).not.toContain('d3-road');
   });
 });

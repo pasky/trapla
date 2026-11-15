@@ -186,6 +186,10 @@ export const JUNCTION = 25_000_000;
 export const ENDPOINT_JUNCTIONS = {
   'roundabout-arm': { zone: 25, cost: JUNCTION, source: 'TP 135 (2017) §1.7.1 arm splitter island ≤ 25 m; junction allowance, research/08 (PROVISIONAL)' },
   merge: { zone: 90, cost: JUNCTION, source: 'PROVISIONAL taper Lz 90 m (130 km/h connector, MD report); junction allowance, research/08 (PROVISIONAL)' },
+  // A motorway end inside a motorway interchange (D3 0301 at the D0): the interchange's earth-built branches are
+  // part of the motorway's SPK per-km norm (1 per 7 km, research/33 §3); the lump stands in for the roads it
+  // rebuilds at our end. No sourced price for a system interchange exists (research/36).
+  interchange: { zone: 90, cost: JUNCTION, source: 'PROVISIONAL taper Lz 90 m (130 km/h connector, MD report); junction allowance, research/08 (PROVISIONAL); earth-built branches in the SPK motorway norm' },
 } as const;
 export type EndpointJunctionKind = keyof typeof ENDPOINT_JUNCTIONS;
 /** Simple sjezd onto the service link, NOT onto the class-I road. Very low confidence — research/13. */

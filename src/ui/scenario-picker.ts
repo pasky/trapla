@@ -66,8 +66,6 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
   content.append(element('p', 'Trapla', 'scenario-picker-brand'), heading,
     element('p', 'Build a cheaper road. Keep it safe.', 'scenario-picker-lead'));
   if (requested) content.append(element('p', 'That place is not ready. Choose another or build its map.', 'scenario-picker-notice'));
-  const grid = element('div', '', 'scenario-picker-grid');
-  content.append(grid);
   root.append(content);
   document.body.append(root);
   const status = document.getElementById('status');
@@ -75,51 +73,72 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
   heading.tabIndex = -1;
   heading.focus();
   return new Promise((resolve) => {
-    for (const scenario of PRESETS) {
-      const card = element('article', '', 'scenario-picker-card');
-      const details = scenario.picker;
-      card.append(element('p', details?.kind ?? 'Class I road', 'scenario-picker-kind'),
-        element('h2', scenario.title), element('p', details?.goal ?? 'Connect Trutnov to the Polish border.'));
-      if (details?.note) card.append(element('p', details.note, 'scenario-picker-note'));
-      const note = element('p', 'Checking map…', 'scenario-picker-state');
-      note.setAttribute('role', 'status');
-      const actions = element('div', '', 'scenario-picker-actions');
-      const button = element('button', saved(options, scenario) ? 'Continue' : 'Start');
-      button.type = 'button';
-      button.disabled = true;
-      button.addEventListener('click', () => {
-        const url = new URL(location.href);
-        url.searchParams.set('scenario', scenario.id);
-        // The road exercise keeps its plain link; other missions on the same map name their preset.
-        if (scenario === SCENARIOS[scenario.id]) url.searchParams.delete('preset');
-        else url.searchParams.set('preset', scenario.presetId ?? scenario.id);
-        history.replaceState(null, '', url);
-        root.remove();
-        resolve({ scenarioId: scenario.id, presetId: scenario === SCENARIOS[scenario.id] ? null : scenario.presetId ?? null });
-      });
-      actions.append(button);
-      card.append(note, actions);
-      grid.append(card);
-      const check = async () => {
+    for (const { group, presets } of pickerGroups(PRESETS, (scenario) => saved(options, scenario))) {
+      const grid = element('div', '', 'scenario-picker-grid');
+      if (group) {
+        const section = element('section', '', 'scenario-picker-group');
+        section.append(element('h2', group), grid);
+        content.append(section);
+      } else content.append(grid);
+      for (const scenario of presets) {
+        const card = element('article', '', 'scenario-picker-card');
+        const details = scenario.picker;
+        card.append(element('p', details?.kind ?? 'Class I road', 'scenario-picker-kind'),
+          element(group ? 'h3' : 'h2', scenario.title), element('p', details?.goal ?? 'Connect Trutnov to the Polish border.'));
+        if (details?.note) card.append(element('p', details.note, 'scenario-picker-note'));
+        const note = element('p', 'Checking map…', 'scenario-picker-state');
+        note.setAttribute('role', 'status');
+        const actions = element('div', '', 'scenario-picker-actions');
+        const button = element('button', saved(options, scenario) ? 'Continue' : 'Start');
+        button.type = 'button';
         button.disabled = true;
-        note.textContent = 'Checking map…';
-        const available = await scenarioAvailable(scenario.id);
-        button.disabled = !available;
-        note.textContent = available ? '' : 'Map not built. Run this in the project folder:';
-        card.querySelector('.scenario-picker-build')?.remove();
-        actions.querySelector('.scenario-picker-retry')?.remove();
-        if (!available) {
-          const command = element('code', `npm run data -- ${scenario.id}`, 'scenario-picker-build');
-          note.after(command);
-          const retry = element('button', 'Check again', 'scenario-picker-retry');
-          retry.type = 'button';
-          retry.addEventListener('click', () => { void check(); });
-          actions.append(retry);
-        }
-      };
-      void check();
+        button.addEventListener('click', () => {
+          const url = new URL(location.href);
+          url.searchParams.set('scenario', scenario.id);
+          // The road exercise keeps its plain link; other missions on the same map name their preset.
+          if (scenario === SCENARIOS[scenario.id]) url.searchParams.delete('preset');
+          else url.searchParams.set('preset', scenario.presetId ?? scenario.id);
+          history.replaceState(null, '', url);
+          root.remove();
+          resolve({ scenarioId: scenario.id, presetId: scenario === SCENARIOS[scenario.id] ? null : scenario.presetId ?? null });
+        });
+        actions.append(button);
+        card.append(note, actions);
+        grid.append(card);
+        const check = async () => {
+          button.disabled = true;
+          note.textContent = 'Checking map…';
+          const available = await scenarioAvailable(scenario.id);
+          button.disabled = !available;
+          note.textContent = available ? '' : 'Map not built. Run this in the project folder:';
+          card.querySelector('.scenario-picker-build')?.remove();
+          actions.querySelector('.scenario-picker-retry')?.remove();
+          if (!available) {
+            const command = element('code', `npm run data -- ${scenario.id}`, 'scenario-picker-build');
+            note.after(command);
+            const retry = element('button', 'Check again', 'scenario-picker-retry');
+            retry.type = 'button';
+            retry.addEventListener('click', () => { void check(); });
+            actions.append(retry);
+          }
+        };
+        void check();
+      }
     }
   });
+}
+
+/** Picker cards in PRESETS order; consecutive presets of one corridor share a heading. A retired mission
+ * only appears to continue an existing save. */
+export function pickerGroups(presets: readonly ScenarioParams[], isSaved: (scenario: ScenarioParams) => boolean) {
+  const groups: { group?: string; presets: ScenarioParams[] }[] = [];
+  for (const scenario of presets) {
+    if (scenario.retired && !isSaved(scenario)) continue;
+    const last = groups[groups.length - 1];
+    if (last && last.group === scenario.group) last.presets.push(scenario);
+    else groups.push({ group: scenario.group, presets: [scenario] });
+  }
+  return groups;
 }
 
 function saved(options: ScenarioPickerOptions, scenario: ScenarioParams): boolean {

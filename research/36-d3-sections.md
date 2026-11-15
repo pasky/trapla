@@ -1,0 +1,102 @@
+# Středočeská D3 as its construction sections
+
+2026-11-16. Sources for the five section scenarios `d3-0301` … `d3-0305` (ŘSD leaflets, mapped OSM line)
+and for where their ends are placed. Raw extracts are not committed (pipeline caches + `/tmp`).
+
+## Official sections (ŘSD leaflets, all “stav k 09/2025”)
+
+| Section | Leaflet | Length | Category | Chainage, ends (leaflet wording) |
+|---|---|---:|---|---|
+| 0301 Praha–Jílové | [Stavby/45](https://apdos.roadmedia.cz/Upload/Stavby/45/infoletak_d3-0301-praha-jilove.pdf) | 9,514 m | D 27,5/120 | “začíná v km 0,000 v rozštěpné MÚK D3 x D0 (Pražský okruh) a končí v km 9,514 za MÚK Jílové se silnicí II/104” |
+| 0302 Jílové–Hostěradice | [Stavby/44](https://apdos.roadmedia.cz/Upload/Stavby/44/infoletak_d3-0302-jilove-hosteradice.pdf) | 4,486 m | D 27,5/120 | from MÚK Jílové (km 9.512) to “km 13,900 za MÚK Hostěradice se silnicí II/106” |
+| 0303 Hostěradice–Václavice | [Stavby/43](https://apdos.roadmedia.cz/Upload/Stavby/43/infoletak_d3-0303-hosteradice-vaclavice.pdf) | 11,292 m | D 27,5/120 | km 13.900 to “km 25,198 za MÚK Václavice s Václavickou spojkou silnice II/112” (later “km 25,200”) |
+| 0304 Václavice–Voračice | [Stavby/42](https://apdos.roadmedia.cz/Upload/Stavby/42/infoletak_d3-0304-vaclavice-voracice.pdf) | 15,840 m | D 27,5/130 | “navazuje za MÚK Václavice v km 29,200 … a končí v km 45,040 za MÚK Voračice se silnicí I/18” |
+| 0305/I Voračice–Nová Hospoda | [Stavby/41](https://apdos.roadmedia.cz/Upload/Stavby/41/infoletak_d3-0305-I-voracice-nova%20hospoda.pdf) | 17,360 m | D 27,5/130 | km 45.040 to “km 62,400 za MÚK Nová Hospoda se silnicí I/3, kde navazuje na provozovaný úsek” |
+
+The five lengths sum to 58,492 m; the Ministry of Transport gives the whole as 58.5 km
+([MD](https://md.gov.cz/Media/Media-a-tiskove-zpravy/Aktualni-stav-pripravy-stredoceske-D3): “Kompletní
+délka středočeské části dálnice D3 je tedy 58,5 km”). The chainage jumps by 4 km between 0303 (ends
+25.200) and 0304 (starts 29.200): a stationing equation, not a gap. 0305/I's leaflet also says it joins
+the operating 0305/II “v km 58,900”, a third stationing; its end junction is called MÚK Mezno in the body
+text. These printed values are kept as they are.
+
+## Mapped line and where the section boundaries go
+
+Overpass, 2026-11-15T23:03Z, `[bbox:49.50,14.35,50.05,14.85]; way["ref"="D3"]`. The southbound proposed
+carriageway is one continuous chain: way **149101901** (first node 8227650623 at the D0 interchange, by
+road II/101 about 185 m south of the D0 carriageways) → **755488913** → **755488916** (last node
+7554677122 on road I/3, ≈ 250 m north of node 248183130 where the operating D3, mapped as motorway,
+ends and I/3 continues north). Projected to EPSG:5514 the chain is **57,427 m**, 1.8 % shorter than the
+leaflets' 58.49 km (it starts outside the interchange's km 0 and is not the design geometry).
+
+Leaflet chainages of features that the mapped line also crosses give a nearly constant offset
+δ = official (continuous) km − mapped metres:
+
+| Feature (leaflet) | Official km | Mapped crossing | δ |
+|---|---:|---:|---:|
+| Sázava bridge “v km 12,5” | 12.5 | 11,579 m (river way 23013721) | 0.92 |
+| overbridge of the existing II/106 “v km 13,1” | 13.1 | 12,427 m | 0.67 |
+| III/1057 “v km 23,1” | 23.1 | 22,489 m | 0.61 |
+| bridge over III/11434 “v km 31,880” | 27.88 | 27,177 m | 0.70 |
+| III/11444 “v km 40,187” | 36.187 | 35,449 m | 0.74 |
+| III/11445 “v km 42,493” | 38.493 | 37,777 m | 0.72 |
+| railway Sedlčany–Olbramovice “v 44,459” | 40.459 | 39,831 m | 0.63 |
+
+(0304 values are minus the 4 km stationing jump.) Section boundaries are placed at the leaflet chainage
+minus the δ of the nearest anchors, then checked against the leaflet text (“beyond MÚK …”):
+
+| Boundary | Official | Mapped | Check |
+|---|---:|---:|---|
+| 0301 / 0302 | 9.514 | 8,710 m | II/104 crossed at 8,385 m; leaflet MÚK Jílové “v km 9,2” |
+| 0302 / 0303 | 13.900 | 13,230 m | δ 0.67 of the II/106 overbridge just before it |
+| 0303 / 0304 | 25.200 | 24,590 m | MÚK Václavice “v km 24,9”, δ 0.61 of III/1057 |
+| 0304 / 0305/I | 45.040 (41.040) | 40,410 m | after the Nový potok bridge (km 44.560); I/18 crossed at 40,407 m |
+
+Mapped section lengths: 0301 8.70 km (from its declared start, below), 0302 4.52, 0303 11.36,
+0304 15.82, 0305/I 17.02 km + the ≈ 250 m to the operating motorway.
+
+## Ends
+
+- **0301 A, D0 interchange.** The route starts where the mapped mainline begins, on road II/101 inside the
+  planned D0 × D3 interchange (49.9625454 N, 14.4967020 E; 13.7 m south of node 8227650623 along the
+  first segment). Declared endpoint junction of kind `interchange` with the II/101 ways 171863668,
+  312960727, 171863669. Price: no sourced figure for a system interchange exists. The SFDI SPK 2026 report
+  says interchange branches built on earth are part of the motorway's per-km standard (“větve MÚK budované
+  na zemním tělese … za předpokladu 1 MÚK/7 km trasy”; bridges and crossed roads priced by their own
+  norms), the 0301 leaflet gives only the whole section (12.9 bn CZK excl. VAT, incl. D0 widening over
+  909/1107 m) and the SPK A.4.N interchange (76.7 M CZK) is restricted to class I roads below S 20.75.
+  The kind therefore reuses the PROVISIONAL junction allowance (25 M CZK) and 90 m zone of the merge
+  (research/28) for the roads it rebuilds at our end; the D0 widening and the ramp bridges are not in the
+  game's bill. Engine limit, disclosed in the picker note.
+- **0305/I B, operating D3.** B is node 248183130 (49.54341 N, 14.6652862 E), where the motorway ways of
+  the operating D3 end and I/3 continues; the mapped new line meets I/3 ≈ 250 m north of it. Declared
+  `merge` (research/28) onto the motorway ways 807875702 / 807875701 and the I/3 ways 1545424303 /
+  115670156. The leaflet's MÚK Mezno / Nová Hospoda (figure-eight, 1,381 m of branches, I/3 relocated
+  over 1,268 m) lies on our route before B; like every interchange inside a section it is covered by
+  the SPK per-km norm (earth-built branches) and the I/3 crossings are priced as crossings.
+- **All other ends** are section boundaries in open land just beyond an interchange. The picker says
+  “Continues as section 03xx” / “Follows section 03xx”; they are mission ports (the motorway continues).
+
+## The earlier `d3` pack
+
+Its ends are mapped nodes 6393863317 (6,922 m) and 5108369461 (22,602 m): from 1.8 km before the
+0301/0302 boundary (before MÚK Jílové) to 2.0 km before the end of 0303 (before MÚK Václavice) — most of
+sections 0302 and 0303, not their exact scope. Its presets `d3-road` / `d3-motorway` are retired from the
+picker (cards only to Continue an existing save, direct links keep working); saves stay untouched.
+
+## Packs
+
+5 m cells, rectangles = section line + 2.5 km margin, 500 m rounding (EPSG:5514):
+
+| Pack | Rectangle | Cells |
+|---|---|---:|
+| d3-0301 | −745000, −1068000 → −736500, −1054500 | 1700 × 2700 = 4.59 M |
+| d3-0302 | −745000, −1072500 → −738500, −1062000 | 1300 × 2100 = 2.73 M |
+| d3-0303 | −744000, −1080000 → −732000, −1066500 | 2400 × 2700 = 6.48 M |
+| d3-0304 | −743000, −1094500 → −732000, −1074500 | 2200 × 4000 = 8.80 M |
+| d3-0305 | −743500, −1108000 → −731000, −1088000 | 2500 × 4000 = 10.0 M |
+
+All below D11's 15.75 M cells. Geology: the southern sections reach the Moldanubian paragneiss and
+migmatite; new map descriptions (pararula, migmatit, porfyr, žilný křemen, pyroxenit, leptynit, vápenec,
+Variscan granite dated Carboniferous) map to the existing broad groups, uncalibrated priors. They only
+replace former “unknown” results: every earlier pack's polygons classify exactly as before.
