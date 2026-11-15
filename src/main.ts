@@ -17,6 +17,10 @@ import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
 import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
+import { CrossingPicker } from './render/crossing-pick';
+import { LinkEditor } from './ui/link-edit';
+import { shapeable } from './ui/link-shape';
+import type { LinkVia } from './core/crossings';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
 import type { TransportGraphData } from './core/project-transport';
@@ -175,6 +179,8 @@ async function main() {
 
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   let sel: Sel | null = null;
+  /** shaping reroutes on the map (constructed once the store hooks exist) */
+  let linkEdit: LinkEditor | undefined;
   let models: { key: string; model: ReturnType<typeof createNoiseModel> } | null = null;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     noiseModel: (d) => {
@@ -202,7 +208,12 @@ async function main() {
   let transportReady: Promise<void> | null = null;
   const ensureTransport = () => transportReady ??= (async () => {
     let graph: TransportGraphData | null;
-    try { graph = await pack.loadTransport(); } catch (error) { console.warn('Road map links are unavailable', error); return; }
+    try { graph = await pack.loadTransport(); } catch (error) {
+      // Visible, and retried on the next need (a click on a road, the photo, a reload of a project).
+      console.warn('Road map links are unavailable', error); transportReady = null;
+      toast(error instanceof Error && /Reload|Rebuild/.test(error.message) ? error.message : 'Mapped roads could not be loaded. Click a road to try again.');
+      return;
+    }
     if (!graph || !pack.vectors || !transportData) return;
     try {
       transportIndex = new ProjectTransportIndex(graph, transportData, graph.vectorData, pack.terrain);
@@ -254,7 +265,9 @@ async function main() {
     }
   };
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
+  let selectGeneration = 0; // a deferred base-road pick yields to any later selection
   const select = (next: Sel | null, fly = false) => {
+    selectGeneration++;
     if (sourceEditor?.selected) sourceEditor.clear();
     // a house belongs to the project: its card shows the road whose noise reaches it most
     if (next?.kind === 'building' && projectFull?.complete && Object.keys(projectFull.routes).length > 1) {
@@ -270,6 +283,7 @@ async function main() {
     if (store.read()) view.setDesign(store.design, selectedPi(), activeEndpoints());
     else view.clearDesign(activeEndpoints());
     profile.selectBend(selectedPi()); if (store.read()) curveEdit.refresh();
+    linkEdit?.refresh();
     const road = next?.kind === 'crossing' ? next.roadId : null;
     profile.selectCrossing(road); annotations.selectCrossing(road);
     annotations.selectBuilding(next?.kind === 'building' ? next.j : null);
@@ -381,9 +395,12 @@ async function main() {
     wall: setWall,
     pin: (s, z) => setPin(s, z),
     crossing: (roadId, type) => store.update((d) => {
+      // a reroute keeps the player's shape while it stays a reroute
+      const kept = type === 'reconnection' ? d.crossingOverrides?.find((o) => o.roadId === roadId && o.via) : undefined;
       d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      if (type !== null) d.crossingOverrides.push({ roadId, type });
+      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}) });
     }),
+    crossingPathAuto: (roadId) => setVia(roadId, null, true),
     building: (js, action) => store.editProject(d => { for (const j of js) d.buildingOverrides = setBuildingOverride(d.buildingOverrides, j, action); }),
     unpin: (s0, s1) => store.update((d) => { d.gradePins = (d.gradePins ?? []).filter((p) => p.s < s0 || p.s > s1); }),
     heightAt: (s) => addHeightAt(s),
@@ -509,7 +526,7 @@ async function main() {
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
-    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh();
+    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
   };
 
   worker.onmessage = (ev: MessageEvent<ProjectWorkerOut | { type: 'ready' }>) => {
@@ -606,6 +623,19 @@ async function main() {
     hud.setDirections({ split: corridor.mode === 'independent', active: corridor.children.reverse === route!.id ? 'reverse' : 'forward',
       places: { forward: scenario.labels.b, reverse: scenario.labels.a } });
   };
+  /** a reroute's shape (null: its automatic path again); shaping a crossing makes it a reroute */
+  const setVia = (roadId: number, via: LinkVia | null, commit: boolean, to?: number) => store.update((d) => {
+    const list = d.crossingOverrides ??= [];
+    let o = list.find((x) => x.roadId === roadId);
+    if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
+    if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
+  }, commit);
+  linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
+    selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull, design: () => store.design,
+    select: (roadId) => { if (sel?.kind !== 'crossing' || sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
+    setVia, commit: () => store.commit(), heightAt: (x, y) => pack.terrain.heightAt(x, y),
+  });
+
   const switchRoute = (id: RouteId) => {
     if (!store.switchRoute(id)) return false;
     syncDirections();
@@ -634,7 +664,7 @@ async function main() {
     if (d) {
       if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
-      profile.selectBend(selectedPi()); curveEdit.refresh();
+      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh();
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
@@ -686,6 +716,18 @@ async function main() {
     }
     return hit;
   };
+  /** any drawn geometry a crossing owns (its rebuilt road stretch, reroute links, turning heads,
+   * underpass box), on the drawn width plus the same slack as a mapped road */
+  const crossingPicker = new CrossingPicker();
+  const crossingWorksAt = (clientX: number, clientY: number) => {
+    const r = last;
+    if (!r || !crossingPickPx()) return null;
+    const g = view.pick(clientX, clientY); if (!g) return null;
+    crossingPicker.set(r.crossings);
+    const box = canvasBox();
+    return crossingPicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * view.metresPerPixel), SOURCE_PICK_SLACK_PX,
+      (x, y, z) => view.project(x, y, z));
+  };
   const buildingAt = (clientX: number, clientY: number) => {
     if (!buildingsPickable()) return null;
     const g = view.pick(clientX, clientY);
@@ -709,6 +751,9 @@ async function main() {
     if (c) return { kind: 'crossing', roadId: c.roadId! };
     const hit = routeAt(clientX, clientY, 10);
     if (hit) return { kind: 'route-hit', routeId: hit.routeId, s: hit.s };
+    // a crossing's own works before the rest of the mapped road (whose card is the base road's)
+    const works = crossingWorksAt(clientX, clientY);
+    if (works) return { kind: 'crossing', roadId: works.crossing.roadId! };
     const b = buildingAt(clientX, clientY);
     if (b !== null) return { kind: 'building', j: b };
     const w = extras.wallAt(clientX, clientY);
@@ -724,14 +769,21 @@ async function main() {
     onPickTerrain: (_x, _y, clientX, clientY) => {
       intro.hide();
       const t = thingAt(clientX, clientY);
-      // First click on a base road before the graph is parsed: parse it, then pick that road.
-      if (!t && !transportGraph && pack.transportMeta) void ensureTransport().then(() => {
-        const late = sourceAt(clientX, clientY);
-        if (late?.kind === 'source') showSource(late.hit);
-      });
+      // First click on a base road before the graph is parsed: parse it, then pick the road at the
+      // clicked ground point (wherever the camera is by then), unless something else was selected meanwhile.
+      const ground = !t && !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
       if (t?.kind === 'route-hit') { if (switchRoute(t.routeId) && store.read()) selectPiece(t.s); }
       else if (t?.kind === 'source') showSource(t.hit);
       else select(t);
+      if (ground) {
+        const generation = selectGeneration;
+        void ensureTransport().then(() => {
+          if (generation !== selectGeneration) return;
+          const p = view.project(ground.x, ground.y, view.drape(ground.x, ground.y)), box = canvasBox();
+          const late = p.vis ? sourceAt(box.left + p.sx, box.top + p.sy) : null;
+          if (late?.kind === 'source') showSource(late.hit);
+        });
+      }
     },
     onDoublePick: (x, y) => { if (!store.read() || routeAt(lastClient.x, lastClient.y, 10)) return; select({ kind: 'bend', i: insertBend(x, y, true) }); },
     // a drag from the road always bends it (a click there still inspects the nearest thing)
@@ -741,6 +793,12 @@ async function main() {
     onPiDrag: (i, x, y) => store.update((d) => { d.pis[i].x = x; d.pis[i].y = y; }, false),
     onPiDragEnd: () => store.commit(),
     onPiDelete: (i) => deletePi(i),
+    // a reroute link: dragging it shapes it (adds a bend point there)
+    grab: (clientX, clientY) => {
+      if (!store.read()) return null;
+      const w = crossingWorksAt(clientX, clientY);
+      return w?.link !== undefined && linkEdit ? linkEdit.grab(w) : null;
+    },
   };
   const lastClient = { x: 0, y: 0 };
 
@@ -814,6 +872,7 @@ async function main() {
       const cross = crossingAt(at.x, at.y);
       const k = cross ? -1 : roadAt(at.x, at.y, 10);
       const building = cross || k >= 0 ? null : buildingAt(at.x, at.y);
+      let works: ReturnType<typeof crossingWorksAt> = null;
       if (cross) {
         cursor = 'pointer'; key = `x${cross.roadId}`;
         if (key !== mapHoverKey) { view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); profile.setHover(cross.s, true); }
@@ -821,7 +880,11 @@ async function main() {
         cursor = 'grab'; key = `r${k}`;
         if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, 'drag to bend'); profile.setHover(r.s[k], true); }
       } else if (routeAt(at.x, at.y, 10)) { cursor = 'pointer'; key = 'other-route'; }
-      else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
+      else if ((works = crossingWorksAt(at.x, at.y))) {
+        const c = works.crossing, link = works.link !== undefined && shapeable(lastFull, store.design, c.roadId!);
+        cursor = link ? 'grab' : 'pointer'; key = `x${c.roadId}${link ? 'l' : ''}`;
+        if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${link ? ' · drag to reshape' : ''}`); profile.setHover(c.s, true); }
+      } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
       else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }
     }

@@ -46,8 +46,17 @@ for (const file of files) {
         if (z > terrain.heightAt(x,y) + .5) report('Rendered ground-road edge floats between samples');
       }
     }
-    for (const section of [surface.sections[0], surface.sections.at(-1)]) if (section) for (const edge of section.edge)
-      if (Math.abs(edge.z-base(edge.x,edge.y)) > .3) report('Rendered road endpoint does not meet terrain or connected road');
+    // a regraded side road starts on the crossing's rebuilt road (its level there), ends on the ground
+    const rebuilt = (q: { x: number; y: number }) => {
+      const road = surface.crossing.geometry!.road ?? [];
+      return road.reduce((best, p) => Math.hypot(p.x - q.x, p.y - q.y) < Math.hypot(best.x - q.x, best.y - q.y) ? p : best, road[0]).z;
+    };
+    surface.sections.forEach((section, i) => {
+      if (i && i !== surface.sections.length - 1) return;
+      const joins = surface.tie && i === 0;
+      if (Math.abs(section.p.z - (joins ? rebuilt(section.p) : base(section.p.x, section.p.y))) > .3
+        || (!joins && section.edge.some(edge => Math.abs(edge.z - base(edge.x, edge.y)) > .3))) report('Rendered road endpoint does not meet terrain or connected road');
+    });
   }
   const errors = issues.filter(v => v.severity === 'error').length, constraints = issues.length - errors;
   crossings += r.crossings.length; failures += errors; infeasible += constraints;

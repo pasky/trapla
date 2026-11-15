@@ -12,8 +12,9 @@ prvek před vjezdem do křižovatky.” (A splitter island 5–25 m long separat
 and slows traffic before the entry.) §3.2.2 p. 23 recommends a 5–15° deflection of entry/exit lanes;
 §§3.2.3.1–2 refer corner radii to ČSN 73 6102 without a universal length.
 
-**Adopted:** the last 25 m of our route (upper bound of the splitter-island range) belong to the
-roundabout's arm design. Entry/exit radii and a fixed arm length were **not** verified as numbers.
+**Adopted, a modelling assumption built on that source:** the last 25 m of our route (upper bound of
+the splitter-island range) count as the arm's own works. TP 135 sizes the island, it does not define an
+earthworks ownership length. Entry/exit radii and a fixed arm length were **not** verified as numbers.
 
 ## Merge onto a retained carriageway — PROVISIONAL
 

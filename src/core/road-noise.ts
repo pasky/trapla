@@ -2,6 +2,7 @@
 // Infinite straight two-lane road, incident/free-field LAeq; NOT a full acoustic study.
 // Equations, traffic assumptions and uneven-terrain extension: research/11-noise-calculation.md.
 import { NOISE } from './data/urban';
+import * as dm from './detmath';
 
 export interface NoiseTraffic {
   /** Acoustic NA share of AADT (trucks, buses, combinations, allocated light goods), not just TNA. */
@@ -24,8 +25,8 @@ export interface NoiseOptions extends NoiseTraffic {
 export function vehicleEmission(speed: number, heavy: boolean): number {
   const v = Math.max(1, speed);
   const f = heavy ? (v <= 60 ? 1.50e-2 / Math.sqrt(v) : 2.45e-4 * Math.sqrt(v))
-    : (v <= 60 ? 3.59e-5 * v ** 0.8 : 2.70e-7 * v * v);
-  return f * 10 ** ((heavy ? NOISE.heavyEmissionDb : NOISE.lightEmissionDb) / 10);
+    : (v <= 60 ? 3.59e-5 * dm.pow(v, 0.8) : 2.70e-7 * v * v);
+  return f * dm.pow(10, (heavy ? NOISE.heavyEmissionDb : NOISE.lightEmissionDb) / 10);
 }
 
 /** Four-lane motorway source per Manuál 2018 v2020 (personally checked, /tmp extract of the MD PDF):
@@ -61,7 +62,7 @@ function motorwayLaneEmission(i24: number, period: 'day' | 'night', group: 'ligh
   const v = (c: readonly number[]) => c[0] * i24 + c[1], heavy = group !== 'light';
   const f = (speed: number) => heavy ? 2.45e-4 * Math.sqrt(speed) : 2.70e-7 * speed * speed;
   return (inner * f(v(row.inner)) + (1 - inner) * f(v(row.outer)))
-    * 10 ** ((heavy ? MOTORWAY_NOISE.heavyEmissionDb : MOTORWAY_NOISE.lightEmissionDb) / 10);
+    * dm.pow(10, (heavy ? MOTORWAY_NOISE.heavyEmissionDb : MOTORWAY_NOISE.lightEmissionDb) / 10);
 }
 
 function motorwaySource(traffic: number, p: number) {
@@ -70,8 +71,8 @@ function motorwaySource(traffic: number, p: number) {
   const hn = Math.max(0, Math.min(1, (m.night.heavy.nz + m.night.heavy.nq + m.night.heavy.k * pct) / 100));
   const c = m.combinationShareOfHeavy;
   const heavy = (period: 'day' | 'night') => (1 - c) * motorwayLaneEmission(i24, period, 'truck') + c * motorwayLaneEmission(i24, period, 'combination');
-  const dayDb = 10 * Math.log10((t * (1 - p) * (1 - ln) * motorwayLaneEmission(i24, 'day', 'light') + t * p * (1 - hn) * heavy('day')) / 16) - 10.1;
-  const nightDb = 10 * Math.log10((t * (1 - p) * ln * motorwayLaneEmission(i24, 'night', 'light') + t * p * hn * heavy('night')) / 8) - 10.1;
+  const dayDb = 10 * dm.log10((t * (1 - p) * (1 - ln) * motorwayLaneEmission(i24, 'day', 'light') + t * p * (1 - hn) * heavy('day')) / 16) - 10.1;
+  const nightDb = 10 * dm.log10((t * (1 - p) * ln * motorwayLaneEmission(i24, 'night', 'light') + t * p * hn * heavy('night')) / 8) - 10.1;
   return { dayDb, nightDb, excessDb: Math.max(dayDb - NOISE.limitDayDb, nightDb - NOISE.limitNightDb),
     controlling: dayDb - NOISE.limitDayDb >= nightDb - NOISE.limitNightDb ? 'day' as const : 'night' as const };
 }
@@ -86,8 +87,8 @@ export function noiseSource(traffic: number, speed: number, options: NoiseTraffi
   const light = Math.max(0, traffic) * (1 - p) * vehicleEmission(speed, false);
   const heavy = Math.max(0, traffic) * p * vehicleEmission(options.heavySpeed ?? Math.min(speed, NOISE.heavySpeed), true);
   // F2 = 1 for modern class I roads with grades ≤6%; F3 = 1 for standard ACO11/SMA11.
-  const dayDb = 10 * Math.log10((light * (1 - ln) + heavy * (1 - hn)) / 16) - 10.1;
-  const nightDb = 10 * Math.log10((light * ln + heavy * hn) / 8) - 10.1;
+  const dayDb = 10 * dm.log10((light * (1 - ln) + heavy * (1 - hn)) / 16) - 10.1;
+  const nightDb = 10 * dm.log10((light * ln + heavy * hn) / 8) - 10.1;
   return { dayDb, nightDb, excessDb: Math.max(dayDb - NOISE.limitDayDb, nightDb - NOISE.limitNightDb),
     controlling: dayDb - NOISE.limitDayDb >= nightDb - NOISE.limitNightDb ? 'day' as const : 'night' as const };
 }
@@ -97,9 +98,9 @@ export function noiseSource(traffic: number, speed: number, options: NoiseTraffi
 export function hardGroundLoss(d: number): number { return hardGround(d); }
 function hardGround(d: number): number {
   const r = Math.max(3.75, d);
-  if (r < 8) return 10 * Math.log10(r / 8);
-  const u = 50.2 - Math.sqrt(3357.23 - 911.8 * Math.log10(Math.min(1000, r)));
-  return u + (r > 1000 ? 10 * Math.log10(r / 1000) : 0);
+  if (r < 8) return 10 * dm.log10(r / 8);
+  const u = 50.2 - Math.sqrt(3357.23 - 911.8 * dm.log10(Math.min(1000, r)));
+  return u + (r > 1000 ? 10 * dm.log10(r / 1000) : 0);
 }
 
 /** Manual §2 pp.63–64: hard Uo by default; mixed (40–60% porous) blends Up→Uo from 5 to 10 m.
@@ -112,8 +113,8 @@ export function propagationLoss(slant: number, height: number, ground: 'mixed' |
   const hard = hardGround(r);
   if (h >= 10 || ground === 'hard') return hard;
   const d = Math.max(8, Math.min(1000, r));
-  const soft = 8.78 * Math.log10((d * d + (h + 3) ** 2) / (17 * h + 51))
-    + (r < 8 ? 10 * Math.log10(r / 8) : r > 1000 ? 10 * Math.log10(r / 1000) : 0);
+  const soft = 8.78 * dm.log10((d * d + (h + 3) ** 2) / (17 * h + 51))
+    + (r < 8 ? 10 * dm.log10(r / 8) : r > 1000 ? 10 * dm.log10(r / 1000) : 0);
   // Never invent amplification from the small near-field mismatch between the empirical fits.
   return hard + Math.max(0, soft - hard) * Math.min(1, (10 - h) / 5);
 }

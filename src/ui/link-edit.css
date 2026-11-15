@@ -1,0 +1,8 @@
+/* shaping a reroute on the map (src/ui/link-edit.ts) */
+.via { width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; border: 2.5px solid #1d232a; box-shadow: 0 1px 4px rgba(0,0,0,0.45); pointer-events: auto; cursor: grab; touch-action: none; }
+.via:hover, .via.sel, .via.drag { background: #ffd400; }
+.via.drag { cursor: grabbing; }
+.via-remove { pointer-events: auto; font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid #7d8894; background: rgba(29,35,42,0.92); color: #fff; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 5px rgba(0,0,0,0.4); }
+.via-remove:hover { background: #ffd400; color: #1d232a; border-color: #ffd400; }
+#overlay > svg.link-preview { width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.link-preview polyline { fill: none; stroke: #ffd400; stroke-width: 3; stroke-dasharray: 8 5; stroke-linejoin: round; filter: drop-shadow(0 0 1px rgba(0,0,0,0.7)); }

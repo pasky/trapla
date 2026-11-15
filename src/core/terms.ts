@@ -68,7 +68,8 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
-export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'shared'>): OutcomeText {
+type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'>;
+export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>): OutcomeText {
   if (c.shared) {
     const o = ownOutcome({ ...c, targetS: undefined });
     return { ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
@@ -76,8 +77,11 @@ export function crossingOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' 
   }
   return ownOutcome(c);
 }
-function ownOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength'>): OutcomeText {
+function ownOutcome(c: OutcomeOf): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
+  // what else its raised or lowered stretch takes (crossing-works.ts)
+  const works = [c.tieLength ? ` Roads joining it there are raised or lowered to meet it (${m(c.tieLength)} m).` : '',
+    c.wallLength ? ` A retaining wall (${m(c.wallLength)} m) keeps its slope off a road beside it.` : ''].join('');
   switch (c.type) {
     case 'bridge': return { tag: 'under our bridge', label: 'Passes under our bridge',
       explain: `Our road crosses over the ${what} on a bridge; the ${what} stays as it is.` };
@@ -85,9 +89,9 @@ function ownOutcome(c: Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachL
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };
     case 'overbridge': return { tag: 'its bridge over us',
       label: `Carried over our road on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}`,
-      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.` };
+      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${works}` };
     case 'junction': return { tag: 'junction', label: 'Junction with our road',
-      explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.` };
+      explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.${works}` };
     case 'reconnection': return { tag: 'reconnected',
       label: `Reconnected to the crossing at km ${km(c.targetS ?? 0)} (+${m(c.linkLength)} m of new road)`,
       explain: `The ${what} is cut by the new road; on each side a new piece of road runs along the outside of the earthworks to the nearest place where it can cross. The cut ends get a turning area.` };

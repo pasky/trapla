@@ -12,6 +12,7 @@ import { evaluateProjectRailway, railTraffic, type RailwayEvaluation } from './p
 import { createRailNoiseModel } from './rail-noise';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
+import * as dm from './detmath';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment }
 const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete', check: 'not-checked',
@@ -108,7 +109,7 @@ function routeOutcome(ctx: ProjectEvalContext, design: ProjectDesign, route: Rou
     const raw = levels(receiver.raw), built = levels(receiver.mitigated);
     const height = NOISE.receiverHeight + ((ctx.legacy.buildings?.levels[receiver.j] ?? 1) - 1) * NOISE.storeyHeight;
     return { buildingIndex: receiver.j, height, contributions: [{ sourceId: route.acousticSourceId, routeId: route.id,
-      buildingIndex: receiver.j, height, dayEnergy: 10 ** (raw.day / 10), nightEnergy: 10 ** (raw.night / 10), policy: rail ? 'cnossos-rail' : 'legacy-road' }],
+      buildingIndex: receiver.j, height, dayEnergy: dm.pow(10, raw.day / 10), nightEnergy: dm.pow(10, raw.night / 10), policy: rail ? 'cnossos-rail' : 'legacy-road' }],
       dayDb: built.day, nightDb: built.night, dayLimit: limits.dayDb, nightLimit: limits.nightDb,
       action: receiver.status === 'bought' ? 'buy' as const : 'retain' as const };
   });
@@ -143,7 +144,7 @@ function mergeBuildings(list: ProjectBuildingOutcome[]): ProjectBuildingOutcome[
  * louder of them is kept rather than adding two bounds. */
 function mergeReceivers(list: ProjectReceiver[], sameUnit: boolean): ProjectReceiver[] {
   const out = new Map<number, ProjectReceiver>();
-  const add = (a: number, b: number) => 10 * Math.log10(10 ** (a / 10) + 10 ** (b / 10));
+  const add = (a: number, b: number) => 10 * dm.log10(dm.pow(10, a / 10) + dm.pow(10, b / 10));
   for (const r of list) {
     const seen = out.get(r.buildingIndex);
     if (!seen) { out.set(r.buildingIndex, r); continue; }
@@ -244,8 +245,8 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     result.receivers = mergeReceivers(outcomes.flatMap(o => o.receivers), true);
     // Legacy's all-height screen excludes only sub-limit receivers. One physical source means
     // that bound is sufficient; it is NOT a valid aggregate screen for two or more sources.
-    result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: 10 ** (NOISE.limitDayDb / 10),
-      omittedNightEnergyUpperBound: 10 ** (NOISE.limitNightDb / 10), complete: true };
+    result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: dm.pow(10, NOISE.limitDayDb / 10),
+      omittedNightEnergyUpperBound: dm.pow(10, NOISE.limitNightDb / 10), complete: true };
     return result;
   }
   // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.

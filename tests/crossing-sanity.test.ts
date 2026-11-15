@@ -20,17 +20,19 @@ describe.skipIf(!regressionPackAvailable())('crossing outcomes on the D11 pack',
   it('a service road carried over our road gets short ramps, and the road beside it is rebuilt or closed', () => {
     // Owner report (km 8.64 near bend 11): a service-road bridge over us with ramps running hundreds of
     // metres, and "Road realignment needs engineering … intersects an unhandled road" next to it.
-    for (const file of ['tests/fixtures/service-overbridge-design.json', 'tests/fixtures/service-loop-design.json']) {
-      const r = run(file);
-      expect(r.crossings.find(c => c.roadId === 4826)?.type).toBe('overbridge');
-      for (const ramp of ramps(r, 4826)) expect(ramp).toBeLessThan(150);
-      expect(r.violations.filter(v => v.kind === 'footprint')).toEqual([]);
-      expect(r.footprintConflicts.find(c => c.roadId === 4829)?.action).toBe('relocation');
-    }
-    // The parallel loop branch is closed: the bridged road already joins both its ends.
-    const loop = run('tests/fixtures/service-loop-design.json').footprintConflicts.find(c => c.roadId === 4829)!;
-    expect(loop.closed).toBeDefined();
-    expect(loop.cost).toBe(0);
+    const r = run('tests/fixtures/service-overbridge-design.json');
+    expect(r.crossings.find(c => c.roadId === 4826)?.type).toBe('overbridge');
+    for (const ramp of ramps(r, 4826)) expect(ramp).toBeLessThan(150);
+    expect(r.violations.filter(v => v.kind === 'footprint')).toEqual([]);
+    expect(r.footprintConflicts.find(c => c.roadId === 4829)?.action).toBe('relocation');
+    // On the loop design the bridge over us would land 7 m up, right where a class III road joins;
+    // that road falls away at 8 % and cannot be regraded to meet it (crossing-works.ts). Auto must
+    // not bury it: the service road is cut and reconnected instead, and the loop branch rebuilt.
+    const loop = run('tests/fixtures/service-loop-design.json');
+    const service = loop.crossings.find(c => c.roadId === 4826)!;
+    expect(service.type).not.toBe('overbridge'); expect(service.issues ?? []).toEqual([]);
+    expect(loop.valid).toBe(true);
+    expect(loop.footprintConflicts.find(c => c.roadId === 4829)?.action).toBe('relocation');
   });
 
   it('every published design stays valid with ramps under 250 m', () => {

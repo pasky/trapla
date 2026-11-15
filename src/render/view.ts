@@ -43,7 +43,12 @@ export interface ViewEvents {
   onPiDragEnd?: (i: number) => void;
   onPiSelect?: (i: number | null) => void;
   onPiDelete?: (i: number) => void;
+  /** something else draggable under this screen point (a reroute link): a press there drags it
+   * (after 5 px; a click still picks) instead of panning the map */
+  grab?: (clientX: number, clientY: number) => MapGrab | null;
 }
+/** One drag of a draggable map object, in ground coordinates. */
+export interface MapGrab { start(x: number, y: number): boolean; move(x: number, y: number): void; end(): void }
 
 const COL = {
   earth: new THREE.Color(0xffb000), bridge: new THREE.Color(0x2f8fff), tunnel: new THREE.Color(0xa070ff),
@@ -1387,6 +1392,48 @@ export class View {
     });
     // a press on the road: a drag bends it (a new bend follows the mouse), a click selects; the map
     // controls never see it (capture phase on the container, before the canvas' own listeners)
+    // a press on another draggable object (a reroute link): the same gesture, its own handler
+    this.container.addEventListener('pointerdown', (e) => {
+      if (e.target !== canvas || e.button !== 0 || this.ev.hitRoad?.(e.clientX, e.clientY)) return;
+      const grab = this.ev.grab?.(e.clientX, e.clientY);
+      if (!grab) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+      canvas.setPointerCapture(id);
+      const g0 = this.pick(x0, y0);
+      let started = false;
+      const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        if (!started) {
+          if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5 || !g0) return;
+          if (!grab.start(g0.x, g0.y)) { stop(); return; }
+          started = true; this.controls.enabled = false;
+        }
+        const p = this.pick(ev.clientX, ev.clientY);
+        if (p) grab.move(p.x, p.y);
+      };
+      const stop = () => {
+        canvas.removeEventListener('pointermove', move);
+        canvas.removeEventListener('pointerup', up);
+        canvas.removeEventListener('pointercancel', cancel);
+        canvas.removeEventListener('lostpointercapture', cancel);
+        if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+        this.controls.enabled = true;
+      };
+      const cancel = (ev: PointerEvent) => { if (ev.pointerId !== id) return; stop(); if (started) grab.end(); };
+      const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return;
+        stop();
+        if (started) { grab.end(); return; }
+        const p = this.pick(ev.clientX, ev.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY);
+      };
+      canvas.addEventListener('pointermove', move);
+      canvas.addEventListener('pointerup', up);
+      canvas.addEventListener('pointercancel', cancel);
+      canvas.addEventListener('lostpointercapture', cancel);
+    }, { capture: true });
     this.container.addEventListener('pointerdown', (e) => {
       if (e.target !== canvas || e.button !== 0 || !this.ev.hitRoad?.(e.clientX, e.clientY)) return;
       e.stopPropagation();

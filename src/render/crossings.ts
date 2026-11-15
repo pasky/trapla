@@ -33,12 +33,12 @@ function surfaceKey(s: CrossingSurface): string {
   const h = new SurfaceKey(), c = s.crossing, g = c.geometry!;
   h.str(c.type); h.str(c.cls); h.num(g.width); h.num(g.deck?.depth); h.num(g.turnaroundRadius);
   h.num(g.turnarounds?.length); for (const p of g.turnarounds ?? []) h.point(p);
-  h.num(s.link ? 1 : 0); h.num(s.retainingSupport ? 1 : 0); h.num(s.deck?.start); h.num(s.deck?.end);
+  h.num(s.link ? 1 : 0); h.num(s.retainingSupport ? 1 : 0); h.str(s.tie?.cls); h.num(s.tie?.width); h.num(s.deck?.start); h.num(s.deck?.end);
   h.num(s.path.length); if (s.path.length) h.point(s.path[0]);
   h.num(s.sections.length);
   for (const q of s.sections) {
     h.point(q.p); h.num(q.nx); h.num(q.ny);
-    for (const k of [0, 1] as const) { h.point(q.edge[k]); h.point(q.toe[k]); h.point(q.outer[k]); }
+    for (const k of [0, 1] as const) { h.point(q.edge[k]); h.point(q.toe[k]); h.point(q.outer[k]); const w = q.wallTop?.[k]; if (w) h.point(w); else h.num(undefined); }
   }
   return h.key;
 }
@@ -291,7 +291,8 @@ export class CrossingRenderer {
   /** one crossing surface's quads (yields every 64 sections: long diversions take a while) */
   private *surface(s: CrossingSurface, earth: MeshBuilder, terrain: MeshBuilder, structure: MeshBuilder,
     replacement: (x: number, y: number) => number): Generator<void, void> {
-    const g = s.crossing.geometry!, color = existingRoadColor(s.crossing.cls), casing = 0x807468;
+    const g = s.crossing.geometry!, cls = s.tie?.cls ?? s.crossing.cls, width = s.tie?.width ?? g.width;
+    const color = existingRoadColor(cls), casing = 0x807468;
     const below = (p: CrossingPoint, dz: number) => ({ ...p, z: p.z - dz });
     const collars = [new Map<object, CrossingPoint[]>(), new Map<object, CrossingPoint[]>()];
     const stripRows = new Map<object, { casing: CrossingPoint[]; crown: CrossingPoint[] }>();
@@ -301,10 +302,10 @@ export class CrossingRenderer {
       const a = s.sections[i], b = s.sections[i + 1], ground = groundSegment(s, i), target = ground ? earth : structure;
       // Tracks retain the billed formation width, but only the wheel strips are bare earth.
       // A solid four-metre brown slab made parallel diversions look like footprint outlines.
-      if (s.link && s.crossing.cls === 'track') {
+      if ((s.link || s.tie) && cls === 'track') {
         terrain.quad(a.edge[0], a.edge[1], b.edge[0], b.edge[1], 0xffffff, 0, .08);
         const at = (section: typeof a, off: number) => {
-          const t = .5 + off/g.width, l = section.edge[0], r = section.edge[1];
+          const t = .5 + off/width, l = section.edge[0], r = section.edge[1];
           return { ...section.p, x: l.x+(r.x-l.x)*t, y: l.y+(r.y-l.y)*t, z: l.z+(r.z-l.z)*t };
         };
         for (const off of [-.85, .85]) target.quad(at(a,off-.3), at(a,off+.3), at(b,off-.3), at(b,off+.3), 0x96856c, 0, .12, EW_KIND.crown);
@@ -317,7 +318,7 @@ export class CrossingRenderer {
             ? this.view.groundHeight(x,y) : l.z+(r.z-l.z)*t, d: section.p.d } as CrossingPoint;
         };
         // casing / crown points across each section, shared by the strips and segments beside it
-        const strips = Math.max(1,Math.ceil(g.width/1.5));
+        const strips = Math.max(1,Math.ceil(width/1.5));
         const stripRow = (section: typeof a) => {
           let row = stripRows.get(section);
           if (!row) stripRows.set(section, row = {
@@ -339,6 +340,12 @@ export class CrossingRenderer {
           const raised = (p: CrossingPoint, lift: number) => ({ ...p, z: p.z+lift });
           structure.quad(raised(a.edge[k],.10),raised(a.toe[k],.015),
             raised(b.edge[k],.10),raised(b.toe[k],.015),0xb7b4a9,0,0);
+        } else if (a.wallTop?.[k] || b.wallTop?.[k]) {
+          // The slope runs to the top of a priced retaining wall, whose face stands down to the ground.
+          const top = (q: typeof a) => q.wallTop?.[k] ?? q.toe[k];
+          earth.quad(a.edge[k], top(a), b.edge[k], top(b), a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
+          const raised = (p: CrossingPoint, lift: number) => ({ ...p, z: p.z+lift });
+          structure.quad(raised(top(a),.10),raised(a.toe[k],.015),raised(top(b),.10),raised(b.toe[k],.015),0xb7b4a9,0,0);
         } else earth.quad(a.edge[k], a.toe[k], b.edge[k], b.toe[k], a.p.z >= a.toe[k].z ? 0xe3d27e : 0xbf6a32, 1);
         // Natural ground collar replaces the coarse mesh locally. At its outside edge it meets
         // that mesh, while the actual road/earthwork tie-in remains at the real terrain height.

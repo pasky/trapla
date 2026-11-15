@@ -1,6 +1,6 @@
 // C0 project contract. Persistent data only; no renderer, DOM or mode-default physics.
 import type { BuildingOverride } from './build-controls';
-import type { CrossingChoice } from './crossings';
+import type { CrossingChoice, LinkVia } from './crossings';
 import type { Violation } from './checks';
 import type { CategoryId, TerrainClass } from './data/categories';
 import type { Design, Result } from './evaluate';
@@ -43,7 +43,7 @@ export type CrossingTarget =
   | { kind: 'route'; routeId: RouteId; s0: number; s1: number };
 export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrides' | 'objectData' | 'pis'
   | 'profileMode' | 'vpis' | 'gradePins' | 'crossingOverrides'> & {
-    crossings?: { target: CrossingTarget; choice: CrossingChoice }[];
+    crossings?: { target: CrossingTarget; choice: CrossingChoice; via?: LinkVia; to?: number }[];
   };
 export type DesignedVertical =
   | { kind: 'auto'; pins: NonNullable<Design['gradePins']>; /** Dormant legacy manual controls, not grade authority. */ manualVpis?: Design['vpis'] }

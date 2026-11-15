@@ -117,19 +117,21 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
   ]);
   const vectors = vectorData ? parseVectorPack(vectorData) : null;
   let bytes: Promise<ArrayBuffer | null> | null = null, graph: Promise<TransportGraphData | null> | null = null;
+  // A failed attempt is forgotten, so a later need retries; the parsed graph drops the raw bytes.
   const prefetchTransport = () => bytes ??= (async () => {
     if (!transportMeta) return null;
     const tb = await gunzip(`${base}/${transportMeta.file}`);
     if (await sha256(tb) !== transportMeta.fingerprint) throw new Error('Transport map changed during loading. Reload the page.');
     return tb;
-  })();
+  })().catch((error) => { bytes = null; throw error; });
   const loadTransport = () => graph ??= prefetchTransport().then(async (tb) => {
     if (!tb) return null;
     const transport = JSON.parse(new TextDecoder().decode(tb)) as TransportGraphData;
     if (transport.version !== 1 || !vectorData || await sha256(vectorData) !== transport.vectorData)
       throw new Error('Transport map and visible roads differ. Rebuild the map.');
+    bytes = Promise.resolve(null);
     return transport;
-  });
+  }).catch((error) => { graph = null; throw error; });
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,

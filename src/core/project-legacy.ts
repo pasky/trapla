@@ -42,7 +42,7 @@ export function projectFromLegacyDesign(value: unknown, context: LegacyProjectCo
     endpoints: copy(context.endpoints),
     alignment: { kind: 'pi', pis, controls: { ...controls,
       ...(crossingOverrides === undefined ? {} : { crossings: crossingOverrides.map(c => ({ choice: c.type,
-        target: { kind: 'legacy-way' as const, objectData, roadId: c.roadId } })) }) },
+        target: { kind: 'legacy-way' as const, objectData, roadId: c.roadId }, ...(c.via ? { via: c.via, ...(c.to !== undefined ? { to: c.to } : {}) } : {}) })) }) },
       vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
         : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } },
     specification: { kind: 'road', policy: 'legacy-road', legalClass: category === 'S7.5' ? 'II' : 'I',
@@ -75,7 +75,7 @@ export function legacyDesignForRoute(project: ProjectDesign, routeId: string): D
   const a = r.alignment, v = a.vertical;
   const crossings = a.controls.crossings?.map(c => {
     if (c.target.kind !== 'legacy-way' || c.target.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
-    return { roadId: c.target.roadId, type: c.choice };
+    return { roadId: c.target.roadId, type: c.choice, ...(c.via ? { via: c.via } : {}), ...(c.to !== undefined ? { to: c.to } : {}) };
   });
   const { crossings: _crossings, ...controls } = a.controls;
   if (v.kind !== 'auto' && v.kind !== 'manual') throw new Error('Unsupported vertical authority');

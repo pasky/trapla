@@ -1,5 +1,5 @@
 // Persistence boundary validation. Invalid/newer saves are preserved, never normalised into defaults.
-import { CROSSING_CHOICES } from './crossings';
+import { CROSSING_CHOICES, MAX_LINK_COORD, MAX_LINK_VIA } from './crossings';
 import type { AlignmentDesign, ProjectDesign } from './project';
 
 type Obj = Record<string, unknown>;
@@ -33,6 +33,10 @@ function controls(v: unknown): boolean {
     && (p.height === 0 || p.height >= 2 && p.height <= 6)))) return false;
   if (v.crossings !== undefined && (!list(v.crossings) || !v.crossings.every(c => {
     if (!object(c) || !choice(c.choice, CROSSING_CHOICES) || !object(c.target)) return false;
+    // a shaped reroute: two lists of bend points (one per side of our road)
+    if (c.via !== undefined && (c.choice !== 'reconnection' || !list(c.via) || c.via.length !== 2 || !c.via.every(side => list(side)
+      && side.length <= MAX_LINK_VIA && side.every(p => object(p) && number(p.x) && number(p.y) && Math.abs(p.x) <= MAX_LINK_COORD && Math.abs(p.y) <= MAX_LINK_COORD)))) return false;
+    if (c.to !== undefined && (c.via === undefined || !Number.isSafeInteger(c.to) || (c.to as number) < -2)) return false;
     const t = c.target;
     return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId)
       : t.kind === 'source' ? interval(t.interval)

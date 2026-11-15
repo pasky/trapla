@@ -13,6 +13,7 @@ import { A_WEIGHTING, CONTACT_FILTER, FREQUENCIES, RAIL_ROUGHNESS, SUPERSTRUCTUR
   VEHICLE_TRANSFER_920, WAVELENGTHS, WHEEL_ROUGHNESS } from './data/cnossos-rail';
 import { RAILWAY_EVIDENCE } from './data/railway';
 import type { NoiseModel } from './road-noise';
+import * as dm from './detmath';
 
 export interface RailVehicle {
   axles: number; brake: keyof typeof WHEEL_ROUGHNESS; load: keyof typeof CONTACT_FILTER;
@@ -37,19 +38,19 @@ function atWavelength(table: readonly number[], lambdas: readonly number[], mm: 
   if (mm <= lambdas[last]) return table[last];
   let k = 0;
   while (lambdas[k + 1] > mm) k++;
-  const t = Math.log(lambdas[k] / mm) / Math.log(lambdas[k] / lambdas[k + 1]);
+  const t = dm.log(lambdas[k] / mm) / dm.log(lambdas[k] / lambdas[k + 1]);
   return table[k] + (table[k + 1] - table[k]) * t;
 }
-const energy = (db: number) => 10 ** (db / 10);
+const energy = (db: number) => dm.pow(10, db / 10);
 
 /** A-weighted sound power of one vehicle, linear (W re 1e-12), at speed v km/h (eqs. 2.3.7–2.3.10). */
 export function vehiclePower(vehicle: RailVehicle, speed: number, rail: keyof typeof RAIL_ROUGHNESS = 'M'): number {
-  const v = Math.max(50, speed) / 3.6, axles = 10 * Math.log10(vehicle.axles);
+  const v = Math.max(50, speed) / 3.6, axles = 10 * dm.log10(vehicle.axles);
   const wheelLambdas = WAVELENGTHS.slice(3);
   let total = 0;
   FREQUENCIES.forEach((f, i) => {
     const mm = v / f * 1000;
-    const roughness = 10 * Math.log10(energy(atWavelength(RAIL_ROUGHNESS[rail], WAVELENGTHS, mm))
+    const roughness = 10 * dm.log10(energy(atWavelength(RAIL_ROUGHNESS[rail], WAVELENGTHS, mm))
       + energy(atWavelength(WHEEL_ROUGHNESS[vehicle.brake], wheelLambdas, mm))) + atWavelength(CONTACT_FILTER[vehicle.load], WAVELENGTHS, mm);
     let band = energy(roughness + TRACK_TRANSFER_MM[i] + axles) + energy(roughness + VEHICLE_TRANSFER_920[i] + axles);
     if (vehicle.superstructure) band += energy(roughness + SUPERSTRUCTURE_TRANSFER + axles);
@@ -80,10 +81,10 @@ export function railLinePower(groups: readonly RailTrafficGroup[], rail: keyof t
  * spreading, × directivity × ground reflection. Returned as a NoiseModel: level = dayDb − loss(r). */
 export function createRailNoiseModel(groups: readonly RailTrafficGroup[], limits = RAILWAY_EVIDENCE.newLineNoise): NoiseModel {
   const p = railLinePower(groups), k = LINE_DIPOLE * HARD_GROUND / 4;
-  const dayDb = p.day > 0 ? 10 * Math.log10(p.day * k) : -Infinity, nightDb = p.night > 0 ? 10 * Math.log10(p.night * k) : -Infinity;
+  const dayDb = p.day > 0 ? 10 * dm.log10(p.day * k) : -Infinity, nightDb = p.night > 0 ? 10 * dm.log10(p.night * k) : -Infinity;
   const excessDb = Math.max(dayDb - limits.dayDb, nightDb - limits.nightDb);
-  const loss = (slant: number) => 10 * Math.log10(Math.max(1, slant));
-  const radius = Number.isFinite(excessDb) && excessDb > 0 ? 10 ** (excessDb / 10) : 0;
+  const loss = (slant: number) => 10 * dm.log10(Math.max(1, slant));
+  const radius = Number.isFinite(excessDb) && excessDb > 0 ? dm.pow(10, excessDb / 10) : 0;
   return { dayDb, nightDb, excessDb, controlling: dayDb - limits.dayDb >= nightDb - limits.nightDb ? 'day' : 'night',
     radius, contour: radius, loss, limits: { ...limits } };
 }

@@ -1,6 +1,7 @@
 import type { PointOnAlignment } from './horizontal';
 import { curveIntersections } from './curve-intersections';
 import { childStationAt, curvePointAt, offsetCurvePath, type CurvePath, type OffsetPath } from './offset-path';
+import * as dm from './detmath';
 
 /** Signed LEFT offsets from the common spine, sorted low to high. All dimensions in metres. */
 export interface CarriagewayBand { min: number; max: number; /** Lane-pair axis may differ from asymmetric pavement midpoint. */ axis?: number }
@@ -108,7 +109,7 @@ export function connectionMismatch(actual: ConnectionPort, target: ConnectionPor
   if (!values.every(Number.isFinite) || Object.values(tolerance).some(v => v < 0)
     || Math.abs(Math.hypot(actual.tx, actual.ty) - 1) > 1e-8 || Math.abs(Math.hypot(target.tx, target.ty) - 1) > 1e-8) throw new Error('Invalid connection port or tolerance');
   const position = Math.hypot(actual.x - target.x, actual.y - target.y), elevation = Math.abs(actual.z - target.z);
-  const tangentRadians = Math.acos(Math.max(-1, Math.min(1, actual.tx * target.tx + actual.ty * target.ty)));
+  const tangentRadians = dm.acos(Math.max(-1, Math.min(1, actual.tx * target.tx + actual.ty * target.ty)));
   const grade = Math.abs(actual.grade - target.grade);
   return { position, elevation, tangentRadians, grade,
     matches: position <= tolerance.position && elevation <= tolerance.elevation && tangentRadians <= tolerance.tangentRadians && grade <= tolerance.grade };

@@ -33,6 +33,7 @@ import {
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
 import { crossingWallGaps } from './crossing-walls';
+import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, DEFAULT_SLOPES, flatCutBands, type SectionCache } from './sections';
@@ -958,7 +959,17 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
   const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * sec.dayR[i] : v) : width;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false);
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind,
+  // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed).
+  const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    if (!(len > 0)) return null;
+    const tx = (q.x - p.x) / len, ty = (q.y - p.y) / len, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
+    let hit: 'railway' | 'water' | 'building' | null = null;
+    protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half }, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
+    if (!hit && bld) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && !gone[j] && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
+    return hit;
+  };
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
     left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
   }, (x, y) => terrain.heightAt(x, y), ctx.roads));
@@ -976,7 +987,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
   for (const c of crossings) {
     // SPK links/approaches/bridges receive other-objects surcharge; all-in junction/access do not.
-    const lump = c.type === 'junction' ? c.cost : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
+    // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
+    const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
     crossingLump[c.i] += lump;
     crossingStructure[c.i] += c.cost - lump;
     if (c.cost > 0) crossingsPaid++;
