@@ -1,5 +1,6 @@
 import './scenario-picker.css';
 import { SCENARIOS, type ScenarioParams } from '../core/data/scenario';
+import { hasProjectSave } from '../project-store-contract';
 
 export interface ScenarioPickerOptions {
   /** Supplied by the project store: the picker never invents a project storage key. */
@@ -33,7 +34,7 @@ export async function scenarioAvailable(id: string): Promise<boolean> {
     if (meta.id !== id || !Number.isInteger(meta.nx) || !Number.isInteger(meta.ny)
       || meta.nx <= 0 || meta.ny <= 0 || !meta.heights?.file || !meta.landcover?.file) return false;
     const files = [meta.heights.file, meta.landcover.file, 'overlays.json',
-      meta.ground?.file, meta.watercourses?.file, meta.vector?.file].filter(Boolean) as string[];
+      meta.ground?.file, meta.watercourses?.file, meta.vector?.file, meta.transport?.file].filter(Boolean) as string[];
     return (await Promise.all(files.map(async (file) => {
       if (!/^[a-zA-Z0-9_.-]+$/.test(file)) return false;
       const r = await fetch(`${base}/${file}`, { method: 'HEAD', signal: controller.signal });
@@ -114,7 +115,12 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
 }
 
 function saved(options: ScenarioPickerOptions, scenario: ScenarioParams): boolean {
-  try { return options.hasSaved?.(scenario.id, scenario.presetId ?? scenario.id) ?? false; }
+  try {
+    const presetId = scenario.presetId ?? scenario.id;
+    if (options.hasSaved) return options.hasSaved(scenario.id, presetId);
+    return hasProjectSave(localStorage, { scenarioId: scenario.id, presetId })
+      || localStorage.getItem(`trapla.${scenario.id}.design`) !== null;
+  }
   catch { return false; } // Storage disabled: Start still works without deleting anything.
 }
 

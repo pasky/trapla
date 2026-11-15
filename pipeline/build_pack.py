@@ -159,19 +159,20 @@ def baseline_osm(data: dict) -> dict:
     return baseline(data, SCENARIO.get("baselineExcludeWayIds", []))
 
 
-def overpass(name: str, body: str, *, reference=False) -> dict:
+def overpass(name: str, body: str, *, reference=False, bounds=None, allow_split=True) -> dict:
     f = osm_cache(name)
     if f.exists():
         data = json.loads(f.read_text())
         return data if reference else baseline_osm(data)
-    s, w, n, e = latlon_bbox()
-    q = f"[out:json][timeout:240][bbox:{s:.5f},{w:.5f},{n:.5f},{e:.5f}];\n{body}\nout geom qt;"
+    s, w, n, e = bounds or latlon_bbox()
+    seconds = 90 if SCENARIO.get("requireComplete", False) else 240
+    q = f"[out:json][timeout:{seconds}][bbox:{s:.5f},{w:.5f},{n:.5f},{e:.5f}];\n{body}\nout geom qt;"
     last = None
     for attempt in range(6):
         url = OVERPASS[attempt % 2]
         try:
             log("overpass", name, url)
-            data = http_get(url, urllib.parse.urlencode({"data": q}).encode(), timeout=400)
+            data = http_get(url, urllib.parse.urlencode({"data": q}).encode(), timeout=seconds + 60)
             d = json.loads(data)
             if "remark" in d or "elements" not in d:
                 raise RuntimeError(f"incomplete Overpass response: {d.get('remark', 'no elements')}")
@@ -181,6 +182,23 @@ def overpass(name: str, body: str, *, reference=False) -> dict:
         except Exception as ex:  # 429/5xx: back off and try the other mirror
             last = ex
             log("  failed:", ex)
+            if attempt == 1 and allow_split and SCENARIO.get("requireComplete", False):
+                # Large region queries can exhaust the public service's time allowance. Fetch
+                # four bounded tiles, preserving full source geometry/IDs and raw exclusions.
+                mid_lat, mid_lon = (s + n) / 2, (w + e) / 2
+                merged, snapshots = {}, []
+                for i, tile in enumerate(((s, w, mid_lat, mid_lon), (s, mid_lon, mid_lat, e),
+                                          (mid_lat, w, n, mid_lon), (mid_lat, mid_lon, n, e))):
+                    part = overpass(f"{name}_tile{i}", body, reference=True, bounds=tile, allow_split=False)
+                    snapshots.append(part.get("osm3s", {}))
+                    for el in part["elements"]:
+                        key = (el["type"], el["id"])
+                        if key in merged and merged[key] != el:
+                            raise RuntimeError(f"OSM changed between tiles: {key}; refresh these query caches")
+                        merged[key] = el
+                combined = {"elements": list(merged.values()), "tileSnapshots": snapshots, "query": q}
+                f.write_text(json.dumps(combined, ensure_ascii=False))
+                return combined if reference else baseline_osm(combined)
             time.sleep(20 * (attempt + 1))
     raise RuntimeError(f"overpass {name} failed: {last}")
 
@@ -242,6 +260,7 @@ LC_NONE, LC_FOREST, LC_WATER, LC_BUILDING, LC_ROAD, LC_URBAN, LC_RAIL, LC_STREAM
 # --- engine data (cost model inputs): built-up mask, building attributes, road network ---------------
 # Extra keys written to overlays.json next to buildings / places / roads (filled by build_overlays).
 ENGINE_OVERLAYS: dict = {}
+LEGACY_SOURCE_IDS: list[int] = []  # separate from overlays.net: preserve its exact bytes
 BUILTUP_BIT = 8  # land-cover byte bit 3: inside OSM landuse residential / commercial / industrial / retail
 BUILTUP_TAGS = ("residential", "commercial", "industrial", "retail")
 # building kind codes (prices and default levels per kind live in src/core/data/urban.ts)
@@ -368,6 +387,7 @@ def road_network(lines: dict) -> dict:
 
     extra = overpass("roads2", 'way["highway"~"^(service|track|living_street|secondary_link|tertiary_link)$"];')
     ways = []
+    LEGACY_SOURCE_IDS.clear()
     w, h = X_MAX - X_MIN, Y_MAX - Y_MIN
     for el in lines["elements"] + extra["elements"]:
         t = el.get("tags", {})
@@ -384,6 +404,7 @@ def road_network(lines: dict) -> dict:
             continue
         s = np.asarray(LineString(xy).simplify(1.0).coords)
         ways.append([NET_CLASSES.index(hw)] + [int(round(float(v))) for v in s.reshape(-1)])
+        LEGACY_SOURCE_IDS.append(el["id"])
     return {"cls": NET_CLASSES, "ways": ways}
 
 
@@ -615,10 +636,16 @@ def extra_lines() -> list:
     return [cached_osm("roads2")["elements"]]
 
 
-def build_vectors() -> dict:
+def build_vectors(transport_lines=None) -> dict:
     import vectors
     return vectors.build(OUT, cached_osm, way_xy, rings_of, X_MAX - X_MIN, Y_MAX - Y_MIN,
-                         extra_polys=extra_cover(), extra_lines=extra_lines())
+                         extra_polys=extra_cover(), extra_lines=extra_lines(), transport_lines=transport_lines)
+
+
+def build_transport(render_lines):
+    import transport
+    elements = cached_osm("lines")["elements"] + cached_osm("roads2")["elements"]
+    return transport.build(OUT, elements, way_xy, render_lines, LEGACY_SOURCE_IDS, log)
 
 
 def main():
@@ -665,14 +692,16 @@ def main():
 
     for stale in list(OUT.glob("tex_*.jpg")) + [OUT / "overview.jpg"]:  # baked drape of older packs
         stale.unlink(missing_ok=True)
+    transport_lines = [] if SCENARIO.get("requireComplete", False) else None
     try:
-        vector = build_vectors() if have_osm else None
+        vector = build_vectors(transport_lines) if have_osm else None
     except Exception as ex:  # legacy fallback only
         if SCENARIO.get("requireComplete", False):
             raise
         log("vector render data failed:", ex)
         vector = None
 
+    transport_meta = build_transport(transport_lines) if transport_lines is not None and vector else None
     loc = lambda p: [round(float(p[0] - X_MIN), 1), round(float(p[1] - Y_MIN), 1)]
     a_lon, a_lat = TO_WGS.transform(a[0], a[1])
     b_lon, b_lat = TO_WGS.transform(b[0], b[1])
@@ -708,6 +737,10 @@ def main():
         "attribution": ["© ČÚZK, DMR 5G, CC BY 4.0", "© OpenStreetMap contributors, ODbL", "© ČGS, GEOCR50 + IG rajony 1:50 000"],
         "haveOsm": have_osm,
     }
+    if (SCENARIO.get("official") or {}).get("publishedProjectLengthM"):
+        meta["official"]["publishedProjectLengthM"] = SCENARIO["official"]["publishedProjectLengthM"]
+    if transport_meta:
+        meta["transport"] = transport_meta
     if SCENARIO.get("baselineNote"):
         meta["baselineNote"] = SCENARIO["baselineNote"]
     if SCENARIO.get("sources"):
