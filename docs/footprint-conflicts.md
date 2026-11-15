@@ -123,6 +123,53 @@ fill), service 5162 (town-centre); lowering a way into a shallow cut under a box
 designs the remaining automatic-remedy violations are piers that find no clear spot (railway/street at the
 Polish border) and rebuilds with no room or too steep ground; both are tagged *engine limit*.
 
+### Model 19: a crossing's own earthworks leave other roads usable
+
+Owner report (D11 near bend 24): the fill slopes of a junction approach lay over the neighbouring class III
+road, with nothing resolving it and no violation. Cause: only *our* road's earthworks were checked against
+other roads; the raised or lowered stretch of a crossed road (junction approach, ramps to a bridge over us)
+was drawn with 1:1.5 slopes that nobody checked. `scripts/crossing-footprint-audit.ts` (same designs as the
+outcome audit) found 72 such overlaps before; the remaining 4–6 hits are explained (a road joining exactly at
+our junction, an arm running into our own earthworks, a pre-existing ramp-too-long violation).
+
+`src/core/crossing-works.ts`, called by the geometry pass for every junction and bridge over us, does what a
+designer does:
+
+- **Side roads joining the rebuilt stretch are regraded** ("ties"): from the new level at the junction node
+  (≤ 2 m: pack ways are simplified by 1 m and rounded) down along the side road's own line to its ground, no
+  steeper than its class allows (`rampLimit`, research/20), at most 250 m (`MAX_RAMP_LENGTH`). Each arm of a
+  node is regraded once. Priced at the side road's SPK new-road rate per metre (`roadPerKm`, urban row when
+  the crossing is in town), drawn as a road of its own class with its own slopes, picked with the crossing,
+  and owned (its source interval) so our road's footprint check does not rebuild it again. An arm that runs
+  into our own earthworks is left to our road's footprint works (moved beside them / its own crossing).
+- **A road beside the slope gets a retaining wall** 1.5 m clear of its edge (constrained: 0.1 m, at least
+  at the paved edge), the same rules and OTSKP assembly as our own walls (`RETAINING_RULES`,
+  `retainingAssembly`, research/18), at most 15 m high; measured where the slope would still stand above the
+  wall line, drawn as a concrete face (the slope stops at its top), billed per metre of its mean height.
+- **Otherwise the treatment is infeasible** ("The junction's approach would bury another road" /
+  "The ramps to the bridge over our road would bury another road", game rule): Auto tries an underpass, a
+  bridge over us or a reroute instead, exactly as for other geometry failures; a player's choice stays and
+  shows the violation.
+- Earth no thicker than 0.3 m on the other road's edge is not a burial (the engine's existing draped-road
+  tolerance, `crossing-geometry.ts`).
+- The ties and walls are construction (`CrossingResult.worksCost`, other-objects surcharge), never part of
+  the junction lump sum. They are remeasured on every geometry build; the crossing card says what was added.
+
+Totals bn CZK, model 18 → 19 (all published designs still VALID; frozen fixtures recaptured after this
+review): straight 10.009893 → 10.011062 (+1.2 M: a 37 m tie of a street joining the class I junction approach
+at km 15.40), best 4.253391 → 4.255851 (+2.5 M: ties of 15–55 m on four track/local-road bridges over us),
+demo 4.879753 → 4.881066 (+1.3 M: class I junction km 6.73 and track bridge km 17.93), direct-80 4.941034 →
+4.945392 (+4.4 M: five bridges over us, one 10 m wall), direct-90 and town-centre unchanged. Fixtures
+best-drag/-pin/-structures/-manual move with best (+2.4–2.7 M), town-controls is unchanged.
+`tests/fixtures/service-loop-design.json` changes outcome: the service-road bridge over us landed 7 m up on
+the junction with class III road 2054, which falls away at 8 % and cannot be regraded within 250 m; Auto
+now cuts and reconnects the service road (a 1.4 + 1.4 km reroute, the existing long-reroute limitation) and
+rebuilds the loop branch, instead of silently burying that junction. Random designs (24): violation counts
+unchanged, totals −1.3 to +3.8 M (the decrease: a regraded side road replaces a costlier rebuild beside our earthworks).
+
+Not checked yet: buildings, railways and water under a crossing's slopes; second-order effects of a tie's own
+slopes; a stub between the crossed road and our earthworks whose arm is left to our footprint works.
+
 Manual grades are not lifted, pins remain constraints, and manual structure ranges are not
 silently moved. Retaining walls can protect a manually specified earthwork without changing its
 specified grade or structure kind. Infeasible overrides remain visibly invalid.

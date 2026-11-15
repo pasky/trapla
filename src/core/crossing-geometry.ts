@@ -4,7 +4,8 @@ import { ACCESS, CROSSING_RULES, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { smoothLink } from './crossing-link';
-import { underpassAssembly, UNDERPASS_RULES } from './data/remedies';
+import { crossingWorks, WORKS_COVER_ROAD, WORKS_TIE_TOO_LONG } from './crossing-works';
+import { RETAINING_RULES, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { KIND } from './structures';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
@@ -71,6 +72,17 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Move the junction where the two roads are closer in height, or choose "Our bridge over it" or "Its bridge over us"',
     detail: `Within the allowed slope, the ${what} would have to be raised or lowered all the way to where it ends.`, basis: 'game',
     rule: `Game rule (research/20): a ${what} raised or lowered to a junction is no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} %` };
+  if (message === WORKS_COVER_ROAD || message === WORKS_TIE_TOO_LONG) {
+    const raised = c.type === 'junction' ? `raised or lowered for the junction` : 'raised onto the bridge over our road';
+    return { title: c.type === 'junction' ? `The junction's approach would bury another road` : `The ramps to the bridge over our road would bury another road`,
+      fix: c.type === 'junction' ? 'Move the junction, or choose "Our bridge over it", an underpass or "Cut and reroute"'
+        : 'Choose "Our bridge over it", an underpass or "Cut and reroute", or move our road a little',
+      detail: message === WORKS_COVER_ROAD
+        ? `Where the ${what} is ${raised}, its earth slopes would cover a road beside it, and a retaining wall cannot stand between them.`
+        : `A road joining the ${what} where it is ${raised} would have to be regraded for more than ${MAX_RAMP_LENGTH} m to meet it.`,
+      basis: 'game',
+      rule: `Game rule: earthworks of a crossing may not cover other roads. A road joining it is regraded to meet it (no steeper than its class allows, at most ${MAX_RAMP_LENGTH} m); a road beside it is kept clear by a retaining wall up to ${RETAINING_RULES.maxHeight} m high (research/18, research/20)` };
+  }
   if (message === RAMP_TOO_LONG) return { title: `Ramps up to the bridge over our road would be longer than ${MAX_RAMP_LENGTH} m`, ...ramps,
     detail: `The ${what} itself runs downhill (or uphill) away from the bridge, so a ramp within the allowed slope meets it again only far away, if at all.`, basis: 'game',
     rule: `${ramps.rule}, at most ${MAX_RAMP_LENGTH} m long on each side` };
@@ -305,6 +317,11 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   sidesOf = new Map<string, [boolean, boolean]>()): CrossingIssue[] {
   const { at, project, margin } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => v.crossing.code !== 'geometry');
+  // Works are remeasured on every build (Auto tries candidates, then rebuilds the network).
+  for (const c of crossings) {
+    if (c.worksCost) c.cost -= c.worksCost;
+    delete c.worksCost; delete c.tieLength; delete c.wallLength;
+  }
   const terrainPoint = (q: XY & { d?: number }): CrossingPoint => {
     const ground = heightAt(q.x, q.y);
     // All callers supply XY or way samples. Explicit shapes avoid a generic object spread for
@@ -649,6 +666,20 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     if (g.links) g.links = g.links.map(path => refineTerrain(path, g)) as [CrossingPoint[], CrossingPoint[]];
   }
+  // The rebuilt stretch's own slopes must leave other roads usable: regrade side roads joining it,
+  // hold the slope back from roads beside it, or report the treatment infeasible (crossing-works.ts).
+  for (const c of crossings) {
+    const g = c.geometry!;
+    if (!roads || !g.road || (c.type !== 'junction' && c.type !== 'overbridge') || g.diagnostics?.length) continue;
+    const works = crossingWorks(g.road, g.width, getPath(c.roadId, c.x, c.y, g), {
+      roads, heightAt, ours: (q, pad) => margin(q, pad) <= 0, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0 });
+    for (const message of works.problems) diagnose(g, message);
+    if (works.ties.length) g.ties = works.ties;
+    for (const [i, wall] of works.walls) g.road[i] = { ...g.road[i], wall };
+    if (works.cost > 0) { c.worksCost = works.cost; c.cost += works.cost; }
+    if (works.tieLength > 0) c.tieLength = works.tieLength;
+    if (works.wallLength > 0) c.wallLength = works.wallLength;
+  }
   const issues: CrossingIssue[] = [];
   for (const c of crossings) for (const message of c.geometry?.diagnostics ?? []) {
     const text = diagnosticText(message, c);
@@ -672,8 +703,12 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   const paths = new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>(), sidesOf = new Map<string, [boolean, boolean]>();
   const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, sidesOf);
   build(crossings);
-  const clone = (c: CrossingResult): CrossingResult => ({ ...c, geometry: undefined,
-    issues: c.issues?.filter(v => v.crossing.code !== 'geometry') });
+  const clone = (c: CrossingResult): CrossingResult => {
+    const copy: CrossingResult = { ...c, geometry: undefined, cost: c.cost - (c.worksCost ?? 0),
+      issues: c.issues?.filter(v => v.crossing.code !== 'geometry') };
+    delete copy.worksCost; delete copy.tieLength; delete copy.wallLength;
+    return copy;
+  };
   const feasible = (c: CrossingResult) => !c.issues?.length && !c.geometry?.diagnostics?.length;
   const baseline = crossings.map(c => ({ state: { ...c }, feasible: feasible(c) }));
   const dependsOn = (target: CrossingResult, source: CrossingResult): boolean => {
@@ -709,6 +744,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     if (c.type !== 'overbridge' && c.type !== 'underpass' && originalFeasible) {
       if (best !== c) {
         delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
+        delete c.worksCost; delete c.tieLength; delete c.wallLength;
         Object.assign(c, best); changed = true;
       }
       continue;
@@ -742,6 +778,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     }
     if (best !== c) {
       delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
+      delete c.worksCost; delete c.tieLength; delete c.wallLength;
       Object.assign(c, best); changed = true;
     }
   }
@@ -751,7 +788,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // local option by breaking a previously feasible connection elsewhere in the network.
   if (crossings.some((c,i) => baseline[i].feasible && !feasible(c))) {
     crossings.forEach((c,i) => {
-      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength'] as const) delete c[key];
+      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength'] as const) delete c[key];
       Object.assign(c, baseline[i].state);
     });
     return build(crossings);

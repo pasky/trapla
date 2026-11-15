@@ -925,13 +925,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides);
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind,
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind, urban: urbanCentre,
     left: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayL[i] : width[i] / 2),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
   }, (x, y) => terrain.heightAt(x, y), ctx.roads));
   for (const c of crossings) {
     // SPK links/approaches/bridges receive other-objects surcharge; all-in junction/access do not.
-    const lump = c.type === 'junction' ? c.cost : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
+    // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
+    const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
     crossingLump[c.i] += lump;
     crossingStructure[c.i] += c.cost - lump;
     if (c.cost > 0) crossingsPaid++;

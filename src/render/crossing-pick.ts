@@ -1,4 +1,5 @@
 import type { CrossingPoint, CrossingResult } from '../core/crossings';
+import { ROAD_CLASSES } from '../core/data/urban';
 import { perspectiveFraction } from './route-pick';
 
 type Project = (x: number, y: number, z: number) => { sx: number; sy: number; vis: boolean; depth?: number };
@@ -7,7 +8,8 @@ interface Segment { a: CrossingPoint; b: CrossingPoint; half: number; crossing: 
 interface Disk { c: CrossingPoint; radius: number; crossing: CrossingResult }
 
 /** Everything a crossing draws on the map: the crossed road's rebuilt stretch (junction approach,
- * ramps and deck over our road, underpass box), reroute links and turning heads. Width per path: the
+ * ramps and deck over our road, underpass box), side roads regraded to meet it, reroute links and
+ * turning heads. Width per path: the
  * drawn pavement (an underpass box is wider than the road it carries). */
 function owned(c: CrossingResult): { paths: { points: CrossingPoint[]; half: (i: number) => number }[]; disks: { c: CrossingPoint; radius: number }[] } {
   const g = c.geometry, paths: ReturnType<typeof owned>['paths'] = [], disks: ReturnType<typeof owned>['disks'] = [];
@@ -18,6 +20,7 @@ function owned(c: CrossingResult): { paths: { points: CrossingPoint[]; half: (i:
     paths.push({ points: g.road, half: i => box && i >= box.start && i < box.end ? Math.max(half, outer) : half });
   }
   for (const link of g.links ?? []) if (link.length >= 2) paths.push({ points: link, half: () => half });
+  for (const tie of g.ties ?? []) if (tie.path.length >= 2) paths.push({ points: tie.path, half: () => (ROAD_CLASSES[tie.cls]?.width ?? g.width) / 2 });
   // Turning heads: explicit priced disks, else the small drawn heads at severed link starts.
   if (g.turnaroundRadius !== undefined && Number.isFinite(g.turnaroundRadius) && g.turnaroundRadius > 0)
     for (const p of g.turnarounds ?? []) disks.push({ c: p, radius: g.turnaroundRadius });

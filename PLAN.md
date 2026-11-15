@@ -207,6 +207,18 @@ What exists (details and commands in `README.md`):
 - All published designs stay VALID and get 2.7–38.2 M cheaper. Audit: `npx tsx scripts/outcome-audit.ts
   --straight scripts/*-design.json --random 24`; details in `docs/footprint-conflicts.md` § Model 18.
 
+### Crossing works leave other roads usable; click a crossing's works (cost model 19, 2026-11-15)
+
+- A junction approach or a bridge-over-us ramp no longer buries other roads (owner report, D11 bend 24): side
+  roads joining the raised/lowered stretch are regraded to meet it (class gradients, ≤ 250 m), roads beside
+  it get a retaining wall (same rules and prices as ours), otherwise the treatment is infeasible and Auto
+  picks another. Priced as construction, drawn, and named on the crossing card. Published designs +0 to
+  +4.4 M, all still VALID. Details: `docs/footprint-conflicts.md` § Model 19; audit
+  `npx tsx scripts/crossing-footprint-audit.ts --straight scripts/*-design.json --random 24`.
+- Clicking any geometry a crossing owns (rebuilt stretch, reroute links, turning heads, underpass box,
+  regraded side roads) opens its card, on the drawn width plus 3 px like mapped roads; elsewhere a mapped road
+  keeps its base-road card.
+
 ### Travel-time target X and traffic Y
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.

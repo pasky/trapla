@@ -25,6 +25,9 @@ export interface CrossingPoint {
   d?: number;
   /** A terminating T-junction meets the constructed main road, not the removed old ground. */
   connection?: 'main-road';
+  /** Retaining walls cutting this sample's slopes short, at these offsets from the centreline on
+   * the [-normal, +normal] side (normal from the neighbouring samples), m. */
+  wall?: [number | undefined, number | undefined];
 }
 export interface CrossingGeometry {
   /** Existing road, continuous under our bridge or over our cut. */
@@ -41,6 +44,8 @@ export interface CrossingGeometry {
   underpass?: { start: number; end: number; width: number; height: number; roof: number; wall: number };
   /** Reconnection/diversion: signed way chainages where the severed way leaves the footprint. */
   removed?: [number, number];
+  /** Side roads joining the rebuilt stretch, regraded from its new level down to their own ground. */
+  ties?: { cls: string; way: number; path: CrossingPoint[] }[];
   /** Severed existing-road ends at the sources of the two links. */
   turnarounds?: CrossingPoint[];
   /** Explicit priced turning disk, distinct from legacy small severed-end heads. */
@@ -79,6 +84,12 @@ export interface CrossingResult {
   underpassLength?: number;
   roadCode?: string;
   roadPerKm?: number;
+  /** Side roads regraded to meet the rebuilt stretch, m (measured along them). */
+  tieLength?: number;
+  /** Retaining walls holding its slopes off roads beside it, m. */
+  wallLength?: number;
+  /** Pre-surcharge CZK of those ties and walls, included in cost (never a lump sum). */
+  worksCost?: number;
 }
 
 export function normalizeCrossingOverrides(value: unknown): CrossingOverride[] {
@@ -177,6 +188,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost;
     c.requestedType = crossingChoice(c.roadId, overrides);
   }
   for (const c of priority) {
@@ -303,6 +315,8 @@ export interface CrossingRoute {
   crownWidth?: number;
   /** Built structure kind per station; Auto considers an underpass only under earthwork. */
   kind?: ArrayLike<number>;
+  /** Urban share per station (≥ 0.5: urban SPK price rows for side-road regrades). */
+  urban?: ArrayLike<number>;
 }
 
 export { buildCrossingGeometry, crossingPlanLength, auditCrossingGeometry, underpassFits } from './crossing-geometry';
