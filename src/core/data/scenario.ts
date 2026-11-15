@@ -120,7 +120,7 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
 
 // Motorway missions in the same corridors: separate presets (own saves) next to the unchanged road
 // exercises. Traffic: GAME PRIOR = CSD 2020 national mean motorway AADT "cca 30 700 voz/24h" (ŘSD
-// census page), not a local forecast (none found, research/29 §2). Acoustic heavy share 22.56 %: TP 219
+// census page), not a local forecast (none found, research/33 §2). Acoustic heavy share 22.56 %: TP 219
 // tab. 4-2 first-class motorway mix (19 % goods + 1 % buses + 32 % of 8 % light goods, Manuál tab. 20).
 // Capacity: D 27.5 carries it. Time targets are mission choices (≈ 10 % longer than the reference).
 const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };

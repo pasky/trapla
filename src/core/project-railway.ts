@@ -1,6 +1,6 @@
 // Railway routes (M1): a new conventional electrified line through the route kernel with the railway
 // policy rows (data/categories.ts R1/R2: track geometry, SPOŽES prices, no level crossings). Train noise
-// and the freight ruling gradient have no sourced Czech values (research/30, /32): a railway is shown,
+// and the freight ruling gradient have no sourced Czech values (research/34, /32): a railway is shown,
 // checked and billed, but stays unpriced in the project until those checks exist.
 import { evaluate, type Design, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { designSpeeds } from './data/norms';
@@ -71,6 +71,6 @@ export function railwayPendingIssues(routeId: string): ProjectIssue[] {
     violation: { kind: 'crossing', basis: 'engine', title, fix: 'The railway is shown and billed; its price joins the project once this is checked', rule } });
   return [
     pending('rail-noise', 'Train noise is not checked yet', 'Engine limit: no sourced Czech train noise emission data yet (research/32); the line is never treated as quiet.'),
-    pending('rail-gradient', 'Steepest grade for freight trains is not checked yet', 'Engine limit: no sourced ruling gradient for mixed passenger and freight lines (research/30); only the general 4 % ceiling is checked.'),
+    pending('rail-gradient', 'Steepest grade for freight trains is not checked yet', 'Engine limit: no sourced ruling gradient for mixed passenger and freight lines (research/34); only the general 4 % ceiling is checked.'),
   ];
 }

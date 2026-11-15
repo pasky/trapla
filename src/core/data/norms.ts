@@ -30,9 +30,9 @@ export const PROVISIONAL_NORMS = {
 /** Motorway design speeds: D 27.5 base 130, lowered by 10 or 20 in justified cases (Radimský 2019 slide 4).
  * Radii at 6 % superelevation and no-superelevation radii: Radimský slide 6 (data/motorway.ts).
  * Transition minimum = vn metres (slide 15; runoff length not modelled, as for roads).
- * Vertical radii: the 2018 table is not public (research/22 §2, /29 §1, §6), so PROVISIONAL older-edition
+ * Vertical radii: the 2018 table is not public (research/22 §2, /33 §1, §6), so PROVISIONAL older-edition
  * values, as for the road rows: crest = ČSN 73 6101:2004 "Rv zast. dovolené" 15,000 / 12,000 / 10,000 m
- * at 130 / 120 / 110 (reproduced in Mahdal, VUT 2012, p. 8; research/29 §6). Sag: the older VUT
+ * at 130 / 120 / 110 (reproduced in Mahdal, VUT 2012, p. 8; research/33 §6). Sag: the older VUT
  * "Aplikace ČSN 73 6101" p. 11 gives 5,000 m at 120 only; 110 uses it (conservative); 130 has no older
  * column found and reuses 5,000 m: UNVERIFIED, may be too lenient at 130. */
 export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
@@ -41,7 +41,7 @@ export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
   110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 10000, minSagRadius: 5000 },
 };
 
-/** Railway (new conventional mixed line, ≤ 160 km/h), PROVISIONAL older teaching values (research/23, /30;
+/** Railway (new conventional mixed line, ≤ 160 km/h), PROVISIONAL older teaching values (research/23, /34;
  * current ČSN 73 6360-1 tables not public):
  * - min radius from the cant envelope: R ≥ 11.8·V² / (D + I) with ordinary cant D 150 mm and deficiency
  *   I 80 mm (VUT 2009 pp. 4, 9); a 100 km/h freight train then stays within the 80 mm excess (p. 7);

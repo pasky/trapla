@@ -66,7 +66,7 @@ export const SPOZES = {
 } as const;
 
 /** PROVISIONAL track-centre distance on open line ≤ 160 km/h: Plášek (VUT 2009) p. 42, 4.0 m; current
- * SŽ S11 / ČSN 73 6320 values not verified (research/30 §4). Double-track formation = single + this. */
+ * SŽ S11 / ČSN 73 6320 values not verified (research/34 §4). Double-track formation = single + this. */
 export const TRACK_CENTRES_M = 4.0;
 
 /** Route-km price of a new electrified (25 kV AC) line: track, sleeper-bed layers, a lined ditch on

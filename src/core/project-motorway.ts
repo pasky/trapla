@@ -16,7 +16,7 @@ import { LAND, PRICES } from './data/prices';
 import { KIND } from './structures';
 import type { Violation } from './checks';
 
-/** Policy of a paired D 27.5 corridor priced as one whole-category SPK body (research/22, /29). */
+/** Policy of a paired D 27.5 corridor priced as one whole-category SPK body (research/22, /33). */
 export const MOTORWAY_POLICY = 'paired-d27.5';
 export const MOTORWAY_CATEGORY = 'D27.5' as const;
 
@@ -88,7 +88,7 @@ export type CorridorEvaluation =
 
 /** One kernel evaluation of the paired corridor. Ends must be the mission's scenario ports: the
  * motorway continues beyond the map there (SPK's whole-category norm already includes earth-built
- * interchange branches, research/29 §3); any other end needs an interchange nobody has built. */
+ * interchange branches, research/33 §3); any other end needs an interchange nobody has built. */
 export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign, corridorId: string, objectData: string,
   options: Pick<EvalOptions, 'preview' | 'materialValue'> & { only?: string } = {}): CorridorEvaluation {
   const corridor = project.corridors.find(c => c.id === corridorId);

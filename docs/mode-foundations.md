@@ -126,9 +126,9 @@ road width. Increments, each committed green:
 
 1. **Mode policy rows.** `data/categories.ts` rows gain `mode`, per-speed norms (horizontal, vertical,
    max gradient), structure/tunnel rows, noise source and `gradeSeparated`. Road rows and D11 bills stay
-   bit-exact. Motorway: D27.5 VL1 section, Radimský radii, vertical/grade per research/29 (current values
+   bit-exact. Motorway: D27.5 VL1 section, Radimský radii, vertical/grade per research/33 (current values
    where found, otherwise PROVISIONAL older-edition values flagged like today's road rows). Railway:
-   single/double track per research/23, /30; prices per research/31 or explicitly unpriced.
+   single/double track per research/23, /34; prices per research/32 or explicitly unpriced.
 2. **Paired motorway kernel.** One evaluation on the corridor spine (shared formation once, SPK D27.5
    whole-category norm, D27.5 bridge row = average of both decks, two tunnel tubes), no at-grade
    junctions anywhere (every crossed road is bridged, passes over us, goes through an underpass or is
@@ -149,5 +149,5 @@ road width. Increments, each committed green:
    until then split corridors are shown, checked and listed as unpriced (no VALID, no best).
 7. **Railway kernel.** Track policy (cant-derived radii, rail gradient/vertical curves, trackbed and
    formation quantities, rail bridges/tunnels, no level crossings: every road crossing grade-separated),
-   rail noise per research/31 or explicitly unpriced; scored only if every needed check and price exists.
+   rail noise per research/32 or explicitly unpriced; scored only if every needed check and price exists.
 8. Gates: full AGENTS.md list, drag-perf all modes plus a motorway design, screenshots (next free numbers).

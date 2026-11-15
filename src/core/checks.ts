@@ -148,7 +148,7 @@ const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i)
 const R = (r: number) => `R ${fmt(r)} m`;
 const MAX_RADIUS_SEARCHES = 4;
 
-/** Source line for railway geometry rules: older teaching values, not the current norm (research/23, /30). */
+/** Source line for railway geometry rules: older teaching values, not the current norm (research/23, /34). */
 export const RAIL_NORM = 'ČSN 73 6360-1 as taught at VUT (2009 lectures, provisional)';
 export function horizontalViolations(al: Alignment, speed: number, input?: HorizontalInput): Violation[] {
   const out: Violation[] = [];

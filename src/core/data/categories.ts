@@ -92,12 +92,12 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     section: { lane: 3.5, hardShoulder: 1.75, edgeLine: 0.25, centreLine: 0.125, dash: 3, gap: 6 },
   },
   // Paired motorway corridor: VL 1 sheet 11-02 widths (data/motorway.ts), whole-category SPK norm
-  // (both carriageways, earth-built interchange branches at 1 per 7 km included, research/29 §3),
+  // (both carriageways, earth-built interchange branches at 1 per 7 km included, research/33 §3),
   // D27.5 bridge row per km of the average of the two parallel bridges, one 2-lane tube per direction.
   'D27.5': {
     id: 'D27.5', mode: 'motorway', label: 'D 27.5 (motorway)', enabled: false, crownWidth: 27.5, paired: true, gradeSeparated: true,
     // PROVISIONAL: older-edition ČSN 73 6101 D26.5/D27.5 maxima (VUT "Aplikace ČSN 73 6101" p. 10: 4 % hilly,
-    // 4.5 % mountainous); current 2018 values not found in public sources (research/22 §2, research/29 §1).
+    // 4.5 % mountainous); current 2018 values not found in public sources (research/22 §2, research/33 §1).
     maxGradient: { hilly: 0.04, mountainous: 0.045 },
     speeds: [130, 120, 110], roadClass: 'motorway',
     normPerKm: { hilly: 187_632_000, mountainous: 214_512_000 },
