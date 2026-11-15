@@ -304,7 +304,7 @@ export class Inspector {
   private bend(r: Result, d: Design, i: number) {
     const pi = d.pis[i];
     if (!pi) return '';
-    const cv = r.curves.find((c) => c.index === i), n = speedNorms(d.speed);
+    const cv = r.curves.find((c) => c.index === i), n = speedNorms(d.speed, d.category);
     const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius;
     // "Widest" is an action, not a state: finding the largest radius that fits is a geometry search
     // (tens of ms), done only when it is clicked

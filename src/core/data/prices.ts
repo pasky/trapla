@@ -3,8 +3,10 @@
 // research/data/spk-cn-2026-oceneni.csv; land: research/07-property-land.md; earthworks:
 // research/09-noise-earthworks-urban.md §3. PROVISIONAL marks a placeholder or game heuristic.
 
-/** Bump whenever prices or cost rules change: scores saved under an older model are not comparable. */
-export const COST_MODEL_VERSION = 18;
+/** Bump whenever prices or cost rules change: scores saved under an older model are not comparable.
+ * 19: motorway mode scores (paired D 27.5 corridor: motorway norms, no level junctions, motorway noise
+ * source); road bills unchanged (eval-regression identical). */
+export const COST_MODEL_VERSION = 19;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

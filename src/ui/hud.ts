@@ -312,7 +312,7 @@ export class Hud {
   setDesign(d: Design) {
     this.$<HTMLSelectElement>('cat').value = d.category;
     this.$<HTMLSelectElement>('speed').value = String(d.speed);
-    const n = speedNorms(d.speed);
+    const n = speedNorms(d.speed, d.category);
     const norms = this.$('norms');
     norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${(this.sc.maxGradient * 100).toFixed(0)} %</b>`;
     norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${(this.sc.maxGradient * 100).toFixed(0)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;

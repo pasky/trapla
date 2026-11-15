@@ -27,10 +27,30 @@ export const PROVISIONAL_NORMS = {
   verticalRadiiNote: 'older edition of ČSN 73 6101, not confirmed for 2018; 90 km/h uses the 100 km/h column',
 };
 
-export function speedNorms(speed: number): SpeedNorms {
-  const n = SPEED_NORMS[speed];
+/** Motorway design speeds: D 27.5 base 130, lowered by 10 or 20 in justified cases (Radimský 2019 slide 4).
+ * Radii at 6 % superelevation and no-superelevation radii: Radimský slide 6 (data/motorway.ts).
+ * Transition minimum = vn metres (slide 15; runoff length not modelled, as for roads).
+ * Vertical radii: PROVISIONAL older-edition values (VUT "Aplikace ČSN 73 6101" p. 11, D categories,
+ * 120 km/h column: crest 11,000 m, sag 5,000 m); the 2018 table is not public (research/22 §2, /29 §1).
+ * 110 uses the 120 column (conservative, as roads use the 100 column at 90). */
+export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
+  130: { speed: 130, minRadius: 840, noSuperelevationRadius: 2420, minTransition: 130, minCrestRadius: 11000, minSagRadius: 5000 },
+  120: { speed: 120, minRadius: 690, noSuperelevationRadius: 2060, minTransition: 120, minCrestRadius: 11000, minSagRadius: 5000 },
+  110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 11000, minSagRadius: 5000 },
+};
+
+/** Norm table for a category: motorway rows are separate (never borrowed from the 90 km/h road rows). */
+function normTable(category?: CategoryId): Record<number, SpeedNorms> {
+  return category && CATEGORIES[category].mode === 'motorway' ? MOTORWAY_SPEED_NORMS : SPEED_NORMS;
+}
+export function speedNorms(speed: number, category?: CategoryId): SpeedNorms {
+  const n = normTable(category)[speed];
   if (!n) throw new Error(`no norms for design speed ${speed}`);
   return n;
+}
+/** Design speeds the category may be built for, fastest first. */
+export function designSpeeds(category: CategoryId): number[] {
+  return Object.keys(normTable(category)).map(Number).sort((a, b) => b - a);
 }
 
 // ---- horizontal curve rules (table-driven; rail / motorway rows can differ later) ----------------
@@ -39,6 +59,7 @@ export function speedNorms(speed: number): SpeedNorms {
 // Older edition, not independently verified for 2018. Omission threshold below uses actual model L,
 // whereas VUT prescribes 1.5vn for that calculation: this is a game concession (research/15).
 import type { HorizontalRules } from '../horizontal';
+import { CATEGORIES, type CategoryId } from './categories';
 
 export interface HorizontalNormRow {
   /** a circular arc needs no transition when the transition would shift it by at most this: ΔR = L²/(24·R), m */
@@ -49,15 +70,19 @@ export interface HorizontalNormRow {
   minReverseStraight: number;
 }
 
+// Motorway rows apply the same VUT rules (shift 0.25 m, ratio 2, reverse straight 2·vn) at motorway vn.
 export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
+  130: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 260 },
+  120: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 240 },
+  110: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 220 },
   90: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 180 },
   80: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 160 },
   70: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 140 },
 };
 
 /** Everything the horizontal geometry and its checks need for a design speed. */
-export function horizontalRules(speed: number): HorizontalRules {
-  const n = speedNorms(speed), h = HORIZONTAL_NORMS[speed];
+export function horizontalRules(speed: number, category?: CategoryId): HorizontalRules {
+  const n = speedNorms(speed, category), h = HORIZONTAL_NORMS[speed];
   if (!h) throw new Error(`no horizontal rules for design speed ${speed}`);
   return {
     minRadius: n.minRadius,

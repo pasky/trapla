@@ -119,7 +119,7 @@ export class CurveEditor {
       if (this.drag && now !== this.drag.design) this.drag.abort(false);
       else if (this.drag && i !== this.drag.i) this.drag.abort(true);
     }
-    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed));
+    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed, d.category));
     const info = i === null || !this.al ? undefined : this.al.curves[i];
     this.shown = !!info;
     if (!info || !this.al || i === null) { this.place(); return; }
@@ -269,7 +269,7 @@ export class CurveEditor {
   /** largest radius that fits, for the selected bend (also on the debug API) */
   maxRadius(i = this.host.selected()): number | null {
     const d = this.host.design();
-    return i === null || !d.pis[i] ? null : maxRadiusThatFits(this.host.a, this.host.b, d.pis, i, d.speed);
+    return i === null || !d.pis[i] ? null : maxRadiusThatFits(this.host.a, this.host.b, d.pis, i, d.speed, d.category);
   }
 
   private toMax() {

@@ -10,6 +10,8 @@ export interface NoiseTraffic {
   /** Fractions of each category's daily count in 22:00–06:00. Default: TP 219 non-E class I. */
   lightNightShare?: number;
   heavyNightShare?: number;
+  /** Source profile: class I road (default, unchanged) or a four-lane motorway (MOTORWAY_NOISE). */
+  profile?: 'class-I' | 'motorway';
 }
 
 export interface NoiseOptions extends NoiseTraffic {
@@ -26,8 +28,58 @@ export function vehicleEmission(speed: number, heavy: boolean): number {
   return f * 10 ** ((heavy ? NOISE.heavyEmissionDb : NOISE.lightEmissionDb) / 10);
 }
 
+/** Four-lane motorway source per Manuál 2018 v2020 (personally checked, /tmp extract of the MD PDF):
+ * tab. 21 "Praha, dálnice I. a II. třídy" 2020 (later years use 2020): LOA 74.1, LNA 80.5 dB;
+ * tab. 7 (TP 219 tab. 3-2) "Dálnice I. třídy" night coefficients Pnoc = NZ + NQ + kPNA·PNA [%];
+ * tab. 9 lane split and tab. 15 free-flow lane speeds for four-lane motorways (130 km/h limit),
+ * I24 = AADT in thousands clamped to 5…37. Trucks ("nákladní vozidla") and combinations
+ * ("nákladní soupravy") keep their own lane shares and speeds. Lanes are summed into one emission
+ * (each lane's F1 is additive); the carriageways' distinct positions are approximated by the
+ * standard equivalent source (see NOISE.sourceOffset): for receivers beyond ≈ 20 m the line-source
+ * energy of two carriageways at ±6 m differs from it by < 0.1 dB. */
+export const MOTORWAY_NOISE = {
+  lightEmissionDb: 74.1, heavyEmissionDb: 80.5,
+  night: { light: { nz: 9.3, nq: -4.5, k: 0.2 }, heavy: { nz: 20.5, nq: -9.3, k: 0.4 } },
+  /** PROVISIONAL split of acoustic heavy flow into combinations: TP 219 tab. 4-2 first-class motorway
+   * mix (19 % medium/heavy goods and combinations incl. 13 % combinations, 1 % buses, 8 % light goods
+   * of which 32 % count as NA, Manuál tab. 20 category I): 13 / 22.56. */
+  combinationShareOfHeavy: 13 / 22.56,
+  /** [inner-lane share a, b] → a·I24 + b percent; [inner speed a, b], [outer speed a, b] km/h. */
+  lanes: {
+    day: { light: { share: [0.673, 26.0], inner: [-0.595, 145], outer: [-0.689, 132] },
+      truck: { share: [0.341, 7.2], inner: [-0.529, 131], outer: [-0.147, 96] },
+      combination: { share: [0.109, 1.3], inner: [-0.023, 91], outer: [-0.058, 87] } },
+    night: { light: { share: [0.226, 34.8], inner: [-0.449, 141], outer: [-0.506, 126] },
+      truck: { share: [0.124, 9.7], inner: [-0.461, 121], outer: [-0.102, 84] },
+      combination: { share: [0.086, 2.0], inner: [-0.040, 91], outer: [-0.045, 86] } },
+  },
+} as const;
+
+/** Lane-weighted F1 per vehicle (motorway): Σ lanes share · f(v_lane). */
+function motorwayLaneEmission(i24: number, period: 'day' | 'night', group: 'light' | 'truck' | 'combination'): number {
+  const row = MOTORWAY_NOISE.lanes[period][group], inner = (row.share[0] * i24 + row.share[1]) / 100;
+  const v = (c: readonly number[]) => c[0] * i24 + c[1], heavy = group !== 'light';
+  const f = (speed: number) => heavy ? 2.45e-4 * Math.sqrt(speed) : 2.70e-7 * speed * speed;
+  return (inner * f(v(row.inner)) + (1 - inner) * f(v(row.outer)))
+    * 10 ** ((heavy ? MOTORWAY_NOISE.heavyEmissionDb : MOTORWAY_NOISE.lightEmissionDb) / 10);
+}
+
+function motorwaySource(traffic: number, p: number) {
+  const t = Math.max(0, traffic), i24 = Math.max(5, Math.min(37, t / 1000)), pct = p * 100, m = MOTORWAY_NOISE;
+  const ln = Math.max(0, Math.min(1, (m.night.light.nz + m.night.light.nq + m.night.light.k * pct) / 100));
+  const hn = Math.max(0, Math.min(1, (m.night.heavy.nz + m.night.heavy.nq + m.night.heavy.k * pct) / 100));
+  const c = m.combinationShareOfHeavy;
+  const heavy = (period: 'day' | 'night') => (1 - c) * motorwayLaneEmission(i24, period, 'truck') + c * motorwayLaneEmission(i24, period, 'combination');
+  const dayDb = 10 * Math.log10((t * (1 - p) * (1 - ln) * motorwayLaneEmission(i24, 'day', 'light') + t * p * (1 - hn) * heavy('day')) / 16) - 10.1;
+  const nightDb = 10 * Math.log10((t * (1 - p) * ln * motorwayLaneEmission(i24, 'night', 'light') + t * p * hn * heavy('night')) / 8) - 10.1;
+  return { dayDb, nightDb, excessDb: Math.max(dayDb - NOISE.limitDayDb, nightDb - NOISE.limitNightDb),
+    controlling: dayDb - NOISE.limitDayDb >= nightDb - NOISE.limitNightDb ? 'day' as const : 'night' as const };
+}
+
 export function noiseSource(traffic: number, speed: number, options: NoiseTraffic = {}) {
   const p = Math.max(0, Math.min(1, options.heavyShare ?? NOISE.heavyShare));
+  // Motorway lane speeds come from the manual's free-flow tables, not the design speed.
+  if (options.profile === 'motorway') return motorwaySource(traffic, p);
   // TP 219 (2019), table 3-2, non-E class I, combined NA+NS row. PNA in percent.
   const ln = Math.max(0, Math.min(1, options.lightNightShare ?? (0.077 + 0.1 * p)));
   const hn = Math.max(0, Math.min(1, options.heavyNightShare ?? (0.064 + 0.6 * p)));

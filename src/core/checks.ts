@@ -76,7 +76,7 @@ export const violationText = (v: Violation) => `${v.title} — ${v.fix}`;
 export const BASIS_LABEL: Record<ViolationBasis, string> = { norm: 'norm', game: 'game rule', engine: 'engine limit' };
 
 /** the inputs of the alignment, so that fixes (e.g. the largest radius that fits) can be computed */
-export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[] }
+export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: CategoryId }
 
 export interface CheckFamily {
   horizontal(al: Alignment, norms: SpeedNorms, input?: HorizontalInput): Violation[];
@@ -102,11 +102,11 @@ export const R_MAX = 30000;
  * stretch narrower than the sampling can be missed. The result is rounded down to the editing step
  * when such a value fits, otherwise to the metre.
  */
-export function radiusOptions(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number): { auto: number; max: number | null } | null {
-  const rules = horizontalRules(speed);
+export function radiusOptions(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number, category?: CategoryId): { auto: number; max: number | null } | null {
+  const rules = horizontalRules(speed, category);
   const viol = (r: number | null) => {
     const al = buildAlignment(a, b, pis.map((p, k) => (k === i ? { ...p, r } : p)), rules);
-    return { al, v: horizontalViolations(al, speed) };
+    return { al, v: horizontalViolations(al, speed, category ? { a, b, pis: [], category } : undefined) };
   };
   const base = viol(null);
   const c0 = base.al.curves[i];
@@ -134,8 +134,8 @@ export function radiusOptions(a: Vec2, b: Vec2, pis: PI[], i: number, speed: num
 }
 
 /** largest radius for bend i that adds no horizontal violation; null if even the automatic one does not fit */
-export function maxRadiusThatFits(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number): number | null {
-  return radiusOptions(a, b, pis, i, speed)?.max ?? null;
+export function maxRadiusThatFits(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number, category?: CategoryId): number | null {
+  return radiusOptions(a, b, pis, i, speed, category)?.max ?? null;
 }
 
 // ---- horizontal (roads) --------------------------------------------------------------------------
@@ -165,7 +165,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
   const cache = new Map<number, ReturnType<typeof radiusOptions>>();
   const options = (k: number) => {
     if (!input || !input.pis[k] || (!cache.has(k) && cache.size >= MAX_RADIUS_SEARCHES)) return null;
-    if (!cache.has(k)) cache.set(k, radiusOptions(input.a, input.b, input.pis, k, speed));
+    if (!cache.has(k)) cache.set(k, radiusOptions(input.a, input.b, input.pis, k, speed, input.category));
     return cache.get(k)!;
   };
   /** for a hand-set radius among `cs` that is too large: "Set bend k back to auto (R …) or to at most R …" */
@@ -375,7 +375,8 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
   // "height point k (km …)": the points carry no numbers in the profile, the station finds them
   const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `height point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
   const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
-  const gradeRule = `ČSN 73 6101 (older edition, provisional): at most ${fmt(maxGradient * 100, 0)} % gradient for this road in hilly terrain`;
+  const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
+  const gradeRule = `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
   for (let i = 0; i < p.grades.length; i++) {
     const g = p.grades[i];
     if (Math.abs(g) <= maxGradient + 1e-6) continue;
@@ -395,7 +396,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     cands.sort((x, y) => x.other - y.other);
     const h = Math.ceil(dz * 10 - 1e-6) / 10;
     const needL = Math.abs(b.z - a.z) / maxGradient;
-    const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${fmt(maxGradient * 100, 0)} %; it has ${fmt(L)} m.`;
+    const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${pct(maxGradient)} %; it has ${fmt(L)} m.`;
     out.push({
       kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,

@@ -27,6 +27,7 @@ export const INDEPENDENCE_SCREEN = {
 } as const;
 
 export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; speed: number; heavyShare: number;
+  /** Source profile (motorway lane tables); default class I road. */ profile?: 'class-I' | 'motorway';
   /** Built half-width at least (crown), also where a bridge/tunnel takes no land. */ halfWidth: number }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number }
@@ -143,7 +144,7 @@ function excessBound(route: NoiseRoute, distance: number): number {
   return route.excess - monotoneLoss(Math.max(0, distance - NOISE.facadeOffset - NOISE.sourceOffset)) + INDEPENDENCE_SCREEN.noiseTolerance;
 }
 function noiseRoute(route: ScreenRoute, margin: number): NoiseRoute {
-  const excess = noiseSource(route.aadt, route.speed, { heavyShare: route.heavyShare }).excessDb;
+  const excess = noiseSource(route.aadt, route.speed, { heavyShare: route.heavyShare, ...(route.profile ? { profile: route.profile } : {}) }).excessDb;
   const target = -margin;
   const r: NoiseRoute = { chunks: route.result.n > 1 ? noiseLine(route.result) : [], excess, reach: 0, minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity,
     receivers: new Map() };

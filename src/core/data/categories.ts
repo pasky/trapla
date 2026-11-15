@@ -1,5 +1,5 @@
-// Road categories as data rows. v1 plays only single-carriageway S categories; the motorway row is
-// kept (disabled) to show where future categories plug in.
+// Route categories as data rows (policy rows): the road Type list offers the single-carriageway S rows;
+// the D 27.5 row is the paired motorway corridor (mode 'motorway'), never offered as a road width.
 //
 // Sources: SFDI SPK CN 2026 (research/data/spk-cn-2026-oceneni.csv), "defined standard" column, CZK
 // excl. VAT, 2026 price level. ČSN 73 6101 (2018) design speeds per research/00 §4.1.
@@ -27,7 +27,15 @@ export interface CrossSection {
 export interface Category {
   id: CategoryId;
   label: string;
+  /** offered in the road Type list (single-carriageway roads only) */
   enabled: boolean;
+  /** infrastructure kind: decides norms, junction rules, noise source and drawing (core/mode-policy.ts) */
+  mode: 'road' | 'motorway';
+  /** No at-grade junction or access anywhere along the route: every crossed road is grade-separated or
+   * rerouted to such a crossing, never to the route's ends (motorway: ČSN 73 6101, research/08). */
+  gradeSeparated?: boolean;
+  /** Category's own max longitudinal gradient by terrain class; absent = the scenario's road value. */
+  maxGradient?: Record<TerrainClass, number>;
   /** crown width (koruna), m */
   crownWidth: number;
   /** design speeds the player may pick, km/h (base speed lowered by 10 or 20 where justified) */
@@ -42,13 +50,15 @@ export interface Category {
   bridgeCode: string;
   /** number of tunnel tubes for this category (motorway = 2) */
   tunnelTubes: number;
-  /** lanes and markings (single carriageway only; the motorway has none yet) */
+  /** lanes and markings of a single carriageway */
   section?: CrossSection;
+  /** two carriageways about the spine (motorway): see data/motorway.ts D275_SECTION */
+  paired?: boolean;
 }
 
 export const CATEGORIES: Record<CategoryId, Category> = {
   'S7.5': {
-    id: 'S7.5', label: 'S 7.5 (class II road)', enabled: true, crownWidth: 7.5,
+    id: 'S7.5', mode: 'road', label: 'S 7.5 (class II road)', enabled: true, crownWidth: 7.5,
     speeds: [90, 80, 70], roadClass: 'II',
     normPerKm: { hilly: 36_142_000, mountainous: 41_448_000 },
     normCodes: { hilly: 'A.1.S2.7,5.NER', mountainous: 'A.1.S2.7,5.NEH' },
@@ -56,7 +66,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     section: { lane: 3.0, hardShoulder: 0.25, edgeLine: 0.125, centreLine: 0.125, dash: 3, gap: 6 },
   },
   'S9.5': {
-    id: 'S9.5', label: 'S 9.5 (class I road)', enabled: true, crownWidth: 9.5,
+    id: 'S9.5', mode: 'road', label: 'S 9.5 (class I road)', enabled: true, crownWidth: 9.5,
     speeds: [90, 80, 70], roadClass: 'I',
     normPerKm: { hilly: 56_912_000, mountainous: 67_982_000 },
     normCodes: { hilly: 'A.1.S1.9,5.NER', mountainous: 'A.1.S1.9,5.NEH' },
@@ -64,16 +74,21 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     section: { lane: 3.5, hardShoulder: 0.75, edgeLine: 0.25, centreLine: 0.125, dash: 3, gap: 6 },
   },
   'S11.5': {
-    id: 'S11.5', label: 'S 11.5 (class I road)', enabled: true, crownWidth: 11.5,
+    id: 'S11.5', mode: 'road', label: 'S 11.5 (class I road)', enabled: true, crownWidth: 11.5,
     speeds: [90, 80, 70], roadClass: 'I',
     normPerKm: { hilly: 68_894_000, mountainous: 82_163_000 },
     normCodes: { hilly: 'A.1.S1.11,5.NER', mountainous: 'A.1.S1.11,5.NEH' },
     bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', tunnelTubes: 1,
     section: { lane: 3.5, hardShoulder: 1.75, edgeLine: 0.25, centreLine: 0.125, dash: 3, gap: 6 },
   },
-  // Not playable in v1 (needs interchanges, twin tubes, motorway norms).
+  // Paired motorway corridor: VL 1 sheet 11-02 widths (data/motorway.ts), whole-category SPK norm
+  // (both carriageways, earth-built interchange branches at 1 per 7 km included, research/29 §3),
+  // D27.5 bridge row per km of the average of the two parallel bridges, one 2-lane tube per direction.
   'D27.5': {
-    id: 'D27.5', label: 'D 27.5 (motorway)', enabled: false, crownWidth: 27.5,
+    id: 'D27.5', mode: 'motorway', label: 'D 27.5 (motorway)', enabled: false, crownWidth: 27.5, paired: true, gradeSeparated: true,
+    // PROVISIONAL: older-edition ČSN 73 6101 D26.5/D27.5 maxima (VUT "Aplikace ČSN 73 6101" p. 10: 4 % hilly,
+    // 4.5 % mountainous); current 2018 values not found in public sources (research/22 §2, research/29 §1).
+    maxGradient: { hilly: 0.04, mountainous: 0.045 },
     speeds: [130, 120, 110], roadClass: 'motorway',
     normPerKm: { hilly: 187_632_000, mountainous: 214_512_000 },
     normCodes: { hilly: 'A.1.D.27,5.NER', mountainous: 'A.1.D.27,5.NEH' },

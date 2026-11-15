@@ -223,8 +223,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const lap = (k: string) => { timing[k] = performance.now() - t0; };
   const { terrain, scenario } = ctx;
   const cat = CATEGORIES[d.category];
-  const norms = speedNorms(d.speed);
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed));
+  const norms = speedNorms(d.speed, d.category);
+  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
+  // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
+  const maxGradient = cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient;
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
   let manualStructures = overrideMask(st.s, d.structureOverrides);
@@ -585,7 +587,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     }
     const apOpt = {
       endpointElevations: opts.endpointElevations,
-      maxGradient: scenario.maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
+      maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: { above: waterMin.slice(), below: waterBelow }, structureKind: manualStructures, pins: d.gradePins,
       costClass: profileCostClass, costClassCount: costClasses.length,
       balance: {
@@ -782,7 +784,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   };
   const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[]) => {
     const start = performance.now();
-    const lifted = liftAutoProfile(candidate, targets, d.speed, scenario.maxGradient, d.gradePins);
+    const lifted = liftAutoProfile(candidate, targets, d.speed, maxGradient, d.gradePins, undefined, d.category);
     work('lift', start);
     timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
     return lifted;
@@ -924,7 +926,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // --- crossings of existing roads ---
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
-  const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides);
+  const crossingIssues = resolveCrossings(crossings, al.length, kind, width, urbanCentre, urban, crossingOverrides, !!cat.gradeSeparated);
   if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width, crownWidth: b, kind,
     left: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayL[i] : width[i] / 2),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
@@ -969,7 +971,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const noiseBuyouts = new Float64Array(n);
   let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
-  const noiseModel = createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare });
+  const noiseModel = createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare, ...(cat.mode === 'motorway' ? { profile: 'motorway' as const } : {}) });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
@@ -1036,8 +1038,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     ...crossingIssues,
     ...footprintCheck.violations,
     ...buildingViolations,
-    ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis }),
-    ...ROAD_CHECKS.vertical(prof, norms, scenario.maxGradient),
+    ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
+    ...ROAD_CHECKS.vertical(prof, norms, maxGradient),
   ];
   const waterCrossings: WaterResult[] = water.map((c, k) => {
     const i = Math.min(n - 1, Math.round(c.s / ds));
@@ -1111,7 +1113,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     i = j;
   }
   if (!profileFeasible && d.profileMode === 'auto' && pinViolations.length === 0) {
-    violations.push(profileViolation(al.length, scenario.maxGradient));
+    violations.push(profileViolation(al.length, maxGradient));
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
   const travelMin = al.length / (d.speed / 3.6) / 60;
