@@ -5,7 +5,10 @@ import { buildAlignment } from '../src/core/horizontal';
 import { childStationAt, curvePointAt } from '../src/core/offset-path';
 import { pairedCarriageways } from '../src/core/paired-carriageways';
 import type { CorridorDesign, EndpointPair, RouteDesign } from '../src/core/project';
+import { overrideMask } from '../src/core/overrides';
+import { wallOverrideMasks } from '../src/core/build-controls';
 
+const identity = { epoch: 'load-one', revision: 4 };
 function fixture() {
   const path = buildAlignment({ x: 0, y: 0 }, { x: 3000, y: 2000 }, [{ x: 1500, y: 0, r: 1000 }], 840, 0);
   const plan = pairedCarriageways(path, d275CrossSection(), 840);
@@ -21,7 +24,8 @@ function fixture() {
     endpoints, acousticSourceId: `physical-${direction}`, alignment: { kind: 'corridor', corridorId: corridor.id, direction },
     specification: { kind: 'motorway', policy: 'test', crossSection: 'D27.5', designSpeed: 130, operations: { aadt: 10000, heavyShare: 0.15, speed: 130 } } });
   const routes = [route('forward'), route('reverse')];
-  const resolved: MotorwayMaterialization = { corridorId: corridor.id, corridorRevision: corridor.revision, plan,
+  const resolved: MotorwayMaterialization = { identity, corridorId: corridor.id, corridorRevision: corridor.revision,
+    childRevisions: { forward: routes[0].revision, reverse: routes[1].revision }, plan,
     profiles: { forward: [{ s: 0, z: 100 }, { s: plan.right.axis.path.length, z: 110 }],
       reverse: [{ s: 0, z: 110.2 }, { s: plan.left.axis.path.length, z: 100.2 }] } };
   return { corridor, routes, resolved };
@@ -31,7 +35,7 @@ describe('C0 motorway split/rejoin commands', () => {
   it('materialises exact paths, distinct grades, controls and actual child endpoints without changing identities or inputs', () => {
     const { corridor, routes, resolved } = fixture();
     const before = JSON.stringify({ corridor, routes, resolved });
-    const split = splitMotorwayCommand(corridor, [...routes].reverse(), resolved);
+    const split = splitMotorwayCommand(corridor, [...routes].reverse(), resolved, identity);
     expect(split.corridor).not.toHaveProperty('spine');
     expect(split.corridor.retainedSpine).toEqual(corridor.spine);
     expect(split.children.map(c => c.id)).toEqual(['east', 'west']);
@@ -56,30 +60,49 @@ describe('C0 motorway split/rejoin commands', () => {
   });
 
   it('explicitly resets independent geometry while retaining route/source identities for atomic Store undo', () => {
-    const { corridor, routes, resolved } = fixture(), split = splitMotorwayCommand(corridor, routes, resolved);
+    const { corridor, routes, resolved } = fixture(), split = splitMotorwayCommand(corridor, routes, resolved, identity);
     const independent = structuredClone(split.children);
     if (independent[0].alignment.kind !== 'exact') throw new Error('test fixture');
     independent[0].alignment.controls.wallOverrides = [{ s0: 0, s1: 20, side: 'L', height: 5 }];
     independent[0].name = 'Edited direction';
     const snapshot = structuredClone(independent);
-    const rejoin = rejoinMotorwayCommand(split.corridor, independent, { ...resolved, corridorRevision: split.corridor.revision }, true);
+    const nextIdentity = { ...identity, revision: identity.revision + 1 };
+    const rejoinResolved = { ...resolved, identity: nextIdentity, corridorRevision: split.corridor.revision,
+      childRevisions: { forward: independent[0].revision, reverse: independent[1].revision } };
+    const rejoin = rejoinMotorwayCommand(split.corridor, independent, rejoinResolved, nextIdentity, true);
     expect(rejoin.corridor).not.toHaveProperty('retainedSpine');
     expect(rejoin.corridor.spine).toEqual(corridor.spine);
     expect(rejoin.children[0].alignment).toEqual({ kind: 'corridor', corridorId: corridor.id, direction: 'forward' });
     expect(rejoin.children[0].name).toBe('Edited direction');
     expect(rejoin.children.map(r => r.acousticSourceId)).toEqual(routes.map(r => r.acousticSourceId));
     expect(independent).toEqual(snapshot); // caller's previous whole-project snapshot remains undoable
-    expect(() => rejoinMotorwayCommand(split.corridor, independent, { ...resolved, corridorRevision: split.corridor.revision }, false as true)).toThrow(/explicit reset/);
+    expect(() => rejoinMotorwayCommand(split.corridor, independent, rejoinResolved, nextIdentity, false as true)).toThrow(/explicit reset/);
+  });
+
+  it('preserves later overlapping paint choices after reversing chainage', () => {
+    const { corridor, routes, resolved } = fixture();
+    corridor.spine.controls.structureOverrides!.push({ s0: 200, s1: 800, kind: 2 });
+    corridor.spine.controls.wallOverrides!.push({ s0: 200, s1: 800, side: 'L', height: 4 });
+    const reverse = splitMotorwayCommand(corridor, routes, resolved, identity).children[1];
+    if (reverse.alignment.kind !== 'exact') throw new Error('test fixture');
+    const childS = childStationAt(resolved.plan.left.axis, 500);
+    expect(overrideMask([childS], reverse.alignment.controls.structureOverrides)[0]).toBe(2);
+    expect(wallOverrideMasks([childS], reverse.alignment.controls.wallOverrides).R[0]).toBe(4);
   });
 
   it('rejects stale or incomplete materialisation and never moves an external anchor silently', () => {
     const { corridor, routes, resolved } = fixture();
-    expect(() => splitMotorwayCommand(corridor, routes, { ...resolved, corridorRevision: 0 })).toThrow(/Stale/);
-    expect(() => splitMotorwayCommand(corridor, routes, { ...resolved, profiles: { ...resolved.profiles, reverse: resolved.profiles.forward } })).toThrow(/exact child path/);
+    expect(() => splitMotorwayCommand(corridor, routes, { ...resolved, corridorRevision: 0 }, identity)).toThrow(/Stale/);
+    expect(() => splitMotorwayCommand(corridor, routes, resolved, { ...identity, epoch: 'reloaded' })).toThrow(/Stale/);
+    expect(() => splitMotorwayCommand(corridor, routes, resolved, { ...identity, revision: 5 })).toThrow(/Stale/);
+    routes[0].revision++;
+    expect(() => splitMotorwayCommand(corridor, routes, resolved, identity)).toThrow(/Stale/);
+    routes[0].revision--;
+    expect(() => splitMotorwayCommand(corridor, routes, { ...resolved, profiles: { ...resolved.profiles, reverse: resolved.profiles.forward } }, identity)).toThrow(/exact child path/);
     routes[0].endpoints = structuredClone(routes[0].endpoints);
     routes[0].endpoints.a.anchor = { kind: 'mission', portId: 'shared-centre-is-not-child-port' };
-    expect(splitMotorwayCommand(corridor, routes, resolved).children[0].endpoints.a.binding).toBe('unresolved');
+    expect(splitMotorwayCommand(corridor, routes, resolved, identity).children[0].endpoints.a.binding).toBe('unresolved');
     routes[1].acousticSourceId = routes[0].acousticSourceId;
-    expect(() => splitMotorwayCommand(corridor, routes, resolved)).toThrow(/physical acoustic/);
+    expect(() => splitMotorwayCommand(corridor, routes, resolved, identity)).toThrow(/physical acoustic/);
   });
 });

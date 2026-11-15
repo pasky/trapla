@@ -1,13 +1,16 @@
 import type { ProjectCommand } from '../project-store-contract';
-import type { CorridorDesign, EndpointConstraint, RouteControls, RouteDesign } from './project';
+import type { CorridorDesign, EndpointConstraint, ProjectIdentity, RouteControls, RouteDesign } from './project';
 import { childStationAt, curvePointAt, type OffsetPath } from './offset-path';
 import type { PairedGeometry } from './paired-carriageways';
 
 type FrozenPoint = { s: number; z: number };
 /** Supplied by the owning corridor engineering kernel, NEVER reconstructed from a render mesh. */
 export interface MotorwayMaterialization {
+  /** Snapshot identity covers dependency changes; a load/context reset must change epoch (C0). */
+  identity: ProjectIdentity;
   corridorId: string;
   corridorRevision: number;
+  childRevisions: { forward: number; reverse: number };
   plan: PairedGeometry;
   /** Actual resolved CHILD heights, already in each child's own travel-direction chainage. */
   profiles: { forward: readonly FrozenPoint[]; reverse: readonly FrozenPoint[] };
@@ -20,8 +23,10 @@ function childrenFor(corridor: CorridorDesign, routes: readonly RouteDesign[]): 
     || forward.acousticSourceId === reverse.acousticSourceId) throw new Error('Distinct directional motorway routes and physical acoustic sources required');
   return [forward, reverse];
 }
-function checkMaterialization(corridor: CorridorDesign, resolved: MotorwayMaterialization): void {
-  if (corridor.id !== resolved.corridorId || corridor.revision !== resolved.corridorRevision) throw new Error('Stale motorway materialization');
+function checkMaterialization(corridor: CorridorDesign, children: readonly [MotorwayRoute, MotorwayRoute], resolved: MotorwayMaterialization, current: ProjectIdentity): void {
+  if (resolved.identity.epoch !== current.epoch || resolved.identity.revision !== current.revision
+    || corridor.id !== resolved.corridorId || corridor.revision !== resolved.corridorRevision
+    || children[0].revision !== resolved.childRevisions.forward || children[1].revision !== resolved.childRevisions.reverse) throw new Error('Stale motorway materialization');
   for (const direction of ['forward', 'reverse'] as const) {
     const axis = direction === 'forward' ? resolved.plan.right.axis : resolved.plan.left.axis;
     const points = resolved.profiles[direction];
@@ -65,8 +70,9 @@ function childControls(controls: RouteControls, axis: OffsetPath): RouteControls
     const mapped = range(w.s0, w.s1);
     return mapped ? [{ ...mapped, side: 'R' as const, height: w.height }] : [];
   });
-  return { ...structuredClone(controls), ...(structures ? { structureOverrides: structures.sort((a, b) => a.s0 - b.s0) } : {}),
-    ...(walls ? { wallOverrides: walls.sort((a, b) => a.s0 - b.s0) } : {}) };
+  // Keep original paint order: later overlapping entries win even after reversing chainage.
+  return { ...structuredClone(controls), ...(structures ? { structureOverrides: structures } : {}),
+    ...(walls ? { wallOverrides: walls } : {}) };
 }
 function correspondence(plan: PairedGeometry) {
   const spans = plan.right.axis.correspondence;
@@ -79,9 +85,10 @@ function correspondence(plan: PairedGeometry) {
  * survive the split. Independent editing starts with frozen built heights; selecting Auto later is
  * an explicit vertical-authority change. Original pins/VPIs and inactive controls survive in retainedSpine.
  */
-export function splitMotorwayCommand(corridor: Extract<CorridorDesign, { mode: 'paired' }>, routes: readonly RouteDesign[], resolved: MotorwayMaterialization): Extract<ProjectCommand, { type: 'split-corridor' }> {
-  checkMaterialization(corridor, resolved);
+export function splitMotorwayCommand(corridor: Extract<CorridorDesign, { mode: 'paired' }>, routes: readonly RouteDesign[], resolved: MotorwayMaterialization,
+  current: ProjectIdentity): Extract<ProjectCommand, { type: 'split-corridor' }> {
   const children = childrenFor(corridor, routes);
+  checkMaterialization(corridor, children, resolved, current);
   for (let i = 0; i < children.length; i++) {
     const alignment = children[i].alignment;
     if (alignment.kind !== 'corridor' || alignment.corridorId !== corridor.id || alignment.direction !== (i === 0 ? 'forward' : 'reverse')) throw new Error('Paired child must derive only from its owning corridor');
@@ -100,10 +107,10 @@ export function splitMotorwayCommand(corridor: Extract<CorridorDesign, { mode: '
 
 /** Explicit destructive reset of independent geometry/controls, undoable as one complete command. */
 export function rejoinMotorwayCommand(corridor: Extract<CorridorDesign, { mode: 'independent' }>, routes: readonly RouteDesign[], resolved: MotorwayMaterialization,
-  resetIndependentEdits: true): Extract<ProjectCommand, { type: 'rejoin-corridor' }> {
+  current: ProjectIdentity, resetIndependentEdits: true): Extract<ProjectCommand, { type: 'rejoin-corridor' }> {
   if (resetIndependentEdits !== true) throw new Error('Rejoin requires explicit reset of independent edits');
-  checkMaterialization(corridor, resolved);
   const children = childrenFor(corridor, routes);
+  checkMaterialization(corridor, children, resolved, current);
   if (children.some(c => c.alignment.kind === 'corridor')) throw new Error('Independent children must own their alignments');
   const derive = (route: MotorwayRoute, direction: 'forward' | 'reverse'): MotorwayRoute => {
     const axis = direction === 'forward' ? resolved.plan.right.axis : resolved.plan.left.axis;

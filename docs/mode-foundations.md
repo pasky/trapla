@@ -22,9 +22,12 @@ and missing capability codes. Codes are not player text.
   radii, boundary/self-intersections and terminal-cross-section overlap. Terminal cross-sections are
   collision boundaries, **not constructed caps or connections**. `connectionMismatch` compares actual
   XYZ/grade/tangent ports against explicit tolerances; it never snaps a road to an unbuilt connector.
-- `core/motorway-commands.ts`: emits C0 atomic split/rejoin commands from revision-qualified resolved
-  corridor geometry and **actual child profiles**. Split freezes exact curves/heights, maps structures
-  by true station correspondence, transfers outer walls only to the owning child's outside (no extra
+- `core/motorway-commands.ts`: emits C0 atomic split/rejoin commands from snapshot-qualified resolved
+  corridor geometry and **actual child profiles**. The caller supplies current project epoch/revision;
+  materialization must match it, the corridor revision and both child revisions. C0 requires a new epoch
+  on load/environment reset, so dependency/context changes cannot reuse a stale profile. Split freezes exact curves/heights, maps structures
+  by true station correspondence while preserving last-paint-wins order, transfers outer walls only
+  to the owning child's outside (no extra
   median walls), and retains original spine controls/pins for rejoin. Rejoin requires explicit reset.
   Route and physical acoustic-source IDs survive; stale profiles are rejected and displaced external
   endpoint anchors become unresolved instead of being silently moved. Store still owns undo/reload.
