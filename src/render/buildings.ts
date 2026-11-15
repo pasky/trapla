@@ -156,9 +156,20 @@ export class Buildings {
     return best;
   }
 
+  /** standing colours (bought-out houses): under every tint, in every view */
+  private marked = new Map<number, number>();
+  private lastTint: { colors: Map<number, number>; mute: boolean } = { colors: new Map(), mute: false };
+  /** Colour these buildings in every view (render index → 0xRRGGBB); a view's own tint goes over them. */
+  setMarked(colors: Map<number, number>) {
+    this.marked = colors;
+    this.tint(this.lastTint.colors, this.lastTint.mute);
+  }
+
   /** Paint buildings in a flat colour (index from `find` → 0xRRGGBB, sRGB). `mute`: the rest turn a
    * light grey (so that the red roofs do not read as a status); otherwise they keep their own colours. */
-  tint(colors: Map<number, number>, mute = false) {
+  tint(given: Map<number, number>, mute = false) {
+    this.lastTint = { colors: given, mute };
+    const colors = this.marked.size ? new Map([...this.marked, ...given]) : given;
     const dirty = new Set<number>();
     const base = (chunk: Buildings['chunks'][number]) => {
       if (!mute) return chunk.colors;
@@ -204,8 +215,7 @@ export class Buildings {
   }
 
   /** Remove buildings from the scene (render mesh indices; others hidden before come back): their
-   * vertices collapse onto one point. The footprint painted into the land-cover texture stays, a ghost
-   * of what was there. */
+   * vertices collapse onto one point. The land cover draws their plots as cleared (LandCover.buildPlots). */
   hide(set: ReadonlySet<number>) {
     const dirty = new Set<number>();
     const attr = (c: number) => this.chunks[c].mesh.geometry.getAttribute('position') as THREE.BufferAttribute;

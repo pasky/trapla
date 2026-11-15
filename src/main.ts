@@ -590,7 +590,8 @@ async function main() {
     heavy = runSliced((function* () {
       let geometry: Staged | undefined, sources: Staged | undefined, handedOver = false;
       try {
-        geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex));
+        geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex),
+          result.buildings.filter(b => b.action === 'buy').map(b => b.buildingIndex));
         const graph = transportGraph;
         // A project with rebuilt mapped roads (e.g. after undo/reload) whose graph is not parsed yet.
         if (!graph && result.acceptedRenderReplacements.length) void ensureTransport().then(() => { if (transportGraph) requestEval(false); });

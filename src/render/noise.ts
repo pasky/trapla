@@ -13,11 +13,11 @@ import type { NoiseFootprint, NoiseReceiver, WallStretch } from '../core/noise';
 import type { Terrain } from '../core/terrain';
 import type { Pack } from '../scenario';
 import type { RouteExtras } from './extras';
-import type { View } from './view';
+import { BOUGHT_COLOR, DEMOLISHED_COLOR, type View } from './view';
 import { NOISE_RAMP, noiseColor } from '../ui/noise-section';
 
 /** building colours (sRGB) by noise outcome; walls / buyouts / demolitions match their map symbols */
-export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: 0xc43c9b, demolished: 0x3d434b };
+export const NOISE_COLORS = { wall: 0x18b0b0, cut: 0x4f7fd6, ok: 0x6fb34f, bought: BOUGHT_COLOR, demolished: DEMOLISHED_COLOR };
 /** band colour ramp: [dB relative to the limit, colour, opacity], interpolated per pixel; transparent at the
  * first stop (where the worker's footprint fades out), clamped past the last */
 const RAMP = NOISE_RAMP;

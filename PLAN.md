@@ -910,6 +910,12 @@ the bill change: **research/36**.
   floor's level (open ground → as built), a plan with a line from every piece of road weighted by what it
   adds, and one sentence on where most of it comes from ("62 % of the noise comes through the gap in the
   wall where the side road joins, km 6.43").
+- **What the route takes, drawn truthfully** (owner report 2026-11-16): a demolished building leaves the
+  base map's footprint layer and its plot is drawn on the ground in its own shape (pale cleared ground,
+  dark hatch, dashed edge); a bought-out house stays standing in its noise-view colour in every view with a
+  dashed ring on the ground around it. Both are staged with the deferred 3D body (only the changed chunks'
+  footprints are rebuilt and only that area of the map redrawn). Point markers remain only where a
+  footprint is smaller than a pixel or two (far zoom), at the building's ground, outlined to read on roofs.
 - **Sources for projects** (any-road-editing C1, motorway-rail): `AcousticSource` = one physical carriageway
   or track (stable `acousticSourceId`, cells, per-side screening, Y by day / night, per-cell weight, mode
   road / rail, lane offset, barrier-source height). Each `NoiseReceiver` carries its point (x, y, ground),
