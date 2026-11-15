@@ -23,7 +23,7 @@ await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(`http://localhost:${PORT}/`);
+await page.goto(`http://localhost:${PORT}/?scenario=d11`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });

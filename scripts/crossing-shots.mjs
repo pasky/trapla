@@ -16,7 +16,7 @@ mkdirSync(out, { recursive: true });
 const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
 const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); await page.waitForTimeout(500); };
 try {
-  await page.goto(`http://localhost:${port}/`);
+  await page.goto(`http://localhost:${port}/?scenario=d11`);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
   for (const [k, type] of ['overbridge', 'bridge', 'reconnection', 'diversion', 'junction'].entries()) {
     await page.evaluate(d => window.trapla.setDesign(d), design); await idle();

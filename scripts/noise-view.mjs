@@ -47,7 +47,7 @@ const shot = async (name) => {
   }
 };
 const tip = () => page.evaluate(() => { const t = document.querySelector('.map-tip'); return t && t.style.display !== 'none' ? t.innerText : null; });
-await page.goto(`http://localhost:${PORT}/`);
+await page.goto(`http://localhost:${PORT}/?scenario=d11`);
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await idle();

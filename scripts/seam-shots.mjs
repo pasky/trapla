@@ -14,7 +14,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto(`http://localhost:${port}/`);
+  await page.goto(`http://localhost:${port}/?scenario=d11`);
   await page.waitForFunction(() => window.trapla, null, { timeout: 120000 });
   await page.evaluate(d => window.trapla.setDesign(d), JSON.parse(readFileSync('scripts/best-design.json', 'utf8')).design);
   await page.evaluate(() => window.trapla.whenIdle());

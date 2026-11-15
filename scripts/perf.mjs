@@ -19,7 +19,7 @@ await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text().slice(0, 300)); });
 const t0 = Date.now();
-await page.goto('http://localhost:5196/');
+await page.goto('http://localhost:5196/?scenario=d11');
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 180000 });
 await page.evaluate(() => window.trapla.whenIdle());
 console.log(`load → first result: ${Date.now() - t0} ms (dev server, cold module graph)`);

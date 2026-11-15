@@ -20,7 +20,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text()); });
-await page.goto('http://localhost:5198/');
+await page.goto(`http://localhost:5198/?scenario=${encodeURIComponent(process.env.SCENARIO ?? 'd11')}`);
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
 await page.evaluate((d) => window.trapla.setDesign(d), design);
 await page.evaluate(() => window.trapla.whenIdle());
