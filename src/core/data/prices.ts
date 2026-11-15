@@ -61,7 +61,8 @@ export const MATERIAL_VALUE = {
 
 /** Earthworks the SFDI road norm already includes per km (research/00 §3.1) */
 export const NORM_EARTHWORK_ALLOWANCE = {
-  cutPerKm: { motorway: 70_000, I: 40_000, II: 20_000 } as Record<string, number>,
+  // One direction of a split motorway: 60 % of the motorway allowance, like its 60 % norm (SPK p. 7).
+  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000 } as Record<string, number>,
   fillShareOfCut: 0.85,
   /** share of cut that is unsuitable: hauled to a tip ≤ 10 km and replaced from a borrow pit (norm
    * assumption; applied identically to the allowance and to the player's design) */

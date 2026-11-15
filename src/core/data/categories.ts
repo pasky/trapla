@@ -4,7 +4,7 @@
 // Sources: SFDI SPK CN 2026 (research/data/spk-cn-2026-oceneni.csv), "defined standard" column, CZK
 // excl. VAT, 2026 price level. ČSN 73 6101 (2018) design speeds per research/00 §4.1.
 
-export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'D27.5';
+export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'D27.5' | 'D27.5-1';
 export type TerrainClass = 'hilly' | 'mountainous';
 
 /**
@@ -41,7 +41,7 @@ export interface Category {
   /** design speeds the player may pick, km/h (base speed lowered by 10 or 20 where justified) */
   speeds: number[];
   /** road class used for the earthworks allowance included in the norm */
-  roadClass: 'I' | 'II' | 'motorway';
+  roadClass: 'I' | 'II' | 'motorway' | 'motorway-carriageway';
   /** SPK CN road price per km, CZK. 'hilly' = flat+hilly rows (…NER), 'mountainous' = …NEH */
   normPerKm: Record<TerrainClass, number>;
   normCodes: Record<TerrainClass, string>;
@@ -54,6 +54,9 @@ export interface Category {
   section?: CrossSection;
   /** two carriageways about the spine (motorway): see data/motorway.ts D275_SECTION */
   paired?: boolean;
+  /** one carriageway of a split motorway; its axis is the middle of its half of the formation, the
+   * median lies on its left (the travel direction's inside) */
+  carriageway?: boolean;
 }
 
 export const CATEGORIES: Record<CategoryId, Category> = {
@@ -93,6 +96,20 @@ export const CATEGORIES: Record<CategoryId, Category> = {
     normPerKm: { hilly: 187_632_000, mountainous: 214_512_000 },
     normCodes: { hilly: 'A.1.D.27,5.NER', mountainous: 'A.1.D.27,5.NEH' },
     bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', tunnelTubes: 2,
+  },
+  // One direction of a split motorway: half the D 27.5 formation (half median + inner shoulder + 2 lanes
+  // + hard shoulder + verge = 13.75 m), so two of them side by side tile the paired formation exactly.
+  // Price: SPK 2026 report p. 7, "half of a future divided road" = 60 % of the category norm (built as its
+  // own body). Where the two run side by side as one formation, the corridor ledger charges 50 % each
+  // (core/project-motorway.ts). Bridge: the D27.5 row per m² of deck (half the row over half the width);
+  // one 2-lane tube.
+  'D27.5-1': {
+    id: 'D27.5-1', mode: 'motorway', label: 'D 27.5 (one direction)', enabled: false, crownWidth: 13.75, carriageway: true, gradeSeparated: true,
+    maxGradient: { hilly: 0.04, mountainous: 0.045 },
+    speeds: [130, 120, 110], roadClass: 'motorway-carriageway',
+    normPerKm: { hilly: 0.6 * 187_632_000, mountainous: 0.6 * 214_512_000 },
+    normCodes: { hilly: '60 % × A.1.D.27,5.NER', mountainous: '60 % × A.1.D.27,5.NEH' },
+    bridgePerKm: 1_495_178_000 / 2, bridgeCode: '½ × A.2.D.27,5.N', tunnelTubes: 1,
   },
 };
 

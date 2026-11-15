@@ -75,7 +75,7 @@ export interface RoadSpec {
   legalClass: 'I' | 'II' | 'III' | 'local' | 'service' | 'track';
   /** Policy ID selects sourced checks/pricing, not a category guessed from width. */
   policy: string;
-  crossSection: Exclude<CategoryId, 'D27.5'> | 'existing';
+  crossSection: Exclude<CategoryId, 'D27.5' | 'D27.5-1'> | 'existing';
   existingWidth?: number;
   designSpeed: number;
   operations: RoadOperations;

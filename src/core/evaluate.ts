@@ -169,6 +169,10 @@ export interface EvalOptions {
   /** Material value to price the preview's single solve at (the last full result's; default the
    * mass-balance search's starting value). */
   materialValue?: number;
+  /** One direction of a split motorway: station ranges where the other direction runs alongside on the
+   * left (one common formation). Houses on that side belong to the other direction's noise check and
+   * no wall can stand in the median there. */
+  leftJoined?: readonly { s0: number; s1: number }[];
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -985,6 +989,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
+  const joinedLeft = new Uint8Array(n);
+  for (const r of opts.leftJoined ?? []) for (let i = 0; i < n; i++) if (st.s[i] >= r.s0 && st.s[i] <= r.s1) { joinedLeft[i] = 1; wallGaps.L[i] = 1; }
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
   if (noiseBuildings && !preview) {
@@ -992,6 +998,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel) { shieldL[i] = shieldR[i] = 1; continue; }
+      if (joinedLeft[i]) shieldL[i] = 1;
       if (kind[i] !== KIND.earth) continue;
       // Positive cut edges only; no terrain shield under a bridge or at an embankment toe.
       if (sec.zDayL[i] > grade[i]) edges.L[i] = { offset: sec.dayL[i], height: sec.zDayL[i] - grade[i] };

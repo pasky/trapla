@@ -140,7 +140,8 @@ export function assertProjectDesign(value: unknown, allowStaleBindings = false):
       if (!r || r.kind !== 'motorway' || owners.has(id)) fail('corridor child');
       owners.set(id, corridor.id as string);
       const a = r!.alignment;
-      if (corridor.mode === 'paired' ? a.kind !== 'corridor' || a.corridorId !== corridor.id || a.direction !== direction : a.kind !== 'exact') fail('child alignment authority');
+      // Separate directions own their alignment: exact materialised geometry or ordinary editable bends.
+      if (corridor.mode === 'paired' ? a.kind !== 'corridor' || a.corridorId !== corridor.id || a.direction !== direction : a.kind !== 'exact' && a.kind !== 'pi') fail('child alignment authority');
     }
   }
   const mission = p.mission as Obj;
