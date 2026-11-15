@@ -30,8 +30,15 @@ The 91841–91845 size series stops at a 3.0 × 2.0 m frame; it is **not** a rel
 
 | Design assumption | Concrete volume | Frame + top waterproofing / metre |
 |---|---:|---:|
-| 5.0 × 4.5 m clear track box | 10.96 m³/m | **~241,000 CZK/m** (10.96 × 21,572.46 + 5.8 m² × 806.81) |
-| 8.0 × 4.8 m clear local-road box | 17.12 m³/m | **~374,000 CZK/m** (17.12 × 21,572.46 + 8.8 m² × 806.81) |
+| 5.0 × 4.5 m clear track box | 6.0 × 5.45 − 5.0 × 4.5 = 10.20 m³/m | **~224,900 CZK/m** (10.20 × 21,572.46 + 6.0 m² × 806.81) |
+| 8.0 × 4.8 m clear local-road box | 9.2 × 5.95 − 8.0 × 4.8 = 16.34 m³/m | **~359,900 CZK/m** (16.34 × 21,572.46 + 9.2 m² × 806.81) |
+
+*Corrected after review:* the first draft listed 10.96 / 17.12 m³/m and 5.8 / 8.8 m waterproofing widths,
+inconsistent with its own thicknesses. The game (`underpassAssembly`, `src/core/data/remedies.ts`)
+computes the quantities from the geometry and adds 0.15 m bedding (451315) and the crossed way's own SPK
+pavement through the box: **243,551 CZK/m** (track) and **383,468 CZK/m** (local road, using a 4.50 m
+clear height — ČSN 73 6201's value for class III / collector local roads — rather than the 4.80 m class
+I/II example above).
 
 These rates assume full-area included-rebar frame construction; unit prices vary with formwork/access and design. Add floor/bedding concrete, drainage, headwalls/wings and road/track reinstatement. **Confidence: medium-low** as planning estimates; formulas and catalog rates are high-confidence.
 
@@ -56,8 +63,8 @@ SFDI’s SPK CN is a study-stage normative database; public landing page confirm
 
 **RECOMMENDATION (2026 catalogue basis, CZK excl. VAT):** `cost = L × rate(size) + 2 × head(size)`.
 
-- Track/agricultural: **L × 240,000 CZK/m + 2 × 200,000–450,000 CZK**; use **240k/m and 300k/end** central estimate. Typical clear box **5 × 4.5 m** (practical range width 4–6 m; height 4.2–4.5 m). At 25–60 m long: central total **6.6–15.0m CZK** (range from chosen heads: 6.8–15.3m).
-- Local road: **L × 375,000 CZK/m + 2 × 300,000–600,000 CZK**; central **375k/m and 450k/end**. Typical clear box **8 × 4.8 m** (width 7–9 m; vertical clearance should follow road class: 4.20/4.50/4.80 m). At 25–60 m: central total **10.3–23.4m CZK**.
+- Track/agricultural: **L × 225,000 CZK/m + 2 × 200,000–450,000 CZK**; use **225k/m and 300k/end** central estimate. Typical clear box **5 × 4.5 m** (practical range width 4–6 m; height 4.2–4.5 m). At 25–60 m long: central total **6.2–14.1m CZK** (range from chosen heads: 6.0–14.4m).
+- Local road: **L × 360,000 CZK/m + 2 × 300,000–600,000 CZK**; central **360k/m and 450k/end**. Typical clear box **8 × 4.8 m** (width 7–9 m; vertical clearance should follow road class: 4.20/4.50/4.80 m). At 25–60 m: central total **9.9–22.5m CZK**.
 - Rates are structural box + roof waterproofing only, with modelled reinforcement and geometry. Head allowance covers two portals, not all drainage/roadworks; add **10–25%** for floor drainage, track pavement, concrete bedding, ends variability and minor incidentals if a more complete game cost is needed (**low confidence allowance**). Exclude VAT, land, approach-road construction and exceptional foundations/retaining systems. Shorter fill/deck can reduce cover cost; widening, skew, difficult access and higher embankment can increase it.
 - Minimum conceptual fill top-to-track grade: **clear height + roof slab + cover/pavement**. Use **~5.5–6.1 m** over track pavement for 4.5 m clearance and **~5.8–6.4 m** for 4.8 m local road clearance (assumptions above; low confidence, project-specific). No norm minimum cover is claimed.
 

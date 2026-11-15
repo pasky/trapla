@@ -292,6 +292,11 @@ export class ProfilePanel {
       hi = Math.max(hi, r.ground[i], r.grade[i]);
     }
     for (const v of [...this.vpis, ...this.pins]) if (v.s >= this.v0 && v.s <= this.v1) { lo = Math.min(lo, v.z); hi = Math.max(hi, v.z); }
+    // A provisional route can leave the last result's height range (a ridge, a hollow).
+    const pv = this.preview;
+    if (pv) for (let j = 0; j < pv.s.length; j++) if (pv.s[j] >= this.v0 && pv.s[j] <= this.v1) {
+      lo = Math.min(lo, pv.ground[j], pv.grade[j]); hi = Math.max(hi, pv.ground[j], pv.grade[j]);
+    }
     const m = Math.max(8, (hi - lo) * 0.08);
     // the height scale holds still while a handle is dragged (it would run away from the mouse)
     if (!this.dragging) this.zr = { lo: lo - m, hi: hi + m };

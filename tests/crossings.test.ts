@@ -244,6 +244,28 @@ describe('crossing geometry and map overlay', () => {
     resolve(auto, [], [KIND.bridge]); expect(auto[0].type).toBe('bridge');
   });
 
+  it('rechecks the box under the crown on refined terrain and lets a measured skewed box lose to a link', () => {
+    const t = Float64Array.from({ length: 301 }, (_, i) => i * 10), kind = new Uint8Array(t.length); kind[100] = KIND.bridge;
+    const flat: CrossingRoute = { s: t, x: t, y: new Float64Array(t.length), tx: new Float64Array(t.length).fill(1), ty: new Float64Array(t.length),
+      grade: new Float64Array(t.length).fill(7), width: new Float64Array(t.length).fill(40), crownWidth: 9.5, kind };
+    // A 3 m ridge between the initial way samples, right under the carriageway.
+    const ridge = [cross(0, 1500, 'track', 7, 150)];
+    const net = new RoadNet({ cls: ['track'], ways: [[0, 1500, -200, 1500, 200]] });
+    resolveCrossings(ridge, 3000, kind, flat.width, new Uint8Array(t.length), undefined, [{ roadId: 0, type: 'underpass' }]);
+    const bump = (_x: number, y: number) => Math.max(0, 3 * (1 - Math.abs(y - 3) / 2.5));
+    buildCrossingGeometry(ridge, flat, bump, net);
+    expect(ridge[0].geometry!.diagnostics).toContain('Embankment is too low over the underpass box');
+    // A 30° track: the 40 m footprint is an 80 m box, dearer than its measured link to a junction.
+    const skew = new RoadNet({ cls: ['primary', 'track'], ways: [[0, 1000, -300, 1000, 300], [1, 1500 - 300 * Math.sqrt(3), -300, 1500 + 300 * Math.sqrt(3), 300]] });
+    const cs = [cross(0, 1000, 'primary', 7, 100), cross(1, 1500, 'track', 7, 150)];
+    resolveCrossings(cs, 3000, kind, flat.width, new Uint8Array(t.length), undefined, []);
+    expect(cs[1].type).toBe('underpass'); // the footprint-width estimate
+    buildCrossingGeometry(cs, flat, () => 0, skew);
+    expect(cs[1].type).toBe('diversion'); expect(cs[1].geometry!.diagnostics).toBeUndefined();
+    const box = underpassAssembly('track', ROAD_CLASSES.track.roadPerKm[0] / 1000);
+    expect(cs[1].cost).toBeLessThan(80 * box.perM + 2 * box.head);
+  });
+
   it('draws two opposite side links to the resolved real-road anchors, including chained diversions', () => {
     const cs = [cross(0, 3000), cross(1, 3100, 'residential'), cross(2, 3200, 'track')];
     resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);

@@ -23,6 +23,22 @@ const byDistance = (path: readonly Readonly<WayPoint>[]) => {
 // piers in our traffic corridor. Raised earth approaches are billed separately below.
 const deckPrice = (c: CrossingResult, span: number) => bridgeModel(ROAD_CLASSES[c.cls]).total(span, 0, { span, pierDensity: 0 });
 
+/** Lowest grade-minus-floor along a box under the crown band, on the final way samples plus
+ * their interior quarter points (terrain between samples is not assumed linear). */
+function underpassLowest(road: readonly CrossingPoint[], start: number, end: number, crown: number,
+  project: (q: XY) => { z: number; lateral: number }, heightAt: (x: number, y: number) => number): number {
+  let lowest = Infinity;
+  const probe = (x: number, y: number) => {
+    const p = project({ x, y });
+    if (Math.abs(p.lateral) <= crown) lowest = Math.min(lowest, p.z - heightAt(x, y));
+  };
+  for (let i = start; i <= end; i++) {
+    probe(road[i].x, road[i].y);
+    if (i < end) for (const t of [0.25, 0.5, 0.75]) probe(road[i].x + (road[i + 1].x - road[i].x) * t, road[i].y + (road[i + 1].y - road[i].y) * t);
+  }
+  return lowest;
+}
+
 /** Auto may use an underpass: eligible class, enough fill and a box no longer than the limit. */
 export function underpassFits(c: Pick<CrossingResult, 'cls' | 'h'>, length: number): boolean {
   const size = ROAD_CLASSES[c.cls].underpass;
@@ -566,7 +582,13 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       const old = g.road, road = refineTerrain(old, g);
       if (g.deck) { g.deck.start = road.indexOf(old[g.deck.start]); g.deck.end = road.indexOf(old[g.deck.end]); }
       if (g.approaches) for (const range of g.approaches) { range.start = road.indexOf(old[range.start]); range.end = road.indexOf(old[range.end]); }
-      if (g.underpass) { g.underpass.start = road.indexOf(old[g.underpass.start]); g.underpass.end = road.indexOf(old[g.underpass.end]); }
+      if (g.underpass) {
+        g.underpass.start = road.indexOf(old[g.underpass.start]); g.underpass.end = road.indexOf(old[g.underpass.end]);
+        // Recheck on the refined way: a ridge between the first samples must not hide in the roof.
+        const size = ROAD_CLASSES[c.cls].underpass;
+        if (size && underpassLowest(road, g.underpass.start, g.underpass.end, (route.crownWidth ?? 0) / 2 + g.width / 2,
+          q => project(q, false), heightAt) < underpassAssembly(size, 0).minHeight - 1e-6) diagnose(g, 'Embankment is too low over the underpass box');
+      }
       g.road = road;
     }
     if (g.links) g.links = g.links.map(path => refineTerrain(path, g)) as [CrossingPoint[], CrossingPoint[]];
@@ -628,7 +650,9 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       build([over]);
       if (feasible(over) && (!feasible(best) || over.cost < best.cost)) best = over;
     }
-    if (c.type !== 'overbridge' && originalFeasible) {
+    // A feasible link keeps its place unless cheaper above; a measured box (estimated from the
+    // footprint width) still competes with the bounded link shortlist below.
+    if (c.type !== 'overbridge' && c.type !== 'underpass' && originalFeasible) {
       if (best !== c) {
         delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
         Object.assign(c, best); changed = true;
@@ -754,6 +778,8 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
         if (Math.abs(crossingPlanLength(g.road.slice(start, end + 1)) - (c.underpassLength ?? 0)) > 0.01) report('Underpass quantity differs from geometry');
         if (Math.abs((c.underpassLength ?? 0) * box.perM + 2 * box.head - c.cost) > 0.01) report('Underpass bill differs from measured quantities');
         if (g.road.some(q => q.surface !== 'terrain')) report('Underpass way leaves its terrain level');
+        if (!g.diagnostics?.length && underpassLowest(g.road, start, end, (route.crownWidth ?? 0) / 2 + g.width / 2, q => project(q), heightAt)
+          < box.minHeight - 1e-6) report('Underpass roof does not clear the carriageway');
       }
     }
     if (c.type === 'overbridge') {
