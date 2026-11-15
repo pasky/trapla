@@ -132,7 +132,7 @@ best score. Initial material balance remains independent per construction route.
    saved designs, but new bootstrap should use the separate project namespace and loader.
 2. Extract engineering/acquisition/noise decision stages before any global ledger. The current route
    adapter still runs legacy internal decisions; it cannot be summed into a network score.
-3. Complete C1 beyond the implemented topology foundation: class-specific reference-path engineering,
+3. Complete C1 in the order of `docs/multi-road-plan.md` §9 ((a) end tie-ins, (b) replacements, (c) interactions): class-specific reference-path engineering,
    actual branch connectors/relocations, joint footprint/crossing checks, acquisition/noise decisions,
    then final ledger pricing and accepted replacement publication. Do not sum route-kernel bills.
 4. Add bounded old+new influence cache invalidation after dependency semantics are implemented. Current
