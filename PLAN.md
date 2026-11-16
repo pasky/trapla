@@ -326,6 +326,14 @@ What exists (details and commands in `README.md`):
   direct-80 −81 M, direct-90 −21 M, town-centre −67 M); D3 motorway starter 17.41 → 14.04 bn, whole D3
   40.87 → 37.35 bn (its 698 m bridge along the motorway gone), whole D35 34.22 → 33.74 bn; Nová Paka 2.44 → 2.23 bn,
   its km 3.3 drags 10/24 → 0/24 invalid. Details, audits and timing: `docs/footprint-conflicts.md` § Model 28.
+- Known remaining: whole D35 km 22.08, a track crossing at 22° whose reroute meets a river gets a 226 m bridge
+  over us (187 M): straightening it would cut off a road joining it just outside our earthworks (reconnecting
+  such a side road to the new line is not modelled). Track 4843 (D11 km 9.8, d11-railway km 9.44) in a shallow
+  cutting on ground too steep for a track: no reroute, bridge or box fits (reported). D3 motorway km 3.63 / 3.71:
+  the browser's motorway preset leads both tracks to the km 2.67 box while a Node evaluation of the same design
+  joins km 3.63 to km 3.71's bridge (difference not yet traced). Straightened lines are drawn on the ground beyond
+  their ramps (their steepness is checked over 20 m, not engineered), bends are arcs or cubic curves without
+  transition curves; merged crossings of different ways within 30 m keep one remedy for the group.
 
 ### Map camera and labels (playtest-qa S1 #15, #17, #19, 2026-11-16)
 
