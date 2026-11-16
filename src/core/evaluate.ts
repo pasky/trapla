@@ -1498,6 +1498,8 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   }
   const forcedTunnel = tunnelWater(st.s, grade);
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
+  // a cutting whose side slope never reaches the top of the hillside (sections.ts `open`) cannot be dug: a tunnel
+  for (let i = 0; i < n; i++) if (sec.open[i] && -h[i] >= STRUCTURE_RULES.portalDepth) forcedTunnel[i] = 1;
   const runCost = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width);
   const widths = Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]);
   // The plan's blocks (those of the Auto grade solve, also By hand) settle their own fill value (as they

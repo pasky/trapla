@@ -560,6 +560,48 @@ Plan and sources: docs/design-realism-plan.md (M1, M4), research/46–54.
   Whole D3 dragged at km 30: the 30 m span at km 16.66 stays 0.1 m short (the changed stretch, end of a 4 %
   climb; tests/merged-crossings notes it).
 
+### Tunnels as they are built: cut-and-cover portals, method, escape provision (cost model 32, 2026-11-17)
+
+Plan and sources: docs/design-realism-plan.md M2, research/49 (portals), /51 (methods). Model 31 ended Auto's
+tunnels wherever a tunnel stopped being cheaper per metre than the cut, in open cuts 12–110 m deep (d35's
+starter: 60 m, its stage-1 motorway 95 m, random D11 lines 45–60 m).
+- **Portals.** Mining starts where the ground is 14 m above the grade (≈ 6 m of cover, unchanged); from there a
+  tunnel goes on as cut and cover (built in a pit that is filled in again) out to where the ground is a
+  structure height (9 m) above the grade, at least 12 m per portal (two stations). The approach cut ends ≈ 9 m
+  deep, at a portal box in the slope (what research/49 found at D11 Poříčí / Opevňení, Radejčín, Mezno).
+  Cut and cover is billed at SPK A.3.H (+7.5 %; urban PROVISIONAL: the urban bored row × the same premium),
+  railways at their SPOŽES row (no method split); its pit beyond 5 m of cover is excavation + backfill (OTSKP
+  17411) under Earthworks. Land over a tunnel is not bought (as before: the pit's land is returned).
+- **Auto sees the ends.** The structure choice prices a tunnel run as built (bored, cut and cover, tubes) against
+  the earthworks over the same stretch, so a tunnel not worth its ends is an open cut (tests/tunnels.test.ts).
+  The grade search has a tunnel mode (autoprofile.ts): where its station-by-station line would take a tunnel, it
+  searches again with a second layer of states, a stretch deeper than a portal being all tunnel or all open,
+  entered and left at shallow knots. Where the line takes no tunnel (every D11 design), nothing changes.
+- **Streams** keep a tunnel a structure height below their bed (was 14 m): cut and cover puts the channel back.
+  (Without it the Křálovec railway left two streams in a shallow cut between two tunnels.)
+- **Method on the tunnel card**: Mined (Auto) / Cut and cover (the player's, painted over the tunnel; at most
+  7.5 m of ground over it, deeper: "Too deep to dig from above"). The card says how it is built ("Mined 1,039 m
+  · cut and cover 70 m at its ends · with an escape tunnel beside it"). A tunnel the player paints may start in
+  a cut up to 30 m deep (the deepest Czech portal pits, PROVISIONAL); deeper is a violation that says where Auto's
+  portal would be.
+- **Escape provision** (NV 264/2009, tunnels over 500 m): one two-lane tube gets an escape tunnel (× 1.3, Hessen
+  Mobil 121–135 %) above 2,000 veh/day/lane, two tubes above 10,000; motorways have two tubes already, a
+  motorway direction's tube has the other's beside it, railways follow their own price book.
+- **Minimum tunnel** 150 → 100 m (TKP-D 7): the outcome audit and every scenario pack unchanged by it.
+- **Bills** (model 31 → 32): every D11 design unchanged (no tunnels). Scenario starters, all VALID: d3-0304
+  8,524 → 10,152 (a 680 m twin tunnel instead of 240 m between 21–29 m cuts), d35 4,755 → 6,729 (1.1 km
+  instead of 740 m between 58–68 m cuts), d35-full 27,332 → 29,969, d35 stage-1 motorway 17,123 → 19,497 M CZK;
+  the others unchanged. Křálovec railway (QA fixture) 8.87 → 9.45 bn VALID (one 3.9 km tunnel where three
+  tunnels alternated with 25–53 m cuts). Outcome audit (24 random D11 lines): 6 VALID (6), 90 violations (86;
+  random-10 and -15 each meet one more where their longer tunnels' ends moved), links > 1 km 20 (21), ramps > 250 m
+  5 (5); the lines with tunnels cost 11–28 % more (random-12: 9.51 → 12.13 bn, its 960 m tunnel between 55 m
+  cuts is 1.36 km with 8 m approach cuts).
+- **Known limits.** The grade search prices the tube per metre; a long one's escape provision is weighed by
+  the structure choice only. Portals stand on the 10 m station grid. Pre-portal works (nailed faces, micropile
+  umbrellas) are not billed (research/49 §3; small beside a 9 m portal). No TBM (no Czech road case, no SPK row).
+  The drag at km 4.4 of the Křálovec railway moves the cut before the tunnel of km 1.98–4.5 (that tunnel's far end
+  is in the dragged stretch): tests/rail-drag-locality checks the grade to km 1.75.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
