@@ -302,6 +302,47 @@ describe('crossing geometry and map overlay', () => {
     expect(cs[1].cost).toBeLessThan(80 * box.perM + 2 * box.head);
   });
 
+  it('straightens a skewed track whose box would be too long, and moves a track that comes back out on its own side', () => {
+    const t = Float64Array.from({ length: 301 }, (_, i) => i * 10), kind = new Uint8Array(t.length);
+    const flat: CrossingRoute = { s: t, x: t, y: new Float64Array(t.length), tx: new Float64Array(t.length).fill(1), ty: new Float64Array(t.length),
+      grade: new Float64Array(t.length).fill(7), width: new Float64Array(t.length).fill(40), crownWidth: 9.5, kind };
+    // A 20° track under a 7 m embankment: on its own line a 117 m box (over the 100 m limit), nothing to reroute to.
+    const k = Math.tan(Math.PI * 20 / 180), net = new RoadNet({ cls: ['track'], ways: [[0, 1500 - 300 / k, -300, 1500 + 300 / k, 300]] });
+    const cs = [cross(0, 1500, 'track', 7, 150)];
+    resolveCrossings(cs, 3000, kind, flat.width, new Uint8Array(t.length), undefined, []);
+    buildCrossingGeometry(cs, flat, () => 0, net);
+    const c = cs[0], g = c.geometry!, u = g.underpass!;
+    expect(c.type).toBe('underpass'); expect(g.diagnostics).toBeUndefined();
+    expect(c.squared).toBeCloseTo(20, 0);
+    expect(c.underpassLength).toBeCloseTo(40, 0); // square across the 40 m footprint
+    const a = g.road![u.start], b = g.road![u.end];
+    expect(Math.abs(b.x - a.x)).toBeLessThan(0.5); // at a right angle to our road (along x)
+    const box = underpassAssembly('track', ROAD_CLASSES.track.roadPerKm[0] / 1000);
+    expect(c.realignLength).toBeGreaterThan(0);
+    expect(c.cost).toBeCloseTo(c.underpassLength! * box.perM + 2 * box.head + c.realignCost!, 6);
+    expect(c.realignCost).toBeCloseTo(c.realignLength! * ROAD_CLASSES.track.roadPerKm[0] / 1000, 6);
+    // bends no sharper than the class's smallest radius (three-point circles along the new line)
+    for (let i = 1; i + 1 < g.road!.length; i++) {
+      const [p, q, r] = [g.road![i - 1], g.road![i], g.road![i + 1]];
+      const cross2 = Math.abs((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+      if (cross2 > 1e-6) expect(Math.hypot(q.x - p.x, q.y - p.y) * Math.hypot(r.x - q.x, r.y - q.y) * Math.hypot(r.x - p.x, r.y - p.y) / (2 * cross2)).toBeGreaterThan(ROAD_CLASSES.track.minRadius * 0.9);
+    }
+    expect(auditCrossingGeometry(cs, flat, () => 0, net)).toEqual([]);
+    // The player keeps it on its line: the long box stays, with its problem.
+    resolveCrossings(cs, 3000, kind, flat.width, new Uint8Array(t.length), undefined, [{ roadId: 0, type: 'underpass', square: false }]);
+    buildCrossingGeometry(cs, flat, () => 0, net);
+    expect(cs[0].squared).toBeUndefined(); expect(cs[0].geometry!.diagnostics).toContain('Underpass would exceed the 100 m box limit');
+    // A track that runs into our earthworks and back out on the side it came from needs no crossing.
+    const weave = new RoadNet({ cls: ['track'], ways: [[0, 700, 200, 1000, -5, 1300, -5, 1600, 200]] });
+    const w = [cross(0, 1000 - 5 * 300 / 205, 'track', 7, 99)];
+    w[0].x = w[0].s;
+    resolveCrossings(w, 3000, kind, flat.width, new Uint8Array(t.length), undefined, []);
+    buildCrossingGeometry(w, flat, () => 0, weave);
+    expect(w[0].moved).toBe(true); expect(w[0].type).toBe('diversion'); expect(w[0].targetS).toBeUndefined();
+    expect(w[0].geometry!.links![0]).toEqual([]); expect(w[0].geometry!.links![1].every(p => p.y >= 20 + 2 + 3 - 1e-6)).toBe(true);
+    expect(w[0].cost).toBeCloseTo(w[0].linkLength! * ROAD_CLASSES.track.roadPerKm[0] / 1000, 6);
+  });
+
   it('draws two opposite side links to the resolved real-road anchors, every reroute to a crossing that carries it', () => {
     const cs = [cross(0, 3000), cross(1, 3100, 'residential'), cross(2, 3200, 'track')];
     resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);

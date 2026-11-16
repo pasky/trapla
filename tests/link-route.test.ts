@@ -25,6 +25,21 @@ describe('a reroute built as a designer builds it', () => {
     expect(engineerLink(line, 4, env(x => 100 + Math.max(0, 40 - Math.abs(x - 200) / 2)), 0.08).problems).toEqual(['steep']);
   });
 
+  it('takes the houses and obstacles its own earth slopes reach, not only those under its pavement', () => {
+    // the 12 m hump of the first test, cut through: a house 10 m off the line beside the cut
+    const bump = (x: number) => 100 + Math.max(0, 12 - Math.abs(x - 200) / 5);
+    const house = { x: 200, y: 30 };
+    const near = (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => {
+      const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((house.x - a.x) * dx + (house.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(house.x - a.x - t * dx, house.y - a.y - t * dy) <= half;
+    };
+    const plan = engineerLink(line, 4, env(bump, { houses: (a, b, half) => near(a, b, half) ? [9] : [], houseCost: () => 3e6 }), 0.08);
+    expect(plan.houses).toEqual([9]); expect(plan.houseCost).toBe(3e6);
+    // on flat ground the same house beside the pavement is left standing; a railway beside a cut stops it
+    expect(engineerLink(line, 4, env(() => 100, { houses: (a, b, half) => near(a, b, half) ? [9] : [] }), 0.08).houses).toEqual([]);
+    expect(engineerLink(line, 4, env(bump, { obstacle: (a, b, half) => near(a, b, half) ? 'railway' : null }), 0.08).problems).toContain('railway');
+  });
+
   it('carries a stream on a culvert sized like ours, with its earth cover built up, and buys out houses in its way', () => {
     const crossing: WaterCrossing = { s: 0, x: 200, y: 20, id: 7, waterKind: 'stream', width: 0.5, catchmentKm2: 0.4, truncated: false, sine: 1 };
     const plan = engineerLink(line, 4, env(() => 100, {

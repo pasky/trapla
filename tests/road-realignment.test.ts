@@ -96,6 +96,21 @@ describe('bounded real road relocation', () => {
     assertClear(planRoadRealignment(reversed), reversed.cells);
   });
 
+  it('removes a dead-end stub that our earthworks take (almost) whole: too little is left to turn round in', () => {
+    // a 15 m track stub off a street, its dead end under our earthworks (y 230–270), 3 m of it left outside
+    const input = setup([[1, 500, 273, 500, 258], [0, 300, 273, 700, 273]], ['service', 'track']);
+    input.cls = 'track'; input.hit = { a: 3, b: 15, i: 40, j: 40 };
+    const plan = planRoadRealignment(input);
+    expect(plan.problems).toEqual([]);
+    expect(plan.closed).toEqual({ length: 15, detour: 0 });
+    expect(plan.cost).toBe(0);
+    expect(plan.sourceIntervals).toEqual([{ way: 0, a: 0, b: 15 }]);
+    // a longer stub keeps its outside part with a turning area
+    const long = setup([[1, 500, 330, 500, 258], [0, 300, 330, 700, 330]], ['service', 'track']);
+    long.cls = 'track'; long.hit = { a: 60, b: 72, i: 40, j: 40 };
+    expect(planRoadRealignment(long).closed).toBeUndefined();
+  });
+
   it('does not mistake a sharp junction, unsplit T-junction or class-restricted continuation for a dead end', () => {
     for (const ways of [
       [[0, 500, 260, 1250, 260], [0, 500, 260, 700, 300]], // traversal rejects this U-turn

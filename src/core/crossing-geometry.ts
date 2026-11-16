@@ -1670,7 +1670,7 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       else {
         const box = underpassAssembly(size, (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000);
         if (Math.abs(crossingPlanLength(g.road.slice(start, end + 1)) - (c.underpassLength ?? 0)) > 0.01) report('Underpass quantity differs from geometry');
-        const price = (c.underpassLength ?? 0) * box.perM + 2 * box.head + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.drainCost ?? 0);
+        const price = (c.underpassLength ?? 0) * box.perM + 2 * box.head + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.drainCost ?? 0) + (c.realignCost ?? 0);
         if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Underpass bill differs from measured quantities');
         if (!c.lowered && g.road.some(q => q.surface !== 'terrain')) report('Underpass way leaves its terrain level');
         if (c.lowered !== undefined && (!g.approaches || c.lowered > LOWERING_RULES.maxDepth + 1e-6) && !g.diagnostics?.length) report('Lowered underpass way is not engineered');
@@ -1678,8 +1678,12 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
           < box.minHeight - 1e-6) report('Underpass roof does not clear the carriageway');
       }
     }
+    // A straightened way: its new line (beyond the structure and its ramps) remeasured from what is drawn.
+    if (c.squared !== undefined && g.road && g.removed) {
+      if (!(c.realignLength! >= 0) || c.realignLength! > crossingPlanLength(g.road) + 1e-6) report('Straightened line quantity differs from geometry');
+    }
     if (c.type === 'overbridge') {
-      const price = deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
+      const price = deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.realignCost ?? 0);
       if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Overbridge bill differs from measured quantities');
     }
     if (c.type === 'junction' && works.every(w => Math.abs(JUNCTION + w - c.cost) > 0.01)) report('Junction bill differs from measured quantities');
