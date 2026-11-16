@@ -199,7 +199,7 @@ describe('rebuilding a mapped road', () => {
 // "Bend 1 is too close to its start" for bends the player had not touched.
 describe('a rebuilt stretch inherits no violations from its old road', () => {
   // An old class III road: 700 m east, a sharp 90° corner (as old roads have), 700 m north; ends on side roads.
-  function corner(ground: (x: number, y: number) => number = () => 300) {
+  function corner(ground: (x: number, y: number) => number = () => 300, s1 = 1400) {
     const xy = [300, 300, 1000, 300, 1000, 1000], stations = [0, 700, 1400];
     const graph: TransportGraphData = { version: 1, vectorData: 'vectors', renderFeatures: [], nodes: [
       { id: 'a', xy: [300, 300] }, { id: 'c', xy: [1000, 300] }, { id: 'b', xy: [1000, 1000] }], sources: [
@@ -213,7 +213,7 @@ describe('a rebuilt stretch inherits no violations from its old road', () => {
       buildings: new BuildingIndex([[640, 312, 6]]) },
       environment: { objectData: 'objects', transportData: 'transport', terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' as const },
       sourceWays: new Map([['old', 0]]) };
-    const interval = { transportData: 'transport', sourceId: 'old', s0: 0, s1: 1400 };
+    const interval = { transportData: 'transport', sourceId: 'old', s0: 0, s1 };
     const command = rebuildCommand(base, interval, { routeId: 'r', acousticSourceId: 'a' });
     const route = command.routes[0];
     if (route.kind !== 'road' || route.alignment.kind !== 'pi') throw new Error('fixture');
@@ -249,6 +249,36 @@ describe('a rebuilt stretch inherits no violations from its old road', () => {
     expect(own.cost.total).toBe(0); expect(result.cost.total).toBe(0);
     expect(result.works.items.map(w => w.id.split(':')[1])).toEqual(['kept']);
     expect(result.buildings.filter(b => b.action !== 'retain')).toEqual([]);
+  });
+  // D3 III/11431: its End handle moved past a village corner gave "Bends 5 and 6 merge into one curve that is
+  // too sharp" and houses under the new curve: the old end, now inside, became a bend with a norm-sized curve.
+  it('lengthening into a sharp old corner keeps it as the old road has it; the player\'s own bend stays', async () => {
+    const { evaluateProject } = await import('../src/core/project-evaluate');
+    // the stretch ends exactly at the corner, so it starts as a straight
+    const { ctx, p, base } = corner(undefined, 700);
+    const whole = { transportData: 'transport', sourceId: 'old', s0: 0, s1: 1400 };
+    const lengthened = (design: ProjectDesign) => {
+      const next = moveStretchEnds(base, design, 'r', 0, 1400), route = next.routes[0];
+      if (route.alignment.kind !== 'pi') throw new Error('pi');
+      const result = evaluateProject(ctx, { epoch: 'e', revision: 1, design: next }).routes.r.legacy!;
+      return { pis: route.alignment.pis, result };
+    };
+    const untouched = lengthened(p);
+    expect(untouched.pis).toHaveLength(1);
+    expect(untouched.pis[0].r).toBeGreaterThan(10); expect(untouched.pis[0].r).toBeLessThan(60);
+    expect(untouched.result.keptCells!.every(k => k === 1)).toBe(true);
+    expect(untouched.result.violations).toEqual([]);
+    // a bend the player pulled 40 m off the old road stays where it is; the corner is still the old road's
+    const own = p.routes[0];
+    if (own.alignment.kind !== 'pi') throw new Error('pi');
+    own.alignment.pis = [{ x: 500, y: 340, r: null }];
+    const moved = lengthened(p);
+    expect(moved.pis[0]).toEqual({ x: 500, y: 340, r: null });
+    expect(moved.pis.at(-1)!.r).toBeLessThan(60);
+    const { result } = moved, corner700 = result.s.findIndex(s => s > 650);
+    for (let i = corner700; i < result.n; i++) expect(result.keptCells![i]).toBe(1);
+    expect(result.violations.every(v => v.s1 < 650)).toBe(true);
+    expect(base.path(whole).length).toBe(3);
   });
   it('a bend moved off the old road is a new road there: the norm applies and it is billed', async () => {
     const { evaluateProject } = await import('../src/core/project-evaluate');

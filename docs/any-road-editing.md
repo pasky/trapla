@@ -533,3 +533,30 @@ case…" takes 4.9 s alone and can exceed its 5 s limit when the host load is ab
   not moved and the new end with `fitRoad`, instead of adding the join point.
 - `COST_MODEL_VERSION` + 1 at merge (multi-road totals changed); `traffic.json` in the main checkout (§11).
 - Known limits of §10 (Quantities on kept cells, By-hand heights on a kept part).
+
+## 13. Lengthening into a sharp old corner (2026-11-16, third pass)
+
+**Bug** (D3 III/11431, End handle +120 m past a village corner): "Bends 5 and 6 merge into one curve that is
+too sharp", houses under the new curve. The old end, now inside the stretch, became a bend with a norm-sized
+curve (`r: null`), which left the old road.
+
+**Fix** (`ui/road-edit.ts`):
+- `moveStretchEnds` finds the player's own part of the line (`playerPart`: from the bend before the line first
+  leaves the old road by more than `KEPT_TOLERANCE` to the bend after it last returns). The newly included old
+  road is joined either at the old end (now with the old road's own curve, like every converted bend, via
+  `onOldRoad().tighten`), or at a bend outside the player's part with the old road refitted from there (`fitRoad`),
+  or, when nothing is off the old road, the whole new stretch is converted afresh. The join that builds least
+  anew wins, then the one with fewest problems. The player's own bends and the station-based choices stay.
+- `fitRoad` gets a second step: where the line still strays more than `REPAIR_TOLERANCE` (close corners merged
+  into one bend by `fitBends`), the old road's corner there (within `FOLLOW_REACH` = 150 m, game choice) becomes a
+  bend of its own with its own curve (≤ 8 rounds; each must bring the line closer). `problems` is now computed
+  lazily (the radius search never needs it).
+
+**Checked** (`scripts/_lengthen-batch.ts`, untracked: every D3 class I–III stretch, conversion and ±120 m at
+either end): conversions that leave the old road anywhere 21 → 6 of 433; lengthening that builds more anew than
+the conversion 13 → 1 (+5 m, on a stretch whose conversion already strays 190 m: II/1044, an S of hairpins).
+Stretches with norm problems after the conversion unchanged (101; all kept-as-old-road notes). `fitRoad` worst
+45 ms (was 27), mean 1.8 ms; `moveStretchEnds` worst 54 ms (on release only). D3 III/11431 lengthened: valid, no
+violations, the corner kept; D11 Jičínská dragged 25 m and lengthened 120 m: unchanged (only the drag is new).
+Test: `tests/road-edit.test.ts` "lengthening into a sharp old corner keeps it as the old road has it; the
+player's own bend stays" (fails on the old code). any-road-scene D11 and D3: PASS.
