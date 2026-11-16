@@ -77,7 +77,15 @@ try {
   // drag the middle bend 300 px sideways
   await page.evaluate(() => { const d = window.trapla.getDesign(); const p = d.pis[1]; window.trapla.lookAt(p.x, p.y, 3000, 20, 50); window.trapla.selectPi(1); });
   await idle();
-  const pi = await page.locator('.pi[data-i="1"]').filter({ visible: true }).first().boundingBox();
+  // (the marker is placed by the view's next frame: on a busy host that can be later than idle() waits, and a
+  // drag from its old place ends somewhere else. Wait until it sits on its bend.)
+  let pi = null;
+  for (let k = 0; k < 150 && !pi; k++) {
+    const box = await page.locator('.pi[data-i="1"]').filter({ visible: true }).first().boundingBox();
+    const [want, view] = [await page.evaluate(() => { const b = window.trapla.getDesign().pis[1]; return window.trapla.groundScreen(b.x, b.y); }), await page.locator('#view').boundingBox()];
+    if (box && Math.abs(box.x + box.width / 2 - view.x - want.sx) < 2 && Math.abs(box.y + box.height / 2 - view.y - want.sy) < 2) pi = box; else await page.waitForTimeout(100);
+  }
+  assert(pi, 'the bend marker sits on its bend');
   await page.mouse.move(pi.x + pi.width / 2, pi.y + pi.height / 2); await page.mouse.down();
   await page.mouse.move(pi.x + pi.width / 2 - 120, pi.y + pi.height / 2 + 40, { steps: 15 }); await page.mouse.up();
   await seen('bend dragged');
