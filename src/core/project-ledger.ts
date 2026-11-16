@@ -147,7 +147,8 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
       let i = 0, j = road.length - 1;
       while (i + 1 < road.length && road[i].surface === 'terrain' && road[i + 1].surface === 'terrain') i++;
       while (j > i && road[j].surface === 'terrain' && road[j - 1].surface === 'terrain') j--;
-      geometry({ ...g, road: road.slice(i, j + 1) });
+      // (met at its own level: nothing of it is rebuilt)
+      geometry({ ...g, road: road.some(q => q.surface !== 'terrain') ? road.slice(i, j + 1) : [] });
     } else geometry(g);
   }
   for (const f of result.footprintConflicts) {
