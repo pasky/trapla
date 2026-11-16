@@ -141,7 +141,7 @@ export class CurveEditor {
       const parts: string[] = [];
       if (c.rEff < c.r - 0.5) parts.push(`wanted ${num(c.r)} m — no room`);
       if (u.last > u.first) parts.push(`one curve with bend${u.last - u.first > 1 ? 's' : ''} ${listOthers(u.first, u.last, i)}`);
-      if (u.maxOffset > 0.5) parts.push(`up to ${u.maxOffset.toFixed(1)} m off the dashed polygon`);
+      if (u.maxOffset > 0.5) parts.push(`up to ${u.maxOffset.toFixed(1)} m off the straights between bends`);
       this.sub.textContent = [manual ? 'set by you' : 'auto', ...parts].join(' · ');
       this.autoBtn.disabled = !manual;
       this.maxBtn.style.display = this.autoBtn.style.display = '';
@@ -151,7 +151,7 @@ export class CurveEditor {
       this.inward = { x: 0, y: 1 };
       this.text.textContent = info.tooSharp ? 'U-turn' : info.ignored ? 'left out' : 'no bend';
       this.sub.textContent = info.tooSharp ? 'no curve fits a turn this sharp'
-        : info.ignored ? `it turns against its neighbour where no S-curve fits, and is only ${info.offset.toFixed(1)} m off the straight line between its neighbours: the tangent polygon skips it`
+        : info.ignored ? `it turns against its neighbour where no S-curve fits, and is only ${info.offset.toFixed(1)} m off the straight line between its neighbours: the road skips it`
           : 'the point lies on a straight line';
       this.maxBtn.style.display = this.autoBtn.style.display = 'none';
     }
@@ -184,11 +184,38 @@ export class CurveEditor {
     const h = this.label.offsetHeight || 40, w = this.label.offsetWidth || 160;
     const off = 16 + Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
     this.label.style.display = '';
-    // kept wholly in view (a bend near the map's edge must not cut its warning off)
+    // kept wholly in view (a bend near the map's edge must not cut its warning off), clear of the map's
+    // bars along its top and its legend and credits along its bottom (drawn over the overlay)
     const box = this.label.parentElement, W = box?.clientWidth || Infinity, H = box?.clientHeight || Infinity, m = 4;
-    const cx = Math.min(Math.max(s.sx + dx * off, w / 2 + m), Math.max(w / 2 + m, W - w / 2 - m));
-    const cy = Math.min(Math.max(s.sy + dy * off, h / 2 + m), Math.max(h / 2 + m, H - h / 2 - m));
+    const { top, bottom } = this.insets(box);
+    const fit = (side: number) => {
+      const x = s.sx + side * dx * off, y = s.sy + side * dy * off;
+      const cx = Math.min(Math.max(x, w / 2 + m), Math.max(w / 2 + m, W - w / 2 - m));
+      const cy = Math.min(Math.max(y, top + h / 2 + m), Math.max(top + h / 2 + m, H - bottom - h / 2 - m));
+      return { cx, cy, moved: Math.hypot(cx - x, cy - y) };
+    };
+    // pushed back by an edge it would cover the bend's own marker: then on the bend's other side
+    const inside = fit(1), outside = inside.moved > 1 ? fit(-1) : inside;
+    const { cx, cy } = outside.moved < inside.moved ? outside : inside;
     this.label.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) translate(-50%, -50%)`;
+  }
+
+  private bars: { at: number; top: number; bottom: number } | null = null;
+  /** How far the map's own bars reach into the overlay from its top and bottom edge, px (measured at
+   * most once a second: they change only with the window size and the active road's bar). */
+  private insets(box: HTMLElement | null): { top: number; bottom: number } {
+    const now = performance.now();
+    if (this.bars && now - this.bars.at < 1000) return this.bars;
+    const r = box?.getBoundingClientRect();
+    let top = 0, bottom = 0;
+    if (r) for (const el of box!.parentElement?.querySelectorAll<HTMLElement>(':scope > #brand, :scope > #editbar, :scope > #viewbar, :scope > .route-bar, :scope > #legend, :scope > #attrib, :scope > #noise-legend, :scope > #photo-note') ?? []) {
+      const b = el.getBoundingClientRect();
+      if (!b.height || b.height > r.height / 3) continue;
+      if (b.top - r.top < r.height / 2) top = Math.max(top, b.bottom - r.top);
+      else bottom = Math.max(bottom, r.bottom - b.top);
+    }
+    this.bars = { at: now, top, bottom };
+    return this.bars;
   }
 
   private startDrag(e: PointerEvent, side: 0 | 1) {

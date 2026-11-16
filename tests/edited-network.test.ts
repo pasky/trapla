@@ -326,6 +326,64 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
   }, 120_000);
 });
 
+// The player's road takes over where Auto's reroutes of our road would meet it (QA final sweep, main e24df59).
+describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16.gz'].every(f => existsSync(`${D11}/${f}`)))('D11: roads rebuilt beside our automatic reroutes', () => {
+  it('are priced: our reroute is planned again around them, their ends meet what is left of the roads we change', async () => {
+    const { loadPack } = await import('../scripts/loadpack');
+    const { objectDataKey } = await import('../src/core/build-controls');
+    const { ProjectTransportIndex } = await import('../src/core/project-network');
+    const { startDesign } = await import('../src/state');
+    const { coveredStretches, derivedStretch, rebuildCommand } = await import('../src/ui/road-edit');
+    const { nearestLeg } = await import('../src/core/horizontal');
+    const pack = loadPack(D11), scenario = D11_SCENARIO;
+    const graph = JSON.parse(gunzipSync(readFileSync(`${D11}/transport.json.gz`)).toString());
+    const fingerprint = JSON.parse(readFileSync(`${D11}/transport-meta.json`, 'utf8')).fingerprint;
+    const objectData = objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net);
+    const A = { x: pack.meta.A.xy[0], y: pack.meta.A.xy[1] }, B = { x: pack.meta.B.xy[0], y: pack.meta.B.xy[1] };
+    const lc = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B }, { presetId: 'd11', packId: pack.meta.id, objectData, transportData: fingerprint });
+    const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) }, lc);
+    const index = new ProjectTransportIndex(graph, fingerprint, graph.vectorData, pack.terrain, pack.census);
+    const ctx: ProjectEvalContext = { legacy: { terrain: pack.terrain, scenario, a: A, b: B, buildings: pack.buildings, roads: pack.roads },
+      environment: { objectData, transportData: fingerprint, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' },
+      sourceWays: new Map(graph.sources.flatMap((s: { id: string; legacyNetIndex?: number }) => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]])) };
+    const ours = evaluateProject(ctx, { epoch: 'e', revision: 1, design }).routes[design.routes[0].id].legacy!;
+    const wayOf = (id: string) => graph.sources.find((s: { id: string }) => s.id === id).legacyNetIndex as number;
+    const rebuilt = (id: string, bend: (q: RouteDesign & { alignment: { kind: 'pi' } }, at: (s: number) => { x: number; y: number; nx: number; ny: number }, s0: number, s1: number) => void) => {
+      const interval = derivedStretch(index, id, 0.5 * index.source(id)!.stations.at(-1)!, coveredStretches(index, id, [{ ...ours, name: 'our road' }]))!;
+      const command = rebuildCommand(index, interval, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
+      const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
+      const q = edited.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
+      bend(q as RouteDesign & { alignment: { kind: 'pi' } }, s => {
+        const g = index.position(id, s)!, g2 = index.position(id, s + 5)!, l = Math.hypot(g2.x - g.x, g2.y - g.y);
+        return { x: g.x, y: g.y, nx: -(g2.y - g.y) / l, ny: (g2.x - g.x) / l };
+      }, interval.s0, interval.s1);
+      return evaluateProject(ctx, { epoch: 'e', revision: 2, design: edited });
+    };
+    const insert = (off: number) => (q: RouteDesign & { alignment: { kind: 'pi' } }, at: (s: number) => { x: number; y: number; nx: number; ny: number }, s0: number, s1: number) => {
+      const p = at((s0 + s1) / 2), pis = q.alignment.pis;
+      pis.splice(nearestLeg(q.endpoints.a.position, q.endpoints.b.position, pis, p), 0, { x: p.x + p.nx * off, y: p.y + p.ny * off, r: null });
+    };
+    // QA: the track that branches off the one we reroute at km 4.1, dragged 40 px up (its bends as dragged).
+    // It starts on what is left of that track, beside our embankment: the two roads meet there as at a junction.
+    const qa = rebuilt('osm:way:506629976', q => { q.alignment.pis = [{ x: 8342.3, y: 7345.85, r: null }, { x: 8378.0, y: 7302.78, r: null },
+      { x: 8337.99, y: 7265.13, r: null }, { x: 8431.1, y: 7069.1, r: null }]; });
+    expect(qa.issues.filter(i => i.check === 'not-checked').map(i => i.violation.title)).toEqual([]);
+    expect(qa.cost.total).not.toBeNull();
+    // A street bent 60 m towards our reroute of the km 4.1 track (to the street under our bridge at km 4.01):
+    // that reroute is planned again around it, and the project is priced.
+    const street = rebuilt('osm:way:37855288', insert(-60));
+    expect(street.issues.map(i => i.violation.title)).toEqual([]);
+    const before = ours.crossings.find(c => c.roadId === wayOf('osm:way:1315656940'))!;
+    const after = street.routes[design.routes[0].id].legacy!.crossings.find(c => c.roadId === wayOf('osm:way:1315656940'))!;
+    expect([after.type, after.targetRoadId]).toEqual([before.type, before.targetRoadId]);
+    expect(after.cost).not.toBe(before.cost);
+    // A service road that ends under our bridge at km 4.03 keeps its own crossing there (passes under it).
+    const service = rebuilt('osm:way:36347941', insert(30));
+    expect(service.issues.map(i => i.violation.title)).toEqual([]);
+    expect(service.routes[design.routes[0].id].legacy!.crossings.find(c => c.crossedRoute?.id === 'route:r1')?.type).toBe('bridge');
+  }, 120_000);
+});
+
 it('a side road\'s problems name its start and end, never the mission\'s A and B (card and map)', () => {
   const legacy = { terrain: syntheticTerrain(260, 120, 5, () => 100), scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 1100, y: 250 } };
   const context = makeLegacyProjectContext(legacy, { presetId: 'legacy-road', packId: 'd11', objectData: 'objects', transportData: null });

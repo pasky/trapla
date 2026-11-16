@@ -5,27 +5,35 @@
 //   (b) problems that appear beyond REACH;
 //   (c) the bill change;
 //   (d) the drag preview's bill against the settled one.
-// Plus QA's exact repros (playtest-qa-2 re-tests 4 and 6) with pass / fail.
+// Plus QA's exact repros (playtest-qa-2 re-tests 4 and 6, the final sweep's railway drag) with pass / fail.
+// The railway suite edits the Královec mission (a saved project, evaluated as the game's full worker does).
 //   npx tsx scripts/edit-locality.ts                 all suites in parallel (one process per pack)
 //   npx tsx scripts/edit-locality.ts d11 d3-full     only these suites
 // env: N (random edits per design, default 8; 4 on the 30+ km routes), SEED, REACH (m, default 10000: a
 //      boundary's 5 km window and the block beyond it, or a retry judged within 5 km and its window),
 //      MPP (metres per screen pixel; default the A–B distance / 800, about the start view)
-// Exit 1 if a QA repro or a grade-pin edit changes anything beyond REACH (a pin leaves the plan alone).
+// Exit 1 if a QA repro or a grade-pin edit changes anything beyond REACH (a pin leaves the plan alone), or a
+// repro marked so is not valid.
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadPack } from './loadpack';
 import { evaluate, type Design, type EvalContext, type Result } from '../src/core/evaluate';
-import { rememberFull } from '../src/core/preview-window';
+import { adoptFull, rememberFull } from '../src/core/preview-window';
+import { evaluateProjectRailway, railwayDesign, replaceRailwayFromDesign } from '../src/core/project-railway';
+import type { ProjectDesign } from '../src/core/project';
+import { projectContext } from './eval-project';
 
-const SUITES: Record<string, { scenario: string; designs: string[]; n?: number }> = {
+/** `project`: the designs are saved projects of one railway mission */
+const SUITES: Record<string, { scenario: string; designs: string[]; n?: number; project?: boolean }> = {
+  rail: { scenario: 'd11', designs: ['tests/fixtures/qa-final/rail-kralovec.json'], project: true },
   d11: { scenario: 'd11', designs: ['straight', 'scripts/best-design.json', 'scripts/demo-design.json', 'scripts/direct-80-design.json', 'scripts/direct-90-design.json', 'scripts/town-centre-design.json'] },
   'd3-full': { scenario: 'd3-full', designs: ['scripts/scenarios/d3-full/d3-full-motorway.json'], n: 4 },
   'd35-full': { scenario: 'd35-full', designs: ['scripts/scenarios/d35-full/d35-full-motorway.json'], n: 4 },
   ...Object.fromEntries(['d3-0301', 'd3-0302', 'd3-0303', 'd3-0304', 'd3-0305'].map(id => [id, { scenario: id, designs: [`scripts/scenarios/${id}/${id}-motorway.json`] }])),
 };
-type Edit = { kind: 'bend' | 'insert' | 'pin'; at: number; amount: number; bend?: number; qa?: string };
+/** `valid`: the repro must also leave a valid design (its problems were Auto's own, not far ones) */
+type Edit = { kind: 'bend' | 'insert' | 'pin'; at: number; amount: number; bend?: number; qa?: string; xy?: { x: number; y: number }; valid?: boolean };
 /** QA's repros: chainage (m), metres sideways (insert: a new bend; at the start view 10 px ≈ 230 m on D11) */
 const QA: Record<string, Edit[]> = {
   straight: [
@@ -37,6 +45,8 @@ const QA: Record<string, Edit[]> = {
     { kind: 'insert', at: 11700, amount: 300, qa: 're-test 4: drag at km 11.7' }, { kind: 'insert', at: 25400, amount: 300, qa: 're-test 4: drag at km 25.4' },
   ],
   'scripts/scenarios/d3-full/d3-full-motorway.json': [24500, 29500, 18900, 40000, 50500].map(at => ({ kind: 'insert' as const, at, amount: 300, qa: `re-test 4: drag at km ${at / 1000}` })),
+  // the bend the QA's 50 px drag put in (tests/fixtures/qa-final/rail-kralovec-drag.json)
+  'tests/fixtures/qa-final/rail-kralovec.json': [{ kind: 'insert', at: 6000, amount: 23, xy: { x: 8877.519500403168, y: 12943.53983494432 }, qa: 'final sweep: 50 px drag at km 6', valid: true }],
 };
 
 const here = fileURLToPath(import.meta.url);
@@ -57,8 +67,20 @@ if (!process.env.EDIT_SUITE) {
 }
 
 const suite = SUITES[process.env.EDIT_SUITE];
-const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
-const ctx: EvalContext = { terrain, scenario, buildings, roads, junctions, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
+// a railway mission: its project's context; each design evaluated as that project's railway
+const railProject = suite.project ? JSON.parse(readFileSync(suite.designs[0], 'utf8')) as ProjectDesign : undefined;
+const railCtx = railProject && projectContext(railProject).ctx;
+const ctx: EvalContext = railCtx ? railCtx.legacy : (() => {
+  const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
+  return { terrain, scenario, buildings, roads, junctions, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
+})();
+const railId = railProject?.routes.find(r => r.kind === 'railway')?.id;
+const run = (d: Design, preview = false): Result => {
+  if (!railProject || !railCtx || !railId) return evaluate(ctx, d, preview ? { preview: true } : {});
+  const r = evaluateProjectRailway(railCtx.legacy, replaceRailwayFromDesign(railProject, railId, d), railId, railCtx.environment.objectData, { preview });
+  if (r.status !== 'evaluated') throw new Error(`railway not evaluated: ${r.reason}`);
+  return r.result;
+};
 const REACH = Number(process.env.REACH ?? 10000);
 const MPP = Number(process.env.MPP ?? Math.hypot(ctx.b.x - ctx.a.x, ctx.b.y - ctx.a.y) / 800);
 let seed = Number(process.env.SEED ?? 1);
@@ -72,8 +94,8 @@ let failed = 0;
 
 for (const file of suite.designs) {
   const d0: Design = file === 'straight' ? { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [], structureOverrides: [] }
-    : JSON.parse(readFileSync(file, 'utf8')).design;
-  const r0 = evaluate(ctx, d0);
+    : railProject ? railwayDesign(railProject, railProject.routes.find(r => r.id === railId)!) : JSON.parse(readFileSync(file, 'utf8')).design;
+  const r0 = run(d0);
   const name = file === 'straight' ? 'straight start' : file.replace(/^.*\//, '').replace('.json', '');
   console.log(`== ${name}: ${(r0.cost.total / 1e9).toFixed(2)} bn ${r0.valid ? 'VALID' : 'NOT VALID'}, ${(r0.length / 1000).toFixed(1)} km, ${MPP.toFixed(0)} m/px`);
   // the station of the base nearest a point (for "how far the plan moved")
@@ -98,6 +120,7 @@ for (const file of suite.designs) {
     if (e.kind === 'pin') {
       d.gradePins = [...(d.gradePins ?? []), { s: Math.round(e.at), z: at(r0, r0.grade, e.at) + e.amount }];
       label = `pin ${e.amount > 0 ? '+' : ''}${e.amount.toFixed(0)} m at km ${(e.at / 1000).toFixed(1)}`;
+
     } else if (e.kind === 'bend') {
       const p = d.pis[e.bend!];
       let bi = 0, bd = Infinity;
@@ -106,16 +129,17 @@ for (const file of suite.designs) {
       e.at = r0.s[bi];
       label = `bend ${e.bend} (km ${(e.at / 1000).toFixed(1)}) ${e.amount.toFixed(0)} m`;
     } else {
-      const i = Math.round(e.at / r0.ds), x = r0.x[i] - r0.ty[i] * e.amount, y = r0.y[i] + r0.tx[i] * e.amount;
+      const i = Math.round(e.at / r0.ds), x = e.xy?.x ?? r0.x[i] - r0.ty[i] * e.amount, y = e.xy?.y ?? r0.y[i] + r0.tx[i] * e.amount;
       // in order along the route
       const sOf = (q: { x: number; y: number }) => { let bi = 0, bd = Infinity; for (let j = 0; j < r0.n; j += 2) { const t = Math.hypot(r0.x[j] - q.x, r0.y[j] - q.y); if (t < bd) { bd = t; bi = j; } } return r0.s[bi]; };
       const idx = d.pis.findIndex(q => sOf(q) > e.at);
-      d.pis.splice(idx < 0 ? d.pis.length : idx, 0, { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, r: null });
+      d.pis.splice(idx < 0 ? d.pis.length : idx, 0, e.xy ? { x, y, r: null } : { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, r: null });
       label = `new bend at km ${(e.at / 1000).toFixed(1)} ${e.amount.toFixed(0)} m`;
     }
-    rememberFull(ctx, d0, {}, r0);
-    const pv = evaluate(ctx, d, { preview: true });
-    const r = evaluate(ctx, d);
+    // (a railway's full result carries its own lineage: the options its project evaluates it with)
+    if (!railProject) rememberFull(ctx, d0, {}, r0); else adoptFull(ctx.terrain, r0);
+    const pv = run(d, true);
+    const r = run(d);
     const dL = r.length - r0.length;
     // the edited stretch: where the plan moved (> 0.5 m), else the pin; in the edited route's chainage
     let m0 = Infinity, m1 = -Infinity;
@@ -145,7 +169,7 @@ for (const file of suite.designs) {
     rows.push({ far: planEverywhere ? NaN : far, reach: planEverywhere ? NaN : reach, farViol: newFar.length, dBill, drift, kind: e.kind });
     let verdict = '';
     if (e.kind === 'pin' || e.qa) {
-      const ok = (planEverywhere || far <= 0.5) && !newFar.length;
+      const ok = (planEverywhere || far <= 0.5) && !newFar.length && (!e.valid || r.valid);
       verdict = ok ? 'PASS ' : 'FAIL ';
       if (!ok) failed++;
     }

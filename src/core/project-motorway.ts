@@ -158,7 +158,7 @@ export type CorridorEvaluation =
  * motorway continues beyond the map there (SPK's whole-category norm already includes earth-built
  * interchange branches, research/33 §3); any other end needs an interchange nobody has built. */
 export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign, corridorId: string, objectData: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> & { only?: string } = {}): CorridorEvaluation {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'keepClear' | 'structureValue'> & { only?: string } = {}): CorridorEvaluation {
   const saved = project.corridors.find(c => c.id === corridorId);
   if (!saved) throw new Error('Unknown corridor');
   const corridor = autoFollowingCorridor(project, saved);
@@ -216,7 +216,7 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
 type Goal = ProjectDesign['mission']['connections'][number] | undefined;
 /** ONE kernel evaluation of the paired corridor's common spine (D 27.5). */
 function evaluateSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, goal: Goal,
-  options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'keepClear'>): Result {
   const ops = corridorOperations(project, corridor), a = corridor.endpoints.a.position, b = corridor.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
@@ -398,7 +398,7 @@ const carriagewayLine = (route: MotorwayRoute) => {
  * (at most +3 dB too loud where only one direction is near), until a project decides houses heard by two
  * sources together. Houses beside a joined stretch belong to the outer direction. */
 export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, routeId: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue' | 'sharedCrossings'> = {}): Result {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'keepClear' | 'structureValue' | 'sharedCrossings'> = {}): Result {
   const route = project.routes.find(r => r.id === routeId) as MotorwayRoute, corridor = corridorOfRoute(project, routeId)!;
   const other = project.routes.find(r => r.id === (corridor.children.forward === routeId ? corridor.children.reverse : corridor.children.forward)) as MotorwayRoute;
   const ops = corridorOperations(project, corridor), goal = route.role === 'mission' ? project.mission.connections[0] : undefined;
@@ -752,13 +752,13 @@ const KNOT = 250, MIN_OWN_HEIGHTS = 2 * KNOT;
  * so its evaluation (heights at the joins, the shared body's bill) is reused, never redone. */
 const spineMemo = new WeakMap<object, { key: string; roads: EvalContext['roads']; result: Result }>();
 function memoSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, goal: Goal,
-  options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
-  const key = JSON.stringify([rawCorridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), goal, ctx.a, ctx.b]);
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'keepClear'>): Result {
+  const key = JSON.stringify([rawCorridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), goal, ctx.a, ctx.b, options.keepClear ?? null]);
   const hit = spineMemo.get(ctx.terrain);
   // (the network it is checked against too: the project's other roads as edited, project-roadnet.ts)
   if (hit?.key === key && hit.roads === ctx.roads) return hit.result;
   if (options.preview) return evaluateSpine(ctx, project, corridor, goal, options);
-  const result = evaluateSpine(ctx, project, corridor, goal, { materialValue: options.materialValue });
+  const result = evaluateSpine(ctx, project, corridor, goal, { materialValue: options.materialValue, ...(options.keepClear ? { keepClear: options.keepClear } : {}) });
   spineMemo.set(ctx.terrain, { key, roads: ctx.roads, result });
   return result;
 }
@@ -785,7 +785,7 @@ function joinStations(spine: Result, al: Alignment, rules: ReturnType<typeof hor
  * the joins (a direction without an own line there keeps the shared heights). Shared works between the two
  * carriageways are counted once (splitLedger); each direction is shown composed on the spine's stations. */
 function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
-  options: Pick<EvalOptions, 'preview' | 'materialValue'> & { only?: string }): Extract<CorridorEvaluation, { status: 'split' }> {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'keepClear'> & { only?: string }): Extract<CorridorEvaluation, { status: 'split' }> {
   if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
   const spine = memoSpine(ctx, project, corridor, goal, options);
   const sd = rawCorridorDesign(project, corridor), stretches = corridor.stretches ?? [];

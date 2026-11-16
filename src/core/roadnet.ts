@@ -20,6 +20,8 @@ export interface RoadCrossing {
   /** index of the OSM way in the pack */
   way: number;
 }
+/** A merged crossing (mergeCrossings) and the first hit of each other way merged into it. */
+export interface MergedCrossing extends RoadCrossing { members?: RoadCrossing[] }
 
 /** tolerance on segment parameters (round-off at end points) */
 const EPS = 1e-9;
@@ -470,8 +472,8 @@ export class RoadNet {
  */
 export function mergeCrossings(raw: RoadCrossing[], length: number,
   rules: Pick<typeof CROSSING_RULES, 'endMargin' | 'mergeDistance' | 'sameWayMergeDistance'> = CROSSING_RULES,
-  selectedRoadIds: ReadonlySet<number> = new Set()): RoadCrossing[] {
-  const out: (RoadCrossing & { last: number; ways: number[] })[] = [];
+  selectedRoadIds: ReadonlySet<number> = new Set()): MergedCrossing[] {
+  const out: (RoadCrossing & { last: number; ways: number[]; hits: RoadCrossing[] })[] = [];
   for (const c of raw) {
     if (!selectedRoadIds.has(c.way) && (c.s < rules.endMargin || c.s > length - rules.endMargin)) {
       if (!ROAD_CLASSES[c.cls].noAtGrade || c.s <= CROSSING_RULES.endpointTolerance
@@ -485,11 +487,14 @@ export function mergeCrossings(raw: RoadCrossing[], length: number,
       const gap = c.s - out[k].last;
       if (gap <= rules.mergeDistance || (gap <= rules.sameWayMergeDistance && out[k].ways.includes(c.way))) { hit = k; break; }
     }
-    if (hit < 0) { out.push({ ...c, last: c.s, ways: [c.way] }); continue; }
+    if (hit < 0) { out.push({ ...c, last: c.s, ways: [c.way], hits: [c] }); continue; }
     const o = out[hit];
     o.last = c.s;
-    if (!o.ways.includes(c.way)) o.ways.push(c.way);
+    if (!o.ways.includes(c.way)) { o.ways.push(c.way); o.hits.push(c); }
     if (RANK[c.cls] < RANK[o.cls]) { o.s = c.s; o.x = c.x; o.y = c.y; o.cls = c.cls; o.way = c.way; }
   }
-  return out.map(({ s, x, y, cls, way }) => ({ s, x, y, cls, way }));
+  return out.map(({ s, x, y, cls, way, hits }) => {
+    const members = hits.filter(h => h.way !== way);
+    return { s, x, y, cls, way, ...(members.length ? { members } : {}) };
+  });
 }

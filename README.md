@@ -366,6 +366,16 @@ Crossing remedies as designers choose them (model 28, `node scripts/crossing-eco
 [town-centre's skewed service road straightened (57 m box → 25 m)](docs/screenshots/174-town-centre-service-road-straightened.png),
 [best: a service road moved aside](docs/screenshots/175-best-service-road-moved-aside.png),
 [Nová Paka: a service road and a track joined to one box](docs/screenshots/176-nova-paka-roads-joined-to-one-box.png).
+Final-sweep P1s (`tests/edited-network`, `new-line-crossings`, `merged-crossings`): [D11 km 4.1: a track the
+QA dragged beside our reroute, priced](docs/screenshots/180-d11-track-beside-reroute-priced.png),
+[a new road across the Královec valley passes high over our railway bridge on its own](docs/screenshots/181-rail-new-road-over-our-bridge.png),
+[whole D3 dragged at km 30: both tracks crossing within 30 m rerouted, none buried](docs/screenshots/182-d3-full-km296-both-tracks-rerouted.png),
+[the QA's 50 px drag at km 6 of the Královec railway: valid, the track too steep for a bridge over our cutting
+passes under our viaduct](docs/screenshots/190-rail-drag-track-under-viaduct.png) (`tests/rail-drag-locality`, research/57).
+Final-sweep P2s (`node scripts/p2-scene.mjs`, research/58): [III/1057 rebuilt past our bridge: the score says
+which roads' bills moved, the bend label stays clear of the map's key](docs/screenshots/195-d3-1057-rebuilt-change-explained.png),
+[a drag's ≈ price says what it leaves out; the direction card names the place](docs/screenshots/196-d3-0302-drag-estimate.png),
+[Nová Paka: the photo's construction note while the photo is on](docs/screenshots/197-nova-paka-photo-note.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

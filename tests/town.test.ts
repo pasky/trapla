@@ -233,8 +233,13 @@ describe('evaluate on a synthetic town', () => {
   it('resolves each crossing by the height of the grade above the crossed road', () => {
     expect(r.crossings.map((c) => [Math.round(c.s), c.cls, c.type])).toEqual([
       [1500, 'residential', 'bridge'], [2500, 'residential', 'underpass'], [2700, 'track', 'underpass'],
-      [3500, 'residential', 'overbridge'], [4500, 'primary', 'junction'],
+      // the dual carriageway's second carriageway, merged into the junction's crossing, would be buried by our
+      // earthworks: it is cut and joined to that junction
+      [3500, 'residential', 'overbridge'], [4500, 'primary', 'junction'], [4515, 'primary', 'reconnection'],
     ]);
+    expect(r.violations.map(v => v.title)).toEqual([]);
+    expect(Math.round(r.crossings[5].targetS!)).toBe(4500); // (15 m of new road on each side)
+    expect(r.crossings[5].linkLength).toBeLessThan(40);
     // the valley street forces a short bridge into what would otherwise be an embankment
     expect(r.kind[150]).toBe(KIND.bridge);
     expect(r.runs.length).toBe(1);

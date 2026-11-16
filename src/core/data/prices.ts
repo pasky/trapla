@@ -47,11 +47,17 @@
  * to turn is removed; an automatic crossing with nothing buildable under a high embankment lengthens our bridge.
  * Rebuilt railways keep their old track where unchanged; railway clearance retries use structured
  * diagnostics; an untouched motorway direction follows an inward pull as one paired body.
- * 29: design realism (research/46–48): side slopes as built (VL 1 2022 fills, cuts by ground: sound rock 4:1
+ * 29: the player's road takes over from our reroutes (planned again clear of it); new railways and motorways
+ * are crossed by the line that outranks them, a held road high above the owner's bridge passes over it; a way
+ * merged into another's crossing that our earthworks bury is a crossing of its own; an embankment whose slope
+ * never meets the hillside is a bridge; railways: a band line missing a clearance is weighed against the
+ * wide band's, streams in a cutting and failed reroutes join the separation retry (research/57). Single-road
+ * D11 bills unchanged; the Královec railway starter 10.5506 → 10.5857 bn.
+ * 30: design realism (research/46–48): side slopes as built (VL 1 2022 fills, cuts by ground: sound rock 4:1
  * netted), no unsourced high-earthworks reserve, the "other objects" surcharge without B.6 technology on
  * two-lane roads (29.4 / 48.1 %), ČSN 73 6101:2018 vertical radii and gradients by category; a route ending on
  * a motorway may meet its other carriageway in its end cell. */
-export const COST_MODEL_VERSION = 29;
+export const COST_MODEL_VERSION = 30;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

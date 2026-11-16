@@ -11,6 +11,7 @@ import { slopeSurfaceAt } from './sections';
 import { UNKNOWN_GROUND } from './ground';
 import { KIND } from './structures';
 import { acos, atan2, cos, sin, tan } from './detmath';
+import { INDEPENDENCE_SCREEN } from './project-ledger';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
@@ -171,7 +172,7 @@ const JOIN_SHORTER = 0.8;
 const SHAPED_LINK: Record<LinkProblem, string> = {
   steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
   railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
-  river: 'Shaped link crosses a river', far: LINK_TOO_FAR,
+  river: 'Shaped link crosses a river', far: LINK_TOO_FAR, works: 'Shaped link runs into another road of the project',
 };
 const linkMessage = (problem: LinkProblem, _shaped: true) => SHAPED_LINK[problem];
 
@@ -198,12 +199,16 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       footprint: 'there is no room for it beside our earthworks', motorway: 'it would have to cross a motorway on the ground',
       railway: 'it would have to cross a railway on the ground', water: 'it would have to run through a pond or river',
       river: 'it would have to cross a river too big for a culvert', building: 'it would have to run through a house you keep', far: 'it would be too long',
+      works: 'another road you build is in the way',
     } as Record<string, string>)[problem] ?? problem);
     const reason = reasons.join('; ');
-    // the nearest structure: our bridge over it (raise our road) or its bridge over a deeper cutting
-    const fix = c.h >= 0
-      ? `Raise our road here by ${Math.max(0.1, CROSSING_RULES.overHeight - c.h).toFixed(1)} m and put it on a bridge over the ${what}, or choose "Its bridge over us" or an underpass`
-      : `Lower our road here by ${Math.max(0.1, CROSSING_RULES.underDepth + c.h).toFixed(1)} m so that the ${what} can cross over it on a bridge, or choose an underpass`;
+    // the nearest structure: our bridge over it (raise our road) or its bridge over a deeper cutting;
+    // where our road is already that high (deep), the height is not what stops it
+    const raise = CROSSING_RULES.overHeight - c.h, lower = CROSSING_RULES.underDepth + c.h;
+    const fix = c.h >= 0 && raise >= 0.05
+      ? `Raise our road here by ${raise.toFixed(1)} m and put it on a bridge over the ${what}, or choose "Its bridge over us" or an underpass`
+      : c.h < 0 && lower >= 0.05 ? `Lower our road here by ${lower.toFixed(1)} m so that the ${what} can cross over it on a bridge, or choose an underpass`
+      : `Move our road a little here, or choose "Its bridge over us" or an underpass`;
     return { title: `No buildable reroute for the ${what}`,
       fix,
       detail: `A new piece of ${what} cannot reach the next crossing: ${reason}.`, basis: 'game',
@@ -213,6 +218,10 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Drag its bend points so that it stays on this side of the river, or choose "Automatic path" on the crossing card',
     detail: `The river is too big for a culvert under a ${what}.`, basis: 'game',
     rule: 'Game rule (research/17): a new road crosses streams on culverts; rivers need a bridge, which reroutes do not get' };
+  if (message === SHAPED_LINK.works) return { title: `Your path for the new ${what} runs into another road you build`,
+    fix: 'Drag its bend points clear of that road, or choose "Automatic path" on the crossing card',
+    detail: `The new piece of ${what} would come closer than ${INDEPENDENCE_SCREEN.clearance} m to that road's works.`, basis: 'engine',
+    rule: `Engine limit: two roads' works are kept ${INDEPENDENCE_SCREEN.clearance} m apart, except where they meet` };
   if (message === LINK_TOO_FAR) return { title: `Your path for the new ${what} goes too far`,
     fix: 'Drag its bend points closer to our road, or choose "Automatic path" on the crossing card',
     detail: `A new piece of ${what} may run at most about ${(4 * MAX_REACH / 1000).toFixed(0)} km.`, basis: 'engine',
@@ -476,6 +485,7 @@ function along(path: readonly Readonly<WayPoint>[], d: number): WayPoint {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, d: Math.max(path[0].d, Math.min(path[path.length - 1].d, d)) };
 }
 
+const DENSE_CROPPED = 'OSM detail exceeds the bounded point budget';
 /** Retain ALL source bends. A dense way is cropped near the crossing, never straightened. */
 function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] {
   let path = input;
@@ -483,7 +493,7 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
     let centre = 0;
     for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;
     const start = Math.max(0, Math.min(path.length - MAX_POINTS + 16, centre - Math.floor((MAX_POINTS - 16) / 2)));
-    path = path.slice(start, start + MAX_POINTS - 16); diagnose('OSM detail exceeds the bounded point budget');
+    path = path.slice(start, start + MAX_POINTS - 16); diagnose(DENSE_CROPPED);
   }
   if (path.length < 2) return path;
   const out: WayPoint[] = [], total = path[path.length - 1].d - path[0].d;
@@ -551,7 +561,9 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       cached = { path: denseWay(roads.connectedCrossingPath(roadId, x, y, MAX_REACH), message => diagnostics.push(message)), diagnostics };
       paths.set(key, cached);
     }
-    for (const message of cached.diagnostics) diagnose(g, message);
+    // (a designed road of the project is drawn and checked by itself: its line, sampled every few metres,
+    // is only cropped around the crossing here)
+    for (const message of cached.diagnostics) if (!roads.isDesigned(roadId) || message !== DENSE_CROPPED) diagnose(g, message);
     return cached.path;
   };
 
@@ -1363,6 +1375,12 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     if (works.tieLength > 0) c.tieLength = works.tieLength;
     if (works.wallLength > 0) c.wallLength = works.wallLength;
   }
+  // A designed road of the project raised onto a bridge over us builds its own approaches (its own grade,
+  // held at the deck: project-evaluate.ts heldChecks); a class's ramp limits are not this crossing's.
+  for (const c of crossings) if (c.designed && c.geometry?.diagnostics) {
+    const left = c.geometry.diagnostics.filter(m => m !== RAMP_TOO_LONG && !m.startsWith(RAMP_TOO_HIGH));
+    if (left.length) c.geometry.diagnostics = left; else { delete c.geometry.diagnostics; delete c.geometry.clipped; }
+  }
   const issues: CrossingIssue[] = [];
   for (const c of crossings) for (const message of c.geometry?.diagnostics ?? []) {
     const text = diagnosticText(message, c);
@@ -1751,7 +1769,7 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
         const limit = rampLimit(c.cls, edge.z, edge.ground, foot.ground, run);
         for (let i = start + 1; i <= end; i++) {
           const a = g.road[i - 1], b = g.road[i], step = Math.hypot(b.x - a.x, b.y - a.y);
-          if (Math.abs(b.z - a.z) > step * limit + 0.01 && !g.diagnostics?.includes(RAMP_TOO_LONG)) report('Undiagnosed excessive approach gradient');
+          if (Math.abs(b.z - a.z) > step * limit + 0.01 && !c.designed && !g.diagnostics?.includes(RAMP_TOO_LONG)) report('Undiagnosed excessive approach gradient');
         }
       }
       if ((c.type === 'overbridge' || c.type === 'underpass') && Math.abs(length - (c.approachLength ?? 0)) > 0.01) report('Approach quantity differs from geometry');

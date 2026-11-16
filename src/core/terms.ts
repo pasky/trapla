@@ -48,6 +48,7 @@ export const JARGON: readonly [RegExp, string][] = [
   [/\bdwellings?\b/i, '"dwelling" (say "house")'],
   [/#\d/, 'object ID'],
   [/\bstation\b/i, '"station" (say "km")'],
+  [/polygon/i, '"polygon" (say "the straights between bends")'],
 ];
 /** Source names: allowed only in a violation's `rule` line and pricing tooltips. */
 export const SOURCE_NAMES: readonly [RegExp, string][] = [
@@ -70,7 +71,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
-type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
+type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
   | 'culverts' | 'houses' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
@@ -110,7 +111,9 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     label: `Moved beside our road (+${m(c.linkLength)} m of new ${c.type === 'diversion' ? 'track' : 'road'})`,
     explain: `The ${what} runs into our earthworks and comes back out on the same side, so it does not need to cross our road: that stretch is rebuilt beside the earthworks.${link}` };
   switch (c.type) {
-    case 'bridge': return { tag: 'under our bridge', label: 'Passes under our bridge',
+    case 'bridge': return c.above ? { tag: 'over our bridge', label: 'Passes over our bridge on its own bridge',
+      explain: `Our road is on a bridge here; the ${what} crosses high above it on a bridge of its own.` }
+      : { tag: 'under our bridge', label: 'Passes under our bridge',
       explain: `Our road crosses over the ${what} on a bridge; the ${what} stays as it is.` };
     case 'tunnel': return { tag: 'above our tunnel', label: 'Our road is in a tunnel below it',
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };
@@ -141,17 +144,20 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   }
 }
 
+/** A mission end's place name without its note in brackets ("Hostěradice (on to 0303)" → "Hostěradice"):
+ * what a motorway direction leads towards. */
+export const placeName = (label: string) => label.replace(/\s*\([^()]*\)\s*$/, '');
 /** The motorway's two directions: edited together, or each on its own (split) and joined again. */
 export const DIRECTIONS_TEXT = {
   heading: 'Edit',
   both: 'Both directions',
   towards: (place: string) => `Towards ${place}`,
   together: 'Dragging bends both directions: one road body, bridges side by side, twin tunnels.',
-  one: (place: string) => `Drag this direction (${place}). Where it would cross the other, Auto brings them together if your other choices allow it.`,
+  one: (place: string) => `Drag the direction towards ${place}. Where it would cross the other, Auto brings them together if your other choices allow it.`,
   separate: 'Each direction now has its own bends and heights. Where they run side by side at the same height they share one embankment and are priced as one.',
   join: 'Both directions joined on their shared line again. Undo brings back the separate changes.',
   bothTitle: 'Bend and raise both directions together',
-  oneTitle: (place: string) => `Bend this direction (${place}); Auto may move the other alongside it`,
+  oneTitle: (place: string) => `Bend the direction towards ${place}; Auto may move the other alongside it`,
   apart: 'Changed stretches',
   following: 'Both follow this bend',
   resetFollow: 'Reset',

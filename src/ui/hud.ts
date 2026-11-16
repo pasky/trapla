@@ -7,7 +7,7 @@ import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
-import { aloneText, listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
+import { aloneText, billChangeText, lineBills, listProjectIssues, projectBadge, unpricedText, type LineBill, type ListedIssue } from './project-issues';
 import { trainsPerDay } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
@@ -100,6 +100,11 @@ function fold(id: string, title: string, body: string, extra = '') {
     <div class="fold-body">${body}</div></section>`;
 }
 
+/** What a live ≈ price leaves out until the drag pauses (core/preview-window.ts, evaluate.ts preview). */
+const ESTIMATE = {
+  short: '≈ Quick estimate: noise, walls and knock-on changes are counted when you pause.',
+  long: 'While you drag, the price is a quick estimate: noise walls, retaining walls and rebuilt side roads are left out where the road moved, and what the change does further along the road (heights, bridges, tunnels) comes with the full count when you pause. On a long road that can be a few per cent.',
+};
 const AUTO_LONG = 'Auto: the cheapest legal heights, redone after every change. Drag the black line in the profile up or down to pin a height there; pins stay at their km.';
 const MANUAL_LONG = 'By hand: drag the ◆ height points in the profile; double-click the line adds one, right-click deletes. Back to Auto replaces them (Undo brings them back).';
 
@@ -156,8 +161,10 @@ export class Hud {
     this.$('score').classList.toggle('preview', pending);
     // no total: say which change holds it back, and keep what IS priced in view (each road alone, never added up)
     const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups) : '';
-    this.$('perkm').textContent = !priced && unpriced ? `${unpricedText(result!.cost.unpriced, ours, names, groups)}${others ? `. ${others}` : ''}` : this.goalText;
-    this.$('perkm').title = others ? 'Each road priced as if it were the only change. Not added up: roads that affect each other can cost more or less together.' : '';
+    // a live ≈ price says what it does not count yet (QA: the whole D3 moved by 0.9 bn when the drag settled)
+    const estimate = pending && (liveTotal !== null || (!priced && !!ownPrice?.approx));
+    this.$('perkm').textContent = estimate ? ESTIMATE.short : !priced && unpriced ? `${unpricedText(result!.cost.unpriced, ours, names, groups)}${others ? `. ${others}` : ''}` : this.goalText;
+    this.$('perkm').title = estimate ? ESTIMATE.long : others ? 'Each road priced as if it were the only change. Not added up: roads that affect each other can cost more or less together.' : '';
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {
@@ -193,6 +200,11 @@ export class Hud {
     this.$('delta').textContent = Math.abs(delta) >= 5e5 ? `${pending ? '≈ ' : ''}${delta < 0 ? '−' : '+'}${czk(Math.abs(delta))}` : '';
     this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
     if (!pending) this.lastTotal = priced ? total : null;
+    // an edit that changed more than one road's bill (a side road rebuilt under our bridge): which, and why
+    const bills = !pending && priced ? lineBills(result!, ours, names, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups) : null;
+    const why = bills && this.baselineBills && delta ? billChangeText(this.baselineBills, bills, v => czk(v).replace(' CZK', '')) : '';
+    this.$('delta-why').textContent = why; this.$('delta-why').hidden = !why;
+    if (!pending) this.lastBills = bills;
     // no best while the project is not priced: a stored best is not comparable to an unpriced change
     this.$('best').style.display = priced ? '' : 'none';
     const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
@@ -212,6 +224,9 @@ export class Hud {
   private goalText = '';
   /** total before the edit in progress (the change chip compares against it) */
   private baseline: number | null = null;
+  /** each road's bill before the edit in progress, and after the last priced result */
+  private baselineBills: Map<string, LineBill> | null = null;
+  private lastBills: Map<string, LineBill> | null = null;
   private editOpen = false;
   private lastTotal: number | null = null;
   private $ = <T extends HTMLElement = HTMLElement>(id: string) => this.root.querySelector<T>(`#${id}`)!;
@@ -236,6 +251,7 @@ export class Hud {
           <button type="button" id="chip-viol" class="chip" title="Show the first one"></button>
           <span id="best" class="chip best"></span>
         </div>
+        <div id="delta-why" class="sub delta-why" hidden title="What the last change did to each road's own bill"></div>
         <div id="perkm" class="sub"></div>
       </section>
       <div id="context" class="context"></div>
@@ -432,7 +448,8 @@ export class Hud {
     valid.className = 'badge ' + (preview ? 'preview' : r.valid ? 'ok' : 'bad');
     valid.title = preview ? 'Approximate while you drag; checked when you pause or let go'
       : 'Valid: every rule passes and the travel time is met. Only a valid design\'s cost counts.';
-    this.$('perkm').textContent = this.goalText;
+    this.$('perkm').textContent = preview ? ESTIMATE.short : this.goalText;
+    this.$('perkm').title = preview ? ESTIMATE.long : '';
     const tOk = r.travelMin <= this.sc.maxTravelMin;
     const time = this.$('chip-time');
     time.className = `chip ${tOk ? 'ok' : 'bad'}`;
@@ -546,7 +563,7 @@ export class Hud {
 
   /** an edit started (a drag counts once, from its start); the change chip compares with the total before it */
   noteEdit(committed: boolean) {
-    if (!this.editOpen) { this.baseline = this.lastTotal; this.editOpen = true; }
+    if (!this.editOpen) { this.baseline = this.lastTotal; this.baselineBills = this.lastBills; this.editOpen = true; }
     if (committed) this.editOpen = false;
   }
 }

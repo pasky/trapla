@@ -227,6 +227,7 @@ button.chip:disabled { opacity: 1; cursor: default; }
 .chip.best { font-weight: 500; }
 .chip.best button { padding: 0 6px; font-size: 11px; border-radius: 9px; margin-left: 2px; }
 .card.score .sub { margin: 0; }
+.card.score .delta-why { margin: 3px 0 2px; color: #3b4450; }
 .invalid-note[hidden] { display: none; }
 .context { display: flex; flex-direction: column; gap: 8px; }
 .context:empty { display: none; }
@@ -362,7 +363,9 @@ button.primary:hover:not(:disabled) { background: #1a5fd0 !important; }
 button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choice button.on:hover:not(:disabled), .seg.mini button.on:hover:not(:disabled) { background: #1a5fd0; color: #fff; }
 /* map overlay symbols stay under the map's own controls */
 #overlay { z-index: 1; }
-#brand, #editbar, #viewbar, #legend, #attrib, #status, #noise-legend { z-index: 2; }
+#brand, #editbar, #viewbar, #legend, #attrib, #status, #noise-legend, #photo-note { z-index: 2; }
+#photo-note { position: absolute; right: 10px; top: 44px; max-width: min(380px, calc(100% - 24px)); background: rgba(255,255,255,0.92); border-radius: 6px; padding: 4px 8px; font-size: 12px; color: #1d232a; pointer-events: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+#photo-note[hidden] { display: none; }
 #overlay[data-zoom=far] .build-annotation.kept-building, #overlay[data-zoom=far] .build-annotation.bought-building,
 #overlay[data-zoom=far] .build-annotation.selected-building { font-size: 0; width: 10px; height: 10px; padding: 0; }
 
@@ -383,6 +386,7 @@ button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choic
   /* Build goes under the view buttons, the intro under Build */
   #view .route-bar { top: 78px; }
   #intro { top: 112px; }
+  #photo-note { top: 112px; }
 
   #legend { bottom: 22px; font-size: 10px; }
   #attrib { font-size: 9px; max-width: 60%; }

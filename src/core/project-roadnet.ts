@@ -15,18 +15,29 @@ import type { RoadNet } from './roadnet';
 
 export type SourceWays = ReadonlyMap<string, number>;
 /** Map class of a designed road of each legal class (ROAD_CLASSES key). */
-const MAP_CLASS: Record<string, string> = { I: 'primary', II: 'secondary', III: 'tertiary', local: 'unclassified' };
+const MAP_CLASS: Record<string, string> = { I: 'primary', II: 'secondary', III: 'tertiary', local: 'unclassified', service: 'service', track: 'track' };
 /** Plan line sample spacing of a designed road in the network, m (crossings are found on its chords). */
 const LINE_STEP = 5;
 
-/** Designed roads that can be crossed: side roads with design rules, in project order (their slots). */
+/** Designed roads that can be crossed, in project order (their slots): side roads with design rules, new or
+ * rebuilt railways, and new motorways (a paired motorway once, as its forward direction: its common line). */
 export function designedSlots(design: ProjectDesign): RouteDesign[] {
-  return design.routes.filter(r => r.kind === 'road' && r.role !== 'mission' && r.alignment.kind === 'pi'
-    && r.specification.kind === 'road' && r.specification.crossSection !== 'existing' && MAP_CLASS[r.specification.legalClass] !== undefined);
+  return design.routes.filter(r => r.role !== 'mission' && mapClass(design, r) !== undefined);
+}
+/** The map class a designed road is drawn as in other roads' networks (data/urban.ts ROAD_CLASSES). */
+function mapClass(design: ProjectDesign, r: RouteDesign): string | undefined {
+  if (r.kind === 'railway') return r.alignment.kind === 'pi' && r.specification?.kind === 'railway' ? (r.specification.tracks === 2 ? 'railway2' : 'railway') : undefined;
+  if (r.kind === 'motorway') {
+    const corridor = design.corridors.find(c => c.children.forward === r.id);
+    // (one with separate stretches is not one line: not drawn yet, its crossings stay 'roads cross here')
+    return corridor?.mode === 'paired' && corridor.spine.kind === 'pi' && !corridor.stretches?.length ? 'motorway' : undefined;
+  }
+  return r.kind === 'road' && r.alignment.kind === 'pi' && r.specification.kind === 'road' && r.specification.crossSection !== 'existing'
+    ? MAP_CLASS[r.specification.legalClass] : undefined;
 }
 function rank(r: RouteDesign): number {
-  if (r.kind !== 'road') return 0;
-  if (r.role === 'mission') return 1;
+  if (r.role === 'mission') return 0;
+  if (r.kind !== 'road') return 1;
   return r.specification.kind === 'road' ? 2 + Math.max(0, ['I', 'II', 'III'].indexOf(r.specification.legalClass)) + (r.specification.legalClass === 'local' ? 3 : 0) : 6;
 }
 /** Does `owner` build the crossings with `other` (see the header)? */
@@ -59,10 +70,19 @@ export function lineStation(xy: readonly number[], x: number, y: number): number
 }
 /** A road's ends as built: an end on another designed road follows that road's current line. */
 export type ResolvedEnds = { a?: { x: number; y: number }; b?: { x: number; y: number } } | undefined;
-/** A designed road's plan line from its bends (no evaluation needed): local metres, [x0, y0, x1, y1, …]. */
-export function planLine(route: RouteDesign, ends?: ResolvedEnds, step = LINE_STEP): number[] {
-  if (route.alignment.kind !== 'pi' || route.specification.kind !== 'road' || route.specification.crossSection === 'existing') return [];
-  const al = buildAlignment(ends?.a ?? route.endpoints.a.position, ends?.b ?? route.endpoints.b.position, route.alignment.pis,
+/** A designed road's plan line from its bends (no evaluation needed): local metres, [x0, y0, x1, y1, …]. A
+ * railway's from its bends with railway curves; a paired motorway's (with `design`) its common line. */
+export function planLine(route: RouteDesign, ends?: ResolvedEnds, step = LINE_STEP, design?: ProjectDesign): number[] {
+  const corridor = route.kind === 'motorway' ? design?.corridors.find(c => c.children.forward === route.id || c.children.reverse === route.id) : undefined;
+  let al;
+  if (corridor) {
+    if (corridor.mode !== 'paired' || corridor.spine.kind !== 'pi' || route.specification.kind !== 'motorway') return [];
+    al = buildAlignment(corridor.endpoints.a.position, corridor.endpoints.b.position, corridor.spine.pis, horizontalRules(route.specification.designSpeed, 'D27.5'));
+  } else if (route.kind === 'railway' && route.alignment.kind === 'pi' && route.specification.kind === 'railway') {
+    al = buildAlignment(route.endpoints.a.position, route.endpoints.b.position, route.alignment.pis,
+      horizontalRules(route.specification.designSpeed, route.specification.tracks === 2 ? 'R2' : 'R1'));
+  } else if (route.alignment.kind !== 'pi' || route.specification.kind !== 'road' || route.specification.crossSection === 'existing') return [];
+  else al = buildAlignment(ends?.a ?? route.endpoints.a.position, ends?.b ?? route.endpoints.b.position, route.alignment.pis,
     horizontalRules(route.specification.designSpeed, route.specification.crossSection));
   const st = station(al, step), xy: number[] = [];
   for (let i = 0; i < st.n; i++) xy.push(st.x[i], st.y[i]);
@@ -174,11 +194,12 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
   if (!cuts.length && !drawn.some(Boolean)) return { roads, designed: new Map(), lines: new Map() };
   const ends = slots.map((r, k) => drawn[k] ? endsOf(r) : undefined);
   const key = JSON.stringify([cuts.map(c => [c.way, c.d0.toFixed(2), c.d1.toFixed(2), c.slot]),
-    slots.map((r, k) => drawn[k] ? [r.id, r.endpoints, ends[k], r.alignment.kind === 'pi' ? r.alignment.pis : null, r.specification] : r.id)]);
+    slots.map((r, k) => drawn[k] ? [r.id, r.endpoints, ends[k], r.alignment.kind === 'pi' ? r.alignment.pis : null, r.specification,
+      r.kind === 'motorway' ? design.corridors.find(c => c.children.forward === r.id && c.mode === 'paired') ?? null : null] : r.id)]);
   const at = cache.findIndex(c => c.key === key && c.base === roads);
   if (at >= 0) { const [hit] = cache.splice(at, 1); cache.unshift(hit); return hit.net; }
-  const lines = slots.map((r, k) => drawn[k] ? planLine(r, ends[k]) : []);
-  const net: EditedNetwork = { roads: roads.edited(cuts, slots.map((r, k) => ({ cls: MAP_CLASS[(r.specification as { legalClass: string }).legalClass], xy: lines[k] }))),
+  const lines = slots.map((r, k) => drawn[k] ? planLine(r, ends[k], LINE_STEP, design) : []);
+  const net: EditedNetwork = { roads: roads.edited(cuts, slots.map((r, k) => ({ cls: mapClass(design, r)!, xy: lines[k] }))),
     designed: new Map(slots.flatMap((r, k) => drawn[k] ? [[roads.wayCount + k, r.id] as const] : [])),
     lines: new Map(slots.flatMap((r, k) => drawn[k] ? [[r.id, lines[k]] as const] : [])) };
   cache.unshift({ key, base: roads, net }); cache.length = Math.min(cache.length, CACHE);

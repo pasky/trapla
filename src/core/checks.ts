@@ -59,8 +59,9 @@ export interface Violation {
   /** how much the fix asks for (m); of nearby entries merged into one, the largest is kept */
   size?: number;
   horizontal?: HorizontalConstraint;
-  /** A missed crossing clearance, independent of the road/railway wording (Auto separation retry). */
-  clearance?: 'above' | 'either';
+  /** A missed crossing clearance, independent of the road/railway wording (Auto separation retry):
+   * `water` a stream neither high enough over its culvert nor deep enough under it in a tunnel. */
+  clearance?: 'above' | 'either' | 'water';
   /** what the violation is about, so the UI can select it and offer the fix as a button */
   target?: ViolationTarget;
 }

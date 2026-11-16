@@ -477,6 +477,36 @@ What exists (details and commands in `README.md`):
   centre route is 9.035 bn. Spatial and per-km checks, uncertainty and reproducible seeds are below. These
   are local-search results, not proven minima; re-check as players find better designs.
 
+### Final-sweep P1s: project roads take over, new lines crossed, merged crossings split (2026-11-16)
+
+QA final sweep (docs/playtest-findings.md, main e24df59), each repro a test (edited-network, new-line-crossings,
+merged-crossings; the QA's own projects in tests/fixtures/qa-final/), `scripts/eval-project.ts` evaluates any
+saved project in Node as the full worker does.
+- **The player's road takes over.** One of our automatic reroutes within the 10 m clearance of another road's
+  works (INDEPENDENCE_SCREEN) is planned again clear of them: evaluateProject runs a second pass with that
+  road's land and works as obstacles of its reroutes (EvalOptions.keepClear, link problem 'works'). Any road's
+  end on an old road another road changes meets it as at a junction (its own way, the way its end is anchored
+  on, ways meeting at its end); a junction leaves the way it meets whole (no 'two roads change the same old
+  road'). Rebuilt service roads and tracks are drawn in the higher road's network too, a designed road keeps
+  its own crossing (never merged), roads one above the other as built are no contact. D11 audit
+  (`scripts/reroute-takeover-audit.ts`): unpriced 112 → 47 of 292; the rest is mostly the rebuilt road's own
+  body near our embankment (a real conflict with its fix) and closures (detours are not routed).
+- **New lines across ours.** New or rebuilt railways (ROAD_CLASSES railway / railway2: formation width,
+  SPOŽES route-km and H02 bridge prices, 12.5 ‰) and new paired motorways are drawn in the network of the
+  line that outranks them (mission first, then motorways and railways, then side roads); their kernels follow
+  the owner's crossing (holds). A held road high above the owner's bridge (both crossing a valley) passes over
+  it on its own bridge (CrossingResult.above). A designed road raised over us builds its own approaches. An
+  embankment whose slope never meets the hillside (sections `open`) is a bridge. Auto keeps a grade that
+  passes under a motorway / railway there through support lifts, and lowers the rest of the way where that is
+  nearer than bridging.
+- **Merged crossings.** A way merged into another way's crossing (within 30 m) that our earthworks still bury
+  is a crossing of its own (evaluate's split retry, EvalOptions.splitWays): whole D3 dragged at km 30 VALID.
+- Frozen D11 bills unchanged (no model bump needed); the synthetic town's dual carriageway is now cut and
+  joined to the junction instead of buried (town.test.ts).
+- Known: a closure whose detour runs over a road another road changes still unprices both (no detour routing);
+  the owner's crossing of a designed road is chosen from its ground (a held road preferring an embankment
+  under our bridge misses its band); piers of one bridge over another are not checked.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
@@ -1164,3 +1194,15 @@ Known issues: far changes left (whole D3 4 of 16 moves, whole D35 1 of 10) come 
 engineering on a shifted station grid (support lifts, overbridge ramp checks, reroutes, culverts); a chain of
 straights each a little shorter than the last leaves one long block (the whole D35's last 9.7 km), which an edit
 anywhere in it re-solves to B; interchange ramps are not modelled (the ends say so on their card).
+
+## A drag on the railway (QA final sweep P1 2, 2026-11-16)
+
+A 50 px drag at km 6 of the Královec railway left two streams 4 km away in a cutting and a track with "lower
+our railway by 0.1 m" (research/57). The railway was already solved in blocks; what broke: the 25 m search
+band around the ground (a 12.5 ‰ line lies far from it: a band line that misses a clearance is now weighed
+against the wide band's, railways only), streams never retried like rivers (now), the height table's envelope
+leaving out B's correction (the same design billed differently by evaluation order: fixed), and a track too
+steep for a bridge over our cutting (the "0.1 m" was the text's floor; Auto now asks for our bridge over a
+way nothing else could carry). The drag: VALID 10.88 bn; the starter 10.55 → 10.59 bn; road bills unchanged.
+`scripts/edit-locality.ts` has a railway suite (reach p90 7.4 km, nothing beyond 10 km).
+Known issues: some random railway edits still leave a problem in the edited stretch itself (research/57 "Left").
