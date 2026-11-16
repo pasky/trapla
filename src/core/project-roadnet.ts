@@ -29,7 +29,8 @@ function mapClass(design: ProjectDesign, r: RouteDesign): string | undefined {
   if (r.kind === 'railway') return r.alignment.kind === 'pi' && r.specification?.kind === 'railway' ? (r.specification.tracks === 2 ? 'railway2' : 'railway') : undefined;
   if (r.kind === 'motorway') {
     const corridor = design.corridors.find(c => c.children.forward === r.id);
-    return corridor?.mode === 'paired' && corridor.spine.kind === 'pi' ? 'motorway' : undefined;
+    // (one with separate stretches is not one line: not drawn yet, its crossings stay 'roads cross here')
+    return corridor?.mode === 'paired' && corridor.spine.kind === 'pi' && !corridor.stretches?.length ? 'motorway' : undefined;
   }
   return r.kind === 'road' && r.alignment.kind === 'pi' && r.specification.kind === 'road' && r.specification.crossSection !== 'existing'
     ? MAP_CLASS[r.specification.legalClass] : undefined;

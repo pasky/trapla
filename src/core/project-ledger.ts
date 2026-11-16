@@ -94,13 +94,14 @@ const boxGap = (a: Chunk, b: Chunk) => Math.max(0, a.minX - b.maxX, b.minX - a.m
  * smaller road), and by how much; null: they keep the clearance everywhere. */
 function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?: number; reroutes: [boolean, boolean] } | null {
   let found = false, worst = -Infinity, at: { x: number; y: number } | undefined;
-  const reroutes: [boolean, boolean] = [false, false];
+  /** every touching pair has a reroute piece of road a / of road b */
+  const reroutes: [boolean, boolean] = [true, true];
   for (const p of a) for (const q of b) if (boxGap(p, q) <= 0) for (const s of p.items) for (const t of q.items) {
     const r = s.r + t.r, d = segmentSegment(s, t);
     if (d >= r) continue; // NaN/Infinity fail closed
     found = true;
-    if (s.reroute) reroutes[0] = true;
-    if (t.reroute) reroutes[1] = true;
+    if (!s.reroute) reroutes[0] = false;
+    if (!t.reroute) reroutes[1] = false;
     const need = r - d, narrow = s.r <= t.r ? s : t;
     if (Number.isFinite(need) && need > worst) { worst = need; at = { x: (narrow.ax + narrow.bx) / 2, y: (narrow.ay + narrow.by) / 2 }; }
   }
@@ -255,7 +256,7 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     const touch = touches(ea, eb);
     if (!touch) continue;
     const { reroutes, ...where } = touch;
-    // an automatic reroute among the works too close: its road may plan it again clear of the other's
+    // only automatic reroutes of one road among the works too close: that road may plan them again clear of the other's
     const keepClear = (k: number) => (at.length ? (k === a ? away(raw[b]) : away(raw[a])).flatMap(c => c.items) : raw[k === a ? b : a])
       .map(({ ax, ay, bx, by, r }) => ({ ax, ay, bx, by, r: r + S.clearance / 2 })); // (the reroute's own half of the clearance)
     const yields = ([[a, reroutes[0]], [b, reroutes[1]]] as const).filter(([, y]) => y).map(([k]) => ({ routeId: routes[k].routeId, keepClear: keepClear(k) }));

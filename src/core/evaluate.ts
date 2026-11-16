@@ -1109,7 +1109,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         if (c.below !== undefined && z0[k] <= c.g - c.below) {
           // passing under it: kept there by whatever comes next (support lifts and their re-solve)
           const i0 = Math.min(n - 2, Math.floor(c.s / ds));
-          for (const i of [i0, i0 + 1]) apOpt.maxH[i] = Math.min(Number.isNaN(apOpt.maxH[i]) ? Infinity : apOpt.maxH[i], c.g - c.below - ground[i]);
+          for (const i of [i0, i0 + 1]) for (const cap of [maxH, apOpt.maxH]) cap[i] = Math.min(Number.isNaN(cap[i]) ? Infinity : cap[i], c.g - c.below - ground[i]);
           return;
         }
         if (c.below !== undefined && rawRoadX.some((road) => Math.abs(road.s - c.s) < 1e-6 && crossingChoice(road.way, crossingOverrides) === 'overbridge')) return;

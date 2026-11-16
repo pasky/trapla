@@ -329,7 +329,10 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   // road plans its reroutes again clear of the player's road (once; what is still too close stays reported).
   const yields = new Map<string, KeepClear>();
   const first = evaluateProjectOnce(ctx, snapshot, new Map(), yields);
-  return yields.size ? evaluateProjectOnce(ctx, snapshot, yields) : first;
+  if (!yields.size) return first;
+  // (kept where it leaves fewer things unsettled between the roads)
+  const again = evaluateProjectOnce(ctx, snapshot, yields), unsettled = (r: ProjectResult) => r.issues.filter(i => i.check === 'not-checked').length;
+  return again.cost.total !== null || unsettled(again) < unsettled(first) ? again : first;
 }
 function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, keepClear: ReadonlyMap<string, KeepClear>,
   yields?: Map<string, KeepClear>): ProjectResult {
@@ -389,11 +392,14 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
     // (high above the owner's bridge on its own bridge: held above it instead, where that misses fewer holds)
     const turned = proposal.route.legacy && overBridge(proposal.route.legacy, holds);
     if (turned) {
+      // (a motorway's two directions are evaluated once per corridor: that evaluation is redone)
+      const corridorId = corridorOfRoute(design, route.id)?.id, kept = corridorId ? corridorCache.get(corridorId) : undefined;
+      if (corridorId) corridorCache.delete(corridorId);
       const again = routeProposal(ctx, snapshot, route, false, {}, corridorCache, ends, turned.flatMap(heldBands), endsOf, routeClear(route));
       if (again.route.legacy && heldChecks(again.route.legacy, turned, route.kind).violations.length < heldChecks(proposal.route.legacy!, holds, route.kind).violations.length) {
         proposal = again; holds = turned;
         for (const h of turned) if (h.over) h.crossing.above = true;
-      }
+      } else if (corridorId && kept) corridorCache.set(corridorId, kept);
     }
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
     const own = proposal.route.legacy;
@@ -826,6 +832,8 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
 interface Hold { x: number; y: number; min: number; max: number; owner: RouteDesign; crossing: CrossingResult;
   /** above the owner's bridge, on its own bridge (CrossingResult.above), not under it */
   over?: true;
+  /** the owner's grade where they cross, m */
+  z: number;
   /** on its bridge over the owner: half the deck's length along the held road */
   deck?: number;
   /** on its bridge over the owner: the deck's two ends, held at the deck's own height there */
@@ -858,7 +866,7 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readon
   at: { x: number; y: number; i: number } = c): Hold | null {
   if (line.length < 4) return null;
   const z = own.grade[at.i];
-  const band = (min: number, max: number): Hold => ({ x: at.x, y: at.y, min, max, owner, crossing: c });
+  const band = (min: number, max: number): Hold => ({ x: at.x, y: at.y, min, max, owner, crossing: c, z });
   switch (c.type) {
     // under our bridge: low enough for the clearance the bridge was built with; or high above it on its own
     // bridge (where both cross a valley on bridges: overBridge)
@@ -895,7 +903,7 @@ function gradeAt(r: Result, s: number): number {
 function overBridge(r: Result, holds: readonly (Hold & ReturnType<typeof placedHold>)[]) {
   const high = holds.filter(h => h.crossing.type === 'bridge' && !h.over && h.s >= 0 && h.s <= r.length
     && gradeAt(r, h.s) > h.max + HOLD_SLACK && r.kind[Math.round(h.s / r.ds)] === KIND.bridge);
-  return high.length ? holds.map(h => high.includes(h) ? { ...h, min: h.max + CROSSING_RULES.overHeight + clearOver(h.owner), max: Infinity, over: true as const } : h) : null;
+  return high.length ? holds.map(h => high.includes(h) ? { ...h, min: h.z + clearOver(h.owner), max: Infinity, over: true as const } : h) : null;
 }
 /** A held road that misses its crossing's height (By hand), and the part of it the owner's bridge over
  * the owner already builds (its deck and ramps are billed with that crossing). */
