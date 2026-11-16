@@ -1180,6 +1180,8 @@ async function main() {
         });
       }
     },
+    // placing a new line: a click beside the map says so (never nothing at all)
+    onPickNothing: () => { if (buildTool.active) buildTool.place({ ok: false, why: 'That is beside the map: click on the map itself.' }); },
     onDoublePick: (x, y) => { if (!store.read() || routeAt(lastClient.x, lastClient.y, 10)) return; select({ kind: 'bend', i: insertBend(x, y, true) }); },
     // a drag from the road always bends it (a click there still inspects the nearest thing); so does a
     // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch

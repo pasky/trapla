@@ -33,6 +33,8 @@ import { CATEGORIES } from '../core/data/categories';
 export interface ViewEvents {
   /** a click on the map (not a drag) at ground point x, y */
   onPickTerrain?: (x: number, y: number, clientX: number, clientY: number) => void;
+  /** a click beside the map (beyond its edge, or the sky) */
+  onPickNothing?: () => void;
   /** a double-click on the ground */
   onDoublePick?: (x: number, y: number) => void;
   /** is the road under this screen point? (a press there drags a new bend instead of panning) */
@@ -1561,7 +1563,7 @@ export class View {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       if (down.btn === 0 && moved < 5) {
         const p = this.pick(e.clientX, e.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY); else this.ev.onPickNothing?.();
       }
       down = null;
     });
@@ -1606,7 +1608,7 @@ export class View {
         stop();
         if (started) { grab.end(); return; }
         const p = this.pick(ev.clientX, ev.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY); else this.ev.onPickNothing?.();
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);
@@ -1649,7 +1651,7 @@ export class View {
         stop();
         if (i !== null) { this.dragging = null; this.ev.onPiDragEnd?.(i); return; }
         const p = this.pick(ev.clientX, ev.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY); else this.ev.onPickNothing?.();
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);
