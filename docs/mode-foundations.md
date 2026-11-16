@@ -175,7 +175,30 @@ road width. Increments, each committed green:
 - Rendering: two carriageways (TP 133 markings), grass median with concrete barrier, twin decks (open
   median), one portal per tube.
 
-**Split / rejoin (scored).** HUD "Both directions / Towards A / Towards B". Split = one undoable edit:
+**One direction on its own: separate stretches (scored, 2026-11-16, playtest P0 #3 / P1 #11).**
+Replaces the whole-route split for player edits (old saves with `mode: 'independent'` still load and price as
+below). The Edit switch ("Both directions / Towards A / Towards B", on the motorway's own card and in the
+Motorway section) is a selection only (`ActiveRouteStore.oneDirection`). A direction is shown as the spine with
+its own bends in its stretches (`directionDesign`; its carriageway is that line's offset, so the line stays
+continuous). Its first plan edit (`replaceDirectionFromDesign` → `core/motorway-stretches.ts editStretches`)
+records a `SeparateStretch` on the paired corridor: spine bends [k0, k1) replaced by the direction's own line,
+[a, b] where it leaves the spine (+ its easing room). Pins / structure / wall choices go to the direction's own
+line inside, to the shared body outside; crossings and speed are the motorway's; By hand is set for both.
+Evaluation (`evaluateSeparated`): the spine's ONE D 27.5 evaluation (memoised per terrain, so a one-direction
+drag never redoes it); joins at the nearest allowed spine stations outside [a, b] (on a straight, `JOIN_RULES`
+editor tolerances, moved out until each carriageway's curve and easing fit before them); between the joins each
+direction a D 27.5-1 kernel run along its carriageway (A→B; the reverse one mirrored, its median on the right,
+`joinedSide: 'R'`), the shown line's arcs fixed. A direction without an own line there keeps the shared heights;
+one with an own line keeps them while within `SIDE_BY_SIDE` = 30 m (PROVISIONAL) of the other and is Auto
+between (the search continues the shared grade at both ends, its grade change there limited to the room its
+curve has). Bill = spine cost parts outside the stretches + both carriageways − `splitLedger` (same-way pairing)
+− houses both take. Results are composed on the spine's stations per direction (`core/result-stitch.ts`: lists,
+bend numbers and kilometres in problem texts remapped); drawn: the spine's slices + the carriageways.
+Both-direction edits keep stretches away from the change and drop those whose boundary bends it touches.
+Known limits: E0 reroutes aimed at a crossing inside a stretch are not re-aimed; the noise band of the shared
+line is shown while both directions are edited; the shared body's mass haul is split by cell.
+
+**Split / rejoin (old saves).** HUD "Both directions / Towards A / Towards B". Split = one undoable edit:
 each direction gets the exact offset bends (radii R ± 6.875 m, never below its own Auto radius) and the
 shared grade line mapped to its chainage (By hand). Each is evaluated as `D27.5-1` (half formation incl. half
 median, 60 % SPK norm = SPK "half of a divided road", ½ bridge row per m², one tube). `splitLedger` then
@@ -225,6 +248,10 @@ Královec, research/38; `d11-railway` retired); `railTrackOurs` (tie-in / rebuil
 (a rebuilt stretch's old track) in evaluate.ts / footprint.ts; autoprofile 0.5 m grid for gentle limits.
 Build flow done (`ui/mode-kinds.ts`: MOTORWAY_BUILD via `addMotorwayCorridor`, RAIL_BUILD, RAIL_LINE via
 `promoteGroundRailway`; the worker receives mapped rail lines with `source-ways`).
+
+Then (2026-11-16, playtest session 1): separate stretches replace the whole-route split for player edits (see
+"One direction on its own" above); `scripts/stretch-play.mjs` / `stretch-check.ts` play and check it;
+screenshot 140; source picking in 20 m pieces; crossing words name our railway / motorway.
 
 Pending:
 1. **Noise contract** (noise-walls-seams; its model number follows our 21): move motorway (two directional sources, half

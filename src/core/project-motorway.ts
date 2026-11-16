@@ -601,7 +601,8 @@ export function rejoinStretch(project: ProjectDesign, corridorId: string, stretc
 }
 
 /** Crowns of the two directions closer than this keep one height (two slopes between them would clash):
- * the gap two 1 : 1.5 slopes take for 10 m of height difference. Editor choice, PROVISIONAL. */
+ * the gap two 1 : 2 fill slopes (sections.ts DEFAULT_SLOPES) take for 7.5 m of height difference. Editor
+ * choice, PROVISIONAL (no design rule found for how far apart twin carriageways may differ in height). */
 const SIDE_BY_SIDE = 30;
 /** the Auto search's knot spacing (autoprofile.ts default) and the shortest own-heights stretch it can
  * shape (two knots and their curves); shorter: the shared heights throughout */

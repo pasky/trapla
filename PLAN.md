@@ -256,6 +256,18 @@ What exists (details and commands in `README.md`):
   unpriced (no interchanges); a rebuilt railway stretch is unpriced until taking up the old track is priced.
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
   ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
+- Playtest session 1 (motorway-rail findings): choosing one motorway direction no longer changes the design
+  (P0 #3). Its first drag makes it run on its own only over a *separate stretch* (`core/motorway-stretches.ts`):
+  from a join on a straight of the shared line (clear of arcs and their easing, structures, crossings and
+  vertical curves) before the change to one after it. Outside, both directions stay the ONE paired D 27.5
+  evaluation (reused while only one direction is edited); inside, each direction is its own D 27.5-1 carriageway,
+  keeping the shared heights while the two run within 30 m of each other (PROVISIONAL) and Auto heights between
+  (the search starts and ends on the shared line's grade: `autoprofile` start/end grade, `evaluate`
+  `fixedProfile`). The bill: the shared body's cost parts outside, both carriageways inside, what they share
+  once (`splitLedger`). D3, one direction 50–300 m off between bends 3 and 4: +0.3–1.6 bn CZK, VALID, no
+  problems outside the stretch; Join restores the paired price exactly. The Edit switch is on the motorway's
+  own card (P1 #11). Mapped lines are picked on the ground under them in 20 m pieces (P1 #14), crossing cards
+  name "our railway" / "our motorway" (P1 #10).
 
 ### Travel-time target X and traffic Y
 
