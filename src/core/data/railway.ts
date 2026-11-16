@@ -1,3 +1,4 @@
+import { atan } from '../detmath';
 /** Sourced facts and explicitly provisional conventional-track inputs; research/23-railway-evidence.md.
  * None enables a scored railway or replaces current ČSN/SŽ clearance/transition/operations checks.
  */
@@ -95,6 +96,16 @@ export const RAIL_MAX_GRADIENT = 0.0125;
  * area this long (turnouts and station tracks). Within it the mapped railway is the track we join, not an
  * obstacle to bridge or keep clear of; beyond it the existing line keeps its own space. */
 export const RAIL_TIE_IN_M = 300;
+/** A new line joins or leaves a station's tracks through a turnout: the steepest it can branch off them is
+ * the turnout's angle. The common Czech standard turnout J60-1:12-500 branches at 4.763642° (= atan 1/12;
+ * DT Prostějov geometry table as quoted in a ČVUT diploma thesis, research/38 §5); flatter (slimmer)
+ * turnouts branch at less. Used as the largest angle between a railway's end straight and the station
+ * tracks it ties into. */
+export const TURNOUT_ANGLE_RAD = atan(1 / 12);
+/** Station tracks' direction at a tie-in: principal axis of the mapped railway cells within this radius of
+ * the end (game measurement on the 5 m raster; at Trutnov hl.n. and Královec stable within 1° for 60–150 m). */
+export const STATION_AXIS_RADIUS_M = 100;
+
 /** PROVISIONAL game assumption (no source): where a new line joins or leaves an existing track along the
  * way, the track's own space is shared over about a turnout's length beyond the last parallel station. */
 export const RAIL_TURNOUT_M = 50;

@@ -53,5 +53,11 @@ export const MOTORWAY_MARKINGS = { edgeLine: 0.25, laneLine: 0.125, dash: 6, gap
  * - `lightSpeedRise`: light vehicles' lane speeds in the motorway noise source rise by the limit's +20 km/h.
  *   PROVISIONAL extrapolation: the Czech manual's lane speeds are measured under 130; its emission formula is
  *   used beyond its data (CNOSSOS-EU does the same above 130; its rolling term would give +1.9 dB for
- *   130 → 150). Counted as if 150 applied all day and night: an upper bound. */
-export const MOTORWAY_150_PILOT = { limit: 150, designSpeed: 130, signsPerM: 54.4e6 / 47_000, lightSpeedRise: 20 } as const;
+ *   130 → 150). Counted as if 150 applied all day and night: an upper bound.
+ * - `share`: the part of the time the signs showed 150, 39 % in the pilot's first six months (Oct 2025 – Mar
+ *   2026; 130 for 59 %, 100 for 2 %; the ministry’s evaluation of 14 May 2026 as reported by ČTK / Novinky.cz,
+ *   research/41 "Share of time at 150"). Cars' travel time: 150 for that share of the time, 130 otherwise. PROVISIONAL: autumn and
+ *   winter only (October 93 %, November 85 %), the only figure published. */
+export const MOTORWAY_150_PILOT = { limit: 150, designSpeed: 130, signsPerM: 54.4e6 / 47_000, lightSpeedRise: 20, share: 0.39 } as const;
+/** Cars' mean speed over the motorway with the pilot on: 150 for its share of the time, 130 otherwise (km/h). */
+export const PILOT_TRAVEL_SPEED = 1 / (MOTORWAY_150_PILOT.share / MOTORWAY_150_PILOT.limit + (1 - MOTORWAY_150_PILOT.share) / MOTORWAY_150_PILOT.designSpeed);

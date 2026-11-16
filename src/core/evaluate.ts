@@ -11,7 +11,7 @@ import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
-import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, type Violation } from './checks';
+import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
 import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
@@ -32,8 +32,8 @@ import {
 } from './noise';
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
-import { RAIL_TURNOUT_M } from './data/railway';
-import { MOTORWAY_150_PILOT } from './data/motorway';
+import { RAIL_TIE_IN_M, RAIL_TURNOUT_M, TURNOUT_ANGLE_RAD } from './data/railway';
+import { MOTORWAY_150_PILOT, PILOT_TRAVEL_SPEED } from './data/motorway';
 import { crossingWallGaps } from './crossing-walls';
 import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadNet } from './roadnet';
@@ -68,6 +68,9 @@ export interface Design {
   /** A side road's junction at each end where it joins a road: Auto (a priority T) or a roundabout.
    * Read by the project (core/tie-in.ts), never by this road kernel. */
   junctionForms?: { a?: 'roundabout'; b?: 'roundabout' };
+  /** Steepest grade where the line may be steeper than its category's limit (a rebuilt railway stretch:
+   * its old line's own grade, RailwaySpec.maxGradient). */
+  maxGradient?: number;
 }
 
 export interface EvalContext {
@@ -196,7 +199,8 @@ export interface EvalOptions {
   /** Railway between two points of an existing railway: metres from each end where the mapped railway is
    * the station track it joins; elsewhere, where our axis runs along the mapped track we rebuild it in
    * place (no bridge over it, no conflict with it). Crossing or running beside it stays a conflict. */
-  railTieIn?: { a: number; b: number };
+  /** railway ends tied into a mapped station: its area's length at each end, the station tracks' axis */
+  railTieIn?: { a: number; b: number; ends?: { a?: TrackEnd; b?: TrackEnd } };
   /** Railway rebuilding mapped stretches: their old track (polylines) is taken up, no obstacle. */
   railRetired?: readonly (readonly { x: number; y: number }[])[];
   /** Motorway designed for 130 km/h with the 150 km/h speed-limit pilot (data/motorway.ts): cars' travel
@@ -264,7 +268,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const norms = speedNorms(d.speed, d.category);
   const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
   // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
-  const maxGradient = cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient;
+  const maxGradient = d.maxGradient ?? cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient;
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
   const pilot150 = !!opts.speedLimit150 && cat.mode === 'motorway' && d.speed === MOTORWAY_150_PILOT.designSpeed;
@@ -1164,6 +1168,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     ...buildingViolations,
     ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
     ...ROAD_CHECKS.vertical(prof, norms, maxGradient, cat.mode === 'railway'),
+    ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),
   ];
   const waterCrossings: WaterResult[] = water.map((c, k) => {
     const i = Math.min(n - 1, Math.round(c.s / ds));
@@ -1237,20 +1242,23 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     i = j;
   }
   if (!profileFeasible && d.profileMode === 'auto' && pinViolations.length === 0) {
-    violations.push(profileViolation(al.length, maxGradient));
+    violations.push(profileViolation(al.length, maxGradient, cat.mode === 'railway'));
   }
   violations.splice(0, violations.length, ...mergeNearby(violations));
   // Messages name what is built: a railway is "our railway", not "our road".
   if (cat.mode === 'railway') for (const v of violations) {
-    // "Road too low over the river / railway" (checks.ts) names our own line as "the road"
-    const ours = v.title.startsWith('Road too low');
+    // "Road too low over the river / railway", the side slopes and Auto's heights (checks.ts) name our own
+    // line "the road"
+    const ours = v.title.startsWith('Road too low') || v.kind === 'section' || v.kind === 'profile';
     for (const k of ['title', 'fix', 'detail'] as const) if (v[k]) {
       v[k] = v[k]!.replace(/\bour road\b/g, 'our railway').replace(/\bOur road\b/g, 'Our railway');
-      if (ours) v[k] = v[k]!.replace(/^Road too low/, 'Our railway too low').replace(/\bthe road\b/g, 'our railway');
+      if (ours) v[k] = v[k]!.replace(/^Road too low/, 'Our railway too low').replace(/\b(the|The) road\b/g, (_m, t: string) => `${t === 'The' ? 'Our' : 'our'} railway`)
+        .replace(/\broad heights?\b/g, m => m.replace('road', 'track'));
     }
   }
-  // the 150 km/h pilot is a posted limit for cars: travel time at it (the goal's time is a car's)
-  const travelSpeed = pilot150 ? MOTORWAY_150_PILOT.limit : d.speed;
+  // the 150 km/h pilot is a posted limit for cars when the signs show it: travel time at their mean speed
+  // (the goal's time is a car's)
+  const travelSpeed = pilot150 ? PILOT_TRAVEL_SPEED : d.speed;
   const travelMin = al.length / (travelSpeed / 3.6) / 60;
   const capacityTraffic = opts.capacityTraffic ?? scenario.traffic;
   const minCategory = minCategoryForTraffic(capacityTraffic);

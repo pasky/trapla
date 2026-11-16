@@ -41,3 +41,18 @@ Use **d11, Trutnov hl.n.–Královec**, as a modest, accurately labelled *studie
 **Player-facing text:** “A 2018 feasibility study examined faster regional trains between Hradec Králové and Trutnov, with a 60-minute journey-time goal. This is a studied target, not a committed railway upgrade.”
 
 For a specifically cross-border mission instead: “Passenger trains now cross the border between Trutnov and Sędzisław. No confirmed Trutnov–Královec–Lubawka modernization target was found; improve this existing line as a game proposal.”
+## 5. Railway ends on existing tracks: turnout angle (added by the motorway-rail agent, 2026-11-16)
+
+- A new line joins or leaves an existing track through a turnout. The common Czech standard turnout
+  **J60-1:12-500** branches off at **4.763642°** (= atan 1/12) with a 500 m diverging radius: geometry table
+  quoted in a ČVUT diploma thesis ([core.ac.uk PDF 84832728](https://core.ac.uk/download/pdf/84832728.pdf),
+  search excerpt "J60-1:12-500-I. 60. 4,763 642. 500."); SŽ's turnout rules are SŽDC S3 díl IX
+  ([vlaky.net copy](https://www.vlaky.net/upload/images/reports/007386/SZDC_S3_Dil_09_sezm1az3_20190301.pdf),
+  which notes that for some standard turnouts the stated ratio is not exactly the tangent of the angle) and
+  slimmer turnouts branch at less (1:18.5, 1:26.5, 1:33.5; DT Prostějov / SŽ conference papers).
+- Game rule (data/railway.ts `TURNOUT_ANGLE_RAD`, checks.ts `trackEndViolations`): a railway end in a
+  mission station, or on a mapped line it branches off, leaves that track at no more than 4.76°; the
+  station's track direction is the principal axis of the mapped railway cells within 100 m of the end (5 m
+  raster; at Trutnov hl.n. −45.7°, at Královec 46.8°, stable within 1° for radii 60–150 m). Rebuilt
+  stretches of a mapped line are not checked at their own ends (they lie on the line they replace).
+- Finding: the first Královec starter left Trutnov hl.n. at ≈ 80° to its tracks (Královec end ≈ 20°).

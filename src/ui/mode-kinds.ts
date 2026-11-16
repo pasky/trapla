@@ -10,10 +10,11 @@ import { fitBends, MIN_STRETCH, moveStretchEnds, type PlacedEnd } from './road-e
 import { registerBuildKind, registerMappedLineKind, type BuildKind, type MappedLineKind } from './route-kinds';
 
 /** A rebuilt railway's old line becomes bends where it strays more than this from a chord, and bends
- * closer than RAIL_BEND_GAP are merged: track curves at 120 km/h are ≥ 740 m in radius, so the old
- * line's every wiggle cannot be a bend. Display/edit choices, not design rules (m). */
-const RAIL_FIT_TOLERANCE = 25, RAIL_BEND_GAP = 300;
-const railBends = (path: readonly { x: number; y: number; s: number }[]) => fitBends(path, RAIL_FIT_TOLERANCE, RAIL_BEND_GAP);
+ * closer than the gap are merged: track curves at 120 km/h are ≥ 740 m in radius, so the old line's every
+ * wiggle cannot be a bend; a line rebuilt at its own lower speed follows it closer. Display/edit choices,
+ * not design rules (m). */
+const railFit = (speed: number) => speed >= 120 ? { tolerance: 25, gap: 300 } : speed >= 100 ? { tolerance: 15, gap: 220 } : { tolerance: 8, gap: 150 };
+const railBends = (path: readonly { x: number; y: number; s: number }[], speed: number) => { const f = railFit(speed); return fitBends(path, f.tolerance, f.gap); };
 /** A rebuilt railway stretch ends this far from a level crossing beyond it (the shared stretch stops
  * 5 m short, a road's width): a railway formation with its slopes needs more room, m. PROVISIONAL. */
 const RAIL_CROSSING_CLEAR = 20;

@@ -58,8 +58,9 @@ export function projectBadge(result: ProjectResult | null, pending: boolean, vio
 export function unpricedText(unpriced: readonly { routeId: RouteId }[], missionRouteId: RouteId | undefined,
   names: Readonly<Record<RouteId, string>>): string {
   const ids = [...new Set(unpriced.map(u => u.routeId))];
-  // one change per name: the two directions of a motorway carry its one name
-  const changes = [...new Map(ids.filter(id => id !== missionRouteId).map(id => [names[id] ?? id, id])).values()];
+  // one change per name: the two directions of a motorway carry its one name (so does our motorway's other one)
+  const ours = missionRouteId === undefined ? undefined : names[missionRouteId] ?? missionRouteId;
+  const changes = [...new Map(ids.filter(id => id !== missionRouteId && (names[id] ?? id) !== ours).map(id => [names[id] ?? id, id])).values()];
   if (!changes.length) return ids.length ? 'Our road is not priced yet' : '';
   if (changes.length === 1) return `${names[changes[0]] ?? 'One road change'} not priced yet`;
   return `${changes.length} road changes not priced yet`;

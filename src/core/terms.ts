@@ -140,7 +140,7 @@ export const SPEED_LIMIT_TEXT = {
   normalTitle: 'The normal motorway limit',
   pilotTitle: 'Like the ministry’s pilot on the D3 since October 2025: variable signs allow 150 km/h when the road is dry, clear and not busy',
   explainNormal: 'Cars may drive 130 km/h.',
-  explainPilot: (signs: string) => `Variable signs allow 150 km/h when it is dry, clear and not busy; trucks stay at 80. Shorter travel time, a little more noise; curves and slopes stay those of 130. The signs cost about ${signs} per km.`,
+  explainPilot: (signs: string, share: number) => `Variable signs allow 150 km/h when it is dry, clear and not busy (on the D3 ${Math.round(share * 100)} % of the time in its first winter half-year); trucks stay at 80. Travel time counts that; a little more noise; curves and slopes stay those of 130. The signs cost about ${signs} per km.`,
 } as const;
 
 /** Automatic on a motorway: no junction anywhere along it. */

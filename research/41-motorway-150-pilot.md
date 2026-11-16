@@ -54,3 +54,18 @@ It changes eligible cars’ posted-speed/travel-time calculation and their noise
   [Ekonomický deník, 27 Aug 2025](https://ekonomickydenik.cz/spor-o-dopravni-znaceni-pro-150-km-h/);
   [Zdopravy, tender: 90 M estimate, 9 junctions and one rest area on the section, solar + battery, wireless control](https://zdopravy.cz/mezi-taborem-a-budejovicemi-150-km-h-stat-vypsal-tendr-na-promenne-znacky-227037/)
 - Game: 54.4 M / 47 km ≈ 1.16 M CZK per km of motorway (PROVISIONAL: spread by length, D3's junction density).
+
+## Share of time at 150 (added by the motorway agent, 2026-11-16)
+
+- The ministry's evaluation of the first six months (5 Oct 2025 – 31 Mar 2026), released 14 May 2026 when the
+  pilot was extended to the end of 2026: the 150 km/h mode was active **39 % of the time**, 130 km/h applied
+  **59 %**, 100 km/h **2 %**; highest in October (93 %) and November (85 %), minimal in winter. As reported by
+  ČTK ([Frekvence 1 / ČTK](https://www.frekvence1.cz/zpravy/zpravy-ctk/na-d3-se-jezdi-150-km-h-uz-rok-v-levem-pruhu-se-dal-specha.shtml),
+  visited) and [Novinky.cz, 14 May 2026](https://www.novinky.cz/clanek/domaci-po-dalnici-d3-mohou-ridici-jezdit-150-az-do-konce-roku-40578170)
+  (visited, quoted: "Touto rychlostí mohli řidiči jezdit v 39 procentech času, limit 130 km/h platil v 59
+  procentech času a omezení na 100 km/h ve dvou procentech"). The ministry's own page
+  ([MD press release](https://md.gov.cz/Media/Media-a-tiskove-zpravy/Pilotni-provoz-rychlosti-150-km-h-na-dalnici-D3-se))
+  did not render for the fetcher. No full-year share was found.
+- Game: cars' travel time with the pilot = 150 km/h for 39 % of the time and 130 km/h otherwise (mean
+  ≈ 137 km/h). PROVISIONAL: an autumn–winter half-year; a full year is likely higher. Noise still counts 150
+  all day and night (upper bound).

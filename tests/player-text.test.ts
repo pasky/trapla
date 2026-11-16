@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { buildAlignment, type PI } from '../src/core/horizontal';
 import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
-  verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
+  trackEndViolations, verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
 import { CROSSING_CHOICE_TEXT, crossingOutcome, footprintOutcome, jargonIn } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
@@ -92,7 +92,9 @@ describe('player-facing text', () => {
     }
     for (const v of [slopeViolation(100, 200, 12, 0, 60), slopeViolation(100, 200, 0, 12, 60), crossingViolation(500, 'railway', 3, 7.5),
       crossingViolation(500, 'motorway', -2, 7.5, 6), oobViolation(0, 50, 50), profileViolation(1000, 0.06),
-      categoryViolation(1000, 'S7.5', 20000, 'S9.5'), timeViolation(20000, 80, 15.4, 14.5)]) checkViolation(v, 'checks');
+      categoryViolation(1000, 'S7.5', 20000, 'S9.5'), timeViolation(20000, 80, 15.4, 14.5),
+      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [{ x: 1000, y: 800, r: null }], 3200, { a: { dir: { x: 1, y: 0 } } }, 0.08, 300, 740),
+      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [], 3000, { b: { dir: { x: 0, y: 1 } } }, 0.08, 300, 740)]) checkViolation(v, 'checks');
     if (regressionPackAvailable()) {
       const ctx = regressionContext(false);
       const design = (file: string): Design => JSON.parse(readFileSync(file, 'utf8')).design;

@@ -751,12 +751,25 @@ export class ProfilePanel {
       g.strokeStyle = '#1d232a'; g.lineWidth = 1.8; g.stroke();
       if (rad === 8) { g.fillStyle = '#1d232a'; g.fillText(String(bendNo(b.i)), x, BEND_Y + 0.5); }
     }
+    // the line's ends as on the map (A at its start: on the right where the line is read from B)
+    if (this.endLabels && this.r) {
+      g.font = 'bold 10px system-ui, sans-serif';
+      for (const [s, label] of [[0, this.endLabels[0]], [this.r.length, this.endLabels[1]]] as const) {
+        if (s < this.v0 || s > this.v1) continue;
+        const x = this.X(s);
+        g.beginPath(); g.arc(x, BEND_Y, 8, 0, 2 * Math.PI); g.fillStyle = '#1d232a'; g.fill();
+        g.fillStyle = '#fff'; g.fillText(label, x, BEND_Y + 0.5);
+      }
+    }
     g.restore();
     if (this.bends.length) {
       g.fillStyle = '#777'; g.font = '9px system-ui, sans-serif'; g.textAlign = 'right';
       g.fillText('bends', L - 6, BEND_Y + 3);
     }
   }
+  /** the letters of the line's ends on the map (A, B), drawn at its ends; null: none */
+  private endLabels: readonly [string, string] | null = null;
+  setEndLabels(labels: readonly [string, string] | null) { this.endLabels = labels; this.draw(); }
 
   /** "km x.xx" over the hover line when the mouse is on the map; an arrow at the edge when off view */
   private drawMapHoverLabel(g: CanvasRenderingContext2D, s: number, L: number, R: number, T: number) {

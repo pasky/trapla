@@ -94,6 +94,7 @@ function spec(v: unknown, kind: unknown): boolean {
   }
   return kind === 'railway' && (v.gaugeMm === null || number(v.gaugeMm) && v.gaugeMm > 0) && choice(v.tracks, [1, 2])
     && choice(v.electrification, ['unknown', 'none', 'AC25kV', 'DC3kV', 'other'])
+    && (v.maxGradient === undefined || number(v.maxGradient) && v.maxGradient > 0 && v.maxGradient <= 0.1)
     && ['passengerDay', 'passengerNight', 'freightDay', 'freightNight', 'passengerSpeed', 'freightSpeed'].every(k => number(o[k]) && (o[k] as number) >= 0);
 }
 /** Never JSON-clone before this check: JSON turns NaN into null and silently drops undefined. */

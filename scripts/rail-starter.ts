@@ -18,7 +18,7 @@ const legacy = { terrain, scenario, a, b, buildings, roads, junctions: [] };
 const context = makeLegacyProjectContext(legacy, { presetId, packId: 'd11', objectData: 'node', transportData: null });
 const base = projectFromLegacyDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }, context);
 const ctx: ProjectEvalContext = { legacy, environment: { objectData: 'node', transportData: null, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: scenario.terrainClass } };
-const initial: Design = { category: scenario.initial!.category, speed: opt('speed', scenario.initial!.speed), pis: JSON.parse(pisJson ?? '[]'), profileMode: 'auto', vpis: [] };
+const initial: Design = { category: scenario.initial!.category, speed: opt('speed', scenario.initial!.speed), pis: JSON.parse(pisJson ?? '[]'), profileMode: 'auto', vpis: [], ...(process.env.PINS ? { gradePins: JSON.parse(process.env.PINS) } : {}) };
 const project0 = createRailwayProject(base, initial, scenario.railTraffic);
 let revision = 0;
 const run = (d: Design): Result => {
@@ -32,6 +32,11 @@ const show = (r: Result) => ({ valid: r.valid, cost: Math.round(r.cost.total / 1
   issues: r.violations.map(v => `${Math.round(v.s0)} ${v.title}${process.env.FIX ? ` | ${v.fix}` : ""}`) });
 let design = initial, result = run(design), best = score(result), used = 0, round = 0;
 console.log('start', JSON.stringify(show(result)));
+if (process.env.AT) { const at = Number(process.env.AT), r = result;
+  console.log('runs', r.runs.filter(u => u.s1 > at - 400 && u.s0 < at + 400).map(u => `${['earth', 'bridge', 'tunnel'][u.kind] ?? u.kind}:${Math.round(u.s0)}-${Math.round(u.s1)}`).join(' '));
+  console.log('crossings', r.crossings.filter(c => Math.abs(c.s - at) < 400).map(c => `${Math.round(c.s)} ${c.cls} ${c.what ?? ''}`).join('; '));
+  console.log('water', r.waterCrossings.filter(c => Math.abs(c.s - at) < 400).map(c => `${Math.round(c.s)}`).join(' '));
+  const i = Math.round(at / r.ds); console.log('xy', Math.round(r.x[i]), Math.round(r.y[i]), 'grade', r.grade[i].toFixed(1), 'ground', r.ground[i].toFixed(1)); }
 const budget = opt('budget', 0), original = structuredClone(initial);
 while (!result.valid && used < budget && design.pis.length) {
   const v = result.violations[round % result.violations.length];

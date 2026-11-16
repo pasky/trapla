@@ -16,6 +16,7 @@ import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
+import { MOTORWAY_150_PILOT } from '../core/data/motorway';
 import type { Best, StationRange } from '../state';
 import { COST_GROUPS, czk, groupLabel } from './costgroups';
 import { RAILWAY_EVIDENCE, SPOZES } from '../core/data/railway';
@@ -173,8 +174,8 @@ export class Hud {
       this.$('sec-viol').hidden = !(n + notChecked.length);
       const line = (v: ListedIssue, cls: string) => {
         const open = this.openWhy.has(whyKey(v));
-        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.s0 !== undefined ? `km ${num(shownS(v.s0) / 1000, 2)}` : ''}</span>
-        <div><div class="vt">${esc(shownText(v.title))}</div><div class="vfix">${esc(shownText(v.fix))} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
+        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.s0 !== undefined ? `km ${num(shownS(v.s0) / 1000, 2)}` : ''}</span>
+        <div>${v.road ? `<div class="vroad">${esc(v.road)}</div>` : ''}<div class="vt">${esc(shownText(v.title))}</div><div class="vfix">${esc(shownText(v.fix))} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
         <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(shownText(v.detail)) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
       };
       this.$('viol').innerHTML = violations.slice(0, 60).map(v => line(v, '')).join('')
@@ -376,7 +377,7 @@ export class Hud {
     }
     catSelect.value = d.category;
     speedSelect.value = String(d.speed);
-    const n = speedNorms(d.speed, d.category), grade = cat.maxGradient?.[this.sc.terrainClass] ?? this.sc.maxGradient;
+    const n = speedNorms(d.speed, d.category), grade = d.maxGradient ?? cat.maxGradient?.[this.sc.terrainClass] ?? this.sc.maxGradient;
     const pct = (g: number) => `${Math.round(g * 1000) / 10}`;
     const norms = this.$('norms');
     if (cat.mode === 'railway') {
@@ -407,7 +408,7 @@ export class Hud {
     for (const [id, on] of [['limit-normal', !state.pilot], ['limit-pilot', state.pilot]] as const) {
       const b = this.$(id); b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
     }
-    this.$('limit-explain').textContent = state.pilot ? SPEED_LIMIT_TEXT.explainPilot(state.signsPerKm) : SPEED_LIMIT_TEXT.explainNormal;
+    this.$('limit-explain').textContent = state.pilot ? SPEED_LIMIT_TEXT.explainPilot(state.signsPerKm, MOTORWAY_150_PILOT.share) : SPEED_LIMIT_TEXT.explainNormal;
   }
 
   /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */

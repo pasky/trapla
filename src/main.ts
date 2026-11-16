@@ -734,7 +734,7 @@ async function main() {
     }
     revalidate(r, rd);
     const cat = CATEGORIES[rd.category];
-    profile.setGradeRule({ max: cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient, perMille: cat.mode === 'railway', line: cat.mode });
+    profile.setGradeRule({ max: rd.maxGradient ?? cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient, perMille: cat.mode === 'railway', line: cat.mode });
     profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
     syncApart(r);
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
@@ -863,6 +863,8 @@ async function main() {
     document.getElementById('legend-route')!.textContent = kind;
     document.getElementById('legend-height')!.textContent = kind === 'railway' ? 'track height' : 'road height';
     profile.setLine(kind); hud.setLine(kind);
+    // a motorway's ends are its corridor's A and B on the map (its direction towards A reads from B)
+    profile.setEndLabels(corridor?.mode === 'paired' ? ['A', 'B'] : null);
     hud.setSpeedLimit(route?.kind === 'motorway' && route.specification.designSpeed === MOTORWAY_150_PILOT.designSpeed
       ? { pilot: speedLimit150(route), signsPerKm: czk(MOTORWAY_150_PILOT.signsPerM * 1000) } : null);
     if (!corridor) { hud.setDirections(null); return; }
@@ -1090,6 +1092,13 @@ async function main() {
     const g = view.pick(clientX, clientY);
     return g && sourceEditor!.covers(g.x, g.y, Math.max(6, 8 * view.metresPerPixel)) ? { ...interval } : null;
   };
+  /** an unselected mapped railway under the pointer that a drag rebuilds (roads are selected first: they
+   * are everywhere on the map, and a drag that starts on one usually means to pan) */
+  const railToGrab = (clientX: number, clientY: number): SourceHit | null => {
+    const t = sourceAt(clientX, clientY);
+    if (t?.kind !== 'source' || !transportIndex || transportIndex.source(t.hit.sourceId)?.kind !== 'railway') return null;
+    return mappedLineKindFor(transportIndex, t.hit.sourceId).verdict.ok ? t.hit : null;
+  };
   /** The first drag of a mapped road: its stretch becomes a project road (line converted to bends that
    * follow the old road) and the drag bends it, all ONE undo step (committed when the drag ends). */
   const rebuildByDrag = (interval: SourceInterval, x: number, y: number): number | null => {
@@ -1146,6 +1155,11 @@ async function main() {
       if (buildTool.active) return false;
       if (roadAt(clientX, clientY, 9) >= 0) return true;
       grabbing = mappedGrab(clientX, clientY);
+      if (!grabbing && !routeAt(clientX, clientY, 10)) {
+        // a railway is dragged like our road: selected and rebuilt in one go
+        const rail = railToGrab(clientX, clientY);
+        if (rail) { showSource(rail); grabbing = mappedGrab(clientX, clientY); }
+      }
       return !!grabbing;
     },
     onRoadDrag: (x, y) => {
@@ -1260,7 +1274,10 @@ async function main() {
         if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${link ? ' · drag to reshape' : ''}`); profile.setHover(c.s, true); }
       } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
-      else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }
+      else if (railToGrab(at.x, at.y)) {
+        cursor = 'grab'; key = 'rail';
+        if (key !== mapHoverKey) { const g = view.pick(at.x, at.y); if (g) view.setHover({ x: g.x, y: g.y, z: view.drape(g.x, g.y) }, 'drag to change its line'); }
+      } else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }
     }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     if (key === mapHoverKey) return;

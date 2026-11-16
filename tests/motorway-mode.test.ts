@@ -4,7 +4,7 @@ import { evaluate, type Design } from '../src/core/evaluate';
 import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
 import { createMotorwayProject, motorwayMission, rejoinStretch, setSpeedLimit150, speedLimit150 } from '../src/core/project-motorway';
-import { MOTORWAY_150_PILOT } from '../src/core/data/motorway';
+import { MOTORWAY_150_PILOT, PILOT_TRAVEL_SPEED } from '../src/core/data/motorway';
 import { projectBindingsCurrent, type ProjectLoadOptions } from '../src/project-persistence';
 import { isScorableProject } from '../src/core/project-protocol';
 import { assertProjectDesign } from '../src/core/project-validation';
@@ -214,7 +214,7 @@ describe('the 150 km/h speed-limit pilot (research/41)', () => {
     const [r0, r1] = [p0, p1].map(p => p.routes[snapshot.design.routes[0].id].legacy!);
     expect(r1.vpis).toEqual(r0.vpis); // geometry norms stay those of 130
     expect(r1.length).toBe(r0.length);
-    expect(r1.travelMin).toBeCloseTo(r0.length / (150 / 3.6) / 60, 9);
+    expect(r1.travelMin).toBeCloseTo(r0.length / (PILOT_TRAVEL_SPEED / 3.6) / 60, 9);
     expect(r1.cost.total - r0.cost.total).toBeCloseTo(r0.length * MOTORWAY_150_PILOT.signsPerM, -4);
     const loud = (rise: number) => noiseSource(30000, 130, { heavyShare: 0.2256, profile: 'motorway', lightSpeedRise: rise }).dayDb;
     expect(loud(20) - loud(0)).toBeGreaterThan(0.5); // cars at +20 km/h: about +1 dB by day

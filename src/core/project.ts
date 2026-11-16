@@ -95,6 +95,9 @@ export interface RailwaySpec {
   tracks: 1 | 2; electrification: 'unknown' | 'none' | 'AC25kV' | 'DC3kV' | 'other';
   operations: { passengerDay: number; passengerNight: number; freightDay: number; freightNight: number;
     passengerSpeed: number; freightSpeed: number };
+  /** Steepest grade allowed where it is steeper than the new-line limit: a rebuilt stretch of a mapped line
+   * may be as steep as that line is there (a game rule; absent = the category's limit). */
+  maxGradient?: number;
 }
 export type RouteSpecification = RoadSpec | MotorwaySpec | RailwaySpec;
 export interface SourceReplacement {
