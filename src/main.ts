@@ -154,12 +154,13 @@ async function main() {
   const buildingPicker = new BuildingPicker(view, pack);
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
-  }, noise, () => {
-    // the active route as built (else its ends and bends)
+  }, noise, () => frameRoute());
+  /** the active route as built (else its ends and bends) in view */
+  const frameRoute = () => {
     const r = last, d = store.read() ? store.design : null;
     view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
       : d ? [A, ...d.pis, B] : []);
-  });
+  };
 
   let last: Result | null = null;
   let projectFull: ProjectResult | null = null;
@@ -873,7 +874,8 @@ async function main() {
     if (legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: 'open ground (joins no road)', end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
   };
-  routeBar.onSelect = switchRoute;
+  // a road picked from the list comes into view
+  routeBar.onSelect = (id) => { switchRoute(id); frameRoute(); };
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
   syncEnds();
   syncDirections();
