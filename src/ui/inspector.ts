@@ -171,13 +171,13 @@ export class Inspector {
   host(): HTMLElement {
     const a = document.activeElement as HTMLElement | null;
     if (a && this.el.contains(a)) a.blur();
-    this.hosted = true; this.sel = null; this.pending = false; return this.el;
+    this.hosted = true; this.sel = null; this.pending = false; this.el.hidden = false; return this.el;
   }
   get isHosting() { return this.hosted; }
   clear(message = 'Choose a road to inspect.') {
     this.hosted = false;
     this.r = null; this.d = null; this.sel = null;
-    this.el.replaceChildren(); this.el.className = 'card ctx inspector idle';
+    this.el.replaceChildren(); this.el.className = 'card ctx inspector idle'; this.el.hidden = false;
     const text = document.createElement('p'); text.textContent = message; this.el.append(text);
   }
 
@@ -188,6 +188,8 @@ export class Inspector {
     if (!force && document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=range]')) { this.pending = true; return; }
     this.pending = false;
     const r = this.r, d = this.d, sel = this.sel;
+    // nothing to show yet (the first result is still being worked out): no empty card outline
+    this.el.hidden = !r || !d;
     if (!r || !d) { this.el.innerHTML = ''; return; }
     let html = '';
     if (sel?.kind === 'stretch') html = this.stretch(r, d, sel);

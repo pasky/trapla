@@ -166,3 +166,62 @@ back down to I/35 level; 50 m further on it can (45 m from the I/35 ways). Start
 greedy search (`scripts/scenarios/repair-starter.ts`: first violation, two or three nearest bends, ±12–100 m
 along the normal). The old first-stage presets stay: the motorway one as “Opatovec → Staré Město (first
 section)”, the two-lane road exercise retired (Continue only).
+
+## Local edits (playtest-qa-2 P0 1b)
+
+Playtest: a 20–60 px nudge on the whole D3 or D35 redesigned the grade and broke crossings 9–24 km away;
+the bill moved by up to 1.6 bn. The owner's rule is unchanged: the same design always gives the same bill
+(no edit history). Measured with `scripts/locality.ts` (move a bend 20 / 60 m sideways; change of the
+grade beyond ±5 km of the bend, far bill, far violations; downstream compared at the same ground):
+
+| | whole D3, 16 moves | whole D35, 10 moves |
+|---|---|---|
+| before (899e6bb) | far grade up to 14.8 m; far violations changed in 2 (0 → 4, 0 → 8); far bill up to −1.5 bn | far grade up to 40.8 m (19 km away); far violations changed in 1 |
+| after | far grade up to 2.4 m (7 km away), ≤ 0.2 m beyond 8 km except one 0.7 m spot; far violations changed in 0; far bill ≤ 0.34 bn | far violations changed in 1 (8 km away, a block boundary moved); two valley flips 5–8 km away |
+
+Causes found (each measured on its own; a fixed material value and an unchanged route length gave a
+bit-identical line far away, so the solver itself is not chaotic):
+
+1. **The separation retry** (above) asked every clearance on the route to cost more than any structure
+   and was kept or dropped by the *total* violation count: its 2 m of jitter became 10–15 m, and an
+   edit at one end decided whether the other end's crossings were separated.
+2. **One material value for the whole route** (the mass-balance shadow price) moved with every edit
+   (166–252 CZK/m³ for 20–60 m moves), re-pricing every cut and fill.
+3. **Re-gridding when the length changes**: stations (`ds = L/⌈L/10⌉`) and knots (`L/nK`) shift
+   everywhere downstream by up to the length change: ±1–2.5 m of grade with a fixed value.
+4. **The whole-route optimum itself**: with identical inputs up to a block boundary, a different best
+   state at that boundary re-routes the line 20 km upstream (shifting a long grade 2 m is cheaper than
+   a grade change; long climbs at the limit chain heights) — so even exact inputs do not make a global
+   optimum local.
+5. All-or-nothing repairs: support lifts (one failure undid all), the strict retry kept by total count.
+
+What changed (`core/autoprofile.ts` `profileBlocks`/`blockwise`, `core/evaluate.ts`):
+
+- **Blocks from the plan alone.** A boundary in the middle of each straight that is the longest within
+  2 km either side (blocks of 2–6 km on these routes). Moving a bend moves only the boundaries next to it.
+- **Each boundary's heights from its own surroundings**: the grade line within 1.5 km of it (a railway
+  looks further: as far as its steepest grade climbs 60 m, up to 5 km), at the starting material value;
+  its height and the knots either side are pinned. Each block is then solved between its pins with
+  **its own mass balance** (the block-wise balance the handoff recommended). Where two boundaries
+  cannot be joined (they saw different ways through a valley) the block runs on to the next boundary.
+- **Nothing the solve reads moves with the stations**: knots evenly within each block (their number
+  chosen so the coarse and fine grids keep the maximum gradient — a block losing a grid step lost up to
+  0.8 % of grade and chose tunnels and viaducts on long climbs), cost samples evenly between knots at
+  their exact place (ground and geology there), each stream crossing at its own chainage, crossings and
+  river/railway samples traced on a line placed from the block ends, clearances at the crossing's own
+  chainage, mass balance measured on samples placed from the block ends.
+- **Retries and repairs judged where they act**: the separation retry raises the penalty only at the
+  roads, rivers and railways it retries, and each group of them (within 5 km) is kept only if it has
+  fewer violations within 5 km; the strict retry likewise per group; support lifts per stretch of
+  targets, each attempt lifting the same line (so one stretch's result does not depend on how many
+  attempts another needed), support targets on the traced line rounded up to 10 cm.
+
+Determinism: every step is a function of the design (plan → boundaries → windows → blocks); there is no
+state carried between evaluations. Previews are unchanged in kind (one fixed-value solve of the window).
+
+Cost of locality: a block is solved without seeing beyond its boundaries' windows and balances its own
+earth, so the line is no longer the whole-route optimum. Bills against model 21 (main 93f849d): D11
+designs −2 … +3.5 % (demo +12 %), the railway +6 %, D3 sections −12 … +5 %, whole D3 −5 %, whole D35
++10 % (after a 60 m / 12 m starter repair). Residual non-locality: support targets still come from the
+station-based engineering (a ±0.7–2 m lift difference at one or two spots), and a bend move that moves a
+block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).

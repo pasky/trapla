@@ -8,8 +8,12 @@
  * junctions, motorway noise source; R1/R2 railways: SPOŽES prices, CNOSSOS train noise); road bills
  * unchanged (eval-regression identical).
  * 21: finite-segment noise (Manuál 2018 §1.10–1.11, §1.19), walls on the cross-section's line, the
- * cheapest automatic wall per house (research/36). */
-export const COST_MODEL_VERSION = 21;
+ * cheapest automatic wall per house (research/36).
+ * 22: local grade solve (research/39 "Local edits"): the Auto grade line in blocks between long straights,
+ * each with its own mass balance, nothing placed by the stations; separation and strict retries and
+ * support lifts judged per stretch; grade-separated routes retry once to clear crossed roads where no
+ * crossing could be built. */
+export const COST_MODEL_VERSION = 22;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
