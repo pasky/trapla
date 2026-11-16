@@ -21,7 +21,8 @@ export class CrossingHighlight {
     const roadId = this.host.selected();
     const paths = roadId === null ? [] : (this.host.result()?.crossings ?? []).filter(c => c.roadId === roadId).flatMap(c => {
       const g = c.geometry;
-      return g ? [...(g.road ? [g.road] : []), ...(g.links ?? []), ...(g.ties ?? []).map(t => t.path)] : [];
+      // (a designed road draws its own body; one high above our bridge is not at this copy's ground level)
+      return g ? [...(g.road && !c.above ? [g.road] : []), ...(g.links ?? []), ...(g.ties ?? []).map(t => t.path)] : [];
     }).filter(p => p.length > 1);
     while (this.lines.length < paths.length) {
       const l = document.createElementNS('http://www.w3.org/2000/svg', 'path');

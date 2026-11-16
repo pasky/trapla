@@ -448,8 +448,10 @@ export class Inspector {
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
     // against the crossed road as it is today (an overbridge lifts it; "below it" read like the clearance under it)
     const line = CATEGORIES[d.category].mode;
-    const rel = Math.abs(c.h) < 0.5 ? `our ${line} at the crossed road’s level today`
-      : `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} the crossed road’s level today`, outcome = crossingOutcome(c, line);
+    // (a new road of the project is not there today: the ground where it crosses)
+    const level = c.designed ? 'the ground where they cross' : 'the crossed road’s level today';
+    const rel = Math.abs(c.h) < 0.5 ? `our ${line} at ${level}`
+      : `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} ${level}`, outcome = crossingOutcome(c, line);
     // a new road of the project is bridged, carried over us or met, never cut and rerouted
     const options = crossingOptions(CATEGORIES[d.category].gradeSeparated ? line : 'road', !!CATEGORIES[d.category].minor).filter(([v]) => !c.designed || v !== 'reconnection');
     const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our ${line} ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';
