@@ -63,6 +63,8 @@ export function installAutomation(c: AutomationContext): void {
         // Explicit legacy automation semantics: its one speed also governed traffic emissions.
         if (route.kind === 'road' && route.specification.operations.speedPolicy !== 'independent') route.specification.operations.speed = d.speed;
       });
+      // a step in progress (a held drag, + / − not yet settled) ends with the replacement: one undo step, none left open
+      c.store.commit();
     },
     getProject: () => structuredClone(c.projectStore.snapshot.design),
     projectSnapshot: () => structuredClone(c.projectStore.snapshot),
