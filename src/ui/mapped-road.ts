@@ -49,7 +49,8 @@ export class MappedRoadCard {
     const close = el('button', '✕'); close.className = 'x'; close.title = 'Close (Esc)'; close.type = 'button';
     close.onclick = () => { this.clear(); this.onClose?.(); };
     // "Road III/1057" already says its class
-    header.append(el('b', cap(name)), ...(namedByNumber(source.tags) ? [] : [el('small', cap(label))]), close);
+    // ("Street" with no name of its own: said once)
+    header.append(el('b', cap(name)), ...(namedByNumber(source.tags) || name === label ? [] : [el('small', cap(label))]), close);
     root.append(header);
     if (!what.ok) { root.append(el('p', what.why)); return; }
     if (!this.interval) { root.append(el('p', 'Too short to change here: pick it further from its junctions or from the map edge.')); return; }

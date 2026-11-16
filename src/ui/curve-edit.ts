@@ -183,7 +183,11 @@ export class CurveEditor {
     const h = this.label.offsetHeight || 40, w = this.label.offsetWidth || 160;
     const off = 16 + Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
     this.label.style.display = '';
-    this.label.style.transform = `translate(${(s.sx + dx * off).toFixed(1)}px, ${(s.sy + dy * off).toFixed(1)}px) translate(-50%, -50%)`;
+    // kept wholly in view (a bend near the map's edge must not cut its warning off)
+    const box = this.label.parentElement, W = box?.clientWidth || Infinity, H = box?.clientHeight || Infinity, m = 4;
+    const cx = Math.min(Math.max(s.sx + dx * off, w / 2 + m), Math.max(w / 2 + m, W - w / 2 - m));
+    const cy = Math.min(Math.max(s.sy + dy * off, h / 2 + m), Math.max(h / 2 + m, H - h / 2 - m));
+    this.label.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) translate(-50%, -50%)`;
   }
 
   private startDrag(e: PointerEvent, side: 0 | 1) {

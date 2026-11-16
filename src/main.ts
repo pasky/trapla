@@ -898,7 +898,18 @@ async function main() {
     if (legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: 'open ground (joins no road)', end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
   };
-  routeBar.onSelect = switchRoute;
+  // a road chosen in the list comes into view when none of it is on screen
+  routeBar.onSelect = id => {
+    if (!switchRoute(id)) return false;
+    const route = store.route, r = projectFull?.routes[id]?.legacy;
+    if (!route) return true;
+    const a = route.endpoints.a.position, b = route.endpoints.b.position;
+    const mid = r ? { x: r.x[r.n >> 1], y: r.y[r.n >> 1] } : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const box = view.renderer.domElement.getBoundingClientRect();
+    const seen = [a, b, mid].some(p => { const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y)); return q.vis && q.sx > 0 && q.sy > 0 && q.sx < box.width && q.sy < box.height; });
+    if (!seen) view.flyTo(mid.x, mid.y, Math.max(900, Math.min(6000, (r?.length ?? Math.hypot(b.x - a.x, b.y - a.y)) * 1.2)));
+    return true;
+  };
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
   syncEnds();
   syncDirections();
