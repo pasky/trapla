@@ -5,6 +5,56 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 only to frame a camera on A / B and to read state for exact repros. Screenshots under `/tmp/trapla-qa2/` (not
 committed). Newest session on top. Severity: **P0** broken / untruthful, **P1** confusing, **P2** polish.
 
+## Re-test 5 — motorway-rail @ 7c7d043, Re-test 3 P1s only (2026-11-16, one 4 min chunk)
+
+| item | verdict | evidence |
+|---|---|---|
+| D3 km 4.6 Posázavský pacifik: select + 40 px drag | **PASS** | bend 1 turns 14° (R 360 m), steepest grade −13.5 ‰, **0 violations** (only the two "not checked yet" notes: taking up the old track, junctions); no grey slab at the stretch end (`r4/001`). |
+| Build → Railway at the overview zoom (D35, 1440×900) | **PASS, with a P2** | a click at the terrain centre places the start, a second click builds the line (`r4/005`). Two earlier clicks on the terrain nearer its south edge (470,380 / 660,400) were silently ignored: the card stayed at "Click where it starts." with no reason given. |
+
+## Re-test 4 — long-corridors @ 376c9ed (967d9b1 + handoff notes) (2026-11-16)
+
+Detached snapshot with the worktree's packs. Chunks `l1`, `l2` SwiftShader 1440×900 (host load 9–22); `g2` = a
+short GPU run under the exclusive lock (load ≈ 8–13, so the timings are indicative only). Screenshots
+`/tmp/trapla-qa2/l1`, `l2`, `g2`.
+
+| item | verdict | evidence |
+|---|---|---|
+| P0 1 far crossings, whole D3 | **PASS** | from the new start view (14 px per km), drags at km 24.5 / 29.5 / 18.9 / 40 / 50.5 each give problems only inside the edited stretch (km 23.65; 30.46 + 32.35; 19.23; 38.9–41.2; 49.3–49.7); every Undo returns exactly 42.19 bn VALID. |
+| P0 1 far crossings, whole D35 | **FAIL (one case)** | drag at km 8.2: problem at km 6.97 only (local). Drags at **km 11.7** and **km 25.4** each add "No buildable reroute for the track · Raise our road here by 0.1 m and put it on a bridge over the track" at **km 6.98**, 5 and 18 km from the edit (`l2/005`). After Undo the design is VALID again (also after a reload). |
+| P1 2/3 interchange ends: signs + cards | **PASS** | an end sign beside A / B; clicking it: "Interchange with road I/18 · B · Voračice (on to 0305/I) · km 15.45 · Its ramps are not part of this job. The motorway goes on as section 0305/I." (`l1/015`). The motorway still ends flush against the I/18 / II/101 on the map (disclosed now). |
+| P1 4 framing | **PASS** | whole D3 opens with A left and B right, both named, clear of the intro (`l1/000`); 0301 and 0303 show B above the legend (`l1/009`, `013`). |
+| P1 5 live price while dragging whole D3 | **PASS** | GPU: during a 2.6 s drag the score updates every ~250 ms (≈ 42.48 → 44.85 bn, change line "≈ +2.67 bn"); frames 16.7 ms p50/p95; result 2.8 s after release (`g2/000`). P2: the last preview (≈ 44.85) is 1.8 bn below the result (46.67). |
+| P1 6 starter bends near B | **PASS** | 0302 has one bend at km 1.39; the same 40 px drag at km 3 is VALID and −421 M (`l1/017`). |
+| P1 7 ordinary conflicts after drags | **FAIL** | whole D3, drag at km 50.5: 10 problems, 8 × "A bridge pier stands in a stream" (one per pier of a bridge along a stream) and a pier on a class III road (`l1/005`); drag at km 18.9: a track under our earthworks; D11 (see below): "earthworks cover 44 m of a service road" / "37 m of a track" after single drags. |
+| P2 8 wording while waiting | **PASS** | the chip says "checking" once the drag is let go and on startup ("⋯ checked when you pause" only while the mouse is down). |
+| P2 9 planned line past the ends | **PASS** | 0302 B: the dashed planned D3 runs on past B (`g2/001`). |
+| P2 10 picker | **PASS** | Nová Paka under its own "I/16" heading; D11 "Class I road · 90 km/h"; "Built 27.5 m wide, our usual motorway; the planned road is 26 m wide"; whole D3 explains 120 vs 130 km/h. |
+| P2 12 crossing card level line | **PASS** | "our road 1 m below the crossed road's level today". |
+| P2 11, 13 | not re-checked | |
+| S3 (playtest-qa) Nová Paka photo note | **PASS** (P2) | turning Photo on shows "The photo was taken while the real bypass was being built: the bare earth you see is its construction site, not our road." It stays on screen after Photo is turned off (`l2/011`). |
+| S3 D35 first-section ends | **PASS** | A card "Joins the open D35 … that road is not part of this job"; B card "Goes on as the next section, to Mohelnice". P2: at B the "planned D35" tag covers the B marker (`l2/008`). |
+| S3 roundabout arm sign | **PASS** | Nová Paka B: "Joins the roundabout on road I/16 · Our road gets its own arm into it here, with a splitter island, priced as a junction" (`l2/011`). |
+
+### New
+
+- **P1 — a 2.47 bn bridge for a class III road that runs alongside.** Whole D3 start design, "Cut km 20.18–20.91 ·
+  up to 3 m deep · **3.41 bn CZK**" (Crossed roads 2.47 bn of it). The class III road at km 20.89 runs beside the
+  motorway and crosses it twice at a shallow angle; Auto carries it "over our road on a **698 m bridge** with 267 m
+  of ramps · 2.47 bn CZK" (`l1/008`). The alternatives are cheaper but invalid: Cut and reroute 39.28 bn (2
+  problems, +4.2 km of new road), Underpass 38.98 bn ("Underpass: 0 m concrete box", 2 problems), Our bridge over it
+  40.55 bn (17 problems). Expected: a parallel road gets moved beside the motorway (relocation) at a few tens of
+  millions, not a 700 m viaduct. The profile cost strip's scale goes to 54 M CZK/m because of it, so every other
+  cost bar is flat (`l1/000`). This is why the whole-D3 starter is now 42.19 bn (was 40.74).
+- **P1 — D11 straight start: the first small drag changes the bill by −0.5 to −2 bn and leaves a conflict.**
+  10.01 bn VALID start; a 10 px drag at km 3: 9.52 bn NOT VALID ("earthworks cover 44 m of a service road" at km
+  3.92); −20 px instead: **7.96 bn** (−2.05 bn, a 7° bend), NOT VALID ("37 m of a track" at km 5.59), with the
+  heights and bridges changing from km 4 to the end (`l2/015`, `016`). Undo is exact (back to 10.01). Either the
+  starter's 10.01 bn heights are far from what the solver now finds, or the cheaper heights skip a conflict check.
+  Either way the price is not stable under small edits.
+- P2 — D35 first-section starter is now 21.36 bn (main 19.37) with a 2.7 km, 7.94 bn bridge km 6.95–9.65
+  running down the slope 20–40 m above the ground (`l2/008`).
+
 ## Re-test 3 — motorway-rail @ 1c967bb (2026-11-16)
 
 Detached snapshot with that worktree's packs, SwiftShader 1440×900, two chunks (`r3`, `r3b`, the second cut short
