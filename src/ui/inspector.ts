@@ -421,7 +421,9 @@ export class Inspector {
     else if (bought) {
       state = `Bought out · ${czk(bought.cost)}`;
       const top = NOISE.wallHeights[NOISE.wallHeights.length - 1];
-      why = bought.reason === 'manual' ? 'Your choice.' : rec ? `Behind a ${top} m wall still ${(limit + rec.mitigated).toFixed(1)} dB ${period} (limit ${limit}).`
+      // two levels: as built (the section below) and with the best wall Auto could build (why it is bought)
+      const built = rec && r.noise.source ? Math.max(...floorLevels(this.noiseFieldOf(r), rec, r.noise.L, r.noise.R).map((f) => f.after)) : NaN;
+      why = bought.reason === 'manual' ? 'Your choice.' : rec ? `${built === built ? `As built ${(limit + built).toFixed(1)} dB ${period}; b` : 'B'}ehind a ${top} m wall still ${(limit + rec.mitigated).toFixed(1)} dB (limit ${limit}).`
         : `Too loud even behind a ${top} m wall.`;
     }
     else if (kept?.hit) state = 'Kept — in the road\'s way';
