@@ -14,26 +14,37 @@ const { page, pageErrors: errors } = game;
 const idle = (ms = 600) => game.idle(ms);
 const load = (name) => name === 'straight' ? { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }
   : JSON.parse(readFileSync(`scripts/${name}-design.json`, 'utf8')).design;
-// [file number, design, crossed way, camera centre (the same before and after: the regraded side road /
-// the wall), distance, bearing, elevation, label]
+// [file number, design, what the scene shows, the way that showed it when the scene was last looked at (it is
+// taken while it still does, else the first crossing of the design that does; --before: that way as the older
+// code builds it), distance, bearing, elevation, label]. The camera looks at the regraded side road / the wall.
+const SHOWS = {
+  'junction-tie': 'a side road regraded to meet a junction approach',
+  'ramp-tie': 'a side road regraded to meet the ramp of a bridge over us',
+  wall: 'a retaining wall beside a crossing\'s works',
+};
 const scenes = [
-  [110, 'straight', 2180, [11880, 17823], 260, 200, 50, 'junction-street-tie'],
-  [112, 'direct-80', 5189, [11998, 17159], 110, 150, 35, 'ramp-wall'],
-  [114, 'demo', 1975, [9840, 8528], 170, 20, 45, 'junction-street-tie-demo'],
+  [110, 'straight', 'junction-tie', 2180, 260, 200, 50, 'junction-street-tie'],
+  [112, 'direct-80', 'ramp-tie', 1158, 200, 150, 35, 'ramp-wall'],
+  [114, 'demo', 'wall', 2136, 170, 20, 45, 'junction-street-tie-demo'],
 ];
 try {
   await game.open('scenario=d11'); await idle();
-  for (const [number, name, roadId, [x, y], dist, bearing, elev, label] of scenes) {
+  for (const [number, name, shows, roadId, dist, bearing, elev, label] of scenes) {
     await page.evaluate(d => window.trapla.setDesign(d), load(name)); await idle();
-    const c = await page.evaluate(([id, x, y, dist, bearing, elev]) => {
-      const r = window.trapla.result(), c = r.crossings.find(c => c.roadId === id);
+    const c = await page.evaluate(([shows, id, before, dist, bearing, elev]) => {
+      const r = window.trapla.result();
+      const has = (c) => shows === 'wall' ? c.wallLength > 0 : c.tieLength > 0 && (c.type === 'junction') === (shows === 'junction-tie');
+      const c = before ? r.crossings.find(c => c.roadId === id) : r.crossings.find(c => c.roadId === id && has(c)) ?? r.crossings.find(has);
       if (!c) return null;
+      // the works to look at: the first walled point (of the rebuilt way, then of the regraded side roads), else
+      // the middle of the first regraded side road, else the crossing
+      const g = c.geometry, tie = g?.ties?.[0]?.path, walled = [...(g?.road ?? []), ...(g?.ties ?? []).flatMap(t => t.path)].find(p => p.wall?.some(h => h > 0));
+      const at = (shows === 'wall' ? walled : undefined) ?? tie?.[tie.length >> 1] ?? c;
       window.trapla.select(null); window.trapla.setView({ contours: true });
-      window.trapla.lookAt(x, y, dist, bearing, elev);
-      return { type: c.type, cls: c.cls, cost: c.cost, tie: c.tieLength, wall: c.wallLength, ties: c.geometry?.ties?.length ?? 0 };
-    }, [roadId, x, y, dist, bearing, elev]);
-    assert(c, `${name} crosses way ${roadId}`);
-    if (!BEFORE) assert(c.tie > 0, `${name} way ${roadId} regrades a side road`);
+      window.trapla.lookAt(at.x, at.y, dist, bearing, elev);
+      return { roadId: c.roadId, s: c.s, type: c.type, cls: c.cls, cost: c.cost, tie: c.tieLength, wall: c.wallLength, ties: g?.ties?.length ?? 0 };
+    }, [shows, roadId, BEFORE, dist, bearing, elev]);
+    assert(c, BEFORE ? `${name} crosses way ${roadId}` : `${name} has ${SHOWS[shows]}`);
     await idle(); await page.mouse.move(5, 5);
     const path = `${out}/${number + (BEFORE ? 0 : 1)}-crossing-works-${BEFORE ? 'before' : 'after'}-${label}.png`;
     await page.screenshot({ path }); console.log(path, JSON.stringify(c));
