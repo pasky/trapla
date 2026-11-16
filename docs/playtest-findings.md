@@ -4,6 +4,38 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Re-test — any-road-editing @ 9f1191f (2026-11-16, SwiftShader 1440×900, two ≤ 20 min chunks)
+
+Detached snapshot of 9f1191f. Screenshots `/tmp/trapla-qa/ar/` (chunk 2 restarted numbering; names differ).
+
+| S1 item | verdict | evidence |
+|---|---|---|
+| #1 unpriced: houses on the motorway | **PASS** | D3 motorway + rebuilt III/1057 (not priced): km 0.75 shows the demolition marks along the carriageway, no houses on it (`008-m-km075-unpriced`). |
+| #2 rebuilt road crossing the motorway | **PASS** (P1 left) | 1057 dragged ~40 m: the motorway bridges over the rebuilt road, its own Auto (`017-1057-crossing-oblique`); no crossing violation. But the project still never gets a total: "2 houses hear both roads — not checked yet, so the project has no total". |
+| #6 rebuilt side road starts with violations | **PASS** for the owner's D3 step (0 violations; "old road is tighter than the norm at bend 1: kept as it is"). A second, larger drag of class I Novorokytnická (D11 A) gives "Bend 1 is too close to its start" + S-bend again (`022-cl1-dragged2`). It may be genuine, but it shows up after an ordinary drag. |
+| #7 traffic field hidden | **PASS** | traffic pre-filled (1057: 736/6.4 % "average class III assumed"; Novorokytnická 12 476/9.1 % "Counted in the 2025 traffic census"); field stays visible above the bend card. |
+| #8 "2 road changes" | **PASS** | "Road III/1057 not priced yet. Our road alone: 15.28 bn CZK". |
+| #12 Build → Road onto the motorway | **PASS when priced, FAIL when not** | VALID D3 motorway: "A motorway can only be joined at an interchange…" (`000-valid-build-hover-motorway`). With 1057 rebuilt (unpriced), hovering the carriageway says "open ground (joins no road)" and a click starts a road there (`012-build-start-on-motorway`); a road ended on the motorway's cut slope gets 8.9 % and "Auto found no legal road height" (`011`). Likely `routeAt` reading `projectFull`, which only updates on a full result. Rubber band + length now shown ✓. |
+| #21 card wording | **PASS** | "Road III/1057"; rebuild text plain. Minor: "signed 90 / built for 70 km/h (the lowest the norm allows)" is dense. |
+| #22 old road drawn beside the rebuilt one | **PASS** | old road gone where removed (`006`). |
+| #23 accessible traffic labels | **PASS** | aria "Traffic, vehicles a day" / "Heavy vehicles, percent". |
+
+New:
+
+- **P1 — drawn ≠ billed on a small drag.** D11 A, class I Novorokytnická, drag ~45 px: card "up to 11 m from the old road … 321 m
+  stay on the old road: kept as it is" of a 0.32 km stretch, cost 0.0 M CZK/km, total unchanged 10.01 bn, while the map
+  draws the road visibly off its old line (`021-cl1-dragged`). Either nothing moved (don't draw it moved) or it moved (bill it).
+- **P1 — most mapped roads cannot be edited.** Every road I clicked in D11 villages (Lampertice, Nový Rokytník, "Nad
+  Silnicí") is a street / service road / track: "Local roads, service roads and tracks cannot be rebuilt yet". In practice
+  "click any road" works only on numbered roads. A drag on them pans the map silently.
+- P1 — after the second drag the project loses its total to "84 houses hear both roads" + 3× "Two roads take the same
+  house" (NOT CHECKED YET), with the junction itemised as "Junction with the class I road at km 0.00 · 25 M CZK" — the road
+  being edited *is* the class I road.
+- P2 — pick offset: Lampertice street, pointer cursor ~8 px left of the drawn band (same as S1 #14).
+- P2 — card titles repeat: "Street / Street", "Track / Track".
+- P2 — the bend label "205 m — no room ⚠ Bend 1 is too close to its start" is cut off at the map's left edge.
+- P2 — choosing the road in the route dropdown does not bring it into view (S2 #7).
+
 ## Re-test — noise-walls-seams @ a903bda (2026-11-16, SwiftShader 1440×900, D11 straight start)
 
 Tested on a detached snapshot of a903bda (the live worktree hot-reloaded under me while its owner edited
