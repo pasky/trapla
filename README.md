@@ -246,7 +246,8 @@ joins it with a junction (Auto: a T, or a roundabout). See [docs/any-road-editin
 Also: [road III/1057 selected](docs/screenshots/106-d3-road-1057-selected.png), [its card with a bend
 selected](docs/screenshots/108-d3-road-1057-card.png), [Build → Road: where a click would put the end, and how
 long the road would be](docs/screenshots/109-build-road-placing.png) (`node scripts/owner-d3-scene.mjs --docs`),
-[a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
+[D11: Jičínská after a small drag and a longer stretch, still on its old road: drawn on the ground, nothing
+built or billed](docs/screenshots/104-rebuilt-road-priced.png), [a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
 roads](docs/screenshots/103-photo-mapped-roads.png); the earlier foundation views 79–83 are in `docs/multi-road-ux.md`.
 
 ### Physical crossings

@@ -168,6 +168,23 @@ describe('rebuilding a mapped road', () => {
     expect(lowered[50]).toBe(0); expect(lowered[50 + Math.ceil((3 / 0.06 + HELD_APPROACH) / 10) + 1]).toBe(1);
   });
 
+  it('never puts a bend far off the old road where close bends are merged (a jog between almost parallel legs)', () => {
+    // east, a 30 m jog to the north within 60 m, east again; the outer legs are almost parallel and
+    // would meet 1.5 km away
+    const pts = [[0, 0], [400, 0], [430, 15], [460, 30], [900, 39]];
+    let s = 0;
+    const path = pts.map(([x, y], i) => { if (i) s += Math.hypot(x - pts[i - 1][0], y - pts[i - 1][1]); return { x, y, s }; });
+    const pis = fitBends(path);
+    expect(pis.length).toBeGreaterThan(0);
+    expect(strayDistance(pis, path)).toBeLessThan(1);
+    // a rounded right-angle corner is still one bend at the corner point itself
+    const corner = [[0, 0], [400, 0], [420, 5], [435, 20], [440, 40], [440, 500]];
+    s = 0;
+    const round = corner.map(([x, y], i) => { if (i) s += Math.hypot(x - corner[i - 1][0], y - corner[i - 1][1]); return { x, y, s }; });
+    const one = fitBends(round, 3);
+    expect(one).toHaveLength(1); expect(one[0].x).toBeCloseTo(440, 6); expect(one[0].y).toBeCloseTo(0, 6);
+  });
+
   it('names mapped roads as Czech maps do', () => {
     expect(mappedRoadName({ highway: 'tertiary', ref: '1057' })).toBe('road III/1057');
     expect(mappedRoadName({ highway: 'primary', ref: '14;16' })).toBe('road I/14 and I/16');

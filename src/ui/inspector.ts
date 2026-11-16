@@ -5,7 +5,7 @@
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC, thisRoadWords } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -84,6 +84,9 @@ export class Inspector {
   private networkPending = false;
   /** The active road's own settings, shown above every card of that road (null: none, e.g. our road). */
   routeHead?: () => HTMLElement | null;
+  /** The active road is not ours (a rebuilt or new side road): its crossing card says "this road" where
+   * the shared vocabulary says "our road" (core/terms.ts thisRoadWords). */
+  isSideRoad?: () => boolean;
   setNetworkPending(pending: boolean) { this.networkPending = pending; this.render(); }
   private pending = false;
 
@@ -385,11 +388,12 @@ export class Inspector {
     const rel = `our road ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c);
     // a new road of the project is bridged, carried over us or met, never cut and rerouted
     const options = (CATEGORIES[d.category].gradeSeparated ? MOTORWAY_CROSSING_OPTIONS : CROSSING_OPTIONS).filter(([v]) => !c.designed || v !== 'reconnection');
-    return `${this.head(c.crossedRoute ? esc(c.crossedRoute.name) : cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}
+    const body = `
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div><div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
       ${this.linkPath(c, d)}
       ${this.choices('crossing-choice', 'data-crossing', options, choice)}`;
+    return `${this.head(c.crossedRoute ? esc(c.crossedRoute.name) : cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}${this.isSideRoad?.() ? thisRoadWords(body) : body}`;
   }
   /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
   private linkPath(c: Result['crossings'][number], d: Design) {

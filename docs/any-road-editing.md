@@ -494,3 +494,42 @@ cells; (P2) the census sidecar is taken only with finite numbers. **Open for the
 changed (kept parts, 125 m knots), so `COST_MODEL_VERSION` must be bumped (main's + 1) or saved bests of
 multi-road projects show a cost their design no longer evaluates to. `tests/geometry.test.ts` "the acceptance
 case…" takes 4.9 s alone and can exceed its 5 s limit when the host load is above ~15 (not touched here).
+
+## 12. After the parent's answers (2026-11-16, second pass)
+
+- **drag-perf** `--gpu --check` bend, road, radius, pin, vpi, link: all OK on `9f1191f` (04:15, load 2–4;
+  `/tmp/gate-perf-<mode>.log`). Nothing after it touches a drag of the mission road.
+- **Land screen, how it was verified** (parent: "OK if it's still conservative"): `scripts/land-screen-check.ts`
+  on the straight line and the five saved D11 designs and on D3's straight line: the land billed per cell is
+  never wider than the two slope edges together (it is exactly `dayL + dayR`), and all 62–152 retaining walls
+  per design stand inside the reach (0.000 m beyond). What is not along the line is screened by its own
+  geometry (crossing works, relocated roads and channels, links, removed old roads) or as a shared house
+  (`shared-building`, unchanged); `tests/project-ledger.test.ts` pins the boundary (10 m clearance between slope
+  edges: independent; 3 m closer: shared, with the place and the metres).
+- **12 m, not 15 m**: `REPAIR_TOLERANCE` is `KEPT_TOLERANCE` on purpose. The automatic conversion may move the
+  line only as far as still counts as "on the old road"; at 15 m a repaired bend could itself become a
+  built-anew part with its own bill and norm checks, which the player never asked for.
+- **"This road"** (`core/terms.ts` `thisRoadWords`): what the kernel says about a side road (its violations,
+  its crossings' findings and its crossing card) reads "this road", "this road’s earthworks", "This road’s
+  bridge over it", "Its bridge over this road"; "our road" on a side road's card is the mission road only
+  (junction works, held crossings).
+- **`fitBends`** no longer puts a merged bend where two almost parallel legs meet far away (D3 III/11431: a
+  bend 365 m off the road, a 174° spike, after its End handle was moved): only a real corner of the cluster,
+  else its middle point. **Lengthening a stretch** converts the newly included old road like the first drag
+  does (`fitRoad`: sharp old corners keep their own curve).
+- `tests/geometry.test.ts` acceptance case: 20 s limit (it takes 5 s alone).
+- Screenshot 104 regenerated (D11 Jičínská, kept on the ground, VALID) and linked from the README again.
+- vitest 621, tsc, eval-regression (11 bit-identical), any-road-scene D11 + D3, owner-d3-scene: PASS.
+
+**Still open**
+- **G** (combined noise): wire `ProjectEvalContext.combinedNoise` (`project-evaluate.ts`, `combineNoise`, tested
+  with a synthetic decider since d494ea7) to the finite-segment source of noise-walls-seams once it is in main
+  (not in 217cfa4). Then the owner's D3 case has a total as soon as the new line keeps 10 m from our
+  embankment's foot.
+- **Lengthening a stretch into sharp old corners can still build anew**: the old end, now inside the stretch,
+  becomes a bend with a norm-sized curve (`moveStretchEnds` `joinHead` / `joinTail`, `r: null`), which leaves the
+  old road in a village corner (D3 III/11431 End handle +120 m: "Bends 5 and 6 merge into one curve that is
+  too sharp", houses under the new curve). Fix idea: refit the old road between the last bend the player has
+  not moved and the new end with `fitRoad`, instead of adding the join point.
+- `COST_MODEL_VERSION` + 1 at merge (multi-road totals changed); `traffic.json` in the main checkout (§11).
+- Known limits of §10 (Quantities on kept cells, By-hand heights on a kept part).

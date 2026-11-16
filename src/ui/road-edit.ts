@@ -98,9 +98,16 @@ export function fitBends(path: readonly { x: number; y: number; s: number }[], t
     if (m === k) out.push({ x: kept[k].x, y: kept[k].y, r: null });
     else {
       const p = kept[k - 1], q = kept[k], u = kept[m], v = kept[m + 1];
+      // …where that is the corner the cluster rounds off: ahead of q on the leg coming in, before u on the
+      // leg going out, and no further from them than the cluster is long. Legs that run almost parallel
+      // (an S-shaped jog) or apart meet far away or behind: such a point would fold the line into a spike
+      // (D3 III/11431: a bend 365 m off the road). Then the cluster's middle point stands for it.
       const hit = intersect(p, q, u, v);
-      const far = hit && [p, v].every(e => Math.hypot(hit.x - e.x, hit.y - e.y) < 4 * (v.s - p.s));
-      out.push(far ? { ...hit!, r: null } : { x: kept[Math.round((k + m) / 2)].x, y: kept[Math.round((k + m) / 2)].y, r: null });
+      const along = (a: { x: number; y: number }, b: { x: number; y: number }, h: { x: number; y: number }) =>
+        ((h.x - a.x) * (b.x - a.x) + (h.y - a.y) * (b.y - a.y)) / ((b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1);
+      const corner = hit && along(p, q, hit) >= 1 - 1e-9 && along(v, u, hit) >= 1 - 1e-9
+        && Math.hypot(hit.x - q.x, hit.y - q.y) + Math.hypot(hit.x - u.x, hit.y - u.y) <= 3 * (u.s - q.s);
+      out.push(corner ? { ...hit!, r: null } : { x: kept[Math.round((k + m) / 2)].x, y: kept[Math.round((k + m) / 2)].y, r: null });
     }
     k = m + 1;
   }
@@ -296,7 +303,14 @@ export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDes
   if (fresh.id !== route.id) throw new Error('Promotion must keep the route');
   const wide = base.path({ ...old, s0: Math.min(s0, old.s0), s1: Math.max(s1, old.s1) });
   const kept = route.alignment.pis.filter(p => { const s = nearestStation(wide, p); return s > s0 + 1 && s < s1 - 1; });
-  const added = (from: number, to: number) => to - from > 1 ? fitBends(base.path({ ...old, s0: from, s1: to })) : [];
+  // (a newly included piece of old road is converted as the first drag converts the stretch: sharp old
+  // corners keep their own curve, so lengthening the stretch builds nothing anew either)
+  const category = route.kind === 'road' && route.specification.crossSection !== 'existing' ? route.specification.crossSection as CategoryId : null;
+  const added = (from: number, to: number): PI[] => {
+    if (!(to - from > 1)) return [];
+    const path = base.path({ ...old, s0: from, s1: to });
+    return category ? fitRoad(path[0], path[path.length - 1], path, route.specification.designSpeed, category) : fitBends(path);
+  };
   // bends of the newly included old road at either end, then the kept ones, in order along the road
   const head = s0 < old.s0 ? added(s0, old.s0) : [], tail = s1 > old.s1 ? added(old.s1, s1) : [];
   const joinHead = s0 < old.s0 ? [{ ...base.position(old.sourceId, old.s0)!, r: null }] : [];

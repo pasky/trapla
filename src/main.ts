@@ -375,6 +375,7 @@ async function main() {
   /** A side road's own settings, above whatever is selected on it: what it is, its traffic, its junctions
    * and works, and how to undo it. */
   let strayKey = '', stray = 0;
+  inspector.isSideRoad = () => !!store.route && store.route.role !== 'mission';
   inspector.routeHead = () => {
     const route = store.route, r = last;
     if (!route || route.role === 'mission' || route.kind !== 'road' || !r) return null;

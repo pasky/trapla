@@ -231,3 +231,14 @@ it('a side road\'s problems name its start and end, never the mission\'s A and B
   expect(texts.some(t => /its start/.test(t))).toBe(true);
   expect(texts.filter(t => /\b(to|from|near|at|and|of|before|after) [AB]\b/.test(t))).toEqual([]);
 });
+
+it('what the kernel says about a side road reads "this road": "our road" there is the mission road', async () => {
+  const { thisRoadWords } = await import('../src/core/terms');
+  expect(thisRoadWords('Ramps up to the bridge over our road would be longer than 250 m')).toBe('Ramps up to the bridge over this road would be longer than 250 m');
+  expect(thisRoadWords('Lower our road here (a cutting makes the ramps shorter), or choose "Our bridge over it", an underpass or "Cut and reroute"'))
+    .toBe('Lower this road here (a cutting makes the ramps shorter), or choose "This road’s bridge over it", an underpass or "Cut and reroute"');
+  expect(thisRoadWords('Our earthworks cover 14 m of a track')).toBe('This road’s earthworks cover 14 m of a track');
+  expect(thisRoadWords('Its bridge over us')).toBe('Its bridge over this road');
+  expect(thisRoadWords('The crossed road meets ours at the same level; four hours of your time')).toBe('The crossed road meets this road at the same level; four hours of your time');
+  expect(thisRoadWords(thisRoadWords('Our road crosses over the crossed road'))).toBe('This road crosses over the crossed road');
+});

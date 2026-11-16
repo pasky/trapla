@@ -20,6 +20,7 @@ import { draws, editedNetwork, lineStation, planEnds, planLine, registerNet, typ
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STEP, type EvalOptions } from './evaluate';
+import { thisRoadWords } from './terms';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Combined noise of several roads (C1 c): answers each road's per-storey energy at a house from its
@@ -99,9 +100,13 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}), ...(endsOf ? { endsOf } : {}) });
   const road = route.kind === 'road' && !corridor && evaluated.status === 'evaluated' ? evaluated as Extract<ReturnType<typeof evaluateProjectRoad>, { status: 'evaluated' }> : null;
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
-  // the kernel names the mission's ends A and B; every other road's card and map say its start and end
-  if (legacy && route.role !== 'mission') for (const v of [...legacy.violations, ...legacy.inherited ?? []]) {
-    v.title = endWords(route, v.title); v.fix = endWords(route, v.fix); if (v.detail) v.detail = endWords(route, v.detail);
+  // the kernel names the mission's ends A and B and calls the designed road "our road"; every other road's
+  // card and map say its start and end, and "this road" ("our road" there is the mission road)
+  if (legacy && route.role !== 'mission') {
+    const own = (text: string) => thisRoadWords(endWords(route, text));
+    for (const v of new Set([...legacy.violations, ...legacy.inherited ?? [], ...legacy.crossings.flatMap(c => c.issues ?? [])])) {
+      v.title = own(v.title); v.fix = own(v.fix); if (v.detail) v.detail = own(v.detail);
+    }
   }
   return { route: { routeId: route.id, revision: route.revision,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,

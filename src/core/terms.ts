@@ -198,3 +198,12 @@ export function mappedRoadName(tags: { highway?: string; ref?: string; name?: st
 }
 /** Does that name already say the road's class (so a card need not repeat it)? */
 export const namedByNumber = (tags: { highway?: string; ref?: string; name?: string } | undefined) => !tags?.name && !!tags?.ref && !!NUMBERED[tags.highway ?? ''];
+
+/** The kernel words everything from the designed road's side ("our road", "our earthworks", "Its bridge
+ * over us"). On a road that is not ours (a rebuilt or new side road) "our road" is the mission road, so
+ * what the kernel says about the road being designed reads "this road" there. */
+export function thisRoadWords(text: string): string {
+  return text.replace(/\bOur road\b/g, 'This road').replace(/\bour road\b/g, 'this road').replace(/\bours\b/g, 'this road')
+    .replace(/\b(over|under|above|below|beside|across|to|from) us\b/g, '$1 this road')
+    .replace(/\bOur (?=\w)/g, 'This road’s ').replace(/\bour (?=\w)/g, 'this road’s ');
+}
