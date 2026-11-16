@@ -705,6 +705,7 @@ export class View {
       marker.el.classList.toggle('info', !!point.sign && !endpoints.plain);
       const sign = marker.el.querySelector('.interchange-sign')!;
       if (point.sign && sign.getAttribute('data-sign') !== point.sign) { sign.innerHTML = END_SIGNS[point.sign]; sign.setAttribute('data-sign', point.sign); }
+      this.labelRoom.forget(marker.el);
     }
     this.dirty = true;
   }

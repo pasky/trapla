@@ -185,6 +185,7 @@ async function main() {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
     // what the photo shows that the map does not (e.g. the real road being built): said once
     if (on && scenario.photoNote && !photoNoted) { photoNoted = true; toast(scenario.photoNote, undefined, undefined, 9000); }
+    if (!on && scenario.photoNote) hideToast(scenario.photoNote);
   }, noise, () => {
     // the active route as built (else its ends and bends)
     const r = last, d = store.read() ? store.design : null;
