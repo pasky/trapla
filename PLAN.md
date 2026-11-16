@@ -268,10 +268,11 @@ What exists (details and commands in `README.md`):
   problems outside the stretch; Join restores the paired price exactly. The Edit switch is on the motorway's
   own card (P1 #11). Mapped lines are picked on the ground under them in 20 m pieces (P1 #14), crossing cards
   name "our railway" / "our motorway" (P1 #10).
-- Cost model 22 (playtest re-test 2, merged with main's finite-segment noise; D11 bills identical): a
-  motorway's noise is its two directional sources (half the traffic each on the lane-pair axes ±6.0 m; a
-  split direction hears the other carriageway along its own line, no full-traffic bound): D3 motorway noise
-  walls +12.5 M CZK, D35 +2.7 M. A double track's noise on its two tracks, a single track's on its axis.
+- Cost model 22–23 (playtest re-test 2, merged with main's finite-segment noise; D11 bills identical): a
+  paired motorway's noise is its two directional sources (half the traffic each on the lane-pair axes ±6.0 m;
+  a direction on its own keeps the whole traffic on its own lane axis, an upper bound, until houses heard by
+  two sources are decided jointly): D3 motorway noise walls +12.5 M CZK, D35 +2.7 M. Cost model 23 after
+  merging main's valid reroutes (Královec starter re-fitted, 10.4 bn). A double track's noise on its two tracks, a single track's on its axis.
   Railway ends on a track leave it at no more than a turnout's angle (4.76°, research/38 §5): the Královec
   starter now leaves Trutnov hl.n. along its tracks (VALID 10.4 bn). Rebuilt railway stretches keep their line's
   speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. The 150 km/h

@@ -214,9 +214,11 @@ D 27.5 body (50 % norm each), overlapping embankment/cutting volumes, land and h
 direction standing on (or undermining) the other carriageway is a violation with a concrete distance.
 Crossed roads where the directions run joined are built once: the forward direction prices and draws
 one structure spanning both bodies (the other mirrored), the reverse direction reuses it at no cost.
-Noise per direction (also in separate stretches): its own lane axis and the other direction's carriageway
-line, half the corridor's traffic each (no upper bound); houses beside joined stretches are the outer
-direction's to decide (the median side is that direction's check), and where "joined" in plan is not one
+Noise per direction (also in separate stretches): the whole corridor's traffic on its own lane-pair axis, a
+safe upper bound (≤ +3 dB where only one direction is near): the other carriageway as a second lane of the
+same source was tried and rejected in review (far apart, its bounds, geometry and far grouping do not hold);
+deciding houses heard by two sources needs the project's joint decisions (C1). Houses beside joined
+stretches are the outer direction's to decide (the median side is that direction's check), and where "joined" in plan is not one
 body at one height the ledger reports noise as not checked. A stitched result's noise source is the spine's
 cells outside and each piece's inside (`result-stitch.ts stitchSource`). Join = explicit reset to the kept shared
 line (Undo restores the separate edits). Unchanged, a split prices like the pair on open ground (+0.06 %
@@ -272,8 +274,8 @@ from the shown direction's start; an unselected mapped railway is dragged direct
 turnout's angle and the Královec starter re-fitted (leaves Trutnov hl.n. north-west along its tracks into a
 tunnel, VALID 10.4 bn after main's valid reroutes; the streets near the station pass over its tunnel, none is rerouted to a cut crossing); rebuilt stretches at their line's own speed and grade; railway words in the bill
 tooltips, intro, Build card and slope / Auto-height problems; one unpriced change per motorway; profile end
-letters A / B for motorways; 150 pilot travel time from its sourced share; motorway noise as two
-directional sources, railway noise per track (above). `scripts/rail-rebuild-check.ts` rebuilds a D3 railway
+letters A / B for motorways; 150 pilot travel time from its sourced share; paired motorway noise as two
+directional sources, railway noise per track (above). Merged main 2decf53 (valid reroutes): cost model 23. `scripts/rail-rebuild-check.ts` rebuilds a D3 railway
 stretch in Node.
 
 Pending / limits found (2026-11-16):

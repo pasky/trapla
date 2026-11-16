@@ -217,7 +217,7 @@ Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scena
 [the aerial photo showing the real bypass under construction](docs/screenshots/78-nova-paka-photo.png).
 See `docs/new-scenario.md`.
 
-### Motorway (cost model 22)
+### Motorway (cost model 23)
 
 Two motorway places on the start screen ([picker](docs/screenshots/130-motorway-picker.png)): both directions
 are designed together as one D 27.5 corridor ([D3 overview](docs/screenshots/131-motorway-overview.png)),
@@ -234,11 +234,11 @@ each with "Join". On a motorway designed for 130 km/h the Motorway card offers "
 the D3 signs showed it (130 otherwise), their noise at +20 km/h
 (an extrapolation, marked PROVISIONAL), the variable signs priced (about 1.2 M CZK per km, ŘSD's D3 contract);
 curves and slopes stay those of 130. Its noise comes from two directional sources, half the traffic each on the
-lane axes 6 m either side of the middle (a direction on its own: its own line and the other one's). The direction
+lane axes 6 m either side of the middle (a direction on its own: all of it on its own lane axis, an upper bound). The direction
 towards A reads from its own start: its profile, kilometres and bend numbers count from B. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130` (its
 one-direction shot is 135); `node scripts/stretch-play.mjs --gpu` plays choose, drag, join.
 
-### Railway (cost model 22)
+### Railway (cost model 23)
 
 "Railway: Trutnov → Královec" starts and ends on the rail network: at Trutnov hlavní nádraží and at Královec,
 the last station before the Polish border, on today's single-track, non-electrified line (passenger trains
