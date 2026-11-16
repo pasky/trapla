@@ -20,7 +20,8 @@ in. Interleaved A/B (warm, 16 rounds, host load ≈ 6–10), min / median ms:
 | town-centre | 7.1 / 8.6 | 15.0 / 15.7 | 27.5–31.2 / 28.9–33.0 | 87.4 / 99.2 | 96.0 / 105.8 | 108.1–113.8 / 116.5–123.2 |
 
 ("now" ranges over the two runs.) `noiseOutcome` alone, town-centre, 30 calls: 14.6–16.1 → 27.6–28.6 ms.
-The cell-by-cell sums of those 48 houses are most of the increase (≈ 1,900 cells each). `node
+The cell-by-cell sums of those 48 houses are most of the increase (≈ 1,900 cells each): ≈ +12 ms on town-centre's full
+evaluation, a reviewed trade-off (2026-11-16) for decisions identical to the cell-by-cell sums. `node
 scripts/drag-perf.mjs --gpu --check`: every mode OK (drags evaluate without the noise step until they settle).
 
 ## Finite-segment noise, cost model 21 (2026-11-16)
