@@ -20,23 +20,24 @@
     ],
     "wayNodeRanges": {
       "149101901": [
-        12416468309,
-        6393863313
+        5108369477,
+        6393863309
       ]
     },
-    "startNode": 12416468309,
+    "startNode": 5108369477,
     "lengthRangeM": [
-      5050,
-      5200
+      10164,
+      10364
     ],
-    "publishedProjectLengthM": 4486
+    "publishedProjectLengthM": 4486,
+    "note": "The mapped line is drawn across the whole map, beyond the section ends, where the planned D3 continues (research/39)."
   },
   "A": {
-    "alongOfficial": 165.0,
+    "alongOfficial": 2710.257,
     "note": "Section boundary beyond the Jílové interchange (II/104), km 9.512; section 0301 ends here"
   },
   "B": {
-    "alongOfficial": 4685.0,
+    "alongOfficial": 7230.257,
     "note": "Section boundary beyond the Hostěradice interchange (II/106), km 13.900; continues as section 0303"
   },
   "groundProfileOverrides": {

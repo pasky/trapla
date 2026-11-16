@@ -21,15 +21,16 @@
     "wayNodeRanges": {
       "149101901": [
         8227650623,
-        1621272719
+        1621272717
       ]
     },
     "startNode": 8227650623,
     "lengthRangeM": [
-      8650,
-      8900
+      11256,
+      11456
     ],
-    "publishedProjectLengthM": 9514
+    "publishedProjectLengthM": 9514,
+    "note": "The mapped line is drawn across the whole map, beyond the section ends, where the planned D3 continues (research/39)."
   },
   "A": {
     "latlon": [

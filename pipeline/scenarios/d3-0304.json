@@ -20,23 +20,24 @@
     ],
     "wayNodeRanges": {
       "149101901": [
-        6393863302,
-        1621272703
+        5108369463,
+        5108369439
       ]
     },
-    "startNode": 6393863302,
+    "startNode": 5108369463,
     "lengthRangeM": [
-      16100,
-      16350
+      22082,
+      22282
     ],
-    "publishedProjectLengthM": 15840
+    "publishedProjectLengthM": 15840,
+    "note": "The mapped line is drawn across the whole map, beyond the section ends, where the planned D3 continues (research/39)."
   },
   "A": {
-    "alongOfficial": 134.3,
+    "alongOfficial": 3389.78,
     "note": "Section boundary beyond the Václavice interchange, km 29.200 (km 25.200 of section 0303); section 0303 ends here"
   },
   "B": {
-    "alongOfficial": 15951.065,
+    "alongOfficial": 19206.545,
     "note": "Voračice: the section ends at the Voračice interchange with road I/18 (km 45.040); continues as section 0305/I",
     "junction": {
       "kind": "interchange",

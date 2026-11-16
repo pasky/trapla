@@ -20,23 +20,24 @@
     ],
     "wayNodeRanges": {
       "149101901": [
-        5108369471,
-        5108369458
+        5108369472,
+        5108369456
       ]
     },
-    "startNode": 5108369471,
+    "startNode": 5108369472,
     "lengthRangeM": [
-      11400,
-      11600
+      16107,
+      16307
     ],
-    "publishedProjectLengthM": 11292
+    "publishedProjectLengthM": 11292,
+    "note": "The mapped line is drawn across the whole map, beyond the section ends, where the planned D3 continues (research/39)."
   },
   "A": {
-    "alongOfficial": 41.9,
+    "alongOfficial": 2448.519,
     "note": "Section boundary beyond the Hostěradice interchange (II/106), km 13.900; section 0302 ends here"
   },
   "B": {
-    "alongOfficial": 11401.9,
+    "alongOfficial": 13808.519,
     "note": "Section boundary beyond the Václavice interchange (II/112 link to Benešov), km 25.200; continues as section 0304"
   },
   "groundProfileOverrides": {

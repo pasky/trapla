@@ -34,7 +34,11 @@ if (process.argv.includes('--seed')) {
   mkdirSync(fixtureDir, { recursive: true });
   const initial: Design = { ...startDesign(), ...scenario.initial };
   writeFileSync(`${fixtureDir}/default.json`, JSON.stringify({ scenario: meta.id, purpose: scenario.mode === 'motorway' ? 'Fresh motorway mission (starter)' : 'Fresh road exercise', design: initial }, null, 2));
-  const off = meta.official.xy as [number, number][];
+  // The mapped line may run on beyond the mission's ends (a section of a longer corridor): only A → B.
+  const all = meta.official.xy as [number, number][];
+  const nearest = (p: [number, number]) => all.reduce((best, q, k) => Math.hypot(q[0] - p[0], q[1] - p[1]) < Math.hypot(all[best][0] - p[0], all[best][1] - p[1]) ? k : best, 0);
+  const ia = nearest(meta.A.xy), ib = nearest(meta.B.xy);
+  const off = [meta.A.xy, ...all.slice(Math.min(ia, ib) + 1, Math.max(ia, ib))].concat([meta.B.xy]) as [number, number][];
   if (off.length < 2) throw new Error('No mapped reference: do not invent an official fixture.');
   const reference: Design = { ...initial, pis: [] };
   let distance = 0;

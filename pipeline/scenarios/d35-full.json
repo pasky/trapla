@@ -39,8 +39,8 @@
     "note": "Opatovec: western end of mapped proposed D35, at the temporary service-road continuation"
   },
   "B": {
-    "alongOfficial": 33300,
-    "note": "Mohelnice: 33.3 km along the mapped proposed D35, where it starts to merge with the existing I/35 (59 m away); the last 0.6 km of the mapped line rebuilds the existing road, which the game cannot model yet",
+    "alongOfficial": 33350,
+    "note": "Mohelnice: 33.35 km along the mapped proposed D35, where it starts to merge with the existing I/35 (45 m away); the last 0.55 km of the mapped line rebuilds the existing road, which the game does not model",
     "junction": {
       "kind": "merge",
       "osmWayIds": [

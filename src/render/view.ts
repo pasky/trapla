@@ -1231,7 +1231,10 @@ export class View {
     const mx = A[0] + (B[0] - A[0]) * 0.45, my = A[1] + (B[1] - A[1]) * 0.45;
     const t = this.local(mx, my, 500);
     this.controls.target.copy(t);
-    this.camera.position.set(t.x + 2500, t.y + 17500, t.z + 14000);
+    // Framed for D11's 18.6 km between its ends; shorter missions come closer (longer ones keep this view:
+    // their whole length at once costs the GPU more than a frame).
+    const f = Math.max(0.35, Math.min(1, Math.hypot(B[0] - A[0], B[1] - A[1]) / 18586.07));
+    this.camera.position.set(t.x + 2500 * f, t.y + 17500 * f, t.z + 14000 * f);
     this.controls.update();
     this.dirty = true;
   }

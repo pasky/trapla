@@ -127,3 +127,39 @@ retries once with Auto asked to clear such roads (our bridge 6 m above, or a 6 m
 penalty above any structure, and keeps the retry if it has fewer violations (`evaluate.ts`,
 `opts.separate`). That cleared two of the three; the 12 m bend move the third (an oblique crossing whose
 road runs along our cutting).
+
+## The whole corridor in one mission (`d3-full`)
+
+One pack over all five sections: EPSG:5514 −744000, −1107000 → −732000, −1055500 (12 × 51.5 km, the
+mapped line + 1.5 km), 5 m cells, 2400 × 10300 = **24.7 M cells**, above the 15.75 M reviewed default
+(`maxRasterCells` raised for this pack only). Why not coarser: the hydrology grid (25 m) must be a whole
+multiple of the cell, so the only alternatives are 12.5 or 25 m, too coarse for a 27.5 m formation and
+inconsistent with the section packs. Measured: build peak RSS 1.6 GB, pack 40.5 MB (D11 ≈ 22 MB); the
+GPU height texture is 2400 × 10300 (below the 16384 limit); drag runs at 60 fps with the camera framed as
+for D11 (framing the whole 57 km at once costs the integrated GPU more than a frame, so long missions keep
+D11's distance; shorter ones come closer).
+
+Ends: A and B of 0301 and 0305/I (D0 interchange, operating D3). Design speed 120 (0301–0303; 0304 and
+0305/I are designed for 130). Starter: the five section starters' bends in sequence (31 bends), bend 4 moved
+12 m (a class III road at km 8.78 where 0301 meets 0302): **VALID, 56,424 m, 40.74 bn CZK**. Full
+evaluation ≈ 1.6 s in Node on a loaded host.
+
+## Section ends drawn as continuing
+
+Playtest (P1): a motorway that stops dead in a meadow reads as unfinished. Each section pack now draws the
+mapped proposed line across its whole map, beyond both ends (“planned D3”, dashed), so an end at a section
+boundary visibly continues as the next section, and the end labels say so (“Hostěradice (on to 0303)”).
+Ends at the D0, at I/18 and on the operating D3 are declared junctions with the real roads.
+
+## D35 Opatovec → Mohelnice (`d35-full`)
+
+Pack as research/27 (−601500, −1102000 → −567500, −1090500, 15.64 M cells), motorway mission D 27.5/130,
+A at the western end of the mapped proposed D35 (the opened Janov–Opatovec section's continuation), B on the
+mapped line where it starts to merge with I/35, declared `merge` (research/28). B is at **33,350 m** along
+the mapped line (research/27 used 33,300 m for the two-lane exercise): at 33.30 km a stream 140 m before B
+cannot be crossed by a motorway, whose 15,000 m crest radius leaves no room to rise over a culvert and come
+back down to I/35 level; 50 m further on it can (45 m from the I/35 ways). Starter: mapped-line bends every
+≈ 1.5 km, the last one (400 m before B) dropped, bends 0/10/11/17 moved 25/12/100/15 m by a bounded
+greedy search (`scripts/scenarios/repair-starter.ts`: first violation, two or three nearest bends, ±12–100 m
+along the normal). The old first-stage presets stay: the motorway one as “Opatovec → Staré Město (first
+section)”, the two-lane road exercise retired (Continue only).

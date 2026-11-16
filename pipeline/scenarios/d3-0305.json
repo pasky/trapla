@@ -22,19 +22,20 @@
     ],
     "wayNodeRanges": {
       "149101901": [
-        5108369443,
+        1621272705,
         7056954345
       ]
     },
-    "startNode": 5108369443,
+    "startNode": 1621272705,
     "lengthRangeM": [
-      17300,
-      17450
+      19795,
+      19995
     ],
-    "publishedProjectLengthM": 17360
+    "publishedProjectLengthM": 17360,
+    "note": "The mapped line is drawn across the whole map, beyond the section ends, where the planned D3 continues (research/39)."
   },
   "A": {
-    "alongOfficial": 365.328,
+    "alongOfficial": 2874.868,
     "note": "Voračice: the section starts at the Voračice interchange with road I/18 (km 45.040); section 0304 ends here",
     "junction": {
       "kind": "interchange",

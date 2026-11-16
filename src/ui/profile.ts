@@ -357,32 +357,43 @@ export class ProfilePanel {
       const a = this.X(this.flash.s0), b = this.X(this.flash.s1);
       g.fillRect(a, T, Math.max(4, b - a), B - T);
     }
+    // A long route has several stations per pixel: lines and areas step over them (at most ~2 per
+    // pixel; ends of runs are always kept), so a 60 km profile paints as fast as an 18 km one.
+    const stride = Math.max(1, Math.floor((i1 - i0) / Math.max(1, 2 * (R - L))));
+    const along = (a: number, b: number, f: (i: number) => void) => { for (let i = a; i < b; i += stride) f(i); f(b); };
     // ground
     g.beginPath();
     g.moveTo(this.X(r.s[i0]), B);
-    for (let i = i0; i <= i1; i++) g.lineTo(this.X(r.s[i]), this.Y(r.ground[i]));
+    along(i0, i1, i => g.lineTo(this.X(r.s[i]), this.Y(r.ground[i])));
     g.lineTo(this.X(r.s[i1]), B);
     g.closePath();
     g.fillStyle = '#e3d6bb';
     g.fill();
     // cut / fill between grade and ground
-    // One path per colour (thousands of stations on a long route: a fill per station is too slow).
-    const fills: Record<string, Path2D> = {};
-    for (let i = i0; i < i1; i++) {
-      if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
-      const h0 = r.grade[i] - r.ground[i], h1 = r.grade[i + 1] - r.ground[i + 1];
-      const path = fills[h0 + h1 > 0 ? 'rgba(110,160,60,0.55)' : 'rgba(215,140,50,0.6)'] ??= new Path2D();
-      path.moveTo(this.X(r.s[i]), this.Y(r.ground[i]));
-      path.lineTo(this.X(r.s[i + 1]), this.Y(r.ground[i + 1]));
-      path.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1]));
-      path.lineTo(this.X(r.s[i]), this.Y(r.grade[i]));
-      path.closePath();
+    // One area per run of earthwork cells of one sign (embankment / cutting).
+    const earthSign = (i: number) => r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth ? 0
+      : r.grade[i] - r.ground[i] + r.grade[i + 1] - r.ground[i + 1] > 0 ? 1 : -1;
+    for (let i = i0; i < i1;) {
+      const sign = earthSign(i);
+      let j = i;
+      while (j + 1 < i1 && earthSign(j + 1) === sign) j++;
+      if (sign) {
+        g.fillStyle = sign > 0 ? 'rgba(110,160,60,0.55)' : 'rgba(215,140,50,0.6)';
+        g.beginPath();
+        g.moveTo(this.X(r.s[i]), this.Y(r.ground[i]));
+        along(i, j + 1, k => g.lineTo(this.X(r.s[k]), this.Y(r.ground[k])));
+        for (let k = j + 1; k > i; k -= stride) g.lineTo(this.X(r.s[k]), this.Y(r.grade[k]));
+        g.lineTo(this.X(r.s[i]), this.Y(r.grade[i]));
+        g.closePath();
+        g.fill();
+      }
+      i = j + 1;
     }
-    for (const [style, path] of Object.entries(fills)) { g.fillStyle = style; g.fill(path); }
     g.strokeStyle = '#8a7148';
     g.lineWidth = 1.2;
     g.beginPath();
-    for (let i = i0; i <= i1; i++) { const x = this.X(r.s[i]), y = this.Y(r.ground[i]); if (i === i0) g.moveTo(x, y); else g.lineTo(x, y); }
+    g.moveTo(this.X(r.s[i0]), this.Y(r.ground[i0]));
+    along(i0, i1, i => g.lineTo(this.X(r.s[i]), this.Y(r.ground[i])));
     g.stroke();
     // structures
     for (const run of r.runs) {
@@ -449,7 +460,8 @@ export class ProfilePanel {
       g.setLineDash(tunnel ? [6, 4] : []);
       g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(r.grade[i]));
       let j = i;
-      while (j < i1 && gradeStyle(j) === style && (r.kind[j] === KIND.tunnel) === tunnel) { g.lineTo(this.X(r.s[j + 1]), this.Y(r.grade[j + 1])); j++; }
+      while (j < i1 && gradeStyle(j) === style && (r.kind[j] === KIND.tunnel) === tunnel) j++;
+      along(i + 1, j, k => g.lineTo(this.X(r.s[k]), this.Y(r.grade[k])));
       g.stroke();
       i = j;
     }
