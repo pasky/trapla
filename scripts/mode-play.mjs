@@ -5,27 +5,15 @@
 // node scripts/mode-play.mjs [--gpu]
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
 const out = '/tmp/trapla-mode-play';
 mkdirSync(out, { recursive: true });
-const server = await createServer({ server: { port: 5296, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-let browser, n = 0;
+const game = await startGame({ port: Number(process.env.PORT ?? 5296) });
+let n = 0;
 try {
-  browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: process.argv.includes('--gpu')
-    ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
-    : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-  const errors = [];
-  page.on('pageerror', e => errors.push(e.message));
-  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  const idle = async () => {
-    await page.evaluate(() => window.trapla.whenIdle());
-    await page.evaluate(() => new Promise(r => { const f = () => requestAnimationFrame(() => window.trapla.viewBusy() ? f() : r()); requestAnimationFrame(f); }));
-    await page.waitForTimeout(400);
-  };
+  const { page, errors } = game;
+  const idle = () => game.idle(400);
   const shot = async name => { await idle(); await page.screenshot({ path: `${out}/${String(++n).padStart(2, '0')}-${name}.png` }); console.log('shot', name); };
   const seen = async (label) => {
     const s = await page.evaluate(() => {
@@ -40,14 +28,7 @@ try {
   };
   const box = await (async () => null)();
   void box;
-  const open = async (query) => {
-    await page.goto(`http://localhost:5296/?${query}`);
-    await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
-    await page.evaluate(() => { localStorage.clear(); localStorage.setItem('trapla.intro.v2', '1'); });
-    await page.reload();
-    await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
-    await idle();
-  };
+  const open = (query) => game.open(query);
   const at = async (fn, ...args) => {
     const b = await page.locator('#view').boundingBox();
     const p = await page.evaluate(([fn, args]) => window.trapla[fn](...args), [fn, args]);
@@ -56,7 +37,7 @@ try {
   };
 
   // 1. the start screen: the railway card, then the mission
-  await page.goto('http://localhost:5296/');
+  await page.goto(game.base);
   await page.waitForSelector('.scenario-picker-card');
   const cards = await page.locator('.scenario-picker-card :is(h2, h3)').allTextContents();
   console.log('cards', JSON.stringify(cards));
@@ -151,7 +132,4 @@ try {
   await seen('built motorway');
   await shot('built-motorway');
   if (errors.length) throw new Error(errors.join('\n'));
-} finally {
-  if (browser) await browser.close();
-  await server.close();
-}
+} finally { await game.close(); }
