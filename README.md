@@ -231,11 +231,8 @@ nothing; the first drag of that direction makes it run on its own only over the 
 on a straight before the change to one after it ([one direction through its own tunnel](docs/screenshots/135-motorway-one-direction.png));
 elsewhere both stay one road body with one bill. Inside, each direction keeps the shared heights while the two
 run side by side and gets Auto heights where they are apart. The card lists where the directions run apart,
-each with "Join". On a motorway designed for 130 km/h the Motorway card offers "Speed limit:
-150 km/h (pilot)", like the ministry's D3 pilot (research/41): cars' travel time at 150 for the 39 % of the time
-the D3 signs showed it (130 otherwise), their noise at +20 km/h
-(an extrapolation, marked PROVISIONAL), the variable signs priced (about 1.2 M CZK per km, ŘSD's D3 contract);
-curves and slopes stay those of 130. Its noise comes from two directional sources, half the traffic each on the
+each with "Join". The Motorway card's one speed control is the design speed (130, 120 or 110 km/h) with the curves and slopes
+it demands; the motorway is signed at it. Its noise comes from two directional sources, half the traffic each on the
 lane axes 6 m either side of the middle (a direction on its own: all of it on its own lane axis, an upper bound). The direction
 towards A reads from its own start: its profile, kilometres and bend numbers count from B. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130` (its
 one-direction shot is 135); `node scripts/stretch-play.mjs --gpu` plays choose, drag, join.

@@ -11,12 +11,11 @@ import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from 
 import { trainsPerDay } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
-import { DIRECTIONS_TEXT, SPEED_LIMIT_TEXT } from '../core/terms';
+import { DIRECTIONS_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
-import { MOTORWAY_150_PILOT } from '../core/data/motorway';
 import type { Best, StationRange } from '../state';
 import { COST_GROUPS, czk, groupLabel } from './costgroups';
 import { RAILWAY_EVIDENCE, SPOZES } from '../core/data/railway';
@@ -43,8 +42,6 @@ export interface HudEvents {
   onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
   /** motorway: both directions on one line again over a stretch where they run apart */
   onJoinStretch?: (id: string) => void;
-  /** motorway designed for 130: the 150 km/h speed-limit pilot on / off */
-  onSpeedLimit?: (pilot: boolean) => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
   /** show the first-run introduction again */
@@ -246,13 +243,6 @@ export class Hud {
           <p id="dir-explain" class="mode-explain"></p>
           <div id="dir-apart" class="dir-apart"></div>
         </div>
-        <div class="mode" id="speed-limit" hidden>
-          <div class="mode-h"><b>${SPEED_LIMIT_TEXT.heading}</b></div>
-          <div class="seg" role="radiogroup" aria-label="${SPEED_LIMIT_TEXT.heading}">
-            <button type="button" id="limit-normal" role="radio" title="${SPEED_LIMIT_TEXT.normalTitle}">${SPEED_LIMIT_TEXT.normal}</button><button type="button" id="limit-pilot" role="radio" title="${SPEED_LIMIT_TEXT.pilotTitle}">${SPEED_LIMIT_TEXT.pilot}</button>
-          </div>
-          <p id="limit-explain" class="mode-explain"></p>
-        </div>
         <div class="mode">
           <div class="mode-h"><b id="height-h">Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
@@ -293,8 +283,6 @@ export class Hud {
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
-    this.$('limit-normal').onclick = () => this.ev.onSpeedLimit?.(false);
-    this.$('limit-pilot').onclick = () => this.ev.onSpeedLimit?.(true);
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
     // the first listed item (project mode: the first real violation, else the first not-checked item)
     this.$('chip-viol').onclick = () => {
@@ -382,7 +370,9 @@ export class Hud {
       norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; vertical rounding radius ≥ ${num(n.minCrestRadius)} m.`;
     } else {
       norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
-      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+      // motorways: radii from the 2018 edition (research/33 §7); its slope and vertical radii are not public, the older edition's stand in
+      const older = cat.mode === 'motorway' ? ' (older edition: the 2018 value is not public)' : '';
+      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %${older}; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags)${older}.`;
     }
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
@@ -395,17 +385,6 @@ export class Hud {
       : 'Drag the ◆ points in the profile; double-click the line adds one.';
     this.$('mode-help').title = auto ? AUTO_LONG : MANUAL_LONG;
     this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'Auto height' : 'height by hand'}`;
-  }
-
-  /** The 150 km/h pilot switch; null hides it (anything but a motorway designed for 130 km/h). */
-  setSpeedLimit(state: { pilot: boolean; signsPerKm: string } | null) {
-    const box = this.$('speed-limit');
-    box.hidden = !state;
-    if (!state) return;
-    for (const [id, on] of [['limit-normal', !state.pilot], ['limit-pilot', state.pilot]] as const) {
-      const b = this.$(id); b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
-    }
-    this.$('limit-explain').textContent = state.pilot ? SPEED_LIMIT_TEXT.explainPilot(state.signsPerKm, MOTORWAY_150_PILOT.share) : SPEED_LIMIT_TEXT.explainNormal;
   }
 
   /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */

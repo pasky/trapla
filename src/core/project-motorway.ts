@@ -7,7 +7,6 @@ import { GRADE_PIN_TOLERANCE, type GradePin } from './grade-pins';
 import { evaluate } from './evaluate';
 import { CATEGORIES } from './data/categories';
 import { designSpeeds } from './data/norms';
-import { MOTORWAY_150_PILOT } from './data/motorway';
 import { modeCapability } from './mode-policy';
 import type { CorridorDesign, DrawnPart, ProjectDesign, RouteDesign, RoadOperations, SeparateStretch, XYZ } from './project';
 import { buildAlignment, pointAt, station, type Alignment, type PI, type Vec2 } from './horizontal';
@@ -35,33 +34,14 @@ export function corridorOfRoute(project: ProjectDesign, routeId: string): Corrid
 }
 
 /** Corridor-wide traffic: the children's directional demands added (never one copied twice). */
-/** Whether a motorway runs the 150 km/h speed-limit pilot (data/motorway.ts): the posted limit set to 150
- * on a motorway designed for 130. Any other design speed keeps the design speed as the limit. */
-export function speedLimit150(route: RouteDesign): boolean {
-  return route.kind === 'motorway' && route.specification.designSpeed === MOTORWAY_150_PILOT.designSpeed
-    && route.specification.operations.speedPolicy === 'independent' && route.specification.operations.speed === MOTORWAY_150_PILOT.limit;
-}
-/** Turn the pilot on/off for a whole corridor (both directions), one edit. */
-export function setSpeedLimit150(project: ProjectDesign, corridorId: string, on: boolean): ProjectDesign {
-  const next = structuredClone(project), corridor = next.corridors.find(c => c.id === corridorId);
-  if (!corridor) throw new Error('Unknown corridor');
-  for (const id of [corridor.children.forward, corridor.children.reverse]) {
-    const r = next.routes.find(x => x.id === id);
-    if (r?.kind !== 'motorway') continue;
-    if (on && r.specification.designSpeed !== MOTORWAY_150_PILOT.designSpeed) throw new Error('The pilot needs a motorway designed for 130 km/h');
-    r.specification.operations = { ...r.specification.operations, speed: on ? MOTORWAY_150_PILOT.limit : r.specification.designSpeed, speedPolicy: on ? 'independent' : 'design' };
-    r.revision++;
-  }
-  return next;
-}
-
 export function corridorOperations(project: ProjectDesign, corridor: CorridorDesign): RoadOperations {
   const kids = [corridor.children.forward, corridor.children.reverse].map(id => project.routes.find(r => r.id === id));
   if (kids.some(k => !k || k.kind !== 'motorway')) throw new Error('Corridor children must be motorway routes');
   const [f, r] = kids as MotorwayRoute[], aadt = f.specification.operations.aadt + r.specification.operations.aadt;
   const heavy = aadt > 0 ? (f.specification.operations.aadt * f.specification.operations.heavyShare
     + r.specification.operations.aadt * r.specification.operations.heavyShare) / aadt : f.specification.operations.heavyShare;
-  return { aadt, heavyShare: heavy, speed: f.specification.operations.speed };
+  // signed at its design speed (a save from when a 150 km/h trial limit could be set reads as 130)
+  return { aadt, heavyShare: heavy, speed: f.specification.designSpeed };
 }
 
 /** Kernel design of a paired corridor's spine (road widgets edit it through the active-route adapter). */
@@ -98,11 +78,9 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
   for (const id of [corridor.children.forward, corridor.children.reverse]) {
     const r = next.routes.find(x => x.id === id);
     if (r?.kind === 'motorway' && r.specification.designSpeed !== speed) {
-      const pilot = speedLimit150(r);
       r.specification.designSpeed = speed;
-      // a new design speed ends the 150 km/h pilot (it needs a motorway designed for 130)
-      if (pilot) r.specification.operations = { ...r.specification.operations, speed, speedPolicy: 'design' };
-      if (r.specification.operations.speedPolicy !== 'independent') r.specification.operations.speed = speed;
+      // a motorway is signed at its design speed
+      r.specification.operations = { ...r.specification.operations, speed, speedPolicy: 'design' };
     }
   }
   next.buildingOverrides = buildingOverrides ?? [];
@@ -201,17 +179,17 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
   }
   const { only: _only, ...spineOptions } = options;
   if (corridor.stretches?.length) return { ...evaluateSeparated(ctx, project, corridor, kids, goal, options), ...(unpriced ? { unpriced } : {}) };
-  return { status: 'evaluated', result: evaluateSpine(ctx, project, corridor, kids, goal, spineOptions), ...(unpriced ? { unpriced } : {}) };
+  return { status: 'evaluated', result: evaluateSpine(ctx, project, corridor, goal, spineOptions), ...(unpriced ? { unpriced } : {}) };
 }
 type Goal = ProjectDesign['mission']['connections'][number] | undefined;
 /** ONE kernel evaluation of the paired corridor's common spine (D 27.5). */
-function evaluateSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
+function evaluateSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, goal: Goal,
   options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
   const ops = corridorOperations(project, corridor), a = corridor.endpoints.a.position, b = corridor.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, corridorDesign(project, corridor),
-  { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: ops.speed, speedLimit150: kids.every(speedLimit150),
+  { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: ops.speed,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: goal?.maxTravelMin !== undefined, capacity: goal?.demand !== undefined } });
 }
@@ -366,11 +344,9 @@ export function replaceCarriagewayFromDesign(project: ProjectDesign, routeId: st
   for (const id of corridor ? [corridor.children.forward, corridor.children.reverse] : [routeId]) {
     const r = next.routes.find(x => x.id === id);
     if (r?.kind === 'motorway' && r.specification.designSpeed !== speed) {
-      const pilot = speedLimit150(r);
       r.specification.designSpeed = speed;
-      // a new design speed ends the 150 km/h pilot (it needs a motorway designed for 130)
-      if (pilot) r.specification.operations = { ...r.specification.operations, speed, speedPolicy: 'design' };
-      if (r.specification.operations.speedPolicy !== 'independent') r.specification.operations.speed = speed;
+      // a motorway is signed at its design speed
+      r.specification.operations = { ...r.specification.operations, speed, speedPolicy: 'design' };
     }
   }
   next.buildingOverrides = buildingOverrides ?? [];
@@ -403,7 +379,7 @@ export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, ro
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, carriagewayDesign(project, route),
-  { ...options, endpointElevations: { a: a.z, b: b.z }, operatingSpeed: ops.speed, speedLimit150: speedLimit150(route) && speedLimit150(other),
+  { ...options, endpointElevations: { a: a.z, b: b.z }, operatingSpeed: ops.speed,
     leftJoined: joinedRanges(carriagewayLine(route), carriagewayLine(other)),
     goals: { time: goal?.maxTravelMin !== undefined, capacity: false } });
 }
@@ -611,13 +587,13 @@ const KNOT = 250, MIN_OWN_HEIGHTS = 2 * KNOT;
 /** The last full spine evaluation per terrain: one direction's edits leave the shared line unchanged,
  * so its evaluation (heights at the joins, the shared body's bill) is reused, never redone. */
 const spineMemo = new WeakMap<object, { key: string; result: Result }>();
-function memoSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
+function memoSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, goal: Goal,
   options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
-  const key = JSON.stringify([corridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), kids.map(speedLimit150), goal, ctx.a, ctx.b]);
+  const key = JSON.stringify([corridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), goal, ctx.a, ctx.b]);
   const hit = spineMemo.get(ctx.terrain);
   if (hit?.key === key) return hit.result;
-  if (options.preview) return evaluateSpine(ctx, project, corridor, kids, goal, options);
-  const result = evaluateSpine(ctx, project, corridor, kids, goal, { materialValue: options.materialValue });
+  if (options.preview) return evaluateSpine(ctx, project, corridor, goal, options);
+  const result = evaluateSpine(ctx, project, corridor, goal, { materialValue: options.materialValue });
   spineMemo.set(ctx.terrain, { key, result });
   return result;
 }
@@ -646,7 +622,7 @@ function joinStations(spine: Result, al: Alignment, rules: ReturnType<typeof hor
 function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
   options: Pick<EvalOptions, 'preview' | 'materialValue'> & { only?: string }): Extract<CorridorEvaluation, { status: 'split' }> {
   if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
-  const spine = memoSpine(ctx, project, corridor, kids, goal, options);
+  const spine = memoSpine(ctx, project, corridor, goal, options);
   const sd = corridorDesign(project, corridor), stretches = corridor.stretches ?? [];
   const rules = horizontalRules(sd.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
   const spineAl = buildAlignment(A, B, sd.pis, rules), ok = joinStations(spine, spineAl, rules);
@@ -779,7 +755,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
   const runPiece = (g: number, dir: Direction, from?: Result) => {
     const p = designs[g][dir], other = designs[g][dir === 'forward' ? 'reverse' : 'forward'], side = dir === 'forward' ? 'L' as const : 'R' as const;
     const result = evaluate({ ...ctx, a: p.a, b: p.b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare } }, p.design,
-      { ...evalOptions, endpointElevations: { a: p.a.z, b: p.b.z }, operatingSpeed: ops.speed, speedLimit150: kids.every(speedLimit150),
+      { ...evalOptions, endpointElevations: { a: p.a.z, b: p.b.z }, operatingSpeed: ops.speed,
         ...(p.fixedProfile ? { fixedProfile: p.fixedProfile } : {}),
         leftJoined: joinedRanges(p.line, other.line, side, true), joinedSide: side,
         ...(dir === 'forward' ? { sharedCrossings: { own: true } } : from ? { sharedCrossings: { own: false, from: from.crossings } } : {}),
