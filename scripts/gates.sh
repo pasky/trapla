@@ -19,6 +19,8 @@ set -u
 cd "$(dirname "$0")/.."
 
 LOCK=${TRAPLA_BROWSER_LOCK:-/tmp/trapla-browser.lock}
+# smoke / playtest listen on a fixed port (strict): one per checkout, so parallel worktrees do not collide
+export PORT=${PORT:-$((5300 + $(pwd | cksum | cut -d' ' -f1) % 600))}
 PACKS="d3 d3-0301 d3-0302 d3-0303 d3-0304 d3-0305 d3-full d35 d35-full i16-nova-paka"
 
 # name | kind (node, timed, browser) | set (quick, full) | command
