@@ -255,8 +255,9 @@ export interface EvalOptions {
   /** Grade-separated routes: crossed roads whose bridge over us could not be built (ramps too long
    * or too high) at the first Auto grade. Auto then keeps clear of each: our bridge over it, or a
    * cutting deep enough for its bridge at its own level (set by evaluate's retry, not by callers).
-   * Present (even empty): unmet clearances cost more than any structure. */
-  separate?: readonly { s: number; g: number }[];
+   * Present (even empty): unmet clearances cost more than any structure. `above`: our bridge only (its
+   * bridge over our cutting, deep enough, could not be built). */
+  separate?: readonly { s: number; g: number; above?: boolean }[];
   /** With `separate`: stretches where the first grade passed too low over a river or railway. */
   separateWater?: readonly { s0: number; s1: number }[];
   /** Stretches where our earthworks buried a road: the grade at most (`fill`) or at least `z` there
@@ -368,7 +369,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
   /** the options the kept result was evaluated with (a separation retry adds its targets) */
   let used: EvalOptions = opts;
-  const sep = (gs: { road?: { s: number; g: number }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...opts,
+  const sep = (gs: { road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...opts,
     separate: gs.flat().flatMap(t => t.road ? [t.road] : []), separateWater: gs.flat().flatMap(t => t.water ? [t.water] : []) });
   // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
   // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
@@ -378,8 +379,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
     // …and where it paid the clearance penalty over a river or railway instead of bridging it.
     const missed = result.violations.filter(v => v.kind === 'crossing' && v.clearance === 'above');
-    const items: { at: number; road?: { s: number; g: number }; water?: { s0: number; s1: number } }[] = [
+    // …and where a way could be led to no other crossing and nothing else was buildable there either: it
+    // too is cleared (where our cutting is already deep enough for its bridge, that bridge's ramps could
+    // not be built: our bridge over it).
+    const unbuilt = result.crossings.filter(c => !c.requestedType && (c.type === 'diversion' || c.type === 'reconnection')
+      && c.issues?.some(v => v.crossing.code === 'reroute'));
+    const items: { at: number; road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[] = [
       ...stuck.map(c => ({ at: c.s, road: { s: c.s, g: ctx.terrain.heightAt(c.x, c.y) } })),
+      ...unbuilt.map(c => ({ at: c.s, road: { s: c.s, g: ctx.terrain.heightAt(c.x, c.y), above: c.h <= -CROSSING_RULES.underDepth } })),
       ...missed.map(v => ({ at: (v.s0 + v.s1) / 2, water: { s0: v.s0, s1: v.s1 } }))];
     if (items.length) {
       // Each stretch is kept where it resolves more than it breaks, judged on its own.
@@ -389,7 +396,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       retry.timing['count.separationRetry'] = 1;
       const keep = groups.filter(g => regionCount(retry, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
       if (keep.length === groups.length) { result = retry; used = sep(groups); }
-      else if (keep.length) { result = run(keep); used = sep(keep); result.timing['count.separationRetry'] = 2; }
+      else if (keep.length) {
+        const part = run(keep), count = (r: Result, g: typeof groups[number]) => regionCount(r, g.map(t => t.at));
+        part.timing['count.separationRetry'] = 2;
+        // (one stretch's clearances move the grade line at the next: where the kept stretches on their own
+        // resolve less than with the others, and none of the others is worse for them, all are kept)
+        if (keep.some(g => count(part, g) > count(retry, g)) && groups.every(g => count(retry, g) <= count(result, g))) { result = retry; used = sep(groups); }
+        else { result = part; used = sep(keep); }
+      }
     }
   }
   // Where our earthworks bury a road that could neither be rebuilt beside them nor kept behind a wall, a
@@ -985,7 +999,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
           if (blocks) clearanceS[i] = c.s;
           penaltyAt![i] = SEPARATION_PENALTY;
           above[i] = Math.max(Number.isNaN(above[i]) ? -Infinity : above[i], c.g + CROSSING_RULES.overHeight - ground[i]);
-          below[i] = Math.min(Number.isNaN(below[i]) ? Infinity : below[i], c.g - CROSSING_RULES.underDepth - ground[i]);
+          below[i] = c.above ? -Infinity : Math.min(Number.isNaN(below[i]) ? Infinity : below[i], c.g - CROSSING_RULES.underDepth - ground[i]);
         }
       }
       return { above, below };

@@ -96,11 +96,7 @@ export function underpassFits(c: Pick<CrossingResult, 'cls' | 'h'>, length: numb
  * justified-case maximum (`rampSteepest`; PROVISIONAL game rule). */
 export function rampLimit(cls: string, z: number, g0: number, g: number, run: number): number {
   const row = ROAD_CLASSES[cls], grade = row.rampGradient, ramp = g - z, old = g - g0;
-  if (!(run > 0 && ramp * old > 0)) return grade;
-  // (a road that is itself steeper than that maximum is not rebuilt gentler than it is: the ramp may follow
-  // it, steeper by as much as the road exceeds the maximum, at most by half the class gradient)
-  const along = Math.abs(old) / run;
-  return Math.max(grade, Math.min(row.rampSteepest, along + grade / 2), along + Math.min(grade / 2, along - row.rampSteepest));
+  return run > 0 && ramp * old > 0 ? Math.max(grade, Math.min(row.rampSteepest, Math.abs(old) / run + grade / 2)) : grade;
 }
 
 /** Diagnostics of a reroute the player shaped (crossing override `via`). */

@@ -492,9 +492,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   /**
    * coarse pass: normal band, then a wide one (deep tunnels / high viaducts); if the coarse grid finds
    * nothing compliant (its grade steps are twice as large, which matters near the gradient limit),
-   * the fine grid over the whole band. A line of the normal band that misses a clearance is weighed
-   * against the wide band's: the band only bounds the search, it must not decide that a stream or a
-   * railway is left uncleared where a deeper tunnel or a higher viaduct would clear it for less.
+   * the fine grid over the whole band. On a gentle gradient (a railway: kilometres to climb out of a
+   * valley, so its line leaves the ground's band more often) a line of the normal band that misses a
+   * clearance is weighed against the wide band's: the band only bounds the search, it must not decide
+   * that a stream is left in a cutting where a deeper tunnel clears it for less. (Roads keep the normal
+   * band: there the wide one also lands on the other side of near-ties, e.g. D35 stage 1 −1.1 bn and the
+   * whole D35 +0.4 bn, a search question of its own.)
    */
   const coarse = (lut: CostLut, r: Range = ALL): Solved | null => {
     // Half-metre fallback only for pins: a narrow target can fall between coarse-grid paths.
@@ -504,7 +507,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     for (const [u, pd] of passes) {
       const x = solve(lut, opt.maxGradient, u, pd, null, r);
       if (!check(x)) continue;
-      if (pd === pad && u === coarseGrid && missesClearance(x, r)) {
+      if (gentle && pd === pad && missesClearance(x, r)) {
         const wide = solve(lut, opt.maxGradient, u, pad * 5, null, r);
         if (check(wide) && wide.cost < x.cost) return wide;
       }
