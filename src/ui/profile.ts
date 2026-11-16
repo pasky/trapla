@@ -12,7 +12,7 @@ import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
 import type { OurLine } from '../core/terms';
-import { lineFrame, shownGrade, shownS, shownText } from './chainage';
+import { bendNo, lineFrame, shownGrade, shownS, shownText } from './chainage';
 import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
 import type { WallOverride } from '../core/build-controls';
@@ -742,7 +742,7 @@ export class ProfilePanel {
       g.beginPath(); g.arc(x, BEND_Y, rad, 0, 2 * Math.PI);
       g.fillStyle = sel ? '#ffd400' : hov ? '#fff3a8' : '#fff'; g.fill();
       g.strokeStyle = '#1d232a'; g.lineWidth = 1.8; g.stroke();
-      if (rad === 8) { g.fillStyle = '#1d232a'; g.fillText(String(b.i + 1), x, BEND_Y + 0.5); }
+      if (rad === 8) { g.fillStyle = '#1d232a'; g.fillText(String(bendNo(b.i)), x, BEND_Y + 0.5); }
     }
     g.restore();
     if (this.bends.length) {
@@ -903,7 +903,7 @@ export class ProfilePanel {
     const u = this.under, manual = this.mode === 'manual';
     switch (u.kind) {
       case 'vpi': { const v = this.vpis[u.k]; return v ? `<b>◆ ${v.z.toFixed(1)} m</b> · drag up / down${manual ? ' · right-click deletes' : ''}` : ''; }
-      case 'bend': return `<b>Bend ${u.i + 1}</b> · click to select`;
+      case 'bend': return `<b>Bend ${bendNo(u.i)}</b> · click to select`;
       case 'pin': { const p = this.pins.find((q) => Math.abs(q.s - u.s) < 0.1); return `<b>Pinned ${p ? p.z.toFixed(1) : ''} m</b> · drag up / down · click for options`; }
       default: return '';
     }

@@ -63,7 +63,7 @@ import { RouteBar } from './ui/route-bar';
 import { activeSelection, qualifySelection, type RouteSelection } from './ui/route-selection';
 import { CurveEditor } from './ui/curve-edit';
 import { fillDirections, Hud, type DirectionsState } from './ui/hud';
-import { setLineFrame } from './ui/chainage';
+import { lineFrame, setLineFrame } from './ui/chainage';
 import { ProfilePanel } from './ui/profile';
 import { provisionalProfile } from './ui/provisional';
 import { ViewBar, type ViewPrefs } from './ui/viewbar';
@@ -717,9 +717,13 @@ async function main() {
   /** the motorway's direction towards A, edited on its own, reads from its own start (B): ui/chainage.ts */
   const readsBackwards = () => store.oneDirection && !!store.route
     && projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.reverse === store.route!.id);
+  /** the frame the active line is read in (ui/chainage.ts); its bends are the shown design's */
+  const frameLine = (length: number, shown: boolean, design = store.read()) =>
+    setLineFrame(length, shown && readsBackwards(), design?.pis.length ?? 0);
+  view.bendsReversed = readsBackwards;
   const showActiveResult = () => {
     const rd = store.read(), r = store.activeRouteId ? activeLegacy(projectFull?.routes[store.activeRouteId]) : undefined;
-    setLineFrame(r?.length ?? 0, !!r && readsBackwards());
+    frameLine(r?.length ?? 0, !!r);
     last = lastFull = r ?? null;
     hud.setRouteState(!!rd, !!r && !!rd);
     const together = !!store.route && !store.oneDirection && projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.forward === store.route!.id);
@@ -759,7 +763,7 @@ async function main() {
       const r = activeLegacy(m.result), rd = request?.design;
       if (r && rd) {
         const shown = r.preview ? r : { ...r, preview: true }; last = shown;
-        setLineFrame(shown.length, readsBackwards());
+        frameLine(shown.length, true, rd);
         // a paired motorway is drawn once, under its forward direction; with separate stretches, each
         // drawn part of the moved line (the shared body where both move)
         const corridor = projectStore.snapshot.design.corridors.find(c => c.children.reverse === m.routeId || c.children.forward === m.routeId);
@@ -850,7 +854,7 @@ async function main() {
 
   /** the motorway direction switch follows the active route */
   const syncDirections = () => {
-    { const r = store.activeRouteId ? activeLegacy(projectFull?.routes[store.activeRouteId]) : undefined; setLineFrame(r?.length ?? 0, !!r && readsBackwards()); }
+    { const r = store.activeRouteId ? activeLegacy(projectFull?.routes[store.activeRouteId]) : undefined; frameLine(r?.length ?? 0, !!r); }
     const design = projectStore.snapshot.design, route = store.route, corridor = route ? corridorOfRoute(design, route.id) : undefined;
     inspector.oneDirection = corridor?.mode === 'independent';
     document.getElementById('profile')!.classList.toggle('one-direction', !!corridor && store.oneDirection);
@@ -976,7 +980,7 @@ async function main() {
       if (!historyStep && !store.oneDirection && [...stretchIds].some(id => !ids.has(id))) toast(DIRECTIONS_TEXT.togetherAgain, 'Undo', () => store.undo());
       stretchIds = ids; historyStep = false;
     }
-    frameEnds();
+    frameEnds(); frameLine(lineFrame.length, true, d);
     sel = activeSelection(store.activeRouteId, qualifiedSelection);
     if (d) {
       if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);

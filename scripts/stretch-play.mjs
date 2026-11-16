@@ -31,7 +31,8 @@ try {
     return { total: p?.cost.total && Math.round(p.cost.total / 1e6), valid: p?.valid, unpriced: p?.cost.unpriced?.length,
       issues: p?.issues.map(i => `${Math.round(i.locations[0]?.s0 ?? 0)} ${i.violation.title}`), active: window.trapla.activeRoute(),
       stretches: c?.stretches?.map(t => `${t.id.slice(0, 12)} k${t.k0}-${t.k1} ${Math.round(t.a)}–${Math.round(t.b)} ${t.forward ? 'F' : ''}${t.reverse ? 'R' : ''}`) ?? [],
-      card: document.querySelector('.motorway-head')?.textContent?.replace(/\s+/g, ' ').trim() };
+      card: document.querySelector('.motorway-head')?.textContent?.replace(/\s+/g, ' ').trim(),
+      markers: [...document.querySelectorAll('.pi')].map(e => e.textContent).join(' ') };
   });
   await page.goto('http://localhost:5297/?scenario=d3&preset=d3-motorway');
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 180_000 });
@@ -49,6 +50,9 @@ try {
   const picked = await state();
   console.log('picked', JSON.stringify(picked));
   if (picked.total !== start.total || picked.stretches.length) throw new Error('choosing a direction changed the design');
+  // bends are numbered from the shown direction's own start (the direction towards A starts at B)
+  const numbers = picked.markers.split(' ').map(Number);
+  if (numbers[0] !== (dir === 'forward' ? 1 : numbers.length)) throw new Error(`bend numbers ${picked.markers} do not start at this direction's start`);
   await shot('picked');
   // drag the carriageway between bends 3 and 4 (shown order) sideways, the way a player bends a road
   const k = Number(process.env.BEND ?? 2);

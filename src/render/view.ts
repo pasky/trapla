@@ -121,6 +121,8 @@ export class View {
   private guideFor: number | null = null;
   private designPts: { x: number; y: number }[] = [];
   private hoverPi: number | null = null;
+  /** the shown line reads from B (a motorway's direction towards A): its bends are numbered from there */
+  bendsReversed: () => boolean = () => false;
   /** a drag preview's centreline is newer than the road body */
   private stale = false;
   private officialPts: { x: number; y: number; z: number }[] = [];
@@ -678,8 +680,9 @@ export class View {
     d.pis.forEach((p, i) => {
       const m = this.piMarkers[i];
       m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y);
-      m.el.textContent = String(i + 1);
-      m.el.title = `Bend ${i + 1}`;
+      const no = this.bendsReversed() ? d.pis.length - i : i + 1;
+      m.el.textContent = String(no);
+      m.el.title = `Bend ${no}`;
       m.el.classList.toggle('sel', selected === i);
     });
     if (this.hoverPi !== null && this.hoverPi >= d.pis.length) this.hoverPi = null;

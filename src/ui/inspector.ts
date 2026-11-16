@@ -19,7 +19,7 @@ import { czk } from './costgroups';
 import { noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
 import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './pieces';
 import { activeStructure } from './structure-bar';
-import { shownRange, shownS, shownSide, shownText } from './chainage';
+import { bendNo, shownRange, shownS, shownSide, shownText } from './chainage';
 
 export type Sel =
   | { kind: 'stretch'; s0: number; s1: number; piece?: PieceKind }
@@ -331,7 +331,7 @@ export class Inspector {
     const turn = cv ? `turns ${((cv.delta * 180) / Math.PI).toFixed(0)}°` : '';
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: '' }));
-    return `${this.head(`Bend ${i + 1}`, turn)}
+    return `${this.head(`Bend ${bendNo(i)}`, turn)}
       <div class="ctx-state"><b>${status}</b><div class="why">${auto ? 'Tightest the rules allow.' : 'Your radius.'}</div></div>
       ${this.issues(vio)}
       ${this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${d.speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}

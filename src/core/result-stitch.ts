@@ -125,9 +125,9 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
   const remap = (v: Violation, bend: (i: number) => number | null, vpi: (i: number) => number | undefined, s: (x: number) => number): Violation => {
     // the words carry the piece's own numbers: its bends and its kilometres
     const text = (t: string) => t
-      .replace(/\b([Bb]ends?) (\d+)(?: and (\d+))?/g, (all, word: string, a: string, b?: string) => {
+      .replace(/\b([Bb]ends?) (\d+)(?:( and |–)(\d+))?/g, (all, word: string, a: string, sep?: string, b?: string) => {
         const p = bend(Number(a) - 1), q = b === undefined ? null : bend(Number(b) - 1);
-        return p === null || (b !== undefined && q === null) ? all : `${word} ${p + 1}${q !== null ? ` and ${q + 1}` : ''}`;
+        return p === null || (b !== undefined && q === null) ? all : `${word} ${p + 1}${q !== null ? `${sep}${q + 1}` : ''}`;
       })
       .replace(/\bkm (\d+(?:\.\d+)?)/g, (_all, x: string) => `km ${(s(Number(x) * 1000) / 1000).toFixed(x.split('.')[1]?.length ?? 0)}`);
     const out: Violation = { ...v, s0: s(v.s0), s1: s(v.s1), title: text(v.title), fix: text(v.fix), ...(v.detail ? { detail: text(v.detail) } : {}) };
