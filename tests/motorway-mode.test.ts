@@ -127,8 +127,10 @@ describe('split motorway', () => {
     const apart = splitLedger(fr, far, (x, y) => ctx.legacy.terrain.heightAt(x, y));
     expect(apart.violations).toEqual([]); expect(apart.joinedLength).toBe(0);
     // moving one direction 3 m higher alongside the other: its slope stands on the other carriageway
-    const raised = structuredClone(split), v = (raised.routes[0].alignment as { vertical: { vpis: { z: number }[] } }).vertical;
-    v.vpis.forEach(p => { p.z += 3; });
+    // (between its tie-ins, which stay at the ports: interior points 3 m up)
+    const raised = structuredClone(split), v = (raised.routes[0].alignment as { vertical: { vpis: { s: number; z: number; r: null }[] } }).vertical;
+    const [a, b] = [v.vpis[0], v.vpis[v.vpis.length - 1]], zAt = (s: number) => a.z + (b.z - a.z) * (s - a.s) / (b.s - a.s);
+    v.vpis = [a, ...[0.3, 0.7].map(t => ({ s: a.s + t * (b.s - a.s), z: zAt(a.s + t * (b.s - a.s)) + 3, r: null })), b];
     const clash = evaluateProject(ctx, { ...snapshot, revision: 3, design: raised });
     expect(clash.issues.some(i => i.violation.title === 'Slopes of the two directions clash')).toBe(true);
     expect(clash.valid).toBe(false);

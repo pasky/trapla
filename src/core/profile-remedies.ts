@@ -8,7 +8,7 @@ import { buildProfile, elevations, type VPI } from './vertical';
 
 export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s: number; z: number }[],
   speed: number, maxGradient: number, pins: readonly { s: number; z: number }[] = [], diagnostic?: (message: string) => void,
-  category?: CategoryId): VPI[] | undefined {
+  category?: CategoryId, range?: readonly [number, number]): VPI[] | undefined {
   if (!requirements.length || vpis.length < 3) return;
   const targets = [...requirements].sort((a, b) => a.s - b.s), norms = speedNorms(speed, category);
   const locked = vpis.map((p, i) => i === 0 || i === vpis.length - 1 || pins.some(pin => Math.abs(pin.s - p.s) < 0.1));
@@ -20,7 +20,8 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
       const deficits = targets.map((p, i) => Math.max(0, p.z + 0.15 - z[i]));
       if (deficits.every(d => d <= 0.01)) {
         const pinZ = elevations(profile, [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
-        const issues = ROAD_CHECKS.vertical(profile, norms, maxGradient);
+        // With a range (one stretch of several lifted separately): only issues there count.
+        const issues = ROAD_CHECKS.vertical(profile, norms, maxGradient).filter(v => !range || (v.s1 >= range[0] && v.s0 <= range[1]));
         if (issues.length === 0 && [...pins].sort((a, b) => a.s - b.s).every((p, i) => Math.abs(pinZ[i] - p.z) <= 0.05)) return candidate;
         diagnostic?.(`radius ${radius}: ${issues.map(v => `${v.title}@${v.s0.toFixed(0)}`).join(', ') || 'grade pin moved'}`);
         break;
