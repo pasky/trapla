@@ -14,6 +14,9 @@ import { waterWidth } from './watercourses';
  * spans up to 180 m use the existing bridge model's long-span extrapolation (as overbridges
  * already do), fully priced per span. Larger changes still require a new alignment/profile. */
 export const SUPPORT_LIMITS = { extensionM: 300, spanM: 180, abutmentCutM: 5 } as const;
+/** How the span-depth problem's title starts: evaluate.ts recognises it by this (to say why Auto could not
+ * lift it), so the wording and the logic cannot drift apart. */
+export const SPAN_TOO_LOW = 'A long bridge span is too low';
 
 export interface SupportRoute {
   n: number; ds: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>;
@@ -280,7 +283,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     if (raiseM > 0.01) {
       diagnostics.push({ s: r.s[worstI], reason: 'span-depth', extensionM: 0, raiseM, requiredZ });
       violations.push({ kind: 'structure', basis: 'game', s0: r.s[worstI], s1: r.s[worstI],
-        title: 'A long bridge span is too low over what it crosses',
+        title: `${SPAN_TOO_LOW} over what it crosses`,
         fix: `Raise the bridge at km ${(r.s[worstI] / 1000).toFixed(2)} by at least ${(Math.ceil(raiseM * 10 - 1e-9) / 10).toFixed(1)} m, or move the route so the ${layout.span.toFixed(0)} m span can be shorter`,
         rule: 'Game rule: the clearance under the bridge, plus a deck about 1/20 of the span deep',
         detail: 'To keep its supports off the roads, railways or water below, this bridge has a long span; a long span needs a deeper deck, which eats into the clearance.' });

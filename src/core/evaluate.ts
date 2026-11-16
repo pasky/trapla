@@ -5,13 +5,13 @@
 import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
-import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
+import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
 import { bridgeModel, bridgeRunCost } from './bridge';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
-import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
+import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, ROAD_TOO_LOW, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
 import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
@@ -1545,7 +1545,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const structureViolations = [...selection.violations, ...(preview && d.profileMode === 'auto' ? [] : supported.violations)];
   // a clearance Auto could not lift: why, in numbers (P2 7: never a bare "raise it" Auto could have done)
   if (d.profileMode === 'auto' && !preview) for (const v of structureViolations) {
-    if (!v.title.startsWith('A long bridge span is too low')) continue;
+    if (!v.title.startsWith(SPAN_TOO_LOW)) continue;
     const stop = liftStop as number | null, grade = cat.mode === 'railway' ? `${(maxGradient * 1000).toFixed(1)} ‰` : `${(maxGradient * 100).toFixed(1)} %`;
     const at = stop === null ? '' : stop < ds ? 'its start' : stop > al.length - ds ? 'its end' : `the height pinned at km ${(stop / 1000).toFixed(2)}`;
     const why = liftShared ? 'Auto cannot raise it: the heights beyond this stretch are the ones both directions share.'
@@ -1902,10 +1902,10 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   if (cat.mode === 'railway') for (const v of violations) {
     // "Road too low over the river / railway", the side slopes and Auto's heights (checks.ts) name our own
     // line "the road"
-    const ours = v.title.startsWith('Road too low') || v.kind === 'section' || v.kind === 'profile';
+    const ours = v.title.startsWith(ROAD_TOO_LOW) || v.kind === 'section' || v.kind === 'profile';
     for (const k of ['title', 'fix', 'detail'] as const) if (v[k]) {
       v[k] = v[k]!.replace(/\bour road\b/g, 'our railway').replace(/\bOur road\b/g, 'Our railway');
-      if (ours) v[k] = v[k]!.replace(/^Road too low/, 'Our railway too low').replace(/\b(the|The) road\b/g, (_m, t: string) => `${t === 'The' ? 'Our' : 'our'} railway`)
+      if (ours) v[k] = v[k]!.replace(ROAD_TOO_LOW_START, 'Our railway too low').replace(/\b(the|The) road\b/g, (_m, t: string) => `${t === 'The' ? 'Our' : 'our'} railway`)
         .replace(/\broad heights?\b/g, m => m.replace('road', 'track'));
     }
   }
@@ -2044,6 +2044,7 @@ function regionCount(r: Result, at: readonly number[]): number {
 /** A retry is judged on the violations this close to what it retried, m: about as far as it can move
  * the grade line (a block and the window of its boundaries, see autoprofile.ts). */
 const REGION = 5000;
+const ROAD_TOO_LOW_START = new RegExp(`^${ROAD_TOO_LOW}`);
 /** CZK per unmet clearance station in the separation retry (the default 1e8 is a 70 m motorway bridge). */
 const SEPARATION_PENALTY = 1e11;
 /** A narrowing retry asks for this much less embankment (cutting) where our earthworks buried a road, m,
