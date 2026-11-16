@@ -170,11 +170,21 @@ function transferSlow(slant: number, dv: number, ground: Propagation, lin: { tab
 /** the most storeys a dwelling can have (buildingLevels caps tags): every per-storey buffer holds this many */
 export const MAX_STOREYS = Math.max(...BUILDING_KINDS.map(k => k.maxLevels));
 const CHUNK = 4, NEAR = 160, THETA = 0.32, THETA_OPEN = 1;
+/** the finer grouping (Sum 1): 4-cell chunks one by one, segments taken whole only from 1 / THETA_FINE of their
+ * diameter away, beyond NOISE_REACH from 1 / THETA_OPEN_FINE */
+const THETA_FINE = 0.08, THETA_OPEN_FINE = 0.16;
+/** How far segments are summed: 0 = grouped (THETA), 1 = finer (THETA_FINE), 2 = every cell one by one. */
+export type Sum = 0 | 1 | 2;
 /** a segment is taken as one only while its cells' length is within this factor of its chord (a bend of
  * ≈ 28° at most): a curled-up stretch is not a short straight line */
 const STRAIGHT = 1.01;
 const straight = (S: Segments, c: number) => S.len[c] <= STRAIGHT * 2 * S.half[c];
 export const NOISE_REACH = 3000;
+/** The grouped sums (Sum 0, 1) differ from the cell-by-cell ones (Sum 2) by at most this fraction of their own
+ * value, for any window and walls, and with transferDelta against the sum with the new walls. Measured on the
+ * saved designs at worst: 0.224 grouped, 0.046 finer (research/36 §2); pinned by tests/noise-stages.test.ts.
+ * noiseOutcome redoes a house more finely wherever a decision lies within this of its threshold. */
+export const FAR_ERROR: readonly [number, number, number] = [0.3, 0.07, 0];
 
 interface Segments { n: number; i0: Int32Array; i1: Int32Array; cx: Float64Array; cy: Float64Array; ux: Float64Array; uy: Float64Array; half: Float64Array; radius: Float64Array; z: Float64Array;
   /** per side (L = 0, R = 1), stride 8: total length, open (not shielded) length, the highest edge top above
@@ -416,12 +426,14 @@ const STACK_P = new Int32Array(128), STACK_D = new Int32Array(128), STACK_O = ne
  * Cells [w0, w1] (and the chunks they touch) are always summed one by one — the same arithmetic as
  * `cellOptions` — or left out entirely when `skip` (the caller adds them itself). `visit` sees every
  * cell with its per-height raw / screened contributions (for breakdowns); with it, every cell within
- * NOISE_REACH is summed one by one.
+ * NOISE_REACH is summed one by one. `sum`: how far segments are grouped (Sum; 2 = every cell one by one, the
+ * reference the grouped sums are within FAR_ERROR of).
  */
 export function pointTransfer(f: NoiseField, px: number, py: number, z: ArrayLike<number>,
   wallL: ArrayLike<number> | null, wallR: ArrayLike<number> | null, out: Transfer,
-  w0 = -1, w1 = -2, skip = false, visit?: (k: number, left: boolean, d: number, rh: number, raw: Float64Array, screened: Float64Array) => void): void {
-  const src = f.src, H = z.length, T = f.levels, st = STACK_P;
+  w0 = -1, w1 = -2, skip = false, visit?: (k: number, left: boolean, d: number, rh: number, raw: Float64Array, screened: Float64Array) => void,
+  sum: Sum = 0): void {
+  const src = f.src, H = z.length, T = f.levels, st = STACK_P, th = sum ? THETA_FINE : THETA, thOpen = sum ? THETA_OPEN_FINE : THETA_OPEN;
   out.raw.fill(0); out.earth.fill(0); out.screened.fill(0);
   const rawK = visit ? new Float64Array(H) : null, scrK = visit ? new Float64Array(H) : null;
   GEO[G_PX] = px; GEO[G_PY] = py;
@@ -429,11 +441,11 @@ export function pointTransfer(f: NoiseField, px: number, py: number, z: ArrayLik
   st[sp++] = T.length - 1; st[sp++] = 0;
   while (sp > 0) {
     const c = st[--sp], k = st[--sp], S = T[k], i0 = S.i0[c], i1 = S.i1[c];
-    if (!(w1 >= i0 && w0 <= i1)) {
+    if (sum !== 2 && !(w1 >= i0 && w0 <= i1)) {
       const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
       const line = straight(S, c);
-      if (line && gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) { farOpen(f, S, c, z, out); continue; }
-      const fits = line && (k === 0 || 2 * S.radius[c] <= THETA * gap);
+      if (line && gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= thOpen * gap)) { farOpen(f, S, c, z, out); continue; }
+      const fits = line && (k === 0 ? sum === 0 : 2 * S.radius[c] <= th * gap);
       if (fits && gap > NEAR && !visit) { far(f, S, c, z, wallL, wallR, out); continue; }
     }
     if (k > 0) {
@@ -465,12 +477,12 @@ export function pointTransfer(f: NoiseField, px: number, py: number, z: ArrayLik
  * Change of `out.screened` when the walls go from `oldL/R` to `newL/R` at the cells flagged in `changed`
  * (`flags` = segmentFlags of it): the same near / far arithmetic as `pointTransfer` with the same exact
  * window, touching only segments that contain a changed cell (cells in [w0, w1] left out when `skip`).
- * raw / earth do not depend on walls.
+ * raw / earth do not depend on walls. `sum`: as pointTransfer's.
  */
 export function transferDelta(f: NoiseField, px: number, py: number, z: ArrayLike<number>,
   oldL: ArrayLike<number>, oldR: ArrayLike<number>, newL: ArrayLike<number>, newR: ArrayLike<number>,
-  changed: Uint8Array, flags: Uint8Array[], out: Transfer, w0 = -1, w1 = -2, skip = false): void {
-  const src = f.src, H = z.length, T = f.levels, st = STACK_D;
+  changed: Uint8Array, flags: Uint8Array[], out: Transfer, w0 = -1, w1 = -2, skip = false, sum: Sum = 0): void {
+  const src = f.src, H = z.length, T = f.levels, st = STACK_D, th = sum ? THETA_FINE : THETA, thOpen = sum ? THETA_OPEN_FINE : THETA_OPEN;
   const screened = out.screened;
   GEO[G_PX] = px; GEO[G_PY] = py;
   let sp = 0;
@@ -479,11 +491,11 @@ export function transferDelta(f: NoiseField, px: number, py: number, z: ArrayLik
     const c = st[--sp], k = st[--sp];
     if (!flags[k][c]) continue;
     const S = T[k], i0 = S.i0[c], i1 = S.i1[c];
-    if (!(w1 >= i0 && w0 <= i1)) {
+    if (sum !== 2 && !(w1 >= i0 && w0 <= i1)) {
       const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
       const line = straight(S, c);
-      if (line && gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) continue; // counted unscreened: walls change nothing
-      const fits = line && (k === 0 || 2 * S.radius[c] <= THETA * gap);
+      if (line && gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= thOpen * gap)) continue; // counted unscreened: walls change nothing
+      const fits = line && (k === 0 ? sum === 0 : 2 * S.radius[c] <= th * gap);
       if (fits && gap > NEAR) { farDelta(f, S, c, z, oldL, oldR, newL, newR, screened); continue; }
     }
     if (k > 0) {

@@ -8,8 +8,11 @@ import * as dm from './detmath';
 import { KIND } from './structures';
 import {
   cellOptions, segmentFlags, MAX_STOREYS, openBound, lineEnvelope, openTransfer, type CellOptions, emptyScreen, lineTransfer, noiseField, transferDelta, pointTransfer, transferBuffers, NOISE_REACH,
-  type AcousticSource, type NoiseField, type Propagation, type SideScreen,
+  type AcousticSource, type NoiseField, type Propagation, type SideScreen, type Sum, FAR_ERROR,
 } from './noise-field';
+
+/** Tests: every house cell by cell (the reference the two-stage decisions must equal). */
+export const NOISE_EXACT = { all: false };
 import { noiseLevels, type NoiseModel } from './road-noise';
 import type { Result } from './evaluate';
 export { noiseDistance } from './road-noise';
@@ -121,6 +124,9 @@ export interface NoiseReceiver {
   energy: NoiseEnergy;
   /** stations summed cell by cell for it (its decision window): the card repeats the same sum */
   window: [number, number];
+  /** how finely the road beyond its window was summed (Sum; absent = grouped): finer where a decision was near
+   * its threshold */
+  sum?: Sum;
   /** stations of its own automatic wall request, when it made one (the card offers that stretch) */
   span?: [number, number];
 }
@@ -152,8 +158,10 @@ interface Candidate {
   j: number; i: number; left: boolean; d: number; x: number; y: number; ground: number; z: Float64Array;
   fixedExcess: number; rawExcess: number; earthExcess: number;
   need: number; lo: number; hi: number;
-  /** levels with the fixed (manual) walls, reused when no other wall is within reach */
-  levels?: { raw: Float64Array; earth: Float64Array; screened: Float64Array };
+  /** how finely its far part is summed (staged decisions) */
+  sum: Sum;
+  /** processing order: its window's own level, loudest first */
+  order: number;
 }
 
 /** A cleared visited-set over a building index's dwellings (one stamp array per index, reused). */
@@ -204,7 +212,7 @@ const OUTER_CHECK_DB = 0.5;
 /**
  * Exposure, automatic walls and buyouts, then every dwelling's final levels.
  * - candidates: dwellings within the search radius of any open station (spatial hash, de-duplicated);
- * - houses over the limit with cuts / edges / manual walls are handled loudest first: buyout if no
+ * - houses over the limit with cuts / edges / manual walls are handled loudest first (by their window's own level): buyout if no
  *   automatic wall (5 m, the window widened as far as it could matter) suffices and nothing manual
  *   protects it; else, unless walls already built for others suffice, the height (2…5 m) whose one
  *   contiguous wall — grown from the most useful cell towards the more useful end until every storey is
@@ -291,7 +299,7 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     const c = -(x - src.x[i]) * src.ty[i] + (y - src.y[i]) * src.tx[i];
     const ground = groundAt(items[j][0], items[j][1]);
     cands.push({ j, i, left: c >= 0, d: Math.max(1, Math.abs(c)), x, y, ground, z: storeys(buildings, j, ground),
-      fixedExcess: 0, rawExcess: 0, earthExcess: 0, need: 0, lo: -1, hi: -2 });
+      fixedExcess: 0, rawExcess: 0, earthExcess: 0, need: 0, lo: -1, hi: -2, sum: NOISE_EXACT.all ? 2 : 0, order: 0 });
   }
 
   // houses beyond the always-assessed radius: only if the open road could bring them near the limit
@@ -317,17 +325,19 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     return o;
   };
   interface Decision { w0: number; w1: number; cells: CellOptions; F: Float64Array; Fraw: Float64Array; Fearth: Float64Array;
-    /** F plus every window cell with nothing but its edge or the player's wall (option 0) */
-    F0: Float64Array;
+    /** F plus every window cell with nothing but its edge or the player's wall (option 0); W0 the window's part */
+    F0: Float64Array; W0: Float64Array;
     /** the whole road's open-ground / edges-only sums */
     raw: Float64Array; earth: Float64Array;
     /** outside the window with the highest automatic wall wherever one may stand (lazy): F − this bounds
      * what any wall beyond the window could take away */
-    Fmax?: Float64Array }
+    Fmax?: Float64Array;
+    /** how finely its far sums are summed; its window's scale */
+    sum: Sum; scale: number }
   const data = new Map<number, Decision>();
   /** level per storey with walls L / R: outside part + each window cell at its wall's option */
-  const levelWith = (d: Decision, wl: ArrayLike<number>, wr: ArrayLike<number>, H: number, out: Float64Array) => {
-    out.set(d.F0);
+  const levelWith = (d: Decision, wl: ArrayLike<number>, wr: ArrayLike<number>, H: number, out: Float64Array, from = d.F0) => {
+    out.set(from);
     const cells = d.cells, wallable = cells.wallable, side = cells.side;
     for (let i = d.w0; i <= d.w1; i++) {
       const c = i - d.w0;
@@ -341,34 +351,81 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     }
     return out;
   };
-  /** a house's decision data over its window (`scale` × the starting one) */
-  const decision = (c: Candidate, scale: number): Decision => {
+  /** a house's decision data over its window (`scale` × the starting one); `from`: the one before it, whose
+   * cell-by-cell sum outside loses just the cells the wider window now holds (always so cell by cell: the same
+   * numbers however the house got there). Kept: a house refined after a decision recomputes only what it needs. */
+  const decisions = new Map<string, Decision>();
+  const decision = (c: Candidate, scale: number, from?: Decision): Decision => {
+    const key = `${c.j}:${scale}:${c.sum}`, kept = decisions.get(key);
+    if (kept) return kept;
+    if (c.sum === 2 && scale > 1 && !from) from = decision(c, scale / 2);
     const H = c.z.length, t = view(buf, H), [w0, w1] = windowOf(c, scale);
-    pointTransfer(field, c.x, c.y, c.z, passL, passR, t, w0, w1, true);
     const cells = cellOptions(field, c.x, c.y, c.z, w0, w1, heights, manL, manR);
+    const e0 = cells.opt(0);
+    if (c.sum === 2 && from?.sum === 2) {
+      t.screened.set(from.F); t.raw.set(from.Fraw); t.earth.set(from.Fearth);
+      for (let i = w0; i <= w1; i++) {
+        if (i >= from.w0 && i <= from.w1) continue;
+        const q = (i - w0) * H;
+        for (let k = 0; k < H; k++) { t.screened[k] -= e0[q + k]; t.raw[k] -= cells.raw[q + k]; t.earth[k] -= cells.edge[q + k]; }
+      }
+    } else pointTransfer(field, c.x, c.y, c.z, passL, passR, t, w0, w1, true, undefined, c.sum);
     // one slab: F, its raw / earth parts, F0, and the window's raw / earth sums
-    const slab = new Float64Array(6 * H), F = slab.subarray(0, H), Fraw = slab.subarray(H, 2 * H), Fearth = slab.subarray(2 * H, 3 * H);
+    const W0 = new Float64Array(H), slab = new Float64Array(6 * H), F = slab.subarray(0, H), Fraw = slab.subarray(H, 2 * H), Fearth = slab.subarray(2 * H, 3 * H);
     const F0 = slab.subarray(3 * H, 4 * H), raw = slab.subarray(4 * H, 5 * H), earth = slab.subarray(5 * H);
     F.set(t.screened); Fraw.set(t.raw); Fearth.set(t.earth); F0.set(t.screened); raw.set(t.raw); earth.set(t.earth);
-    const e0 = cells.opt(0);
     for (let q = 0, m = w1 - w0 + 1; q < m; q++) for (let k = 0; k < H; k++) {
-      F0[k] += e0[q * H + k]; raw[k] += cells.raw[q * H + k]; earth[k] += cells.edge[q * H + k];
+      F0[k] += e0[q * H + k]; W0[k] += e0[q * H + k]; raw[k] += cells.raw[q * H + k]; earth[k] += cells.edge[q * H + k];
     }
-    return { w0, w1, cells, F, Fraw, Fearth, F0, raw, earth };
+    const d: Decision = { w0, w1, cells, F, Fraw, Fearth, F0, W0, raw, earth, sum: c.sum, scale };
+    decisions.set(key, d);
+    return d;
+  };
+  // Stages (research/36 §2): every house first with the grouped far sums, which are within FAR_ERROR[sum] × their
+  // own value of the cell-by-cell sums. Every comparison that decides an outcome (a level against the limit,
+  // the loudest storey, a wall's start, growth and stop, the window bound, the final level) checks that margin;
+  // where it could flip, the house is summed more finely (then cell by cell) and that step of it redone. A
+  // comparison clear of its margin comes out as it would cell by cell, so walls, buyouts and violations are
+  // those of the cell-by-cell sums everywhere (a step redone after a refinement keeps nothing of its first try).
+  const lim = T * (1 + 1e-9);
+  let refined = false;
+  const finer = (c: Candidate, to?: Sum) => { if (c.sum < 2) { c.sum = to ?? (c.sum + 1) as Sum; refined = true; } };
+  /** maxOf(lev) > the limit, with storey k's far sums `far[k]` (grouped for this house: flags it where the
+   * answer could differ cell by cell) */
+  const over = (c: Candidate, lev: ArrayLike<number>, far: ArrayLike<number>, limit = lim) => {
+    const res = maxOf(lev) > limit;
+    const E = FAR_ERROR[c.sum];
+    if (E > 0) {
+      let sure = !res;
+      for (let k = 0; k < lev.length; k++) {
+        if (res && lev[k] - E * far[k] > limit) { sure = true; break; }
+        if (!res && lev[k] + E * far[k] > limit) { sure = false; break; }
+      }
+      if (!sure) finer(c);
+    }
+    return res;
   };
   for (const c of cands) {
-    const H = c.z.length, d = decision(c, 1);
+    const H = c.z.length;
+    let d: Decision, fixed: Float64Array;
+    do {
+      refined = false;
+      d = decision(c, 1);
+      fixed = levelWith(d, fixedL, fixedR, H, new Float64Array(H));
+      // exposed or not (open ground / edges only: a label, from these sums either way)
+      over(c, fixed, d.F);
+    } while (refined);
     data.set(c.j, d);
-    const fixed = levelWith(d, fixedL, fixedR, H, new Float64Array(H));
     c.rawExcess = excessOf(maxOf(d.raw)); c.earthExcess = excessOf(maxOf(d.earth)); c.fixedExcess = excessOf(maxOf(fixed));
-    c.levels = { raw: d.raw, earth: d.earth, screened: fixed };
+    // (handled loudest first by its window's own level, summed cell by cell: the same however its far part is)
+    c.order = maxOf(levelWith(d, fixedL, fixedR, H, new Float64Array(H), d.W0));
   }
 
   // 3. decisions, loudest first
   const autoL = new Float64Array(n), autoR = new Float64Array(n);
   const failed = new Map<number, Candidate>();
   const retained = new Set(policy?.keptBuildingIds);
-  const exposed = cands.filter(c => c.fixedExcess > 0).sort((a, b) => b.fixedExcess - a.fixedExcess || a.j - b.j);
+  const exposed = cands.filter(c => c.fixedExcess > 0).sort((a, b) => b.order - a.order || a.j - b.j);
   // every wall Auto could add at its highest, the player's own decisions kept (for the window bound)
   const maxWall = (man: Float64Array, side: SideScreen) => {
     const out = new Float64Array(n);
@@ -386,13 +443,21 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     const H = c.z.length, cells = d.cells, mine = c.left ? 1 : 0;
     const lev = levelWith(d, c.left ? cur : other, c.left ? other : cur, H, new Float64Array(H));
     const can = (i: number) => { const k = i - d.w0; return !!cells.wallable[k] && cells.side[k] === mine; };
-    const gain = (i: number) => {
+    // a cell's gain at the loudest storey (`worst`); `alike` = the other storeys that could be the loudest
+    // with the cell-by-cell far sums (grouped houses): every choice below must come out the same at those
+    let worst = 0;
+    const alike: number[] = [];
+    const storeys = () => {
+      worst = 0;
+      for (let k = 1; k < H; k++) if (lev[k] > lev[worst]) worst = k;
+      alike.length = 0;
+      if (c.sum < 2) for (let k = 0; k < H; k++) if (k !== worst && lev[worst] - lev[k] <= FAR_ERROR[c.sum] * (d.F[worst] + d.F[k])) alike.push(k);
+    };
+    const gain = (i: number, k = worst) => {
       if (!can(i)) return -1;
       const k0 = i - d.w0, now = optionOf(cur[i]);
       if (now >= o) return 0;
-      let worst = 0;
-      for (let k = 1; k < H; k++) if (lev[k] > lev[worst]) worst = k;
-      return cells.opt(now)[k0 * H + worst] - cells.opt(o)[k0 * H + worst];
+      return cells.opt(now)[k0 * H + k] - cells.opt(o)[k0 * H + k];
     };
     const apply = (i: number) => {
       const k0 = i - d.w0, now = optionOf(cur[i]);
@@ -400,20 +465,34 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
       const a = cells.opt(o), b = cells.opt(now);
       for (let k = 0; k < H; k++) lev[k] += a[k0 * H + k] - b[k0 * H + k];
     };
-    let start = -1, g0 = 0;
-    for (let i = d.w0; i <= d.w1; i++) { const g = gain(i); if (g > g0) { g0 = g; start = i; } }
-    if (start < 0) return { lo: -1, hi: -2, ok: maxOf(lev) <= T * (1 + 1e-9), lev };
+    /** the most useful cell at storey k (−1: none) */
+    const best = (k: number) => {
+      let at = -1, g0 = 0;
+      for (let i = d.w0; i <= d.w1; i++) { const g = gain(i, k); if (g > g0) { g0 = g; at = i; } }
+      return at;
+    };
+    storeys();
+    const start = best(worst);
+    for (const k of alike) if (best(k) !== start) finer(c);
+    if (start < 0) return { lo: -1, hi: -2, ok: !over(c, lev, d.F), lev };
     let lo = start, hi = start;
     apply(start);
     const next = (i: number, dir: number) => { for (let k = i + dir; k >= d.w0 && k <= d.w1; k += dir) if (can(k)) return k; return -1; };
-    while (maxOf(lev) > T * (1 + 1e-9)) {
+    while (over(c, lev, d.F)) {
       const a = next(lo, -1), b = next(hi, 1);
       if (a < 0 && b < 0) break;
-      const ga = a < 0 ? -1 : gain(a), gb = b < 0 ? -1 : gain(b);
-      if (bestEffort && Math.max(ga, gb) < maxOf(lev) * 0.002) break;
-      if (ga >= gb) { lo = a; apply(a); } else { hi = b; apply(b); }
+      storeys();
+      const ga = a < 0 ? -1 : gain(a), gb = b < 0 ? -1 : gain(b), left = ga >= gb;
+      for (const k of alike) if (((a < 0 ? -1 : gain(a, k)) >= (b < 0 ? -1 : gain(b, k))) !== left) finer(c);
+      if (bestEffort) {
+        const top = maxOf(lev), stop = Math.max(ga, gb) < top * 0.002;
+        if (Math.abs(Math.max(ga, gb) - top * 0.002) <= 0.002 * FAR_ERROR[c.sum] * maxOf(d.F)) finer(c);
+        for (const k of alike) if ((Math.max(gain(a, k), gain(b, k)) < top * 0.002) !== stop) finer(c);
+        if (stop) break;
+      }
+      if (left) { lo = a; apply(a); } else { hi = b; apply(b); }
     }
-    return { lo, hi, ok: maxOf(lev) <= T * (1 + 1e-9), lev };
+    return { lo, hi, ok: !over(c, lev, d.F), lev };
   };
   // the wall lines' own lengths per station (as billed and drawn)
   const lineL = wallLineLengths(n, src.x, src.y, src.tx, src.ty, src.L.wallOff, true);
@@ -441,15 +520,17 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     }
   };
 
-  for (const c of exposed) {
-    let d = data.get(c.j)!;
+  /** one house's decision (redone from its start when a comparison refines its sums) */
+  const handle = (c: Candidate) => {
+    let d = decision(c, 1);
+    data.set(c.j, d);
     const H = c.z.length;
     const cur = c.left ? curL : curR, other = c.left ? curR : curL, auto = c.left ? autoL : autoR;
     const man = c.left ? manL : manR;
     let manualHere = false;
     for (let i = d.w0; i <= d.w1 && !manualHere; i++) if (man[i] === man[i]) manualHere = true;
     const keep = retained.has(c.j) || manualHere;
-    if (maxOf(levelWith(d, curL, curR, H, new Float64Array(H))) <= T * (1 + 1e-9)) continue; // walls built for others suffice
+    if (!over(c, levelWith(d, curL, curR, H, new Float64Array(H)), d.F)) return; // walls built for others suffice
     // the cheapest height: each one's wall, grown from its most useful cell until it suffices (at least twice
     // the house's distance long), priced by the area it adds. The window widens (×2) while a wider one could
     // change that choice: a wall reaching the window's edge, or a height that failed although walling every
@@ -470,10 +551,15 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
           if (could && !d.Fmax) {
             const t = view(buf, H);
             if (!maxL) { maxL = maxWall(manL, src.L); maxR = maxWall(manR, src.R); }
-            pointTransfer(field, c.x, c.y, c.z, maxL, maxR, t, d.w0, d.w1, true);
+            pointTransfer(field, c.x, c.y, c.z, maxL, maxR, t, d.w0, d.w1, true, undefined, d.sum);
             d.Fmax = Float64Array.from(t.screened);
           }
-          if (could) for (let k = 0; k < H; k++) if (g.lev[k] - (d.F[k] - d.Fmax![k]) > T * (1 + 1e-9)) could = false;
+          if (could) {
+            // (g.lev − F is the window's, cell by cell; Fmax is grouped)
+            const v = new Float64Array(H);
+            for (let k = 0; k < H; k++) v[k] = g.lev[k] - (d.F[k] - d.Fmax![k]);
+            if (over(c, v, d.Fmax!)) could = false;
+          }
           if (could) widen = true;
           continue;
         }
@@ -485,9 +571,10 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
         if (area < bestArea - 1e-6) { bestArea = area; pick = { o, lo, hi }; done = true; }
       }
       if (!widen || full) break;
-      d = decision(c, scale * 2);
+      d = decision(c, scale * 2, d);
       data.set(c.j, d);
     }
+    if (refined) return;
     if (done) {
       if (manualHere) {
         // walled because of the player's choice beside it: what this adds is reported with that choice
@@ -496,17 +583,19 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
       }
       commit(c, d, cur, auto, pick.lo, pick.hi, heights[pick.o - 1]);
       c.need = heights[pick.o - 1]; c.lo = pick.lo; c.hi = pick.hi;
-      continue;
+      return;
     }
     c.need = Infinity;
-    if (!keep) { failed.set(c.j, c); continue; }
+    if (!keep) { failed.set(c.j, c); return; }
     // kept by the player: best effort with the highest automatic wall, while it still helps. A house left too
     // loud by the player's own wall choice beside it stays as that choice leaves it (a violation): no wall
     // elsewhere half makes up for it.
-    if (!retained.has(c.j)) continue;
+    if (!retained.has(c.j)) return;
     const g = grow(c, d, cur, other, autoMax, true);
+    if (refined) return;
     if (g.lo >= 0) { commit(c, d, cur, auto, g.lo, g.hi, heights[autoMax - 1]); c.lo = g.lo; c.hi = g.hi; }
-  }
+  };
+  for (const c of exposed) do { refined = false; handle(c); } while (refined);
 
   // 4. final walls: the automatic heights (a wall steps between heights along its length rather than
   // raising a whole run to its tallest piece), manual decisions over them, never in openings or tunnels
@@ -521,9 +610,9 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   const addedFlags = segmentFlags(field, added);
 
   /** The lowest 2–6 m single stretch that would resolve a retained dwelling on top of the built walls. */
-  const sufficientWall = (c: Candidate, wl: Float64Array, wr: Float64Array) => {
+  const sufficientWall = (c: Candidate, own: Decision, wl: Float64Array, wr: Float64Array) => {
     // the fix replaces the player's own choice there: every cell on its side may carry it
-    const own = data.get(c.j)!, cells = cellOptions(field, c.x, c.y, c.z, own.w0, own.w1, heights,
+    const cells = cellOptions(field, c.x, c.y, c.z, own.w0, own.w1, heights,
       c.left ? undefined : manL, c.left ? manR : undefined);
     // F0 belongs to the cells it was summed from: rebuilt over these (without the player's walls there)
     const H = c.z.length, F0 = Float64Array.from(own.F), e0 = cells.opt(0);
@@ -543,40 +632,52 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   const boughtOut = [...failed.values()].map(c => ({ j: c.j, i: c.i, cost: noiseBuyoutCost(buildings.cost[c.j], buildings.area[c.j]) })).sort((a, b) => a.i - b.i || a.j - b.j);
   const day = dm.pow(10, src.dayDb / 10), night = dm.pow(10, src.nightDb / 10);
   for (const c of cands) {
-    const H = c.z.length, t = view(buf, H), bought = failed.has(c.j), d = data.get(c.j)!;
-    t.raw.set(c.levels!.raw); t.earth.set(c.levels!.earth);
-    if (bought) {
-      // the shortfall with the best automatic walls in reach
-      const wl = Float64Array.from(L), wr = Float64Array.from(R), mine = c.left ? 1 : 0;
-      for (let i = d.w0; i <= d.w1; i++) {
-        const k = i - d.w0;
-        if (d.cells.wallable[k] && d.cells.side[k] === mine) (c.left ? wl : wr)[i] = Math.max((c.left ? wl : wr)[i], heights[autoMax - 1]);
-      }
-      levelWith(d, wl, wr, H, t.screened);
-    } else levelWith(d, L, R, H, t.screened);
-    transferDelta(field, c.x, c.y, c.z, fixedL, fixedR, L, R, added, addedFlags, t, d.w0, d.w1, true);
-    let floor = 0;
-    for (let k = 1; k < H; k++) if (t.screened[k] > t.screened[floor]) floor = k;
-    const side = c.left ? 'L' as const : 'R' as const, walls = c.left ? L : R;
-    let wall = walls[c.i];
-    if (!(wall > 0)) for (let i = Math.max(0, c.lo); i <= Math.min(n - 1, c.hi); i++) wall = Math.max(wall, walls[i]);
-    const mitigated = excessOf(t.screened[floor]);
-    const rec: NoiseReceiver = {
-      j: c.j, status: bought ? 'bought' : c.rawExcess <= 0 ? 'ok' : c.earthExcess <= 0 ? 'cut' : 'wall',
-      x: c.x, y: c.y, i: c.i, side, d: c.d, ground: c.ground, storeys: H, floor, h: c.z[floor] - src.grade[c.i],
-      raw: c.rawExcess, mitigated, earth: c.earthExcess,
-      need: c.need, wall: bought ? 0 : wall, at: c.need > 0 || bought ? c.i : -1, window: [d.w0, d.w1],
-      ...(c.hi >= c.lo && c.lo >= 0 ? { span: [c.lo, c.hi] as [number, number] } : {}),
-      energy: { sourceId: src.id, rawDay: t.raw.map(v => v * day), rawNight: t.raw.map(v => v * night),
-        day: t.screened.map(v => v * day), night: t.screened.map(v => v * night) },
-    };
-    if (!bought && mitigated > 1e-7) {
-      const u: NoiseUnresolved = { j: c.j, i: c.i, side, excess: mitigated, wall };
-      const fix = sufficientWall(c, L, R);
+    const H = c.z.length, t = view(buf, H), bought = failed.has(c.j), side = c.left ? 'L' as const : 'R' as const, walls = c.left ? L : R;
+    let rec: NoiseReceiver, u: NoiseUnresolved | undefined;
+    do {
+      refined = false;
+      // its decision's window, summed as finely as it is now
+      const was = data.get(c.j)!, d = was.sum === c.sum ? was : decision(c, was.scale), own = decision(c, 1);
+      t.raw.set(own.raw); t.earth.set(own.earth);
+      if (bought) {
+        // the shortfall with the best automatic walls in reach
+        const wl = Float64Array.from(L), wr = Float64Array.from(R), mine = c.left ? 1 : 0;
+        for (let i = d.w0; i <= d.w1; i++) {
+          const k = i - d.w0;
+          if (d.cells.wallable[k] && d.cells.side[k] === mine) (c.left ? wl : wr)[i] = Math.max((c.left ? wl : wr)[i], heights[autoMax - 1]);
+        }
+        levelWith(d, wl, wr, H, t.screened);
+      } else levelWith(d, L, R, H, t.screened);
+      const before = Float64Array.from(t.screened);
+      transferDelta(field, c.x, c.y, c.z, fixedL, fixedR, L, R, added, addedFlags, t, d.w0, d.w1, true, d.sum);
+      // its grouped part as built: F plus that change (transferDelta is the difference of two such sums)
+      const far = Float64Array.from(d.F, (v, k) => v + t.screened[k] - before[k]);
+      let floor = 0;
+      for (let k = 1; k < H; k++) if (t.screened[k] > t.screened[floor]) floor = k;
+      let wall = walls[c.i];
+      if (!(wall > 0)) for (let i = Math.max(0, c.lo); i <= Math.min(n - 1, c.hi); i++) wall = Math.max(wall, walls[i]);
+      const mitigated = excessOf(t.screened[floor]), rawExcess = excessOf(maxOf(own.raw)), earthExcess = excessOf(maxOf(own.earth));
+      rec = {
+        j: c.j, status: bought ? 'bought' : rawExcess <= 0 ? 'ok' : earthExcess <= 0 ? 'cut' : 'wall',
+        x: c.x, y: c.y, i: c.i, side, d: c.d, ground: c.ground, storeys: H, floor, h: c.z[floor] - src.grade[c.i],
+        raw: rawExcess, mitigated, earth: earthExcess,
+        need: c.need, wall: bought ? 0 : wall, at: c.need > 0 || bought ? c.i : -1, window: [d.w0, d.w1], ...(c.sum ? { sum: c.sum } : {}),
+        ...(c.hi >= c.lo && c.lo >= 0 ? { span: [c.lo, c.hi] as [number, number] } : {}),
+        energy: { sourceId: src.id, rawDay: t.raw.map(v => v * day), rawNight: t.raw.map(v => v * night),
+          day: t.screened.map(v => v * day), night: t.screened.map(v => v * night) },
+      };
+      u = undefined;
+      if (bought) break;
+      over(c, t.screened, far, T * dm.pow(10, 1e-8));
+      if (refined || !(mitigated > 1e-7)) continue;
+      // a violation states its levels cell by cell
+      finer(c, 2);
+      if (refined) continue;
+      u = { j: c.j, i: c.i, side, excess: mitigated, wall };
+      const fix = sufficientWall(c, d, L, R);
       if (fix) u.fix = fix; else u.gap = gapDecides(field, c, walls);
-      rec.unresolved = u;
-      unresolved.push(u);
-    }
+    } while (refined);
+    if (u) { rec.unresolved = u; unresolved.push(u); }
     receivers.push(rec);
   }
   return { L, R, receivers, boughtOut, unresolved, field,
@@ -589,7 +690,7 @@ function gapDecides(field: NoiseField, c: Candidate, walls: Float64Array): boole
   const src = field.src, side = c.left ? src.L : src.R, top = c.z.length - 1;
   let gap = 0, all = 0;
   pointTransfer(field, c.x, c.y, c.z.subarray(top), c.left ? walls : null, c.left ? null : walls, transferBuffers(1), -1, -2, false,
-    (k, left, _d, _rh, _raw, screened) => { all += screened[0]; if (left === c.left && side.gap[k] && !side.shield[k]) gap += screened[0]; });
+    (k, left, _d, _rh, _raw, screened) => { all += screened[0]; if (left === c.left && side.gap[k] && !side.shield[k]) gap += screened[0]; }, 2);
   return gap > 0.5 * all;
 }
 
@@ -597,12 +698,12 @@ function gapDecides(field: NoiseField, c: Candidate, walls: Float64Array): boole
 
 /** Every storey of a dwelling with walls `wallL/R` (as built, or a previewed choice): dB over the limit on
  * open ground and as walled, the same sum as the decision (its exact window). */
-export function dwellingLevels(field: NoiseField, rec: Pick<NoiseReceiver, 'x' | 'y' | 'i' | 'ground' | 'storeys' | 'window'>,
+export function dwellingLevels(field: NoiseField, rec: Pick<NoiseReceiver, 'x' | 'y' | 'i' | 'ground' | 'storeys' | 'window' | 'sum'>,
   wallL: ArrayLike<number>, wallR: ArrayLike<number>): { height: number; raw: number; level: number; earth: number }[] {
   const src = field.src, n = src.n, ex = sourceExcess(src);
   const z = Float64Array.from({ length: rec.storeys }, (_, k) => rec.ground + NOISE.receiverHeight + k * NOISE.storeyHeight);
   const t = transferBuffers(z.length);
-  pointTransfer(field, rec.x, rec.y, z, wallL, wallR, t, rec.window[0], Math.min(n - 1, rec.window[1]));
+  pointTransfer(field, rec.x, rec.y, z, wallL, wallR, t, rec.window[0], Math.min(n - 1, rec.window[1]), false, undefined, rec.sum);
   return Array.from(z, (zk, k) => ({ height: zk - src.grade[rec.i], raw: dB(t.raw[k]) + ex, level: dB(t.screened[k]) + ex, earth: dB(t.earth[k]) + ex }));
 }
 

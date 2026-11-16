@@ -900,7 +900,7 @@ the bill change: **research/36**.
   embankments and bridges, on the cut's top edge in a cut (never inside the slope); none where the cut
   already screens. The same per-station line and foot feed the acoustics, the bill (length along the drawn
   line, height above the foot), the 3D wall, the house card's plan and section.
-- **Auto, cheapest legal option**: houses loudest first; each of 2 / 3 / 4 / 5 m grows one wall from its most
+- **Auto, cheapest legal option**: houses loudest first (by their window's own level); each of 2 / 3 / 4 / 5 m grows one wall from its most
   useful cell until every storey meets the limit, at least twice the house's distance long (§1.11 h); the
   height adding the least area wins; walls built for other houses count. Buyout when 5 m over the whole
   reach cannot do it (the window widens as far as it could matter), as before. Junction openings and
@@ -930,8 +930,11 @@ the bill change: **research/36**.
   at the same house and storey add; splitting a route splits its cells, it never adds +3 dB (tested). A
   motorway is two directional sources on their lane axes (laneOffset 0), a railway its own mode
   (emission / propagation of that mode not implemented here). Joint wall decisions across roads remain C1.
-- Performance (open): after the performance pass (segment tree, two samples per far segment, a rigorous open-road
-  bound from each segment's own distance, typed scratch kernels) the noise step is faster than main on
-  best and demo, +1–3 ms on direct-80/90, and ≈ 7 ms slower on town-centre (367 dwellings at the
-  road), a reviewed trade-off for the exact sum (accuracy kept); equal or faster elsewhere within noise. Numbers and what is
-  left: docs/evaluate-performance.md.
+- **Staged decisions**: the grouped far sums (segment tree, two samples per far segment) are within
+  `FAR_ERROR` of the cell-by-cell ones; every decision checks that margin and, where it could flip, sums that
+  house more finely, then cell by cell. Walls, buyouts and violations are those of the cell-by-cell sum
+  (tested against an all-cells run on every fixture); shown levels are cell by cell where a house was refined.
+  Houses are handled loudest first by their window's own level. Bills moved by ≤ 0.2 M CZK (research/36 §3).
+- Performance (open): the noise step is +2–3 ms on best / demo, +4–6 ms on direct-80/90 and ≈ +12 ms on
+  town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
+  unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.

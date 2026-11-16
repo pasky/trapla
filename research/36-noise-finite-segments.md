@@ -56,7 +56,7 @@ acoustic study**. Code: `src/core/noise-field.ts` (the sum), `src/core/noise.ts`
 |---|---|---|
 | road summed | all of it | no reach limit: a cut-off would only lose energy |
 | screening reach | 3 km | cells beyond count **unscreened** (walls and edges ignored, never credited): over-states only |
-| far cells | cells one by one within 160 m; beyond, a binary tree of straight segments (4, 8, 16, … cells) each taken as one once its bounding circle's diameter is ≤ 0.32 × its distance (40 m chunks from 160 m, 80 m from 250 m, 320 m from 1 km) and its cells' length is within 1 % of its chord (a bend ≤ ≈ 28°: a road curled up far away is not a short line; a 270° arc of 500 m seen from 2–4 km: ≤ 0.14 dB, tested); each sampled cell keeps its own edge screening along the segment's ray (two samples per segment); walls take their own share of what passes the edges (each height at its sample block's middle; never more than passes); beyond 3 km (unscreened) a segment whole once its diameter ≤ its distance | measured against the cell-by-cell sum on every storey of 7 saved designs (1,541): within 3 dB of the limit, at most 0.100 dB over and 0.082 dB under; anywhere, up to 0.27 dB, only at houses ≥ 6 dB under the limit beneath viaducts (no decision depends on them). Adversarial synthetic curve (2 % grade, cut / fill and walls alternating every 200 m): 0.05 dB (test asserts < 0.15) |
+| far cells | cells one by one within 160 m; beyond, a binary tree of straight segments (4, 8, 16, … cells) each taken as one once its bounding circle's diameter is ≤ 0.32 × its distance (40 m chunks from 160 m, 80 m from 250 m, 320 m from 1 km) and its cells' length is within 1 % of its chord (a bend ≤ ≈ 28°: a road curled up far away is not a short line; a 270° arc of 500 m seen from 2–4 km: ≤ 0.14 dB, tested); each sampled cell keeps its own edge screening along the segment's ray (two samples per segment); walls take their own share of what passes the edges (each height at its sample block's middle; never more than passes); beyond 3 km (unscreened) a segment whole once its diameter ≤ its distance. **Staged decisions:** every house is first decided with these grouped sums; every comparison that decides an outcome (exposed or not, walls built for others suffice, a wall's first cell, each growth step and its stop, the loudest storey where that steers the growth, the window bound, the final level) checks the grouping's error margin `FAR_ERROR`; where the answer could flip, that house is summed more finely (4-cell chunks one by one, segments whole from 1/0.08 of their diameter, beyond 3 km from 1/0.16) and, if still within that finer margin, cell by cell, and the step is redone. Houses are handled loudest first by their window's own level (summed cell by cell, so the order is the same however the far part is summed) | the grouped sums against the cell-by-cell ones, every receiver window of 11 fixtures (× 1, 2, 4 window, no walls / built walls / a change of walls): at most 0.224 of their own value grouped, 0.046 finer; `FAR_ERROR` = 0.3 / 0.07 (pinned by tests/noise-stages.test.ts). A comparison clear of that margin comes out as it would cell by cell, so **walls, buyouts and violations are those of the cell-by-cell sum** (tested on every fixture against an all-cells run: identical). Displayed levels: cell by cell or finer where a house was refined (135 / 108 of 886 houses on 7 designs), grouped elsewhere; the loudest floor against the all-cells run, within 3 dB of the limit +0.099 / −0.067 dB, anywhere +0.17 / −0.27 dB (houses clear of every threshold by the margin). Adversarial synthetic curve (2 % grade, cut / fill and walls alternating every 200 m): 0.05 dB (test asserts < 0.15) |
 | houses assessed | all dwellings within the distance where an open straight road is 1 dB under the limit; beyond, up to R_b, those not excluded by the rigorous segment bound below whose open-road level (no walls, no cuts: an upper bound) comes within 0.5 dB of the limit | **segment bound:** a cell of length l whose centre is r away and whose own line passes d from the point adds at most l·g(d)/(π (r − l/2)²) of the reference energy in band, g(d) = max over height of d·10^(−U(d)/10) (its angle α = atan((|a|+l/2)/d) − atan((|a|−l/2)/d) ≤ l·d/(d² + (|a| − l/2)²) ≤ l·d/(r − l/2)²), and at most l·g(r′)/(π r′²) in the transformed form (r′ ≥ r − l/2); per tree segment, d is bounded by the chord's distance ± (the cells' tangent deviation × distance + their offset from the chord), g over that interval by its running maxima on a 0.5 m grid (M = max g = 11.73 m), r from the bounding circle (segments within 4 radii split); checked at each receiver point beyond the always-assessed distance, before the open-road level. Within ≈ 1.5–2 dB of the open-road level at 120–200 m (it was ≈ 5–7 dB with M everywhere). **R_b (an assumption, stated):** along a road that recedes from the house on both sides of its nearest point and sweeps at most 360° around it (serpentines or repeated hairpins around one house would break it; the bound has ≈ 2× slack there: M = 11.73 against d·10^(−U/10) ≈ 5.3 at 400 m), Σ l/r² ≤ (2 + 2π)/R (ds ≤ \|dr\| + r\|dθ\|), so the whole road adds ≤ (2 + 2π)·M/(π R): R_b = (2 + 2π)/π · M · 10^(E/10) (E = the road's controlling excess at the reference distance) = 371 m at 9,000 veh/day and 90 km/h, 340 m at 80, 825 m at 20,000 / 90, 2.4 km at 40,000 / 130 (computed from the model on every evaluation). The open-road check's grouping error is ≤ 0.25 dB (measured, 488 points 100–300 m from five designs), below its 0.5 dB margin. A house nearest to a tunnel is assessed from the nearest portal station, never dropped |
 | a house's automatic-wall window | starts ±150 m of route, **doubles while a wider one could change the choice**: a chosen wall reaching the window's edge, or a height that failed although the 5 m wall wherever one may stand beyond the window (what it takes away, F − F₅, bounds any wall there) could still make it suffice | so no reach limit ever decides a wall or a buyout; 150 m only sets where the search starts |
 | numbers in U | hard ground below 8 m and beyond 1 km in closed form (8/r, 10^(−Uo(1000)/10)·1000/r: the manual's own continuations) | exact |
@@ -82,7 +82,7 @@ acoustic study**. Code: `src/core/noise-field.ts` (the sum), `src/core/noise.ts`
   land) — not modelled; the crest is TP 104's stated alternative and, with the source 1 m up on the axis,
   screens a house above the road better than a foot wall of the same height.
 - **Automatic decisions:** houses over the limit (with cuts, edges and the player's walls) are handled
-  loudest first. A house no 5 m wall can protect (the window widened as far as it could matter) is bought
+  loudest first (by the level of their window, the road within ±150 m, summed cell by cell). A house no 5 m wall can protect (the window widened as far as it could matter) is bought
   out (unchanged rule);
   otherwise, unless walls already built for other houses suffice, each automatic height 2 / 3 / 4 / 5 m
   grows one contiguous wall from its most useful cell until every storey is within the limit, extended to
@@ -114,21 +114,24 @@ violations and validity are identical for all eleven fixtures (model 19 = main w
 motorway and railway scoring, left every road bill identical).
 Step attribution (wall area m², noise buyouts in brackets), each column adding one change to the one
 before, measured with temporary switches on the final code (after the performance pass: its far-field
-tree and sampling moved walls by ≤ 0.5 M CZK, demo, direct-80 and the town fixtures):
+tree and sampling moved walls by ≤ 0.5 M CZK, demo, direct-80 and the town fixtures; the staged decisions,
+which make every wall and buyout that of the cell-by-cell sum, then moved demo by −0.20 M CZK, direct-80 by
++0.10 M and the town fixtures by −0.09 M: a wall's extent near the limit, decided from the grouped sum before;
+handling houses in the order of their window's own level instead of their whole level moved none of them):
 
 | fixture | model 19 | finite segments, cut-top walls, computed extent, no run promotion (Maekawa, 3–5 m, no road edges) | + crown / deck edges | + manual DB, axis source | + 2 m walls = model 21 | total Δ M CZK |
 |---|---:|---:|---:|---:|---:|---:|
-| straight | 25,955 (3) | 16,552 (3) | 10,604 (3) | 9,388 (1) | 7,888 (1) | −200.3 |
+| straight | 25,955 (3) | 16,522 (3) | 10,714 (3) | 9,388 (1) | 7,888 (1) | −200.3 |
 | best | 7,409 (1) | 3,930 (0) | 3,630 (0) | 3,540 (0) | 2,590 (0) | −80.7 |
-| best-drag | 8,009 (0) | 4,072 (0) | 4,192 (0) | 3,540 (0) | 2,601 (0) | −54.1 |
+| best-drag | 8,009 (0) | 4,402 (0) | 4,192 (0) | 3,510 (0) | 2,601 (0) | −54.1 |
 | best-pin | 7,409 (1) | 4,440 (0) | 4,260 (0) | 4,020 (0) | 2,890 (0) | −77.7 |
 | best-structures | 7,409 (1) | 3,930 (0) | 3,630 (0) | 3,540 (0) | 2,590 (0) | −80.7 |
 | best-manual | 7,409 (1) | 3,930 (0) | 3,630 (0) | 3,540 (0) | 2,590 (0) | −80.6 |
-| demo | 8,647 (2) | 4,372 (0) | 4,221 (0) | 3,950 (0) | 3,150 (0) | −167.9 |
-| direct-80 | 20,215 (0) | 11,072 (1) | 9,553 (1) | 8,260 (1) | 7,275 (1) | −120.6 |
+| demo | 8,647 (2) | 4,372 (0) | 4,221 (0) | 3,830 (0) | 3,130 (0) | −168.1 |
+| direct-80 | 20,215 (0) | 11,022 (1) | 9,584 (1) | 8,220 (1) | 7,286 (1) | −120.4 |
 | direct-90 | 14,157 (0) | 6,671 (0) | 4,559 (0) | 4,329 (0) | 3,246 (0) | −109.1 |
-| town-centre | 25,200 (0) | 18,311 (3) | 14,998 (2) | 13,197 (0) | 10,696 (0) | −145.0 |
-| town-controls | 26,400 (0) | 19,544 (3) | 16,231 (2) | 14,430 (0) | 11,929 (0) | −144.7 |
+| town-centre | 25,200 (0) | 18,311 (3) | 14,998 (2) | 13,547 (0) | 10,686 (0) | −145.1 |
+| town-controls | 26,400 (0) | 19,544 (3) | 16,231 (2) | 14,780 (0) | 11,919 (0) | −144.8 |
 
 Why each step lowers walls:
 1. **Finite segments** (the largest step, −26…−53 %): the old model treated each station as a full
@@ -139,13 +142,12 @@ Why each step lowers walls:
    angle of view needs (at least twice its distance). Buyouts move both ways: direct-80 gains one house,
    straight keeps one of three, demo and best lose theirs (their worst station was a tangent artefact or
    needed only a 13 dB-capped wall the manual's DB now credits).
-2. **Crown / deck edges** (up to −36 %, most in the valley designs; best-drag gains 3 % from the
-   near-lane view): a house well below an embankment or viaduct does not see the traffic; the road's own edge screens
+2. **Crown / deck edges** (−4…−35 %, most in the valley designs): a house well below an embankment or viaduct does not see the traffic; the road's own edge screens
    it (manual §1.11, terrain configuration).
 3. **Manual DB with the axis source** (−2…−16 %): the manual's empirical traffic barrier loss is ≈ 2–3 dB
    above the old Maekawa expression after its invented −5 dB allowance (e.g. 3 m wall, receiver 50 m away
    at 4.5 m: 11.9 vs 9.9 dB) and is not capped at 13 dB.
-4. **2 m walls** (−12…−28 %): where 2 m suffices it is cheaper; Auto picks the height adding least area.
+4. **2 m walls** (−11…−28 %): where 2 m suffices it is cheaper; Auto picks the height adding least area.
 
 No route was re-optimised; all published designs stay VALID.
 

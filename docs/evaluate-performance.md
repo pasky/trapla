@@ -1,5 +1,28 @@
 # Evaluate performance regression
 
+## Staged noise decisions (2026-11-16)
+
+The grouped far sums are within `FAR_ERROR` (0.3 of their own value; 0.07 for the finer grouping) of the
+cell-by-cell sums. Every decision that compares a level with a threshold now checks that margin and, where it
+could flip, sums that house more finely and then cell by cell (research/36 §2). Walls, buyouts and violations
+are those of the cell-by-cell sum on every fixture (tested against an all-cells run). In town-centre 108 of
+367 houses are summed finely and 48 cell by cell (a wall's growth stops just under the limit, so many houses
+end near it). A house's exact decision windows are derived from the narrower one (the cells the wider
+window takes in are subtracted) and kept per house and stage; a refined house redoes only the step it was
+in. Interleaved A/B (warm, 16 rounds, host load ≈ 6–10), min / median ms:
+
+| design | noise main | noise a903bda | noise now | whole evaluate main | a903bda | now |
+|---|---:|---:|---:|---:|---:|---:|
+| best | 4.9 / 6.6 | 4.1 / 5.1 | 6.5–7.0 / 7.7–10.2 | 70.9 / 92.9 | 69.4 / 84.0 | 72.8–79.6 / 88.1–92.4 |
+| demo | 5.3 / 6.6 | 4.7 / 5.4 | 7.4–7.8 / 8.4–10.3 | 106.4 / 117.0 | 98.1 / 112.5 | 101.2–103.9 / 116.1–125.7 |
+| direct-80 | 5.3 / 6.3 | 8.4 / 10.2 | 14.3–15.4 / 15.9–20.7 | 83.0 / 99.3 | 83.7 / 94.4 | 89.6–94.1 / 98.6–117.5 |
+| direct-90 | 4.8 / 6.0 | 5.8 / 7.3 | 9.4–9.8 / 11.1–11.8 | 78.4 / 88.6 | 77.8 / 83.8 | 80.3–82.0 / 87.7–93.1 |
+| town-centre | 7.1 / 8.6 | 15.0 / 15.7 | 27.5–31.2 / 28.9–33.0 | 87.4 / 99.2 | 96.0 / 105.8 | 108.1–113.8 / 116.5–123.2 |
+
+("now" ranges over the two runs.) `noiseOutcome` alone, town-centre, 30 calls: 14.6–16.1 → 27.6–28.6 ms.
+The cell-by-cell sums of those 48 houses are most of the increase (≈ 1,900 cells each). `node
+scripts/drag-perf.mjs --gpu --check`: every mode OK (drags evaluate without the noise step until they settle).
+
 ## Finite-segment noise, cost model 21 (2026-11-16)
 
 The finite-segment noise sum (research/36) replaced the per-station maximum. Its first version made the
@@ -20,7 +43,8 @@ against 5 / 5 / 5 / 5 / 7 ms on main. The performance pass:
 - **Candidates**: stamped scratch grids reused across calls, the nearest station by descent from the
   house's projection onto the tangent (squared façade distances), one visited-set per building index.
 - Accuracy against the cell-by-cell sum on every storey of 7 saved designs: within 3 dB of the limit
-  ≤ 0.100 dB over, 0.082 under (was 0.078; far walls now take a share of what passes the edges, never more,
+  ≤ 0.100 dB over, 0.082 under (since the staged decisions above: no decision depends on that error; the
+  loudest floor as shown, within 3 dB of the limit, +0.099 / −0.067 dB) (was 0.078; far walls now take a share of what passes the edges, never more,
   and segments must be straight); bills moved by ≤ 0.5 M CZK (demo, direct-80, town fixtures; research/36 §3).
 
 Interleaved A/B in one process (both evaluate bundles loaded, alternating, warm, 20 rounds, host load
