@@ -11,7 +11,7 @@ mkdirSync(out, { recursive: true });
 const game = await startGame();
 const { page, pageErrors: errors } = game;
 const idle = (ms = 600) => game.idle(ms);
-const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await page.mouse.move(5, 5); await page.screenshot({ path }); console.log('SHOT', path); };
+const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await game.park(); await page.screenshot({ path }); console.log('SHOT', path); };
 const card = () => page.evaluate(() => document.getElementById('inspector')?.innerText ?? '');
 const T = (f, a) => page.evaluate(f, a);
 try {

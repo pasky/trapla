@@ -45,7 +45,7 @@ try {
       return { roadId: c.roadId, s: c.s, type: c.type, cls: c.cls, cost: c.cost, tie: c.tieLength, wall: c.wallLength, ties: g?.ties?.length ?? 0 };
     }, [shows, roadId, BEFORE, dist, bearing, elev]);
     assert(c, BEFORE ? `${name} crosses way ${roadId}` : `${name} has ${SHOWS[shows]}`);
-    await idle(); await page.mouse.move(5, 5);
+    await idle(); await game.park();
     const path = `${out}/${number + (BEFORE ? 0 : 1)}-crossing-works-${BEFORE ? 'before' : 'after'}-${label}.png`;
     await page.screenshot({ path }); console.log(path, JSON.stringify(c));
   }

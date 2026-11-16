@@ -34,7 +34,7 @@ try {
       return { type, roadId: c.roadId, cls: c.cls, s: c.s, span: c.span, approaches: c.approachLength, links: c.linkLength };
     }, type);
     assert(selected, `demo has ${type}`); await idle();
-    await page.mouse.move(5, 5);
+    await game.park();
     const path = `${out}/${42 + k}-crossing-${type}.png`;
     await page.screenshot({ path }); console.log(path, JSON.stringify(selected));
     if (type === 'junction') {

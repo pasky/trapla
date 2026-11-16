@@ -13,7 +13,7 @@ mkdirSync(out, { recursive: true });
 const game = await startGame();
 const { page, pageErrors: errors } = game;
 const idle = () => game.idle(700);
-const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await page.mouse.move(5, 5); await page.screenshot({ path }); console.log('SHOT', path); };
+const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await game.park(); await page.screenshot({ path }); console.log('SHOT', path); };
 const card = async () => (await page.evaluate(() => document.getElementById('inspector')?.innerText ?? '')).replace(/\s+/g, ' ');
 const T = (f, a) => page.evaluate(f, a);
 const design = (file) => JSON.parse(readFileSync(file, 'utf8')).design;

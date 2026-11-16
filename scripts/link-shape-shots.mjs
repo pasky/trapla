@@ -39,7 +39,7 @@ try {
   await page.mouse.up(); await idle(800);
   const shaped = await T((id) => { const d = window.trapla.getDesign(), c = window.trapla.result().crossings.find(c => c.roadId === id); return { via: d.crossingOverrides.find(o => o.roadId === id)?.via, cost: c.cost, length: c.linkLength, issues: (c.issues ?? []).map(v => v.title) }; }, link.roadId);
   assert(shaped.via.flat().length > 1); assert.deepEqual(shaped.issues, []);
-  await page.mouse.move(5, 5);
+  await game.park();
   await page.screenshot({ path: `${out}/118-link-shape-built.png` });
   console.log('shaped', JSON.stringify({ before: { cost: link.cost, length: link.length }, after: { cost: shaped.cost, length: shaped.length, bends: shaped.via.flat().length } }));
   // drag the bend point onto our road (the nearest place on its axis): the game says so, with the way back in the card
@@ -53,7 +53,7 @@ try {
   const bad = await T((id) => (window.trapla.result().crossings.find(c => c.roadId === id).issues ?? []).map(v => v.title), link.roadId);
   console.log('rejected', JSON.stringify(bad));
   assert(bad.length > 0);
-  await page.mouse.move(5, 5);
+  await game.park();
   await page.screenshot({ path: `${out}/119-link-shape-rejected.png` });
   assert.deepEqual(errors, []);
 } finally { await game.close(); }

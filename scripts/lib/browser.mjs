@@ -66,6 +66,9 @@ export async function startGame({ root = process.cwd(), gpu = process.argv.inclu
     }
     await frames(2);
   };
+  /** the pointer out of the picture before a shot: at the side panel's corner, where nothing answers it (the
+   *  map's corner can lie on a mapped road or a bend, which answer with a tip) */
+  const park = () => page.mouse.move(viewport.width - 4, viewport.height - 4);
   /** load the game at `?query` (already there: load it again); `fresh`: with empty storage; `intro`: leave the
    *  first-run intro to show */
   const open = async (query = 'scenario=d11', { fresh = true, intro = false } = {}) => {
@@ -76,7 +79,7 @@ export async function startGame({ root = process.cwd(), gpu = process.argv.inclu
     await loaded();
     await idle();
   };
-  return { server, browser, page, errors, pageErrors, base, open, idle, frames, still, close: async () => { await browser.close(); await server.close(); } };
+  return { server, browser, page, errors, pageErrors, base, open, idle, frames, still, park, close: async () => { await browser.close(); await server.close(); } };
 }
 
 /** `ok(condition, what)`: prints PASS / FAIL, counts failures and makes the process exit 1 on any */
