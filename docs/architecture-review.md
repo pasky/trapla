@@ -42,7 +42,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 10 | A new line kind touches ≈ 15 files outside the registries; the designed kernel seam is unused | high | medium | started: `ROUTE_KINDS` in project-evaluate.ts (evaluator, noise method, clearance per kind); rest next (§ Extensibility) |
 | 11 | Player words per kind ("road / railway / motorway", "old track", ‰ vs %) re-derived in ≥ 8 places | medium | low | next |
 | 12 | Browser gates run against the live working tree (vite); fixed ports collide between worktrees | medium | none | done in part: port per checkout; run gates from a clean checkout (§ Tooling) |
-| 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | started: `scripts/lib/browser.mjs`, three scripts on it; the rest when touched |
+| 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | 23 on `scripts/lib/browser.mjs` (the gates and every script that set the retired intro key); 17 left, when touched |
 | 14 | Change lists the worker computes (`changedRouteIds` …) are never read: every full result rebuilds every road's 3D body | medium (many roads) | medium | owner / next |
 | 15 | Research note numbers collide (15 ×3, 16 ×5, 17 ×3, 41, 42, 43 ×2): 33 citations in `src/` are ambiguous | medium | none | next: cite the file name |
 | 16 | Engineering numbers outside `data/` (clearances, ramp limits, side slopes, a default design speed in `ui/`) | medium | low | sequence (list in § Data) |
@@ -80,11 +80,28 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
   running them under the shared lock collided).
 - `scripts/lib/browser.mjs`: `startGame()` gives vite on a free port, Chromium with the GPU or software
   flags, collected errors, `open(query)` (fresh storage, intro dismissed, loaded and idle), `idle()` /
-  `frames()` / `still()` that hold on a busy host, `close()`. `layout.mjs`, `camera-check.mjs` and
-  `mode-play.mjs` use it; the other 38 copies (ports 5197–5297, strict or not, three flag lists) move over
-  when they are next touched, the gates (smoke, playtest, drag-perf) first, each verified by running it.
-  One thing it settles: **20 scripts set the retired intro key `trapla.intro.v1`** (the game reads
-  `trapla.intro.v2`), so they run, and take their screenshots, with the first-run intro open.
+  `frames()` / `still()` that hold on a busy host, `close()`; `dismissIntro(page)` for the scripts that
+  time the first load and so navigate once themselves (perf, startup-perf, drag-perf, also with `--root`
+  of an older checkout). On it: the gates (smoke, playtest, drag-perf), `layout.mjs`, `camera-check.mjs`,
+  `mode-play.mjs` and the 18 scripts that set the retired intro key `trapla.intro.v1` (the game reads
+  `trapla.intro.v2`; 15 set only the old one): until a script selected something, **the first-run intro lay over the map's top
+  left corner in their screenshots** (the start view, `valley`, `views`, `earthworks`, `photo-pan`,
+  `screenshots` 01) and place names stayed clear of its box afterwards. Each was run before and after:
+  same transcript, pictures identical but for the intro, the labels it displaced, contour labels now
+  laid out (the shot waits for the view) and the score's change chip (a design is set after the start
+  line has been shown, as a player's would be). 17 scripts with their own copy (and the right key) are
+  left: scene scripts (`any-road-scene`, `owner-d3-scene`, `multi-road-scene`, `p2-scene`,
+  `stretch-play`, `lazy-transport-check`), shots (`motorway`, `railway`, `noise`, `road-look`, `seam`,
+  `noise-view`), `scenarios/*`, `detmath-browser-check`.
+- **Six of those scripts fail on main for reasons of their own** (the same before and after the move):
+  four assert outcomes of an older cost model on a saved design
+  (`crossing-economy-shots`: the km 7.94 track is no longer straightened through a box;
+  `crossing-works-shots`: way 2180 regrades no side road; `link-shape-shots`: way 4742 is an underpass
+  now, no reroute to shape; `lowered-underpass-shots`: the track crosses twice, not three times), two
+  a flow that changed (both already at `8ac09c5`, before this work; `curves.mjs`: after undoing a grip drag, `+` no longer changes the bend's radius
+  and the card's Widest is not there; `zoom.mjs`: "a profile click glides the map there", 16 of 17).
+  Someone who knows what each was meant to show should repair or retire them; `violations.mjs` scrolls
+  the HUD in a race with the selection (one run in six framed the list differently).
 - Three kinds of script flake seen on a loaded host, all "measured before it settled": a fixed pause
   instead of waiting for the camera to stop (camera-check), a result read right after mouse-up
   (mode-play), a 6 s toast the script reaches after 4–7 s (playtest: `gates.sh` retries once under load).
