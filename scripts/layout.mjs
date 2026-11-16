@@ -2,25 +2,15 @@
 // range selection / Esc, view option toggles and hovering; its station range follows the route's
 // length while fitted. Logs every step; screenshots into $OUT (default /tmp/trapla-layout).
 import { mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
-const PORT = Number(process.env.PORT ?? 5205);
 const OUT = process.env.OUT ?? '/tmp/trapla-layout';
 mkdirSync(OUT, { recursive: true });
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const game = await startGame();
+const { page } = game;
 try {
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-// the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
 page.on('pageerror', (e) => { console.log('pageerror', e.message); process.exitCode = 1; });
-await page.goto(`http://localhost:${PORT}/?scenario=d11`);
-await page.evaluate(() => localStorage.clear());
-await page.reload();
-await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
-await page.evaluate(() => window.trapla.whenIdle());
+await game.open('scenario=d11'); // (fresh storage; the first-run intro would cover the map in the screenshots)
 const ok = (c, m) => { console.log(c ? 'PASS' : 'FAIL', m); if (!c) process.exitCode = 1; };
 // the layout grid of src/style.css (#app): HUD 360 px wide, profile clamp(220px, 38vh, 300px) high
 const HUD_W = 360, profileH = () => Math.min(300, Math.max(220, 0.38 * vh));
@@ -110,7 +100,4 @@ ok(!whole(c.m) && c.picked && c.m.view.v0 <= c.picked.s0 + 0.5 && c.m.view.v1 >=
 await page.click('#fit');
 m = await step('Fit');
 ok(whole(m), 'Fit shows the whole route again');
-} finally {
-  await browser.close();
-  await server.close();
-}
+} finally { await game.close(); }

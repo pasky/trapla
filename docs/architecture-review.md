@@ -42,7 +42,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 10 | A new line kind touches ≈ 15 files outside the registries; the designed kernel seam is unused | high | medium | started: `ROUTE_KINDS` in project-evaluate.ts (evaluator, noise method, clearance per kind); rest next (§ Extensibility) |
 | 11 | Player words per kind ("road / railway / motorway", "old track", ‰ vs %) re-derived in ≥ 8 places | medium | low | next |
 | 12 | Browser gates run against the live working tree (vite); fixed ports collide between worktrees | medium | none | done in part: port per checkout; run gates from a clean checkout (§ Tooling) |
-| 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | next: `scripts/lib/browser.mjs`, migrate when touched |
+| 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | started: `scripts/lib/browser.mjs`, three scripts on it; the rest when touched |
 | 14 | Change lists the worker computes (`changedRouteIds` …) are never read: every full result rebuilds every road's 3D body | medium (many roads) | medium | owner / next |
 | 15 | Research note numbers collide (15 ×3, 16 ×5, 17 ×3, 41, 42, 43 ×2): 33 citations in `src/` are ambiguous | medium | none | next: cite the file name |
 | 16 | Engineering numbers outside `data/` (clearances, ramp limits, side slopes, a default design speed in `ui/`) | medium | low | sequence (list in § Data) |
@@ -78,10 +78,16 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
   symlink `node_modules`, `public/scenarios` and `pipeline/cache` into it.
 - `gates.sh` gives smoke / playtest a port per checkout (they listen on a fixed strict port; two worktrees
   running them under the shared lock collided).
-- Next: `scripts/lib/browser.mjs` (server on a free port, Chromium with the GPU or SwiftShader flags,
-  page with collected errors, `idle()`, `ok()`, intro flag, `finally` close). There are 41 copies with
-  small differences (ports 5197–5297, strict or not, three flag lists). Migrate a script when it is next
-  touched; the gates (smoke, playtest, drag-perf) first, each verified by running it.
+- `scripts/lib/browser.mjs`: `startGame()` gives vite on a free port, Chromium with the GPU or software
+  flags, collected errors, `open(query)` (fresh storage, intro dismissed, loaded and idle), `idle()` /
+  `frames()` / `still()` that hold on a busy host, `close()`. `layout.mjs`, `camera-check.mjs` and
+  `mode-play.mjs` use it; the other 38 copies (ports 5197–5297, strict or not, three flag lists) move over
+  when they are next touched, the gates (smoke, playtest, drag-perf) first, each verified by running it.
+  One thing it settles: **20 scripts set the retired intro key `trapla.intro.v1`** (the game reads
+  `trapla.intro.v2`), so they run, and take their screenshots, with the first-run intro open.
+- Three kinds of script flake seen on a loaded host, all "measured before it settled": a fixed pause
+  instead of waiting for the camera to stop (camera-check), a result read right after mouse-up
+  (mode-play), a 6 s toast the script reaches after 4–7 s (playtest: `gates.sh` retries once under load).
 
 ### 3. `main.ts`
 

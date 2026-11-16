@@ -4,38 +4,22 @@
 // "Whole route" back, and no overprinted place or wall labels.
 // CHROME=/usr/bin/chromium PORT=5268 node scripts/camera-check.mjs [--shots dir]
 import { mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
-const port = Number(process.env.PORT ?? 5268);
+import { startGame } from './lib/browser.mjs';
 const shotsAt = process.argv.indexOf('--shots'), shots = shotsAt > 0 ? process.argv[shotsAt + 1] : null;
 if (shots) mkdirSync(shots, { recursive: true });
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const game = await startGame({ viewport: { width: 1440, height: 900 }, port: Number(process.env.PORT ?? 5268) });
+// (still(): wait until the camera has stopped and a frame has been drawn since; a fixed pause measured it mid-flight)
+const { page, still } = game;
 const errors = []; page.on('pageerror', e => errors.push(e.message));
 let failed = 0;
 const ok = (c, m) => { console.log(`${c ? 'PASS' : 'FAIL'} ${m}`); if (!c) failed++; };
 const T = (f, a) => page.evaluate(f, a);
 const idle = async (ms = 300) => { await T(() => window.trapla.whenIdle()); await page.waitForTimeout(ms); };
 const pose = () => T(() => window.trapla.cameraPose());
-/** wait until the camera has stopped (a flight takes a few frames; software rendering on a busy host draws
- * slowly, so a fixed pause measured it mid-flight) and a frame has been drawn since */
-const still = async () => {
-  let last = '', same = 0;
-  for (let k = 0; k < 150 && same < 3; k++) {
-    await page.waitForTimeout(150);
-    const now = JSON.stringify(await T(() => { const p = window.trapla.cameraPose(), t = window.trapla.cameraTarget(); return [p.distance, p.pitch, t.x, t.y].map(v => Math.round(v * 100)); }));
-    same = now === last ? same + 1 : 0; last = now;
-  }
-  await T(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-};
 let n = 0;
 const shot = async (name) => { if (shots) await page.screenshot({ path: `${shots}/${String(n++).padStart(2, '0')}-${name}.png` }); };
 try {
-  await page.addInitScript(() => { try { if (!sessionStorage.getItem('fresh')) { localStorage.clear(); localStorage.setItem('trapla.intro.v1', '1'); sessionStorage.setItem('fresh', '1'); } } catch { /* opaque */ } });
-  await page.goto(`http://localhost:${port}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle(800);
+  await game.open('scenario=d11'); await idle(800);
   const box = await page.locator('#view canvas').boundingBox();
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
   const pis = async () => (await T(() => window.trapla.getDesign())).pis.length;
@@ -154,5 +138,5 @@ try {
   await T(() => window.trapla.selectPi(0)); await page.getByRole('button', { name: /Whole route/ }).click(); await idle(600);
   await shot('bend-selected');
   ok(errors.length === 0, `no browser errors ${errors.join(' | ')}`);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }
 if (failed) { console.log(`${failed} FAILED`); process.exitCode = 1; }
