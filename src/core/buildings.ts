@@ -168,6 +168,17 @@ export class BuildingIndex {
     return [this.ox[j] + ux * p - uy * q, this.oy[j] + uy * p + ux * q];
   }
 
+  /** Does small building k stand wholly within big building j's outline (its footprint rectangle, less
+   * `margin` m)? A chimney, silo or tower inside a hall, for example. */
+  within(k: number, j: number, margin = 1): boolean {
+    for (const [p, q] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const x = this.ox[k] + this.ux[k] * this.hl[k] * p - this.uy[k] * this.hw[k] * q, y = this.oy[k] + this.uy[k] * this.hl[k] * p + this.ux[k] * this.hw[k] * q;
+      const dx = x - this.ox[j], dy = y - this.oy[j];
+      if (Math.abs(dx * this.ux[j] + dy * this.uy[j]) > this.hl[j] - margin || Math.abs(-dx * this.uy[j] + dy * this.ux[j]) > this.hw[j] - margin) return false;
+    }
+    return true;
+  }
+
   /**
    * Does building j's footprint rectangle intersect the rectangle centred at (cx,cy) with unit axis
    * (tx,ty), half-length `ha` along it and half-width `hb` across it? (separating-axis test)

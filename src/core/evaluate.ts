@@ -124,7 +124,9 @@ export interface Result {
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
-  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean }[];
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean;
+    /** a small structure standing within this demolished building, which goes with it */
+    host?: number }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
@@ -706,6 +708,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
   }
   const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
+  /** cells a bridge must span for a stream its end would otherwise bury (set by a retry below) */
+  const streamBridge = new Uint8Array(n);
   const sectionMemo: SectionCache = [];
   // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
   // or daylight changes the two widths; deck/centre cover never changes within this evaluation.
@@ -824,6 +828,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Rivers / water / railways and watercourses exceeding practical culvert limits need bridges.
   // Inadequate clearance stays a violation, never a fake buried bridge.
   const forced = retention.forcedBridge.slice();
+  for (let i = 0; i < n; i++) if (streamBridge[i] && h[i] > 0) forced[i] = 1;
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]));
   forceParallelWater(forced, Array.from({ length: n }, (_, i) => i), grade, sec.dayL, sec.dayR,
@@ -936,7 +941,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   /** Stage A (engineering through the footprint screen) runs immediately; `complete()` runs the
    * rest (noise, bill, checks). It reads only this pass's own arrays, never the shared
    * engineer() buffers, so it stays valid after a later pass. */
-  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): { vpis: VPI[]; footprintConflicts: FootprintConflict[]; complete: () => Result } => {
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; complete: () => Result } => {
   const oob = oobInput.slice();
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
@@ -1050,6 +1055,12 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
       demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : cutSide ? 'cut' : 'embankment', strip: !p.core });
     }
+    // a chimney, silo or tower standing within a demolished building's outline goes with it
+    for (const p of demolished.slice()) bld.near(items[p.j][0], items[p.j][1], items[p.j][2], (k) => {
+      if (gone[k] || keptIds.has(k) || bld.area[k] > BUILDING_RULES.hostedMaxArea || bld.area[k] > BUILDING_RULES.hostedShare * bld.area[p.j] || !bld.within(k, p.j)) return;
+      gone[k] = 1; buildingCost[p.i] += bld.cost[k];
+      demolished.push({ ...p, j: k, cost: bld.cost[k], host: p.j });
+    });
     for (const o of buildingOverrides) {
       if (gone[o.j]) continue; // footprint acquisition already pays the building once
       const hit = best.get(o.j);
@@ -1187,7 +1198,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     }
     walls = outcome.walls; wallsAroundChoices = outcome.aroundChoices;
     receivers = outcome.receivers;
-    noiseViolations.push(...noiseControlViolations(receivers, st.s));
+    noiseViolations.push(...noiseControlViolations(receivers, st.s, crossings.filter(c => c.type === 'junction')));
   }
   lap('town');
 
@@ -1326,10 +1337,20 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing, ...(preview ? { preview: true } : {}),
   };
   };
-  return { vpis, footprintConflicts: footprintCheck.conflicts, complete };
+  return { vpis, kind, footprintConflicts: footprintCheck.conflicts, complete };
   };
-  const first = finish(crossingWays);
+  let first = finish(crossingWays);
   if (preview) return first.complete();
+  // A stream left under the earthwork just beyond a bridge's end with too little cover for a culvert
+  // (an oblique channel under the slope): carry the bridge over it and engineer again.
+  const streams = first.footprintConflicts.filter(c => c.feature === 'stream' && c.action === 'blocked' && c.id.endsWith(':earth'));
+  let spanned = false;
+  for (const c of streams) {
+    const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
+    if (!first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
+    for (let i = i0; i <= i1; i++) if (manualStructures[i] < 0) { streamBridge[i] = 1; spanned = true; }
+  }
+  if (spanned) { timing['count.streamRetry'] = 1; first = finish(crossingWays, new Set(), first.vpis); }
   // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
   const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');

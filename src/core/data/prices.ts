@@ -12,7 +12,7 @@
  * 23: the structure choice prices the buildings each option demolishes and settles the fill value on
  * the final grade line (By hand from Auto's heights bills the same); piers of a chosen bridge miss
  * what lies below; an automatic bridge whose piers cannot is not chosen; a stream at a bridge's end
- * is spanned. */
+ * is spanned; a chimney / silo / shed standing within a demolished building goes with it. */
 export const COST_MODEL_VERSION = 23;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

@@ -26,4 +26,17 @@ describe('buildings in the structure choice', () => {
     expect(earth.demolished.map(p => p.j)).toEqual([0]);
     expect(town.cost.total).toBeLessThan(earth.cost.total);
   });
+
+  it('a chimney standing within a demolished hall goes with it, billed', () => {
+    const flat: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 1200, z: 400, r: null }] };
+    // the hall reaches the road (its south wall 5 m from the axis); the chimney stands 55 m off, inside it
+    const buildings = new BuildingIndex([[700, 240, 50], [700, 255, 3]],
+      [[4800, 1, 3, 700, 240, 40, 35, 0], [9, 0, 4, 700, 255, 1.5, 1.5, 0]]);
+    const r = evaluate({ ...ctx, buildings }, flat);
+    expect(r.demolished.map(p => [p.j, p.host])).toEqual([[0, undefined], [1, 0]]);
+    expect(r.parts.buildings.reduce((a, b) => a + b, 0)).toBeCloseTo(buildings.cost[0] + buildings.cost[1], 0);
+    // a shed beside the hall, not within it, stays
+    const beside = new BuildingIndex([[700, 240, 50], [760, 255, 3]], [[4800, 1, 3, 700, 240, 40, 35, 0], [9, 0, 4, 760, 255, 1.5, 1.5, 0]]);
+    expect(evaluate({ ...ctx, buildings: beside }, flat).demolished.map(p => p.j)).toEqual([0]);
+  });
 });
