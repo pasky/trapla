@@ -3,7 +3,7 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { createMotorwayProject, motorwayMission, setSpeedLimit150, speedLimit150 } from '../src/core/project-motorway';
+import { createMotorwayProject, motorwayMission, rejoinStretch, setSpeedLimit150, speedLimit150 } from '../src/core/project-motorway';
 import { MOTORWAY_150_PILOT } from '../src/core/data/motorway';
 import { projectBindingsCurrent, type ProjectLoadOptions } from '../src/project-persistence';
 import { isScorableProject } from '../src/core/project-protocol';
@@ -133,6 +133,60 @@ describe('split motorway', () => {
     const clash = evaluateProject(ctx, { ...snapshot, revision: 3, design: raised });
     expect(clash.issues.some(i => i.violation.title === 'Slopes of the two directions clash')).toBe(true);
     expect(clash.valid).toBe(false);
+  });
+});
+
+describe('one direction on its own (separate stretches)', () => {
+  const bent = () => {
+    const { ctx, snapshot } = fixture();
+    const [f, r] = snapshot.design.routes;
+    snapshot.design = replaceRouteFromLegacy(snapshot.design, f.id,
+      { ...legacyDesignForRoute(snapshot.design, f.id), pis: [{ x: 800, y: 290, r: null }, { x: 1600, y: 210, r: null }] });
+    return { ctx, snapshot, f, r };
+  };
+  it('choosing a direction changes nothing; its first edit runs it apart only between joins around the change', () => {
+    const { ctx, snapshot, f, r } = bent();
+    const shown = legacyDesignForRoute(snapshot.design, r.id, { oneDirection: true });
+    expect(shown.pis).toEqual(legacyDesignForRoute(snapshot.design, f.id).pis);
+    expect(replaceRouteFromLegacy(snapshot.design, r.id, shown, { oneDirection: true })).toEqual(snapshot.design);
+    const paired = evaluateProject(ctx, snapshot);
+    // the direction towards A (left of A→B) bends 40 m further left between the two bends
+    const edited = replaceRouteFromLegacy(snapshot.design, r.id, { ...shown, pis: [shown.pis[0], { x: 1200, y: 290, r: null }, shown.pis[1]] }, { oneDirection: true });
+    assertProjectDesign(edited);
+    const corridor = edited.corridors[0];
+    if (corridor.mode !== 'paired') throw new Error('still one corridor');
+    expect(corridor.stretches).toHaveLength(1);
+    const t = corridor.stretches![0];
+    expect(t.reverse?.pis).toHaveLength(3); expect(t.forward).toBeUndefined();
+    const result = evaluateProject(ctx, { ...snapshot, revision: 2, design: edited });
+    const fs = result.routes[f.id].legacy!, spine = paired.routes[f.id].legacy!;
+    expect(t.a).toBeGreaterThan(100); expect(t.b).toBeLessThan(spine.length - 100);
+    expect(result.complete).toBe(true);
+    expect(result.issues).toEqual([]);
+    // outside the stretch the shared body's bill is the paired one, cell for cell
+    const drawn = result.routes[f.id].drawn!;
+    expect(drawn.filter(p => p.section === 'paired').length).toBeGreaterThan(0);
+    expect(drawn.filter(p => p.section === 'carriageway').map(p => p.direction).sort()).toEqual(['forward', 'reverse']);
+    const i0 = Math.floor(t.a / spine.ds) - 20;
+    for (let i = 0; i < i0; i++) expect(fs.parts.roadBase[i]).toBe(spine.parts.roadBase[i]);
+    expect(Array.from(fs.grade.subarray(0, i0))).toEqual(Array.from(spine.grade.subarray(0, i0)));
+    // the bend costs what its own stretch costs, no more: the rest is unchanged
+    expect(result.cost.total! - paired.cost.total!).toBeGreaterThan(0);
+    expect(result.cost.total! - paired.cost.total!).toBeLessThan(0.1 * paired.cost.total!);
+    // joining that stretch again is the paired design, at the paired price
+    const joined = rejoinStretch(edited, corridor.id, t.id);
+    expect(joined).toEqual(snapshot.design);
+    expect(evaluateProject(ctx, { ...snapshot, revision: 3, design: joined }).cost.total).toBe(paired.cost.total);
+  });
+  it('a change of both directions keeps stretches away from it and drops those it touches', () => {
+    const { snapshot, r } = bent();
+    const shown = legacyDesignForRoute(snapshot.design, r.id, { oneDirection: true });
+    const edited = replaceRouteFromLegacy(snapshot.design, r.id, { ...shown, pis: [shown.pis[0], { x: 1200, y: 290, r: null }, shown.pis[1]] }, { oneDirection: true });
+    const both = legacyDesignForRoute(edited, r.id);
+    const radius = replaceRouteFromLegacy(edited, r.id, { ...both, pis: [both.pis[0], { ...both.pis[1], r: 2000 }] });
+    expect((radius.corridors[0] as { stretches?: unknown[] }).stretches).toBeUndefined();
+    const pinned = replaceRouteFromLegacy(edited, r.id, { ...both, gradePins: [{ s: 100, z: 101 }] });
+    expect((pinned.corridors[0] as { stretches?: unknown[] }).stretches).toHaveLength(1);
   });
 });
 
