@@ -199,20 +199,27 @@ describe('rebuilding a mapped road', () => {
 // "Bend 1 is too close to its start" for bends the player had not touched.
 describe('a rebuilt stretch inherits no violations from its old road', () => {
   // An old class III road: 700 m east, a sharp 90° corner (as old roads have), 700 m north; ends on side roads.
-  function corner(ground: (x: number, y: number) => number = () => 300, s1 = 1400) {
+  // `beyond`: at b the same road goes on north as another mapped way, and a track leaves east
+  function corner(ground: (x: number, y: number) => number = () => 300, s1 = 1400, beyond = false) {
     const xy = [300, 300, 1000, 300, 1000, 1000], stations = [0, 700, 1400];
     const graph: TransportGraphData = { version: 1, vectorData: 'vectors', renderFeatures: [], nodes: [
-      { id: 'a', xy: [300, 300] }, { id: 'c', xy: [1000, 300] }, { id: 'b', xy: [1000, 1000] }], sources: [
+      { id: 'a', xy: [300, 300] }, { id: 'c', xy: [1000, 300] }, { id: 'b', xy: [1000, 1000] }, { id: 'n', xy: [1000, 1600] }, { id: 'e', xy: [1600, 1000] }], sources: [
       { id: 'old', osmWayId: '1', kind: 'road', nodes: ['a', 'c', 'b'], xy, stations, layer: 0, bridge: false, tunnel: false,
-        elevation: 'terrain', tags: { highway: 'tertiary', ref: '1057', maxspeed: '90' }, render: [], legacyNetIndex: 0 }] };
+        elevation: 'terrain', tags: { highway: 'tertiary', ref: '1057', maxspeed: '90' }, render: [], legacyNetIndex: 0 },
+      ...(beyond ? [
+        { id: 'next', osmWayId: '2', kind: 'road' as const, nodes: ['b', 'n'], xy: [1000, 1000, 1000, 1600], stations: [0, 600], layer: 0, bridge: false, tunnel: false,
+          elevation: 'terrain' as const, tags: { highway: 'tertiary', ref: '1057' }, render: [], legacyNetIndex: 1 },
+        { id: 'lane', osmWayId: '3', kind: 'road' as const, nodes: ['b', 'e'], xy: [1000, 1000, 1600, 1000], stations: [0, 600], layer: 0, bridge: false, tunnel: false,
+          elevation: 'terrain' as const, tags: { highway: 'track' }, render: [], legacyNetIndex: 2 }] : [])] };
     const terrain = syntheticTerrain(500, 500, 5, ground);
     const base = new ProjectTransportIndex(graph, 'transport', 'vectors', terrain);
     const project: ProjectDesign = { schemaVersion: 1, scenarioId: 'test', presetId: 'edit', packId: 'test', objectData: 'objects', transportData: 'transport',
       routes: [], corridors: [], connections: [], buildingOverrides: [], mission: { id: 'test', revision: 0, ports: [], connections: [] } };
-    const ctx = { legacy: { terrain, scenario: D11_SCENARIO, a: { x: 0, y: 0 }, b: { x: 1, y: 1 }, roads: new RoadNet({ cls: ['tertiary'], ways: [[0, ...xy]] }),
+    const ctx = { legacy: { terrain, scenario: D11_SCENARIO, a: { x: 0, y: 0 }, b: { x: 1, y: 1 },
+      roads: new RoadNet({ cls: ['tertiary', 'track'], ways: [[0, ...xy], ...(beyond ? [[0, 1000, 1000, 1000, 1600], [1, 1000, 1000, 1600, 1000]] : [])] }),
       buildings: new BuildingIndex([[640, 312, 6]]) },
       environment: { objectData: 'objects', transportData: 'transport', terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' as const },
-      sourceWays: new Map([['old', 0]]) };
+      sourceWays: new Map([['old', 0], ['next', 1], ['lane', 2]]) };
     const interval = { transportData: 'transport', sourceId: 'old', s0: 0, s1 };
     const command = rebuildCommand(base, interval, { routeId: 'r', acousticSourceId: 'a' });
     const route = command.routes[0];
@@ -279,6 +286,20 @@ describe('a rebuilt stretch inherits no violations from its old road', () => {
     for (let i = corner700; i < result.n; i++) expect(result.keptCells![i]).toBe(1);
     expect(result.violations.every(v => v.s1 < 650)).toBe(true);
     expect(base.path(whole).length).toBe(3);
+  });
+  // QA (D11 Novorokytnická dragged near its end): "Junction with the class I road at km 0.00 · 25 M CZK"
+  // where that class I road was the edited road itself, going on as another mapped way
+  it('where it is built anew up to its end, the old road going on there is no junction; a track there is', async () => {
+    const { evaluateProject } = await import('../src/core/project-evaluate');
+    const { ctx, p, route } = corner(undefined, 1400, true);
+    const moved = p.routes[0];
+    if (moved.alignment.kind !== 'pi' || route.alignment.kind !== 'pi') throw new Error('fixture');
+    moved.alignment.pis = [...route.alignment.pis, { x: 950, y: 930, r: null }];
+    const result = evaluateProject(ctx, { epoch: 'e', revision: 1, design: p });
+    expect(result.routes.r.legacy!.keptCells!.at(-1)).toBe(0);
+    const labels = result.works.items.map(w => w.label);
+    expect(labels.filter(l => /class III road/.test(l ?? ''))).toEqual([]);
+    expect(labels.some(l => /Junction with the track/.test(l ?? ''))).toBe(true);
   });
   it('a bend moved off the old road is a new road there: the norm applies and it is billed', async () => {
     const { evaluateProject } = await import('../src/core/project-evaluate');

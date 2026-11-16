@@ -18,7 +18,7 @@ import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
-import { pickRoute, type PickRoute } from './render/route-pick';
+import { footprintHit, pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { CrossingPicker } from './render/crossing-pick';
 import { LinkEditor } from './ui/link-edit';
@@ -884,6 +884,13 @@ async function main() {
     const hit = routeAt(clientX, clientY, 10), rr = hit && projectFull?.routes[hit.routeId];
     const route = hit && projectStore.snapshot.design.routes.find(r => r.id === hit.routeId);
     if (hit && rr && route) return building.onRoute(route, rr, hit.s);
+    // on a road's carriageway or earthworks beside its centreline: that road, never "open ground"
+    const under = footprintHit(Object.values(projectFull?.routes ?? {}).flatMap(r => {
+      const legacy = r.routeId === store.activeRouteId && last ? last : r.legacy;
+      return legacy ? [{ id: r.routeId, result: legacy }] : [];
+    }), x, y);
+    const underRoute = under && projectStore.snapshot.design.routes.find(r => r.id === under.routeId), ur = under && projectFull?.routes[under.routeId];
+    if (under && underRoute && ur) return building.onRoute(underRoute, ur, under.s);
     const source = sourceAt(clientX, clientY);
     if (source?.kind === 'route-hit') return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
     if (source?.kind === 'source' && transportIndex) return building.onSource(transportIndex, source.hit.sourceId, source.hit.s);

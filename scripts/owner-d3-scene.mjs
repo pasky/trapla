@@ -161,6 +161,14 @@ try {
   await page.mouse.click(point.x, point.y);
   assert.match(await text('#inspector'), /A motorway can only be joined at an interchange/);
   assert(!/not checked yet/.test(await text('#inspector')), 'not the "not checked yet" refusal');
+  // on its earthworks beside the carriageway, priced or not: still our motorway, never "open ground"
+  for (const side of [1, -1]) {
+    const slope = at(await page.evaluate(([id, s, side]) => { const t = window.trapla, r = t.projectResult().routes[id].legacy, i = Math.round(s / r.ds);
+      const off = (side > 0 ? r.dayL[i] : r.dayR[i]) - 2;
+      return t.project(r.x[i] - r.ty[i] * off * side, r.y[i] + r.tx[i] * off * side, side > 0 ? r.zDayL[i] : r.zDayR[i]); }, [start.ours[0], sm.s, side]));
+    const p = await page.evaluate(([x, y]) => window.trapla.placementAt(x, y), [slope.x, slope.y]);
+    assert(p && !p.ok && /interchange/.test(p.why), `the motorway's slope is the motorway (${JSON.stringify(p)})`);
+  }
   // open ground beside the motorway
   let free = null;
   for (const [dx, dy] of [[-260, -120], [260, -120], [-260, 120], [260, 120], [-340, 0], [340, 0]]) {

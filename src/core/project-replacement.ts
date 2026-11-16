@@ -41,6 +41,10 @@ export interface Replacement { works: ReplacementWork[]; violations: Violation[]
    * so no other road may be priced as if that ground were free (project-ledger.ts) */
   removed: { ax: number; ay: number; bx: number; by: number }[]; removedWidth: number }
 
+/** A way of the stretch's class leaving one of its ends within 45° of the old road's heading is
+ * that road going on (OSM splits a road into many ways). Game geometry tolerances: the branch within 2 m of
+ * the end, headings over 20 m, 45° (PROVISIONAL). */
+const CONTINUES_AT = 2, CONTINUES_LOOK = 20, CONTINUES_COS = Math.SQRT1_2; // cos 45°
 const nearest = (r: Result, x: number, y: number) => {
   let best = Infinity, i = 0;
   for (let k = 0; k < r.n; k++) { const d = Math.hypot(r.x[k] - x, r.y[k] - y); if (d < best) { best = d; i = k; } }
@@ -99,11 +103,28 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
   for (const c of r.crossings) if (c.roadId !== undefined && (c.cost > 0 || (c.s > 1 && c.s < r.length - 1))) crossed.add(c.roadId);
   // (a continuation's joint at the stretch end builds no junction: side roads there are reconnected below)
   for (const f of r.footprintConflicts) if (f.roadId !== undefined && f.action !== 'blocked' && !f.continuation) crossed.add(f.roadId);
+  // At a stretch end the old road goes on, often as another mapped way of the same class: that is the
+  // road itself continuing (the end is its joint), never a junction with "the class I road".
+  const heading = (p: { x: number; y: number }, q: { x: number; y: number }) => { const l = Math.hypot(q.x - p.x, q.y - p.y) || 1; return { x: (q.x - p.x) / l, y: (q.y - p.y) / l }; };
+  const continues = (side: number, at: { x: number; y: number }) => {
+    if (base.wayClass(side) !== cls) return false;
+    const end = [{ e: a, d: da }, { e: b, d: db }].find(({ e }) => Math.hypot(e.x - at.x, e.y - at.y) <= CONTINUES_AT);
+    if (!end) return false;
+    const inward = end.d === Math.min(da, db) ? end.d + CONTINUES_LOOK : end.d - CONTINUES_LOOK;
+    const into = base.wayPath(way, Math.min(end.d, inward), Math.max(end.d, inward));
+    const outward = heading(end.d === Math.min(da, db) ? into.at(-1)! : into[0], end.e);
+    const ds = base.wayStation(side, end.e.x, end.e.y), near = base.wayPath(side, ds - CONTINUES_LOOK, ds + CONTINUES_LOOK);
+    if (near.length < 2) return false;
+    const far = [near[0], near.at(-1)!].reduce((p, q) => Math.hypot(q.x - end.e.x, q.y - end.e.y) > Math.hypot(p.x - end.e.x, p.y - end.e.y) ? q : p);
+    const on = heading(end.e, far);
+    return outward.x * on.x + outward.y * on.y >= CONTINUES_COS;
+  };
   for (const c of connections) {
     if (!c.id.includes(':branch:') || !c.ports.some(p => p.kind === 'route' && p.routeId === route.id)) continue;
     const port = c.ports.find(p => p.kind === 'source');
     if (!port || port.kind !== 'source') continue;
     const side = branchWay(port.location.sourceId);
+    if (side !== undefined && continues(side, c.position)) continue;
     // A side road the new road crosses or rebuilds beside it is the kernel's crossing work already.
     if (side !== undefined && crossed.has(side)) continue;
     const sideCls = side !== undefined ? base.wayClass(side) : 'unclassified', row = ROAD_CLASSES[sideCls] ?? ROAD_CLASSES.unclassified;
