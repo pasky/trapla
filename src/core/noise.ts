@@ -358,7 +358,8 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   const decision = (c: Candidate, scale: number, from?: Decision): Decision => {
     const key = `${c.j}:${scale}:${c.sum}`, kept = decisions.get(key);
     if (kept) return kept;
-    if (c.sum === 2 && scale > 1 && !from) from = decision(c, scale / 2);
+    // (cell by cell: always from its own cell-by-cell predecessor, however this house got here)
+    if (c.sum === 2 && scale > 1 && from?.sum !== 2) from = decision(c, scale / 2);
     const H = c.z.length, t = view(buf, H), [w0, w1] = windowOf(c, scale);
     const cells = cellOptions(field, c.x, c.y, c.z, w0, w1, heights, manL, manR);
     const e0 = cells.opt(0);
@@ -485,9 +486,12 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
       const ga = a < 0 ? -1 : gain(a), gb = b < 0 ? -1 : gain(b), left = ga >= gb;
       for (const k of alike) if (((a < 0 ? -1 : gain(a, k)) >= (b < 0 ? -1 : gain(b, k))) !== left) finer(c);
       if (bestEffort) {
-        const top = maxOf(lev), stop = Math.max(ga, gb) < top * 0.002;
-        if (Math.abs(Math.max(ga, gb) - top * 0.002) <= 0.002 * FAR_ERROR[c.sum] * maxOf(d.F)) finer(c);
-        for (const k of alike) if ((Math.max(gain(a, k), gain(b, k)) < top * 0.002) !== stop) finer(c);
+        // (at every storey that could be the loudest: its gain against the uncertain top level)
+        const top = maxOf(lev), stop = Math.max(ga, gb) < top * 0.002, slack = 0.002 * FAR_ERROR[c.sum] * maxOf(d.F);
+        for (const k of [worst, ...alike]) {
+          const g = Math.max(gain(a, k), gain(b, k));
+          if (Math.abs(g - top * 0.002) <= slack || (g < top * 0.002) !== stop) finer(c);
+        }
         if (stop) break;
       }
       if (left) { lo = a; apply(a); } else { hi = b; apply(b); }
