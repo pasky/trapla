@@ -10,6 +10,7 @@ import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
 import * as dm from './detmath';
 import { KIND } from './structures';
+import type { KeepClear } from './keep-clear';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
  * unpriced; none of them can make an interacting project priced. */
@@ -43,14 +44,20 @@ export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-build
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number;
   /** shared land: where the two roads' land and works come closest, and how many metres further apart
    * they would have to be there (overlap plus the clearance) */
-  at?: { x: number; y: number }; need?: number }
+  at?: { x: number; y: number }; need?: number;
+  /** shared land: roads whose automatic reroutes are among the works that come too close; each may plan
+   * them again clear of the other's works (`keepClear`: that road's land and works, its junction with this
+   * road left out) */
+  yields?: { routeId: RouteId; keepClear: KeepClear }[] }
 export interface IndependenceScreen {
   independent: boolean; interactions: RouteInteraction[];
   /** Upper bound on neglected linear energy at a house from roads other than its own one. */
   omittedDayEnergy: number; omittedNightEnergy: number;
 }
 
-interface Capsule { ax: number; ay: number; bx: number; by: number; r: number }
+interface Capsule { ax: number; ay: number; bx: number; by: number; r: number;
+  /** a piece of an automatic reroute (its new road): it can be planned again elsewhere */
+  reroute?: true }
 interface Chunk { minX: number; minY: number; maxX: number; maxY: number; items: Capsule[] }
 const CHUNK = 32;
 function chunks(capsules: Capsule[]): Chunk[] {
@@ -85,16 +92,19 @@ function segmentSegment(a: Capsule, b: Capsule): number {
 const boxGap = (a: Chunk, b: Chunk) => Math.max(0, a.minX - b.maxX, b.minX - a.maxX, a.minY - b.maxY, b.minY - a.maxY);
 /** Do two roads' envelopes touch? Where they are deepest into each other (on the narrower piece, i.e. the
  * smaller road), and by how much; null: they keep the clearance everywhere. */
-function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?: number } | null {
+function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?: number; reroutes: [boolean, boolean] } | null {
   let found = false, worst = -Infinity, at: { x: number; y: number } | undefined;
+  const reroutes: [boolean, boolean] = [false, false];
   for (const p of a) for (const q of b) if (boxGap(p, q) <= 0) for (const s of p.items) for (const t of q.items) {
     const r = s.r + t.r, d = segmentSegment(s, t);
     if (d >= r) continue; // NaN/Infinity fail closed
     found = true;
+    if (s.reroute) reroutes[0] = true;
+    if (t.reroute) reroutes[1] = true;
     const need = r - d, narrow = s.r <= t.r ? s : t;
     if (Number.isFinite(need) && need > worst) { worst = need; at = { x: (narrow.ax + narrow.bx) / 2, y: (narrow.ay + narrow.by) / 2 }; }
   }
-  return found ? (at ? { at, need: worst } : {}) : null;
+  return found ? (at ? { at, need: worst, reroutes } : { reroutes }) : null;
 }
 
 /** Land take, works and removed old roads of one evaluated road, each padded by half the clearance. */
@@ -125,17 +135,18 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     } else out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i], r: Math.max(reach(i - 1), reach(i)) + pad });
   }
   if (result.n === 1) out.push({ ax: result.x[0], ay: result.y[0], bx: result.x[0], by: result.y[0], r: reach(0) + pad });
-  const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0) => {
+  const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0, reroute = false) => {
     if (!points?.length) return;
     // Earthwork toe bound: half width plus a 1:2 side slope over the largest height difference.
     let dz = 0; for (const p of points) dz = Math.max(dz, Math.abs(p.z - p.ground));
     const r = width / 2 + 2 * dz + extra + pad;
-    if (points.length === 1) out.push({ ax: points[0].x, ay: points[0].y, bx: points[0].x, by: points[0].y, r });
-    for (let k = 1; k < points.length; k++) out.push({ ax: points[k - 1].x, ay: points[k - 1].y, bx: points[k].x, by: points[k].y, r });
+    const tag = reroute ? { reroute: true as const } : {};
+    if (points.length === 1) out.push({ ax: points[0].x, ay: points[0].y, bx: points[0].x, by: points[0].y, r, ...tag });
+    for (let k = 1; k < points.length; k++) out.push({ ax: points[k - 1].x, ay: points[k - 1].y, bx: points[k].x, by: points[k].y, r, ...tag });
   };
-  const geometry = (g: CrossingGeometry | undefined) => {
+  const geometry = (g: CrossingGeometry | undefined, reroute = false) => {
     if (!g) return;
-    line(g.road, g.width); line(g.links?.[0], g.width); line(g.links?.[1], g.width);
+    line(g.road, g.width); line(g.links?.[0], g.width, 0, reroute); line(g.links?.[1], g.width, 0, reroute);
     line(g.turnarounds, g.width, g.turnaroundRadius ?? 0);
   };
   // a designed road under/over our crossing is its own road (its own envelope), not ours. Where a crossed
@@ -149,7 +160,8 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
       while (j > i && road[j].surface === 'terrain' && road[j - 1].surface === 'terrain') j--;
       // (met at its own level: nothing of it is rebuilt)
       geometry({ ...g, road: road.some(q => q.surface !== 'terrain') ? road.slice(i, j + 1) : [] });
-    } else geometry(g);
+    // (Auto's own reroute, not one the player chose or shaped)
+    } else geometry(g, (c.type === 'reconnection' || c.type === 'diversion') && !c.requestedType && !c.via);
   }
   for (const f of result.footprintConflicts) {
     geometry(f.geometry);
@@ -162,7 +174,9 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
 function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number }[]>; closes: boolean } {
   const roads = new Map<number, { x: number; y: number }[]>();
   const add = (id: number | undefined, x: number, y: number) => { if (id === undefined) return; const list = roads.get(id); if (list) list.push({ x, y }); else roads.set(id, [{ x, y }]); };
-  for (const c of result.crossings) { add(c.roadId, c.x, c.y); if (c.targetRoadId !== undefined) add(c.targetRoadId, c.x, c.y); }
+  // (a junction meets the way where it is and leaves it whole on both sides: no change of its course; its
+  // works are screened as land like any other)
+  for (const c of result.crossings) if (c.type !== 'junction') { add(c.roadId, c.x, c.y); if (c.targetRoadId !== undefined) add(c.targetRoadId, c.x, c.y); }
   let closes = false;
   for (const f of result.footprintConflicts) {
     // (a rebuilt stretch going on into its own old road changes nothing there)
@@ -239,7 +253,13 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     const away = (list: Capsule[]) => chunks(list.filter(c => !at.some(j => pointSegment(j.x, j.y, c.ax, c.ay, c.bx, c.by) < j.r)));
     const [ea, eb] = at.length ? [away(raw[a]), away(raw[b])] : [envelopes[a], envelopes[b]];
     const touch = touches(ea, eb);
-    if (touch) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land', ...touch });
+    if (!touch) continue;
+    const { reroutes, ...where } = touch;
+    // an automatic reroute among the works too close: its road may plan it again clear of the other's
+    const keepClear = (k: number) => (at.length ? (k === a ? away(raw[b]) : away(raw[a])).flatMap(c => c.items) : raw[k === a ? b : a])
+      .map(({ ax, ay, bx, by, r }) => ({ ax, ay, bx, by, r: r + S.clearance / 2 })); // (the reroute's own half of the clearance)
+    const yields = ([[a, reroutes[0]], [b, reroutes[1]]] as const).filter(([, y]) => y).map(([k]) => ({ routeId: routes[k].routeId, keepClear: keepClear(k) }));
+    interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land', ...where, ...(yields.length ? { yields } : {}) });
   }
   // Existing roads: two roads changing one way, or a closure relying on a detour while another road changes any road.
   const touched = routes.map(r => touchedRoads(r.result));
