@@ -285,8 +285,12 @@ Pending / limits found (2026-11-16):
    in main) should apply to railways too: kept cells = the old track, no norm, nothing billed.
 2. Rubber-band line while placing and crossings between project lines of different kinds come with
    any-road-editing's build tool and crossing engine (not in main yet): extend to motorway / railway there.
-3. "A long bridge span is too low" can remain where the profile is at its steepest grade between fixed ends
-   (railways: 12.5 ‰); the lift then reaches the ends and gives up.
+3. "A long bridge span is too low": a railway's own track (the station it joins, a stretch it rebuilds along
+   or takes up) no longer asks for a bridge clearance over itself (those impossible targets made every lift
+   fail; support-layout `ownTrack`). Where a lift still fails, the problem says why in numbers (the steepest
+   grade runs into a fixed start / end / pin, or into the heights both motorway directions share), and a
+   shortfall is rounded up (never "0.0 m"). A rebuilt stretch's grade limit is its old line's end-to-end grade
+   (the ground under a track holds its embankments and the valleys it bridges).
 
 Key code map: `core/project-motorway.ts` (corridor eval, split/rejoin, `splitLedger`, shared crossings via
 `EvalOptions.sharedCrossings`), `core/project-railway.ts`, `core/rail-noise.ts` + `data/cnossos-rail.ts`,

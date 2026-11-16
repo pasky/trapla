@@ -152,15 +152,13 @@ export function rebuildSpeed(maxspeed: string | undefined): number {
   const want = Number.isFinite(v) && v > 0 ? v : 80, speeds = designSpeeds('R1');
   return speeds.find(s => s <= want) ?? speeds[speeds.length - 1];
 }
-/** Steepest grade of a mapped line over a stretch, from the ground under it every 10 m over 100 m runs,
- * rounded up to 0.5 ‰ (the line is drawn on the ground model, its embankments and cuts included). */
+/** A mapped line's grade over a stretch: from the ground at its two ends (which lie on the track), rounded up
+ * to 0.5 ‰. Not its steepest piece: the ground model under a track also holds its embankments, cuttings and
+ * the valleys its bridges cross, so local differences are not the track's grade. */
 export function oldLineGrade(base: ProjectTransportIndex, sourceId: string, interval: SourceInterval): number {
-  const zs: number[] = [];
-  for (let s = interval.s0; s <= interval.s1 + 1e-6; s += 10) { const p = base.position(sourceId, Math.min(s, interval.s1)); if (p) zs.push(p.z); }
-  let worst = 0;
-  for (let i = 0; i + 10 < zs.length; i++) worst = Math.max(worst, Math.abs(zs[i + 10] - zs[i]) / 100);
-  if (zs.length > 1 && zs.length <= 10) worst = Math.abs(zs[zs.length - 1] - zs[0]) / (10 * (zs.length - 1));
-  return Math.ceil(worst * 2000) / 2000;
+  const a = base.position(sourceId, interval.s0), b = base.position(sourceId, interval.s1);
+  if (!a || !b || !(interval.s1 > interval.s0)) return 0;
+  return Math.ceil(Math.abs(b.z - a.z) / (interval.s1 - interval.s0) * 2000) / 2000;
 }
 /** The old line's bends that track curves fit between: a bend whose curve would not fit (too close to an
  * end or to its neighbour at this speed) is left out, so a fresh rebuild starts without a geometry

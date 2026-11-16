@@ -319,6 +319,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const railOurs = railTrackOurs(st, terrain, al.length, opts.railTieIn);
   const retiredAt = opts.railRetired?.length ? nearLines(opts.railRetired, RETIRED_TRACK_M) : undefined;
   const tieIn = (s: number) => !!railOurs && railOurs[Math.max(0, Math.min(n - 1, Math.round(s / ds)))] === 1;
+  /** a railway's own track under it: the station / rebuild-along stretch it joins (railOurs), or the old track
+   * a rebuilt stretch takes up (retiredAt): no obstacle for its bridges' supports and clearances */
+  const ownTrack = railOurs || retiredAt ? (x: number, y: number, i: number) =>
+    (!!railOurs && railOurs[Math.max(0, Math.min(n - 1, i))] === 1) || (!!retiredAt && retiredAt(x, y)) : undefined;
   for (let i = 0; i < n; i++) {
     for (const f of [0, 0.25, 0.5, 0.75]) {
       if (f > 0 && i + 1 >= n) break;
@@ -867,7 +871,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   selection = chooseStructures(structureInput);
   work('selection', selectionStart);
   const supportStart = performance.now();
-  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict);
+  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, ownTrack);
   work('support', supportStart);
   const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
@@ -882,9 +886,13 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   return { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings, selection, supported, supportHeights };
   };
+  /** why the last lift failed: the station whose fixed height (an end or a pin) its steepest grade ran into */
+  let liftStop: number | null = null;
   const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[]) => {
     const start = performance.now();
-    const lifted = liftAutoProfile(candidate, targets, d.speed, maxGradient, d.gradePins, undefined, d.category);
+    const lifted = liftAutoProfile(candidate, targets, d.speed, maxGradient, d.gradePins, (m) => {
+      const k = /fixed km (\d+(?:\.\d+)?)/.exec(m); if (k) liftStop = Number(k[1]) * 1000;
+    }, d.category);
     work('lift', start);
     timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
     return lifted;
@@ -899,7 +907,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
   const repairTargets = new Map<number, number>();
-  let usedProfileRetry = false;
+  let usedProfileRetry = false, liftShared = false;
   for (let attempt = 0; attempt < 5 && !preview && profileFeasible && d.profileMode === 'auto' && engineering.supportHeights.length; attempt++) {
     for (const q of engineering.supportHeights) repairTargets.set(q.s, Math.max(q.z, repairTargets.get(q.s) ?? -Infinity));
     const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
@@ -924,7 +932,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
     }
     // the shared heights outside a separate stretch's own part are not ours to lift
-    if (!lifted || !keepsExterior(lifted)) break;
+    if (lifted && !keepsExterior(lifted)) { liftShared = true; break; }
+    if (!lifted) break;
     vpis = lifted;
     engineering = engineer(vpis, relaxed, strict);
   }
@@ -934,6 +943,16 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Auto support clearances are repaired by the lift loop above, which a preview skips: do not
   // flash them as violations in a drag preview (the full evaluation reports any it cannot fix).
   const structureViolations = [...selection.violations, ...(preview && d.profileMode === 'auto' ? [] : supported.violations)];
+  // a clearance Auto could not lift: why, in numbers (P2 7: never a bare "raise it" Auto could have done)
+  if (d.profileMode === 'auto' && !preview) for (const v of structureViolations) {
+    if (!v.title.startsWith('A long bridge span is too low')) continue;
+    const stop = liftStop as number | null, grade = cat.mode === 'railway' ? `${(maxGradient * 1000).toFixed(1)} ‰` : `${(maxGradient * 100).toFixed(1)} %`;
+    const at = stop === null ? '' : stop < ds ? 'its start' : stop > al.length - ds ? 'its end' : `the height pinned at km ${(stop / 1000).toFixed(2)}`;
+    const why = liftShared ? 'Auto cannot raise it: the heights beyond this stretch are the ones both directions share.'
+      : stop !== null ? `Auto cannot raise it: at the steepest grade allowed (${grade}) the raise runs on to ${at}, whose height is fixed.`
+        : 'Auto cannot raise it without breaking the grade and rounding limits.';
+    v.detail = `${v.detail ? `${v.detail} ` : ''}${why}`;
+  }
   const retainingWalls = retention.walls.filter(wall => kind[wall.i] === KIND.earth);
   const channelRelocations = retention.channelRelocations.filter(channel => kind.subarray(channel.i0, channel.i1 + 1).some(k => k === KIND.earth));
   for (let i = 0; i < n; i++) if (kind[i] !== KIND.earth) { retention.wallSurfaceL[i] = NaN; retention.wallSurfaceR[i] = NaN; }

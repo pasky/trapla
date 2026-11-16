@@ -29,7 +29,7 @@ const run = (d: Design): Result => {
 void evaluate;
 const score = (r: Result) => r.violations.length * 1e12 + r.violations.reduce((s, v) => s + Math.max(1, v.s1 - v.s0), 0) * 1e7 + r.cost.total;
 const show = (r: Result) => ({ valid: r.valid, cost: Math.round(r.cost.total / 1e6), km: +(r.length / 1000).toFixed(2), min: +r.travelMin.toFixed(2),
-  issues: r.violations.map(v => `${Math.round(v.s0)} ${v.title}${process.env.FIX ? ` | ${v.fix}` : ""}`) });
+  issues: r.violations.map(v => `${Math.round(v.s0)} ${v.title}${process.env.FIX ? ` | ${v.fix}` : ""}${process.env.DETAIL ? ` | ${v.detail ?? ""}` : ""}`) });
 let design = initial, result = run(design), best = score(result), used = 0, round = 0;
 console.log('start', JSON.stringify(show(result)));
 if (process.env.CROSSINGS) for (const c of result.crossings) console.log(`  ${Math.round(c.s)} ${c.cls} ${c.type}${c.targetS !== undefined ? ` → ${Math.round(c.targetS)}` : ''}${c.linkLength ? ` link ${Math.round(c.linkLength)} m` : ''} cost ${Math.round(c.cost / 1e6)} M`);
