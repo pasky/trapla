@@ -248,10 +248,12 @@ What exists (details and commands in `README.md`):
   line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
   RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
   crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
-- 150 km/h speed-limit pilot (research/41) for motorways designed for 130: a posted limit (Act 361/2000
-  §18(7)), never a design speed; travel time at 150, light-vehicle lane speeds +20 km/h in the motorway noise
-  source (PROVISIONAL extrapolation, all-day upper bound), variable signs 54.4 M CZK / 47 km (ŘSD). D35 motorway:
-  7.6 → 6.6 min, +40 M CZK (signs and the louder noise).
+- The 150 km/h speed-limit pilot option was removed (2026-11-16, owner): a posted limit is traffic policy, not
+  design, and it only added cost (no goal rewarded it). A motorway is signed at its design speed; a save that had
+  it on loads as 130 (its operating speed is ignored). research/41 stays as background: it could return only as
+  a mission design goal (a time target that needs it). The Motorway card has one "Design speed" control with the
+  norm line it implies: curves ≥ 840 / 690 / 560 m at 130 / 120 / 110 km/h are the 2018 edition's (research/33
+  §7); the 4 % slope and the vertical radii remain the older edition's (the 2018 values are not public).
 - Build → Motorway / Railway and drag-to-rebuild of mapped railways (`ui/mode-kinds.ts`). A Build motorway is
   unpriced (no interchanges); a rebuilt railway stretch is unpriced until taking up the old track is priced.
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
@@ -275,8 +277,7 @@ What exists (details and commands in `README.md`):
   merging main's valid reroutes (Královec starter re-fitted, 10.4 bn). A double track's noise on its two tracks, a single track's on its axis.
   Railway ends on a track leave it at no more than a turnout's angle (4.76°, research/38 §5): the Královec
   starter now leaves Trutnov hl.n. along its tracks (VALID 10.4 bn). Rebuilt railway stretches keep their line's
-  speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. The 150 km/h
-  pilot's travel time uses the 39 % share of time at 150 (MD evaluation, research/41). A mapped railway is
+  speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. A mapped railway is
   dragged without selecting it first; the direction towards A numbers its bends from its own start.
 
 ### Buildable automatic reroutes, lowered underpasses (cost model 22, 2026-11-16)

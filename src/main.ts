@@ -8,9 +8,6 @@ import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
 import { ROUNDABOUT_HOSTS } from './core/tie-in';
-import { MOTORWAY_150_PILOT } from './core/data/motorway';
-import { czk } from './ui/costgroups';
-import { setSpeedLimit150, speedLimit150 } from './core/project-motorway';
 import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, rejoinStretch } from './core/project-motorway';
 import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
@@ -984,8 +981,6 @@ async function main() {
     profile.setLine(kind); hud.setLine(kind);
     // a motorway's ends are its corridor's A and B on the map (its direction towards A reads from B)
     profile.setEndLabels(corridor?.mode === 'paired' ? ['A', 'B'] : null);
-    hud.setSpeedLimit(route?.kind === 'motorway' && route.specification.designSpeed === MOTORWAY_150_PILOT.designSpeed
-      ? { pilot: speedLimit150(route), signsPerKm: czk(MOTORWAY_150_PILOT.signsPerM * 1000) } : null);
     if (!corridor) { hud.setDirections(null); return; }
     hud.setDirections(directionsState());
   };
@@ -1540,12 +1535,6 @@ async function main() {
       toast('Back to the starting road.', 'Undo', () => store.undo());
     },
     onIntro: () => intro.show(),
-    onSpeedLimit: (pilot) => {
-      const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;
-      if (!corridor || projectStore.inTransaction || speedLimit150(route!) === pilot) return;
-      try { store.editProject(d => { Object.assign(d, setSpeedLimit150(d, corridor.id, pilot)); }); }
-      catch (error) { console.warn('Speed limit not changed', error); }
-    },
     onJoinStretch: (id) => joinStretch(id),
     onDirection: (which) => {
       const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;

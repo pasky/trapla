@@ -13,9 +13,6 @@ export interface NoiseTraffic {
   heavyNightShare?: number;
   /** Source profile: class I road (default, unchanged) or a four-lane motorway (MOTORWAY_NOISE). */
   profile?: 'class-I' | 'motorway';
-  /** Motorway only: light vehicles drive this much faster than in the manual's lane-speed tables (the
-   * 150 km/h pilot, data/motorway.ts MOTORWAY_150_PILOT), km/h. */
-  lightSpeedRise?: number;
 }
 
 export interface NoiseOptions extends NoiseTraffic {
@@ -60,22 +57,22 @@ export const MOTORWAY_NOISE = {
 } as const;
 
 /** Lane-weighted F1 per vehicle (motorway): Σ lanes share · f(v_lane). */
-function motorwayLaneEmission(i24: number, period: 'day' | 'night', group: 'light' | 'truck' | 'combination', rise = 0): number {
+function motorwayLaneEmission(i24: number, period: 'day' | 'night', group: 'light' | 'truck' | 'combination'): number {
   const row = MOTORWAY_NOISE.lanes[period][group], inner = (row.share[0] * i24 + row.share[1]) / 100;
-  const heavy = group !== 'light', v = (c: readonly number[]) => c[0] * i24 + c[1] + (heavy ? 0 : rise);
+  const heavy = group !== 'light', v = (c: readonly number[]) => c[0] * i24 + c[1];
   const f = (speed: number) => heavy ? 2.45e-4 * Math.sqrt(speed) : 2.70e-7 * speed * speed;
   return (inner * f(v(row.inner)) + (1 - inner) * f(v(row.outer)))
     * dm.pow(10, (heavy ? MOTORWAY_NOISE.heavyEmissionDb : MOTORWAY_NOISE.lightEmissionDb) / 10);
 }
 
-function motorwaySource(traffic: number, p: number, rise = 0) {
+function motorwaySource(traffic: number, p: number) {
   const t = Math.max(0, traffic), i24 = Math.max(5, Math.min(37, t / 1000)), pct = p * 100, m = MOTORWAY_NOISE;
   const ln = Math.max(0, Math.min(1, (m.night.light.nz + m.night.light.nq + m.night.light.k * pct) / 100));
   const hn = Math.max(0, Math.min(1, (m.night.heavy.nz + m.night.heavy.nq + m.night.heavy.k * pct) / 100));
   const c = m.combinationShareOfHeavy;
   const heavy = (period: 'day' | 'night') => (1 - c) * motorwayLaneEmission(i24, period, 'truck') + c * motorwayLaneEmission(i24, period, 'combination');
-  const dayDb = 10 * dm.log10((t * (1 - p) * (1 - ln) * motorwayLaneEmission(i24, 'day', 'light', rise) + t * p * (1 - hn) * heavy('day')) / 16) - 10.1;
-  const nightDb = 10 * dm.log10((t * (1 - p) * ln * motorwayLaneEmission(i24, 'night', 'light', rise) + t * p * hn * heavy('night')) / 8) - 10.1;
+  const dayDb = 10 * dm.log10((t * (1 - p) * (1 - ln) * motorwayLaneEmission(i24, 'day', 'light') + t * p * (1 - hn) * heavy('day')) / 16) - 10.1;
+  const nightDb = 10 * dm.log10((t * (1 - p) * ln * motorwayLaneEmission(i24, 'night', 'light') + t * p * hn * heavy('night')) / 8) - 10.1;
   return { dayDb, nightDb, excessDb: Math.max(dayDb - NOISE.limitDayDb, nightDb - NOISE.limitNightDb),
     controlling: dayDb - NOISE.limitDayDb >= nightDb - NOISE.limitNightDb ? 'day' as const : 'night' as const };
 }
@@ -83,7 +80,7 @@ function motorwaySource(traffic: number, p: number, rise = 0) {
 export function noiseSource(traffic: number, speed: number, options: NoiseTraffic = {}) {
   const p = Math.max(0, Math.min(1, options.heavyShare ?? NOISE.heavyShare));
   // Motorway lane speeds come from the manual's free-flow tables, not the design speed.
-  if (options.profile === 'motorway') return motorwaySource(traffic, p, options.lightSpeedRise ?? 0);
+  if (options.profile === 'motorway') return motorwaySource(traffic, p);
   // TP 219 (2019), table 3-2, non-E class I, combined NA+NS row. PNA in percent.
   const ln = Math.max(0, Math.min(1, options.lightNightShare ?? (0.077 + 0.1 * p)));
   const hn = Math.max(0, Math.min(1, options.heavyNightShare ?? (0.064 + 0.6 * p)));
