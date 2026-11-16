@@ -32,7 +32,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 |---|---|---|---|---|
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
-| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done: 1,840 → 550 lines, 17 modules out, the shared state is a `Session`; routes / Build left (§ main.ts) |
+| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done: 1,840 → 325 lines, 22 modules out, the shared state is a `Session`; what is left is construction and wiring (§ main.ts) |
 | 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | `evaluateRoute` done: six named stages, itself 60 lines (two diffs of +74 −13 and +50 −25); the other two functions next (§ Core) |
 | 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
@@ -134,21 +134,26 @@ objects passed directly, `main()`'s variables as live getters, commands as funct
 | `src/ui/selection.ts` | `select()`, where a selection is, bringing it into view | 153 |
 | `src/ui/road-links.ts` | the lazily loaded transport graph and what it brings (index, picker, mapped-road card, stretch ends) | 99 |
 | `src/ui/result-display.ts` | what happens with a preview / a full result: the sliced 3D rebuild, cards, other roads' decorations, settled / idle | 293 |
+| `src/ui/routes.ts` | switching to another line, the motorway's directions, Build (where an end may go, making the line), the road list, what follows every change of the design (the store's listener) | 218 |
+| `src/ui/active-line.ts`, `src/ui/project-score.ts`, `src/ui/map-window.ts` | the active line's ends as drawn and bringing it into view; the score; the part of the route the map shows, in the profile | 48 / 55 / 30 |
 
 `EvalClient` is the one piece that was not a verbatim move (request ids, the in-flight map, the preview
 gesture, "no repeat of a full request for the same design", the full-after-idle timer, which replies
 count), so it has unit tests (`tests/eval-client.test.ts`, fake ports and timers) and was measured: six
 drag modes at p95 frame 17 ms, handler p50 5 ms, as before.
 
-What is left in `main.ts` (550 lines): start-up (picker, pack, store, recovery: ≈ 90 lines), the score
-line (`projectScore`), the active road's ends, and **routes**: `switchRoute`, the motorway's directions,
-Build (`placeAt`, the build tool), the store listener (≈ 170 lines). Routes are the next module; they
-own the last two mutable things of `main()` (the ends `A` / `B` of the line being edited, the kind being
-built). After that `main.ts` is the composition root: construct, connect, start.
+`main.ts` (325 lines) is the composition root now: start-up (picker, pack, store, recovery: ≈ 60
+lines), constructing the view, the panels and the modules above, connecting them, the first evaluation.
+It has no mutable state of its own left but two objects made late (`linkEdit`, `works`): the ends of the
+line being edited are the Session's `ends` (kept by `ui/routes.ts`), the kind being built is the routes
+module's. Still worth doing when someone is there: the start-up as a function of its own (it returns
+early for an unreadable save), and the remaining contexts with live getters (`get A()`, `get last()` …)
+reading the Session instead.
 
 The context interfaces with live getters were the bridge that made verbatim moves possible. Now that the
 state is a `Session`, new modules should take the `Session` (and the stable objects they use) rather than
-grow more getters; `ui/selection.ts`, `ui/road-links.ts` and `ui/result-display.ts` already do.
+grow more getters; `ui/selection.ts`, `ui/road-links.ts`, `ui/result-display.ts`, `ui/routes.ts` and the three
+small modules beside it already do.
 
 ### 4–5, 22. Core engine
 
@@ -343,9 +348,9 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
    steps of a design pass (`finishDesign` = `finishLift` → `finishQuantities` → `finishBuildings` →
    `finishCrossings`, and `completeDesign`): done once by the tool (branch `side-agent/arch-batch5-backup`,
    commit `9da55d4`: +123 −39, 177 / 177 identical), to be redone on the new code by the same commands.
-9. Next: the stage functions into files, the other two long functions; in `main.ts`: routes.
+9. Browser scripts: the gates and the 18 scripts with the retired intro key on `scripts/lib/browser.mjs`.
+10. `main.ts`: routes, the active line, the score, the map window (→ 325 lines).
+11. Next: the stage functions into files, the other two long functions.
 
-Noticed, not changed: a click on our own road on the map goes through `switchRoute`, which fits the
-profile, so a zoomed profile zooms out on every such click (`main.ts` `switchRoute` → `profile.fit()`).
-The playtest's "Start over → Undo" step clicks a toast that lasts 6 s; on a loaded host the script gets
+Noticed, not changed: the playtest's "Start over → Undo" step clicks a toast that lasts 6 s; on a loaded host the script gets
 there after 4–7 s (`gates.sh` runs a failed untimed browser gate once more under load).
