@@ -511,6 +511,50 @@ saved project in Node as the full worker does.
   the owner's crossing of a designed road is chosen from its ground (a held road preferring an embankment
   under our bridge misses its band); piers of one bridge over another are not checked.
 
+### Design realism: slopes, design speed, hairpins (cost model 31, 2026-11-16)
+
+Plan and sources: docs/design-realism-plan.md (M1, M4), research/46–54.
+- **Earthworks.** Fills on the MD ČR VL 1 (2022) broken profile (toe 3 m 1:2.5, above 1:1.75 / 1:1.5, higher
+  than 10 m soil fills to 1:1.8 above 6 m), no fill benches; cuts by the ground the face stands in (soil 1:2 /
+  1:1.75 with 1 m benches every 6 m, sound rock 4:1 with benches every 5 m, its face netted at OTSKP 289941);
+  soft cohesive ground under high fills treated (research/52). The unsourced high-earthworks reserve is gone;
+  undivided roads carry SPK's 29.4 / 48.1 % surcharge. A culvert deeper than its pipe or precast frame takes is
+  billed and drawn as a buried bridge. Underpass boxes end where our slope comes down to their roof, behind a
+  headwall; from there the way runs between wing walls (billed as retaining walls).
+- **Norms.** ČSN 73 6101:2018 vertical radii and grades by category × terrain class; the terrain class per
+  stretch from the DEM (core/terrain-class.ts, median ground slope within 500 m over a 10 km window).
+- **Design speed per bend** (90 / 80 / 70 on the bend's card), hairpins (R ≥ 30 m, 8 % banking, widened
+  pavement, ≤ grade limit in the hairpin), VALID by game rule where the ground is steep.
+- **Bills** (model 30 on main → 31): best 4,122 → 3,617, demo 4,845 → 4,234, direct-80 4,731 → 4,183,
+  direct-90 5,280 → 4,687, town-centre 10,958 → 8,879 M CZK, all VALID (straight 9,861 → 8,173; straight and
+  town lose their tunnels to cuts). Scenario starters all VALID: d3 3,484, d3-0301 5,139, d3-0302 5,066, d3-0303
+  5,440, d3-0304 8,524, d3-0305 9,124, d3-full 32,391, d35 4,755, d35-full 27,332, Nová Paka 2,063 M.
+  Outcome audit (24 random D11 lines): 6 VALID (main 4), 86 violations (102), links > 1 km 21 (25), ramps >
+  250 m 5 (2).
+- **Bridge or fill** (`scripts/bridge-break-even.ts`, height above which a bridge is cheaper): firm ground,
+  120 m bridge 32.2 m (was 17.2); over a stream, 30 m bridge 14.0 m (14.1); over a stream, long valley 24.1 m
+  (16.2). Steeper, benchless fills and no reserve make fills cheaper; the culvert stays the stream's price.
+- **Crossings after the new grade line** (no validity regression against main): an infeasible crossing others
+  are led to lets those look again first (D3 km 5.43: road 1732 joins 1813's overbridge); a merged crossing
+  keeps every hit of its ways (the same way weaving back too) and the split retry skips a way's own crossing
+  within the merge distance; a rebuilt road may cross the streams the old one crossed (billed as culverts);
+  the stream retry also spans blocked roads beside a bridge end; at the end of evaluation, roads still buried
+  on a grade-separated route get the separation retry (bridge over / cut under).
+- **Embankments that never meet the hillside** (the final-sweep P1 rule: a bridge): with VL 1 slopes a fill
+  meets ground falling up to ≈ 38 % across (the 1:2.5 toe band cannot catch steeper ground); main's slopes
+  missed it from 30 % for fills of 20 m and more. The rule stands.
+- Evaluate time: bend rule texts made only when read, terrain class in one sliding window, culvert sizes
+  cached by cover, a wall's slope surface from one walk down the slope. Interleaved against main (16 rounds,
+  loaded host): CPU +5 %, sum of minima +12 %, almost all town-centre (+60 ms: a tunnel became a long cut with
+  walls, two more support lifts, a stream retry) and demo (+13 ms: one more overbridge and reconnection planned);
+  best / direct-80 / direct-90 within noise.
+- **Residuals.** Edit locality, Křálovec railway "pin −9 m at km 2.7": the grade changes 2.76 m at km 12.7.
+  The line climbs at its limit over km 2.25–8.5, so the pin lowers it ≈ 11 m up to km 10.5 (physics); the
+  boundary at km 11.21 then sees that changed stretch in its 5 km window and falls on the other side of a
+  near-tie (507.6 vs 514.6 m; the unpinned line itself flips between the two across its retry passes).
+  Whole D3 dragged at km 30: the 30 m span at km 16.66 stays 0.1 m short (the changed stretch, end of a 4 %
+  climb; tests/merged-crossings notes it).
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout

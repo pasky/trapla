@@ -1,5 +1,30 @@
 # Evaluate performance regression
 
+## Design realism, cost model 31 (2026-11-16)
+
+Per-bend design speed, VL 1 slopes by ground layer, terrain class and buried-bridge culverts cost time; offsets,
+all bit-identical (eval-regression, a 120,000-query check of `slopeSurfaceFn` against `slopeSurfaceAt`): a bend's
+rule texts are built only when a violation reads them (they were built for every unit and joint, ~16 ms on each
+D11 design), the terrain class runs one sorted sliding window instead of a sort per sample, `waterSizer` keys on
+how many pipe / frame cover limits the depth exceeds instead of on every decimetre of depth, and a retaining
+wall's search for where it fits reads the slope surface from one walk down the slope (`slopeSurfaceFn`; town-centre
+asked `slopeSurfaceAt` 20,000 times per evaluation).
+
+Interleaved against main e25f005 (`scripts/dev/interleave.ts`, 16 rounds, host load 4–11), min / median ms:
+
+| design | main | now |
+|---|---:|---:|
+| best | 123.5 / 164.8 | 133.9 / 176.9 |
+| demo | 109.3 / 136.4 | 122.6 / 172.2 |
+| direct-80 | 133.4 / 199.9 | 154.1 / 234.0 |
+| direct-90 | 178.2 / 238.5 | 174.8 / 233.8 |
+| town-centre | 214.2 / 314.5 | 275.1 / 349.1 |
+
+CPU per round +5 %; sums of minima +13 %, of medians +11 % (an earlier round at load 2: +12 % / +2 %). Most of it is
+the different engineering the new grade line asks for: town-centre's tunnel became a long cut with walls (two more
+support lifts, a stream retry), demo plans one more overbridge and reconnection (link routing ≈ +10 ms). The
+auto-profile DP carries ≈ 12 % more height states on demo (its corridor of reachable heights is wider). Drag budgets pass in all six modes.
+
 
 ## Crossing remedies, cost model 28 (2026-11-16)
 
