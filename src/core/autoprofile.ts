@@ -61,6 +61,9 @@ export interface AutoProfileOptions {
    * vertical curve of the minimum radius within half a knot spacing, like any other knot. Absent: any grade. */
   startGrade?: number;
   endGrade?: number;
+  /** …and the largest grade change allowed there (the room its curve has on the given line), grade units */
+  startGradeSlack?: number;
+  endGradeSlack?: number;
   /** search band above/below the local ground envelope, m */
   pad?: number;
 }
@@ -300,6 +303,10 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const dzMax = Math.floor(((gmax - u / L) * D) / u + 1e-9);
     const crestLim = Math.floor((D * D) / opt.minCrest / u + 1e-9);
     const sagLim = Math.floor((D * D) / opt.minSag / u + 1e-9);
+    // grade changes where the line continues a given one: one curve within its room there (grid units)
+    const slack = (g: number | undefined, lim: number) => g === undefined ? lim : Math.min(lim, g * D / u);
+    const startCrest = slack(opt.startGradeSlack, crestLim), startSag = slack(opt.startGradeSlack, sagLim);
+    const endCrest = slack(opt.endGradeSlack, crestLim), endSag = slack(opt.endGradeSlack, sagLim);
     if (dzMax < 1) return null;
     const ND = 2 * dzMax + 1;
     // Include pin-envelope pruning itself, before its O(knots × pins) sweep starts.
@@ -427,9 +434,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           if (base === Infinity) continue;
           const dz = d - dzMax;
           // knot 0 has no incoming grade: any first grade is allowed (unless it continues a given line)
-          const dmin = k === 0 ? (opt.startGrade === undefined ? -dzMax : Math.max(-dzMax, Math.ceil(opt.startGrade * D / u - crestLim - 1e-9)))
+          const dmin = k === 0 ? (opt.startGrade === undefined ? -dzMax : Math.max(-dzMax, Math.ceil(opt.startGrade * D / u - startCrest - 1e-9)))
             : Math.max(-dzMax, dz - crestLim);
-          const dmax = k === 0 ? (opt.startGrade === undefined ? dzMax : Math.min(dzMax, Math.floor(opt.startGrade * D / u + sagLim + 1e-9)))
+          const dmax = k === 0 ? (opt.startGrade === undefined ? dzMax : Math.min(dzMax, Math.floor(opt.startGrade * D / u + startSag + 1e-9)))
             : Math.min(dzMax, dz + sagLim);
           for (let dz2 = dmin; dz2 <= dmax; dz2++) {
             const d2 = dz2 + dzMax;
@@ -460,7 +467,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     let best = Infinity, bi = -1;
     for (let d = 0; d < ND; d++) {
       // continuing a given line at B: its grade must follow within one curve, as at any knot
-      if (opt.endGrade !== undefined && (opt.endGrade * D / u < d - dzMax - crestLim - 1e-9 || opt.endGrade * D / u > d - dzMax + sagLim + 1e-9)) continue;
+      if (opt.endGrade !== undefined && (opt.endGrade * D / u < d - dzMax - endCrest - 1e-9 || opt.endGrade * D / u > d - dzMax + endSag + 1e-9)) continue;
       if (cur[d] < best) { best = cur[d]; bi = d; }
     }
     if (bi < 0) return null;

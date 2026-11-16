@@ -183,7 +183,7 @@ export interface EvalOptions {
   /** One direction of a separate motorway stretch: outside x0…x1 its grade line is the given one (the
    * shared heights where the two directions run side by side); Auto only between, continuing that line's
    * grade at both ends. */
-  fixedProfile?: { x0: number; x1: number; vpis: readonly VPI[] };
+  fixedProfile?: { x0: number; x1: number; vpis: readonly VPI[]; /** largest grade change at x0 / x1 */ slack?: [number, number] };
   /** The side `leftJoined` means (default left): a separate stretch's directions both run A→B, so the
    * reverse carriageway has the forward one on its right. */
   joinedSide?: 'L' | 'R';
@@ -664,6 +664,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       const subS = Float64Array.from(st.s.subarray(j0, j1 + 1), v => v - sa), subG = ground.slice(j0, j1 + 1);
       solveAuto = (o) => {
         const r = autoProfile(subS, subG, { ...o, endpointElevations: { a: za, b: zb }, startGrade: za1 - za, endGrade: zb - zb0,
+          ...(fp.slack ? { startGradeSlack: fp.slack[0], endGradeSlack: fp.slack[1] } : {}),
           minH: cut(o.minH), maxH: cut(o.maxH), structureKind: cut(o.structureKind), costClass: cut(o.costClass),
           ...(o.eitherH ? { eitherH: { above: cut(o.eitherH.above)!, below: cut(o.eitherH.below)! } } : {}),
           pins: (o.pins ?? []).filter(p => p.s > sa && p.s < sb).map(p => ({ ...p, s: p.s - sa })),

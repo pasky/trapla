@@ -46,3 +46,8 @@ const pv = previewProjectRoute(ctx, { epoch: 'x', revision: 3, design: next }, d
 console.log(`preview ${(performance.now() - t2).toFixed(0)} ms, ≈ ${(pv.legacy!.cost.total / 1e6).toFixed(1)} M`);
 const again = evaluateProject(ctx, { epoch: 'x', revision: 2, design: next });
 console.log('deterministic:', again.cost.total === sep.cost.total);
+if (process.env.DEBUG_STRETCH) {
+  const r = sep.routes[dir.id].legacy!;
+  console.log('vpis', JSON.stringify(r.vpis.map(v => [Math.round(v.s), Math.round(v.z * 10) / 10, v.r])));
+  console.log('vcurves', JSON.stringify(r.vcurves.map(c => [Math.round(c.s), Math.round(c.len)])));
+}

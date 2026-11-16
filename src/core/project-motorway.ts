@@ -14,7 +14,7 @@ import { carryStretches, compositePis, compositeStart, editStretches, JOIN_RULES
   pairStations as pair, type Direction } from './motorway-stretches';
 import { sliceResult, stitchResult } from './result-stitch';
 import { timeViolation } from './checks';
-import { horizontalRules } from './data/norms';
+import { horizontalRules, speedNorms } from './data/norms';
 import { childStationAt, offsetCurvePath } from './offset-path';
 import { childControls } from './motorway-commands';
 import { cellLength, landPerM2, surchargeRate } from './cost';
@@ -715,30 +715,39 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
       let vertical: Pick<Design, 'profileMode' | 'vpis' | 'gradePins'>, fixedProfile: EvalOptions['fixedProfile'];
       if (own) {
         // Where the two directions run side by side (closer than SIDE_BY_SIDE between the crowns) they keep
-        // the shared heights, and half a knot spacing beyond for the curve that leaves them; Auto between.
+        // the shared heights; Auto between. The curve where Auto takes over reaches at most half a knot
+        // spacing back, where they are already nearly that far apart (it shifts heights there by at most
+        // D²/(8 R), < 1 m).
         const p = pairStations(line, other.line);
         const apart = (i: number) => Number.isFinite(p.d[i]) && (!(Math.abs(Math.abs(p.d[i]) - 2 * W) < SIDE_BY_SIDE) || !(p.dot[i] > 0.9));
         let n0 = 0, n1 = line.n - 1;
         while (n0 < line.n && !apart(n0)) n0++;
         while (n1 >= 0 && !apart(n1)) n1--;
-        let x0 = line.s[Math.min(n0, line.n - 1)] + KNOT / 2, x1 = line.s[Math.max(0, n1)] - KNOT / 2;
+        let x0 = line.s[Math.min(n0, line.n - 1)], x1 = line.s[Math.max(0, n1)];
         // the shared heights on this carriageway's chainage: by distance from the nearer join
         const map = (s: number) => s - s0 <= s1 - s ? Math.min(Lp, s - s0) : Math.max(0, Lp - (s1 - s));
         const shared: VPI[] = [{ s: 0, z: spine.grade[g.i0], r: null },
           ...spine.vpis.filter(v => v.s > s0 + 1 && v.s < s1 - 1).map(v => ({ s: map(v.s), z: v.z, r: v.r })).filter(v => v.s > 1 && v.s < Lp - 1),
           { s: Lp, z: spine.grade[g.i1], r: null }].sort((a, b) => a.s - b.s);
-        // the curve where Auto takes over must not overlap a rounding of the shared line
-        for (let moved = true, guard = 0; moved && guard < 20; guard++) {
-          moved = false;
-          for (const c of spine.vcurves) {
-            if (c.s <= s0 || c.s >= s1 || x0 >= x1) continue;
-            const at = map(c.s);
-            if (at - c.len / 2 < x0 + KNOT / 2 && at + c.len / 2 > x0 - KNOT / 2) { x0 = at + c.len / 2 + KNOT / 2; moved = true; }
-            if (at - c.len / 2 < x1 + KNOT / 2 && at + c.len / 2 > x1 - KNOT / 2) { x1 = at - c.len / 2 - KNOT / 2; moved = true; }
+        // where Auto takes over: on a straight grade of the shared line, the change of grade there no larger
+        // than one minimum-radius curve fits before (after) it without touching the shared line's roundings
+        const curves = spine.vcurves.filter(c => c.s > s0 && c.s < s1 && c.len > 0).map(c => [map(c.s) - c.len / 2, map(c.s) + c.len / 2] as const);
+        // (at least the curve of one 1 m step of the search's grade grid over a knot spacing)
+        const norms = speedNorms(sd.speed, CARRIAGEWAY_CATEGORY), rMax = Math.max(norms.minCrestRadius, norms.minSagRadius), ROOM = rMax / KNOT / 2 + 10;
+        const take = (x: number, forward: boolean): [number, number] => {
+          for (let guard = 0; guard < 50; guard++) {
+            const inCurve = curves.find(([lo, hi]) => x > lo - ROOM && x < hi + ROOM);
+            if (!inCurve) break;
+            x = forward ? inCurve[1] + ROOM : inCurve[0] - ROOM;
           }
-        }
+          const behind = forward ? Math.max(0, ...curves.filter(([, hi]) => hi <= x).map(([, hi]) => hi)) : Math.min(Lp, ...curves.filter(([lo]) => lo >= x).map(([lo]) => lo));
+          const room = Math.min(KNOT / 2, Math.abs(x - behind));
+          return [x, 2 * room / rMax];
+        };
+        const [a0, slack0] = take(x0, true), [a1, slack1] = take(x1, false);
+        x0 = a0; x1 = a1;
         const pins = (shown.gradePins ?? []).filter(q => inside(q.s)).map(q => ({ s: toPiece(q.s), z: q.z }));
-        if (x1 - x0 >= MIN_OWN_HEIGHTS) { vertical = { profileMode: 'auto', vpis: [], gradePins: pins }; fixedProfile = { x0, x1, vpis: shared }; }
+        if (x1 - x0 >= MIN_OWN_HEIGHTS) { vertical = { profileMode: 'auto', vpis: [], gradePins: pins }; fixedProfile = { x0, x1, vpis: shared, slack: [slack0, slack1] }; }
         else vertical = { profileMode: 'manual', vpis: shared, gradePins: pins };
       } else {
         // the shared heights, mapped onto this carriageway's own chainage
