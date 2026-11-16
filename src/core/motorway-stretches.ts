@@ -154,7 +154,9 @@ export function deviations(a: Vec2, b: Vec2, spinePis: readonly PI[], shown: rea
     else if (!run) run = { a: i ? last : 0, b: L };
   }
   if (run) out.push(run);
-  return out.map(r => ({ a: Math.max(0, r.a - JOIN_RULES.margin), b: Math.min(L, r.b + JOIN_RULES.margin) }));
+  // the curve that leaves the spine needs its easing curve's room on the straight before it
+  const room = JOIN_RULES.margin + JOIN_RULES.curve + rules.transition / 2;
+  return out.map(r => ({ a: Math.max(0, r.a - room), b: Math.min(L, r.b + room) }));
 }
 
 /** Where each stretch's own lines actually leave the spine ([a, b], both directions); a stretch whose

@@ -259,10 +259,18 @@ export interface RouteResult {
   geometry: EngineeringGeometry | null;
   /** Present only for the road kernel. Other modes never impersonate road Result. */
   legacy?: Result;
+  /** A motorway with separate stretches (forward direction only): what is drawn, i.e. the shared body's
+   * parts outside the stretches and each direction's own carriageway inside. */
+  drawn?: DrawnPart[];
+  /** …and the common spine's evaluation, shown while both directions are edited together. */
+  shared?: Result;
   complete: boolean; valid: boolean; accepted: boolean;
   attributedCost: number | null;
   dependencies: ProjectDependency[]; influence: Bounds[];
 }
+/** A part of a motorway with separate stretches as drawn: the shared body (paired section) or one direction's
+ * own carriageway (`mirrored`: the reverse direction run A→B, its median on its right). */
+export interface DrawnPart { id: string; result: Result; section: 'paired' | 'carriageway'; mirrored?: boolean; direction?: 'forward' | 'reverse' }
 export interface ProjectCost {
   /** null while reconciliation is incomplete; no partial bill can become a best. */
   total: number | null;

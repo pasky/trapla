@@ -38,6 +38,8 @@ export interface HudEvents {
   onReset?: () => void;
   /** motorway: edit both directions together, or one of them on its own */
   onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
+  /** motorway: both directions on one line again over a stretch where they run apart */
+  onJoinStretch?: (id: string) => void;
   /** motorway designed for 130: the 150 km/h speed-limit pilot on / off */
   onSpeedLimit?: (pilot: boolean) => void;
   onLoadBest?: () => void;
@@ -221,6 +223,7 @@ export class Hud {
             <button type="button" id="dir-both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" id="dir-forward" role="radio"></button><button type="button" id="dir-reverse" role="radio"></button>
           </div>
           <p id="dir-explain" class="mode-explain"></p>
+          <div id="dir-apart" class="dir-apart"></div>
         </div>
         <div class="mode" id="speed-limit" hidden>
           <div class="mode-h"><b>${SPEED_LIMIT_TEXT.heading}</b></div>
@@ -271,7 +274,6 @@ export class Hud {
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
-    for (const which of ['both', 'forward', 'reverse'] as const) this.$(`dir-${which}`).onclick = () => this.ev.onDirection?.(which);
     this.$('limit-normal').onclick = () => this.ev.onSpeedLimit?.(false);
     this.$('limit-pilot').onclick = () => this.ev.onSpeedLimit?.(true);
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
@@ -388,18 +390,11 @@ export class Hud {
   }
 
   /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */
-  setDirections(state: { split: boolean; active: 'forward' | 'reverse'; places: { forward: string; reverse: string } } | null) {
+  setDirections(state: DirectionsState | null) {
     const box = this.$('directions');
     box.hidden = !state; this.oneDirection = !!state?.split;
     if (!state) return;
-    const on = state.split ? state.active : 'both';
-    for (const which of ['both', 'forward', 'reverse'] as const) {
-      const b = this.$(`dir-${which}`);
-      if (which !== 'both') { b.textContent = DIRECTIONS_TEXT.towards(state.places[which]); b.title = DIRECTIONS_TEXT.oneTitle(state.places[which]); }
-      else b.title = DIRECTIONS_TEXT.bothTitle;
-      b.classList.toggle('on', on === which); b.setAttribute('aria-checked', String(on === which));
-    }
-    this.$('dir-explain').textContent = state.split ? DIRECTIONS_TEXT.separate : DIRECTIONS_TEXT.together;
+    fillDirections(box, state, { onDirection: w => this.ev.onDirection?.(w), onJoin: id => this.ev.onJoinStretch?.(id) });
   }
 
   setProfileBusy(busy: boolean) {
@@ -544,5 +539,38 @@ export class Hud {
   noteEdit(committed: boolean) {
     if (!this.editOpen) { this.baseline = this.lastTotal; this.editOpen = true; }
     if (committed) this.editOpen = false;
+  }
+}
+
+/** A motorway's direction switch: what a drag bends, and where the directions run apart (each with Join). */
+export interface DirectionsState {
+  /** old saves: whole-route separate directions */
+  split: boolean;
+  active: 'both' | 'forward' | 'reverse';
+  places: { forward: string; reverse: string };
+  apart: { id: string; s0: number; s1: number }[];
+}
+/** Fills a box holding #dir-both / #dir-forward / #dir-reverse, #dir-explain and #dir-apart (by class or id). */
+export function fillDirections(box: HTMLElement, state: DirectionsState, ev: { onDirection: (w: 'both' | 'forward' | 'reverse') => void; onJoin: (id: string) => void }) {
+  const q = (k: string) => box.querySelector<HTMLElement>(`[data-dir="${k}"]`) ?? box.querySelector<HTMLElement>(`#dir-${k}`)!;
+  for (const which of ['both', 'forward', 'reverse'] as const) {
+    const b = q(which);
+    if (which !== 'both') { b.textContent = DIRECTIONS_TEXT.towards(state.places[which]); b.title = DIRECTIONS_TEXT.oneTitle(state.places[which]); }
+    else b.title = DIRECTIONS_TEXT.bothTitle;
+    b.classList.toggle('on', state.active === which); b.setAttribute('aria-checked', String(state.active === which));
+    b.onclick = () => ev.onDirection(which);
+  }
+  q('explain').textContent = state.split ? DIRECTIONS_TEXT.separate : state.active === 'both' ? DIRECTIONS_TEXT.together : DIRECTIONS_TEXT.one(state.places[state.active]);
+  const apart = q('apart');
+  apart.replaceChildren();
+  if (!state.apart.length) return;
+  const h = document.createElement('div'); h.className = 'mode-h'; h.textContent = DIRECTIONS_TEXT.apart;
+  apart.append(h);
+  for (const t of state.apart) {
+    const row = document.createElement('div'); row.className = 'apart-row';
+    const where = document.createElement('span'); where.textContent = DIRECTIONS_TEXT.stretch((t.s0 / 1000).toFixed(1), (t.s1 / 1000).toFixed(1));
+    const join = document.createElement('button'); join.type = 'button'; join.textContent = DIRECTIONS_TEXT.joinHere; join.title = DIRECTIONS_TEXT.joinTitle;
+    join.onclick = () => ev.onJoin(t.id);
+    row.append(where, join); apart.append(row);
   }
 }

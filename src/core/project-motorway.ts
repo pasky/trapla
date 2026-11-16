@@ -8,7 +8,7 @@ import { CATEGORIES } from './data/categories';
 import { designSpeeds } from './data/norms';
 import { MOTORWAY_150_PILOT } from './data/motorway';
 import { modeCapability } from './mode-policy';
-import type { CorridorDesign, ProjectDesign, RouteDesign, RoadOperations, SeparateStretch, XYZ } from './project';
+import type { CorridorDesign, DrawnPart, ProjectDesign, RouteDesign, RoadOperations, SeparateStretch, XYZ } from './project';
 import { buildAlignment, pointAt, station, type Alignment, type PI, type Vec2 } from './horizontal';
 import { carryStretches, compositePis, compositeStart, editStretches, JOIN_RULES, joinedRanges as joinedOn, locateStretches,
   pairStations as pair, type Direction } from './motorway-stretches';
@@ -521,10 +521,6 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
 }
 
 // ---- Separate stretches (core/motorway-stretches.ts) ---------------------------------------------------
-
-/** A part of a corridor with separate stretches as drawn: the shared body (paired section) or one
- * direction's own carriageway (its median side `mirrored` when it is the reverse direction run A→B). */
-export interface DrawnPart { id: string; result: Result; section: 'paired' | 'carriageway'; mirrored?: boolean; direction?: Direction }
 
 const directionOf = (corridor: CorridorDesign, routeId: string): Direction => corridor.children.forward === routeId ? 'forward' : 'reverse';
 /** Station ranges a direction's own lines cover (spine chainage). */

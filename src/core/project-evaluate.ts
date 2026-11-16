@@ -103,7 +103,10 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     ...(ends ? { ends } : {}) });
   const road = route.kind === 'road' && !corridor && evaluated.status === 'evaluated' ? evaluated as Extract<ReturnType<typeof evaluateProjectRoad>, { status: 'evaluated' }> : null;
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
-  return { route: { routeId: route.id, revision: route.revision,
+  // separate stretches: the forward direction carries the drawn parts; both carry the shared line
+  const separated = evaluated.status === 'split' && evaluated.drawn ? { ...(corridor?.children.forward === route.id || preview ? { drawn: evaluated.drawn } : {}),
+    ...(evaluated.spine ? { shared: evaluated.spine } : {}) } : {};
+  return { route: { routeId: route.id, revision: route.revision, ...separated,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
     surface: legacy ? roadSurface(route, legacy) : referenceRoadSurface(ctx.legacy, route), geometry: null,
     ...(legacy ? { legacy } : {}), complete: false, valid: false, accepted: false, attributedCost: null, dependencies: [], influence: [] },
@@ -125,6 +128,7 @@ const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
 /** The kernel names the mission's ends A and B; any other road's ends are its start and end. */
 const endWords = (route: RouteDesign, text: string) => route.role === 'mission' ? text
   : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end');
+const issueKey = (i: ProjectIssue) => JSON.stringify([i.code, i.violation?.title, i.violation?.fix, i.locations.map(l => [l.s0, l.s1])]);
 const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', check: 'violation', scope: { routeIds: [route.id] },
   locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
   violation: { kind: v.kind, title: endWords(route, v.title), fix: endWords(route, v.fix), basis: v.basis, rule: v.rule, ...(v.detail ? { detail: endWords(route, v.detail) } : {}) } }));
@@ -296,7 +300,12 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const unit = units.find(p => unitOf(p.route) === unitOf(route));
     if (unit) {
       unit.members.push(route.id);
-      if (unit.legacy !== legacy) { unit.parts.push({ route, legacy }); unit.total += legacy.cost.total; unit.valid &&= legacy.valid; unit.issues.push(...routeIssues(route, legacy)); }
+      if (unit.legacy !== legacy) {
+        unit.parts.push({ route, legacy }); unit.total += legacy.cost.total; unit.valid &&= legacy.valid;
+        // two directions of a motorway with separate stretches both show the shared body's problems: once
+        const seen = new Set(unit.issues.map(issueKey));
+        unit.issues.push(...routeIssues(route, legacy).filter(i => !seen.has(issueKey(i))));
+      }
     } else units.push({ route, legacy, members: [route.id], parts: [{ route, legacy }], total: legacy.cost.total, valid: legacy.valid, issues: routeIssues(route, legacy) });
   }
   // Split corridors: shared formation, land and houses once; slopes of the two directions must not clash.
@@ -311,6 +320,9 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   // corridor's one body once).
   const shown = new Set<Result>();
   for (const { route, legacy } of engineered) if (!shown.has(legacy)) { shown.add(legacy); defineRoute(result.cost.alone, route.id, legacy.cost.total); }
+  // a split motorway is one road: both directions show its whole bill (shared works once)
+  for (const unit of units) if (unit.parts.length > 1 && corridorCache.get(corridorOfRoute(design, unit.route.id)?.id ?? '')?.status === 'split')
+    for (const id of unit.members) defineRoute(result.cost.alone, id, unit.total);
   const unprice = (routeIds: string[], reason: string) => {
     for (const routeId of routeIds) if (!result.cost.unpriced.some(u => u.routeId === routeId)) result.cost.unpriced.push({ routeId, reason });
   };

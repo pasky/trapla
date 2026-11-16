@@ -731,7 +731,7 @@ export class View {
    * builders consume it explicitly rather than reading mutable staging state from View.
    */
   *buildResult(r: Result, crownWidth: number, routeId = LEGACY_ROUTE,
-    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true): Generator<void, StagedRoute> {
+    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true, mirrored = false): Generator<void, StagedRoute> {
     const out: THREE.Object3D[] = [];
     const owned = this.routeGroups.stage(routeId, out);
     let handedOver = false, settled = false;
@@ -746,6 +746,9 @@ export class View {
     yield;
     const n = r.n, w = crownWidth / 2;
     const bad = badStations(r), section = sectionIndex(crownWidth);
+    // one direction of a separate motorway stretch run against its travel (the reverse direction, A→B):
+    // its median side is on the right
+    const side = mirrored && section === CARRIAGEWAY_SECTION ? -1 : 1;
     // ---- ribbon (crown + slopes) and bridge decks ----
     const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
     const kinds: number[] = [], geo: number[] = [];
@@ -782,8 +785,8 @@ export class View {
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
-        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
-        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
         dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
@@ -900,7 +903,7 @@ export class View {
     // A paired motorway is carried on twin decks and runs through twin tubes: the median is open.
     const gap = section === PAIRED_SECTION || section === CARRIAGEWAY_SECTION ? D275_SECTION.median / 2 : 0;
     // one direction of a split motorway: its half of the median (on its left) is open on a bridge
-    const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [[-w, w - gap]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
+    const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [side > 0 ? [-w, w - gap] : [-w + gap, w]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
     const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;
     for (const run of r.runs) {
       if (run.kind === KIND.bridge) {

@@ -113,11 +113,17 @@ export const DIRECTIONS_TEXT = {
   heading: 'Edit',
   both: 'Both directions',
   towards: (place: string) => `Towards ${place}`,
-  together: 'Both directions follow one line and share one embankment, bridges side by side and twin tunnels.',
+  together: 'Dragging bends both directions: one road body, bridges side by side, twin tunnels.',
+  one: (place: string) => `Dragging bends only the direction towards ${place}. It runs on its own just where you change it; elsewhere both stay one road body.`,
   separate: 'Each direction now has its own bends and heights. Where they run side by side at the same height they share one embankment and are priced as one.',
   join: 'Both directions joined on their shared line again. Undo brings back the separate changes.',
   bothTitle: 'Bend and raise both directions together',
-  oneTitle: (place: string) => `Bend and raise only the direction towards ${place}; the other stays where it is`,
+  oneTitle: (place: string) => `Bend only the direction towards ${place}; the other stays where it is`,
+  apart: 'The directions run apart',
+  stretch: (km0: string, km1: string) => `km ${km0}–${km1}`,
+  joinHere: 'Join',
+  joinTitle: 'Both directions on one line here again (Undo brings this direction’s changes back)',
+  joined: 'Both directions run together here again.',
 } as const;
 
 /** The 150 km/h speed-limit pilot on a motorway designed for 130 (data/motorway.ts, research/41). */
