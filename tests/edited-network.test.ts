@@ -4,7 +4,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { D11_SCENARIO, D3_MOTORWAY } from '../src/core/data/scenario';
-import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
+import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
+import { crossingOverridesOf, crossingTargetsOf } from '../src/core/project-roadnet';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -18,7 +19,11 @@ it('an edited network cuts every rebuilt stretch (several on one way) and adds d
   // what is left of way 0: 0–100, 200–600 and 800–1000; nothing of the cut stretches
   const hits = net.intersections(2, [0, 1000], [150, 150], [-10, 10]).concat(net.intersections(2, [0, 1000], [700, 700], [-10, 10]));
   expect(hits).toEqual([]);
-  expect(net.intersections(2, [0, 1000], [400, 400], [-10, 10]).map(h => h.way)).toEqual([3]);
+  // what follows each cut is numbered by that cut, whatever else is edited (a stored choice cannot shift)
+  expect(net.intersections(2, [0, 1000], [900, 900], [-10, 10]).map(h => h.way)).toEqual([3]);
+  expect(net.intersections(2, [0, 1000], [400, 400], [-10, 10]).map(h => h.way)).toEqual([4]);
+  expect(base.edited([{ way: 0, d0: 100, d1: 200, slot: 1 }], []).intersections(2, [0, 1000], [400, 400], [-10, 10]).map(h => h.way)).toEqual([3]);
+  expect(base.edited([{ way: 0, d0: 100, d1: 200, slot: 1 }], [{ cls: 'secondary', xy: [] }]).intersections(2, [0, 1000], [400, 400], [-10, 10]).map(h => h.way)).toEqual([4]);
   // earthworks and relocations see the network without designed roads
   expect(net.ground.intersections(2, [0, 90], [300, 300], [10, 100]).map(h => h.way)).toEqual([]);
   expect(net.intersections(2, [0, 90], [300, 300], [10, 100]).map(h => h.way)).toEqual([2]);
@@ -70,6 +75,72 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     // the side road gone: the choice is dropped, never applied to another way
     const alone = structuredClone(next); alone.routes.pop();
     expect(legacyDesignForRoute(alone, mission).crossingOverrides).toEqual([]);
+  });
+});
+
+describe('the edited network follows the project as it is now', () => {
+  const flat = () => ({ terrain: syntheticTerrain(260, 120, 5, () => 100), scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 1100, y: 250 },
+    roads: new RoadNet({ cls: ['track'], ways: [[0, 50, 20, 60, 30]] }) });
+  const road = (id: string, a: [number, number], b: [number, number]): RouteDesign => ({ id, name: `Road ${id}`, role: 'auxiliary', revision: 0, kind: 'road', acousticSourceId: `acoustic:${id}`,
+    endpoints: { a: { position: { x: a[0], y: a[1], z: 100 }, anchor: { kind: 'free' }, binding: 'resolved' },
+      b: { position: { x: b[0], y: b[1], z: 100 }, anchor: { kind: 'free' }, binding: 'resolved' } },
+    alignment: { kind: 'pi', pis: [], vertical: { kind: 'auto', pins: [] }, controls: {} },
+    specification: { kind: 'road', policy: 'legacy-road', legalClass: 'III', crossSection: 'S7.5', designSpeed: 70,
+      operations: { aadt: 1000, heavyShare: 0.1, speed: 70, speedPolicy: 'design' } } });
+  const setup = () => {
+    const legacy = flat();
+    const project = projectFromLegacyDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] },
+      makeLegacyProjectContext(legacy, { presetId: 'legacy-road', packId: 'd11', objectData: 'objects', transportData: null }));
+    const ctx: ProjectEvalContext = { legacy, environment: { objectData: 'objects', transportData: null, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' } };
+    return { ctx, project, mission: project.routes[0].id };
+  };
+  it('a crossed road whose start follows a moved road is held where it really crosses us', () => {
+    const { ctx, project, mission } = setup();
+    // the side road was attached when `host` ran along y = 60; host now runs along y = 20
+    const host = road('host', [100, 20], [1100, 20]), side = road('side', [600, 60], [600, 480]);
+    side.endpoints.a.anchor = { kind: 'route', routeId: 'host', s: 500 };
+    project.routes.push(side, host);
+    const r = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project });
+    const [c] = r.routes[mission].legacy!.crossings, own = r.routes.side.legacy!;
+    expect(c).toMatchObject({ type: 'overbridge', crossedRoute: { id: 'side' } });
+    expect(own.y[0]).toBeCloseTo(20, 6);
+    // its deck is 230 m from its real start (y 20 → 250), not 190 m from the stored one
+    const deck = c.geometry!.road!.reduce((p, q) => Math.abs(q.d!) < Math.abs(p.d!) ? q : p).z;
+    expect(own.kind[23]).toBe(1);
+    expect(Math.abs(own.grade[23] - deck)).toBeLessThan(1);
+    expect(own.violations.filter(v => v.kind === 'crossing')).toEqual([]);
+  });
+  it('a dragged road stays on its deck over us in the preview', () => {
+    const { ctx, project, mission } = setup();
+    project.routes.push(road('side', [600, 20], [600, 480]));
+    const full = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project });
+    const dragged = structuredClone(project), side = dragged.routes[1];
+    side.endpoints.b.position.x = 660; // its far end pulled 60 m along our road
+    const preview = previewProjectRoute(ctx, { epoch: 'e', revision: 2, design: dragged }, 'side', undefined, full).legacy!;
+    const deck = full.routes[mission].legacy!.crossings[0].geometry!.road!.reduce((p, q) => Math.abs(q.d!) < Math.abs(p.d!) ? q : p).z;
+    const k = preview.s.findIndex((_, q) => preview.y[q] >= 250);
+    expect(preview.kind[k]).toBe(1);
+    expect(Math.abs(preview.grade[k] - deck)).toBeLessThan(1.5);
+    // without the last result it drops to the ground (what every drag used to show)
+    expect(previewProjectRoute(ctx, { epoch: 'e', revision: 2, design: dragged }, 'side').legacy!.kind[k]).toBe(0);
+  });
+  it('a choice on what is left of a cut road is stored with the stretch that cut it, not a number that shifts', () => {
+    const { ctx, project, mission } = setup();
+    evaluateProject(ctx, { epoch: 'e', revision: 1, design: project }); // learns the map's size (1 way)
+    const rebuilt = { ...road('rebuilt', [50, 20], [60, 30]), source: { intervals: [{ transportData: 't', sourceId: 's', s0: 0, s1: 10 }] } } as RouteDesign;
+    const p1 = { ...project, routes: [...project.routes, rebuilt] };
+    // way 1 = the rebuilt road's own line; way 2 = what is left of its old road after the stretch
+    const stored = crossingTargetsOf(p1, [{ roadId: 2, type: 'overbridge' }]);
+    expect(stored).toEqual([{ choice: 'overbridge', target: { kind: 'legacy-way', objectData: 'objects', roadId: 2, after: 'rebuilt' } }]);
+    // another road added before it (way 1; the rebuilt line is now way 2): the same choice maps to way 3
+    const p2 = { ...project, routes: [project.routes[0], road('new', [300, 20], [300, 480]), rebuilt] };
+    expect(crossingOverridesOf(p2, stored)).toEqual([{ roadId: 3, type: 'overbridge' }]);
+    expect(crossingOverridesOf(p1, stored)).toEqual([{ roadId: 2, type: 'overbridge' }]);
+    // the rebuilt stretch removed: the choice is dropped
+    expect(crossingOverridesOf(project, stored)).toEqual([]);
+    // a save from before (what was left was way `size + q`) still reaches it
+    expect(crossingOverridesOf(p2, [{ choice: 'overbridge', target: { kind: 'legacy-way', objectData: 'objects', roadId: 1 } }])).toEqual([{ roadId: 3, type: 'overbridge' }]);
+    expect(mission).toBeTruthy();
   });
 });
 

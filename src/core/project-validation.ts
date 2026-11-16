@@ -40,7 +40,8 @@ function controls(v: unknown): boolean {
       && side.length <= MAX_LINK_VIA && side.every(p => object(p) && number(p.x) && number(p.y) && Math.abs(p.x) <= MAX_LINK_COORD && Math.abs(p.y) <= MAX_LINK_COORD)))) return false;
     if (c.to !== undefined && (c.via === undefined || !Number.isSafeInteger(c.to) || (c.to as number) < -2)) return false;
     const t = c.target;
-    return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId)
+    if (c.toRef !== undefined && (c.to === undefined || !object(c.toRef) || !['route', 'after'].includes(c.toRef.kind as string) || !text(c.toRef.routeId))) return false;
+    return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId) && (t.after === undefined || text(t.after))
       : t.kind === 'source' ? interval(t.interval)
       : t.kind === 'route' && text(t.routeId) && number(t.s0) && t.s0 >= 0 && number(t.s1) && t.s1 >= t.s0;
   }))) return false;

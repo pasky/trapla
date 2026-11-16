@@ -42,7 +42,7 @@ function run() {
       if (!projectEnvironment) throw new Error('Project environment missing from worker init');
       const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays };
       if (job.type === 'project-preview') {
-        const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, job.materialValue);
+        const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, job.materialValue, lastProject);
         (self as unknown as Worker).postMessage({ type: 'project-preview', id: job.id,
           identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, routeId: job.routeId, routeRevision: result.revision, result,
           ...(job.gesture ? { gesture: job.gesture } : {}) });

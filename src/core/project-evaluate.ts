@@ -16,10 +16,10 @@ import { createRailNoiseModel } from './rail-noise';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 import * as dm from './detmath';
-import { draws, editedNetwork, lineStation, planLine, registerNet } from './project-roadnet';
+import { draws, editedNetwork, lineStation, planEnds, planLine, registerNet, type ResolvedEnds } from './project-roadnet';
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
-import type { EvalOptions } from './evaluate';
+import { STEP, type EvalOptions } from './evaluate';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Combined noise of several roads (C1 c): answers each road's per-storey energy at a house from its
@@ -82,13 +82,13 @@ const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectI
 };
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
   preview = false, materialValue?: number, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ },
-  holds?: EvalOptions['holds']): { route: RouteResult; issues: ProjectIssue[];
+  holds?: EvalOptions['holds'], endsOf?: (route: RouteDesign) => ResolvedEnds): { route: RouteResult; issues: ProjectIssue[];
     junctionEnds: ('a' | 'b')[]; replacement?: Replacement; ringWorks?: ReplacementWork[] } {
   const corridor = route.kind === 'motorway' ? corridorOfRoute(snapshot.design, route.id) : undefined;
   let evaluated: CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
   // motorways and railways are checked against the network as the player edited it too
   const edited = (owners: RouteDesign[]) => {
-    const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays) : null;
+    const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays, endsOf) : null;
     return net ? { ...ctx.legacy, roads: net.roads } : ctx.legacy;
   };
   if (corridor) {
@@ -99,7 +99,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     evaluated = cached;
   } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(edited([route]), snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
   else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays,
-    ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}) });
+    ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}), ...(endsOf ? { endsOf } : {}) });
   const road = route.kind === 'road' && !corridor && evaluated.status === 'evaluated' ? evaluated as Extract<ReturnType<typeof evaluateProjectRoad>, { status: 'evaluated' }> : null;
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
   // the kernel names the mission's ends A and B; every other road's card and map say its start and end
@@ -116,12 +116,74 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
       : (road?.unpriced ?? []).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
 }
-export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, materialValue?: number): RouteResult {
+/** `last`: the last full result of this project. A dragged road keeps following the roads it joins and the
+ * crossings a higher-ranking road built with it (under its bridge, on its own deck over it), as they
+ * were last evaluated. */
+export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, materialValue?: number,
+  last?: ProjectResult | null): RouteResult {
   assertProjectDesign(snapshot.design);
-  if (ctx.legacy.roads) registerNet(snapshot.design.objectData, ctx.legacy.roads.wayCount);
-  const route = snapshot.design.routes.find(r => r.id === routeId); if (!route) throw new Error('Unknown preview route');
-  return routeProposal(ctx, snapshot, route, true, materialValue).route;
+  const design = snapshot.design;
+  if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
+  const route = design.routes.find(r => r.id === routeId); if (!route) throw new Error('Unknown preview route');
+  if (!last || last.epoch !== snapshot.epoch || route.kind !== 'road') return routeProposal(ctx, snapshot, route, true, materialValue).route;
+  const legacyOf = (id: string) => design.routes.some(r => r.id === id) ? last.routes[id]?.legacy : undefined;
+  const ends = followEnds(route, legacyOf), line = planLine(route, ends);
+  const holds: Hold[] = [];
+  for (const owner of design.routes) {
+    const own = owner === route ? undefined : legacyOf(owner.id);
+    for (const c of own?.crossings ?? []) {
+      if (c.crossedRoute?.id !== route.id || c.shared) continue;
+      const at = crossingNow(own!, c, line), hold = at && holdAt(owner, own!, c, line, ctx.legacy.terrain.heightAt(at.x, at.y), at);
+      if (hold) holds.push(hold);
+    }
+  }
+  return routeProposal(ctx, snapshot, route, true, materialValue, undefined, ends, holds.map(h => placedHold(h, line)),
+    r => lineEnds(design, r, legacyOf)).route;
 }
+/** Ends on another designed road: its nearest point and height now. */
+function followEnds(r: RouteDesign, legacyOf: (id: string) => Result | undefined): { a?: XYZ; b?: XYZ } | undefined {
+  const out: { a?: XYZ; b?: XYZ } = {};
+  for (const end of ['a', 'b'] as const) {
+    const anchor = r.endpoints[end].anchor, host = anchor.kind === 'route' ? legacyOf(anchor.routeId) : undefined;
+    if (!host) continue;
+    const p = r.endpoints[end].position, k = nearestStation(host, p.x, p.y);
+    out[end] = { x: host.x[k], y: host.y[k], z: host.grade[k] };
+  }
+  return out.a || out.b ? out : undefined;
+}
+/** Where a road's ends are built, for its plan line in other roads' networks: on the roads it joins as
+ * evaluated, else (not evaluated yet) on their plan. */
+function lineEnds(design: ProjectDesign, r: RouteDesign, legacyOf: (id: string) => Result | undefined): ResolvedEnds {
+  if (r.kind !== 'road' || ![r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'route')) return undefined;
+  const now = followEnds(r, legacyOf);
+  const pending = (['a', 'b'] as const).some(end => r.endpoints[end].anchor.kind === 'route' && !now?.[end]);
+  const plan = pending ? planEnds(design, r, STEP) : undefined;
+  const xy = (p?: { x: number; y: number }) => p ? { x: p.x, y: p.y } : undefined;
+  const a = xy(now?.a ?? plan?.a), b = xy(now?.b ?? plan?.b);
+  return a || b ? { ...(a ? { a } : {}), ...(b ? { b } : {}) } : undefined;
+}
+/** Where a crossing an owner built with a road lies on that road's line now (a drag moved the line): the
+ * line's intersection with the owner's centreline nearest to the crossing, while the owner still does the
+ * same there (earthworks, bridge or tunnel). */
+function crossingNow(own: Result, c: CrossingResult, line: readonly number[]): { x: number; y: number; i: number } | null {
+  let best: { x: number; y: number; i: number } | null = null, gap = Infinity;
+  const i0 = Math.max(0, c.i - Math.ceil(PREVIEW_REACH / own.ds)), i1 = Math.min(own.n - 1, c.i + Math.ceil(PREVIEW_REACH / own.ds));
+  for (let i = i0; i < i1; i++) {
+    const px = own.x[i], py = own.y[i], rx = own.x[i + 1] - px, ry = own.y[i + 1] - py;
+    for (let j = 0; j + 3 < line.length; j += 2) {
+      const qx = line[j + 2] - line[j], qy = line[j + 3] - line[j + 1], den = rx * qy - ry * qx;
+      if (Math.abs(den) < 1e-9) continue;
+      const ex = line[j] - px, ey = line[j + 1] - py, t = (ex * qy - ey * qx) / den, u = (ex * ry - ey * rx) / den;
+      if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+      const x = px + t * rx, y = py + t * ry, d = Math.hypot(x - c.x, y - c.y);
+      if (d < gap) { gap = d; best = { x, y, i: t < 0.5 ? i : i + 1 }; }
+    }
+  }
+  return best && own.kind[best.i] === own.kind[c.i] ? best : null;
+}
+/** Along the owner, how far a dragged road's crossing is looked for around where it was, m (a preview;
+ * the full evaluation after the drag decides the crossing anew). */
+const PREVIEW_REACH = 300;
 
 const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
   // Define arbitrary stable IDs safely, including object-prototype names.
@@ -229,7 +291,10 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     return { order, placed };
   };
   // crossing owners first where that is possible; ends that follow another road always come first
-  let { order, placed } = ordered(r => endHosts(r).concat(design.routes.filter(o => draws(design, o, r)).map(o => o.id)));
+  // (and, where possible, the roads that those it crosses end on: their line is then known exactly)
+  const owners = (r: RouteDesign) => design.routes.filter(o => draws(design, o, r)).map(o => o.id);
+  let { order, placed } = ordered(r => [...endHosts(r), ...owners(r), ...design.routes.filter(q => draws(design, r, q)).flatMap(endHosts).filter(id => id !== r.id)]);
+  if (order.length < design.routes.length) ({ order, placed } = ordered(r => [...endHosts(r), ...owners(r)]));
   if (order.length < design.routes.length) ({ order, placed } = ordered(endHosts));
   if (ctx.legacy.roads) registerNet(design.objectData, ctx.legacy.roads.wayCount);
   /** where a higher-ranking road's crossing holds a designed road (filled as owners are evaluated) */
@@ -239,21 +304,15 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   const ownWorks = new Map<string, ReplacementWork[]>();
   /** where two designed roads meet in one work (a junction, a crossing): its land is that work's */
   const designedJunctions = new Map<string, { routeId: string; x: number; y: number; r: number }[]>();
-  /** ends on another designed road: its nearest point and height now */
-  const followEnds = (r: RouteDesign) => {
-    const out: { a?: XYZ; b?: XYZ } = {};
-    for (const end of ['a', 'b'] as const) {
-      const anchor = r.endpoints[end].anchor, host = anchor.kind === 'route' ? legacyOf.get(anchor.routeId) : undefined;
-      if (!host) continue;
-      const p = r.endpoints[end].position, k = nearestStation(host, p.x, p.y);
-      out[end] = { x: host.x[k], y: host.y[k], z: host.grade[k] };
-    }
-    return out.a || out.b ? out : undefined;
-  };
+  const evaluated = (id: string) => legacyOf.get(id);
+  const endsOf = (r: RouteDesign) => lineEnds(design, r, evaluated);
   for (const route of [...order, ...cyclic]) {
-    const holds = holdsOf.get(route.id) ?? [];
-    const proposal = routeProposal(ctx, snapshot, route, false, undefined, corridorCache, route.kind === 'road' ? followEnds(route) : undefined,
-      holds.map(({ s, min, max, bridge }) => ({ s, min, max, ...(bridge ? { bridge } : {}) })));
+    // its ends follow the roads it joins; the heights its crossings hold are placed on the line it is built on
+    const ends = route.kind === 'road' ? followEnds(route, evaluated) : undefined;
+    const line = holdsOf.has(route.id) ? planLine(route, ends) : [];
+    const holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
+    const proposal = routeProposal(ctx, snapshot, route, false, undefined, corridorCache, ends,
+      holds.map(({ s, min, max, bridge }) => ({ s, min, max, ...(bridge ? { bridge } : {}) })), endsOf);
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
     const own = proposal.route.legacy;
     if (own && holds.length) {
@@ -266,12 +325,13 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
       seenOwners.add(own);
       const corridorKids = corridorOfRoute(design, route.id), owners = corridorKids
         ? design.routes.filter(r => r.id === corridorKids.children.forward || r.id === corridorKids.children.reverse) : [route];
-      const net = editedNetwork(ctx.legacy.roads, design, owners, ctx.sourceWays);
+      const net = editedNetwork(ctx.legacy.roads, design, owners, ctx.sourceWays, endsOf);
       for (const c of own.crossings) {
         const crossedId = c.roadId !== undefined ? net?.designed.get(c.roadId) : undefined, crossed = design.routes.find(r => r.id === crossedId);
         if (!crossed) continue;
         c.crossedRoute = { id: crossed.id, name: crossed.name };
-        const hold = holdAt(route, own, c, crossed, ctx.legacy.terrain.heightAt(c.x, c.y));
+        const drawn = net!.lines.get(crossed.id) ?? [];
+        const hold = holdAt(route, own, c, drawn, ctx.legacy.terrain.heightAt(c.x, c.y));
         let list = holdsOf.get(crossed.id); if (!list) holdsOf.set(crossed.id, list = []);
         // a split motorway's two directions share one crossing structure
         // the other direction of a split motorway reuses this structure (it holds nothing new)
@@ -281,7 +341,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
         // (its earthworks around the crossing, measured along an oblique crossed road, and any ramps)
         let wide = 0;
         for (let q = 0; q < own.n; q++) if (Math.abs(own.s[q] - c.s) <= ZONE_ALONG) wide = Math.max(wide, own.cell.width[q] / 2);
-        const reach = wide / Math.max(0.3, crossingSine(own, c, hold.line, hold.s)) + ((c.approachLength ?? 0) + (c.span ?? 0)) / 2
+        const reach = wide / Math.max(0.3, crossingSine(own, c, drawn, lineStation(drawn, c.x, c.y))) + ((c.approachLength ?? 0) + (c.span ?? 0)) / 2
           + (ROAD_CLASSES[c.cls]?.width ?? 7.5) + INDEPENDENCE_SCREEN.clearance;
         let zones = designedJunctions.get(crossed.id); if (!zones) designedJunctions.set(crossed.id, zones = []);
         for (const o of owners) zones.push({ routeId: o.id, x: c.x, y: c.y, r: reach });
@@ -533,8 +593,15 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
     cost: w.cost, dependencies: [], accepted: false, label: w.label, at: { x: w.x, y: w.y, s: w.s } };
 }
 
-/** Where a higher-ranking road's crossing holds a designed road: grade band at its station there. */
-interface Hold { s: number; min: number; max: number; owner: RouteDesign; crossing: CrossingResult; line: number[]; bridge?: [number, number] }
+/** Where a higher-ranking road's crossing holds a designed road: a grade band at that point of its line. */
+interface Hold { x: number; y: number; min: number; max: number; owner: RouteDesign; crossing: CrossingResult;
+  /** on its bridge over the owner: half the deck's length along the held road */
+  deck?: number }
+/** A hold on the line the held road is built on: its station there (and its deck's span). */
+const placedHold = (h: Hold, line: readonly number[]): { s: number; min: number; max: number; bridge?: [number, number] } => {
+  const s = lineStation(line, h.x, h.y);
+  return { s, min: h.min, max: h.max, ...(h.deck !== undefined ? { bridge: [Math.max(0, s - h.deck), s + h.deck] as [number, number] } : {}) };
+};
 /** Along the owner, how far around a crossing its earthworks belong to that crossing, m (MODELLING ASSUMPTION:
  * the 150 m crossing billing margin, CROSSING_RULES.endMargin). */
 const ZONE_ALONG = 150;
@@ -548,29 +615,31 @@ const HOLD_TOLERANCE = 0.5; // m, as a grade pin (GRADE_PIN_TOLERANCE)
 /** PROVISIONAL game tolerance, m: how far a crossed road's rounded profile may still miss the band its
  * crossing holds (the crossing's own ramps carry it the rest of the way). */
 const HOLD_SLACK = 0.5;
-function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, crossed: RouteDesign, ground: number): Hold | null {
-  const line = planLine(crossed), s = lineStation(line, c.x, c.y), z = own.grade[c.i];
-  const at = (min: number, max: number): Hold => ({ s, min, max, owner, crossing: c, line });
+/** `at`: where the crossing lies now when the held road's line moved since the owner built it (a preview). */
+function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readonly number[], ground: number,
+  at: { x: number; y: number; i: number } = c): Hold | null {
+  if (line.length < 4) return null;
+  const z = own.grade[at.i];
+  const band = (min: number, max: number): Hold => ({ x: at.x, y: at.y, min, max, owner, crossing: c });
   switch (c.type) {
     // under our bridge: low enough for the clearance the bridge was built with
-    case 'bridge': return at(-Infinity, z - CROSSING_RULES.overHeight);
-    case 'underpass': return at(ground - HOLD_TOLERANCE, ground + HOLD_TOLERANCE);
+    case 'bridge': return band(-Infinity, z - CROSSING_RULES.overHeight);
+    case 'underpass': return band(ground - HOLD_TOLERANCE, ground + HOLD_TOLERANCE);
     case 'overbridge': {
       // on its bridge over us: the deck's height where it crosses our centreline
       const road = c.geometry?.road; if (!road?.length) return null;
-      const deck = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p);
-      // its own deck over our road: the span measured along the crossed road
-      const half = (c.span ?? 0) / 2; // measured along the crossed road already
-      return { ...at(deck.z - HOLD_TOLERANCE, deck.z + HOLD_TOLERANCE), bridge: [Math.max(0, s - half), s + half] };
+      const deck = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p).z + z - own.grade[c.i];
+      // its own deck over our road: the span is measured along the crossed road already
+      return { ...band(deck - HOLD_TOLERANCE, deck + HOLD_TOLERANCE), deck: (c.span ?? 0) / 2 };
     }
-    case 'junction': case 'atGrade': return at(z - HOLD_TOLERANCE, z + HOLD_TOLERANCE);
+    case 'junction': case 'atGrade': return band(z - HOLD_TOLERANCE, z + HOLD_TOLERANCE);
     default: return null; // over our tunnel: free
   }
 }
 const ownerName = (r: RouteDesign) => r.role === 'mission' ? 'our road' : r.name;
 /** A held road that misses its crossing's height (By hand), and the part of it the owner's bridge over
  * the owner already builds (its deck and ramps are billed with that crossing). */
-function heldChecks(r: Result, holds: readonly Hold[]): { violations: Result['violations']; credits: ReplacementWork[] } {
+function heldChecks(r: Result, holds: readonly (Hold & { s: number })[]): { violations: Result['violations']; credits: ReplacementWork[] } {
   const violations: Result['violations'] = [], credits: ReplacementWork[] = [], credited = new Uint8Array(r.n);
   for (const h of holds) {
     if (!(h.s >= 0 && h.s <= r.length)) continue;

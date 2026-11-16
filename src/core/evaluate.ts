@@ -228,7 +228,8 @@ function profileTablesFor(terrain: Terrain, key: string): ProfileTables {
   return tables;
 }
 
-const STEP = 10;
+/** Station spacing of every result, m. */
+export const STEP = 10;
 /** the auto-profile's mass-balance search measures candidates on every n-th station's cross-section */
 const BALANCE_STRIDE = 2;
 

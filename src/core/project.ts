@@ -38,12 +38,16 @@ export interface EndpointConstraint {
 }
 export interface EndpointPair { a: EndpointConstraint; b: EndpointConstraint }
 export type CrossingTarget =
-  | { kind: 'legacy-way'; objectData: string; roadId: number }
+  /** `after`: what is left of an old road after the stretch rebuilt as that route (its way number in the
+   * edited network is derived from the route, `roadId` is only the number it had when chosen). */
+  | { kind: 'legacy-way'; objectData: string; roadId: number; after?: RouteId }
   | { kind: 'source'; interval: SourceInterval }
   | { kind: 'route'; routeId: RouteId; s0: number; s1: number };
 export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrides' | 'objectData' | 'pis'
   | 'profileMode' | 'vpis' | 'gradePins' | 'crossingOverrides'> & {
-    crossings?: { target: CrossingTarget; choice: CrossingChoice; via?: LinkVia; to?: number }[];
+    crossings?: { target: CrossingTarget; choice: CrossingChoice; via?: LinkVia; to?: number;
+      /** `to` is a designed road of the project, or what follows a rebuilt stretch: that route */
+      toRef?: { kind: 'route' | 'after'; routeId: RouteId } }[];
   };
 export type DesignedVertical =
   | { kind: 'auto'; pins: NonNullable<Design['gradePins']>; /** Dormant legacy manual controls, not grade authority. */ manualVpis?: Design['vpis'] }

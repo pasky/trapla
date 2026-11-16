@@ -246,11 +246,17 @@ editor too (main thread registers the pack's net size), cache key carries route 
 crossing holds nothing new (no 30 m de-duplication of distinct crossings), owner-first ordering falls back to
 end-hosts-only order on a cycle, overlapping crossing credits count each cell once, the deck span is not divided
 by the skew twice, the census fetch fails on ArcGIS errors and keeps every part of a section (`lines`).
-**Still open from that review** (for the next session): (2) `crossing-geometry.ts` ~823–865 may still turn a
-designed crossing into a reconnection during geometry optimisation — exclude `c.designed` there too; (3) holds
-use `planLine` from stored endpoints while an end on another road follows that road's current line
-(`followEnds`) — build the edited network and holds from the same resolved endpoints; (5) cut remnants are
-numbered after the designed slots, so a saved `legacy-way` choice on a remnant can shift when a road is added —
-give remnants stable provenance; (10) drag previews carry no holds/decks (the side road drops off its deck while
-dragged); (11) `render/crossing-pick.ts` still indexes the hidden `g.road` of designed crossings; (12) the
-6-entry edited-network cache thrashes with many roads (share the base grid, key by owner).
+**The rest of that review, fixed 2026-11-16:** (2) the geometry pass never turns a crossing with a designed
+road into a reroute (`crossing-geometry.ts`, `c.designed`); (3) every designed road is drawn in other roads'
+networks, and held, on the line it is really built on: ends on another designed road resolved from that road's
+result (`followEnds`), or from its plan when it is not evaluated yet (`planEnds`, same 10 m station sample); an
+owner is evaluated after the roads its crossed roads end on where the order allows; a hold is a point (x, y) placed
+on the held road's own line when that road is evaluated; (5) what is left of a cut road after rebuilt stretch q is
+way `size + designed slots + q` (`RoadNet.edited` `slot`, `rebuiltSlots`), and a choice on it is stored as
+`{ kind: 'legacy-way', after: <that route> }` (a shaped reroute's `to` likewise as `toRef`), so it cannot shift;
+saves from before (`size + q`) still map; (10) drag previews follow the roads the dragged road joins and keep the
+heights and decks of the crossings built with it (`previewProjectRoute(…, last)`: the crossing is looked for again
+on the dragged line within 300 m along the owner, kept while the owner still does the same there); (11) the
+crossing picker skips a designed road's hidden `g.road`; (12) an edited network is an overlay on the pack's grid
+(`RoadNet` `override`: only the cells its changed ways touch are its own; ≈ 2 ms instead of ≈ 10 ms on D3/D11),
+`ground` is the same overlay without the designed lines, and the cache keeps the 12 most recently used.
