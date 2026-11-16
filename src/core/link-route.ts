@@ -17,6 +17,9 @@ export type LinkProblem = 'steep' | 'footprint' | 'motorway' | 'railway' | 'wate
 export const LINK_MAX_SUPPORT = 10;
 /** Profile sampling along the line, m; obstacles are queried per piece of at most PIECE m. */
 const SAMPLE = 5, PIECE = 50, MAX_SAMPLES = 450;
+/** Earth slopes of a raised or lowered new road (1:1.5, as drawn: render/crossing-surface.ts), and the
+ * least height difference that has a slope at all (crossing-works.ts FLAT), m. */
+const SLOPE = 1.5, SLOPE_FLAT = 0.15;
 /** Ground departing from a chord between samples by more than this is sampled more finely (the same
  * 0.2 m as crossing-geometry.ts refineTerrain), to at most MAX_REFINED samples. */
 const REFINE = 0.2, MAX_REFINED = 480;
@@ -79,6 +82,8 @@ export interface LinkSurvey {
   houses: number[];
   /** Lowest / highest level of each sample (earthwork depth limit, culvert cover). */
   lower: readonly number[]; upper: readonly number[];
+  /** Half the new road's width, m. */
+  half: number;
 }
 export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv): LinkSurvey {
   const half = width / 2, problems = new Set<LinkProblem>(), ourClearance = 0;
@@ -167,7 +172,7 @@ export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv)
   const lower = points.map(p => Math.max(p.ground - LINK_MAX_SUPPORT, (p as CrossingPoint & { cover?: number }).cover ?? -Infinity));
   const upper = points.map(p => p.ground + LINK_MAX_SUPPORT);
   for (const p of points) delete (p as CrossingPoint & { cover?: number }).cover;
-  return { points, problems: [...problems], culverts, houses: [...houses], lower, upper };
+  return { points, problems: [...problems], culverts, houses: [...houses], lower, upper, half };
 }
 
 /** The profile of a surveyed line: as close to the ground as `grade` allows, ending on the roads it joins. */
@@ -194,7 +199,24 @@ export function profileLink(survey: LinkSurvey, grade: number, env: LinkEnv, ope
     if (Math.abs(p.z - p.ground) > 0.01) { p.surface = 'ramp'; p.support = p.z >= p.ground ? 'embankment' : 'retaining'; }
     else p.z = p.ground;
   }
-  const list = survey.houses;
+  // Its earthworks take ground too: where the profile leaves the ground, the slopes (1:1.5, as drawn,
+  // render/crossing-surface.ts) reach further out than the pavement; what stands there is in the way.
+  const houses = new Set(survey.houses);
+  for (let i = 1, j = 1; i < n; i = j) {
+    const lift = (k: number) => Math.abs(points[k].z - points[k].ground);
+    if (Math.max(lift(i - 1), lift(i)) <= SLOPE_FLAT) { j = i + 1; continue; }
+    // (one query per raised or lowered piece of at most PIECE m)
+    let deepest = Math.max(lift(i - 1), lift(i));
+    j = i + 1;
+    while (j < n && points[j].d! - points[i - 1].d! <= PIECE && lift(j) > SLOPE_FLAT) { deepest = Math.max(deepest, lift(j)); j++; }
+    const a = points[i - 1], b = points[j - 1], reach = survey.half + deepest * SLOPE;
+    if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-9) continue;
+    const blocked = env.obstacle?.(a, b, reach);
+    if (blocked && blocked !== 'building') problems.add(blocked);
+    else if (blocked) problems.add('building');
+    for (const h of env.houses?.(a, b, reach) ?? []) houses.add(h);
+  }
+  const list = [...houses];
   return { points, problems: [...problems], culverts, culvertCost: culverts.reduce((a, c) => a + c.cost, 0),
     houses: list, houseCost: list.reduce((a, j) => a + (env.houseCost?.(j) ?? 0), 0), grade };
 }

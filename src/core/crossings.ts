@@ -74,6 +74,9 @@ export interface CrossingGeometry {
    * road reads lower than its local angle), and whether it comes back out on the side it went in. */
   skew?: number;
   sameSide?: boolean;
+  /** How far along our road it enters and leaves our earthworks from the crossing, m (what a square
+   * crossing's new line must at least make up). */
+  skewRun?: number;
   diagnostics?: string[];
 }
 export interface CrossingIssue extends Violation {

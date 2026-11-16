@@ -8,6 +8,7 @@ import { engineerLink, LINK_CORRIDOR, LINK_MAX_SUPPORT, profileLink, routeAlong,
 import { crossingWorks, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { LOWERING_RULES, RETAINING_RULES, retainingAssembly, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { KIND } from './structures';
+import { acos } from './detmath';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
@@ -34,10 +35,13 @@ const OVER_BUDGET = 'Reroute candidate over budget';
 /** The box does not fit even with the crossed way lowered as far as it may be. */
 const UNDERPASS_TOO_LOW = 'Embankment is too low over the underpass box';
 type XY = { x: number; y: number };
+/** The crossed way's stretch through our earthworks (crossing-geometry cutOf). */
+type CutOf = { d0: number; d1: number; open: boolean; sides: [number, number]; angle: number; run: number };
 type WayPoint = XY & { d: number };
 type CachedPath = { path: readonly Readonly<WayPoint>[]; diagnostics: readonly string[] };
 /** Immutable shared way paths, stably ordered by distance from their crossing. */
-const pathJunctions = new WeakMap<readonly Readonly<WayPoint>[], readonly WayPoint[]>();
+const __t = <A extends unknown[], R>(name: string, f: (...a: A) => R) => (...a: A): R => { const P = ((globalThis as any).__prof ??= {}); const t = performance.now(); try { return f(...a); } finally { P[name] = (P[name] ?? 0) + performance.now() - t; } };
+const pathJunctions = new WeakMap<readonly Readonly<WayPoint>[], Map<number, WayPoint[]>>();
 const sortedPaths = new WeakMap<readonly Readonly<WayPoint>[], readonly Readonly<WayPoint>[]>();
 const byDistance = (path: readonly Readonly<WayPoint>[]) => {
   let sorted = sortedPaths.get(path);
@@ -128,6 +132,9 @@ export const SQUARE_BELOW = 70;
 const SQUARE_SEARCH = 400;
 /** Bounded engine work: rounds of the consolidation pass. */
 const JOIN_ROUNDS = 3;
+/** A reroute joins its target's road away from the crossing only where that line is at most this share
+ * of the straight line to the crossing (search economy; the cheaper buildable one is kept). */
+const JOIN_SHORTER = 0.8;
 const SHAPED_LINK: Record<LinkProblem, string> = {
   steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
   railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
@@ -464,7 +471,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
   spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>, routed: Map<string, LinkPlan>,
   linkMemo: NonNullable<LinkEnv['memo']>,
-  sidesOf = new Map<string, [boolean, boolean]>(), budget = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>): CrossingIssue[] {
+  sidesOf = new Map<string, [boolean, boolean]>(), budget = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>,
+  cuts = new Map<string, CutOf | undefined>(), squares = new Map<string, any>()): CrossingIssue[] {
   const { at, project, margin, reads } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => !built(v));
   // Works are remeasured on every build (Auto tries candidates, then rebuilds the network).
@@ -514,7 +522,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
    * (`extra` beyond the toe): where it enters and leaves (way chainages), the sides of our road it lies
    * on just outside (-1 / 1), whether the way ends inside, and its angle to our road (between the line
    * from where it enters to where it leaves and our road there; a way running along our road reads low). */
-  const cutOf = (c: CrossingResult, path: readonly Readonly<WayPoint>[], extra: number) => {
+  const cutOf = __t('cutOf', (c: CrossingResult, path: readonly Readonly<WayPoint>[], extra: number) => {
     let centre = 0;
     for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;
     if (margin(path[centre], extra) >= 0) return undefined;
@@ -531,53 +539,59 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     const sideAt = (q: XY) => Math.sign(project(q).lateral) || 1;
     const sides: [number, number] = [first > 0 ? sideAt(path[first - 1]) : 0, last + 1 < path.length ? sideAt(path[last + 1]) : 0];
     const a = along(path, d0), b = along(path, d1), p = at(c.s), chord = Math.hypot(b.x - a.x, b.y - a.y);
-    const angle = chord > 1e-6 ? Math.acos(Math.min(1, Math.abs(((b.x - a.x) * p.tx + (b.y - a.y) * p.ty) / chord))) * 180 / Math.PI : 90;
-    return { d0, d1, open, sides, angle };
-  };
+    const angle = chord > 1e-6 ? acos(Math.min(1, Math.abs(((b.x - a.x) * p.tx + (b.y - a.y) * p.ty) / chord))) * 180 / Math.PI : 90;
+    // (how far along our road it enters and leaves from the crossing: what a square line must make up)
+    const run = Math.abs(project(a).s - c.s) + Math.abs(project(b).s - c.s);
+    return { d0, d1, open, sides, angle, run };
+  });
   /** The crossed way laid on a new line that crosses our road square at the crossing's station
    * (research/38): a straight run square across our earthworks, joined on each side to the old way by
    * one smooth bend no sharper than the class's smallest radius, as near our road as that allows; the
    * old stretch in between (under our earthworks, or cut off by the new line) is removed. */
-  /** Junctions with other roads along a (shared, immutable) way path, at its chainages. */
-  const junctionsOf = (path: readonly Readonly<WayPoint>[]): readonly WayPoint[] => {
-    let list = pathJunctions.get(path);
-    if (!list) {
-      const found = new Map<string, WayPoint>();
-      for (let k = 1; roads && k < path.length; k++) {
-        const a = path[k - 1], b = path[k], len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        for (const j of roads.junctions(a, b)) {
+  /** Junctions with other roads along a (shared, immutable) way path between chainages lo and hi, at
+   * its chainages (per segment, memoised for the path). */
+  const junctionsIn = (path: readonly Readonly<WayPoint>[], lo: number, hi: number): WayPoint[] => {
+    let memo = pathJunctions.get(path);
+    if (!memo) pathJunctions.set(path, memo = new Map());
+    const out: WayPoint[] = [];
+    for (let k = 1; roads && k < path.length; k++) {
+      const a = path[k - 1], b = path[k];
+      if (b.d < lo || a.d > hi) continue;
+      let list = memo.get(k);
+      if (!list) {
+        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        memo.set(k, list = roads.junctions(a, b).map(j => {
           const t = Math.max(0, Math.min(1, ((j.x - a.x) * (b.x - a.x) + (j.y - a.y) * (b.y - a.y)) / (len * len)));
-          found.set(`${j.x},${j.y}`, { x: j.x, y: j.y, d: a.d + t * (b.d - a.d) });
-        }
+          return { x: j.x, y: j.y, d: a.d + t * (b.d - a.d) };
+        }));
       }
-      pathJunctions.set(path, list = [...found.values()]);
+      for (const j of list) if (j.d >= lo && j.d <= hi) out.push(j);
     }
-    return list;
+    return out;
   };
-  const squarePath = (c: CrossingResult, g: CrossingGeometry, path: readonly Readonly<WayPoint>[], cut: NonNullable<ReturnType<typeof cutOf>>) => {
+  const squarePath = __t('squarePath', (c: CrossingResult, g: CrossingGeometry, path: readonly Readonly<WayPoint>[], cut: NonNullable<ReturnType<typeof cutOf>>) => {
     if (cut.open) return { problem: 'ends' as const };
     if (cut.sides[0] === cut.sides[1]) return { problem: 'same' as const };
     const row = ROAD_CLASSES[c.cls], radius = row.minRadius, C = at(c.s), half = g.width / 2;
     const clear = (q: XY) => margin(q, half, false);
     // The bend from the old way at chainage d (travelling towards our road) into the square run at its
     // end beside our earthworks: a cubic curve tangent to both, tried ever further out along the old way.
-    const leg = (side: number, direction: number): { d: number; points: XY[] } | undefined => {
+    const leg = __t('leg', (side: number, direction: number): { d: number; points: XY[] } | undefined => {
       const o = (side > 0 ? C.left : C.right) + half + SETBACK;
       const q = { x: C.x - C.ty * o * side, y: C.y + C.tx * o * side }, vx = C.ty * side, vy = -C.tx * side;
       const start = direction < 0 ? cut.d0 : cut.d1, end = direction < 0 ? path[0].d : path[path.length - 1].d;
       // (it rejoins the old way short of any other road joining it, which keeps its junction)
-      const stop = junctionsOf(path).filter(j => direction * (j.d - start) > 0).reduce((v, j) => direction < 0 ? Math.max(v, j.d) : Math.min(v, j.d), end);
       for (let k = 0; k <= SQUARE_SEARCH / STEP; k++) {
         const d = start + direction * k * STEP;
-        if (direction * (d - stop) > 0) break;
+        if (direction * (d - end) > 0 || (k && junctionsIn(path, Math.min(d, d - direction * STEP), Math.max(d, d - direction * STEP)).length)) break;
         // (u: the old way's direction at p, travelling towards our road)
         const p = along(path, d), p2 = along(path, d - direction), ul = Math.hypot(p2.x - p.x, p2.y - p.y) || 1;
         const ux = (p2.x - p.x) / ul, uy = (p2.y - p.y) / ul;
         const span = Math.hypot(q.x - p.x, q.y - p.y), l = 0.4 * span;
         const b1 = { x: p.x + ux * l, y: p.y + uy * l }, b2 = { x: q.x - vx * l, y: q.y - vy * l };
         const points: XY[] = [];
-        let sharpest = Infinity, ok = true;
-        for (let t = 0; t <= 1 + 1e-9 && ok; t += 1 / 24) {
+        let sharpest = Infinity;
+        for (let t = 0; t <= 1 + 1e-9; t += 1 / 24) {
           const m = 1 - t;
           const x = m * m * m * p.x + 3 * m * m * t * b1.x + 3 * m * t * t * b2.x + t * t * t * q.x;
           const y = m * m * m * p.y + 3 * m * m * t * b1.y + 3 * m * t * t * b2.y + t * t * t * q.y;
@@ -585,26 +599,29 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
           const dy = 3 * m * m * (b1.y - p.y) + 6 * m * t * (b2.y - b1.y) + 3 * t * t * (q.y - b2.y);
           const ddx = 6 * m * (b2.x - 2 * b1.x + p.x) + 6 * t * (q.x - 2 * b2.x + b1.x), ddy = 6 * m * (b2.y - 2 * b1.y + p.y) + 6 * t * (q.y - 2 * b2.y + b1.y);
           const speed = Math.hypot(dx, dy), bend = Math.abs(dx * ddy - dy * ddx);
-          if (bend > 1e-12) sharpest = Math.min(sharpest, speed ** 3 / bend);
+          if (bend > 1e-12) sharpest = Math.min(sharpest, speed * speed * speed / bend);
           points.push({ x, y });
-          if (t > 0 && t < 1 - 1e-9 && clear({ x, y }) < SETBACK - 0.5) ok = false;
         }
-        if (ok && sharpest >= radius - 1e-6) return { d, points };
+        // (the radius first: the clearance walk is the dear part)
+        if (sharpest < radius - 1e-6) continue;
+        // (a few probes first: most failing curves cut the corner into our earthworks)
+        if ([12, 6, 18, 3, 21].some(i => clear(points[i]) < SETBACK - 0.5)) continue;
+        if (points.every((q, i) => i === 0 || i === points.length - 1 || clear(q) >= SETBACK - 0.5)) return { d, points };
       }
       return undefined;
-    };
+    });
     const a = leg(cut.sides[0], -1), b = leg(cut.sides[1], 1);
     if (!a || !b) return { problem: 'room' as const };
     // Other roads joining the stretch it gives up would be cut off (also under our earthworks: their
     // own rebuilt stretch beside them joins the crossed road's kept line).
-    for (const j of junctionsOf(path)) if (j.d > a.d + 1e-6 && j.d < b.d - 1e-6) return { problem: 'junction' as const };
+    if (junctionsIn(path, a.d + 1e-6, b.d - 1e-6).length) return { problem: 'junction' as const };
     const legA = a.points, legB = [...b.points].reverse();
     // what the new pieces run across, as for a reroute (link-route.ts): its line, not its ramps
     const problems = new Set<string>();
     let culvertCost = 0;
     for (const part of [legA, [...legB].reverse()]) {
       // (from the old way to the structure's end of the straight run: the box or the ramps take over there)
-      const survey = surveyLink(part, g.width, linkEnv);
+      const survey = __t('legSurvey', surveyLink)(part, g.width, linkEnv);
       for (const p of survey.problems) if (p !== 'footprint') problems.add(p);
       if (survey.houses.length) problems.add('building');
       if (profileLink(survey, row.rampSteepest, linkEnv, true).problems.includes('steep')) problems.add('steep');
@@ -625,7 +642,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     });
     for (const q of out) q.d -= centre;
     return { path: denseWay(out, message => diagnose(g, message)), p0: start - centre, p1: end - centre, culvertCost, removed: [a.d, b.d] as [number, number] };
-  };
+  });
   for (const c of crossings) {
     const g: CrossingGeometry = c.geometry = { width: ROAD_CLASSES[c.cls].width, schematic: false };
     let path = getPath(c.roadId, c.x, c.y, g);
@@ -635,13 +652,18 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       continue;
     }
     // How the way meets our road: its angle, and whether it comes back out on the side it went in.
-    const cut = cutOf(c, path, g.width / 2 + SETBACK);
-    if (cut) { g.skew = cut.angle; if (!cut.open) g.sameSide = cut.sides[0] === cut.sides[1]; }
+    const cutKey = `${c.roadId}:${c.x},${c.y}:${g.width}`;
+    // (only where Auto may weigh a box, a bridge over us or a reroute: not under our bridges or tunnels)
+    const cut = cuts.has(cutKey) ? cuts.get(cutKey) : c.type === 'bridge' || c.type === 'tunnel' ? undefined : cutOf(c, path, g.width / 2 + SETBACK);
+    cuts.set(cutKey, cut);
+    if (cut) { g.skew = cut.angle; g.skewRun = cut.run; if (!cut.open) g.sameSide = cut.sides[0] === cut.sides[1]; }
     // Straightened to cross square (Auto's candidate or the player's choice): the structure and its ramps
     // are built on the new line, and the new road beyond them is billed here.
     let keep: { p0: number; p1: number; culvertCost: number } | undefined;
     if (c.square && (c.type === 'overbridge' || c.type === 'underpass')) {
-      const squared = cut ? squarePath(c, g, path, cut) : { problem: 'room' as const };
+      const squareKey = `${cutKey}:${c.cls}`;
+      const squared = squares.get(squareKey) ?? (cut ? squarePath(c, g, path, cut) : { problem: 'room' as const });
+      squares.set(squareKey, squared);
       if ('path' in squared && squared.path) {
         path = squared.path; squaredPaths.set(c, path); keep = squared;
         c.squared = cut!.angle; g.removed = squared.removed;
@@ -916,7 +938,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   // A ground anchor must actually lie on the crossed alignment, beyond every engineered approach
   // and beyond the footprint plus half the incoming road width and a physical setback.
   const isTerrain = (q: AnchorSample) => !('surface' in q) || q.surface === 'terrain';
-  const groundAnchors = (path: readonly AnchorSample[], width: number): [CrossingPoint | undefined, CrossingPoint | undefined] => {
+  const groundAnchors = __t('groundAnchors', (path: readonly AnchorSample[], width: number): [CrossingPoint | undefined, CrossingPoint | undefined] => {
     const out: [CrossingPoint | undefined, CrossingPoint | undefined] = [undefined, undefined];
     const order = Array.from({ length: path.length }, (_, i) => i).sort((a, b) => Math.abs(path[a].d ?? 0) - Math.abs(path[b].d ?? 0));
     for (const side of [-1, 1]) {
@@ -944,7 +966,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       }
     }
     return out;
-  };
+  });
   // (only the crossings a link starts or ends at need their anchors)
   const anchorOf = (c: CrossingResult) => {
     if (!anchors.has(c) && rawPaths.has(c)) anchors.set(c, groundAnchors(rawPaths.get(c)!, maxLinkWidth(c)));
@@ -953,7 +975,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   const endAnchors = new Map<string, [CrossingPoint | undefined, CrossingPoint | undefined]>();
   /** One new piece of road from anchor a to b beside our earthworks on `side` (-1: right, 1: left of our
    * road), engineered as a designer would (link-route.ts); `shape`: the player's bend points. */
-  const buildSide = (c: CrossingResult, g: CrossingGeometry, a: CrossingPoint, b: CrossingPoint, side: number, shape?: readonly XY[]) => {
+  const buildSide = __t('buildSide', (c: CrossingResult, g: CrossingGeometry, a: CrossingPoint, b: CrossingPoint, side: number, shape?: readonly XY[]) => {
     const out = { link: [] as CrossingPoint[], culverts: 0, culvertCost: 0, houses: [] as number[], steepest: 0 };
     const sidePoint = (s: number, side: number) => {
       const p = at(s), offset = (side > 0 ? p.left : p.right) + g.width / 2 + SETBACK;
@@ -1052,7 +1074,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     out.link = link;
     return out;
-  };
+  });
   // A way that comes back out of our earthworks on the side it went in needs no crossing: it is moved
   // beside them, one new piece of road from where it enters to where it leaves (no cut ends).
   for (const c of crossings) if (c.moved && (c.type === 'reconnection' || c.type === 'diversion') && !anchorOnly?.has(c)) {
@@ -1094,10 +1116,11 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       for (const k of [0, 1] as const) {
         const a = start[k], b = finish[k];
         if (!a || !b) continue;
-        let best = Math.hypot(b.x - a.x, b.y - a.y), side = k ? 1 : -1;
+        // (only a markedly shorter line is worth trying: JOIN_SHORTER of the line to the crossing)
+        let best = Math.hypot(b.x - a.x, b.y - a.y) * JOIN_SHORTER, side = k ? 1 : -1;
         for (const q of rawPaths.get(target)!) {
           const gap = Math.hypot(q.x - a.x, q.y - a.y);
-          if (gap >= best - 1 || !isTerrain(q)) continue;
+          if (gap >= best || !isTerrain(q)) continue;
           const p = project(q);
           if (side * p.lateral <= 0 || margin(q, width / 2 + SETBACK) < 0) continue;
           best = gap; joined[k] = 'surface' in q ? q : terrainPoint(q);
@@ -1240,10 +1263,18 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
   const paths = persist?.paths ?? new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>(), sidesOf = new Map<string, [boolean, boolean]>();
   // Engineered reroutes between the same anchors are the same within one call (terrain and route fixed).
-  const routed = new Map<string, LinkPlan>(), linkMemo = { free: new Map<number, number>() };
-  const build = (items: CrossingResult[], budget = Infinity, anchorOnly?: ReadonlySet<CrossingResult>) =>
-    buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, routed, linkMemo, sidesOf, budget, persist, anchorOnly);
-  build(crossings);
+  const routed = new Map<string, LinkPlan>(), linkMemo = { free: new Map<number, number>() }, cuts = new Map<string, CutOf | undefined>(), squares = new Map<string, any>();
+  const P = ((globalThis as any).__prof ??= {}) as Record<string, number>;
+  let phase = 'first';
+  const build = (items: CrossingResult[], budget = Infinity, anchorOnly?: ReadonlySet<CrossingResult>) => {
+    const t = performance.now();
+    const r = buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, routed, linkMemo, sidesOf, budget, persist, anchorOnly, cuts, squares);
+    P[phase + '.ms'] = (P[phase + '.ms'] ?? 0) + performance.now() - t; P[phase + '.n'] = (P[phase + '.n'] ?? 0) + 1;
+    const kind = phase + ':' + items.map(x => x.type + (x.square ? 'Sq' : '') + (x.moved ? 'Mv' : '')).join('+');
+    P[kind] = (P[kind] ?? 0) + performance.now() - t; P[kind + '#'] = (P[kind + '#'] ?? 0) + 1;
+    return r;
+  };
+  build(crossings); phase = 'reconsider';
   const clone = (c: CrossingResult): CrossingResult => {
     const copy: CrossingResult = { ...c, geometry: undefined, cost: c.cost - (c.worksCost ?? 0),
       issues: c.issues?.filter(v => !built(v)) };
@@ -1303,22 +1334,35 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       if (ok(x)) { if (!ok(best) || x.cost < best.cost) best = x; }
       else if (feasible(x) && (!fallback || x.cost < fallback.cost)) fallback = x;
     };
-    const g = c.geometry, skewed = !g?.sameSide && (g?.skew ?? 90) < SQUARE_BELOW;
+    // (a crossing the player keeps on its line, square: false, is never straightened)
+    const g = c.geometry, skewed = c.square !== false && !g?.sameSide && (g?.skew ?? 90) < SQUARE_BELOW;
     // A measured box through our embankment, when the class, the fill and the structure allow it; a
-    // skewed one also on a new line square across our road (research/38).
-    for (const square of skewed ? [false, true] : [false]) if ((c.type !== 'underpass' || (square && !c.square)) && route.kind?.[c.i] === KIND.earth && underpassFits(c, 0)) {
-      const box = clone(c); box.type = 'underpass';
-      if (square) box.square = true;
-      delete box.targetS; delete box.targetRoadId; delete box.linkLength; delete box.span; delete box.approachLength;
-      build([box]);
-      consider(box);
-    }
-    for (const square of skewed ? [false, true] : [false]) if ((c.type !== 'overbridge' || (square && !c.square)) && (!originalFeasible || c.cost > deckPrice(c, square ? 0 : route.width[c.i]))) {
-      const over = clone(c); over.type = 'overbridge'; delete over.targetS; delete over.targetRoadId; delete over.linkLength; delete over.underpassLength;
-      if (square) over.square = true;
-      build([over]);
-      consider(over);
-    }
+    // skewed one also on a new line square across our road (research/38), where the box or bridge on
+    // its old line could cost more than the square one's least price (its structure alone).
+    const row = ROAD_CLASSES[c.cls], rate = (c.roadPerKm ?? row.roadPerKm[0]) / 1000, across = route.width[c.i];
+    const boxLeast = row.underpass ? (() => { const box = underpassAssembly(row.underpass!, rate); return across * box.perM + 2 * box.head; })() : Infinity;
+    const variants = (type: 'underpass' | 'overbridge', least: number) => {
+      let plain: CrossingResult | undefined = c.type === type && !c.square ? c : undefined;
+      if (!plain && !(c.type === type && c.square)) {
+        plain = clone(c); plain.type = type;
+        delete plain.targetS; delete plain.targetRoadId; delete plain.linkLength; delete plain.span; delete plain.approachLength; delete plain.underpassLength;
+        build([plain]);
+        consider(plain);
+      }
+      // (nor when the cheapest buildable treatment so far already costs less than its least price)
+      const squareLeast = least + (g?.skewRun ?? 0) * rate;
+      if (skewed && !(c.type === type && c.square) && (!plain || !ok(plain) || plain.cost > squareLeast) && !(ok(best) && best.cost <= squareLeast)) {
+        const squared = clone(c); squared.type = type; squared.square = true;
+        delete squared.targetS; delete squared.targetRoadId; delete squared.linkLength; delete squared.span; delete squared.approachLength; delete squared.underpassLength;
+        build([squared]);
+        consider(squared);
+      }
+    };
+    if (route.kind?.[c.i] === KIND.earth && underpassFits(c, 0)) variants('underpass', boxLeast);
+    // (a bridge over us also needs its ramps up from the old road: the class gradient's length for its
+    // height, both sides; the deck may slope and ramps steepen, hence only part of that estimate)
+    const rampsLeast = 2 * Math.max(0, CROSSING_RULES.underDepth + c.h) / row.rampSteepest * rate;
+    if (!originalFeasible || c.cost > deckPrice(c, across)) variants('overbridge', deckPrice(c, across) + rampsLeast);
     // (a way that comes back out of our earthworks on the side it went in: moved beside them when
     // nothing else is buildable; otherwise weighed with the roads led to it, below)
     if (g?.sameSide && !c.moved && !ok(best)) {
@@ -1424,6 +1468,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   };
   // (until nothing changes, at most JOIN_ROUNDS times: a crossing that starts carrying traffic in one
   // round is a nearer target for its neighbours in the next)
+  phase = 'join';
   const state = () => crossings.map(c => `${c.type}:${c.targetS}:${c.cost}`).join();
   for (let round = 0, before = state(); round < JOIN_ROUNDS; round++) {
     for (const c of crossings.filter(c => c.type === 'overbridge' || c.type === 'underpass').sort((a, b) => b.cost - a.cost || a.s - b.s)) join(c);
@@ -1432,6 +1477,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     if (after === before) break;
     before = after;
   }
+  phase = 'moved';
   // A way that comes back out of our earthworks on the side it went in needs no crossing of its own: it is
   // moved beside them where that, with the roads led to its crossing led to the nearest other one, is
   // cheaper than keeping the crossing for them (all priced together).
@@ -1461,6 +1507,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     [c, ...followers].forEach((x, k) => { for (const key of FIELDS) delete x[key]; Object.assign(x, k ? moves[k - 1] : move); });
     changed = true;
   }
+  phase = 'final';
   if (!changed) return crossings.flatMap(c => c.issues?.filter(built) ?? []);
   const issues = build(crossings);
   // A new target treatment can move the ground anchor of a dependent link. Do not buy a cheaper

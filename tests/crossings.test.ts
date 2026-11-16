@@ -329,6 +329,7 @@ describe('crossing geometry and map overlay', () => {
     const terrain = (x: number, y: number) => 400 + 0.003 * (x - 3000) + 0.015 * y + Math.sin(y / 50);
     const graded = { ...route, grade: Float64Array.from(s, x => 400 + 0.01 * (x - 3000)),
       left: new Float64Array(s.length).fill(24), right: new Float64Array(s.length).fill(14) };
+    cs[0].square = false; // kept on its skewed line (the player's choice), not straightened
     buildCrossingGeometry(cs, graded, terrain, net);
     const g = cs[0].geometry!, road = g.road!, links = cs[1].geometry!.links!, deck = g.deck!;
     expect(cs[0].span!).toBeGreaterThan(38 / Math.sin(Math.PI / 6));
@@ -336,8 +337,11 @@ describe('crossing geometry and map overlay', () => {
     for (let i = deck.start; i <= deck.end; i++) expect(road[i].z - deck.depth).toBeGreaterThanOrEqual(400 + 0.01 * (road[i].x - 3000) + 4.8 - 1e-6);
     for (const link of links) {
       expect(link.every(p => p.z === terrain(p.x, p.y) && p.surface === 'terrain')).toBe(true);
-      expect(road).toContainEqual(link.at(-1));
-      expect(Math.abs(link.at(-1)!.y)).toBeGreaterThan(30);
+      // (it joins the crossed road on the ground beyond its ramps, where it comes nearest)
+      const end = link.at(-1)!;
+      expect(net.nearestWay(end.x, end.y, 0.3)).toBe(0);
+      expect(end.surface).toBe('terrain');
+      expect(Math.abs(end.y)).toBeGreaterThan(30);
     }
     expect(auditCrossingGeometry(cs, graded, terrain, net)).toEqual([]);
   });

@@ -564,6 +564,10 @@ async function main() {
       if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}) });
     }),
     crossingPathAuto: (roadId) => setVia(roadId, null, true),
+    crossingSquare: (roadId, type, square) => store.update((d) => {
+      d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
+      d.crossingOverrides.push({ roadId, type, square });
+    }),
     building: (js, action) => store.editProject(d => { for (const j of js) d.buildingOverrides = setBuildingOverride(d.buildingOverrides, j, action); }),
     unpin: (s0, s1) => store.update((d) => { d.gradePins = (d.gradePins ?? []).filter((p) => p.s < s0 || p.s > s1); }),
     heightAt: (s) => addHeightAt(s),

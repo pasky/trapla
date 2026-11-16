@@ -278,8 +278,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     && grid.near(p).some(c => !c.structure && insideFootprint(p, c)) && roads.isDeadEnd(p));
   // A dead-end piece that lies wholly under our earthworks (its other end joins a road there too) leads
   // nowhere that remains: it is removed with the land it served, at no cost.
+  // (so is one whose part left outside them is shorter than the turning area its cut end would need)
   const under = (p: Point2) => grid.near(p).some(c => !c.structure && insideFootprint(p, c));
-  if ((dead[0] || dead[1]) && dense(source).every(under)) {
+  const samples = dense(source), outside = samples.filter(p => !under(p)).length * STEP;
+  if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1])))) {
     const intervals: RoadSourceInterval[] = [];
     for (const span of spans) {
       const start = Math.max(lo, span.lo), end = Math.min(hi, span.hi);

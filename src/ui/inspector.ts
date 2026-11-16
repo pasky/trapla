@@ -3,7 +3,8 @@
 // what the game decided (numbers first), its violations with the fix as a button where one exists, the
 // choices (Auto first), and "More" for the numbers. With nothing selected: where the money goes.
 import type { Violation } from '../core/checks';
-import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
+import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
+import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
 import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
@@ -38,6 +39,8 @@ export interface InspectorEvents {
   crossing?: (roadId: number, type: CrossingChoice | null) => void;
   /** back to the automatic path of a reroute the player shaped */
   crossingPathAuto?: (roadId: number) => void;
+  /** an underpass or a bridge over us laid on a new line square to ours (true) or kept on its own (false) */
+  crossingSquare?: (roadId: number, type: 'underpass' | 'overbridge', square: boolean) => void;
   /** one decision for these buildings, one edit */
   building?: (js: number[], action: BuildingOverride['action'] | null) => void;
   /** remove the pins between s0 and s1, one edit */
@@ -391,7 +394,19 @@ export class Inspector {
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}<div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
       ${this.linkPath(c, d)}
+      ${this.squareLine(c, d)}
       ${this.choices('crossing-choice', 'data-crossing', CATEGORIES[d.category].gradeSeparated ? MOTORWAY_CROSSING_OPTIONS : CROSSING_OPTIONS, choice)}`;
+  }
+  /** a skewed underpass or bridge over us: straightened to cross ours at a right angle, or on its own line */
+  private squareLine(c: Result['crossings'][number], d: Design) {
+    if (c.type !== 'underpass' && c.type !== 'overbridge') return '';
+    const set = crossingSquare(c.roadId, d.crossingOverrides ?? []), what = ROAD_CLASSES[c.cls].label;
+    if (c.squared !== undefined) return `<div class="ctx-row square-line"><span>Straightened to cross at a right angle${set ? ' (your choice)' : ''}</span>
+        <button type="button" data-crossing-square="0" title="Keep the ${esc(what)} on its own line, meeting our road at ${Math.round(c.squared)}°">Keep its line</button></div>`;
+    const skew = c.geometry?.skew;
+    if (skew !== undefined && skew < SQUARE_BELOW && !c.geometry?.sameSide) return `<div class="ctx-row square-line"><span>Meets our road at ${Math.round(skew)}°${set === false ? ' (your choice)' : ''}</span>
+        <button type="button" data-crossing-square="1" title="Lay the ${esc(what)} on a new line near our road that crosses it at a right angle">Straighten it</button></div>`;
+    return '';
   }
   /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
   private linkPath(c: Result['crossings'][number], d: Design) {
@@ -485,6 +500,11 @@ export class Inspector {
     if (b.dataset.fixCrossing) { this.ev.crossing?.(Number(b.dataset.fixCrossing), null); return; }
     if (b.dataset.fixCrossingPath) { this.ev.crossingPathAuto?.(Number(b.dataset.fixCrossingPath)); return; }
     if (b.dataset.crossingPath !== undefined && sel?.kind === 'crossing') { this.ev.crossingPathAuto?.(sel.roadId); return; }
+    if (b.dataset.crossingSquare !== undefined && sel?.kind === 'crossing') {
+      const c = this.r?.crossings.find((x) => x.roadId === sel.roadId && (x.type === 'underpass' || x.type === 'overbridge'));
+      if (c) this.ev.crossingSquare?.(sel.roadId, c.type as 'underpass' | 'overbridge', b.dataset.crossingSquare === '1');
+      return;
+    }
     if (b.dataset.fixBridge) { const [s0, s1] = b.dataset.fixBridge.split(',').map(Number); this.ev.structure?.(1, s0, s1); return; }
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
