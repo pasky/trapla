@@ -1317,6 +1317,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const forced = retention.forcedBridge.slice();
   for (let i = 0; i < n; i++) if (streamBridge[i] && h[i] > 0) forced[i] = 1;
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
+  // an embankment whose side slope never meets the hillside (sections.ts `open`) cannot be built: a bridge
+  for (let i = 0; i < n; i++) if (sec.open[i] && h[i] >= STRUCTURE_RULES.bridgeMinHeight) forced[i] = 1;
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]));
   forceParallelWater(forced, stationSides, grade, sec.dayL, sec.dayR,
     new Set(retention.channelRelocations.map(c => c.id)), waterElevation);

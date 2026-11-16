@@ -26,6 +26,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
       const design = fixture(name), r = run(design);
       expect(r.issues.filter(i => i.code === 'roads-cross' || i.code === 'roads-overlap')).toEqual([]);
       expect(r.routes['route:railway'].legacy!.crossings.some(c => c.crossedRoute && c.type === 'bridge')).toBe(true);
+      // (the new railway's own embankment on the steep valley side, whose slope never met the ground, is a
+      // bridge: QA's "Embankment never reaches the ground")
+      expect(problems(r)).toEqual([]);
     }
   }, 120_000);
   it('a new railway across our road is crossed by our road (the mission outranks it)', () => {
