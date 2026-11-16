@@ -39,6 +39,12 @@ on D11, the D3 sections and the whole D3 / D35, plus QA's repros; exit 1 if a gr
 anything beyond 8 km) for anything touching the grade solve, retries or previews. Look at the screenshots yourself; reviews of numbers alone missed
 broken visuals and jargon before.
 
+One command: `scripts/gates.sh quick` while iterating, `scripts/gates.sh full` once per merge (lock protocol
+built in; `list` shows the gates; `--no-browser`, `--only`, `--skip`). A change meant to preserve behaviour
+(refactor, performance): `npx tsx scripts/exact.ts --out /tmp/before.json` on the base, then
+`scripts/gates.sh full --exact /tmp/before.json` (every whole result of every pack identical). Structure,
+findings and the refactoring plan: `docs/architecture-review.md`.
+
 ## Workflow gotchas
 
 - Work happens in side-agent worktrees. The scenario pack (`public/scenarios/`) and `pipeline/cache/` are
@@ -47,6 +53,9 @@ broken visuals and jargon before.
 - Never use `git stash`: it is shared across all worktrees and has swapped work between agents.
 - Screenshot galleries in `docs/screenshots/` are numbered; continue after the highest number and update
   README references.
+- Browser scripts start vite on the working tree: an edit in `src/` while smoke / playtest runs reloads the
+  page under them. Run browser gates from a clean checkout of the commit (`git worktree add --detach`, with
+  `node_modules`, `public/scenarios` and `pipeline/cache` symlinked in).
 - Close headless Chromium after each scripted run; persistent SwiftShader browsers eat CPU and skew timings.
 - Raw data is never committed; this is a localhost game, licences of fetched data are not a concern.
 

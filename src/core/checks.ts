@@ -559,6 +559,9 @@ export function slopeViolation(s0: number, s1: number, above: number, below: num
   };
 }
 
+/** How the clearance problem's title starts (over a river, a railway …): evaluate.ts recognises it by
+ * this when it rewords a railway's problems, so the wording and the logic cannot drift apart. */
+export const ROAD_TOO_LOW = 'Road too low';
 /** the grade too low over a river / railway (`below` undefined), or neither above nor below a motorway */
 export function crossingViolation(s: number, what: string, above: number, need: number, below?: number): Violation {
   const raise = Math.ceil((need - above) * 10 - 1e-6) / 10;
@@ -566,7 +569,7 @@ export function crossingViolation(s: number, what: string, above: number, need: 
   if (below === undefined) {
     return {
       kind: 'crossing', s0: s, s1: s, clearance: 'above',
-      title: `Road too low over the ${what}`,
+      title: `${ROAD_TOO_LOW} over the ${what}`,
       fix: `Raise the road here by ${fmt(raise, 1)} m`,
       detail: `To bridge the ${what} the road must be at least ${fmt(need, 1)} m above it; it is ${h(above)}.`,
       basis: 'game', rule: `Game assumption: a bridge needs the road at least ${fmt(need, 1)} m above a ${what} (deck plus clearance)`,

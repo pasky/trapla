@@ -5,11 +5,10 @@ import { BuildingIndex } from '../src/core/buildings';
 import { DEFAULT_SCENARIO, scenarioParams } from '../src/core/data/scenario';
 import { RoadNet } from '../src/core/roadnet';
 import { decodeHeights, Terrain } from '../src/core/terrain';
-import { endpointJunctions } from '../src/scenario';
+import { endpointJunctions, packIdentities } from '../src/scenario';
 import type { TrafficCensus } from '../src/core/traffic-census';
 import type { EvalContext } from '../src/core/evaluate';
 import type { ScenarioParams } from '../src/core/data/scenario';
-import { objectDataKey } from '../src/core/build-controls';
 import type { ProjectEvalContext } from '../src/core/project-evaluate';
 import { makeLegacyProjectContext } from '../src/core/project-legacy';
 import { missionEnds, missionProject } from '../src/core/project-mission';
@@ -48,13 +47,10 @@ export function evalContext(pack: NodePack, scenario: ScenarioParams = pack.scen
  * identities as src/main.ts (so a Node bill is the browser's). `dir`: the pack's folder (transport-meta.json). */
 export function projectContext(pack: NodePack, scenario: ScenarioParams = pack.scenario, dir = `public/scenarios/${pack.meta.id}`) {
   const { meta, overlays } = pack, legacy = evalContext(pack, scenario), presetId = scenario.presetId ?? scenario.id;
-  const objectData = objectDataKey(overlays.buildings, overlays.binfo, overlays.net);
   const sidecar = `${dir}/transport-meta.json`;
-  const transportData: string | null = (meta.transport ?? (existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) : null))?.fingerprint ?? null;
-  const waterData: string = meta.watercourses?.sha256 ?? 'raster-water';
-  const pricingData = [meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'), waterData].join(':');
+  const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, overlays,
+    meta.transport ?? (existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) : null));
   const context = makeLegacyProjectContext(legacy, { presetId, packId: meta.id, objectData, transportData });
-  const ctx: ProjectEvalContext = { legacy, environment: { objectData, transportData, pricingData, waterData,
-    terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass } };
+  const ctx: ProjectEvalContext = { legacy, environment: { objectData, transportData, pricingData, waterData, terrainData, terrainClass: scenario.terrainClass } };
   return { ctx, context, ...missionProject(scenario, context) };
 }
