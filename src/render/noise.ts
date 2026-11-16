@@ -64,7 +64,7 @@ export class NoiseLayer {
     this.tip.style.display = 'none';
     document.body.appendChild(this.tip);
     const prev = view.onRender;
-    view.onRender = () => { prev?.(); this.placeLabels(); };
+    view.onRender = () => { prev?.(); this.placeLabels(); this.tipMoved(); };
     const canvas = view.renderer.domElement;
     canvas.addEventListener('pointermove', (e) => {
       if (e.buttons) { this.hideTip(); return; }
@@ -93,7 +93,8 @@ export class NoiseLayer {
   }
 
   setResult(r: Result, crownWidth: number) {
-    if (r !== this.r) this.fp = null;
+    // (a new design: whatever the tip described may be gone)
+    if (r !== this.r) { this.fp = null; this.hideTip(); }
     this.r = r;
     this.crown = crownWidth;
     this.built = false;
@@ -234,7 +235,14 @@ export class NoiseLayer {
   }
 
   // ---- hover -------------------------------------------------------------------------------
-  private hideTip() { this.tip.style.display = 'none'; }
+  private hideTip() { this.tip.style.display = 'none'; this.tipAt = null; }
+  /** The view a shown tip was shown in: it goes as soon as the view moves (a wheel, a pan, a turn, a
+   * flight); the next pointer move shows what is under the pointer then. */
+  private tipAt: { x: number; y: number; d: number } | null = null;
+  private tipMoved() {
+    const t = this.tipAt, now = this.view.target;
+    if (t && (Math.abs(now.x - t.x) > 0.01 || Math.abs(now.y - t.y) > 0.01 || Math.abs(this.view.cameraDistance - t.d) > 0.01)) this.hideTip();
+  }
 
   private hover() {
     const p = this.pending;
@@ -254,6 +262,7 @@ export class NoiseLayer {
     const [left, top] = spots.find(clear) ?? spots[0];
     this.tip.style.left = `${left}px`;
     this.tip.style.top = `${top}px`;
+    this.tipAt = { ...this.view.target, d: this.view.cameraDistance };
   }
 
   private wallTip(w: WallStretch | null): string | null {

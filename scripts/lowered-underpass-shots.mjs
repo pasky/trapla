@@ -76,5 +76,35 @@ try {
     await shot(`engineered-reroute-${file}`);
     break;
   }
+  // a track crossed three times, rerouted and shaped by the player: the card describes the shaped crossing
+  // (its own new road), says the road crosses ours three times and that the price is for all of them
+  await T(() => window.trapla.setDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] })); await idle();
+  const shaped = await T(() => {
+    const r = window.trapla.result(), c = r.crossings.find(x => Math.abs(x.s - 4100) < 30), l = c.geometry.links.find(x => x.length > 2);
+    const k = c.geometry.links.indexOf(l), m = l[Math.floor(l.length / 2)], via = [[], []]; via[k] = [{ x: m.x + 60, y: m.y + 60 }];
+    return { roadId: c.roadId, via, to: c.targetRoadId };
+  });
+  await T((o) => { const d = window.trapla.getDesign(); d.crossingOverrides = [{ roadId: o.roadId, type: 'reconnection', via: o.via, to: o.to }]; window.trapla.setDesign(d); }, shaped); await idle(1500);
+  await T((o) => window.trapla.selectCrossing(o.roadId), shaped); await idle();
+  const text3 = (await card()).replace(/\s+/g, ' ');
+  const own = await T((o) => window.trapla.result().crossings.find(x => x.roadId === o.roadId && x.via), shaped);
+  console.log('SHAPED CARD', text3.slice(0, 400));
+  assert.ok(text3.includes(`+${Math.round(own.linkLength).toLocaleString('en-US')} m`), 'the card gives the shaped new road\'s own length');
+  assert.match(text3, /crosses our road 3 times .*The price is for all of them/, 'the card explains the three crossings');
+  // a hover tip goes when the view moves, and when the design changes
+  await T(() => { const r = window.trapla.result(), w = r.walls[0], i = Math.round((w.i0 + w.i1) / 2); window.trapla.lookAt(r.x[i], r.y[i], 600, 0, 60); }); await idle();
+  const wallAt = await T(() => { const r = window.trapla.result(), w = r.walls[0], i = Math.round((w.i0 + w.i1) / 2), sgn = w.side === 'L' ? 1 : -1, off = 9;
+    return window.trapla.project(r.x[i] - r.ty[i] * off * sgn, r.y[i] + r.tx[i] * off * sgn, r.grade[i] + 1); });
+  const canvas = await page.locator('#view canvas').boundingBox();
+  const tipShown = async () => page.evaluate(() => [...document.querySelectorAll('.map-tip')].some(e => e.style.display !== 'none' && e.textContent.includes('wall')));
+  for (const dx of [0, 3, -3, 6, -6]) { await page.mouse.move(canvas.x + wallAt.sx + dx, canvas.y + wallAt.sy); await page.waitForTimeout(250); if (await tipShown()) break; }
+  assert.ok(await tipShown(), 'a wall shows its tip under the pointer');
+  await page.mouse.wheel(0, 600); await idle();
+  assert.ok(!(await tipShown()), 'the tip goes when the view zooms away');
+  for (const dx of [0, 3, -3]) { await page.mouse.move(canvas.x + wallAt.sx + dx, canvas.y + wallAt.sy + 1); await page.waitForTimeout(250); }
+  await T(() => window.trapla.lookAt(...(() => { const r = window.trapla.result(), w = r.walls[0], i = Math.round((w.i0 + w.i1) / 2); return [r.x[i], r.y[i], 600, 0, 60]; })())); await idle();
+  for (const dx of [0, 3, -3, 6, -6]) { await page.mouse.move(canvas.x + wallAt.sx + dx, canvas.y + wallAt.sy); await page.waitForTimeout(250); if (await tipShown()) break; }
+  await T(() => window.trapla.setDesign({ category: 'S9.5', speed: 90, pis: [{ x: 8200, y: 9300, r: null }], profileMode: 'auto', vpis: [] })); await idle(1500);
+  assert.ok(!(await tipShown()), 'the tip goes when the design changes');
   assert.deepEqual(errors, []);
 } finally { await browser.close(); await server.close(); }

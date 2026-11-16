@@ -320,7 +320,9 @@ box decision probes the same points as its final check (a ridge between samples 
 lowering fits); Studénka's derived depth corrected to 4.67 m plus track build-up (research/37 §7); the
 lowered-box card states the steeper ramp allowance; the works outline breaks where it leaves the view.
 
-**Known remaining.** Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
+**Known remaining.** A very skewed crossing gets a box as long as its oblique path under our embankment
+(town-centre km 15.98, 57 m); a designer would square it by realigning the crossed road near our road (future
+improvement). Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
 station is priced as equipment plus catalogue items without installation and power connection; cut ramps and
 their slopes are priced per metre of road like bridge-over-us ramps, without their earth volume. A shaped
 first drag can still start with a footprint violation when the player's override changes our road's

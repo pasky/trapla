@@ -270,6 +270,10 @@ What exists (details and commands in `README.md`):
   reroutes reused by the strict retry). Details: `docs/footprint-conflicts.md` § Model 22.
 - Not modelled: groundwater and utilities under a lowered road; the pump station's installation and power
   connection (no installed price found).
+- Future improvement: a crossed road meeting ours very obliquely gets a box as long as its skewed path under
+  our embankment (town-centre km 15.98: a 57 m box sticking out of the slope). A designer would square the
+  crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); the
+  engine keeps every crossed road on its own line.
 
 ### Travel-time target X and traffic Y
 
