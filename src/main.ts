@@ -155,7 +155,12 @@ async function main() {
   // after the HUD: it syncs the HUD's exaggeration select
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
-  }, noise);
+  }, noise, () => {
+    // the active route as built (else its ends and bends)
+    const r = last, d = store.read() ? store.design : null;
+    view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
+      : d ? [A, ...d.pis, B] : []);
+  });
 
   let last: Result | null = null;
   let projectFull: ProjectResult | null = null;
@@ -319,7 +324,8 @@ async function main() {
         if (fly) {
           const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y));
           const box = view.renderer.domElement.getBoundingClientRect();
-          const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40;
+          // (from a view low over the horizon the place is far off on it: fly there, looking down)
+          const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40 || view.lowView;
           if (off) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
         }
       }
@@ -1399,6 +1405,7 @@ async function main() {
     bendStations: () => last && bendStations(last, store.design),
     cameraTarget: () => view.target,
     cameraDistance: () => view.cameraDistance,
+    cameraPose: () => view.pose,
     undoLabels: () => ({ undo: store.undoLabel(), redo: store.redoLabel() }),
     selectRange: (s0: number | null, s1?: number) => select(s0 === null || s1 === undefined ? null : { kind: 'stretch', s0, s1 }),
     range: () => (sel?.kind === 'stretch' ? { s0: sel.s0, s1: sel.s1 } : null),
