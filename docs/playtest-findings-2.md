@@ -5,6 +5,74 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 only to frame a camera on A / B and to read state for exact repros. Screenshots under `/tmp/trapla-qa2/` (not
 committed). Newest session on top. Severity: **P0** broken / untruthful, **P1** confusing, **P2** polish.
 
+## Session 3 — main @ 217cfa4, first-time player (2026-11-16)
+
+Fresh localStorage, D11 road preset, SwiftShader. Chunk `s3a` at 1440×900, chunk `s3b` at 1280×720, then the
+same page resized to 1024×700. Areas: intro / help, noise view, house cards with buy out / keep, structure choice
+per piece, profile pins, By hand points, Start over, best Load, small windows. Screenshots under
+`/tmp/trapla-qa2/s3a/` and `s3b/`.
+
+What worked:
+- The intro is three short steps; Help is one screen of plain lines (`s3a/002`).
+- The noise legend says what it shows ("Night noise at the top floors · houses in their own colour"); a kept
+  house gets a notch in the limit line and its own KEEP tag (`s3a/010`).
+- The bought-out house card explains itself ("Loudest from km 15.41: through the gap in the wall where the side
+  road joins. A wall cannot close it.") and has a cross-section. Keep → "House 8.0 dB too loud · Buy out, or cross
+  the side road without a junction"; Auto adds 3 m walls on both sides (`s3a/009`, `010`).
+- Pins: drag the road line in the profile → "Pinned height 517.1 m · road now 516.6 m", with Set / Unpin
+  (`s3a/019`).
+- Start over shows "Back to the starting road. Undo" (`s3a/021`); Load says "Loaded your best design. Undo"
+  (`s3b/012`).
+- At 1280×720 every card fits.
+
+### P1 — confusing
+
+1. **Switching Road height to By hand changes the bill.** README: "By hand starts from the current heights".
+   - D11 straight start with one pin: 10.96 → 10.81 bn (−143 M) on the switch alone (`s3a/020`).
+   - Fresh D11 at 1024 px: 10.01 → 9.98 bn (−29 M), which becomes "★ your best" (`s3b/007`).
+   - Switching back to Auto gives 10.01 bn, "+1.0 M" against the previous Auto state (`s3b/011`).
+   - Expected: no change on the switch. If By hand points are cheaper, Auto is leaving money on the table and the
+     player is rewarded for a mode toggle.
+2. **By hand gives ~70 points, too dense to use.** They overlap, especially at 1024 px (`s3b/007`).
+   - Dragging point 53 by 16 px produces "Two roundings of the road height overlap · Move height point 51 … from
+     height point 52" — about points the player never touched (`s3b/010`).
+   - The card calls the point "Dip 53"; the problem text calls the points "height point 51/52". Two names for one
+     thing.
+   - The Auto pin from before ("pinned 517.1 m") is still drawn in By hand mode, where pins do nothing
+     (`s3a/020`).
+3. **Auto rejects a cheaper bridge because of its own pier placement.**
+   - D11 straight, embankment km 5.09–5.50 (Poříčí halls), card: "Auto: cheaper here than a bridge".
+   - Choosing Bridge makes the project **107 M cheaper** (9.90 bn; fewer demolished halls) but NOT VALID: 9 × "A
+     bridge pier stands on a service road / class I road · Move the route … or make our bridge longer"
+     (`s3a/014`). The bridge card repeats "A bridge pier stands on a service road" twice.
+   - Expected: Auto moves the piers (span lengths) off the roads, which is what designers do, and then picks the
+     cheaper bridge. The "cheaper here" reason is per piece, not for the project.
+   - Embankment card: "up to 10 m high"; bridge card for the same stretch: "up to 36 m high".
+4. **1024 px wide window: the Build button covers the Contours button** (`s3b/003`); the profile legend drops
+   embankment / cut / bridge / tunnel (only "ground, road height" left); the A label sits under the map legend.
+   At 1024×700 the noise legend plus the map legend cover the lower-left third of a 400 px map; a bought-out house at
+   km 15.5 is half under them (`s3b/006`).
+5. **Selecting from "Where the money goes" never moves the map** (S2 #7 still open): at 1280×720 the selected
+   embankment stays a yellow blob at the overview (`s3b/002`).
+
+### P2 — polish
+
+6. Profile pins: 1 px of drag is about 1.5 m at the default profile scale. A 30 px drag pinned the road 44 m higher
+   and added 946 M (a 2 km bridge) (`s3a/019`). No live height readout while dragging the line; the label
+   "pinned 517.1 m" overlaps the line.
+7. Noise view tooltip on a bought-out house says only "House 1 floor · bought out" (no level, no limit), and is
+   ~330 px wide for that text (`s3a/008`).
+8. House plan strip: the house square is drawn on the road band although the house is 18 m from the road
+   (`s3a/010`).
+9. House card "Wall left · Auto" does not say what Auto chose (piece cards say "Auto: 3 m").
+10. The "cross the side road without a junction" fix is text only; no button takes the player to that side road's
+    card.
+11. The noise band is still a stepped box with straight limit lines at km 5.5 and km 3 (S2 #11) (`s3a/004`,
+    `006`); the demolished Poříčí halls are flat red footprints with black squares (S2 #1).
+12. 1280×720: the map is 420 px tall and the profile 300 px, so the A marker of D11 sits under the legend
+    (`s3b/001`).
+13. Help places the Relief 1× / 1.5× / 2× / 3× buttons at the end of the Help text (`s3a/002`).
+
 ## Re-test 2 — motorway-rail @ 0464fb1 (2026-11-16)
 
 Detached snapshot of `side-agent/motorway-rail` 0464fb1 (newer than the asked 931c5dc) with that worktree's
