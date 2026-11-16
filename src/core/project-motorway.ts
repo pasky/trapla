@@ -47,6 +47,10 @@ export function corridorOperations(project: ProjectDesign, corridor: CorridorDes
 
 /** Kernel design of a paired corridor's spine (road widgets edit it through the active-route adapter). */
 export function corridorDesign(project: ProjectDesign, corridor: CorridorDesign): Design {
+  return rawCorridorDesign(project, autoFollowingCorridor(project, corridor));
+}
+
+function rawCorridorDesign(project: ProjectDesign, corridor: CorridorDesign): Design {
   if (corridor.mode !== 'paired') throw new Error('Separate carriageways have their own alignments');
   const forward = project.routes.find(r => r.id === corridor.children.forward);
   if (!forward || forward.kind !== 'motorway') throw new Error('Corridor child missing');
@@ -126,8 +130,9 @@ export type CorridorEvaluation =
  * interchange branches, research/33 §3); any other end needs an interchange nobody has built. */
 export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign, corridorId: string, objectData: string,
   options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> & { only?: string } = {}): CorridorEvaluation {
-  const corridor = project.corridors.find(c => c.id === corridorId);
-  if (!corridor) throw new Error('Unknown corridor');
+  const saved = project.corridors.find(c => c.id === corridorId);
+  if (!saved) throw new Error('Unknown corridor');
+  const corridor = autoFollowingCorridor(project, saved);
   if (!modeCapability('motorway').scoring) return { status: 'incomplete', reason: 'unsupported-mode' };
   const kids = [corridor.children.forward, corridor.children.reverse].map(id => project.routes.find(r => r.id === id)) as MotorwayRoute[];
   const category = corridor.mode === 'paired' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY;
@@ -499,13 +504,51 @@ const directionOf = (corridor: CorridorDesign, routeId: string): Direction => co
 const ownRanges = (corridor: CorridorDesign, dir: Direction) => (corridor.mode === 'paired' ? corridor.stretches ?? [] : []).filter(t => t[dir]).map(t => [t.a, t.b] as const);
 const within = (ranges: readonly (readonly [number, number])[], s0: number, s1 = s0) => ranges.some(([a, b]) => s1 >= a && s0 <= b);
 
+/** An inward pull cannot put opposite traffic on the wrong side. Where only one direction has an
+ * own line, its untouched Auto peer follows as ONE paired body, including heights and structures.
+ * This is a derived corridor, not a saved edit: pulling back out restores the original peer, and Undo
+ * restores both. The widgets read the same derived geometry as the evaluator. Explicit peer lines,
+ * nearby separate stretches and a shared manual profile are never silently overwritten. */
+export function autoFollowingCorridor(project: ProjectDesign, saved: CorridorDesign): CorridorDesign {
+  if (saved.mode !== 'paired' || !saved.stretches?.length || saved.spine.kind !== 'pi' || saved.spine.vertical.kind !== 'auto') return saved;
+  let corridor = saved;
+  const rules = horizontalRules(corridorSpeed(project, saved), MOTORWAY_CATEGORY);
+  const A = saved.endpoints.a.position, B = saved.endpoints.b.position;
+  for (const id of saved.stretches.map(t => t.id)) {
+    if (corridor.spine.kind !== 'pi' || corridor.spine.vertical.kind !== 'auto') break;
+    const stretches = corridor.stretches ?? [], t = stretches.find(t => t.id === id);
+    if (!t || !!t.forward === !!t.reverse) continue;
+    const dir: Direction = t.forward ? 'forward' : 'reverse', own = t[dir]!;
+    const pis = corridor.spine.pis, nextPis = compositePis(pis, [t], dir).pis;
+    const carried = carryStretches(pis, nextPis, stretches.filter(s => s.id !== id));
+    if (carried.dropped) continue; // following must not erase another player-edited stretch
+    const al = buildAlignment(A, B, pis, rules), nextAl = buildAlignment(A, B, nextPis, rules);
+    const p = pair(station(nextAl, 10), station(al, 10));
+    if (!p.d.some(d => dir === 'forward' ? d < -JOIN_RULES.deviation : d > JOIN_RULES.deviation)) continue;
+    const outside = <T extends { s0: number; s1: number }>(xs: T[] | undefined) =>
+      (xs ?? []).filter(x => x.s1 < t.a || x.s0 > t.b);
+    const controls = corridor.spine.controls;
+    const structures = [...outside(controls.structureOverrides), ...own.structureOverrides ?? []];
+    const walls = [...outside(controls.wallOverrides), ...own.wallOverrides ?? []];
+    carried.kept.forEach((s, j) => { if (carried.after[j]) shiftStretch(s, nextAl.length - al.length); });
+    const remaining = locateStretches(A, B, nextPis, carried.kept, rules);
+    corridor = { ...corridor, spine: { ...corridor.spine, pis: nextPis,
+      vertical: { ...corridor.spine.vertical, pins: [...corridor.spine.vertical.pins.filter(p => p.s < t.a || p.s > t.b), ...own.pins].sort((a, b) => a.s - b.s) },
+      controls: { ...controls, ...(controls.structureOverrides || structures.length ? { structureOverrides: structures } : {}),
+        ...(controls.wallOverrides || walls.length ? { wallOverrides: walls } : {}) } }, stretches: remaining };
+  }
+  return corridor;
+}
+
 /** One direction of a paired motorway as the road widgets edit it: the common spine with this direction's
  * own bends in its separate stretches; heights pins and structure / wall choices of the shared body,
  * and its own inside its stretches. Heights are Auto here (By hand is set for both directions). */
 export function directionDesign(project: ProjectDesign, routeId: string): Design {
-  const corridor = corridorOfRoute(project, routeId);
-  if (!corridor || corridor.mode !== 'paired') throw new Error('Not a direction of a paired motorway');
-  const dir = directionOf(corridor, routeId), d = corridorDesign(project, corridor), stretches = corridor.stretches ?? [];
+  const saved = corridorOfRoute(project, routeId);
+  if (!saved || saved.mode !== 'paired') throw new Error('Not a direction of a paired motorway');
+  const corridor = autoFollowingCorridor(project, saved);
+  if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
+  const dir = directionOf(corridor, routeId), d = rawCorridorDesign(project, corridor), stretches = corridor.stretches ?? [];
   const mine = ownRanges(corridor, dir), lines = stretches.flatMap(t => t[dir] ? [t[dir]!] : []);
   return { ...d, pis: compositePis(d.pis, stretches, dir).pis, profileMode: 'auto', vpis: [],
     gradePins: [...(d.profileMode === 'auto' ? d.gradePins ?? [] : []).filter(p => !within(mine, p.s)), ...lines.flatMap(l => l.pins)].sort((p, q) => p.s - q.s),
@@ -521,7 +564,8 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   newId: () => string = () => `stretch:${Math.random().toString(36).slice(2, 10)}`): ProjectDesign {
   const corridor = corridorOfRoute(project, routeId);
   if (!corridor || corridor.mode !== 'paired') throw new Error('Not a direction of a paired motorway');
-  const dir = directionOf(corridor, routeId), shown = directionDesign(project, routeId), spine = corridorDesign(project, corridor);
+  const dir = directionOf(corridor, routeId), shown = directionDesign(project, routeId), spine = rawCorridorDesign(project, corridor);
+  if (JSON.stringify(d) === JSON.stringify(shown)) return structuredClone(project);
   // one design speed for the motorway: a new one changes the shared line (both directions)
   if (d.speed !== shown.speed) return replaceCorridorFromDesign(project, corridor.id, { ...spine, speed: d.speed });
   const rules = horizontalRules(spine.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;

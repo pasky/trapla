@@ -559,7 +559,7 @@ export interface DirectionsState {
   split: boolean;
   active: 'both' | 'forward' | 'reverse';
   places: { forward: string; reverse: string };
-  apart: { id: string; s0: number; s1: number }[];
+  apart: { id: string; s0: number; s1: number; following?: boolean }[];
 }
 /** Fills a box holding #dir-both / #dir-forward / #dir-reverse, #dir-explain and #dir-apart (by class or id). */
 export function fillDirections(box: HTMLElement, state: DirectionsState, ev: { onDirection: (w: 'both' | 'forward' | 'reverse') => void; onJoin: (id: string) => void }) {
@@ -580,8 +580,11 @@ export function fillDirections(box: HTMLElement, state: DirectionsState, ev: { o
   for (const t of state.apart) {
     const row = document.createElement('div'); row.className = 'apart-row';
     const [a, b] = shownRange(t.s0, t.s1);
-    const where = document.createElement('span'); where.textContent = DIRECTIONS_TEXT.stretch((a / 1000).toFixed(1), (b / 1000).toFixed(1));
-    const join = document.createElement('button'); join.type = 'button'; join.textContent = DIRECTIONS_TEXT.joinHere; join.title = DIRECTIONS_TEXT.joinTitle;
+    const where = document.createElement('span'); where.textContent = DIRECTIONS_TEXT.stretch((a / 1000).toFixed(1), (b / 1000).toFixed(1))
+      + (t.following ? ` · ${DIRECTIONS_TEXT.following}` : '');
+    const join = document.createElement('button'); join.type = 'button';
+    join.textContent = t.following ? DIRECTIONS_TEXT.resetFollow : DIRECTIONS_TEXT.joinHere;
+    join.title = t.following ? DIRECTIONS_TEXT.resetFollowTitle : DIRECTIONS_TEXT.joinTitle;
     join.onclick = () => ev.onJoin(t.id);
     row.append(where, join); apart.append(row);
   }

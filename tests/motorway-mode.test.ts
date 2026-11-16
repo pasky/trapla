@@ -179,6 +179,40 @@ describe('one direction on its own (separate stretches)', () => {
     expect(joined).toEqual(snapshot.design);
     expect(evaluateProject(ctx, { ...snapshot, revision: 3, design: joined }).cost.total).toBe(paired.cost.total);
   });
+  it.each(['forward', 'reverse'] as const)('Auto follows an inward %s pull as one body, without changing the saved peer', dir => {
+    const { ctx, snapshot, f, r } = bent();
+    const id = dir === 'forward' ? f.id : r.id, peer = dir === 'forward' ? r.id : f.id;
+    const shown = legacyDesignForRoute(snapshot.design, id, { oneDirection: true });
+    const change = (y: number) => ({ ...shown, pis: [shown.pis[0], { x: 1200, y, r: null }, shown.pis[1]] });
+    const inward = change(dir === 'forward' ? 290 : 210);
+    const edited = replaceRouteFromLegacy(snapshot.design, id, inward, { oneDirection: true });
+    assertProjectDesign(edited);
+    const c = edited.corridors[0];
+    if (c.mode !== 'paired') throw new Error('paired corridor');
+    expect(c.spine).toEqual(snapshot.design.corridors[0].mode === 'paired' ? snapshot.design.corridors[0].spine : null);
+    expect(c.stretches![0][dir === 'forward' ? 'reverse' : 'forward']).toBeUndefined();
+    // All editors and the evaluator see the same paired line; one evaluation, not two adjacent halves.
+    expect(legacyDesignForRoute(edited, peer, { oneDirection: true }).pis).toEqual(inward.pis);
+    expect(legacyDesignForRoute(edited, peer).pis).toEqual(inward.pis);
+    expect(replaceRouteFromLegacy(edited, peer, legacyDesignForRoute(edited, peer, { oneDirection: true }), { oneDirection: true })).toEqual(edited);
+    const result = evaluateProject(ctx, { ...snapshot, revision: 2, design: edited });
+    const both = replaceRouteFromLegacy(snapshot.design, id, inward);
+    expect(result.routes[f.id].legacy).toBe(result.routes[r.id].legacy);
+    expect(result.cost.total).toBe(evaluateProject(ctx, { ...snapshot, revision: 3, design: both }).cost.total);
+    expect(result.issues).toEqual([]);
+    // The drag can return outward: Auto follows anew, not a permanent move of the untouched peer.
+    const back = replaceRouteFromLegacy(edited, id, change(dir === 'forward' ? 210 : 290), { oneDirection: true });
+    expect(legacyDesignForRoute(back, peer, { oneDirection: true }).pis).toEqual(shown.pis);
+    expect(rejoinStretch(edited, c.id, c.stretches![0].id)).toEqual(snapshot.design);
+    // Explicitly editing the peer keeps both choices, even if the directions now conflict.
+    const peerEdit = legacyDesignForRoute(edited, peer, { oneDirection: true });
+    const explicit = replaceRouteFromLegacy(edited, peer, { ...peerEdit,
+      pis: [peerEdit.pis[0], { ...peerEdit.pis[1], y: 250 }, peerEdit.pis[2]] }, { oneDirection: true });
+    expect(legacyDesignForRoute(explicit, id, { oneDirection: true }).pis).toEqual(inward.pis);
+    expect(legacyDesignForRoute(explicit, peer, { oneDirection: true }).pis[1].y).toBe(250);
+    const separate = evaluateProject(ctx, { ...snapshot, revision: 4, design: explicit });
+    expect(separate.routes[f.id].legacy).not.toBe(separate.routes[r.id].legacy);
+  });
   it('takes edits at the route ends and says when a pin asks one direction to leave the shared height', () => {
     const { ctx, snapshot, r } = bent();
     const shown = legacyDesignForRoute(snapshot.design, r.id, { oneDirection: true });

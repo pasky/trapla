@@ -90,6 +90,37 @@ try {
   console.log('joined', JSON.stringify(joined));
   if (joined.total !== start.total) throw new Error('joining did not restore the paired price');
   await shot('joined');
+
+  // QA f9: D3 0302, pull the southbound direction east by 40 px at km 3. The old peer
+  // was left in place: opposite traffic crossed twice and ran on the wrong side in between.
+  await page.goto('http://localhost:5297/?scenario=d3-0302');
+  await page.waitForFunction(() => !!window.trapla, null, { timeout: 180_000 });
+  await settle();
+  await page.evaluate(() => window.trapla.whenTransport());
+  const beforeInward = await state();
+  await page.locator('.motorway-head [data-dir="forward"]').click();
+  const inwardStart = await page.evaluate(() => window.trapla.routeScreen(window.trapla.activeRoute(), 3000));
+  await page.mouse.move(inwardStart.sx, inwardStart.sy); await page.mouse.down();
+  for (let j = 1; j <= 10; j++) { await page.mouse.move(inwardStart.sx + 4 * j, inwardStart.sy); await page.waitForTimeout(60); }
+  await page.mouse.up(); await settle();
+  const inward = await page.evaluate(() => {
+    const p = window.trapla.projectResult(), d = window.trapla.getProject(), c = d.corridors[0];
+    const f = p.routes[c.children.forward], r = p.routes[c.children.reverse];
+    return { valid: p.valid, issues: p.issues.map(i => i.violation.title),
+      oneBody: f.legacy === r.legacy, drawn: f.drawn?.length ?? 0,
+      savedPeer: c.stretches?.some(t => !!t.reverse), pis: window.trapla.getDesign().pis };
+  });
+  console.log('inward', JSON.stringify(inward));
+  if (!inward.valid || inward.issues.length || !inward.oneBody || inward.drawn || inward.savedPeer)
+    throw new Error('inward drag must follow as one valid paired body, not crossing carriageways');
+  await page.keyboard.press('Escape'); await settle();
+  if (!(await page.locator('.motorway-head').textContent()).includes('Both follow this bend')) throw new Error('Auto follow is not explained');
+  await shot('inward-auto-follow');
+  await page.locator('.motorway-head [data-dir="reverse"]').click();
+  const peerPis = await page.evaluate(() => window.trapla.getDesign().pis);
+  if (JSON.stringify(peerPis) !== JSON.stringify(inward.pis)) throw new Error('peer widgets do not follow the drawn paired body');
+  await page.locator('.motorway-head .apart-row button').click(); await settle();
+  if ((await state()).total !== beforeInward.total) throw new Error('reset did not restore the original paired price');
   if (errors.length) throw new Error(errors.join('\n'));
 } finally {
   if (browser) await browser.close();
