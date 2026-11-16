@@ -211,7 +211,7 @@ Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scena
 [the aerial photo showing the real bypass under construction](docs/screenshots/78-nova-paka-photo.png).
 See `docs/new-scenario.md`.
 
-### Motorway (cost model 20)
+### Motorway (cost model 22)
 
 Two motorway places on the start screen ([picker](docs/screenshots/130-motorway-picker.png)): both directions
 are designed together as one D 27.5 corridor ([D3 overview](docs/screenshots/131-motorway-overview.png)),
@@ -224,28 +224,34 @@ on a straight before the change to one after it ([one direction through its own 
 elsewhere both stay one road body with one bill. Inside, each direction keeps the shared heights while the two
 run side by side and gets Auto heights where they are apart. The card lists where the directions run apart,
 each with "Join". On a motorway designed for 130 km/h the Motorway card offers "Speed limit:
-150 km/h (pilot)", like the ministry's D3 pilot (research/41): cars' travel time at 150, their noise at +20 km/h
+150 km/h (pilot)", like the ministry's D3 pilot (research/41): cars' travel time at 150 for the 39 % of the time
+the D3 signs showed it (130 otherwise), their noise at +20 km/h
 (an extrapolation, marked PROVISIONAL), the variable signs priced (about 1.2 M CZK per km, ŘSD's D3 contract);
-curves and slopes stay those of 130. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130` (its
+curves and slopes stay those of 130. Its noise comes from two directional sources, half the traffic each on the
+lane axes 6 m either side of the middle (a direction on its own: its own line and the other one's). The direction
+towards A reads from its own start: its profile, kilometres and bend numbers count from B. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130` (its
 one-direction shot is 135); `node scripts/stretch-play.mjs --gpu` plays choose, drag, join.
 
-### Railway (cost model 21)
+### Railway (cost model 22)
 
 "Railway: Trutnov → Královec" starts and ends on the rail network: at Trutnov hlavní nádraží and at Královec,
 the last station before the Polish border, on today's single-track, non-electrified line (passenger trains
 run on to Lubawka; 26 min with four stops in the 2022 timetable). No upgrade of it has been announced
 (research/38): the card says it is a game proposal. A single-track electric line at up to 120 km/h, slopes
-≤ 12.5 ‰ (‰ in the profile), no level crossings, CNOSSOS train noise. The new line joins the old track in both
-stations and rebuilds it where it runs along it; elsewhere the old line stays. The first railway card (between
+≤ 12.5 ‰ (‰ in the profile), no level crossings, CNOSSOS train noise from each track. The new line joins the old
+track in both stations, leaving it at no more than a turnout's angle (4.8°, research/38 §5), and rebuilds it
+where it runs along it; elsewhere the old line stays. The starter leaves Trutnov hl.n. north-west along the
+station tracks into a tunnel under the hill (VALID, 10.2 bn CZK). The first railway card (between
 the motorway's ends) is retired; its saves still load (`?scenario=d11&preset=d11-railway`).
-[Overview](docs/screenshots/136-railway-overview.png), [out of Trutnov in a cut to the first tunnel](docs/screenshots/137-railway-trutnov.png),
-[the viaduct over Poříčí](docs/screenshots/138-railway-bridge.png), [joining the old line at Královec](docs/screenshots/139-railway-kralovec.png)
+[Overview](docs/screenshots/136-railway-overview.png), [out of Trutnov along the station tracks](docs/screenshots/137-railway-trutnov.png),
+[the viaduct over the old line's valley](docs/screenshots/138-railway-bridge.png), [joining the old line at Královec](docs/screenshots/139-railway-kralovec.png)
 (`node scripts/railway-shots.mjs --docs 136`; played end to end with `node scripts/mode-play.mjs --gpu`).
 
 Build → Motorway makes both directions of a D 27.5 between two points of open ground (shown, not priced: the
 game has no interchanges). Build → Railway ends on a mapped railway or open ground. A mapped railway can be
-rebuilt by dragging it like a road: the dragged stretch becomes an editable single-track railway that takes
-up its old track (taking it up is not priced yet).
+rebuilt by dragging it like a road (no need to select it first): the dragged stretch becomes an editable
+single-track railway at the old line's own speed (its mapped limit) and steepness that takes up its old track
+(taking it up is not priced yet).
 
 ### Editing any road
 

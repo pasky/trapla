@@ -165,8 +165,10 @@ road width. Increments, each committed green:
   sag UNVERIFIED). No level junctions (`resolveCrossings(..., gradeSeparated)`): crossed roads get a bridge,
   an overbridge, an underpass or a reroute to such a crossing, never to the motorway's ends.
 - Noise: Manuál 2018 v2020 motorway rows (LOA/LNA, tab. 7 night shares, tab. 9/15 lane shares and speeds),
-  `road-noise.ts` `MOTORWAY_NOISE`. One equivalent source per corridor (≈ two carriageways for receivers
-  beyond 20 m); two directional sources are requested from the finite-segment noise rework.
+  `road-noise.ts` `MOTORWAY_NOISE`, on the finite-segment model (cost model 22): two directional sources,
+  half the traffic each on the lane-pair axes ±6.0 m (`AcousticSource.lanes`, evaluate.ts `motorwayLanes`;
+  screening from the axis source, Manuál §1.11 a). 150 km/h pilot: cars' travel time at 150 for the 39 % of
+  the time the D3 signs showed it (research/41), 130 otherwise; noise counts 150 always (upper bound).
 - Ends are the mission's scenario ports (motorway continues off-map; SPK's norm includes earth-built
   interchange branches at 1 per 7 km). Other connections stay unpriced.
 - Presets `d3-motorway` (D 27.5/120, research/25) and `d35-stage1-motorway` (built as D 27.5; the real
@@ -200,7 +202,8 @@ The profile: with both directions edited together it shows each direction's own 
 back, left/right and grades turned in texts, bends numbered from its own start on the map, the profile, the
 cards and in problem texts: `ui/chainage.ts`).
 Known limits: E0 reroutes aimed at a crossing inside a stretch are not re-aimed; the noise band of the shared
-line is shown while both directions are edited; the shared body's mass haul is split by cell.
+line is shown while both directions are edited; the shared body's mass haul is split by cell; inside a
+stretch the other carriageway is screened as if by the direction's own cut edges and walls (axis convention).
 
 **Split / rejoin (old saves).** HUD "Both directions / Towards A / Towards B". Split = one undoable edit:
 each direction gets the exact offset bends (radii R ± 6.875 m, never below its own Auto radius) and the
@@ -211,9 +214,11 @@ D 27.5 body (50 % norm each), overlapping embankment/cutting volumes, land and h
 direction standing on (or undermining) the other carriageway is a violation with a concrete distance.
 Crossed roads where the directions run joined are built once: the forward direction prices and draws
 one structure spanning both bodies (the other mirrored), the reverse direction reuses it at no cost.
-Noise per direction uses the whole corridor's traffic (safe upper bound, ≤ +3 dB where only one direction
-is near); houses beside joined stretches belong to the outer direction, and where "joined" in plan is not
-one body at one height the ledger reports noise as not checked. Join = explicit reset to the kept shared
+Noise per direction (also in separate stretches): its own lane axis and the other direction's carriageway
+line, half the corridor's traffic each (no upper bound); houses beside joined stretches are the outer
+direction's to decide (the median side is that direction's check), and where "joined" in plan is not one
+body at one height the ledger reports noise as not checked. A stitched result's noise source is the spine's
+cells outside and each piece's inside (`result-stitch.ts stitchSource`). Join = explicit reset to the kept shared
 line (Undo restores the separate edits). Unchanged, a split prices like the pair on open ground (+0.06 %
 in the test) and ≈ 3 % above it on D3 (structure choices differ per direction near bridge ends and
 tunnel portals; reroutes of roads crossed several times). C0's `exact`/frozen helpers stay for materialised
@@ -227,7 +232,12 @@ PROVISIONAL), SPOŽES 2026 items (track, layers, ditches, catenary, signalling, 
 utilities; H02 bridges, J01/J03 tunnels) with SPOŽES P1 markups (research/32). No level crossings (game
 rule). Train noise: CNOSSOS-EU rolling + traction source from the Annex II Appendix G tables, line
 propagation over hard ground, new-line limits 60/55 dB (research/35); compositions and train counts are
-explicit PROVISIONAL game priors. Rendering: ballast beds, sleepers and rails for one or two tracks.
+explicit PROVISIONAL game priors; on the finite-segment model a single track on its axis, a double track
+on its two tracks (±2.0 m, half the trains each). Ends on a track (a mission station: its tracks' axis on
+the map; a mapped line a new one branches off) leave it at no more than a turnout's angle, 4.76°
+(J60-1:12-500, research/38 §5). A rebuilt stretch of a mapped line keeps its line's own speed (OSM
+maxspeed; 100 / 80 / 60 km/h rows, Rmin 190 m) and may be as steep as its old line there
+(`RailwaySpec.maxGradient`, a game rule). Rendering: ballast beds, sleepers and rails for one or two tracks.
 New railways join the project through the generic Build / drag-to-rebuild flow (any-road-editing).
 
 ## M1 continuation notes (handoff, 2026-11-15 22:20)
@@ -257,11 +267,24 @@ Then (2026-11-16, playtest session 1): separate stretches replace the whole-rout
 "One direction on its own" above); `scripts/stretch-play.mjs` / `stretch-check.ts` play and check it;
 screenshot 135; source picking in 20 m pieces; crossing words name our railway / motorway.
 
-Pending:
-1. **Noise contract** (noise-walls-seams; its model number follows our 21): move motorway (two directional sources, half
-   traffic each on lane axes ±6.0 m; `MOTORWAY_NOISE` emission) and railway (`rail-noise.ts`
-   `railLinePower` per period, CNOSSOS source) onto its per-source per-storey day/night energy model;
-   then drop the split "full traffic per direction" bound and the `leftJoined` shield in evaluate.ts.
+Then (2026-11-16, playtest re-test 2, cost model 22 after merging main 93f849d): mirrored bend numbers
+from the shown direction's start; an unselected mapped railway is dragged directly; railway ends held to a
+turnout's angle and the Královec starter re-fitted (leaves Trutnov hl.n. north-west along its tracks into a
+tunnel, VALID 10.2 bn); rebuilt stretches at their line's own speed and grade; railway words in the bill
+tooltips, intro, Build card and slope / Auto-height problems; one unpriced change per motorway; profile end
+letters A / B for motorways; 150 pilot travel time from its sourced share; motorway noise as two
+directional sources, railway noise per track (above). `scripts/rail-rebuild-check.ts` rebuilds a D3 railway
+stretch in Node.
+
+Pending / limits found (2026-11-16):
+1. A rebuilt railway stretch is evaluated as new everywhere: in a narrow valley the old line's own neighbours
+   (river, roads, tracks) become conflicts, and a short drag can leave long-span bridges Auto cannot lift
+   (the line is grade-bound to its fixed ends). any-road's "kept old road" model (project-kept.ts, not yet
+   in main) should apply to railways too: kept cells = the old track, no norm, nothing billed.
+2. Rubber-band line while placing and crossings between project lines of different kinds come with
+   any-road-editing's build tool and crossing engine (not in main yet): extend to motorway / railway there.
+3. "A long bridge span is too low" can remain where the profile is at its steepest grade between fixed ends
+   (railways: 12.5 ‰); the lift then reaches the ends and gives up.
 
 Key code map: `core/project-motorway.ts` (corridor eval, split/rejoin, `splitLedger`, shared crossings via
 `EvalOptions.sharedCrossings`), `core/project-railway.ts`, `core/rail-noise.ts` + `data/cnossos-rail.ts`,
@@ -269,11 +292,6 @@ Key code map: `core/project-motorway.ts` (corridor eval, split/rejoin, `splitLed
 `tunnelPerKm`), `data/norms.ts` (category-aware), `data/railway.ts` (SPOŽES), `road-noise.ts`
 (`MOTORWAY_NOISE`), `crossings.ts` (`gradeSeparated`), `ui/hud.ts` direction switch, `ui/active-route-store.ts`
 (paired edited as forward), `data/scenario.ts` presets `d3-motorway` / `d35-stage1-motorway`.
-Open (2026-11-16): a railway end in a station is not held to the station tracks' direction: the
-Královec starter leaves Trutnov hl.n. at ≈ 80° to its tracks (Královec end ≈ 20°), where a turnout allows
-4.8° (J60-1:12-500). A check exists on branch `wip/rail-station-tangent` (`stationViolations`, station axis
-from the rail raster); with it, a starter along the tracks costs ≈ 12.2 bn and still fails (a 120 km/h
-radius cannot follow the old line's curve through the town: station-throat speed is not modelled).
 Known limits: motorway sag 130 km/h UNVERIFIED; no interchanges (ends = ports); crossings near but not
 joined between split directions are separate structures; rail bridge deck width = formation (PROVISIONAL);
 rail traffic counts and compositions are game priors.
