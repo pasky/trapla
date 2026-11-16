@@ -185,3 +185,20 @@ export function roadRemedySource(plan: Pick<RoadRealignmentPlan, 'roadCode' | 'c
   if (plan.closed) return undefined;
   return `SPK 2026 price per km of ${/P4/.test(plan.roadCode) ? 'paved track' : /S\d/.test(plan.roadCode) ? 'class I–III road' : 'local road'}${plan.retainingArea ? '; retaining walls per research/18' : ''}${plan.lumpCost ? `; ${(plan.lumpCost / 1e6).toFixed(1)} M CZK for access junctions (provisional estimate, research/13)` : ''}`;
 }
+
+/** What a mission end meets (scenario data), for the card shown when the end is clicked. */
+export interface EndConnection {
+  /** 'interchange': an interchange with a road, its ramps not built here; 'joins': the motorway carries on
+   * as an open road here */
+  kind: 'interchange' | 'joins';
+  /** the road(s) met, in player words: 'road I/18', 'the D0 and road II/101', 'the open D3' */
+  with: string;
+  /** a section end: the section the motorway goes on as (at B) or comes from (at A) */
+  section?: string;
+}
+/** The end's card: a title and short lines, plain words. */
+export function endCard(info: EndConnection, end: 'a' | 'b'): { title: string; lines: string[] } {
+  if (info.kind === 'joins') return { title: `Joins ${info.with}`, lines: [`Our motorway carries on as ${info.with} here; that road is not part of this job.`] };
+  return { title: `Interchange with ${info.with}`, lines: ['Its ramps are not part of this job.',
+    ...(info.section ? [end === 'b' ? `The motorway goes on as ${info.section}.` : `The motorway comes from ${info.section}.`] : [])] };
+}

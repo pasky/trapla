@@ -7,14 +7,14 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, footprintOutcome, jargonIn } from '../src/core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, footprintOutcome, jargonIn } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate, type Design, type Result } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
 import { ROW_HELP } from '../src/ui/hud';
 import { footprintConflictText, footprintConflictTitle } from '../src/ui/footprint';
-import { D11_SCENARIO } from '../src/core/data/scenario';
+import { D11_SCENARIO, PRESETS } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
 import { startDesign } from '../src/state';
 import { regressionContext, regressionPackAvailable } from '../scripts/eval-regression';
@@ -61,6 +61,16 @@ describe('player-facing text', () => {
     expect(CROSSING_CHOICE_TEXT.map(([v]) => v).filter(Boolean).sort()).toEqual([...CROSSING_CHOICES].sort());
     for (const [, label, title] of CROSSING_CHOICE_TEXT) { check('choice label', label); check('choice tooltip', title); }
     for (const g of COST_GROUPS) check('bill line', g.label);
+    // the cards of the mission ends (interchanges, roads joined): every mission's, both ends
+    let ends = 0;
+    for (const sc of PRESETS) for (const end of ['a', 'b'] as const) {
+      const info = sc.ends?.[end];
+      if (!info) continue;
+      ends++;
+      const card = endCard(info, end);
+      for (const text of [card.title, ...card.lines]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
+    }
+    expect(ends).toBeGreaterThan(8);
     const terrain = syntheticTerrain(500, 80, 5, () => 400);
     const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } }, startDesign());
     for (const [key, help] of Object.entries(ROW_HELP)) check(`bill tooltip ${key}`, help(r.cost, D11_SCENARIO), false);

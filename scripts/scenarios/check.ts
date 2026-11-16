@@ -41,10 +41,13 @@ if (process.argv.includes('--seed')) {
   const off = [meta.A.xy, ...all.slice(Math.min(ia, ib) + 1, Math.max(ia, ib))].concat([meta.B.xy]) as [number, number][];
   if (off.length < 2) throw new Error('No mapped reference: do not invent an official fixture.');
   const reference: Design = { ...initial, pis: [] };
+  // A bend every ~1.5 km of the mapped line, none within 750 m of B (no room for its curve before the end).
+  const toB = new Array(off.length).fill(0);
+  for (let i = off.length - 2; i >= 0; i--) toB[i] = toB[i + 1] + Math.hypot(off[i + 1][0] - off[i][0], off[i + 1][1] - off[i][1]);
   let distance = 0;
   for (let i = 1; i < off.length - 1; i++) {
     distance += Math.hypot(off[i][0] - off[i - 1][0], off[i][1] - off[i - 1][1]);
-    if (distance >= 1500) { reference.pis.push({ x: off[i][0], y: off[i][1], r: null }); distance = 0; }
+    if (distance >= 1500 && toB[i] >= 750) { reference.pis.push({ x: off[i][0], y: off[i][1], r: null }); distance = 0; }
   }
   writeFileSync(`${fixtureDir}/reference.json`, JSON.stringify({ scenario: meta.id,
     purpose: `${scenario.mode === 'motorway' ? 'Motorway' : 'Road exercise'} near the mapped reference, not the official motorway design or surveyed profile`, design: reference }, null, 2));

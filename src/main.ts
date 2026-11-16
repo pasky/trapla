@@ -153,6 +153,17 @@ async function main() {
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
   const intro = new Intro(document.getElementById('view')!);
+  // The start view frames A and B in what the toolbar, legend and attribution leave, clear of the intro.
+  view.frameSafe = () => {
+    const host = document.getElementById('view')!.getBoundingClientRect();
+    const box = (id: string) => { const el = document.getElementById(id); const r = el && !el.hidden ? el.getBoundingClientRect() : null;
+      return r && r.width && r.height ? { left: r.left - host.left, top: r.top - host.top, right: r.right - host.left, bottom: r.bottom - host.top } : null; };
+    const bars = [box('editbar'), box('viewbar'), box('brand')].filter(b => b !== null);
+    const lows = [box('legend'), box('attrib')].filter(b => b !== null);
+    return { left: 0, right: host.width, top: Math.max(0, ...bars.map(b => b.bottom)), bottom: Math.min(host.height, ...lows.map(b => b.top)),
+      avoid: [box('intro')].filter(b => b !== null) };
+  };
+  view.resetCamera();
   const decisions = new DecisionList(hud.decisions, (n) => { document.getElementById('decisions-count')!.textContent = n ? String(n) : ''; });
   decisions.objectDataChanged = store.objectDataChanged;
   const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0), pack.overlays.buildings[j]); };
@@ -181,7 +192,13 @@ async function main() {
     const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: active === mission ? 'Our road only' : 'This road only' }
       : active && active in alone ? { total: alone[active], approx: false, label: active === mission ? 'Our road only' : 'This road only' }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only' } : null;
-    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own,
+    // While a road is dragged the project total follows its live price: the last full total with this road's
+    // own bill replaced by the preview's (≈).
+    const total = projectFull?.cost.total;
+    const live = activePreviewPrice !== null && total !== null && total !== undefined && active && active in alone
+      ? total - alone[active] + activePreviewPrice : null;
+    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own, liveTotal: live,
+      dragging: activePreviewPrice !== null,
       activeRouteId: active ?? undefined, names: Object.fromEntries(projectStore.snapshot.design.routes.map(r => [r.id, r.name])),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
@@ -260,9 +277,11 @@ async function main() {
   };
   // the motorway's return direction starts at B
   const reversed = () => !!store.route && projectStore.snapshot.design.corridors.some(c => c.children.reverse === store.route!.id);
+  /** what the active road's ends meet (the mission's interchanges), in its own direction */
+  const endInfo = (end: 'a' | 'b') => store.route?.role === 'mission' ? scenario.ends?.[reversed() ? (end === 'a' ? 'b' : 'a') : end] : undefined;
   const activeEndpoints = () => ({
-    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start' },
-    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End' },
+    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start', interchange: !!endInfo('a') },
+    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', interchange: !!endInfo('b') },
     plain: !!store.route && store.route.role !== 'mission',
   });
   const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);
@@ -289,8 +308,10 @@ async function main() {
         const s = stationNear(b[0], b[1]);
         return { x: b[0], y: b[1], s0: s, s1: s };
       }
+      case 'end': { const i = t.end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], s0: r.s[i], s1: r.s[i] }; }
     }
   };
+  view.onEndClick = (end) => select({ kind: 'end', end });
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   let selectGeneration = 0; // a deferred base-road pick yields to any later selection
   const select = (next: Sel | null, fly = false) => {
@@ -675,6 +696,8 @@ async function main() {
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
+    const ends = activeEndpoints();
+    inspector.ends = { a: endInfo('a'), b: endInfo('b'), names: { a: ends.a.label, b: ends.b.label } };
     inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
   };
 

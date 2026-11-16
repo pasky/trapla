@@ -68,9 +68,12 @@ const LEGACY_ROUTE = 'legacy';
  * demolished one's far-zoom marker */
 export const BOUGHT_COLOR = 0xc43c9b, DEMOLISHED_COLOR = 0x3d434b;
 export interface StagedRoute extends Staged { context: RouteSurfaceContext }
+/** a small interchange symbol (two roads crossing with loop ramps) for an end's marker */
+const INTERCHANGE_SIGN = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 1v14M1 8h14" stroke="#1d232a" stroke-width="2.2"/>'
+  + '<path d="M8 5a3 3 0 1 1 3 3M8 11a3 3 0 1 1-3-3" fill="none" stroke="#1d232a" stroke-width="1.4"/></svg>';
 export interface RenderEndpoints {
-  a: { x: number; y: number; z?: number; label?: string };
-  b: { x: number; y: number; z?: number; label?: string };
+  a: { x: number; y: number; z?: number; label?: string; interchange?: boolean };
+  b: { x: number; y: number; z?: number; label?: string; interchange?: boolean };
   /** another road's ends (not the scenario's A / B): plain end markers without the A / B discs */
   plain?: boolean;
 }
@@ -550,7 +553,16 @@ export class View {
 
   private buildOfficial() {
     const pts: number[] = [];
-    const xy = this.pack.meta.official.xy;
+    // The mapped line's vertices can be hundreds of metres apart: draped only there, a straight piece
+    // would run through the hills in between (and vanish under them). Draped every ≤ 25 m.
+    const raw = this.pack.meta.official.xy as [number, number][], xy: [number, number][] = [];
+    for (let i = 0; i < raw.length; i++) {
+      if (i > 0) {
+        const [x0, y0] = raw[i - 1], [x1, y1] = raw[i], m = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 25);
+        for (let k = 1; k < m; k++) xy.push([x0 + (x1 - x0) * k / m, y0 + (y1 - y0) * k / m]);
+      }
+      xy.push(raw[i]);
+    }
     let along = Infinity;
     for (let i = 0; i < xy.length; i++) {
       const [x, y] = xy[i];
@@ -607,7 +619,12 @@ export class View {
     for (const letter of ['A', 'B']) {
       const el = document.createElement('div'); el.className = 'endpoint';
       const badge = document.createElement('b'); badge.textContent = letter;
-      el.append(badge, document.createElement('span')); this.overlay.appendChild(el);
+      // an end at an interchange (or joining a road): a symbol by its name; the marker opens its card
+      const sign = document.createElement('i'); sign.className = 'interchange-sign';
+      sign.innerHTML = INTERCHANGE_SIGN;
+      el.append(badge, sign, document.createElement('span')); this.overlay.appendChild(el);
+      el.addEventListener('pointerdown', (e) => { if (el.classList.contains('info')) e.stopPropagation(); });
+      el.addEventListener('click', () => { if (el.classList.contains('info')) this.onEndClick?.(letter === 'A' ? 'a' : 'b'); });
       this.endpointMarkers.push({ el, x: 0, y: 0, z: 0 });
     }
     this.setEndpoints(this.endpoints);
@@ -619,6 +636,9 @@ export class View {
     }
   }
 
+  /** a click on an end that has a card (see RenderEndpoints.interchange) */
+  onEndClick?: (end: 'a' | 'b') => void;
+
   // ---- route ---------------------------------------------------------------------------------
   setEndpoints(endpoints: RenderEndpoints) {
     this.endpoints = endpoints;
@@ -628,6 +648,7 @@ export class View {
       marker.x = point.x; marker.y = point.y; marker.z = point.z ?? this.terrain.heightAt(point.x, point.y);
       marker.el.querySelector('span')!.textContent = point.label ?? '';
       marker.el.classList.toggle('plain', !!endpoints.plain);
+      marker.el.classList.toggle('info', !!point.interchange && !endpoints.plain);
     }
     this.dirty = true;
   }
@@ -1266,15 +1287,43 @@ export class View {
   }
 
   // ---- camera --------------------------------------------------------------------------------
+  /** Free part of the view for framing (px inside the container): what the toolbar, legend and
+   * attribution leave, and boxes to keep clear of (the intro card). Set by the app. */
+  frameSafe: (() => { left: number; top: number; right: number; bottom: number; avoid: readonly { left: number; top: number; right: number; bottom: number }[] }) | null = null;
+
+  /** The start view: A and B both on screen, clear of the panels, as close as that allows, looking from the
+   * usual direction (from the south, north up). */
   resetCamera() {
-    const A = this.pack.meta.A.xy, B = this.pack.meta.B.xy;
-    const mx = A[0] + (B[0] - A[0]) * 0.45, my = A[1] + (B[1] - A[1]) * 0.45;
-    const t = this.local(mx, my, 500);
-    this.controls.target.copy(t);
-    // Framed for D11's 18.6 km between its ends; shorter missions come closer (longer ones keep this view:
-    // their whole length at once costs the GPU more than a frame).
-    const f = Math.max(0.35, Math.min(1, Math.hypot(B[0] - A[0], B[1] - A[1]) / 18586.07));
-    this.camera.position.set(t.x + 2500 * f, t.y + 17500 * f, t.z + 14000 * f);
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    if (w && h && Math.abs(this.camera.aspect - w / h) > 1e-6) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+    const A = this.pack.meta.A.xy as [number, number], B = this.pack.meta.B.xy as [number, number];
+    const zA = this.terrain.heightAt(A[0], A[1]), zB = this.terrain.heightAt(B[0], B[1]);
+    const a = this.local(A[0], A[1], zA * this.exag), b = this.local(B[0], B[1], zB * this.exag);
+    const target = a.clone().add(b).multiplyScalar(0.5);
+    const safe = this.frameSafe?.() ?? { left: 0, top: 0, right: w, bottom: h, avoid: [] };
+    const margin = 36;
+    // the usual direction: camera south-south-east of the target, ≈ 51° up
+    const usual = new THREE.Vector3(2500, 17500, 14000).normalize();
+    const fits = (dir: THREE.Vector3, d: number) => {
+      this.camera.position.copy(target).addScaledVector(dir, d);
+      this.camera.lookAt(target); this.camera.updateMatrixWorld();
+      return [a, b].every(p => {
+        const v = p.clone().project(this.camera);
+        if (!(v.z > -1 && v.z < 1)) return false;
+        const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
+        return sx >= safe.left + margin && sx <= safe.right - margin && sy >= safe.top + margin && sy <= safe.bottom - margin
+          && safe.avoid.every(r => sx < r.left - margin || sx > r.right + margin || sy < r.top - margin || sy > r.bottom + margin);
+      });
+    };
+    let d = 22600;
+    if (w && h && fits(usual, this.controls.maxDistance)) {
+      let lo = 300, hi = this.controls.maxDistance;
+      for (let it = 0; it < 30 && hi - lo > 10; it++) { const mid = (lo + hi) / 2; if (fits(usual, mid)) hi = mid; else lo = mid; }
+      d = hi;
+    }
+    const dir = usual;
+    this.controls.target.copy(target);
+    this.camera.position.copy(target).addScaledVector(dir, Math.max(this.controls.minDistance, d));
     this.controls.update();
     this.dirty = true;
   }

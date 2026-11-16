@@ -89,6 +89,11 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 .endpoint { pointer-events: none; transform-origin: 0 0; }
 .endpoint b { position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; background: #1d232a; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; border: 2px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,0.5); }
 .endpoint span { position: absolute; left: 18px; top: -9px; white-space: nowrap; font-weight: 600; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+.endpoint .interchange-sign { display: none; }
+.endpoint.info { pointer-events: auto; cursor: pointer; }
+.endpoint.info .interchange-sign { display: flex; position: absolute; left: 18px; top: -10px; width: 20px; height: 20px; border-radius: 4px; background: #fff; box-shadow: 0 0 0 1px rgba(29,35,42,0.45); align-items: center; justify-content: center; }
+.endpoint.info span { left: 42px; }
+.endpoint.info:hover span { text-decoration: underline; }
 .place { white-space: nowrap; color: #1d232a; text-shadow: 0 0 3px #fff, 0 0 2px #fff, 0 0 1px #fff; margin-top: -8px; }
 .place.town { font-weight: 700; font-size: 15px; letter-spacing: .02em; }
 .place.village { font-size: 12px; }

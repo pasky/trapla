@@ -5,7 +5,7 @@
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MOTORWAY_AUTOMATIC, type EndConnection } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -25,7 +25,9 @@ export type Sel =
   | { kind: 'pin'; s: number }
   | { kind: 'vpi'; i: number }
   | { kind: 'crossing'; roadId: number }
-  | { kind: 'building'; j: number };
+  | { kind: 'building'; j: number }
+  /** a mission end that meets an interchange or a road (scenario data) */
+  | { kind: 'end'; end: 'a' | 'b' };
 
 export interface InspectorEvents {
   close?: () => void;
@@ -194,6 +196,7 @@ export class Inspector {
     else if (sel?.kind === 'vpi') html = this.vpi(r, sel.i);
     else if (sel?.kind === 'crossing') html = this.crossing(r, d, sel.roadId);
     else if (sel?.kind === 'building') html = this.building(r, d, sel.j);
+    else if (sel?.kind === 'end') html = this.end(r, sel.end);
     const shown = html ? sel : null;
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
@@ -360,6 +363,17 @@ export class Inspector {
       <div class="ctx-row"><label>Height <input id="pin-z" type="number" step="0.1" value="${p.z.toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${s}">Set</button><button type="button" id="pin-clear" data-s="${s}">Unpin</button></div>`;
   }
 
+  // ---- a mission end (an interchange, a road it joins) ----
+  /** what the mission's ends meet and their names (set by the app; reversed directions swap them) */
+  ends: { a?: EndConnection; b?: EndConnection; names: { a: string; b: string } } | null = null;
+  private end(r: Result, end: 'a' | 'b') {
+    const info = this.ends?.[end];
+    if (!info) return '';
+    const card = endCard(info, end);
+    return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
+      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
+  }
+
   // ---- height point (By hand) ----
   private vpi(r: Result, i: number) {
     if (i <= 0 || i >= r.vpis.length - 1) return '';
@@ -384,7 +398,9 @@ export class Inspector {
     const roads = crossedRoads(r), k = roads.findIndex((x) => x.roadId === roadId);
     const nav = `<button type="button" class="nav" data-nav="-1" title="Previous crossed road" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button>`;
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
-    const rel = `our road ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c);
+    // against the crossed road as it is today (an overbridge lifts it; "below it" read like the clearance under it)
+    const rel = Math.abs(c.h) < 0.5 ? 'our road at the crossed road’s level today'
+      : `our road ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} the crossed road’s level today`, outcome = crossingOutcome(c);
     return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div><div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
