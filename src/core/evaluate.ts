@@ -16,7 +16,7 @@ import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
-import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
@@ -124,7 +124,8 @@ export interface Result {
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
-  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean;
+  /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean;
     /** a small structure standing within this demolished building, which goes with it */
     host?: number }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
@@ -710,6 +711,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
   /** cells a bridge must span for a stream its end would otherwise bury (set by a retry below) */
   const streamBridge = new Uint8Array(n);
+  // Reroutes traced and engineered by the first pass, reused by the strict retry where our footprint is unchanged.
+  const reroutes = crossingCache();
   const sectionMemo: SectionCache = [];
   // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
   // or daylight changes the two widths; deck/centre cover never changes within this evaluation.
@@ -1096,13 +1099,23 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const tx = (q.x - p.x) / len, ty = (q.y - p.y) / len, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
     let hit: 'railway' | 'water' | 'building' | null = null;
     protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half }, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
-    if (!hit && bld) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && !gone[j] && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
+    // a house you keep is never demolished for a reroute
+    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
     return hit;
   };
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
+  /** Houses still standing under a new road (a reroute): bought out and demolished with it. */
+  const linkHouses = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
+    const out: number[] = [];
+    if (!bld) return out;
+    const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
+    bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
+    return out;
+  };
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0,
+    streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
     left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
-  }, (x, y) => terrain.heightAt(x, y), ctx.roads));
+  }, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes));
   const shared = opts.sharedCrossings;
   if (shared && !shared.own) {
     const SHAREABLE = new Set(['overbridge', 'underpass', 'reconnection', 'diversion']);
@@ -1120,10 +1133,15 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
     const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
     crossingLump[c.i] += lump;
-    crossingStructure[c.i] += c.cost - lump;
+    // houses a reroute runs through are bought out like those under our road (buildings, not works)
+    // (a crossing built with the other direction is billed there, its houses included)
+    const houses = c.shared ? [] : (c.houses ?? []).filter(j => !gone[j]);
+    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j], in: 'reroute', strip: false }); }
+    crossingStructure[c.i] += c.cost - lump - (c.shared ? 0 : c.houseCost ?? 0);
     if (c.cost > 0) crossingsPaid++;
   }
 
+  demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const endJunctions = (ctx.junctions ?? []).flatMap(j => {
     const end = Math.hypot(j.x - ctx.a.x, j.y - ctx.a.y) < 1e-6 ? 'a' as const : Math.hypot(j.x - ctx.b.x, j.y - ctx.b.y) < 1e-6 ? 'b' as const : null;

@@ -9,6 +9,8 @@
  * unchanged (eval-regression identical).
  * 21: finite-segment noise (Manuál 2018 §1.10–1.11, §1.19), walls on the cross-section's line, the
  * cheapest automatic wall per house (research/36).
+ * 22: valid automatic reroutes (engineered links within the class gradient, culverts, houses bought
+ * out, a gentler line along our road), lowered underpasses (research/37), sloped decks over us.
  * 23: the structure choice prices the buildings each option demolishes and settles the fill value on
  * the final grade line (By hand from Auto's heights bills the same); piers of a chosen bridge miss
  * what lies below; an automatic bridge whose piers cannot is not chosen; a stream at a bridge's end

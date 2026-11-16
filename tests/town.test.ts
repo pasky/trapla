@@ -80,7 +80,8 @@ describe('junction spacing and geometric reconnections', () => {
   });
 
   it('prices both sides by actual gap and urban row, never making local streets direct junctions', () => {
-    const run = (gap: number, urban = 0) => resolve([crossing(3000, 'primary'), crossing(3000 + gap, 'residential')], urban)[1];
+    // (our road 1 m below the street: too deep for an underpass box even with the street lowered)
+    const run = (gap: number, urban = 0) => resolve([crossing(3000, 'primary'), crossing(3000 + gap, 'residential', -1)], urban)[1];
     const a = run(50), b = run(100), town = run(100, 1);
     expect(a.type).toBe('reconnection'); expect(b.type).toBe('reconnection');
     expect(b.targetS).toBe(3000); expect(b.linkLength).toBe(200);
@@ -98,20 +99,20 @@ describe('junction spacing and geometric reconnections', () => {
     expect(mirrored.reduce((sum, c) => sum + c.cost, 0)).toBe(forward.reduce((sum, c) => sum + c.cost, 0));
   });
 
-  it('consolidates nearby tracks into one crossing with an acyclic chain; services use the local network', () => {
-    const cs = resolve([crossing(4000, 'track'), crossing(4050, 'track'), crossing(4100, 'track')]);
+  it('consolidates nearby tracks onto one crossing that carries them over us; services use the local network', () => {
+    // Every reroute leads to a crossing that carries traffic over or under us, never to another cut road.
+    const cs = resolve([crossing(4000, 'track', -1), crossing(4050, 'track', -1), crossing(4100, 'track', -1)]);
     expect(cs.map(c => c.type)).toEqual(['overbridge', 'diversion', 'diversion']);
-    expect(cs.map(c => c.targetS)).toEqual([undefined, 4000, 4050]);
-    expect(cs[1].linkLength).toBe(100);
+    expect(cs.map(c => c.targetS)).toEqual([undefined, 4000, 4000]);
+    expect(cs[1].linkLength).toBe(100); expect(cs[2].linkLength).toBe(200);
     // Deep cuts do not force separate bridges for tracks/accesses beside an existing crossing.
     const deep = [crossing(4000, 'residential', -12), crossing(4100, 'track', -12), crossing(4050, 'service', -12)];
     resolveCrossings(deep, 9000, [KIND.earth], [51.5], [0]);
     expect(deep.map(c => c.type)).toEqual(['overbridge', 'diversion', 'reconnection']);
-    expect(deep[1].targetS).toBe(4050);
+    expect(deep[1].targetS).toBe(4000);
     const services = resolve([crossing(3000, 'primary'), crossing(3050, 'service'), crossing(3100, 'service')]);
     expect(services.slice(1).map(c => c.type)).toEqual(['reconnection', 'reconnection']);
-    expect(services[2].targetS).toBe(3050);
-    expect(services[2].cost).toBe(services[1].cost);
+    expect(services.slice(1).map(c => c.targetS)).toEqual([3000, 3000]);
   });
 
   it('bills service access once without surcharging it or the all-in junction', () => {
@@ -227,7 +228,7 @@ describe('evaluate on a synthetic town', () => {
 
   it('resolves each crossing by the height of the grade above the crossed road', () => {
     expect(r.crossings.map((c) => [Math.round(c.s), c.cls, c.type])).toEqual([
-      [1500, 'residential', 'bridge'], [2500, 'residential', 'overbridge'], [2700, 'track', 'diversion'],
+      [1500, 'residential', 'bridge'], [2500, 'residential', 'underpass'], [2700, 'track', 'underpass'],
       [3500, 'residential', 'overbridge'], [4500, 'primary', 'junction'],
     ]);
     // the valley street forces a short bridge into what would otherwise be an embankment
@@ -242,13 +243,16 @@ describe('evaluate on a synthetic town', () => {
     const g = over.geometry!, deck = g.deck!;
     expect(over.span).toBeCloseTo(crossingPlanLength(g.road!.slice(deck.start, deck.end + 1)), 6);
     expect(over.cost).toBeCloseTo(bridgeModel(ROAD_CLASSES.residential).total(over.span!, 0, { span: over.span!, pierDensity: 0 }) + over.approachLength! * over.roadPerKm! / 1000, 3);
-    // The street needs raised approaches. With the current clear-span bridge model, the
-    // neighbouring track's measured ground connection is cheaper than its own overbridge.
-    expect(r.crossings[1].approachLength).toBeGreaterThan(0);
-    expect(r.crossings[2].targetS).toBeDefined();
+    // Our road runs on the plain at the street's level: the street and the track beside it are lowered
+    // into cuts under boxes (cheaper than raising them over us), drained by pumps on flat ground.
+    for (const c of [r.crossings[1], r.crossings[2]]) {
+      const box = underpassAssembly(ROAD_CLASSES[c.cls].underpass!, 0);
+      expect(c.lowered).toBeCloseTo(box.minHeight - c.h, 1);
+      expect(c.approachLength).toBeGreaterThan(2 * c.lowered! / ROAD_CLASSES[c.cls].rampGradient - 1e-6);
+      expect(c.drainage).toBe('pump');
+    }
     const separated = evaluate(ctx, { ...design, crossingOverrides: [{ roadId: 3, type: 'overbridge' }] });
     expect(r.crossings[2].cost).toBeLessThan(separated.crossings.find(c => c.roadId === 3)!.cost);
-    expect(r.crossings[2].linkLength).toBeCloseTo(r.crossings[2].geometry!.links!.reduce((sum,path) => sum+crossingPlanLength(path),0),6);
     // Retained slope faces and auxiliary relocations are separately measured works in this bucket.
     const footprintWorks = r.footprintConflicts.filter(c => c.action !== 'culvert').reduce((sum, c) => sum + c.cost - (c.landCost ?? 0), 0);
     expect(r.cost.crossings).toBeCloseTo(r.crossings.reduce((sum, c) => sum + c.cost, 0) + footprintWorks, 0);

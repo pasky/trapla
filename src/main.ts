@@ -18,6 +18,7 @@ import { RouteScene } from './render/route-scene';
 import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { CrossingPicker } from './render/crossing-pick';
+import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
 import { shapeable } from './ui/link-shape';
 import type { LinkVia } from './core/crossings';
@@ -187,7 +188,7 @@ async function main() {
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   let sel: Sel | null = null;
   /** shaping reroutes on the map (constructed once the store hooks exist) */
-  let linkEdit: LinkEditor | undefined;
+  let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
@@ -302,7 +303,7 @@ async function main() {
     if (store.read()) view.setDesign(store.design, selectedPi(), activeEndpoints());
     else view.clearDesign(activeEndpoints());
     profile.selectBend(selectedPi()); if (store.read()) curveEdit.refresh();
-    linkEdit?.refresh();
+    linkEdit?.refresh(); works?.refresh();
     const road = next?.kind === 'crossing' ? next.roadId : null;
     profile.selectCrossing(road); annotations.selectCrossing(road);
     annotations.selectBuilding(next?.kind === 'building' ? next.j : null);
@@ -667,7 +668,7 @@ async function main() {
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
-    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
+    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
   };
 
   // the noise view's band: asked from the worker for the displayed result when the view needs it
@@ -792,6 +793,9 @@ async function main() {
     if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
     if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
   }, commit);
+  works = new CrossingHighlight(view, document.getElementById('overlay')!, {
+    selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull,
+  });
   linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
     selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull, design: () => store.design,
     select: (roadId) => { if (sel?.kind !== 'crossing' || sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
@@ -859,7 +863,7 @@ async function main() {
     if (d) {
       if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
-      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh();
+      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
