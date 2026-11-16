@@ -388,6 +388,7 @@ road whose box ramps were too long kept that infeasible box although a track's b
 
 | Design | Model 23 | Model 24 | Main reasons |
 |---|---:|---:|---|
+| straight (D11) | 9.844321 | 9.838031 | −6.3 M: km 18.24 box straightened (36 → 17 m), shorter reroutes at km 2.14 and 11.92; km 5.41 service road's cut ends already lie on km 5.38's road ("Joined to the crossing at km 5.38 (no new road needed)"). |
 | D3 motorway starter | 18.337155 | 14.902841 | −3.43 bn: km 14.18 class III road moved beside the motorway (700 m, 18.6 M) instead of a 704 m bridge (2.49 bn), its second crossing at 14.52 one with it; km 7.94 track straightened through a 50 m box (17.8 M), no strict retry, so km 7.67–7.77 and 7.90–7.95 stay earthworks; km 7.69 track joined to it; km 3.63 track joined to km 3.71's bridge (237 m, 3.3 M; its 2 km reroute was 28.2 M); km 3.84 box straightened 95 → 42 m. |
 | best | 4.129413 | 4.100085 | −29.3 M: tracks at km 2.51 and 9.04 joined to the next crossing's road 14 / 12 m away (−17.8 M), km 6.97 service road moved beside us (−3.7 M), km 19.65 bridge over us straightened. |
 | demo | 4.669186 | 4.656154 | −13.0 M: km 2.48 track joined 14 m away (−8.5 M), km 8.81 shorter reroute. |
@@ -405,9 +406,15 @@ D11 drags of every bend (2 each): demo 9 → 8, direct-80 15 → 14, direct-90 8
 or stream conflicts, and track 4843 at km 9.8, in a shallow cutting 90 m before a viaduct on ground too steep for
 a track: no reroute, bridge or box fits; the same track on the d11-railway preset, km 9.44).
 
-Audits (straight + five published + 24 random designs): `outcome-audit` violations 124 → 111 (invalid designs
-22 → 22); `reroute-audit` links 511 → 566, with a problem 7 → 1, railway crossings 2 → 0, steeper than allowed
-3 → 1, earthworks over 10 m 3 → 1; chained reroutes 0 → 0; `crossing-audit` 0 geometry errors.
+Frozen fixtures recaptured (`eval-regression.ts --capture=current --reviewed-model-change`): the six above;
+best-drag −32.3 M, best-pin −29.2 M, best-structures −29.1 M and best-manual −29.1 M move with best (the same
+joined tracks, the moved service road; best-manual stays invalid by its manual grade), town-controls −34.6 M with
+town-centre (stays invalid by its player overrides).
+
+Audits (straight + five published + 24 random designs): `outcome-audit` violations 124 → 112 (invalid designs
+22 → 22); `reroute-audit` links 511 → 558, with a problem 7 → 1, railway crossings 2 → 0, steeper than allowed
+3 → 1, earthworks over 10 m 3 → 1; chained reroutes 0 → 0; `crossing-audit` 0 geometry errors;
+`crossing-footprint-audit` overlaps of crossing works with other roads 238 → 201.
 
 **Performance.** The square variants, the consolidation pass and the joined lines build more candidate reroutes
 (best: 6 → ≈ 17 per evaluation on top of the first and final builds). Offsets: a build memo per evaluation
