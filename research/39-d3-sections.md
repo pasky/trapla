@@ -263,9 +263,22 @@ block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
 - **A drag on the D11 straight start is not a block effect.** It puts a bend on a straight from A to B, so
   the whole line from the bend to B turns about B: 20 m at km 3 is 15 m at km 7. The price change is that of
   another road (at km 3, −150 … +150 m: main a8d8de5, one whole-route solve, −1.95 … +0.52 bn, 3 of 6
-  invalid; this model −1.91 … +0.33 bn, 3 of 6 invalid, much the same conflicts). Boundaries on long straights at fixed lines across
-  the A–B axis were tried (every 3 / 4 km): the sum of all designs equal within 0.4 %, single designs ±10 %,
-  locality no better (the moved geometry dominates), so not kept.
+  invalid; this model −1.91 … +0.33 bn, 3 of 6 invalid, much the same conflicts). What the solve can make
+  local are edits that leave the plan alone, and there the straight start was not: it had no boundary at
+  all (one block, the whole-route optimum), so a 15 m grade pin at km 9 changed the grade by 2 m at km 1.7
+  (re-test 6 saw problems appear at km 16.5). Now (`scripts/d11-stability.ts`, the acceptance repros):
+  - a straight longer than 4 km (also the first and the last) has its boundaries where it crosses lines
+    across the A–B axis every 3 km, fixed on the map, instead of one in its middle (which moves with
+    either end); the knot count of a block of a round length is chosen a hair short of the exact
+    gradient step, so a millimetre's change of length elsewhere does not pick other knots;
+  - support lifts stay within their block (its end heights held; a stretch at a block's end may reach one
+    lift length into the next), so a lift no longer depends on targets in other blocks: a chain of targets
+    from km 2 to km 17 was one lift, and with a pin at km 9 the whole chain failed;
+  - a lift keeps every pin at the height the line had there (it asked for the pin's height within 5 cm,
+    which the DP's ±0.5 m pin tolerance seldom gives, so every lift on a route with a pin failed);
+  - where a sag curve fills in the cutting a bridge over us needs, the clearance retry deepens it (as it
+    raises a crest over a river).
+  Pin +15 / −15 m at km 9: far grade change 0.00 m (was 2.0 / 2.1 m), the bill +0.19 / +0.34 bn.
 - **The D35 first section's 2.8 km viaduct** (20.34 bn, main 19.32): not the blocks; a whole-route solve on
   the same inputs gives 20.71. Main's line costs 19.28 bn under this model and a lower DP objective (−1.3 %)
   than the line the DP finds: the 2 m corridor pass (grade steps of 0.8 % per 250 m knot) starts the 6 m

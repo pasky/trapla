@@ -60,7 +60,9 @@ broken visuals and jargon before.
   designs ±5–10 %, the coarse 2 m corridor pass picks the other side of a near-tie as often as main did).
   Far changes left come from the station-based engineering on a shifted station grid (support lifts,
   overbridge ramp checks, reroutes, culverts; `ds = L/⌈L/10⌉`): anchoring the station grid is the next lever.
-  A drag on a straight start pivots the whole line to B (the price of a different road, the same on main).
+  A drag on a straight start puts in a bend that turns the whole line about A and B (10 px ≈ 220–240 m at
+  km 3–9): the price of a different road, the same on main; grade edits there are local
+  (`scripts/d11-stability.ts`).
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
 - Automatic reroutes are engineered and checked (model 22); a crossed way whose cut ends stay connected over

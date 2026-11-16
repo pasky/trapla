@@ -2,7 +2,7 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, CLEARANCE_PENALTY, profileBlocks, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
+import { autoProfile, CLEARANCE_PENALTY, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
@@ -26,7 +26,7 @@ import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './dat
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
-import { buildAlignment, pointAt, station, type PI, type PointOnAlignment, type Vec2 } from './horizontal';
+import { buildAlignment, pointAt, station, type Alignment, type PI, type PointOnAlignment, type Vec2 } from './horizontal';
 import {
   crossSectionScreens, noiseOutcome, wallLineLengths,
   type AcousticSource, type NoiseReceiver, type WallStretch,
@@ -392,7 +392,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const clearance = new Float64Array(n).fill(NaN);
   // A full evaluation solves the grade in blocks so a local edit re-solves only its own stretch
   // (autoprofile.ts profileBlocks); everything the solve reads is then placed by its exact chainage.
-  const blocks = preview || opts.fixedProfile ? undefined : profileBlocks(fullAlignment.units.slice(1).map((u, q) => ({ s0: fullAlignment.units[q].sEnd, s1: u.sStart })));
+  const blocks = preview || opts.fixedProfile ? undefined : profileBlocks(planStraights(fullAlignment, ctx.a, ctx.b));
   /** chainage at which a station's clearance applies (NaN: the station itself) */
   const clearanceS = new Float64Array(n).fill(NaN);
   const atS = (x: number) => { const p = pointAt(fullAlignment, x); return { x: p.x, y: p.y }; };
@@ -809,11 +809,15 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   let materialValue = MATERIAL_VALUE.start;
   /** block-wise solve: each block's material value, and per station */
   let blockValues: number[] | undefined, materialAt: Float64Array | undefined;
+  /** blocks of the Auto grade solve (their ends, 0 … L): support lifts stay within one */
+  let liftBlocks: number[] | undefined;
   const decisions = new Map<number, ReturnType<typeof decisionPrices>>();
   const blockDecision = (v: number) => { let p = decisions.get(v); if (!p) decisions.set(v, p = decisionPrices(v)); return p; };
   const zA = opts.endpointElevations?.a ?? ground[0], zB = opts.endpointElevations?.b ?? ground[n - 1];
   if (!Number.isFinite(zA) || !Number.isFinite(zB)) throw new Error('Non-finite endpoint elevation');
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
+    /** crossed roads our grade must pass under (a bridge over us asked for): their own height */
+    const mustBelow: { s: number; g: number }[] = [];
     const minH = blocks ? new Float64Array(n).fill(NaN) : clearance.slice();
     const maxH = new Float64Array(n).fill(NaN);
     for (let i = 0; i < n; i++) {
@@ -834,6 +838,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
           minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g + need - ground[i]);
         } else if (ROAD_CLASSES[c.cls].noAtGrade) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
       }
+      if (!box && choice !== 'bridge' && ROAD_CLASSES[c.cls].noAtGrade) mustBelow.push({ s: c.s, g });
     }
     // Roads to clear (opts.separate): our bridge 6 m above, or a cutting 6 m below for theirs.
     // Only there (and at the rivers / railways it failed to clear) does a missed clearance cost
@@ -925,11 +930,20 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     let ap = fixed === undefined ? solveAuto(apOpt)
       : { ...solveAuto({ ...apOpt, costPerM: costFor(fixed), balance: undefined }), materialValue: fixed };
     // vertical curves can shave the clearance the polyline search provided: retry asking for more
-    for (let attempt = 0; attempt < 2 && mustBridge.length && !preview; attempt++) {
+    for (let attempt = 0; attempt < 2 && (mustBridge.length || mustBelow.length) && !preview; attempt++) {
       const prof0 = buildProfile(ap.vpis, norms.minCrestRadius, norms.minSagRadius);
       const z0 = elevations(prof0, mustBridge.map((c) => c.s));
       let short = 0;
-      const minH = apOpt.minH.slice(), waterAbove = apOpt.eitherH.above.slice();
+      const minH = apOpt.minH.slice(), waterAbove = apOpt.eitherH.above.slice(), maxH = apOpt.maxH.slice();
+      // …and sag curves can fill in the cutting a bridge over us needs
+      const zb = elevations(prof0, mustBelow.map(c => c.s));
+      mustBelow.forEach((c, k) => {
+        const deficit = zb[k] - (c.g - CROSSING_RULES.underDepth);
+        if (deficit <= 1e-6) return;
+        short = Math.max(short, deficit);
+        const i0 = Math.min(n - 2, Math.floor(c.s / ds));
+        for (const i of [i0, i0 + 1]) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], c.g - CROSSING_RULES.underDepth - ground[i] - deficit - 0.5);
+      });
       mustBridge.forEach((c, k) => {
         // A surface stream above a deep bored tunnel is already separated. Never let that
         // crossing raise every other clearance by the hill's entire height.
@@ -946,7 +960,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         for (const i of [i0, i0 + 1]) target[i] = Math.max(Number.isNaN(target[i]) ? -Infinity : target[i], c.g + c.need - ground[i] + deficit + 0.5);
       });
       if (short <= 1e-6) break;
-      apOpt.minH = minH; apOpt.eitherH.above = waterAbove;
+      apOpt.minH = minH; apOpt.eitherH.above = waterAbove; apOpt.maxH = maxH;
       // same material value: only the clearance changes
       const mv = ap.materialValue ?? MATERIAL_VALUE.start;
       const retry = solveAuto(ap.blockValues ? { ...apOpt, blockValues: ap.blockValues }
@@ -958,6 +972,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     }
     vpis = ap.vpis;
     materialValue = ap.materialValue ?? MATERIAL_VALUE.start;
+    if (blocks && ap.blockBounds) liftBlocks = ap.blockBounds;
     if (ap.blockValues && ap.blockBounds) {
       blockValues = ap.blockValues;
       materialAt = new Float64Array(n);
@@ -1123,11 +1138,11 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   };
   /** why the last lift failed: the station whose fixed height (an end or a pin) its steepest grade ran into */
   let liftStop: number | null = null;
-  const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[], range?: readonly [number, number]) => {
+  const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[], range?: readonly [number, number], free?: readonly [number, number]) => {
     const start = performance.now();
     const lifted = liftAutoProfile(candidate, targets, d.speed, maxGradient, d.gradePins, (m) => {
       const k = /fixed km (\d+(?:\.\d+)?)/.exec(m); if (k) liftStop = Number(k[1]) * 1000;
-    }, d.category, range);
+    }, d.category, range, free);
     work('lift', start);
     timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
     return lifted;
@@ -1159,11 +1174,14 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       repairTargets.set(x, Math.max(z, repairTargets.get(x) ?? -Infinity));
     }
     const targets = [...repairTargets].map(([s, z]) => ({ s, z })).sort((a, b) => a.s - b.s);
-    // Each stretch of nearby targets is lifted on its own (a failure elsewhere does not undo it).
+    // Each stretch of nearby targets is lifted on its own (a failure elsewhere does not undo it), within
+    // its block of the grade solve: a lift never reaches past the block, so it does not depend on targets
+    // (and an edit) in another one.
+    const blockOf = (s: number) => liftBlocks ? Math.max(0, liftBlocks.findIndex((b, j) => j > 0 && s <= b) - 1) : 0;
     const clusters: { s: number; z: number }[][] = [];
     for (const q of targets) {
       const last = clusters[clusters.length - 1];
-      if (last && q.s - last[last.length - 1].s <= LIFT_CLUSTER) last.push(q); else clusters.push([q]);
+      if (last && q.s - last[last.length - 1].s <= LIFT_CLUSTER && blockOf(q.s) === blockOf(last[0].s)) last.push(q); else clusters.push([q]);
     }
     // a lift must not undo a narrowing (opts.narrow): there the DP places the knots instead
     const narrowAt = (opts.narrow ?? []).flatMap(r => [r.s0, (r.s0 + r.s1) / 2, r.s1].map(x => ({ x, r })));
@@ -1180,10 +1198,14 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       let out = from;
       const failed: { s: number; z: number }[][] = [];
       for (const c of clusters) {
-        const range = [c[0].s - LIFT_CLUSTER, c[c.length - 1].s + LIFT_CLUSTER] as const;
+        const j = blockOf(c[0].s), free = liftBlocks ? [liftBlocks[j], liftBlocks[j + 1]] as const : undefined;
+        const range = [Math.max(c[0].s - LIFT_CLUSTER, free?.[0] ?? -Infinity), Math.min(c[c.length - 1].s + LIFT_CLUSTER, free?.[1] ?? Infinity)] as const;
+        const reach = [c[0].s - LIFT_CLUSTER, c[c.length - 1].s + LIFT_CLUSTER] as const;
         const z = elevations(buildProfile(out, norms.minCrestRadius, norms.minSagRadius), c.map(q => q.s));
         if (c.every((q, i) => z[i] >= q.z - 0.01)) continue;
-        const lifted = liftProfile(out, c, range);
+        // (a stretch at a block's end that cannot be lifted within it may reach a lift's length into the next)
+        const wide = free && [free[0] - LIFT_CLUSTER, free[1] + LIFT_CLUSTER] as const;
+        const lifted = liftProfile(out, c, range, free) ?? (wide ? liftProfile(out, c, [Math.max(reach[0], wide[0]), Math.min(reach[1], wide[1])], wide) : undefined);
         // the shared heights outside a separate stretch's own part are not ours to lift
         if (lifted && !keepsExterior(lifted)) liftShared = true;
         if (lifted && keepsNarrow(lifted, out) && keepsExterior(lifted)) out = lifted; else failed.push(c);
@@ -1655,6 +1677,18 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   if (keep.length === groups.length) return retry;
   if (!keep.length) return result;
   return strictFor(keep).complete();
+}
+/** The straights of a plan (between A, its curves and B), each end's distance along the A–B axis. */
+function planStraights(al: Alignment, a: Vec2, b: Vec2): PlanStraight[] {
+  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1, ex = (b.x - a.x) / len, ey = (b.y - a.y) / len;
+  const along = (s: number) => { const p = pointAt(al, s); return (p.x - a.x) * ex + (p.y - a.y) * ey; };
+  const u = al.units, cuts = [0, ...u.flatMap(x => [x.sStart, x.sEnd]), al.length];
+  const out: PlanStraight[] = [];
+  for (let q = 0; q + 1 < cuts.length; q += 2) {
+    const s0 = cuts[q], s1 = cuts[q + 1];
+    out.push({ s0, s1, p0: along(s0), p1: along(s1), end: q === 0 || q + 2 === cuts.length });
+  }
+  return out;
 }
 /** Items (sorted by `at`) in groups whose neighbours are at most `gap` apart. */
 function clusterBy<T>(items: readonly T[], at: (t: T) => number, gap: number): T[][] {

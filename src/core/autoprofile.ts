@@ -144,15 +144,42 @@ export const BLOCK_WINDOW = 5000;
 /** Blocks shorter than this (from the previous boundary or to B) are not split off, m. */
 const MIN_BLOCK = 1000;
 
+/** A straight longer than this has its boundaries at the BLOCK_GRID lines, not in its middle, m. */
+const LONG_STRAIGHT = 2 * BLOCK_SPACING;
+/** Lines across the A–B axis this far apart (measured along the axis from A), m. */
+export const BLOCK_GRID = 3000;
+
+/** A straight of the plan: its chainage and its ends' distance along the A–B axis (from A, m); `end`:
+ * it starts at A or ends at B. */
+export interface PlanStraight { s0: number; s1: number; p0: number; p1: number; end?: boolean }
+
 /**
- * Block boundaries of the grade solve, from the plan alone: the middle of a straight between two
- * curves where that straight is the longest within BLOCK_SPACING on either side (the earlier of equal
- * ones). Depends only on the plan near each candidate: moving a bend moves only nearby boundaries.
+ * Block boundaries of the grade solve, from the plan alone. Candidates: the middle of each straight
+ * between two curves, and on a straight longer than LONG_STRAIGHT (also the first and the last one)
+ * the points where it crosses lines across the A–B axis every BLOCK_GRID (fixed on the map, so a bend
+ * moved elsewhere does not move them: the middle of a long straight would move with either of its
+ * ends, and a straight start would have no boundary at all). A candidate is kept where it lies the
+ * farthest from its straight's ends within BLOCK_SPACING on either side (the earlier of equal ones).
+ * Depends only on the plan near each candidate: moving a bend moves only nearby boundaries.
  */
-export function profileBlocks(straights: readonly { s0: number; s1: number }[]): number[] {
-  const mids = straights.map(t => ({ s: (t.s0 + t.s1) / 2, len: t.s1 - t.s0 })).filter(t => t.len > 0);
-  return mids.filter((t, i) => mids.every((o, j) => j === i || Math.abs(o.s - t.s) > BLOCK_SPACING
-    || (j < i ? o.len < t.len : o.len <= t.len))).map(t => t.s);
+export function profileBlocks(straights: readonly PlanStraight[]): number[] {
+  const cands: { s: number; room: number }[] = [];
+  for (const t of straights) {
+    const len = t.s1 - t.s0;
+    if (!(len > 0)) continue;
+    if (len <= LONG_STRAIGHT) { if (!t.end) cands.push({ s: t.s0 + len / 2, room: len / 2 }); continue; }
+    const lo = Math.min(t.p0, t.p1), hi = Math.max(t.p0, t.p1);
+    let any = false;
+    for (let k = Math.ceil(lo / BLOCK_GRID); k * BLOCK_GRID <= hi; k++) {
+      if (k <= 0 || hi === lo) continue;
+      const s = t.s0 + len * (k * BLOCK_GRID - t.p0) / (t.p1 - t.p0);
+      if (s > t.s0 && s < t.s1) { cands.push({ s, room: Math.min(s - t.s0, t.s1 - s) }); any = true; }
+    }
+    if (!any && !t.end) cands.push({ s: t.s0 + len / 2, room: len / 2 });
+  }
+  cands.sort((x, y) => x.s - y.s);
+  return cands.filter((t, i) => cands.every((o, j) => j === i || Math.abs(o.s - t.s) > BLOCK_SPACING
+    || (j < i ? o.room < t.room : o.room <= t.room))).map(t => t.s);
 }
 
 export const PROFILE_HEIGHT_MAX = 100;
@@ -168,6 +195,11 @@ const DP_STATION_STEP = 20;
 const COARSE_GRID = 2, FINE_GRID = 1;
 /** the fine pass searches this far above / below the coarse line, m */
 const FINE_BAND = 6;
+/** Grid steps per knot interval (gradient, curve limits) are rounded down from this much below the
+ * exact value: a block of a round length (a straight start's 3 km blocks) would otherwise sit exactly on
+ * a whole number of steps, and a millimetre shorter block (a bend added 10 km away) would lose a step
+ * of gradient and pick other knots. */
+const GRID_MARGIN = 1e-3;
 /** fine passes spent on the mass-balance search (incl. the first) */
 const BALANCE_EVALS = 4;
 
@@ -189,7 +221,7 @@ function knotCount(len: number, spacing: number, gmax: number, last: boolean, gr
     const d = len / m;
     if (m !== base && (d < 0.8 * spacing || d > 1.2 * spacing)) continue;
     // the last block keeps a reserve for B's off-grid height (solve: u / its length)
-    const reach = (u: number) => Math.floor(((gmax - (last ? u / len : 0)) * d) / u + 1e-9) * u / d;
+    const reach = (u: number) => Math.floor(((gmax - (last ? u / len : 0)) * d) / u - GRID_MARGIN) * u / d;
     const coarse = reach(grids[0]), fine = reach(grids[1]);
     const score = coarse + 0.5 * fine - 1e-6 * Math.abs(d - spacing);
     if (score > bestScore) { bestScore = score; best = m; }

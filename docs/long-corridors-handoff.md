@@ -113,11 +113,13 @@ Done (task 1, 3 of the 09:15 list), all in model 23 (unmerged, version unchanged
   the line for one paying the penalty). UI: live total + corridor groups, run-batched grade strokes skipping
   stretches where the directions run apart. Fixtures recaptured as model 24. All saved designs and starters
   VALID (sweep), the Královec railway starter VALID 10.23 bn (main 10.43).
-- **P1 straight start**: not blocks. A drag on the straight puts in a bend and turns the whole line about B;
-  main gives the same swings (research/39 "Second pass"). Grid boundaries on long straights (lines across
-  the A–B axis every 3 / 4 km) tried and dropped: no locality gain, single designs ±10 %. Scratch:
-  /tmp/lc-tmp-scripts/autoprofile.grid.ts, evaluate.grid.ts, evaluate.gridexp.ts. A real fix is an editing
-  one (a drag on a long straight could keep the rest of the line in place) — interface work.
+- **P1 straight start** (acceptance: `npx tsx scripts/d11-stability.ts`): a drag on the straight puts in a bend
+  that turns the whole line about A and B (10 px ≈ 220–240 m): another road, the same swings on main. Grade
+  edits were global (no boundary on a straight start; lifts chained km 2–17; a pin failed every lift): now
+  long straights get boundaries at lines across the A–B axis every 3 km, lifts stay in their block, a lift
+  keeps pins where they were, a sag-filled cutting under a bridge over us is deepened. Pins ±15 m at km 9:
+  far grade change 0.00 m. Town-centre repaired (its one bend 7.6 m). Interface idea for the drag (not done): a
+  drag on a long straight could keep the rest of the line in place.
 - **P0 residue (km 6.98 track, whole D35)**: not reproduced (all 18 bends ±20/60 m and new bends at 11.7 / 25.4);
   6/72 far changes are one class I road at km 32.0 from the 9.7 km last block (a chain of slightly shorter
   straights leaves no boundary; `profileBlocks`).
