@@ -198,7 +198,7 @@ async function main() {
     const live = activePreviewPrice !== null && total !== null && total !== undefined && active && active in alone
       ? total - alone[active] + activePreviewPrice : null;
     hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own, liveTotal: live,
-      dragging: activePreviewPrice !== null,
+      dragging: activePreviewPrice !== null && projectStore.inTransaction,
       activeRouteId: active ?? undefined, names: Object.fromEntries(projectStore.snapshot.design.routes.map(r => [r.id, r.name])),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];

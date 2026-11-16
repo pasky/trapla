@@ -1292,7 +1292,8 @@ export class View {
   frameSafe: (() => { left: number; top: number; right: number; bottom: number; avoid: readonly { left: number; top: number; right: number; bottom: number }[] }) | null = null;
 
   /** The start view: A and B both on screen, clear of the panels, as close as that allows, looking from the
-   * usual direction (from the south, north up). */
+   * usual direction (from the south, north up); a long route the usual view cannot take in (the whole D3 runs
+   * north–south) is looked at across, A on the left. */
   resetCamera() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (w && h && Math.abs(this.camera.aspect - w / h) > 1e-6) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
@@ -1302,26 +1303,31 @@ export class View {
     const target = a.clone().add(b).multiplyScalar(0.5);
     const safe = this.frameSafe?.() ?? { left: 0, top: 0, right: w, bottom: h, avoid: [] };
     const margin = 36;
-    // the usual direction: camera south-south-east of the target, ≈ 51° up
+    // the usual direction: camera south-south-east of the target, ≈ 51° up; across: from the right of A → B
     const usual = new THREE.Vector3(2500, 17500, 14000).normalize();
+    const ax = b.x - a.x, az = b.z - a.z, al = Math.hypot(ax, az) || 1, flat = Math.hypot(usual.x, usual.z);
+    const across = new THREE.Vector3(-az / al * flat, usual.y, ax / al * flat);
+    // each end's name is written to the right of its disc: keep room for it
+    const room = (end: RenderEndpoints['a']) => 42 + 7.5 * (end.label?.length ?? 0);
+    const rooms = [room(this.endpoints.a), room(this.endpoints.b)];
     const fits = (dir: THREE.Vector3, d: number) => {
       this.camera.position.copy(target).addScaledVector(dir, d);
       this.camera.lookAt(target); this.camera.updateMatrixWorld();
-      return [a, b].every(p => {
+      return [a, b].every((p, k) => {
         const v = p.clone().project(this.camera);
         if (!(v.z > -1 && v.z < 1)) return false;
         const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
-        return sx >= safe.left + margin && sx <= safe.right - margin && sy >= safe.top + margin && sy <= safe.bottom - margin
+        return sx >= safe.left + margin && sx <= safe.right - margin - rooms[k] && sy >= safe.top + margin && sy <= safe.bottom - margin
           && safe.avoid.every(r => sx < r.left - margin || sx > r.right + margin || sy < r.top - margin || sy > r.bottom + margin);
       });
     };
-    let d = 22600;
-    if (w && h && fits(usual, this.controls.maxDistance)) {
+    let d = 22600, dir = usual;
+    for (const candidate of [usual, across]) {
+      if (!w || !h || !fits(candidate, this.controls.maxDistance)) continue;
       let lo = 300, hi = this.controls.maxDistance;
-      for (let it = 0; it < 30 && hi - lo > 10; it++) { const mid = (lo + hi) / 2; if (fits(usual, mid)) hi = mid; else lo = mid; }
-      d = hi;
+      for (let it = 0; it < 30 && hi - lo > 10; it++) { const mid = (lo + hi) / 2; if (fits(candidate, mid)) hi = mid; else lo = mid; }
+      d = hi; dir = candidate; break;
     }
-    const dir = usual;
     this.controls.target.copy(target);
     this.camera.position.copy(target).addScaledVector(dir, Math.max(this.controls.minDistance, d));
     this.controls.update();
