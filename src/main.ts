@@ -990,14 +990,17 @@ async function main() {
   };
   /** where a click while building puts a road end: on a road (joins it), else free ground */
   const placeAt = (clientX: number, clientY: number, x: number, y: number): Placement => {
+    // A railway or motorway joins only lines of its own kind: a road picked near the click (at an overview, one
+    // is near every click) is not where it ends; it ends on the ground there (roads are crossed, not joined).
+    const joins = (kind: string | undefined) => building.kind === 'road' || kind === building.kind;
     const hit = routeAt(clientX, clientY, 10), rr = hit && projectFull?.routes[hit.routeId];
     const route = hit && projectStore.snapshot.design.routes.find(r => r.id === hit.routeId);
-    if (hit && rr && route) return building.onRoute(route, rr, hit.s);
+    if (hit && rr && route && joins(route.kind)) return building.onRoute(route, rr, hit.s);
     const source = sourceAt(clientX, clientY);
-    if (source?.kind === 'route-hit') return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
-    if (source?.kind === 'source' && transportIndex) return building.onSource(transportIndex, source.hit.sourceId, source.hit.s);
+    if (source?.kind === 'route-hit' && joins(projectStore.snapshot.design.routes.find(r => r.id === source.routeId)?.kind)) return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
+    if (source?.kind === 'source' && transportIndex && joins(transportIndex.source(source.hit.sourceId)?.kind)) return building.onSource(transportIndex, source.hit.sourceId, source.hit.s);
     if (pack.terrain.isOob(x, y)) return { ok: false, why: 'Put the end on the map.' };
-    if (legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
+    if (building.kind === 'road' && legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
   };
   routeBar.onSelect = switchRoute;

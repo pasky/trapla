@@ -42,6 +42,7 @@ const show = (p: ProjectDesign, label: string) => {
   const r = evaluateProject(ctx, { epoch: 'x', revision: 1, design: p });
   const res = r.routes['route:rail']?.legacy;
   console.log(label, 'pis', JSON.stringify(legacyDesignForRoute(p, 'route:rail').pis.map(q => [Math.round(q.x), Math.round(q.y)])));
+  if (res) console.log('   grades ‰', res.grades.map(g => (g * 1000).toFixed(1)).join(' '), 'limit', p.routes.find(r => r.id === 'route:rail')!.specification.maxGradient ?? 'category');
   console.log('  ', res ? `${Math.round(res.cost.total / 1e6)} M, ${res.length.toFixed(0)} m` : 'no result', (res?.violations ?? []).map(v => `${Math.round(v.s0)} ${v.title} | ${v.fix}${process.env.DETAIL ? ` | ${v.detail ?? ''}` : ''}`));
 };
 show(project, 'rebuilt');
