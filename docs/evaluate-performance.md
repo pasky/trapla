@@ -44,8 +44,45 @@ result's retaining walls, remedies and noise outside the edit, so it is usually 
 the edit causes far away (a mass-balance material value, a strict retry).
 
 Also for long motorways: where Auto's grade leaves a crossed road with neither our bridge nor a buildable
-bridge over us (ramps > 250 m or > 10 m), a grade-separated route retries once with Auto asked to clear it
-(research/39). That is a second full evaluation only on such (otherwise invalid) designs.
+bridge over us (ramps > 250 m or > 10 m), or pays the clearance penalty over a river or railway instead of
+bridging it, a grade-separated route retries once with Auto asked to clear those (research/39). That is a
+second full evaluation only on such (otherwise invalid) designs; valid motorway/railway bills are unchanged.
+
+### Main thread on long routes
+
+Once the worker was fast, the GPU drag runs on the 56 km D3 showed the main thread as the limit (profiled
+with `drag-perf.mjs --profile`):
+
+- **Preview messages.** A stitched preview first carried the full result's crossing geometry (hundreds of
+  crossings): deserialising it cost most of the handler. Previews now carry crossings without geometry, like
+  whole-route previews; the full worker sends the preview worker a slim base (`previewBase`). A 56 km
+  preview is ≈ 1.7 MB (19 per-cell cost arrays are half of it).
+- **Profile painting** drew one fill and one stroke per station (5,600 on the whole D3): now one area per run
+  of embankment / cutting, one stroke per run of the grade line, and at most ≈ 2 points per pixel.
+- **Long tasks after release.** The 3D rebuild's indivisible steps grew with the route: the shared mask and
+  ground blend computed at the swap (≈ 40 ms), crossing reuse keys hashed for all surfaces in one step
+  (≈ 35 ms), whole-route passes of the earthwork ribbon. The mask and blend are now prepared in slices before
+  the swap (`View.prepareRouteScene`), keys a few surfaces per slice, the ribbon passes yield, and the swap
+  runs as its own task. Longest slice on the 56 km D3: 52–110 → 16–23 ms; swap 38–50 → 11–14 ms.
+- **Start view.** Framing a whole 57 km route at once costs the integrated GPU 50–130 ms frames; long
+  missions keep D11's camera distance, shorter ones (Nová Paka, D3 0302) come closer.
+
+`node scripts/drag-perf.mjs --gpu --check [--scenario <id> --preset <id>-motorway] --mode <m>`, AMD RADV
+GFX1150, host load 4–7, unchanged budgets, all pass. Preview latency p50 / p95 (worker p50 / p95), ms:
+
+| Route | bend | road | radius | pin | vpi |
+|---|---|---|---|---|---|
+| D11 18.9 km road | 17 / 29 (9 / 21) | 15 / 25 | 16 / 33 | 11 / 15 | 13 / 16 |
+| D3 0305/I 17 km motorway | 17 / 25 | 17 / 48 | 16 / 36 | 15 / 25 | 21 / 42 |
+| D35 Opatovec → Mohelnice 33 km | 22 / 54 | 18 / 24 | 17 / 32 | 15 / 20 | 16 / 27 |
+| Whole D3 56 km motorway | 27 / 74 (11 / 38) | 23 / 47 | 26 / 37 | 21 / 33 | 24 / 33 |
+
+(D11 before this work, same host: bend 34 / 68, pin 34 / 76.) Bend drags on D3 0301–0304 pass too
+(p50 14–19 ms). Release → settled: D11 0.2–0.4 s, D3 sections 0.2–0.6 s, D35 0.5–0.7 s, whole D3 0.7–1.8 s
+(a full motorway evaluation is ≈ 11 ms per km; linear, in its own worker).
+
+The first preview of a drag can still be a whole-route one (no full result of that lineage yet in the preview
+worker, e.g. just after loading): 300–450 ms on the whole D3, once.
 
 ## New scenarios: route length sets the cost (2026-11-15)
 
@@ -57,7 +94,8 @@ D11's 90–150 ms. On the GPU drag gate it passed bend/road/radius/vpi, but **pi
 preview latency budget in 2 of 3 runs (69 / 59 / 75 ms > 60). Per the agreed rule the scenario ships as
 the first stage, which passes all five modes with margin (preview p50/p95 ms: bend 20/43, road 21/60,
 radius 19/50, pin 28/61, vpi 12/22). `node scripts/drag-perf.mjs --gpu --scenario <id> --mode <m> --check`
-measures any pack with unchanged budgets. Mohelnice needs a cheaper long-route auto-profile first.
+measures any pack with unchanged budgets. Mohelnice needed a cheaper long-route preview first: done by the
+windowed previews and the preview worker above; the whole D35 now passes all five modes.
 
 D11 startup no longer waits for the 18 MB transport graph (lazy: bytes fetched when idle after the
 first settled scene, parsed on first need). `scripts/startup-perf.mjs --gpu`, median of 5: ready

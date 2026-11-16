@@ -208,6 +208,16 @@ Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scena
 [the aerial photo showing the real bypass under construction](docs/screenshots/78-nova-paka-photo.png).
 See `docs/new-scenario.md`.
 
+The Středočeská D3 is offered whole (57 km, Prague ring → Nová Hospoda) and as its five construction
+sections 0301–0305/I ([picker](docs/screenshots/140-picker-d3-sections.png), research/39), each a motorway
+mission with its real ends: [0301 starts in the D0 interchange](docs/screenshots/141-d3-0301-d0-interchange.png),
+[0305/I joins the D3 that is already open](docs/screenshots/142-d3-0305-joins-open-d3.png), a section boundary
+[continues as the next section](docs/screenshots/143-d3-0303-continues.png) (the planned line runs on),
+[the whole corridor](docs/screenshots/144-d3-whole.png). D35 is offered whole too, Opatovec → Mohelnice,
+[ending on the I/35 merge](docs/screenshots/145-d35-mohelnice-merge.png). Long routes stay live while dragging:
+previews re-solve only the edited stretch (`docs/evaluate-performance.md`). Reproduce with
+`node scripts/scenarios/screenshots.mjs <id> --docs-overview|--docs-A|--docs-B <name>`.
+
 ### Motorway (cost model 20)
 
 Two motorway places on the start screen ([picker](docs/screenshots/130-motorway-picker.png)): both directions

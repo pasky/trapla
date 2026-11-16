@@ -10,7 +10,7 @@
 
 import { sumParts, PART_KEYS, type CostParts } from './cost';
 import { speedNorms, horizontalRules } from './data/norms';
-import { buildAlignment, station, type Stationing } from './horizontal';
+import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
@@ -86,7 +86,7 @@ function at(r: Result, values: ArrayLike<number>, s: number): number {
 const nearest = (r: Result, s: number) => Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
 
 /** chainage range whose inputs changed between the full result's design and `d`, or null if unmappable */
-function changedRange(base: FullEntry, d: Design, st: Stationing, length: number): [number, number] | null {
+function changedRange(base: FullEntry, d: Design, st: Stationing, length: number, curves: readonly CurveInfo[]): [number, number] | null {
   const r = base.result, shift = length - r.length;
   let a = Infinity, b = -Infinity;
   for (let i = 0; i < st.n; i++) {
@@ -111,6 +111,14 @@ function changedRange(base: FullEntry, d: Design, st: Stationing, length: number
   const planStart = a;
   if (d.profileMode === 'auto') changed(d.gradePins ?? [], base.design.gradePins ?? []);
   else changed(d.vpis.slice(1, -1), base.design.vpis.slice(1, -1));
+  // An edited bend whose plan moved by less than the tolerance (a large radius changed a little): its
+  // own curve and its neighbours' are the stretch to re-solve.
+  const before = base.design.pis;
+  if (d.pis.length === before.length) d.pis.forEach((p, k) => {
+    const q = before[k];
+    if (p.x === q.x && p.y === q.y && p.r === q.r) return;
+    for (const c of curves) if (Math.abs(c.index - k) <= 1) { a = Math.min(a, c.sStart); b = Math.max(b, c.sEnd); }
+  });
   return a <= b ? [a, b] : null;
 }
 
@@ -123,7 +131,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   if (!base) return null;
   const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
   const st = station(al, STEP), L = al.length, n = st.n, ds = st.ds;
-  const range = changedRange(base, d, st, L);
+  const range = changedRange(base, d, st, L, al.curves);
   if (!range) return null;
   const i0 = Math.max(0, Math.floor((range[0] - WINDOW_MARGIN) / ds)), i1 = Math.min(n - 1, Math.ceil((range[1] + WINDOW_MARGIN) / ds));
   if ((i1 - i0) * ds > WINDOW_MAX_SHARE * L) return null;
