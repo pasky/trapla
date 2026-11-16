@@ -399,14 +399,11 @@ export class Inspector {
   private building(r: Result, d: Design, j: number) {
     const info = this.ctx.building(j);
     const action = d.buildingOverrides?.find((o) => o.j === j)?.action ?? '';
-    if (this.networkPending) return `${this.head(cap(info.kind), `${info.levels} floors`)}
-      <div class="ctx-state">Project noise check not finished</div>
-      ${this.choices('building-choice', 'data-building', [['', 'Auto', 'Let the game choose'], ['buy', 'Buy out', 'Buy and demolish it'], ['keep', 'Keep', 'Keep this building']], action)}`;
     const removed = r.demolished.find((p) => p.j === j), bought = r.boughtOut.find((p) => p.j === j);
     const kept = r.kept.find((p) => p.j === j), rec = r.noise.receivers.find((p) => p.j === j);
     const limit = r.noise.footprint?.limit ?? NOISE.limitNightDb;
     let state: string, why = '';
-    if (removed) { state = `Demolished · ${czk(removed.cost)}`; why = 'In the road\'s way.'; }
+    if (removed) { state = `Demolished · ${czk(removed.cost)}`; why = `In the ${CATEGORIES[d.category].mode}'s way.`; }
     else if (bought) { state = `Bought out · ${czk(bought.cost)}`; why = bought.reason === 'manual' ? 'Your choice.' : `Too loud even behind a ${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall.`; }
     else if (kept?.hit) state = 'Kept — in the road\'s way';
     else if (rec?.unresolved) { state = `Stays · ${(limit + rec.mitigated).toFixed(1)} dB at night (limit ${limit})`; why = action === 'keep' ? 'You keep it, so it is not bought out.' : 'Your wall choice stops the automatic buyout.'; }
@@ -415,6 +412,10 @@ export class Inspector {
       why = `${(limit + rec.mitigated).toFixed(1)} dB at night at the top floor (limit ${limit}).`;
     } else state = 'Stays · far from the road';
     if (action === 'keep' && !kept?.hit && !rec?.unresolved) why = (why ? `${why} ` : '') + 'You keep it.';
+    // What this road does on its own always stands (a house in its way is gone, priced or not); only the
+    // noise of the project's other roads may still be missing here, and the card says so.
+    const pending = this.networkPending && !removed && !bought
+      ? '<div class="ctx-state pending">Not checked yet: the noise of the project’s other roads here.</div>' : '';
     const vio = r.violations.filter((v) => v.target?.buildings?.includes(j)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     let section = '', walls = '';
     if (rec?.key && !removed && !(bought && bought.reason === 'manual')) {
@@ -431,7 +432,7 @@ export class Inspector {
     }
     const opt: [string, string, string][] = [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];
     return `${this.head(cap(info.kind), `${info.levels} floor${info.levels === 1 ? '' : 's'}`)}
-      <div class="ctx-state"><b>${state}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
+      <div class="ctx-state"><b>${state}</b>${why ? `<div class="why">${why}</div>` : ''}</div>${pending}
       ${this.issues(vio)}
       ${section}${walls}
       ${this.choices('building-choice', 'data-building', opt, action)}`;

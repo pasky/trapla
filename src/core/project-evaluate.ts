@@ -196,9 +196,7 @@ const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violati
   violation: { kind: v.kind, title: endWords(route, v.title), fix: endWords(route, v.fix), basis: v.basis, rule: v.rule, ...(v.detail ? { detail: endWords(route, v.detail) } : {}) } }));
 
 function routeOutcome(ctx: ProjectEvalContext, design: ProjectDesign, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
-  const buildings = [...r.demolished.map(b => ({ buildingIndex: b.j, action: 'demolish' as const, cost: b.cost })),
-    ...r.boughtOut.map(b => ({ buildingIndex: b.j, action: 'buy' as const, cost: b.cost })),
-    ...r.kept.map(b => ({ buildingIndex: b.j, action: 'retain' as const, cost: 0 }))];
+  const buildings = ownBuildings(route, r);
   // Road periods share propagation/attenuation; recover their absolute levels from the legacy
   // controlling excess and fixed source offset. No multi-source inference is made from excess.
   const corridor = route.kind === 'motorway' ? corridorOfRoute(design, route.id) : undefined;
@@ -219,6 +217,12 @@ function routeOutcome(ctx: ProjectEvalContext, design: ProjectDesign, route: Rou
   });
   return { buildings, receivers };
 }
+/** What one road does to buildings on its own: under its works (demolished), bought out for its noise or
+ * by the player's choice, kept by the player's choice. */
+const ownBuildings = (route: RouteDesign, r: Result): ProjectBuildingOutcome[] => [
+  ...r.demolished.map(b => ({ buildingIndex: b.j, action: 'demolish' as const, cost: b.cost, routeId: route.id })),
+  ...r.boughtOut.map(b => ({ buildingIndex: b.j, action: 'buy' as const, cost: b.cost, routeId: route.id })),
+  ...r.kept.map(b => ({ buildingIndex: b.j, action: 'retain' as const, cost: 0, routeId: route.id }))];
 const interactionIssue = (routeIds: string[], code: string, buildingIndex?: number): ProjectIssue => ({ code, blocking: 'incomplete', check: 'not-checked',
   scope: { routeIds, ...(buildingIndex === undefined ? {} : { buildingIndex }) }, locations: [],
   violation: { kind: 'crossing', basis: 'engine', title: 'These roads affect each other',
@@ -478,6 +482,11 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const listed = new Set<Result>();
     for (const unit of units) { result.issues.push(...unit.issues); for (const p of unit.parts) listed.add(p.legacy); }
     for (const { route, legacy } of engineered) if (!listed.has(legacy)) { listed.add(legacy); result.issues.push(...routeIssues(route, legacy)); }
+    // Not priced withholds the total, the verdict and decisions between roads: never what each road
+    // physically does. Houses under a road's works are gone, its own buy-outs stand (a paired corridor's
+    // one body once).
+    const own = new Set<Result>();
+    result.buildings = mergeBuildings(engineered.flatMap(({ route, legacy }) => own.has(legacy) ? [] : (own.add(legacy), ownBuildings(route, legacy))));
     return result;
   };
   if (result.cost.unpriced.length || result.issues.length) return finish();

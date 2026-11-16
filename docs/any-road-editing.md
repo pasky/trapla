@@ -260,3 +260,14 @@ on the dragged line within 300 m along the owner, kept while the owner still doe
 crossing picker skips a designed road's hidden `g.road`; (12) an edited network is an overlay on the pack's grid
 (`RoadNet` `override`: only the cells its changed ways touch are its own; ≈ 2 ms instead of ≈ 10 ms on D3/D11),
 `ground` is the same overlay without the designed lines, and the cache keeps the 12 most recently used.
+
+**Not priced never hides what a road physically does (owner's D3 bug, 2026-11-16).** With road changes not priced
+yet, houses under our motorway stayed standing on the carriageway and their card said only "Project noise check
+not finished": `ProjectResult.buildings` was filled only for a priced project, and the map hides exactly that
+list. Now `evaluateProject` always lists every engineered road's own outcomes (`ownBuildings`: under its works →
+demolish, its own buy-outs, the player's Keep; each with `routeId`), priced or not; markers are drawn in every
+state; a click on a house a road removes opens that road's card ("Demolished · … · In the motorway's way."); only
+a house that still stands gets the visible note "Not checked yet: the noise of the project's other roads here."
+while the project's noise is pending. Regression: `tests/edited-network.test.ts` ("a house under a road is
+demolished whether or not the project can be priced") and `scripts/any-road-scene.mjs` (houses under our road stay
+off the map and say Demolished while the project is unpriced; D3: 23 houses).

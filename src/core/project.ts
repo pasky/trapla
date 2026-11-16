@@ -264,8 +264,13 @@ export interface ProjectCost {
   /** Road changes not covered by a project price yet. Non-empty ⇒ total === null, no verdict, no best. */
   unpriced: { routeId: RouteId; reason: string }[];
 }
+/** What happens to a building. While the project is not priced (`complete` false) the list still holds
+ * every road's own physical consequences (houses under its works, its own buy-outs): only decisions
+ * between roads (combined noise) are withheld, never what a road does on its own. */
 export interface ProjectBuildingOutcome {
   buildingIndex: number; action: 'retain' | 'demolish' | 'buy';
+  /** the road whose works remove it, or whose noise decides it */
+  routeId?: RouteId;
   /** One physical acquisition owner after the global mitigation/acquisition loop. */
   workId?: WorkId; cost: number;
 }

@@ -393,6 +393,7 @@ button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choic
 .card.ctx.inspector.k-building { border-color: #7a4a9a; }
 .inspector .ctx-state { margin: 0 0 8px; }
 .inspector .ctx-state > b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.inspector .ctx-state.pending { color: #8a5a00; background: #fff6dd; border-left: 3px solid #c99a00; padding: 3px 7px; font-size: 12px; }
 .inspector .why { color: #556; font-size: 12px; margin-top: 1px; }
 .inspector .seg.choice { display: flex; flex-wrap: wrap; padding: 2px; gap: 2px; margin: 4px 0; }
 .inspector .seg.choice button { flex: 1 1 auto; padding: 4px 6px; font-size: 12px; border: 0; white-space: nowrap; }

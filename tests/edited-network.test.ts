@@ -7,6 +7,7 @@ import { D11_SCENARIO, D3_MOTORWAY } from '../src/core/data/scenario';
 import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { crossingOverridesOf, crossingTargetsOf } from '../src/core/project-roadnet';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
+import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
 import type { RouteDesign } from '../src/core/project';
@@ -123,6 +124,26 @@ describe('the edited network follows the project as it is now', () => {
     expect(Math.abs(preview.grade[k] - deck)).toBeLessThan(1.5);
     // without the last result it drops to the ground (what every drag used to show)
     expect(previewProjectRoute(ctx, { epoch: 'e', revision: 2, design: dragged }, 'side').legacy!.kind[k]).toBe(0);
+  });
+  // Owner's D3 bug: with road changes not priced yet, houses under our motorway stayed standing on it and
+  // their card only said the project's noise check was not finished.
+  it('a house under a road is demolished whether or not the project can be priced', () => {
+    const { ctx, project, mission } = setup();
+    ctx.legacy = { ...ctx.legacy, buildings: new BuildingIndex([[600, 250, 7], [600, 420, 7], [100, 560, 7]]) };
+    const alone = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project });
+    expect(alone.complete).toBe(true);
+    expect(alone.buildings.filter(b => b.action === 'demolish')).toMatchObject([{ buildingIndex: 0, routeId: mission }]);
+    // a new road that ends nowhere keeps the project unpriced; it stands on a house too
+    project.routes.push(road('side', [300, 420], [900, 420]));
+    const r = evaluateProject(ctx, { epoch: 'e', revision: 2, design: project });
+    expect(r.complete).toBe(false); expect(r.cost.total).toBeNull();
+    expect(r.issues.map(i => i.code)).toContain('road-ends-nowhere');
+    const gone = r.buildings.filter(b => b.action === 'demolish');
+    expect(gone).toMatchObject([{ buildingIndex: 0, routeId: mission }, { buildingIndex: 1, routeId: 'side' }]);
+    expect(gone.every(b => b.cost > 0)).toBe(true);
+    // each road's own result says the same (what the map hides and the house card shows)
+    expect(r.routes[mission].legacy!.demolished.map(b => b.j)).toEqual([0]);
+    expect(r.routes.side.legacy!.demolished.map(b => b.j)).toEqual([1]);
   });
   it('a choice on what is left of a cut road is stored with the stretch that cut it, not a number that shifts', () => {
     const { ctx, project, mission } = setup();

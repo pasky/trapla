@@ -308,8 +308,11 @@ async function main() {
     selectGeneration++;
     if (sourceEditor?.selected) sourceEditor.clear();
     if (buildTool.active) buildTool.cancel(false);
+    // a house a road removes (under its works, or bought out by it): its card is that road's, priced or not
+    const remover = next?.kind === 'building' ? projectFull?.buildings.find(b => b.buildingIndex === next.j && b.action !== 'retain')?.routeId : undefined;
+    if (remover && remover !== store.activeRouteId && projectStore.snapshot.design.routes.some(r => r.id === remover)) switchRoute(remover);
     // a house belongs to the project: its card shows the road whose noise reaches it most
-    if (next?.kind === 'building' && projectFull?.complete && Object.keys(projectFull.routes).length > 1) {
+    else if (next?.kind === 'building' && projectFull?.complete && Object.keys(projectFull.routes).length > 1) {
       const contributions = projectFull.receivers.find(r => r.buildingIndex === next.j)?.contributions ?? [];
       const owner = contributions.reduce<(typeof contributions)[number] | null>((a, c) => (!a || c.dayEnergy > a.dayEnergy ? c : a), null)?.routeId;
       if (owner && owner !== store.activeRouteId) switchRoute(owner);
@@ -734,18 +737,17 @@ async function main() {
     const inputs = projectStore.snapshot.design.routes.flatMap(route => {
       const legacy = result.routes[route.id]?.legacy;
       if (!legacy) return [];
-      if (route.kind === 'railway') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth, buildingMarkers: result.complete }];
+      if (route.kind === 'railway') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth }];
       // A paired motorway is ONE body drawn once (its forward direction carries the shared result).
       if (route.kind === 'motorway') {
         // split: each direction is its own body
-        if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth, buildingMarkers: result.complete }];
+        if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth }];
         const corridor = projectStore.snapshot.design.corridors.find(c => c.children.forward === route.id);
-        return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth, buildingMarkers: result.complete }] : [];
+        return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth }] : [];
       }
       if (route.kind !== 'road') return [];
       const crownWidth = route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
-      return [{ id: route.id, result: legacy, crownWidth,
-        buildingMarkers: result.complete }];
+      return [{ id: route.id, result: legacy, crownWidth }];
     });
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {

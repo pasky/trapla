@@ -101,6 +101,21 @@ try {
   assert(result.routes[rebuilt].legacy, 'the rebuilt road is engineered');
   assert.equal(result.cost.total, null, 'not priced yet'); assert.equal(result.valid, false);
   assert(result.issues.some(i => i.code === 'traffic-unknown'), 'its traffic is asked for');
+  // not priced withholds the total only: houses under our road are gone from the map and say so
+  {
+    const own = result.routes[mission].legacy.demolished.map(b => b.j);
+    assert.deepEqual(own.filter(j => !result.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the unpriced project still lists our demolitions');
+    assert.deepEqual(await page.evaluate(list => list.filter(j => window.trapla.buildingShown(j)), own), [], 'no house stands on our road while the project is not priced');
+    if (own.length) {
+      await page.evaluate(j => window.trapla.selectBuilding(j), own[0]); await idle();
+      const card = await page.locator('#inspector').textContent();
+      assert(/Demolished/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our road says it is demolished (${card})`);
+      await page.evaluate(() => window.trapla.select(null));
+      await page.evaluate(id => window.trapla.setActiveRoute(id), rebuilt); await idle();
+      assert.equal(await page.evaluate(() => window.trapla.activeRoute()), rebuilt);
+    }
+    console.log(`unpriced project: ${own.length} houses under our road stay demolished`);
+  }
   assert.equal(await page.evaluate(() => window.trapla.profileHasRoad()), true, 'it has a profile');
   assert.equal(await page.locator('#cost-scope').textContent(), 'This road only');
   assert.equal(await page.locator('#active-route').isVisible(), true, 'two roads: the road list appears');
