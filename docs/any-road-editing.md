@@ -577,3 +577,31 @@ bit-identical), smoke, playtest (`PORT=5246`), bench (5 saved designs VALID), ou
 --random 24`, exit 0), land-screen-check (6 OK), any-road-scene D11 and D3, owner-d3-scene: PASS; drag-perf
 `--gpu --check` bend, road, radius, pin, vpi, link: all OK (load 7–13; `/tmp/gate-perf-<mode>.log`).
 Still waiting: QA's re-test of this tree (item 2) and noise-walls-seams in main (G).
+
+## 14. QA re-test of 9f1191f (2026-11-16): fixes
+
+QA report: `worktree-0005/docs/playtest-findings.md` "Re-test — any-road-editing @ 9f1191f" (screens
+`/tmp/trapla-qa/ar/`). PASS: #1 #2 #6 (owner step) #7 #8 #21 #22 #23. Fixed here:
+
+- **#12 Build → Road on our motorway while unpriced** (`7ed5840`): not a stale `projectFull` — the pointer was on the
+  motorway's cut slope, more than 10 px from either direction's centreline, so `routeAt` missed it. `placeAt` now
+  also asks `footprintHit` (`render/route-pick.ts`): a point inside any road's drawn footprint (carriageway and
+  earthworks to the slope edges, `dayL`/`dayR`) is on that road (motorway: the interchange refusal; a road: joins it).
+  owner-d3-scene checks both slopes in the unpriced state; `tests/route-pick.test.ts`.
+- **Drawn ≠ billed on a small drag** (`5b909a2`): kept cells are drawn on the old road's own line
+  (`project-kept.ts` `layOnGround` with `OldRoad`: x, y snapped to the old centreline, ground re-sampled there,
+  tangents recomputed; beside a new part the line fades from the kernel's over `TIE_LENGTH` = 50 m like the heights).
+  A drag that stays within 12 m of the old road now visibly snaps back onto it (and the card says it is kept);
+  beyond 12 m it is built anew and billed. Test "what is kept is drawn on the old road's own line…".
+- **"Junction with the class I road" on that class I road** (`7ed5840`): at a stretch end the old road going on as
+  another mapped way of the same class within 45° of its heading (`project-replacement.ts` `continues`,
+  PROVISIONAL tolerances) is its continuation, not a junction; side roads at that node still get theirs. Test
+  "where it is built anew up to its end, the old road going on there is no junction; a track there is".
+- **P2** (`4ed4da0`): an unnamed street's card title says "Street" once; a bend's label is clamped into the map; choosing a
+  road in the road list flies to it when none of it is on screen; mapped-road pick offset: cherry-picked
+  motorway-rail's `b9f61aa` (long segments picked in 20 m pieces on the ground).
+- Checked: vitest 626, eval-regression 11 PASS, any-road-scene D11, owner-d3-scene PASS after these.
+
+**Open (next session):** QA #3 (any road: local roads, service roads, tracks rebuildable with sourced rules), G
+(combined noise; noise-walls-seams is merged in main 93f849d, COST_MODEL_VERSION 21 → ours 22 or next free), all
+gates, merge.
