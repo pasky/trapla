@@ -4,6 +4,64 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Final sweep — main e24df59 (2026-11-16, three chunks of 7, 9 and 7 min)
+
+Fresh localStorage, real mouse, SwiftShader 1440×900. Screenshots `/tmp/trapla-qa/fin/` (numbering restarts per chunk).
+
+### Per-area verdicts
+
+| area | verdict | notes |
+|---|---|---|
+| Picker | **PASS** | groups Trutnov · Středočeská D3 (whole + 0301–0305/I) · D35 (whole + first section) · I/16; each card with speed, goal, sourced note. Retired presets only by old URL. |
+| D11 road | **PASS** | intro clear; a 60 px drag at km 9 is live (≈ price while dragging) and lands VALID −1.05 bn; shaped reroute km 4.10 drags, length updates (424 → 461 m), VALID; noise view + wall labels; Whole route. |
+| Owner's D3 III/1057 steps | **PASS** | cold page: hover shows grab, drag 1057 → rebuilt under the motorway bridge, **VALID and priced** (14.20 bn, −17 M) (`010`). P2: the bend label says "up to 4.3 m off the dashed polygon" (jargon) and is clipped at the map bottom; the −17 M is not explained on any card. |
+| Phantom 2.5 bn side-road bridge (earlier P0) | **FIXED** | D3 motorway 18.49 → 14.22 bn; whole D3 has no crossing > 300 M. |
+| D3 section (interchange ends) | **PASS** | 0301: A "D0 Praha", B "Jílové (on to 0302)" with interchange marks (`012`, `013`). |
+| Whole D3 | **PASS** (P2) | loads in 17 s; drag shows ≈ prices live; the full result arrives ~20 s after release on SwiftShader. The live estimate overshot (≈ 38.2 bn → 37.37 bn). |
+| Motorway one-direction edit | **PASS** | 0302 "Towards Hostěradice", 40 px drag: VALID −46 M; the card lists "Changed stretches · km 1.1–4.5 · Both follow this bend · Reset". I found no "Join" button; Reset plays that role. P2: "Drag this direction (Hostěradice (on to 0303))." double brackets. |
+| Railway mission | **PASS** start, **P1** drag | Trutnov hl.n. → Královec, single-track 120 km/h, VALID 10.55 bn, ends at stations (no 150/160 km/h option on the start screen). |
+| Build → Road / Motorway / Railway | **PASS** placing, **P1** crossings | rubber band + length; Motorway honestly "shown, not priced" (no interchanges). |
+| Edit a street / a track on D11 | **PASS** street, **FAIL** reroute track | street: VALID, traffic 300 a day / 3 % "a guess for a quiet street"; track: 10 a day / 5 %. |
+| Nová Paka | **PASS** | VALID 2.23 bn; the Session 3 km 3.3 drag is now VALID (+121 M) — the street conflict is resolved by Auto. |
+
+### Owner complaints
+
+| complaint | status |
+|---|---|
+| camera under the terrain | **fixed**: lowest pitch + 8 wheel steps into a hillside stops at 80 m, camera 28 m above ground (`004`, chunk 3). |
+| walls teal / ugly | **better**: close up they are slim grey walls; teal only as map symbols / labels. |
+| dashed line meaning | **fixed**: only the official / planned line is dashed, labelled on the map and in the legend. |
+| black demolition cubes | **fixed**: hatched cleared plots, also while unpriced. |
+| purple barely visible | tunnels read as purple dashed lines on map and profile; OK at all zooms tried. |
+| clicking service roads / reroutes | **fixed**: every mapped road and reroute is clickable and draggable on the first try (cold). |
+| junction earthworks over other roads | not reproduced this sweep. |
+| D3 ends in fields | **fixed** for sections (ends at labelled section joins / D0); whole D3 ends at the open D3. |
+| railway on highway ends | **fixed**: station to station. |
+| 150 km/h | gone from the start screen (only an old saved-URL preset still has 160 km/h double track). |
+| houses on the carriageway (unpriced) | **fixed**: unpriced D11 shows hatched plots at km 5.4, nothing standing on the road (`002`, chunk 3). |
+| hidden traffic field | **fixed**: pre-filled (census / class / street / track guess), always visible. |
+| "A" labels | fine: A/B with place names, section joins named. |
+
+### New / remaining P0 – P1
+
+- No P0 found.
+- **P1 — a track that an automatic reroute also uses still can't be edited with a total.** D11 km 4.1 track: "Two roads change
+  the same old road" + "earthworks closer than 10 m" → NOT PRICED (unchanged since 80168c3).
+- **P1 — a 50 px drag of the Královec railway breaks streams far from the drag.** Drag at km 6: 5 violations — two
+  "earthworks block a stream" / "cutting runs through a stream" at km 2.07 and 2.36, and "No buildable reroute for the
+  track · lower our railway by 0.1 m" at km 6.29 (`006`, chunk 2). The track-height tweak by 0.1 m is a fix Auto
+  should apply itself. Huge flat green fill blocks are drawn around the high embankments there.
+- **P1 — new routes crossing our route are not resolved.** Build → Road across the railway mission: "The game cannot
+  trace where this class II road goes · set this crossing to Our bridge over it" + "Too high under our road's bridge ·
+  lower by 42.1 m"; Build → Motorway / Railway: "Roads cross here · move one road" (NOT CHECKED); new railway also
+  "Embankment never reaches the ground" (`007`–`009`, chunk 2).
+- **P1 — whole D3 drag leaves a track under the embankment**: "Our earthworks cover 41 m of a track · put our motorway on
+  a bridge km 29.59–29.65" after a 60 px drag at km 30.
+
+P2 summary: jargon "dashed polygon" in the bend label; Photo still has no in-game construction note on Nová Paka;
+whole-D3 settle ~20 s and the live estimate can be ~0.9 bn off; double brackets in the direction card; the −17 M
+motorway change on rebuilding 1057 is unexplained; the dropdown can list two routes both named "Motorway".
+
 ## Verification — main f9f5d9d (2026-11-16, two chunks of 15 and 4 min)
 
 Detached snapshot of f9f5d9d with main's packs (traffic.json for every scenario). Screenshots `/tmp/trapla-qa/f9/`
