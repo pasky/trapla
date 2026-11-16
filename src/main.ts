@@ -1057,7 +1057,10 @@ async function main() {
     return sourceAt(clientX, clientY);
   };
   /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
-  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null, grabbedEarly: { x: number; y: number } | null = null;
+  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
+  /** a press on a mapped road before the road links are loaded (client point; `ready` once they are) */
+  type EarlyGrab = { clientX: number; clientY: number; ready: boolean };
+  let grabbedEarly = null as EarlyGrab | null;
   const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
     const interval = sourceEditor?.interval; if (!interval) return null;
     const g = view.pick(clientX, clientY);
@@ -1130,21 +1133,23 @@ async function main() {
       // its card says why it cannot be changed
       const s = sourceAt(clientX, clientY);
       if (s?.kind === 'source') { grabbedSource = s.hit; return true; }
-      // before the road links are loaded: a mapped road there is held (no pan) and its card opens once they are
+      // before the road links are loaded: a mapped road there is held (no pan); a drag waits for the links
+      // and then rebuilds it (a click opens its card once they are loaded)
       const g = !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
-      if (g && mappedRoadNear(g.x, g.y)) { grabbedEarly = g; void ensureTransport(); return true; }
+      if (g && mappedRoadNear(g.x, g.y)) {
+        const early: EarlyGrab = { clientX, clientY, ready: false }; grabbedEarly = early;
+        void ensureTransport().then(() => { early.ready = true; if (grabbedEarly === early) view.resumeRoadDrag(); });
+        return true;
+      }
       return false;
     },
     onRoadDrag: (x, y) => {
       if (grabbedEarly) {
-        const g = grabbedEarly, generation = selectGeneration; grabbedEarly = null;
-        void ensureTransport().then(() => {
-          if (generation !== selectGeneration) return;
-          const p = view.project(g.x, g.y, view.drape(g.x, g.y)), box = canvasBox();
-          const late = p.vis ? sourceAt(box.left + p.sx, box.top + p.sy) : null;
-          if (late?.kind === 'source') showSource(late.hit);
-        });
-        return null;
+        if (!grabbedEarly.ready) return 'wait';
+        // the map has not moved while the press was held: the same client point is the same road
+        const s = sourceAt(grabbedEarly.clientX, grabbedEarly.clientY); grabbedEarly = null;
+        if (s?.kind !== 'source') return null;
+        grabbedSource = s.hit;
       }
       if (grabbedSource) {
         showSource(grabbedSource); grabbedSource = null;
@@ -1229,6 +1234,12 @@ async function main() {
   });
   overlayEl.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('.pi')) profile.setBendHover(null); });
   let mapHoverAt: { x: number; y: number } | null = null, mapHoverFrame = 0, mapHoverKey = '';
+  const rebuildableSources = new Map<string, boolean>();
+  const canRebuild = (sourceId: string) => {
+    let ok = rebuildableSources.get(sourceId);
+    if (ok === undefined && transportIndex) rebuildableSources.set(sourceId, ok = mappedLineKindFor(transportIndex, sourceId).verdict.ok);
+    return ok ?? false;
+  };
   const mapHoverTick = () => {
     mapHoverFrame = 0;
     const at = mapHoverAt, r = last, canvas = view.renderer.domElement;
@@ -1245,7 +1256,7 @@ async function main() {
       const cross = crossingAt(at.x, at.y);
       const k = cross ? -1 : roadAt(at.x, at.y, 10);
       const building = cross || k >= 0 ? null : buildingAt(at.x, at.y);
-      let works: ReturnType<typeof crossingWorksAt> = null;
+      let works: ReturnType<typeof crossingWorksAt> = null, src: ReturnType<typeof sourceAt> = null;
       if (cross) {
         cursor = 'pointer'; key = `x${cross.roadId}`;
         if (key !== mapHoverKey) { view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); profile.setHover(cross.s, true); }
@@ -1259,7 +1270,10 @@ async function main() {
         if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${link ? ' · drag to reshape' : ''}`); profile.setHover(c.s, true); }
       } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
-      else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }
+      else if ((src = sourceAt(at.x, at.y))) {
+        // a drag there rebuilds the road (one that cannot be changed: a click says why)
+        cursor = src.kind === 'source' && canRebuild(src.hit.sourceId) ? 'grab' : 'pointer'; key = 'source';
+      }
     }
     // before the road links are loaded (fetched when idle, parsed on first need): the first hover starts
     // them, and a mapped road already shows that it can be grabbed
@@ -1481,6 +1495,12 @@ async function main() {
       .sort((p, q) => q.stations[q.stations.length - 1] - p.stations[p.stations.length - 1]).map(q => q.id),
     sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
     sourceSelection: () => sourceEditor?.selection ?? null,
+    /** the road links are loaded and parsed (they load on first need) */
+    transportLoaded: () => !!transportGraph,
+    /** the screen point (px inside the view) of the drawn ground at x, y */
+    groundScreen: (x: number, y: number) => view.project(x, y, view.drape(x, y)),
+    /** would a press at this client point drag something (bend our road, rebuild a mapped road) instead of panning? */
+    grabsAt: (clientX: number, clientY: number) => { const on = view.ev.hitRoad?.(clientX, clientY) ?? false; grabbing = null; grabbedSource = null; grabbedEarly = null; return on; },
     sourcePoint: (id: string, s: number) => transportIndex?.position(id, s) ?? null,
     buildHover: () => buildTool.hoverText,
     building: () => buildTool.active,

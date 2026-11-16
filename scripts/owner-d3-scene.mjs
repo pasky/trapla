@@ -65,10 +65,39 @@ try {
     if (!best || best.d > 30) return null;
     const side = [best.s - 120, best.s + 120].filter(s => s > 20 && s < best.length - 20).map(s => ({ s, p: window.trapla.sourcePoint(best.id, s) })).filter(q => q.p);
     side.sort((a, b) => b.p.y - a.p.y); // local y grows to the north
-    return side.length ? { ...best, s: side[0].s, x: side[0].p.x, y: side[0].p.y, z: side[0].p.z } : null;
+    // and one 25 m from the bridge on the same side (the crossing's own stretch is drawn there)
+    const near = side.length && window.trapla.sourcePoint(best.id, best.s + Math.sign(side[0].s - best.s) * 25);
+    return side.length && near ? { ...best, s: side[0].s, x: side[0].p.x, y: side[0].p.y, z: side[0].p.z, near } : null;
   }, [roads, start.crossings]);
   assert(grab, 'III/1057 runs under our bridge');
   console.log(`our bridge over road III/1057 at km ${grab.km.toFixed(2)}; grabbing the road 120 m north of it`);
+
+  // 0b. a fresh page, the crossing's card open, the road links not loaded yet: a drag on III/1057 next to
+  // our bridge rebuilds it, never pans the map
+  {
+    const c = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+    await c.addInitScript(() => localStorage.setItem('trapla.intro.v2', '1'));
+    const p = await c.newPage(); p.on('pageerror', error => errors.push(error.message));
+    await p.goto(url); await p.waitForFunction(() => !!window.trapla, null, { timeout: 180000 });
+    await p.evaluate(() => window.trapla.whenIdle());
+    await p.evaluate(roadId => window.trapla.selectCrossing(roadId), grab.roadId);
+    await p.evaluate(([x, y]) => window.trapla.lookAt(x, y, 200, 0, 62), [grab.near.x, grab.near.y]);
+    await p.evaluate(() => window.trapla.whenIdle()); await p.waitForTimeout(300);
+    assert.equal(await p.evaluate(() => window.trapla.transportLoaded()), false, 'a fresh page has not loaded the road links');
+    const q = at(await p.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [grab.near.x, grab.near.y]));
+    const pose = await p.evaluate(() => window.trapla.cameraTarget());
+    await p.mouse.move(q.x, q.y); await p.mouse.down();
+    await p.mouse.move(q.x + 40, q.y, { steps: 10 });
+    await p.waitForFunction(() => window.trapla.transportLoaded(), null, { timeout: 20000 });
+    await p.mouse.move(q.x + 42, q.y); await p.mouse.up();
+    await p.evaluate(() => window.trapla.whenIdle());
+    const after = await p.evaluate(() => window.trapla.cameraTarget());
+    assert(Math.hypot(after.x - pose.x, after.y - pose.y) < 0.5, `a drag next to our bridge does not pan the map (${JSON.stringify([pose, after])})`);
+    const rebuilt = (await p.evaluate(() => window.trapla.getProject())).routes.find(r => r.source);
+    assert.equal(rebuilt?.source.intervals[0].sourceId, grab.id, 'a drag next to our bridge rebuilds III/1057');
+    console.log('fresh page, crossing card open: a drag on III/1057 25 m from our bridge rebuilt it, the map did not move');
+    await c.close();
+  }
   await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 800, 0, 62), [grab.x, grab.y]); await idle();
 
   // 1. click it: its card

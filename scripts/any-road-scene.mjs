@@ -73,6 +73,42 @@ try {
   console.log(`mapped road ${road.name} ${Math.round(road.length)} m, ${Math.round(road.clear)} m from our road`);
   await idle();
 
+  // 0b. cold start: a fresh page, before the road links are loaded. Hovering the road shows the grab cursor;
+  // a click opens its card; a drag at once never pans the map and rebuilds the road once the links are in
+  {
+    const p0 = await page.evaluate(([id, s]) => window.trapla.sourcePoint(id, s), [road.id, mid]);
+    const fresh = async () => {
+      const c = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+      await c.addInitScript(() => localStorage.setItem('trapla.intro.v2', '1'));
+      const p = await c.newPage(); watch(p);
+      await p.goto(url); await p.waitForFunction(() => !!window.trapla, null, { timeout: 180000 }); await idle(p);
+      await p.evaluate(([x, y]) => window.trapla.lookAt(x, y, 900, 0, 55), [p0.x, p0.y]); await idle(p);
+      assert.equal(await p.evaluate(() => window.trapla.transportLoaded()), false, 'a fresh page has not loaded the road links');
+      const q = await p.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [p0.x, p0.y]); assert(q?.vis);
+      return { c, p, at: { x: box.x + q.sx, y: box.y + q.sy } };
+    };
+    let { c, p, at } = await fresh();
+    await p.mouse.move(at.x - 4, at.y); await p.mouse.move(at.x, at.y); await p.waitForTimeout(100);
+    assert.equal(await p.evaluate(() => document.querySelector('#view canvas').style.cursor), 'grab', 'a mapped road shows the grab cursor at once');
+    await p.mouse.click(at.x, at.y);
+    await p.locator('#inspector.k-source').waitFor({ timeout: 20000 });
+    assert.match(await p.locator('#inspector').textContent(), /Drag it to change its line/, 'the first click opens its card');
+    await c.close();
+    ({ c, p, at } = await fresh());
+    const pose = await p.evaluate(() => window.trapla.cameraTarget());
+    await p.mouse.move(at.x, at.y); await p.mouse.down();
+    const cold = !(await p.evaluate(() => window.trapla.transportLoaded()));
+    await p.mouse.move(at.x + 30, at.y - 30, { steps: 12 });
+    await p.waitForFunction(() => window.trapla.transportLoaded(), null, { timeout: 20000 });
+    await p.mouse.move(at.x + 32, at.y - 30); await p.mouse.up(); await idle(p);
+    const after = await p.evaluate(() => window.trapla.cameraTarget());
+    assert(Math.hypot(after.x - pose.x, after.y - pose.y) < 0.5, `the first drag does not pan the map (${JSON.stringify([pose, after])})`);
+    const rebuiltCold = (await p.evaluate(() => window.trapla.getProject())).routes.find(r => r.source);
+    assert(rebuiltCold?.source.intervals[0].sourceId === road.id, 'the first drag rebuilds the road');
+    console.log(`cold start: grab cursor, card on the first click, the first drag rebuilt ${road.name}${cold ? ' (pressed before the links were in)' : ''}`);
+    await c.close();
+  }
+
   // 1. click: its card and highlighted stretch, no edit; Escape closes it
   const before = await revision();
   let point = await screen('sourceScreen', road.id, mid); await page.mouse.click(point.x, point.y);
