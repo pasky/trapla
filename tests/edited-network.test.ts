@@ -311,4 +311,7 @@ it('what the kernel says about a side road reads "this road": "our road" there i
   expect(thisRoadWords('Its bridge over us')).toBe('Its bridge over this road');
   expect(thisRoadWords('The crossed road meets ours at the same level; four hours of your time')).toBe('The crossed road meets this road at the same level; four hours of your time');
   expect(thisRoadWords(thisRoadWords('Our road crosses over the crossed road'))).toBe('This road crosses over the crossed road');
+  // a new or rebuilt railway: its own words
+  expect(thisRoadWords('Our earthworks cover 3 m of a service road | Put our railway on a bridge', 'railway'))
+    .toBe('This railway’s earthworks cover 3 m of a service road | Put this railway on a bridge');
 });

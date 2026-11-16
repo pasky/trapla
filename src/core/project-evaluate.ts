@@ -116,7 +116,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
   // the kernel names the mission's ends A and B and calls the designed road "our road"; every other road's
   // card and map say its start and end, and "this road" ("our road" there is the mission road)
   if (legacy && route.role !== 'mission') {
-    const own = (text: string) => thisRoadWords(endWords(route, text));
+    const own = (text: string) => thisRoadWords(endWords(route, text), route.kind);
     for (const v of new Set([...legacy.violations, ...legacy.inherited ?? [], ...legacy.crossings.flatMap(c => c.issues ?? [])])) {
       v.title = own(v.title); v.fix = own(v.fix); if (v.detail) v.detail = own(v.detail);
     }

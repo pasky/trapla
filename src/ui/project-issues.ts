@@ -71,11 +71,11 @@ export function unpricedText(unpriced: readonly { routeId: RouteId }[], ours: Ro
  * price (as if it were the only change; core `cost.alone`), never added up. The active road's own price
  * is the big number above this line. */
 export function aloneText(alone: Readonly<Record<RouteId, number>>, activeRouteId: RouteId | undefined, ours: ReadonlySet<RouteId>,
-  names: Readonly<Record<RouteId, string>>, money: (v: number) => string): string {
+  names: Readonly<Record<RouteId, string>>, money: (v: number) => string, ourWord = 'our road'): string {
   const activeOurs = activeRouteId !== undefined && ours.has(activeRouteId);
   const others = Object.keys(alone).filter(id => id !== activeRouteId && !(activeOurs && ours.has(id)));
   if (!others.length) return '';
-  const label = (id: RouteId) => ours.has(id) ? 'our road' : names[id] ?? 'a road';
+  const label = (id: RouteId) => ours.has(id) ? ourWord : names[id] ?? 'a road';
   if (others.length === 1) { const l = label(others[0]); return `${l.charAt(0).toUpperCase()}${l.slice(1)} alone: ${money(alone[others[0]])}`; }
   const shown = others.slice(0, 3).map(id => `${label(id)} ${money(alone[id])}`);
   return `Alone: ${shown.join(', ')}${others.length > 3 ? ` and ${others.length - 3} more` : ''}`;

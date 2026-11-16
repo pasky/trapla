@@ -167,7 +167,7 @@ try {
   const scope = await text('#cost-scope'), sub = await text('#perkm');
   if (after.cost.total === null) {
     assert.equal(scope, 'This road only');
-    assert.match(sub, /^Road III\/1057 not priced yet\. Our road alone: [\d.]+ bn CZK$/, `one road change, our road's price in view (${sub})`);
+    assert.match(sub, /^Road III\/1057 not priced yet\. Our motorway alone: [\d.]+ bn CZK$/, `one road change, our road's price in view (${sub})`);
     console.log(`no total: ${[...new Set(after.cost.unpriced.map(u => u.reason))].join(', ')}. "${scope} ${await text('#total')}" / "${sub}"`);
   } else { assert.equal(scope, 'Total cost'); console.log(`priced: ${(after.cost.total / 1e9).toFixed(3)} bn CZK`); }
   for (const i of after.issues) console.log(`  ${i.check === 'not-checked' ? 'not checked' : 'violation'}: ${i.violation.title} | ${i.violation.fix}`);

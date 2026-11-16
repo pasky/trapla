@@ -433,7 +433,7 @@ export class Inspector {
       ${this.issues(vio)}
       ${this.linkPath(c, d)}
       ${this.choices('crossing-choice', 'data-crossing', options, choice)}`;
-    return `${this.head(c.crossedRoute ? esc(c.crossedRoute.name) : cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}`, nav)}${this.isSideRoad?.() ? thisRoadWords(body) : body}`;
+    return `${this.head(c.crossedRoute ? esc(c.crossedRoute.name) : cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}`, nav)}${this.isSideRoad?.() ? thisRoadWords(body, line) : body}`;
   }
   /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
   private linkPath(c: Result['crossings'][number], d: Design) {

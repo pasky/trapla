@@ -152,7 +152,7 @@ export class Hud {
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
     // no total: say which change holds it back, and keep what IS priced in view (each road alone, never added up)
-    const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk) : '';
+    const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`) : '';
     this.$('perkm').textContent = !priced && unpriced ? `${unpricedText(result!.cost.unpriced, ours, names, groups)}${others ? `. ${others}` : ''}` : this.goalText;
     this.$('perkm').title = others ? 'Each road priced as if it were the only change. Not added up: roads that affect each other can cost more or less together.' : '';
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;

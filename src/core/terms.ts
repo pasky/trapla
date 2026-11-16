@@ -246,11 +246,11 @@ export const namedByNumber = (tags: { highway?: string; ref?: string; name?: str
 
 /** The kernel words everything from the designed road's side ("our road", "our earthworks", "Its bridge
  * over us"). On a road that is not ours (a rebuilt or new side road) "our road" is the mission road, so
- * what the kernel says about the road being designed reads "this road" there. */
-export function thisRoadWords(text: string): string {
-  return text.replace(/\bOur road\b/g, 'This road').replace(/\bour road\b/g, 'this road').replace(/\bours\b/g, 'this road')
-    .replace(/\b(over|under|above|below|beside|across|to|from) us\b/g, '$1 this road')
-    .replace(/\bOur (?=\w)/g, 'This road’s ').replace(/\bour (?=\w)/g, 'this road’s ');
+ * what the kernel says about the line being designed reads "this road" there (`line`: "this railway"). */
+export function thisRoadWords(text: string, line: OurLine = 'road'): string {
+  return text.replace(/\bOur (road|railway|motorway)\b/g, 'This $1').replace(/\bour (road|railway|motorway)\b/g, 'this $1').replace(/\bours\b/g, `this ${line}`)
+    .replace(/\b(over|under|above|below|beside|across|to|from) us\b/g, `$1 this ${line}`)
+    .replace(/\bOur (?=\w)/g, `This ${line}’s `).replace(/\bour (?=\w)/g, `this ${line}’s `);
 }
 
 /** The house card of a house heard by two or more roads, decided once for the project (ProjectReceiver.together):
