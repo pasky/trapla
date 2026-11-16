@@ -171,19 +171,25 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
   return out;
 }
 
-/** Roads a route crosses, relocates or closes. A closure relies on a detour over unspecified roads. */
-function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number }[]>; closes: boolean } {
+/** Roads a route crosses, relocates or closes. A closure relies on a detour over existing roads, no longer than
+ * its `detour` (road-realignment.ts closeRedundantStretch): every road that detour can use lies within `reach`
+ * of the closure (the closed stretch's length plus the detour). */
+function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number }[]>; closes: { x: number; y: number; reach: number }[] } {
   const roads = new Map<number, { x: number; y: number }[]>();
   const add = (id: number | undefined, x: number, y: number) => { if (id === undefined) return; const list = roads.get(id); if (list) list.push({ x, y }); else roads.set(id, [{ x, y }]); };
   // (a junction meets the way where it is and leaves it whole on both sides: no change of its course; its
   // works are screened as land like any other)
-  for (const c of result.crossings) if (c.type !== 'junction') { add(c.roadId, c.x, c.y); if (c.targetRoadId !== undefined) add(c.targetRoadId, c.x, c.y); }
-  let closes = false;
+  for (const c of result.crossings) if (c.type !== 'junction') {
+    add(c.roadId, c.x, c.y);
+    // (a reroute joins the road it is led to where its new pieces end)
+    if (c.targetRoadId !== undefined) for (const p of [c, ...(c.geometry?.links ?? []).flatMap(l => l.length ? [l[l.length - 1]] : [])]) add(c.targetRoadId, p.x, p.y);
+  }
+  const closes: { x: number; y: number; reach: number }[] = [];
   for (const f of result.footprintConflicts) {
     // (a rebuilt stretch going on into its own old road changes nothing there)
     if (!f.continuation) add(f.roadId, f.x, f.y);
     for (const interval of f.sourceIntervals ?? []) add(interval.way, f.x, f.y); // every removed old way
-    if (f.closed) closes = true;
+    if (f.closed) closes.push({ x: f.x, y: f.y, reach: f.closed.length + f.closed.detour });
   }
   return { roads, closes };
 }
@@ -272,7 +278,9 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     for (const [id, here] of ta.roads) if (!own.has(id)) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
       const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < best) { best = d; at = p; }
     }
-    if (at || (ta.closes && tb.roads.size) || (tb.closes && ta.roads.size))
+    // (a closure's detour, and another road's change of a road it could use)
+    const detours = (t: typeof ta, u: typeof tb) => t.closes.some(c => [...u.roads.values()].some(list => list.some(p => Math.hypot(p.x - c.x, p.y - c.y) <= c.reach)));
+    if (at || detours(ta, tb) || detours(tb, ta))
       interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-road', ...(at ? { at } : {}) });
   }
   // Buildings demolished, bought or kept-in-the-way by more than one road.

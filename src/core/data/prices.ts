@@ -53,11 +53,18 @@
  * never meets the hillside is a bridge; railways: a band line missing a clearance is weighed against the
  * wide band's, streams in a cutting and failed reroutes join the separation retry (research/57). Single-road
  * D11 bills unchanged; the Královec railway starter 10.5506 → 10.5857 bn.
- * 30: design realism (research/46–48): side slopes as built (VL 1 2022 fills, cuts by ground: sound rock 4:1
+ * 30: more projects of several roads are priced: a rebuilt stretch's end meets another road as at a junction
+ * also where it stopped short of that road's works (its old road beyond the end, or what is left of it, under
+ * them); a closure's detour interacts only with changes within its reach; roads one above the other are
+ * compared point by point. reroute-takeover-audit (D11): unpriced 47 → 13 of 292. Single-road bills unchanged.
+
+ * 31: design realism (research/46–54): side slopes as built (VL 1 2022 fills, cuts by ground: sound rock 4:1
  * netted), no unsourced high-earthworks reserve, the "other objects" surcharge without B.6 technology on
  * two-lane roads (29.4 / 48.1 %), ČSN 73 6101:2018 vertical radii and gradients by category; a route ending on
- * a motorway may meet its other carriageway in its end cell. */
-export const COST_MODEL_VERSION = 30;
+ * a motorway may meet its other carriageway in its end cell; deep culverts become buried bridges, soft ground
+ * under fills is treated; design speed per bend and hairpins (ČSN 73 6101:2000 §8.5.7); grade limits by terrain
+ * class; an underpass box ends where our slope covers its roof, wing walls beyond. */
+export const COST_MODEL_VERSION = 31;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

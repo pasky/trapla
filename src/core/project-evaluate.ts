@@ -17,7 +17,7 @@ import { evaluateProjectRailway, type RailPaths, type RailwayEvaluation } from '
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 import * as dm from './detmath';
-import { draws, editedNetwork, lineStation, outranks, planEnds, planLine, registerNet, type ResolvedEnds } from './project-roadnet';
+import { designedSlots, draws, editedNetwork, lineStation, outranks, planEnds, planLine, rebuiltSlots, registerNet, type ResolvedEnds } from './project-roadnet';
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
@@ -142,7 +142,8 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
 }
 /** `last`: the last full result of this project. A dragged road keeps following the roads it joins and the
  * crossings a higher-ranking road built with it (under its bridge, on its own deck over it), as they
- * were last evaluated. */
+ * were last evaluated. (A preview builds no reroutes: its crossings carry the last full result's prices, whose
+ * reroutes were already planned clear of the player's roads; evaluateProject's keepClear is not needed here.) */
 export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, prices: PreviewPrices = {},
   last?: ProjectResult | null): RouteResult {
   assertProjectDesign(snapshot.design);
@@ -289,8 +290,9 @@ function storeyed(c: RouteContact, surfaces: readonly TransportSurface[], design
   if (parts.some(p => !p.route || !p.near.length)) return false;
   const need = (lower: RouteDesign) => lower.kind === 'road' ? CROSSING_RULES.overHeight : STRUCTURE_RULES.railClearance;
   for (const [up, low] of [[parts[0], parts[1]], [parts[1], parts[0]]]) {
-    const top = Math.min(...up.near.map(p => p.z)), bottom = Math.max(...low.near.map(p => p.z));
-    if (top - bottom >= need(low.route!) && (up.near.every(p => p.structure === 'bridge') || low.near.every(p => p.structure === 'tunnel'))) return true;
+    // (each point of the lower one against the upper one's nearest point in plan)
+    const gap = Math.min(...low.near.map(q => { const o = up.near.reduce((a, b) => Math.hypot(b.x - q.x, b.y - q.y) < Math.hypot(a.x - q.x, a.y - q.y) ? b : a); return o.z - q.z; }));
+    if (gap >= need(low.route!) && (up.near.every(p => p.structure === 'bridge') || low.near.every(p => p.structure === 'tunnel'))) return true;
   }
   return false;
 }
@@ -638,19 +640,41 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
   // A rebuilt stretch continues its old road where another road changes the rest of it (cuts, reroutes,
   // relocates it): the two roads' works meet at that end, as at a junction between them.
   const ownWayOf = (r: RouteDesign) => r.source ? ctx.sourceWays?.get(r.source.intervals[0]?.sourceId ?? '') : undefined;
+  // what is left of its old road beyond a rebuilt stretch: a way of its own in every edited network
+  // (project-roadnet.ts rebuiltSlots), which other roads cross and change under that number
+  const remnantOf = (r: RouteDesign) => { const q = rebuiltSlots(design).indexOf(r);
+    return q >= 0 && ctx.legacy.roads && ownWayOf(r) !== undefined ? ctx.legacy.roads.wayCount + designedSlots(design).length + q : undefined; };
   const changes = (res: Result, way: number) => res.crossings.some(c => c.roadId === way || c.targetRoadId === way)
     || res.footprintConflicts.some(f => f.roadId === way || f.sourceIntervals?.some(i => i.way === way));
   // So does any road's end on an old road another road changes: the end ties into what is left of it.
   const endWays = (route: RouteDesign, legacy: Result, i: number) => {
     const s = legacy.s[i], end = i ? route.endpoints.b : route.endpoints.a, own = ownWayOf(route);
     const anchored = end.anchor.kind === 'source' ? ctx.sourceWays?.get(end.anchor.location.sourceId) : undefined;
-    return [...own !== undefined ? [own] : [], ...anchored !== undefined ? [anchored] : [],
+    // (and the ways its old road meets just beyond the end, where it stopped short of another road's works)
+    const roads = ctx.legacy.roads, beyond: number[] = [];
+    let past: { x: number; y: number }[] = [];
+    if (roads && anchored !== undefined) {
+      const d = roads.wayStation(anchored, legacy.x[i], legacy.y[i]), other = i ? route.endpoints.a.position : route.endpoints.b.position;
+      const up = roads.wayStation(anchored, other.x, other.y) < d, zone = ENDPOINT_JUNCTIONS.continuation.zone;
+      past = roads.wayPath(anchored, up ? d : d - zone, up ? d + zone : d);
+      for (const p of past) beyond.push(...roads.connections(p, 0.5).map(c => c.way));
+    }
+    const remnant = remnantOf(route);
+    return { ways: [...own !== undefined ? [own] : [], ...remnant !== undefined ? [remnant] : [], ...anchored !== undefined ? [anchored] : [], ...beyond,
       ...ctx.legacy.roads?.connections({ x: legacy.x[i], y: legacy.y[i] }, 0.5).map(c => c.way) ?? [],
-      ...legacy.crossings.filter(c => c.type === 'junction' && c.roadId !== undefined && Math.abs(c.s - s) <= ENDPOINT_JUNCTIONS.continuation.zone).map(c => c.roadId!)];
+      ...legacy.crossings.filter(c => c.type === 'junction' && c.roadId !== undefined && Math.abs(c.s - s) <= ENDPOINT_JUNCTIONS.continuation.zone).map(c => c.roadId!)],
+      past };
   };
+  /** Does the other road's earthworks (with the clearance between two roads' works) reach the old road
+   * just beyond this end? The stretch stopped short of them there: what is left of it is under their works. */
+  const reaches = (other: Result, points: readonly { x: number; y: number }[]) => points.some(p => {
+    const k = nearestStation(other, p.x, p.y);
+    return Math.hypot(other.x[k] - p.x, other.y[k] - p.y) <= Math.max(other.cell.width[k] / 2, Math.abs(other.dayL[k]), Math.abs(other.dayR[k])) + INDEPENDENCE_SCREEN.clearance;
+  });
   for (const { route, legacy } of units) {
     for (const other of units) if (other.route !== route) for (const i of [0, legacy.n - 1]) {
-      if (!endWays(route, legacy, i).some(way => changes(other.legacy, way))) continue;
+      const end = endWays(route, legacy, i);
+      if (!end.ways.some(way => changes(other.legacy, way)) && !(route.source && reaches(other.legacy, end.past.slice(1)))) continue;
       let j = designedJunctions.get(route.id); if (!j) designedJunctions.set(route.id, j = []);
       // (the stretch stops a working strip short of the other road's earthworks; its own earthworks and the
       // ties of its end to what is left of the old road and the ways meeting it there)
@@ -664,7 +688,7 @@ function evaluateProjectOnce(ctx: ProjectEvalContext, snapshot: ProjectSnapshot,
     // (a rebuilt stretch's old road is cut out of every other road's network: what is left of it is
     // another road, which a road crossing it changes on its own)
     const ownWay = ownWayOf(route);
-    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(ownWay !== undefined ? { ownWays: [ownWay] } : {}),
+    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(ownWay !== undefined ? { ownWays: [ownWay, ...remnantOf(route) !== undefined ? [remnantOf(route)!] : []] } : {}),
       ...(corridor ? { profile: 'motorway' as const } : {}),
       ...(designedJunctions.has(route.id) ? { junctions: designedJunctions.get(route.id) } : {}),
       // its other works on the ground: the links that reconnect side roads. (The old road where it is

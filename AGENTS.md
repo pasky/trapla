@@ -83,7 +83,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   a retry). Lowered underpasses ignore groundwater; pier placement near the Polish border can fail (engine limit).
 - Project roads (2026-11-16 final-sweep P1s, PLAN.md "Final-sweep P1s"): the player's road takes over from
   our reroutes (they are planned again clear of it); new railways and motorways are crossed by the
-  higher-ranking line; `scripts/reroute-takeover-audit.ts` still leaves 47 of 292 D11 bends near our reroutes
+  higher-ranking line; `scripts/reroute-takeover-audit.ts` still leaves 13 of 292 D11 bends near our reroutes
   unpriced (mostly the rebuilt road's own body within 10 m of our embankment, a real conflict).
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical-curve minima and max gradient are older-edition (pre-2018) values; transition curves not drawn;
