@@ -479,10 +479,22 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   const okAll = (r: Solved | null): r is Solved => ok(r) && (!hasPins || pinChecks(r.vpis).length === 0);
   const ALL = { ka: 0, kb: nK, fixed: new Map([[0, zA], [nK, zB]]) };
   type Range = typeof ALL;
+  /** Whether a line misses a clearance it is asked for within range `r` (as the DP judges it: the
+   * polyline at the clearance's own chainage, CLEARANCE_MARGIN inside the bound). */
+  const missesClearance = (x: Solved, r: Range) => {
+    for (let k = r.ka; k < r.kb; k++) for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
+      const i = clrIdx[q], h = x.z[k] + (x.z[k + 1] - x.z[k]) * (clrX[q] - knotS[k]) / Dk(k) - g[i];
+      if ((minH && h < minH[i] + CLEARANCE_MARGIN) || (maxH && h > maxH[i] - CLEARANCE_MARGIN)
+        || (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN)) return true;
+    }
+    return false;
+  };
   /**
    * coarse pass: normal band, then a wide one (deep tunnels / high viaducts); if the coarse grid finds
    * nothing compliant (its grade steps are twice as large, which matters near the gradient limit),
-   * the fine grid over the whole band
+   * the fine grid over the whole band. A line of the normal band that misses a clearance is weighed
+   * against the wide band's: the band only bounds the search, it must not decide that a stream or a
+   * railway is left uncleared where a deeper tunnel or a higher viaduct would clear it for less.
    */
   const coarse = (lut: CostLut, r: Range = ALL): Solved | null => {
     // Half-metre fallback only for pins: a narrow target can fall between coarse-grid paths.
@@ -491,7 +503,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const check = r === ALL ? okAll : ok;
     for (const [u, pd] of passes) {
       const x = solve(lut, opt.maxGradient, u, pd, null, r);
-      if (check(x)) return x;
+      if (!check(x)) continue;
+      if (pd === pad && u === coarseGrid && missesClearance(x, r)) {
+        const wide = solve(lut, opt.maxGradient, u, pad * 5, null, r);
+        if (check(wide) && wide.cost < x.cost) return wide;
+      }
+      return x;
     }
     return null;
   };
@@ -800,13 +817,15 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     // Fill only the height envelope this pass can visit, outside the DP's candidate loop.
     // Bounds include interpolation's j+1 read and an extra entry for roundoff. Even below
     // -H_MAX, interpolation reads entry 1 (with zero weight): it must not remain NaN.
+    // (B's off-grid correction included: an entry left NaN there would bar the lines that read it, unless
+    // an earlier evaluation had filled the shared table, so the line would depend on what was evaluated before)
     const low = new Int32Array(lut.length).fill(lutMax + 1), high = new Int32Array(lut.length).fill(-1);
     for (let k = ka; k < kb; k++) {
-      const sk = knotS[k], d = Dk(k), dzMax = dzMaxK[k];
+      const sk = knotS[k], d = Dk(k), dzMax = dzMaxK[k], c0 = corrAt(k), c1 = corrAt(k + 1);
       for (let q = costStart[k]; q < costStart[k + 1]; q++) {
-        const block = costOffset[q];
-        const h0 = zA + zlo[k] * u + (-dzMax * u) / d * (costS[q] - sk) - costG[q];
-        const h1 = zA + zhi[k] * u + (dzMax * u) / d * (costS[q] - sk) - costG[q];
+        const block = costOffset[q], corr = c0 + (c1 - c0) / d * (costS[q] - sk);
+        const h0 = zA + zlo[k] * u + (-dzMax * u) / d * (costS[q] - sk) - costG[q] + corr;
+        const h1 = zA + zhi[k] * u + (dzMax * u) / d * (costS[q] - sk) - costG[q] + corr;
         low[block] = Math.min(low[block], Math.max(0, Math.min(lutMax, Math.floor((h0 + H_MAX) / H_STEP) - 1)));
         high[block] = Math.max(high[block], Math.max(1, Math.min(lutMax, Math.ceil((h1 + H_MAX) / H_STEP) + 1)));
       }

@@ -96,7 +96,11 @@ export function underpassFits(c: Pick<CrossingResult, 'cls' | 'h'>, length: numb
  * justified-case maximum (`rampSteepest`; PROVISIONAL game rule). */
 export function rampLimit(cls: string, z: number, g0: number, g: number, run: number): number {
   const row = ROAD_CLASSES[cls], grade = row.rampGradient, ramp = g - z, old = g - g0;
-  return run > 0 && ramp * old > 0 ? Math.max(grade, Math.min(row.rampSteepest, Math.abs(old) / run + grade / 2)) : grade;
+  if (!(run > 0 && ramp * old > 0)) return grade;
+  // (a road that is itself steeper than that maximum is not rebuilt gentler than it is: the ramp may follow
+  // it, steeper by as much as the road exceeds the maximum, at most by half the class gradient)
+  const along = Math.abs(old) / run;
+  return Math.max(grade, Math.min(row.rampSteepest, along + grade / 2), along + Math.min(grade / 2, along - row.rampSteepest));
 }
 
 /** Diagnostics of a reroute the player shaped (crossing override `via`). */
@@ -200,10 +204,13 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       works: 'another road you build is in the way',
     } as Record<string, string>)[problem] ?? problem);
     const reason = reasons.join('; ');
-    // the nearest structure: our bridge over it (raise our road) or its bridge over a deeper cutting
-    const fix = c.h >= 0
-      ? `Raise our road here by ${Math.max(0.1, CROSSING_RULES.overHeight - c.h).toFixed(1)} m and put it on a bridge over the ${what}, or choose "Its bridge over us" or an underpass`
-      : `Lower our road here by ${Math.max(0.1, CROSSING_RULES.underDepth + c.h).toFixed(1)} m so that the ${what} can cross over it on a bridge, or choose an underpass`;
+    // the nearest structure: our bridge over it (raise our road) or its bridge over a deeper cutting;
+    // where our road is already that high (deep), the height is not what stops it
+    const raise = CROSSING_RULES.overHeight - c.h, lower = CROSSING_RULES.underDepth + c.h;
+    const fix = c.h >= 0 && raise >= 0.05
+      ? `Raise our road here by ${raise.toFixed(1)} m and put it on a bridge over the ${what}, or choose "Its bridge over us" or an underpass`
+      : c.h < 0 && lower >= 0.05 ? `Lower our road here by ${lower.toFixed(1)} m so that the ${what} can cross over it on a bridge, or choose an underpass`
+      : `Move our road a little here, or choose "Its bridge over us" or an underpass`;
     return { title: `No buildable reroute for the ${what}`,
       fix,
       detail: `A new piece of ${what} cannot reach the next crossing: ${reason}.`, basis: 'game',
