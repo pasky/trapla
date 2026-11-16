@@ -372,18 +372,33 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   /** chainage at which a station's clearance applies (NaN: the station itself) */
   const clearanceS = new Float64Array(n).fill(NaN);
   const atS = (x: number) => { const p = pointAt(fullAlignment, x); return { x: p.x, y: p.y }; };
+  /** Blocks: the station nearest chainage x not `taken` (within 8 stations; −1 if none), to carry a
+   * grade-solve clearance placed at x itself (clearanceS). */
+  const freeStation = (x: number, taken: (j: number) => boolean) => {
+    const j0 = Math.max(0, Math.min(n - 1, Math.round(x / ds)));
+    for (let o = 0; o <= 8; o++) for (const j of o ? [j0 - o, j0 + o] : [j0]) if (j >= 0 && j < n && !taken(j)) return j;
+    return -1;
+  };
   const streamSamples: number[] = [];
   /** `below`: the crossing may instead pass this far below the crossed feature (motorways) */
-  const mustBridge: { s: number; g: number; need: number; what: string; below?: number }[] = [];
+  type MustBridge = { s: number; g: number; need: number; what: string; below?: number };
+  const mustBridge: MustBridge[] = [];
+  /** Blocks: the grade solve's clearances, one per crossing (`clearRuns`), not per station: how many
+   * stations a crossing's raster samples fall on depends on the station grid, and each unmet one
+   * would add a penalty, so a length change elsewhere could tip the choice to clear it. */
+  const railHits: { x: number; item: MustBridge }[] = [];
+  const clearRuns: { x0: number; x1: number; items: MustBridge[] }[] = [];
   const railOrRiver = (x: number, y: number, at: number, stations: number[]) => {
     const c = terrain.crossing(x, y);
     if (!c) return;
     const need = c === 2 ? STRUCTURE_RULES.railClearance : STRUCTURE_RULES.riverClearance;
     const gc = terrain.heightAt(x, y);
-    mustBridge.push({ s: at, g: gc, need, what: c === 2 ? 'railway' : 'river' });
+    const item = { s: at, g: gc, need, what: c === 2 ? 'railway' : 'river' };
+    mustBridge.push(item);
+    if (blocks) railHits.push({ x: at, item });
     for (const j of stations) {
       const req = need + gc - ground[j];
-      if (!(clearance[j] >= req)) { clearance[j] = req; if (blocks) clearanceS[j] = at; }
+      if (!(clearance[j] >= req)) clearance[j] = req;
     }
   };
   if (blocks) {
@@ -407,6 +422,12 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     }
   }
 
+  // A crossing's adjacent raster samples (≈ 2.5 m apart) form one run.
+  for (const h of railHits) {
+    const last = clearRuns[clearRuns.length - 1];
+    if (last && h.x - last.x1 <= STEP / 2 && last.items[0].what === h.item.what) { last.x1 = h.x; last.items.push(h.item); }
+    else clearRuns.push({ x0: h.x, x1: h.x, items: [h.item] });
+  }
   // Collapse adjacent raster hits, rather than billing a new culvert for every 5 m stream pixel.
   const streamS: number[] = [];
   for (let k = 0; k < streamSamples.length; k++) {
@@ -530,13 +551,15 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     // margin or the other carriageway. B lies on D11; A gets the same rule if placed on a motorway.
     if (c.s <= CROSSING_RULES.endpointTolerance || al.length - c.s <= CROSSING_RULES.endpointTolerance) return;
     const need = STRUCTURE_RULES.railClearance, g = terrain.heightAt(c.x, c.y);
-    mustBridge.push({ s: c.s, g, need, what: ROAD_CLASSES[c.cls].label, below: CROSSING_RULES.underDepth });
+    const item = { s: c.s, g, need, what: ROAD_CLASSES[c.cls].label, below: CROSSING_RULES.underDepth };
+    mustBridge.push(item);
     // A requested overbridge asks Auto for a cut, not the automatic motorway-overpass option.
     if (crossingChoice(c.way, crossingOverrides) === 'overbridge') return;
+    if (blocks) clearRuns.push({ x0: c.s, x1: c.s, items: [item] });
     const i0 = Math.min(n - 1, Math.floor(c.s / ds));
     for (const j of c.s > st.s[i0] && i0 + 1 < n ? [i0, i0 + 1] : [i0]) {
       const req = need + g - ground[j];
-      if (!(clearance[j] >= req)) { clearance[j] = req; if (blocks) clearanceS[j] = c.s; }
+      if (!(clearance[j] >= req)) clearance[j] = req;
     }
   });
   // Raster crossings were collected before vector roads; elevations() requires station order.
@@ -755,7 +778,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const zA = opts.endpointElevations?.a ?? ground[0], zB = opts.endpointElevations?.b ?? ground[n - 1];
   if (!Number.isFinite(zA) || !Number.isFinite(zB)) throw new Error('Non-finite endpoint elevation');
   if (d.profileMode === 'auto' || d.vpis.length < 2) {
-    const minH = clearance.slice();
+    const minH = blocks ? new Float64Array(n).fill(NaN) : clearance.slice();
     const maxH = new Float64Array(n).fill(NaN);
     for (let i = 0; i < n; i++) {
       if (manualStructures[i] === KIND.bridge) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
@@ -801,10 +824,28 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       }
       return { above, below };
     };
+    const either = separation(waterMin.slice(), waterBelow.slice());
+    // Blocks: each crossing run's clearance (its highest requirement) at points evenly along it, as
+    // many as a run of its length covers stations (at least its two ends), so a wide river weighs as
+    // before; each carried by a free station near it (a station only carries it: its ground cancels).
+    const runSlots = new Map<MustBridge, number[]>();
+    if (blocks) {
+      const taken = (j: number) => !Number.isNaN(minH[j]) || !Number.isNaN(maxH[j]) || !Number.isNaN(either.above[j]) || !Number.isNaN(either.below[j]);
+      for (const r of clearRuns) {
+        const z = Math.max(...r.items.map(c => c.g + c.need)), slots: number[] = [];
+        const m = Math.max(2, Math.round((r.x1 - r.x0) / STEP) + 1);
+        for (const x of Array.from({ length: m }, (_, q) => r.x0 + (r.x1 - r.x0) * q / (m - 1))) {
+          const j = freeStation(x, taken);
+          if (j < 0) continue;
+          minH[j] = z - ground[j]; clearanceS[j] = x; slots.push(j);
+        }
+        for (const c of r.items) runSlots.set(c, slots);
+      }
+    }
     const apOpt = {
       endpointElevations: opts.endpointElevations, ...(win ? { endpointGrades: win.grades } : {}),
       maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
-      costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: separation(waterMin.slice(), waterBelow.slice()), structureKind: manualStructures, pins: d.gradePins,
+      costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: either, structureKind: manualStructures, pins: d.gradePins,
       // A motorway or railway structure costs far more than the default penalty (a 70 m motorway bridge):
       // clear rivers, railways and roads rather than pay it.
       ...(penaltyAt ? { clearancePenaltyAt: penaltyAt } : {}),
@@ -836,6 +877,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         const deficit = c.g + c.need - z0[k];
         if (deficit <= 1e-6) return;
         short = Math.max(short, deficit);
+        const slots = runSlots.get(c);
+        if (slots) { for (const j of slots) minH[j] = Math.max(minH[j], c.g + c.need - ground[j] + deficit + 0.5); return; }
         const target = c.what === 'watercourse' ? waterAbove : minH;
         const i0 = Math.min(n - 2, Math.floor(c.s / ds));
         if (blocks) clearanceS[i0] = clearanceS[i0 + 1] = c.s;
@@ -1029,12 +1072,17 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   /** Stage A (engineering through the footprint screen) runs immediately; `complete()` runs the
    * rest (noise, bill, checks). It reads only this pass's own arrays, never the shared
    * engineer() buffers, so it stays valid after a later pass. */
-  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): { vpis: VPI[]; footprintConflicts: FootprintConflict[]; complete: () => Result } => {
+  /** Support-lift state of a pass, handed on to a later pass that starts from its lifted line. */
+  interface LiftState { targets: Map<number, number>; retried: Map<number, number> }
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis, from?: LiftState): { vpis: VPI[]; footprintConflicts: FootprintConflict[]; lift: LiftState; complete: () => Result } => {
   const oob = oobInput.slice();
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
-  const repairTargets = new Map<number, number>();
-  const retried = new Set<number>();
+  // A later pass (the strict retry) keeps the earlier pass's targets: if it has to re-run the DP, its
+  // line is lifted to all of them again, so a stretch lifted earlier is not lost far from the change.
+  const repairTargets = new Map(from?.targets);
+  /** targets the DP was asked to meet (height at each), all of them in every DP retry */
+  const retried = new Map(from?.retried);
   // Every attempt lifts the same line (the DP's, or its retry's) to all targets found so far, so a
   // stretch's result does not depend on how many attempts other stretches needed.
   let baseLine = vpis;
@@ -1053,10 +1101,14 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     }
     // a lift must not undo a narrowing (opts.narrow): there the DP places the knots instead
     const narrowAt = (opts.narrow ?? []).flatMap(r => [r.s0, (r.s0 + r.s1) / 2, r.s1].map(x => ({ x, r })));
-    const keepsNarrow = (v: VPI[]) => {
+    // (judged against the line it lifts: a narrowing the DP line already misses elsewhere does not
+    // stop a lift far from it)
+    const keepsNarrow = (v: VPI[], before: VPI[]) => {
       if (!narrowAt.length) return true;
-      const z = elevations(buildProfile(v, norms.minCrestRadius, norms.minSagRadius), narrowAt.map(p => p.x));
-      return narrowAt.every(({ r }, k) => r.fill ? z[k] <= r.z + 0.05 : z[k] >= r.z - 0.05);
+      const xs = narrowAt.map(p => p.x);
+      const z = elevations(buildProfile(v, norms.minCrestRadius, norms.minSagRadius), xs);
+      const z0 = elevations(buildProfile(before, norms.minCrestRadius, norms.minSagRadius), xs);
+      return narrowAt.every(({ r }, k) => r.fill ? z[k] <= Math.max(r.z, z0[k]) + 0.05 : z[k] >= Math.min(r.z, z0[k]) - 0.05);
     };
     const liftAll = (from: VPI[]) => {
       let out = from;
@@ -1066,22 +1118,28 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         const z = elevations(buildProfile(out, norms.minCrestRadius, norms.minSagRadius), c.map(q => q.s));
         if (c.every((q, i) => z[i] >= q.z - 0.01)) continue;
         const lifted = liftProfile(out, c, range);
-        if (lifted && keepsNarrow(lifted)) out = lifted; else failed.push(c);
+        if (lifted && keepsNarrow(lifted, out)) out = lifted; else failed.push(c);
       }
       return { out, failed };
     };
     let { out, failed } = liftAll(baseLine);
     // Where the existing knots cannot accommodate a lift, let the same DP place new knots there
     // (once per target). Material values are already settled: fixed values, no repeat balance search.
+    // The retry asks for every target retried so far (this pass's and the earlier pass's), so its
+    // line does not depend on which pass or attempt needed it.
     const fresh = failed.filter(c => c.some(q => !retried.has(q.s)));
     if (fresh.length && autoOptions) {
       const minH = autoOptions.minH ? Float64Array.from(autoOptions.minH) : new Float64Array(n).fill(NaN);
       const atS = autoOptions.clearanceS ? Float64Array.from(autoOptions.clearanceS) : undefined;
-      for (const c of fresh) for (const q of c) {
-        retried.add(q.s);
-        const i = Math.min(n - 1, Math.round(q.s / ds));
-        minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], q.z - ground[i] + 0.25);
-        if (atS) atS[i] = q.s;
+      for (const c of fresh) for (const q of c) retried.set(q.s, Math.max(q.z, retried.get(q.s) ?? -Infinity));
+      // blocks: each target on a station of its own, at its own chainage
+      const ao = autoOptions, taken = (j: number) => !Number.isNaN(minH[j]) || !Number.isNaN(ao.maxH?.[j] ?? NaN)
+        || !Number.isNaN(ao.eitherH?.above[j] ?? NaN) || !Number.isNaN(ao.eitherH?.below[j] ?? NaN);
+      for (const [s, z] of retried) {
+        const i = atS ? freeStation(s, taken) : Math.min(n - 1, Math.round(s / ds));
+        if (i < 0) continue;
+        minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], z - ground[i] + 0.25);
+        if (atS) atS[i] = s;
       }
       const retryStart = performance.now();
       const retry = autoProfile(st.s, ground, blockValues ? { ...autoOptions, minH, blockValues, clearanceS: atS }
@@ -1468,7 +1526,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing, ...(preview ? { preview: true } : {}),
   };
   };
-  return { vpis, footprintConflicts: footprintCheck.conflicts, complete };
+  return { vpis, footprintConflicts: footprintCheck.conflicts, lift: { targets: repairTargets, retried }, complete };
   };
   const first = finish(crossingWays);
   if (preview) return first.complete();
@@ -1479,7 +1537,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const strictFor = (groups: readonly (typeof blocked)[]) => {
     const all = groups.flat(), relaxed = new Map(crossingWays), strict = new Set(all.map(b => b.roadId!));
     for (const c of rawRoadX) if (all.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) { relaxed.delete(c.way); strict.add(c.way); }
-    return finish(relaxed, strict, first.vpis);
+    return finish(relaxed, strict, first.vpis, first.lift);
   };
   timing['count.strictRetry'] = 1;
   // Continue from the already repaired (lifted) Auto grade: its clearances still apply.

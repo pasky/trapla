@@ -19,6 +19,22 @@
 // between its boundaries with its own mass balance; knots and cost samples are placed from the block
 // ends, never from the route's stations. Same design, same line; an edit moves only the boundaries
 // and blocks it reaches.
+//
+// How costs reach the search (keep to this when adding cost signals, e.g. urban / demolition):
+// - A cost enters only as a per-metre cost function of grade-minus-ground h: `costPerM(h, kind,
+//   costClass)`, or with a mass-balance search `BalanceSearch.costFor(v)(h, kind, costClass)`. The
+//   DP never calls it per station: each (block × cost class × structure kind) gets one height table
+//   (`buildLut`), filled lazily on the fixed h grid.
+// - The DP sums that table over cost samples: chainage, ground, weight and an offset into the
+//   tables (block × class × kind). Blocks: samples are placed evenly between knots at their exact
+//   chainage, with `groundAt(s)` and `classAt(s)` there; a cost tied to one place (a stream
+//   crossing) is a point class (`points`, its own chainage and ground, weight `pointWeight`).
+// - So a location-dependent cost is a cost class (the station array `costClass` + `costClassCount`,
+//   and `classAt(s)` returning the same class at any chainage) or a point class. Never a
+//   per-station array read by station index inside the DP: stations shift whenever the route
+//   length changes, so such a cost would move with every edit upstream and break locality.
+// - Hard limits on h (`minH`, `maxH`, `eitherH`) are per station but placed by `clearanceS` (the
+//   chainage they apply at); give a new one its exact chainage there.
 
 import { buildProfile, type VPI } from './vertical';
 import { GRADE_PIN_TOLERANCE, gradePinViolations, type GradePin, type GradePinViolation } from './grade-pins';
@@ -116,10 +132,10 @@ export interface AutoProfileResult {
 
 /** A block boundary is the middle of the longest straight within this distance on either side, m. */
 export const BLOCK_SPACING = 2000;
-/** A boundary's heights come from the route within this distance of it, m: at least BLOCK_WINDOW,
- * and as far as the line needs to climb or fall BLOCK_REACH at its steepest grade (a railway's
- * gentle grade looks further ahead), up to BLOCK_WINDOW_MAX. */
-export const BLOCK_WINDOW = 1500, BLOCK_REACH = 60, BLOCK_WINDOW_MAX = 5000;
+/** A boundary's heights come from the route within this distance of it, m. Measured (research/39
+ * "Local edits"): 1.5 km windows cost 2–9 % on the D3/D35 routes against a whole-route solve, 5 km
+ * ones match it on the sum of all saved designs, and far violations still do not change. */
+export const BLOCK_WINDOW = 5000;
 /** Blocks shorter than this (from the previous boundary or to B) are not split off, m. */
 const MIN_BLOCK = 1000;
 
@@ -161,13 +177,15 @@ type CostFn = AutoProfileOptions['costPerM'] & { table?: SharedCostTable };
  * the maximum gradient as possible: a block whose spacing loses a step loses up to u/D of gradient,
  * which on a long climb at the limit means a tunnel or viaduct instead of the hillside.
  */
-function knotCount(len: number, spacing: number, gmax: number): number {
+function knotCount(len: number, spacing: number, gmax: number, last = false): number {
   const base = Math.max(1, Math.round(len / spacing));
   let best = base, bestScore = -Infinity;
   for (let m = Math.max(1, base - 2); m <= base + 2; m++) {
     const d = len / m;
     if (m !== base && (d < 0.8 * spacing || d > 1.2 * spacing)) continue;
-    const coarse = Math.floor((gmax * d) / COARSE_GRID + 1e-9) * COARSE_GRID / d, fine = Math.floor((gmax * d) / FINE_GRID + 1e-9) * FINE_GRID / d;
+    // the last block keeps a reserve for B's off-grid height (solve: u / its length)
+    const reach = (u: number) => Math.floor(((gmax - (last ? u / len : 0)) * d) / u + 1e-9) * u / d;
+    const coarse = reach(COARSE_GRID), fine = reach(FINE_GRID);
     const score = coarse + 0.5 * fine - 1e-6 * Math.abs(d - spacing);
     if (score > bestScore) { bestScore = score; best = m; }
   }
@@ -237,7 +255,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   } else {
     D = NaN;
     for (let b = 0; b < nb; b++) {
-      const m = knotCount(bounds[b + 1] - bounds[b], spacing, opt.maxGradient), w = (bounds[b + 1] - bounds[b]) / m;
+      const m = knotCount(bounds[b + 1] - bounds[b], spacing, opt.maxGradient, b === nb - 1), w = (bounds[b + 1] - bounds[b]) / m;
       for (let i = 0; i < m; i++) { knotList.push(bounds[b] + i * w); knotBlock.push(b); }
     }
     knotList.push(L); knotBlock.push(nb - 1);
@@ -519,8 +537,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   function blockwise(): AutoProfileResult | null {
     const fixedVals = opt.blockValues && opt.blockValues.length === nb ? opt.blockValues : null;
     const pre = buildLut(Array(nb).fill(bal ? bal.costFor(bal.start) : opt.costPerM), classes);
-    const window = Math.min(BLOCK_WINDOW_MAX, Math.max(BLOCK_WINDOW, BLOCK_REACH / opt.maxGradient));
-    const half = Math.max(2, Math.round(window / spacing));
+    const half = Math.max(2, Math.round(BLOCK_WINDOW / spacing));
     const pinsAt: Map<number, number>[] = [new Map()];
     for (let j = 1; j < nb; j++) {
       const K = boundaryKnot[j], ka = Math.max(0, K - half), kb = Math.min(nK, K + half);
@@ -585,12 +602,13 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range): Solved | null {
     const { ka, kb, fixed } = range;
     const lut = table.values;
-    // the end correction below spreads ≤ u/2 over the route: keep that much grade in reserve
+    // the end correction below spreads ≤ u/2 over the knots after corrFrom: keep that much grade in
+    // reserve there (anchored: the last block only, so the other blocks keep their full gradient)
     const dzMaxK = new Int32Array(nK), crestK = new Int32Array(nK), sagK = new Int32Array(nK);
     let ndMax = 0;
     for (let k = ka; k < kb; k++) {
       const d = Dk(k);
-      dzMaxK[k] = Math.floor(((gmax - u / corrSpan) * d) / u + 1e-9);
+      dzMaxK[k] = Math.floor(((gmax - (k >= corrFrom ? u / corrSpan : 0)) * d) / u + 1e-9);
       crestK[k] = Math.floor((d * d) / opt.minCrest / u + 1e-9);
       sagK[k] = Math.floor((d * d) / opt.minSag / u + 1e-9);
       if (dzMaxK[k] < 1) return null;

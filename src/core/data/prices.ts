@@ -12,7 +12,8 @@
  * 22: valid automatic reroutes (engineered links within the class gradient, culverts, houses bought
  * out, a gentler line along our road), lowered underpasses (research/37), sloped decks over us.
  * 23: local grade solve (research/39 "Local edits"): the Auto grade line in blocks between long straights,
- * each with its own mass balance, nothing placed by the stations; separation and strict retries and
+ * each with its own mass balance (boundaries from the route within 5 km), nothing placed by the stations, the
+ * full gradient outside the last block; separation and strict retries and
  * support lifts judged per stretch; grade-separated routes retry once to clear crossed roads where no
  * crossing could be built. */
 export const COST_MODEL_VERSION = 23;

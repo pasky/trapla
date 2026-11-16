@@ -62,3 +62,43 @@ cost model 23 (the local grade solve). Background: research/39 (sections, ends, 
 
 State at handoff: all committed (HEAD 967d9b1), main 2decf53 merged, cost model 23, gates green (see the
 parent summary in the session). Untracked scratch only in /tmp/lc-tmp-scripts.
+
+## Session 2026-11-16 ≈ 10:00 (uncommitted work committed at handoff; drag-perf NOT yet re-run)
+
+Done (task 1, 3 of the 09:15 list), all in model 23 (unmerged, version unchanged, fixtures recaptured):
+- **Demo +10.5 % root cause = gradient-reserve bug, not blocks.** `solve()` kept `u/corrSpan` of grade in reserve
+  on every interval; anchored `corrSpan` = last block only, and `knotCount` picks spacings where gmax·d/u is just
+  above an integer, so the reserve cost a whole grid step everywhere (6 % → 5.6 %): a tunnel at demo km 8.
+  Now the reserve applies only from `corrFrom` (the last block) and `knotCount(…, last)` accounts for it.
+  Demo 5.16 → 4.90 (blocks) vs 4.79 whole-route solve on the same anchored inputs; the remaining demo block
+  cost is mid-block (per-block material values 261/−196 vs one 114), not boundaries.
+- **Window 1.5 → 5 km** (`BLOCK_WINDOW = 5000`, REACH/WINDOW_MAX removed): sum of the 13 valid designs equals
+  the whole-route solve (112.2 vs 112.3 bn; 1.5 km: 114.7). Spacing 3000 tried: worse/mixed.
+- **Three DP non-localities found and fixed (evaluate.ts):** (a) the strict-retry pass started from the lifted
+  line but lost its lift targets when a failed lift elsewhere triggered a DP retry → `finish(…, from: LiftState)`
+  carries targets + retried targets; every lift DP retry asks for all retried targets; (b) `keepsNarrow` rejected
+  every lift on the route if the DP line already missed one narrowing → judged against the line being lifted;
+  (c) rail/river raster clearances and motorway crossings were put on 1–3 stations depending on the station grid
+  (penalty per station → clear-vs-pay flipped 22 km away) → `clearRuns`: one run per crossing, its highest
+  requirement at max(2, round(len/10)+1) points along it, each on a free station (`freeStation`); the lift DP
+  retry uses free stations too. Engineering keeps the station-based `clearance`.
+- Interface note for core-play-polish written in the autoprofile.ts header (task 3).
+- Repairs: whole D3 bend 26 12 m; whole D35 bend 17 −90 m (stream 170 m before B, geometrically unclearable);
+  D3 earlier-map road starter bend 1 25 m (motorway starter keeps it). scenario.ts comments updated.
+- Bills (main 2decf53 / HEAD 376c9ed / now): best 4.13/4.19/4.18; demo 4.67/5.16/5.03; direct-80 4.82/5.05/4.95;
+  direct-90 5.49/5.64/5.47; town-centre 11.39/11.16/11.16; railway 25.36/26.92/27.78 (invalid ×2 everywhere);
+  D3 earlier-map 18.34/18.03/17.22; D35 first section 19.32/21.32/20.34; Nová Paka 2.69/2.73/2.75;
+  0301–0305 now 4.78/7.58/10.06/9.30/9.81; whole D3 41.17, whole D35 33.69 (repaired fixtures).
+  Demo is +2.5 % from the river-run requirement (stricter, correct) → a support lift at km 7.
+- Locality on the repaired fixtures (HEAD code → now): whole D3 1/16 (4.9 m) → 4/16 (7.7 m); whole D35 6/10
+  (6.9 m) → 1/10 (4.9 m). The DP is now local; every remaining far change traced is **station-based
+  engineering on the shifted station grid** (ds = L/⌈L/10⌉ moves every station when the length changes): bridge
+  support layout (km 12.1 lift), overbridge ramp check (km 39.4 → separation retry), track reroute (km 49.4),
+  culvert (km 28.3). Next lever: anchor the station grid (big change: uniform-ds assumption everywhere).
+- Gates green: tsc, vitest 634, build, bench 5/5, eval-regression 11/11 (recaptured), smoke, playtest 52,
+  start-check, outcome audit vs main (violations 144 → 128, footprint 110 → 97, bills −0.06 %).
+  **Not yet run: drag-perf --gpu --check** (D11 all, d3-full/d35-full/d3-0305 all, 0301–0304 bend). research/39
+  "Local edits", AGENTS.md open items and PLAN.md not yet updated with the above.
+- Scratch: /tmp/lc-tmp-scripts (runall.sh = all designs in parallel; mkdbg.py = LC_DBG diagnostics patch for
+  evaluate.ts; locdiff/movedump/gradedump helpers were in scripts/, deleted — recreate from this note), /tmp/lc-base
+  = main 2decf53 worktree (remove with `git worktree remove --force /tmp/lc-base` when done).

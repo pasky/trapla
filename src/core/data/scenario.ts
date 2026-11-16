@@ -86,9 +86,10 @@ export const D3_SCENARIO: ScenarioParams = {
   id: 'd3', presetId: 'd3-road', title: 'Jílové → Václavice (earlier map)', retired: true, group: 'Středočeská D3',
   // Editable starter near the reference, validated on this pack; no hidden structure overrides.
   // Three bends moved <12 m by the existing bounded repair tool to resolve a track conflict; under the local
-  // grade solve (model 23) the last one 60 + 25 m more for another track and an underpass approach.
+  // grade solve (model 23) the last one 60 + 25 m more for another track and an underpass approach, and the
+  // second one 25 m for a track underpass near A.
   initial: { category: 'S9.5', speed: 90, pis: [
-    { x: 3872.4, y: 14182.6, r: null }, { x: 3608.6, y: 12643.7, r: null },
+    { x: 3872.4, y: 14182.6, r: null }, { x: 3583.7, y: 12646, r: null },
     { x: 4588.5, y: 9743.4, r: null }, { x: 4849.5, y: 8185.1, r: null },
     { x: 5549, y: 6639, r: null }, { x: 7079, y: 5914, r: null }, { x: 8487.7, y: 4262.8, r: null },
   ] },
@@ -224,9 +225,9 @@ export const D11_RAILWAY: ScenarioParams = {
 // The whole Středočeská D3 in one mission (all five sections, 58.5 km published, 57.4 km mapped): from the D0
 // interchange to the operating D3 at Nová Hospoda. One design speed, 120 km/h (0301–0303; 0304–0305/I are
 // designed for 130). Starter: the five section starters' bends in sequence, bend 4 moved 12 m (a class III road
-// at km 8.78 where 0301 meets 0302). Time: reference + 10 % at 120.
+// at km 8.78 where 0301 meets 0302) and bend 26 12 m (a track at km 49.4 with no buildable reroute). Time: reference + 10 % at 120.
 export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospoda', 120,
-  P([[4301.3, 48003.8], [2984.8, 46437.6], [1801.8, 45262.9], [2017.2, 43757.5], [1860.6, 42184.6], [1608.6, 40643.7], [2588.5, 37743.4], [2849.5, 36185.1], [3544.1, 34644.6], [5073.2, 33920.3], [6490.3, 32261.7], [8308.2, 31162.2], [9401.1, 30118.3], [8708, 28354.6], [8693.5, 26748.4], [7926.6, 25378.5], [7068.5, 23725], [5811.2, 22289.9], [5040.4, 20930.7], [4547.5, 19386.3], [4014.6, 17499.1], [3522.9, 16083.9], [3518.9, 14108.2], [3062.2, 12483.7], [3347, 10675.1], [4206.9, 9000.3], [5088.5, 7638.8], [5554.1, 5964.2], [6981.5, 5188.7], [8479.2, 4463.5], [9711.5, 3014.4]]), 31.6, // 63.2 km at 120 (reference 57.4 km)
+  P([[4301.3, 48003.8], [2984.8, 46437.6], [1801.8, 45262.9], [2017.2, 43757.5], [1860.6, 42184.6], [1608.6, 40643.7], [2588.5, 37743.4], [2849.5, 36185.1], [3544.1, 34644.6], [5073.2, 33920.3], [6490.3, 32261.7], [8308.2, 31162.2], [9401.1, 30118.3], [8708, 28354.6], [8693.5, 26748.4], [7926.6, 25378.5], [7068.5, 23725], [5811.2, 22289.9], [5040.4, 20930.7], [4547.5, 19386.3], [4014.6, 17499.1], [3522.9, 16083.9], [3518.9, 14108.2], [3062.2, 12483.7], [3347, 10675.1], [4206.9, 9000.3], [5076.9, 7635.6], [5554.1, 5964.2], [6981.5, 5188.7], [8479.2, 4463.5], [9711.5, 3014.4]]), 31.6, // 63.2 km at 120 (reference 57.4 km)
   { a: 'D0 Praha', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Prague ring</b> to <b>Nová Hospoda</b>, the whole Středočeská D3' },
   'Take the D3 from the Prague ring across the Sázava to where it is already open.', 'All five sections in one go, 57 km, at one design speed of 120 km/h (sections 0304 and 0305/I alone are designed for 130). The D0 interchange ramps are not part of the job.',
   { a: { kind: 'interchange', with: 'the D0 and road II/101' }, b: { kind: 'joins', with: 'the open D3' } });
@@ -236,11 +237,12 @@ export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospo
 // D 27.5 (the project is D 26.0/130, no SPK row). Time target: reference + 10 % at 130 km/h. Starter:
 // mapped-line bends every ~1.5 km, the last (400 m before B) dropped, four moved 12–100 m (and under the local grade
 // solve, model 23, bends 16/17 another 60/12 m for a stream before B and a class I road, bend 2 12 m for a track
-// with no buildable reroute) by a bounded
+// with no buildable reroute, then bend 17 90 m more for the stream 170 m before B, which the grade cannot clear
+// so close to the tie-in) by a bounded
 // greedy search (research/39); B at 33.35 km on the mapped line, where it starts to merge with I/35.
 export const D35_FULL: ScenarioParams = {
   ...D35_MOTORWAY, id: 'd35-full', presetId: 'd35-full-motorway', title: 'Opatovec → Mohelnice', group: 'D35',
-  initial: { category: 'D27.5', speed: 130, pis: P([[3918, 9114.4], [5364.7, 9523.8], [7645.8, 9348.2], [9356.7, 9036.3], [11092.7, 8524], [12724.6, 8498.3], [14565.1, 8794.8], [16196.1, 8337.6], [17709.9, 7719.1], [19116.3, 6932.6], [20631.4, 6960.7], [22517.6, 7547.6], [23954.1, 8069.3], [25909.9, 8135.3], [27602.4, 7468.2], [29118.3, 6704.6], [30545.1, 5529.8], [31157.8, 4161.2]]) },
+  initial: { category: 'D27.5', speed: 130, pis: P([[3918, 9114.4], [5364.7, 9523.8], [7645.8, 9348.2], [9356.7, 9036.3], [11092.7, 8524], [12724.6, 8498.3], [14565.1, 8794.8], [16196.1, 8337.6], [17709.9, 7719.1], [19116.3, 6932.6], [20631.4, 6960.7], [22517.6, 7547.6], [23954.1, 8069.3], [25909.9, 8135.3], [27602.4, 7468.2], [29118.3, 6704.6], [30545.1, 5529.8], [31079.4, 4117]]) },
   picker: { kind: 'Motorway · 130 km/h', goal: 'Over the ridge and through the Maletín hills to the D35 at Mohelnice.',
     note: 'The whole link, both project sections. Built 27.5 m wide, our usual motorway; the planned road is 26 m wide.' },
   maxTravelMin: 17, // 36.6 km at 130 (reference 33.3 km)
