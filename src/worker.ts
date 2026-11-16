@@ -21,15 +21,18 @@ export type WorkerIn =
       /** 'full' passes each full result on `port` to the 'preview' worker (base of its windowed previews). */
       role?: 'full' | 'preview'; port?: MessagePort }
   | { type: 'eval'; id: number; design: Design; preview?: boolean; materialValue?: number }
+  /** Legacy road-net way of each mapped source, whenever the pack's road links are loaded. */
+  | { type: 'source-ways'; ways: [string, number][] }
   | ProjectWorkerIn;
 
 let ctx: EvalContext | null = null;
-let pending: Exclude<WorkerIn, { type: 'init' }> | null = null;
+let pending: Exclude<WorkerIn, { type: 'init' | 'source-ways' }> | null = null;
 let scheduled = false;
 let projectEnvironment: ProjectEnvironment | null = null;
 let lastProject: ProjectResult | null = null;
 /** full worker: where full results go for the preview worker */
 let basePort: MessagePort | null = null;
+let sourceWays: Map<string, number> | undefined;
 
 function run() {
   scheduled = false;
@@ -43,7 +46,7 @@ function run() {
       if (!job.preview) basePort?.postMessage([result]);
     } else {
       if (!projectEnvironment) throw new Error('Project environment missing from worker init');
-      const projectContext = { legacy: ctx, environment: projectEnvironment };
+      const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays };
       if (job.type === 'project-preview') {
         const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, job.materialValue);
         (self as unknown as Worker).postMessage({ type: 'project-preview', id: job.id,
@@ -71,7 +74,7 @@ function run() {
 self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const m = ev.data;
   if (m.type === 'init') {
-    pending = null; lastProject = null; projectEnvironment = m.projectEnvironment ?? null;
+    pending = null; lastProject = null; sourceWays = undefined; projectEnvironment = m.projectEnvironment ?? null;
     basePort = m.role === 'full' ? m.port ?? null : null;
     if (m.role === 'preview' && m.port) m.port.onmessage = (e: MessageEvent<Result[]>) => {
       if (ctx) for (const r of e.data) adoptFull(ctx.terrain, r);
@@ -82,6 +85,8 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
       roads: m.net ? new RoadNet(m.net) : undefined, ...(m.junctions?.length ? { junctions: m.junctions } : {}),
     };
     (self as unknown as Worker).postMessage({ type: 'ready' });
+  } else if (m.type === 'source-ways') {
+    sourceWays = new Map(m.ways);
   } else {
     pending = m;
     if (!scheduled) { scheduled = true; setTimeout(run, 0); }

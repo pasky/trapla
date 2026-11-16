@@ -31,6 +31,8 @@ function controls(v: unknown): boolean {
   if (v.wallOverrides !== undefined && (!list(v.wallOverrides) || !v.wallOverrides.every(p => object(p)
     && number(p.s0) && p.s0 >= 0 && number(p.s1) && p.s1 > p.s0 && choice(p.side, ['L', 'R']) && number(p.height)
     && (p.height === 0 || p.height >= 2 && p.height <= 6)))) return false;
+  if (v.junctionForms !== undefined && (!object(v.junctionForms)
+    || !Object.entries(v.junctionForms).every(([end, form]) => choice(end, ['a', 'b']) && form === 'roundabout'))) return false;
   if (v.crossings !== undefined && (!list(v.crossings) || !v.crossings.every(c => {
     if (!object(c) || !choice(c.choice, CROSSING_CHOICES) || !object(c.target)) return false;
     // a shaped reroute: two lists of bend points (one per side of our road)
@@ -84,7 +86,8 @@ function spec(v: unknown, kind: unknown): boolean {
   const o = v.operations;
   if (kind === 'road' || kind === 'motorway') {
     if (!number(o.aadt) || o.aadt < 0 || !number(o.heavyShare) || o.heavyShare < 0 || o.heavyShare > 1 || !number(o.speed) || o.speed <= 0
-      || o.speedPolicy !== undefined && !choice(o.speedPolicy, ['design', 'independent'])) return false;
+      || o.speedPolicy !== undefined && !choice(o.speedPolicy, ['design', 'independent'])
+      || o.trafficUnknown !== undefined && (o.trafficUnknown !== true || o.aadt !== 0)) return false;
     return kind === 'motorway' ? text(v.crossSection) : choice(v.legalClass, ['I', 'II', 'III', 'local', 'service', 'track'])
       && choice(v.crossSection, ['S7.5', 'S9.5', 'S11.5', 'existing'])
       && (v.crossSection !== 'existing' || number(v.existingWidth) && v.existingWidth > 0);

@@ -190,6 +190,24 @@ export const ENDPOINT_JUNCTIONS = {
   // part of the motorway's SPK per-km norm (1 per 7 km, research/33 §3); the lump stands in for the roads it
   // rebuilds at our end. No sourced price for a system interchange exists (research/39).
   interchange: { zone: 90, cost: JUNCTION, source: 'PROVISIONAL taper Lz 90 m (130 km/h connector, MD report); junction allowance, research/08 (PROVISIONAL); earth-built branches in the SPK motorway norm' },
+  // A new road's end joining an existing ground road at a priority T (research/29: the automatic form).
+  // Zone: MODELLING ASSUMPTION, the mouth with its corner radii and any widening of the joined road;
+  // ČSN 73 6102 corner radii and turning-lane lengths were not verified (research/29 §4), so the arm's
+  // works are taken to reach as far as a roundabout arm's (TP 135 splitter island ≤ 25 m) plus 5 m.
+  // Price: onto a class I/II road the all-in junction allowance (research/08, low confidence); onto a
+  // class III/local/service road or track a simple T without turning lanes, 7 M CZK (midpoint of the
+  // 5–10 M range, research/29 §6, PROVISIONAL, very low confidence).
+  'tie-in': { zone: 30, cost: JUNCTION, source: 'priority T onto a class I/II road; junction allowance, research/08 (PROVISIONAL)' },
+  'tie-in-minor': { zone: 30, cost: 7_000_000, source: 'simple priority T onto a minor road, 5–10 M CZK, research/29 (PROVISIONAL)' },
+  // A roundabout where a road's end joins (the player's choice; Auto builds a T, research/29 §1).
+  // Zone: a roundabout arm (TP 135 splitter island ≤ 25 m) plus the ring's radius at 40 m outer diameter,
+  // the middle of the 30–50 m PROVISIONAL compact rural envelope (research/29 §4). Price: ŘSD awards for
+  // roundabouts on class I roads, 32 M CZK, range 20–40 M (research/08, medium; also used on class II/III
+  // roads, low confidence there). The ring's own land and any house on it are priced with the junction.
+  roundabout: { zone: 45, cost: 32_000_000, source: 'roundabout, ŘSD awards 20–40 M CZK (research/08); 40 m ring PROVISIONAL (research/29)' },
+  // A rebuilt stretch continuing as the old road beyond its end: the joint is part of the new
+  // pavement, no junction is built. Same zone as a T (MODELLING ASSUMPTION), no lump cost.
+  continuation: { zone: 30, cost: 0, continuation: true, source: 'the rebuilt stretch continues as the old road (MODELLING ASSUMPTION)' },
 } as const;
 export type EndpointJunctionKind = keyof typeof ENDPOINT_JUNCTIONS;
 /** Simple sjezd onto the service link, NOT onto the class-I road. Very low confidence — research/13. */
