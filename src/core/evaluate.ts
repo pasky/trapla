@@ -124,7 +124,8 @@ export interface Result {
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
-  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean }[];
+  /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
@@ -1023,7 +1024,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     // houses a reroute runs through are bought out like those under our road (buildings, not works)
     // (a crossing built with the other direction is billed there, its houses included)
     const houses = c.shared ? [] : (c.houses ?? []).filter(j => !gone[j]);
-    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j] }); }
+    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j], in: 'reroute', strip: false }); }
     crossingStructure[c.i] += c.cost - lump - (c.shared ? 0 : c.houseCost ?? 0);
     if (c.cost > 0) crossingsPaid++;
   }

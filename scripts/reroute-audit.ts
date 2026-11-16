@@ -37,6 +37,12 @@ for (const { name, design } of designs) {
   for (const c of r.crossings) {
     if ((c.type !== 'reconnection' && c.type !== 'diversion') || !c.geometry?.links) continue;
     const row = ROAD_CLASSES[c.cls], half = c.geometry.width / 2;
+    // it must lead to a crossing that carries traffic over or under us (or a route end), not another cut road
+    const target = r.crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId);
+    if (target && (target.type === 'reconnection' || target.type === 'diversion') && !c.requestedType) {
+      count('leads to another cut road');
+      console.log(`${name}: km ${(c.s / 1000).toFixed(3)} ${c.type}/${c.cls} way ${c.roadId} leads to km ${(target.s / 1000).toFixed(3)} ${target.type} way ${target.roadId}`);
+    }
     c.geometry.links.forEach((link, k) => {
       if (link.length < 2) return;
       count('links');

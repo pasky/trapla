@@ -718,13 +718,13 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         c.cost = length * box.perM + 2 * box.head + (c.approachLength ?? 0) * rate + (c.drainCost ?? 0);
       }
     }
-    // (a lowered way's anchors lie on the ground beyond its ramps, on its old line further out)
-    rawPaths.set(c, adjusted ? road : lowered ? [...path.filter(q => q.d < road[0].d!), ...road, ...path.filter(q => q.d > road[road.length - 1].d!)] : path);
+    // (a raised or lowered way's anchors lie on the ground beyond its ramps, on its old line further out)
+    rawPaths.set(c, (adjusted || lowered) && road.length ? [...path.filter(q => q.d < road[0].d!), ...road, ...path.filter(q => q.d > road[road.length - 1].d!)] : path);
     if (['bridge', 'overbridge', 'tunnel', 'junction', 'underpass'].includes(c.type)) g.road = road;
     // A box or a bridge over us that delivers the way straight back under our earthworks (it runs along
     // our slope on one side, not across our road again) leaves that stretch to be walled or moved:
     // Auto prefers a treatment that does not (a reroute takes that stretch with it).
-    if ((c.type === 'underpass' || c.type === 'overbridge') && road.length && !c.requestedType) {
+    if (c.type === 'underpass' && road.length && !c.requestedType) {
       const crown = (route.crownWidth ?? 0) / 2, d0 = road[0].d!, d1 = road[road.length - 1].d!;
       for (const direction of [-1, 1]) {
         let inside = false, across = false;
@@ -1025,10 +1025,11 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     return !!next;
   };
   let changed = false;
-  for (const c of crossings) {
+  // The dearest treatments are reconsidered first: a crossing others are then rerouted to keeps carrying them.
+  const reconsider = (c: CrossingResult) => {
     // An automatic junction is reconsidered only when its own works cannot be built (crossing-works.ts).
     const worksFail = c.type === 'junction' && !!c.geometry?.diagnostics?.some(m => m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG || m === WORKS_TIE_SHARED);
-    if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !(worksFail || ['overbridge', 'reconnection', 'diversion', 'underpass'].includes(c.type))) continue;
+    if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !(worksFail || ['overbridge', 'reconnection', 'diversion', 'underpass'].includes(c.type))) return;
     // A box or bridge over us whose way runs back under our earthworks (geometry.runsBack) is kept only
     // when nothing else can be built: the stretch under our slope would still have to be walled or moved.
     const ok = (x: CrossingResult) => feasible(x) && !x.geometry?.runsBack;
@@ -1058,12 +1059,15 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
         delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
         Object.assign(c, best); changed = true;
       }
-      continue;
+      return;
     }
     // Long detours are a feasibility fallback, not a way to shave a tiny amount off an already
     // workable structure: beyond the 750 m shortlist a link must cost at most half of it (a 150 m
     // track overbridge over a deep cutting is not worth keeping a 760 m reroute away).
-    const targets = crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && !ROAD_CLASSES[t.cls].noAtGrade
+    // (a reroute leads to a crossing that carries traffic over or under us, not to another cut road; and a
+    // crossing others lead to keeps carrying it)
+    const ledTo = crossings.some(x => x !== c && x.targetS === c.s && x.targetRoadId === c.roadId);
+    const targets = ledTo ? [] : crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
       && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
       && Math.abs(t.s - c.s) <= CROSSING_RULES.linkHardReach && !dependsOn(t, c))
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
@@ -1093,7 +1097,10 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
       Object.assign(c, best); changed = true;
     }
-  }
+  };
+  for (const c of [...crossings].sort((a, b) => b.cost - a.cost || a.s - b.s)) reconsider(c);
+  // (one that found no target while another still led to it looks again)
+  for (const c of crossings) if (!feasible(c)) reconsider(c);
   if (!changed) return crossings.flatMap(c => c.issues?.filter(built) ?? []);
   const issues = build(crossings);
   // A new target treatment can move the ground anchor of a dependent link. Do not buy a cheaper

@@ -370,7 +370,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     } else {
       c.type = 'overbridge'; Object.assign(c, over);
     }
-    for (const p of nearest) if (!p.fixed && !c.issues?.length && !ROAD_CLASSES[c.cls].noAtGrade && (compatible(p.c, c.cls) || kept(p.c, c))) {
+    // A reroute leads to a crossing that carries traffic over or under us (or to a route end), never to
+    // another cut road (a shaped one keeps leading where the player led it).
+    const carries = c.type !== 'reconnection' && c.type !== 'diversion';
+    for (const p of nearest) if (!p.fixed && !c.issues?.length && !ROAD_CLASSES[c.cls].noAtGrade && ((carries && compatible(p.c, c.cls)) || kept(p.c, c))) {
       const d = Math.abs(p.c.s - c.s);
       // a shaped reroute keeps leading where it led when the player shaped it
       if (kept(p.c, c)) { p.gap = d; p.target = c; p.fixed = true; }

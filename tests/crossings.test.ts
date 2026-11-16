@@ -280,7 +280,7 @@ describe('crossing geometry and map overlay', () => {
     expect(cs[1].cost).toBeLessThan(80 * box.perM + 2 * box.head);
   });
 
-  it('draws two opposite side links to the resolved real-road anchors, including chained diversions', () => {
+  it('draws two opposite side links to the resolved real-road anchors, every reroute to a crossing that carries it', () => {
     const cs = [cross(0, 3000), cross(1, 3100, 'residential'), cross(2, 3200, 'track')];
     resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);
     const links = cs[1].geometry!.links!;
@@ -291,9 +291,10 @@ describe('crossing geometry and map overlay', () => {
     expect(end.x - 3000).toBeCloseTo(end.y, 6); // actual bent target way, not an invented normal
     expect(end.y).toBeGreaterThanOrEqual(10 + ROAD_CLASSES.residential.width / 2 + 3);
     expect(cs[1].linkLength).toBeCloseTo(links.reduce((sum, path) => sum + crossingPlanLength(path), 0), 6);
-    expect(cs[2].targetS).toBe(3100);
-    expect(cs[2].geometry!.links![0].at(-1)).toEqual(links[0][0]);
-    expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1][0]);
+    // the track beside it leads to the same junction, not to the cut street
+    expect(cs[2].targetS).toBe(3000);
+    expect(cs[2].geometry!.links![0].at(-1)).toEqual(links[0].at(-1));
+    expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1].at(-1));
   });
 
   it('clears the crown across a skewed footprint, grades approaches to sloping terrain and anchors links at their feet', () => {

@@ -99,20 +99,20 @@ describe('junction spacing and geometric reconnections', () => {
     expect(mirrored.reduce((sum, c) => sum + c.cost, 0)).toBe(forward.reduce((sum, c) => sum + c.cost, 0));
   });
 
-  it('consolidates nearby tracks into one crossing with an acyclic chain; services use the local network', () => {
+  it('consolidates nearby tracks onto one crossing that carries them over us; services use the local network', () => {
+    // Every reroute leads to a crossing that carries traffic over or under us, never to another cut road.
     const cs = resolve([crossing(4000, 'track', -1), crossing(4050, 'track', -1), crossing(4100, 'track', -1)]);
     expect(cs.map(c => c.type)).toEqual(['overbridge', 'diversion', 'diversion']);
-    expect(cs.map(c => c.targetS)).toEqual([undefined, 4000, 4050]);
-    expect(cs[1].linkLength).toBe(100);
+    expect(cs.map(c => c.targetS)).toEqual([undefined, 4000, 4000]);
+    expect(cs[1].linkLength).toBe(100); expect(cs[2].linkLength).toBe(200);
     // Deep cuts do not force separate bridges for tracks/accesses beside an existing crossing.
     const deep = [crossing(4000, 'residential', -12), crossing(4100, 'track', -12), crossing(4050, 'service', -12)];
     resolveCrossings(deep, 9000, [KIND.earth], [51.5], [0]);
     expect(deep.map(c => c.type)).toEqual(['overbridge', 'diversion', 'reconnection']);
-    expect(deep[1].targetS).toBe(4050);
+    expect(deep[1].targetS).toBe(4000);
     const services = resolve([crossing(3000, 'primary'), crossing(3050, 'service'), crossing(3100, 'service')]);
     expect(services.slice(1).map(c => c.type)).toEqual(['reconnection', 'reconnection']);
-    expect(services[2].targetS).toBe(3050);
-    expect(services[2].cost).toBe(services[1].cost);
+    expect(services.slice(1).map(c => c.targetS)).toEqual([3000, 3000]);
   });
 
   it('bills service access once without surcharging it or the all-in junction', () => {
