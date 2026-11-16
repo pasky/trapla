@@ -1,13 +1,12 @@
 // Automatic slope-toe retention. The same truncated sections feed volumes, land take, crossing
 // geometry, the final collision check and rendering; this is not a violation suppression mask.
 import { cellLength } from './cost';
-import { slopeHeight } from './earthengineering';
 import { cellBounds, clipFootprint, type FootprintCell, type Segment2 } from './footprint-geometry';
 import { BUILDING_RULES, ROAD_CLASSES } from './data/urban';
 import type { BuildingIndex } from './buildings';
 import { STRUCTURE_RULES } from './data/prices';
 import { retainingAssembly, RETAINING_RULES as R } from './data/remedies';
-import { sideSection, DEFAULT_SLOPES, type Sections } from './sections';
+import { sideSection, slopeSurfaceAt, type Sections } from './sections';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
@@ -102,7 +101,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
   // against the shortened sections, rebuilding from the untouched input so quantities and
   // wall costs are never applied twice. Side-width limits only shrink; the final screen
   // validates the actual envelope. Local query caches are reused.
-  const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open'] as const;
+  const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open', 'rockFace'] as const;
   const original = fields.map(key => r[key].slice()), sideL = r.sideL?.slice(), sideR = r.sideR?.slice();
   const restore = () => {
     fields.forEach((key, k) => r[key].set(original[k]));
@@ -314,8 +313,8 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     }
     for (const req of limits.values()) {
       const { i, side, limit } = req, nx = -r.ty[i] * side, ny = r.tx[i] * side;
-      const edge = terrain.heightAt(r.x[i] + nx * w, r.y[i] + ny * w), fill = r.grade[i] >= edge;
-      const surface = r.grade[i] + (fill ? -1 : 1) * slopeHeight(limit - w, fill ? DEFAULT_SLOPES.fillSlope : DEFAULT_SLOPES.cutSlope, fill);
+      const surface = slopeSurfaceAt(r.grade[i], w, o => terrain.heightAt(r.x[i] + nx * o, r.y[i] + ny * o),
+        o => terrain.groundAt(r.x[i] + nx * o, r.y[i] + ny * o), limit);
       const natural = terrain.heightAt(r.x[i] + nx * limit, r.y[i] + ny * limit);
       wallPrice += retainingAssembly(Math.abs(surface - natural), surface < natural && (req.feature === 'water' || req.feature === 'stream')).perM * ds;
     }
@@ -357,7 +356,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       landPerCell[i] += land / count;
     }
   }
-  const walls: RetainingWall[] = [], tpl = { crownWidth: r.crownWidth, ...DEFAULT_SLOPES };
+  const walls: RetainingWall[] = [], tpl = { crownWidth: r.crownWidth };
   const sets = all === firm ? [all] : [all, firm];
   for (let i = 1; i < n - 1; i++) for (let side = 1; side >= -1; side -= 2) for (const set of sets) {
     const t = set[side > 0 ? 0 : 1], other = all[side > 0 ? 1 : 0];
@@ -366,10 +365,11 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     if (!Number.isFinite(limit) || limit >= day[i] - 0.05) break;
     const nx = -r.ty[i] * side, ny = r.tx[i] * side;
     const ground = (o: number) => terrain.heightAt(r.x[i] + nx * o, r.y[i] + ny * o);
+    const geology = (o: number) => terrain.groundAt(r.x[i] + nx * o, r.y[i] + ny * o);
     const fill = r.grade[i] >= ground(w), feature = t.cause[i] ?? t.cause[i - 1] ?? t.cause[i + 1] ?? 'road';
     const otherFoot = Math.max(w, Math.min(side > 0 ? r.dayR[i] : r.dayL[i], other.limit[i]));
     const wallAt = (at: number) => {
-      const surface = r.grade[i] + (fill ? -1 : 1) * slopeHeight(at - w, fill ? tpl.fillSlope : tpl.cutSlope, fill);
+      const surface = slopeSurfaceAt(r.grade[i], w, ground, geology, at);
       const height = Math.abs(surface - ground(at)), watertight = surface < ground(at) && (feature === 'water' || feature === 'stream');
       return { surface, height, watertight, rate: retainingAssembly(height, watertight) };
     };
@@ -398,13 +398,13 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       }
       break;
     }
-    const geology = (o: number) => terrain.groundAt(r.x[i] + nx * o, r.y[i] + ny * o);
     const sideCache = side > 0 ? r.sideL : r.sideR;
     const before = sideCache?.[i] ?? sideSection(r.grade[i], w, tpl, ground, geology), after = sideSection(r.grade[i], w, tpl, ground, geology, limit);
     if (after.day >= before.day - 0.05) break;
     r.cut[i] += after.cut - before.cut; r.fill[i] += after.fill - before.fill;
     r.cutI[i] += after.cutI - before.cutI; r.cutII[i] += after.cutII - before.cutII;
     r.cutIII[i] = Math.max(0, r.cut[i] - r.cutI[i] - r.cutII[i]);
+    r.rockFace[i] += after.rockFace - before.rockFace;
     day[i] = after.day; zDay[i] = after.zDay;
     if (sideCache) sideCache[i] = after;
     (side > 0 ? wallSurfaceL : wallSurfaceR)[i] = surface;
@@ -456,8 +456,8 @@ function wallBuildings(r: RetainingRoute, terrain: Terrain, buildings: Retaining
     let price = 0, ok = true, height = 0;
     for (const { i, side, limit } of h.reqs) {
       const nx = -r.ty[i] * side, ny = r.tx[i] * side;
-      const fill = r.grade[i] >= terrain.heightAt(r.x[i] + nx * w, r.y[i] + ny * w);
-      const surface = r.grade[i] + (fill ? -1 : 1) * slopeHeight(limit - w, fill ? DEFAULT_SLOPES.fillSlope : DEFAULT_SLOPES.cutSlope, fill);
+      const surface = slopeSurfaceAt(r.grade[i], w, o => terrain.heightAt(r.x[i] + nx * o, r.y[i] + ny * o),
+        o => terrain.groundAt(r.x[i] + nx * o, r.y[i] + ny * o), limit);
       const wall = Math.abs(surface - terrain.heightAt(r.x[i] + nx * limit, r.y[i] + ny * limit)), rate = retainingAssembly(wall);
       if (wall > R.maxHeight || rate.baseWidth > limit + w) { ok = false; break; }
       price += rate.perM * cellLength(i, n, ds); height = Math.max(height, wall);

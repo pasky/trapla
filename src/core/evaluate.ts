@@ -13,7 +13,7 @@ import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, 
 import { noiseControlViolations } from './noise-control-violations';
 import { categoryViolation, crossingViolation, mergeNearby, oobViolation, profileViolation, ROAD_CHECKS, slopeViolation, timeViolation, trackEndViolations, type TrackEnd, type Violation } from './checks';
 import {
-  basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
+  basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, dividedRoad, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
 import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
@@ -25,7 +25,7 @@ import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
-import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
+import { rockFacePerM } from './earthengineering';
 import { buildAlignment, pointAt, station, type Alignment, type PI, type PointOnAlignment, type Vec2 } from './horizontal';
 import {
   crossSectionScreens, noiseOutcome, wallLineLengths,
@@ -40,7 +40,7 @@ import { crossingWallGaps } from './crossing-walls';
 import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
-import { computeSections, DEFAULT_SLOPES, flatCutBands, type SectionCache } from './sections';
+import { computeSections, flatSection, type SectionCache } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
 import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
@@ -278,7 +278,9 @@ interface PassCache {
   profile: Map<string, unknown>; support: Map<string, number>; retaining: RetainingFeatureCache;
   reroutes: ReturnType<typeof crossingCache>; sections: SectionCache;
 }
-interface GeometryRow { width: number; area: number; bridge: number; bridgeUrban?: number; engineering: number; cuts: [number, number, number][] }
+/** a cut's [class I, II, III] areas, footprint width and netted rock face in one kind of ground */
+interface CutRow { a: [number, number, number]; width: number; rockFace: number }
+interface GeometryRow { width: number; area: number; bridge: number; bridgeUrban?: number; cuts: CutRow[] }
 interface ProfileTables {
   /** Flat-ground earth geometry and rural bridge estimate by profile height index. */
   geometry: GeometryRow[];
@@ -696,9 +698,10 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Markups by kind of work: SPK's rural/urban "other objects" surcharge (roads), or a price book's own
   // per-profession markups (railway, data/categories.ts). Road expressions stay bit-identical.
   const mk = cat.markup;
-  const surE = (u: number) => mk ? mk.earth : surchargeRate(u), surB = (u: number) => mk ? mk.bridge : surchargeRate(u);
-  const surT = (u: number) => mk ? mk.tunnel : surchargeRate(u);
-  const sur = mk ? 1 + mk.earth : 1 + PRICES.otherObjectsSurcharge, surBridge = mk ? 1 + mk.bridge : sur, surTunnel = mk ? 1 + mk.tunnel : sur;
+  const divided = dividedRoad(cat);
+  const surE = (u: number) => mk ? mk.earth : surchargeRate(u, divided), surB = (u: number) => mk ? mk.bridge : surchargeRate(u, divided);
+  const surT = (u: number) => mk ? mk.tunnel : surchargeRate(u, divided);
+  const sur = mk ? 1 + mk.earth : 1 + surchargeRate(0, divided), surBridge = mk ? 1 + mk.bridge : sur, surTunnel = mk ? 1 + mk.tunnel : sur;
   // The base rate rides on the earth markup in the cost expressions below: rescale it to its own markup.
   const baseScale = mk ? (1 + mk.base) / (1 + mk.earth) : 1;
   // Items charged on every option alike (railway track and systems, also on structures) cannot change a
@@ -714,7 +717,6 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const landUrban = landPerM2(1);
   const bridgeUrban = (h: number) => bridge.estimatePerM(h) * (1 + surB(1)) + cat.crownWidth * landUrban;
   const tunnelPerMUrban = (cat.tunnelTubes * tunnelKm(1) / 1000) * (1 + surT(1));
-  const { fillSlope, cutSlope } = DEFAULT_SLOPES;
   const b = cat.crownWidth;
   const topsoilPerM2 = PRICES.topsoilDepth * PRICES.topsoil;
   // Hydraulics does not depend on the mass-balance shadow price. Cache the sparse height LUT
@@ -760,14 +762,14 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     const j = heightIndex(h);
     let row = geometry[j];
     if (!row) {
-      const { area, width } = flatEarthGeometry(Math.abs(h), b, h >= 0 ? fillSlope : cutSlope, h >= 0);
-      row = { area, width, cuts: [], bridge: bridgeRural(h), engineering: earthEngineeringPerM(h, 0, area) };
+      const { area, width } = flatSection(h, b);
+      row = { area, width, cuts: [], bridge: bridgeRural(h) };
       geometry[j] = row;
     }
     return row;
   };
-  const cutsAt = (row: GeometryRow, h: number, ground: number) =>
-    row.cuts[groundPackIds[ground]] ??= flatCutBands(-h, b, cutSlope, groundProfiles[ground]);
+  const cutsAt = (row: GeometryRow, h: number, ground: number): CutRow => row.cuts[groundPackIds[ground]] ??=
+    (({ cuts, width, rockFace }) => ({ a: cuts, width, rockFace }))(flatSection(h, b, groundProfiles[ground]));
   // Water classes depend on this route's crossings: their tables are shared only within this call.
   const wetTables = new Map<string, Float64Array>();
   /** cost per metre against grade-minus-ground h for a given value of a m³ of fill material */
@@ -780,16 +782,17 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       const geo = geometryAt(h), bridgeCost = town ? geo.bridgeUrban ??= bridgeUrban(h) : geo.bridge;
       if (kind === KIND.bridge) return bridgeCost;
       let earth: number;
-      const wd = geo.width;
+      const cutRow = h < 0 ? cutsAt(geo, h, costClasses[costClass].ground) : undefined;
+      const wd = cutRow ? cutRow.width : geo.width;
       const waterPrice = waterOption(costClass, h, wd);
       const base = town ? baseUrban : baseRural, mul = town ? 1 + surE(1) : sur, land = town ? landUrban : LAND.perM2;
       if (h >= 0) {
-        earth = (base + geo.area * dp.fillPerM3 + geo.engineering + wd * topsoilPerM2
+        earth = (base + geo.area * dp.fillPerM3 + wd * topsoilPerM2
           + waterPrice.cost) * mul + wd * land;
       } else {
-        const [a1, a2, a3] = cutsAt(geo, h, costClasses[costClass].ground);
+        const [a1, a2, a3] = cutRow!.a;
         earth = (base + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
-          + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2 + waterPrice.cost) * mul + wd * land;
+          + rockFacePerM(cutRow!.rockFace) + wd * topsoilPerM2 + waterPrice.cost) * mul + wd * land;
       }
       const waterBridge = waterPrice.bridge;
       if (waterBridge) earth = bridgeCost + 1e7; // unavailable earthwork, not a free zero-price culvert
@@ -816,7 +819,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   };
   const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
   const balanceTolerance = MATERIAL_VALUE.tolerancePerM * al.length;
-  const tpl = { crownWidth: b, fillSlope, cutSlope };
+  const tpl = { crownWidth: b };
   // Mass balance of a candidate grade line over a stretch [r0, r1] (a block of the grade solve, or
   // the whole route): the same steps as the bill below (cross-sections, structure choice incl.
   // forced crossings, volumes), on samples every ≈ BALANCE_STRIDE stations placed evenly within the
@@ -869,7 +872,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       const u = urban[k], su = 1 + surE(u), land = landPerM2(u), wd = sc.dayL[k] + sc.dayR[k];
       earth[k] = (baseRural + (baseUrban - baseRural) * u + sc.cutI[k] * dp.cutPerM3.I + sc.cutII[k] * dp.cutPerM3.II
         + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2
-        + earthEngineeringPerM(hh[k], sc.cut[k], sc.fill[k])
+        + rockFacePerM(sc.rockFace[k])
         + crossingCost(sw[k], wd, z[k]) / w) * su + wd * land;
       bp[k] = bridge.perM(hh[k]) * (mk ? 1 + surB(u) : su) + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelKm(u) / 1000) * (mk ? 1 + surT(u) : su);
@@ -1260,7 +1263,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const earthBase = new Float64Array(n), earthMul = new Float64Array(n), earthLand = new Float64Array(n), earthBox = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
-    geotechnicalPerM[i] = earthEngineeringPerM(h[i], sec.cut[i], sec.fill[i]);
+    geotechnicalPerM[i] = rockFacePerM(sec.rockFace[i]);
     for (const c of waterAt[i]) culverts[i] += crossingCost([c], sec.dayL[i] + sec.dayR[i], waterElevation.get(c)!);
     const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
     // the earthwork option's rates without its material terms, which depend on the fill price

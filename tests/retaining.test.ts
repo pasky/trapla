@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeSections, DEFAULT_SLOPES, type SectionCache } from '../src/core/sections';
+import { computeSections, type SectionCache } from '../src/core/sections';
 import { planRetainingWalls, retainingConflicts } from '../src/core/retaining';
 import { footprintConflicts } from '../src/core/footprint';
 import { RoadNet } from '../src/core/roadnet';
@@ -12,7 +12,7 @@ function setup(grade = 108, watercourses?: WaterData) {
     q: new Uint16Array(8000), lc: new Uint8Array(8000), watercourses }) : syntheticTerrain(200, 40, 5, () => 100);
   const st = { n, ds: 10, s: Float64Array.from({ length: n }, (_, i) => i * 10), x: Float64Array.from({ length: n }, (_, i) => 100 + i * 10),
     y: arr(100), tx: arr(1), ty: arr(0), grade: arr(grade), crownWidth: 10 };
-  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, st.grade, { crownWidth: 10, ...DEFAULT_SLOPES });
+  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, st.grade, { crownWidth: 10 });
   const roads = new RoadNet({ cls: ['service'], ways: [[0, 130, 119, 870, 119]] });
   return { terrain, roads, route: { ...st, ...sec } };
 }
@@ -72,7 +72,7 @@ describe('automatic slope retention', () => {
   });
   it('reuses raw sections across local grade repairs without reusing wall-truncated quantities', () => {
     const { terrain, roads, route } = setup(), cache: SectionCache = [];
-    const template = { crownWidth: route.crownWidth, ...DEFAULT_SLOPES };
+    const template = { crownWidth: route.crownWidth };
     for (const grade of [108, 108, 109, 108]) {
       route.grade[40] = grade;
       const cached = computeSections(terrain, route.n, route.x, route.y, route.tx, route.ty, route.grade, template, true, cache);
@@ -160,7 +160,7 @@ describe('automatic slope retention', () => {
     const { terrain, route } = setup(108, { version: 1, method: 'synthetic', reaches: [{ id: 1, kind: 'ditch', width: 0.5,
       points: [[400, 0], [520, 120], [550, 120], [550, 200]], catchmentKm2: [0.1, 0.1, 0.1, 0.1], truncated: [false, false, false, false] }] });
     Object.assign(route, computeSections(terrain, route.n, route.x, route.y, route.tx, route.ty, route.grade,
-      { crownWidth: route.crownWidth, ...DEFAULT_SLOPES }, true));
+      { crownWidth: route.crownWidth }, true));
     const roads = new RoadNet({ cls: ['service'], ways: [[0, 450, 118, 490, 118]] });
     const water = terrain.watercourses!.intersections(route.n, route.s, route.x, route.y), cache = new Map();
     // The road wall ends at x490 but extends to the x500 crossing cell. Its shorter
@@ -213,7 +213,7 @@ describe('automatic slope retention', () => {
       const n = 81, arr = (v: number) => new Float64Array(n).fill(v);
       const st = { n, ds: 10, s: Float64Array.from({ length: n }, (_, i) => i * 10), x: Float64Array.from({ length: n }, (_, i) => 100 + i * 10),
         y: arr(100), tx: arr(1), ty: arr(0), grade: arr(100.5), crownWidth: 10 };
-      const route = { ...st, ...computeSections(terrain, n, st.x, st.y, st.tx, st.ty, st.grade, { crownWidth: 10, ...DEFAULT_SLOPES }) };
+      const route = { ...st, ...computeSections(terrain, n, st.x, st.y, st.tx, st.ty, st.grade, { crownWidth: 10 }) };
       return { terrain, route, plan: planRetainingWalls(route, terrain) };
     };
     const near = ravine(6, 4);

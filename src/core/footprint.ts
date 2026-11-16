@@ -175,6 +175,8 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
   const roadCovered = new Map<number, [number, number][]>(), tieInCovered = new Map<number, [number, number][]>(), roadLedger = new RoadRemedyLedger();
   const screened = (way: number) => [...roadCovered.get(way) ?? [], ...tieInCovered.get(way) ?? []];
   const fixedConnections: PreservedRoadConnection[] = [];
+  /** classes of the roads each route end lies on (index 0 / n − 1) */
+  const endClasses = new Map<number, Set<string>>();
   const coverRoad = (id: number, a: number, b: number) => { const list = roadCovered.get(id) ?? []; list.push([Math.min(a, b), Math.max(a, b)]); roadCovered.set(id, list); };
   if (roads) {
     // Exact built/removed source ownership only. Neither a half-cell pad nor translating
@@ -201,6 +203,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         const t = Math.max(0, Math.min(1, ((r.x[i] - segment.ax) * dx + (r.y[i] - segment.ay) * dy) / (segment.length ** 2 || 1)));
         if (Math.hypot(r.x[i] - segment.ax - t * dx, r.y[i] - segment.ay - t * dy) <= CROSSING_RULES.endpointTolerance) ways.add(segment.way);
       });
+      endClasses.set(i, new Set([...ways].map(way => roads.wayClass(way))));
       const direction = i === 0 ? 1 : -1, next = i === 0 ? 1 : r.n - 2;
       const cell: FootprintCell = { i, s: r.s[i], x: r.x[i] + direction * r.tx[i] * r.ds / 4, y: r.y[i] + direction * r.ty[i] * r.ds / 4,
         tx: r.tx[i], ty: r.ty[i], along: r.ds / 4, left: r.crownWidth / 2, right: r.crownWidth / 2 };
@@ -322,6 +325,10 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
         block(base, `A ${support} stands on a ${row.label}`, `Move the route at km ${kmText(base.s0)} a little so the ${support} misses the ${row.label}, or make our ${h.structure === 'portal' ? 'tunnel' : 'bridge'} longer here`,
           'Engine limit: bridge supports and tunnel entrances are moved up to 300 m and spans stretched up to 180 m to stand clear of roads, railways and water', 'engine');
       } else {
+        // The end cell of a route that ends on a motorway joins it there: its slopes meeting that motorway's
+        // other carriageway are the tie-in's works, like the endpoint's own pavement (crossings exempt the
+        // actual endpoint the same way).
+        if (h.i === h.j && (h.i === 0 || h.i === r.n - 1) && endClasses.get(h.i)?.has(cls)) continue;
         base.detail = `Our earthworks cover ${(h.b - h.a).toFixed(0)} m of the ${row.label}; a ${row.label} cannot be moved aside or crossed at the same level.`;
         block(base, `Our earthworks cover a ${row.label}`, moveOrBridge(base, original, existingHalfWidth(cls), row.label),
           'ČSN 73 6101: motorways and expressways keep their own space and are crossed only at a different level (research/08)');

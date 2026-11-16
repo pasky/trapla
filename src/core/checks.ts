@@ -441,7 +441,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
   const gradeRule = rail && maxGradient > RAIL_MAX_GRADIENT + 1e-9 ? `Game rule: a rebuilt stretch of a line may be as steep as that line is there, ${fmt(maxGradient * 1000, 1)} ‰`
     : rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
     : norms.norm ? `${norms.norm}: at most ${pct(maxGradient)} % gradient for this road`
-    : `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
+    : `ČSN 73 6101: at most ${pct(maxGradient)} % gradient for this road here`;
   for (let i = 0; i < p.grades.length; i++) {
     const g = p.grades[i];
     if (Math.abs(g) <= maxGradient + 1e-6) continue;
@@ -484,7 +484,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
         fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to ≥ ${fmt(min)} m`,
         detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
         basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
-          : `${norms.verticalNorm ?? norms.norm ?? 'ČSN 73 6101 (older edition, provisional)'}: ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
+          : `${norms.verticalNorm ?? norms.norm ?? 'ČSN 73 6101'}: ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
       });
     }
     if (c.lenEff < c.len - 1e-3) {

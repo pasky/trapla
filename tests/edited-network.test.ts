@@ -295,7 +295,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // without our earthworks the stretch would run 190 m along and under our road
     expect(derivedStretch(index, track.id, grab, [])!.s0).toBeLessThan(100);
     const interval = derivedStretch(index, track.id, grab, covered)!;
-    expect(interval.s0).toBeGreaterThan(270);
+    expect(interval.s0).toBeGreaterThan(250);
     expect(derivedStretch(index, track.id, 150, covered)).toBeNull(); // under our road: nothing to rebuild there
     const command = rebuildCommand(index, interval, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
     const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);

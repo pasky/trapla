@@ -9,7 +9,7 @@ import { crossingPlanLength, resolveCrossings, type CrossingResult } from '../sr
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
 import { underpassAssembly } from '../src/core/data/remedies';
-import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND } from '../src/core/data/urban';
+import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND, URBAN_RATES } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { noiseBand } from '../src/core/noise';
 import { rangeSummary } from '../src/core/range';
@@ -331,7 +331,7 @@ describe('evaluate on a synthetic town', () => {
     // same flat cross-section in both places
     expect(perM(210, 'roadBase') - perM(100, 'roadBase')).toBeCloseTo((67_852_000 - 56_912_000) / 1000, 3);
     expect(perM(210, 'land') / perM(100, 'land')).toBeCloseTo((URBAN_LAND.buildingLandPerM2 * URBAN_LAND.multiplier) / LAND.perM2, 6);
-    expect(perM(210, 'surcharge') / perM(210, 'roadBase')).toBeGreaterThan(0.493 - 1e-9);
+    expect(perM(210, 'surcharge') / perM(210, 'roadBase')).toBeGreaterThan(URBAN_RATES.otherObjectsSurcharge - 1e-9);
     expect(r.quantities.urbanLength).toBeCloseTo(400, -1);
   });
 
@@ -403,14 +403,14 @@ describe('cut-edge receivers', () => {
 
 describe('structures and the play-area boundary', () => {
   it('a bridge is not out of bounds because the embankment it replaces would have been', () => {
-    // 200 m wide strip of terrain with a 50 m deep valley across it; the route runs down the middle
-    const ter = syntheticTerrain(400, 40, 5, (x) => 400 - 50 * Math.max(0, Math.min(1, (300 - Math.abs(x - 1000)) / 100)));
-    const r2 = evaluate({ terrain: ter, scenario: D11_SCENARIO, a: { x: 100, y: 100 }, b: { x: 1900, y: 100 } }, {
+    // 150 m wide strip of terrain with a 50 m deep valley across it; the route runs down the middle
+    const ter = syntheticTerrain(400, 30, 5, (x) => 400 - 50 * Math.max(0, Math.min(1, (300 - Math.abs(x - 1000)) / 100)));
+    const r2 = evaluate({ terrain: ter, scenario: D11_SCENARIO, a: { x: 100, y: 75 }, b: { x: 1900, y: 75 } }, {
       category: 'S9.5', speed: 90, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 1800, z: 400, r: null }],
     });
-    // 50 m of fill would spread 4.75 + 100 m to each side — beyond the terrain — so it must be a bridge
+    // 50 m of fill would spread 4.75 + 78.75 m to each side — beyond the terrain — so it must be a bridge
     expect(r2.kind[90]).toBe(KIND.bridge);
-    expect(r2.dayL[90]).toBeGreaterThan(100);
+    expect(r2.dayL[90]).toBeGreaterThan(75);
     expect(r2.violations.filter((v) => v.kind === 'oob')).toEqual([]);
   });
 });

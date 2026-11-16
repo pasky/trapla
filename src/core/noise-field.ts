@@ -199,9 +199,10 @@ const straight = (S: Segments, c: number) => S.len[c] <= STRAIGHT * 2 * S.half[c
 export const NOISE_REACH = 3000;
 /** The grouped sums (Sum 0, 1) differ from the cell-by-cell ones (Sum 2) by at most this fraction of their own
  * value, for any window and walls, and with transferDelta against the sum with the new walls. Measured on the
- * saved designs at worst: 0.224 grouped, 0.046 finer (research/36 §2); pinned by tests/noise-stages.test.ts.
- * noiseOutcome redoes a house more finely wherever a decision lies within this of its threshold. */
-export const FAR_ERROR: readonly [number, number, number] = [0.3, 0.07, 0];
+ * saved designs at worst: 0.224 grouped, 0.046 finer (research/36 §2), 0.071 finer with the steeper side slopes
+ * of research/48 (cut tops nearer the road); pinned by tests/noise-stages.test.ts. noiseOutcome redoes a house
+ * more finely wherever a decision lies within this of its threshold (a wider margin only refines more). */
+export const FAR_ERROR: readonly [number, number, number] = [0.3, 0.09, 0];
 
 interface Segments { n: number; i0: Int32Array; i1: Int32Array; cx: Float64Array; cy: Float64Array; ux: Float64Array; uy: Float64Array; half: Float64Array; radius: Float64Array; z: Float64Array;
   /** per side (L = 0, R = 1), stride 8: total length, open (not shielded) length, the highest edge top above

@@ -9,9 +9,9 @@ export interface SpeedNorms {
   noSuperelevationRadius: number;
   /** speed-based transition minimum, m; 2018 also requires ≥ runoff length (not modelled), research/15 */
   minTransition: number;
-  /** PROVISIONAL: older-edition minimum crest vertical radius, m (100 km/h value used for 90) */
+  /** smallest crest vertical radius allowed (stopping sight), m */
   minCrestRadius: number;
-  /** PROVISIONAL: older-edition minimum sag vertical radius, m (100 km/h value used for 90) */
+  /** smallest sag vertical radius allowed, m */
   minSagRadius: number;
   /** where these values come from, as a rule's source names it (absent: ČSN 73 6101, see the rows) */
   norm?: string;
@@ -19,30 +19,24 @@ export interface SpeedNorms {
   verticalNorm?: string;
 }
 
+/** Vertical radii: ČSN 73 6101:2018 smallest allowed crest (stopping sight) and sag radii, as scanned in
+ * Šilhan, ČVUT FD diploma thesis 2021, tab. 9–10, and the ČVUT FD course 12SDK (2023); 90 km/h independently
+ * in Běťáková (research/47 §1.1, /48 §3). */
 export const SPEED_NORMS: Record<number, SpeedNorms> = {
-  90: { speed: 90, minRadius: 355, noSuperelevationRadius: 1160, minTransition: 90, minCrestRadius: 6000, minSagRadius: 3400 },
-  80: { speed: 80, minRadius: 280, noSuperelevationRadius: 920, minTransition: 80, minCrestRadius: 3000, minSagRadius: 2100 },
-  70: { speed: 70, minRadius: 205, noSuperelevationRadius: 705, minTransition: 70, minCrestRadius: 2500, minSagRadius: 1500 },
-};
-
-export const PROVISIONAL_NORMS = {
-  /** PROVISIONAL: older-edition max gradient for S 9.5 / S 11.5 in hilly terrain (research/00 §4.2) */
-  maxGradient: 0.06,
-  verticalRadiiNote: 'older edition of ČSN 73 6101, not confirmed for 2018; 90 km/h uses the 100 km/h column',
+  90: { speed: 90, minRadius: 355, noSuperelevationRadius: 1160, minTransition: 90, minCrestRadius: 5500, minSagRadius: 2700 },
+  80: { speed: 80, minRadius: 280, noSuperelevationRadius: 920, minTransition: 80, minCrestRadius: 3300, minSagRadius: 2100 },
+  70: { speed: 70, minRadius: 205, noSuperelevationRadius: 705, minTransition: 70, minCrestRadius: 2100, minSagRadius: 1500 },
 };
 
 /** Motorway design speeds: D 27.5 base 130, lowered by 10 or 20 in justified cases (Radimský 2019 slide 4).
  * Radii at 6 % superelevation and no-superelevation radii: Radimský slide 6 (data/motorway.ts).
  * Transition minimum = vn metres (slide 15; runoff length not modelled, as for roads).
- * Vertical radii: the 2018 table is not public (research/22 §2, /33 §1, §6), so PROVISIONAL older-edition
- * values, as for the road rows: crest = ČSN 73 6101:2004 "Rv zast. dovolené" 15,000 / 12,000 / 10,000 m
- * at 130 / 120 / 110 (reproduced in Mahdal, VUT 2012, p. 8; research/33 §6). Sag: the older VUT
- * "Aplikace ČSN 73 6101" p. 11 gives 5,000 m at 120 only; 110 uses it (conservative); 130 has no older
- * column found and reuses 5,000 m: UNVERIFIED, may be too lenient at 130. */
+ * Vertical radii: ČSN 73 6101:2018 crest 17,000 / 11,500 / 8,300 m and sag 6,000 / 5,000 / 4,000 m at
+ * 130 / 120 / 110, as reproduced by the ČVUT FD course 12SDK (2023) (research/48 §3, medium-high confidence). */
 export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
-  130: { speed: 130, minRadius: 840, noSuperelevationRadius: 2420, minTransition: 130, minCrestRadius: 15000, minSagRadius: 5000 },
-  120: { speed: 120, minRadius: 690, noSuperelevationRadius: 2060, minTransition: 120, minCrestRadius: 12000, minSagRadius: 5000 },
-  110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 10000, minSagRadius: 5000 },
+  130: { speed: 130, minRadius: 840, noSuperelevationRadius: 2420, minTransition: 130, minCrestRadius: 17000, minSagRadius: 6000 },
+  120: { speed: 120, minRadius: 690, noSuperelevationRadius: 2060, minTransition: 120, minCrestRadius: 11500, minSagRadius: 5000 },
+  110: { speed: 110, minRadius: 560, noSuperelevationRadius: 1740, minTransition: 110, minCrestRadius: 8300, minSagRadius: 4000 },
 };
 
 /** Railway (new conventional mixed line, ≤ 160 km/h), PROVISIONAL older teaching values (research/23, /34;

@@ -22,7 +22,7 @@ import { buildRouteSurfaces, routeSurfaceContext, routeSurfaceContextSliced, typ
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, slopeKnee, groundStations } from './earthwork-surface';
 import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
 import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
@@ -928,7 +928,9 @@ export class View {
       const abutment = k0 !== KIND.earth || k1 !== KIND.earth;
       if (ground[i] && ground[i + 1]) for (const side of [1, -1]) {
         const sections = daylightSections(r, i, side, w, natural, ground);
-        let prev: { day: number; edge: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
+        // the slope's bend (a fill's toe band, a cut's rock face), drawn where the engine bends it
+        const k0 = abutment ? null : slopeKnee(r, i, side, w), k1 = abutment ? null : slopeKnee(r, i + 1, side, w);
+        let prev: { day: number; edge: number; knee?: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
         for (let j = 0; j < sections.length; j++) {
           const s = sections[j], t = j / (sections.length - 1), toe = s.slopeDay ?? s.day;
           const fill = s.edge.z > s.day.z, kind = abutment ? EW_KIND.structure : fill ? EW_KIND.fill : EW_KIND.cut;
@@ -937,6 +939,12 @@ export class View {
           const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
           const day = push(toe.x, toe.y, toe.z+groundLift, color, toe.z, slopeInk, kind, geology(s.day.z-toe.z));
           const edge = push(s.edge.x, s.edge.y, s.edge.z+lift, color, s.edge.z, slopeInk, kind, geology(natural(s.edge.x,s.edge.y)-s.edge.z));
+          let knee: number | undefined;
+          if ((k0 || k1) && !s.slopeDay) {
+            const u = (k0?.u ?? 0.5) * (1 - t) + (k1?.u ?? 0.5) * t, dz = (k0?.dz ?? 0) * (1 - t) + (k1?.dz ?? 0) * t;
+            const kx = s.edge.x + u * (toe.x - s.edge.x), ky = s.edge.y + u * (toe.y - s.edge.y), kz = s.edge.z + u * (toe.z - s.edge.z) + dz;
+            knee = push(kx, ky, kz + groundLift, color, kz, slopeInk, kind, geology(natural(kx, ky) - kz));
+          }
           // Separate concrete vertices keep earth textures off the physically vertical face.
           // The collar still starts at natural ground, not at the retained slope elevation.
           const wallGround = s.slopeDay ? push(s.day.x,s.day.y,s.day.z+groundLift,concrete) : undefined;
@@ -947,11 +955,12 @@ export class View {
             this.local(p.x,p.y,p.z+groundLift,v); groundPos.push(v.x,v.y,v.z);
           }
           if (prev) {
-            quad(prev.day, day, prev.edge, edge);
+            if (prev.knee !== undefined && knee !== undefined) { quad(prev.day, day, prev.knee, knee); quad(prev.knee, knee, prev.edge, edge); }
+            else quad(prev.day, day, prev.edge, edge);
             if (prev.wallGround !== undefined && wallGround !== undefined) quad(prev.wallGround, wallGround, prev.wallSlope!, wallSlope!);
             for (let k = 0; k < 8; k++) groundIdx.push(prev.ground+k, ground+k, prev.ground+k+1, ground+k, ground+k+1, prev.ground+k+1);
           }
-          prev = { day, edge, ground, wallGround, wallSlope };
+          prev = { day, edge, knee, ground, wallGround, wallSlope };
         }
       }
     }

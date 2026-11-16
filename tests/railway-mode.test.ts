@@ -57,8 +57,9 @@ describe('railway mode', () => {
 describe('new lines crossing a mapped railway', () => {
   it.each(['R1', 'R2', 'D27.5'] as const)('%s bridges a raised track even when the first grade pays the clearance penalty', category => {
     // Unlike the station tie-in test below, this is a NEW auxiliary line with free ends, crossing an
-    // unrelated railway on a 4 m embankment. The 3 km length leaves room for the 12.5 ‰ railway grade.
-    const terrain = syntheticTerrain(640, 80, 5, x => 100 + 4 * Math.max(0, 1 - Math.abs(x - 1600) / 100));
+    // unrelated railway on a 6 m embankment (high enough that the first grade line dips under the clearance).
+    // The 3 km length leaves room for the 12.5 ‰ railway grade.
+    const terrain = syntheticTerrain(640, 80, 5, x => 100 + 6 * Math.max(0, 1 - Math.abs(x - 1600) / 100));
     for (let j = 0; j < terrain.ny; j++) (terrain.lc as Uint8Array)[j * terrain.nx + 320] |= RAIL_CROSSING_BIT;
     const a = { x: 100, y: 200 }, b = { x: 3100, y: 200 }, ctx = { terrain, scenario: D11_SCENARIO, a, b };
     const { base } = fixture();

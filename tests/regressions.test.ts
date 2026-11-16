@@ -83,7 +83,7 @@ describe('review regressions', () => {
   });
 
   it('section whose slope lies exactly on the ground has finite areas', () => {
-    const r = sideSection(0, 5, { crownWidth: 10, fillSlope: 2, cutSlope: 1.75 }, (o) => (o <= 5 ? 0 : -(o - 5) / 2));
+    const r = sideSection(0, 5, { crownWidth: 10 }, (o) => (o <= 5 ? 0 : -(o - 5) / 2.5));
     expect(Number.isFinite(r.fill) && Number.isFinite(r.day)).toBe(true);
     expect(r.day).toBeCloseTo(5, 6);
   });
