@@ -62,8 +62,14 @@
  * two-lane roads (29.4 / 48.1 %), ČSN 73 6101:2018 vertical radii and gradients by category; a route ending on
  * a motorway may meet its other carriageway in its end cell; deep culverts become buried bridges, soft ground
  * under fills is treated; design speed per bend and hairpins (ČSN 73 6101:2000 §8.5.7); grade limits by terrain
- * class; an underpass box ends where our slope covers its roof, wing walls beyond. */
-export const COST_MODEL_VERSION = 31;
+ * class; an underpass box ends where our slope covers its roof, wing walls beyond.
+ * 32: tunnels as they are built (research/49, /51): a tunnel goes on as cut and cover (SPK A.3.H, +7.5 %) out to
+ * portals where the ground is a structure height (9 m) above the grade, ≥ 12 m per portal, its pit beyond 5 m of
+ * cover billed; the grade search's tunnel mode (a deep stretch all tunnel or all open); one 2-lane tube over 500 m
+ * gets an escape tunnel (×1.3) or a second tube (NV 264/2009); streams stay over a tunnel 9 m below them; a cutting
+ * that never reaches the top of the hillside is a tunnel; the player's method (Mined / Cut and cover); minimum
+ * tunnel 100 m. D11 bills unchanged (no tunnels); d3-0304, d35, d35-full and the Královec railway dearer. */
+export const COST_MODEL_VERSION = 32;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
