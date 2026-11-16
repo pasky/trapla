@@ -844,6 +844,7 @@ async function main() {
     const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;
     if (!corridor || projectStore.inTransaction) return;
     select(null);
+    historyStep = true; // its own toast below
     store.editProject(d => { Object.assign(d, rejoinStretch(d, corridor.id, id)); });
     toast(DIRECTIONS_TEXT.joined, 'Undo', () => store.undo());
   };
@@ -896,7 +897,12 @@ async function main() {
     projectScore(!sceneIdle());
     return true;
   };
-  store.onHistory = () => select(null);
+  /** separate motorway stretches known after the last committed change (a change of both directions next to
+   * one joins it: say so) */
+  let stretchIds = new Set<string>(), historyStep = false;
+  const separateStretches = () => new Set(projectStore.snapshot.design.corridors.flatMap(c => c.mode === 'paired' ? (c.stretches ?? []).map(t => t.id) : []));
+  stretchIds = separateStretches();
+  store.onHistory = () => { select(null); historyStep = true; };
   buildTool.onClose = () => select(null);
   buildTool.onDone = (a, b) => {
     if (projectStore.inTransaction) projectStore.commit();
@@ -936,6 +942,11 @@ async function main() {
   store.on((d, committed) => {
     if (committed) previewGesture = null;
     hideToast(); hud.noteEdit(committed);
+    if (committed) {
+      const ids = separateStretches();
+      if (!historyStep && !store.oneDirection && [...stretchIds].some(id => !ids.has(id))) toast(DIRECTIONS_TEXT.togetherAgain, 'Undo', () => store.undo());
+      stretchIds = ids; historyStep = false;
+    }
     frameEnds();
     sel = activeSelection(store.activeRouteId, qualifiedSelection);
     if (d) {

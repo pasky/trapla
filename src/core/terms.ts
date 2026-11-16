@@ -129,6 +129,7 @@ export const DIRECTIONS_TEXT = {
   joinHere: 'Join',
   joinTitle: 'Both directions on one line here again (Undo brings this direction’s changes back)',
   joined: 'Both directions run together here again.',
+  togetherAgain: 'Both directions moved together: where one ran on its own next to this change, they run together again.',
 } as const;
 
 /** The 150 km/h speed-limit pilot on a motorway designed for 130 (data/motorway.ts, research/41). */
