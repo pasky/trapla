@@ -1122,7 +1122,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   for (const c of crossings) {
     // SPK links/approaches/bridges receive other-objects surcharge; all-in junction/access do not.
     // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
-    const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
+    const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 && !c.moved ? ACCESS : 0;
     crossingLump[c.i] += lump;
     // houses a reroute runs through are bought out like those under our road (buildings, not works)
     // (a crossing built with the other direction is billed there, its houses included)

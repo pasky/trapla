@@ -1593,6 +1593,13 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
   const issues: CrossingAuditIssue[] = [];
   if (route.s.length < 2) return issues;
   const { project, margin } = routeGeometry(route);
+  const built = crossings.filter(c => c.squared !== undefined && c.geometry?.road).map(c => c.geometry!.road!);
+  const onBuilt = (q: XY) => built.some(road => road.some((a, i) => {
+    const b = road[i + 1];
+    if (!b) return false;
+    const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy) <= 0.3;
+  }));
   for (const c of crossings) {
     const g = c.geometry;
     const report = (message: string, severity: CrossingAuditIssue['severity'] = 'error') => {
@@ -1654,12 +1661,13 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
     if (g.links) {
       for (const path of g.links) {
         for (const q of path) if (margin(q, g.width / 2) < -0.1) report('Link intrudes into the earthwork footprint');
+        // (a real road, or the new line of a crossing straightened to cross square)
         if (roads && path.length) for (const q of [path[0], path[path.length - 1]])
-          if (roads.nearestWay(q.x, q.y, 0.3) === undefined) report('Link endpoint does not meet a real ground road');
+          if (roads.nearestWay(q.x, q.y, 0.3) === undefined && !onBuilt(q)) report('Link endpoint does not meet a real ground road');
       }
       if (Math.abs(g.links.reduce((sum, path) => sum + crossingPlanLength(path), 0) - (c.linkLength ?? 0)) > 0.01) report('Link quantity differs from geometry');
       const price = (c.linkLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000
-        + (c.cls === 'service' && (c.linkLength ?? 0) > 0 ? ACCESS : 0) + (c.culvertCost ?? 0) + (c.houseCost ?? 0);
+        + (c.cls === 'service' && (c.linkLength ?? 0) > 0 && !c.moved ? ACCESS : 0) + (c.culvertCost ?? 0) + (c.houseCost ?? 0);
       if (Math.abs(price - c.cost) > 0.01) report('Link bill differs from measured quantities');
     }
     // Side-road regrades and walls, remeasured from the drawn geometry (rural or urban rate).

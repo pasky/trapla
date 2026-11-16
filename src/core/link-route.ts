@@ -48,7 +48,7 @@ export interface LinkEnv {
   streams?: (a: XY, b: XY) => (XY & { crossing: WaterCrossing })[];
   /** Search memo shared by every reroute of one evaluation (terrain and our road are fixed): what
    * stands at a 2 m lattice point (-1 blocked, else the price of the houses there). */
-  memo?: { free: Map<number, number> };
+  memo?: { free: Map<number, number>; slopes?: Map<string, { blocked: 'railway' | 'water' | 'building' | null; houses: number[] }> };
 }
 export interface LinkPlan {
   points: CrossingPoint[];
@@ -209,12 +209,17 @@ export function profileLink(survey: LinkSurvey, grade: number, env: LinkEnv, ope
     let deepest = Math.max(lift(i - 1), lift(i));
     j = i + 1;
     while (j < n && points[j].d! - points[i - 1].d! <= PIECE && lift(j) > SLOPE_FLAT) { deepest = Math.max(deepest, lift(j)); j++; }
-    const a = points[i - 1], b = points[j - 1], reach = survey.half + deepest * SLOPE;
+    // (reach rounded up to whole metres: the same piece is profiled at several gradients, and memoised)
+    const a = points[i - 1], b = points[j - 1], reach = Math.ceil(survey.half + deepest * SLOPE);
     if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-9) continue;
-    const blocked = env.obstacle?.(a, b, reach);
-    if (blocked && blocked !== 'building') problems.add(blocked);
-    else if (blocked) problems.add('building');
-    for (const h of env.houses?.(a, b, reach) ?? []) houses.add(h);
+    const key = `${a.x},${a.y},${b.x},${b.y},${reach}`;
+    let hit = env.memo?.slopes?.get(key);
+    if (!hit) {
+      hit = { blocked: env.obstacle?.(a, b, reach) ?? null, houses: env.houses?.(a, b, reach) ?? [] };
+      if (env.memo) (env.memo.slopes ??= new Map()).set(key, hit);
+    }
+    if (hit.blocked) problems.add(hit.blocked);
+    for (const h of hit.houses) houses.add(h);
   }
   const list = [...houses];
   return { points, problems: [...problems], culverts, culvertCost: culverts.reduce((a, c) => a + c.cost, 0),
