@@ -351,6 +351,8 @@ try {
       }
       assert.match(await page.locator('#norms').getAttribute('title'), cs === 'P4' ? /ČSN 73 6109/ : /ČSN 73 6110/);
       assert.match(await page.locator('#cat option:checked').textContent(), words);
+      // the census counts class I–III roads only: its traffic is a guess, and says so
+      assert.match(await page.locator('.route-traffic .traffic-basis').textContent(), /^Not counted: a guess/);
       console.log(`${cls} ${r.name} rebuilt as ${cs} at ${r.specification.designSpeed} km/h: ${Math.round(own.length)} m, ${(own.cost.total / 1e6).toFixed(1)} M CZK alone, ${own.violations.length} problems${own.violations.length ? ` (${own.violations.map(v => v.title).join('; ')})` : ''}`);
       await page.evaluate(() => window.trapla.select(null));
       await page.screenshot({ path: `${out}/rebuilt-${cls}.png` });

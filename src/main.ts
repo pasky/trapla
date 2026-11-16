@@ -463,6 +463,7 @@ async function main() {
     const basis = document.createElement('small'); basis.className = 'traffic-basis';
     if (filled && isTraffic(op, filled)) {
       basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
+        : averaged !== cls ? 'Not counted: a guess (the average class III road). Change it to what you expect.'
         : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new road: the average class ${averaged} road is assumed.`;
       basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
         : averaged === cls ? 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.'

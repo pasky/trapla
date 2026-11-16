@@ -56,6 +56,19 @@ describe('crossing picking on the geometry it owns', () => {
     expect(click(60)).toBe('crossing');
     expect(click(150)).toBe('base road');
   });
+  it('a mapped road is picked on its drawn width across it, however the view foreshortens it', () => {
+    // a 10 m wide band (half 5 m) along y = 0, seen from an oblique camera: 1 px per metre along x, 0.4 across
+    const graph: TransportGraphData = { version: 1, vectorData: 'fixture', nodes: [], sources: [{ id: 'road', osmWayId: '3', kind: 'road',
+      nodes: ['a', 'b'], xy: [0, 0, 200, 0], stations: [0, 200], layer: 0, bridge: false, tunnel: false, tags: {}, elevation: 'terrain',
+      render: [{ sourceId: 'road', featureId: 'f', s0: 0, s1: 200, width: 10, correspondence: [{ sourceS: 0, renderS: 0 }, { sourceS: 200, renderS: 200 }] }] }],
+      renderFeatures: [{ id: 'f', layer: 'service', polylineIndex: 0 }] };
+    const sources = new SourcePicker(graph, { chunk: 2500, polys: [], lines: [{ name: 'service', verts: Float32Array.of(0, 0, 200, 0), starts: Uint32Array.of(0, 2) }], buildings: null },
+      () => 5);
+    const flat = (x: number, y: number) => ({ sx: x, sy: 0.4 * y, vis: true });
+    // the band is 2 px either side of the line on the screen; with 1 px of slack a click 2.9 px off picks, 3.1 px does not
+    expect(sources.at(100, 2.9, 100, 7.25, 40, 1, flat)).not.toBeNull();
+    expect(sources.at(100, 3.1, 100, 7.75, 40, 1, flat)).toBeNull();
+  });
   it('a long mapped segment is picked where it is drawn, draped over the ground under it, not on its straight chord', () => {
     // a 400 m railway segment over a 6 m high spur: in an oblique view the drawn line bulges 30 px up
     const graph: TransportGraphData = { version: 1, vectorData: 'fixture', nodes: [], sources: [{ id: 'rail', osmWayId: '2', kind: 'railway',
