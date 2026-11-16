@@ -143,15 +143,24 @@ station's terrain class (mountainous where the ground across the corridor is ste
 §1.1), lower in a hairpin. Until then the road's own speed gives the vertical radii everywhere (stricter,
 never invalid).
 
-**Hairpin** (bend type): radius 17.5 m on the axis (I/44 Červenohorské sedlo, the smallest found on a Czech
-class I road; the forest-road floor 15 m), no transition, banking 7.5 % (I/44). Each lane widened to the
-swept path of a 16.5 m articulated lorry plus the safety margin (VUT/HBH 2015: R 15 → 5.3, 20 → 4.7,
-25 → 4.3 m + 0.5 m class II/III, 0.75 m class I), drawn and billed (extra pavement, OTSKP structure research/46
-§3) and in the earthworks (wider crown there). Grade in the hairpin: the resultant slope √(s² + p²) ≤ 10 %
-where icing is frequent (2018 §8.10.1) with p = 7.5 % → s ≤ 6.6 %. Travel time: vm = √(127 R (0.25 + p))
-≈ 27 km/h over the hairpin's arc. Validity: on a mountainous stretch at the category's lowest speed (70 for
-S rows) it is VALID with the note "needs the road authority's approval" (I/44 was built under an approved
-departure from ČSN 73 6101); elsewhere it is a violation the player may still choose.
+**Hairpin** (bend type, a "točka"): only where the road turns almost back on itself (≥ 150°: "v točce se směr
+trasy obrací téměř o 180°", MZe TD 2020 §7.7); a gentler bend is a case for a lower stretch speed. ČSN 73 6101:2000
+§8.5.7 allowed hairpins as an exception on two-lane roads in mountain terrain; its table 12 sets 30 m at 8 %
+banking for 30 km/h (research/54 §1; the 2018 edition has none; I/44's 17.5 m was a further approved departure).
+Plain arc, no transition. Each lane widened to the swept path of a 16.5 m articulated lorry plus the safety
+margin (VUT/HBH 2015: R 30 → 4.0 m + 0.75 m class I, 0.5 m class II/III), tapered 1:10, drawn and billed (extra
+pavement, research/46 §3) and in the earthworks. Grade in the hairpin: resultant slope √(s² + p²) ≤ 10 % where
+icing is frequent (2018 §8.10.1) with p = 8 % → s ≤ 6 %. Travel time: the table's speed (30 km/h at 30 m).
+Validity: on a mountainous stretch at the category's lowest speed it is VALID with the note "needs the road
+authority's approval"; elsewhere a violation the player may still choose.
+
+**Terrain class** (research/54): the norm classes the natural ground slope of a region (2000 §8.2.2: hilly ≤ 15 %,
+mountainous steeper), and designers class whole sections (D11 1106–1109, D49, I/13). The game: the median ground
+slope within 500 m of each point, and a stretch's class from the running median of that over 10 km of the route
+(the shortest window that classes every documented section in our packs as it was: all hilly; 5 km would call
+4 km of D11 1109 mountainous, which the EIA did not). No pack covers a documented mountain road, so that side is
+uncalibrated; the flat class (S 9.5 4.5 %, motorway 3 %) is not modelled. Consequence: in today's packs no
+stretch is mountainous, so hairpins are violations there and the 8 % grade never applies.
 
 **Not in M4:** an isolated curve below 70 km/h radii other than a hairpin (the 2018 text allows one signed
 isolated element but gives no lower bound), the 60 / 50 km/h rows of the older editions.

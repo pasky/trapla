@@ -447,10 +447,10 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const win = opts.window;
   const al = win ? { ...fullAlignment, length: win.s1 - win.s0 } : fullAlignment;
   // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
-  const st = win ? stationWindow(station(fullAlignment, STEP), win.s0, win.s1) : station(al, STEP);
+  const stFull = station(fullAlignment, STEP), st = win ? stationWindow(stFull, win.s0, win.s1) : stFull;
   // the steepest grade by the ground's terrain class per station (less in hairpins), radii by stretch (M4-2)
   const vlim = verticalLimits(st, fullAlignment, d.pis, d.speed, d.category, terrain,
-    d.maxGradient ?? (cat.maxGradient ? undefined : scenario.maxGradient), win?.s0 ?? 0);
+    d.maxGradient ?? (cat.maxGradient ? undefined : scenario.maxGradient), win?.s0 ?? 0, stFull);
   const maxGradient = vlim.maxGradient;
   const n = st.n, ds = st.ds;
   let manualStructures = overrideMask(st.s, d.structureOverrides);
@@ -1911,7 +1911,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     ...buildingViolations,
     // A window (drag preview) is part of a longer plan: preview-window.ts checks the whole plan once.
     ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category })),
-    ...(win || !d.pis.some(p => p.hairpin) ? [] : hairpinViolations(al, d.pis, d.speed, d.category, terrain)),
+    ...(win || !d.pis.some(p => p.hairpin) ? [] : hairpinViolations(al, d.pis, d.speed, d.category, vlim.mountainousAt)),
     ...ROAD_CHECKS.vertical(prof, norms, vlim.gradeAt ?? maxGradient, cat.mode === 'railway', vlim.stretch),
     ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),
   ];

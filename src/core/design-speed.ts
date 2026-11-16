@@ -5,7 +5,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { designSpeeds, HAIRPIN, hairpinLaneWidening, speedNorms, type SpeedNorms } from './data/norms';
 import type { RadiusLimit } from './vertical';
 import type { Alignment, PI } from './horizontal';
-import { terrainClassAt } from './terrain-class';
+import { routeMountainous } from './terrain-class';
 import type { Terrain } from './terrain';
 import type { Violation } from './checks';
 
@@ -46,16 +46,20 @@ export function speedStretches(al: Pick<Alignment, 'curves' | 'length'>, pis: re
   return out;
 }
 
-/** The speed a curve of radius r allows: vm = √(127 r (f + p)) with f = 0.25 (ČSN 73 6101:2018 slide 5; MZe TD
- * 2020 p. 29) and the hairpin's 7.5 % banking, km/h (R 17.5 m → ≈ 27 km/h) */
+/** The speed a hairpin of radius r is driven at: ČSN 73 6101:2000 table 12 (HAIRPIN.speeds), between its rows
+ * linearly, beyond them its ends, km/h (30 m → 30 km/h) */
 export function hairpinSpeed(r: number): number {
-  return Math.sqrt(127 * r * (0.25 + HAIRPIN.banking));
+  const t = HAIRPIN.speeds;
+  if (r <= t[0][0]) return t[0][1];
+  for (let k = 1; k < t.length; k++) if (r <= t[k][0]) return t[k - 1][1] + (t[k][1] - t[k - 1][1]) * (r - t[k - 1][0]) / (t[k][0] - t[k - 1][0]);
+  return t[t.length - 1][1];
 }
 
 /** Where a hairpin may stand: on a road through mountains (the terrain class), on a stretch at the category's
  * lowest design speed. There it needs the road authority's approval (a departure from ČSN 73 6101, as at I/44
  * Červenohorské sedlo), which the bend card says; elsewhere it is a violation the player may still keep. */
-export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly PI[], roadSpeed: number, category: CategoryId, terrain: Terrain): Violation[] {
+export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly PI[], roadSpeed: number, category: CategoryId,
+  mountainousAt: (s: number) => boolean): Violation[] {
   const out: Violation[] = [];
   const lowest = Math.min(...designSpeeds(category));
   const rule = 'ČSN 73 6101:2018 has no hairpins; a road authority approves one only as a departure from it on a mountain road (I/44 Červenohorské sedlo, research/47 §3)';
@@ -68,10 +72,10 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
         title: `Bend ${c.index + 1} turns too little for a hairpin`,
         fix: `Make bend ${c.index + 1} an ordinary curve${speed > lowest ? `; for a tighter one set its stretch to ${lowest} km/h` : ''}`,
         detail: `It turns ${Math.round(c.delta * 180 / Math.PI)}°. A hairpin turns the road almost back on itself to climb a steep slope.` });
-    else if (terrainClassAt(terrain, c.x, c.y) !== 'mountainous')
+    else if (!mountainousAt((c.sStart + c.sEnd) / 2))
       out.push({ kind: 'radius', ...where, basis: 'norm', rule, title: `Hairpin at bend ${c.index + 1} outside the mountains`,
         fix: `Make bend ${c.index + 1} an ordinary curve`,
-        detail: 'Hairpins are allowed only where the ground is too steep for ordinary curves: slopes steeper than 15 % around them.' });
+        detail: 'Hairpins are allowed only on roads through mountains: ground mostly steeper than 15 % along about 10 km of the road.' });
     else if (speed > lowest)
       out.push({ kind: 'radius', ...where, basis: 'norm', rule, title: `Hairpin at bend ${c.index + 1} on a ${speed} km/h stretch`,
         fix: `Set bend ${c.index + 1}'s stretch to ${lowest} km/h`,
@@ -120,17 +124,21 @@ export interface VerticalLimits {
   crestMin: number; sagMin: number;
   /** a stretch's norms at a chainage, where stretches differ */
   stretch?: (s: number) => SpeedNorms;
+  /** whether the road runs through mountains at a chainage (core/terrain-class.ts) */
+  mountainousAt: (s: number) => boolean;
 }
-export function verticalLimits(st: { s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; n: number; ds: number },
-  al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category: CategoryId,
-  terrain: Terrain, fixed?: number, offset = 0): VerticalLimits {
+type Stations = { s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; n: number; ds: number };
+/** `full`: the whole route's stations where `st` is a window of it starting at chainage `offset` */
+export function verticalLimits(st: Stations, al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category: CategoryId,
+  terrain: Terrain, fixed?: number, offset = 0, full: Stations = st): VerticalLimits {
   const cat = CATEGORIES[category], n = st.n;
+  const mountain = mountainousAlong(terrain, full);
   // grades: fixed (a rebuilt railway's own), else the category's by terrain class per station
   let at: Float64Array | null = null;
   const byClass = cat.maxGradient;
   if (fixed === undefined && byClass) {
     at = new Float64Array(n);
-    for (let i = 0; i < n; i++) at[i] = byClass[terrainClassAt(terrain, st.x[i], st.y[i])];
+    for (let i = 0; i < n; i++) at[i] = byClass[mountain(st.s[i] + offset) ? 'mountainous' : 'hilly'];
   }
   // hairpins (their own arcs; window chainage = route chainage − offset)
   for (const c of al.curves) {
@@ -148,7 +156,13 @@ export function verticalLimits(st: { s: ArrayLike<number>; x: ArrayLike<number>;
     for (let i = a; i <= b; i++) if (at![i] < g) g = at![i];
     return g;
   } : undefined;
-  return { maxGradient, gradeAt, ...stretchRadii(al, pis, roadSpeed, category, offset) };
+  return { maxGradient, gradeAt, mountainousAt: mountain, ...stretchRadii(al, pis, roadSpeed, category, offset) };
+}
+
+/** whether the road runs through mountains at a route chainage (core/terrain-class.ts routeMountainous) */
+export function mountainousAlong(terrain: Terrain, full: Stations): (s: number) => boolean {
+  const cls = routeMountainous(terrain, full);
+  return (s) => cls[Math.max(0, Math.min(full.n - 1, Math.round(s / full.ds)))] === 1;
 }
 
 /** Each stretch's own crest / sag radii (the design speeds, not a hairpin's driving speed); numbers where the

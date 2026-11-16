@@ -10,7 +10,7 @@ import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, HAIRPIN_NOTE, MINOR_CRO
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { designSpeeds, HAIRPIN, speedNorms } from '../core/data/norms';
-import { bendSpeed } from '../core/design-speed';
+import { bendSpeed, hairpinSpeed } from '../core/design-speed';
 import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
 import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
 import type { Design, Result } from '../core/evaluate';
@@ -397,7 +397,7 @@ export class Inspector {
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: '' }));
     return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? 'A hairpin: a tight turn for climbing steep ground, driven at about 25 km/h.' : auto ? 'Tightest the rules allow.' : 'Your radius.'}</div>${hairpinNote}</div>
+      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
       ${pi.hairpin ? '' : this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
       ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole road` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>` : ''}

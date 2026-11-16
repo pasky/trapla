@@ -125,19 +125,24 @@ export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
   70: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 140 },
 };
 
-/** Hairpin bend (research/47 §3): 17.5 m on the axis, the smallest found on a Czech class I road (I/44
- * Červenohorské sedlo, S 9.5/60, built under an approved departure from ČSN 73 6101; the forest-road floor is
- * 15 m), a plain circular arc (no transitions: Swiss SN 640 198a; the forest-road guide), no straight required
- * next to it (the forest guide's ≈ 20 m straights "may be dropped where cramped"). */
+/** Hairpin bend ("točka"). ČSN 73 6101:2000 §8.5.7 p. 23: "Točky jsou výjimečná řešení, přípustná zpravidla na
+ * dvoupruhových silnicích v území horského charakteru"; its table 12 p. 24 gives the smallest hairpin radii at
+ * 7 % / 8 % banking: 45 km/h 75 / 65 m, 40: 60 / 50, 35: 45 / 40, 30: 35 / 30 m (research/54 §1). The 2018
+ * edition has no hairpins: the game takes the 2000 table, 30 m at 8 % banking for 30 km/h (I/44 Červenohorské
+ * sedlo has 17.5 m hairpins, a further approved departure, not offered). A plain circular arc (no transitions:
+ * Swiss SN 640 198a; the forest-road guide), no straight required next to it (the forest guide's ≈ 20 m straights
+ * "may be dropped where cramped"), research/47 §3. */
 export const HAIRPIN = {
-  radius: 17.5, banking: 0.075,
+  radius: 30, banking: 0.08,
+  /** table 12 at 8 % banking: [radius m, speed km/h] — a hairpin of this radius is driven at this speed */
+  speeds: [[30, 30], [40, 35], [50, 40], [65, 45]] as [number, number][],
   /** "Točka je směrový oblouk o velkém středovém úhlu a malém poloměru; v točce se směr trasy obrací téměř o
    * 180°" (MZe TD 2020 §7.7 p. 82, after Makovník 1973): a bend turning less is no hairpin. 150° is the game's
    * reading of "almost 180°" (PROVISIONAL); the neck curves either side turn the rest. */
   minTurn: (150 * Math.PI) / 180,
   /** Steepest grade in a hairpin: the resultant of grade and banking √(s² + p²) at most 10 % where icing is
-   * frequent (ČSN 73 6101:2018 §8.10.1, Radimský slides 12–14; mountain passes), with p = 7.5 %: s ≤ 6.6 % */
-  maxGrade: Math.sqrt(0.1 ** 2 - 0.075 ** 2),
+   * frequent (ČSN 73 6101:2018 §8.10.1, Radimský slides 12–14; mountain passes), with p = 8 %: s ≤ 6 % */
+  maxGrade: Math.sqrt(0.1 ** 2 - 0.08 ** 2),
   /** Lane width a 16.5 m articulated lorry sweeps turning through 90° on a lane of radius R (VUT/HBH, Metodika
    * pro rozšíření jízdních pruhů ve směrových obloucích, 2015, tab. 5 p. 11), [R, m] */
   sweptLane: [[15, 5.3], [20, 4.7], [25, 4.3], [30, 4.0], [40, 3.6], [50, 3.4]] as [number, number][],
