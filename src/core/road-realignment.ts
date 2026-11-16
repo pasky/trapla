@@ -276,6 +276,21 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   // a junction is not a licence to close a branch. Structure foundations are never acquisition.
   const dead = ends.map((p, i) => Math.abs(p.d - raw[i ? raw.length - 1 : 0].d) < 1e-6
     && grid.near(p).some(c => !c.structure && insideFootprint(p, c)) && roads.isDeadEnd(p));
+  // A dead-end piece that lies wholly under our earthworks (its other end joins a road there too) leads
+  // nowhere that remains: it is removed with the land it served, at no cost.
+  const under = (p: Point2) => grid.near(p).some(c => !c.structure && insideFootprint(p, c));
+  if ((dead[0] || dead[1]) && dense(source).every(under)) {
+    const intervals: RoadSourceInterval[] = [];
+    for (const span of spans) {
+      const start = Math.max(lo, span.lo), end = Math.min(hi, span.hi);
+      if (end <= start + 1e-6) continue;
+      const da = span.a + (span.b - span.a) * (start - span.lo) / (span.hi - span.lo), db = span.a + (span.b - span.a) * (end - span.lo) / (span.hi - span.lo);
+      intervals.push({ way: span.way, a: Math.min(da, db), b: Math.max(da, db) });
+    }
+    return { geometry: { width: row.width, schematic: false, road: [] }, original: source.map(point), length: 0, cost: 0, roadCode: '', problems: [],
+      pavementCosts: [], apronCost: 0, sourceIntervals: mergeIntervals(intervals), turnaroundArea: 0, retainingArea: 0, retainingCost: 0,
+      closed: { length: hi - lo, detour: 0 } };
+  }
   if (dead[0] && dead[1]) return failure('no surviving branch outside the acquired footprint');
 
   // Exact ribbon/rectangle tests on bounded local pieces, including all connecting chords.

@@ -126,6 +126,8 @@ export const SQUARE_BELOW = 70;
 /** How far along the old way beyond our corridor a straightened line may rejoin it, m (PROVISIONAL
  * engine bound: a local realignment, not a reroute). */
 const SQUARE_SEARCH = 400;
+/** Bounded engine work: rounds of the consolidation pass. */
+const JOIN_ROUNDS = 3;
 const SHAPED_LINK: Record<LinkProblem, string> = {
   steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
   railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
@@ -1083,6 +1085,26 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       finish = endAnchors.get(key);
     }
     const start = anchorOf(c);
+    // The new piece joins the target's road wherever on its own side it comes nearest (a designer joins
+    // a cut track to the next road that crosses, not necessarily right beside our earthworks), on the
+    // ground beyond any ramps, clear of our earthworks.
+    const beside = finish;
+    if (target && start && finish && rawPaths.has(target)) {
+      const width = maxLinkWidth(target), joined: [CrossingPoint | undefined, CrossingPoint | undefined] = [finish[0], finish[1]];
+      for (const k of [0, 1] as const) {
+        const a = start[k], b = finish[k];
+        if (!a || !b) continue;
+        let best = Math.hypot(b.x - a.x, b.y - a.y), side = k ? 1 : -1;
+        for (const q of rawPaths.get(target)!) {
+          const gap = Math.hypot(q.x - a.x, q.y - a.y);
+          if (gap >= best - 1 || !isTerrain(q)) continue;
+          const p = project(q);
+          if (side * p.lateral <= 0 || margin(q, width / 2 + SETBACK) < 0) continue;
+          best = gap; joined[k] = 'surface' in q ? q : terrainPoint(q);
+        }
+      }
+      finish = joined;
+    }
     const required = survivingSides.get(c) ?? [true, true];
     if (required.some((needed, k) => needed && (!start?.[k] || !finish?.[k])))
       diagnose(g, 'No real ground-level anchor exists for a surviving road branch');
@@ -1097,10 +1119,28 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     let culverts = 0, culvertCost = 0, steepest = 0, spent = 0, abandon = false;
     const houses = new Set<number>();
     for (const side of [-1, 1]) {
-      const k = side < 0 ? 0 : 1, a = start?.[k], b = finish?.[k];
+      const k = side < 0 ? 0 : 1, a = start?.[k], b = finish?.[k], issuesBefore = g.diagnostics?.length ?? 0;
       if (k === 1 && anchorOnly && (g.diagnostics?.length || spent + straight[1] * linkRate + access >= budget)) { abandon = true; break; }
       if (!required[k] || !a || !b) { links.push([]); continue; }
-      const built = buildSide(c, g, a, b, side, c.via?.[k]);
+      let built = buildSide(c, g, a, b, side, c.via?.[k]);
+      // (where the shorter line to the target's road cannot be built, the one to its crossing is tried)
+      // (nor where it costs more than the one to its crossing: houses bought out, culverts)
+      const fallback = beside?.[k];
+      const price = (x: typeof built) => crossingPlanLength(x.link) * linkRate + x.culvertCost + x.houses.reduce((sum, j) => sum + (route.houseCost?.(j) ?? 0), 0);
+      if (fallback && fallback !== b) {
+        const failed = (g.diagnostics?.length ?? 0) > issuesBefore, saved = g.diagnostics?.slice(issuesBefore) ?? [];
+        if (failed || price(built) > Math.hypot(fallback.x - a.x, fallback.y - a.y) * linkRate) {
+          if (g.diagnostics) { g.diagnostics.length = issuesBefore; if (!issuesBefore) delete g.diagnostics; }
+          const other = buildSide(c, g, a, fallback, side, c.via?.[k]);
+          const otherFailed = (g.diagnostics?.length ?? 0) > issuesBefore;
+          if (!otherFailed && (failed || price(other) < price(built))) built = other;
+          else if (!failed || otherFailed) {
+            // keep the first line (and only its problems)
+            if (g.diagnostics) { g.diagnostics.length = issuesBefore; if (!issuesBefore) delete g.diagnostics; }
+            for (const m of saved) diagnose(g, m);
+          } else built = other;
+        }
+      }
       const link = built.link;
       culverts += built.culverts; culvertCost += built.culvertCost;
       for (const h of built.houses) houses.add(h);
@@ -1236,7 +1276,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   };
   let changed = false;
   // The dearest treatments are reconsidered first: a crossing others are then rerouted to keeps carrying them.
-  const reconsider = (c: CrossingResult) => {
+  // (`stale`: its present treatment no longer works, e.g. a reroute whose crossing no longer carries traffic)
+  const reconsider = (c: CrossingResult, stale = false) => {
     // An automatic junction is reconsidered only when its own works cannot be built (crossing-works.ts).
     const worksFail = c.type === 'junction' && !!c.geometry?.diagnostics?.some(m => m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG || m === WORKS_TIE_SHARED);
     // The player's underpass or bridge over us on a skewed crossing: Auto still decides whether to
@@ -1254,7 +1295,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !(worksFail || ['overbridge', 'reconnection', 'diversion', 'underpass'].includes(c.type))) return;
     // A box or bridge over us whose way runs back under our earthworks (geometry.runsBack) is kept only
     // when nothing else can be built: the stretch under our slope would still have to be walled or moved.
-    const ok = (x: CrossingResult) => feasible(x) && !x.geometry?.runsBack;
+    const ok = (x: CrossingResult) => (!stale || x !== c) && feasible(x) && !x.geometry?.runsBack;
     let best = c, fallback: CrossingResult | undefined;
     const originalFeasible = ok(c);
     const consider = (x: CrossingResult) => {
@@ -1303,7 +1344,9 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // (a reroute leads to a crossing that carries traffic over or under us, not to another cut road; and a
     // crossing others lead to keeps carrying it)
     const ledTo = crossings.some(x => x !== c && x.targetS === c.s && x.targetRoadId === c.roadId);
-    const targets = ledTo ? [] : crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
+    // (one others are led to may itself be led on only when nothing else here can be built: those others
+    // then look for another crossing below)
+    const targets = ledTo && ok(best) ? [] : crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
       && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
       && Math.abs(t.s - c.s) <= CROSSING_RULES.linkHardReach && !dependsOn(t, c))
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
@@ -1325,9 +1368,10 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       // not be rebuilt to evaluate a new branch arriving at that source.
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], ok(best) ? best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1) : Infinity, new Set([anchor]));
+      if (process.env.DEBUG_CROSS && Math.abs(c.s - Number(process.env.DEBUG_CROSS)) < 60) console.log('LINK', (c.s / 1000).toFixed(2), '->', (target.s / 1000).toFixed(2), (link.cost / 1e6).toFixed(1), link.geometry?.diagnostics?.join('|'));
       if (feasible(link) && worth(link, target)) { best = link; break; }
     }
-    if (!ok(best) && fallback && (!feasible(c) || fallback.cost < c.cost)) best = fallback;
+    if (!ok(best) && fallback && (stale || !feasible(c) || fallback.cost < c.cost)) best = fallback;
     if (best !== c) {
       delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
       delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
@@ -1349,7 +1393,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // (a reroute whose crossing no longer carries traffic over or under us must find another)
     const current = reroute ? crossings.find(t => t.s === c.targetS && t.roadId === c.targetRoadId) : undefined;
     const stranded = reroute && (!current || !carries(current) || !!current.moved);
-    if (reroute && !stranded && !feasible(c)) return;
+    if (stranded) { reconsider(c, true); return; }
+    if (reroute && !feasible(c)) return;
     // (a structure others are led to takes them along: all of them are joined to the same crossing)
     const along = reroute ? [] : crossings.filter(x => leadsTo(x, c) && !x.requestedType && x.via === undefined);
     if (!reroute && crossings.some(x => leadsTo(x, c) && !along.includes(x))) return;
@@ -1377,8 +1422,16 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     [c, ...along].forEach((x, k) => { for (const key of FIELDS) delete x[key]; Object.assign(x, links[k]); });
     changed = true;
   };
-  for (const c of crossings.filter(c => c.type === 'overbridge' || c.type === 'underpass').sort((a, b) => b.cost - a.cost || a.s - b.s)) join(c);
-  for (const c of crossings.filter(c => c.type === 'reconnection' || c.type === 'diversion').sort((a, b) => b.cost - a.cost || a.s - b.s)) join(c);
+  // (until nothing changes, at most JOIN_ROUNDS times: a crossing that starts carrying traffic in one
+  // round is a nearer target for its neighbours in the next)
+  const state = () => crossings.map(c => `${c.type}:${c.targetS}:${c.cost}`).join();
+  for (let round = 0, before = state(); round < JOIN_ROUNDS; round++) {
+    for (const c of crossings.filter(c => c.type === 'overbridge' || c.type === 'underpass').sort((a, b) => b.cost - a.cost || a.s - b.s)) join(c);
+    for (const c of crossings.filter(c => c.type === 'reconnection' || c.type === 'diversion').sort((a, b) => b.cost - a.cost || a.s - b.s)) join(c);
+    const after = state();
+    if (after === before) break;
+    before = after;
+  }
   // A way that comes back out of our earthworks on the side it went in needs no crossing of its own: it is
   // moved beside them where that, with the roads led to its crossing led to the nearest other one, is
   // cheaper than keeping the crossing for them (all priced together).

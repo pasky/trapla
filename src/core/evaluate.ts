@@ -863,7 +863,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   /** Stage A (engineering through the footprint screen) runs immediately; `complete()` runs the
    * rest (noise, bill, checks). It reads only this pass's own arrays, never the shared
    * engineer() buffers, so it stays valid after a later pass. */
-  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): { vpis: VPI[]; footprintConflicts: FootprintConflict[]; complete: () => Result } => {
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis): { vpis: VPI[]; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; complete: () => Result } => {
   const oob = oobInput.slice();
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
@@ -1268,23 +1268,27 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing, ...(preview ? { preview: true } : {}),
   };
   };
-  return { vpis, footprintConflicts: footprintCheck.conflicts, complete };
+  return { vpis, footprintConflicts: footprintCheck.conflicts, crossings, complete };
   };
   const first = finish(crossingWays);
   if (preview) return first.complete();
   // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
   const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
-  if (process.env.DEBUG_BLOCKED) { for (const b of blocked) console.log('BLOCKED', (b.s0/1000).toFixed(2), b.roadId, b.detail); const f = first.complete(); console.log('FIRST', f.cost.total/1e9, f.violations.length, f.violations.map(v => (v.s0/1000).toFixed(2)+' '+v.title).join('; ')); }
-  if (!blocked.length) return first.complete();
+  // An automatic crossing with nothing buildable (no reroute, box or bridge over us) under an
+  // embankment high enough for our bridge: our bridge is lengthened over it, as a designer would
+  // (that way is retried with ordinary rules, which put our road on a bridge over it).
+  const stuck = first.crossings.filter(c => !c.requestedType && c.issues?.length && c.type !== 'bridge' && c.type !== 'tunnel'
+    && c.h >= CROSSING_RULES.overHeight && !ROAD_CLASSES[c.cls].noAtGrade && c.roadId !== undefined);
+  if (!blocked.length && !stuck.length) return first.complete();
   const relaxed = new Map(crossingWays), strict = new Set(blocked.map(b => b.roadId!));
   for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) { relaxed.delete(c.way); strict.add(c.way); }
+  for (const c of stuck) { relaxed.delete(c.roadId!); strict.add(c.roadId!); }
   timing['count.strictRetry'] = 1;
   // Continue from the already repaired (lifted) Auto grade: its clearances still apply.
   const retry = finish(relaxed, strict, first.vpis).complete();
   // Every blocked road conflict is reported as a footprint violation, so a clean retry wins
   // without completing (noise, bill, checks) the first pass.
-  if (process.env.DEBUG_BLOCKED) console.log('RETRY', retry.cost.total/1e9, retry.violations.length, retry.violations.map(v => (v.s0/1000).toFixed(2)+' '+v.title).join('; '));
   if (!retry.violations.length) return retry;
   const result = first.complete();
   return retry.violations.length < result.violations.length ? retry : result;

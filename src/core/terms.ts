@@ -152,7 +152,10 @@ export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overb
 export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation'>): OutcomeText {
   const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : 'stream';
   switch (c.action) {
-    case 'relocation': return c.closed
+    case 'relocation': return c.closed && !c.closed.detour
+      ? { tag: 'removed', label: `${what}: ${m(c.closed.length)} m removed (it lies wholly under our earthworks)`,
+        explain: `This piece of the ${what} lies wholly under our earthworks and leads nowhere that remains, so it is removed with the land.` }
+      : c.closed
       ? { tag: 'closed', label: `${what}: ${m(c.closed.length)} m closed (its ends stay connected by ${m(c.closed.detour)} m of other roads)`,
         explain: `This short piece of the ${what} lies under our earthworks and is removed; both its ends stay connected by existing roads.` }
       : { tag: 'moved aside', label: `${what}: ${m(c.affectedLength ?? c.length)} m under our earthworks, ${m(c.length)} m rebuilt beside them`,
@@ -191,6 +194,7 @@ export function realignmentReason(problems: readonly string[]): string {
 }
 /** Plain description of an accepted road relocation or closure. */
 export function roadRemedyDetail(what: string, affected: number, plan: Pick<RoadRealignmentPlan, 'length' | 'closed' | 'retainingArea' | 'turnaroundArea' | 'lumpCost'>, shared = 1): string {
+  if (plan.closed && !plan.closed.detour) return `${affected.toFixed(0)} m of the ${what} lies wholly under our earthworks and leads nowhere that remains; it is removed.`;
   if (plan.closed) return `${affected.toFixed(0)} m of the ${what} lies under our earthworks and is closed; its two ends stay connected by ${plan.closed.detour.toFixed(0)} m of existing roads.`;
   const extras = [plan.retainingArea ? `retaining walls (${plan.retainingArea.toFixed(0)} m² of wall) where it is raised or lowered` : '',
     plan.turnaroundArea ? 'a turning area at its cut end' : '', plan.lumpCost ? 'its junction with the road it joins' : ''].filter(Boolean);
