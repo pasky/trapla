@@ -387,6 +387,11 @@ slope behind a headwall, the way runs on between wing walls](docs/screenshots/21
 ([before](docs/screenshots/218-box-portal-before-2.png) / [after](docs/screenshots/219-box-portal-after-2.png) from the other side),
 [D3-0302 km 3.51: the local road straightened over our motorway on a 48 m bridge](docs/screenshots/220-d3-0302-road-over-motorway-card.png),
 [that bridge and its ramps close up](docs/screenshots/221-d3-0302-overbridge-and-reconnection.png) (the secondary road 150 m on is led to it).
+Tunnels as they are built (cost model 32, PLAN.md "Tunnels as they are built"): [the D35 starter's east portal at the
+bottom of a 60 m open cut](docs/screenshots/222-d35-portal-before.png) → [the tunnel goes on as cut and cover to where
+the cut is about its own height deep](docs/screenshots/223-d35-portal-after.png),
+[the tunnel card: how it is built, its method (Mined · Cut and cover)](docs/screenshots/224-d35-tunnel-card.png),
+[D3-0304: twin tubes in a 9 m approach cut](docs/screenshots/225-d3-0304-twin-portals.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
