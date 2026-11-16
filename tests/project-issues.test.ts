@@ -43,6 +43,8 @@ describe('project issue list', () => {
     expect(unpricedText([{ routeId: 'road' }], 'road', names)).toBe('Our road is not priced yet');
     // a motorway mission: its other direction is ours too; a new motorway's two directions are one change
     const mw = { fwd: 'Motorway D3', rev: 'Motorway D3', nf: 'New motorway', nr: 'New motorway' };
-    expect(unpricedText([{ routeId: 'rev' }, { routeId: 'nf' }, { routeId: 'nr' }], 'fwd', mw)).toBe('New motorway not priced yet');
+    expect(unpricedText([{ routeId: 'rev' }, { routeId: 'nf' }, { routeId: 'nr' }], new Set(['fwd', 'rev']), mw)).toBe('New motorway not priced yet');
+    // a rebuilt line named like ours is still a change
+    expect(unpricedText([{ routeId: 'old' }], 'rail', { rail: 'Railway', old: 'Railway' })).toBe('Railway not priced yet');
   });
 });

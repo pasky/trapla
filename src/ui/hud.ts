@@ -112,7 +112,7 @@ export class Hud {
   private last: { r: Result; d: Design } | null = null;
   private projectIssuesFor: ProjectResult | null | undefined;
   private issuesActive: RouteId | undefined;
-  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId;
+  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>;
     ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
@@ -121,13 +121,13 @@ export class Hud {
   }
   /** `legacy`: the project is exactly one legacy road (the facade): the unchanged single-road score shows,
    * including its live ≈ preview total. Otherwise the project score owns the total and verdict. */
-  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; legacy?: boolean;
+  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; legacy?: boolean;
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
     ownPrice?: { total: number; approx: boolean; label: string } | null;
     /** road names, to say which road an issue belongs to when it is not the active one */
     names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number> } = {}) {
-    const { missionRouteId, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {} } = opts;
+    const { missionRouteId, ours, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {} } = opts;
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       this.$('best').style.display = '';
@@ -136,13 +136,13 @@ export class Hud {
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
       return;
     }
-    this.project = { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId }; this.renderProjectScore();
+    this.project = { result, pending, best, missionRouteId, ours, ownPrice, names, lengths, activeRouteId }; this.renderProjectScore();
   }
   /** the listed project issue k */
   listedIssue(k: number) { return this.project?.result?.issues[k] ?? null; }
   private renderProjectScore() {
     if (!this.project) return;
-    const { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId } = this.project, total = result?.cost.total;
+    const { result, pending, best, missionRouteId, ours, ownPrice, names, lengths, activeRouteId } = this.project, total = result?.cost.total;
     const priced = total !== null && total !== undefined, unpriced = result?.cost.unpriced.length ?? 0;
     // An unpriced network keeps one road's own price visible, plainly labelled, never as a total.
     this.$('cost-scope').textContent = priced ? 'Total cost' : ownPrice ? ownPrice.label : 'Total cost';
@@ -150,7 +150,7 @@ export class Hud {
       : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
-    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, missionRouteId, names) : this.goalText;
+    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, ours ?? missionRouteId, names) : this.goalText;
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {

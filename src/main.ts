@@ -192,7 +192,10 @@ async function main() {
     const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: only(active) }
       : active && active in alone ? { total: alone[active], approx: false, label: only(active) }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: only(mission) } : null;
-    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own,
+    // our road: the mission's route, and a motorway mission's other direction
+    const missionCorridor = mission ? corridorOfRoute(projectStore.snapshot.design, mission) : undefined;
+    const ours = new Set([mission, missionCorridor?.children.forward, missionCorridor?.children.reverse].filter((id): id is RouteId => !!id));
+    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, ours, legacy: legacyFacade(), ownPrice: own,
       activeRouteId: active ?? undefined, names: routeNames(),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];

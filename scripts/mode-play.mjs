@@ -101,12 +101,11 @@ try {
   await shot('built-railway');
   await page.locator('#undo').click(); await idle();
 
-  // 3. a mapped railway: click it (its card), then drag it (rebuilt as a railway)
+  // 3. a mapped railway, not selected: the pointer says it can be dragged, and a drag rebuilds it
   p = await at('sourceScreen', 'osm:way:277838071', 1600);
-  await page.mouse.click(p.x, p.y); await idle();
-  console.log('railway card', (await page.locator('#inspector').textContent())?.replace(/\s+/g, ' ').trim().slice(0, 400));
-  await shot('railway-card');
-  await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.mouse.move(p.x + 40, p.y - 30, { steps: 12 }); await page.mouse.up(); await idle();
+  await page.mouse.move(p.x - 3, p.y); await page.mouse.move(p.x, p.y); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.querySelector('#view canvas').style.cursor), 'grab', 'an unselected railway can be grabbed');
+  await page.mouse.down(); await page.mouse.move(p.x + 40, p.y - 30, { steps: 12 }); await page.mouse.up(); await idle();
   const project = await page.evaluate(() => window.trapla.getProject());
   console.log('rebuilt', JSON.stringify(project.routes.map(r => [r.kind, r.name, r.source?.intervals[0]])));
   await seen('rebuilt railway');
