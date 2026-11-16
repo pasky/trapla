@@ -22,7 +22,7 @@ import { buildRouteSurfaces, routeSurfaceContext, type RouteSurfaceContext } fro
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
 import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
 import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
@@ -94,6 +94,10 @@ export interface RenderEndpoints {
  * invisible close up, keep a dashed trace on the ground.
  */
 const STRUCTURE_LINE_FROM = 2.5;
+/** Ground drawn over a tunnel behind its portal face's top, m: past the terrain mask's bleed (≈ 3 m,
+ * route-mask.ts) with an overlap onto the drawn terrain; within PORTAL_LID_BLEND it rises from the face's
+ * ground to the drawn terrain. */
+const PORTAL_LID = 7.5, PORTAL_LID_BLEND = 3;
 
 /** Carriageway cross-sections by index (`roadSections`; 0 = none: plain asphalt) and the index of a
  * crown width's category. All have the same centre-line dash (TP 133: 3 / 6 m outside motorways). */
@@ -950,7 +954,28 @@ export class View {
         if (prev) quad(prev[0], at[0], prev[1], at[1]);
         prev = at;
       }
+      // Ground over the tunnel behind the face's top edge, out past the side collars: the terrain mask's bleed
+      // (≈ a texel) leaves a strip of it cut away, and the drawn terrain (coarser than the face's ground)
+      // stands above or below the face's top. From the face's ground it rises to the drawn terrain within
+      // PORTAL_LID_BLEND and overlaps it beyond, as the side collars do; without it sky slivers line the top.
+      const into = i < run.i0 ? 1 : -1, wide = Math.max(2, Math.ceil((L + R + 2 * GROUND_COLLAR) / 2.5));
+      const rows = Math.ceil(PORTAL_LID / 2.5), base = groundPos.length / 3;
+      for (let k = 0; k <= wide; k++) {
+        const o = L + GROUND_COLLAR - (L + R + 2 * GROUND_COLLAR) * k / wide;
+        // beside the cut, the side collar's own blend towards the drawn terrain (collarPoint)
+        const out = o > L ? o - L : o < -R ? -R - o : 0, side = Math.max(0, Math.min(1, (out - 10) / (GROUND_COLLAR - COLLAR_OVERLAP - 2.5 - 10)));
+        for (let j = 0; j <= rows; j++) {
+          const d = PORTAL_LID * j / rows, px = x + nx * o + r.tx[i] * into * d, py = y + ny * o + r.ty[i] * into * d;
+          const g = natural(px, py), blend = Math.max(side, Math.min(1, d / PORTAL_LID_BLEND));
+          this.local(px, py, g + (blend ? (Math.max(g, coarse(px, py)) - g) * blend : 0) + groundLift, v); groundPos.push(v.x, v.y, v.z);
+        }
+      }
+      for (let k = 0; k < wide; k++) for (let j = 0; j < rows; j++) {
+        const a = base + k * (rows + 1) + j, b = a + rows + 1;
+        groundIdx.push(a, b, a + 1, b, b + 1, a + 1);
+      }
     }
+    flushGround();
     // bridge deck edges and piers, tunnel portals
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
       const nx = -ty, ny = tx;
