@@ -928,8 +928,18 @@ review on `3b0a16a` found no blockers. Independent kernel probes also covered re
 insertions/deletions, direct changes to the owner's moved bend/radius, unchanged write-back, and recursion
 termination; all behaved as intended.
 
-Main has since advanced to `230c1c2` (crossing-economy model 28); that is not merged here yet, so the model
-number/fixtures need reconciling at merge.
+**Merged main `230c1c2` (crossing-economy model 28).** All 11 main fixtures remain bit-exact after the merge,
+so the version stays 28 and no fixtures were recaptured. tsc, 83 test files / 704 tests, build and
+any-road-scene D11/D3, owner-d3-scene, mode-play and stretch-play pass (`/tmp/merge28-*.log`). The owner's
+III/1057 case is VALID and priced at 14.225 bn; the motorway bridge stays 230 m and its wall 10 m, nearby
+works +2.29 M and whole motorway +2.34 M. Its screenshot was inspected. The standard D11 km 4.1 track scene
+is priced at 9.863 bn; the separate quarter-stretch / 60 m repro remains to recheck and fix if still blocked.
+Auto-follow's exact D3-0302 repro remains valid as one body, with Reset restoring the original price.
+
+Parent's next pass, in order: finish any remaining D11 track takeover / legal railway-crossing / motorway
+transition gaps; then a rebuilt railway's own works card and “Keep the old track”; then railway continuation
+connections still reported as pending. The exact short QA railway/free-end motorway is geometrically
+infeasible (§18 QA 4), not an excuse to leave a feasible railway crossing without Auto engineering.
 
 Still open:
 - The latest review's synthetic 40 km / four-stretch probe measured a 27–29 ms editor write; the browser
