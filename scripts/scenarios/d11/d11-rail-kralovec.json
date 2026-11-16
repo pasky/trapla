@@ -1,0 +1,1 @@
+{"scenario": "d11", "preset": "d11-rail-kralovec", "purpose": "Railway Trutnov\u2013Kr\u00e1lovec starter (= the preset's initial design)", "design": {"category": "R1", "speed": 120, "pis": [{"x": 7300, "y": 8300, "r": null}, {"x": 10065, "y": 9045, "r": null}, {"x": 11046, "y": 16435, "r": null}], "profileMode": "auto", "vpis": []}}

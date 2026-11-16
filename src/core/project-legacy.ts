@@ -4,7 +4,7 @@ import { NOISE } from './data/urban';
 import type { EndpointPair, MissionRequirements, ProjectDesign, RoadOperations, RouteDesign } from './project';
 import { assertProjectDesign } from './project-validation';
 import { railwayDesign, replaceRailwayFromDesign } from './project-railway';
-import { carriagewayDesign, corridorDesign, corridorOfRoute, replaceCarriagewayFromDesign, replaceCorridorFromDesign } from './project-motorway';
+import { carriagewayDesign, corridorDesign, corridorOfRoute, directionDesign, replaceCarriagewayFromDesign, replaceCorridorFromDesign, replaceDirectionFromDesign } from './project-motorway';
 
 export interface LegacyProjectContext {
   scenarioId: string; presetId: string; packId: string; objectData: string; transportData: string | null;
@@ -59,13 +59,14 @@ export function projectFromLegacyDesign(value: unknown, context: LegacyProjectCo
 
 /** Active-route legacy widget/kernel adapter. It refuses any representation that would need fitting,
  * foreign-source remapping or mode physics. Building choices have exactly one project owner. */
-export function legacyDesignForRoute(project: ProjectDesign, routeId: string): Design {
+export function legacyDesignForRoute(project: ProjectDesign, routeId: string, options: { oneDirection?: boolean } = {}): Design {
   const r = project.routes.find(r => r.id === routeId);
-  // A paired motorway direction edits the corridor's common spine (both directions move together).
+  // A paired motorway direction edits the corridor's common spine (both directions move together), or
+  // with `oneDirection` that direction alone (its own line where it has separate stretches).
   if (r?.kind === 'motorway' && r.alignment.kind === 'corridor') {
     const corridor = corridorOfRoute(project, routeId);
     if (!corridor || corridor.mode !== 'paired') throw new Error('Route needs a non-legacy kernel');
-    return corridorDesign(project, corridor);
+    return options.oneDirection ? directionDesign(project, routeId) : corridorDesign(project, corridor);
   }
   // A separate direction of a split motorway has its own bends and heights.
   if (r?.kind === 'motorway' && r.alignment.kind === 'pi') return carriagewayDesign(project, r);
@@ -86,12 +87,12 @@ export function legacyDesignForRoute(project: ProjectDesign, routeId: string): D
 }
 
 /** Apply legacy editing without replacing route identity/endpoints/operations or another route's controls. */
-export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, design: Design): ProjectDesign {
+export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, design: Design, options: { oneDirection?: boolean } = {}): ProjectDesign {
   const old = project.routes.find(r => r.id === routeId);
   if (old?.kind === 'motorway' && old.alignment.kind === 'corridor') {
     const corridor = corridorOfRoute(project, routeId);
     if (!corridor) throw new Error('Unknown corridor');
-    const next = replaceCorridorFromDesign(project, corridor.id, design);
+    const next = options.oneDirection ? replaceDirectionFromDesign(project, routeId, design) : replaceCorridorFromDesign(project, corridor.id, design);
     assertProjectDesign(next);
     return next;
   }

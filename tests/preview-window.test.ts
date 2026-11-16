@@ -61,7 +61,7 @@ describe('auto-profile end grades', () => {
   it('continues a given grade at both ends within one vertical curve', () => {
     const n = 501, s = Float64Array.from({ length: n }, (_, i) => i * 10), g = Float64Array.from(s, v => 100 + 15 * Math.sin(v / 600));
     const opts = { maxGradient: 0.05, minCrest: 10_000, minSag: 5_000, costPerM: (h: number) => h * h * 100,
-      endpointElevations: { a: 100, b: 100 }, endpointGrades: { a: 0.03, b: 0.03 } };
+      endpointElevations: { a: 100, b: 100 }, startGrade: 0.03, endGrade: 0.03 };
     const r = autoProfile(s, g, opts);
     const p = buildProfile(r.vpis, 10_000, 5_000), D = 5000 / Math.round(5000 / 250);
     expect(r.feasible).toBe(true);

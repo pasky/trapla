@@ -8,17 +8,20 @@ import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
 import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
-import { RAIL_TRAINS_PER_DAY } from '../core/project-railway';
+import { trainsPerDay } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
-import { DIRECTIONS_TEXT } from '../core/terms';
+import { DIRECTIONS_TEXT, SPEED_LIMIT_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
+import { MOTORWAY_150_PILOT } from '../core/data/motorway';
 import type { Best, StationRange } from '../state';
-import { COST_GROUPS, czk } from './costgroups';
+import { COST_GROUPS, czk, groupLabel } from './costgroups';
+import { RAILWAY_EVIDENCE, SPOZES } from '../core/data/railway';
 import { footprintConflictsInRange, footprintConflictText, footprintConflictTitle } from './footprint';
+import { shownRange, shownS, shownText } from './chainage';
 
 export { czk };
 // toLocaleString with options builds a formatter per call (≈ 0.1 ms; hundreds per HUD render)
@@ -38,6 +41,10 @@ export interface HudEvents {
   onReset?: () => void;
   /** motorway: edit both directions together, or one of them on its own */
   onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
+  /** motorway: both directions on one line again over a stretch where they run apart */
+  onJoinStretch?: (id: string) => void;
+  /** motorway designed for 130: the 150 km/h speed-limit pilot on / off */
+  onSpeedLimit?: (pilot: boolean) => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
   onExaggeration?: (e: number) => void;
@@ -49,6 +56,22 @@ const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const whyKey = (v: Pick<Violation, 'kind' | 'title'>) => `${v.kind}|${v.title}`;
 
 const pct = (v: number) => `${(v * 100).toFixed(1)} %`;
+
+/** what each line of a railway's breakdown contains where it differs from a road's (data/railway.ts,
+ * data/categories.ts R1 / R2, rail-noise.ts) */
+const RAIL_ROW_HELP: Record<string, (c: CostBreakdown, sc: ScenarioParams) => string> = {
+  roadBase: () => `SPOŽES 2026 price book per km of new electrified line: track, catenary, signalling, ETCS, cables, GSM-R and moving utilities everywhere; sleeper bed and ditches on the ground. Not included: stations, turnouts, substations`,
+  bridges: () => `SPOŽES 2026 railway bridge per m² of deck, the deck as wide as the track bed (an assumption); includes the short bridges forced over rivers, railways and roads clearly below the track`,
+  tunnels: () => `SPOŽES 2026 single- or double-track tunnel per km (dearer rows under built-up areas)`,
+  crossings: () => `Roads we cross and roads our earthworks cover. No level crossings (a game rule): each road gets the cheapest of a bridge over the track with earth ramps, an underpass, or a reroute along our earthworks to a nearby crossing, priced by its measured length × the SPK 2026 road price. Roads our earthworks cover are rebuilt beside them, closed when other roads already connect their ends, or held back by retaining walls. Roads at least ${CROSSING_RULES.overHeight} m below the track pass under our bridges (under Bridges).`,
+  noiseWalls: (_c, sc) => `Walls of ${NOISE.wallHeights.join(' / ')} m (yours 2–6 m) at ${NOISE.wallPerM2.toLocaleString('en-US')} CZK/m² (estimate from research/09). A game estimate, not an acoustic study: EU train noise (CNOSSOS-EU), ${num(trainsPerDay(sc.railTraffic))} trains a day (an assumption, not a timetable), limits for a new line ${RAILWAY_EVIDENCE.newLineNoise.dayDb} dB by day and ${RAILWAY_EVIDENCE.newLineNoise.nightDb} dB at night at the façade, checked at each house's top floor. A wall or a cut edge helps a floor only where it hides the track from it; only tunnels hide it completely.`,
+  surcharge: () => `SPOŽES 2026 markups for a new line at study stage: +${Math.round(100 * SPOZES.markup.substructure)} % on earthworks and the sleeper bed, +${Math.round(100 * SPOZES.markup.bridges)} % on bridges and tunnels, none on track and systems`,
+};
+/** what a motorway's crossing line contains (no junctions on the way: its ends are interchanges) */
+const motorwayCrossings = () => `Roads we cross and roads our earthworks cover. No junctions on the way (the motorway's ends are its interchanges): each road gets the cheapest of a bridge over us with earth ramps, an underpass, or a reroute along our earthworks to a nearby crossing, priced by its measured length × the SPK 2026 road price. Roads our earthworks cover are rebuilt beside them, closed when other roads already connect their ends, or held back by retaining walls. These works get the other-objects surcharge. Roads at least ${CROSSING_RULES.overHeight} m below our road pass under our bridges (under Bridges).`;
+/** a breakdown line's tooltip for the line being built (road / motorway / railway) */
+export const rowHelp = (id: string, c: CostBreakdown, sc: ScenarioParams, line = 'road') =>
+  (line === 'railway' ? RAIL_ROW_HELP[id] : line === 'motorway' && id === 'crossings' ? motorwayCrossings : undefined)?.(c, sc) ?? ROW_HELP[id](c, sc);
 
 /** what each line of the breakdown contains (shown as a tooltip) */
 export const ROW_HELP: Record<string, (c: CostBreakdown, sc: ScenarioParams) => string> = {
@@ -89,7 +112,7 @@ export class Hud {
   private last: { r: Result; d: Design } | null = null;
   private projectIssuesFor: ProjectResult | null | undefined;
   private issuesActive: RouteId | undefined;
-  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId;
+  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>;
     ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId;
     liveTotal: number | null; dragging: boolean } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
@@ -99,7 +122,7 @@ export class Hud {
   }
   /** `legacy`: the project is exactly one legacy road (the facade): the unchanged single-road score shows,
    * including its live ≈ preview total. Otherwise the project score owns the total and verdict. */
-  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; legacy?: boolean;
+  setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>; legacy?: boolean;
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
     ownPrice?: { total: number; approx: boolean; label: string } | null;
@@ -109,7 +132,7 @@ export class Hud {
     dragging?: boolean;
     /** road names, to say which road an issue belongs to when it is not the active one */
     names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number> } = {}) {
-    const { missionRouteId, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
+    const { missionRouteId, ours, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       this.$('best').style.display = '';
@@ -118,13 +141,13 @@ export class Hud {
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
       return;
     }
-    this.project = { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId, liveTotal, dragging }; this.renderProjectScore();
+    this.project = { result, pending, best, missionRouteId, ours, groups, ownPrice, names, lengths, activeRouteId, liveTotal, dragging }; this.renderProjectScore();
   }
   /** the listed project issue k */
   listedIssue(k: number) { return this.project?.result?.issues[k] ?? null; }
   private renderProjectScore() {
     if (!this.project) return;
-    const { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId, liveTotal, dragging } = this.project, total = result?.cost.total;
+    const { result, pending, best, missionRouteId, ours, groups, ownPrice, names, lengths, activeRouteId, liveTotal, dragging } = this.project, total = result?.cost.total;
     const priced = total !== null && total !== undefined, unpriced = result?.cost.unpriced.length ?? 0;
     const shownTotal = pending && liveTotal !== null ? liveTotal : total;
     // An unpriced network keeps one road's own price visible, plainly labelled, never as a total.
@@ -133,7 +156,7 @@ export class Hud {
       : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : pending ? '…' : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
-    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, missionRouteId, names) : this.goalText;
+    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, ours ?? missionRouteId, names, groups) : this.goalText;
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {
@@ -157,9 +180,9 @@ export class Hud {
       this.$('sec-viol').hidden = !(n + notChecked.length);
       const line = (v: ListedIssue, cls: string) => {
         const open = this.openWhy.has(whyKey(v));
-        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.s0 !== undefined ? `km ${num(v.s0 / 1000, 2)}` : ''}</span>
-        <div><div class="vt">${esc(v.title)}</div><div class="vfix">${esc(v.fix)} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
-        <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(v.detail) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
+        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.s0 !== undefined ? `km ${num(shownS(v.s0) / 1000, 2)}` : ''}</span>
+        <div>${v.road ? `<div class="vroad">${esc(v.road)}</div>` : ''}<div class="vt">${esc(shownText(v.title))}</div><div class="vfix">${esc(shownText(v.fix))} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
+        <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(shownText(v.detail)) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
       };
       this.$('viol').innerHTML = violations.slice(0, 60).map(v => line(v, '')).join('')
         + (notChecked.length ? `<li class="not-checked-h">Not checked yet</li>${notChecked.slice(0, 20).map(v => line(v, 'not-checked')).join('')}` : '');
@@ -196,6 +219,9 @@ export class Hud {
   /** body of the "Your decisions" section (filled by the build tools) */
   readonly decisions: HTMLElement;
 
+  /** what the active line is (road / motorway / railway): the bill's words follow it */
+  private line = 'road';
+  setLine(line: string) { this.line = line; }
   constructor(private root: HTMLElement, private sc: ScenarioParams) {
     const minCat = minCategoryForTraffic(sc.traffic);
     root.innerHTML = `
@@ -224,6 +250,14 @@ export class Hud {
             <button type="button" id="dir-both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" id="dir-forward" role="radio"></button><button type="button" id="dir-reverse" role="radio"></button>
           </div>
           <p id="dir-explain" class="mode-explain"></p>
+          <div id="dir-apart" class="dir-apart"></div>
+        </div>
+        <div class="mode" id="speed-limit" hidden>
+          <div class="mode-h"><b>${SPEED_LIMIT_TEXT.heading}</b></div>
+          <div class="seg" role="radiogroup" aria-label="${SPEED_LIMIT_TEXT.heading}">
+            <button type="button" id="limit-normal" role="radio" title="${SPEED_LIMIT_TEXT.normalTitle}">${SPEED_LIMIT_TEXT.normal}</button><button type="button" id="limit-pilot" role="radio" title="${SPEED_LIMIT_TEXT.pilotTitle}">${SPEED_LIMIT_TEXT.pilot}</button>
+          </div>
+          <p id="limit-explain" class="mode-explain"></p>
         </div>
         <div class="mode">
           <div class="mode-h"><b id="height-h">Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
@@ -249,7 +283,7 @@ export class Hud {
         <label class="exag">Relief <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
     this.goalText = sc.mode === 'motorway'
       ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
-      : sc.mode === 'railway' ? `Goal: cheapest valid railway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(RAIL_TRAINS_PER_DAY)} trains a day`
+      : sc.mode === 'railway' ? `Goal: cheapest valid railway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(trainsPerDay(sc.railTraffic))} trains a day`
       : `Goal: cheapest valid road · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day needs ≥ ${CATEGORIES[minCat].label.split(' (')[0]}`;
     this.context = this.$('context');
     this.decisions = this.$('decisions');
@@ -267,7 +301,8 @@ export class Hud {
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
-    for (const which of ['both', 'forward', 'reverse'] as const) this.$(`dir-${which}`).onclick = () => this.ev.onDirection?.(which);
+    this.$('limit-normal').onclick = () => this.ev.onSpeedLimit?.(false);
+    this.$('limit-pilot').onclick = () => this.ev.onSpeedLimit?.(true);
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
     // the first listed item (project mode: the first real violation, else the first not-checked item)
     this.$('chip-viol').onclick = () => {
@@ -347,7 +382,7 @@ export class Hud {
     }
     catSelect.value = d.category;
     speedSelect.value = String(d.speed);
-    const n = speedNorms(d.speed, d.category), grade = cat.maxGradient?.[this.sc.terrainClass] ?? this.sc.maxGradient;
+    const n = speedNorms(d.speed, d.category), grade = d.maxGradient ?? cat.maxGradient?.[this.sc.terrainClass] ?? this.sc.maxGradient;
     const pct = (g: number) => `${Math.round(g * 1000) / 10}`;
     const norms = this.$('norms');
     if (cat.mode === 'railway') {
@@ -370,19 +405,23 @@ export class Hud {
     this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'Auto height' : 'height by hand'}`;
   }
 
+  /** The 150 km/h pilot switch; null hides it (anything but a motorway designed for 130 km/h). */
+  setSpeedLimit(state: { pilot: boolean; signsPerKm: string } | null) {
+    const box = this.$('speed-limit');
+    box.hidden = !state;
+    if (!state) return;
+    for (const [id, on] of [['limit-normal', !state.pilot], ['limit-pilot', state.pilot]] as const) {
+      const b = this.$(id); b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+    }
+    this.$('limit-explain').textContent = state.pilot ? SPEED_LIMIT_TEXT.explainPilot(state.signsPerKm, MOTORWAY_150_PILOT.share) : SPEED_LIMIT_TEXT.explainNormal;
+  }
+
   /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */
-  setDirections(state: { split: boolean; active: 'forward' | 'reverse'; places: { forward: string; reverse: string } } | null) {
+  setDirections(state: DirectionsState | null) {
     const box = this.$('directions');
     box.hidden = !state; this.oneDirection = !!state?.split;
     if (!state) return;
-    const on = state.split ? state.active : 'both';
-    for (const which of ['both', 'forward', 'reverse'] as const) {
-      const b = this.$(`dir-${which}`);
-      if (which !== 'both') { b.textContent = DIRECTIONS_TEXT.towards(state.places[which]); b.title = DIRECTIONS_TEXT.oneTitle(state.places[which]); }
-      else b.title = DIRECTIONS_TEXT.bothTitle;
-      b.classList.toggle('on', on === which); b.setAttribute('aria-checked', String(on === which));
-    }
-    this.$('dir-explain').textContent = state.split ? DIRECTIONS_TEXT.separate : DIRECTIONS_TEXT.together;
+    fillDirections(box, state, { onDirection: w => this.ev.onDirection?.(w), onJoin: id => this.ev.onJoinStretch?.(id) });
   }
 
   setProfileBusy(busy: boolean) {
@@ -417,12 +456,12 @@ export class Hud {
     time.className = `chip ${tOk ? 'ok' : 'bad'}`;
     time.innerHTML = `${tOk ? '✓' : '✗'} ${num(r.travelMin, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
     const sel = this.range && this.range.s0 < r.length ? rangeSummary(r, this.range.s0, Math.min(this.range.s1, r.length)) : null;
-    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : `Cost <small>${this.oneDirection ? 'this direction · ' : ''}${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
+    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${shownRange(sel.s0, sel.s1).map(v => num(v / 1000, 2)).join('–')}</small>` : `Cost <small>${this.oneDirection ? 'this direction · ' : ''}${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
       const v = g.of(c);
-      const label = g.id === 'surcharge' ? 'Other (drainage, safety…)' : g.label;
-      return `<tr title="${ROW_HELP[g.id](c, this.sc).replace(/"/g, '&quot;')}" class="${v > 0 ? '' : 'zero'}"><td><i class="sw" style="background:${g.color}"></i>${label}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%;background:${g.color}"></span></td></tr>`;
+      const label = g.id === 'surcharge' && this.line !== 'railway' ? 'Other (drainage, safety…)' : groupLabel(g, this.line);
+      return `<tr title="${rowHelp(g.id, c, this.sc, this.line).replace(/"/g, '&quot;')}" class="${v > 0 ? '' : 'zero'}"><td><i class="sw" style="background:${g.color}"></i>${label}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%;background:${g.color}"></span></td></tr>`;
     }).join('') + (sel ? `<tr class="sum"><td>Selected</td><td>${czk(sel.cost.total)}</td><td></td></tr>` : '');
     const q = r.quantities;
     const x = { bridge: 0, tunnel: 0, overbridge: 0, atGrade: 0, junction: 0, reconnection: 0, diversion: 0, underpass: 0 };
@@ -442,7 +481,7 @@ export class Hud {
     const conflicts = footprintConflictsInRange(r.footprintConflicts ?? [], sel?.s0 ?? 0, sel?.s1 ?? r.length);
     const footprint = conflicts.length ? `<tr class="${conflicts.some(c => c.action === 'blocked') ? 'warn' : ''}"><td colspan="2"><details>
       <summary>Things in the road's way: ${conflicts.length}</summary>
-      ${conflicts.map(c => `<div class="sub" title="${esc(footprintConflictTitle(c))}">km ${num(c.s0 / 1000, 2)}–${num(c.s1 / 1000, 2)} · ${esc(footprintConflictText(c))}</div>`).join('')}
+      ${conflicts.map(c => `<div class="sub" title="${esc(footprintConflictTitle(c))}">km ${shownRange(c.s0, c.s1).map(v => num(v / 1000, 2)).join('–')} · ${esc(shownText(footprintConflictText(c)))}</div>`).join('')}
       </details></td></tr>` : '';
     const cls = q.cutByClass.map((v) => num((100 * v) / Math.max(1, q.cut), 0)).join(' / ');
     const common = (cut: number, fill: number, len: number, fp: number, forest: number, urban: number, bld: number, buyouts: number, walls: number, wallArea: number) => `
@@ -497,7 +536,7 @@ export class Hud {
     this.$('viol').innerHTML = v.slice(0, 60).map((x, k) => {
       const open = this.openWhy.has(whyKey(x));
       return `<li data-k="${k}" class="${x.goal ? 'goal' : ''}">
-          <span class="where">${x.goal ? 'goal' : `km ${num(x.s0 / 1000, 2)}`}</span>
+          <span class="where">${x.goal ? 'goal' : `km ${num(shownS(x.s0) / 1000, 2)}`}</span>
           <div><div class="vt">${esc(x.title)}</div>
           <div class="vfix">${esc(x.fix)} <button type="button" class="why" data-why="${k}">${open ? 'less' : 'why?'}</button></div>
           <div class="vdetail"${open ? '' : ' hidden'}>${x.detail ? esc(x.detail) : ''}<small>${esc(x.rule)}</small></div></div>
@@ -527,5 +566,39 @@ export class Hud {
   noteEdit(committed: boolean) {
     if (!this.editOpen) { this.baseline = this.lastTotal; this.editOpen = true; }
     if (committed) this.editOpen = false;
+  }
+}
+
+/** A motorway's direction switch: what a drag bends, and where the directions run apart (each with Join). */
+export interface DirectionsState {
+  /** old saves: whole-route separate directions */
+  split: boolean;
+  active: 'both' | 'forward' | 'reverse';
+  places: { forward: string; reverse: string };
+  apart: { id: string; s0: number; s1: number }[];
+}
+/** Fills a box holding #dir-both / #dir-forward / #dir-reverse, #dir-explain and #dir-apart (by class or id). */
+export function fillDirections(box: HTMLElement, state: DirectionsState, ev: { onDirection: (w: 'both' | 'forward' | 'reverse') => void; onJoin: (id: string) => void }) {
+  const q = (k: string) => box.querySelector<HTMLElement>(`[data-dir="${k}"]`) ?? box.querySelector<HTMLElement>(`#dir-${k}`)!;
+  for (const which of ['both', 'forward', 'reverse'] as const) {
+    const b = q(which);
+    if (which !== 'both') { b.textContent = DIRECTIONS_TEXT.towards(state.places[which]); b.title = DIRECTIONS_TEXT.oneTitle(state.places[which]); }
+    else b.title = DIRECTIONS_TEXT.bothTitle;
+    b.classList.toggle('on', state.active === which); b.setAttribute('aria-checked', String(state.active === which));
+    b.onclick = () => ev.onDirection(which);
+  }
+  q('explain').textContent = state.split ? DIRECTIONS_TEXT.separate : state.active === 'both' ? DIRECTIONS_TEXT.together : DIRECTIONS_TEXT.one(state.places[state.active]);
+  const apart = q('apart');
+  apart.replaceChildren();
+  if (!state.apart.length) return;
+  const h = document.createElement('div'); h.className = 'mode-h'; h.textContent = DIRECTIONS_TEXT.apart;
+  apart.append(h);
+  for (const t of state.apart) {
+    const row = document.createElement('div'); row.className = 'apart-row';
+    const [a, b] = shownRange(t.s0, t.s1);
+    const where = document.createElement('span'); where.textContent = DIRECTIONS_TEXT.stretch((a / 1000).toFixed(1), (b / 1000).toFixed(1));
+    const join = document.createElement('button'); join.type = 'button'; join.textContent = DIRECTIONS_TEXT.joinHere; join.title = DIRECTIONS_TEXT.joinTitle;
+    join.onclick = () => ev.onJoin(t.id);
+    row.append(where, join); apart.append(row);
   }
 }

@@ -23,7 +23,7 @@ export type WorkerIn =
       role?: 'full' | 'preview'; port?: MessagePort }
   | { type: 'eval'; id: number; design: Design; preview?: boolean; materialValue?: number }
   /** Legacy road-net way of each mapped source, whenever the pack's road links are loaded. */
-  | { type: 'source-ways'; ways: [string, number][] }
+  | { type: 'source-ways'; ways: [string, number][]; rails?: [string, number[], number[]][] }
   | ProjectWorkerIn;
 
 let ctx: EvalContext | null = null;
@@ -36,6 +36,7 @@ let lastProject: ProjectResult | null = null;
 /** full worker: where full results go for the preview worker */
 let basePort: MessagePort | null = null;
 let sourceWays: Map<string, number> | undefined;
+let railPaths: Map<string, { xy: number[]; stations: number[] }> | undefined;
 
 /** A preview's own per-station arrays move to the main thread instead of being copied (a long route's
  * preview is ≈ 1.7 MB). Never the full result's (`quantities` may be shared with a windowed preview's base). */
@@ -75,7 +76,7 @@ function run() {
       if (!job.preview) basePort?.postMessage([previewBase(result)]);
     } else {
       if (!projectEnvironment) throw new Error('Project environment missing from worker init');
-      const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays };
+      const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays, ...(railPaths ? { railPaths } : {}) };
       if (job.type === 'project-preview') {
         const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, job.materialValue);
         (self as unknown as Worker).postMessage({ type: 'project-preview', id: job.id,
@@ -105,7 +106,7 @@ function run() {
 self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const m = ev.data;
   if (m.type === 'init') {
-    pending = null; band = null; lastProject = null; sourceWays = undefined; projectEnvironment = m.projectEnvironment ?? null;
+    pending = null; band = null; lastProject = null; sourceWays = undefined; railPaths = undefined; projectEnvironment = m.projectEnvironment ?? null;
     basePort = m.role === 'full' ? m.port ?? null : null;
     if (m.role === 'preview' && m.port) m.port.onmessage = (e: MessageEvent<Result[]>) => {
       if (ctx) for (const r of e.data) adoptFull(ctx.terrain, r);
@@ -118,6 +119,7 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
     (self as unknown as Worker).postMessage({ type: 'ready' });
   } else if (m.type === 'source-ways') {
     sourceWays = new Map(m.ways);
+    railPaths = m.rails ? new Map(m.rails.map(([id, xy, stations]) => [id, { xy, stations }])) : undefined;
   } else {
     if (m.type === 'noise-band') band = m; else pending = m;
     if (!scheduled) { scheduled = true; setTimeout(run, 0); }

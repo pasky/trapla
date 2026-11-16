@@ -1,5 +1,6 @@
 // Project publication boundary. Legacy single-road semantics remain exact; unimplemented interactions
 // expose proposed geometry with null project total, never a sum of independently completed road bills.
+import { ourWords } from './terms';
 import { CATEGORIES } from './data/categories';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './data/urban';
 import type { EvalContext, Result } from './evaluate';
@@ -10,12 +11,14 @@ import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
 import { combineNoise, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
-import { evaluateProjectRailway, type RailwayEvaluation } from './project-railway';
+import { evaluateProjectRailway, type RailPaths, type RailwayEvaluation } from './project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 import * as dm from './detmath';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
+  /** Mapped railway lines (what a rebuilt railway stretch takes up); absent until the transport graph loads. */
+  railPaths?: RailPaths;
   /** Combined noise of several roads (C1 c): answers each road's per-storey energy at a house from its
    * physical source, and project walls. Absent: houses heard by two roads keep the project unpriced. */
   combinedNoise?: (routes: readonly { route: RouteDesign; result: Result }[]) => NoiseDecider | null }
@@ -66,7 +69,13 @@ export function referenceRoadSurface(ctx: EvalContext, route: RouteDesign): Tran
 /** One evaluation per paired corridor, shared by both directions (never two priced kernels). */
 type CorridorCache = Map<string, CorridorEvaluation>;
 /** The road itself is engineered and shown with its own price; the project cannot price it yet. */
-const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectIssue, 'check'> & { violation: ProjectIssue['violation'] }> = {
+const UNPRICED: Record<'source-needs-network' | 'traffic-unknown' | 'motorway-needs-interchange' | 'track-removal-unpriced', Pick<ProjectIssue, 'check'> & { violation: ProjectIssue['violation'] }> = {
+  'track-removal-unpriced': { check: 'not-checked', violation: { kind: 'crossing', basis: 'engine', title: 'Taking up the old track is not priced yet',
+    fix: 'The new line is checked and priced; removing the old track it replaces is not priced yet',
+    rule: 'Engine limit: the price of a rebuilt railway stretch lacks taking up the old track.' } },
+  'motorway-needs-interchange': { check: 'not-checked', violation: { kind: 'crossing', basis: 'engine', title: 'No interchange at its ends',
+    fix: 'A motorway joins other roads at interchanges, which the game cannot build yet: this motorway is shown, not priced',
+    rule: 'Engine limit: interchanges are not modelled; only a mission motorway (continuing off the map at its ends) is priced.' } },
   'source-needs-network': { check: 'not-checked', violation: { kind: 'crossing', basis: 'engine', title: 'Replacing the old road is not priced yet',
     fix: 'Its new line is checked; removing the old road and reconnecting its side roads is not priced yet',
     rule: 'Engine limit: the price of a rebuilt stretch still lacks removing the old road and reconnecting the roads that joined it.' } },
@@ -85,12 +94,16 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(ctx.legacy, snapshot.design, corridor.id, ctx.environment.objectData,
       { preview, materialValue, ...(preview ? { only: route.id } : {}) }));
     evaluated = cached;
-  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue });
+  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue,
+    ...(ctx.railPaths ? { railPaths: ctx.railPaths } : {}) });
   else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays,
     ...(ends ? { ends } : {}) });
   const road = route.kind === 'road' && !corridor && evaluated.status === 'evaluated' ? evaluated as Extract<ReturnType<typeof evaluateProjectRoad>, { status: 'evaluated' }> : null;
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
-  return { route: { routeId: route.id, revision: route.revision,
+  // separate stretches: the forward direction carries the drawn parts; both carry the shared line
+  const separated = evaluated.status === 'split' && evaluated.drawn ? { ...(corridor?.children.forward === route.id || preview ? { drawn: evaluated.drawn } : {}),
+    ...(evaluated.spine ? { shared: evaluated.spine } : {}), ...(evaluated.apart ? { apart: evaluated.apart } : {}) } : {};
+  return { route: { routeId: route.id, revision: route.revision, ...separated,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
     surface: legacy ? roadSurface(route, legacy) : referenceRoadSurface(ctx.legacy, route), geometry: null,
     ...(legacy ? { legacy } : {}), complete: false, valid: false, accepted: false, attributedCost: null, dependencies: [], influence: [] },
@@ -98,7 +111,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     ...(road?.replacement ? { replacement: road.replacement } : {}),
     ...(road?.ringWorks ? { ringWorks: road.ringWorks } : {}),
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
-      : (road?.unpriced ?? []).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
+      : (road?.unpriced ?? ('unpriced' in evaluated && corridor?.children.reverse !== route.id ? evaluated.unpriced ?? [] : [])).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
 }
 export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, materialValue?: number): RouteResult {
   assertProjectDesign(snapshot.design);
@@ -110,8 +123,9 @@ const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
   // Define arbitrary stable IDs safely, including object-prototype names.
   Object.defineProperty(record, id, { value, enumerable: true, configurable: true, writable: true });
 /** The kernel names the mission's ends A and B; any other road's ends are its start and end. */
-const endWords = (route: RouteDesign, text: string) => route.role === 'mission' ? text
-  : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end');
+const endWords = (route: RouteDesign, text: string) => ourWords(route.role === 'mission' ? text
+  : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end'), route.kind);
+const issueKey = (i: ProjectIssue) => JSON.stringify([i.code, i.violation?.title, i.violation?.fix, i.locations.map(l => [l.s0, l.s1])]);
 const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', check: 'violation', scope: { routeIds: [route.id] },
   locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
   violation: { kind: v.kind, title: endWords(route, v.title), fix: endWords(route, v.fix), basis: v.basis, rule: v.rule, ...(v.detail ? { detail: endWords(route, v.detail) } : {}) } }));
@@ -142,14 +156,16 @@ const interactionIssue = (routeIds: string[], code: string, buildingIndex?: numb
     fix: 'Move them further apart to price them together',
     rule: 'Engine limit: roads are priced together only when they share no land, houses, noise or existing road; checking them jointly is not finished.' } });
 
-const junctionsPending = (routeIds: string[]): ProjectIssue => ({ code: 'connection-pending', blocking: 'incomplete', check: 'not-checked',
+const junctionsPending = (routeIds: string[], rail: boolean): ProjectIssue => ({ code: 'connection-pending', blocking: 'incomplete', check: 'not-checked',
   scope: { routeIds }, locations: [],
   violation: { kind: 'crossing', basis: 'engine', title: 'Junctions are not priced yet',
-    fix: 'Where this road joins another road, the junction is not built or priced yet',
+    fix: rail ? 'Where this railway joins another railway, the junction (its switches) is not built or priced yet'
+      : 'Where this road joins another road, the junction is not built or priced yet',
     rule: 'Engine limit: junctions where a new or rebuilt road meets another road are not designed or priced yet.' } });
-const endsNowhere = (routeId: string): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'incomplete', check: 'violation',
+const endsNowhere = (routeId: string, rail: boolean): ProjectIssue => ({ code: 'road-ends-nowhere', blocking: 'incomplete', check: 'violation',
   scope: { routeIds: [routeId] }, locations: [],
-  violation: { kind: 'crossing', basis: 'game', title: 'Road ends nowhere', fix: 'Connect both ends to a road',
+  violation: { kind: 'crossing', basis: 'game', title: rail ? 'Railway ends nowhere' : 'Road ends nowhere',
+    fix: rail ? 'Connect both ends to a railway' : 'Connect both ends to a road',
     rule: 'Game rule: a new road is priced only when both ends join a road or a scenario end.' } });
 
 const contactIssue = (c: RouteContact): ProjectIssue => ({ code: c.kind === 'crossing' ? 'roads-cross' : 'roads-overlap',
@@ -276,7 +292,12 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const unit = units.find(p => unitOf(p.route) === unitOf(route));
     if (unit) {
       unit.members.push(route.id);
-      if (unit.legacy !== legacy) { unit.parts.push({ route, legacy }); unit.total += legacy.cost.total; unit.valid &&= legacy.valid; unit.issues.push(...routeIssues(route, legacy)); }
+      if (unit.legacy !== legacy) {
+        unit.parts.push({ route, legacy }); unit.total += legacy.cost.total; unit.valid &&= legacy.valid;
+        // two directions of a motorway with separate stretches both show the shared body's problems: once
+        const seen = new Set(unit.issues.map(issueKey));
+        unit.issues.push(...routeIssues(route, legacy).filter(i => !seen.has(issueKey(i))));
+      }
     } else units.push({ route, legacy, members: [route.id], parts: [{ route, legacy }], total: legacy.cost.total, valid: legacy.valid, issues: routeIssues(route, legacy) });
   }
   // Split corridors: shared formation, land and houses once; slopes of the two directions must not clash.
@@ -291,6 +312,9 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   // corridor's one body once).
   const shown = new Set<Result>();
   for (const { route, legacy } of engineered) if (!shown.has(legacy)) { shown.add(legacy); defineRoute(result.cost.alone, route.id, legacy.cost.total); }
+  // a split motorway is one road: both directions show its whole bill (shared works once)
+  for (const unit of units) if (unit.parts.length > 1 && corridorCache.get(corridorOfRoute(design, unit.route.id)?.id ?? '')?.status === 'split')
+    for (const id of unit.members) defineRoute(result.cost.alone, id, unit.total);
   const unprice = (routeIds: string[], reason: string) => {
     for (const routeId of routeIds) if (!result.cost.unpriced.some(u => u.routeId === routeId)) result.cost.unpriced.push({ routeId, reason });
   };
@@ -334,10 +358,14 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     if (e.anchor.kind === 'route' && builtJunctions.has(`${r.id}:${end}`)) continue;
     joined.add(r.id); if (e.anchor.kind === 'route') joined.add(e.anchor.routeId);
   }
-  if (joined.size) { result.issues.push(junctionsPending([...joined])); unprice([...joined], 'connection-pending'); }
+  if (joined.size) {
+    const rail = [...joined].every(id => design.routes.find(r => r.id === id)?.kind === 'railway');
+    result.issues.push(junctionsPending([...joined], rail)); unprice([...joined], 'connection-pending');
+  }
   // A new road that ends nowhere is not a project: every end must reach a road or a scenario end.
-  for (const r of design.routes) if (r.role !== 'mission' && [r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'free')) {
-    result.issues.push(endsNowhere(r.id)); unprice([r.id], 'road-ends-nowhere');
+  // (A motorway's ends wait for interchanges: that issue already says so.)
+  for (const r of design.routes) if (r.role !== 'mission' && r.kind !== 'motorway' && [r.endpoints.a, r.endpoints.b].some(e => e.anchor.kind === 'free')) {
+    result.issues.push(endsNowhere(r.id, r.kind === 'railway')); unprice([r.id], 'road-ends-nowhere');
   }
   if (!design.routes.length) result.issues.push(issue('', 'network-accounting-pending'));
   const finish = () => {

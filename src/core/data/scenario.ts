@@ -43,6 +43,10 @@ export interface ScenarioParams {
   mode?: 'road' | 'motorway' | 'railway';
   /** Fresh designs only; loading an existing design must never overwrite its specification. */
   initial?: { category: CategoryId; speed: number; pis?: PI[] };
+  /** Mission ends other than the pack's A/B (pack metres), e.g. railway stations on a mapped line. */
+  ports?: { a: { xy: [number, number]; latlon: [number, number]; note: string }; b: { xy: [number, number]; latlon: [number, number]; note: string } };
+  /** Railway mission: trains a day (both directions) by period, a sourced count or a labelled prior. */
+  railTraffic?: { passengerDay: number; passengerNight: number; freightDay: number; freightNight: number };
   /** Short catalogue copy; D3/D35 road exercises are not motorway demand forecasts. */
   picker?: { kind: string; goal: string; note?: string };
   /** Picker heading shared by the sections of one corridor (cards in PRESETS order). */
@@ -143,7 +147,7 @@ export const NOVA_PAKA_SCENARIO: ScenarioParams = {
 // census page), not a local forecast (none found, research/33 §2). Acoustic heavy share 22.56 %: TP 219
 // tab. 4-2 first-class motorway mix (19 % goods + 1 % buses + 32 % of 8 % light goods, Manuál tab. 20).
 // Capacity: D 27.5 carries it. Time targets are mission choices (≈ 10 % longer than the reference).
-const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
+export const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
 export const D3_MOTORWAY: ScenarioParams = {
   ...D3_SCENARIO, presetId: 'd3-motorway', mode: 'motorway', title: 'Motorway D3: Jílové → Václavice (earlier map)',
   // The real 0302/0303 sections are D 27.5/120 (research/25). Starter = the road exercise's bends with
@@ -211,15 +215,12 @@ export const D35_MOTORWAY: ScenarioParams = {
   ...MOTORWAY_TRAFFIC, maxTravelMin: 8.3, // 18 km at 130 (project section 16.6 km)
   ends: { a: { kind: 'joins', with: 'the open D35' }, b: { kind: 'continues', with: 'the next section, to Mohelnice' } },
 };
-// Railway exercise in the D11 pass, between the road mission's ports (own saves). Not a planned project:
-// the line through the pass today is single-track and not electrified (OSM tags in the pack's transport
-// data: tracks=1, electrified=no, maxspeed 40–100). Trains: the PROVISIONAL prior of rail-noise.ts (128 a
-// day). Time target: a mission choice, 9 min = 24 km at 160 km/h or 21 km at 140 (A–B 18.6 km in a line).
+// RETIRED (owner: a railway must start and end on the rail network, not at the motorway's ends). Kept so
+// its saves still load (?scenario=d11&preset=d11-railway); not on the start screen.
 export const D11_RAILWAY: ScenarioParams = {
-  ...D11_SCENARIO, presetId: 'd11-railway', mode: 'railway', title: 'Railway: Trutnov → Polish border',
+  ...D11_SCENARIO, presetId: 'd11-railway', mode: 'railway', title: 'Railway: Trutnov → Polish border', retired: true,
   initial: { category: 'R2', speed: 160 },
-  picker: { kind: 'Railway · 160 km/h', goal: 'Lay a double-track electric line through the pass to the border.',
-    note: 'An exercise, not a planned line. The line there today is single-track, without wires.' },
+  picker: { kind: 'Railway · 160 km/h', goal: 'Lay a double-track electric line through the pass to the border.' },
   maxTravelMin: 9,
 };
 // The whole Středočeská D3 in one mission (all five sections, 58.5 km published, 57.4 km mapped): from the D0
@@ -250,9 +251,39 @@ export const D35_FULL: ScenarioParams = {
   ends: { a: { kind: 'joins', with: 'the open D35' }, b: { kind: 'joins', with: 'road I/35' } },
 };
 
+// Railway Trutnov hl.n. → Královec (research/38). Today: the single-track, non-electrified cross-border line
+// (OSM: tracks=1, electrified=no, 40–80 km/h; 16.9 km along the mapped track) via Trutnov střed, Libeč,
+// Křenov and Bernartice, with passenger trains on to Lubawka and Sędzisław (GW Train Regio timetable
+// 2025/26). No announced upgrade of this section was found (an SŽ 2018 study targets Hradec Králové–Trutnov
+// only; the RS5 Wrocław studies name no route over Královec): the mission is a game proposal, a new
+// single-track electric line between the two stations. It joins the existing track in both stations and
+// rebuilds it where it runs along it; elsewhere the old line stays as it is. Ends: OSM station nodes
+// (Nominatim, research/38) snapped onto the mapped line (≤ 2.4 m). Time target: a mission choice, 9 min
+// running time = 18 km at 120 km/h (stations 12.7 km apart); today's trains take 26 min with four stops
+// (KHK D26 timetable 2022). Traffic: PROVISIONAL prior, an hourly passenger train each way by day (16 h) and
+// two each way at night, no freight (that 2022 summer timetable ran 4 trains each way).
+export const D11_RAIL_KRALOVEC: ScenarioParams = {
+  ...D11_SCENARIO, presetId: 'd11-rail-kralovec', mode: 'railway', title: 'Railway: Trutnov → Královec',
+  ports: {
+    a: { xy: [6640.8, 7782.0], latlon: [50.5652, 15.91106], note: 'Trutnov hlavní nádraží, on the mapped line' },
+    b: { xy: [12204.8, 19202.5], latlon: [50.67296, 15.97042], note: 'Královec station, on the mapped line before the border' },
+  },
+  // Starter: four bends. It leaves Trutnov hl.n. north-west along the station tracks (a turnout's angle,
+  // research/38 §5) and curves north under the hill west of the town in a tunnel, past Bernartice, and enters
+  // Královec along its tracks. VALID (10.4 bn CZK), not optimised (scripts/rail-starter.ts). The first starter
+  // left the station across its tracks through a street of houses (playtest re-test 2).
+  initial: { category: 'R1', speed: 120, pis: [
+    { x: 6012, y: 8426, r: null }, { x: 7966, y: 11521, r: null }, { x: 11000, y: 16400, r: null }, { x: 11560, y: 18613, r: null },
+  ] },
+  railTraffic: { passengerDay: 32, passengerNight: 4, freightDay: 0, freightNight: 0 },
+  picker: { kind: 'Railway · 120 km/h', goal: 'A faster electric line from Trutnov to the border station at Královec.',
+    note: 'A game proposal: no upgrade of this line has been announced. Trains to Poland take 26 minutes on the old single-track line today.' },
+  maxTravelMin: 9,
+  labels: { a: 'Trutnov hl.n.', b: 'Královec', official: 'official D11', brief: '<b>Trutnov hl.n.</b> to <b>Královec</b> station, by rail' },
+};
 /** Every playable mission, in picker order. */
-export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D11_RAILWAY, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
-  D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, NOVA_PAKA_SCENARIO];
+export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D11_RAIL_KRALOVEC, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
+  D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, NOVA_PAKA_SCENARIO, D11_RAILWAY];
 
 /** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.
  * D11 intentionally retains its exact legacy parameters and default. */

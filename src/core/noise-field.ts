@@ -51,6 +51,12 @@ export interface AcousticSource {
   /** per-cell energy weight relative to dayDb / nightDb (absent = 1; e.g. a speed change along it).
    * Day and night scale together: a different day/night shape is a different source. */
   weight?: ArrayLike<number>;
+  /** The source as several parallel line sources (a motorway's two directional carriageways, each with its
+   * own share of the traffic on its lane axis): the energy is Σ share × the transfer from a line at `pos`
+   * (signed lateral position from the cell line, left positive; per cell where it varies). Screening stays
+   * that of the axis source (Manuál §1.11 a); `laneOffset` is then the nearest lane's, for the road-edge ray
+   * and the bounds. Absent: one line `laneOffset` towards the point. */
+  lanes?: readonly SourceLane[];
   n: number;
   x: ArrayLike<number>; y: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number>;
   grade: ArrayLike<number>;
@@ -59,6 +65,17 @@ export interface AcousticSource {
   /** reference LAeq Y (Manual eq. 41) by day / at night, dB */
   dayDb: number; nightDb: number;
   L: SideScreen; R: SideScreen;
+}
+
+export interface SourceLane { pos: number | ArrayLike<number>; share: number | ArrayLike<number> }
+/** how far towards a point the source's nearest line can lie (bounds and search radii), m */
+export function sourceReach(src: Pick<AcousticSource, 'laneOffset' | 'lanes'>): number {
+  let r = src.laneOffset;
+  for (const l of src.lanes ?? []) {
+    if (typeof l.pos === 'number') r = Math.max(r, Math.abs(l.pos));
+    else for (let i = 0; i < l.pos.length; i++) r = Math.max(r, Math.abs(l.pos[i]));
+  }
+  return r;
 }
 
 export function emptyScreen(n: number): SideScreen {
@@ -350,12 +367,35 @@ function nodeGeometry(S: Segments, c: number) { segmentGeometry(S.cx[c], S.cy[c]
 
 /** A segment's open-road energy fraction at height dz above its grade: the in-band form (U at the
  * perpendicular distance d, true angle w·π) or, outside the band, the transformed one when larger. */
-function energy(f: NoiseField, w: number, d: number, alt: number, rh: number, dz: number): number {
+function energy(f: NoiseField, w: number, d: number, alt: number, rh: number, dz: number, i: number): number {
+  if (f.src.lanes) return laneEnergy(f, f.src.lanes, w, d, alt, rh, dz, i);
   const u = w * transfer(d, dz, f.ground, f.lin, f.src.laneOffset);
   // the transformed form exceeds the in-band one by more than 0.005 dB only for a line passing within
   // 12 m + 2 |dz − 0.5 m| of the point (scanned over segment, distance, offset and height: research/36 §2)
   if (!(alt > 0) || d >= 12 + 2 * Math.abs(dz - NOISE.sourceHeight)) return u;
   const t = alt * transfer(rh, dz, f.ground, f.lin, f.src.laneOffset);
+  return t > u ? t : u;
+}
+/** energy() for a source of several parallel lines (AcousticSource.lanes): each line's own distance, its share */
+function laneEnergy(f: NoiseField, lanes: readonly SourceLane[], w: number, d: number, alt: number, rh: number, dz: number, i: number): number {
+  const left = GEO[G_LEFT] === 1;
+  let u = 0, t = 0, near = 0;
+  for (let k = 0; k < lanes.length; k++) {
+    const l = lanes[k], sh = typeof l.share === 'number' ? l.share : l.share[i];
+    if (!(sh > 0)) continue;
+    const p = typeof l.pos === 'number' ? l.pos : l.pos[i], off = left ? p : -p;
+    if (off > near) near = off;
+    u += sh * transfer(d, dz, f.ground, f.lin, off);
+  }
+  u *= w;
+  if (!(alt > 0) || d - near >= 12 + 2 * Math.abs(dz - NOISE.sourceHeight)) return u;
+  for (let k = 0; k < lanes.length; k++) {
+    const l = lanes[k], sh = typeof l.share === 'number' ? l.share : l.share[i];
+    if (!(sh > 0)) continue;
+    const p = typeof l.pos === 'number' ? l.pos : l.pos[i];
+    t += sh * transfer(rh, dz, f.ground, f.lin, left ? p : -p);
+  }
+  t *= alt;
   return t > u ? t : u;
 }
 /** EN[k] = energy of far segment c (the current geometry) at every storey: as one (`open` = false: the
@@ -366,20 +406,20 @@ function nodeEnergies(f: NoiseField, z: ArrayLike<number>, S: Segments, c: numbe
     const eb = (c * 2 + (GEO[G_LEFT] === 1 ? 0 : 1)) * 8, a = S.w[c], o = S.edges[eb + 1], t = S.edges[eb];
     w = w * a * o / t; alt = alt * a * o / t;
   }
-  const d = GEO[G_D], rh = GEO[G_RH], g = S.z[c];
-  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g);
+  const d = GEO[G_D], rh = GEO[G_RH], g = S.z[c], mid = (S.i0[c] + S.i1[c]) >> 1;
+  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g, mid);
 }
 /** EN[k] = open-road energy of cell i (the current geometry) at every storey, its weight in the angle. */
 function openCellEnergies(f: NoiseField, z: ArrayLike<number>, i: number) {
   const src = f.src, wt = src.weight ? src.weight[i] : 1, w = GEO[G_W] * wt, alt = GEO[G_ALT] * wt;
   const d = GEO[G_D], rh = GEO[G_RH], g = src.grade[i];
-  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g);
+  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g, i);
 }
 /** EN[k] = energy of cell i (the current geometry) at every storey, times its weight afterwards. */
 function cellEnergies(f: NoiseField, z: ArrayLike<number>, i: number) {
   const src = f.src, wt = src.weight ? src.weight[i] : 1, w = GEO[G_W], alt = GEO[G_ALT];
   const d = GEO[G_D], rh = GEO[G_RH], g = src.grade[i];
-  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g) * wt;
+  for (let k = 0; k < z.length; k++) EN[k] = energy(f, w, d, alt, rh, z[k] - g, i) * wt;
 }
 
 /** A wall of `wall` m at cell i on top of its edge transmission `te`: the better single obstacle. */
@@ -694,18 +734,20 @@ export function openTransfer(f: NoiseField, px: number, py: number, z: ArrayLike
 export interface LineEnvelope { M: number; up: Float64Array; down: Float64Array }
 const ENV_STEP = 0.5, ENV_N = 5999;
 const envelopes = new Map<string, LineEnvelope>();
-export function lineEnvelope(ground: Propagation = NOISE.ground): LineEnvelope {
-  let e = envelopes.get(ground);
+/** `offset`: how far towards the point the source line may lie (sourceReach; the road's near lane by default) */
+export function lineEnvelope(ground: Propagation = NOISE.ground, offset: number = SOURCE_OFFSET): LineEnvelope {
+  const key = offset === SOURCE_OFFSET ? ground : `${ground}:${offset}`;
+  let e = envelopes.get(key);
   if (!e) {
     const g = new Float64Array(ENV_N).fill(0);
     for (let dz = ground !== 'mixed' ? NOISE.sourceHeight : -30; dz <= (ground !== 'mixed' ? NOISE.sourceHeight : 40); dz += 0.5)
-      for (let k = 0; k < ENV_N; k++) { const d = (k + 1) * ENV_STEP; g[k] = Math.max(g[k], d * lineTransfer(d, dz, ground)); }
+      for (let k = 0; k < ENV_N; k++) { const d = (k + 1) * ENV_STEP; g[k] = Math.max(g[k], d * lineTransfer(d, dz, ground, undefined, offset)); }
     const up = new Float64Array(ENV_N), down = new Float64Array(ENV_N);
     let m = 0;
     for (let k = 0; k < ENV_N; k++) up[k] = m = Math.max(m, g[k]);
     let q = 0;
     for (let k = ENV_N - 1; k >= 0; k--) down[k] = q = Math.max(q, g[k]);
-    envelopes.set(ground, e = { M: m, up, down });
+    envelopes.set(key, e = { M: m, up, down });
   }
   return e;
 }

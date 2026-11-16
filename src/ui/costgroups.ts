@@ -30,6 +30,14 @@ export const COST_GROUPS: CostGroup[] = [
   { id: 'noiseBuyouts', label: 'Bought-out buildings', short: 'bought out', color: '#c43c9b', keys: ['noiseBuyouts'], of: (c) => c.landDetail.noiseBuyouts },
 ];
 
+/** a railway's bill lines in its own words: its base is track and systems, its markups a price book's */
+const RAIL_WORDS: Record<string, { label: string; short: string }> = {
+  roadBase: { label: 'Track and systems', short: 'track' },
+  surcharge: { label: 'Price-book markups', short: 'markups' },
+};
+export const groupLabel = (g: CostGroup, line = 'road') => (line === 'railway' ? RAIL_WORDS[g.id]?.label : undefined) ?? g.label;
+export const groupShort = (g: CostGroup, line = 'road') => (line === 'railway' ? RAIL_WORDS[g.id]?.short : undefined) ?? g.short;
+
 export function czk(v: number): string {
   if (!isFinite(v)) return '—';
   const a = Math.abs(v);

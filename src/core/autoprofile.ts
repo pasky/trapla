@@ -55,9 +55,6 @@ export interface BalanceSearch {
 export interface AutoProfileOptions {
   /** Transport-surface endpoint constraints, independent of the real ground used for earthworks. */
   endpointElevations?: { a?: number; b?: number };
-  /** Grades the line must continue at its ends (a vertical curve within one knot), e.g. a stretch of
-   * a longer grade line re-solved in a drag preview. Omitted: any first / last grade. */
-  endpointGrades?: { a?: number; b?: number };
   /** Absolute-chainage heights on the smoothed grade (±0.5 m). Out-of-route pins are inactive.
    * Endpoint pins constrain, but never replace, the fixed transport endpoints. */
   pins?: readonly GradePin[];
@@ -109,6 +106,14 @@ export interface AutoProfileOptions {
   knotSpacing?: number;
   /** penalty per grade change, CZK (keeps the line calm) */
   vpiPenalty?: number;
+  /** The grade line continues a given one at A / at B with this grade (a separate motorway stretch, a
+   * stretch re-solved in a drag preview): the grade change there must fit one vertical curve of the
+   * minimum radius within half a knot spacing, like any other knot. Absent: any grade. */
+  startGrade?: number;
+  endGrade?: number;
+  /** …and the largest grade change allowed there (the room its curve has on the given line), grade units */
+  startGradeSlack?: number;
+  endGradeSlack?: number;
   /** search band above/below the local ground envelope, m */
   pad?: number;
 }
@@ -177,7 +182,7 @@ type CostFn = AutoProfileOptions['costPerM'] & { table?: SharedCostTable };
  * the maximum gradient as possible: a block whose spacing loses a step loses up to u/D of gradient,
  * which on a long climb at the limit means a tunnel or viaduct instead of the hillside.
  */
-function knotCount(len: number, spacing: number, gmax: number, last = false): number {
+function knotCount(len: number, spacing: number, gmax: number, last: boolean, grids: readonly [number, number]): number {
   const base = Math.max(1, Math.round(len / spacing));
   let best = base, bestScore = -Infinity;
   for (let m = Math.max(1, base - 2); m <= base + 2; m++) {
@@ -185,7 +190,7 @@ function knotCount(len: number, spacing: number, gmax: number, last = false): nu
     if (m !== base && (d < 0.8 * spacing || d > 1.2 * spacing)) continue;
     // the last block keeps a reserve for B's off-grid height (solve: u / its length)
     const reach = (u: number) => Math.floor(((gmax - (last ? u / len : 0)) * d) / u + 1e-9) * u / d;
-    const coarse = reach(COARSE_GRID), fine = reach(FINE_GRID);
+    const coarse = reach(grids[0]), fine = reach(grids[1]);
     const score = coarse + 0.5 * fine - 1e-6 * Math.abs(d - spacing);
     if (score > bestScore) { bestScore = score; best = m; }
   }
@@ -233,6 +238,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     return finish({ vpis: straight, feasible: false, cost: Infinity });
   }
   const spacing = opt.knotSpacing ?? 250;
+  // A gentle gradient limit (track: 12.5 ‰ × 250 m = 3.1 m a knot, 2 m on the 1 m grid after the end
+  // reserve) leaves the 2 m and 1 m grids too few steps to rise over a crossing: search a 0.5 m grid.
+  // Roads and motorways (≥ 4 %: ≥ 10 m a knot) keep the 2 m / 1 m grids.
+  const gentle = opt.maxGradient * spacing < 3 * COARSE_GRID;
+  const coarseGrid = gentle ? FINE_GRID / 2 : COARSE_GRID, fineGrid = gentle ? FINE_GRID / 2 : FINE_GRID;
   if (L < 2 * spacing * 0.8 && (!hasPins || pinChecks(straight).length === 0)) {
     return finish({ vpis: straight, feasible: straightOk, cost: Infinity });
   }
@@ -255,7 +265,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   } else {
     D = NaN;
     for (let b = 0; b < nb; b++) {
-      const m = knotCount(bounds[b + 1] - bounds[b], spacing, opt.maxGradient, b === nb - 1), w = (bounds[b + 1] - bounds[b]) / m;
+      const m = knotCount(bounds[b + 1] - bounds[b], spacing, opt.maxGradient, b === nb - 1, [coarseGrid, fineGrid]), w = (bounds[b + 1] - bounds[b]) / m;
       for (let i = 0; i < m; i++) { knotList.push(bounds[b] + i * w); knotBlock.push(b); }
     }
     knotList.push(L); knotBlock.push(nb - 1);
@@ -411,7 +421,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    */
   const coarse = (lut: CostLut, r: Range = ALL): Solved | null => {
     // Half-metre fallback only for pins: a narrow target can fall between coarse-grid paths.
-    const passes = [[COARSE_GRID, pad], [COARSE_GRID, pad * 5], [FINE_GRID, pad]];
+    const passes = [[coarseGrid, pad], [coarseGrid, pad * 5], [fineGrid, pad]];
     if (hasPins) passes.push([0.5, pad]);
     const check = r === ALL ? okAll : ok;
     for (const [u, pd] of passes) {
@@ -422,7 +432,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   };
   /** fine pass around a coarse line; keeps the coarse line if the fine one is not compliant */
   const refine = (lut: CostLut, c: Solved, r: Range = ALL): Solved => {
-    const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z, r);
+    const f = solve(lut, opt.maxGradient, fineGrid, FINE_BAND, c.z, r);
     return (r === ALL ? okAll : ok)(f) ? f : c;
   };
   /** last resort when no compliant line was found: relaxed gradients, reported as not feasible */
@@ -470,7 +480,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (Math.abs(next - v) < 1e-6) break;
       v = next;
       lut = buildLut(costsAt(valuesFor(v)), classes);
-      const f = solve(lut, opt.maxGradient, FINE_GRID, FINE_BAND, c.z, r);
+      const f = solve(lut, opt.maxGradient, fineGrid, FINE_BAND, c.z, r);
       if (!(r === ALL ? okAll : ok)(f)) break;
       const b = balanceOf(f.vpis, v);
       if (b < 0) { if (!neg || v > neg[0]) neg = [v, b]; } else if (!pos || v < pos[0]) pos = [v, b];
@@ -488,7 +498,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     const c = coarse(start, r);
     if (!c) return null;
     if (!bal || vals.every(x => x === bal.start)) return refine(start, c, r);
-    const f = solve(buildLut(costsAt(vals), classes), opt.maxGradient, FINE_GRID, FINE_BAND, c.z, r);
+    const f = solve(buildLut(costsAt(vals), classes), opt.maxGradient, fineGrid, FINE_BAND, c.z, r);
     return (r === ALL ? okAll : ok)(f) ? f : refine(start, c, r);
   };
   if (anchored && nb > 1) {
@@ -697,8 +707,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       }
     }
     // Continuing grades at the route's ends, in grid units per knot (real-valued).
-    const gA = ka === 0 ? opt.endpointGrades?.a : undefined, gB = kb === nK ? opt.endpointGrades?.b : undefined;
+    const gA = ka === 0 ? opt.startGrade : undefined, gB = kb === nK ? opt.endGrade : undefined;
     const dzA = gA === undefined ? NaN : gA * Dk(0) / u, dzB = gB === undefined ? NaN : gB * Dk(nK - 1) / u;
+    // grade changes where the line continues a given one: one curve within its room there (grid units)
+    const slack = (g: number | undefined, lim: number, k: number) => g === undefined ? lim : Math.min(lim, g * Dk(k) / u);
+    const startCrest = slack(opt.startGradeSlack, crestK[0], 0), startSag = slack(opt.startGradeSlack, sagK[0], 0);
+    const endCrest = slack(opt.endGradeSlack, crestK[nK - 1], nK - 1), endSag = slack(opt.endGradeSlack, sagK[nK - 1], nK - 1);
     let cur = new Float64Array((zhi[ka] - zlo[ka] + 1) * ndAt(ka)).fill(Infinity);
     for (let zi = 0; zi <= zhi[ka] - zlo[ka]; zi++) cur[zi * ndAt(ka) + dzMaxK[ka]] = 0; // first knot: dz is ignored there (any first grade)
     const parents: Int32Array[] = [];
@@ -775,9 +789,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           if (base === Infinity) continue;
           const dz = dd - dzMaxIn;
           // the first knot has no incoming grade: any first grade is allowed (unless it continues a given one)
-          const dmin = first ? (Number.isNaN(dzA) ? -dzMax : Math.max(-dzMax, Math.ceil(dzA - crestLim - 1e-9)))
+          const dmin = first ? (Number.isNaN(dzA) ? -dzMax : Math.max(-dzMax, Math.ceil(dzA - startCrest - 1e-9)))
             : Math.max(-dzMax, outLo(dz));
-          const dmax = first ? (Number.isNaN(dzA) ? dzMax : Math.min(dzMax, Math.floor(dzA + sagLim + 1e-9)))
+          const dmax = first ? (Number.isNaN(dzA) ? dzMax : Math.min(dzMax, Math.floor(dzA + startSag + 1e-9)))
             : Math.min(dzMax, outHi(dz));
           const gIn = (dz * u) / dIn;
           for (let dz2 = dmin; dz2 <= dmax; dz2++) {
@@ -814,7 +828,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     for (let q = 0; q < cur.length; q++) {
       const dd = q % NDl;
       // A given end grade must be reachable from the last tangent by one vertical curve.
-      if (!Number.isNaN(dzB) && (dd - dzMaxL < dzB - sagK[nK - 1] - 1e-9 || dd - dzMaxL > dzB + crestK[nK - 1] + 1e-9)) continue;
+      if (!Number.isNaN(dzB) && (dd - dzMaxL < dzB - endSag - 1e-9 || dd - dzMaxL > dzB + endCrest + 1e-9)) continue;
       if (cur[q] < best) { best = cur[q]; bi = q; }
     }
     if (bi < 0) return null;

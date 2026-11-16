@@ -5,14 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { buildAlignment, type PI } from '../src/core/horizontal';
 import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
-  verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
+  trackEndViolations, verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
 import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, footprintOutcome, jargonIn } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate, type Design, type Result } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
-import { ROW_HELP } from '../src/ui/hud';
+import { ROW_HELP, rowHelp } from '../src/ui/hud';
 import { footprintConflictText, footprintConflictTitle } from '../src/ui/footprint';
 import { D11_SCENARIO, PRESETS } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -74,7 +74,8 @@ describe('player-facing text', () => {
     expect(ends).toBeGreaterThan(8);
     const terrain = syntheticTerrain(500, 80, 5, () => 400);
     const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } }, startDesign());
-    for (const [key, help] of Object.entries(ROW_HELP)) check(`bill tooltip ${key}`, help(r.cost, D11_SCENARIO), false);
+    for (const line of ['road', 'motorway', 'railway'])
+      for (const key of Object.keys(ROW_HELP)) check(`${line} bill tooltip ${key}`, rowHelp(key, r.cost, D11_SCENARIO, line), false);
     expect(problems).toEqual([]);
   });
 
@@ -102,7 +103,9 @@ describe('player-facing text', () => {
     }
     for (const v of [slopeViolation(100, 200, 12, 0, 60), slopeViolation(100, 200, 0, 12, 60), crossingViolation(500, 'railway', 3, 7.5),
       crossingViolation(500, 'motorway', -2, 7.5, 6), oobViolation(0, 50, 50), profileViolation(1000, 0.06),
-      categoryViolation(1000, 'S7.5', 20000, 'S9.5'), timeViolation(20000, 80, 15.4, 14.5)]) checkViolation(v, 'checks');
+      categoryViolation(1000, 'S7.5', 20000, 'S9.5'), timeViolation(20000, 80, 15.4, 14.5),
+      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [{ x: 1000, y: 800, r: null }], 3200, { a: { dir: { x: 1, y: 0 } } }, 0.08, 300, 740),
+      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [], 3000, { b: { dir: { x: 0, y: 1 } } }, 0.08, 300, 740)]) checkViolation(v, 'checks');
     if (regressionPackAvailable()) {
       const ctx = regressionContext(false);
       const design = (file: string): Design => JSON.parse(readFileSync(file, 'utf8')).design;

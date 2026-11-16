@@ -94,6 +94,7 @@ function spec(v: unknown, kind: unknown): boolean {
   }
   return kind === 'railway' && (v.gaugeMm === null || number(v.gaugeMm) && v.gaugeMm > 0) && choice(v.tracks, [1, 2])
     && choice(v.electrification, ['unknown', 'none', 'AC25kV', 'DC3kV', 'other'])
+    && (v.maxGradient === undefined || number(v.maxGradient) && v.maxGradient > 0 && v.maxGradient <= 0.1)
     && ['passengerDay', 'passengerNight', 'freightDay', 'freightNight', 'passengerSpeed', 'freightSpeed'].every(k => number(o[k]) && (o[k] as number) >= 0);
 }
 /** Never JSON-clone before this check: JSON turns NaN into null and silently drops undefined. */
@@ -142,6 +143,19 @@ export function assertProjectDesign(value: unknown, allowStaleBindings = false):
     const spine = corridor.mode === 'paired' ? corridor.spine : corridor.mode === 'independent' ? corridor.retainedSpine : null;
     if (!alignment(spine) || (spine as AlignmentDesign).kind === 'corridor') fail('corridor spine');
     if (corridor.mode === 'paired' && 'retainedSpine' in corridor || corridor.mode === 'independent' && 'spine' in corridor) fail('competing spine authority');
+    if (corridor.stretches !== undefined) {
+      const bends = (spine as Extract<AlignmentDesign, { kind: 'pi' }>).pis?.length ?? -1;
+      const line = (l: unknown) => l === undefined || object(l) && list(l.pis) && l.pis.every(p => object(p) && number(p.x) && number(p.y)
+        && (p.r === null || number(p.r) && p.r > 0)) && stationPoints(l.pins) && controls({ structureOverrides: l.structureOverrides, wallOverrides: l.wallOverrides });
+      let last = -1;
+      if (corridor.mode !== 'paired' || !list(corridor.stretches) || !corridor.stretches.every(t => {
+        const ok = object(t) && text(t.id) && integer(t.k0) && integer(t.k1) && (t.k0 as number) > last && (t.k0 as number) <= (t.k1 as number)
+          && (t.k1 as number) <= bends && number(t.a) && number(t.b) && t.a >= 0 && t.b >= t.a && (t.forward !== undefined || t.reverse !== undefined)
+          && line(t.forward) && line(t.reverse);
+        if (ok) last = Math.max(last, (t.k1 as number) - 1);
+        return ok;
+      })) fail('separate stretch');
+    }
     for (const direction of ['forward', 'reverse'] as const) {
       const id = (corridor.children as Record<string, string>)[direction], r = routeMap.get(id);
       if (!r || r.kind !== 'motorway' || owners.has(id)) fail('corridor child');

@@ -9,9 +9,11 @@ import { horizontalRules, SPEED_NORMS, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
 import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
 import type { Profile } from './vertical';
+import { RAIL_MAX_GRADIENT } from './data/railway';
+import { acos, sin, tan } from './detmath';
 
 export const VIOLATION_KINDS = ['radius', 'transition', 'arcShort', 'compound', 'gradient', 'crest', 'sag', 'vcOverlap', 'oob',
-  'category', 'time', 'profile', 'section', 'crossing', 'structure', 'building', 'noise', 'footprint'] as const;
+  'category', 'time', 'profile', 'section', 'crossing', 'structure', 'building', 'noise', 'footprint', 'station'] as const;
 export type ViolationKind = typeof VIOLATION_KINDS[number];
 
 /** what a requirement rests on: a design norm, a rule / simplification of the game, or a limitation of
@@ -137,6 +139,39 @@ export function radiusOptions(a: Vec2, b: Vec2, pis: PI[], i: number, speed: num
 export function maxRadiusThatFits(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number, category?: CategoryId): number | null {
   return radiusOptions(a, b, pis, i, speed, category)?.max ?? null;
 }
+
+// ---- railway ends on a track ------------------------------------------------------------------------
+
+/** A railway end on an existing track (a station of the mission, or a mapped line it branches off or
+ * rebuilds) leaves it at no more than a turnout's angle (data/railway.ts TURNOUT_ANGLE_RAD). `ends.a` /
+ * `ends.b`: that track's direction at the end; `zone`: the tie-in
+ * length; `minRadius`: the line's smallest curve (how far out a missing bend goes). The fix turns the
+ * end's bend about the end onto the track's line. */
+export function trackEndViolations(a: Vec2, b: Vec2, pis: readonly PI[], length: number,
+  ends: { a?: TrackEnd; b?: TrackEnd }, maxAngle: number, zone: number, minRadius: number): Violation[] {
+  const out: Violation[] = [];
+  for (const end of ['a', 'b'] as const) {
+    const t = ends[end];
+    if (!t) continue;
+    const p = end === 'a' ? a : b, k = end === 'a' ? 0 : pis.length - 1, q = pis.length ? pis[k] : end === 'a' ? b : a;
+    const vx = q.x - p.x, vy = q.y - p.y, L = Math.hypot(vx, vy);
+    if (L < 1e-6) continue;
+    const dot = (vx * t.dir.x + vy * t.dir.y) / L, angle = acos(Math.min(1, Math.abs(dot)));
+    if (angle <= maxAngle + 1e-9) continue;
+    const deg = (angle * 180) / Math.PI, s0 = end === 'a' ? 0 : Math.max(0, length - zone), s1 = end === 'a' ? Math.min(zone, length) : length;
+    const out1 = Math.round((zone + minRadius * tan(angle / 2)) / 50) * 50, max = fmt((maxAngle * 180) / Math.PI, 1), move = 2 * L * sin(angle / 2);
+    out.push({ kind: 'station', basis: 'norm', s0, s1, size: move,
+      title: 'Our railway leaves the existing tracks at a sharp angle',
+      fix: pis.length ? `Move ${bend(k)} about ${fmt(move)} m onto the line of the existing tracks`
+        : `Add a bend about ${fmt(out1)} m out along the existing tracks`,
+      detail: `It leaves them at ${fmt(deg)}°. A railway branches off a track through a turnout, at no more than ${max}°, and turns only after it.`,
+      rule: `Standard turnout J60-1:12-500: branches off at ${max}°`,
+      ...(pis.length ? { pi: k, pis: [k] } : {}) });
+  }
+  return out;
+}
+/** an existing track at a railway's end: its direction (unit, either way) */
+export interface TrackEnd { dir: Vec2 }
 
 // ---- horizontal (roads) --------------------------------------------------------------------------
 
@@ -379,9 +414,11 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
   const last = p.pts.length - 1;
   // "height point k (km …)": the points carry no numbers in the profile, the station finds them
   const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `height point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
-  const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
+  // track grades in per mille, road grades in per cent
+  const G = (g: number) => rail ? `${fmt(Math.abs(g) * 1000, 1)} ‰` : `${fmt(Math.abs(g) * 100, 1)} %`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
-  const gradeRule = rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
+  const gradeRule = rail && maxGradient > RAIL_MAX_GRADIENT + 1e-9 ? `Game rule: a rebuilt stretch of a line may be as steep as that line is there, ${fmt(maxGradient * 1000, 1)} ‰`
+    : rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
     : `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
   for (let i = 0; i < p.grades.length; i++) {
     const g = p.grades[i];
@@ -402,7 +439,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     cands.sort((x, y) => x.other - y.other);
     const h = Math.ceil(dz * 10 - 1e-6) / 10;
     const needL = Math.abs(b.z - a.z) / maxGradient;
-    const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${pct(maxGradient)} %; it has ${fmt(L)} m.`;
+    const lengthen = `This ${rise ? 'climb' : 'descent'} of ${fmt(Math.abs(b.z - a.z), 1)} m needs at least ${fmt(up(needL, 10))} m at ${G(maxGradient)}; it has ${fmt(L)} m.`;
     out.push({
       kind: 'gradient', s0: a.s, s1: b.s, vpi: cands[0]?.k ?? i,
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
@@ -471,8 +508,9 @@ export function slopeViolation(s0: number, s1: number, above: number, below: num
   return {
     kind: 'section', s0, s1,
     title: fill ? 'Embankment never reaches the ground' : 'Cutting never reaches the top of the slope',
-    fix: fill ? `Lower the road here (now up to ${fmt(above, 1)} m above the ground), or move it off the steep hillside`
-      : `Raise the road here (now up to ${fmt(below, 1)} m below the ground), or move it off the steep hillside`,
+    // (a height that rounds to 0.0 m: the hillside alone is too steep, the height is no lever)
+    fix: fill ? (above >= 0.05 ? `Lower the road here (now up to ${fmt(above, 1)} m above the ground), or move it off the steep hillside` : 'Move the road off the steep hillside here')
+      : below >= 0.05 ? `Raise the road here (now up to ${fmt(below, 1)} m below the ground), or move it off the steep hillside` : 'Move the road off the steep hillside here',
     detail: `The hillside is about as steep as the ${fill ? 'embankment' : 'cutting'} slope, so the side slope runs on for more than ${fmt(width)} m without meeting the ground.`,
     basis: 'game', rule: `Game limit: side slopes are modelled only ${fmt(width)} m to each side of the road`,
     size: Math.max(above, below),
@@ -549,12 +587,12 @@ export function oobViolation(s0: number, s1: number, length: number): Violation 
   };
 }
 
-export function profileViolation(length: number, maxGradient: number): Violation {
+export function profileViolation(length: number, maxGradient: number, rail = false): Violation {
   return {
     kind: 'profile', s0: 0, s1: length,
     title: 'Auto found no legal road height',
     fix: 'Climb more gently (longer route), or set heights by hand',
-    detail: `None of the road heights it tried stays within ${fmt(maxGradient * 100, 0)} % with the minimum hilltop and dip roundings and the required clearances. The other messages show where it fails.`,
+    detail: `None of the road heights it tried stays within ${rail ? `${fmt(maxGradient * 1000, 1)} ‰` : `${fmt(maxGradient * 100, 0)} %`} with the minimum hilltop and dip roundings and the required clearances. The other messages show where it fails.`,
     basis: 'engine', rule: 'Engine limitation: Automatic tries a limited set of road heights; a legal one may still exist',
   };
 }
@@ -578,7 +616,7 @@ export function timeViolation(length: number, speed: number, travelMin: number, 
     kind: 'time', goal: true, s0: 0, s1: length,
     title: `Too slow: ${fmt(travelMin, 2)} min`,
     fix: `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m${faster ? ` (or raise the design speed to ${faster} km/h)` : ''}`,
-    detail: `Travel time is length ÷ design speed: ${fmt(length / 1000, 2)} km at ${speed} km/h. The target is ${fmt(maxMin, 1)} min, i.e. at most ${fmt(maxLen / 1000, 2)} km at ${speed} km/h.${faster ? ' A higher design speed needs wider curves.' : ''}`,
+    detail: `Travel time is length ÷ speed: ${fmt(length / 1000, 2)} km at ${fmt(speed)} km/h. The target is ${fmt(maxMin, 1)} min, i.e. at most ${fmt(maxLen / 1000, 2)} km at ${fmt(speed)} km/h.${faster ? ' A higher design speed needs wider curves.' : ''}`,
     basis: 'game', rule: `Scenario goal: travel time at most ${fmt(maxMin, 1)} min`,
   };
 }
