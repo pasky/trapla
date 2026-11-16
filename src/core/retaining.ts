@@ -6,7 +6,7 @@ import { BUILDING_RULES, ROAD_CLASSES } from './data/urban';
 import type { BuildingIndex } from './buildings';
 import { STRUCTURE_RULES } from './data/prices';
 import { retainingAssembly, RETAINING_RULES as R } from './data/remedies';
-import { sideSection, slopeSurfaceAt, type Sections } from './sections';
+import { sideSection, slopeSurfaceAt, slopeSurfaceFn, type Sections } from './sections';
 import type { Terrain } from './terrain';
 import { protectedRasterCells } from './protected-raster';
 import type { RoadNet, RoadSegment } from './roadnet';
@@ -368,8 +368,9 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     const geology = (o: number) => terrain.groundAt(r.x[i] + nx * o, r.y[i] + ny * o);
     const fill = r.grade[i] >= ground(w), feature = t.cause[i] ?? t.cause[i - 1] ?? t.cause[i + 1] ?? 'road';
     const otherFoot = Math.max(w, Math.min(side > 0 ? r.dayR[i] : r.dayL[i], other.limit[i]));
+    const surfaceAt = slopeSurfaceFn(r.grade[i], w, ground, geology, limit);
     const wallAt = (at: number) => {
-      const surface = slopeSurfaceAt(r.grade[i], w, ground, geology, at);
+      const surface = surfaceAt(at);
       const height = Math.abs(surface - ground(at)), watertight = surface < ground(at) && (feature === 'water' || feature === 'stream');
       return { surface, height, watertight, rate: retainingAssembly(height, watertight) };
     };

@@ -79,7 +79,7 @@ function addBands(out: SideResult, bands: Bands | ((o: number) => Bands), o0: nu
  * given, receives the slope's vertices (offset, elevation) from the crown edge to where it ends.
  */
 export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground: (o: number) => number,
-  bands: Bands | ((o: number) => Bands) = UNKNOWN_GROUND, maxOffset = Infinity, trace?: number[]): SideResult {
+  bands: Bands | ((o: number) => Bands) = UNKNOWN_GROUND, maxOffset = Infinity, trace?: number[], steps?: number[]): SideResult {
   let cut = 0, fill = 0;
   const out: SideResult = { cut: 0, cutI: 0, cutII: 0, fill: 0, day: 0, zDay: 0, open: false, rockFace: 0, subgrade: 0, zSlope: z };
   // Under the crown: integrate (z - G) with sign split. No per-section helper closures:
@@ -107,6 +107,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
   const S = SIDE_SLOPES;
   let o0 = w, d0 = dPrev, zs = z, since = 0;
   if (trace) trace.push(w, z);
+  if (steps) steps.push(sign);
   const limit = Math.min(w + MAX_OFF, Math.max(w, maxOffset));
   // (the faces of earthengineering.ts fillFace / cutFace, inline: this loop runs for every section of every edit)
   const upper = S.fillUpper + (S.fillHighUpper - S.fillUpper) * Math.max(0, Math.min(1, (height - S.fillStandardTo) / S.fillHighBlend));
@@ -131,6 +132,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
     const zFace = zs + sign * rise; // fill: the face falls, cut: it rises
     const d = zFace - ground(o);
     const crossed = isFill ? d <= 0 : d >= 0;
+    if (steps) steps.push(o0, zs, d0, dx, bench ? 0 : n, zFace, crossed ? zs + (zFace - zs) * (d0 === d ? 0 : d0 / (d0 - d)) : NaN);
     if (crossed) {
       const t = d0 === d ? 0 : d0 / (d0 - d); // d0 = d = 0: slope lies on the ground
       const od = o0 + t * (o - o0);
@@ -159,6 +161,31 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
 export function slopeSurfaceAt(z: number, w: number, ground: (o: number) => number,
   bands: Bands | ((o: number) => Bands), at: number): number {
   return at <= w ? z : sideSection(z, w, { crownWidth: 2 * w }, ground, bands, at).zSlope;
+}
+
+/** slopeSurfaceAt at any `at` ≤ `maxOffset`, the same numbers from one walk down the slope (a wall's search
+ * for where it fits asks at every metre) */
+export function slopeSurfaceFn(z: number, w: number, ground: (o: number) => number,
+  bands: Bands | ((o: number) => Bands), maxOffset: number): (at: number) => number {
+  // per step of sideSection's walk: o0, zs, d0, dx, n (0: a bench), the face's end, its daylight (NaN: none)
+  const steps: number[] = [];
+  sideSection(z, w, { crownWidth: 2 * w }, ground, bands, maxOffset, undefined, steps);
+  const sign = steps[0], m = (steps.length - 1) / 7, isFill = sign < 0;
+  return (at) => {
+    if (at <= w) return z;
+    if (!(at <= maxOffset)) return slopeSurfaceAt(z, w, ground, bands, at);
+    const limit = Math.min(w + MAX_OFF, Math.max(w, at));
+    // the walk to `at` takes the same steps up to the last one starting before it, which it may cut short
+    let lo = 0, hi = m; // first step with o0 ≥ limit − 1e-8
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (steps[1 + 7 * mid] < limit - 1e-8) lo = mid + 1; else hi = mid; }
+    const k = lo - 1;
+    if (k < 0) return z;
+    const b = 1 + 7 * k, o0 = steps[b], zs = steps[b + 1], d0 = steps[b + 2], dx = steps[b + 3], n = steps[b + 4];
+    if (o0 + dx <= limit) return Number.isNaN(steps[b + 6]) ? steps[b + 5] : steps[b + 6];
+    const o = limit, zFace = zs + sign * (n === 0 ? 0 : (o - o0) / n), d = zFace - ground(o);
+    if (isFill ? d <= 0 : d >= 0) return zs + (zFace - zs) * (d0 === d ? 0 : d0 / (d0 - d));
+    return zFace;
+  };
 }
 
 export interface Sections {

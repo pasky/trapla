@@ -129,10 +129,15 @@ export function waterSizer(c: WaterCrossing): (footprint: number, depth?: number
   const sizes = new Map<number, WaterSize>();
   return (footprint, depth = 0) => {
     const length = barrelLength(c, footprint);
-    // the sizes change only at these lengths and at the covers the pipes and frames take (whole decimetres)
-    const key = ((length > 15 ? 1 : 0) | (length > R.maxPipeLength ? 2 : 0) | (length > R.maxBoxLength ? 4 : 0)) + 8 * Math.ceil(10 * depth);
+    // the sizes change only at these lengths and at the covers the pipes and frames take (the same tests as
+    // waterSize's on the depth in whole decimetres: how many of those covers it exceeds)
+    const dm = Math.ceil(10 * depth) / 10;
+    let over = 0;
+    for (const p of PIPE_SIZES) if (dm - p.width > p.maxCover) over++;
+    for (const p of BOX_SIZES) if (dm - p.height > R.maxFrameCover) over++;
+    const key = ((length > 15 ? 1 : 0) | (length > R.maxPipeLength ? 2 : 0) | (length > R.maxBoxLength ? 4 : 0)) + 8 * over;
     let size = sizes.get(key);
-    if (!size) sizes.set(key, size = waterSize(c, footprint, Math.ceil(10 * depth) / 10));
+    if (!size) sizes.set(key, size = waterSize(c, footprint, dm));
     return size;
   };
 }

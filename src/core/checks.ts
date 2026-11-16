@@ -209,27 +209,31 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
   const rail = !!input?.category && CATEGORIES[input.category].mode === 'railway';
   const minor = input?.category ? CATEGORIES[input.category].minor : undefined;
   const tol = 1e-6;
-  /** the rule texts for a bend's own rules (its stretch's design speed) */
+  /** the rule texts for a bend's own rules (its stretch's design speed); each made only when a violation
+   * reads it (the radius search runs this many times per bend) */
   const texts = (RR: HorizontalRules, speed: number) => {
   const lt = RR.transition, plain = Math.ceil(RR.plainRadius);
   return {
-    minRadius: rail ? `${RAIL_NORM}: at ${speed} km/h a curve needs a radius of at least ${fmt(RR.minRadius)} m (150 mm cant, 80 mm cant deficiency)`
+    get minRadius() { return rail ? `${RAIL_NORM}: at ${speed} km/h a curve needs a radius of at least ${fmt(RR.minRadius)} m (150 mm cant, 80 mm cant deficiency)`
       : minor === 'track' ? `${TRACK_NORM}: at ${speed} km/h a curve on a paved track must have a radius of at least ${fmt(RR.minRadius)} m`
-      : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
-    easing: rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
-      : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
-    reverse: minor ? `Game geometry: two curves turning opposite ways may meet but not overlap; ${minor === 'track' ? TRACK_NORM : LOCAL_NORM} asks for no straight between them (research/42)`
-      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
-    compound: minor ? `Game rule (provisional): curves turning the same way that meet as one curve may differ in radius at most ${fmt(RR.compoundRatio)}×`
-      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`,
-    uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
-    noJoin: `Game geometry model: joined arcs must stay within ${fmt(EDIT_TOLERANCE)} m of the tangent legs; intermediate easing curves are not modelled. Failure to join is not proof that no ČSN-compliant alignment exists`,
+      : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`; },
+    get easing() { return rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
+      : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`; },
+    get reverse() { return minor ? `Game geometry: two curves turning opposite ways may meet but not overlap; ${minor === 'track' ? TRACK_NORM : LOCAL_NORM} asks for no straight between them (research/42)`
+      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`; },
+    get compound() { return minor ? `Game rule (provisional): curves turning the same way that meet as one curve may differ in radius at most ${fmt(RR.compoundRatio)}×`
+      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`; },
+    get uturn() { return `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`; },
+    get noJoin() { return `Game geometry model: joined arcs must stay within ${fmt(EDIT_TOLERANCE)} m of the tangent legs; intermediate easing curves are not modelled. Failure to join is not proof that no ČSN-compliant alignment exists`; },
   };
   };
   /** a bend's rules, design speed and rule texts */
+  const atMemo = new Map<HorizontalRules, { RR: HorizontalRules; speed: number; lt: number; plain: number; rules: ReturnType<typeof texts> }>();
   const at = (k: number) => {
-    const RR = al.rulesAt?.[k] ?? al.rules, v = RR.speed ?? speed;
-    return { RR, speed: v, lt: RR.transition, plain: Math.ceil(RR.plainRadius), rules: texts(RR, v) };
+    const RR = al.rulesAt?.[k] ?? al.rules;
+    let m = atMemo.get(RR);
+    if (!m) { const v = RR.speed ?? speed; m = { RR, speed: v, lt: RR.transition, plain: Math.ceil(RR.plainRadius), rules: texts(RR, v) }; atMemo.set(RR, m); }
+    return m;
   };
   const rules = texts(al.rules, speed);
   // fixes that need the design itself (only when the caller passed it; never in the radius search).

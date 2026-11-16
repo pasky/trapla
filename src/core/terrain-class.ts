@@ -55,11 +55,13 @@ export function routeMountainous(terrain: Terrain, st: { s: ArrayLike<number>; x
     at.push(s); slope.push(groundSlopeAt(terrain, st.x[i], st.y[i]));
   }
   const half = Math.min(window, L) / 2, cls = new Uint8Array(m);
-  for (let k = 0; k < m; k++) {
+  // the window [c − half, c + half] only moves forward with k: a sorted copy of its samples, one in, one out
+  const w: number[] = [];
+  const pos = (x: number) => { let lo = 0, hi = w.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (w[mid] < x) lo = mid + 1; else hi = mid; } return lo; };
+  for (let k = 0, j0 = 0, j1 = 0; k < m; k++) {
     const c = Math.max(half, Math.min(L - half, at[k]));
-    const w: number[] = [];
-    for (let j = 0; j < m; j++) if (Math.abs(at[j] - c) <= half + 1e-6) w.push(slope[j]);
-    w.sort((p, q) => p - q);
+    while (j1 < m && at[j1] - c <= half + 1e-6) { w.splice(pos(slope[j1]), 0, slope[j1]); j1++; }
+    while (j0 < j1 && c - at[j0] > half + 1e-6) { w.splice(pos(slope[j0]), 1); j0++; }
     cls[k] = w[w.length >> 1] > mountainousFrom ? 1 : 0;
   }
   const out = new Uint8Array(n);
