@@ -10,7 +10,8 @@
 
 import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
 import { CATEGORIES } from './data/categories';
-import { speedNorms, horizontalRules } from './data/norms';
+import { bendRules, horizontalRules, speedNorms } from './data/norms';
+import { hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
@@ -48,7 +49,7 @@ const KEEP = 6;
 
 /** Everything except the plan and the grade inputs must match for a full result to stand in. */
 function lineageKey(ctx: EvalContext, d: Design, opts: EvalOptions): string {
-  return JSON.stringify([ctx.a, ctx.b, d.category, d.speed, d.profileMode, d.structureOverrides ?? [], d.crossingOverrides ?? [],
+  return JSON.stringify([ctx.a, ctx.b, d.category, d.speed, d.pis.map(p => [p.speed ?? null, p.hairpin ?? null]), d.profileMode, d.structureOverrides ?? [], d.crossingOverrides ?? [],
     d.buildingOverrides ?? [], d.wallOverrides ?? [], d.objectData ?? null, opts.endpointElevations ?? null, opts.goals ?? null,
     opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null]);
   // Not keyed: a split direction's joined ranges follow its plan, and its preview prices crossings the
@@ -168,7 +169,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const started = performance.now();
   const base = fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts));
   if (!base) return null;
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
+  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
   const st = station(al, STEP), L = al.length, n = st.n, ds = st.ds;
   const range = changedRange(base, d, st, L, al.curves);
   if (!range) return null;
@@ -176,8 +177,8 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   if ((i1 - i0) * ds > WINDOW_MAX_SHARE * L) return null;
   const s0 = st.s[i0], s1 = st.s[i1];
   const r = base.result, shift = L - r.length, old1 = s1 - shift;
-  const norms = speedNorms(d.speed, d.category);
-  const baseProfile = buildProfile(r.vpis, norms.minCrestRadius, norms.minSagRadius);
+  const norms = speedNorms(d.speed, d.category), radii = stretchRadii(al, d.pis, d.speed, d.category);
+  const baseProfile = buildProfile(r.vpis, radii.crest, radii.sag);
   // Heights and grades of the full result's line where the window meets it (the route ends keep theirs).
   const z = elevations(baseProfile, [s0, s0 + 1, old1 - 1, old1]);
   const startsAtA = i0 === 0, endsAtB = i1 === n - 1;
@@ -188,7 +189,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const grades = { ...(startsAtA ? {} : { a: z[1] - z[0] }), ...(endsAtB ? {} : { b: z[3] - z[2] }) };
   // By hand: the design's own line throughout (its window ends included), only engineered in the window.
   const zA = opts.endpointElevations?.a ?? ctx.terrain.heightAt(st.x[0], st.y[0]), zB = opts.endpointElevations?.b ?? ctx.terrain.heightAt(st.x[n - 1], st.y[n - 1]);
-  const manual = d.profileMode === 'auto' ? null : buildProfile(normalizeVpis(d.vpis, L, zA, zB), norms.minCrestRadius, norms.minSagRadius);
+  const manual = d.profileMode === 'auto' ? null : buildProfile(normalizeVpis(d.vpis, L, zA, zB), radii.crest, radii.sag);
   if (manual) {
     const zm = elevations(manual, [s0, s1]);
     if (!startsAtA) endpointElevations.a = zm[0];
@@ -215,7 +216,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     ...w.vpis.map(v => ({ ...v, s: v.s + s0 })),
     ...r.vpis.filter(v => v.s > old1 + 1e-6).map(v => ({ ...v, s: v.s + shift })),
   ];
-  const profile = buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius);
+  const profile = buildProfile(vpis, radii.crest, radii.sag);
   const grade = elevations(profile, st.s);
   const ground = new Float64Array(n);
   for (let i = 0; i < n; i++) ground[i] = inWindow(i) ? w.ground[i - i0] : ctx.terrain.heightAt(st.x[i], st.y[i]);
@@ -250,6 +251,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   // Plan checks belong to the whole alignment (the window run skips them): once, on the new plan.
   const local1 = (v: Result['violations'][number]) => !PLAN_KINDS.has(v.kind);
   const violations = [...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
+    ...(d.pis.some(p => p.hairpin) ? hairpinViolations(al, d.pis, d.speed, d.category, ctx.terrain) : []),
     ...r.violations.filter(v => local1(v) && v.s1 < s0), ...w.violations.filter(local1).map(v => shiftS(v, s0)),
     ...r.violations.filter(v => local1(v) && v.s0 > old1).map(v => shiftS(v, shift))];
   // Without their measured geometry, like a whole-route preview's (a long route's would dominate the
@@ -271,7 +273,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   });
   const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...windowCrossings,
     ...r.crossings.filter(c => c.s > old1).map(c => ({ ...lean(c), s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];
-  const travelMin = L / (d.speed / 3.6) / 60;
+  const travelMin = travelMinutes(speedStretches(al, d.pis, d.speed, d.category));
   const cost = sumParts(parts);
   return {
     ...r,
@@ -282,6 +284,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     zDayL: stitch(f64, w.zDayL, r.zDayL, true), zDayR: stitch(f64, w.zDayR, r.zDayR, true),
     oob: stitch(u8, w.oob, r.oob),
     wallSurfaceL: stitch(f64, w.wallSurfaceL, r.wallSurfaceL), wallSurfaceR: stitch(f64, w.wallSurfaceR, r.wallSurfaceR),
+    widen: w.widen || r.widen ? stitch(f32, w.widen ?? new Float32Array(w.n), r.widen ?? new Float32Array(r.n)) : undefined,
     vpis, vcurves: profile.curves.map(c => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: profile.grades,
     curves: al.curves.map(c => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations: violations.filter(v => !v.goal).length, cost, parts,

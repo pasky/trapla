@@ -10,7 +10,7 @@ const crossing: WaterCrossing = { s: 1000, x: 1250, y: 250, id: 1, waterKind: 's
 const data = (area: number, points = [[1250, 0], [1250, 250], [1250, 500]]): WaterData => ({ version: 1, method: 'synthetic',
   reaches: [{ id: 1, kind: 'stream', width: null, points,
     catchmentKm2: points.map(() => area), truncated: points.map(() => false) }] });
-function context(area: number, depth = 7, watercourses = data(area)) {
+function context(area: number, depth = 5, watercourses = data(area)) {
   const source = syntheticTerrain(500, 100, 5,
     x => 400 - depth * Math.min(1, Math.max(0, Math.min(x - 250, 2250 - x)) / 300));
   const q = new Uint16Array(500 * 100);
@@ -39,6 +39,15 @@ describe('watercourse crossing assemblies', () => {
     expect(exact.footprintConflicts.filter(c => c.action === 'blocked')).toEqual([]);
     expect(run(1.8 - 2e-6).valid).toBe(false);
   });
+  it('a pipe or frame takes only so much fill over it; deeper, the passage is a buried bridge (research/52)', () => {
+    const c = { ...crossing, catchmentKm2: 0.3 };
+    expect(waterSize(c, 40, 5).type).toBe('pipe'); // DN 1000 under 4 m of fill (≤ 4.8 m)
+    const deep = waterSize(c, 40, 8);
+    expect([deep.type, deep.buried]).toEqual(['box', undefined]); // a 2 × 2 m frame under 6 m (≤ 7 m)
+    const buried = waterSize(c, 40, 12);
+    expect(buried.buried).toBe(true);
+    expect(culvertCost(c, 40, 12)).toBeCloseTo(40 * 48_235.18 * 4, 2); // 4 m (the smallest span) × 40 m of plan
+  });
   it('deduplicates shared vertices but preserves distinct nearby streams and recrossings', () => {
     const d = data(1);
     d.reaches.push({ ...d.reaches[0], id: 2, points: [[1260, 0], [1260, 250], [1260, 500]] });
@@ -50,12 +59,12 @@ describe('watercourse crossing assemblies', () => {
   });
   it('OSM splits at or near a skew crossing do not invent a parallel channel or another structure', () => {
     const full = data(0.1, [[1000, 0], [1500, 500]]);
-    const baseline = evaluate(context(0.1, 7, full), design);
+    const baseline = evaluate(context(0.1, 5, full), design);
     expect(baseline.waterCrossings[0].structure).toBe('pipe');
     for (const split of [[1250, 250], [1260, 260]]) {
       const divided = data(0.1, [[1000, 0], split]);
       divided.reaches.push({ ...divided.reaches[0], id: 2, points: [split, [1500, 500]] });
-      const r = evaluate(context(0.1, 7, divided), design);
+      const r = evaluate(context(0.1, 5, divided), design);
       expect(r.waterCrossings).toHaveLength(1);
       expect(r.waterCrossings[0].structure).toBe('pipe');
       expect(r.cost.total).toBeCloseTo(baseline.cost.total, 4);
@@ -100,7 +109,7 @@ describe('watercourse crossing assemblies', () => {
       }
     }
   });
-  it('bills a full culvert in 7 m fill despite road raster masking; larger basin forces a bridge', () => {
+  it('bills a full culvert in 5 m fill despite road raster masking; larger basin forces a bridge', () => {
     const r = evaluate(context(0.1), design);
     expect(r.waterCrossings).toHaveLength(1);
     expect(r.waterCrossings[0].structure).toBe('pipe');

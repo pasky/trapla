@@ -6,10 +6,11 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, HAIRPIN_NOTE, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
-import { speedNorms } from '../core/data/norms';
+import { designSpeeds, HAIRPIN, speedNorms } from '../core/data/norms';
+import { bendSpeed, hairpinSpeed } from '../core/design-speed';
 import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
 import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
 import type { Design, Result } from '../core/evaluate';
@@ -54,6 +55,10 @@ export interface InspectorEvents {
   /** a radius drag (slider) ended */
   commit?: () => void;
   radius?: (i: number, r: number | null, commit?: boolean) => void;
+  /** design speed of bend i's stretch (null: the road's) */
+  bendSpeed?: (i: number, speed: number | null) => void;
+  /** bend i a hairpin or an ordinary curve */
+  hairpin?: (i: number, on: boolean) => void;
   deletePi?: (i: number) => void;
   /** pin the road's height at bend i (Auto) / add a height point there (By hand) */
   bendHeight?: (i: number) => void;
@@ -378,18 +383,25 @@ export class Inspector {
   private bend(r: Result, d: Design, i: number) {
     const pi = d.pis[i];
     if (!pi) return '';
-    const cv = r.curves.find((c) => c.index === i), n = speedNorms(d.speed, d.category);
+    const speed = bendSpeed(pi, d.speed, d.category), speeds = designSpeeds(d.category);
+    const cv = r.curves.find((c) => c.index === i), n = speedNorms(speed, d.category);
     const auto = pi.r === null, rv = pi.r ?? cv?.r ?? n.minRadius;
+    const road = CATEGORIES[d.category].mode === 'road' && !CATEGORIES[d.category].minor;
+    // (no hairpin note while a violation says it may not stand there)
+    const hairpinNote = pi.hairpin && !r.violations.some((v) => v.pis?.includes(i) && /^Hairpin/.test(v.title))
+      ? `<div class="sub">${HAIRPIN_NOTE}</div>` : '';
     // "Widest" is an action, not a state: finding the largest radius that fits is a geometry search
     // (tens of ms), done only when it is clicked
     const active = auto ? 'auto' : null;
     const turn = cv ? `turns ${((cv.delta * 180) / Math.PI).toFixed(0)}°` : '';
     const status = cv && cv.sEnd > cv.sStart + 1 ? `R ${m0(cv.rEff)} · ${m0(cv.delta * cv.rEff)} of curve` : 'no curve (straight)';
     const vio = r.violations.filter((v) => v.pi === i || v.pis?.includes(i)).map((v) => ({ v, fixes: '' }));
-    return `${this.head(`Bend ${bendNo(i)}`, turn)}
-      <div class="ctx-state"><b>${status}</b><div class="why">${auto ? 'Tightest the rules allow.' : 'Your radius.'}</div></div>
+    return `${this.head(`${pi.hairpin ? 'Hairpin' : 'Bend'} ${bendNo(i)}`, turn)}
+      <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? `A hairpin: a tight turn for climbing steep ground, driven at about ${Math.round(hairpinSpeed(cv?.rEff ?? HAIRPIN.radius))} km/h.` : auto ? 'Tightest the rules allow.' : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
-      ${this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${d.speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
+      ${pi.hairpin ? '' : this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
+      ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole road` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>` : ''}
+      ${road && (pi.hairpin || (cv?.delta ?? 0) >= HAIRPIN.minTurn) ? `<div class="ctx-row">${this.choices('bend-type', 'data-hairpin', [['0', 'Curve', 'An ordinary curve'], ['1', 'Hairpin', `A ${HAIRPIN.radius} m hairpin with widened lanes, for steep mountain ground`]], pi.hairpin ? '1' : '0')}</div>` : ''}
       <div class="more-box">
         <div class="ctx-row"><label>Radius <input id="pi-r" type="number" min="50" step="5" value="${Math.round(rv)}"> m</label></div>
         <input id="pi-slider" type="range" min="${Math.round(n.minRadius * 0.5)}" max="5000" step="5" value="${Math.round(rv)}" title="Or drag the ◇ grips on the map">
@@ -636,6 +648,8 @@ export class Inspector {
     if (sel?.kind === 'bend') {
       if (b.dataset.radius === 'auto') this.ev.radius?.(sel.i, null);
       else if (b.dataset.radius === 'max') { const m = this.ctx.maxRadius(sel.i); if (m !== null) this.ev.radius?.(sel.i, m); }
+      else if (b.dataset.bendSpeed) this.ev.bendSpeed?.(sel.i, Number(b.dataset.bendSpeed));
+      else if (b.dataset.hairpin) this.ev.hairpin?.(sel.i, b.dataset.hairpin === '1');
       else if (b.id === 'pi-del') this.ev.deletePi?.(sel.i);
       else if (b.id === 'pi-height') this.ev.bendHeight?.(sel.i);
       return;

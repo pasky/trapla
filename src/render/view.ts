@@ -22,7 +22,7 @@ import { buildRouteSurfaces, routeSurfaceContext, routeSurfaceContextSliced, typ
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, slopeKnee, groundStations } from './earthwork-surface';
 import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
 import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
@@ -891,14 +891,15 @@ export class View {
       const gp = r.geology.profiles[r.geology.ids[i]];
       const geoAt = (depth: number) => (gp.normMix ? [-3, -3, r.s[i]] : [depth - gp.classIto, depth - gp.classIIto, r.s[i]]);
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
-      const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
+      const wi = w + (r.widen?.[i] ?? 0); // a hairpin's widened lanes
+      const xel = x + nx * wi, yel = y + ny * wi, xer = x - nx * wi, yer = y - ny * wi;
       sv.push({
         dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
-        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
-        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
         dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
@@ -928,7 +929,9 @@ export class View {
       const abutment = k0 !== KIND.earth || k1 !== KIND.earth;
       if (ground[i] && ground[i + 1]) for (const side of [1, -1]) {
         const sections = daylightSections(r, i, side, w, natural, ground);
-        let prev: { day: number; edge: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
+        // the slope's bend (a fill's toe band, a cut's rock face), drawn where the engine bends it
+        const k0 = abutment ? null : slopeKnee(r, i, side, w), k1 = abutment ? null : slopeKnee(r, i + 1, side, w);
+        let prev: { day: number; edge: number; knee?: number; ground: number; wallGround?: number; wallSlope?: number } | undefined;
         for (let j = 0; j < sections.length; j++) {
           const s = sections[j], t = j / (sections.length - 1), toe = s.slopeDay ?? s.day;
           const fill = s.edge.z > s.day.z, kind = abutment ? EW_KIND.structure : fill ? EW_KIND.fill : EW_KIND.cut;
@@ -937,6 +940,12 @@ export class View {
           const geology = (depth: number) => gp.normMix ? [-3, -3, r.s[i]+t*(r.s[i+1]-r.s[i])] : [depth-gp.classIto, depth-gp.classIIto, r.s[i]+t*(r.s[i+1]-r.s[i])];
           const day = push(toe.x, toe.y, toe.z+groundLift, color, toe.z, slopeInk, kind, geology(s.day.z-toe.z));
           const edge = push(s.edge.x, s.edge.y, s.edge.z+lift, color, s.edge.z, slopeInk, kind, geology(natural(s.edge.x,s.edge.y)-s.edge.z));
+          let knee: number | undefined;
+          if (k0 || k1) { // (also beside a wall's last station: the unretained end keeps its bend, so the next stretch meets it)
+            const u = (k0?.u ?? 0.5) * (1 - t) + (k1?.u ?? 0.5) * t, dz = (k0?.dz ?? 0) * (1 - t) + (k1?.dz ?? 0) * t;
+            const kx = s.edge.x + u * (toe.x - s.edge.x), ky = s.edge.y + u * (toe.y - s.edge.y), kz = s.edge.z + u * (toe.z - s.edge.z) + dz;
+            knee = push(kx, ky, kz + groundLift, color, kz, slopeInk, kind, geology(natural(kx, ky) - kz));
+          }
           // Separate concrete vertices keep earth textures off the physically vertical face.
           // The collar still starts at natural ground, not at the retained slope elevation.
           const wallGround = s.slopeDay ? push(s.day.x,s.day.y,s.day.z+groundLift,concrete) : undefined;
@@ -947,11 +956,12 @@ export class View {
             this.local(p.x,p.y,p.z+groundLift,v); groundPos.push(v.x,v.y,v.z);
           }
           if (prev) {
-            quad(prev.day, day, prev.edge, edge);
+            if (prev.knee !== undefined && knee !== undefined) { quad(prev.day, day, prev.knee, knee); quad(prev.knee, knee, prev.edge, edge); }
+            else quad(prev.day, day, prev.edge, edge);
             if (prev.wallGround !== undefined && wallGround !== undefined) quad(prev.wallGround, wallGround, prev.wallSlope!, wallSlope!);
             for (let k = 0; k < 8; k++) groundIdx.push(prev.ground+k, ground+k, prev.ground+k+1, ground+k, ground+k+1, prev.ground+k+1);
           }
-          prev = { day, edge, ground, wallGround, wallSlope };
+          prev = { day, edge, knee, ground, wallGround, wallSlope };
         }
       }
     }

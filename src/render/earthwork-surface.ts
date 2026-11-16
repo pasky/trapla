@@ -1,5 +1,6 @@
 import type { Result } from '../core/evaluate';
 import { KIND } from '../core/structures';
+import { SIDE_SLOPES } from '../core/data/prices';
 
 export interface GroundPoint { x: number; y: number; z: number }
 export interface DaylightSection { edge: GroundPoint; day: GroundPoint; outer: GroundPoint; slopeDay?: GroundPoint }
@@ -8,6 +9,8 @@ export const GROUND_COLLAR = 20;
 export const COLLAR_OVERLAP = 5;
 export type EarthworkRoute = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'grade' | 'kind' | 'dayL' | 'dayR'> & {
   wallSurfaceL?: Float64Array; wallSurfaceR?: Float64Array;
+  /** a hairpin's widened lanes, extra crown on each side (Result.widen) */
+  widen?: Float32Array;
 };
 export function daylightPoint(r: EarthworkRoute, i: number, side: number, extra = 0) {
   const off = ((side > 0 ? r.dayL[i] : r.dayR[i]) + extra) * side;
@@ -36,6 +39,34 @@ export function groundStations(r: EarthworkRoute, natural: (x: number, y: number
   return out;
 }
 
+/** The slope's main bend between the crown edge and the daylight point, as the engine shapes it
+ * (data/prices.ts SIDE_SLOPES): where a fill's flatter 1:2.5 toe band begins, or where a cut's steep rock face
+ * meets the soil slope above it (the rock top taken at the station's weathering profile below the daylight
+ * height). As a fraction `u` of the way out from the crown edge and a height `dz` off the straight edge–daylight
+ * line; null for a straight slope or a slope a wall stops. Display only, from the billed daylight points. */
+export function slopeKnee(r: EarthworkRoute & Pick<Result, 'zDayL' | 'zDayR' | 'geology'>, i: number, side: number,
+  halfWidth: number): { u: number; dz: number } | null {
+  if (Number.isFinite((side > 0 ? r.wallSurfaceL : r.wallSurfaceR)?.[i])) return null;
+  halfWidth += r.widen?.[i] ?? 0;
+  const z = r.grade[i], day = side > 0 ? r.dayL[i] : r.dayR[i], zDay = side > 0 ? r.zDayL[i] : r.zDayR[i];
+  const run = day - halfWidth, height = zDay - z;
+  if (run <= 0.5) return null;
+  let o: number, zk: number;
+  if (height < 0) {
+    if (-height <= SIDE_SLOPES.fillToeHeight + 0.1) return null;
+    zk = zDay + SIDE_SLOPES.fillToeHeight; o = day - SIDE_SLOPES.fillToeHeight * SIDE_SLOPES.fillToe;
+  } else {
+    const g = r.geology.profiles[r.geology.ids[i]];
+    const rock = g && !g.normMix ? height - g.classIIto : 0;
+    if (rock <= 0.1 || rock >= height - 0.1) return null;
+    zk = z + rock;
+    o = halfWidth + rock * SIDE_SLOPES.cutRock + Math.floor((rock - 1e-9) / SIDE_SLOPES.rockBenchEvery) * SIDE_SLOPES.benchWidth;
+  }
+  const u = (o - halfWidth) / run;
+  if (!(u > 0.02 && u < 0.98)) return null;
+  return { u, dz: zk - (z + u * height) };
+}
+
 /** Fine replacement ground, rebuilt only on evaluation. The inner edge meets the slope or
  * vertical retaining face; the outer edge returns to the existing 20 m triangles. `ground` =
  * groundStations (default: the earthwork stations). */
@@ -44,7 +75,7 @@ export function daylightSections(r: EarthworkRoute, i: number, side: number, hal
   if (i + 1 >= r.n || (ground ? !ground[i] || !ground[i + 1] : r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth)) return [];
   const a = daylightPoint(r, i, side), b = daylightPoint(r, i + 1, side);
   const ao = daylightPoint(r, i, side, GROUND_COLLAR), bo = daylightPoint(r, i + 1, side, GROUND_COLLAR);
-  const edge = (j: number) => ({ x: r.x[j] - r.ty[j] * halfWidth * side, y: r.y[j] + r.tx[j] * halfWidth * side, z: r.grade[j] });
+  const edge = (j: number) => { const h = halfWidth + (r.widen?.[j] ?? 0); return { x: r.x[j] - r.ty[j] * h * side, y: r.y[j] + r.tx[j] * h * side, z: r.grade[j] }; };
   const ae = edge(i), be = edge(i + 1);
   const wall = side > 0 ? r.wallSurfaceL : r.wallSurfaceR;
   const wallA = Number.isFinite(wall?.[i]), wallB = Number.isFinite(wall?.[i+1]);
@@ -55,8 +86,11 @@ export function daylightSections(r: EarthworkRoute, i: number, side: number, hal
     const day = at(a,b), outer = at(ao,bo);
     const ground = { ...day, z: natural(day.x,day.y) };
     // NaN means no wall. Preserve the fine natural daylight there, and taper a wall to
-    // the neighbouring unretained station without ever lifting its ground collar.
-    const slopeDay = wallA || wallB ? { ...day, z: az+(bz-az)*t } : undefined;
+    // the neighbouring unretained station without ever lifting its ground collar. A wall is billed half a
+    // station past its last one (cellLength): its end comes down to the ground there, the slope runs on.
+    const g = ground.z;
+    const top = wallA && wallB ? az+(bz-az)*t : wallA ? (t < 0.5 ? az+(g-az)*t/0.5 : g) : wallB ? (t > 0.5 ? g+(bz-g)*(t-0.5)/0.5 : g) : NaN;
+    const slopeDay = wallA || wallB ? { ...day, z: top } : undefined;
     return { edge: { ...at(ae,be), z: ae.z+(be.z-ae.z)*t }, day: ground,
       outer: { ...outer, z: natural(outer.x,outer.y) }, slopeDay };
   });

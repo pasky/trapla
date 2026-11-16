@@ -5,7 +5,7 @@ import type { ProjectDesign, ProjectResult, RouteId } from '../core/project';
 import { legacyDesignForRoute, replaceRouteFromLegacy } from '../core/project-legacy';
 import type { ProjectStoreApi } from '../project-store-contract';
 import { carryVpis } from '../core/carry-heights';
-import { horizontalRules } from '../core/data/norms';
+import { bendRules, horizontalRules } from '../core/data/norms';
 import { buildAlignment } from '../core/horizontal';
 
 export class ActiveRouteStore {
@@ -87,8 +87,8 @@ export class ActiveRouteStore {
     if (!ends || before.profileMode !== 'manual' || after.profileMode !== 'manual' || JSON.stringify(after.vpis) !== JSON.stringify(before.vpis)) return;
     if (before.speed === after.speed && before.category === after.category && JSON.stringify(before.pis) === JSON.stringify(after.pis)) return;
     const a = ends.a.position, b = ends.b.position;
-    after.vpis = carryVpis(buildAlignment(a, b, before.pis, horizontalRules(before.speed, before.category)),
-      buildAlignment(a, b, after.pis, horizontalRules(after.speed, after.category)), before.vpis);
+    after.vpis = carryVpis(buildAlignment(a, b, before.pis, horizontalRules(before.speed, before.category), bendRules(before.pis, before.speed, before.category)),
+      buildAlignment(a, b, after.pis, horizontalRules(after.speed, after.category), bendRules(after.pis, after.speed, after.category)), before.vpis);
   }
   editProject(edit: (project: ProjectDesign) => void) {
     const own = !this.project.inTransaction;

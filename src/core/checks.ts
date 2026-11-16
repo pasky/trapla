@@ -5,10 +5,10 @@
 // for every violation kind by tests/player-text.test.ts.
 
 import { CATEGORIES, type CategoryId } from './data/categories';
-import { horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
+import { bendRules, horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
-import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
-import type { Profile } from './vertical';
+import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type HorizontalRules, type PI, type Vec2 } from './horizontal';
+import { gradeLimitOf, type GradeLimit, type Profile } from './vertical';
 import { RAIL_MAX_GRADIENT } from './data/railway';
 import { acos, sin, tan } from './detmath';
 
@@ -84,7 +84,7 @@ export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: Categ
 
 export interface CheckFamily {
   horizontal(al: Alignment, norms: SpeedNorms, input?: HorizontalInput): Violation[];
-  vertical(p: Profile, norms: SpeedNorms, maxGradient: number, rail?: boolean): Violation[];
+  vertical(p: Profile, norms: SpeedNorms, maxGradient: GradeLimit, rail?: boolean, stretch?: StretchNorms): Violation[];
 }
 
 const fmt = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -107,9 +107,10 @@ export const R_MAX = 30000;
  * when such a value fits, otherwise to the metre.
  */
 export function radiusOptions(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number, category?: CategoryId): { auto: number; max: number | null } | null {
-  const rules = horizontalRules(speed, category);
+  const rules = bendRules(pis, speed, category)?.(i) ?? horizontalRules(speed, category);
   const viol = (r: number | null) => {
-    const al = buildAlignment(a, b, pis.map((p, k) => (k === i ? { ...p, r } : p)), rules);
+    const changed = pis.map((p, k) => (k === i ? { ...p, r } : p));
+    const al = buildAlignment(a, b, changed, horizontalRules(speed, category), bendRules(changed, speed, category));
     return { al, v: horizontalViolations(al, speed, category ? { a, b, pis: [], category } : undefined) };
   };
   const base = viol(null);
@@ -207,21 +208,34 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
   const out: Violation[] = [];
   const rail = !!input?.category && CATEGORIES[input.category].mode === 'railway';
   const minor = input?.category ? CATEGORIES[input.category].minor : undefined;
-  const RR = al.rules, lt = RR.transition, tol = 1e-6;
-  const plain = Math.ceil(RR.plainRadius);
-  const rules = {
-    minRadius: rail ? `${RAIL_NORM}: at ${speed} km/h a curve needs a radius of at least ${fmt(RR.minRadius)} m (150 mm cant, 80 mm cant deficiency)`
+  const tol = 1e-6;
+  /** the rule texts for a bend's own rules (its stretch's design speed); each made only when a violation
+   * reads it (the radius search runs this many times per bend) */
+  const texts = (RR: HorizontalRules, speed: number) => {
+  const lt = RR.transition, plain = Math.ceil(RR.plainRadius);
+  return {
+    get minRadius() { return rail ? `${RAIL_NORM}: at ${speed} km/h a curve needs a radius of at least ${fmt(RR.minRadius)} m (150 mm cant, 80 mm cant deficiency)`
       : minor === 'track' ? `${TRACK_NORM}: at ${speed} km/h a curve on a paved track must have a radius of at least ${fmt(RR.minRadius)} m`
-      : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
-    easing: rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
-      : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
-    reverse: minor ? `Game geometry: two curves turning opposite ways may meet but not overlap; ${minor === 'track' ? TRACK_NORM : LOCAL_NORM} asks for no straight between them (research/42)`
-      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
-    compound: minor ? `Game rule (provisional): curves turning the same way that meet as one curve may differ in radius at most ${fmt(RR.compoundRatio)}×`
-      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`,
-    uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
-    noJoin: `Game geometry model: joined arcs must stay within ${fmt(EDIT_TOLERANCE)} m of the tangent legs; intermediate easing curves are not modelled. Failure to join is not proof that no ČSN-compliant alignment exists`,
+      : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`; },
+    get easing() { return rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
+      : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`; },
+    get reverse() { return minor ? `Game geometry: two curves turning opposite ways may meet but not overlap; ${minor === 'track' ? TRACK_NORM : LOCAL_NORM} asks for no straight between them (research/42)`
+      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`; },
+    get compound() { return minor ? `Game rule (provisional): curves turning the same way that meet as one curve may differ in radius at most ${fmt(RR.compoundRatio)}×`
+      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`; },
+    get uturn() { return `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`; },
+    get noJoin() { return `Game geometry model: joined arcs must stay within ${fmt(EDIT_TOLERANCE)} m of the tangent legs; intermediate easing curves are not modelled. Failure to join is not proof that no ČSN-compliant alignment exists`; },
   };
+  };
+  /** a bend's rules, design speed and rule texts */
+  const atMemo = new Map<HorizontalRules, { RR: HorizontalRules; speed: number; lt: number; plain: number; rules: ReturnType<typeof texts> }>();
+  const at = (k: number) => {
+    const RR = al.rulesAt?.[k] ?? al.rules;
+    let m = atMemo.get(RR);
+    if (!m) { const v = RR.speed ?? speed; m = { RR, speed: v, lt: RR.transition, plain: Math.ceil(RR.plainRadius), rules: texts(RR, v) }; atMemo.set(RR, m); }
+    return m;
+  };
+  const rules = texts(al.rules, speed);
   // fixes that need the design itself (only when the caller passed it; never in the radius search).
   // A search costs ~25 ms on a 13-bend route, so only the first few bends get one per evaluation.
   const cache = new Map<number, ReturnType<typeof radiusOptions>>();
@@ -265,11 +279,20 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     });
   }
   for (const u of al.units) {
+    const { RR, speed, lt, plain, rules } = at(u.first);
     const where = { s0: u.sStart, s1: Math.max(u.sEnd, u.sStart), pi: u.first, pis: range(u.first, u.last) };
     const easeNeed = (u.transitions * lt) / 2;
     if (u.first === u.last) {
       const c = al.curves[u.first];
-      if (c.r < RR.minRadius - tol) {
+      if (RR.hairpin && c.r < RR.minRadius - tol) {
+        out.push({
+          kind: 'radius', ...where,
+          title: `Hairpin at ${bend(c.index)} is too tight`,
+          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto`,
+          detail: `Its radius is ${R(c.r)}; a hairpin needs at least ${R(RR.minRadius)}.`,
+          basis: 'norm', rule: 'ČSN 73 6101:2000 §8.5.7, table 12: hairpins of at least 30 m with 8 % banking, driven at 30 km/h (research/54 §1)',
+        });
+      } else if (c.r < RR.minRadius - tol) {
         out.push({
           kind: 'radius', ...where,
           title: `${cap(bend(c.index))} is too sharp for ${speed} km/h`,
@@ -336,6 +359,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     }
   }
   for (const j of al.joints) {
+    const { RR, rules } = at(j.to >= 0 ? j.to : Math.max(0, j.from));
     const a = j.from >= 0 ? al.curves[j.from] : null, b = j.to >= 0 ? al.curves[j.to] : null;
     const where = { s0: j.s0, s1: j.s1, pi: j.to >= 0 ? j.to : j.from, pis: [j.from, j.to].filter((k) => k >= 0) };
     if (j.kind === 'compound') {
@@ -431,7 +455,10 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
 
 // ---- vertical (roads) ----------------------------------------------------------------------------
 
-export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number, rail = false): Violation[] {
+/** Norms that vary along the road: a stretch's own design speed at a chainage (M4) */
+export type StretchNorms = (s: number) => SpeedNorms;
+
+export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt: GradeLimit, rail = false, stretch?: StretchNorms): Violation[] {
   const out: Violation[] = [];
   const last = p.pts.length - 1;
   // "the height point at km …": the points carry no numbers in the profile, the station finds them
@@ -439,14 +466,15 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
   // track grades in per mille, road grades in per cent
   const G = (g: number) => rail ? `${fmt(Math.abs(g) * 1000, 1)} ‰` : `${fmt(Math.abs(g) * 100, 1)} %`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
-  const gradeRule = rail && maxGradient > RAIL_MAX_GRADIENT + 1e-9 ? `Game rule: a rebuilt stretch of a line may be as steep as that line is there, ${fmt(maxGradient * 1000, 1)} ‰`
+  const gradeRule = (maxGradient: number) => rail && maxGradient > RAIL_MAX_GRADIENT + 1e-9 ? `Game rule: a rebuilt stretch of a line may be as steep as that line is there, ${fmt(maxGradient * 1000, 1)} ‰`
     : rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
     : norms.norm ? `${norms.norm}: at most ${pct(maxGradient)} % gradient for this road`
-    : `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
+    : `ČSN 73 6101: at most ${pct(maxGradient)} % gradient for this road here (by the steepness of the ground around it; less in a hairpin)`;
   for (let i = 0; i < p.grades.length; i++) {
     const g = p.grades[i];
-    if (Math.abs(g) <= maxGradient + 1e-6) continue;
     const a = p.pts[i], b = p.pts[i + 1], L = b.s - a.s;
+    const maxGradient = gradeLimitOf(maxGradientAt, a.s, b.s);
+    if (Math.abs(g) <= maxGradient + 1e-6) continue;
     const dz = (Math.abs(g) - maxGradient) * L; // height to take out of this stretch
     const rise = g > 0;
     // move one interior end of the stretch; prefer the one whose other grade stays (more) within the limit
@@ -468,7 +496,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
       fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : 'Pin a lower / higher height here, or make the route longer',
       detail: `Between ${vpi(i)} and ${vpi(i + 1)} the road ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Automatic road height stays within the limit when it can.`,
-      basis: 'norm', rule: gradeRule,
+      basis: 'norm', rule: gradeRule(maxGradient),
     });
   }
   const reported = new Set<string>();
@@ -476,16 +504,17 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     if (c.type === 'none') continue;
     const where = { s0: c.s - c.lenEff / 2, s1: c.s + c.lenEff / 2, vpi: c.index };
     const crest = c.type === 'crest';
-    const min = crest ? norms.minCrestRadius : norms.minSagRadius;
+    const n = stretch?.(c.s) ?? norms;
+    const min = crest ? n.minCrestRadius : n.minSagRadius;
     const word = crest ? 'Hilltop' : 'Dip';
     if (c.r < min - 1e-6) {
       out.push({
         kind: c.type, ...where,
         title: `${word} too sharp`,
         fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to ≥ ${fmt(min)} m`,
-        detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
-        basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
-          : `${norms.verticalNorm ?? norms.norm ?? 'ČSN 73 6101 (older edition, provisional)'}: ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
+        detail: `Its radius is ${fmt(c.r)} m; ${n.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
+        basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${n.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
+          : `${n.verticalNorm ?? n.norm ?? 'ČSN 73 6101'}: ${crest ? 'crest' : 'sag'} curves at ${n.speed} km/h need a radius of at least ${fmt(min)} m`,
       });
     }
     if (c.lenEff < c.len - 1e-3) {
@@ -518,8 +547,8 @@ export const ROAD_CHECKS: CheckFamily = {
   horizontal(al, norms, input) {
     return horizontalViolations(al, norms.speed, input);
   },
-  vertical(p, norms, maxGradient, rail) {
-    return verticalViolations(p, norms, maxGradient, rail);
+  vertical(p, norms, maxGradient, rail, stretch) {
+    return verticalViolations(p, norms, maxGradient, rail, stretch);
   },
 };
 
@@ -635,14 +664,18 @@ export function categoryViolation(length: number, category: CategoryId, traffic:
   };
 }
 
-export function timeViolation(length: number, speed: number, travelMin: number, maxMin: number): Violation {
-  const maxLen = (maxMin * 60 * speed) / 3.6;
-  const faster = Object.keys(SPEED_NORMS).map(Number).filter((v) => v > speed && (length / (v / 3.6)) / 60 <= maxMin).sort((p, q) => p - q)[0];
+/** `average`: length ÷ travel time where stretches have their own design speeds (absent: `speed` throughout) */
+export function timeViolation(length: number, speed: number, travelMin: number, maxMin: number, average = speed): Violation {
+  const mixed = Math.abs(average - speed) > 1e-6;
+  const maxLen = (maxMin * 60 * average) / 3.6;
+  const faster = mixed ? undefined : Object.keys(SPEED_NORMS).map(Number).filter((v) => v > speed && (length / (v / 3.6)) / 60 <= maxMin).sort((p, q) => p - q)[0];
   return {
     kind: 'time', goal: true, s0: 0, s1: length,
     title: `Too slow: ${fmt(travelMin, 2)} min`,
-    fix: `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m${faster ? ` (or raise the design speed to ${faster} km/h)` : ''}`,
-    detail: `Travel time is length ÷ speed: ${fmt(length / 1000, 2)} km at ${fmt(speed)} km/h. The target is ${fmt(maxMin, 1)} min, i.e. at most ${fmt(maxLen / 1000, 2)} km at ${fmt(speed)} km/h.${faster ? ' A higher design speed needs wider curves.' : ''}`,
+    fix: mixed ? `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m, or raise the design speed of a slower stretch`
+      : `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m${faster ? ` (or raise the design speed to ${faster} km/h)` : ''}`,
+    detail: mixed ? `Travel time is each stretch's length ÷ its design speed: ${fmt(length / 1000, 2)} km at ${fmt(average)} km/h on average. The target is ${fmt(maxMin, 1)} min.`
+      : `Travel time is length ÷ speed: ${fmt(length / 1000, 2)} km at ${fmt(speed)} km/h. The target is ${fmt(maxMin, 1)} min, i.e. at most ${fmt(maxLen / 1000, 2)} km at ${fmt(speed)} km/h.${faster ? ' A higher design speed needs wider curves.' : ''}`,
     basis: 'game', rule: `Scenario goal: travel time at most ${fmt(maxMin, 1)} min`,
   };
 }

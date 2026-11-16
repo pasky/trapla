@@ -37,7 +37,9 @@ export interface Category {
   /** No at-grade junction or access anywhere along the route: every crossed road is grade-separated or
    * rerouted to such a crossing, never to the route's ends (motorway: ČSN 73 6101, research/08). */
   gradeSeparated?: boolean;
-  /** Category's own max longitudinal gradient by terrain class; absent = the scenario's road value. */
+  /** Category's own max longitudinal gradient by terrain class; absent = the scenario's road value.
+   * Roads and motorways: ČSN 73 6101:2018 table by category × terrain (flat / hilly / mountainous), scanned in
+   * Šilhan, ČVUT FD thesis 2021, tab. 8 (research/47 §1.1); the game's terrain classes are hilly and mountainous. */
   maxGradient?: Record<TerrainClass, number>;
   /** crown width (koruna), m */
   crownWidth: number;
@@ -83,7 +85,7 @@ export interface Category {
 export const CATEGORIES: Record<CategoryId, Category> = {
   'S7.5': {
     id: 'S7.5', mode: 'road', label: 'S 7.5 (class II road)', enabled: true, crownWidth: 7.5,
-    speeds: [90, 80, 70], roadClass: 'II', legalClasses: ['II', 'III'],
+    speeds: [90, 80, 70], roadClass: 'II', legalClasses: ['II', 'III'], maxGradient: { hilly: 0.07, mountainous: 0.09 },
     normPerKm: { hilly: 36_142_000, mountainous: 41_448_000 },
     normCodes: { hilly: 'A.1.S2.7,5.NER', mountainous: 'A.1.S2.7,5.NEH' },
     bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', tunnelTubes: 1,
@@ -91,7 +93,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   },
   'S9.5': {
     id: 'S9.5', mode: 'road', label: 'S 9.5 (class I road)', enabled: true, crownWidth: 9.5,
-    speeds: [90, 80, 70], roadClass: 'I', legalClasses: ['I', 'II'],
+    speeds: [90, 80, 70], roadClass: 'I', legalClasses: ['I', 'II'], maxGradient: { hilly: 0.06, mountainous: 0.08 },
     normPerKm: { hilly: 56_912_000, mountainous: 67_982_000 },
     normCodes: { hilly: 'A.1.S1.9,5.NER', mountainous: 'A.1.S1.9,5.NEH' },
     bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', tunnelTubes: 1,
@@ -99,7 +101,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   },
   'S11.5': {
     id: 'S11.5', mode: 'road', label: 'S 11.5 (class I road)', enabled: true, crownWidth: 11.5,
-    speeds: [90, 80, 70], roadClass: 'I', legalClasses: ['I'],
+    speeds: [90, 80, 70], roadClass: 'I', legalClasses: ['I'], maxGradient: { hilly: 0.06, mountainous: 0.075 },
     normPerKm: { hilly: 68_894_000, mountainous: 82_163_000 },
     normCodes: { hilly: 'A.1.S1.11,5.NER', mountainous: 'A.1.S1.11,5.NEH' },
     bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', tunnelTubes: 1,
@@ -137,8 +139,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   // D27.5 bridge row per km of the average of the two parallel bridges, one 2-lane tube per direction.
   'D27.5': {
     id: 'D27.5', mode: 'motorway', label: 'D 27.5 (motorway)', enabled: false, crownWidth: 27.5, paired: true, gradeSeparated: true,
-    // PROVISIONAL: older-edition ČSN 73 6101 D26.5/D27.5 maxima (VUT "Aplikace ČSN 73 6101" p. 10: 4 % hilly,
-    // 4.5 % mountainous); current 2018 values not found in public sources (research/22 §2, research/33 §1).
+    // ČSN 73 6101:2018 D 27.5: 4 % hilly, 4.5 % mountainous (exceeding needs the road authority's consent)
     maxGradient: { hilly: 0.04, mountainous: 0.045 },
     speeds: [130, 120, 110], roadClass: 'motorway',
     normPerKm: { hilly: 187_632_000, mountainous: 214_512_000 },

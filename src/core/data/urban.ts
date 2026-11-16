@@ -82,8 +82,9 @@ export const URBAN_LAND = {
 // Urban ("intravilán") construction rates — SFDI SPK CN 2026, research/data/spk-cn-2026-oceneni.csv
 // ---------------------------------------------------------------------------------------------
 export const URBAN_RATES = {
-  /** "other objects" surcharge in built-up areas: B.1.2 … B.7.2 = 6 + 7.5 + 10 + 10 + 10 + 1.2 + 4.6 % */
-  otherObjectsSurcharge: 0.493,
+  /** "other objects" surcharge in built-up areas: B.1.2 … B.7.2 without B.6 = 6 + 7.5 + 10 + 10 + 10 + 4.6 %
+   * (B.6 technology +1.2 % only on motorways, or streets with traffic signals: PRICES.technologySurcharge) */
+  otherObjectsSurcharge: 0.481,
   /** A.3.R.2.NI.K bored 2-lane tunnel, urban, up to 500 m: CZK per km */
   tunnelShortPerKm: 2_203_693_000,
   /** A.3.R.2.NI.D bored 2-lane tunnel, urban, over 500 m: CZK per km */

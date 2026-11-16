@@ -6,7 +6,7 @@ import { retainingAssembly } from './data/remedies';
 import type { FootprintRoute } from './footprint';
 import { cellBounds, clipFootprint, insideFootprint, type FootprintCell, type FootprintGrid, type Point2 } from './footprint-geometry';
 import type { RoadNet } from './roadnet';
-import { waterWidth } from './watercourses';
+import { barrelLength, waterSize, waterWidth } from './watercourses';
 import { BUILTUP_BIT, CLASS_BITS, LC, RAIL_CROSSING_BIT, RIVER_CROSSING_BIT, type Terrain } from './terrain';
 import * as dm from './detmath';
 
@@ -485,7 +485,10 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
     }
     // Preserve endpoints even in a diagnosed, infeasible proposal.
     for (const [i, z] of fixed) path[i].z = z;
-    let length = 0, cost = 0, retainingArea = 0, retainingCost = 0;
+    let length = 0, cost = 0, retainingArea = 0, retainingCost = 0, culvertCost = 0, own: Set<number> | undefined;
+    /** Streams (not rivers) the old road crosses on the stretch rebuilt. */
+    const ownStreams = () => own ??= new Set(terrain.watercourses?.intersections(source.length, source.map(q => q.d), source.map(q => q.x), source.map(q => q.y))
+      .filter(w => w.waterKind !== 'river').map(w => w.id) ?? []);
     const wall = (height: number, length: number) => {
       if (height > MAX_SUPPORT) problems.add('approach support exceeds 10 m');
       if (height <= 0.01) return;
@@ -545,10 +548,19 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
         const cell: FootprintCell = { ...mid, i: h.i, s: r.s[h.i], tx: (q.x - p.x) / len, ty: (q.y - p.y) / len, along: len / 2, left: half, right: half };
         raster(cell);
         terrain.watercourses?.nearSegments(cellBounds(cell, terrain.watercourses.maxHalfWidth), channel => {
-          if (clipFootprint(channel, cell, waterWidth(channel.reach) / 2)) problems.add('path intersects water/rail');
+          if (clipFootprint(channel, cell, waterWidth(channel.reach) / 2) && !ownStreams().has(channel.reach.id)) problems.add('path intersects water/rail');
         });
+        // A stream the old road already crossed here is crossed again by the rebuilt one: its culvert
+        // rebuilt where the new line meets it, sized like a reroute's (link-route.ts).
+        for (const w of ownStreams().size ? terrain.watercourses!.intersections(2, [0, len], [p.x, q.x], [p.y, q.y]) : [])
+          if (ownStreams().has(w.id)) {
+            const size = waterSize(w, row.width + 2 * 1.5 * waterSize(w, row.width + 3).minHeight);
+            if (size.type === 'bridge') problems.add('path intersects water/rail');
+            else culvertCost += barrelLength(w, row.width + 2 * 1.5 * size.minHeight) * size.perM + 2 * size.head;
+          }
       }
     }
+    cost += culvertCost;
     let turnaroundArea = 0, apronCost = 0;
     if (turn) {
       // A full disk minus the incoming half-ribbon's disk intersection: no double pavement bill.

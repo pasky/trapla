@@ -30,7 +30,14 @@ export interface Profile {
   curves: VCurve[];
 }
 
-export function buildProfile(pts: VPI[], minCrest: number, minSag: number): Profile {
+/** A minimum vertical radius: one for the whole road, or by chainage (a stretch's own design speed). */
+export type RadiusLimit = number | ((s: number) => number);
+/** The steepest grade: one for the whole road, or for the stretch between two chainages (terrain class,
+ * hairpins): the smallest limit of the stations on it. */
+export type GradeLimit = number | ((s0: number, s1: number) => number);
+export const gradeLimitOf = (g: GradeLimit, s0: number, s1: number) => typeof g === 'number' ? g : g(s0, s1);
+
+export function buildProfile(pts: VPI[], minCrest: RadiusLimit, minSag: RadiusLimit): Profile {
   const n = pts.length;
   const grades: number[] = [];
   for (let i = 0; i < n - 1; i++) {
@@ -42,7 +49,8 @@ export function buildProfile(pts: VPI[], minCrest: number, minSag: number): Prof
     const g1 = grades[i - 1], g2 = grades[i];
     const dg = g2 - g1;
     const type = Math.abs(dg) < 1e-9 ? 'none' : dg < 0 ? 'crest' : 'sag';
-    const r = pts[i].r ?? (type === 'crest' ? minCrest : minSag);
+    const min = type === 'crest' ? minCrest : minSag;
+    const r = pts[i].r ?? (typeof min === 'number' ? min : min(pts[i].s));
     const len = type === 'none' ? 0 : r * Math.abs(dg);
     curves.push({ index: i, s: pts[i].s, z: pts[i].z, g1, g2, type, r, len, lenEff: len });
   }

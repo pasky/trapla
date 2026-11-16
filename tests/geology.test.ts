@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { autoProfile } from '../src/core/autoprofile';
-import { flatEarthGeometry } from '../src/core/earthengineering';
 import { UNKNOWN_GROUND, type GroundData } from '../src/core/ground';
-import { computeSections, flatCutBands } from '../src/core/sections';
+import { computeSections, flatSection } from '../src/core/sections';
 import { Terrain } from '../src/core/terrain';
 import { buildProfile, elevations } from '../src/core/vertical';
 
@@ -23,15 +22,18 @@ describe('ground grid', () => {
     expect(t.groundAt(100, 75)).toBe(rock);
     expect(t.groundAt(-1, 125).normMix).toBe(true);
     expect(t.groundAt(100, 201).normMix).toBe(true);
-    const tpl = { crownWidth: 10, cutSlope: 1.75, fillSlope: 2 };
+    const tpl = { crownWidth: 10 };
     const s = computeSections(t, 1, [100], [100], [1], [0], [90], tpl);
-    const total = flatEarthGeometry(10, 10, 1.75, false).area;
-    expect(s.cut[0]).toBeCloseTo(total, 8);
-    expect(s.cutI[0]).toBeCloseTo(total / 2, 8);
+    // the soil side at 1:1.75, the rock side at 4:1
+    const left = flatSection(-10, 10, soil).area / 2, right = flatSection(-10, 10, rock).area / 2;
+    expect(right).toBeLessThan(left);
+    expect(s.cut[0]).toBeCloseTo(left + right, 8);
+    expect(s.cutI[0]).toBeCloseTo(left, 8);
     expect(s.cutII[0]).toBe(0);
-    expect(s.cutIII[0]).toBeCloseTo(total / 2, 8);
+    expect(s.cutIII[0]).toBeCloseTo(right, 8);
+    expect(s.rockFace[0]).toBeCloseTo(10 * Math.hypot(1, 0.25), 8);
     const unmapped = computeSections(terrain(), 1, [100], [100], [1], [0], [90], tpl);
-    const expected = flatCutBands(10, 10, 1.75);
+    const expected = flatSection(-10, 10).cuts;
     for (const [j, actual] of [unmapped.cutI[0], unmapped.cutII[0], unmapped.cutIII[0]].entries()) {
       expect(actual).toBeCloseTo(expected[j], 8);
     }

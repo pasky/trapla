@@ -471,8 +471,8 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
     if (joined && Math.abs(zf - zr) <= JOINED_TOLERANCE && kf === kr && kf !== KIND.tunnel) {
       // One D 27.5 formation: 50 % of the whole-category norm per direction instead of 60 %, with its
       // surcharge (or price-book markup) on that base.
-      const base = f.parts.roadBase[i] / 6 * (1 + surchargeRate(f.cell.urban[i]))
-        + r.parts.roadBase[j] / 6 * (1 + surchargeRate(r.cell.urban[j])) * len / cellLength(j, r.n, r.ds);
+      const base = f.parts.roadBase[i] / 6 * (1 + surchargeRate(f.cell.urban[i], true))
+        + r.parts.roadBase[j] / 6 * (1 + surchargeRate(r.cell.urban[j], true)) * len / cellLength(j, r.n, r.ds);
       out.parts.joinedBase += base; out.joinedLength += len;
     }
     if (kf !== KIND.earth || kr !== KIND.earth) continue;
@@ -498,7 +498,7 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
         if (x < d - w && x <= w && x >= -w && (fillR ? b > zf + 0.3 : b < zf - 0.3)) worst = Math.max(worst, w - lo);
       }
       if (worst > 0) clash(f.s[i], worst, false);
-      const u = f.cell.urban[i], sur = 1 + surchargeRate(u);
+      const u = f.cell.urban[i], sur = 1 + surchargeRate(u, true);
       out.parts.overlapEarth += (fill * (rf.fill + rf.haul) + cut * (rf.cut + rf.haul)) * len * sur;
       out.overlapFill += fill * len; out.overlapCut += cut * len;
       out.parts.overlapLand += (hi - lo) * len * (landPerM2(u) + f.cell.forest[i] * LAND.forestExtraPerM2 + PRICES.topsoilDepth * PRICES.topsoil * sur);

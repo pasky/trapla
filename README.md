@@ -376,6 +376,17 @@ Final-sweep P2s (`node scripts/p2-scene.mjs`, research/58): [III/1057 rebuilt pa
 which roads' bills moved, the bend label stays clear of the map's key](docs/screenshots/195-d3-1057-rebuilt-change-explained.png),
 [a drag's ≈ price says what it leaves out; the direction card names the place](docs/screenshots/196-d3-0302-drag-estimate.png),
 [Nová Paka: the photo's construction note while the photo is on](docs/screenshots/197-nova-paka-photo-note.png).
+Design realism (cost model 31, docs/design-realism-plan.md; `node scripts/realism-shots.mjs`): [best km 4.93: a
+21 m cut, its rock face at 4:1 and netted](docs/screenshots/210-rock-cut-netted.png),
+[km 11.38: a 26 m embankment on VL 1 slopes over a stream in a buried bridge](docs/screenshots/211-vl1-fill-buried-bridge.png)
+([close](docs/screenshots/212-buried-bridge-close.png)),
+[a bend's card: design speed here 90 / 80 / 70, at 70 km/h a 205 m curve](docs/screenshots/213-bend-card-design-speed.png),
+[a hairpin's card](docs/screenshots/214-hairpin-card.png) and [the hairpins widened on steep ground](docs/screenshots/215-hairpin-widened.png),
+[a box under our embankment stuck out of the slope](docs/screenshots/216-box-portal-before.png) → [it ends at the
+slope behind a headwall, the way runs on between wing walls](docs/screenshots/217-box-portal-after.png)
+([before](docs/screenshots/218-box-portal-before-2.png) / [after](docs/screenshots/219-box-portal-after-2.png) from the other side),
+[D3-0302 km 3.51: the local road straightened over our motorway on a 48 m bridge](docs/screenshots/220-d3-0302-road-over-motorway-card.png),
+[that bridge and its ramps close up](docs/screenshots/221-d3-0302-overbridge-and-reconnection.png) (the secondary road 150 m on is led to it).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

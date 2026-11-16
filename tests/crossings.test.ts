@@ -6,7 +6,7 @@ import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet'
 import { bridgeModel } from '../src/core/bridge';
 import { ENDPOINT_JUNCTIONS, JUNCTION, MINOR_CROSSROADS, ROAD_CLASSES } from '../src/core/data/urban';
 import { sideJunctionCost } from '../src/core/project-replacement';
-import { LOWERING_RULES, underpassAssembly } from '../src/core/data/remedies';
+import { LOWERING_RULES, underpassAssembly, underpassOpenCost } from '../src/core/data/remedies';
 import { chooseStructures, KIND } from '../src/core/structures';
 import { CrossingRenderer } from '../src/render/crossings';
 import type { View } from '../src/render/view';
@@ -258,10 +258,16 @@ describe('crossing geometry and map overlay', () => {
     buildCrossingGeometry(high, { ...route, kind: new Uint8Array(s.length) }, () => 393, roads);
     const c = high[0], g = c.geometry!, u = g.underpass!;
     expect(c.type).toBe('underpass'); expect(g.diagnostics).toBeUndefined();
-    expect(c.underpassLength).toBeCloseTo(20, 4); // toe to toe across the 20 m footprint
-    expect(crossingPlanLength(g.road!.slice(u.start, u.end + 1))).toBeCloseTo(c.underpassLength!, 6);
+    // The way's toes across the 20 m footprint; the box ends where our slope comes down to its roof, from
+    // there to the toes the way runs between wing walls as high as the slope beside it.
+    expect(crossingPlanLength(g.road!.slice(u.start, u.end + 1))).toBeCloseTo(20, 4);
+    expect(c.underpassLength).toBeCloseTo(u.portals![1] - u.portals![0], 6);
+    expect(c.underpassLength).toBeGreaterThan(5); expect(c.underpassLength).toBeLessThan(15);
+    for (const wing of u.wings!) expect(Math.max(...wing.map(w => w.h))).toBeCloseTo(box.height + box.roof, 2);
     expect(g.road!.every(p => p.z === 393 && p.surface === 'terrain')).toBe(true); // the way keeps its level
-    expect(c.cost).toBeCloseTo(c.underpassLength! * box.perM + 2 * box.head, 6);
+    const open = (w: NonNullable<typeof u.wings>) => w.reduce((sum, wing) => sum + underpassOpenCost(wing, ROAD_CLASSES.track.roadPerKm[0] / 1000), 0);
+    expect(open(u.wings!)).toBeGreaterThan(0);
+    expect(c.cost).toBeCloseTo(c.underpassLength! * box.perM + 2 * box.head + open(u.wings!), 6);
     expect(auditCrossingGeometry(high, route, () => 393, roads)).toEqual([]);
     // A low embankment: the track is lowered into a cut on ramps at its class gradient, its low point drained.
     const low = [cross(2, 3200, 'track', 4)];
@@ -274,7 +280,7 @@ describe('crossing geometry and map overlay', () => {
     expect(l.approachLength).toBeGreaterThanOrEqual(ideal - 1e-6); expect(l.approachLength).toBeLessThanOrEqual(ideal + 20); // feet on 10 m way samples
     expect(lg.road!.slice(lg.underpass!.start, lg.underpass!.end + 1).every(p => Math.abs(p.z - (396 - l.lowered!)) < 1e-6)).toBe(true);
     expect(l.drainage).toBe('pump'); // flat ground: no lower ground for a gravity pipe
-    expect(l.cost).toBeCloseTo(l.underpassLength! * box.perM + 2 * box.head + l.approachLength! * ROAD_CLASSES.track.roadPerKm[0] / 1000 + l.drainCost!, 6);
+    expect(l.cost).toBeCloseTo(l.underpassLength! * box.perM + 2 * box.head + open(lg.underpass!.wings!) + l.approachLength! * ROAD_CLASSES.track.roadPerKm[0] / 1000 + l.drainCost!, 6);
     expect(auditCrossingGeometry(low, route, () => 396, roads)).toEqual([]);
     // Lower than the deepest allowed lowering: the box does not fit.
     const lowest = box.minHeight - LOWERING_RULES.maxDepth, tooLow = [cross(2, 3200, 'track', lowest - 1)];
@@ -313,15 +319,17 @@ describe('crossing geometry and map overlay', () => {
     expect(ridge[0].geometry!.diagnostics).toBeUndefined();
     expect(ridge[0].lowered).toBeGreaterThan(0.5); expect(ridge[0].lowered).toBeLessThan(2);
     expect(auditCrossingGeometry(ridge, flat, bump, net)).toEqual([]);
-    // A 30° track: the 40 m footprint is an 80 m box, dearer than its measured link to a junction.
+    // A 30° track under a 12 m fill: a ≈ 60 m box between its portals (wings to the toes 90 m apart along
+    // it), dearer than its measured link to a junction.
+    const high: CrossingRoute = { ...flat, grade: new Float64Array(t.length).fill(12), width: new Float64Array(t.length).fill(46) };
     const skew = new RoadNet({ cls: ['primary', 'track'], ways: [[0, 1000, -300, 1000, 300], [1, 1500 - 300 * Math.sqrt(3), -300, 1500 + 300 * Math.sqrt(3), 300]] });
     const cs = [cross(0, 1000, 'primary', 7, 100), cross(1, 1500, 'track', 7, 150)];
-    resolveCrossings(cs, 3000, kind, flat.width, new Uint8Array(t.length), undefined, []);
+    resolveCrossings(cs, 3000, kind, high.width, new Uint8Array(t.length), undefined, []);
     expect(cs[1].type).toBe('underpass'); // the footprint-width estimate
-    buildCrossingGeometry(cs, flat, () => 0, skew);
+    buildCrossingGeometry(cs, high, () => 0, skew);
     expect(cs[1].type).toBe('diversion'); expect(cs[1].geometry!.diagnostics).toBeUndefined();
     const box = underpassAssembly('track', ROAD_CLASSES.track.roadPerKm[0] / 1000);
-    expect(cs[1].cost).toBeLessThan(80 * box.perM + 2 * box.head);
+    expect(cs[1].cost).toBeLessThan(60 * box.perM + 2 * box.head);
   });
 
   it('straightens a skewed track whose box would be too long, and moves a track that comes back out on its own side', () => {
@@ -336,12 +344,14 @@ describe('crossing geometry and map overlay', () => {
     const c = cs[0], g = c.geometry!, u = g.underpass!;
     expect(c.type).toBe('underpass'); expect(g.diagnostics).toBeUndefined();
     expect(c.squared).toBeCloseTo(20, 0);
-    expect(c.underpassLength).toBeCloseTo(40, 0); // square across the 40 m footprint
+    expect(crossingPlanLength(g.road!.slice(u.start, u.end + 1))).toBeCloseTo(40, 0); // toes square across the 40 m footprint
+    expect(c.underpassLength).toBeCloseTo(u.portals![1] - u.portals![0], 6);
     const a = g.road![u.start], b = g.road![u.end];
     expect(Math.abs(b.x - a.x)).toBeLessThan(0.5); // at a right angle to our road (along x)
     const box = underpassAssembly('track', ROAD_CLASSES.track.roadPerKm[0] / 1000);
     expect(c.realignLength).toBeGreaterThan(0);
-    expect(c.cost).toBeCloseTo(c.underpassLength! * box.perM + 2 * box.head + c.realignCost!, 6);
+    const open = u.wings!.reduce((sum, wing) => sum + underpassOpenCost(wing, ROAD_CLASSES.track.roadPerKm[0] / 1000), 0);
+    expect(c.cost).toBeCloseTo(c.underpassLength! * box.perM + 2 * box.head + open + c.realignCost!, 6);
     expect(c.realignCost).toBeCloseTo(c.realignLength! * ROAD_CLASSES.track.roadPerKm[0] / 1000, 6);
     // bends no sharper than the class's smallest radius (three-point circles along the new line)
     for (let i = 1; i + 1 < g.road!.length; i++) {

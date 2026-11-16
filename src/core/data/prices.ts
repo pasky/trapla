@@ -56,8 +56,14 @@
  * 30: more projects of several roads are priced: a rebuilt stretch's end meets another road as at a junction
  * also where it stopped short of that road's works (its old road beyond the end, or what is left of it, under
  * them); a closure's detour interacts only with changes within its reach; roads one above the other are
- * compared point by point. reroute-takeover-audit (D11): unpriced 47 → 13 of 292. Single-road bills unchanged. */
-export const COST_MODEL_VERSION = 30;
+ * compared point by point. reroute-takeover-audit (D11): unpriced 47 → 13 of 292. Single-road bills unchanged.
+ * 31: design realism (research/46–54): side slopes as built (VL 1 2022 fills, cuts by ground: sound rock 4:1
+ * netted), no unsourced high-earthworks reserve, the "other objects" surcharge without B.6 technology on
+ * two-lane roads (29.4 / 48.1 %), ČSN 73 6101:2018 vertical radii and gradients by category; a route ending on
+ * a motorway may meet its other carriageway in its end cell; deep culverts become buried bridges, soft ground
+ * under fills is treated; design speed per bend and hairpins (ČSN 73 6101:2000 §8.5.7); grade limits by terrain
+ * class; an underpass box ends where our slope covers its roof, wing walls beyond. */
+export const COST_MODEL_VERSION = 31;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
@@ -85,8 +91,12 @@ export const PRICES = {
   topsoil: 83,
   /** PROVISIONAL: topsoil depth stripped over the footprint, m */
   topsoilDepth: 0.3,
-  /** SPK CN "other objects" surcharge, rural: +30.6 % of construction */
-  otherObjectsSurcharge: 0.306,
+  /** SPK CN "other objects" surcharge, rural, two-lane roads: B.1–B.5 + B.7 = 6 + 5 + 6 + 3.7 + 3.7 + 5 %
+   * = +29.4 % of construction (SPK průvodní zpráva p. 15: B.6 technology "pouze u dálnic a směrově dělených
+   * silnic a u městských komunikací se světelnou signalizací"; research/46 §2) */
+  otherObjectsSurcharge: 0.294,
+  /** B.6 technology (tolls, SOS, traffic management): +1.2 %, motorways (divided roads) only */
+  technologySurcharge: 0.012,
   /** SPK CN A.3.R.2.NE.K bored 2-lane tunnel, rural, up to 500 m: CZK per km */
   tunnelShortPerKm: 1_487_547_000,
   /** SPK CN A.3.R.2.NE.D bored 2-lane tunnel, rural, over 500 m: CZK per km */
@@ -138,21 +148,46 @@ export const LAND = {
   forestExtraPerM2: 50,
 };
 
+/**
+ * Side slopes of fills and cuts, horizontal : vertical (research/48 §1). Fills: MD ČR VL 1 (2022) sheet
+ * 32-01, bands measured from the toe up: up to 3 m 1:2.5; above it 1:1.5 on fills up to 6 m high; on higher
+ * fills 3–6 m 1:1.75 and above 6 m 1:1.5; no benches (the 1995 counterweight berm is optional). Cuts by the
+ * ground the face stands in (the ČGS weathering profile, research/10): soil and weathered rock as soils
+ * (VL 2 1995 sheet 301.04 note 2): not steeper than 1:2 in cuts up to 2 m deep, else 1:1.75, a 1 m bench every
+ * 6 m of height (I/27 Klatovy EIA: 1 m bench in cuts over 6 m; the repeat every 6 m PROVISIONAL); sound rock
+ * (class III) 4:1 with 1 m benches every 5 m (II/157 Srubec 2025 permit: 4:1 with 1.0 m benches; VL 2 sheet
+ * 301.07: 5 m between benches), its face netted (OTSKP 289941, 2,513.47 CZK/m²; that every rock face is
+ * netted is PROVISIONAL, SPOŽES F16 all-in remediation is 4,300). Railway formations use the same shapes
+ * (PROVISIONAL: no SŽ slope source researched). Not modelled: stepped ground under fills on slopes over 10 %
+ * (OTSKP 12673), counterweight berms, landslide-prone flysch at 1:2.5.
+ */
+export const SIDE_SLOPES = {
+  fillToe: 2.5, fillToeHeight: 3, fillMiddle: 1.75, fillUpper: 1.5, fillUpperFrom: 6,
+  /** The standard profile holds for fills up to 10 m (VL 2 1995 sheet 302.02 "V = 6,00–10,00"; ČSN 73 6133:1998
+   * "1:1,5 – 6,0 m až 10,0 m"); a higher soil fill is designed individually (VL 1 2022 note 1). Game assumption
+   * for that design (research/52): the part above 6 m at 1:1.8 (Adam, Grundbau-Taschenbuch tab. 4: 1:1.5–1.8 above
+   * 10 m, 1:1.8–2 for silty/clayey sands), reached linearly between 10 and 15 m so the shape has no step. Not
+   * modelled: rock fill at 1:1.5 at any height (the route's cut is pooled), counterweight berms on weak ground. */
+  fillStandardTo: 10, fillHighUpper: 1.8, fillHighBlend: 5,
+  cutShallow: 2, cutShallowDepth: 2, cutSoil: 1.75, cutRock: 0.25,
+  soilBenchEvery: 6, rockBenchEvery: 5, benchWidth: 1,
+  rockFacePerM2: 2_513.47,
+};
+
+/**
+ * Subgrade treatment under fills on soft cohesive ground (research/48 §5, /52): VL 1 2022 sheet 32-01 note 1
+ * asks high fills for bearing capacity / settlement checks and "popřípadě úpravy podloží"; D11 1107 treated the
+ * subgrade under every fill over 3 m on its fine clayey soils. The SPK road norm leaves out "zlepšování
+ * podloží" (research/46 §2), so it is billed: OTSKP 215662 hydraulic binder ≤ 1.5 %, ≤ 0.5 m deep, 226.28 CZK/m²
+ * over the fill's footprint (the binder share PROVISIONAL: the middle of the 1–2 % items). Ground: the
+ * Quaternary loams, floodplain, peat, mixed slope/stream deposits and made ground of the ČGS profiles
+ * (pipeline/ground_profiles.json keys; PROVISIONAL which count as soft). Vertical drains, consolidation
+ * time and counterweight berms are not priced (no source).
+ */
+export const SUBGRADE = { fromHeight: 3, perM2: 226.28, grounds: ['loam', 'alluvium', 'peat', 'mixed', 'fill'] as readonly string[] };
+
 /** Structure selection parameters (game rules, not norm values) */
 export const STRUCTURE_RULES = {
-  /** PROVISIONAL stepped-slope geometry, not a quoted ČSN requirement. I/27 Klatovy's EIA uses
-   * 1 m benches in cuts >6 m; repeated 6 m lifts and 2 m fill benches are game assumptions.
-   * See research/15-bridge-vs-embankment.md and 15-followup.md. */
-  bermInterval: 6,
-  fillBermWidth: 2,
-  cutBermWidth: 1,
-  /** PROVISIONAL stability/ground-treatment reserve above 6 m, CZK/m³ per additional metre.
-   * D11 1107 documents drains, granular mattresses, reinforced slopes and settlement monitoring;
-   * no isolated priced BOQ was recovered. These are sensitivity parameters, NOT tender rates.
-   * Applied independently of the mass-balance material price (free soil is not free engineering). */
-  engineeringFromHeight: 6,
-  highFillPerM3PerM: 35,
-  highCutPerM3PerM: 20,
   /** a bridge is only considered where the grade is at least this high above ground, m */
   bridgeMinHeight: 4,
   /** a bored tunnel needs at least this much cover above the crown, m (tunnel crown ≈ 8 m) */

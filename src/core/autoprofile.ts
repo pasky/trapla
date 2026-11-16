@@ -36,7 +36,7 @@
 // - Hard limits on h (`minH`, `maxH`, `eitherH`) are per station but placed by `clearanceS` (the
 //   chainage they apply at); give a new one its exact chainage there.
 
-import { buildProfile, type VPI } from './vertical';
+import { buildProfile, gradeLimitOf, type GradeLimit, type RadiusLimit, type VPI } from './vertical';
 import { GRADE_PIN_TOLERANCE, gradePinViolations, type GradePin, type GradePinViolation } from './grade-pins';
 
 export interface BalanceSearch {
@@ -58,9 +58,17 @@ export interface AutoProfileOptions {
   /** Absolute-chainage heights on the smoothed grade (±0.5 m). Out-of-route pins are inactive.
    * Endpoint pins constrain, but never replace, the fixed transport endpoints. */
   pins?: readonly GradePin[];
+  /** the steepest grade anywhere (with `gradeAt`: the largest of its limits) */
   maxGradient: number;
+  /** the smallest crest / sag radius anywhere (with `crestAt` / `sagAt`: the smallest of theirs) */
   minCrest: number;
   minSag: number;
+  /** The steepest grade between two chainages where it varies along the road (terrain class, hairpins):
+   * ≤ maxGradient. */
+  gradeAt?: (s0: number, s1: number) => number;
+  /** The smallest crest / sag radius at a chainage where it varies (a stretch's own design speed). */
+  crestAt?: (s: number) => number;
+  sagAt?: (s: number) => number;
   /** cost per metre of road for a grade-minus-ground difference h (m); ignored when `balance` is set */
   costPerM: (h: number, kind?: number, costClass?: number) => number;
   /** Small discrete cost classes (e.g. 0 ordinary / 1 stream), indexed by station. */
@@ -274,9 +282,9 @@ function buildLut(costs: AutoProfileOptions['costPerM'][], classes: number): Cos
 }
 
 /** does the grade line satisfy max gradient and the (effective) vertical radii? */
-export function profileOk(vpis: VPI[], maxGradient: number, minCrest: number, minSag: number): boolean {
+export function profileOk(vpis: VPI[], maxGradient: GradeLimit, minCrest: RadiusLimit, minSag: RadiusLimit): boolean {
   const p = buildProfile(vpis, minCrest, minSag);
-  for (const g of p.grades) if (!(Math.abs(g) <= maxGradient + 1e-9)) return false;
+  for (let i = 0; i < p.grades.length; i++) if (!(Math.abs(p.grades[i]) <= gradeLimitOf(maxGradient, p.pts[i].s, p.pts[i + 1].s) + 1e-9)) return false;
   for (let i = 1; i < vpis.length; i++) if (!(vpis[i].s > vpis[i - 1].s)) return false;
   for (const c of p.curves) {
     if (c.type === 'none') continue;
@@ -295,7 +303,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   // Keep the no-pin path (including empty/inactive saved pins) numerically unchanged.
   const pins = opt.pins?.filter((p) => !Number.isFinite(p.s) || !Number.isFinite(p.z) || (p.s >= 0 && p.s <= L));
   const hasPins = !!pins?.length;
-  const pinChecks = (vpis: VPI[]) => gradePinViolations(opt.pins ?? [], buildProfile(vpis, opt.minCrest, opt.minSag), opt.maxGradient);
+  const crestR: RadiusLimit = opt.crestAt ?? opt.minCrest, sagR: RadiusLimit = opt.sagAt ?? opt.minSag;
+  const gradeL: GradeLimit = opt.gradeAt ?? opt.maxGradient;
+  const pinChecks = (vpis: VPI[]) => gradePinViolations(opt.pins ?? [], buildProfile(vpis, crestR, sagR), opt.maxGradient);
   const finish = (r: AutoProfileResult): AutoProfileResult => {
     if (!hasPins) return r;
     const pinViolations = pinChecks(r.vpis);
@@ -475,7 +485,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     gmin[k] = mn; gmaxEnv[k] = mx;
   }
 
-  const ok = (r: Solved | null): r is Solved => !!r && profileOk(r.vpis, opt.maxGradient, opt.minCrest, opt.minSag);
+  const ok = (r: Solved | null): r is Solved => !!r && profileOk(r.vpis, gradeL, crestR, sagR);
   const okAll = (r: Solved | null): r is Solved => ok(r) && (!hasPins || pinChecks(r.vpis).length === 0);
   const ALL = { ka: 0, kb: nK, fixed: new Map([[0, zA], [nK, zB]]) };
   type Range = typeof ALL;
@@ -631,6 +641,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     add(r.ka); add(r.kb);
     for (const [k, v] of [...r.fixed].sort((a, b) => a[0] - b[0])) { add(k); add(v); }
     add(zA); add(zB); add(L); add(nK); add(corrFrom); add(opt.maxGradient); add(opt.minCrest); add(opt.minSag); add(opt.vpiPenalty ?? NaN); add(pad);
+    // limits that vary along the road: their values on this range's knots
+    for (let k = r.ka; k <= r.kb; k++) {
+      if (opt.gradeAt && k < r.kb) add(opt.gradeAt(knotS[k], knotS[k + 1]));
+      if (opt.crestAt) add(opt.crestAt(knotS[k]));
+      if (opt.sagAt) add(opt.sagAt(knotS[k]));
+    }
     if (r.ka === 0) { add(opt.startGrade ?? NaN); add(opt.startGradeSlack ?? NaN); }
     if (r.kb === nK) { add(opt.endGrade ?? NaN); add(opt.endGradeSlack ?? NaN); }
     for (let k = r.ka; k <= r.kb; k++) {
@@ -727,7 +743,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (Math.abs(gOut - gIn) > 1e-9) vpis.push({ s: knotS[k], z: z[k], r: null });
     }
     vpis.push({ s: L, z: z[nK], r: null });
-    if (!profileOk(vpis, opt.maxGradient, opt.minCrest, opt.minSag)) return null;
+    if (!profileOk(vpis, gradeL, crestR, sagR)) return null;
     const out: AutoProfileResult = { vpis, feasible: true, cost, blockBounds: bounds.slice() };
     if (bal || fixedVals) Object.assign(out, { blockValues: values, materialValue: meanValue(values), ...(bal && !fixedVals ? { balance } : {}) });
     const res = finish(out);
@@ -743,6 +759,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    * last block (the whole route without blocks).
    */
   /** `step` 2: every other cost sample of an interval with the pair's weight (a boundary's corridor). */
+  /** the smallest crest / sag radius at knot k */
+  function crestAtKnot(k: number) { return opt.crestAt ? opt.crestAt(knotS[Math.min(k, nK)]) : opt.minCrest; }
+  function sagAtKnot(k: number) { return opt.sagAt ? opt.sagAt(knotS[Math.min(k, nK)]) : opt.minSag; }
   function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step = 1): Solved | null {
     const { ka, kb, fixed } = range;
     const lut = table.values;
@@ -752,9 +771,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     let ndMax = 0;
     for (let k = ka; k < kb; k++) {
       const d = Dk(k);
-      dzMaxK[k] = Math.floor(((gmax - (k >= corrFrom ? u / corrSpan : 0)) * d) / u + 1e-9);
-      crestK[k] = Math.floor((d * d) / opt.minCrest / u + 1e-9);
-      sagK[k] = Math.floor((d * d) / opt.minSag / u + 1e-9);
+      // (a pass that relaxes the limit relaxes every stretch's in proportion)
+      const gk = opt.gradeAt ? gmax * opt.gradeAt(knotS[k], knotS[k + 1]) / opt.maxGradient : gmax;
+      dzMaxK[k] = Math.floor(((gk - (k >= corrFrom ? u / corrSpan : 0)) * d) / u + 1e-9);
+      crestK[k] = Math.floor((d * d) / Math.max(crestAtKnot(k), crestAtKnot(k + 1)) / u + 1e-9);
+      sagK[k] = Math.floor((d * d) / Math.max(sagAtKnot(k), sagAtKnot(k + 1)) / u + 1e-9);
       if (dzMaxK[k] < 1) return null;
       ndMax = Math.max(ndMax, 2 * dzMaxK[k] + 1);
     }
@@ -869,8 +890,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       const c0 = costStart[k], c1 = costStart[k + 1];
       const zk = (z: number) => zA + z * u + corrAt(k);
       /** valid outgoing dz range for an incoming dz (not at the first knot) */
-      const outLo = (dz: number) => sameD ? dz - crestLim : Math.ceil(((dz * u) / dIn - dMin / opt.minCrest) * d / u - 1e-9);
-      const outHi = (dz: number) => sameD ? dz + sagLim : Math.floor(((dz * u) / dIn + dMin / opt.minSag) * d / u + 1e-9);
+      const outLo = (dz: number) => sameD ? dz - crestLim : Math.ceil(((dz * u) / dIn - dMin / crestAtKnot(k)) * d / u - 1e-9);
+      const outHi = (dz: number) => sameD ? dz + sagLim : Math.floor(((dz * u) / dIn + dMin / sagAtKnot(k)) * d / u + 1e-9);
       // the knot's height correction moves to the next knot's over this interval
       const cIn = corrAt(k), cSlope = (corrAt(k + 1) - cIn) / d;
       for (let zi = 0; zi < Z0; zi++) {
@@ -941,7 +962,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
             if (knotPins && knotPins[k].length && (!first || k === 0)) {
               let matches = true;
               const dg = first ? 0 : (dz2 * u) / d - gIn;
-              const len = Math.abs(dg) * (dg < 0 ? opt.minCrest : opt.minSag);
+              const len = Math.abs(dg) * (dg < 0 ? crestAtKnot(k) : sagAtKnot(k));
               for (const p of knotPins[k]) {
                 const t = p.s - sk;
                 let actual = zk(z) + (t < 0 ? gIn : (dz2 * u) / d) * t;

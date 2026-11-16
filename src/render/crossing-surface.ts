@@ -198,3 +198,19 @@ export function groundSegment(surface: CrossingSurface, i: number): boolean {
   const deck = surface.deck;
   return surface.link || !deck || i < deck.start || i >= deck.end;
 }
+
+export interface UnderpassOpeningPoint { x: number; y: number; nx: number; ny: number; floor: number; top: number }
+/** The open stretches of an underpass's way between our slope's toes and the box portals: per wing,
+ * points along the way (its level `floor`, the wing walls' top `top`) with the way's normal. The walls
+ * stand `box.width / 2 + box.wall` either side of the way; between them our slopes are not drawn. */
+export function underpassOpenings(road: readonly CrossingPoint[], box: NonNullable<CrossingGeometry['underpass']>): UnderpassOpeningPoint[][] {
+  if (!box.wings || road.length < 2) return [];
+  const at = (d: number): UnderpassOpeningPoint => {
+    let k = 0;
+    while (k + 2 < road.length && road[k + 1].d! < d) k++;
+    const a = road[k], b = road[k + 1], t = Math.max(0, Math.min(1, (d - a.d!) / ((b.d! - a.d!) || 1)));
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, nx: -(b.y - a.y) / len, ny: (b.x - a.x) / len, floor: a.z + (b.z - a.z) * t, top: 0 };
+  };
+  return box.wings.filter(w => w.length > 1).map(w => w.map(s => ({ ...at(s.d), top: s.z })));
+}

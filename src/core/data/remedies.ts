@@ -119,6 +119,15 @@ export function sagDrainage(outfall: number | undefined, main: number) {
     ? { kind: 'gravity' as const, pipe: outfall, cost: gullies + outfall * R.pipe + R.outlet }
     : { kind: 'pump' as const, pipe: main, cost: gullies + R.wetWell + R.pumps + main * R.risingMain + R.outlet };
 }
+/** The open stretch of the way between a box portal and our slope's toe, sampled along the way: wing walls
+ * on both sides as high as the slope above the way (`h`, m; none where it is under 5 cm) and the way's own
+ * road (`roadPerM`), CZK. */
+export function underpassOpenCost(wing: readonly { d: number; h: number }[], roadPerM: number) {
+  const walls = (h: number) => h > 0.05 ? 2 * retainingAssembly(h).perM : 0;
+  let cost = 0;
+  for (let k = 1; k < wing.length; k++) cost += (wing[k].d - wing[k - 1].d) * ((walls(wing[k - 1].h) + walls(wing[k].h)) / 2 + roadPerM);
+  return cost;
+}
 /** Per-metre box assembly (concrete incl. rebar, roof waterproofing, bedding) plus the crossed
  * road's own SPK pavement through the box; heads are separate. */
 export function underpassAssembly(size: UnderpassSize, roadPerM: number) {

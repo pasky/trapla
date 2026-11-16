@@ -86,6 +86,11 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   higher-ranking line; `scripts/reroute-takeover-audit.ts` still leaves 13 of 292 D11 bends near our reroutes
   unpriced (mostly the rebuilt road's own body within 10 m of our embankment, a real conflict).
 - Junction approaches on class I–III roads are not ramp-capped.
-- Vertical-curve minima and max gradient are older-edition (pre-2018) values; transition curves not drawn;
-  no superelevation / sight-distance checks.
+- Vertical radii and grades are ČSN 73 6101:2018 (grades by terrain class from the DEM, per-bend design speed,
+  hairpins; cost model 31, PLAN.md "Design realism"); transition curves not drawn; no superelevation /
+  sight-distance checks. Tunnel portals still end in deep open cuts (cut-and-cover next, design-realism M2);
+  bridge styles (M3) not yet.
+- Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7, an EXPECTED exception
+  in scripts/edit-locality.ts (the old line's support lifts at km 9.8–10.2 go with the lowered line, and the
+  boundary at km 11.21 sees that in its window; PLAN.md "Design realism").
 - See PLAN.md "Next steps" and each section's "Known issues".

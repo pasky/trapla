@@ -11,6 +11,7 @@ import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
 import type { RouteDesign } from '../src/core/project';
+import type { CrossingResult } from '../src/core/crossings';
 import { CLASS_TRAFFIC } from '../src/core/data/traffic';
 
 it('an edited network cuts every rebuilt stretch (several on one way) and adds designed roads at stable slots', () => {
@@ -295,7 +296,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // without our earthworks the stretch would run 190 m along and under our road
     expect(derivedStretch(index, track.id, grab, [])!.s0).toBeLessThan(100);
     const interval = derivedStretch(index, track.id, grab, covered)!;
-    expect(interval.s0).toBeGreaterThan(270);
+    expect(interval.s0).toBeGreaterThan(250);
     expect(derivedStretch(index, track.id, 150, covered)).toBeNull(); // under our road: nothing to rebuild there
     const command = rebuildCommand(index, interval, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
     const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
@@ -311,11 +312,11 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // to the rest of its old track is ours alone (no "two roads change the same old road")
     // ... and a quarter along, bent 60 m away from our road: it now crosses another track at a junction whose
     // drawn ends are that track as it is (not works beside our reroute). Bent 60 m towards our road it runs
-    // 7 m from our embankment (a real conflict, with its concrete fix); 50 m towards it, it keeps clear.
+    // 3 m from our embankment (a real conflict, with its concrete fix); 45 m towards it, it keeps clear.
     const { nearestLeg } = await import('../src/core/horizontal');
     const quarter = (interval.s1 - interval.s0) / 4;
-    for (const [at, off, shared] of [[10, -60, []], [21, -60, []], [quarter, -60, []], [quarter, 50, []],
-      [quarter, 60, ['Move one of them about 6 m away here']]] as [number, number, string[]][]) {
+    for (const [at, off, shared] of [[10, -60, []], [21, -60, []], [quarter, -60, []], [quarter, 45, []],
+      [quarter, 60, ['Move one of them about 7 m away here']]] as [number, number, string[]][]) {
       const near = structuredClone(edited), q = near.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
       const g = index.position(track.id, interval.s0 + at)!, g2 = index.position(track.id, interval.s0 + at + 5)!, tl = Math.hypot(g2.x - g.x, g2.y - g.y);
       q.alignment.pis.splice(nearestLeg(q.endpoints.a.position, q.endpoints.b.position, q.alignment.pis, g), 0, { x: g.x - (g2.y - g.y) / tl * off, y: g.y + (g2.x - g.x) / tl * off, r: null });
@@ -373,20 +374,24 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // that reroute is planned again around it, and the project is priced.
     const street = rebuilt('osm:way:37855288', insert(-60));
     expect(street.issues.map(i => i.violation.title)).toEqual([]);
-    const before = ours.crossings.find(c => c.roadId === wayOf('osm:way:1315656940'))!;
-    const after = street.routes[design.routes[0].id].legacy!.crossings.find(c => c.roadId === wayOf('osm:way:1315656940'))!;
+    // (the reroute to the bridge at km 4.01: the track's stretch at km 4.1 is moved beside our road)
+    const rerouted = (c: CrossingResult) => c.roadId === wayOf('osm:way:1315656940') && c.targetS !== undefined;
+    const before = ours.crossings.find(rerouted)!;
+    const after = street.routes[design.routes[0].id].legacy!.crossings.find(rerouted)!;
     expect([after.type, after.targetRoadId]).toEqual([before.type, before.targetRoadId]);
     expect(after.cost).not.toBe(before.cost);
     // Rebuilt roads that end beside our embankment, where they stop short of it: their ends meet our works as
-    // at a junction (reroute-takeover-audit): a dead-end track (its last 3 m under our slope), a street whose
-    // rest our road reroutes (a way of its own beyond the stretch), a street whose closure's detour lies
-    // nowhere near the roads our road changes.
-    for (const [id, off, grab] of [['osm:way:251829053', 30, 0.5], ['osm:way:209632923', 30, 0.25], ['osm:way:314107194', -30, 0.5]] as const)
+    // at a junction (reroute-takeover-audit): a street whose rest our road reroutes (a way of its own beyond
+    // the stretch), a street whose closure's detour lies nowhere near the roads our road changes.
+    // (the dead-end track 251829053 at km 6.4 no longer reaches our slope: its end is 11 m from our axis, our
+    // 1.8 m fill's toe at 10 m, closer than two roads' works may be: a real conflict, cost model 31)
+    for (const [id, off, grab] of [['osm:way:209632923', 30, 0.25], ['osm:way:314107194', -30, 0.5]] as const)
       expect(rebuilt(id, insert(off), grab).issues.filter(i => i.check === 'not-checked').map(i => i.code)).toEqual([]);
-    // A service road that ends under our bridge at km 4.03 keeps its own crossing there (passes under it).
+    // A service road that ends under our bridge at km 4.03 keeps its own crossing there (passes under it: our
+    // bridge, or a box where it now runs under our embankment beyond the bridge's end).
     const service = rebuilt('osm:way:36347941', insert(30));
     expect(service.issues.map(i => i.violation.title)).toEqual([]);
-    expect(service.routes[design.routes[0].id].legacy!.crossings.find(c => c.crossedRoute?.id === 'route:r1')?.type).toBe('bridge');
+    expect(service.routes[design.routes[0].id].legacy!.crossings.find(c => c.crossedRoute?.id === 'route:r1')?.type).toMatch(/^(bridge|underpass)$/);
   }, 120_000);
 });
 

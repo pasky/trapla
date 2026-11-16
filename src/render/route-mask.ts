@@ -2,7 +2,7 @@
 // One collection per scene generation, never whichever route finished rebuilding last.
 import type { Result } from '../core/evaluate';
 import { COLLAR_OVERLAP, GROUND_COLLAR, daylightPoint, groundStations } from './earthwork-surface';
-import { endCollars, groundSegment, turnaroundMaskRing, turnaroundSurfaces, type CrossingSurface } from './crossing-surface';
+import { endCollars, groundSegment, turnaroundMaskRing, turnaroundSurfaces, underpassOpenings, type CrossingSurface } from './crossing-surface';
 
 export interface RouteMaskInput {
   result: Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'dayL' | 'dayR' | 'zDayL' | 'zDayR' | 'grade' | 'kind'>;
@@ -97,6 +97,18 @@ export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: num
         }
         addQuad(terrain, a0, a1, b0, b1);
         if (surface.crossing.type === 'junction') addQuad(cuts, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
+      }
+    }
+    // An underpass's open way between our slope's toe and its portal: our slopes are cut away between the
+    // wing walls (drawn with the box).
+    for (const surface of surfaces) {
+      const g = surface.crossing.geometry;
+      if (surface.link || surface.tie || surface.crossing.type !== 'underpass' || !g?.underpass || !g.road) continue;
+      const half = g.underpass.width / 2 + g.underpass.wall;
+      for (const wing of underpassOpenings(g.road, g.underpass)) for (let k = 1; k < wing.length; k++) {
+        const p = wing[k - 1], q = wing[k];
+        addQuad(cuts, { x: p.x + p.nx * half, y: p.y + p.ny * half }, { x: p.x - p.nx * half, y: p.y - p.ny * half },
+          { x: q.x + q.nx * half, y: q.y + q.ny * half }, { x: q.x - q.nx * half, y: q.y - q.ny * half });
       }
     }
     for (const surface of surfaces) for (const [a, b, c, d] of endCollars(surface, natural)) {

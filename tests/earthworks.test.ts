@@ -4,24 +4,23 @@ import { ROAD_CHECKS } from '../src/core/checks';
 import { allowanceValuePerKm, costParts, PART_KEYS, sumParts } from '../src/core/cost';
 import { CATEGORIES } from '../src/core/data/categories';
 import { speedNorms } from '../src/core/data/norms';
-import { EXCAVATION_MIX, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from '../src/core/data/prices';
+import { EXCAVATION_MIX, NORM_EARTHWORK_ALLOWANCE, PRICES, SIDE_SLOPES } from '../src/core/data/prices';
 import { URBAN_RATES } from '../src/core/data/urban';
-import { flatEarthGeometry } from '../src/core/earthengineering';
 import { massHaul, volumes } from '../src/core/earthworks';
 import { buildAlignment, station } from '../src/core/horizontal';
-import { computeSections, flatCutBands, sideSection } from '../src/core/sections';
+import { computeSections, flatSection, sideSection } from '../src/core/sections';
 import { KIND } from '../src/core/structures';
 import { syntheticTerrain } from '../src/core/terrain';
 import { buildProfile, elevations } from '../src/core/vertical';
 
-const tpl = { crownWidth: 10, fillSlope: 2, cutSlope: 1.75 };
+const tpl = { crownWidth: 10 };
 
 describe('cross-sections', () => {
   it('flat ground: fill b·h + n·h², cut b·c + n·c²', () => {
     const L = sideSection(2, 5, tpl, () => 0), R = sideSection(2, 5, tpl, () => 0);
-    expect(L.fill + R.fill).toBeCloseTo(10 * 2 + 2 * 4, 6);
+    expect(L.fill + R.fill).toBeCloseTo(10 * 2 + 2.5 * 4, 6);
     expect(L.cut + R.cut).toBe(0);
-    expect(L.day).toBeCloseTo(5 + 4, 6);
+    expect(L.day).toBeCloseTo(5 + 5, 6);
     const C = sideSection(-3, 5, tpl, () => 0);
     expect(2 * C.cut).toBeCloseTo(10 * 3 + 1.75 * 9, 6);
     expect(C.day).toBeCloseTo(5 + 3 * 1.75, 6);
@@ -49,10 +48,10 @@ describe('volumes on synthetic terrain', () => {
     const z = new Float64Array(st.n); // grade at 0
     const sec = computeSections(ter, st.n, st.x, st.y, st.tx, st.ty, z, tpl);
     const v = volumes(st.ds, sec.cut, sec.fill);
-    let exact = 2 * ((tpl.crownWidth * H * H) / (2 * k) + (tpl.cutSlope * H ** 3) / (3 * k));
-    // Each bench adds a triangular-prism volume on either side of the ridge.
-    for (let level = STRUCTURE_RULES.bermInterval; level < H; level += STRUCTURE_RULES.bermInterval)
-      exact += 2 * STRUCTURE_RULES.cutBermWidth * (H - level) ** 2 / k;
+    let exact = 2 * ((tpl.crownWidth * H * H) / (2 * k) + (SIDE_SLOPES.cutSoil * H ** 3) / (3 * k));
+    // Each bench adds a triangular-prism volume on either side of the ridge (cuts up to 2 m at 1:2: < 0.1 %).
+    for (let level = SIDE_SLOPES.soilBenchEvery; level < H; level += SIDE_SLOPES.soilBenchEvery)
+      exact += 2 * SIDE_SLOPES.benchWidth * (H - level) ** 2 / k;
     expect(v.fill).toBeLessThan(1);
     expect(Math.abs(v.cut - exact) / exact).toBeLessThan(0.01);
   });
@@ -64,7 +63,7 @@ describe('volumes on synthetic terrain', () => {
     const z = Float64Array.from(st.y, (y) => 403 + 0.04 * y);
     const sec = computeSections(ter, st.n, st.x, st.y, st.tx, st.ty, z, tpl);
     const v = volumes(st.ds, sec.cut, sec.fill);
-    expect(v.fill).toBeCloseTo((10 * 3 + 2 * 9) * 1300, -1);
+    expect(v.fill).toBeCloseTo((10 * 3 + 2.5 * 9) * 1300, -1); // a 3 m fill: 1:2.5
     expect(v.cut).toBeCloseTo(0, 6);
   });
 });
@@ -181,16 +180,18 @@ describe('excavation weathering profiles', () => {
     const bands = { classIto: 3, classIIto: 8 };
     for (const c of [2, 5, 12]) {
       const s = sideSection(-c, 5, tpl, () => 0, bands);
-      const [a1, a2, a3] = flatCutBands(c, 10, tpl.cutSlope, bands);
+      const [a1, a2, a3] = flatSection(-c, 10, bands).cuts;
       expect(2 * s.cutI).toBeCloseTo(a1, 6);
       expect(2 * s.cutII).toBeCloseTo(a2, 6);
       expect(2 * (s.cut - s.cutI - s.cutII)).toBeCloseTo(a3, 6);
-      expect(a1 + a2 + a3).toBeCloseTo(flatEarthGeometry(c, 10, tpl.cutSlope, false).area, 6);
+      expect(a1 + a2 + a3).toBeCloseTo(flatSection(-c, 10, bands).area, 6);
     }
-    // 12 m deep: 3 m of class I over the whole top width minus the slope wedges, class III only below 8 m
-    const [a1, , a3] = flatCutBands(12, 10, 1.75, bands);
-    expect(a1).toBeCloseTo(10 * 3 + 2 * 1.75 * 3 * (12 - 1.5) + 2 * STRUCTURE_RULES.cutBermWidth * 3, 6);
-    expect(a3).toBeCloseTo(10 * 4 + 1.75 * 16, 6);
+    // 12 m deep: rock below 8 m stands at 4:1 (4 m, no bench), the soil above at 1:1.75 with a bench 6 m up
+    // the face (2 m below the ground); class I is the top 3 m, class III only the 4 m below 8 m
+    const [a1, , a3] = flatSection(-12, 10, bands).cuts;
+    const foot = 5 + 0.25 * 4, top = foot + 1.75 * 8 + 1; // half-widths at the rock top and at the ground
+    expect(a1).toBeCloseTo(2 * (top * 3 - 1.75 * 3 * 3 / 2), 6);
+    expect(a3).toBeCloseTo(10 * 4 + 2 * 0.25 * 4 * 4 / 2, 6);
   });
 });
 
@@ -200,16 +201,17 @@ describe('local geology integration', () => {
     const s = sideSection(-10, 5, tpl, () => 0, (o) => o <= 5 ? soil : rock);
     expect(s.cutI).toBeCloseTo(50, 8); // soil only under this half-crown
     expect(s.cutII).toBe(0);
-    expect(s.cut - s.cutI).toBeCloseTo((flatEarthGeometry(10, 10, tpl.cutSlope, false).area - 100) / 2, 8); // rock slope and bench
+    expect(s.cut - s.cutI).toBeCloseTo((flatSection(-10, 10, rock).area - 100) / 2, 8); // rock slope and bench
+    // rock under the crown, soil beyond it: the slope is a soil slope (1:1.75, a bench 6 m up)
     const reversed = sideSection(-10, 5, tpl, () => 0, (o) => o <= 5 ? rock : soil);
-    expect(reversed.cutI + s.cutI).toBeCloseTo(s.cut, 8);
-    expect(reversed.cut).toBeCloseTo(s.cut, 8);
+    expect(reversed.cut - reversed.cutI).toBeCloseTo(50, 8);
+    expect(reversed.cutI).toBeCloseTo((flatSection(-10, 10, soil).area - 100) / 2, 8);
   });
 
   it('uses volumetric norm shares, not depth bands, when geology is absent', () => {
     for (const c of [1, 7, 20]) {
       const s = sideSection(-c, 5, tpl, () => 0);
-      const mix = flatCutBands(c, 10, tpl.cutSlope);
+      const mix = flatSection(-c, 10).cuts;
       expect(s.cutI / s.cut).toBeCloseTo(0.75, 8);
       expect(s.cutII / s.cut).toBeCloseTo(0.2, 8);
       expect(2 * s.cutI).toBeCloseTo(mix[0], 8);

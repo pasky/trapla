@@ -2,7 +2,7 @@
 // route's stations and ground, with the previous result's grade line stretched to the new length
 // (Automatic) or the player's own height points (By hand). Display only, never billed.
 import { buildAlignment, station, type Vec2 } from '../core/horizontal';
-import { horizontalRules, speedNorms } from '../core/data/norms';
+import { bendRules, horizontalRules, speedNorms } from '../core/data/norms';
 import { buildProfile, elevations, type VPI } from '../core/vertical';
 import { normalizeVpis, type Design } from '../core/evaluate';
 
@@ -11,7 +11,7 @@ export interface ProvisionalProfile { s: Float64Array; ground: Float64Array; gra
 /** `previous`: the last evaluated result (its length and final VPIs). Same 10 m stationing as evaluate. */
 export function provisionalProfile(a: Vec2, b: Vec2, d: Design, previous: { length: number; vpis: readonly VPI[] },
   heightAt: (x: number, y: number) => number): ProvisionalProfile {
-  const al = buildAlignment(a, b, d.pis, horizontalRules(d.speed, d.category)), st = station(al, 10);
+  const al = buildAlignment(a, b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category)), st = station(al, 10);
   const n = st.n, L = al.length, ground = new Float64Array(n);
   for (let i = 0; i < n; i++) ground[i] = heightAt(st.x[i], st.y[i]);
   const zA = ground[0], zB = ground[n - 1], scale = L / (previous.length || L);

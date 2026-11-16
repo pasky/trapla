@@ -20,6 +20,10 @@ export interface Vec2 { x: number; y: number }
 export interface PI extends Vec2 {
   /** curve radius, m; null = automatic (smallest radius that satisfies the norm) */
   r: number | null;
+  /** design speed of this bend's stretch, km/h; absent = the road's (docs/design-realism-plan.md M4) */
+  speed?: number;
+  /** a hairpin bend (research/47 §3) */
+  hairpin?: boolean;
 }
 
 export type Element =
@@ -28,6 +32,9 @@ export type Element =
 
 /** deflections sharper than this (near U-turns) get no arc: a kink that the checks reject */
 export const MAX_DEFLECTION = (170 * Math.PI) / 180;
+/** a hairpin turns the road almost back on itself (research/47 §3): its arc is built up to this */
+export const HAIRPIN_MAX_DEFLECTION = (179 * Math.PI) / 180;
+const maxDeflection = (r: HorizontalRules) => r.hairpin ? HAIRPIN_MAX_DEFLECTION : MAX_DEFLECTION;
 
 export interface HorizontalRules {
   /** smallest radius for the design speed, m */
@@ -40,6 +47,10 @@ export interface HorizontalRules {
   compoundRatio: number;
   /** straight between opposite arcs that have no transitions, m */
   reverseStraight: number;
+  /** the design speed these rules are for, km/h (absent: the caller's) */
+  speed?: number;
+  /** a hairpin bend (research/47 §3): its own radius, no transitions */
+  hairpin?: boolean;
 }
 
 /** Game road defaults derived from minimum radius and actual model transition length (= vn metres). */
@@ -143,6 +154,8 @@ export interface Alignment {
   units: UnitInfo[];
   joints: JointInfo[];
   rules: HorizontalRules;
+  /** each bend's own rules (by PI index; = `rules` unless its stretch or type has its own) */
+  rulesAt: HorizontalRules[];
 }
 
 /** clothoid shift p and tangent offset k for a transition of length L into radius R */
@@ -164,7 +177,7 @@ export function transitionExtra(r: number, delta: number, lt: number): number {
  * two transitions (R·Δ ≥ lt) or large enough to need none (plainRadius).
  */
 export function autoRadius(delta: number, rules: HorizontalRules): number {
-  if (delta < 1e-9) return rules.minRadius;
+  if (delta < 1e-9 || rules.hairpin) return rules.minRadius;
   const r = Math.max(rules.minRadius, Math.min(rules.transition / delta, rules.plainRadius));
   return Math.ceil(r / 5 - 1e-9) * 5;
 }
@@ -512,12 +525,14 @@ interface Unit {
   lam: number;
 }
 
-export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rules: HorizontalRules): Alignment;
+/** `rulesFor(k)`: a bend's own rules (its stretch's design speed, a hairpin), absent = `rules`. A compound
+ * curve joins only bends with the same rules. */
+export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rules: HorizontalRules, rulesFor?: (k: number) => HorizontalRules | undefined): Alignment;
 export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], minRadius: number, lt: number): Alignment;
-export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: HorizontalRules | number, ltArg = 0): Alignment {
-  const rules = typeof rulesOrMin === 'number' ? roadRules(rulesOrMin, ltArg) : rulesOrMin;
-  const lt = rules.transition, plain = rules.plainRadius;
+export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: HorizontalRules | number, ltOrRules?: number | ((k: number) => HorizontalRules | undefined)): Alignment {
+  const rules = typeof rulesOrMin === 'number' ? roadRules(rulesOrMin, typeof ltOrRules === 'number' ? ltOrRules : 0) : rulesOrMin;
   const m = pis.length;
+  const rulesAt: HorizontalRules[] = pis.map((_, k) => (typeof ltOrRules === 'function' ? ltOrRules(k) : undefined) ?? rules);
 
   // ---- effective vertices: drop points that coincide with their predecessor (or B) or are collinear ----
   let keep: number[] = [];
@@ -543,7 +558,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     keep.splice(L.drop, 1);
     L = layout();
   }
-  const { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, joinFailures, legKind, endNeed, mandatory, isChain, maxOffsetOf } = L;
+  const { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, joinFailures, legKind, endNeed, mandatory, isChain, maxOffsetOf, ltOf, plainOf } = L;
 
   function layout() {
     const nv = keep.length;
@@ -556,18 +571,20 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       U.push(L > 1e-12 ? { x: dx / L, y: dy / L } : { x: 1, y: 0 });
     }
     const raw: number[] = [], d: number[] = [], dir: (1 | -1)[] = [], tau: number[] = [], manual: (number | null)[] = [];
+    /** rules, transition length and transition-free radius of effective bend i */
+    const ru = (i: number) => rulesAt[keep[i]], ltOf = (i: number) => ru(i).transition, plainOf = (i: number) => ru(i).plainRadius;
     const Rreq: number[] = [];
     for (let i = 0; i < nv; i++) {
       const cross = U[i].x * U[i + 1].y - U[i].y * U[i + 1].x;
       const dot = U[i].x * U[i + 1].x + U[i].y * U[i + 1].y;
       const rw = Math.abs(dm.atan2(cross, dot));
       raw.push(rw);
-      d.push(rw > MAX_DEFLECTION ? 0 : rw); // near-reversal: no arc (geometry stays continuous)
+      d.push(rw > maxDeflection(ru(i)) ? 0 : rw); // near-reversal: no arc (geometry stays continuous)
       dir.push(cross >= 0 ? 1 : -1);
       tau.push(dm.tan(d[i] / 2));
       const r = pis[keep[i]].r;
       manual.push(r !== null && Number.isFinite(r) && r > 0 ? Math.min(r, MAX_RADIUS) : null);
-      Rreq.push(manual[i] ?? autoRadius(d[i], rules));
+      Rreq.push(manual[i] ?? autoRadius(d[i], ru(i)));
     }
     /** what the leg e joins: the two curves next to it */
     const legKind = (e: number): 'end' | 'same' | 'reverse' =>
@@ -575,6 +592,10 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
 
     // ---- layout: units (single arcs / compound chains), restarted with fewer chains if one cannot be built ----
     const noChain = new Uint8Array(nv + 1); // legs across which arcs must not be joined
+    for (let e = 1; e < nv; e++) { // bends of different stretches or types
+      const p = ru(e - 1), q = ru(e);
+      if (p.minRadius !== q.minRadius || p.transition !== q.transition || p.plainRadius !== q.plainRadius) noChain[e] = 1;
+    }
     const joinFailures = new Map<number, Pick<JointInfo, 'joinFailure' | 'requiredOffset'>>();
     const Rv: number[] = new Array(nv).fill(0);
     let units: Unit[] = [];
@@ -582,10 +603,10 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
     const isChain = (u: Unit) => u.i1 > u.i0;
     const maxOffsetOf = (u: Unit) => { let v = 0; if (u.w) for (let j = 0; j < u.w.length - 1; j++) v = Math.max(v, Math.abs(u.w[j])); return v; };
     const arcLenOf = (u: Unit) => { let s = 0; for (let i = u.i0; i <= u.i1; i++) s += Rv[i] * d[i]; return s; };
-    const mandatory = (u: Unit) => (d[u.i0] > 0 && Rv[u.i0] < plain - 1e-9 ? 1 : 0) + (d[u.i1] > 0 && Rv[u.i1] < plain - 1e-9 ? 1 : 0);
+    const mandatory = (u: Unit) => (d[u.i0] > 0 && Rv[u.i0] < plainOf(u.i0) - 1e-9 ? 1 : 0) + (d[u.i1] > 0 && Rv[u.i1] < plainOf(u.i1) - 1e-9 ? 1 : 0);
     /** room beyond the tangent point asked by a unit end, and whether that end is without a transition */
     const endNeed = (u: Unit, side: 0 | 1): { need: number; plain: boolean } => {
-      const i = side === 0 ? u.i0 : u.i1;
+      const i = side === 0 ? u.i0 : u.i1, lt = ltOf(i), plain = plainOf(i);
       if (d[i] === 0 || lt <= 0) return { need: 0, plain: true };
       if (Rv[i] < plain - 1e-9) return { need: transitionExtra(Rv[i], d[i], lt), plain: false };
       if (legKind(side === 0 ? u.i0 : u.i1 + 1) !== 'reverse') return { need: 0, plain: true };
@@ -593,7 +614,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       const nRev = (legKind(u.i0) === 'reverse' && Rv[u.i0] >= plain - 1e-9 ? 1 : 0)
         + (legKind(u.i1 + 1) === 'reverse' && Rv[u.i1] >= plain - 1e-9 ? 1 : 0);
       if (arcLenOf(u) >= (mandatory(u) + nRev) * (lt / 2) - 1e-6) return { need: transitionExtra(Rv[i], d[i], lt), plain: false };
-      return { need: rules.reverseStraight / 2, plain: true };
+      return { need: ru(i).reverseStraight / 2, plain: true };
     };
     /** unit before / after leg e */
     const unitAt = (q: number): Unit | null => (q >= 0 && q < units.length ? units[q] : null);
@@ -651,7 +672,8 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       // (R·Δ = lt) asks less of that leg than a plain arc with its straight
       for (let q = 0; q < units.length; q++) {
         const u = units[q], i = u.i0;
-        if (manual[i] !== null || d[i] === 0 || lt <= 0 || lt / d[i] <= plain) continue;
+        const lt = ltOf(i);
+        if (manual[i] !== null || d[i] === 0 || lt <= 0 || lt / d[i] <= plainOf(i)) continue;
         if (!((legKind(i) === 'reverse' && slack(q) < -EPS_LEN) || (legKind(i + 1) === 'reverse' && slack(q + 1) < -EPS_LEN))) continue;
         const old = Rv[i], was = [slack(q), slack(q + 1)];
         Rv[i] = Math.ceil(lt / d[i] / 5 - 1e-9) * 5;
@@ -662,7 +684,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       }
       /** Join overlapping neighbours, or rescue a manual arc too short for isolated transitions. */
       const link = () => {
-        const arcShort = (u: Unit) => arcLenOf(u) < mandatory(u) * lt / 2 - EPS_LEN;
+        const arcShort = (u: Unit) => arcLenOf(u) < mandatory(u) * ltOf(u.i0) / 2 - EPS_LEN;
         for (let q = 1; q < units.length; q++) {
           const e = units[q].i0;
           const short = (qq: number) => legKind(units[qq].i0) === 'same' && !noChain[units[qq].i0] && slack(qq) < -EPS_LEN;
@@ -674,7 +696,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
           while (qe + 1 < units.length && short(qe + 1)) qe++;
           let sol: ChainSol | null = null;
           for (;;) { // if the whole run cannot be one curve, try half of it, and so on
-            sol = solveChain(chainInput(units[q - 1].i0, units[qe].i1), rules, null, null, EDIT_TOLERANCE);
+            sol = solveChain(chainInput(units[q - 1].i0, units[qe].i1), ru(units[q - 1].i0), null, null, EDIT_TOLERANCE);
             if (sol || qe === q) break;
             qe = q + ((qe - q) >> 1);
           }
@@ -683,7 +705,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
               noChain[e] = 1;
               const inp = chainInput(units[q - 1].i0, units[qe].i1);
               if (inp.manual.every((r) => r !== null)) {
-                const unconstrained = solveChain(inp, rules, null, null);
+                const unconstrained = solveChain(inp, ru(units[q - 1].i0), null, null);
                 joinFailures.set(e, unconstrained
                   ? { joinFailure: 'edit-tolerance', requiredOffset: unconstrained.offset }
                   : { joinFailure: 'fixed-geometry' });
@@ -699,7 +721,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
           const badRescue = rescue && (!sol.ok || arcShort(u)
             || slack(q - 1) < Math.min(0, oldSlack[0]) - EPS_LEN
             || slack(q) < Math.min(0, oldSlack[1]) - EPS_LEN
-            || sol.R.some((r, i) => i > 0 && ratioExcess(r, sol!.R[i - 1], rules) > 0)
+            || sol.R.some((r, i) => i > 0 && ratioExcess(r, sol!.R[i - 1], ru(u.i0)) > 0)
             || sol.R.some((r, i) => Math.abs(r - oldR![u.i0 + i])
               * (Math.sqrt(1 + tau[u.i0 + i] ** 2) - 1) > EDIT_TOLERANCE));
           if (badRescue) {
@@ -737,7 +759,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
             let u = units[q];
             if (qa !== qb) {
               u = { i0: units[qa].i0, i1: units[qb].i1, sIn: 0, sOut: 0, w: null, lam: 0 };
-              const sol = solveChain(chainInput(u.i0, u.i1), rules, null, null, EDIT_TOLERANCE);
+              const sol = solveChain(chainInput(u.i0, u.i1), ru(u.i0), null, null, EDIT_TOLERANCE);
               if (sol) { applyChain(u, sol); units.splice(qa, 2, u); } else good = false;
             }
             let fixIn: number | null = null, fixOut: number | null = null;
@@ -746,10 +768,10 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
               if (dIn <= EPS_LEN && dOut <= EPS_LEN) break;
               if (dIn > EPS_LEN) fixIn = u.sIn - dIn - 0.05; else if (pin && fixIn === null) fixIn = u.sIn;
               if (dOut > EPS_LEN) fixOut = u.sOut - dOut - 0.05; else if (pin && fixOut === null) fixOut = u.sOut;
-              const sol = solveChain(chainInput(u.i0, u.i1), rules, fixIn, fixOut, EDIT_TOLERANCE);
+              const sol = solveChain(chainInput(u.i0, u.i1), ru(u.i0), fixIn, fixOut, EDIT_TOLERANCE);
               if (sol && sol.ok) applyChain(u, sol); else good = false;
             }
-            if (good && (fails(qa, u.i0) || fails(qa + 1, u.i1 + 1) || arcLenOf(u) < (mandatory(u) * lt) / 2 - EPS_LEN)) good = false;
+            if (good && (fails(qa, u.i0) || fails(qa + 1, u.i1 + 1) || arcLenOf(u) < (mandatory(u) * ltOf(u.i0)) / 2 - EPS_LEN)) good = false;
             // … and joining must not reshape curves that were fine: no arc may move by more than the tolerance
             if (good && qa !== qb) {
               for (let i = u.i0; i <= u.i1; i++) {
@@ -792,8 +814,8 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
         if (!isChain(u)) { te.in = te.out = Math.min(te.in, te.out); continue; }
         // (no tolerance here: this only keeps the line continuous where the checks already complain)
         // the other end stays where it is if possible, so that the squeeze cannot start an overlap there
-        const sol = solveChain(chainInput(u.i0, u.i1), rules, te.in, te.out)
-          ?? solveChain(chainInput(u.i0, u.i1), rules, cutIn ? te.in : null, cutOut ? te.out : null);
+        const sol = solveChain(chainInput(u.i0, u.i1), ru(u.i0), te.in, te.out)
+          ?? solveChain(chainInput(u.i0, u.i1), ru(u.i0), cutIn ? te.in : null, cutOut ? te.out : null);
         if (!sol) { failed = u; break; }
         applyChain(u, sol); // the far end may have moved: the scan below checks every leg again
         te.in = sol.sIn; te.out = sol.sOut;
@@ -811,7 +833,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       if (!failed) { drop = wiggle(false); break; }
       for (let e = failed.i0 + 1; e <= failed.i1; e++) noChain[e] = 1;
     }
-    return { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, joinFailures, legKind, endNeed, mandatory, isChain, maxOffsetOf, drop, chordOffset };
+    return { nv, P, EL, U, raw, d, dir, tau, manual, Rv, units, Teff, noChain, joinFailures, legKind, endNeed, mandatory, isChain, maxOffsetOf, drop, chordOffset, ltOf, plainOf };
   }
 
   // ---- elements ----
@@ -858,8 +880,8 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       const t = Rv[i] * tau[i];
       const c: CurveInfo = {
         index: k, x: P(i).x, y: P(i).y, delta: raw[i], dir: dir[i], r: Rv[i], rEff, t,
-        tTransition: t + (d[i] > 0 && Rv[i] < plain - 1e-9 ? transitionExtra(Rv[i], d[i], lt) : 0),
-        arcLen: s - s0, sStart: s0, sEnd: s, auto: manual[i] === null, tooSharp: raw[i] > MAX_DEFLECTION,
+        tTransition: t + (d[i] > 0 && Rv[i] < plainOf(i) - 1e-9 ? transitionExtra(Rv[i], d[i], ltOf(i)) : 0),
+        arcLen: s - s0, sStart: s0, sEnd: s, auto: manual[i] === null, tooSharp: raw[i] > maxDeflection(rulesAt[k]),
         unit: d[i] > 0 ? unitInfo.length : -1, ignored: false, offset: 0,
       };
       curveOf[k] = c;
@@ -868,7 +890,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       const maxOffset = maxOffsetOf(u);
       unitInfo.push({
         first: keep[u.i0], last: keep[u.i1], sStart, sEnd: s, arcLen: arcTotal,
-        transitions: lt > 0 ? mandatory(u) : 0, smoothing: chain ? u.lam : 0, maxOffset,
+        transitions: ltOf(u.i0) > 0 ? mandatory(u) : 0, smoothing: chain ? u.lam : 0, maxOffset,
       });
     }
   });
@@ -884,7 +906,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       if (e < nv && keep[e] === k) { curves.push(curveOf[k]!); last = curveOf[k]!.sEnd; continue; }
       const ls = lineStart[e];
       const along = Math.min(Math.max((pis[k].x - ls.x) * U[e].x + (pis[k].y - ls.y) * U[e].y, 0), ls.len);
-      const r = pis[k].r ?? rules.minRadius;
+      const r = pis[k].r ?? rulesAt[k].minRadius;
       last = Math.max(last, ls.s + along);
       curves.push({
         index: k, x: pis[k].x, y: pis[k].y, delta: 0, dir: 1, r, rEff: r, t: 0, tTransition: 0, arcLen: 0,
@@ -930,7 +952,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       legs.push({ index: i, length: j.length, used: j.kind === 'compound' ? j.length : j.tFrom + j.needFrom + j.tTo + j.needTo });
     }
   }
-  return { elements, length: s, curves, legs, units: unitInfo, joints, rules };
+  return { elements, length: s, curves, legs, units: unitInfo, joints, rules, rulesAt };
 }
 
 export interface PointOnAlignment { x: number; y: number; /** unit tangent */ tx: number; ty: number; curvature: number }

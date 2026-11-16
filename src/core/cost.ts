@@ -51,10 +51,15 @@ export function categoryTunnelPerKm(cat: Category, length: number, urban = 0): n
   return own ? own.rural + (own.urban - own.rural) * urban : tunnelPerKm(length, urban);
 }
 
-/** "other objects" surcharge rate for a built-up share 0…1 */
-export function surchargeRate(urban: number): number {
-  return PRICES.otherObjectsSurcharge + (URBAN_RATES.otherObjectsSurcharge - PRICES.otherObjectsSurcharge) * urban;
+/** "other objects" surcharge rate for a built-up share 0…1; `divided` (a motorway's own objects) adds B.6
+ * technology. Works on other roads (crossings, relocations) never carry it. */
+export function surchargeRate(urban: number, divided = false): number {
+  return PRICES.otherObjectsSurcharge + (URBAN_RATES.otherObjectsSurcharge - PRICES.otherObjectsSurcharge) * urban
+    + (divided ? PRICES.technologySurcharge : 0);
 }
+
+/** whether a category's own objects carry B.6 technology (motorways) */
+export const dividedRoad = (cat: Category) => cat.mode === 'motorway';
 
 /** land price per m² for a built-up share 0…1 (statutory multiples included) */
 export function landPerM2(urban: number): number {
@@ -159,6 +164,8 @@ export interface StationCostInput {
   crossingStructure?: ArrayLike<number>;
   /** noise wall surface in each cell (both sides added), m² */
   wallArea?: ArrayLike<number>;
+  /** extra road per metre beyond the norm's crown, CZK/m (a hairpin's widened lanes), earthwork cells */
+  extraRoadPerM?: ArrayLike<number>;
 }
 
 /**
@@ -173,7 +180,7 @@ export function costParts(inp: StationCostInput): CostParts {
   const baseRural = basePerKm(inp.category, inp.terrainClass) / 1000;
   const baseUrban = basePerKmUrban(inp.category, inp.terrainClass) / 1000;
   const runLen = new Float64Array(n);
-  const bridge = bridgeModel(cat);
+  const bridge = bridgeModel(cat), divided = dividedRoad(cat);
   for (const r of inp.runs) {
     if (r.kind === KIND.tunnel) {
       for (let i = r.i0; i <= r.i1; i++) runLen[i] = r.length;
@@ -212,7 +219,7 @@ export function costParts(inp: StationCostInput): CostParts {
     const k = inp.kind[i];
     let construction = 0;
     if (k === KIND.earth) {
-      parts.roadBase[i] = len * (baseRural + (baseUrban - baseRural) * u);
+      parts.roadBase[i] = len * (baseRural + (baseUrban - baseRural) * u + (inp.extraRoadPerM?.[i] ?? 0));
       parts.excavation[i] = len * (inp.cutI[i] * EXCAVATION_BY_CLASS.I + inp.cutII[i] * EXCAVATION_BY_CLASS.II
         + inp.cutIII[i] * EXCAVATION_BY_CLASS.III);
       parts.fillPlacing[i] = fillV[i] * placingPerFill;
@@ -238,7 +245,7 @@ export function costParts(inp: StationCostInput): CostParts {
     parts.crossings[i] = structure + (inp.crossingLump ? inp.crossingLump[i] : 0);
     parts.noiseWalls[i] = (inp.wallArea ? inp.wallArea[i] : 0) * NOISE.wallPerM2;
     const mk = cat.markup;
-    parts.surcharge[i] = !mk ? (construction + structure) * surchargeRate(u)
+    parts.surcharge[i] = !mk ? construction * surchargeRate(u, divided) + structure * surchargeRate(u)
       : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth + structure * mk.bridge
         : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel) + structure * mk.bridge;
     parts.land[i] = len * inp.width[i] * landPerM2(u) + (inp.additionalLand?.[i] ?? 0);
