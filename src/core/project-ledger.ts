@@ -35,7 +35,10 @@ export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; s
   extraLines?: { ax: number; ay: number; bx: number; by: number; r: number }[];
   /** Junctions with another designed road: within r of (x, y) the two roads' works ARE the junction
    * (owned by this road), not shared land. */
-  junctions?: { routeId: RouteId; x: number; y: number; r: number }[] }
+  junctions?: { routeId: RouteId; x: number; y: number; r: number }[];
+  /** A rebuilt stretch: its own old road (legacy way), whose remains are its own continuation; another
+   * road changing them is that road's change alone (the stretch stops short of what it covers). */
+  ownWays?: number[] }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
 export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number;
   /** shared land: where the two roads' land and works come closest, and how many metres further apart
@@ -97,8 +100,8 @@ function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?
 /** Land take, works and removed old roads of one evaluated road, each padded by half the clearance. */
 function envelope(result: Result, halfWidth: number): Capsule[] {
   const pad = INDEPENDENCE_SCREEN.clearance / 2, out: Capsule[] = [];
-  // How far the road's land reaches from its centreline. On earthworks: to the further slope edge (the
-  // land take there is exactly dayL + dayR wide, which is cell.width). On a bridge or in a tunnel the slope
+  // How far the road's land reaches from its centreline (earthworks: see below, each side to its own slope
+  // edge; the land take there is exactly dayL + dayR wide, which is cell.width). On a bridge or in a tunnel the slope
   // edges are those of earthworks that are not built: the deck's whole width is taken as the reach instead
   // (too much rather than too little; 0 in a tunnel). Never less than half the crown; unknown fails closed.
   const reach = (i: number) => {
@@ -108,8 +111,19 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
   };
   // (where a rebuilt stretch keeps its old road nothing is built: no land, no works; project-kept.ts)
   const kept = result.keptCells;
-  for (let i = 1; i < result.n; i++) if (!(kept?.[i - 1] && kept[i])) out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i],
-    r: Math.max(reach(i - 1), reach(i)) + pad });
+  // On earthworks each side reaches its own slope edge: the land is the band from the left edge to the
+  // right one, a capsule on its middle line (a high embankment's far side is not this side's land).
+  const side = (i: number, left: boolean) => Math.max(halfWidth, Math.abs(left ? result.dayL[i] : result.dayR[i]));
+  for (let i = 1; i < result.n; i++) if (!(kept?.[i - 1] && kept[i])) {
+    const earth = result.kind[i - 1] === KIND.earth && result.kind[i] === KIND.earth;
+    const l = earth ? Math.max(side(i - 1, true), side(i, true)) : NaN, r = earth ? Math.max(side(i - 1, false), side(i, false)) : NaN;
+    const dx = result.x[i] - result.x[i - 1], dy = result.y[i] - result.y[i - 1], len = Math.hypot(dx, dy);
+    if (Number.isFinite(l) && Number.isFinite(r) && len > 0) {
+      // (the left side is to the left of the direction of travel)
+      const o = (l - r) / 2, nx = -dy / len * o, ny = dx / len * o;
+      out.push({ ax: result.x[i - 1] + nx, ay: result.y[i - 1] + ny, bx: result.x[i] + nx, by: result.y[i] + ny, r: (l + r) / 2 + pad });
+    } else out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i], r: Math.max(reach(i - 1), reach(i)) + pad });
+  }
   if (result.n === 1) out.push({ ax: result.x[0], ay: result.y[0], bx: result.x[0], by: result.y[0], r: reach(0) + pad });
   const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0) => {
     if (!points?.length) return;
@@ -222,7 +236,8 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     const ta = touched[a], tb = touched[b];
     // where: the first road's change of the shared road nearest to the second's
     let at: { x: number; y: number } | undefined, best = Infinity;
-    for (const [id, here] of ta.roads) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
+    const own = new Set([...routes[a].ownWays ?? [], ...routes[b].ownWays ?? []]);
+    for (const [id, here] of ta.roads) if (!own.has(id)) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
       const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < best) { best = d; at = p; }
     }
     if (at || (ta.closes && tb.roads.size) || (tb.closes && ta.roads.size))

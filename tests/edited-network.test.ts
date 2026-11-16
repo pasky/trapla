@@ -245,6 +245,22 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(after.issues.map(i => i.code)).not.toContain('roads-cross');
     const r1 = after.routes['route:r1'].legacy!, s = r1.s.findIndex((_, q) => Math.hypot(r1.x[q] - crossing.x, r1.y[q] - crossing.y) < r1.ds);
     expect(r1.grade[s]).toBeLessThanOrEqual(motorway.grade[crossing.i] - 6 + 0.5 + 1e-9);
+    // QA (main f9f5d9d): bent 30 m aside 25 m from our bridge, it passes under the bridge and beside its
+    // abutment; that is the crossing's own works, and its old road removed there is land given back
+    const { fitPlacedBend } = await import('../src/core/bend-fit');
+    const { nearestLeg } = await import('../src/core/horizontal');
+    let sx = 0, best = Infinity;
+    for (let q = 0; q < old.stations.at(-1); q += 2) { const g = index.position(old.id, q)!, d = Math.hypot(g.x - crossing.x, g.y - crossing.y); if (d < best) { best = d; sx = q; } }
+    const north = [sx + 25, sx - 25].map(q => ({ q, g: index.position(old.id, q)! })).sort((u, w) => w.g.y - u.g.y)[0];
+    const g2 = index.position(old.id, north.q + 5)!, tl = Math.hypot(g2.x - north.g.x, g2.y - north.g.y);
+    const bent = structuredClone(edited), route = bent.routes.at(-1)!; if (route.alignment.kind !== 'pi' || route.specification.kind !== 'road') throw new Error('converted');
+    const k = nearestLeg(route.endpoints.a.position, route.endpoints.b.position, route.alignment.pis, north.g);
+    route.alignment.pis.splice(k, 0, { x: north.g.x - (g2.y - north.g.y) / tl * 30, y: north.g.y + (g2.x - north.g.x) / tl * 30, r: null });
+    route.alignment.pis = fitPlacedBend(route.endpoints.a.position, route.endpoints.b.position, route.alignment.pis, k,
+      route.specification.crossSection as 'S7.5', route.specification.designSpeed) ?? route.alignment.pis;
+    const moved = evaluateProject(ctx, { epoch: 'e', revision: 3, design: bent });
+    expect(moved.issues.filter(i => i.code.startsWith('shared')).map(i => i.violation.title)).toEqual([]);
+    expect(moved.cost.total).not.toBeNull();
   }, 120_000);
 });
 
@@ -290,6 +306,17 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(after.issues.map(i => i.code)).toEqual([]);
     expect(after.cost.total).not.toBeNull();
     expect(after.routes[design.routes[0].id].legacy!.crossings.find(c => c.roadId === track.legacyNetIndex)?.type).toBe('diversion');
+    // QA (main f9f5d9d): bent right at its start, where our reroute of the rest of the track begins and
+    // another track meets it: the two roads' works meet at that end as at a junction, and what our road does
+    // to the rest of its old track is ours alone (no "two roads change the same old road")
+    const { nearestLeg } = await import('../src/core/horizontal');
+    for (const [at, off] of [[10, -60], [21, -60]]) {
+      const near = structuredClone(edited), q = near.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
+      const g = index.position(track.id, interval.s0 + at)!, g2 = index.position(track.id, interval.s0 + at + 5)!, tl = Math.hypot(g2.x - g.x, g2.y - g.y);
+      q.alignment.pis.splice(nearestLeg(q.endpoints.a.position, q.endpoints.b.position, q.alignment.pis, g), 0, { x: g.x - (g2.y - g.y) / tl * off, y: g.y + (g2.x - g.x) / tl * off, r: null });
+      const res = evaluateProject(ctx, { epoch: 'e', revision: 3, design: near });
+      expect(res.issues.filter(i => i.code.startsWith('shared')).map(i => i.violation.title)).toEqual([]);
+    }
   }, 120_000);
 });
 

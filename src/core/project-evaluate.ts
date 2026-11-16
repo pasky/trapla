@@ -3,6 +3,7 @@
 import { ourWords } from './terms';
 import { CATEGORIES } from './data/categories';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './data/urban';
+import { KIND } from './structures';
 import type { EvalContext, EvalOptions, Result } from './evaluate';
 import type { XYZ, SharedWork, ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectReceiver, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
 import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type InteractionReason, type RouteContact, type RouteInteraction } from './project-ledger';
@@ -372,10 +373,16 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
         // (its earthworks around the crossing, measured along an oblique crossed road, and any ramps)
         let wide = 0;
         for (let q = 0; q < own.n; q++) if (Math.abs(own.s[q] - c.s) <= ZONE_ALONG) wide = Math.max(wide, own.cell.width[q] / 2);
-        const reach = wide / Math.max(0.3, crossingSine(own, c, drawn, lineStation(drawn, c.x, c.y))) + ((c.approachLength ?? 0) + (c.span ?? 0)) / 2
-          + (ROAD_CLASSES[c.cls]?.width ?? 7.5) + INDEPENDENCE_SCREEN.clearance;
+        // (along an oblique crossed road its own width and the clearance are as much longer as our works)
+        const reach = (wide + (ROAD_CLASSES[c.cls]?.width ?? 7.5) + INDEPENDENCE_SCREEN.clearance) / Math.max(0.3, crossingSine(own, c, drawn, lineStation(drawn, c.x, c.y)))
+          + ((c.approachLength ?? 0) + (c.span ?? 0)) / 2;
         let zones = designedJunctions.get(crossed.id); if (!zones) designedJunctions.set(crossed.id, zones = []);
         for (const o of owners) zones.push({ routeId: o.id, x: c.x, y: c.y, r: reach });
+        // our bridge over it: the crossed road runs under the whole bridge and past its abutments (their
+        // earthworks' end slopes): all of that is the crossing too
+        const run = own.runs.find(u => u.kind === KIND.bridge && c.s >= u.s0 - own.ds && c.s <= u.s1 + own.ds);
+        if (run) for (let q = 0; q < own.n; q++) if (own.s[q] >= run.s0 && own.s[q] <= run.s1 || Math.abs(own.s[q] - run.s0) < own.ds / 2 || Math.abs(own.s[q] - run.s1) < own.ds / 2)
+          for (const o of owners) zones.push({ routeId: o.id, x: own.x[q], y: own.y[q], r: own.cell.width[q] / 2 + (ROAD_CLASSES[c.cls]?.width ?? 7.5) + INDEPENDENCE_SCREEN.clearance });
       }
     }
     defineRoute(result.routes, route.id, proposal.route);
@@ -553,21 +560,37 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     return result;
   }
   // Several roads: add their bills ONLY when nothing one builds, buys, closes or makes loud reaches another.
+  // A rebuilt stretch continues its old road where another road changes the rest of it (cuts, reroutes,
+  // relocates it): the two roads' works meet at that end, as at a junction between them.
+  const ownWayOf = (r: RouteDesign) => r.source ? ctx.sourceWays?.get(r.source.intervals[0]?.sourceId ?? '') : undefined;
+  const changes = (res: Result, way: number) => res.crossings.some(c => c.roadId === way || c.targetRoadId === way)
+    || res.footprintConflicts.some(f => f.roadId === way || f.sourceIntervals?.some(i => i.way === way));
+  for (const { route, legacy } of units) {
+    const way = ownWayOf(route); if (way === undefined) continue;
+    for (const other of units) if (other.route !== route && changes(other.legacy, way)) for (const i of [0, legacy.n - 1]) {
+      let j = designedJunctions.get(route.id); if (!j) designedJunctions.set(route.id, j = []);
+      // (the stretch stops a working strip short of the other road's earthworks; its own earthworks and the
+      // ties of its end to what is left of the old road and the ways meeting it there)
+      j.push({ routeId: other.route.id, x: legacy.x[i], y: legacy.y[i], r: legacy.cell.width[i] / 2 + 2 * INDEPENDENCE_SCREEN.clearance + ENDPOINT_JUNCTIONS.continuation.zone });
+    }
+  }
   const screen = screenIndependence(units.map(({ route, legacy }) => {
     const spec = route.specification, corridor = corridorOfRoute(design, route.id);
     const op = corridor ? corridorOperations(design, corridor) : spec.kind === 'road' ? spec.operations : { aadt: Infinity, speed: Infinity, heavyShare: 1 };
     const halfWidth = corridor || (spec.kind === 'road' && spec.crossSection !== 'existing') ? crownOf(route) / 2 : Infinity;
     // (a rebuilt stretch's old road is cut out of every other road's network: what is left of it is
     // another road, which a road crossing it changes on its own)
-    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth,
+    const ownWay = ownWayOf(route);
+    return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth, ...(ownWay !== undefined ? { ownWays: [ownWay] } : {}),
       ...(corridor ? { profile: 'motorway' as const } : {}),
       ...(designedJunctions.has(route.id) ? { junctions: designedJunctions.get(route.id) } : {}),
-      // its other works on the ground: the links that reconnect side roads, the old road where it is removed
+      // its other works on the ground: the links that reconnect side roads. (The old road where it is
+      // removed is land given back: another road's works over it share nothing with this road; where the
+      // old road crossed another road's line, that road was already built over or under it.)
       ...(replacements.has(route.id) ? { extraLines: [
         ...replacements.get(route.id)!.works.filter(w => w.kind === 'reconnection' && w.length > 1).map(w => {
           const n = nearestStation(legacy, w.x, w.y); return { ax: w.x, ay: w.y, bx: legacy.x[n], by: legacy.y[n], r: (ROAD_CLASSES[w.cls ?? '']?.width ?? 6.5) / 2 };
-        }),
-        ...replacements.get(route.id)!.removed.map(l => ({ ...l, r: replacements.get(route.id)!.removedWidth / 2 }))] } : {}) };
+        })] } : {}) };
   }), ctx.legacy.buildings);
   // Houses heard by two or more roads are decided together from both roads' own sources; every other
   // interaction (shared land, roads, buildings) still keeps the project unpriced.
