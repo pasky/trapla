@@ -377,8 +377,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   if (!opts.preview && !opts.window && !opts.separate && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') {
     const stuck = result.crossings.filter(c => c.type === 'overbridge' && !c.requestedType
       && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
-    // …and where it paid the clearance penalty over a river or railway instead of bridging it.
-    const missed = result.violations.filter(v => v.kind === 'crossing' && v.clearance === 'above');
+    // …and where it paid the clearance penalty over a river, railway or stream instead of clearing it.
+    const missed = result.violations.filter(v => v.kind === 'crossing' && (v.clearance === 'above' || v.clearance === 'water'));
     // …and where a way could be led to no other crossing and nothing else was buildable there either: it
     // too is cleared (where our cutting is already deep enough for its bridge, that bridge's ramps could
     // not be built: our bridge over it).
@@ -1915,6 +1915,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     const need = kind[i] === KIND.bridge ? STRUCTURE_RULES.riverClearance : size.minHeight;
     const ok = isTunnel || (waterCoverFits(above, need) && (kind[i] === KIND.bridge ? clearBridge : kind[i] === KIND.earth && size.type !== 'bridge'));
     if (!ok) violations.push({ kind: 'crossing', s0: c.s, s1: c.s,
+      ...(!shortTunnel && kind[i] === KIND.earth && size.type !== 'bridge' ? { clearance: 'water' as const } : {}),
       title: shortTunnel ? 'Tunnel under a stream is too short' : above < 0 ? 'Our cutting runs through a stream' : `Our road blocks a ${c.waterKind === 'river' ? 'river' : 'stream'}`,
       fix: shortTunnel ? `Make the tunnel at least ${STRUCTURE_RULES.minTunnelLength} m long and deep enough, or pass above the stream` : size.type === 'bridge' || kind[i] === KIND.bridge ? `Put our road on a bridge spanning the water and its banks (${bridgeSpan.toFixed(0)} m along our road), at least ${need.toFixed(1)} m above the bed`
         : `Raise our road here to at least ${need.toFixed(1)} m above the stream bed for a ${waterOpening(size)} culvert, or use a bridge`,
