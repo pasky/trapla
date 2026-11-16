@@ -1,4 +1,4 @@
-# Automatic footprint engineering (cost models 16–21)
+# Automatic footprint engineering (cost models 16–22)
 
 The evaluator now **builds and prices remedies**, rather than simply invalidating every design
 whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
@@ -188,9 +188,9 @@ Manual grades are not lifted, pins remain constraints, and manual structure rang
 silently moved. Retaining walls can protect a manually specified earthwork without changing its
 specified grade or structure kind. Infeasible overrides remain visibly invalid.
 
-### Model 21: buildable automatic reroutes, lowered underpasses
+### Model 22: buildable automatic reroutes, lowered underpasses
 
-(Developed as "model 20" on its branch; main took 20 for motorway and railway scoring.)
+(Developed as "model 20" on its branch; main took 20 for motorway and railway scoring and 21 for finite-segment noise.)
 
 **Problem.** The outcome audit of model 19/20 road designs (`scripts/reroute-audit.ts`, straight + five
 published + 24 random designs) found 730 of 871 automatic reroutes silently unbuildable: 658 steeper than
@@ -273,16 +273,16 @@ for the local-road box: clear height, roof and cover, research/19), the crossed 
 - Auto reroute candidates that cannot be worth it are not built: a reroute never costs less than the
   straight lines between its anchors, and once one side is built its measured price stands in for it.
 
-**Results** (bn CZK, model 20 → 21; all published designs VALID on their own, also the straight start line):
+**Results** (bn CZK, model 21 → 22; all published designs VALID on their own, also the straight start line):
 
-| Design | Model 20 | Model 21 | Main reasons |
+| Design | Model 21 | Model 22 | Main reasons |
 |---|---:|---:|---|
-| straight | 10.011062 | 10.044549 | +33.5 M. Was VALID only because reroutes were unchecked; km 16.58 local road 2244: a silently unbuildable reroute (a railway between it and the next crossing) becomes a 75 m box with the road lowered 3.3 m (89 m of ramps, gravity drain), 33.6 M. Steep track reroutes become boxes or bridges over us (km 4.55 +11.8 M, km 4.64 +8.0 M, km 6.56 street +9.0 M); lowered boxes save at km 18.24 (−11.2 M) and km 6.32. |
-| best | 4.255851 | 4.210085 | −45.8 M: lowered boxes replace bridges over us or reroutes at km 3.69 (track lowered 5.8 m under our road at grade), 6.31, 8.19, 17.64, 18.98 (−29 M); km 9.93 track reroute 13.0 → 0.3 M (its own crossing's neighbour now carries it). |
-| demo | 4.881066 | 4.837294 | −43.8 M: km 7.96 service road 41.7 M reroute → box with the road lowered 0.7 m (17.6 M); lowered boxes at km 4.44 and 19.29; a 22.3 M track bridge over us → 12.3 M reroute at km 4.00; chains broken at km 2.60 and 6.89 (+8.1 M). |
-| direct-80 | 4.945392 | 4.937433 | −8.0 M: lowered boxes save 35 M (km 1.24, 2.15, 6.73, 15.29); unbuildable steep reroutes become bridges over us or boxes (km 6.55 +16.6 M, 4.62 +14.1 M, 5.68 +11.5 M); km 14.34 street reroute engineered (+8.4 M). |
-| direct-90 | 5.555314 | 5.603972 | +48.7 M: track diversions on ground steeper than a track may be become bridges over us or boxes (km 8.26 +27.7 M, 5.71 +10.3 M, 8.93 +6.7 M) or engineered longer lines (km 9.80 +12.9 M); a lowered box saves 17.5 M at km 1.25; km 5.67 −7.7 M. |
-| town-centre | 11.442013 | 11.533493 | +91.5 M: km 10.11 track 3637: the 1.5 km reroute (21.5 M) runs on ground far steeper than a track may be; a 148 m bridge over the cutting (89.5 M). Km 15.98 service road 5162: 43.0 M reroute → box with the road lowered 2.9 m (17.0 M). Km 4.90/4.98 street reroutes (one too steep to build, the other 43 M once engineered) → boxes with the streets lowered 1.7 m (+12.1 M). Km 6.29 track no longer chained (+11.5 M). |
+| straight | 9.810834 | 9.844321 | +33.5 M. Was VALID only because reroutes were unchecked; km 16.58 local road 2244: a silently unbuildable reroute (a railway between it and the next crossing) becomes a 75 m box with the road lowered 3.3 m (89 m of ramps, gravity drain), 33.6 M. Steep track reroutes become boxes or bridges over us (km 4.55 +11.8 M, km 4.64 +8.0 M, km 6.56 street +9.0 M); lowered boxes save at km 18.24 (−11.2 M) and km 6.32. |
+| best | 4.175179 | 4.129413 | −45.8 M: lowered boxes replace bridges over us or reroutes at km 3.69 (track lowered 5.8 m under our road at grade), 6.31, 8.19, 17.64, 18.98 (−29 M); km 9.93 track reroute 13.0 → 0.3 M (its own crossing's neighbour now carries it). |
+| demo | 4.712958 | 4.669186 | −43.8 M: km 7.96 service road 41.7 M reroute → box with the road lowered 0.7 m (17.6 M); lowered boxes at km 4.44 and 19.29; a 22.3 M track bridge over us → 12.3 M reroute at km 4.00; chains broken at km 2.60 and 6.89 (+8.1 M). |
+| direct-80 | 4.824952 | 4.816992 | −8.0 M: lowered boxes save 35 M (km 1.24, 2.15, 6.73, 15.29); unbuildable steep reroutes become bridges over us or boxes (km 6.55 +16.6 M, 4.62 +14.1 M, 5.68 +11.5 M); km 14.34 street reroute engineered (+8.4 M). |
+| direct-90 | 5.446206 | 5.494864 | +48.7 M: track diversions on ground steeper than a track may be become bridges over us or boxes (km 8.26 +27.7 M, 5.71 +10.3 M, 8.93 +6.7 M) or engineered longer lines (km 9.80 +12.9 M); a lowered box saves 17.5 M at km 1.25; km 5.67 −7.7 M. |
+| town-centre | 11.296878 | 11.388358 | +91.5 M: km 10.11 track 3637: the 1.5 km reroute (21.5 M) runs on ground far steeper than a track may be; a 148 m bridge over the cutting (89.5 M). Km 15.98 service road 5162: 43.0 M reroute → box with the road lowered 2.9 m (17.0 M). Km 4.90/4.98 street reroutes (one too steep to build, the other 43 M once engineered) → boxes with the streets lowered 1.7 m (+12.1 M). Km 6.29 track no longer chained (+11.5 M). |
 
 Frozen fixtures recaptured (`eval-regression.ts --capture=current --reviewed-model-change`): the six above;
 best-drag −67.4 M, best-pin −44.3 M, best-structures −51.2 M and best-manual −45.8 M move with best (the same

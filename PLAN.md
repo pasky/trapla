@@ -248,7 +248,7 @@ What exists (details and commands in `README.md`):
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
   ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
 
-### Buildable automatic reroutes, lowered underpasses (cost model 21, 2026-11-16)
+### Buildable automatic reroutes, lowered underpasses (cost model 22, 2026-11-16)
 
 - Automatic reroutes are engineered and checked like any road: a profile within the class gradient (its
   justified maximum where the ground leaves no choice), earthworks ≤ 10 m, culverts for streams, houses in the
@@ -267,7 +267,7 @@ What exists (details and commands in `README.md`):
   town-centre +91.5 M (cheap unbuildable reroutes replaced by honest ones or structures; lowered boxes save
   elsewhere), all VALID. Full evaluation ≈ +1 % on the saved designs, within noise (sum 569 → 568 ms before the
   review fixes, +6 ms for their finer reroute survey; candidate reroutes that cannot be worth it are not built,
-  reroutes reused by the strict retry). Details: `docs/footprint-conflicts.md` § Model 21.
+  reroutes reused by the strict retry). Details: `docs/footprint-conflicts.md` § Model 22.
 - Not modelled: groundwater and utilities under a lowered road; the pump station's installation and power
   connection (no installed price found).
 

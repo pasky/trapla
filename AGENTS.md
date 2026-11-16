@@ -52,7 +52,7 @@ broken visuals and jargon before.
 
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
-- Automatic reroutes are engineered and checked (model 21); a crossed way whose cut ends stay connected over
+- Automatic reroutes are engineered and checked (model 22); a crossed way whose cut ends stay connected over
   other roads is still rerouted instead of closed. Lowered underpasses ignore groundwater; pier placement near
   the Polish border can fail (engine limit).
 - Junction approaches on class I–III roads are not ramp-capped.
