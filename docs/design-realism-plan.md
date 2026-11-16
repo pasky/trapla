@@ -122,3 +122,44 @@ carries it, labelled.
 
 Order proposed: M1 (largest bill change, unblocks the rest) → M2 → M3 → M4, each merged on its own with gates,
 outcome-audit before/after and screenshots 210–239 (`docs/screenshots/`).
+
+## M4 design (2026-11-16, after the parent's go: M1 → M4 → M2 → M3)
+
+Sources: research/47 (design speed, hairpins), /48 §3 (2018 grades and radii).
+
+**Data.** A bend may carry its own design speed (`PI.speed`, one of the category's speeds; absent: the road's)
+and be a hairpin (`PI.hairpin`). A *stretch* is a run of consecutive bends with the same speed; where two
+stretches meet, the change lies in the middle of the straight between their bends (PROVISIONAL: no public
+rule on where the speed changes or how long a stretch must be; any step between 90, 80 and 70 is ≤ 20 km/h,
+the practitioner reading in research/47 §2). Travel time is summed per cell at its stretch's speed.
+
+**Horizontal geometry** (`horizontal.ts`): rules per bend instead of per road — the smallest radius,
+transition length (= vn), transition-free radius and reverse straight of that bend's speed; a compound curve
+joins only bends of one speed. Checks (`checks.ts`) judge each curve by its own stretch's norms.
+
+**Vertical** (grade-solve hunk, separate commit, after rail-grade-locality): the crest / sag minimum of each
+height point is that of its stretch's speed; the steepest grade per station is the category's for that
+station's terrain class (mountainous where the ground across the corridor is steeper than 15 %, research/47
+§1.1), lower in a hairpin. Until then the road's own speed gives the vertical radii everywhere (stricter,
+never invalid).
+
+**Hairpin** (bend type): radius 17.5 m on the axis (I/44 Červenohorské sedlo, the smallest found on a Czech
+class I road; the forest-road floor 15 m), no transition, banking 7.5 % (I/44). Each lane widened to the
+swept path of a 16.5 m articulated lorry plus the safety margin (VUT/HBH 2015: R 15 → 5.3, 20 → 4.7,
+25 → 4.3 m + 0.5 m class II/III, 0.75 m class I), drawn and billed (extra pavement, OTSKP structure research/46
+§3) and in the earthworks (wider crown there). Grade in the hairpin: the resultant slope √(s² + p²) ≤ 10 %
+where icing is frequent (2018 §8.10.1) with p = 7.5 % → s ≤ 6.6 %. Travel time: vm = √(127 R (0.25 + p))
+≈ 27 km/h over the hairpin's arc. Validity: on a mountainous stretch at the category's lowest speed (70 for
+S rows) it is VALID with the note "needs the road authority's approval" (I/44 was built under an approved
+departure from ČSN 73 6101); elsewhere it is a violation the player may still choose.
+
+**Not in M4:** an isolated curve below 70 km/h radii other than a hairpin (the 2018 text allows one signed
+isolated element but gives no lower bound), the 60 / 50 km/h rows of the older editions.
+
+**UI.** The bend card gets "Design speed here: 90 · 80 · 70" (this bend's stretch; the Road card keeps the
+whole-road speed) and "Hairpin" as a bend type with its note; the profile's curve band shows the stretch speeds;
+the travel time on the card follows the stretches.
+
+**Commits.** M4-1 per-bend rules and per-stretch travel time (horizontal, checks, evaluate, preview);
+M4-2 the grade-solve hunk (per-station gradient and vertical radii, terrain class); M4-3 hairpin geometry,
+widening, bill and drawing; M4-4 cards and words (terms.ts, player-text test).
