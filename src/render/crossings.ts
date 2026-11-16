@@ -9,6 +9,7 @@ import { existingRoadColor } from './landcover';
 import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
 import { collarPoint } from './earthwork-surface';
+import { footprintContains } from './ground-footprint';
 import { finish, type Staged } from './slices';
 import type { RouteSurfaceContext } from './route-surfaces';
 
@@ -47,6 +48,8 @@ class MeshBuilder {
   pos: number[] = []; col: number[] = []; elev: number[] = []; ink: number[] = []; indices: number[] = [];
   kinds: number[] = []; geo: number[] = [];
   groundHoles: { center: { x: number; y: number }; radius: number }[] = [];
+  /** our road's earthworks: its own slopes and collars stand there, a crossed road's ground must not */
+  insideEarthworks?: (x: number, y: number) => boolean;
   private scratch = new THREE.Vector3();
   /** vertex of a point object at a lift (positions-only builders share them between quads) */
   private shared = new Map<number, Map<CrossingPoint, number>>();
@@ -67,6 +70,9 @@ class MeshBuilder {
   quad(a: CrossingPoint, b: CrossingPoint, c: CrossingPoint, d: CrossingPoint, color: number, ink = 0, lift = .08, kind?: number) {
     // Existing replacement collars must not cover a level turning disk in cut. Drop
     // touching cells; the disk's own 20 m natural collar covers the small outside remainder.
+    // A crossed road's natural-ground collar running beside our earthworks would cut through our
+    // slopes in teeth (cells half over them): drop the cells that reach into them.
+    if (this.insideEarthworks && [a, b, c, d].some(p => this.insideEarthworks!(p.x, p.y))) return;
     const polygon = this.groundHoles.length ? [a,b,d,c] : [];
     if (this.groundHoles.length && this.groundHoles.some(({ center: p, radius: r }) => {
       if (p.x+r < Math.min(a.x,b.x,c.x,d.x) || p.x-r > Math.max(a.x,b.x,c.x,d.x) ||
@@ -145,6 +151,7 @@ export class CrossingRenderer {
     const neighbours = context?.neighbours ?? surfaces;
     const replacement = context?.replacementHeight ?? ((x: number, y: number) => this.view.replacementHeight(x, y));
     const allHeads = turnaroundSurfaces(neighbours,(x,y) => this.view.groundHeight(x,y));
+    const insideEarthworks = context?.groundFootprints?.length ? footprintContains(context.groundFootprints) : undefined;
     const ownGeometry = new Set(surfaces.map(s => s.crossing.geometry));
     const heads = allHeads.filter(head => ownGeometry.has(head.crossing.geometry));
     const materials = this.materials ??= { ground: this.view.crossingGroundMaterial(), earth: this.view.crossingEarthMaterial(), structure: this.view.crossingEarthMaterial() };
@@ -196,7 +203,7 @@ export class CrossingRenderer {
         const kept = this.surfaces.get(key);
         if (kept) { next.set(key, kept); continue; }
         const earth = new MeshBuilder(this.view), terrain = new MeshBuilder(this.view, true), structure = new MeshBuilder(this.view);
-        terrain.groundHoles = allHeads;
+        terrain.groundHoles = allHeads; terrain.insideEarthworks = insideEarthworks;
         yield* this.surface(surfaces[k], earth, terrain, structure, replacement);
         const meshes: THREE.Object3D[] = [];
         yield* emit(earth, terrain, structure, meshes);

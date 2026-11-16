@@ -1454,6 +1454,8 @@ async function main() {
     rebuildStats: () => ({ ...heavyStats }),
     /** live shader programs (a growing / changing list during edits means recompiles) */
     programs: () => (view.renderer.info.programs ?? []).map((p) => `${p.id}:${p.cacheKey.slice(0, 40)}`),
+    /** debugging only: the 3D view */
+    debugView: () => view,
     meta,
     official: meta.official.xy,
     A, B,

@@ -63,6 +63,10 @@ export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: num
         if (points === P) {
           if (i > 0 && !ground[i - 1]) { if (fill(i, 1)) a0 = toward(a0, a1); if (fill(i, -1)) b0 = toward(b0, b1); }
           if (i + 2 < r.n && !ground[i + 2]) { if (fill(i + 1, 1)) a1 = toward(a1, a0); if (fill(i + 1, -1)) b1 = toward(b1, b0); }
+          // The route's own ends meet the ground (at grade): nothing covers what lies beyond them either,
+          // so the mask stops short there too, or a line of sky-coloured slivers opens across the road.
+          if (i === 0) { a0 = toward(a0, a1); b0 = toward(b0, b1); }
+          if (i + 2 === r.n) { a1 = toward(a1, a0); b1 = toward(b1, b0); }
         }
         for (const p of [a0, b0, a1, b0, b1, a1]) out.push(p[0], 0, p[1]);
       }
