@@ -26,8 +26,8 @@ packs; SwiftShader 1440×900, fresh localStorage, two ≤ 20 min chunks (`m1`, `
 ### P1 — confusing
 
 1. **A small drag changes heights and crossings far from it (same pattern as Re-test 1 P0 1, also in this
-   branch).** Railway mission, drag the line between bends 2 and 3 (km 7.3) 20 px: +1.90 bn, the whole climb
-   becomes one long tunnel, the first tunnel's grade changes from 12.0 to 8.0 ‰ and "Our earthworks cover 18 m of a
+   branch).** Railway mission, drag the line between bends 2 and 3 (km 7.3) 20 px: +1.90 bn, most of the climb
+   becomes one 5 km tunnel, the first tunnel's grade changes from 12.0 to 8.0 ‰ and "Our earthworks cover 18 m of a
    track" appears at km 2.07, before bend 2, outside the changed stretch (`m2/021`). Both track conflicts are
    ordinary ones Auto should resolve. Area: auto-profile / crossing-links.
 2. **An unselected railway cannot be dragged.** Pressing on the drawn railway (on its click band) and dragging
