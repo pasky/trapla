@@ -21,6 +21,7 @@ import { RouteScene } from './render/route-scene';
 import { pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { CrossingPicker } from './render/crossing-pick';
+import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
 import { shapeable } from './ui/link-shape';
 import type { LinkVia } from './core/crossings';
@@ -163,7 +164,12 @@ async function main() {
   // after the HUD: it syncs the HUD's exaggeration select
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
-  }, noise);
+  }, noise, () => {
+    // the active route as built (else its ends and bends)
+    const r = last, d = store.read() ? store.design : null;
+    view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
+      : d ? [A, ...d.pis, B] : []);
+  });
 
   let last: Result | null = null;
   let projectFull: ProjectResult | null = null;
@@ -195,7 +201,8 @@ async function main() {
     // our road: the mission's route, and a motorway mission's other direction
     const missionCorridor = mission ? corridorOfRoute(projectStore.snapshot.design, mission) : undefined;
     const ours = new Set([mission, missionCorridor?.children.forward, missionCorridor?.children.reverse].filter((id): id is RouteId => !!id));
-    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, ours, legacy: legacyFacade(), ownPrice: own,
+    const groups = Object.fromEntries(projectStore.snapshot.design.corridors.flatMap(c => [[c.children.forward, c.id], [c.children.reverse, c.id]]));
+    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, ours, groups, legacy: legacyFacade(), ownPrice: own,
       activeRouteId: active ?? undefined, names: routeNames(),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
@@ -209,7 +216,7 @@ async function main() {
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   let sel: Sel | null = null;
   /** shaping reroutes on the map (constructed once the store hooks exist) */
-  let linkEdit: LinkEditor | undefined;
+  let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
@@ -311,6 +318,8 @@ async function main() {
   };
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   let selectGeneration = 0; // a deferred base-road pick yields to any later selection
+  /** A single selected place seen from further than this (m per pixel) is too small to make out: framing flies in. */
+  const FRAME_MPP = 6;
   const select = (next: Sel | null, fly = false) => {
     selectGeneration++;
     if (sourceEditor?.selected) sourceEditor.clear();
@@ -329,7 +338,7 @@ async function main() {
     if (store.read()) view.setDesign(store.design, selectedPi(), activeEndpoints());
     else view.clearDesign(activeEndpoints());
     profile.selectBend(selectedPi()); if (store.read()) curveEdit.refresh();
-    linkEdit?.refresh();
+    linkEdit?.refresh(); works?.refresh();
     const road = next?.kind === 'crossing' ? next.roadId : null;
     profile.selectCrossing(road); annotations.selectCrossing(road);
     annotations.selectBuilding(next?.kind === 'building' ? next.j : null);
@@ -341,15 +350,31 @@ async function main() {
       const p = placeOf(next);
       if (p) {
         profile.reveal(p.s0, p.s1);
-        if (fly) {
-          const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y));
-          const box = view.renderer.domElement.getBoundingClientRect();
-          const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40;
-          if (off) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
-        }
+        if (fly) frameSelection(next);
       }
       hud.revealContext('inspector');
     }
+  };
+  /**
+   * Show the player what they picked away from the map (a click in the profile or in a list): fly to it when it
+   * is off the screen, seen from low over the horizon (it would sit on the horizon), or too small to make out
+   * there (a piece shorter than a sixth of the view, a single place from further than FRAME_MPP m per pixel); a
+   * long piece is framed whole. A selection already well in view stays put.
+   */
+  const frameSelection = (t: Sel) => {
+    const p = placeOf(t);
+    if (!p) return;
+    const box = view.renderer.domElement.getBoundingClientRect();
+    const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y));
+    const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40 || view.lowView;
+    let small = view.metresPerPixel > FRAME_MPP;
+    const r = last;
+    if (p.s1 - p.s0 > 1 && r) {
+      const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return view.project(r.x[i], r.y[i], r.grade[i]); };
+      const a = at(p.s0), b = at(p.s1);
+      small = !a.vis || !b.vis || Math.hypot(a.sx - b.sx, a.sy - b.sy) < Math.min(box.width, box.height) / 6;
+    }
+    if (off || small) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
   };
   /** the active route's card when the road widgets cannot edit it: a proposed change on map geometry */
   const routeCard = () => {
@@ -728,7 +753,7 @@ async function main() {
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
-    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
+    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
   };
 
   // the noise view's band: asked from the worker for the displayed result when the view needs it
@@ -903,6 +928,9 @@ async function main() {
     if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
     if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
   }, commit);
+  works = new CrossingHighlight(view, document.getElementById('overlay')!, {
+    selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull,
+  });
   linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
     selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull, design: () => store.design,
     select: (roadId) => { if (sel?.kind !== 'crossing' || sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
@@ -990,7 +1018,7 @@ async function main() {
     if (d) {
       if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
-      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh();
+      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
@@ -1560,6 +1588,7 @@ async function main() {
     bendStations: () => last && bendStations(last, store.design),
     cameraTarget: () => view.target,
     cameraDistance: () => view.cameraDistance,
+    cameraPose: () => view.pose,
     undoLabels: () => ({ undo: store.undoLabel(), redo: store.redoLabel() }),
     selectRange: (s0: number | null, s1?: number) => select(s0 === null || s1 === undefined ? null : { kind: 'stretch', s0, s1 }),
     range: () => (sel?.kind === 'stretch' ? { s0: sel.s0, s1: sel.s1 } : null),

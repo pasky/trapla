@@ -16,7 +16,7 @@ import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
-import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
@@ -130,7 +130,8 @@ export interface Result {
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
-  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean }[];
+  /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
@@ -198,9 +199,6 @@ export interface EvalOptions {
    * shared heights where the two directions run side by side); Auto only between, continuing that line's
    * grade at both ends. */
   fixedProfile?: { x0: number; x1: number; vpis: readonly VPI[]; /** largest grade change at x0 / x1 */ slack?: [number, number] };
-  /** One direction of a split motorway: the other direction's carriageway axis (stations along it). Its
-   * noise is half of this kernel's source (the corridor's traffic), heard from that line. */
-  otherCarriageway?: { n: number; x: ArrayLike<number>; y: ArrayLike<number> };
   /** The side `leftJoined` means (default left): a separate stretch's directions both run A→B, so the
    * reverse carriageway has the forward one on its right. */
   joinedSide?: 'L' | 'R';
@@ -752,6 +750,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
   }
   const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
+  // Reroutes traced and engineered by the first pass, reused by the strict retry where our footprint is unchanged.
+  const reroutes = crossingCache();
   const sectionMemo: SectionCache = [];
   // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
   // or daylight changes the two widths; deck/centre cover never changes within this evaluation.
@@ -1046,13 +1046,23 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const tx = (q.x - p.x) / len, ty = (q.y - p.y) / len, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
     let hit: 'railway' | 'water' | 'building' | null = null;
     protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half }, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
-    if (!hit && bld) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && !gone[j] && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
+    // a house you keep is never demolished for a reroute
+    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
     return hit;
   };
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
+  /** Houses still standing under a new road (a reroute): bought out and demolished with it. */
+  const linkHouses = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
+    const out: number[] = [];
+    if (!bld) return out;
+    const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
+    bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
+    return out;
+  };
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0,
+    streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
     left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i])),
-  }, (x, y) => terrain.heightAt(x, y), ctx.roads));
+  }, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes));
   const shared = opts.sharedCrossings;
   if (shared && !shared.own) {
     const SHAREABLE = new Set(['overbridge', 'underpass', 'reconnection', 'diversion']);
@@ -1070,10 +1080,15 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
     const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
     crossingLump[c.i] += lump;
-    crossingStructure[c.i] += c.cost - lump;
+    // houses a reroute runs through are bought out like those under our road (buildings, not works)
+    // (a crossing built with the other direction is billed there, its houses included)
+    const houses = c.shared ? [] : (c.houses ?? []).filter(j => !gone[j]);
+    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j], in: 'reroute', strip: false }); }
+    crossingStructure[c.i] += c.cost - lump - (c.shared ? 0 : c.houseCost ?? 0);
     if (c.cost > 0) crossingsPaid++;
   }
 
+  demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const endJunctions = (ctx.junctions ?? []).flatMap(j => {
     const end = Math.hypot(j.x - ctx.a.x, j.y - ctx.a.y) < 1e-6 ? 'a' as const : Math.hypot(j.x - ctx.b.x, j.y - ctx.b.y) < 1e-6 ? 'b' as const : null;
@@ -1133,7 +1148,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const rail = cat.mode === 'railway';
     // a track's trains run on its axis (double track: one track either side of it, half the trains each)
     const lanes = rail ? (cat.tracks === 2 ? [{ pos: TRACK_CENTRES_M / 2, share: 0.5 }, { pos: -TRACK_CENTRES_M / 2, share: 0.5 }] : null)
-      : motorwayLanes(cat, st, opts.otherCarriageway, joinedRight);
+      : motorwayLanes(cat, joinedRight);
     acoustic = { id: opts.acousticSourceId ?? (rail ? 'acoustic:rail' : 'acoustic:road'), mode: rail ? 'rail' : 'road',
       laneOffset: lanes ? sourceReach({ laneOffset: 0, lanes }) : rail ? 0 : NOISE.sourceOffset, ...(lanes ? { lanes } : {}),
       sourceHeight: NOISE.barrierSourceHeight, n, x: st.x, y: st.y, tx: st.tx, ty: st.ty, grade,
@@ -1325,36 +1340,15 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   return retry.violations.length < result.violations.length ? retry : result;
 }
 /** A motorway's noise as its two directional sources, half the corridor's traffic each on its lane-pair axis
- * (D 27.5: ±6.0 m, data/motorway.ts d275CrossSection). Paired: both around the shared axis. One direction
- * (a separate stretch or a split): its own lane axis (towards its median from its carriageway's axis) and the
- * other direction's carriageway where that runs (its lane axis approximated by that line). Null otherwise. */
-function motorwayLanes(cat: (typeof CATEGORIES)[CategoryId], st: { n: number; x: ArrayLike<number>; y: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number> },
-  other: EvalOptions['otherCarriageway'], medianRight: boolean): SourceLane[] | null {
+ * (D 27.5: ±6.0 m, data/motorway.ts d275CrossSection; screening from the axis, Manuál §1.11 a). One
+ * direction on its own (a separate stretch or a split) cannot hear the other yet: the whole corridor's
+ * traffic on its own lane-pair axis (its carriageway's axis displaced towards its median), an upper bound
+ * (≤ +3 dB where only one direction is near) until a project decides houses heard by two sources. */
+function motorwayLanes(cat: (typeof CATEGORIES)[CategoryId], medianRight: boolean): SourceLane[] | null {
   if (cat.mode !== 'motorway') return null;
   const axis = d275CrossSection().left.axis!;
   if (cat.paired) return [{ pos: axis, share: 0.5 }, { pos: -axis, share: 0.5 }];
-  const own = (cat.crownWidth / 2 - axis) * (medianRight ? -1 : 1);
-  if (!other || other.n < 2) return [{ pos: own, share: 1 }];
-  // the other line's signed lateral position at each station (its nearest sampled point; left positive)
-  const C = 50, grid = new Map<string, number[]>();
-  for (let j = 0; j < other.n; j++) { const key = `${Math.floor(other.x[j] / C)},${Math.floor(other.y[j] / C)}`; let a = grid.get(key); if (!a) grid.set(key, a = []); a.push(j); }
-  const pos = new Float64Array(st.n);
-  let last = 0;
-  for (let i = 0; i < st.n; i++) {
-    let best = -1, bd = Infinity;
-    const cx = Math.floor(st.x[i] / C), cy = Math.floor(st.y[i] / C);
-    // rings of grid cells outwards until one holds a point, then one more ring (a nearer point at its corner)
-    for (let r = 0, stop = 64; r <= stop; r++) {
-      for (let gx = cx - r; gx <= cx + r; gx++) for (let gy = cy - r; gy <= cy + r; gy++) {
-        if (Math.max(Math.abs(gx - cx), Math.abs(gy - cy)) !== r) continue;
-        for (const j of grid.get(`${gx},${gy}`) ?? []) { const d = (other.x[j] - st.x[i]) ** 2 + (other.y[j] - st.y[i]) ** 2; if (d < bd) { bd = d; best = j; } }
-      }
-      if (best >= 0 && stop === 64) stop = r + 1;
-    }
-    if (best < 0) { pos[i] = last; continue; }
-    pos[i] = last = -(other.x[best] - st.x[i]) * st.ty[i] + (other.y[best] - st.y[i]) * st.tx[i];
-  }
-  return [{ pos: own, share: 0.5 }, { pos, share: 0.5 }];
+  return [{ pos: (cat.crownWidth / 2 - axis) * (medianRight ? -1 : 1), share: 1 }];
 }
 
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */

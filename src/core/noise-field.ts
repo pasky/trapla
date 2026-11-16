@@ -67,11 +67,14 @@ export interface AcousticSource {
   L: SideScreen; R: SideScreen;
 }
 
-export interface SourceLane { pos: number | ArrayLike<number>; share: number }
+export interface SourceLane { pos: number | ArrayLike<number>; share: number | ArrayLike<number> }
 /** how far towards a point the source's nearest line can lie (bounds and search radii), m */
 export function sourceReach(src: Pick<AcousticSource, 'laneOffset' | 'lanes'>): number {
   let r = src.laneOffset;
-  for (const l of src.lanes ?? []) if (typeof l.pos === 'number') r = Math.max(r, Math.abs(l.pos));
+  for (const l of src.lanes ?? []) {
+    if (typeof l.pos === 'number') r = Math.max(r, Math.abs(l.pos));
+    else for (let i = 0; i < l.pos.length; i++) r = Math.max(r, Math.abs(l.pos[i]));
+  }
   return r;
 }
 
@@ -378,15 +381,19 @@ function laneEnergy(f: NoiseField, lanes: readonly SourceLane[], w: number, d: n
   const left = GEO[G_LEFT] === 1;
   let u = 0, t = 0, near = 0;
   for (let k = 0; k < lanes.length; k++) {
-    const l = lanes[k], p = typeof l.pos === 'number' ? l.pos : l.pos[i], off = left ? p : -p;
+    const l = lanes[k], sh = typeof l.share === 'number' ? l.share : l.share[i];
+    if (!(sh > 0)) continue;
+    const p = typeof l.pos === 'number' ? l.pos : l.pos[i], off = left ? p : -p;
     if (off > near) near = off;
-    u += l.share * transfer(d, dz, f.ground, f.lin, off);
+    u += sh * transfer(d, dz, f.ground, f.lin, off);
   }
   u *= w;
   if (!(alt > 0) || d - near >= 12 + 2 * Math.abs(dz - NOISE.sourceHeight)) return u;
   for (let k = 0; k < lanes.length; k++) {
-    const l = lanes[k], p = typeof l.pos === 'number' ? l.pos : l.pos[i];
-    t += l.share * transfer(rh, dz, f.ground, f.lin, left ? p : -p);
+    const l = lanes[k], sh = typeof l.share === 'number' ? l.share : l.share[i];
+    if (!(sh > 0)) continue;
+    const p = typeof l.pos === 'number' ? l.pos : l.pos[i];
+    t += sh * transfer(rh, dz, f.ground, f.lin, left ? p : -p);
   }
   t *= alt;
   return t > u ? t : u;

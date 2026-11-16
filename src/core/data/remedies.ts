@@ -81,6 +81,44 @@ export const UNDERPASS_RULES = {
   /** Beyond this the crossed road is in a tunnel, not a small underpass (cf. CULVERT_RULES.maxBoxLength). */
   maxLength: 100,
 };
+/** The crossed way lowered into a cut so that the box fits under a low embankment (research/37). */
+export const LOWERING_RULES = {
+  /** Deepest lowering below the old road level, m. PROVISIONAL game cap (research/37 §7): no norm
+   * gives one; level-crossing replacement underpasses drop the road by the whole clear height plus
+   * structure (Studénka: ≈ 4.67 m road to the railway structure's top, plus its unreported track build-up);
+   * 6 m covers that with margin. */
+  maxDepth: 6,
+  /** Drain-pipe invert below the low point's road surface (gully outlet), m. PROVISIONAL: no
+   * sourced pipe-cover rule was found (research/37 §2). */
+  drainDepth: 1,
+  /** Fall of the gravity outfall pipe. PROVISIONAL: TP 83 §4.7's ditch minimum (0.5 %) used for the
+   * pipe (research/37 §2). */
+  drainFall: 0.005,
+  /** Longest gravity outfall searched along the crossed way from the low point, m. Engine bound;
+   * beyond it the low point is pumped (TP 83 §6.1). */
+  maxOutfall: 500,
+};
+/** OTSKP April 2026, CZK excl. VAT (research/37 §3), and one equipment price (§6B). */
+export const DRAINAGE_RATES = {
+  gully: 11_745.37, // 89712 complete street gully, precast concrete; two at the low point
+  pipe: 2_501.53, // 9183A1 DN 300 concrete pipe, m (gravity outfall)
+  outlet: 8_044.73, // 89516 outlet head, precast
+  wetWell: 27_487.38, // 894146 concrete shaft on DN ≤ 400 pipe (pump sump)
+  /** Duplex packaged pump chamber with controls and alarm, equipment only (Dešťovka.eu listing,
+   * research/37 §6B). PROVISIONAL as a station price: installation and the power connection are not
+   * included, no installed price was found. */
+  pumps: 74_355.4,
+  risingMain: 1_436.48, // 9183A3 DN 300 plastic pipe, m: PROVISIONAL proxy for the pumped main (no pressure-pipe item extracted)
+};
+/** Draining the low point under a lowered underpass: two gullies and either a gravity pipe of
+ * `outfall` m to lower ground (TP 83 §6.1: by gravity where the fall allows) or a pumped sump
+ * with a rising main of `main` m to where the way is back on the ground. */
+export function sagDrainage(outfall: number | undefined, main: number) {
+  const R = DRAINAGE_RATES, gullies = 2 * R.gully;
+  return outfall !== undefined
+    ? { kind: 'gravity' as const, pipe: outfall, cost: gullies + outfall * R.pipe + R.outlet }
+    : { kind: 'pump' as const, pipe: main, cost: gullies + R.wetWell + R.pumps + main * R.risingMain + R.outlet };
+}
 /** Per-metre box assembly (concrete incl. rebar, roof waterproofing, bedding) plus the crossed
  * road's own SPK pavement through the box; heads are separate. */
 export function underpassAssembly(size: UnderpassSize, roadPerM: number) {

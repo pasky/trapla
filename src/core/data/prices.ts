@@ -9,12 +9,14 @@
  * unchanged (eval-regression identical).
  * 21: finite-segment noise (Manuál 2018 §1.10–1.11, §1.19), walls on the cross-section's line, the
  * cheapest automatic wall per house (research/36).
- * 22: railway grade lines on a 0.5 m search grid (12.5 ‰ left the 2 m / 1 m grids too few steps to rise
+ * 22: valid automatic reroutes (engineered links within the class gradient, culverts, houses bought
+ * out, a gentler line along our road), lowered underpasses (research/37), sloped decks over us.
+ * 23: railway grade lines on a 0.5 m search grid (12.5 ‰ left the 2 m / 1 m grids too few steps to rise
  * over a crossing); a railway between two points of an existing line joins its track in the stations and
- * rebuilds it where it runs along it; road and motorway bills unchanged (eval-regression identical); railway ends leave
- * the tracks they join at a turnout's angle; rebuilt railway stretches at their line's own speed and grade;
- * motorway (two directional sources) and railway noise on the finite-segment model. */
-export const COST_MODEL_VERSION = 22;
+ * rebuilds it where it runs along it; railway ends leave the tracks they join at a turnout's angle; rebuilt
+ * railway stretches at their line's own speed and grade; a paired motorway's noise as its two directional
+ * sources, a double track's per track; road bills unchanged (eval-regression identical). */
+export const COST_MODEL_VERSION = 23;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

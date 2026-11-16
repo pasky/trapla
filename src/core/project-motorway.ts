@@ -391,10 +391,10 @@ const carriagewayLine = (route: MotorwayRoute) => {
     horizontalRules(route.specification.designSpeed, CARRIAGEWAY_CATEGORY)), 10);
 };
 
-/** One direction of a split corridor through the kernel. Noise: two directional sources, half the
- * corridor's traffic each, its own on its lane axis and the other direction's along that carriageway
- * (evaluate.ts motorwayLanes), so a house hears both. Houses beside a joined stretch are the outer
- * direction's to check (one decision per house). */
+/** One direction of a split corridor through the kernel. Noise: the WHOLE corridor's traffic on its own
+ * lane-pair axis (evaluate.ts motorwayLanes), a safe upper bound on the two directions' sum for every house
+ * (at most +3 dB too loud where only one direction is near), until a project decides houses heard by two
+ * sources together. Houses beside a joined stretch belong to the outer direction. */
 export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, routeId: string,
   options: Pick<EvalOptions, 'preview' | 'materialValue' | 'sharedCrossings'> = {}): Result {
   const route = project.routes.find(r => r.id === routeId) as MotorwayRoute, corridor = corridorOfRoute(project, routeId)!;
@@ -404,7 +404,7 @@ export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, ro
   return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, carriagewayDesign(project, route),
   { ...options, endpointElevations: { a: a.z, b: b.z }, operatingSpeed: ops.speed, speedLimit150: speedLimit150(route) && speedLimit150(other),
-    leftJoined: joinedRanges(carriagewayLine(route), carriagewayLine(other)), otherCarriageway: carriagewayLine(other),
+    leftJoined: joinedRanges(carriagewayLine(route), carriagewayLine(other)),
     goals: { time: goal?.maxTravelMin !== undefined, capacity: false } });
 }
 
@@ -781,7 +781,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
     const result = evaluate({ ...ctx, a: p.a, b: p.b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare } }, p.design,
       { ...evalOptions, endpointElevations: { a: p.a.z, b: p.b.z }, operatingSpeed: ops.speed, speedLimit150: kids.every(speedLimit150),
         ...(p.fixedProfile ? { fixedProfile: p.fixedProfile } : {}),
-        leftJoined: joinedRanges(p.line, other.line, side, true), joinedSide: side, otherCarriageway: other.line,
+        leftJoined: joinedRanges(p.line, other.line, side, true), joinedSide: side,
         ...(dir === 'forward' ? { sharedCrossings: { own: true } } : from ? { sharedCrossings: { own: false, from: from.crossings } } : {}),
         goals: { time: false, capacity: false } });
     for (const q of p.sideBySidePins) {

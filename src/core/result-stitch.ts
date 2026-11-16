@@ -194,23 +194,27 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
   return out;
 }
 
-/** The composed noise source on the spine's stations: the spine's cells outside the pieces, each piece's
- * own (its carriageway axis, its screens, its two directional lines) inside, with the walls built there.
- * The noise band and the house cards sum it like any route's; a house inside hears the shown direction and
- * the other one as that direction's kernel saw it. */
+/** The composed noise source on the spine's stations: the spine's cells outside the pieces (its two
+ * directional lines), each piece's own inside (its carriageway axis, its screens, its line carrying the whole
+ * traffic), with the walls built there. The noise band and the house cards sum it like any route's. Limit: a
+ * piece decided its houses without the spine's cells beyond its joins (and the spine its own without the
+ * piece): near a join a card can show a little more than the decision heard. */
 function stitchSource(base: Result, list: readonly StitchPiece[]): Pick<Result['noise'], 'source' | 'L' | 'R'> {
   const src = base.noise.source, n = base.n;
   if (!src || list.some(p => !p.piece.noise.source)) return { source: null, L: base.noise.L, R: base.noise.R };
   const F = (a: ArrayLike<number>) => Float64Array.from(a);
   const screen = (q: SideScreen): SideScreen => ({ shield: Uint8Array.from(q.shield), edgeOff: F(q.edgeOff), edgeTop: F(q.edgeTop),
     edgeLane: Uint8Array.from(q.edgeLane), wallOff: F(q.wallOff), wallFoot: F(q.wallFoot), gap: Uint8Array.from(q.gap) });
-  const lanePos = (s: AcousticSource, k: number, i: number) => { const l = s.lanes?.[k]; return !l ? (k === 0 ? 0 : NaN) : typeof l.pos === 'number' ? l.pos : l.pos[i]; };
-  const laneShare = (s: AcousticSource, k: number) => s.lanes ? s.lanes[k]?.share ?? 0 : k === 0 ? 1 : 0;
+  // its lines per cell, as two: the spine's two directions (±6 m, half each), a piece's one (all of it)
+  const at = (v: number | ArrayLike<number>, i: number) => (typeof v === 'number' ? v : v[i]);
+  const line = (s: AcousticSource, k: number, i: number): [number, number] => {
+    const l = s.lanes?.[k];
+    return l ? [at(l.pos, i), at(l.share, i)] : k === 0 ? [0, 1] : [0, 0];
+  };
   const out: AcousticSource = { ...src, x: F(src.x), y: F(src.y), tx: F(src.tx), ty: F(src.ty), grade: F(src.grade), len: F(src.len),
     L: screen(src.L), R: screen(src.R), weight: new Float64Array(n).fill(1) };
-  const pos = [new Float64Array(n), new Float64Array(n)], share = [laneShare(src, 0), laneShare(src, 1)];
-  const fin = (v: number) => (Number.isFinite(v) ? v : 0);
-  for (let i = 0; i < n; i++) { pos[0][i] = fin(lanePos(src, 0, i)); pos[1][i] = fin(lanePos(src, 1, i)); }
+  const pos = [new Float64Array(n), new Float64Array(n)], share = [new Float64Array(n), new Float64Array(n)];
+  for (let i = 0; i < n; i++) for (let k = 0; k < 2; k++) [pos[k][i], share[k][i]] = line(src, k, i);
   const L = F(base.noise.L), R = F(base.noise.R), weight = out.weight as Float64Array;
   for (const p of list) {
     const q = p.piece.noise.source!, m = p.piece.n;
@@ -224,9 +228,8 @@ function stitchSource(base: Result, list: readonly StitchPiece[]): Pick<Result['
         a.shield[i] = b.shield[k]; a.edgeOff[i] = b.edgeOff[k]; a.edgeTop[i] = b.edgeTop[k]; a.edgeLane[i] = b.edgeLane[k];
         a.wallOff[i] = b.wallOff[k]; a.wallFoot[i] = b.wallFoot[k]; a.gap[i] = b.gap[k];
       }
-      // its lines in the spine's shares (a missing second line: none)
-      for (let l = 0; l < 2; l++) { const sh = laneShare(q, l); pos[l][i] = sh > 0 ? fin(lanePos(q, l, k)) : 0; }
-      weight[i] = w * (laneShare(q, 0) + laneShare(q, 1)) / Math.max(1e-9, share[0] + share[1]);
+      for (let l = 0; l < 2; l++) [pos[l][i], share[l][i]] = line(q, l, k);
+      weight[i] = w;
       L[i] = p.piece.noise.L[k] ?? 0; R[i] = p.piece.noise.R[k] ?? 0;
     }
   }
@@ -277,5 +280,5 @@ function sliceSource(src: AcousticSource, i0: number, i1: number): AcousticSourc
     edgeLane: q.edgeLane.slice(i0, i1 + 1), wallOff: q.wallOff.slice(i0, i1 + 1), wallFoot: q.wallFoot.slice(i0, i1 + 1), gap: q.gap.slice(i0, i1 + 1) });
   return { ...src, n: i1 - i0 + 1, x: c(src.x), y: c(src.y), tx: c(src.tx), ty: c(src.ty), grade: c(src.grade), len: c(src.len), L: scr(src.L), R: scr(src.R),
     ...(src.weight ? { weight: c(src.weight) } : {}),
-    ...(src.lanes ? { lanes: src.lanes.map(l => ({ ...l, pos: typeof l.pos === 'number' ? l.pos : c(l.pos) })) } : {}) };
+    ...(src.lanes ? { lanes: src.lanes.map(l => ({ pos: typeof l.pos === 'number' ? l.pos : c(l.pos), share: typeof l.share === 'number' ? l.share : c(l.share) })) } : {}) };
 }

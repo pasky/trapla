@@ -1,5 +1,5 @@
 // Map view options (top-right of the map): contour lines, slope tint, vertical exaggeration, aerial photo,
-// noise view. Persisted in localStorage; keyboard: C, S, R, O, N.
+// noise view, and "Whole route" back to the whole route. Persisted in localStorage; keyboard: C, S, R, O, N, W.
 
 import type { View } from '../render/view';
 
@@ -19,7 +19,7 @@ export class ViewBar {
 
   /** `onPhoto`: told when the photo layer is switched (for the attribution line); `noise`: the noise view */
   constructor(root: HTMLElement, private view: View, photoNote = '', private onPhoto: ((on: boolean) => void) | null = null,
-    private noise: { setOn(on: boolean): void } | null = null) {
+    private noise: { setOn(on: boolean): void } | null = null, onWhole: (() => void) | null = null) {
     try {
       const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
       this.prefs = { contours: !!p.contours, slope: !!p.slope, exag: EXAG.includes(p.exag) ? p.exag : 1, photo: !!p.photo, noise: !!p.noise };
@@ -31,6 +31,9 @@ export class ViewBar {
       root.appendChild(b);
       return b;
     };
+    // back to the whole route from wherever the view has wandered (W)
+    const whole = onWhole ? btn('Show the whole route (W)', onWhole) : null;
+    if (whole) { whole.className = 'whole-route'; whole.innerHTML = 'Whole route <kbd>W</kbd>'; }
     this.bContours = btn('Contour lines (C)', () => this.set({ contours: !this.prefs.contours }));
     this.bSlope = btn('Slope: yellow 8 %, orange 15 %, red 25 %, purple 40 % (S)', () => this.set({ slope: !this.prefs.slope }));
     this.bExag = btn('Vertical exaggeration (R)', () => this.set({ exag: EXAG[(EXAG.indexOf(this.prefs.exag) + 1) % EXAG.length] }));
@@ -46,6 +49,7 @@ export class ViewBar {
       else if (k === 'r') this.bExag.click();
       else if (k === 'o') this.bPhoto?.click();
       else if (k === 'n') this.bNoise.click();
+      else if (k === 'w') whole?.click();
     });
     this.apply();
   }

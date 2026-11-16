@@ -16,6 +16,8 @@ import type { ProjectCommand } from '../project-store-contract';
 import type { PI } from './horizontal';
 
 export const RAILWAY_POLICY = 'conventional-new';
+/** PROVISIONAL game prior: freight trains run at 100 km/h, never faster than the line. */
+const FREIGHT_SPEED = 100;
 export type RailwayRoute = Extract<RouteDesign, { kind: 'railway' }>;
 const categoryOf = (route: RailwayRoute) => route.specification.tracks === 1 ? 'R1' as const : 'R2' as const;
 
@@ -44,7 +46,7 @@ export function replaceRailwayFromDesign(project: ProjectDesign, routeId: string
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
       : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } };
   route.specification = { ...route.specification, tracks: category === 'R1' ? 1 : 2, designSpeed: speed,
-    operations: { ...route.specification.operations, passengerSpeed: speed } };
+    operations: { ...route.specification.operations, passengerSpeed: speed, freightSpeed: Math.min(FREIGHT_SPEED, speed) } };
   next.buildingOverrides = buildingOverrides ?? [];
   return next;
 }
@@ -55,7 +57,7 @@ export function createRailwayRoute(id: string, name: string, endpoints: Endpoint
   return { id, name, role: 'auxiliary', revision: 0, kind: 'railway', acousticSourceId: `acoustic:${id}`, endpoints: structuredClone(endpoints),
     alignment: { kind: 'pi', pis: [], controls: {}, vertical: { kind: 'auto', pins: [] } },
     specification: { kind: 'railway', policy: RAILWAY_POLICY, designSpeed: speed, gaugeMm: 1435, tracks, electrification: 'AC25kV',
-      operations: { ...RAIL_TRAFFIC_PRIOR, passengerSpeed: speed, freightSpeed: 100 } } };
+      operations: { ...RAIL_TRAFFIC_PRIOR, passengerSpeed: speed, freightSpeed: Math.min(FREIGHT_SPEED, speed) } } };
 }
 
 /** The scenario's mission made by a railway: same ports and time target; demand = the prior's trains. */
