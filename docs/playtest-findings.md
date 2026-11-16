@@ -4,6 +4,28 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Re-test — crossing-links valid-reroutes @ f09ab24 (2026-11-16, two short chunks)
+
+Detached snapshot (does not contain main 93f849d yet). Screenshots `/tmp/trapla-qa/vr/` (numbering restarts in chunk 2).
+
+| item | verdict | evidence |
+|---|---|---|
+| S1 #13 chained reroutes | **PASS** | D11 straight start: all three cut tracks lead to a real crossing — km 2.14 → bridge km 2.32 (+315 m), km 4.10 → bridge km 4.01 (+421 m), km 9.43 → lowered underpass km 9.10 (+652 m). None points at another cut crossing. |
+| works visible when selected | **PASS** | a selected reroute outlines the whole new track in yellow on both sides of our road (`000`, `001`, chunk 1 `017`). |
+| crossing picked by its works | **PASS** | clicking the new track (grab cursor) opens that crossing's card (`002`). |
+| shaped reroutes | **PASS** (P2 below) | dragging the new track adds bend points: "Path: your shape, 12 bend points · Automatic path", price updates (+16 M), still VALID (`004-reshape-after`). |
+| valid automatic reroutes | **PASS** | the three reroutes run along the earthwork toe to the crossing; km 9.43 climbs "up to 15 %, the most its class allows where there is no other way" and switches back once on the hillside: plausible and explained. |
+| lowered underpass km 16.58 | **PASS** | "75 m concrete box, the local road lowered by 3.3 m · 34 M CZK", ramps 89 m ≤ 8 %, drainage pipe; the cutting is drawn on both sides (chunk 1 `005`, `008`). |
+| lowered underpass town-centre km 15.98 | **PASS** with P2 | "57 m box (5 × 4.5 m), service road lowered 2.9 m"; cuttings drawn. The very skewed box shows as a long grey slab sticking out of the embankment (chunk 1 `012`, `016`); the box length is honest, but real designers would square the crossing. |
+
+New, P2:
+- After reshaping, the card still says "+421 m of new track" while the cost tripled (5.9 → 18 M CZK) and the drawn path is
+  visibly longer; header gains "crossed 3×" with no explanation (`004`).
+- A map hover tip ("3 m wall left · 850 m · protects 11 houses") stays on screen after the camera moves away and even after
+  loading another design (chunk 1 `008`–`010`).
+- From the overview (≈ 6.8 km), wheel-in over the selected crossing first does nothing, then jumps to 44 m, overshooting
+  (camera; camera-polish should fix this).
+
 ## Re-test — noise-walls-seams QA fixes @ 8ba793d (2026-11-16, one 3 min chunk)
 
 Screenshots `/tmp/trapla-qa/nws2/`. All six fixes **PASS**:
