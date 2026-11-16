@@ -306,9 +306,10 @@ footprint within 200 m of them is unchanged (`CrossingCache`). Auto's preference
 back under our slope also removes best's new strict retry. A/B interleaved against main 217cfa4 (`scripts/` designs, min of 12, under the exclusive browser lock;
 host load ≈ 20): sums over the six saved designs 569 → 568 ms and 582 → 580 ms in two runs. Per design,
 demo is ≈ 15 ms faster and best ≈ 4 ms faster (the strict retry pass now reuses reroutes), straight and
-direct-90 ≈ 4–7 ms slower (their crossing step does more engineering, ≈ +7 ms). Measured before the review
-fixes (finer ground survey of reroutes, reuse tracked per consulted chainage); those could not be timed on
-the overloaded host (load 15–35, ±50 % run to run) and need a re-measure on a quiet one.
+direct-90 ≈ 4–7 ms slower (their crossing step does more engineering, ≈ +7 ms). The review fixes below (finer
+ground survey of reroutes, reuse tracked per consulted chainage) add ≈ 6 ms over the six designs (548 → 554 ms
+against the tree before them, load ≈ 6; ≈ 5 ms of it the finer survey): net ≈ +1 % against main, within
+run-to-run noise.
 
 Review fixes (deep review of this model): a reroute reused across passes is now invalidated by any change of
 our footprint at the chainages its computation consulted (it compared only a window around its anchors: a
