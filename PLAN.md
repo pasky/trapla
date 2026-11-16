@@ -393,6 +393,12 @@ What exists (details and commands in `README.md`):
   outcome-audit (5 designs + straight + 24 random): −1,578 M in sum, VALID 8 → 8, violations 106 → 124 (random-11,
   an S 7.5 design already invalid: a long town bridge whose piers cannot miss the roads below, an engine limit).
   Evaluate time, sum of per-design minima over 35 designs, interleaved in one process: +1.0 % (noise).
+- Known engine limits seen in the km 9.0 drag sweep (not fixed): (1) on D11 drags that move the line left at
+  km 9.0, a long bridge at km 15.0–15.6 cannot place its piers clear of the railway running alongside below it
+  ("A bridge pier stands on a railway" ×10–15) — the support layout only moves piers along the bridge, it cannot
+  span a parallel track; (2) a skewed stream crossing (D11 km 7.84 at +55 m, sine 0.27, 127 m of span along our
+  road) misses its required span by ≈ 1 m where the ground rises above the grade at the bridge's end: forced bridge
+  cells stop where the grade meets the ground, so Auto would need to raise the line there.
 
 ### One drag, no curve-room problem (2026-11-16)
 
