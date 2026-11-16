@@ -2,6 +2,7 @@
 // tangent guide of the active bend, official line, DOM markers and labels, heightfield picking.
 
 import * as THREE from 'three';
+import { Declutter } from './declutter';
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
@@ -58,6 +59,14 @@ const COL = {
 const SKY = 0xc9d6e2;
 /** camera height above the rendered ground (m; the near plane is 5 m) and the ground probed around it */
 const CAMERA_CLEARANCE = 25;
+/** Place names are drawn only nearer than this many camera distances (none piled up on the horizon). */
+const LABEL_HORIZON = 6;
+const PLACE_RANK = ['city', 'town', 'village', 'suburb', 'hamlet'];
+/** How far the selected bend's guide (its two straights) reaches out from the bend, m. */
+const GUIDE_REACH = 600;
+/** A flight (a click in the profile, a card's place) from a view lower than FLY_LOWEST above the horizon
+ * ends looking down at FLY_PITCH, so that the place lands mid-screen rather than on the horizon. */
+const FLY_LOWEST = (30 * Math.PI) / 180, FLY_PITCH = (40 * Math.PI) / 180;
 const CAMERA_PROBE = 60;
 const CAMERA_PROBES: [number, number][] = [[0, 0], ...[0, 1, 2, 3, 4, 5, 6, 7].flatMap((k): [number, number][] => {
   const a = (k * Math.PI) / 4;
@@ -132,6 +141,7 @@ export class View {
   private proposalLines = new Map<string, { key: string; line: Line2 }>();
   get proposalCount() { return this.proposalLines.size; }
   private markers: { el: HTMLElement; x: number; y: number; z: number; minDist?: number }[] = [];
+  private labelRoom = new Declutter();
   private piMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
   private endpointMarkers: { el: HTMLElement; x: number; y: number; z: number }[] = [];
   private endpoints: RenderEndpoints;
@@ -211,11 +221,14 @@ export class View {
     sun.position.set(-1, 1.6, -0.8);
     this.scene.add(sun);
     this.controls = new MapControls(this.camera, this.renderer.domElement);
-    this.controls.maxPolarAngle = Math.PI * 0.47;
+    // (at most ≈ 76° from straight down: a view skimming the horizon zooms and pans the far distance)
+    this.controls.maxPolarAngle = Math.PI * 0.42;
     this.controls.minDistance = 80;
     this.controls.maxDistance = 60000;
     this.controls.zoomToCursor = true; // touch pinch; wheel and trackpad pinch go through zoomAt (installWheel)
-    this.controls.addEventListener('change', () => { this.dirty = true; });
+    this.controls.addEventListener('change', () => { this.dirty = true; this.keepTargetOnMap(); });
+    // after a pan or a turn the orbit target goes back onto the ground under the screen centre
+    this.controls.addEventListener('end', () => this.anchorTarget());
     this.hoverEl = document.createElement('div');
     this.hoverEl.className = 'hover-dot';
     this.hoverEl.style.display = 'none';
@@ -296,29 +309,36 @@ export class View {
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
-    const o = ray.ray.origin, d = ray.ray.direction;
+    const t = this.groundAlong(ray.ray.origin, ray.ray.direction);
+    if (t === null) return null;
+    const o = ray.ray.origin, d = ray.ray.direction, T = this.terrain;
+    const x = o.x + d.x * t + this.cx, y = -(o.z + d.z * t) + this.cy;
+    if (x < 0 || y < 0 || x > T.width || y > T.height) return null;
+    return { x, y };
+  }
+
+  /** Distance along a ray (world coordinates, `d` unit) to where it meets the drawn ground, or null. */
+  private groundAlong(o: THREE.Vector3, d: THREE.Vector3, tMax = 150000): number | null {
     const T = this.terrain;
     const above = (t: number) => {
       const px = o.x + d.x * t, py = o.y + d.y * t, pz = o.z + d.z * t;
       const x = px + this.cx, y = -pz + this.cy;
       return py - T.heightAt(x, y) * this.exag;
     };
-    let t = 0, prev = 0, f0 = above(0);
-    if (f0 < 0) return null;
-    const tMax = 150000;
+    let t = 0, prev = 0;
+    if (above(0) < 0) return null;
     while (t < tMax) {
       const step = Math.max(4, t * 0.003);
       prev = t; t += step;
       if (above(t) < 0) {
         let lo = prev, hi = t;
         for (let k = 0; k < 30; k++) { const m = 0.5 * (lo + hi); if (above(m) < 0) hi = m; else lo = m; }
-        const x = o.x + d.x * hi + this.cx, y = -(o.z + d.z * hi) + this.cy;
-        if (x < 0 || y < 0 || x > T.width || y > T.height) return null;
-        return { x, y };
+        return hi;
       }
     }
     return null;
   }
+
 
   // ---- terrain -------------------------------------------------------------------------------
   private buildTerrain() {
@@ -567,19 +587,40 @@ export class View {
   }
 
   /** the official line's label rides along it: at its point nearest the middle of the view */
-  private placeOfficialLabel() {
+  /** Where the map's own buttons, bars and legends sit over it (view coordinates): labels keep clear of them.
+   * Re-read at most twice a second (they move only when the window or a bar changes). */
+  private uiBoxes: number[] = [];
+  private uiRead = -Infinity;
+  private uiRoom(): number[] {
+    const now = performance.now();
+    if (now - this.uiRead < 500) return this.uiBoxes;
+    this.uiRead = now;
+    const c = this.container.getBoundingClientRect(), out: number[] = [];
+    const ui = [...this.container.children, ...document.querySelectorAll('.scenario-picker-return')]
+      .filter((e): e is HTMLElement => e instanceof HTMLElement && e !== this.overlay && e !== this.renderer.domElement && e.offsetParent !== null);
+    for (const e of ui) {
+      const r = e.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) out.push(r.left - c.left, r.top - c.top, r.right - c.left, r.bottom - c.top);
+    }
+    return this.uiBoxes = out;
+  }
+
+  private placeOfficialLabel(): { sx: number; sy: number } | null {
     const el = this.officialLabel;
-    if (!el) return;
+    if (!el) return null;
     const w = this.container.clientWidth, h = this.container.clientHeight;
-    let best: { sx: number; sy: number } | null = null, bd = Infinity;
+    // the point nearest the middle of the view where it prints over nothing already placed (A, B)
+    const spots: { sx: number; sy: number; d: number }[] = [];
     for (const p of this.officialPts) {
       const s = this.screenOf(p.x, p.y, p.z);
       if (!s.vis || s.sx < 40 || s.sy < 40 || s.sx > w - 160 || s.sy > h - 60) continue;
-      const d = Math.hypot(s.sx - w / 2, s.sy - h / 2);
-      if (d < bd) { bd = d; best = s; }
+      spots.push({ sx: s.sx, sy: s.sy, d: Math.hypot(s.sx - w / 2, s.sy - h / 2) });
     }
+    spots.sort((a, b) => a.d - b.d);
+    const best = spots.find(s => this.labelRoom.fit(el, s.sx, s.sy)) ?? null;
     el.style.display = best ? '' : 'none';
     if (best) el.style.transform = `translate(${best.sx.toFixed(1)}px, ${best.sy.toFixed(1)}px)`;
+    return best;
   }
 
   private buildLabels() {
@@ -590,7 +631,9 @@ export class View {
       this.overlay.appendChild(el);
       this.markers.push({ el, x, y, z: this.terrain.heightAt(x, y), minDist });
     };
-    for (const p of this.pack.overlays.places) {
+    // (in placing order: towns first, then villages, suburbs and hamlets)
+    const places = [...this.pack.overlays.places].sort((a, b) => PLACE_RANK.indexOf(a.kind) - PLACE_RANK.indexOf(b.kind));
+    for (const p of places) {
       if (p.kind === 'town' || p.kind === 'city') add('place town', p.name, p.x, p.y);
       else if (p.kind === 'village') add('place village', p.name, p.x, p.y, 30000);
       else if (p.kind === 'suburb') add('place suburb', p.name, p.x, p.y, 12000);
@@ -716,20 +759,26 @@ export class View {
     }
     const i = this.guideFor = this.activeBend;
     if (i === null) return;
-    const pts = this.designPts.slice(i, i + 3), arr: number[] = [];
-    for (let j = 0; j < pts.length - 1; j++) {
-      const L = Math.hypot(pts[j + 1].x - pts[j].x, pts[j + 1].y - pts[j].y);
-      const n = Math.max(1, Math.ceil(L / 60));
+    // The two straights meeting at the bend, a short way out from it (not all the way to the next
+    // bends: along the whole road a dashed guide read as the dashed official line). Solid, light.
+    const [p0, pi, p1] = this.designPts.slice(i, i + 3), arr: number[] = [];
+    const leg = (q: { x: number; y: number }) => {
+      const L = Math.hypot(q.x - pi.x, q.y - pi.y), reach = Math.min(L / 2, GUIDE_REACH);
+      return { x: pi.x + (q.x - pi.x) * reach / (L || 1), y: pi.y + (q.y - pi.y) * reach / (L || 1) };
+    };
+    const ends = [leg(p0), pi, leg(p1)];
+    for (let j = 0; j < 2; j++) {
+      const a = ends[j], b = ends[j + 1], n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 30));
       for (let k = j > 0 ? 1 : 0; k <= n; k++) {
-        const x = pts[j].x + (pts[j + 1].x - pts[j].x) * (k / n), y = pts[j].y + (pts[j + 1].y - pts[j].y) * (k / n);
+        const x = a.x + (b.x - a.x) * (k / n), y = a.y + (b.y - a.y) * (k / n);
         const v = this.local(x, y, this.drapeHeight(x, y) + 4);
         arr.push(v.x, v.y, v.z);
       }
     }
     const g = this.guide = new THREE.Group();
     g.name = 'bend-guide';
-    g.add(this.makeLine(arr, null, 3, { color: 0x1d232a, opacity: 0.35, depthTest: false, order: 3 }),
-      this.makeLine(arr, null, 1.5, { color: 0xffffff, opacity: 0.9, depthTest: false, dashed: true, dashSize: 8, gapSize: 6, order: 3 }));
+    g.add(this.makeLine(arr, null, 3.5, { color: 0x1d232a, opacity: 0.35, depthTest: false, order: 3 }),
+      this.makeLine(arr, null, 1.5, { color: 0xffffff, opacity: 0.9, depthTest: false, order: 3 }));
     this.world.add(g);
   }
 
@@ -1249,6 +1298,48 @@ export class View {
     this.dirty = true;
   }
 
+  /**
+   * The orbit target back on the ground under the screen centre; the camera stays where it is, so the
+   * view does not move. A target left in the air or under a hill (a pan keeps it at one height) stopped
+   * the wheel short of the ground, made pans run kilometres and swung the subject away on a turn.
+   */
+  private anchorTarget() {
+    const cam = this.camera.position, t = this.controls.target;
+    const d = t.clone().sub(cam), dist = d.length();
+    if (!(dist > 0)) return;
+    d.divideScalar(dist);
+    const hit = this.groundAlong(cam, d, Math.max(4 * dist, 20000));
+    if (hit !== null && hit >= this.controls.minDistance) t.copy(cam).addScaledVector(d, hit);
+    this.keepTargetOnMap();
+    this.controls.update();
+    this.dirty = true;
+  }
+  /** The orbit target stays over the map: a pan past its edge stops there (the view moves with it). */
+  private keepTargetOnMap() {
+    const t = this.controls.target, T = this.terrain;
+    const x = t.x + this.cx, y = this.cy - t.z, cx = Math.min(T.width, Math.max(0, x)), cy = Math.min(T.height, Math.max(0, y));
+    if (cx === x && cy === y) return;
+    const shift = new THREE.Vector3(cx - x, 0, -(cy - y));
+    t.add(shift); this.camera.position.add(shift);
+  }
+
+  /** The view looks out low over the horizon (a flight there lifts it). */
+  get lowView() {
+    const off = this.camera.position.clone().sub(this.controls.target);
+    return off.y < off.length() * Math.sin(FLY_LOWEST);
+  }
+
+  /** The whole of these points in view, north up, from well above (the map's "Whole route"). */
+  frame(points: readonly { x: number; y: number }[]) {
+    if (!points.length) { this.resetCamera(); return; }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of points) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    const w = this.container.clientWidth || 1, h = this.container.clientHeight || 1, fov = (this.camera.fov * Math.PI) / 180;
+    // the larger of the extents, as seen on screen (with a margin), at 55° above the horizon
+    const span = Math.max((y1 - y0) / Math.sin((55 * Math.PI) / 180), (x1 - x0) * h / w) * 1.25 + 400;
+    this.lookAt((x0 + x1) / 2, (y0 + y1) / 2, Math.min(this.controls.maxDistance, span / (2 * Math.tan(fov / 2))), 0, 55);
+  }
+
   /** look at local (x,y) from `dist` metres, from the given compass bearing (deg, camera → target) */
   lookAt(x: number, y: number, dist = 2500, bearing = 0, elevationDeg = 40) {
     this.flight++;
@@ -1273,6 +1364,12 @@ export class View {
     const to = this.local(x, y, this.terrain.heightAt(x, y) * this.exag);
     const off0 = this.camera.position.clone().sub(from);
     const off1 = dist ? off0.clone().setLength(Math.max(this.controls.minDistance, Math.min(this.controls.maxDistance, dist))) : off0.clone();
+    // from a view low over the horizon the place flown to would sit on the horizon: look down on it
+    const length = off1.length(), flat = Math.hypot(off1.x, off1.z);
+    if (length > 0 && off1.y < length * Math.sin(FLY_LOWEST)) {
+      const along = flat > 1e-6 ? length * Math.cos(FLY_PITCH) / flat : 0;
+      off1.set(flat > 1e-6 ? off1.x * along : 0, length * Math.sin(FLY_PITCH), flat > 1e-6 ? off1.z * along : length * Math.cos(FLY_PITCH));
+    }
     const t0 = performance.now();
     const cancel = () => { this.flight++; };
     this.controls.addEventListener('start', cancel); // the player grabbed the map: stop gliding
@@ -1306,16 +1403,16 @@ export class View {
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), this.camera);
     const p = t.clone(), o = ray.ray.origin, d = ray.ray.direction;
-    if (d.y < -1e-4 && o.y > t.y) {
-      p.copy(d).multiplyScalar((t.y - o.y) / d.y).add(o);
-      // near the horizon the crossing runs away: keep the fixed point within a few distances of the target
-      const off = p.distanceTo(t);
-      if (off > 3 * dist) p.sub(t).multiplyScalar((3 * dist) / off).add(t);
-    }
+    // the ground under the cursor keeps its place on screen
+    const ground = this.groundAlong(o, d, Math.max(4 * dist, 20000));
+    if (ground !== null) p.copy(o).addScaledVector(d, ground);
+    else if (d.y < -1e-4 && o.y > t.y) p.copy(d).multiplyScalar((t.y - o.y) / d.y).add(o);
+    // near the horizon the point runs away: keep the fixed point within a few distances of the target
+    const off = p.distanceTo(t);
+    if (off > 3 * dist) p.sub(t).multiplyScalar((3 * dist) / off).add(t);
     cam.sub(p).multiplyScalar(s).add(p);
     t.sub(p).multiplyScalar(s).add(p);
-    this.controls.update();
-    this.dirty = true;
+    this.anchorTarget();
   }
 
   /**
@@ -1404,9 +1501,25 @@ export class View {
       el.style.display = show ? '' : 'none';
       if (show) el.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px)`;
     };
-    for (const m of this.markers) place(m.el, m.x, m.y, m.z, m.minDist);
-    for (const m of this.endpointMarkers) place(m.el, m.x, m.y, m.z);
+    // A, B and the official line's label keep their room; place names follow by rank, one that would
+    // overlap a name already placed is left out, and so is one far beyond what the view looks at
+    // (low over the horizon, names piled up along it)
+    this.labelRoom.reset();
+    const ui = this.uiRoom();
+    for (let k = 0; k < ui.length; k += 4) this.labelRoom.reserve(ui[k], ui[k + 1], ui[k + 2], ui[k + 3]);
+    for (const m of this.endpointMarkers) {
+      place(m.el, m.x, m.y, m.z);
+      const s = this.screenOf(m.x, m.y, m.z);
+      if (s.vis) this.labelRoom.fit(m.el, s.sx, s.sy, true);
+    }
     this.placeOfficialLabel();
+    const horizon = LABEL_HORIZON * this.cameraDistance;
+    for (const m of this.markers) {
+      const s = this.screenOf(m.x, m.y, m.z);
+      const show = s.vis && (m.minDist === undefined || s.dist < m.minDist) && s.dist < horizon && this.labelRoom.fit(m.el, s.sx, s.sy);
+      m.el.style.display = show ? '' : 'none';
+      if (show) m.el.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px)`;
+    }
     // zoom class for the overlay's CSS (small symbols from afar)
     const zoom = mpp > 12 ? 'far' : mpp > 3 ? 'mid' : 'near';
     if (this.overlay.dataset.zoom !== zoom) this.overlay.dataset.zoom = zoom;
@@ -1574,4 +1687,12 @@ export class View {
   get selectedPi() { return this.selected; }
   /** the orbit target in local map coordinates (diagnostics) */
   get target() { const t = this.controls.target; return { x: t.x + this.cx, y: this.cy - t.z }; }
+  /** where the camera is and looks (for automation): its height above the ground under it, the target's
+   * height above the ground under it, and how far above the horizon it looks down, degrees */
+  get pose() {
+    const c = this.camera.position, t = this.controls.target, off = c.clone().sub(t);
+    const ground = (v: THREE.Vector3) => this.terrain.heightAt(Math.min(this.terrain.width, Math.max(0, v.x + this.cx)), Math.min(this.terrain.height, Math.max(0, this.cy - v.z))) * this.exag;
+    return { x: c.x + this.cx, y: this.cy - c.z, aboveGround: c.y - ground(c), targetAboveGround: t.y - ground(t),
+      pitch: (Math.asin(Math.max(-1, Math.min(1, off.y / (off.length() || 1)))) * 180) / Math.PI, distance: off.length() };
+  }
 }

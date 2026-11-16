@@ -274,6 +274,26 @@ What exists (details and commands in `README.md`):
   our embankment (town-centre km 15.98: a 57 m box sticking out of the slope). A designer would square the
   crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); the
   engine keeps every crossed road on its own line.
+### Map camera and labels (playtest-qa S1 #15, #17, #19, 2026-11-16)
+
+- The orbit target goes back onto the ground under the screen centre after every pan, turn and zoom (the view
+  does not move), and stays over the map. A pan used to keep it at one height: over hills it ended under or
+  above the ground, so the wheel stopped ≈ 150 m above the road (Voletiny), pans ran kilometres and a turn
+  swung the subject off the screen. The wheel zooms about the ground under the cursor; the view looks at most
+  ≈ 76° from straight down (was ≈ 85°, skimming the horizon); a click in the profile or a card from a low view
+  flies there looking down at 40°. *Whole route* (map button, <kbd>W</kbd>) frames the active road from
+  anywhere, e.g. after panning off the map's edge.
+- Picking something away from the map (a click in the profile or a list) frames it: `frameSelection(sel)` in
+  `src/main.ts` flies to it when it is off the screen, seen from a low view, or too small to make out (a piece
+  shorter than a sixth of the view, a single place from further than 6 m per pixel); from the whole-route
+  overview a profile click used to select a piece without showing it (QA re-test P1).
+- A selected bend's guide is its two straights, solid, up to 600 m out from the bend; the dashed guide along the
+  whole road read as the dashed official line. The legend's official-line symbol is drawn as on the map.
+- Labels never print over each other nor under the map's buttons, bars and legends: A, B and the official
+  line's label keep their room, place names follow
+  by rank (towns first); names further than 6 camera distances are left out (none pile up on the horizon). Noise
+  walls of one height on both sides of a stretch get one label ("3 m both sides").
+- `node scripts/camera-check.mjs` plays these with real mouse input (screenshots 157–159).
 
 ### Structure choice at the real prices; By hand keeps the bill (cost model 23, 2026-11-16)
 
