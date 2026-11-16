@@ -1,4 +1,5 @@
-// What the game is showing right now, in one place: the results on screen and the selection. main.ts owns
+// What the game is showing right now, in one place: the results on screen, the selection and the ends of the
+// line being edited. main.ts owns
 // one Session; the UI modules read it through their context interfaces. (Designs, history and saves are the
 // project store's; nothing here is saved.)
 import type { Result } from './core/evaluate';
@@ -20,7 +21,10 @@ export interface Session {
   sel: Sel | null;
   /** …qualified by the road it is on (kept across a switch to another road and back) */
   qualifiedSelection: RouteSelection | null;
+  /** the ends the active line is edited between (a paired motorway's directions: its shared line's A and B);
+   *  ui/routes.ts keeps them with the active route */
+  ends: { a: { x: number; y: number }; b: { x: number; y: number } };
 }
 
-export const newSession = (): Session => ({ last: null, lastFull: null, projectFull: null, displayedProject: null,
-  activePreviewPrice: null, sel: null, qualifiedSelection: null });
+export const newSession = (ends: Session['ends']): Session => ({ last: null, lastFull: null, projectFull: null, displayedProject: null,
+  activePreviewPrice: null, sel: null, qualifiedSelection: null, ends });

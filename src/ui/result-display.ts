@@ -59,6 +59,8 @@ export interface ResultDisplayContext {
   directionsState(): DirectionsState | null;
 }
 
+export type ResultDisplay = ReturnType<typeof createResultDisplay>;
+
 export function createResultDisplay(app: ResultDisplayContext) {
   const otherExtras = new Map<RouteId, { overlay: RouteExtras; result: Result }>();
   let idleWaiters: (() => void)[] = [];
