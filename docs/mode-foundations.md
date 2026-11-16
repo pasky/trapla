@@ -269,6 +269,11 @@ Key code map: `core/project-motorway.ts` (corridor eval, split/rejoin, `splitLed
 `tunnelPerKm`), `data/norms.ts` (category-aware), `data/railway.ts` (SPOŽES), `road-noise.ts`
 (`MOTORWAY_NOISE`), `crossings.ts` (`gradeSeparated`), `ui/hud.ts` direction switch, `ui/active-route-store.ts`
 (paired edited as forward), `data/scenario.ts` presets `d3-motorway` / `d35-stage1-motorway`.
+Open (2026-11-16): a railway end in a station is not held to the station tracks' direction: the
+Královec starter leaves Trutnov hl.n. at ≈ 80° to its tracks (Královec end ≈ 20°), where a turnout allows
+4.8° (J60-1:12-500). A check exists on branch `wip/rail-station-tangent` (`stationViolations`, station axis
+from the rail raster); with it, a starter along the tracks costs ≈ 12.2 bn and still fails (a 120 km/h
+radius cannot follow the old line's curve through the town: station-throat speed is not modelled).
 Known limits: motorway sag 130 km/h UNVERIFIED; no interchanges (ends = ports); crossings near but not
 joined between split directions are separate structures; rail bridge deck width = formation (PROVISIONAL);
 rail traffic counts and compositions are game priors.
