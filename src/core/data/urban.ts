@@ -253,26 +253,30 @@ export const NOISE = {
    * squared error versus mixed and has positive mean residual; no emission adjustment.
    * No continuous G or source-side split is prescribed here. Calibration caveats: research/11 §4. */
   ground: 'hard' as 'hard' | 'mixed',
-  /** wall extends this far beyond the exposed stretch, m */
-  margin: 50,
+  /** Manual §1.11 h: a wall is at least twice as long as the protected point's perpendicular distance
+   * from it (replaces the former PROVISIONAL 50 m end margins; finite ends are now computed). */
+  minWallLengthFactor: 2,
+  /** A house's automatic wall is first sought within this route distance either side, m; the window doubles
+   * whenever a wider one could change the choice (core/noise.ts), so this only sets the starting cost. */
+  wallWindow: 150,
   /** Protected outdoor receiver: 2 m in front of the nearest façade, towards the source. */
   facadeOffset: 2,
-  /** PROVISIONAL practical wall choices; no arbitrarily tall wall to save an infeasible route. */
-  wallHeights: [3, 4, 5],
-  /** PROVISIONAL equivalent near-lane source, m above grade / towards the receiver from the axis. */
+  /** Automatic wall heights. 2.0 m stands on a D6 cut top and 2.0–5.5 m in its replacement (ŘSD/DESÚ
+   * notice 2024, research/11 §6); 5 m top of the automatic menu is PROVISIONAL (player: 2–6 m). */
+  wallHeights: [2, 3, 4, 5],
+  /** The player's wall heights (every card offers these): the automatic ones and 6 m (PROVISIONAL top; the D6
+   * replacement uses up to 5.5 m, research/11 §6). */
+  playerWallHeights: [2, 3, 4, 5, 6],
+  /** Propagation: calibrated equivalent near-lane line, m above grade / towards the receiver from the axis
+   * (research/11 §3). */
   sourceHeight: 0.5,
   sourceOffset: 1.75,
-  /** PROVISIONAL wall at crown/2 + this allowance, at road-grade elevation; same on embankments
-   * and bridges, NOT at the toe of the earthwork footprint. Renderer uses the same position. */
+  /** Barrier geometry: source on the axis of a two-lane road, 1 m above it (Manual 2018 §1.11 a). */
+  barrierSourceHeight: 1,
+  /** Wall at crown/2 + this on embankments and bridges (deck edge beam), at road level: PROVISIONAL
+   * allowance outside the crown (TP 104/2024 §3.4: as close to the traffic as the restraint system
+   * allows). In a cut the wall stands on the cut's top edge instead (never inside the slope). */
   wallEdgeOffset: 1.5,
-  /** 500 Hz representative wavelength (≈ 340 m/s); single-band surrogate, not a traffic spectrum. */
-  wavelength: 0.68,
-  /** PROVISIONAL deduction from point-source Maekawa loss for distributed/broadband traffic and
-   * unmodelled ground/end effects. 5 dB is an allowance, NOT a standard line-source correction. */
-  trafficCorrectionDb: 5,
-  /** PROVISIONAL practical cap. FHWA handbook §3.5: 10 dB attainable, 15 very difficult.
-   * Use 13 rather than single-frequency theoretical 20–24 dB (research/09 §5). */
-  maxAttenuationDb: 13,
   /** PROVISIONAL highest occupied receiver = 1.5 + (levels − 1) * 3 m above building ground. */
   receiverHeight: 1.5,
   storeyHeight: 3,

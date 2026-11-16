@@ -27,13 +27,14 @@ import { massHaul, volumes } from './earthworks';
 import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import {
-  dwellingExposure, noiseBarrier, noiseFootprint, resolveNoiseWalls,
-  type EarthEdges, type NoiseFootprint, type NoiseReceiver, type WallStretch,
+  crossSectionScreens, noiseOutcome, wallLineLengths,
+  type AcousticSource, type NoiseReceiver, type WallStretch,
 } from './noise';
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
-import { RAIL_TIE_IN_M, RAIL_TURNOUT_M, TURNOUT_ANGLE_RAD } from './data/railway';
-import { MOTORWAY_150_PILOT, PILOT_TRAVEL_SPEED } from './data/motorway';
+import { RAIL_TIE_IN_M, RAIL_TURNOUT_M, TRACK_CENTRES_M, TURNOUT_ANGLE_RAD } from './data/railway';
+import { d275CrossSection, MOTORWAY_150_PILOT, PILOT_TRAVEL_SPEED } from './data/motorway';
+import { sourceReach, type SourceLane } from './noise-field';
 import { crossingWallGaps } from './crossing-walls';
 import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadNet } from './roadnet';
@@ -114,7 +115,8 @@ export interface Result {
   parts: CostParts;
   /** per station cell: land-take width (m), built-up and forest share of it (0…1), noise walls
    * (bit 0 = left of travel, bit 1 = right) */
-  cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array };
+  /** `wallLength` / `wallArea`: noise walls billed in the cell, along their own lines (m, m²) */
+  cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array; wallLength: Float64Array; wallArea: Float64Array };
   crossings: CrossingResult[];
   waterCrossings: WaterResult[];
   /** Footprint conflicts beyond the handled centreline crossings; costs already in the bill. */
@@ -123,15 +125,22 @@ export interface Result {
   /** Engineering surface at a retained slope edge; NaN means natural daylight. */
   wallSurfaceL: Float64Array; wallSurfaceR: Float64Array;
   walls: WallStretch[];
+  /** walls Auto adds for houses beside the player's wall choices (part of `walls`): the card of that choice says so */
+  wallsAroundChoices: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
-  demolished: { j: number; i: number; cost: number }[];
+  /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
+   * construction working strip beside one of them (`strip`) */
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
   kept: { j: number; i: number; hit: boolean }[];
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
-  /** `gaps`: junction openings in the wall lines, per station (1 = no wall can stand there) */
-  noise: { receivers: NoiseReceiver[]; footprint: NoiseFootprint | null; gaps?: { L: Uint8Array; R: Uint8Array } };
+  /** `source`: the road as an acoustic line source (cells, wall lines, screening edges, junction openings);
+   * `L` / `R`: built wall heights per station (manual included), m — the same the bill and 3D use */
+  noise: { receivers: NoiseReceiver[]; source: AcousticSource | null; L: Float64Array; R: Float64Array;
+    /** the period that decides (one road: fixed by its traffic) and its limit, dB */
+    controlling: 'day' | 'night'; limit: number };
   quantities: {
     cut: number; fill: number; reused: number; surplus: number; deficit: number; avgHaul: number;
     /** cut volume by local geology + estimated weathering class I / II / III, m³ */
@@ -179,6 +188,8 @@ export interface EvalOptions {
   /** Material value to price the preview's single solve at (the last full result's; default the
    * mass-balance search's starting value). */
   materialValue?: number;
+  /** Stable physical acoustic source id of this carriageway (project `acousticSourceId`). */
+  acousticSourceId?: string;
   /** One direction of a split motorway: station ranges where the other direction runs alongside on the
    * left (one common formation). Houses on that side belong to the other direction's noise check and
    * no wall can stand in the median there. */
@@ -187,6 +198,9 @@ export interface EvalOptions {
    * shared heights where the two directions run side by side); Auto only between, continuing that line's
    * grade at both ends. */
   fixedProfile?: { x0: number; x1: number; vpis: readonly VPI[]; /** largest grade change at x0 / x1 */ slack?: [number, number] };
+  /** One direction of a split motorway: the other direction's carriageway axis (stations along it). Its
+   * noise is half of this kernel's source (the corridor's traffic), heard from that line. */
+  otherCarriageway?: { n: number; x: ArrayLike<number>; y: ArrayLike<number> };
   /** The side `leftJoined` means (default left): a separate stretch's directions both run A→B, so the
    * reverse carriageway has the forward one on its right. */
   joinedSide?: 'L' | 'R';
@@ -963,7 +977,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const buildingViolations: Violation[] = [], noiseViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
-    const best = new Map<number, { i: number; along: number }>();
+    const best = new Map<number, { i: number; along: number; core: boolean }>();
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel) continue;
       const left = kind[i] === KIND.earth ? sec.dayL[i] : w, right = kind[i] === KIND.earth ? sec.dayR[i] : w;
@@ -973,8 +987,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       bld.near(x, y, Math.max(left, right) + BUILDING_RULES.clearance + ds, (j) => {
         if (!bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) return;
         const along = Math.abs((items[j][0] - x) * tx + (items[j][1] - y) * ty);
+        // the slopes / deck themselves, not only the working strip beside them (what the card names)
+        const core = bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half - BUILDING_RULES.clearance);
         const p = best.get(j);
-        if (!p) best.set(j, { i, along }); else if (along < p.along) { p.i = i; p.along = along; }
+        if (!p) best.set(j, { i, along, core }); else if ((core && !p.core) || (core === p.core && along < p.along)) { p.i = i; p.along = along; p.core = core; }
       });
     }
     for (const [j, p] of best) {
@@ -989,7 +1005,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
       gone[j] = 1;
       buildingCost[p.i] += bld.cost[j];
-      demolished.push({ j, i: p.i, cost: bld.cost[j] });
+      // which earthwork: the one on the building's side of the road (a cross slope may cut one side, fill the other)
+      const k = p.i, leftSide = (items[j][0] - st.x[k]) * -st.ty[k] + (items[j][1] - st.y[k]) * st.tx[k] >= 0;
+      const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
+      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : cutSide ? 'cut' : 'embankment', strip: !p.core });
     }
     for (const o of buildingOverrides) {
       if (gone[o.j]) continue; // footprint acquisition already pays the building once
@@ -1090,8 +1109,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // --- noise walls ---
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
   const noiseBuyouts = new Float64Array(n);
-  let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
-  let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
+  let walls: WallStretch[] = [], wallsAroundChoices: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
+  let receivers: NoiseReceiver[] = [];
+  let acoustic: Result["noise"]["source"] = null, builtL: Float64Array = new Float64Array(0), builtR: Float64Array = new Float64Array(0);
   // Railway: CNOSSOS-EU train source and line propagation (rail-noise.ts) against the new-line limits.
   const noiseModel = cat.mode === 'railway' ? createRailNoiseModel(opts.railTraffic ?? [])
     : createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare,
@@ -1105,44 +1125,36 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
   if (noiseBuildings && !preview) {
-    const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
-    const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
-    for (let i = 0; i < n; i++) {
-      if (kind[i] === KIND.tunnel) { shieldL[i] = shieldR[i] = 1; continue; }
-      if (joinedSideMask[i]) (joinedRight ? shieldR : shieldL)[i] = 1;
-      if (kind[i] !== KIND.earth) continue;
-      // Positive cut edges only; no terrain shield under a bridge or at an embankment toe.
-      if (sec.zDayL[i] > grade[i]) edges.L[i] = { offset: sec.dayL[i], height: sec.zDayL[i] - grade[i] };
-      if (sec.zDayR[i] > grade[i]) edges.R[i] = { offset: sec.dayR[i], height: sec.zDayR[i] - grade[i] };
-    }
-    const barrier = noiseBarrier(cat.crownWidth);
-    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, noiseBuildings, noiseModel, gone,
-      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, barrier, edges,
-      { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R, gapL: wallGaps.L, gapR: wallGaps.R });
-    const resolved = resolveNoiseWalls(ex, ds, al.length, shieldL, shieldR, barrier, edges);
-    boughtOut = [...manualBuys, ...resolved.boughtOut].sort((a, b) => a.i - b.i);
+    // walls and screening edges where the cross-section puts them (cut top, crown / deck edge)
+    const screens = crossSectionScreens(n, kind, grade, cat.crownWidth, sec.dayL, sec.dayR, sec.zDayL, sec.zDayR,
+      (i, left, o) => terrain.heightAt(st.x[i] - st.ty[i] * o * (left ? 1 : -1), st.y[i] + st.tx[i] * o * (left ? 1 : -1)), wallGaps);
+    // split motorway: where the other direction runs alongside (its median side), that side is its check
+    for (let i = 0; i < n; i++) if (joinedSideMask[i]) (joinedRight ? screens.R : screens.L).shield[i] = 1;
+    const rail = cat.mode === 'railway';
+    // a track's trains run on its axis (double track: one track either side of it, half the trains each)
+    const lanes = rail ? (cat.tracks === 2 ? [{ pos: TRACK_CENTRES_M / 2, share: 0.5 }, { pos: -TRACK_CENTRES_M / 2, share: 0.5 }] : null)
+      : motorwayLanes(cat, st, opts.otherCarriageway, joinedRight);
+    acoustic = { id: opts.acousticSourceId ?? (rail ? 'acoustic:rail' : 'acoustic:road'), mode: rail ? 'rail' : 'road',
+      laneOffset: lanes ? sourceReach({ laneOffset: 0, lanes }) : rail ? 0 : NOISE.sourceOffset, ...(lanes ? { lanes } : {}),
+      sourceHeight: NOISE.barrierSourceHeight, n, x: st.x, y: st.y, tx: st.tx, ty: st.ty, grade,
+      len: Float64Array.from({ length: n }, (_, i) => cellLength(i, n, ds)), dayDb: noiseModel.dayDb, nightDb: noiseModel.nightDb,
+      ...(noiseModel.limits ? { limits: noiseModel.limits } : {}), ...screens };
+    const outcome = noiseOutcome(acoustic, noiseModel, noiseBuildings, gone, (x, y) => terrain.heightAt(x, y), st.s,
+      { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R });
+    boughtOut = [...manualBuys, ...outcome.boughtOut].sort((a, b) => a.i - b.i);
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;
-    const fl = resolved.L, fr = resolved.R;
+    const fl = builtL = outcome.L, fr = builtR = outcome.R;
+    // billed as drawn: the wall line's own length beside the axis, the height above its foot
+    const lineL = wallLineLengths(n, st.x, st.y, st.tx, st.ty, screens.L.wallOff, true);
+    const lineR = wallLineLengths(n, st.x, st.y, st.tx, st.ty, screens.R.wallOff, false);
     for (let i = 0; i < n; i++) {
       wall[i] = (fl[i] ? 1 : 0) | (fr[i] ? 2 : 0);
-      wallLength[i] = ((fl[i] ? 1 : 0) + (fr[i] ? 1 : 0)) * cellLength(i, n, ds);
-      wallArea[i] = (fl[i] + fr[i]) * cellLength(i, n, ds);
+      wallLength[i] = (fl[i] ? lineL[i] : 0) + (fr[i] ? lineR[i] : 0);
+      wallArea[i] = fl[i] * lineL[i] + fr[i] * lineR[i];
     }
-    walls = resolved.walls;
-    receivers = resolved.receivers;
-    noiseViolations.push(...noiseControlViolations(receivers, ex.scratch, st.s, cat.crownWidth));
-    // the band shows the height that decides: the top floor of the tallest dwelling beside each station
-    // (within ±40 m along the road, on that side; bought-out ones are gone)
-    const topL = new Float32Array(n).fill(NOISE.receiverHeight), topR = new Float32Array(n).fill(NOISE.receiverHeight);
-    const reach = Math.round(40 / ds);
-    for (const p of receivers) {
-      if (p.status === 'bought') continue;
-      const up = NOISE.receiverHeight + (noiseBuildings.levels[p.j] - 1) * NOISE.storeyHeight, top = p.side === 'L' ? topL : topR;
-      for (let k = Math.max(0, p.i - reach); k <= Math.min(n - 1, p.i + reach); k++) if (up > top[k]) top[k] = up;
-    }
-    footprintMap = noiseFootprint(n, st.x, st.y, st.tx, st.ty, grade, (x, y) => terrain.heightAt(x, y), noiseModel,
-      shieldL, shieldR, fl, fr, (i, left) => (kind[i] === KIND.earth ? (left ? sec.dayL[i] : sec.dayR[i]) : w), barrier, edges,
-      undefined, undefined, undefined, (i, left) => (left ? topL : topR)[i]);
+    walls = outcome.walls; wallsAroundChoices = outcome.aroundChoices;
+    receivers = outcome.receivers;
+    noiseViolations.push(...noiseControlViolations(receivers, st.s));
   }
   lap('town');
 
@@ -1278,9 +1290,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, wallsAroundChoices, demolished, boughtOut, kept,
     retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
-    noise: { receivers, footprint: footprintMap, ...(receivers.length ? { gaps: wallGaps } : {}) },
+    noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
+      limit: noiseModel.controlling === 'night' ? noiseModel.limits?.nightDb ?? NOISE.limitNightDb : noiseModel.limits?.dayDb ?? NOISE.limitDayDb },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
       cutByClass, footprint, forestArea, buildingsHit: demolished.length, hitBuildings: demolished.map((p) => p.j),
@@ -1311,6 +1324,39 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const result = first.complete();
   return retry.violations.length < result.violations.length ? retry : result;
 }
+/** A motorway's noise as its two directional sources, half the corridor's traffic each on its lane-pair axis
+ * (D 27.5: ±6.0 m, data/motorway.ts d275CrossSection). Paired: both around the shared axis. One direction
+ * (a separate stretch or a split): its own lane axis (towards its median from its carriageway's axis) and the
+ * other direction's carriageway where that runs (its lane axis approximated by that line). Null otherwise. */
+function motorwayLanes(cat: (typeof CATEGORIES)[CategoryId], st: { n: number; x: ArrayLike<number>; y: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number> },
+  other: EvalOptions['otherCarriageway'], medianRight: boolean): SourceLane[] | null {
+  if (cat.mode !== 'motorway') return null;
+  const axis = d275CrossSection().left.axis!;
+  if (cat.paired) return [{ pos: axis, share: 0.5 }, { pos: -axis, share: 0.5 }];
+  const own = (cat.crownWidth / 2 - axis) * (medianRight ? -1 : 1);
+  if (!other || other.n < 2) return [{ pos: own, share: 1 }];
+  // the other line's signed lateral position at each station (its nearest sampled point; left positive)
+  const C = 50, grid = new Map<string, number[]>();
+  for (let j = 0; j < other.n; j++) { const key = `${Math.floor(other.x[j] / C)},${Math.floor(other.y[j] / C)}`; let a = grid.get(key); if (!a) grid.set(key, a = []); a.push(j); }
+  const pos = new Float64Array(st.n);
+  let last = 0;
+  for (let i = 0; i < st.n; i++) {
+    let best = -1, bd = Infinity;
+    const cx = Math.floor(st.x[i] / C), cy = Math.floor(st.y[i] / C);
+    // rings of grid cells outwards until one holds a point, then one more ring (a nearer point at its corner)
+    for (let r = 0, stop = 64; r <= stop; r++) {
+      for (let gx = cx - r; gx <= cx + r; gx++) for (let gy = cy - r; gy <= cy + r; gy++) {
+        if (Math.max(Math.abs(gx - cx), Math.abs(gy - cy)) !== r) continue;
+        for (const j of grid.get(`${gx},${gy}`) ?? []) { const d = (other.x[j] - st.x[i]) ** 2 + (other.y[j] - st.y[i]) ** 2; if (d < bd) { bd = d; best = j; } }
+      }
+      if (best >= 0 && stop === 64) stop = r + 1;
+    }
+    if (best < 0) { pos[i] = last; continue; }
+    pos[i] = last = -(other.x[best] - st.x[i]) * st.ty[i] + (other.y[best] - st.y[i]) * st.tx[i];
+  }
+  return [{ pos: own, share: 0.5 }, { pos, share: 0.5 }];
+}
+
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
 const STRICT_RETRY_REACH = 300;
 

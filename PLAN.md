@@ -467,7 +467,10 @@ whole-route ratios alone do not measure the cost of building through town.
   measure excavability. Full table, source quantities, fitting command and uncertainty: research/10 §6.
   Prices stay 183/391/653 CZK/m³; norm allowance and unmapped cells (1.11% of playable centres) use
   75/20/5. Tooltip names ground/depth estimates; pack fingerprint invalidates incomparable best scores.
-- **Noise calculation — compact, not an acoustic study**: `core/road-noise.ts` uses Czech **Manuál 2018,
+- **Noise calculation — compact, not an acoustic study** (source, traffic, ground class and limits below are
+  current; the per-station 2D section, Maekawa barrier, wall position and 50 m margins described here are
+  **superseded by cost model 21**, see "Noise: finite segments" at the end and research/36):
+  `core/road-noise.ts` uses Czech **Manuál 2018,
   verze 2020** category speed/emission equations (OA 74.1 / NA 81.1 dB reference constants), standard
   ACO11/SMA11 and TP219 class-I non-E day/night allocation. Acoustic heavy share **15% is a scenario prior**;
   heavy speed is capped at 80 km/h. At 9,000/day, 9.2% of OA and 15.4% of NA traffic falls at night.
@@ -560,10 +563,10 @@ price cannot be determined (research/07 §1).
 | Bridge deck span term | equivalent concrete 0.45 m³/m² ≤20 m; linear increase through ordinary/long spans | **PROVISIONAL** quantity proxy; not a certified span/design choice; calibrated residual prevents double-counting SPK work |
 | Excavation weathering profiles | ČGS lithology + estimated local I/II bottom depths, III below; unknown = 75/20/5 | `pipeline/ground_profiles.json`; local D11 aggregate fit, not measured strata (research/10 §6) |
 | Noise source / traffic | Czech 2018/2020 OA/NA equations; 15% acoustic heavy share, heavy speed ≤80 | Emissions and TP219 time distribution sourced; heavy share/design-speed proxy are assumptions; hard ground is the conservative categorical EIA fit (research/11) |
-| Noise wall | 3 / 4 / 5 m, 10,000 CZK/m²; 50 m margins | PROVISIONAL calibrated recommendation (8–14k); only project datapoint assumes 3 m height (research/09 §1). Cut edges use diffraction, not a depth exemption |
-| Excess and attenuation | E = max(Lday−60, Lnight−50); IL = clamp(10·log₁₀(3 + 40δ/0.68) − 5, 0, 13) | Czech Uo for calibrated hard ground (mixed Uo/Up optional), approximate slant geometry; Maekawa best of cut edge / wall, correction/cap still PROVISIONAL (research/09 §5, research/11) |
-| Source / wall position | source +0.5 m high, 1.75 m off axis; wall at crown/2 + 1.5 m | PROVISIONAL equivalent 2D section at road grade, not slope toe |
-| Upper-floor receiver | 1.5 + 3 × (levels − 1) m above building ground | PROVISIONAL; geometric sightline and path difference, not a height-only penalty |
+| Noise wall | Auto 2 / 3 / 4 / 5 m (cheapest area per house), 10,000 CZK/m²; ≥ 2 × the house's distance long | price PROVISIONAL calibrated recommendation (8–14k, research/09 §1); 2 m used on a D6 cut top; minimum length Manual 2018 §1.11 h; 5 m top PROVISIONAL (research/36) |
+| Level and screening | Σ cells (≤ 10 m) of Y − U(d) − 10 log(180°/α) − DB, day and night; DB = 13.41 + 10.47 log(Z+0.18) − 2.67 log²(Z+0.18) | Manual 2018 §1.10–1.11, §1.19; hard Uo calibrated (research/11); in-band form for every cell, far cells grouped, best single obstacle (research/36) |
+| Source / wall position | propagation: near lane 1.75 m, 0.5 m up; barriers: axis, 1 m up; wall at crown/2 + 1.5 m on embankments and bridges, on the top edge of a cut | Manual §1.11 a; TP 104/2024 §3.4 and Fig. 7b; the 1.5 m crown allowance PROVISIONAL |
+| Receivers | every storey, 1.5 + 3 × k m above building ground, 2 m before the façade nearest the road | PROVISIONAL storey height; the loudest storey decides |
 | Noise-infeasible dwelling | 1.5× building-only value + demolition + plot max(3 × footprint, 400 m²) at 1,500 × 1.5 | acquisition and additional-plot rule PROVISIONAL; no window-only outdoor compliance |
 | Material value for decisions | search in −196 … 536 CZK/m³ from 200; tolerance 1.5 m³/m | bounds = haul to a tip / bought fill less placing |
 
@@ -692,26 +695,24 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   severance cost for plots cut off from their access.
 - Noise: category emissions and day/night traffic are explicit, but 15% heavy share and the terrain
   extension remain assumptions. Hard ground is a conservative categorical fit to two EIA cases, not
-  independent validation; residuals −0.42…+2.57 dB and missing inputs prevent a universal accuracy claim. The 500 Hz barrier source,
-  traffic allowance and practical cap remain provisional. Pairwise 2D geometry uses radial façade distance,
-  not true oblique rays or finite-line integration; no heavy-vehicle spectrum, reflections, intervening
-  buildings, or terrain screening beyond the road's own cut (embankment edges remain unmodelled).
-  Cut edges now assess upper-floor diffraction. Receivers use 10 m source stations and
-  rectangle façades. Civic buildings with protected uses are not classified. Buyout is the only fallback;
-  covered roads, property reuse, parcel geometry and relocation are not optimised. **Fallback-only buyout is
-  discontinuous**: moving closer to a cheap house can replace an expensive long wall with cheaper acquisition.
-  This is a gameplay incentive, not a summation error; elective buyout versus shared-wall mitigation is not
-  solved. SPK CN's urban surcharge
+  independent validation; residuals −0.42…+2.57 dB and missing inputs prevent a universal accuracy claim.
+  Model 21 (research/36): finite 10 m cells with the manual's angle and barrier terms; the in-band form is
+  used for every cell (≥ the §1.10.2 transformation), far cells are grouped, the best single obstacle per
+  cell counts (no multi-edge path), no reflections, vegetation, building screening or terrain beyond the
+  road's own cut / crown / deck edge. One receiver point per dwelling (façade nearest the road), every
+  storey. Auto walls are grown per house, loudest first (the search window widens while a wider one could change the choice): greedy, not a global optimum;
+  no foot-of-cut walls (widened cut) or earth bunds. Civic buildings with protected uses are not classified.
+  Buyout is the only fallback; covered roads, property reuse, parcel geometry and relocation are not
+  optimised. **Fallback-only buyout is discontinuous**: moving closer to a cheap house can replace an
+  expensive long wall with cheaper acquisition. This is a gameplay incentive, not a summation error;
+  elective buyout versus shared-wall mitigation is not solved. SPK CN's urban surcharge
   contains 10 % "protective measures", so explicit walls partly overlap that allowance.
 - Motorway / expressway crossings: the auto-profile requests a bridge clearance rather than optimising
   the cut-and-overbridge alternative (which manual profiles can choose); the forced bridge is the 30 m minimum whatever
   the motorway's width and the crossing angle.
-- Noise walls in cuts stand inside the cut slope: the noise model (and the bill) puts every wall at
-  crown/2 + 1.5 m at grade, so in a cut the 3D wall is half buried in the slope (shown as modelled, e.g.
-  `docs/screenshots/96-road-look-abutment-cut-demo.png`). The fix is a reviewed cost-model change: a wall
-  at the top of the cut (with that geometry in the attenuation) or none where the cut edge already screens.
-- Render: thin pale (sky-coloured) seams show at some cut / fill slope and replacement-ground boundaries
-  near structures (pre-existing; visible in the before shots 90 and 94).
+- (Fixed in cost model 21: walls in cuts now stand on the cut's top edge, or none where the cut screens.)
+- (Fixed in cost model 21: the pale seams beside slopes and abutments, screenshots 128 / 129; see the noise
+  section's render bullet.)
 
 ## Bridges vs high fills, player overrides (cost model 11)
 
@@ -900,3 +901,61 @@ deciding top-floor height with houses in their own level and a per-floor cross-s
 the before / after copy table: `docs/interface-rethink.md`; gallery 60–71; `scripts/playtest.mjs` replays the
 personas. Violations now carry a structured `target` (buildings, a sufficient wall) so the UI can select the
 thing and offer the fix; bills are unchanged.
+
+## Noise: finite segments, walls from the cross-section (cost model 21, 2026-11-15)
+
+Three known problems were fixed together: walls standing inside cut slopes, max-over-stations infinite
+lines overstating gaps (a 10 m opening seen from 76 m now adds ≈ 1 dB instead of making the house hear the
+open road), and pale render seams (below). Sources, formulas, deviations and the per-fixture attribution of
+the bill change: **research/36**.
+
+- **One calculator** (`core/noise-field.ts`): every station cell (≤ 10 m, Manuál 2018 §1.10.2) is a finite
+  segment, `Y − U(d) − Du(α) − DB`, energy-summed over the road (§1.19), day and night separately.
+  Du = 10 log(180°/α) with the true angle of view; U is research/11's calibrated hard Uo at the perpendicular
+  distance from the cell's line (a straight road gives exactly the manual's in-band result), or the §1.10.2
+  transformation where that is larger (end-on cells). Screening per cell and side by the manual's DB (§1.11)
+  over the best of the wall top, a cut's top edge and the crown / deck edge, along the actual ray, source on
+  the axis 1 m up (the road's own edge from the near lane). The whole road is summed; every cut-off is a
+  stated bound (research/36 §2). Every storey of every dwelling near the road.
+- **Walls where the cross-section puts them** (TP 104/2024 §3.4, Fig. 7b): crown / deck edge + 1.5 m on
+  embankments and bridges, on the cut's top edge in a cut (never inside the slope); none where the cut
+  already screens. The same per-station line and foot feed the acoustics, the bill (length along the drawn
+  line, height above the foot), the 3D wall, the house card's plan and section.
+- **Auto, cheapest legal option**: houses loudest first (by their window's own level); each of 2 / 3 / 4 / 5 m grows one wall from its most
+  useful cell until every storey meets the limit, at least twice the house's distance long (§1.11 h); the
+  height adding the least area wins; walls built for other houses count. Buyout when 5 m over the whole
+  reach cannot do it (the window widens as far as it could matter), as before. Junction openings and
+  tunnels carry no wall.
+- **Noise view**: the band is the same sum at the deciding height, computed by the worker only when the
+  view is on (`noise-band` message), so the full evaluation does not pay for it. House cards show every
+  floor's level (open ground → as built), a plan with a line from every piece of road weighted by what it
+  adds, and one sentence on where most of it comes from ("62 % of the noise comes through the gap in the
+  wall where the side road joins, km 6.43").
+- **Pale seams closed** (verified in the browser, screenshots 128 / 129): two causes, both where the terrain was
+  cut away with nothing drawn over it. Beside a slope's toe the replacement ground was discarded by the
+  coarse rasterised footprint mask (it now discards only texels the exact footprint covers fully); in front
+  of an embankment's end face at a bridge the terrain mask's raster bleed (≈ a 2.5 m texel) opened sky-coloured
+  wedges — the mask now stops 3 m short of an end face on the fill side (the kept ground lies inside the
+  embankment; in a cut it still reaches the face). No depth offsets.
+- **What the route takes, drawn truthfully** (owner report 2026-11-16): a demolished building leaves the
+  base map's footprint layer and its plot is drawn on the ground in its own shape (pale cleared ground,
+  dark hatch, dashed edge); a bought-out house stays standing in its noise-view colour in every view with a
+  dashed ring on the ground around it. Both are staged with the deferred 3D body (only the changed chunks'
+  footprints are rebuilt and only that area of the map redrawn). Point markers remain only where a
+  footprint is smaller than a pixel or two (far zoom), at the building's ground, outlined to read on roofs.
+- **Sources for projects** (any-road-editing C1, motorway-rail): `AcousticSource` = one physical carriageway
+  or track (stable `acousticSourceId`, cells, per-side screening, Y by day / night, per-cell weight, mode
+  road / rail, lane offset, barrier-source height). Each `NoiseReceiver` carries its point (x, y, ground),
+  storeys and `energy` {sourceId, rawDay, rawNight, day, night per storey} (open ground and as built);
+  `ProjectReceiver.contributions[]` publish the same per storey with `position`. Energies of several sources
+  at the same house and storey add; splitting a route splits its cells, it never adds +3 dB (tested). A
+  motorway is two directional sources on their lane axes (laneOffset 0), a railway its own mode
+  (emission / propagation of that mode not implemented here). Joint wall decisions across roads remain C1.
+- **Staged decisions**: the grouped far sums (segment tree, two samples per far segment) are within
+  `FAR_ERROR` of the cell-by-cell ones; every decision checks that margin and, where it could flip, sums that
+  house more finely, then cell by cell. Walls, buyouts and violations are those of the cell-by-cell sum
+  (tested against an all-cells run on every fixture); shown levels are cell by cell where a house was refined.
+  Houses are handled loudest first by their window's own level. Bills moved by ≤ 0.2 M CZK (research/36 §3).
+- Performance (open): the noise step is +2–3 ms on best / demo, +4–6 ms on direct-80/90 and ≈ +12 ms on
+  town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
+  unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.

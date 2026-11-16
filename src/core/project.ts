@@ -240,8 +240,14 @@ export interface EngineeringProposal {
  * never sum dB/excess or use the editor route ID as a physical source. No finite-segment correction here. */
 export interface AcousticContribution {
   sourceId: AcousticSourceId; routeId: RouteId; buildingIndex: number; height: number;
+  /** open-ground (no walls, no cuts) energy 10^(L/10) at `height` (the deciding storey) */
   dayEnergy: number; nightEnergy: number;
   policy: string;
+  /** Where the source is assessed (2 m before the façade nearest it; z = ground there) and every storey's
+   * energies from this physical source: open ground and as built (walls, cuts, road edges). Energies of
+   * several sources at the same house and storey add; walls of one source screen only its own cells. */
+  position?: XYZ;
+  storeys?: { height: number; rawDay: number; rawNight: number; day: number; night: number }[];
 }
 export interface ProjectReceiver {
   buildingIndex: number; height: number; contributions: AcousticContribution[];

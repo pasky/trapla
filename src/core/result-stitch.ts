@@ -5,9 +5,10 @@
 // engineers anything.
 import type { Result } from './evaluate';
 import { cellLength, PART_KEYS, sumParts, type CostParts } from './cost';
-import { RAY_STRIDE } from './noise';
+import type { AcousticSource, SideScreen } from './noise-field';
 import type { Violation } from './checks';
 import type { VPI } from './vertical';
+import * as dm from './detmath';
 
 export interface StitchPiece {
   /** spine station indices of the joins; the piece runs over spine chainage base.s[i0]…base.s[i1] */
@@ -46,10 +47,11 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
     grade: F(base.grade), kind: Uint8Array.from(base.kind), cut: F(base.cut), fill: F(base.fill),
     dayL: F(base.dayL), dayR: F(base.dayR), zDayL: F(base.zDayL), zDayR: F(base.zDayR), oob: Uint8Array.from(base.oob),
     wallSurfaceL: F(base.wallSurfaceL), wallSurfaceR: F(base.wallSurfaceR),
-    cell: { width: F(base.cell.width), urban: Float32Array.from(base.cell.urban), forest: Float32Array.from(base.cell.forest), wall: Uint8Array.from(base.cell.wall) },
+    cell: { width: F(base.cell.width), urban: Float32Array.from(base.cell.urban), forest: Float32Array.from(base.cell.forest), wall: Uint8Array.from(base.cell.wall),
+      wallLength: F(base.cell.wallLength), wallArea: F(base.cell.wallArea) },
     parts: Object.fromEntries(PART_KEYS.map(k => [k, F(base.parts[k])])) as CostParts,
   };
-  const gaps = base.noise.gaps ? { L: Uint8Array.from(base.noise.gaps.L), R: Uint8Array.from(base.noise.gaps.R) } : undefined;
+  const noise = stitchSource(base, list);
   for (const p of list) {
     const r = p.piece, ids0 = out.geology.profiles.length;
     out.geology.profiles.push(...r.geology.profiles);
@@ -77,8 +79,7 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
       out.zDayL[i] = lerp(r.zDayL, t); out.zDayR[i] = lerp(r.zDayR, t);
       out.wallSurfaceL[i] = lerp(r.wallSurfaceL, t); out.wallSurfaceR[i] = lerp(r.wallSurfaceR, t);
       out.cell.width[i] = lerp(r.cell.width, t); out.cell.urban[i] = lerp(r.cell.urban, t); out.cell.forest[i] = lerp(r.cell.forest, t);
-      out.cell.wall[i] = r.cell.wall[k];
-      if (gaps) { gaps.L[i] = r.noise.gaps?.L[k] ?? 0; gaps.R[i] = r.noise.gaps?.R[k] ?? 0; }
+      out.cell.wall[i] = r.cell.wall[k]; out.cell.wallLength[i] = r.cell.wallLength[k]; out.cell.wallArea[i] = r.cell.wallArea[k];
     }
     // cost per piece cell, spread over the stitched cells its mapped length covers
     const scale = (base.s[p.i1] - base.s[p.i0]) / r.length;
@@ -162,11 +163,12 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
     out[key] = (out[key] as { j: number; i: number; cost: number }[]).reverse().filter(b => !seen.has(b.j) && !!seen.add(b.j)).reverse() as never;
   }
   const receivers = [...base.noise.receivers.filter(r => outsideI(r.i)), ...list.flatMap(p => p.piece.noise.receivers.map(r => ({ ...r, i: toI(p, r.i),
-    at: r.at >= 0 ? toI(p, r.at) : r.at, ...(r.key ? { key: { ...r.key, i: toI(p, r.key.i), d: r.key.d } } : {}),
-    ...(r.quiet ? { quiet: { ...r.quiet, i: toI(p, r.quiet.i) } } : {}),
-    ...(r.rays ? { rays: (() => { const a = Float32Array.from(r.rays!); for (let k = 0; k + RAY_STRIDE <= a.length; k += RAY_STRIDE) a[k] = toI(p, a[k]); return a; })() } : {}) })))];
+    at: r.at >= 0 ? toI(p, r.at) : r.at, window: [toI(p, r.window[0]), toI(p, r.window[1])] as [number, number],
+    ...(r.span ? { span: [toI(p, r.span[0]), toI(p, r.span[1])] as [number, number] } : {}) })))];
   const seenR = new Set<number>();
-  out.noise = { receivers: receivers.reverse().filter(r => !seenR.has(r.j) && !!seenR.add(r.j)).reverse(), footprint: stitchFootprint(base, list, toI), ...(gaps ? { gaps } : {}) };
+  out.noise = { ...base.noise, ...noise, receivers: receivers.reverse().filter(r => !seenR.has(r.j) && !!seenR.add(r.j)).reverse() };
+  out.wallsAroundChoices = [...(base.wallsAroundChoices ?? []).filter(w => list.every(p => w.i1 <= p.i0 || w.i0 >= p.i1)),
+    ...list.flatMap(p => (p.piece.wallsAroundChoices ?? []).map(w => ({ ...w, i0: toI(p, w.i0), i1: toI(p, w.i1), s0: mapS(p, w.s0), s1: mapS(p, w.s1) })))];
   // quantities a player reads: recounted from the composed lists; the rest stay the spine's
   const bridgeRuns = out.runs.filter(r => r.kind === 1), tunnelRuns = out.runs.filter(r => r.kind === 2);
   let cut = 0, fill = 0, footprint = 0, forestArea = 0;
@@ -192,31 +194,44 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
   return out;
 }
 
-/** Noise band: the spine's sampled stations outside, each piece's inside (same calculator, same band). */
-function stitchFootprint(base: Result, list: readonly StitchPiece[], toI: (p: StitchPiece, i: number) => number): Result['noise']['footprint'] {
-  const f = base.noise.footprint;
-  if (!f) return null;
-  const parts: { from: NonNullable<Result['noise']['footprint']>; k: number; i: number; shift: number }[] = [];
-  for (let k = 0; k < f.stations.length; k++) if (!list.some(p => f.stations[k] > p.i0 && f.stations[k] < p.i1)) parts.push({ from: f, k, i: f.stations[k], shift: 0 });
+/** The composed noise source on the spine's stations: the spine's cells outside the pieces, each piece's
+ * own (its carriageway axis, its screens, its two directional lines) inside, with the walls built there.
+ * The noise band and the house cards sum it like any route's; a house inside hears the shown direction and
+ * the other one as that direction's kernel saw it. */
+function stitchSource(base: Result, list: readonly StitchPiece[]): Pick<Result['noise'], 'source' | 'L' | 'R'> {
+  const src = base.noise.source, n = base.n;
+  if (!src || list.some(p => !p.piece.noise.source)) return { source: null, L: base.noise.L, R: base.noise.R };
+  const F = (a: ArrayLike<number>) => Float64Array.from(a);
+  const screen = (q: SideScreen): SideScreen => ({ shield: Uint8Array.from(q.shield), edgeOff: F(q.edgeOff), edgeTop: F(q.edgeTop),
+    edgeLane: Uint8Array.from(q.edgeLane), wallOff: F(q.wallOff), wallFoot: F(q.wallFoot), gap: Uint8Array.from(q.gap) });
+  const lanePos = (s: AcousticSource, k: number, i: number) => { const l = s.lanes?.[k]; return !l ? (k === 0 ? 0 : NaN) : typeof l.pos === 'number' ? l.pos : l.pos[i]; };
+  const laneShare = (s: AcousticSource, k: number) => s.lanes ? s.lanes[k]?.share ?? 0 : k === 0 ? 1 : 0;
+  const out: AcousticSource = { ...src, x: F(src.x), y: F(src.y), tx: F(src.tx), ty: F(src.ty), grade: F(src.grade), len: F(src.len),
+    L: screen(src.L), R: screen(src.R), weight: new Float64Array(n).fill(1) };
+  const pos = [new Float64Array(n), new Float64Array(n)], share = [laneShare(src, 0), laneShare(src, 1)];
+  const fin = (v: number) => (Number.isFinite(v) ? v : 0);
+  for (let i = 0; i < n; i++) { pos[0][i] = fin(lanePos(src, 0, i)); pos[1][i] = fin(lanePos(src, 1, i)); }
+  const L = F(base.noise.L), R = F(base.noise.R), weight = out.weight as Float64Array;
   for (const p of list) {
-    const g = p.piece.noise.footprint;
-    if (!g || g.offsets.length !== f.offsets.length || g.offsets.some((o, j) => Math.abs(o - f.offsets[j]) > 1e-3)) continue;
-    for (let k = 0; k < g.stations.length; k++) {
-      const i = toI(p, g.stations[k]);
-      if (i > p.i0 && i < p.i1) parts.push({ from: g, k, i, shift: p.offset });
+    const q = p.piece.noise.source!, m = p.piece.n;
+    const w = dm.pow(10, (q.dayDb - src.dayDb) / 10), len = p.piece.length / Math.max(1, p.i1 - p.i0);
+    for (let i = p.i0 + 1; i < p.i1; i++) {
+      const k = Math.max(0, Math.min(m - 1, Math.round((i - p.i0) / (p.i1 - p.i0) * (m - 1))));
+      (out.x as Float64Array)[i] = q.x[k]; (out.y as Float64Array)[i] = q.y[k]; (out.tx as Float64Array)[i] = q.tx[k]; (out.ty as Float64Array)[i] = q.ty[k];
+      (out.grade as Float64Array)[i] = q.grade[k]; (out.len as Float64Array)[i] = len;
+      for (const side of ['L', 'R'] as const) {
+        const a = out[side], b = q[side];
+        a.shield[i] = b.shield[k]; a.edgeOff[i] = b.edgeOff[k]; a.edgeTop[i] = b.edgeTop[k]; a.edgeLane[i] = b.edgeLane[k];
+        a.wallOff[i] = b.wallOff[k]; a.wallFoot[i] = b.wallFoot[k]; a.gap[i] = b.gap[k];
+      }
+      // its lines in the spine's shares (a missing second line: none)
+      for (let l = 0; l < 2; l++) { const sh = laneShare(q, l); pos[l][i] = sh > 0 ? fin(lanePos(q, l, k)) : 0; }
+      weight[i] = w * (laneShare(q, 0) + laneShare(q, 1)) / Math.max(1e-9, share[0] + share[1]);
+      L[i] = p.piece.noise.L[k] ?? 0; R[i] = p.piece.noise.R[k] ?? 0;
     }
   }
-  parts.sort((a, b) => a.i - b.i);
-  const m = parts.length, o = f.offsets.length;
-  const stations = new Int32Array(m), start = new Float32Array(2 * m), excess = new Float32Array(2 * m * o), receiver = new Float32Array(2 * m);
-  parts.forEach((q, j) => {
-    stations[j] = q.i;
-    // inner edges from the shown line
-    start[2 * j] = q.from.start[2 * q.k] + q.shift; start[2 * j + 1] = q.from.start[2 * q.k + 1] - q.shift;
-    receiver[2 * j] = q.from.receiver[2 * q.k]; receiver[2 * j + 1] = q.from.receiver[2 * q.k + 1];
-    excess.set(q.from.excess.subarray(2 * q.k * o, (2 * q.k + 2) * o), 2 * j * o);
-  });
-  return { ...f, stations, start, excess, receiver };
+  out.lanes = [{ pos: pos[0], share: share[0] }, { pos: pos[1], share: share[1] }];
+  return { source: out, L, R };
 }
 
 /** Stations i0…i1 of a result as a result of their own (chainage from 0): for drawing a part of it. */
@@ -231,7 +246,8 @@ export function sliceResult(r: Result, i0: number, i1: number): Result {
     ground: cut(r.ground), geology: { ids: cut(r.geology.ids), profiles: r.geology.profiles }, grade: cut(r.grade), kind: cut(r.kind),
     cut: cut(r.cut), fill: cut(r.fill), dayL: cut(r.dayL), dayR: cut(r.dayR), zDayL: cut(r.zDayL), zDayR: cut(r.zDayR), oob: cut(r.oob),
     wallSurfaceL: cut(r.wallSurfaceL), wallSurfaceR: cut(r.wallSurfaceR),
-    cell: { width: cut(r.cell.width), urban: cut(r.cell.urban), forest: cut(r.cell.forest), wall: cut(r.cell.wall) },
+    cell: { width: cut(r.cell.width), urban: cut(r.cell.urban), forest: cut(r.cell.forest), wall: cut(r.cell.wall),
+      wallLength: cut(r.cell.wallLength), wallArea: cut(r.cell.wallArea) },
     parts, cost: sumParts(parts),
     runs: r.runs.filter(x => inI(x.i0) && inI(x.i1)).map(x => ({ ...x, i0: at(x.i0), i1: at(x.i1), s0: sh(x.s0), s1: sh(x.s1),
       ...(x.pierStations ? { pierStations: x.pierStations.map(sh) } : {}) })),
@@ -247,8 +263,19 @@ export function sliceResult(r: Result, i0: number, i1: number): Result {
     demolished: r.demolished.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),
     boughtOut: r.boughtOut.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),
     kept: r.kept.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),
-    noise: { receivers: r.noise.receivers.filter(x => inI(x.i)).map(x => ({ ...x, i: at(x.i) })), footprint: null,
-      ...(r.noise.gaps ? { gaps: { L: cut(r.noise.gaps.L), R: cut(r.noise.gaps.R) } } : {}) },
+    noise: { ...r.noise, receivers: r.noise.receivers.filter(x => inI(x.i)).map(x => ({ ...x, i: at(x.i),
+      at: x.at >= 0 ? at(x.at) : x.at, window: [Math.max(0, at(x.window[0])), Math.min(n - 1, at(x.window[1]))] as [number, number] })),
+      source: r.noise.source ? sliceSource(r.noise.source, i0, i1) : null, L: r.noise.L.slice(i0, i1 + 1), R: r.noise.R.slice(i0, i1 + 1) },
     quantities: { ...r.quantities, massHaul: cut(r.quantities.massHaul) },
   };
+}
+
+/** cells i0…i1 of a noise source */
+function sliceSource(src: AcousticSource, i0: number, i1: number): AcousticSource {
+  const c = (a: ArrayLike<number>) => Float64Array.prototype.slice.call(Float64Array.from(a), i0, i1 + 1);
+  const scr = (q: SideScreen): SideScreen => ({ shield: q.shield.slice(i0, i1 + 1), edgeOff: q.edgeOff.slice(i0, i1 + 1), edgeTop: q.edgeTop.slice(i0, i1 + 1),
+    edgeLane: q.edgeLane.slice(i0, i1 + 1), wallOff: q.wallOff.slice(i0, i1 + 1), wallFoot: q.wallFoot.slice(i0, i1 + 1), gap: q.gap.slice(i0, i1 + 1) });
+  return { ...src, n: i1 - i0 + 1, x: c(src.x), y: c(src.y), tx: c(src.tx), ty: c(src.ty), grade: c(src.grade), len: c(src.len), L: scr(src.L), R: scr(src.R),
+    ...(src.weight ? { weight: c(src.weight) } : {}),
+    ...(src.lanes ? { lanes: src.lanes.map(l => ({ ...l, pos: typeof l.pos === 'number' ? l.pos : c(l.pos) })) } : {}) };
 }

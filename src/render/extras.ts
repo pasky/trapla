@@ -98,7 +98,7 @@ export class RouteExtras {
       const s0 = Math.max(0, o.s0), s1 = Math.min(r.length, o.s1);
       if (s1 <= s0) continue;
       const [i0, i1] = cellsInRange(r, s0, s1);
-      const path = this.wallPath({ ...o, s0, s1, i0, i1 }, this.crown / 2 + NOISE.wallEdgeOffset, o.height + .15);
+      const path = this.wallPath({ ...o, s0, s1, i0, i1 }, 'wall', o.height + .15);
       const pos: number[] = [];
       for (let k = 0; k < path.length; k += 3) { this.view.local(path[k], path[k + 1], path[k + 2], v); pos.push(v.x, v.y, v.z); }
       const line = this.line(pos, o.height ? 0x046767 : 0xd6338a, 3, 1, 7);
@@ -131,34 +131,47 @@ export class RouteExtras {
     }
   }
 
-  /** Points along a wall stretch at `off` metres from the axis, `dz` above grade: local x, y, z triplets.
-   * Includes the cell boundaries so even a single-cell wall has a visible, full-length face. */
-  private wallPath(w: WallStretch, off: number, dz: number, at?: readonly number[]): number[] {
+  /** Points along a wall stretch beside the axis: local x, y, z triplets. `off`: 'wall' = on the wall's own
+   * line (crown / deck edge, or the top edge of a cut: Result.noise.source) plus `extra` metres, or a fixed
+   * offset; z = grade + `dz`, plus the wall's foot when on its line. Includes the cell boundaries so even a
+   * single-cell wall has a visible, full-length face. */
+  private wallPath(w: Pick<WallStretch, 'side' | 's0' | 's1' | 'i0' | 'i1'>, off: 'wall' | number, dz: number, at?: readonly number[], extra = 0): number[] {
     const r = this.r!, sgn = w.side === 'L' ? 1 : -1, out: number[] = [];
-    const stations = at ?? this.wallStations(w);
+    const stations = at ?? this.wallStations(w), side = this.wallSide(w.side);
     for (const s of stations) {
-      const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = (s - r.s[i]) / r.ds;
-      const at = (a: Float64Array) => a[i] + t * (a[i + 1] - a[i]);
-      const tx = at(r.tx), ty = at(r.ty), norm = Math.hypot(tx, ty) || 1;
-      out.push(at(r.x) - ty / norm * off * sgn, at(r.y) + tx / norm * off * sgn, at(r.grade) + dz);
+      const i = Math.min(r.n - 2, Math.max(0, Math.floor(s / r.ds))), t = Math.max(0, Math.min(1, (s - r.s[i]) / r.ds));
+      const lerp = (a: ArrayLike<number>) => a[i] + t * (a[i + 1] - a[i]);
+      const tx = lerp(r.tx), ty = lerp(r.ty), norm = Math.hypot(tx, ty) || 1;
+      const o = (off === 'wall' ? (side ? lerp(side.wallOff) : this.crown / 2 + NOISE.wallEdgeOffset) : off) + extra;
+      const foot = off === 'wall' && side ? lerp(side.wallFoot) : 0;
+      out.push(lerp(r.x) - ty / norm * o * sgn, lerp(r.y) + tx / norm * o * sgn, lerp(r.grade) + foot + dz);
     }
     return out;
   }
 
+  private wallSide(side: 'L' | 'R') {
+    const src = this.r?.noise?.source;
+    return src ? (side === 'L' ? src.L : src.R) : null;
+  }
+
   /** stations of a wall's outline: its ends and the cell boundaries between */
-  private wallStations(w: WallStretch): number[] {
+  private wallStations(w: Pick<WallStretch, 's0' | 's1' | 'i0' | 'i1'>): number[] {
     const r = this.r!;
     return [w.s0, ...Array.from({ length: w.i1 - w.i0 + 1 }, (_, k) => r.s[w.i0 + k]), w.s1]
       .filter((s, i, a) => i === 0 || s !== a[i - 1]);
   }
 
-  /** The wall sits outside the crown: its base reaches down onto the actual side slope instead of
-   * leaving a grade-height panel suspended above a descending embankment. */
+  /** The panel's visible foot: on a cut's top edge it stands on that ground (its plinth a little into it);
+   * beside an embankment's crown it reaches down onto the side slope instead of leaving a road-level panel
+   * suspended above a descending embankment. `z` = the billed foot (grade + wallFoot). */
   private wallFoot(w: WallStretch, s: number, z: number): number {
-    const r = this.r!, i = Math.min(r.n - 1, Math.max(0, Math.round(s / r.ds)));
+    const r = this.r!, i = Math.min(r.n - 1, Math.max(0, Math.round(s / r.ds))), side = this.wallSide(w.side);
+    if (r.kind[i] !== KIND.earth) return z;
+    if (side && side.wallFoot[i] > 0) return z - 0.3;
     const day = w.side === 'L' ? r.dayL[i] : r.dayR[i], zDay = w.side === 'L' ? r.zDayL[i] : r.zDayR[i];
-    const t = Math.max(0, Math.min(1, NOISE.wallEdgeOffset / Math.max(.1, day - this.crown / 2)));
-    return r.kind[i] === KIND.earth ? Math.min(z, z + (zDay - r.grade[i]) * t) : z;
+    const off = side ? side.wallOff[i] : this.crown / 2 + NOISE.wallEdgeOffset;
+    const t = Math.max(0, Math.min(1, (off - this.crown / 2) / Math.max(.1, day - this.crown / 2)));
+    return Math.min(z, z + (zDay - r.grade[i]) * t);
   }
 
   /** noise walls: lit panels along the crown edge from the slope to the billed top, steel posts */
@@ -168,12 +181,11 @@ export class RouteExtras {
     const r = this.r;
     if (!r) return;
     const v = new THREE.Vector3();
-    const off = this.crown / 2 + NOISE.wallEdgeOffset;
     // panels: `wallUV` = metres along the wall, metres above its foot (plinth, absorber courses)
     const pos: number[] = [], uv: number[] = [], idx: number[] = [];
     const posts: THREE.Matrix4[] = [];
     for (const w of r.walls) {
-      const stations = this.wallStations(w), base = this.wallPath(w, off, 0, stations), feet: number[] = [];
+      const stations = this.wallStations(w), base = this.wallPath(w, 'wall', 0, stations), feet: number[] = [];
       for (let j = 0; j < stations.length; j++) {
         const x = base[3 * j], y = base[3 * j + 1], z = base[3 * j + 2], foot = this.wallFoot(w, stations[j], z);
         feet.push(foot);
@@ -187,7 +199,7 @@ export class RouteExtras {
       for (let j = 0; j + 1 < stations.length; j++) {
         const onBridge = (s: number) => r.kind[Math.min(r.n - 1, Math.round(s / r.ds))] === KIND.bridge;
         if (!onBridge(stations[j]) || !onBridge(stations[j + 1])) continue;
-        const out = this.wallPath(w, off + POST_W, 0, [stations[j], stations[j + 1]]), k = pos.length / 3;
+        const out = this.wallPath(w, 'wall', 0, [stations[j], stations[j + 1]], POST_W), k = pos.length / 3;
         for (const [p, a] of [[crownEdge, 3 * j], [crownEdge, 3 * j + 3], [out, 0], [out, 3]] as const) {
           this.view.local(p[a], p[a + 1], p[a + 2] + 0.35, v); pos.push(v.x, v.y, v.z); uv.push(0, 0);
         }
@@ -198,7 +210,7 @@ export class RouteExtras {
       // axis; the wall is beside it, so the module is right within a few per cent)
       const n = Math.max(1, Math.round((w.s1 - w.s0) / POST_MODULE)), at: number[] = [];
       for (let k = 0; k <= n; k++) at.push(w.s0 + (w.s1 - w.s0) * k / n);
-      const pp = this.wallPath(w, off, 0, at);
+      const pp = this.wallPath(w, 'wall', 0, at);
       for (let k = 0, j = 0; k <= n; k++) {
         while (j < stations.length - 2 && stations[j + 1] < at[k]) j++;
         const t = Math.max(0, Math.min(1, (at[k] - stations[j]) / Math.max(1e-6, stations[j + 1] - stations[j])));
@@ -242,14 +254,17 @@ export class RouteExtras {
     this.clear(this.symbols);
     this.wallHits = [];
     if (!r) return;
-    const off = this.crown / 2 + NOISE.wallEdgeOffset, far = mpp > SYMBOL_FROM;
+    const far = mpp > SYMBOL_FROM;
     // at the overview (≥ 6 m per pixel) thin lines close to the road: walls are a detail there, the
     // route itself must stay the most visible thing
     const overview = mpp > 6, px = overview ? 4 : SYMBOL_PX;
-    const symOff = Math.max(off, px * 2 ** (scale / 4)), v = new THREE.Vector3();
+    const symOff = px * 2 ** (scale / 4), v = new THREE.Vector3();
     for (const w of r.walls) {
-      // hover target: the symbol from afar, the wall top close up
-      const pts = far ? this.wallPath(w, symOff, w.height) : this.wallPath(w, off, w.height);
+      // hover target: the symbol from afar (no closer than the wall line), the wall top close up
+      const side = this.wallSide(w.side);
+      let line = this.crown / 2 + NOISE.wallEdgeOffset;
+      if (side) for (let i = w.i0; i <= w.i1; i++) line = Math.max(line, side.wallOff[i]);
+      const pts = far ? this.wallPath(w, Math.max(line, symOff), w.height) : this.wallPath(w, 'wall', w.height);
       this.wallHits.push({ w, pts });
       if (!far || pts.length < 6) continue;
       const world: number[] = [];

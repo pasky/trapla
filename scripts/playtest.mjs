@@ -183,17 +183,26 @@ try {
   await shot('walls');
   await page.keyboard.press('Escape');
   // keep a house, take its wall away: a violation, with the fix as a button
-  const rec = await T(() => { const r = window.trapla.result(); const p = r.noise.receivers.find((p) => p.status === 'wall' && !r.walls.some((w) => w.i0 <= p.key.i && w.i1 >= p.key.i && w.s0 >= 6000 && w.s0 <= 7000)) ?? r.noise.receivers.find((p) => p.status === 'wall'); window.trapla.lookAt(r.x[p.i], r.y[p.i], 500, 20, 55); return p; });
+  const rec = await T(() => { const r = window.trapla.result(); const p = r.noise.receivers.find((p) => p.status === 'wall' && !r.walls.some((w) => w.i0 <= p.i && w.i1 >= p.i && w.s0 >= 6000 && w.s0 <= 7000)) ?? r.noise.receivers.find((p) => p.status === 'wall'); window.trapla.lookAt(r.x[p.i], r.y[p.i], 500, 20, 55); return p; });
   await idle(600);
   const bs = await T((j) => window.trapla.buildingScreen(j, 3), rec.j);
   await page.mouse.click(view.x + bs.sx, view.y + bs.sy); await idle(400);
   ok((await sel())?.kind === 'building' && (await sel()).j === rec.j, 'C: a click on a house selects it');
   ok(await clickable('#building-choice [data-building="keep"]'), 'C: its buttons are on screen');
   await page.click('#building-choice [data-building="keep"]'); await idle(400);
-  await page.click(`#inspector .wall-row button[data-wall-${rec.key.side.toLowerCase()}="0"]`); await idle(600);
-  ok(await visible('#inspector .ctx-issue'), 'C: kept and without its wall, the house shows a violation');
-  await page.click('#inspector .wall-row button[data-wall-' + rec.key.side.toLowerCase() + '="auto"]'); await idle(600);
-  ok(!(await visible('#inspector .ctx-issue')), 'C: Auto wall again: the violation is gone');
+  const side = rec.side.toLowerCase();
+  await page.click(`#inspector .wall-row button[data-wall-${side}="0"]`); await idle(600);
+  // without its own wall Auto may still protect it from either side of the gap; no wall on that side for
+  // 300 m either way leaves it too loud
+  const still = await T((j) => window.trapla.result().noise.receivers.find((p) => p.j === j), rec.j);
+  ok(still && (still.mitigated <= 0 || still.unresolved), `C: without its own wall it is walled either side or flagged (${(still?.mitigated ?? NaN).toFixed(1)} dB)`);
+  await T((p) => { const r = window.trapla.result(); window.trapla.selectRange(r.s[p.i] - 300, r.s[p.i] + 300); }, rec); await idle(500);
+  await page.click(`#inspector .wall-row button[data-wall-${side}="0"]`); await idle(600);
+  await T((j) => window.trapla.select({ kind: 'building', j }), rec.j); await idle(400);
+  ok(await visible('#inspector .ctx-issue'), 'C: kept, with no wall on its side within 300 m, the house shows a violation');
+  ok(await visible('#inspector .ctx-issue .fix'), 'C: its fix is a button');
+  await page.click('#inspector .ctx-issue .fix'); await idle(600);
+  ok(!(await visible('#inspector .ctx-issue')), 'C: the fix wall: the violation is gone');
   await page.keyboard.press('Escape');
   // a crossed road, close up on the map
   const xing = await T(() => {

@@ -50,7 +50,7 @@ export class BuildAnnotations {
       const b = this.pack.overlays.buildings[j];
       if (!b) continue;
       this.add(b[0], b[1], this.pack.terrain.heightAt(b[0], b[1]) + 12,
-        action === 'keep' ? 'KEEP' : action === 'buy' ? 'BUY' : '',
+        action === 'keep' ? 'KEEP' : action === 'buy' ? 'BOUGHT OUT' : '',
         action === 'keep' ? 'kept-building' : action === 'buy' ? 'bought-building' : 'selected-building',
         action === 'keep' ? 'You keep it' : action === 'buy' ? 'You buy it out' : 'Selected', () => this.onBuilding?.(j));
     }

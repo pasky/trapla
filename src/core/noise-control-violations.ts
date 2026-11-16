@@ -1,58 +1,41 @@
 import type { Violation } from './checks';
-import { noiseBarrier, wallAttenuation, type ExposureScratch, type NoiseReceiver } from './noise';
-import { NOISE } from './data/urban';
+import type { NoiseReceiver } from './noise';
 
-/** Compute a sufficient height over ALL exposed pairs of each retained dwelling, then group nearby
- * failures by side/stretch. Never promise that a 4 m wall fixes an upper floor; never flood the HUD
- * with hundreds of houses ahead of gradient/geometry violations. */
-export function noiseControlViolations(receivers: readonly NoiseReceiver[], scratch: ExposureScratch,
-  s: ArrayLike<number>, crownWidth: number): Violation[] {
-  const pending = new Map(receivers.filter((r) => r.unresolved).map((r) => [r.j,
-    { r, height: 0, s0: Infinity, s1: -Infinity, sides: new Set<string>(), gap: false }]));
-  if (!pending.size) return [];
-  const barrier = noiseBarrier(crownWidth);
-  for (const p of scratch.pairs) {
-    const v = pending.get(p.j);
-    if (!v || p.need === 0) continue;
-    // a junction opening cannot carry a wall: no height closes it
-    const height = p.gap ? Infinity : Number.isFinite(p.need) ? p.need : wallAttenuation(p.d, p.height, 6, barrier) >= p.excess - 1e-6 ? 6 : Infinity;
-    if (p.gap) v.gap = true;
-    v.height = Math.max(v.height, height);
-    v.s0 = Math.min(v.s0, s[p.i]); v.s1 = Math.max(v.s1, s[p.i]); v.sides.add(p.left ? 'left' : 'right');
-  }
-  type Entry = (typeof pending extends Map<number, infer V> ? V : never);
-  const groups: Entry[][] = [];
+/** Retained dwellings still over the limit (a Keep or a wall choice stopped the automatic buyout), grouped
+ * by side and stretch. Each carries the computed sufficient wall (one stretch on top of what is built, at
+ * every storey) or none. Never flood the HUD with hundreds of houses ahead of geometry violations. */
+export function noiseControlViolations(receivers: readonly NoiseReceiver[], s: ArrayLike<number>): Violation[] {
+  const pending = receivers.filter((r) => r.unresolved);
+  if (!pending.length) return [];
+  const groups: NoiseReceiver[][] = [];
   for (const side of ['L', 'R']) {
-    const ordered = [...pending.values()].filter((v) => v.r.unresolved!.side === side)
-      .sort((a, b) => s[a.r.unresolved!.i] - s[b.r.unresolved!.i]);
-    let group: Entry[] = [];
-    for (const v of ordered) {
-      const station = s[v.r.unresolved!.i];
-      if (!group.length || station - s[group[group.length - 1].r.unresolved!.i] > 150
-        || station - s[group[0].r.unresolved!.i] > 1000) { group = []; groups.push(group); }
-      group.push(v);
+    const ordered = pending.filter((r) => r.unresolved!.side === side).sort((a, b) => s[a.unresolved!.i] - s[b.unresolved!.i]);
+    let group: NoiseReceiver[] = [];
+    for (const r of ordered) {
+      const station = s[r.unresolved!.i];
+      if (!group.length || station - s[group[group.length - 1].unresolved!.i] > 150
+        || station - s[group[0].unresolved!.i] > 1000) { group = []; groups.push(group); }
+      group.push(r);
     }
   }
   return groups.map((group): Violation => {
-    const ids = group.map((v) => v.r.j), count = ids.length;
-    let height = 0, excess = 0, from = Infinity, to = -Infinity, gap = false;
-    const sides = new Set<string>();
-    for (const v of group) {
-      height = Math.max(height, v.height); excess = Math.max(excess, v.r.unresolved!.excess); gap ||= v.gap;
-      from = Math.min(from, v.s0); to = Math.max(to, v.s1);
-      for (const side of v.sides) sides.add(side);
+    const ids = group.map((r) => r.j), count = ids.length, side = group[0].unresolved!.side;
+    let height = 0, excess = 0, from = Infinity, to = -Infinity, gap = false, canWall = true;
+    for (const r of group) {
+      const u = r.unresolved!;
+      excess = Math.max(excess, u.excess); gap ||= !!u.gap;
+      if (u.fix) { height = Math.max(height, u.fix.height); from = Math.min(from, u.fix.s0); to = Math.max(to, u.fix.s1); }
+      else { canWall = false; from = Math.min(from, s[u.i]); to = Math.max(to, s[u.i]); }
     }
-    from = Math.max(0, from - NOISE.margin); to = Math.min(s[s.length - 1], to + NOISE.margin);
     const what = count === 1 ? 'House' : `${count} houses`;
-    const wallSides = [...sides].map((x) => (x === 'left' ? 'L' : 'R') as 'L' | 'R');
-    const canWall = Number.isFinite(height) && height > 0;
+    const sideName = side === 'L' ? 'left' : 'right';
     return {
       kind: 'noise', basis: 'game', s0: from, s1: to, size: excess,
       title: `${what} ${excess.toFixed(1)} dB too loud`,
-      fix: canWall ? `${height} m wall ${[...sides].join(' + ')}, or buy out` : gap ? 'Buy out, or cross the side road without a junction' : 'Buy out, or move the road away',
-      detail: `${gap && !canWall ? 'The noise comes through the gap in the wall where a side road joins; a wall cannot close it. ' : ''}Your wall or Keep choice stops the automatic buyout. Levels are at the top floor, walls and cuts included.`,
+      fix: canWall ? `${height} m wall ${sideName}, or buy out` : gap ? 'Buy out, or cross the side road without a junction' : 'Buy out, or move the road away',
+      detail: `${gap && !canWall ? 'The noise comes through the gap in the wall where a side road joins; a wall cannot close it. ' : ''}Your wall or Keep choice stops the automatic buyout. Levels are at the loudest floor, walls and cuts included.`,
       rule: 'Government Order 272/2011: 60 dB by day, 50 dB at night at the façade (game estimate, not an acoustic study)',
-      target: { buildings: ids, ...(canWall ? { wall: { sides: wallSides, height, s0: from, s1: to } } : {}) },
+      target: { buildings: ids, ...(canWall ? { wall: { sides: [side], height, s0: from, s1: to } } : {}) },
     };
   }).sort((a, b) => a.s0 - b.s0);
 }

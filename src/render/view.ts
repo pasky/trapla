@@ -64,6 +64,9 @@ const CAMERA_PROBES: [number, number][] = [[0, 0], ...[0, 1, 2, 3, 4, 5, 6, 7].f
   return [[Math.cos(a) * CAMERA_PROBE / 2, Math.sin(a) * CAMERA_PROBE / 2], [Math.cos(a) * CAMERA_PROBE, Math.sin(a) * CAMERA_PROBE]];
 })];
 const LEGACY_ROUTE = 'legacy';
+/** what the route takes: a bought-out house (its colour in every view, the noise view's too) and a
+ * demolished one's far-zoom marker */
+export const BOUGHT_COLOR = 0xc43c9b, DEMOLISHED_COLOR = 0x3d434b;
 export interface StagedRoute extends Staged { context: RouteSurfaceContext }
 export interface RenderEndpoints {
   a: { x: number; y: number; z?: number; label?: string };
@@ -114,7 +117,7 @@ export class View {
   private exag = 1;
   private dirty = true;
   private routeGroups = new RouteGroups(this.world,
-    () => new Set([this.collarMaterial(), this.ribbonMaterial()]), (material) => this.retire(material));
+    () => new Set<THREE.Material>([this.collarMaterial(), this.ribbonMaterial(), ...Object.values(this.markerMats)]), (material) => this.retire(material));
   private routeInputs = new Map<string, { result: Result; surfaces: readonly CrossingSurface[] }>();
   /** editing guide: the tangent lines through the active bend (dragged, hovered or selected) */
   private guide: THREE.Group | null = null;
@@ -144,7 +147,10 @@ export class View {
   private crossingCutRT: THREE.WebGLRenderTarget | null = null;
   private originalMaskRT: THREE.WebGLRenderTarget | null = null;
   readonly crossingCut = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } };
-  readonly originalMask = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 } };
+  /** Settled footprints (exact daylight polygons) that replacement ground must not cover. Their own
+   * collars and crossing ground share the footprint's edge: discard only fully covered texels, else the
+   * ≈ 2.5 m mask raster bleeds over the edge and opens a sky-coloured seam beside the slope's toe. */
+  readonly originalMask = { maskTex: { value: null as THREE.Texture | null }, maskBox: { value: new THREE.Vector4() }, maskOn: { value: 0 }, maskCut: { value: 0.999 } };
   crossingSurfaces: CrossingSurface[] = [];
   private maskScene = new THREE.Scene();
   private maskCam = new THREE.Camera();
@@ -436,6 +442,12 @@ export class View {
   get photoWithNetwork() { return !!this.landcover?.photoWithNetwork; }
   /** the transport graph arrived (loaded lazily after startup): the photo's known-network overlay can use it */
   setTransport(graph: TransportGraphData | null) { this.landcover?.setNetwork(graph); }
+  /** Stage the map's cleared plots (demolished) and rings (bought out) for engine building indices. */
+  *buildPlots(demolished: readonly number[], bought: readonly number[]): Generator<void, Staged> {
+    const render = (js: readonly number[]) => new Set(js.map(j => this.buildingMesh(j)).filter(k => k >= 0));
+    if (this.landcover) return yield* this.landcover.buildPlots(render(demolished), render(bought));
+    return { commit() {}, dispose() {} };
+  }
   *buildSourceReplacements(graph: TransportGraphData, accepted: readonly TransportRenderInterval[]): Generator<void, Staged> {
     if (this.landcover) return yield* this.landcover.buildSourceReplacements(graph, accepted);
     return { commit() {}, dispose() {} };
@@ -989,28 +1001,24 @@ export class View {
 
     out.push(...this.centreline(r, bad));
 
-    // ---- footprint demolitions (red squares) / noise buyouts (magenta diamonds) ----
+    // ---- far away, where a footprint is under a pixel: demolitions (dark squares) / buyouts (magenta
+    // diamonds), outlined so they read on any roof, on the ground at the building. Nearer, the map shows the
+    // cleared plot and the bought house its colour (buildPlots, commitRouteScene).
     for (const [buildings, buyout] of [[buildingMarkers ? r.demolished : [], false], [buildingMarkers ? r.boughtOut : [], true]] as const) {
       if (!buildings.length) continue;
-      const bp: number[] = [];
+      const bp: number[] = [], radius: number[] = [];
       for (const { j } of buildings) {
         const b = this.pack.overlays.buildings[j];
-        this.local(b[0], b[1], this.drapeHeight(b[0], b[1]) + 6, v);
-        bp.push(v.x, v.y, v.z);
+        this.local(b[0], b[1], this.drapeHeight(b[0], b[1]), v);
+        bp.push(v.x, v.y, v.z); radius.push(b[2]);
       }
       const pg = new THREE.BufferGeometry();
       pg.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3));
-      const material = new THREE.PointsMaterial({ color: buyout ? 0xc43c9b : 0x3d434b, size: buyout ? 11 : 8, sizeAttenuation: false, depthTest: false, depthWrite: false });
-      if (buyout) {
-        material.onBeforeCompile = (shader) => {
-          shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>',
-            '#include <clipping_planes_fragment>\nif (abs(gl_PointCoord.x - 0.5) + abs(gl_PointCoord.y - 0.5) > 0.5) discard;');
-        };
-        material.customProgramCacheKey = () => 'noise-buyout-diamond';
-      }
-      const pts = new THREE.Points(pg, material);
+      pg.setAttribute('radius', new THREE.Float32BufferAttribute(radius, 1));
+      const pts = new THREE.Points(pg, this.markerMaterial(buyout));
       pts.name = buyout ? 'noise-buyouts' : 'footprint-demolitions';
       pts.renderOrder = 5;
+      pts.onBeforeRender = (renderer) => { (pts.material as THREE.ShaderMaterial).uniforms.vh.value = renderer.getDrawingBufferSize(this.bufferSize).y; };
       out.push(pts);
     }
     handedOver = true;
@@ -1028,6 +1036,32 @@ export class View {
       // abandoned (or failed) before handing the staged result over: nothing was shown
       if (!handedOver) dispose();
     }
+  }
+
+  private bufferSize = new THREE.Vector2();
+  private markerMats: Partial<Record<'square' | 'diamond', THREE.ShaderMaterial>> = {};
+  /** far-zoom building markers: shown only where the footprint is a few pixels across (too small to read) */
+  private markerMaterial(diamond: boolean): THREE.ShaderMaterial {
+    const k = diamond ? 'diamond' : 'square';
+    return this.markerMats[k] ??= new THREE.ShaderMaterial({
+      uniforms: { color: { value: new THREE.Color(diamond ? BOUGHT_COLOR : DEMOLISHED_COLOR) }, size: { value: diamond ? 11 : 9 }, vh: { value: 1 } },
+      vertexShader: `attribute float radius; uniform float size; uniform float vh;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mv;
+          float px = radius * projectionMatrix[1][1] * 0.5 * vh / max(-mv.z, 1e-3);
+          gl_PointSize = px > 3.0 ? 0.0 : size;
+        }`,
+      fragmentShader: `uniform vec3 color; uniform float size;
+        void main() {
+          vec2 p = gl_PointCoord - 0.5;
+          float d = ${diamond ? 'abs(p.x) + abs(p.y)' : 'max(abs(p.x), abs(p.y))'};
+          if (d > 0.5) discard;
+          gl_FragColor = vec4(d > 0.5 - 1.6 / size ? vec3(1.0) : color, 1.0);
+          #include <colorspace_fragment>
+        }`,
+      depthTest: false, depthWrite: false,
+    });
   }
 
   /** Replacement ground beside the slopes: one material for the life of the view (it was one
@@ -1118,7 +1152,7 @@ export class View {
   }
 
   /** Complete a staged scene swap once, after all route and crossing groups commit synchronously. */
-  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[]) {
+  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[], globalBought?: readonly number[]) {
     this.routeGroups.retain(ids);
     for (const id of this.routeInputs.keys()) if (!ids.has(id)) this.routeInputs.delete(id);
     this.maskSources = [...this.routeInputs.values()];
@@ -1131,6 +1165,12 @@ export class View {
     const indices = globalDemolished ?? [...this.routeInputs.values()].flatMap(({ result }) => result.demolished.map(b => b.j));
     for (const j of indices) { const mesh = this.buildingMesh(j); if (mesh >= 0) demolished.add(mesh); }
     this.buildings?.hide(demolished);
+    // bought-out houses stand until they are cleared: their own colour in every view
+    const bought = new Map<number, number>();
+    for (const j of globalBought ?? [...this.routeInputs.values()].flatMap(({ result }) => result.boughtOut.map(b => b.j))) {
+      const mesh = this.buildingMesh(j); if (mesh >= 0) bought.set(mesh, BOUGHT_COLOR);
+    }
+    this.buildings?.setMarked(bought);
     this.dirty = true;
   }
 
