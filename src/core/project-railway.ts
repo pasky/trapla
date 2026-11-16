@@ -76,7 +76,7 @@ export function railTraffic(route: RailwayRoute): RailTrafficGroup[] {
 export type RailwayEvaluation = { status: 'evaluated'; result: Result } | { status: 'incomplete'; reason: 'unsupported-policy'
   | 'unsupported-alignment' | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign, routeId: string, objectData: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue'> = {}): RailwayEvaluation {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> = {}): RailwayEvaluation {
   const route = project.routes.find(r => r.id === routeId);
   if (!route || route.kind !== 'railway') throw new Error('Unknown railway');
   if (!modeCapability('railway').scoring) return { status: 'incomplete', reason: 'unsupported-policy' };

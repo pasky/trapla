@@ -90,7 +90,7 @@ export type CorridorEvaluation =
  * motorway continues beyond the map there (SPK's whole-category norm already includes earth-built
  * interchange branches, research/33 §3); any other end needs an interchange nobody has built. */
 export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign, corridorId: string, objectData: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue'> & { only?: string } = {}): CorridorEvaluation {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> & { only?: string } = {}): CorridorEvaluation {
   const corridor = project.corridors.find(c => c.id === corridorId);
   if (!corridor) throw new Error('Unknown corridor');
   if (!modeCapability('motorway').scoring) return { status: 'incomplete', reason: 'unsupported-mode' };
@@ -343,7 +343,7 @@ const carriagewayLine = (route: MotorwayRoute) => {
  * for every house (at most +3 dB too loud where only one direction is near), until a joint calculation
  * exists. Houses beside a joined stretch belong to the outer direction. */
 export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, routeId: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'sharedCrossings'> = {}): Result {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue' | 'sharedCrossings'> = {}): Result {
   const route = project.routes.find(r => r.id === routeId) as MotorwayRoute, corridor = corridorOfRoute(project, routeId)!;
   const other = project.routes.find(r => r.id === (corridor.children.forward === routeId ? corridor.children.reverse : corridor.children.forward)) as MotorwayRoute;
   const ops = corridorOperations(project, corridor), goal = project.mission.connections[0];
