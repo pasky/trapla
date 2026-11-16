@@ -52,7 +52,7 @@ import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext, replaceRouteFromLegacy } from './core/project-legacy';
 import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
-import { acceptsProjectMessage, type NoiseBandOut, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
+import { acceptsProjectMessage, type ProjectWorkerIn } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -66,7 +66,7 @@ import { ProfilePanel } from './ui/profile';
 import { provisionalProfile } from './ui/provisional';
 import { ViewBar, type ViewPrefs } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
-import type { WorkerIn } from './worker';
+import type { WorkerIn, WorkerOut } from './worker-protocol';
 import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
@@ -862,7 +862,7 @@ async function main() {
     worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
       crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
   };
-  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
+  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<WorkerOut>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
     if (m.type === 'noise-band') {
