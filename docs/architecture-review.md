@@ -33,7 +33,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
 | 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done: 1,840 → 325 lines, 22 modules out, the shared state is a `Session`; what is left is construction and wiring (§ main.ts) |
-| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | `evaluateRoute` done: six named stages, itself 60 lines (two diffs of +74 −13 and +50 −25); the other two functions next (§ Core) |
+| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | `evaluateRoute` done: 14 named functions, itself 60 lines (three diffs of +74 −13, +50 −25 and +99 −29); the other two functions next (§ Core) |
 | 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
@@ -179,13 +179,21 @@ small modules beside it already do.
   Then `routeEngineer` (254 lines: one engineering pass of a grade line) and `routeFinish` (526: lift
   retries, quantities, buildings, crossings, footprint, `complete()`) the same way (+50 −25; same checks,
   four timing runs at median ratio 0.98–1.01): `evaluateRoute` itself is now the 60 lines of retry logic.
+  Then a design pass itself (redone on cost model 31 once the design-realism change had landed):
+  `finish()` is `finishDesign` = `finishLift` (111 lines) → `finishQuantities` (56) → `finishBuildings`
+  (75) → `finishCrossings` (112), and `complete()` is `completeDesign` (221), with the lift tool as
+  `routeLift`; `routeFinish` is 6 lines. Diff +99 −29, by the tool (`extract`, `hoist`: a closure's body
+  becomes a function and the closure a one-line call, `prune`), after three hand steps the tool asks for:
+  `let liftStop` (set inside the lift helper, read by a later pass) is `lift.stop` on a holder object;
+  the defaulted parameters `start` and `withNoise` have their types written out; `let crossings` (the
+  pass's crossings, replaced by copies when merged ways are split) is declared where the crossings step
+  begins instead of 150 lines earlier. `complete()`'s call of itself is `completeDesign(…same
+  arguments…, true)`. 177 / 177 results identical; interleaved timing against main unchanged.
+  The former 1,590-line closure is 14 functions, the largest 293 lines (`routeSetup`).
   Next, each again by the tool:
-  1. inside `routeFinish`: quantities / buildings / crossings / footprint as stages, `complete()` (noise,
-     violations, the `Result`) as its own function (the tool works on top-level functions: `finish`'s body
-     first becomes one, by the same destructuring);
-  2. only then move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports,
-     since they no longer share a scope;
-  3. `buildCrossingGeometryOnce` (840 lines) and `evaluateProject` (443) with the same tool.
+  1. move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports, since they
+     no longer share a scope;
+  2. `buildCrossingGeometryOnce` (840 lines) and `evaluateProject` (443) with the same tool.
 - **Engine logic keyed on player text.** `evaluate.ts:1548` (`v.title.startsWith('A long bridge span is too
   low')`, set in `support-layout.ts:283`) and `:1905` (`'Road too low'`, set in `checks.ts:549`) decide
   lifts and railway wording from a *title*; `crossing-geometry.ts` passes diagnostics as message strings
@@ -344,10 +352,9 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 6. Merged (`e25f005` + the registry): `ROUTE_KINDS` in project-evaluate.ts (#10, first step).
 7. A click on the shown road keeps the profile's zoom (the one behaviour change asked for), `mode-play.mjs`
    reads its drag after it has settled; `main.ts`: the `Session`, selection, road links, result display.
-8. Held until the design-realism merge has landed (it changes pricing, sections and the grade solve): the
-   steps of a design pass (`finishDesign` = `finishLift` → `finishQuantities` → `finishBuildings` →
-   `finishCrossings`, and `completeDesign`): done once by the tool (branch `side-agent/arch-batch5-backup`,
-   commit `9da55d4`: +123 −39, 177 / 177 identical), to be redone on the new code by the same commands.
+8. After the design-realism merge (cost model 31): the steps of a design pass (`finishDesign` =
+   `finishLift` → `finishQuantities` → `finishBuildings` → `finishCrossings`, and `completeDesign`),
+   redone on the new code by the tool.
 9. Browser scripts: the gates and the 18 scripts with the retired intro key on `scripts/lib/browser.mjs`.
 10. `main.ts`: routes, the active line, the score, the map window (→ 325 lines).
 11. Next: the stage functions into files, the other two long functions.

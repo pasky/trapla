@@ -1582,37 +1582,37 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   return { engineer };
 }
 
+/** Support-lift state of a pass, handed on to a later pass that starts from its lifted line. */
 interface LiftState { targets: Map<number, number>; retried: Map<number, number> }
-/** Stage 6: `finish(relaxed, strict, start heights)`, a whole design from a grade line: the lift retries
- * around `engineer`, quantities and the bill's parts, buildings, crossings, the footprint check, and
- * `complete()` (noise, violations, the Result). */
-function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>, engineerStage: ReturnType<typeof routeEngineer>, prices: ReturnType<typeof routePrices>) {
-  const { maxGradient, timing, oobInput, preview, blocks, snapTraced, norms, n, freeStation, ds, ground, st, cat,
-    al, lap, w, crossingOverrides, terrain, endJunctions, railOurs, retiredAt, water, scenario, win,
-    waterGround, mustBridge, groundIds, groundProfiles, roadX, vlim, widen } = setup;
-  const { work, urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre, reroutes, retainingMemo, mergedInto } = caches;
-  const { autoVpis, profileFeasible, liftBlocks, keepsExterior, autoOptions, blockValues, materialValue,
-    constrainedSolve, pinViolations } = solved;
-  const { engineer } = engineerStage;
-  const { costFor, b, usable } = prices;
+/** The lift tool of the design passes: `liftProfile` raises Auto's line to height targets (a bridge that
+ * needs more room under it); `lift.stop` remembers the fixed height (an end or a pin) the last failed lift
+ * ran into, for the problem's wording. */
+function routeLift(d: Design, setup: ReturnType<typeof routeSetup>, caches: ReturnType<typeof routeCaches>) {
+  const { vlim, maxGradient, timing } = setup;
+  const { work } = caches;
   /** why the last lift failed: the station whose fixed height (an end or a pin) its steepest grade ran into */
-  let liftStop: number | null = null;
+  const lift: { stop: number | null } = { stop: null };
   const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[], range?: readonly [number, number], free?: readonly [number, number]) => {
     const start = performance.now();
     const lifted = liftAutoProfile(candidate, targets, d.speed, vlim.gradeAt ?? maxGradient, d.gradePins, (m) => {
-      const k = /fixed km (\d+(?:\.\d+)?)/.exec(m); if (k) liftStop = Number(k[1]) * 1000;
+      const k = /fixed km (\d+(?:\.\d+)?)/.exec(m); if (k) lift.stop = Number(k[1]) * 1000;
     }, d.category, range, free, vlim);
     work('lift', start);
     timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
     return lifted;
   };
-  /** Engineering through final checks. `relaxed` crossing ways leave their in-footprint stretch
-   * to the crossing remedy (see retaining.ts); evaluate() retries strictly where that fails. */
-  /** Stage A (engineering through the footprint screen) runs immediately; `complete()` runs the
-   * rest (noise, bill, checks). It reads only this pass's own arrays, never the shared
-   * engineer() buffers, so it stays valid after a later pass. */
-  /** Support-lift state of a pass, handed on to a later pass that starts from its lifted line. */
-  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } => {
+  return { lift, liftProfile };
+}
+
+/** A design pass, 1: engineer the starting line, then (Auto, full evaluations) lift it where bridge spans,
+ * supports and abutments need more height, in up to five rounds; the targets are kept for a later pass. */
+function finishLift(d: Design, opts: EvalOptions, relaxed: CrossingChainages, strict: ReadonlySet<number>, start: VPI[], from: LiftState | undefined, setup: ReturnType<typeof routeSetup>, engineerStage: ReturnType<typeof routeEngineer>, solved: ReturnType<typeof routeGradeLine>, lifting: ReturnType<typeof routeLift>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>) {
+  const { oobInput, preview, blocks, snapTraced, vlim, mustBridge, norms, n, freeStation, ds, ground, st, timing } = setup;
+  const { engineer } = engineerStage;
+  const { profileFeasible, liftBlocks, keepsExterior, autoOptions, blockValues, materialValue, constrainedSolve } = solved;
+  const { liftProfile } = lifting;
+  const { costFor } = prices;
+  const { work } = caches;
   const oob = oobInput.slice();
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
@@ -1715,9 +1715,19 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
     vpis = out;
     engineering = engineer(vpis, relaxed, strict);
   }
+  return { oob, vpis, engineering, repairTargets, retried, liftShared };
+}
+
+/** A design pass, 2: what was built. Structures and their problems, retaining walls and moved channels on
+ * earth, width and land cover per station, earthworks (volumes, mass haul, cut classes). */
+function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setup: ReturnType<typeof routeSetup>, lifting: ReturnType<typeof routeLift>, caches: ReturnType<typeof routeCaches>, prices: ReturnType<typeof routePrices>) {
+  const { engineering, liftShared, oob } = lifted;
+  const { preview, cat, maxGradient, ds, al, n, lap } = setup;
+  const { lift } = lifting;
+  const { urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre } = caches;
+  const { b, usable } = prices;
   const { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings: engineeredCrossings, selection, supported, structureValue } = engineering;
-  let crossings = engineeredCrossings;
   const { kind, runs } = supported;
   // Auto support clearances are repaired by the lift loop above, which a preview skips: do not
   // flash them as violations in a drag preview (the full evaluation reports any it cannot fix).
@@ -1725,7 +1735,7 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
   // a clearance Auto could not lift: why, in numbers (P2 7: never a bare "raise it" Auto could have done)
   if (d.profileMode === 'auto' && !preview) for (const v of structureViolations) {
     if (!v.title.startsWith(SPAN_TOO_LOW)) continue;
-    const stop = liftStop as number | null, grade = cat.mode === 'railway' ? `${(maxGradient * 1000).toFixed(1)} ‰` : `${(maxGradient * 100).toFixed(1)} %`;
+    const stop = lift.stop, grade = cat.mode === 'railway' ? `${(maxGradient * 1000).toFixed(1)} ‰` : `${(maxGradient * 100).toFixed(1)} %`;
     const at = stop === null ? '' : stop < ds ? 'its start' : stop > al.length - ds ? 'its end' : `the height pinned at km ${(stop / 1000).toFixed(2)}`;
     const why = liftShared ? 'Auto cannot raise it: the heights beyond this stretch are the ones both directions share.'
       : stop !== null ? `Auto cannot raise it: at the steepest grade allowed (${grade}) the raise runs on to ${at}, whose height is fixed.`
@@ -1762,7 +1772,16 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
     cutByClass[0] += sec.cutI[i] * len; cutByClass[1] += sec.cutII[i] * len; cutByClass[2] += sec.cutIII[i] * len;
   }
   lap('earthworks');
+  return { prof, grade, waterZ, sec, retention, h, geotechnicalPerM, culverts, engineeredCrossings, structureValue,
+    kind, runs, structureViolations, retainingWalls, channelRelocations, width, urban, forest, vol, mh,
+    footprint, forestArea, urbanLength, cutByClass };
+}
 
+/** A design pass, 3: buildings under the works (slope to slope at grade, the deck strip under bridges):
+ * demolitions and their cost, the player's Keep and Buy out choices. */
+function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>) {
+  const { n, w, st, ds } = setup;
+  const { kind, sec, grade } = quantities;
   // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges), plus a
   // working strip on either side ---
   const buildingCost = new Float64Array(n);
@@ -1833,7 +1852,19 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
     }
     demolished.sort((p, q) => p.i - q.i);
   }
+  return { buildingCost, demolished, bld, gone, keptIds, kept, manualBuys, buildingViolations };
+}
 
+/** A design pass, 4: crossings of existing roads (treatment, geometry, price; ways merged into one crossing
+ * split again where asked), then the footprint check and what its remedies cost (walls, moved channels,
+ * land). */
+function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySet<number>, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, houses: ReturnType<typeof finishBuildings>) {
+  const { n, st, ds, terrain, al, crossingOverrides, cat, preview, lap, endJunctions, railOurs, retiredAt, water } = setup;
+  const { width, kind, sec, engineeredCrossings, prof, urban, grade, runs, channelRelocations, waterZ,
+    retainingWalls, culverts } = quantities;
+  const { b } = prices;
+  const { mergedInto, urbanCentre, reroutes, retainingMemo } = caches;
+  const { bld, keptIds, gone, buildingCost, demolished } = houses;
   // --- crossings of existing roads ---
   const crossingLump = new Float64Array(n), crossingStructure = new Float64Array(n);
   let crossingsPaid = 0;
@@ -1842,6 +1873,7 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
   // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
   const joinedRight = opts.joinedSide === 'R';
   const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * (joinedRight ? sec.dayL[i] : sec.dayR[i]) : v) : width;
+  let crossings = engineeredCrossings;
   // Ways merged into one crossing (dual carriageways, a junction lying on our line) share its treatment; one
   // that our earthworks then bury (evaluate's retry) is a crossing of its own here (cut and reconnected,
   // bridged over us or boxed under us).
@@ -1935,9 +1967,26 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
     crossingLump[c.i] += c.lumpCost ?? 0;
   }
   lap('footprint');
-  /** `withNoise` false (a trial pass of evaluate's retries): no noise walls, buy-outs or noise problems;
-   * the result's `withNoise` adds them. */
-  const complete = (withNoise = !opts.trial): Result => {
+  return { crossingLump, crossingStructure, crossingsPaid, joinedRight, crossings, crossingIssues, footprintCheck,
+    remedyLand };
+}
+
+/** A design pass, last: noise walls and buy-outs, the bill, every check, the Result. It reads only its
+ * pass's own arrays, never the shared engineer() buffers, so it stays valid after a later pass.
+ * `withNoise` false (a trial pass of evaluate's retries): no noise walls, buy-outs or noise problems; the
+ * result's `withNoise()` adds them. */
+function completeDesign(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, crossed: ReturnType<typeof finishCrossings>, houses: ReturnType<typeof finishBuildings>, quantities: ReturnType<typeof finishQuantities>, prices: ReturnType<typeof routePrices>, solved: ReturnType<typeof routeGradeLine>, lifted: ReturnType<typeof finishLift>, withNoise: boolean): Result {
+  const { n, cat, scenario, st, preview, terrain, ds, lap, widen, win, al, norms, vlim, maxGradient, water,
+    waterGround, mustBridge, ground, groundIds, groundProfiles, roadX, timing } = setup;
+  const { crossings, joinedRight, crossingLump, crossingStructure, remedyLand, crossingIssues, footprintCheck,
+    crossingsPaid } = crossed;
+  const { bld, gone, keptIds, manualBuys, buildingCost, buildingViolations, demolished, kept } = houses;
+  const { kind, grade, sec, runs, urban, h, mh, width, forest, geotechnicalPerM, culverts, structureViolations,
+    prof, waterZ, retainingWalls, retention, vol, cutByClass, footprint, forestArea, urbanLength,
+    structureValue } = quantities;
+  const { usable } = prices;
+  const { pinViolations, profileFeasible, materialValue } = solved;
+  const { oob, vpis } = lifted;
   const noiseViolations: Violation[] = [];
 
   // --- noise walls ---
@@ -2144,11 +2193,32 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
       crossingsPaid, noiseDistance: noiseModel.contour, materialValue, structureValue,
     },
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing, ...(preview ? { preview: true } : {}),
-    ...(withNoise ? {} : { withNoise: () => complete(true) }),
+    ...(withNoise ? {} : { withNoise: () => completeDesign(ctx, d, opts, setup, crossed, houses, quantities, prices, solved, lifted, true) }),
   };
-  };
+}
+
+/** One design pass, from a grade line through the footprint screen; `complete()` then runs the rest
+ * (noise, bill, checks). `relaxed` crossing ways leave their in-footprint stretch to the crossing remedy
+ * (see retaining.ts); evaluate() retries strictly where that fails. `from`: the support-lift state of an
+ * earlier pass, handed on to a pass that starts from its lifted line. */
+function finishDesign(ctx: EvalContext, d: Design, opts: EvalOptions, solved: ReturnType<typeof routeGradeLine>, setup: ReturnType<typeof routeSetup>, engineerStage: ReturnType<typeof routeEngineer>, lifting: ReturnType<typeof routeLift>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, relaxed: CrossingChainages, strict: ReadonlySet<number>, start: VPI[], from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } {
+  const lifted = finishLift(d, opts, relaxed, strict, start, from, setup, engineerStage, solved, lifting, prices, caches);
+  const { vpis, repairTargets, retried } = lifted;
+  const quantities = finishQuantities(d, lifted, setup, lifting, caches, prices);
+  const { kind } = quantities;
+  const houses = finishBuildings(ctx, d, setup, quantities);
+  const crossed = finishCrossings(ctx, opts, strict, setup, quantities, prices, caches, houses);
+  const { crossings, footprintCheck } = crossed;
+  const complete = (withNoise: boolean = !opts.trial): Result => completeDesign(ctx, d, opts, setup, crossed, houses, quantities, prices, solved, lifted, withNoise);
   return { vpis, kind, footprintConflicts: footprintCheck.conflicts, crossings, lift: { targets: repairTargets, retried }, complete };
-  };
+}
+
+/** Stage 6: `finish(relaxed, strict, start heights)`, a whole design from a grade line (finishDesign
+ * above: its four steps and completeDesign). */
+function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>, engineerStage: ReturnType<typeof routeEngineer>, prices: ReturnType<typeof routePrices>) {
+  const { autoVpis } = solved;
+  const lifting = routeLift(d, setup, caches);
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start: VPI[] = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } => finishDesign(ctx, d, opts, solved, setup, engineerStage, lifting, prices, caches, relaxed, strict, start, from);
   return { finish };
 }
 
