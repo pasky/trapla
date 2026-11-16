@@ -93,15 +93,31 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
   left: scene scripts (`any-road-scene`, `owner-d3-scene`, `multi-road-scene`, `p2-scene`,
   `stretch-play`, `lazy-transport-check`), shots (`motorway`, `railway`, `noise`, `road-look`, `seam`,
   `noise-view`), `scenarios/*`, `detmath-browser-check`.
-- **Six of those scripts fail on main for reasons of their own** (the same before and after the move):
-  four assert outcomes of an older cost model on a saved design
-  (`crossing-economy-shots`: the km 7.94 track is no longer straightened through a box;
-  `crossing-works-shots`: way 2180 regrades no side road; `link-shape-shots`: way 4742 is an underpass
-  now, no reroute to shape; `lowered-underpass-shots`: the track crosses twice, not three times), two
-  a flow that changed (both already at `8ac09c5`, before this work; `curves.mjs`: after undoing a grip drag, `+` no longer changes the bend's radius
-  and the card's Widest is not there; `zoom.mjs`: "a profile click glides the map there", 16 of 17).
-  Someone who knows what each was meant to show should repair or retire them; `violations.mjs` scrolls
-  the HUD in a race with the selection (one run in six framed the list differently).
+- **Six of those scripts failed on main for reasons of their own; all run again.** What each turned out to be:
+  - `curves.mjs` (18 PASS, then dead): **a regression in the game.** Since the project store (`dfe66a3`)
+    every undo / redo cleared the selection, so after undoing a radius change the bend's card and grips
+    were gone and `+` / Widest had nothing to act on. Fixed: the selection is restored when the step
+    left the selected thing in place (`ui/routes.ts`; smoke checks it: 37 PASS). Its last part also found
+    the automation hook `trapla.setDesign` leaving a project transaction open when called during a
+    pending `+` step or a held drag (fixed in `automation.ts`: the hook only). 38 / 38.
+  - `zoom.mjs` (16 of 17): the script. A profile click selects the piece under it and frames that piece
+    (its middle) since the interface rethink (`2ec36b6`); the check still expected the clicked station.
+  - `crossing-economy-shots`, `crossing-works-shots`, `link-shape-shots`, `lowered-underpass-shots`: they
+    named ways by id and asserted what an older cost model built there. They now find their examples by
+    what they show (a road moved beside ours, a way Auto straightens, a side road regraded to a junction
+    / a ramp, a walled crossing, a reconnection to shape, a way crossed more than once), so a model change
+    picks other ways instead of failing; where the model no longer does a thing at all the script says
+    SKIPPED. Their pictures in `docs/screenshots` (110–119, 150–156, 170–176) are still the old models'.
+  - `violations.mjs` scrolled the HUD while the HUD's own smooth scroll to the selected card was running
+    (one run in six framed the list, five the card): it waits for the HUD to rest, then scrolls.
+- Seen while repairing them, not changed: on the D3 motorway starter Auto straightens no skewed way any
+  more, and the player's *Straighten it* fails on its four most skewed ones, twice with "Your crossing
+  choice clashes with our bridge or tunnel here" for a box that would be shorter and cheaper (km 5.26:
+  28 m, 17.2 M against 36 m, 18.7 M; km 7.94: 27 m, 13.8 M against 75 m, 20.3 M). An undo while a step is
+  open takes back that step and the one before it (`ProjectStore.moveHistory` cancels the open
+  transaction, then moves: seen through the automation hook; by the code a Ctrl+Z during a held drag
+  does the same). At a 1,400 px window the view bar overlaps the Scenarios button and a bend
+  marker can sit on the Redo button (crossing-works / link-shape shots).
 - Three kinds of script flake seen on a loaded host, all "measured before it settled": a fixed pause
   instead of waiting for the camera to stop (camera-check), a result read right after mouse-up
   (mode-play), a 6 s toast the script reaches after 4–7 s (playtest: `gates.sh` retries once under load).
