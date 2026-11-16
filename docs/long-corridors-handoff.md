@@ -31,3 +31,34 @@ cost model 23 (the local grade solve). Background: research/39 (sections, ends, 
 - P2 11 / 14 (discarding old saves, undo across reload): global, reported to the parent.
 - Residual non-locality: support-lift targets come from the station-based engineering; a bend move that
   moves a block boundary re-solves both neighbouring blocks.
+
+## Next (parent, 2026-11-16 09:15) — before QA / merge
+
+1. **Demo design +10.5 % under blocks** (scripts/demo-design.json, 4.67 → 5.16 bn vs main 2decf53): find which
+   block boundaries cost it. Tools: per-km bill (sum `r.parts` per km) under blocks vs a whole-route solve —
+   a temporary switch in `autoProfile` (`if (anchored && nb > 1)` → skip `blockwise()`) gives the global DP on
+   the same anchored inputs (scratch helpers in /tmp/lc-tmp-scripts: one-eval-tmp.ts, parts-tmp.ts,
+   dpcmp-tmp.ts). Try wider boundary windows (`BLOCK_WINDOW`, `BLOCK_REACH`, `BLOCK_WINDOW_MAX` in
+   autoprofile.ts) and boundary placement (`profileBlocks`, `BLOCK_SPACING`, `MIN_BLOCK`); check locality with
+   `SCENARIO=d3-full MOVES=20,60 npx tsx scripts/locality.ts scripts/scenarios/d3-full/d3-full-motorway.json`
+   (now: 0/16 far-violation changes, worst 3.9 m) and d35-full. Report per-design before/after (D11 five,
+   railway, sections, whole D3/D35). Any change of the model → recapture: `repair-designs.ts --write`,
+   `eval-regression.ts --capture=current --reviewed-model-change`, starters via `scripts/scenarios/repair-starter.ts`
+   + `/tmp/lc-tmp-scripts/apply.py` (replaces moved bends in scenario.ts and fixtures), sweep
+   `/tmp/lc-tmp-scripts/sweep.sh` (all saved designs and starters). Accept the remainder as a documented
+   trade-off (research/39 "Local edits").
+   Known facts: the D35 regression came from a coarse-grid gradient loss (fixed by `knotCount`), not from v;
+   bills of individual designs swing ±10 % with small grade changes (lifts / crossing remedies), so compare
+   several designs, not one.
+2. d11-railway invalid on main and the D35 km 6.98 track: forwarded to crossing-economy (remedy choice).
+3. **Interface for core-play-polish** (urban / demolition cost signals in the height search, on top of the
+   block solver): costs enter `autoProfile` only as per-metre cost functions of grade-minus-ground `h`
+   (`costPerM` / `BalanceSearch.costFor(v)`) evaluated at cost samples; a sample carries chainage, ground,
+   weight and an offset into the LUT table (block × cost class × structure kind). New location-dependent
+   costs should be a cost class (station array `costClass` + `classAt(s)` for the anchored samples) or a
+   point class (`points`, exact chainage) — never per-station arrays read by station index in the DP (they
+   would move with the stations and break locality). Document this in the autoprofile header when touching it.
+4. playtest-qa-2 re-tests this tree next.
+
+State at handoff: all committed (HEAD 967d9b1), main 2decf53 merged, cost model 23, gates green (see the
+parent summary in the session). Untracked scratch only in /tmp/lc-tmp-scripts.
