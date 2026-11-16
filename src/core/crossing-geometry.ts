@@ -1355,7 +1355,9 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   };
   const FIELDS = ['span', 'approachLength', 'linkLength', 'targetS', 'targetRoadId', 'underpassLength', 'worksCost', 'tieLength', 'wallLength', 'culverts', 'culvertCost', 'houses', 'houseCost', 'linkGrade', 'lowered', 'drainage', 'drainCost', 'square', 'squared', 'realignLength', 'realignCost', 'moved'] as const;
   const leadsTo = (x: CrossingResult, c: CrossingResult) => x !== c && (x.type === 'reconnection' || x.type === 'diversion') && !x.moved && x.targetS === c.s && x.targetRoadId === c.roadId;
-  const carries = (t: CrossingResult) => feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade;
+  // (a way that comes back out of our earthworks on the side it went in carries nothing across our road)
+  const carries = (t: CrossingResult) => feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
+    && !t.geometry?.sameSide;
   /** The nearest crossing (other than `not`) carrying traffic over or under us that `x` may be led to. */
   const nearestCarrier = (x: CrossingResult, not: readonly CrossingResult[]) => {
     let target: CrossingResult | undefined;
@@ -1456,7 +1458,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     const ledTo = crossings.some(x => x !== c && x.targetS === c.s && x.targetRoadId === c.roadId);
     // (one others are led to may itself be led on only when nothing else here can be built: those others
     // then look for another crossing below)
-    const targets = ledTo && ok(best) ? [] : crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
+    const targets = ledTo && ok(best) ? [] : crossings.filter(t => t !== c && carries(t)
       && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
       && Math.abs(t.s - c.s) <= CROSSING_RULES.linkHardReach && !dependsOn(t, c))
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
