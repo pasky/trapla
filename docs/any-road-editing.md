@@ -605,3 +605,47 @@ QA report: `worktree-0005/docs/playtest-findings.md` "Re-test — any-road-editi
 **Open (next session):** QA #3 (any road: local roads, service roads, tracks rebuildable with sourced rules), G
 (combined noise; noise-walls-seams is merged in main 93f849d, COST_MODEL_VERSION 21 → ours 22 or next free), all
 gates, merge.
+
+## 15. Any road, combined noise, main 2decf53 (2026-11-16, fourth pass)
+
+**Any road can be rebuilt (QA #3, `c8e20b5`).** Sourced rules in `research/42-local-roads-tracks.md` (notes with
+Czech quotes in `research/42-notes/`):
+- streets, local roads (`residential`, `unclassified`, `living_street`) → **M 7.5 local road**, ČSN 73 6110 group
+  C: 50 / 40 / 30 km/h (starts at 30), radius 85 / 45 / 25 m at 6 % banking, no transition curves, crest
+  1,000 / 450 / 200 m, sag 700 / 350 / 180 m, 9 % (12 % mountainous); SPK M 7,5/7,5 rural, M 11,5/7,5 in town
+  (its pavements priced, not drawn), S 7.5 deck row for bridges;
+- tracks and service roads → **P 4.0 one-lane track**, ČSN 73 6109 (via Vébr 2022): 30 / 20 km/h (starts at 20),
+  radius 25 / 12.5 m, plain curves, 15 %, vertical radii PROVISIONAL from the ČSN 73 6108 final draft (200 / 80 m);
+  SPK P4 everywhere, P 4 bridge row. A service road is a P 4.0 by ČSN 73 6110 §8.1.4; the player may switch it;
+- both in the Type list of every road (`legalClasses` per category; a mission road on them gets "built for local
+  traffic only"), their own norm named in every rule and in the norms tooltip; no junction spacing on them;
+  earthworks in the norm 6,000 m³/km (SPK report for field tracks; PROVISIONAL for local roads);
+- their traffic: the census counts class I–III only, so the average class III road stands in and the card says so;
+- **a drag that starts on any mapped road** (selected or not) rebuilds the stretch there, or opens its card that says
+  why not ("Railways cannot be changed yet.", "Motorways and expressways…", "Slip roads…", "Bridges and tunnels…");
+  it never pans the map. any-road-scene D11 step 7b: a street in Nový Rokytník (M 7.5, 30 km/h) and a track near
+  Lampertice (P 4.0, 20 km/h) rebuilt by an unselected drag; a railway drag: no pan, the card says so.
+
+**Merge of main 2decf53** (`a0ea710`; crossing links model 22, noise-walls-seams model 21, camera): conflicts in
+`project-evaluate.ts` (routeOutcome now main's per-storey energies with our per-road building owners),
+`project-road.ts`, `main.ts`, `inspector.ts` (main's "crosses our road n times" line inside our side-road card).
+eval-regression after it: 11 PASS against main's frozen model-22 bills, bit-identical. motorway-rail `b9f61aa` is not
+in main: our cherry-pick `cde1135` stays.
+
+**Combined noise (G, `52f203a`).** `project-noise.ts` `finiteSegmentDecider`: each road's per-storey day / night
+energy at a house from its own finite-segment source (its own receiver energies where it assessed the house; else
+the same sum at the façade facing it, exact within 150 m, the rest grouped within 0.07 dB); a trial wall is a
+uniform wall on the side facing the house, ≥ 2 × its distance long, centred on the nearest station, skipping tunnels
+and junction openings. `combineNoise` decides each house heard by two roads once (cheapest wall on the prevailing
+road, else one buyout); the walls are billed as that road's works and drawn with its walls (a copy of its result).
+Houses a roundabout's ring removes are not decided again. `shared-noise` no longer keeps a project unpriced; D3
+owner case (III/1057 dragged 40 m near our bridge at km 11.78): "no total: shared-land" only (owner-d3-scene asserts
+no shared-noise). Tests: tie-in "are decided once, from both roads' own finite-segment noise", trial-wall wiring.
+
+**Open**
+- A rebuilt road riding a higher-ranking road's **bridge over it** (`holds` decks: the Nový Rokytník street over our
+  D11, also a class III road there) gets "Your bridge is too close to the ground" (the 4 m rule measured to the
+  original ground under the owner's cutting) and "Not on its bridge over our road" by ~1 m. Pre-existing for every
+  class; the held deck should be the owner's structure, not a "your bridge" override.
+- A minor road crossing another minor road inside a rebuilt stretch is resolved as before (reroute), not as a
+  crossroads; minor-road traffic is the class III average (no sourced count).
