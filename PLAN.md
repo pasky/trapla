@@ -1160,3 +1160,15 @@ Known issues: far changes left (whole D3 4 of 16 moves, whole D35 1 of 10) come 
 engineering on a shifted station grid (support lifts, overbridge ramp checks, reroutes, culverts); a chain of
 straights each a little shorter than the last leaves one long block (the whole D35's last 9.7 km), which an edit
 anywhere in it re-solves to B; interchange ramps are not modelled (the ends say so on their card).
+
+## A drag on the railway (QA final sweep P1 2, 2026-11-16)
+
+A 50 px drag at km 6 of the Královec railway left two streams 4 km away in a cutting and a track with "lower
+our railway by 0.1 m" (research/57). The railway was already solved in blocks; what broke: the 25 m search
+band around the ground (a 12.5 ‰ line lies far from it: a band line that misses a clearance is now weighed
+against the wide band's, railways only), streams never retried like rivers (now), the height table's envelope
+leaving out B's correction (the same design billed differently by evaluation order: fixed), and a track too
+steep for a bridge over our cutting (the "0.1 m" was the text's floor; Auto now asks for our bridge over a
+way nothing else could carry). The drag: VALID 10.88 bn; the starter 10.55 → 10.59 bn; road bills unchanged.
+`scripts/edit-locality.ts` has a railway suite (reach p90 7.4 km, nothing beyond 10 km).
+Known issues: some random railway edits still leave a problem in the edited stretch itself (research/57 "Left").
