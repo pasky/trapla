@@ -124,7 +124,9 @@ try {
   // ---------------- B. fixing violations ----------------
   const bad = JSON.parse(JSON.stringify(demo));
   bad.pis[6].x += 200;
-  bad.wallOverrides = [{ s0: 10001.75, s1: 10251.67, side: 'R', height: 0 }];
+  // (no wall for 300 m beside one house left of km 16.3; cost model 31 puts the road at km 10.1 in a cut that
+  // shields the house the earlier walls-off stretch there exposed)
+  bad.wallOverrides = [{ s0: 16200, s1: 16500, side: 'L', height: 0 }];
   await fresh(bad);
   const nv = await T(() => window.trapla.result().violations.length);
   ok(nv >= 2, `B: the design has ${nv} violations`);
@@ -141,7 +143,7 @@ try {
   ok(floors >= 1, `B: every floor's level is shown (${floors})`);
   ok(!/#\d|receiver|LAeq|retained|blocking/i.test(await page.locator('#inspector').textContent()), 'B: no IDs or jargon in the card');
   const svg0 = await page.locator('#inspector .noise-section').innerHTML();
-  await page.hover('#inspector .wall-row button[data-wall-r="6"]'); await page.waitForTimeout(150);
+  await page.hover('#inspector .wall-row button[data-wall-l="6"]'); await page.waitForTimeout(150);
   ok(await page.locator('#inspector .noise-section').innerHTML() !== svg0, 'B: hovering a wall height previews it in the cross-section');
   await page.mouse.move(view.x + 10, view.y + 10);
   await page.click('#inspector .ctx-issue .fix'); await idle(700);
