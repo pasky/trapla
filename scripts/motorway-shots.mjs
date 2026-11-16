@@ -106,7 +106,7 @@ try {
   console.log('apart', JSON.stringify(await state()));
   await page.evaluate(s => { const r = window.trapla.result(), i = Math.round(s / r.ds); window.trapla.lookAt(r.x[i], r.y[i], 1300, 25, 50); }, s);
   await page.keyboard.press('Escape');
-  await shot('one-direction', 'motorway-one-direction', 10); // 140 (135 was the old whole-route split)
+  await shot('one-direction', 'motorway-one-direction', 5); // 135
   const join = page.locator('.motorway-head .apart-row button').first();
   if (await join.count()) await join.click();
   await settle();

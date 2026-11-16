@@ -251,7 +251,7 @@ Build flow done (`ui/mode-kinds.ts`: MOTORWAY_BUILD via `addMotorwayCorridor`, R
 
 Then (2026-11-16, playtest session 1): separate stretches replace the whole-route split for player edits (see
 "One direction on its own" above); `scripts/stretch-play.mjs` / `stretch-check.ts` play and check it;
-screenshot 140; source picking in 20 m pieces; crossing words name our railway / motorway.
+screenshot 135; source picking in 20 m pieces; crossing words name our railway / motorway.
 
 Pending:
 1. **Noise contract** (noise-walls-seams; its model number follows our 21): move motorway (two directional sources, half
