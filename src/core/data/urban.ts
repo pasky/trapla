@@ -168,7 +168,7 @@ export interface RoadClassRow {
    * Class I–III roads keep bridges/junctions; motorways never. */
   underpass?: UnderpassSize;
   /** Smallest bend radius of a short new line of this road (squaring a skewed crossing), m —
-   * research/38: field track 25 m (ČSN 73 6109, 30 km/h, via project reports; medium), service roads
+   * research/44: field track 25 m (ČSN 73 6109, 30 km/h, via project reports; medium), service roads
    * and local streets 27 m (ČSN 73 6110 tab. 10, 30 km/h at 2.5 % crossfall; high), class I–III
    * 90 m (ČSN 73 6101 revision table, 50 km/h with 7 % superelevation; medium). PROVISIONAL design
    * speeds: 30 km/h for tracks and local roads, 50 km/h for class I–III roads near a grade separation. */

@@ -131,7 +131,7 @@ const SQUARE_FAILS = 'Straightened line cannot be built: ';
 /** Diagnostic of a move beside our earthworks on a way that does cross our road. */
 const MOVE_FAILS = 'Move cannot be built';
 /** Auto straightens a crossed road meeting ours at less than this angle (degrees) and keeps the
- * cheaper buildable variant: research/38, ŘSD R 111 treats crossings under 70° as non-standard
+ * cheaper buildable variant: research/44, ŘSD R 111 treats crossings under 70° as non-standard
  * (signing); no Czech norm gives a minimum bridge angle (game rule). */
 export const SQUARE_BELOW = 70;
 /** How far along the old way beyond our corridor a straightened line may rejoin it, m (PROVISIONAL
@@ -257,7 +257,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     } as Record<string, string>)[problem] ?? problem).join('; ');
     return { title: `The ${what} cannot be straightened here`, fix: 'Choose "Keep its line" on the crossing card, or another kind of crossing',
       detail: `A new line crossing our road at a right angle cannot be built: ${reasons}.`, basis: 'game',
-      rule: `Game rule (research/38): a straightened crossing bends no sharper than ${ROAD_CLASSES[c.cls].minRadius} m and is built like any new road` };
+      rule: `Game rule (research/44): a straightened crossing bends no sharper than ${ROAD_CLASSES[c.cls].minRadius} m and is built like any new road` };
   }
   if (message === MOVE_FAILS) return { title: `The ${what} cannot just be moved beside our road`,
     fix: 'Choose "Cut and reroute", "Its bridge over us" or an underpass', basis: 'engine',
@@ -558,7 +558,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     return { d0, d1, open, sides, angle, run };
   });
   /** The crossed way laid on a new line that crosses our road square at the crossing's station
-   * (research/38): a straight run square across our earthworks, joined on each side to the old way by
+   * (research/44): a straight run square across our earthworks, joined on each side to the old way by
    * one smooth bend no sharper than the class's smallest radius, as near our road as that allows; the
    * old stretch in between (under our earthworks, or cut off by the new line) is removed. */
   /** Junctions with other roads along a (shared, immutable) way path between chainages lo and hi, at
@@ -1362,7 +1362,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // (a crossing the player keeps on its line, square: false, is never straightened)
     const g = c.geometry, skewed = c.square !== false && !g?.sameSide && (g?.skew ?? 90) < SQUARE_BELOW;
     // A measured box through our embankment, when the class, the fill and the structure allow it; a
-    // skewed one also on a new line square across our road (research/38), where the box or bridge on
+    // skewed one also on a new line square across our road (research/44), where the box or bridge on
     // its old line could cost more than the square one's least price (its structure alone).
     const row = ROAD_CLASSES[c.cls], rate = (c.roadPerKm ?? row.roadPerKm[0]) / 1000, across = route.width[c.i];
     const boxLeast = row.underpass ? (() => { const box = underpassAssembly(row.underpass!, rate); return across * box.perM + 2 * box.head; })() : Infinity;
@@ -1455,7 +1455,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // (one that found no target while another still led to it looks again)
   for (const c of crossings) if (!feasible(c)) reconsider(c);
   // A second look once every crossing has its treatment (designers consolidate neighbouring minor roads
-  // onto one crossing, research/39): a track's or service road's own structure is joined by a short new
+  // onto one crossing, research/45): a track's or service road's own structure is joined by a short new
   // road to a neighbour within 750 m that now carries traffic, and a reroute is led to a nearer crossing
   // that now carries traffic, wherever that is cheaper. Dearest structures first, then the reroutes.
   const tried = new Set<string>();

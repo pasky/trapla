@@ -129,7 +129,7 @@ export interface CrossingResult {
   houseCost?: number;
   /** A reroute that needed its class's justified-case steepest grade (research/20) somewhere. */
   linkGrade?: number;
-  /** Laid on a new line near our road so that it crosses square (research/38): requested (by Auto's
+  /** Laid on a new line near our road so that it crosses square (research/44): requested (by Auto's
    * choice or the player's) / built, with the angle it met our road at before, degrees. The new road
    * outside the structure and its ramps (realignLength, m) is billed in realignCost (pre-surcharge
    * CZK, included in cost, culverts included). */
