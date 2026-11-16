@@ -4,6 +4,49 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Verification — main f9f5d9d (2026-11-16, two chunks of 15 and 4 min)
+
+Detached snapshot of f9f5d9d with main's packs (traffic.json for every scenario). Screenshots `/tmp/trapla-qa/f9/`
+(numbering restarts in chunk 2).
+
+### Any-road Re-test 2 items
+
+| item | verdict | evidence |
+|---|---|---|
+| cold start: first click / drag on a mapped road | **PASS** | fresh D3 motorway load, first hover over 1057 shows the grab cursor, the first drag edits it (camera unmoved) (`000`); D11 I/37 the same (`003`). |
+| dragging the crossed road next to its crossing | **PASS** | a click right beside the motorway bridge still opens "Passes under our bridge", but a drag from the same spot edits 1057 (camera unmoved) (`002`). |
+| rebuilt Nový Rokytník street on its bridge deck | **PASS** | dragged 40 px: VALID, "Its 100 m on the bridge over our road are built with that bridge, not twice −24.6 M CZK" (`004`). |
+| D11 km 4.1 track used by an automatic reroute | **FAIL** | still NOT PRICED: "Two roads change the same old road · Keep the two changes of that road apart, or change it with one road only" + "earthworks closer than 10 m" (`005`). |
+| 1057 rebuild: motorway price change explained | **not testable** | the owner's drag now ends NOT PRICED: "Two roads' earthworks are closer than 10 m · move one of them about 12 m away" at 1057 km 0.20, beside the motorway embankment (`000`); a second drag adds an S-bend violation (`002`). At 80168c3 the same steps were VALID and priced → **P1 regression** of the owner's D3 steps. |
+| I/37 45 px drag keeps a total | **PASS** | TOTAL 10.20 bn (NOT VALID only for the drag's own S-bend / bend-near-end), with "Noise wall 2 m, 101 m long, for noise from both roads · 1.8 M CZK" on the I/37 card (`003`). |
+| streets / tracks traffic prior | **FAIL (wording better)** | still 736 a day, 6.4 % heavy for a street and for a field track; the card now says "Not counted: a guess (the average class III road). Change it to what you expect." |
+| dropdown framing | **PASS / P2** | Motorway → whole route; the rebuilt track is framed with its Start and bends 1–2 cut off at the top edge (`006`). |
+| kept house heard by two roads | **PASS** | house next to I/37: "49.7 dB … both roads together (limit 50): our road 39.4 dB, Road I/37 49.3 dB". Keep + Wall left None → "Stays · behind Auto's 4 m wall beside your choice · You keep it", "none (yours) · Auto: 4 m beside it", "Auto adds 50 m of 4 m wall at km … · Show"; still kept (not bought) (`009`). P2: its cross-section still labels I/37 "our road, km 0.33". |
+
+### Fresh first-time sweep
+
+- **Picker** (all groups): Trutnov (road, railway) · "Středočeská D3" whole + 0301–0305/I · "D35" whole + first section ·
+  "I/16" Nová Paka. Clear, each with speed, a one-line goal and a sourced note (`010`–`012`). P2: the Trutnov group has no
+  heading while the others do.
+- **D3 section 0302** loads in 8 s, ends marked "Jílové (from 0301)" / "Hostěradice (on to 0303)" (`013`). Choosing
+  "Towards Hostěradice" changes nothing (7.59 bn → 7.59 bn, S1 #3 fixed). **P1:** dragging that one direction 40 px gives
+  2× "The two directions overlap · move them 14 m apart or carry one over the other" at km 1.16 and 4.40 — exactly where
+  the split starts and ends, +749 M (`014`). The split transition is left to the player.
+- **Whole D3** (56.4 km, 40.87 bn) loads in 27 s.
+  **P0 (still on main):** km 20.89, a class III road running alongside the motorway is "Carried over our motorway on a
+  698 m bridge with 297 m of ramps · 2.48 bn CZK" (crosses at km 20.89 and 21.21); no such bridge is drawn, the works
+  outline lies along the motorway (`001`). Same on the old D3 motorway preset (km 14.18, 2.51 bn).
+- **Railway mission** now runs Trutnov hl.n. → Královec station, single track 120 km/h, VALID 10.63 bn (`002`–`004`):
+  S1 #10 fixed.
+- **Build menu**: Road / Motorway / Railway, each with a rubber band and length ("1.89 km · open ground (joins no road)")
+  (`016`). A built motorway is "shown, not priced" (no interchanges) — honest. **P1:** both the new motorway and the new
+  railway cross the Hostěradice railway with "earthworks cover a railway" + "too low over the railway · raise by
+  9.3 m" instead of Auto bridging it; the new railway also gets "Auto found no legal track height" at its start
+  (`017`, `019`). P2: the dropdown then lists two roads both called "Motorway".
+- **D11** quick drag at km 9.0 (60 px at ~1 km view): −1.25 bn, the km 7.49–8.40 bridge becomes earthwork and
+  **"Our earthworks cover a pond or river at km 8.55 · put our road on a bridge km 8.53–8.61"** — Auto leaves a stream
+  under the embankment (`006`). P1, same family as the Nová Paka street (Session 3 #1).
+
 ## Verification — core-play-polish merged, main 27aeda6 (2026-11-16, one 10 min chunk)
 
 Screenshots `/tmp/trapla-qa/cpp/`.
