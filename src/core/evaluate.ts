@@ -378,7 +378,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
   // with Auto asked to clear those roads (kept only if it resolves more than it breaks). `base`: the
   // options of the kept result, whose own clearances stay.
-  const separation = (base: EvalOptions) => {
+  const separation = (base: EvalOptions, buriedToo = false) => {
     const sep = (gs: { road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...base,
       separate: [...base.separate ?? [], ...gs.flat().flatMap(t => t.road ? [t.road] : [])],
       separateWater: [...base.separateWater ?? [], ...gs.flat().flatMap(t => t.water ? [t.water] : [])] });
@@ -391,8 +391,13 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     // not be built: our bridge over it).
     const unbuilt = result.crossings.filter(c => !c.requestedType && (c.type === 'diversion' || c.type === 'reconnection')
       && c.issues?.some(v => v.crossing.code === 'reroute'));
+    // …and, last (`buriedToo`), where our earthworks still bury a road that could be neither rebuilt beside
+    // them nor walled off nor kept off by a lower grade (e.g. a junction just beside our axis): a bridge or a
+    // cutting at another level clears it.
+    const buried = buriedToo ? result.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && result.kind[f.i] === KIND.earth) : [];
     const items: { at: number; road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[] = [
       ...stuck.map(c => ({ at: c.s, road: { s: c.s, g: ctx.terrain.heightAt(c.x, c.y) } })),
+      ...buried.map(f => ({ at: (f.s0 + f.s1) / 2, road: { s: (f.s0 + f.s1) / 2, g: ctx.terrain.heightAt(f.x, f.y) } })),
       ...unbuilt.map(c => ({ at: c.s, road: { s: c.s, g: ctx.terrain.heightAt(c.x, c.y), above: c.h <= -CROSSING_RULES.underDepth } })),
       ...missed.map(v => ({ at: (v.s0 + v.s1) / 2, water: { s0: v.s0, s1: v.s1 } }))];
     if (items.length) {
@@ -466,6 +471,12 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         }
       }
     }
+  }
+  if (!opts.preview && !opts.window && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto'
+    && result.footprintConflicts.some(f => f.feature === 'road' && f.action === 'blocked' && result.kind[f.i] === KIND.earth)) {
+    const before = result;
+    separation(used, true);
+    if (result !== before && result.withNoise) result = result.withNoise();
   }
   if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
   return result;
@@ -1837,7 +1848,9 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
   // (on copies: an engineering pass may be shared with the evaluation this one retries)
   const split = (opts.splitWays ?? []).length ? crossings.flatMap(c => (mergedInto.get(c) ?? []).flatMap(m => {
     const i = Math.min(n - 1, Math.round(m.s / ds));
+    // (the crossing's own way met again within a crossing's merge distance is that same crossing)
     return opts.splitWays!.includes(m.way) && kind[i] === KIND.earth && !ROAD_CLASSES[m.cls].noAtGrade
+      && !(m.way === c.roadId && Math.abs(m.s - c.s) <= CROSSING_RULES.mergeDistance)
       ? [{ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - terrain.heightAt(m.x, m.y), type: 'atGrade' as const, cost: 0 }] : [];
   })) : [];
   if (split.length) crossings = [...crossings.map(c => ({ ...c })), ...split].sort((a, b) => a.s - b.s);
@@ -2162,11 +2175,12 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // (an oblique channel under the slope): carry the bridge over it and engineer again.
   // Water our earthworks would still cover (no culvert, no wall): a stream just beyond a bridge's end is
   // spanned by it; a pond or river beside us that no wall holds back gets a short bridge of its own.
-  const streams = first.footprintConflicts.filter(c => (c.feature === 'stream' || c.feature === 'water') && c.action === 'blocked' && /:earth(:|$)/.test(c.id));
+  // (so is a road our bridge's end would bury where it runs askew under it: the end is set beyond it)
+  const streams = first.footprintConflicts.filter(c => (c.feature === 'stream' || c.feature === 'water' || c.feature === 'road') && c.action === 'blocked' && /:earth(:|$)/.test(c.id));
   let spanned = false;
   for (const c of streams) {
     const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
-    if (c.feature === 'stream' && !first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
+    if (c.feature !== 'water' && !first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
     for (let i = i0; i <= i1; i++) if (manualStructures[i] < 0) { streamBridge[i] = 1; spanned = true; }
   }
   if (spanned) { timing['count.streamRetry'] = 1; first = finish(crossingWays, new Set(), first.vpis); }

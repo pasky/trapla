@@ -473,7 +473,7 @@ export class RoadNet {
 export function mergeCrossings(raw: RoadCrossing[], length: number,
   rules: Pick<typeof CROSSING_RULES, 'endMargin' | 'mergeDistance' | 'sameWayMergeDistance'> = CROSSING_RULES,
   selectedRoadIds: ReadonlySet<number> = new Set()): MergedCrossing[] {
-  const out: (RoadCrossing & { last: number; ways: number[]; hits: RoadCrossing[] })[] = [];
+  const out: (RoadCrossing & { last: number; ways: number[]; hits: RoadCrossing[]; rep: RoadCrossing })[] = [];
   for (const c of raw) {
     if (!selectedRoadIds.has(c.way) && (c.s < rules.endMargin || c.s > length - rules.endMargin)) {
       if (!ROAD_CLASSES[c.cls].noAtGrade || c.s <= CROSSING_RULES.endpointTolerance
@@ -487,14 +487,17 @@ export function mergeCrossings(raw: RoadCrossing[], length: number,
       const gap = c.s - out[k].last;
       if (gap <= rules.mergeDistance || (gap <= rules.sameWayMergeDistance && out[k].ways.includes(c.way))) { hit = k; break; }
     }
-    if (hit < 0) { out.push({ ...c, last: c.s, ways: [c.way], hits: [c] }); continue; }
+    if (hit < 0) { out.push({ ...c, last: c.s, ways: [c.way], hits: [c], rep: c }); continue; }
     const o = out[hit];
     o.last = c.s;
-    if (!o.ways.includes(c.way)) { o.ways.push(c.way); o.hits.push(c); }
-    if (RANK[c.cls] < RANK[o.cls]) { o.s = c.s; o.x = c.x; o.y = c.y; o.cls = c.cls; o.way = c.way; }
+    // (every hit is kept as a member, a way weaving back under us too: one our earthworks bury there
+    // becomes a crossing of its own, evaluate's split retry)
+    if (!o.ways.includes(c.way)) o.ways.push(c.way);
+    o.hits.push(c);
+    if (RANK[c.cls] < RANK[o.cls]) { o.s = c.s; o.x = c.x; o.y = c.y; o.cls = c.cls; o.way = c.way; o.rep = c; }
   }
-  return out.map(({ s, x, y, cls, way, hits }) => {
-    const members = hits.filter(h => h.way !== way);
+  return out.map(({ s, x, y, cls, way, hits, rep }) => {
+    const members = hits.filter(h => h !== rep);
     return { s, x, y, cls, way, ...(members.length ? { members } : {}) };
   });
 }

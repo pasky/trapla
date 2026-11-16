@@ -1573,8 +1573,12 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     }
   };
   for (const c of [...crossings].sort((a, b) => b.cost - a.cost || a.s - b.s)) reconsider(c);
-  // (one that found no target while another still led to it looks again)
-  for (const c of crossings) if (!feasible(c)) reconsider(c);
+  // (one that found no target while another still led to it looks again, after those led to it found
+  // another treatment: a crossing that cannot be built carries nothing)
+  for (const c of crossings) if (!feasible(c)) {
+    for (const x of crossings) if (leadsTo(x, c) && !x.requestedType) reconsider(x, true);
+    reconsider(c);
+  }
   // A second look once every crossing has its treatment (designers consolidate neighbouring minor roads
   // onto one crossing, research/45): a track's or service road's own structure is joined by a short new
   // road to a neighbour within 750 m that now carries traffic, and a reroute is led to a nearer crossing
