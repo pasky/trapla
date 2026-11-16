@@ -56,4 +56,16 @@ describe('scenario-declared endpoint junctions', () => {
     const sum = (r: typeof plain) => r.parts.crossings.reduce((a, b) => a + b, 0);
     expect(sum(joined) - sum(plain)).toBeCloseTo(ENDPOINT_JUNCTIONS['roundabout-arm'].cost, 0);
   });
+  // any-road-scene (D11): a new road placed on Jičínská 1 m beside its mapped line met it again 1.5 m on
+  // and cut it as a crossing ("reconnection", the old road drawn removed, a turnaround)
+  it('the joined road met again inside the junction is the junction, not a crossing', () => {
+    const design: Design = { category: 'S7.5', speed: 70, pis: [], profileMode: 'auto', vpis: [] };
+    // the end 1 m south of the joined road, the new road leaving north-east across it
+    const base = { terrain: syntheticTerrain(300, 100, 5, () => 100), scenario: D11_SCENARIO, a: { x: 100, y: 249 }, b: { x: 500, y: 500 },
+      roads: new RoadNet({ cls: ['primary', 'tertiary'], ways: [[0, 0, 250, 1400, 250], [1, 0, 400, 1400, 400]] }) };
+    const plain = evaluate(base, design);
+    expect(plain.crossings.map(c => c.roadId).sort()).toEqual([0, 1]);
+    const joined = evaluate({ ...base, junctions: [{ x: 100, y: 249, kind: 'tie-in', ways: [0] }] }, design);
+    expect(joined.crossings.map(c => c.roadId)).toEqual([1]); // the other road is still crossed
+  });
 });

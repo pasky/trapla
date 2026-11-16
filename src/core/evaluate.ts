@@ -416,7 +416,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   };
 
   // existing roads crossed by the route (geometry only; resolved once the grade is known)
-  const rawRoadX = ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [];
+  const endJunctions = (ctx.junctions ?? []).flatMap(j => {
+    const end = Math.hypot(j.x - ctx.a.x, j.y - ctx.a.y) < 1e-6 ? 'a' as const : Math.hypot(j.x - ctx.b.x, j.y - ctx.b.y) < 1e-6 ? 'b' as const : null;
+    return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
+  });
+  // The road an end joins, met again inside that junction (an end placed a metre beside the mapped line,
+  // leaving it at an angle), is the junction itself, not a crossing to cut and reconnect.
+  const rawRoadX = (ctx.roads?.intersections(n, st.s, st.x, st.y) ?? [])
+    .filter(c => !endJunctions.some(j => j.ways.has(c.way) && (j.end === 'a' ? c.s : al.length - c.s) <= j.zone));
   // Billing may merge carriageways / omit tie-in-area objects; safety must see every raw crossing.
   // Only actual endpoint connections are outside this project's crossing scope. The old
   // 150 m billing margin is not proof that nearby roads can be buried without engineering.
@@ -1058,10 +1065,6 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
 
   lap('crossings');
-  const endJunctions = (ctx.junctions ?? []).flatMap(j => {
-    const end = Math.hypot(j.x - ctx.a.x, j.y - ctx.a.y) < 1e-6 ? 'a' as const : Math.hypot(j.x - ctx.b.x, j.y - ctx.b.y) < 1e-6 ? 'b' as const : null;
-    return end ? [{ end, kind: j.kind, ways: new Set(j.ways), ...ENDPOINT_JUNCTIONS[j.kind] }] : [];
-  });
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
     ...(endJunctions.length ? { junctions: endJunctions } : {}) }, terrain, ctx.roads?.ground, crossings, water,
     new Map(water.map((c, i) => [c, waterZ[i]])));

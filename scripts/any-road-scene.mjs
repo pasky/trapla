@@ -259,6 +259,23 @@ try {
     await page.screenshot({ path: shot(first + 5, 'side-road-joins-ours') });
   } else console.log('no mapped road on screen near our road: join-ours step skipped');
 
+  // 6c. a side road's crossing card speaks of "this road" ("our road" is the mission road)
+  {
+    const pr = await page.evaluate(() => window.trapla.projectResult()), p = await page.evaluate(() => window.trapla.getProject());
+    const side = p.routes.filter(r => r.role !== 'mission').flatMap(r => (pr.routes[r.id]?.legacy?.crossings ?? []).filter(c => !c.crossedRoute).map(c => ({ route: r.id, c })));
+    // the road an end is placed on is that end's junction, never a crossing a few metres on
+    assert.deepEqual(side.filter(({ c }) => c.s < 5).map(({ c }) => c.cls), [], 'no crossing at a side road\'s start');
+    if (side.length) {
+      const { route, c } = side[0];
+      await page.evaluate(id => window.trapla.setActiveRoute(id), route); await idle();
+      await page.evaluate(id => window.trapla.selectCrossing(id), c.roadId); await idle();
+      const card = await page.locator('#inspector').textContent();
+      console.log(`a side road's crossing card: ${card.slice(card.indexOf('km ')).replace(/\s+/g, ' ')}`);
+      assert(!/\b[Oo]ur road/.test(card), `a side road's crossing with a mapped road never calls the side road "our road" (${card})`);
+      await page.evaluate(() => window.trapla.select(null));
+    } else console.log('no side road crosses a mapped road: crossing-card wording not checked');
+  }
+
   // 7. the photo keeps the mapped roads drawn (what is clickable)
   await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, mid]);
   await page.evaluate(() => window.trapla.setView({ photo: true }));

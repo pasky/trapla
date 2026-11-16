@@ -560,3 +560,14 @@ Stretches with norm problems after the conversion unchanged (101; all kept-as-ol
 violations, the corner kept; D11 Jičínská dragged 25 m and lengthened 120 m: unchanged (only the drag is new).
 Test: `tests/road-edit.test.ts` "lengthening into a sharp old corner keeps it as the old road has it; the
 player's own bend stays" (fails on the old code). any-road-scene D11 and D3: PASS.
+
+**A new road placed on a mapped road crossed it a metre on** (found while checking the "this road" wording in a
+browser; any-road-scene D11, Build → Road from Jičínská): the end lies up to `JOIN_TOLERANCE` (1.5 m) beside the
+mapped line, the line left it at an angle and met it again 1.5 m on, past the kernel's 1 m end tolerance, so the
+joined road was also a crossing: "reconnection", the old road drawn removed for 127 m, a turnaround, and an empty
+"Class I road · km 0.00" card. `evaluate` now leaves a road an end junction joins out of the crossings inside
+that junction's zone (`ENDPOINT_JUNCTIONS[kind].zone`; the junction is billed there). Only side roads' ends carry
+such junctions; D11 bills bit-identical, D3 motorway and road presets unchanged. Test:
+`tests/endpoint-junction.test.ts` "the joined road met again inside the junction is the junction". any-road-scene
+asserts no crossing within 5 m of a side road's start and that a side road's crossing card never says "our road"
+(D11: "Track · km 0.31 · Rerouted to the nearest crossing… · this road 0 m below it").
