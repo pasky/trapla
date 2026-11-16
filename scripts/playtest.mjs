@@ -234,6 +234,9 @@ try {
         const q = window.trapla.project(p[k].x, p[k].y, p[k].z);
         if (!q.vis || q.sx < 80 || q.sy < 80 || q.sx > box.width - 80 || q.sy > box.height - 80) continue;
         if (Math.hypot(q.sx - mark.sx, q.sy - mark.sy) < 60 || road.some((o) => o.vis && Math.hypot(o.sx - q.sx, o.sy - q.sy) < 20)) continue;
+        // (not where another crossing's works run alongside: neighbouring reroutes may share a corridor)
+        if (r.crossings.some((o) => o !== c && [...(o.geometry?.road ? [o.geometry.road] : []), ...(o.geometry?.links ?? [])]
+          .some((path) => path.some((v) => Math.hypot(v.x - p[k].x, v.y - p[k].y) < 25)))) continue;
         return { roadId: c.roadId, type: c.type, sx: q.sx, sy: q.sy, link: p !== g.road };
       }
     }
