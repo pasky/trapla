@@ -30,9 +30,9 @@ export type ProjectRoadEvaluation =
 /** Legacy road-net way of each mapped source (pack sidecar `legacyNetIndex`), to leave a rebuilt
  * stretch out of the network every road is checked against. */
 export type { SourceWays } from './project-roadnet';
-/** Cross-sections the road kernel prices for each legal class (S 7.5 for class II/III, S 9.5 for class I/II,
- * S 11.5 for class I); the legal class itself selects no other rule in this kernel. */
-const legalClassFits = (spec: RoadSpec) => ({ 'S7.5': ['II', 'III'], 'S9.5': ['I', 'II'], 'S11.5': ['I'] } as Record<string, string[]>)[spec.crossSection]?.includes(spec.legalClass) ?? false;
+/** Cross-sections the road kernel prices for each legal class (data/categories.ts `legalClasses`); the legal
+ * class itself selects no other rule in this kernel. */
+const legalClassFits = (spec: RoadSpec) => spec.crossSection !== 'existing' && !!CATEGORIES[spec.crossSection].legalClasses?.includes(spec.legalClass);
 
 export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, routeId: string,
   objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue'> & { sourceWays?: SourceWays;
@@ -47,7 +47,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   // BEFORE categories, horizontal/vertical norms, AADT, pricing or emissions are selected.
   if (!modeCapability(route.kind).scoring || route.kind !== 'road') return { status: 'incomplete', reason: 'unsupported-mode' };
   const spec = route.specification;
-  if (spec.policy !== 'legacy-road' || ![70, 80, 90].includes(spec.designSpeed) || spec.crossSection === 'existing'
+  if (spec.policy !== 'legacy-road' || spec.crossSection === 'existing' || !CATEGORIES[spec.crossSection].speeds.includes(spec.designSpeed)
     || !legalClassFits(spec)) return { status: 'incomplete', reason: 'unsupported-policy' };
   if (project.objectData !== objectData || route.endpoints.a.binding !== 'resolved' || route.endpoints.b.binding !== 'resolved')
     return { status: 'incomplete', reason: 'unresolved-binding' };

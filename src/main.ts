@@ -30,7 +30,7 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { bendAt, DEFAULT_SPEED, isTraffic, strayDistance } from './ui/road-edit';
+import { bendAt, DEFAULT_SPEED, isTraffic, startSpeed, strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
@@ -399,8 +399,9 @@ async function main() {
       const accepted = projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
       // why this design speed: the lowest the norm allows for a new road; the map's limit is for noise and time
       const signed = (() => { try { return groundRoadSourceInfo(transportIndex, interval.sourceId).taggedSpeed; } catch { return null; } })();
-      const speed = route.specification.designSpeed === DEFAULT_SPEED
-        ? ` for ${DEFAULT_SPEED} km/h (the lowest the norm allows${signed && signed !== DEFAULT_SPEED ? `; signed ${signed}` : ''})` : '';
+      const lowest = route.specification.crossSection === 'existing' ? DEFAULT_SPEED : startSpeed(route.specification.crossSection);
+      const speed = route.specification.designSpeed === lowest
+        ? ` for ${lowest} km/h (the lowest the norm allows${signed && signed !== lowest ? `; signed ${signed}` : ''})` : '';
       what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
         ? `On the old road it is kept as it is. Off it, a new road is built${speed} and the old one removed.` : 'Checking the change…'}`;
     } else {
@@ -435,14 +436,15 @@ async function main() {
       if (!filled || Math.round(traffic) !== filled.aadt || Math.abs(heavy / 100 - filled.heavyShare) > 1e-9) basis.remove();
     };
     // where the numbers come from, while they are still the ones the game filled in
-    const cls = route.specification.legalClass;
+    const cls = route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
     const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
     const basis = document.createElement('small'); basis.className = 'traffic-basis';
     if (filled && isTraffic(op, filled)) {
       basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
-        : interval ? `Not counted in the traffic census: the average class ${cls} road is assumed.` : `A new road: the average class ${cls} road is assumed.`;
+        : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new road: the average class ${averaged} road is assumed.`;
       basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
-        : 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.';
+        : averaged === cls ? 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.'
+        : 'The traffic census (ŘSD) counts class I–III roads only; the average class III road stands in for this one. Change it to what you expect.';
       form.append(basis);
     }
     for (const f of fields) f.onchange = apply;
@@ -1020,7 +1022,7 @@ async function main() {
     return sourceAt(clientX, clientY);
   };
   /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
-  let grabbing: SourceInterval | null = null;
+  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
   const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
     const interval = sourceEditor?.interval; if (!interval) return null;
     const g = view.pick(clientX, clientY);
@@ -1084,13 +1086,23 @@ async function main() {
     // a drag from the road always bends it (a click there still inspects the nearest thing); so does a
     // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch
     hitRoad: (clientX, clientY) => {
-      grabbing = null;
+      grabbing = null; grabbedSource = null;
       if (buildTool.active) return false;
       if (roadAt(clientX, clientY, 9) >= 0) return true;
       grabbing = mappedGrab(clientX, clientY);
-      return !!grabbing;
+      if (grabbing) return true;
+      // a drag that starts on any other mapped road never pans the map: it rebuilds the stretch there, or
+      // its card says why it cannot be changed
+      const s = sourceAt(clientX, clientY);
+      if (s?.kind === 'source') { grabbedSource = s.hit; return true; }
+      return false;
     },
     onRoadDrag: (x, y) => {
+      if (grabbedSource) {
+        showSource(grabbedSource); grabbedSource = null;
+        const interval = sourceEditor?.interval;
+        return interval ? rebuildByDrag({ ...interval }, x, y) : null;
+      }
       if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
       if (!store.read()) return null; intro.hide(); return bendByDrag(x, y);
     },
@@ -1405,9 +1417,13 @@ async function main() {
           clear = Math.min(clear, Math.hypot(r.x[k] - source.xy[i], r.y[k] - source.xy[i + 1]));
         const mid = transportIndex!.branches({ transportData: transportIndex!.transportData, sourceId: source.id, s0: 0, s1: length })
           .filter(b => b.s > 50 && b.s < length - 50).map(b => b.s);
-        return [{ id: source.id, name: info.name, length, clear, branches: mid, rebuildable: mappedLineKindFor(transportIndex!, source.id).verdict.ok }];
+        return [{ id: source.id, name: info.name, legalClass: info.legalClass, length, clear, branches: mid, rebuildable: mappedLineKindFor(transportIndex!, source.id).verdict.ok }];
       });
     },
+    /** mapped ways tagged highway=`highway` ('railway': railway lines), at least minLength long (ids, longest first) */
+    sourceIds: (highway: string, minLength = 0) => (transportIndex?.graph.sources ?? []).filter(q => (highway === 'railway' ? q.kind === 'railway' : q.tags.highway === highway)
+      && q.stations[q.stations.length - 1] >= minLength)
+      .sort((p, q) => q.stations[q.stations.length - 1] - p.stations[p.stations.length - 1]).map(q => q.id),
     sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
     sourceSelection: () => sourceEditor?.selection ?? null,
     sourcePoint: (id: string, s: number) => transportIndex?.position(id, s) ?? null,

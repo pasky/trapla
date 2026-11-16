@@ -93,6 +93,10 @@ export const URBAN_NORM_PER_KM: Record<CategoryId, { hilly: number; mountainous:
   'S7.5': { hilly: 42_883_000, mountainous: 48_046_000, codes: ['A.1.S2.7,5.NIR', 'A.1.S2.7,5.NIH'] },
   'S9.5': { hilly: 67_852_000, mountainous: 78_271_000, codes: ['A.1.S1.9,5.NIR', 'A.1.S1.9,5.NIH'] },
   'S11.5': { hilly: 82_035_000, mountainous: 94_666_000, codes: ['A.1.S1.11,5.NIR', 'A.1.S1.11,5.NIH'] },
+  // Local road in town: M 11,5/7,5, the 7.5 m traffic space with pavements on both sides (SPK report p. 7).
+  'M7.5': { hilly: 32_930_000, mountainous: 43_906_000, codes: ['A.1.M.11,5.NIR', 'A.1.M.11,5.NIH'] },
+  // Track: SPK has no built-up row; its rural row is used.
+  'P4': { hilly: 13_985_684.5, mountainous: 13_985_684.5, codes: ['A.1.P4.NE', 'A.1.P4.NE'] },
   'D27.5': { hilly: 187_632_000, mountainous: 214_512_000, codes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NEH'] },
   // Railway: SPOŽES has no built-up row for track; its dense-area utility relocations (I01) apply instead.
   'R1': { hilly: railRouteBasePerKm(1, true), mountainous: railRouteBasePerKm(1, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },

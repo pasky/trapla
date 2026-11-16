@@ -1,6 +1,7 @@
 // Persistence boundary validation. Invalid/newer saves are preserved, never normalised into defaults.
 import { CROSSING_CHOICES, MAX_LINK_COORD, MAX_LINK_VIA } from './crossings';
 import type { AlignmentDesign, ProjectDesign } from './project';
+import { ROAD_CROSS_SECTIONS } from './data/categories';
 
 type Obj = Record<string, unknown>;
 const object = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -90,7 +91,7 @@ function spec(v: unknown, kind: unknown): boolean {
       || o.speedPolicy !== undefined && !choice(o.speedPolicy, ['design', 'independent'])
       || o.trafficUnknown !== undefined && (o.trafficUnknown !== true || o.aadt !== 0)) return false;
     return kind === 'motorway' ? text(v.crossSection) : choice(v.legalClass, ['I', 'II', 'III', 'local', 'service', 'track'])
-      && choice(v.crossSection, ['S7.5', 'S9.5', 'S11.5', 'existing'])
+      && choice(v.crossSection, [...ROAD_CROSS_SECTIONS, 'existing'])
       && (v.crossSection !== 'existing' || number(v.existingWidth) && v.existingWidth > 0);
   }
   return kind === 'railway' && (v.gaugeMm === null || number(v.gaugeMm) && v.gaugeMm > 0) && choice(v.tracks, [1, 2])

@@ -5,7 +5,7 @@
 // for every violation kind by tests/player-text.test.ts.
 
 import { CATEGORIES, type CategoryId } from './data/categories';
-import { horizontalRules, SPEED_NORMS, type SpeedNorms } from './data/norms';
+import { horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
 import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
 import type { Profile } from './vertical';
@@ -153,15 +153,18 @@ export const RAIL_NORM = 'ČSN 73 6360-1 as taught at VUT (2009 lectures, provis
 export function horizontalViolations(al: Alignment, speed: number, input?: HorizontalInput): Violation[] {
   const out: Violation[] = [];
   const rail = !!input?.category && CATEGORIES[input.category].mode === 'railway';
+  const minor = input?.category ? CATEGORIES[input.category].minor : undefined;
   const RR = al.rules, lt = RR.transition, tol = 1e-6;
   const plain = Math.ceil(RR.plainRadius);
   const rules = {
     minRadius: rail ? `${RAIL_NORM}: at ${speed} km/h a curve needs a radius of at least ${fmt(RR.minRadius)} m (150 mm cant, 80 mm cant deficiency)`
-      : `ČSN 73 6101: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
+      : minor === 'track' ? `${TRACK_NORM}: at ${speed} km/h a curve on a paved track must have a radius of at least ${fmt(RR.minRadius)} m`
+      : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
     easing: rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
       : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
     reverse: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
-    compound: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`,
+    compound: minor ? `Game rule (provisional): curves turning the same way that meet as one curve may differ in radius at most ${fmt(RR.compoundRatio)}×`
+      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`,
     uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
     noJoin: `Game geometry model: joined arcs must stay within ${fmt(EDIT_TOLERANCE)} m of the tangent legs; intermediate easing curves are not modelled. Failure to join is not proof that no ČSN-compliant alignment exists`,
   };
@@ -382,6 +385,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
   const G = (g: number) => `${fmt(Math.abs(g) * 100, 1)} %`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
   const gradeRule = rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
+    : norms.norm ? `${norms.norm}: at most ${pct(maxGradient)} % gradient for this road`
     : `ČSN 73 6101 (older edition, provisional): at most ${pct(maxGradient)} % gradient for this road in hilly terrain`;
   for (let i = 0; i < p.grades.length; i++) {
     const g = p.grades[i];
@@ -425,7 +429,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
         fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to ≥ ${fmt(min)} m`,
         detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
         basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
-          : `ČSN 73 6101 (older edition, provisional): ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
+          : `${norms.verticalNorm ?? norms.norm ?? 'ČSN 73 6101 (older edition, provisional)'}: ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
       });
     }
     if (c.lenEff < c.len - 1e-3) {
@@ -566,7 +570,7 @@ export function categoryViolation(length: number, category: CategoryId, traffic:
     kind: 'category', goal: true, s0: 0, s1: length,
     title: 'Road too narrow for the traffic',
     fix: `Switch the category to ${CATEGORIES[needed].label}`,
-    detail: `${short(category)} carries up to ${fmt(cap(category))} vehicles a day; the scenario expects ${fmt(traffic)}.${CATEGORY_RANK[needed] >= CATEGORY_RANK['D27.5'] ? ' (No playable category is wide enough.)' : ''}`,
+    detail: `${short(category)} ${CATEGORIES[category].minor ? 'is built for local traffic only' : `carries up to ${fmt(cap(category))} vehicles a day`}; the scenario expects ${fmt(traffic)}.${CATEGORY_RANK[needed] >= CATEGORY_RANK['D27.5'] ? ' (No playable category is wide enough.)' : ''}`,
     basis: 'norm', rule: 'TP 188 / TP 189: the road must keep traffic flowing at level of service C in the design hour (research/14)',
   };
 }

@@ -1028,7 +1028,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
   const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * sec.dayR[i] : v) : width;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
-    ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined);
+    ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing);
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed).
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const len = Math.hypot(q.x - p.x, q.y - p.y);

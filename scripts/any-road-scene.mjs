@@ -61,7 +61,7 @@ try {
   // a long rebuildable road well clear of our road
   const roads = await page.evaluate(() => window.trapla.baseRoads(700));
   // far from our road first (its noise reaches ~3.6 km on D11, so a nearer change waits for combined noise)
-  const far = roads.filter(r => r.rebuildable && r.clear > 800 && r.length < 3000).sort((a, b) => (b.clear > 4000) - (a.clear > 4000) || b.length - a.length);
+  const far = roads.filter(r => r.rebuildable && ['I', 'II', 'III'].includes(r.legalClass) && r.clear > 800 && r.length < 3000).sort((a, b) => (b.clear > 4000) - (a.clear > 4000) || b.length - a.length);
   let road = null;
   for (const r of far) {
     await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 900), [r.id, r.length / 2]);
@@ -283,6 +283,53 @@ try {
   if (await page.evaluate(() => window.trapla.photoWithNetwork())) await page.screenshot({ path: shot(first + 3, 'photo-mapped-roads') });
   else console.log('photo tiles did not arrive (external service): overlay not checked');
   await page.evaluate(() => window.trapla.setView({ photo: false }));
+
+  // 7b. D11 villages: a street (Nový Rokytník) and a track (Lampertice) are rebuilt by a drag that starts on
+  // them, unselected, under their own norms (ČSN 73 6110 local road, ČSN 73 6109 track); a drag on a mapped
+  // motorway never pans the map: its card says it cannot be changed
+  if (scenario === 'd11') {
+    const dragOn = async (id, s, dx, dy) => {
+      await page.keyboard.press('Escape'); await page.evaluate(() => window.trapla.select(null));
+      await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 500), [id, s]); await idle();
+      const p = await screen('sourceScreen', id, s);
+      await page.mouse.move(p.x, p.y); await page.mouse.down();
+      await page.mouse.move(p.x + dx, p.y + dy, { steps: 12 }); await page.mouse.up(); await idle();
+      return p;
+    };
+    for (const [id, s, cs, cls, words] of [['osm:way:275065891', 1150, 'M7.5', 'local', /M 7\.5 \(local road\)/], ['osm:way:88594820', 620, 'P4', 'track', /P 4\.0 \(one-lane track\)/]]) {
+      const n0 = (await routes()).length;
+      await dragOn(id, s, 25, -25);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(p.routes.length, n0 + 1, `a drag on the ${cls} road ${id} rebuilt it`);
+      assert.equal(r.source.intervals[0].sourceId, id);
+      assert.deepEqual([r.specification.crossSection, r.specification.legalClass], [cs, cls]);
+      const pr = await page.evaluate(() => window.trapla.projectResult()), own = pr.routes[r.id].legacy;
+      assert(own, 'it is engineered');
+      const rules = own.violations.filter(v => v.basis === 'norm').map(v => v.rule);
+      assert(rules.every(t => !/6101/.test(t)), `its norm is its own, never ČSN 73 6101 (${rules.join(' | ')})`);
+      assert.match(await page.locator('#norms').getAttribute('title'), cs === 'P4' ? /ČSN 73 6109/ : /ČSN 73 6110/);
+      assert.match(await page.locator('#cat option:checked').textContent(), words);
+      console.log(`${cls} ${r.name} rebuilt as ${cs} at ${r.specification.designSpeed} km/h: ${Math.round(own.length)} m, ${(own.cost.total / 1e6).toFixed(1)} M CZK alone, ${own.violations.length} problems${own.violations.length ? ` (${own.violations.map(v => v.title).join('; ')})` : ''}`);
+      await page.evaluate(() => window.trapla.select(null));
+      await page.screenshot({ path: `${out}/rebuilt-${cls}.png` });
+    }
+    let motorway = null;
+    for (const id of await page.evaluate(() => ['motorway', 'trunk', 'railway'].flatMap(h => window.trapla.sourceIds(h, 400)))) {
+      await page.evaluate(id => window.trapla.lookAtSource(id, 200, 500), id); await idle();
+      if ((await page.evaluate(id => window.trapla.sourceScreen(id, 200), id))?.vis) { motorway = id; break; }
+    }
+    if (motorway) {
+      const n0 = (await routes()).length;
+      const at = await dragOn(motorway, 200, 60, -40);
+      assert.equal((await routes()).length, n0, 'a mapped motorway or railway is not rebuilt');
+      const still = await screen('sourceScreen', motorway, 200);
+      assert(Math.hypot(still.x - at.x, still.y - at.y) < 2, 'a drag on it does not pan the map');
+      const card = await page.locator('#inspector').textContent();
+      assert.match(card, /(Motorways and expressways|Railways) cannot be changed yet/);
+      console.log(`a drag on a mapped motorway or railway: no pan, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
+    } else console.log('no mapped motorway or railway on the map: refusal not checked');
+    await page.keyboard.press('Escape');
+  }
 
   // 8. a map without road links says so instead of doing nothing
   if (process.env.NO_LINKS_SCENARIO) {

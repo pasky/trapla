@@ -7,6 +7,7 @@ import { normalizeGradePins } from './core/grade-pins';
 import { normalizeCrossingOverrides } from './core/crossings';
 import { normalizeBuildingOverrides, normalizeWallOverrides } from './core/build-controls';
 import { readLegacyBytes } from './legacy-storage';
+import { ROAD_CROSS_SECTIONS } from './core/data/categories';
 
 /** Score compatibility includes both code rules and the ground pack used to price the design. */
 export interface Best { cost: number; design: Design; at: string; model?: number; pricingData?: string }
@@ -40,7 +41,7 @@ export class Store {
           const parsed = JSON.parse(original.design);
           if (!parsed || typeof parsed !== 'object' || 'schemaVersion' in parsed || !Array.isArray(parsed.pis)
             || !Array.isArray(parsed.vpis) || !Number.isFinite(parsed.speed) || !['auto', 'manual'].includes(parsed.profileMode)
-            || !['S7.5', 'S9.5', 'S11.5', 'D27.5'].includes(parsed.category)) throw new Error('Saved design needs recovery');
+            || ![...ROAD_CROSS_SECTIONS, 'D27.5'].includes(parsed.category)) throw new Error('Saved design needs recovery');
           d = parsed;
         } catch (error) { this.persistAllowed = false; this.storageProblem = String(error); }
       }

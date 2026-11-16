@@ -202,7 +202,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   overrides: readonly CrossingOverride[] = [], gradeSeparated: false | 'motorway' | 'railway' = false,
   /** A designed road of the project (project-roadnet.ts): bridged, passed under or met in a junction,
    * never cut and rerouted (the player has just drawn it there). */
-  designed: (roadId: number) => boolean = () => false): CrossingIssue[] {
+  designed: (roadId: number) => boolean = () => false,
+  /** Junctions this far apart along our road, m: ČSN 73 6101's 1.5 km; none for a local road or track, whose
+   * norms (ČSN 73 6110 group C, ČSN 73 6109) set no such spacing in the parts read (research/42). */
+  junctionSpacing: number = CROSSING_RULES.junctionSpacing): CrossingIssue[] {
   const issues: CrossingIssue[] = [];
   const issue = (c: CrossingResult, code: CrossingIssue['crossing']['code'], title: string, fix: string,
     actual?: number, required?: number, targetS?: number) => {
@@ -271,8 +274,8 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       c.cost = JUNCTION;
       const near = junctions.reduce((a, s) => Math.abs(c.s - s) < Math.abs(c.s - a) ? s : a, junctions[0]);
       const gap = Math.abs(c.s - near);
-      if (gap < CROSSING_RULES.junctionSpacing) issue(c, 'spacing', 'Junctions are too close',
-        `Keep at least ${CROSSING_RULES.junctionSpacing} m from the junction (or route end) at km ${(near / 1000).toFixed(2)} — now ${gap.toFixed(0)} m — or choose a bridge instead`, gap, CROSSING_RULES.junctionSpacing, near);
+      if (gap < junctionSpacing) issue(c, 'spacing', 'Junctions are too close',
+        `Keep at least ${junctionSpacing} m from the junction (or route end) at km ${(near / 1000).toFixed(2)} — now ${gap.toFixed(0)} m — or choose a bridge instead`, gap, junctionSpacing, near);
       if (c.h <= -CROSSING_RULES.underDepth) issue(c, 'depth', 'Junction would lie deep below the crossed road',
         `Raise our road here by more than ${(-CROSSING_RULES.underDepth - c.h).toFixed(1)} m, out of the ${CROSSING_RULES.underDepth} m deep cutting, or choose "Its bridge over us"`, c.h, -CROSSING_RULES.underDepth);
       if (c.h >= CROSSING_RULES.overHeight) issue(c, 'clearance', 'Junction would lie high above the crossed road',
@@ -301,7 +304,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   }
   for (const c of priority) {
     if (gradeSeparated || c.requestedType || c.type !== 'atGrade' || !ROAD_CLASSES[c.cls].junction || c.h <= -CROSSING_RULES.underDepth) continue;
-    if (junctions.every(s => Math.abs(c.s - s) >= CROSSING_RULES.junctionSpacing)) {
+    if (junctions.every(s => Math.abs(c.s - s) >= junctionSpacing)) {
       c.type = 'junction'; c.cost = JUNCTION;
       junctions.push(c.s); anchors.push(c);
     }

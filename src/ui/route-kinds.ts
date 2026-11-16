@@ -17,6 +17,7 @@ import type { ProjectTransportIndex } from '../core/project-network';
 import type { ProjectCommand } from '../project-store-contract';
 import { ROAD_CLASSES } from '../core/data/urban';
 import { KIND } from '../core/structures';
+import { CATEGORIES } from '../core/data/categories';
 import { moveStretchEnds, newRoad, rebuildable, rebuildCommand, type PlacedEnd } from './road-edit';
 import { mappedRoadName } from '../core/terms';
 
@@ -82,7 +83,9 @@ export const ROAD_LINE: MappedLineKind = {
   rebuildable(base, sourceId) {
     if (base.source(sourceId)?.kind !== 'road') return null;
     const what = rebuildable(base, sourceId);
-    return what.ok ? { ok: true, becomes: what.spec.crossSection === 'S9.5' ? 'class I road (S 9.5)' : `class ${what.spec.legalClass} road (S 7.5)` } : what;
+    if (!what.ok) return what;
+    const { crossSection, legalClass } = what.spec, label = CATEGORIES[crossSection].label, [code, kind] = [label.split(' (')[0], label.split(' (')[1]?.slice(0, -1)];
+    return { ok: true, becomes: CATEGORIES[crossSection].minor ? `${kind} (${code})` : `class ${legalClass} road (${code})` };
   },
   rebuild: (base, interval, ids) => rebuildCommand(base, interval, ids),
   moveEnds: (base, project, routeId, s0, s1) => moveStretchEnds(base, project, routeId, s0, s1),

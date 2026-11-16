@@ -2,7 +2,8 @@
 import { crossingOverridesOf, crossingTargetsOf } from './project-roadnet';
 import type { Design, EvalContext } from './evaluate';
 import { NOISE } from './data/urban';
-import type { EndpointPair, MissionRequirements, ProjectDesign, RoadOperations, RouteDesign } from './project';
+import { CATEGORIES, ROAD_CROSS_SECTIONS } from './data/categories';
+import type { EndpointPair, MissionRequirements, ProjectDesign, RoadOperations, RoadSpec, RouteDesign } from './project';
 import { assertProjectDesign } from './project-validation';
 import { railwayDesign, replaceRailwayFromDesign } from './project-railway';
 import { carriagewayDesign, corridorDesign, corridorOfRoute, replaceCarriagewayFromDesign, replaceCorridorFromDesign } from './project-motorway';
@@ -33,7 +34,7 @@ export function makeLegacyProjectContext(ctx: EvalContext, identity: {
 export function projectFromLegacyDesign(value: unknown, context: LegacyProjectContext): ProjectDesign {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid legacy design');
   const d = value as Design & { schemaVersion?: unknown; naive?: unknown };
-  if ('schemaVersion' in d || d.naive || !['S7.5', 'S9.5', 'S11.5'].includes(d.category)
+  if ('schemaVersion' in d || d.naive || !ROAD_CROSS_SECTIONS.includes(d.category)
     || !['auto', 'manual'].includes(d.profileMode) || !Array.isArray(d.vpis)) throw new Error('Unsupported legacy design');
   const objectData = d.objectData || context.objectData;
   const { category, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides,
@@ -46,8 +47,8 @@ export function projectFromLegacyDesign(value: unknown, context: LegacyProjectCo
         target: { kind: 'legacy-way' as const, objectData, roadId: c.roadId }, ...(c.via ? { via: c.via, ...(c.to !== undefined ? { to: c.to } : {}) } : {}) })) }) },
       vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
         : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } },
-    specification: { kind: 'road', policy: 'legacy-road', legalClass: category === 'S7.5' ? 'II' : 'I',
-      crossSection: category as 'S7.5' | 'S9.5' | 'S11.5', designSpeed: speed, operations: { ...copy(context.operations), speed, speedPolicy: 'design' } },
+    specification: { kind: 'road', policy: 'legacy-road', legalClass: CATEGORIES[category].legalClasses![0],
+      crossSection: category as RoadSpec['crossSection'], designSpeed: speed, operations: { ...copy(context.operations), speed, speedPolicy: 'design' } },
   };
   const project: ProjectDesign = {
     schemaVersion: 1, scenarioId: context.scenarioId, presetId: context.presetId, packId: context.packId,
@@ -119,8 +120,7 @@ export function replaceRouteFromLegacy(project: ProjectDesign, routeId: string, 
   if (design.crossingOverrides && replacement.alignment.kind === 'pi') replacement.alignment.controls.crossings = crossingTargetsOf(project, design.crossingOverrides);
   replacement.specification.operations = copy(old.specification.operations);
   // The legal class is the road's, not its width's: keep it while the cross-section suits it.
-  const fits = { 'S7.5': ['II', 'III'], 'S9.5': ['I', 'II'], 'S11.5': ['I'] }[design.category as 'S7.5' | 'S9.5' | 'S11.5'] ?? [];
-  if (fits.includes(old.specification.legalClass)) replacement.specification.legalClass = old.specification.legalClass;
+  if (CATEGORIES[design.category].legalClasses?.includes(old.specification.legalClass)) replacement.specification.legalClass = old.specification.legalClass;
   if (design.speed !== old.specification.designSpeed && old.specification.operations.speedPolicy !== 'independent')
     replacement.specification.operations.speed = design.speed;
   next.routes = next.routes.map(r => r.id === routeId ? { ...replacement, id: old.id, name: old.name, role: old.role,

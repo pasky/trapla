@@ -3,7 +3,7 @@
 import { buildAlignment, station, type PI, type Vec2 } from '../core/horizontal';
 import { horizontalViolations } from '../core/checks';
 import { horizontalRules } from '../core/data/norms';
-import type { CategoryId } from '../core/data/categories';
+import { CATEGORIES, type CategoryId, type LegalClass } from '../core/data/categories';
 import { KEPT_TOLERANCE } from '../core/project-kept';
 import type { Anchor, EndpointConstraint, ProjectDesign, RoadSpec, RouteDesign, SourceInterval, XYZ } from '../core/project';
 import type { ProjectCommand } from '../project-store-contract';
@@ -28,6 +28,13 @@ export const MIN_BEND_GAP = 80;
  * (nominal 90, lowered by up to 20 where justified; research/00 §4.1). An existing corridor is that
  * justification; the player can raise it. The map's `maxspeed` is the signed limit, not a design speed. */
 export const DEFAULT_SPEED = 70;
+/** The design speed a road of this cross-section starts with: DEFAULT_SPEED for class roads, the lowest its
+ * norm allows for a local road or track (ČSN 73 6110 group C: 30 km/h, "difficult conditions"; ČSN 73 6109:
+ * 20 km/h, a secondary track; research/42). The player can raise it. */
+export function startSpeed(category: CategoryId): number {
+  const c = CATEGORIES[category];
+  return c.minor ? Math.min(...c.speeds) : DEFAULT_SPEED;
+}
 /** PROVISIONAL game tolerance, m: how far the automatic conversion may move the line off the old road so
  * that its bends meet the norm: as far as still counts as "on the old road" (core/project-kept.ts), so the
  * conversion itself never builds anything anew. Beyond it the bend stays as the old road has it. */
@@ -36,21 +43,26 @@ export const REPAIR_TOLERANCE = KEPT_TOLERANCE;
  * are tried as bends of their own, m: about a village block (game choice, not a design rule). */
 const FOLLOW_REACH = 150;
 
-export type Rebuildable = { ok: true; info: ReturnType<typeof groundRoadSourceInfo>; spec: Pick<RoadSpec, 'legalClass' | 'crossSection'> }
+type RoadCategoryId = Exclude<RoadSpec['crossSection'], 'existing'>;
+export type Rebuildable = { ok: true; info: ReturnType<typeof groundRoadSourceInfo>; spec: { legalClass: LegalClass; crossSection: RoadCategoryId } }
   | { ok: false; why: string };
 /** Which mapped roads the game can rebuild today, and as what. */
 export function rebuildable(base: ProjectTransportIndex, sourceId: string): Rebuildable {
   const source = base.source(sourceId);
   if (!source || source.kind !== 'road') return { ok: false, why: 'Railways cannot be changed yet.' };
-  const row = ROAD_CLASSES[source.tags.highway ?? ''];
-  if (row?.noAtGrade) return { ok: false, why: 'Motorways and expressways cannot be changed yet.' };
+  const highway = source.tags.highway ?? '', row = ROAD_CLASSES[highway];
+  if (row?.noAtGrade || highway === 'motorway_link' || highway === 'trunk_link') return { ok: false, why: 'Motorways and expressways cannot be changed yet.' };
+  if (!row) return { ok: false, why: highway.endsWith('_link') ? 'Slip roads cannot be changed yet.' : 'This kind of way cannot be changed.' };
   if (source.bridge || source.tunnel || source.elevation !== 'terrain') return { ok: false, why: 'Bridges and tunnels of existing roads cannot be changed yet.' };
   let info: ReturnType<typeof groundRoadSourceInfo>;
   try { info = groundRoadSourceInfo(base, sourceId); } catch { return { ok: false, why: 'This road’s map data is incomplete.' }; }
-  if (info.legalClass === 'I') return { ok: true, info, spec: { legalClass: 'I', crossSection: 'S9.5' } };
-  if (info.legalClass === 'II' || info.legalClass === 'III') return { ok: true, info, spec: { legalClass: info.legalClass, crossSection: 'S7.5' } };
-  return { ok: false, why: 'Local roads, service roads and tracks cannot be rebuilt yet: the game has no design rules for them.' };
+  return { ok: true, info, spec: { legalClass: info.legalClass, crossSection: REBUILT_AS[info.legalClass] } };
 }
+/** What a mapped road is rebuilt as: class I as S 9.5, class II/III as S 7.5, a local road or street as a
+ * two-lane local road M 7.5 (ČSN 73 6110 group C), a track as a paved one-lane P 4.0 (ČSN 73 6109), and a
+ * service road (a farm or works access, mostly one lane) as P 4.0 too: ČSN 73 6110 §8.1.4 lets such roads be
+ * designed as field roads (research/42). The player can change the cross-section. */
+const REBUILT_AS: Record<LegalClass, RoadCategoryId> = { I: 'S9.5', II: 'S7.5', III: 'S7.5', local: 'M7.5', service: 'P4', track: 'P4' };
 
 /** The stretch a drag at station s rebuilds: to the nearest junction on either side (passing those
  * closer than STRETCH_PAST_JUNCTION), never into a stretch another project road already rebuilds. */
@@ -307,11 +319,12 @@ export function rebuildCommand(base: ProjectTransportIndex, interval: SourceInte
       existingWidth: what.info.width, designSpeed: DEFAULT_SPEED, operations: startTraffic(base.traffic(interval, what.info.legalClass), DEFAULT_SPEED) } });
   const route = command.routes[0];
   if (route.kind !== 'road' || route.alignment.kind !== 'reference') throw new Error('Unexpected promotion');
-  // Noise and travel time use the signed speed where the map has one; the line is designed for DEFAULT_SPEED.
-  const operations = startTraffic(base.traffic(interval, what.info.legalClass), DEFAULT_SPEED);
-  if (what.info.taggedSpeed !== null && what.info.taggedSpeed !== DEFAULT_SPEED) { operations.speed = what.info.taggedSpeed; operations.speedPolicy = 'independent'; }
-  route.specification = { kind: 'road', policy: 'legacy-road', ...what.spec, designSpeed: DEFAULT_SPEED, operations };
-  route.alignment = { kind: 'pi', pis: fitRoad(route.endpoints.a.position, route.endpoints.b.position, route.alignment.path, DEFAULT_SPEED, what.spec.crossSection as CategoryId),
+  // Noise and travel time use the signed speed where the map has one; the line is designed for its start speed.
+  const speed = startSpeed(what.spec.crossSection);
+  const operations = startTraffic(base.traffic(interval, what.info.legalClass), speed);
+  if (what.info.taggedSpeed !== null && what.info.taggedSpeed !== speed) { operations.speed = what.info.taggedSpeed; operations.speedPolicy = 'independent'; }
+  route.specification = { kind: 'road', policy: 'legacy-road', ...what.spec, designSpeed: speed, operations };
+  route.alignment = { kind: 'pi', pis: fitRoad(route.endpoints.a.position, route.endpoints.b.position, route.alignment.path, speed, what.spec.crossSection),
     vertical: { kind: 'auto', pins: [] }, controls: { structureOverrides: [] } };
   return command;
 }

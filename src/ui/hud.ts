@@ -354,6 +354,9 @@ export class Hud {
     if (cat.mode === 'railway') {
       norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${Math.round(grade * 10000) / 10} ‰</b>`;
       norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; vertical rounding radius ≥ ${num(n.minCrestRadius)} m.`;
+    } else if (cat.minor) {
+      norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
+      norms.title = `${n.norm} at ${d.speed} km/h: smallest curve radius ${num(n.minRadius)} m${cat.minor === 'local' ? ` (with 6 % banking; from ${num(n.noSuperelevationRadius)} m no banking is needed)` : ''}; no easement curves are needed; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags)${n.verticalNorm ? ` (${n.verticalNorm})` : ''}.`;
     } else {
       norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
       norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;

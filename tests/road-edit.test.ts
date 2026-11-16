@@ -10,6 +10,7 @@ import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
 import { bendAt, derivedStretch, fitBends, isTraffic, moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
 import { CLASS_TRAFFIC } from '../src/core/data/traffic';
+import { basePerKm } from '../src/core/cost';
 import type { TrafficCensus } from '../src/core/traffic-census';
 import { mappedRoadName } from '../src/core/terms';
 
@@ -36,12 +37,38 @@ function fixture() {
 }
 
 describe('rebuilding a mapped road', () => {
-  it('rebuilds class I–III ground roads only, with a class-appropriate cross-section', () => {
+  it('rebuilds every ground road with a cross-section for its class; motorways and slip roads say they cannot be changed', () => {
     const { base, graph, terrain } = fixture();
     expect(rebuildable(base, 'main')).toMatchObject({ ok: true, spec: { legalClass: 'III', crossSection: 'S7.5' } });
-    expect(rebuildable(base, 'side1').ok).toBe(false); // a track: no design rules yet
-    graph.sources[0].tags.highway = 'trunk';
-    expect(rebuildable(new ProjectTransportIndex(graph, 'transport', 'vectors', terrain), 'main').ok).toBe(false);
+    expect(rebuildable(base, 'side1')).toMatchObject({ ok: true, spec: { legalClass: 'track', crossSection: 'P4' } });
+    const as = (highway: string) => { graph.sources[0].tags.highway = highway; return rebuildable(new ProjectTransportIndex(graph, 'transport', 'vectors', terrain), 'main'); };
+    expect(as('residential')).toMatchObject({ ok: true, spec: { legalClass: 'local', crossSection: 'M7.5' } });
+    expect(as('service')).toMatchObject({ ok: true, spec: { legalClass: 'service', crossSection: 'P4' } });
+    expect(as('trunk')).toEqual({ ok: false, why: 'Motorways and expressways cannot be changed yet.' });
+    expect(as('primary_link')).toEqual({ ok: false, why: 'Slip roads cannot be changed yet.' });
+  });
+
+  it('a rebuilt track is designed and priced as a paved one-lane track (ČSN 73 6109, SPK P4), not as a class road', () => {
+    const { base, terrain, net, project } = fixture();
+    const command = rebuildCommand(base, { transportData: 'transport', sourceId: 'side1', s0: 0, s1: 400 }, { routeId: 'r', acousticSourceId: 'a' });
+    const p = structuredClone(project); p.routes.push(...command.routes); p.connections.push(...command.connections);
+    assertProjectDesign(p);
+    const route = p.routes[0];
+    // the lowest speed its norm allows (a secondary track), the player can raise it
+    expect(route.specification).toMatchObject({ policy: 'legacy-road', legalClass: 'track', crossSection: 'P4', designSpeed: 20 });
+    if (route.alignment.kind !== 'pi') throw new Error('converted');
+    // dragged 40 m off its line: a new part, under the track's own rules and price
+    route.alignment.pis = [{ x: 540, y: 1200, r: null }];
+    const roads = new RoadNet(net), ctx = { terrain, scenario: D11_SCENARIO, a: { x: 0, y: 0 }, b: { x: 1, y: 1 }, roads };
+    const e = evaluateProjectRoad(ctx, p, 'r', 'objects', { sourceWays: new Map([['main', 0], ['side1', 1], ['side2', 2]]) });
+    expect(e.status).toBe('evaluated');
+    if (e.status !== 'evaluated') return;
+    expect(e.result.violations.filter(v => v.basis === 'norm')).toEqual([]);
+    // where built anew: the SPK P4 row per km less its 6,000 m³/km earthworks, never a class road's price
+    const perKm = Math.max(...e.result.parts.roadBase) / e.result.ds * 1000;
+    expect(perKm).toBeCloseTo(basePerKm('P4', 'hilly'), 0);
+    expect(basePerKm('P4', 'hilly')).toBeGreaterThan(0.8 * 13_985_684.5);
+    expect(basePerKm('P4', 'hilly')).toBeLessThan(13_985_684.5);
   });
 
   it('derives the stretch between the junctions around the grab point, passing a junction right next to it', () => {
