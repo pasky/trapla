@@ -5,6 +5,47 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 only to frame a camera on A / B and to read state for exact repros. Screenshots under `/tmp/trapla-qa2/` (not
 committed). Newest session on top. Severity: **P0** broken / untruthful, **P1** confusing, **P2** polish.
 
+## Re-test 6 — core-play-polish @ 79a7e1c (2026-11-16)
+
+Detached snapshot with the worktree's packs, SwiftShader, three chunks (`p1`, `p2`, `p3`), fresh localStorage.
+Screenshots `/tmp/trapla-qa2/p1`–`p3`.
+
+| item | verdict | evidence |
+|---|---|---|
+| By hand switch is bill-identical | **PASS** | D11 start 9.81 → By hand 9.81 → Auto 9.81; with a pin at km 9 (10.19 bn) → By hand 10.19; the pin card then says "Not used while the height is set by hand" (`p1/001`, `003`). |
+| By hand handles thinned by zoom | **PASS** | 19 shown points at the whole-route view instead of ~70 (`p1/001`). |
+| height point naming | **PASS** | card "Height point · km 9.04 · 471.0 m · dip"; drag tip "◆ height point · 491.0 m", readout "471.0 m · lowered 20.0 m" (`p1/004`). (No "height point at km X" problem came up in this test to read.) |
+| Poříčí km 4.9–5.9 | **PASS** | Auto now bridges it (1,020 m, 1.75 bn, VALID): "Auto: bridges the river", no pier problems (`p1/006`); Earthwork there → 8 problems ("A bridge is needed here"). Elsewhere: "Auto: at this height cheaper than a bridge" / "at this depth cheaper than a tunnel". |
+| pin drag ≤ 0.5 m/px, live readout | **PASS** | 30 px → +15.0 m; tip "488.3 m · raised 15.0 m" while dragging (`p1/002`). |
+| selections fly into view | **PASS** | "Where the money goes" → the Poříčí bridge fills the map (`p1/006`); Your choices → crossed road: camera 22.5 km → 900 m (`p2/013`). |
+| 1280×720 | **PASS** | buttons in one row, A / B clear, compact legend, full profile key (`p2/009`, `010`). |
+| 1024×700 | **PASS** (P2) | view buttons wrap to a second row, Build below them, no overlap; noise legend moved to the right, A clear (`p2/011`, `012`). The profile key drops "ground" and "road height"; the compact map legend is icons only (no words for a first-time player). |
+| "up to 9.1 dB" | **PASS** | "3 houses up to 9.1 dB too loud" (`p2/000`). |
+| bought-out hover level | **PASS** | "House 1 floor · bought out · 55.1 dB on the loudest floor even behind a 5 m wall (limit 50)" (`p1/011`). |
+| "Auto: N m" on the house card | **PASS / P2** | "Auto: none · km 15.38–15.43". But after Keep the same line reads "Auto: none · km 15.25–15.54" while the house plan and the map show 5 m walls on both sides of the road there (`p1/014`). |
+| Demolish / Keep wording | **PASS** | Nová Paka hall: "Demolished · 322 M CZK · In the 3 m working strip beside our cut, km 1.91 · Demolish · Keep" (`p2/008`). |
+| one explanation | **PASS** | "Behind a 5 m wall: too loud. 88 % of the noise comes through the gap in the wall where the side road joins, km 15.41" with the matching cross-section (`p1/012`). |
+| gap button | **PASS** | kept house: "Buy out · Stop keeping · The side road"; the last opens the class I road's junction card (`p1/014`, `015`). |
+| Nová Paka km 1.97 chimney | **PASS** | hatched cleared plots, no chimney, from both sides (`p2/002`, `003`). |
+| Nová Paka A / B shards | **PASS** | none (`p2/005`, `006`). P2: at A the "bypass reference" tag overprints "Kumburský Újezd". |
+| sawtooth at km 2.0 | **PASS** | cut edges clean where the side road crosses (`p2/004`). |
+| cleared plots in the photo view | **PASS** | hatched plots drawn over the aerial photo (`p2/007`). |
+
+Regressions / new:
+- **P1 — D11: a 3–5° bend changes heights along the whole route and leaves distant problems.** Fresh D11
+  (9.81 bn VALID), one drag each, clean reload in between:
+  - +10 px at km 3 (bend turns 5°): 9.28 bn, NOT VALID, problems at km 3.91 and **km 8.97**.
+  - +10 px at km 9 (bend turns 3°): **11.65 bn (+1.84 bn)**, NOT VALID, problems at km 8.75 and **km 1.27**. The
+    profile changes from km 0 to km 18: new tunnels at ~4.5 and ~9 km, longer bridges at 12–15 km (`p3/002`).
+  - −20 px at km 3 (12°): 8.90 bn, VALID (−905 M).
+  - A pin 15 m higher at km 9 adds problems at **km 16.54 / 16.58** (`p1/002`).
+  - Same class as long-corridors Re-test 4 "D11 prices are not stable".
+- P2 — By hand: the drag preview showed ≈ 9.69 bn; the result was 10.09 bn (`p1/004`).
+- P2 — Earthwork on the Poříčí bridge: the card repeats "⚠ A bridge is needed here · Back to Auto" three times
+  before "+5 more in Violations".
+- P2 — the Nová Paka hall demolished "in the 3 m working strip beside our cut" costs 322 M CZK; a retaining wall
+  along that edge could be the cheaper engineering answer.
+
 ## Re-test 5 — motorway-rail @ 7c7d043, Re-test 3 P1s only (2026-11-16, one 4 min chunk)
 
 | item | verdict | evidence |
