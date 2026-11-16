@@ -1,5 +1,5 @@
 // Close-up screenshots of earthworks (design realism, docs/design-realism-plan.md). Untimed: run under
-//   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/realism-shots.mjs name:design.json:chainage[:dist:az:elev] …
+//   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/realism-shots.mjs name:design.json:chainage[:dist:az:elev:offset-left] …
 // Writes docs/screenshots/<name>.png and prints what the engine built there.
 import { readFileSync, mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -15,18 +15,19 @@ try {
   mkdirSync('docs/screenshots', { recursive: true });
   let loaded = '';
   for (const spec of process.argv.slice(2)) {
-    const [name, file, chainage, dist = '350', az = '235', elev = '28'] = spec.split(':');
+    const [name, file, chainage, dist = '350', az = '235', elev = '28', off = '0'] = spec.split(':');
     if (file !== loaded) {
       const design = JSON.parse(readFileSync(file, 'utf8')).design;
       await page.evaluate(async (d) => { window.trapla.setDesign(d); await window.trapla.whenIdle(); }, design);
       loaded = file;
     }
-    const info = await page.evaluate(([s, d, a, e]) => {
+    const info = await page.evaluate(([s, d, a, e, o]) => {
       const t = window.trapla, r = t.result(), i = Math.round(s / r.ds);
+      const x = r.x[i] - r.ty[i] * o, y = r.y[i] + r.tx[i] * o; // o m to the left of the axis
       t.setView({ contours: false, slope: false, exag: 1, photo: false });
-      t.lookAt(r.x[i], r.y[i], d, a, e); t.profileFocus(s - 600, s + 600);
+      t.lookAt(x, y, d, a, e); t.profileFocus(s - 600, s + 600);
       return { s, h: +(r.grade[i] - r.ground[i]).toFixed(1), dayL: +r.dayL[i].toFixed(1), dayR: +r.dayR[i].toFixed(1), total: Math.round(r.cost.total / 1e6), valid: r.valid };
-    }, [Number(chainage), Number(dist), Number(az), Number(elev)]);
+    }, [Number(chainage), Number(dist), Number(az), Number(elev), Number(off)]);
     await page.waitForTimeout(3000);
     await page.waitForFunction(() => !window.trapla.viewBusy(), null, { timeout: 120000 });
     await page.screenshot({ path: `docs/screenshots/${name}.png` }); console.log(name, JSON.stringify(info));
