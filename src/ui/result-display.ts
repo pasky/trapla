@@ -89,7 +89,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       app.hud.setProfileBusy(true);
     },
     didPost: () => { app.projectScore(true); schedulePreview(); },
-    error: message => { console.error('worker error', message); app.setStatus('This design could not be computed. Undo the app.session.last change.'); settle(); },
+    error: message => { console.error('worker error', message); app.setStatus('This design could not be computed. Undo the last change.'); settle(); },
     band: m => {
       const r = app.session.projectFull?.routes[m.routeId]?.legacy;
       if (r && app.session.projectFull!.epoch === m.identity.epoch && app.session.projectFull!.revision === m.identity.revision
@@ -110,7 +110,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       // After the first settled scene, in idle time: download + verify the graph bytes only.
       transportPrefetched = true;
       const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 200));
-      idle(() => { app.pack.prefetchTransport().catch(error => console.warn('Road map app.links are unavailable', error)); });
+      idle(() => { app.pack.prefetchTransport().catch(error => console.warn('Road map links are unavailable', error)); });
     }
   };
   let transportPrefetched = false;
@@ -278,7 +278,7 @@ export function createResultDisplay(app: ResultDisplayContext) {
       heavyStats = { ...stats, wall: t3 - started, commit: t3 - t0, commitView: t1 - t0, commitCrossings: t2 - t1, overlays: t3 - t2 };
       settle();
     }, error => {
-      console.error('3D rebuild failed', error); app.setStatus('The 3D app.view could not be updated.');
+      console.error('3D rebuild failed', error); app.setStatus('The 3D view could not be updated.');
       heavy = null; evals.forgetLastPost(); settle();
     }, 8, stats, ([geometry, sources]) => { sources?.dispose(); geometry.dispose(); }); took('view');
     showActiveResult(); took('profile'); app.projectScore(true); took('hud');

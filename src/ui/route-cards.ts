@@ -56,8 +56,8 @@ export function routeHeadCard(deps: RouteCardDeps): (shown: string | null) => HT
     // below a selected stretch's card; alone when nothing is selected
     const box = document.createElement('div'); box.className = 'route-head motorway-head'; box.dataset.place = 'below';
     box.innerHTML = `<div class="mode-h"><b>${DIRECTIONS_TEXT.heading}</b></div>
-      <div class="seg" role="radiogroup" aria-label="Directions"><button type="button" data-dir="both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" data-dir="forward" role="radio"></button><button type="button" data-dir="reverse" role="radio"></button></div>
-      <p data-dir="explain" class="mode-explain"></p><div data-dir="apart" class="dir-apart"></div>`;
+        <div class="seg" role="radiogroup" aria-label="Directions"><button type="button" data-dir="both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" data-dir="forward" role="radio"></button><button type="button" data-dir="reverse" role="radio"></button></div>
+        <p data-dir="explain" class="mode-explain"></p><div data-dir="apart" class="dir-apart"></div>`;
     fillDirections(box, directions, { onDirection: w => deps.onDirection(w), onJoin: deps.joinStretch });
     return box;
   }
