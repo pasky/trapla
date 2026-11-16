@@ -394,6 +394,14 @@ What exists (details and commands in `README.md`):
   an S 7.5 design already invalid: a long town bridge whose piers cannot miss the roads below, an engine limit).
   Evaluate time, sum of per-design minima over 35 designs, interleaved in one process: +1.0 % (noise).
 
+### One drag, no curve-room problem (2026-11-16)
+
+- A drag that starts on the road within an easement's length (the speed's minimum transition, e.g. 90 m at
+  90 km/h) of a bend's curve moves that bend (a new bend there would crowd it); elsewhere it adds a bend, which on
+  release is moved along the line (≤ 150 m, `core/bend-fit.ts`, as the rebuilding drag's bend already was) to where
+  no curve lacks room ("too close for an S-bend", "too close to the end"). Measured on 200 random drags each on the
+  best and demo designs (curve-room problems from the drag alone): 41 / 51 → 0 / 1.
+
 ### Any mapped road can be rebuilt (cost model 25, 2026-11-16)
 
 - Any mapped road, street or track (and, from model 23, a railway along its own line) is dragged directly to

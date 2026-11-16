@@ -188,14 +188,20 @@ export function fitBends(path: readonly { x: number; y: number; s: number }[], t
  * starts there moves that bend. A new bend put inside an existing curve would fold the line back on itself
  * (the curve's corner point lies outside the curve), worst on the sharp corners of old roads. Null: p is on
  * a straight, where a drag adds a bend. */
-export function bendAt(a: Vec2, b: Vec2, pis: PI[], speed: number, category: CategoryId, p: Vec2, reach = 15): number | null {
+export function bendAt(a: Vec2, b: Vec2, pis: PI[], speed: number, category: CategoryId, p: Vec2, reach = 15, along = 0): number | null {
   if (!pis.length) return null;
   const al = buildAlignment(a, b, pis, horizontalRules(speed, category)), st = station(al, 5);
   let best = reach * reach, s = -1;
   for (let k = 0; k < st.n; k++) { const d = (st.x[k] - p.x) ** 2 + (st.y[k] - p.y) ** 2; if (d <= best) { best = d; s = st.s[k]; } }
   if (s < 0) return null;
-  const c = al.curves.find(c => c.sEnd > c.sStart && s >= c.sStart - st.ds / 2 && s <= c.sEnd + st.ds / 2);
-  return c && pis[c.index] ? c.index : null;
+  // on its curve, or within `along` of it (nearest curve first)
+  let hit: (typeof al.curves)[number] | undefined, gap = Infinity;
+  for (const c of al.curves) {
+    if (!(c.sEnd > c.sStart) || !pis[c.index]) continue;
+    const g = Math.max(0, c.sStart - s, s - c.sEnd);
+    if (g <= along + st.ds / 2 && g < gap) { gap = g; hit = c; }
+  }
+  return hit ? hit.index : null;
 }
 /** How a line between a and b follows the old road `path`: `measure` (problems, the furthest stray, how far
  * each bend's curve strays) and `tighten` (bend i keeps the old road's own, tighter curve where a norm-sized

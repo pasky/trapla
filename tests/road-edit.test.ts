@@ -215,6 +215,8 @@ describe('rebuilding a mapped road', () => {
     expect(bendAt(a, b, pis, 70, 'S7.5', { x: 600, y: 300 })).toBeNull(); // the straight: a new bend
     expect(bendAt(a, b, pis, 70, 'S7.5', { x: 600, y: 400 })).toBeNull(); // off the road
     expect(bendAt(a, b, [], 70, 'S7.5', { x: 600, y: 300 })).toBeNull();
+    // within a margin of its curve along the road: that bend (a new bend there would crowd it)
+    expect(bendAt(a, b, pis, 70, 'S7.5', { x: 600, y: 300 }, 15, 1e4)).toBe(0);
   });
 
   it('is not kept where another road\'s crossing lifts it onto a bridge or lowers it: there it is rebuilt with its ramps', async () => {

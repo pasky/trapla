@@ -1,5 +1,6 @@
 import './style.css';
 import { CATEGORIES, type CategoryId } from './core/data/categories';
+import { speedNorms } from './core/data/norms';
 import { scenarioParams } from './core/data/scenario';
 import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
@@ -1248,22 +1249,26 @@ async function main() {
     catch (error) { projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
     switchRoute(id, true);
     const k = bendByDrag(x, y);
-    // a new bend (not one the old line's own curve already had) is fitted where its curve has room on release
-    if (!grabOffset) placedByRebuild = { routeId: id, i: k };
+    // (a new bend, not one the old line's own curve already had, is fitted where its curve has room on release)
     return k;
   };
-  /** A drag that starts on the road: on a straight it adds a bend there; on the curve of a bend it moves
-   * that bend, which keeps its distance from the pointer for the rest of the drag. */
+  /** A drag that starts on the road: on a straight it adds a bend there, which is fitted on release where
+   * its curve has room (no curve-room problem from one drag, core/bend-fit.ts); on the curve of a bend, or
+   * within an easement's length of it (a new bend there would crowd it), it moves that bend, which keeps its
+   * distance from the pointer for the rest of the drag. */
   let grabOffset: { i: number; dx: number; dy: number } | null = null;
   const bendByDrag = (x: number, y: number): number => {
-    const d = store.design, on = bendAt(A, B, d.pis, d.speed, d.category, { x, y });
+    const d = store.design, near = speedNorms(d.speed, d.category).minTransition;
+    const on = bendAt(A, B, d.pis, d.speed, d.category, { x, y }, 15, near);
     if (on !== null) { grabOffset = { i: on, dx: d.pis[on].x - x, dy: d.pis[on].y - y }; select({ kind: 'bend', i: on }); return on; }
     grabOffset = null;
     const k = insertBend(x, y, false); select({ kind: 'bend', i: k });
+    if (store.activeRouteId) placedByDrag = { routeId: store.activeRouteId, i: k };
     return k;
   };
-  /** the bend the rebuilding drag placed: on release it is fitted where its curve has room (core/bend-fit.ts) */
-  let placedByRebuild: { routeId: RouteId; i: number } | null = null;
+  /** the new bend a drag placed (also the one a rebuilding drag adds): on release it is fitted where its curve
+   * has room (core/bend-fit.ts) */
+  let placedByDrag: { routeId: RouteId; i: number } | null = null;
   const insertBend = (x: number, y: number, commit: boolean) => {
     const k = nearestLeg(A, B, store.design.pis, { x, y });
     store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); }, commit);
@@ -1337,11 +1342,11 @@ async function main() {
       if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
       if (!store.read()) return null; intro.hide(); return bendByDrag(x, y);
     },
-    onPiSelect: (i) => { grabOffset = null; select(i === null ? null : { kind: 'bend', i }); },
+    onPiSelect: (i) => { grabOffset = null; placedByDrag = null; select(i === null ? null : { kind: 'bend', i }); },
     onPiDrag: (i, x, y) => { const o = grabOffset?.i === i ? grabOffset : null; store.update((d) => { d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0); }, false); },
     onPiDragEnd: () => {
       grabOffset = null;
-      const placed = placedByRebuild; placedByRebuild = null;
+      const placed = placedByDrag; placedByDrag = null;
       const d = store.read(), ends = store.route?.endpoints;
       if (placed && d && ends && placed.routeId === store.activeRouteId) {
         const fitted = fitPlacedBend(ends.a.position, ends.b.position, d.pis, placed.i, d.category, d.speed);
