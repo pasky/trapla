@@ -5,7 +5,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { designSpeeds, HAIRPIN, hairpinLaneWidening, speedNorms, type SpeedNorms } from './data/norms';
 import type { RadiusLimit } from './vertical';
 import type { Alignment, PI } from './horizontal';
-import { routeMountainous } from './terrain-class';
+import { groundSlopeAt, routeMountainous, TERRAIN_CLASS } from './terrain-class';
 import type { Terrain } from './terrain';
 import type { Violation } from './checks';
 
@@ -55,11 +55,14 @@ export function hairpinSpeed(r: number): number {
   return t[t.length - 1][1];
 }
 
-/** Where a hairpin may stand: on a road through mountains (the terrain class), on a stretch at the category's
- * lowest design speed. There it needs the road authority's approval (a departure from ČSN 73 6101, as at I/44
- * Červenohorské sedlo), which the bend card says; elsewhere it is a violation the player may still keep. */
+/** Where a hairpin may stand. GAME RULE (research/54 §5): where the ground around it is steep — the predominant
+ * slope within 500 m over 15 % (terrain-class.ts groundSlopeAt), even where the 10 km section is classed hilly
+ * (the norm's class, which keeps setting the gradient limits) — on a stretch at the category's lowest design
+ * speed. ČSN 73 6101:2000 §8.5.7 allowed hairpins only in mountain terrain and the 2018 edition has none, so
+ * there it is a departure from the standard needing the road authority's approval (as at I/44 Červenohorské
+ * sedlo), which the bend card says; elsewhere it is a violation the player may still keep. */
 export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly PI[], roadSpeed: number, category: CategoryId,
-  mountainousAt: (s: number) => boolean): Violation[] {
+  terrain: Terrain): Violation[] {
   const out: Violation[] = [];
   const lowest = Math.min(...designSpeeds(category));
   const rule = 'ČSN 73 6101:2018 has no hairpins; a road authority approves one only as a departure from it on a mountain road (I/44 Červenohorské sedlo, research/47 §3)';
@@ -72,10 +75,10 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
         title: `Bend ${c.index + 1} turns too little for a hairpin`,
         fix: `Make bend ${c.index + 1} an ordinary curve${speed > lowest ? `; for a tighter one set its stretch to ${lowest} km/h` : ''}`,
         detail: `It turns ${Math.round(c.delta * 180 / Math.PI)}°. A hairpin turns the road almost back on itself to climb a steep slope.` });
-    else if (!mountainousAt((c.sStart + c.sEnd) / 2))
-      out.push({ kind: 'radius', ...where, basis: 'norm', rule, title: `Hairpin at bend ${c.index + 1} outside the mountains`,
+    else if (!(groundSlopeAt(terrain, c.x, c.y) > TERRAIN_CLASS.mountainousFrom))
+      out.push({ kind: 'radius', ...where, basis: 'norm', rule, title: `Hairpin at bend ${c.index + 1} on gentle ground`,
         fix: `Make bend ${c.index + 1} an ordinary curve`,
-        detail: 'Hairpins are allowed only on roads through mountains: ground mostly steeper than 15 % along about 10 km of the road.' });
+        detail: 'Hairpins are allowed only where the ground around them is steep: mostly steeper than 15 % within 500 m.' });
     else if (speed > lowest)
       out.push({ kind: 'radius', ...where, basis: 'norm', rule, title: `Hairpin at bend ${c.index + 1} on a ${speed} km/h stretch`,
         fix: `Set bend ${c.index + 1}'s stretch to ${lowest} km/h`,

@@ -192,3 +192,15 @@ the threshold is **not** calibrated.
 Confidence: definition and that it is about natural ground slopes of a region — **high** (2000 text read;
 2018 wording medium). That real classes are per section — **medium-high** (8 documents). The 10 km window —
 **low-medium** (fits six hilly sections, no mountainous one tested).
+
+## 5. Game rule: hairpins on locally steep ground (parent / owner decision, 2026-11-16)
+
+**This is a game rule, not a norm reading.** With the corridor-scale class (§4) no stretch of any pack is
+mountainous, so hairpins — allowed by ČSN 73 6101:2000 §8.5.7 only "v území horského charakteru", and absent from
+the 2018 edition — would be violations everywhere. The game therefore allows a hairpin (VALID, with the note "a
+departure from the road standard: needs the road authority's approval, as the hairpins on I/44 Červenohorské sedlo
+did") wherever the ground **around the hairpin itself** is steep: the per-point reading of §4.1 (predominant slope
+within 500 m) over 15 %, on a stretch at the category's lowest design speed, turning ≥ 150°. The gradient limits
+keep the section class of §4.2 (the norm). Elsewhere a hairpin remains a violation the player may keep.
+Precedent: I/44 Červenohorské sedlo (S 9.5/60, hairpins of 17.5 m) was built under an approved departure from
+ČSN 73 6101 on a mountain pass (research/47 §2–3).

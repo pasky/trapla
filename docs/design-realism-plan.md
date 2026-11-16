@@ -151,8 +151,10 @@ Plain arc, no transition. Each lane widened to the swept path of a 16.5 m articu
 margin (VUT/HBH 2015: R 30 → 4.0 m + 0.75 m class I, 0.5 m class II/III), tapered 1:10, drawn and billed (extra
 pavement, research/46 §3) and in the earthworks. Grade in the hairpin: resultant slope √(s² + p²) ≤ 10 % where
 icing is frequent (2018 §8.10.1) with p = 8 % → s ≤ 6 %. Travel time: the table's speed (30 km/h at 30 m).
-Validity: on a mountainous stretch at the category's lowest speed it is VALID with the note "needs the road
-authority's approval"; elsewhere a violation the player may still choose.
+Validity (game rule, research/54 §5): where the ground around the hairpin is steep (predominant slope within
+500 m over 15 %, even if the 10 km section is classed hilly), at the category's lowest speed, it is VALID with the
+note "a departure from the road standard: needs the road authority's approval" (I/44 precedent); elsewhere a
+violation the player may still choose.
 
 **Terrain class** (research/54): the norm classes the natural ground slope of a region (2000 §8.2.2: hilly ≤ 15 %,
 mountainous steeper), and designers class whole sections (D11 1106–1109, D49, I/13). The game: the median ground
@@ -160,7 +162,7 @@ slope within 500 m of each point, and a stretch's class from the running median 
 (the shortest window that classes every documented section in our packs as it was: all hilly; 5 km would call
 4 km of D11 1109 mountainous, which the EIA did not). No pack covers a documented mountain road, so that side is
 uncalibrated; the flat class (S 9.5 4.5 %, motorway 3 %) is not modelled. Consequence: in today's packs no
-stretch is mountainous, so hairpins are violations there and the 8 % grade never applies.
+stretch is mountainous, so the 8 % grade never applies (hairpins follow the local-ground game rule above).
 
 **Not in M4:** an isolated curve below 70 km/h radii other than a hairpin (the 2018 text allows one signed
 isolated element but gives no lower bound), the 60 / 50 km/h rows of the older editions.

@@ -68,13 +68,12 @@ describe('hairpins (research/47 §3)', () => {
     expect(w[0]).toBe(0);
   });
   it('is allowed only in the mountains on a stretch at the lowest speed', async () => {
-    const { hairpinViolations, mountainousAlong } = await import('../src/core/design-speed');
+    const { hairpinViolations } = await import('../src/core/design-speed');
     const { syntheticTerrain } = await import('../src/core/terrain');
-    const { station } = await import('../src/core/horizontal');
-    const steepGround = syntheticTerrain(400, 400, 5, (_x, y) => 300 + 0.25 * y), flatGround = syntheticTerrain(400, 400, 5, () => 300);
-    const steep = mountainousAlong(steepGround, station(al(zig), 10)), flat = mountainousAlong(flatGround, station(al(zig), 10));
+    // game rule: the ground around the hairpin itself is steep (the 10 km section may still be hilly)
+    const steep = syntheticTerrain(400, 400, 5, (_x, y) => 300 + 0.25 * y), flat = syntheticTerrain(400, 400, 5, () => 300);
     expect(hairpinViolations(al(zig), zig, 70, 'S9.5', steep)).toEqual([]);
-    expect(hairpinViolations(al(zig), zig, 70, 'S9.5', flat).map(v => v.title)).toEqual(['Hairpin at bend 1 outside the mountains']);
+    expect(hairpinViolations(al(zig), zig, 70, 'S9.5', flat).map(v => v.title)).toEqual(['Hairpin at bend 1 on gentle ground']);
     expect(hairpinViolations(al(zig), zig, 90, 'S9.5', steep).map(v => v.title)).toEqual(['Hairpin at bend 1 on a 90 km/h stretch']);
     // a hairpin turns the road almost back on itself; a 40° bend is a case for a lower design speed instead
     const gentle: PI[] = [{ x: 1000, y: 200, r: null, hairpin: true }];
