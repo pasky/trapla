@@ -3860,7 +3860,7 @@
         "vpis": []
       },
       "expected": {
-        "geometryHash": "ebb01fd8462352849224955f0db8b71627414f726341a47cfe54628294b77fee",
+        "geometryHash": "f229ff52ba6f960d47864be98c2d42b4ab1d70f7973f53bc56a3a25f6ecec0ae",
         "cost": {
           "roadBase": 740835938.2922039,
           "earthworks": 734318276.9800156,
@@ -3877,18 +3877,18 @@
           },
           "bridges": 1201588692.8815823,
           "tunnels": 0,
-          "crossings": 438929986.5647176,
+          "crossings": 381862529.22690743,
           "noiseWalls": 71212180.68163736,
-          "construction": 3186885075.400157,
-          "surcharge": 1070319394.199126,
-          "land": 515946692.11987877,
+          "construction": 3129817618.0623465,
+          "surcharge": 1040741338.614866,
+          "land": 540305492.1198788,
           "landDetail": {
             "land": 240783283.6541742,
             "forest": 8495058.46570458,
-            "buildings": 248808150,
+            "buildings": 273166950,
             "noiseBuyouts": 17860200
           },
-          "total": 4773151161.719162
+          "total": 4710864448.7970915
         },
         "parts": {
           "roadBase": 740835938.2922039,
@@ -3903,12 +3903,12 @@
           "culverts": 18475192.01261628,
           "bridges": 1201588692.8815823,
           "tunnels": 0,
-          "crossings": 438929986.5647176,
+          "crossings": 381862529.22690743,
           "noiseWalls": 71212180.68163736,
-          "surcharge": 1070319394.199126,
+          "surcharge": 1040741338.614866,
           "land": 240783283.6541742,
           "forest": 8495058.46570458,
-          "buildings": 248808150,
+          "buildings": 273166950,
           "noiseBuyouts": 17860200
         },
         "vpis": [
