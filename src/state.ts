@@ -145,10 +145,7 @@ export function describeChange(a: Design, b: Design): string {
   return parts.join(', ') || 'last change';
 }
 
-/** The start: straight A→B with the automatic (norm-abiding) grade line — an honest, if expensive, bill. */
-export function startDesign(): Design {
-  return { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [], structureOverrides: [] };
-}
+export { startDesign } from './core/project-mission';
 
 /** a stretch of the route picked for the cost breakdown (stations in metres), or null = whole route */
 export interface StationRange { s0: number; s1: number }

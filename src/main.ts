@@ -7,10 +7,10 @@ import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
-import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
+import { ENDPOINT_JUNCTIONS, ROAD_CLASSES } from './core/data/urban';
 import { ROUNDABOUT_HOSTS } from './core/tie-in';
-import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
-import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, rejoinStretch } from './core/project-motorway';
+import { missionProject } from './core/project-mission';
+import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinCorridor, rejoinStretch } from './core/project-motorway';
 import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
 import { classTraffic } from './core/traffic-census';
 import { UNCOUNTED_TRAFFIC } from './core/data/traffic';
@@ -48,10 +48,9 @@ import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
 import { endpointJunctions, loadPack } from './scenario';
-import { startDesign } from './state';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
-import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
+import { makeLegacyProjectContext, replaceRouteFromLegacy } from './core/project-legacy';
 import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
 import { acceptsProjectMessage, type NoiseBandOut, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
@@ -105,20 +104,12 @@ async function main() {
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },
     { presetId, packId: meta.id, objectData, transportData });
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
-  // One deep-cloned scenario factory for first start AND Start over; existing saves never receive defaults.
-  const initialRoad = (): Design => ({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) });
-  const motorwayMission = scenario.mode === 'motorway', railwayMission = scenario.mode === 'railway';
-  // The mission ports come from the same legacy context; the corridor / railway then owns the alignment.
-  const roadBase = () => projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, legacyContext);
-  const initialProject = () => motorwayMission
-    ? createMotorwayProject(roadBase(), initialRoad(), { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
-    : railwayMission ? createRailwayProject(roadBase(), initialRoad(), scenario.railTraffic)
-    : projectFromLegacyDesign(initialRoad(), legacyContext);
+  // One scenario factory for first start AND Start over (core/project-mission.ts, shared with the Node scripts).
+  const { initial: initialProject, mission } = missionProject(scenario, legacyContext);
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
-    objectData, transportData, pricingData, initial: initialProject,
-    mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : railwayMission ? railwayMissionOf(legacyContext.mission, scenario.railTraffic) : legacyContext.mission,
+    objectData, transportData, pricingData, initial: initialProject, mission,
     // Old single-road saves belong to the road exercise only, never to a motorway or railway mission.
-    ...(motorwayMission || railwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
+    ...(scenario.mode === 'motorway' || scenario.mode === 'railway' ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });
   let opened: ReturnType<typeof openStore>;
   try { opened = openStore(); }
