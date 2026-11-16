@@ -55,7 +55,7 @@ export class LinkEditor {
   /** the selected crossing's reroute, if it has one to shape */
   private crossing(roadId = this.host.selected()) {
     if (roadId === null) return null;
-    const all = this.host.result()?.crossings.filter(c => c.roadId === roadId && (c.type === 'reconnection' || c.type === 'diversion') && c.geometry?.links) ?? [];
+    const all = this.host.result()?.crossings.filter(c => c.roadId === roadId && (c.type === 'reconnection' || c.type === 'diversion') && !c.moved && c.geometry?.links) ?? [];
     return all.find(c => c.via) ?? all[0] ?? null;
   }
   private via(roadId: number): LinkVia {
@@ -66,7 +66,7 @@ export class LinkEditor {
   /** a press on a reroute link: dragging it adds a bend point there and moves it */
   grab(hit: CrossingHit): MapGrab | null {
     const c = hit.crossing, side = hit.link, roadId = c.roadId;
-    if (side === undefined || roadId === undefined || (c.type !== 'reconnection' && c.type !== 'diversion')) return null;
+    if (side === undefined || roadId === undefined || (c.type !== 'reconnection' && c.type !== 'diversion') || c.moved) return null;
     const path = c.geometry?.links?.[side];
     if (!path || path.length < 2 || !shapeable(this.host.result(), this.host.design(), roadId)) return null;
     const to = c.targetRoadId ?? (c.targetS === 0 ? -1 : -2);

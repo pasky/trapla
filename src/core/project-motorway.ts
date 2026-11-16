@@ -75,7 +75,7 @@ export function corridorDesign(project: ProjectDesign, corridor: CorridorDesign)
   const { crossings, ...controls } = spine.controls;
   const crossingOverrides = crossings?.map(c => {
     if (c.target.kind !== 'legacy-way' || c.target.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
-    return { roadId: c.target.roadId, type: c.choice };
+    return { roadId: c.target.roadId, type: c.choice, ...(c.square !== undefined ? { square: c.square } : {}) };
   });
   return structuredClone({ ...controls, category: MOTORWAY_CATEGORY, speed: spec.designSpeed,
     pis: spine.pis, profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [],
@@ -92,7 +92,7 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
   const { category: _c, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, ...controls } = structuredClone(d);
   const before = corridor.spine.kind === 'pi' ? corridor.spine.pis : [], oldSpeed = corridorSpeed(next, corridor);
   corridor.spine = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
-    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId } })) }) },
+    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId }, ...(c.square !== undefined ? { square: c.square } : {}) })) }) },
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
       : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } };
   for (const id of [corridor.children.forward, corridor.children.reverse]) {
@@ -346,7 +346,7 @@ export function carriagewayDesign(project: ProjectDesign, route: RouteDesign): D
   const { crossings, ...controls } = a.controls;
   const crossingOverrides = crossings?.map(c => {
     if (c.target.kind !== 'legacy-way' || c.target.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
-    return { roadId: c.target.roadId, type: c.choice };
+    return { roadId: c.target.roadId, type: c.choice, ...(c.square !== undefined ? { square: c.square } : {}) };
   });
   return structuredClone({ ...controls, category: CARRIAGEWAY_CATEGORY, speed: route.specification.designSpeed, pis: a.pis,
     profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [], gradePins: v.kind === 'auto' ? v.pins : v.autoPins,
@@ -358,7 +358,7 @@ export function replaceCarriagewayFromDesign(project: ProjectDesign, routeId: st
   if (d.category !== CARRIAGEWAY_CATEGORY || !designSpeeds(d.category).includes(d.speed)) throw new Error('Wrong category for a motorway direction');
   const { category: _c, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, ...controls } = structuredClone(d);
   route.alignment = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
-    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId } })) }) },
+    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId }, ...(c.square !== undefined ? { square: c.square } : {}) })) }) },
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
       : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } };
   // One design speed for the motorway: both directions follow.

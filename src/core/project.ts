@@ -43,7 +43,7 @@ export type CrossingTarget =
   | { kind: 'route'; routeId: RouteId; s0: number; s1: number };
 export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrides' | 'objectData' | 'pis'
   | 'profileMode' | 'vpis' | 'gradePins' | 'crossingOverrides'> & {
-    crossings?: { target: CrossingTarget; choice: CrossingChoice; via?: LinkVia; to?: number }[];
+    crossings?: { target: CrossingTarget; choice: CrossingChoice; via?: LinkVia; to?: number; square?: boolean }[];
   };
 export type DesignedVertical =
   | { kind: 'auto'; pins: NonNullable<Design['gradePins']>; /** Dormant legacy manual controls, not grade authority. */ manualVpis?: Design['vpis'] }

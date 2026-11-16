@@ -28,7 +28,7 @@ export function railwayDesign(project: ProjectDesign, route: RouteDesign): Desig
   const { crossings, ...controls } = a.controls;
   const crossingOverrides = crossings?.map(c => {
     if (c.target.kind !== 'legacy-way' || c.target.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
-    return { roadId: c.target.roadId, type: c.choice };
+    return { roadId: c.target.roadId, type: c.choice, ...(c.square !== undefined ? { square: c.square } : {}) };
   });
   return structuredClone({ ...controls, category: categoryOf(route), speed: route.specification.designSpeed, pis: a.pis,
     profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [], gradePins: v.kind === 'auto' ? v.pins : v.autoPins,
@@ -42,7 +42,7 @@ export function replaceRailwayFromDesign(project: ProjectDesign, routeId: string
   if ((d.category !== 'R1' && d.category !== 'R2') || !designSpeeds(d.category).includes(d.speed)) throw new Error('Wrong category for a railway');
   const { category, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, maxGradient: _g, ...controls } = structuredClone(d);
   route.alignment = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
-    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId } })) }) },
+    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId }, ...(c.square !== undefined ? { square: c.square } : {}) })) }) },
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
       : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } };
   route.specification = { ...route.specification, tracks: category === 'R1' ? 1 : 2, designSpeed: speed,

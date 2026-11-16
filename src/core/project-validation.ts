@@ -39,6 +39,8 @@ function controls(v: unknown): boolean {
     if (c.via !== undefined && (c.choice !== 'reconnection' || !list(c.via) || c.via.length !== 2 || !c.via.every(side => list(side)
       && side.length <= MAX_LINK_VIA && side.every(p => object(p) && number(p.x) && number(p.y) && Math.abs(p.x) <= MAX_LINK_COORD && Math.abs(p.y) <= MAX_LINK_COORD)))) return false;
     if (c.to !== undefined && (c.via === undefined || !Number.isSafeInteger(c.to) || (c.to as number) < -2)) return false;
+    // straightened or kept on its line: an underpass or a bridge over us only
+    if (c.square !== undefined && (typeof c.square !== 'boolean' || (c.choice !== 'underpass' && c.choice !== 'overbridge'))) return false;
     const t = c.target;
     return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId)
       : t.kind === 'source' ? interval(t.interval)
