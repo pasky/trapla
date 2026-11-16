@@ -262,9 +262,6 @@ export function motorwayMission(mission: ProjectDesign['mission']): ProjectDesig
   return { ...structuredClone(mission), connections: mission.connections.map(c => ({ ...c, kinds: ['motorway'] as RouteDesign['kind'][] })) };
 }
 
-/** Crown width the renderer/footprint screens use for a corridor (whole formation). */
-export const motorwayCrownWidth = () => CATEGORIES[MOTORWAY_CATEGORY].crownWidth;
-
 // ---- Separate carriageways (split / rejoin) --------------------------------------------------------
 
 /** One direction of a split corridor (data/categories.ts 'D27.5-1'). */

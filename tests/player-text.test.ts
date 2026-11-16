@@ -7,7 +7,7 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   trackEndViolations, verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, footprintOutcome, jargonIn, MINOR_CROSSING_TEXT, togetherHouseText } from '../src/core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, DIRECTIONS_TEXT, endCard, footprintOutcome, jargonIn, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate, type Design, type Result } from '../src/core/evaluate';
@@ -81,6 +81,16 @@ describe('player-facing text', () => {
       for (const text of [card.title, ...card.lines]) { expect(text.trim()).not.toBe(''); check(`${sc.id} end ${end}`, text); }
     }
     expect(ends).toBeGreaterThan(8);
+    // a motorway direction is named after the place it leads to, never with its section note in nested
+    // brackets (QA: "Drag this direction (Hostěradice (on to 0303)).")
+    for (const sc of PRESETS) for (const label of [sc.labels.a, sc.labels.b]) {
+      const place = placeName(label);
+      for (const text of [DIRECTIONS_TEXT.towards(place), DIRECTIONS_TEXT.one(place), DIRECTIONS_TEXT.oneTitle(place)]) {
+        check(`${sc.id} direction`, text);
+        expect(text, `${sc.id}: brackets inside brackets`).not.toMatch(/\([^()]*\(/);
+      }
+    }
+    expect(placeName('Hostěradice (on to 0303)')).toBe('Hostěradice');
     const terrain = syntheticTerrain(500, 80, 5, () => 400);
     const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } }, startDesign());
     for (const line of ['road', 'motorway', 'railway'])

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectIssue, ProjectResult } from '../src/core/project';
-import { aloneText, listProjectIssues, notCheckedYet, projectBadge, unpricedText } from '../src/ui/project-issues';
+import { czk } from '../src/ui/costgroups';
+import { aloneText, billChangeText, lineBills, listProjectIssues, notCheckedYet, projectBadge, unpricedText } from '../src/ui/project-issues';
 
 const issue = (title: string, routeIds: string[], blocking: ProjectIssue['blocking'], basis: 'engine' | 'game' | 'norm', s0?: number): ProjectIssue => ({
   code: title, blocking, check: basis === 'engine' ? 'not-checked' : 'violation', scope: { routeIds }, locations: s0 === undefined ? [] : [{ routeId: routeIds[0], s0, s1: s0 + 10 }],
@@ -63,5 +64,22 @@ describe('project issue list', () => {
     const mw = { fwd: 'Motorway D3', rev: 'Motorway D3', side: 'Valley road', nf: 'New motorway', nr: 'New motorway' };
     expect(aloneText({ fwd: 524, rev: 524, side: 27, nf: 9, nr: 9 }, 'side', new Set(['fwd', 'rev']), mw, money, 'our motorway', { nf: 'c', nr: 'c' }))
       .toBe('Alone: our motorway 524 M, New motorway 9 M');
+  });
+
+  it('says which roads\' bills one edit changed (QA: rebuilding III/1057 under our bridge, −17 M unexplained)', () => {
+    // the owner's case, as measured: the rebuilt road costs 9.8 M; our motorway's bridge over it is 30 m
+    // shorter (−35.4 M) and its embankment longer (+10.9 M); a paired motorway's two directions share one result
+    const cost = (bridges: number, earthworks: number) => ({ roadBase: 0, earthworks, earthDetail: { culverts: 0 }, bridges, tunnels: 0, crossings: 0,
+      noiseWalls: 0, surcharge: 0, landDetail: { land: 0, forest: 0, buildings: 0, noiseBuyouts: 0 } });
+    const body = (bridges: number, earthworks: number) => ({ legacy: { cost: cost(bridges, earthworks) } });
+    const project = (alone: Record<string, number>, routes: Record<string, unknown>) => ({ cost: { alone }, routes }) as unknown as ProjectResult;
+    const was = body(3_877.6e6, 2_000e6), now = body(3_842.2e6, 2_010.9e6), money = (v: number) => czk(v).replace(' CZK', '');
+    const ours = new Set(['fwd', 'rev']), names = { fwd: 'Motorway', rev: 'Motorway', r1: 'Road III/1057' };
+    const before = lineBills(project({ fwd: 14_219.9e6 }, { fwd: was, rev: was }), ours, names, 'our motorway');
+    const after = lineBills(project({ fwd: 14_195.5e6, r1: 9.8e6 }, { fwd: now, rev: now, r1: body(0, 0.6e6) }), ours, names, 'our motorway');
+    expect(after.get('ours')!.groups.bridges).toBeCloseTo(3_842.2e6);
+    expect(billChangeText(before, after, money)).toBe('Our motorway −24 M (bridges −35 M) · Road III/1057 +9.8 M');
+    // one road's own change needs no breakdown (the change line says it)
+    expect(billChangeText(before, lineBills(project({ fwd: 14_000e6 }, { fwd: now, rev: now }), ours, names, 'our motorway'), money)).toBe('');
   });
 });

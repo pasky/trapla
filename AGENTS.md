@@ -39,6 +39,12 @@ on D11, the D3 sections and the whole D3 / D35, plus QA's repros; exit 1 if a gr
 anything beyond 8 km) for anything touching the grade solve, retries or previews. Look at the screenshots yourself; reviews of numbers alone missed
 broken visuals and jargon before.
 
+One command: `scripts/gates.sh quick` while iterating, `scripts/gates.sh full` once per merge (lock protocol
+built in; `list` shows the gates; `--no-browser`, `--only`, `--skip`). A change meant to preserve behaviour
+(refactor, performance): `npx tsx scripts/exact.ts --out /tmp/before.json` on the base, then
+`scripts/gates.sh full --exact /tmp/before.json` (every whole result of every pack identical). Structure,
+findings and the refactoring plan: `docs/architecture-review.md`.
+
 ## Workflow gotchas
 
 - Work happens in side-agent worktrees. The scenario pack (`public/scenarios/`) and `pipeline/cache/` are
@@ -47,6 +53,9 @@ broken visuals and jargon before.
 - Never use `git stash`: it is shared across all worktrees and has swapped work between agents.
 - Screenshot galleries in `docs/screenshots/` are numbered; continue after the highest number and update
   README references.
+- Browser scripts start vite on the working tree: an edit in `src/` while smoke / playtest runs reloads the
+  page under them. Run browser gates from a clean checkout of the commit (`git worktree add --detach`, with
+  `node_modules`, `public/scenarios` and `pipeline/cache` symlinked in).
 - Close headless Chromium after each scripted run; persistent SwiftShader browsers eat CPU and skew timings.
 - Raw data is never committed; this is a localhost game, licences of fetched data are not a concern.
 
@@ -70,8 +79,12 @@ broken visuals and jargon before.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running
   along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a crossed way whose cut
   ends stay connected over other roads is still rerouted instead of closed; merged crossings of different ways
-  within 30 m keep one remedy for the group. Lowered underpasses ignore groundwater; pier placement near
-  the Polish border can fail (engine limit).
+  within 30 m keep one remedy for the group unless that leaves one buried (then it is a crossing of its own,
+  a retry). Lowered underpasses ignore groundwater; pier placement near the Polish border can fail (engine limit).
+- Project roads (2026-11-16 final-sweep P1s, PLAN.md "Final-sweep P1s"): the player's road takes over from
+  our reroutes (they are planned again clear of it); new railways and motorways are crossed by the
+  higher-ranking line; `scripts/reroute-takeover-audit.ts` still leaves 47 of 292 D11 bends near our reroutes
+  unpriced (mostly the rebuilt road's own body within 10 m of our embankment, a real conflict).
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical-curve minima and max gradient are older-edition (pre-2018) values; transition curves not drawn;
   no superelevation / sight-distance checks.
