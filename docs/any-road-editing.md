@@ -306,11 +306,10 @@ Owner's case (D3 III/1057): right after the first drag the card showed "R 69 m: 
   travel time (`operations.speed`, `speedPolicy: 'independent'`). The card says so.
 - D3 III/1057 untouched after conversion: valid, one note, 975 m kept, 0 CZK, priced with the motorway. Dragged
   40 m at its middle: 536 m kept, 438 m of old road removed, ≈ 34 M CZK.
-- **Known limits**: on kept cells the drawn body is still the kernel's norm-compliant Auto profile (small cuts and
-  fills on a bumpy old road are drawn but not billed; item F should make it hug the old road); a house whose
-  loudest exposure is from a kept part is not re-checked against the adjoining new part; a dragged bend near the
-  old road's side roads can still raise crossing findings of the player's own new line (e.g. "Ramps up to the
-  bridge over our road would be longer than 250 m" for a track it now crosses).
+- **Known limits**: a house whose loudest exposure is from a kept part is not re-checked against the adjoining
+  new part; a dragged bend near the old road's side roads can still raise crossing findings of the player's own
+  new line (e.g. "Ramps up to the bridge over our road would be longer than 250 m" for a track it now crosses).
+  (§10 replaced the credit line and the Auto profile on kept cells: nothing is billed or drawn off the ground there.)
 - Tests: `tests/road-edit.test.ts` "a rebuilt stretch inherits no violations from its old road" (conversion of a
   sharp corner; untouched = valid, note, nothing billed, house stays; moved bend = violation, billed), and the
   pricing test (kept credit equals the kernel's parts on kept cells).
@@ -389,3 +388,61 @@ recovery).
 - Tests: `tests/road-edit.test.ts` (census match, uncounted, moved ends, new road, names),
   `tests/project-store.test.ts` (old save), `scripts/any-road-scene.mjs` (label in the card, priced from the first
   drag unless roads interact, the player's number drops the label; the unpriced-houses check moved to the free end).
+
+## 10. The old road's heights (item F), a drag on a curve, located interactions, QA session 1 (2026-11-16)
+
+**F: rebuilt Jičínská sat flat in a 6 m cut for 0.85 km (screenshot 104).** Cause: the kernel designed the whole
+stretch as a new road, kept parts included. Where the old road crosses a stream on its own small culvert, a new
+road needs a norm-sized one with cover (`waterSize().minHeight`), so Auto lifted the grade 4–6 m there, and the
+mass balance then dug a long cut along the kept road to feed that embankment (or, the other way round, heaped the
+new part's spoil onto the kept road: +6.6 m on kept cells in the Node repro). Fixed in three places:
+
+- `evaluateProjectRoad` knows the kept cells before the kernel runs (they depend on the line only) and passes
+  them as `EvalOptions.oldRoad`. There Auto (a) does not lift the grade for a new culvert or bridge over a stream,
+  (b) stays within `OLD_ROAD_BAND` (1 m, PROVISIONAL) of the surveyed surface, (c) holds the last kept cell beside
+  each new part within `OLD_ROAD_TIE` (0.5 m, PROVISIONAL, as a crossing hold): a new part starts and ends at the
+  old road's height, and (d) places its height points every `OLD_ROAD_KNOTS` = 125 m instead of 250 m (PROVISIONAL:
+  new parts are a few hundred metres long; still one minimum vertical curve of 70 km/h per point). Mission roads
+  never pass the option: D11 bills bit-identical.
+- `applyKept` lays the kept road on the ground (`layOnGround`: grade = ground, no cut, fill or slopes, as wide as
+  the road; the kernel's heights fade out over `TIE_LENGTH` = 50 m beside a new part; the result gets its own
+  arrays) and **bills nothing there**: `parts` are zero on kept cells and `cost` is their sum. The "kept" work is
+  a line without an amount ("518 m stay on the old road: kept as it is, not built anew"); there is no credit and
+  no `keptCredit` any more. So the profile, the 3D body, the cost strip, "Where the money goes", the Cost section
+  and "This road only" all show exactly what is built. A kept part is its own piece: clicking it says "Old road ·
+  518 m · kept as it is", with nothing to choose.
+- D11 Jičínská untouched: on the ground everywhere, 0 CZK. Dragged 25 m and lengthened 120 m (the screenshot's
+  case): kept parts on the ground, the new 250 m ties in at both ends and cuts through the bank it was dragged
+  onto. D3 III/1057 dragged 40 m at its middle: 36 M CZK (34 M before, with the old free-floating profile).
+- Test: `tests/road-edit.test.ts` "is drawn on the ground where the old road is kept…" (rough surface + a mound).
+- Known limits: the Quantities section still counts the kernel's volumes on kept cells; grade labels and the
+  dashed tangent line in the profile are the kernel's smooth line; a By-hand profile on a kept part has no effect.
+
+**A drag that starts on a bend's curve moves that bend** (`ui/road-edit.ts` `bendAt`, `main.ts` `bendByDrag`;
+every road, ours too): a new bend inside an existing curve folded the line back on itself (the curve's corner
+point lies outside the curve). The owner's D3 case, grabbed 120 m from our bridge, gave "Bend 1 is too close to
+the U-turn at bend 2 · move it 892 m" on a 590 m road; now the old corner moves with the pointer (keeping its
+offset from it) and the result is valid. On a straight a drag adds a bend as before.
+
+**Why there is no total, located** (QA #8): an interaction is one line per shared thing with its place and a
+number: "Two roads' earthworks are closer than 10 m · Move one of them about 7 m away here" (`touches` reports
+the deepest overlap and where), "2 houses hear both roads · Their noise together is not checked yet…" (one line
+per pair of roads; waits for G), "Two roads take the same house", "Two roads change the same old road". A click
+flies there. The land screen now measures each road's land to its further slope edge (the land take is exactly
+dayL + dayR wide) instead of using the whole width as a radius, and a deck's width on bridges instead of the
+slopes of earthworks that are not built: about half as much ground counts as shared. The score line says what
+holds the total back and keeps what is priced in view: "Road III/1057 not priced yet. Our road alone: 15.31 bn
+CZK" (`aloneText`; a motorway's other direction is not a "road change").
+
+**QA session 1** (`worktree-0005/docs/playtest-findings.md`): #7 gone with the issue (the fields are pre-filled,
+reachable above every card, labelled for screen readers; the scene checks they are not covered); #8 above; #12
+Build → Road on our motorway says "A motorway can only be joined at an interchange…", and placing shows a marker
+under the pointer with what a click would join, a dashed line from the start and its length ("389 m · open
+ground (joins no road)", "42 m: too short, at least 100 m"); #21 "No land bought where the new road lies on the
+old one: 9 m", "Junction with the track at km 0.42" / "Track at km 0.42 reconnected: 33 m of new road and a
+junction", header "Road III/1057" without a second class label, lines that round to 0.0 M left off the card, a
+shorter intro, traffic on one line; #22 verified: the old stretch is off the map as soon as its new line is
+engineered, priced or not (scene asserts `acceptedReplacements`; screenshot 107); #23 `aria-label`s.
+
+`scripts/owner-d3-scene.mjs` plays the owner's exact steps on the D3 motorway preset with a real mouse and
+checks all of the above (screenshots 106–109 with `--docs`).

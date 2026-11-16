@@ -9,6 +9,7 @@ import type { Result } from './evaluate';
 import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
 import * as dm from './detmath';
+import { KIND } from './structures';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
  * unpriced; none of them can make an interacting project priced. */
@@ -38,7 +39,10 @@ export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; s
    * (owned by this road), not shared land. */
   junctions?: { routeId: RouteId; x: number; y: number; r: number }[] }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
-export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number }
+export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number;
+  /** shared land: where the two roads' land and works come closest, and how many metres further apart
+   * they would have to be there (overlap plus the clearance) */
+  at?: { x: number; y: number }; need?: number }
 export interface IndependenceScreen {
   independent: boolean; interactions: RouteInteraction[];
   /** Upper bound on neglected linear energy at a house from roads other than its own one. */
@@ -78,21 +82,31 @@ function segmentSegment(a: Capsule, b: Capsule): number {
     pointSegment(b.ax, b.ay, a.ax, a.ay, a.bx, a.by), pointSegment(b.bx, b.by, a.ax, a.ay, a.bx, a.by));
 }
 const boxGap = (a: Chunk, b: Chunk) => Math.max(0, a.minX - b.maxX, b.minX - a.maxX, a.minY - b.maxY, b.minY - a.maxY);
-function touches(a: Chunk[], b: Chunk[]): boolean {
+/** Do two roads' envelopes touch? Where they are deepest into each other (on the narrower piece, i.e. the
+ * smaller road), and by how much; null: they keep the clearance everywhere. */
+function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?: number } | null {
+  let found = false, worst = -Infinity, at: { x: number; y: number } | undefined;
   for (const p of a) for (const q of b) if (boxGap(p, q) <= 0) for (const s of p.items) for (const t of q.items) {
-    const r = s.r + t.r;
-    if (!(segmentSegment(s, t) >= r)) return true; // NaN/Infinity fail closed
+    const r = s.r + t.r, d = segmentSegment(s, t);
+    if (d >= r) continue; // NaN/Infinity fail closed
+    found = true;
+    const need = r - d, narrow = s.r <= t.r ? s : t;
+    if (Number.isFinite(need) && need > worst) { worst = need; at = { x: (narrow.ax + narrow.bx) / 2, y: (narrow.ay + narrow.by) / 2 }; }
   }
-  return false;
+  return found ? (at ? { at, need: worst } : {}) : null;
 }
 
 /** Land take, works and removed old roads of one evaluated road, each padded by half the clearance. */
 function envelope(result: Result, halfWidth: number): Capsule[] {
   const pad = INDEPENDENCE_SCREEN.clearance / 2, out: Capsule[] = [];
+  // How far the road's land reaches from its centreline. On earthworks: to the further slope edge (the
+  // land take there is exactly dayL + dayR wide, which is cell.width). On a bridge or in a tunnel the slope
+  // edges are those of earthworks that are not built: the deck's whole width is taken as the reach instead
+  // (too much rather than too little; 0 in a tunnel). Never less than half the crown; unknown fails closed.
   const reach = (i: number) => {
-    let r = Math.max(result.cell.width[i], halfWidth);
-    for (const v of [result.dayL[i], result.dayR[i]]) if (Number.isFinite(v)) r = Math.max(r, Math.abs(v));
-    return r;
+    const l = Math.abs(result.dayL[i]), r = Math.abs(result.dayR[i]);
+    if (result.kind[i] !== KIND.earth) return Math.max(halfWidth, result.cell.width[i]);
+    return Number.isFinite(l) && Number.isFinite(r) ? Math.max(halfWidth, l, r) : Infinity;
   };
   // (where a rebuilt stretch keeps its old road nothing is built: no land, no works; project-kept.ts)
   const kept = result.keptCells;
@@ -199,7 +213,8 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     const at = [...(routes[a].junctions ?? []).filter(j => j.routeId === routes[b].routeId), ...(routes[b].junctions ?? []).filter(j => j.routeId === routes[a].routeId)];
     const away = (list: Capsule[]) => chunks(list.filter(c => !at.some(j => pointSegment(j.x, j.y, c.ax, c.ay, c.bx, c.by) < j.r)));
     const [ea, eb] = at.length ? [away(raw[a]), away(raw[b])] : [envelopes[a], envelopes[b]];
-    if (touches(ea, eb)) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land' });
+    const touch = touches(ea, eb);
+    if (touch) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land', ...touch });
   }
   // Existing roads: two roads changing one way, or a closure relying on a detour while another road changes any road.
   const touched = routes.map(r => { const t = touchedRoads(r.result); for (const id of r.extraRoads ?? []) t.roads.add(id); return t; });

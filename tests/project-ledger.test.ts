@@ -6,7 +6,7 @@ import { evaluate } from '../src/core/evaluate';
 import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { makeLegacyProjectContext, projectFromLegacyDesign } from '../src/core/project-legacy';
 import { isScorableProject } from '../src/core/project-protocol';
-import { screenIndependence } from '../src/core/project-ledger';
+import { INDEPENDENCE_SCREEN, screenIndependence } from '../src/core/project-ledger';
 import { jargonIn } from '../src/core/terms';
 import { syntheticTerrain } from '../src/core/terrain';
 
@@ -71,6 +71,15 @@ it('screens separate roads as independent, and overlapping land as shared', () =
   const screen = (y: number) => screenIndependence([{ routeId: 'main', result: own(250), ...op }, { routeId: 'side', result: own(y), ...op }], undefined);
   expect(screen(450).independent).toBe(true);
   expect(screen(262).interactions.map(i => i.reason)).toEqual(['shared-land']);
+  // land reaches to the further slope edge of each road, not its whole width to either side: two roads whose
+  // slope edges keep the 10 m clearance are independent, one metre closer they are not; the report says
+  // where they are closest and how much further apart they would have to be
+  const one = own(250), reach = Math.max(...one.dayL, ...one.dayR, 4.75), apart = 2 * reach + INDEPENDENCE_SCREEN.clearance;
+  expect(screen(250 + apart + 0.5).independent).toBe(true);
+  const close = screen(250 + apart - 3).interactions;
+  expect(close).toMatchObject([{ reason: 'shared-land', routeIds: ['main', 'side'] }]);
+  expect(close[0].need).toBeGreaterThan(2.9); expect(close[0].need).toBeLessThan(3.6);
+  expect(close[0].at!.x).toBeGreaterThan(100); expect(close[0].at!.x).toBeLessThan(1100); // on one of the two roads
 });
 
 it('never prices a road tied into an existing road or a mission port as if its ends were free', () => {
@@ -104,7 +113,7 @@ it('lets a house near the limit belong to one road only; a second road must stay
   const house = new BuildingIndex([[500, 100, 5]], [[100, 2, BUILDING_KIND.house, 500, 100, 3, 3, 0]]);
   const road = (y: number, receivers: { j: number; status: 'ok'; mitigated: number }[]) => {
     const n = 101, x = Float64Array.from({ length: n }, (_, i) => i * 10);
-    return { n, x, y: new Float64Array(n).fill(y), dayL: new Float64Array(n).fill(8), dayR: new Float64Array(n).fill(8),
+    return { n, x, y: new Float64Array(n).fill(y), kind: new Uint8Array(n), dayL: new Float64Array(n).fill(8), dayR: new Float64Array(n).fill(8),
       cell: { width: new Float64Array(n).fill(16) }, crossings: [], footprintConflicts: [], demolished: [], boughtOut: [], kept: [],
       noise: { receivers } } as unknown as import('../src/core/evaluate').Result;
   };

@@ -100,7 +100,9 @@ export const ROAD_BUILD: BuildKind = {
   },
   onRoute(route, result, s) {
     const r = result.legacy;
-    if (route.kind !== 'road' || !r) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
+    if (route.kind === 'motorway') return { ok: false, why: 'A motorway can only be joined at an interchange; those are not in the game yet.' };
+    if (route.kind !== 'road') return { ok: false, why: 'A road cannot end on a railway.' };
+    if (!r) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
     const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
     if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
     return { ok: true, label: route.role === 'mission' ? 'joins our road' : `joins ${route.name}`, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };

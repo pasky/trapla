@@ -7,7 +7,7 @@ import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
-import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
+import { aloneText, listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
 import { RAIL_TRAINS_PER_DAY } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
@@ -90,7 +90,7 @@ export class Hud {
   private projectIssuesFor: ProjectResult | null | undefined;
   private issuesActive: RouteId | undefined;
   private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId;
-    ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId } | null = null;
+    ownPrice: { total: number; approx: boolean; label: string; routeId?: RouteId } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId; ours: ReadonlySet<RouteId> } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
     for (const id of ['sec-cost', 'sec-stats', 'sec-decisions']) this.$(id).hidden = !hasResult;
@@ -101,10 +101,13 @@ export class Hud {
   setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; legacy?: boolean;
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
-    ownPrice?: { total: number; approx: boolean; label: string } | null;
+    ownPrice?: { total: number; approx: boolean; label: string; routeId?: RouteId } | null;
     /** road names, to say which road an issue belongs to when it is not the active one */
-    names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number> } = {}) {
+    names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number>;
+    /** every road that is "our road" (a motorway's two directions); default: the mission road */
+    ourRouteIds?: readonly RouteId[] } = {}) {
     const { missionRouteId, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {} } = opts;
+    const ours = new Set(opts.ourRouteIds ?? (missionRouteId ? [missionRouteId] : []));
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       this.$('best').style.display = '';
@@ -113,13 +116,13 @@ export class Hud {
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
       return;
     }
-    this.project = { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId }; this.renderProjectScore();
+    this.project = { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId, ours }; this.renderProjectScore();
   }
   /** the listed project issue k */
   listedIssue(k: number) { return this.project?.result?.issues[k] ?? null; }
   private renderProjectScore() {
     if (!this.project) return;
-    const { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId } = this.project, total = result?.cost.total;
+    const { result, pending, best, missionRouteId, ownPrice, names, lengths, activeRouteId, ours } = this.project, total = result?.cost.total;
     const priced = total !== null && total !== undefined, unpriced = result?.cost.unpriced.length ?? 0;
     // An unpriced network keeps one road's own price visible, plainly labelled, never as a total.
     this.$('cost-scope').textContent = priced ? 'Total cost' : ownPrice ? ownPrice.label : 'Total cost';
@@ -127,7 +130,10 @@ export class Hud {
       : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
-    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, missionRouteId, names) : this.goalText;
+    // no total: say which change holds it back, and keep what IS priced in view (each road alone, never added up)
+    const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk) : '';
+    this.$('perkm').textContent = !priced && unpriced ? `${unpricedText(result!.cost.unpriced, ours, names)}${others ? `. ${others}` : ''}` : this.goalText;
+    this.$('perkm').title = others ? 'Each road priced as if it were the only change. Not added up: roads that affect each other can cost more or less together.' : '';
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {

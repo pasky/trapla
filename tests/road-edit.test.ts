@@ -8,7 +8,7 @@ import { assertProjectDesign } from '../src/core/project-validation';
 import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
-import { derivedStretch, fitBends, isTraffic, moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
+import { bendAt, derivedStretch, fitBends, isTraffic, moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
 import { CLASS_TRAFFIC } from '../src/core/data/traffic';
 import type { TrafficCensus } from '../src/core/traffic-census';
 import { mappedRoadName } from '../src/core/terms';
@@ -141,6 +141,17 @@ describe('rebuilding a mapped road', () => {
     expect(newRoad(project, end(100), end(900), { routeId: 'n', acousticSourceId: 'b' }).specification).toMatchObject({ legalClass: 'II', operations: CLASS_TRAFFIC.II });
   });
 
+  it('a drag that starts on a bend\'s curve moves that bend; on a straight it adds one', () => {
+    // 700 m east, a 90° corner with a 60 m radius, 700 m north
+    const a = { x: 300, y: 300 }, b = { x: 1000, y: 1000 }, pis = [{ x: 1000, y: 300, r: 60 }];
+    // on the arc (its middle lies 60·(√2 − 1) ≈ 25 m inside the corner point): the corner itself is moved
+    const onArc = { x: 1000 - 60 + 60 * Math.SQRT1_2, y: 300 + 60 - 60 * Math.SQRT1_2 };
+    expect(bendAt(a, b, pis, 70, 'S7.5', onArc)).toBe(0);
+    expect(bendAt(a, b, pis, 70, 'S7.5', { x: 600, y: 300 })).toBeNull(); // the straight: a new bend
+    expect(bendAt(a, b, pis, 70, 'S7.5', { x: 600, y: 400 })).toBeNull(); // off the road
+    expect(bendAt(a, b, [], 70, 'S7.5', { x: 600, y: 300 })).toBeNull();
+  });
+
   it('names mapped roads as Czech maps do', () => {
     expect(mappedRoadName({ highway: 'tertiary', ref: '1057' })).toBe('road III/1057');
     expect(mappedRoadName({ highway: 'primary', ref: '14;16' })).toBe('road I/14 and I/16');
@@ -155,13 +166,13 @@ describe('rebuilding a mapped road', () => {
 // "Bend 1 is too close to its start" for bends the player had not touched.
 describe('a rebuilt stretch inherits no violations from its old road', () => {
   // An old class III road: 700 m east, a sharp 90° corner (as old roads have), 700 m north; ends on side roads.
-  function corner() {
+  function corner(ground: (x: number, y: number) => number = () => 300) {
     const xy = [300, 300, 1000, 300, 1000, 1000], stations = [0, 700, 1400];
     const graph: TransportGraphData = { version: 1, vectorData: 'vectors', renderFeatures: [], nodes: [
       { id: 'a', xy: [300, 300] }, { id: 'c', xy: [1000, 300] }, { id: 'b', xy: [1000, 1000] }], sources: [
       { id: 'old', osmWayId: '1', kind: 'road', nodes: ['a', 'c', 'b'], xy, stations, layer: 0, bridge: false, tunnel: false,
         elevation: 'terrain', tags: { highway: 'tertiary', ref: '1057', maxspeed: '90' }, render: [], legacyNetIndex: 0 }] };
-    const terrain = syntheticTerrain(500, 500, 5, () => 300);
+    const terrain = syntheticTerrain(500, 500, 5, ground);
     const base = new ProjectTransportIndex(graph, 'transport', 'vectors', terrain);
     const project: ProjectDesign = { schemaVersion: 1, scenarioId: 'test', presetId: 'edit', packId: 'test', objectData: 'objects', transportData: 'transport',
       routes: [], corridors: [], connections: [], buildingOverrides: [], mission: { id: 'test', revision: 0, ports: [], connections: [] } };
@@ -200,9 +211,9 @@ describe('a rebuilt stretch inherits no violations from its old road', () => {
     // what a new road would have to meet at the corner is a note about the old road, not the player's problem
     expect(own.inherited!.map(v => v.kind)).toContain('radius');
     expect(own.inherited!.every(v => v.pis?.includes(0) || v.pi === 0)).toBe(true);
-    // every metre stays on the old road: the whole bill is credited, nothing is removed, the house beside it stays
+    // every metre stays on the old road: nothing is billed, nothing is removed, the house beside it stays
     expect(own.keptCells!.every(k => k === 1)).toBe(true);
-    expect(result.cost.total).toBeCloseTo(0, 3);
+    expect(own.cost.total).toBe(0); expect(result.cost.total).toBe(0);
     expect(result.works.items.map(w => w.id.split(':')[1])).toEqual(['kept']);
     expect(result.buildings.filter(b => b.action !== 'retain')).toEqual([]);
   });
@@ -218,11 +229,47 @@ describe('a rebuilt stretch inherits no violations from its old road', () => {
     expect(own.violations.map(v => v.kind)).toContain('radius');
     expect(own.inherited ?? []).toEqual([]);
     expect(own.valid).toBe(false);
-    // its ends still lie on the old road (kept, credited); the part in between is built and billed
+    // its ends still lie on the old road (kept, not billed); the part in between is built and billed
     const kept = result.works.items.find(w => w.id.includes(':kept:'))!;
-    expect(-kept.cost).toBeGreaterThan(0); expect(-kept.cost).toBeLessThan(own.cost.total);
+    expect(kept.cost).toBe(0); expect(own.cost.total).toBeGreaterThan(1e6);
+    for (let i = 0; i < own.n; i++) if (own.keptCells![i]) expect(Object.values(own.parts).every(part => (part as Float64Array)[i] === 0)).toBe(true);
     expect(result.works.items.some(w => w.id.includes(':removal:'))).toBe(true);
     expect(result.cost.alone.r).toBeGreaterThan(1e6);
+  });
+  // Owner's D11 case (Jičínská): the rebuilt road sat flat in a 6 m cut for 0.85 km, and climbed onto a
+  // 6 m embankment further on: Auto designed the kept old road too, as a new road.
+  it('is drawn on the ground where the old road is kept; a new part starts and ends at the old road\'s height', async () => {
+    const { evaluateProject } = await import('../src/core/project-evaluate');
+    const { OLD_ROAD_TIE } = await import('../src/core/evaluate');
+    const { CLEARANCE_MARGIN } = await import('../src/core/autoprofile');
+    const { TIE_LENGTH } = await import('../src/core/project-kept');
+    // a rough surface (as a surveyed road is), rising 12 m along the stretch, and a 9 m mound inside the corner
+    const rough = (x: number, y: number) => 300 + (x + y) * 0.006 + 1.2 * Math.sin(x / 37) + 0.8 * Math.cos(y / 29)
+      + 9 * Math.exp(-((x - 900) ** 2 + (y - 400) ** 2) / 60 ** 2);
+    const untouched = corner(rough);
+    const own = evaluateProject(untouched.ctx, { epoch: 'e', revision: 1, design: untouched.p }).routes.r.legacy!;
+    expect(own.keptCells!.every(k => k === 1)).toBe(true);
+    for (let i = 0; i < own.n; i++) {
+      expect(own.grade[i]).toBe(own.ground[i]); expect(own.cut[i]).toBe(0); expect(own.fill[i]).toBe(0);
+      expect(own.dayL[i]).toBe(3.75); expect(own.zDayR[i]).toBe(own.ground[i]);
+    }
+    // the corner pulled inwards, onto the mound
+    const { ctx, p, route } = corner(rough);
+    const moved = p.routes[0];
+    if (moved.alignment.kind !== 'pi' || route.alignment.kind !== 'pi') throw new Error('fixture');
+    moved.alignment.pis = [{ x: 920, y: 380, r: 60 }];
+    const r = evaluateProject(ctx, { epoch: 'e', revision: 1, design: p }).routes.r.legacy!, kept = r.keptCells!;
+    const anew = Array.from({ length: r.n }, (_, i) => i).filter(i => !kept[i]);
+    expect(anew.length).toBeGreaterThan(5); expect(anew.length).toBeLessThan(r.n - 10);
+    const far = (i: number) => Math.min(...anew.map(k => Math.abs(k - i))) * r.ds;
+    for (let i = 0; i < r.n; i++) if (kept[i]) {
+      // on the ground beyond the run-out; within it never further off than Auto's tie allows
+      if (far(i) >= TIE_LENGTH) expect(r.grade[i]).toBe(r.ground[i]);
+      else expect(Math.abs(r.grade[i] - r.ground[i])).toBeLessThanOrEqual(OLD_ROAD_TIE + CLEARANCE_MARGIN + 0.5);
+    }
+    // the new part itself is engineered: it goes through the mound, not over the old road's level
+    expect(Math.max(...anew.map(i => Math.abs(r.grade[i] - r.ground[i])))).toBeGreaterThan(1);
+    for (const i of [anew[0], anew[anew.length - 1]]) expect(Math.abs(r.grade[i] - r.ground[i])).toBeLessThanOrEqual(OLD_ROAD_TIE + CLEARANCE_MARGIN + 1.5);
   });
 });
 
@@ -261,19 +308,23 @@ describe('pricing a rebuilt stretch (C1 b)', () => {
     expect(removal.cost).toBeCloseTo(removed * ROAD_CLASSES.tertiary.width * (REMOVAL.coverDepth * REMOVAL.coverPerM3 + REMOVAL.baseDepth * REMOVAL.basePerM3 + REMOVAL.restorePerM2), 3);
     const own = result.routes.r.legacy!;
     // where the new road covers the old one without keeping it, the old road's land (its pavement width) is
-    // not bought again (here: nowhere on this flat ground; the works alone, with nothing kept, show the credit)
+    // not bought again (here: nowhere on this flat ground; the works alone, with nothing kept and land
+    // bought at 100 CZK/m² along the whole line, show the credit)
     const landLength = works.find(w => w.id.includes(':land:'))?.geometry.measurements[0].quantity ?? 0;
     const { replacementWorks } = await import('../src/core/project-replacement');
-    const land = replacementWorks(route, own, new RoadNet(net), 0, [], () => undefined).works.find(w => w.kind === 'land')!;
+    const bought = { ...own, parts: { ...own.parts, land: Float64Array.from(own.cell.width, w => w * own.ds * 100) } };
+    const land = replacementWorks(route, bought, new RoadNet(net), 0, [], () => undefined).works.find(w => w.kind === 'land')!;
     expect(land.cost).toBeLessThan(0);
-    expect(-land.cost).toBeLessThan(own.cost.land);
+    expect(-land.cost).toBeLessThan(bought.parts.land.reduce((t, v) => t + v, 0));
     // (and without anything kept, the side road at the stretch's end would get a junction with the new road)
-    expect(replacementWorks(route, own, new RoadNet(net), 0, p.connections, id => ctx.sourceWays.get(id)).works.filter(w => w.kind === 'reconnection').map(w => w.label)).toEqual(['The track joins the new road']);
-    // near its ends the new line is still on the old road: kept as it is there, and everything the road's
-    // own bill charged for those metres is credited (what is billed is what is built)
+    expect(replacementWorks(route, own, new RoadNet(net), 0, p.connections, id => ctx.sourceWays.get(id)).works.filter(w => w.kind === 'reconnection').map(w => w.label)).toEqual([expect.stringMatching(/^Junction with the track at km \d\.\d\d$/)]);
+    // near its ends the new line is still on the old road: kept as it is there, and the road's own bill
+    // charges nothing for those metres (what is billed is what is built)
     const kept = works.find(w => w.id.includes(':kept:'))!, keptLength = kept.geometry.measurements[0].quantity;
     expect(keptLength).toBeGreaterThan(50); expect(kept.label).toMatch(/^\d+ m stay on the old road: kept as it is, not built anew$/);
-    expect(-kept.cost).toBeCloseTo(Object.values(own.parts).reduce((t, part) => t + (part as Float64Array).reduce((u, v, i) => u + (own.keptCells![i] ? v : 0), 0), 0), 3);
+    expect(kept.cost).toBe(0);
+    expect(Object.values(own.parts).reduce((t, part) => t + (part as Float64Array).reduce((u, v, i) => u + (own.keptCells![i] ? v : 0), 0), 0)).toBe(0);
+    expect(own.cost.total).toBeCloseTo(Object.values(own.parts).reduce((t, part) => t + (part as Float64Array).reduce((u, v) => u + v, 0), 0), 3);
     expect(landLength + removed + keptLength).toBeCloseTo(interval.s1 - interval.s0, -2);
     // the side road in the middle now crosses the new road: the road's own crossing work keeps it joined;
     // the one at the stretch's end, where the old road is kept, keeps its junction as it is (nothing billed)

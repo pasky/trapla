@@ -8,6 +8,8 @@ import type { Result } from './evaluate';
 import type { ConnectionDesign, RouteDesign } from './project';
 import type { RoadNet } from './roadnet';
 
+const km = (s: number) => (s / 1000).toFixed(2), cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 /** OTSKP 2026 rows (research/30 §2), CZK. Layer thicknesses are a PROVISIONAL game assumption for an
  * ordinary asphalt road (no road-specific pavement data): 0.10 m asphalt-bound cover, 0.20 m
  * asphalt-bound base. Removal rows include haul up to 1 km; disposal fees are not itemised. */
@@ -83,7 +85,7 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
       label: `Old road removed and its ground restored: ${Math.round(removed)} m` });
   }
   if (owned > 0) works.push({ kind: 'land', s: r.s[0], x: old[0].x, y: old[0].y, length: ownedLength, cost: -owned,
-    label: `Land under the old road, already the road's: not bought again (${Math.round(ownedLength)} m)` });
+    label: `No land bought where the new road lies on the old one: ${Math.round(ownedLength)} m` });
   // Every side road that joined the old stretch stays connected.
   const crossed = new Set<number>();
   // (a free at-grade meeting right at the stretch's end is that end's old junction: reconnected below)
@@ -111,7 +113,8 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
     }
     works.push({ kind: 'reconnection', s: r.s[n.i], x: c.position.x, y: c.position.y, length: gap, cls: sideCls,
       cost: link + sideJunctionCost(sideCls),
-      label: gap > 1 ? `The ${what} reconnected: ${Math.round(gap)} m of new road and its junction` : `The ${what} joins the new road` });
+      // which one: where along the rebuilt road (the card's line also flies there)
+      label: gap > 1 ? `${cap(what)} at km ${km(r.s[n.i])} reconnected: ${Math.round(gap)} m of new road and a junction` : `Junction with the ${what} at km ${km(r.s[n.i])}` });
   }
   return { works, violations, total: works.reduce((t, w) => t + w.cost, 0) };
 }

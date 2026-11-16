@@ -30,7 +30,7 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { DEFAULT_SPEED, isTraffic, strayDistance } from './ui/road-edit';
+import { bendAt, DEFAULT_SPEED, isTraffic, strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
@@ -178,10 +178,11 @@ async function main() {
   let activePreviewPrice: number | null = null;
   const projectScore = (pending: boolean) => {
     const mission = missionRouteId(), active = store.activeRouteId, alone = projectFull?.cost.alone ?? {};
-    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: active === mission ? 'Our road only' : 'This road only' }
-      : active && active in alone ? { total: alone[active], approx: false, label: active === mission ? 'Our road only' : 'This road only' }
-        : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only' } : null;
-    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own,
+    const ours = projectStore.snapshot.design.routes.filter(r => r.role === 'mission').map(r => r.id), isOurs = !!active && ours.includes(active);
+    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: isOurs ? 'Our road only' : 'This road only', routeId: active ?? undefined }
+      : active && active in alone ? { total: alone[active], approx: false, label: isOurs ? 'Our road only' : 'This road only', routeId: active }
+        : mission && mission in alone ? { total: alone[mission], approx: false, label: 'Our road only', routeId: mission } : null;
+    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, legacy: legacyFacade(), ownPrice: own, ourRouteIds: ours,
       activeRouteId: active ?? undefined, names: Object.fromEntries(projectStore.snapshot.design.routes.map(r => [r.id, r.name])),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
@@ -398,9 +399,9 @@ async function main() {
       // why this design speed: the lowest the norm allows for a new road; the map's limit is for noise and time
       const signed = (() => { try { return groundRoadSourceInfo(transportIndex, interval.sourceId).taggedSpeed; } catch { return null; } })();
       const speed = route.specification.designSpeed === DEFAULT_SPEED
-        ? ` New parts are designed for ${DEFAULT_SPEED} km/h, the lowest the norm allows for a new road${signed && signed !== DEFAULT_SPEED ? ` (signed ${signed} km/h)` : ''}.` : '';
-      what.textContent = `Rebuilt stretch: its line is drawn as bends${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
-        ? 'Where it stays on the old road, the old road is kept as it is; where it leaves it, a new road is built and the old one removed.' : 'Checking the change…'}${speed}`;
+        ? ` for ${DEFAULT_SPEED} km/h (the lowest the norm allows${signed && signed !== DEFAULT_SPEED ? `; signed ${signed}` : ''})` : '';
+      what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
+        ? `On the old road it is kept as it is. Off it, a new road is built${speed} and the old one removed.` : 'Checking the change…'}`;
     } else {
       const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
         : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
@@ -411,13 +412,14 @@ async function main() {
     const form = document.createElement('form'); form.className = 'source-operations route-traffic';
     const fields: HTMLInputElement[] = [];
     for (const [key, label, unit, value] of [
-      ['traffic', 'Traffic', 'vehicles/day', String(op.aadt)],
-      ['heavy', 'Heavy vehicles', '%', String(Math.round(op.heavyShare * 1000) / 10)],
+      ['traffic', 'Traffic', 'a day,', String(op.aadt)],
+      ['heavy', 'heavy', '%', String(Math.round(op.heavyShare * 1000) / 10)],
     ] as const) {
       const row = document.createElement('label'); row.textContent = label;
       const input = document.createElement('input'); input.type = 'number'; input.required = true; input.min = '0';
       input.max = key === 'traffic' ? '100000' : '100'; input.step = key === 'traffic' ? '1' : 'any'; input.name = key; input.value = value;
       const small = document.createElement('small'); small.textContent = unit;
+      input.setAttribute('aria-label', key === 'traffic' ? 'Traffic, vehicles a day' : 'Heavy vehicles, percent');
       row.append(input, small); form.append(row); fields.push(input);
     }
     const apply = () => {
@@ -455,11 +457,13 @@ async function main() {
       toast(route.source ? 'The old road is kept.' : 'Road removed.', 'Undo', () => store.undo());
     };
     // what replacing the old stretch adds to this road's own price (C1 b)
-    const works = projectFull?.works.items.filter(w => w.owner.kind === 'route' && w.owner.id === route.id && w.label) ?? [];
+    // (a line that rounds to 0.0 M stays in the bill, not on the card)
+    const works = projectFull?.works.items.filter(w => w.owner.kind === 'route' && w.owner.id === route.id && w.label && (Math.abs(w.cost) >= 5e4 || w.id.includes(':kept:'))) ?? [];
     const list = document.createElement('ul'); list.className = 'route-works';
     for (const w of works) {
       const li = document.createElement('li'), label = document.createElement('span'), cost = document.createElement('b');
-      label.textContent = w.label!; cost.textContent = `${(w.cost / 1e6).toFixed(w.cost < 1e7 ? 1 : 0)} M CZK`;
+      // (what stays on the old road costs nothing: no amount)
+      label.textContent = w.label!; cost.textContent = w.cost ? `${(w.cost / 1e6).toFixed(w.cost < 1e7 ? 1 : 0)} M CZK` : '';
       li.append(label, cost);
       if (w.at) li.onclick = () => { view.flyTo(w.at!.x, w.at!.y, 700); };
       list.append(li);
@@ -751,7 +755,7 @@ async function main() {
         profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
-        if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total + (shown.keptCredit ?? 0);
+        if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
         hud.setResult(shown, rd, store.best); projectScore(true); took('hud');
         curveEdit.refresh(); took('curveEdit');
       }
@@ -1018,6 +1022,15 @@ async function main() {
     try { projectStore.dispatch(command); }
     catch (error) { projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
     switchRoute(id, true);
+    return bendByDrag(x, y);
+  };
+  /** A drag that starts on the road: on a straight it adds a bend there; on the curve of a bend it moves
+   * that bend, which keeps its distance from the pointer for the rest of the drag. */
+  let grabOffset: { i: number; dx: number; dy: number } | null = null;
+  const bendByDrag = (x: number, y: number): number => {
+    const d = store.design, on = bendAt(A, B, d.pis, d.speed, d.category, { x, y });
+    if (on !== null) { grabOffset = { i: on, dx: d.pis[on].x - x, dy: d.pis[on].y - y }; select({ kind: 'bend', i: on }); return on; }
+    grabOffset = null;
     const k = insertBend(x, y, false); select({ kind: 'bend', i: k });
     return k;
   };
@@ -1060,11 +1073,11 @@ async function main() {
     },
     onRoadDrag: (x, y) => {
       if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
-      if (!store.read()) return null; intro.hide(); const k = insertBend(x, y, false); select({ kind: 'bend', i: k }); return k;
+      if (!store.read()) return null; intro.hide(); return bendByDrag(x, y);
     },
-    onPiSelect: (i) => select(i === null ? null : { kind: 'bend', i }),
-    onPiDrag: (i, x, y) => store.update((d) => { d.pis[i].x = x; d.pis[i].y = y; }, false),
-    onPiDragEnd: () => store.commit(),
+    onPiSelect: (i) => { grabOffset = null; select(i === null ? null : { kind: 'bend', i }); },
+    onPiDrag: (i, x, y) => { const o = grabOffset?.i === i ? grabOffset : null; store.update((d) => { d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0); }, false); },
+    onPiDragEnd: () => { grabOffset = null; store.commit(); },
     onPiDelete: (i) => deletePi(i),
     // a reroute link: dragging it shapes it (adds a bend point there)
     grab: (clientX, clientY) => {
@@ -1141,7 +1154,12 @@ async function main() {
     mapHoverFrame = 0;
     const at = mapHoverAt, r = last, canvas = view.renderer.domElement;
     let cursor = '', key = '';
-    if (at && !buildTool.active && mappedGrab(at.x, at.y) && !(r && roadAt(at.x, at.y, 10) >= 0)) {
+    // Build → Road: where a click would put the end, what it would join, how long the road would be
+    if (buildTool.active) {
+      const g = at && view.pick(at.x, at.y);
+      buildTool.hover(at && g ? placeAt(at.x, at.y, g.x, g.y) : null, g ? { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) } : null);
+      key = 'placing';
+    } else if (at && mappedGrab(at.x, at.y) && !(r && roadAt(at.x, at.y, 10) >= 0)) {
       cursor = 'grab'; key = 'mapped';
       if (key !== mapHoverKey) { const g = view.pick(at.x, at.y); if (g) view.setHover({ x: g.x, y: g.y, z: view.drape(g.x, g.y) }, 'drag to change'); }
     } else if (at && r && !buildTool.active) {
@@ -1373,6 +1391,8 @@ async function main() {
     },
     sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
     sourceSelection: () => sourceEditor?.selection ?? null,
+    sourcePoint: (id: string, s: number) => transportIndex?.position(id, s) ?? null,
+    buildHover: () => buildTool.hoverText,
     building: () => buildTool.active,
     /** what a Build click at this client point would place (no change) */
     placementAt: (clientX: number, clientY: number) => { const g = view.pick(clientX, clientY); return g ? placeAt(clientX, clientY, g.x, g.y) : null; },

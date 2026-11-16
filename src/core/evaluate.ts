@@ -129,9 +129,8 @@ export interface Result {
   inherited?: Violation[];
   /** A rebuilt stretch: houses beside a part kept as the old road (nothing is built or decided there). */
   besideOldRoad?: number[];
-  /** A rebuilt stretch: what this bill charged where the old road is kept as it is (≤ 0; a work of the road). */
-  keptCredit?: number;
-  /** A rebuilt stretch: station cells where the old road is kept as it is (1); nothing is built there. */
+  /** A rebuilt stretch: station cells where the old road is kept as it is (1); nothing is built or billed
+   * there (`cost` and `parts` cover the new parts only) and the road is drawn on the ground. */
   keptCells?: Uint8Array;
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
   /** `gaps`: junction openings in the wall lines, per station (1 = no wall can stand there) */
@@ -199,6 +198,12 @@ export interface EvalOptions {
   holds?: readonly { s: number; min: number; max: number;
     /** its bridge over the other road: this road is a bridge over that span (project-road.ts) */
     bridge?: [number, number] }[];
+  /** A rebuilt stretch: station cells (1) where its line stays on its old road, which is kept as it is
+   * there (project-kept.ts). Nothing is built on them, so Auto does not lift the grade there for a new
+   * culvert or bridge over a stream (the old one stays), and it ties each new part to the old road's
+   * height where it leaves and rejoins it. Whatever the kernel still designs and bills on those cells is
+   * dropped and credited by project-kept.ts. One entry per station; otherwise ignored. */
+  oldRoad?: Uint8Array;
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -239,6 +244,16 @@ function profileTablesFor(terrain: Terrain, key: string): ProfileTables {
 
 /** Station spacing of every result, m. */
 export const STEP = 10;
+/** PROVISIONAL, m: how far from the old road's surface Auto may be where a rebuilt stretch's new part
+ * leaves or rejoins it (the same slack as a crossing hold, project-evaluate.ts). */
+export const OLD_ROAD_TIE = 0.5;
+/** PROVISIONAL, m: how far Auto's smooth line may be from the surveyed surface of an old road it keeps
+ * (the surface model along a road is rough: verges, ditches, 5 m cells; D11 Jičínská ±1.5 m). */
+export const OLD_ROAD_BAND = 1;
+/** PROVISIONAL, m: Auto's height points on a rebuilt stretch are this far apart (250 m on a new road): its
+ * new parts are a few hundred metres long and must meet the old road's height at both ends. Still at
+ * least one vertical curve of the 70 km/h minimum (crest 2 500 m, sag 1 500 m) per point. */
+export const OLD_ROAD_KNOTS = 125;
 /** the auto-profile's mass-balance search measures candidates on every n-th station's cross-section */
 const BALANCE_STRIDE = 2;
 
@@ -294,6 +309,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // `clearance[i]` = minimum grade-minus-ground at station i that puts the grade `need` metres above
   // the crossing's own ground; the crossing samples themselves are kept for the final check
   const clearance = new Float64Array(n).fill(NaN);
+  // (a rebuilt stretch: cells on its old road, where nothing is built; a crossing at s is the old road's
+  // own when the cells on both sides of it are)
+  const onOld = opts.oldRoad?.length === n ? opts.oldRoad : undefined;
+  const oldAt = (s: number) => { if (!onOld) return false; const i = Math.max(0, Math.min(n - 1, Math.floor(s / ds))); return !!onOld[i] && !!onOld[Math.min(n - 1, i + 1)]; };
   const streamSamples: number[] = [];
   /** `below`: the crossing may instead pass this far below the crossed feature (motorways) */
   const mustBridge: { s: number; g: number; need: number; what: string; below?: number }[] = [];
@@ -336,6 +355,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const size = waterSize(c, cat.crownWidth + 12), g = waterGround.get(c)!;
     // Water can stay above a deep bored tunnel; an open cut needs a diversion we do not model.
     const need = size.minHeight;
+    // (where a rebuilt stretch keeps its old road, the old road's own culvert stays under it: the grade is
+    // not lifted for a new one)
+    if (oldAt(c.s)) continue;
     const i0 = Math.min(n - 2, Math.floor(c.s / ds));
     for (const j of [i0, i0 + 1]) {
       waterMin[j] = Math.max(Number.isNaN(waterMin[j]) ? -Infinity : waterMin[j], g + need - ground[j]);
@@ -632,6 +654,16 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         } else if (ROAD_CLASSES[c.cls].noAtGrade) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
       }
     }
+    // A rebuilt stretch, where it keeps its old road: Auto stays on the old road's surface (within
+    // OLD_ROAD_BAND; the line is smooth, the surveyed surface is not), so that it neither digs the kept road
+    // out nor heaps the new part's spoil onto it. The last cell on the old road beside each new part is held
+    // closer (OLD_ROAD_TIE): the new part starts and ends at the old road's height. Both as a crossing hold,
+    // widened by the search's margin.
+    if (onOld) for (let i = 0; i < n; i++) if (onOld[i]) {
+      const band = (i > 0 && !onOld[i - 1] || i + 1 < n && !onOld[i + 1] ? OLD_ROAD_TIE : OLD_ROAD_BAND) + CLEARANCE_MARGIN;
+      minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], -band);
+      maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], band);
+    }
     for (const hold of opts.holds ?? []) {
       // The search keeps CLEARANCE_MARGIN inside each bound: a two-sided band is widened by it, so a
       // band of ±0.5 m is aimed at its middle rather than infeasible.
@@ -647,6 +679,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: { above: waterMin.slice(), below: waterBelow }, structureKind: manualStructures, pins: d.gradePins,
       costClass: profileCostClass, costClassCount: costClasses.length,
+      ...(onOld ? { knotSpacing: OLD_ROAD_KNOTS } : {}),
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,

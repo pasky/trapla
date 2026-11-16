@@ -1,7 +1,7 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
 import { editedNetwork, type ResolvedEnds, type SourceWays } from './project-roadnet';
 import { KIND } from './structures';
-import { evaluate, type EvalContext, type EvalOptions, type Result } from './evaluate';
+import { evaluate, STEP, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, XYZ } from './project';
@@ -9,6 +9,9 @@ import { ringWorks, tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
 import { applyKept, keptCells } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
+import { CATEGORIES } from './data/categories';
+import { horizontalRules } from './data/norms';
+import { buildAlignment, station } from './horizontal';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
@@ -93,10 +96,18 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const forms = route.alignment.kind === 'pi' ? route.alignment.controls.junctionForms ?? {} : {};
   const ties = route.role === 'auxiliary' && roads ? tieIns(roads, route.endpoints, !!route.source, forms) : [];
   const junctions = ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => t.junction)] } : {};
+  // Where a rebuilt stretch's line stays on its old road, the old road is kept as it is (project-kept.ts).
+  // Known before the kernel runs (it depends on the line only), so the kernel builds nothing there.
+  let kept: Uint8Array | undefined;
+  if (route.source && sourceWay !== undefined && ctx.roads) {
+    const st = station(buildAlignment(a, b, design.pis, horizontalRules(design.speed, design.category)), STEP);
+    const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
+    kept = keptCells(st, ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db)));
+  }
   const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, design,
-  { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed,
+  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
   if (ties.length && roads && !options.preview) {
@@ -104,11 +115,10 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     if (found.length) { result.violations.push(...found); result.valid = false; }
   }
   // Where a rebuilt stretch stays on its old road, the old road is kept as it is: no norm, no works, no bill.
-  let kept: Uint8Array | undefined, keptWork: ReplacementWork | null = null;
-  if (route.source && sourceWay !== undefined && ctx.roads) {
-    const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
-    kept = keptCells(result, ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db)));
-    keptWork = applyKept(result, kept);
+  let keptWork: ReplacementWork | null = null;
+  if (kept) {
+    if (kept.length !== result.n) throw new Error('Kept cells do not match the road’s stations');
+    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2);
   }
   // The replacement's own works; without the old road's link (no road links) it cannot be priced.
   const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview

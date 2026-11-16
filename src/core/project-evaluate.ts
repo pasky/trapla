@@ -4,7 +4,7 @@ import { CATEGORIES } from './data/categories';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './data/urban';
 import type { EvalContext, Result } from './evaluate';
 import type { XYZ, SharedWork, ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectReceiver, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
-import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type RouteContact } from './project-ledger';
+import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type InteractionReason, type RouteContact, type RouteInteraction } from './project-ledger';
 import { evaluateProjectRoad, type SourceWays } from './project-road';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
@@ -221,11 +221,21 @@ const ownBuildings = (route: RouteDesign, r: Result): ProjectBuildingOutcome[] =
   ...r.demolished.map(b => ({ buildingIndex: b.j, action: 'demolish' as const, cost: b.cost, routeId: route.id })),
   ...r.boughtOut.map(b => ({ buildingIndex: b.j, action: 'buy' as const, cost: b.cost, routeId: route.id })),
   ...r.kept.map(b => ({ buildingIndex: b.j, action: 'retain' as const, cost: 0, routeId: route.id }))];
-const interactionIssue = (routeIds: string[], code: string, buildingIndex?: number): ProjectIssue => ({ code, blocking: 'incomplete', check: 'not-checked',
-  scope: { routeIds, ...(buildingIndex === undefined ? {} : { buildingIndex }) }, locations: [],
-  violation: { kind: 'crossing', basis: 'engine', title: 'These roads affect each other',
-    fix: 'Move them further apart to price them together',
-    rule: 'Engine limit: roads are priced together only when they share no land, houses, noise or existing road; checking them jointly is not finished.' } });
+/** Why two roads have no common total yet: what they share, where, and what would separate them. */
+const INTERACTION: Record<InteractionReason, (i: RouteInteraction, houses: number) => { title: string; fix: string }> = {
+  'shared-land': i => ({ title: `Two roads' earthworks are closer than ${INDEPENDENCE_SCREEN.clearance} m`,
+    fix: i.need !== undefined ? `Move one of them about ${Math.max(1, Math.ceil(i.need))} m away here` : 'Move one of them away here' }),
+  'shared-noise': (_i, n) => ({ title: n > 1 ? `${n} houses hear both roads` : 'A house hears both roads',
+    fix: 'Their noise together is not checked yet, so the project has no total' }),
+  'shared-building': () => ({ title: 'Two roads take the same house', fix: 'Move one of them off it' }),
+  'shared-road': () => ({ title: 'Two roads change the same old road', fix: 'Change it with one of them only' }),
+  'too-many-roads': () => ({ title: `More than ${INDEPENDENCE_SCREEN.maxRoutes} roads`, fix: 'Remove a road change to get a total' }),
+};
+const interactionIssue = (i: RouteInteraction, at: { x: number; y: number } | undefined, locations: ProjectIssue['locations'], houses = 1): ProjectIssue => ({
+  code: i.reason, blocking: 'incomplete', check: 'not-checked',
+  scope: { routeIds: i.routeIds, ...(i.buildingIndex === undefined ? {} : { buildingIndex: i.buildingIndex }) }, locations, ...(at ? { at } : {}),
+  violation: { kind: 'crossing', basis: 'engine', ...INTERACTION[i.reason](i, houses),
+    rule: 'Engine limit: roads get one total only when they share no land, houses, noise or existing road; designing those together is not finished.' } });
 
 const junctionsPending = (routeIds: string[]): ProjectIssue => ({ code: 'connection-pending', blocking: 'incomplete', check: 'not-checked',
   scope: { routeIds }, locations: [],
@@ -533,7 +543,21 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   const decider = heard.length && ctx.legacy.buildings ? ctx.combinedNoise?.(units.flatMap(u => u.parts).map(({ route, legacy }) => ({ route, result: legacy }))) ?? null : null;
   const blocking = screen.interactions.filter(i => !(decider && heard.includes(i)));
   if (blocking.length) {
-    for (const i of blocking) { result.issues.push(interactionIssue(i.routeIds, i.reason, i.buildingIndex)); unprice(i.routeIds, i.reason); }
+    // one line per thing the roads share, with its place; the houses that hear the same roads are one line
+    const heardBy = new Map<string, number>();
+    for (const i of blocking) if (i.reason === 'shared-noise') { const key = i.routeIds.join('|'); heardBy.set(key, (heardBy.get(key) ?? 0) + 1); }
+    const listed = new Set<string>();
+    for (const i of blocking) {
+      unprice(i.routeIds, i.reason);
+      const key = i.routeIds.join('|');
+      if (i.reason === 'shared-noise') { if (listed.has(key)) continue; listed.add(key); }
+      const b = i.buildingIndex !== undefined ? ctx.legacy.buildings?.items[i.buildingIndex] : undefined, at = i.at ?? (b ? { x: b[0], y: b[1] } : undefined);
+      const locations = at ? i.routeIds.flatMap(routeId => {
+        const legacy = result.routes[routeId]?.legacy; if (!legacy) return [];
+        const s = legacy.s[nearestStation(legacy, at.x, at.y)]; return [{ routeId, s0: s, s1: s }];
+      }) : [];
+      result.issues.push(interactionIssue(i, at, locations, heardBy.get(key)));
+    }
     return finish();
   }
   const together = decider ? combineNoise(heard.map(i => i.buildingIndex!), decider, ctx.legacy.buildings!,

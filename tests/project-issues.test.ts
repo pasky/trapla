@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ProjectIssue, ProjectResult } from '../src/core/project';
-import { listProjectIssues, notCheckedYet, projectBadge, unpricedText } from '../src/ui/project-issues';
+import { aloneText, listProjectIssues, notCheckedYet, projectBadge, unpricedText } from '../src/ui/project-issues';
 
 const issue = (title: string, routeIds: string[], blocking: ProjectIssue['blocking'], basis: 'engine' | 'game' | 'norm', s0?: number): ProjectIssue => ({
   code: title, blocking, check: basis === 'engine' ? 'not-checked' : 'violation', scope: { routeIds }, locations: s0 === undefined ? [] : [{ routeId: routeIds[0], s0, s1: s0 + 10 }],
@@ -41,5 +41,17 @@ describe('project issue list', () => {
     expect(unpricedText([{ routeId: 'road' }, { routeId: 'side' }, { routeId: 'side' }], 'road', names)).toBe('Valley road not priced yet');
     expect(unpricedText([{ routeId: 'side' }, { routeId: 'track' }, { routeId: 'road' }], 'road', names)).toBe('2 road changes not priced yet');
     expect(unpricedText([{ routeId: 'road' }], 'road', names)).toBe('Our road is not priced yet');
+    // a motorway is two roads of ours: its other direction is not a "road change"
+    expect(unpricedText([{ routeId: 'there' }, { routeId: 'back' }, { routeId: 'side' }], new Set(['there', 'back']), names)).toBe('Valley road not priced yet');
+  });
+  it('keeps what is priced in view while there is no total: every other road alone, never added up', () => {
+    const names = { road: 'Road', side: 'Valley road', track: 'Track' }, money = (v: number) => `${v} M`, ours = new Set(['road', 'back']);
+    // the side road is active (its own price is the big number): our road's price stays visible
+    expect(aloneText({ road: 15000, side: 27 }, 'side', ours, names, money)).toBe('Our road alone: 15000 M');
+    expect(aloneText({ road: 15000, side: 27 }, 'road', ours, names, money)).toBe('Valley road alone: 27 M');
+    expect(aloneText({ road: 15000, side: 27, track: 3 }, 'road', ours, names, money)).toBe('Alone: Valley road 27 M, Track 3 M');
+    // the other direction of our motorway is active: our road is not listed against itself
+    expect(aloneText({ road: 15000, side: 27 }, 'back', ours, names, money)).toBe('Valley road alone: 27 M');
+    expect(aloneText({ road: 15000 }, 'road', ours, names, money)).toBe('');
   });
 });

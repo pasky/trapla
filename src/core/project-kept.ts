@@ -5,6 +5,8 @@
 // the player builds anew: a bend moved off the old road is a new road's bend.
 import type { Result } from './evaluate';
 import type { ReplacementWork } from './project-replacement';
+import { PART_KEYS, sumParts, type CostParts } from './cost';
+import { KIND } from './structures';
 
 /** PROVISIONAL game tolerance, m: the new line counts as "on the old road" within this of its centreline.
  * The old line is drawn as bends that stray up to 8 m from it (ui/road-edit.ts FIT_TOLERANCE) plus the
@@ -39,10 +41,34 @@ export function keptCells(r: Pick<Result, 'n' | 'x' | 'y' | 'ds'>, old: readonly
   return kept;
 }
 
+/** PROVISIONAL, m: where a new part leaves or rejoins the old road, its heights run out into the old
+ * road's surface over this length of old road (drawn only; the old road there is still not billed). */
+export const TIE_LENGTH = 50;
+
+/** The old road is drawn as it lies: on the ground, as wide as the road, without slopes. Beside a new
+ * part the kernel's heights (held near the ground there, evaluate.ts OLD_ROAD_TIE) fade into it. The
+ * result gets its own arrays: the kernel's are never changed. */
+function layOnGround(r: Result, kept: Uint8Array, crownHalf: number) {
+  const far = new Float64Array(r.n).fill(Infinity);
+  for (let i = 0, d = Infinity; i < r.n; i++) { d = kept[i] ? d + r.ds : 0; far[i] = d; }
+  for (let i = r.n - 1, d = Infinity; i >= 0; i--) { d = kept[i] ? d + r.ds : 0; far[i] = Math.min(far[i], d); }
+  const grade = r.grade.slice(), cut = r.cut.slice(), fill = r.fill.slice();
+  const dayL = r.dayL.slice(), dayR = r.dayR.slice(), zDayL = r.zDayL.slice(), zDayR = r.zDayR.slice();
+  for (let i = 0; i < r.n; i++) {
+    if (!kept[i] || r.kind[i] !== KIND.earth) continue;
+    const w = Math.max(0, 1 - far[i] / TIE_LENGTH), z = r.ground[i] + w * (r.grade[i] - r.ground[i]);
+    grade[i] = z; cut[i] *= w; fill[i] *= w;
+    dayL[i] = crownHalf + w * (r.dayL[i] - crownHalf); dayR[i] = crownHalf + w * (r.dayR[i] - crownHalf);
+    zDayL[i] = z + w * (r.zDayL[i] - r.grade[i]); zDayR[i] = z + w * (r.zDayR[i] - r.grade[i]);
+  }
+  Object.assign(r, { grade, cut, fill, dayL, dayR, zDayL, zDayR });
+}
+
 /** Applies "kept as the old road" to a rebuilt stretch's own result: what the norm would ask there becomes
- * a note (`inherited`), houses there are untouched, and everything the kernel billed there is credited in
- * one line. Returns that credit (null: nothing kept). */
-export function applyKept(r: Result, kept: Uint8Array): ReplacementWork | null {
+ * a note (`inherited`), houses there are untouched, nothing is billed there (the bill and its per-cell
+ * parts cover the new parts only) and the road is drawn on the ground there (`crownHalf`: half its paved
+ * width, m). Returns the line that says so in the road's works (no amount; null: nothing kept). */
+export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number): ReplacementWork | null {
   let cells = 0, first = -1;
   for (let i = 0; i < r.n; i++) if (kept[i]) { cells++; if (first < 0) first = i; }
   if (!cells) return null;
@@ -76,11 +102,14 @@ export function applyKept(r: Result, kept: Uint8Array): ReplacementWork | null {
   }
   // noise walls that would stand wholly along a kept part are not built
   r.walls = r.walls.filter(w => { for (let i = w.i0; i <= w.i1; i++) if (!kept[i]) return true; return false; });
-  let credit = 0;
-  for (const part of Object.values(r.parts) as ArrayLike<number>[]) for (let i = 0; i < r.n; i++) if (kept[i]) credit += part[i];
+  if (crownHalf !== undefined) layOnGround(r, kept, crownHalf);
+  // Nothing is built there, so nothing is billed: the road's bill is what it builds anew. (The kernel
+  // designs and prices the whole line; its own arrays are not changed.)
+  const parts = {} as CostParts;
+  for (const key of PART_KEYS) { const a = r.parts[key].slice(); for (let i = 0; i < r.n; i++) if (kept[i]) a[i] = 0; parts[key] = a; }
+  r.parts = parts; r.cost = sumParts(parts);
   let length = 0;
   for (let i = 0; i < r.n; i++) if (kept[i]) length += i === 0 || i === r.n - 1 ? r.ds / 2 : r.ds;
-  if (credit > 0) r.keptCredit = -credit;
-  return credit > 0 ? { kind: 'kept', s: r.s[first], x: r.x[first], y: r.y[first], length, cost: -credit,
-    label: `${Math.round(length)} m stay on the old road: kept as it is, not built anew` } : null;
+  return { kind: 'kept', s: r.s[first], x: r.x[first], y: r.y[first], length, cost: 0,
+    label: `${Math.round(length)} m stay on the old road: kept as it is, not built anew` };
 }

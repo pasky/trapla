@@ -219,6 +219,8 @@ export class Inspector {
   // ---- nothing selected: where the money goes ----
   private money(r: Result) {
     const top = topPieces(r, 5);
+    // a rebuilt stretch still wholly on its old road builds nothing
+    if (!top.length && r.keptCells) return '<div class="sub hint">Nothing is built yet: every metre stays on the old road. Drag it to change its line.</div>';
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${km(p.s0)}–${km(p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
       <div class="sub hint">Drag the ${this.d && CATEGORIES[this.d.category].mode === 'railway' ? 'railway' : 'road'} to bend it. Click anything to inspect it.</div>`;
@@ -230,6 +232,10 @@ export class Inspector {
     if (s1 <= s0) return '';
     const i0 = Math.max(0, Math.round(s0 / r.ds)), i1 = Math.min(r.n - 1, Math.max(i0, Math.round(s1 / r.ds) - (s1 >= r.length ? 0 : 1)));
     const cost = cellsCost(r, i0, i1), len = s1 - s0, depth = pieceDepth(r, i0, i1);
+    // a rebuilt stretch, where it stays on the old road: nothing is built, so there is nothing to choose
+    if (r.keptCells && Array.from({ length: i1 - i0 + 1 }, (_, k) => r.keptCells![i0 + k]).every(Boolean))
+      return `${this.head('Old road', `km ${km(s0)}–${km(s1)}`)}
+      <div class="ctx-state"><b>${m0(len)} · kept as it is</b><div class="why">Nothing is built here. Drag it off the old road to build a new road there.</div></div>`;
     const active = activeStructure({ s0, s1 }, d.structureOverrides);
     const mine = active !== 'clear' && active !== null;
     let title = 'Stretch', status = `${m0(len)} · ${czk(cost)}`, why = '';

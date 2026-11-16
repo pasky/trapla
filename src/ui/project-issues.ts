@@ -53,13 +53,29 @@ export function projectBadge(result: ProjectResult | null, pending: boolean, vio
   return { text: 'NOT PRICED', cls: 'neutral' };
 }
 
-/** What is not priced yet, counted per road change (distinct non-mission roads), named when there is one.
- * Our road appears only when it is the sole unpriced road. */
-export function unpricedText(unpriced: readonly { routeId: RouteId }[], missionRouteId: RouteId | undefined,
+/** What is not priced yet, counted per road change (distinct roads that are not ours), named when there is
+ * one. `ours`: our road, or every road of it (a motorway is two: its other direction is no "road change").
+ * Our road appears only when no road change is unpriced. */
+export function unpricedText(unpriced: readonly { routeId: RouteId }[], ours: RouteId | undefined | ReadonlySet<RouteId>,
   names: Readonly<Record<RouteId, string>>): string {
+  const mine = typeof ours === 'string' ? new Set([ours]) : ours ?? new Set<RouteId>();
   const ids = [...new Set(unpriced.map(u => u.routeId))];
-  const changes = ids.filter(id => id !== missionRouteId);
+  const changes = ids.filter(id => !mine.has(id));
   if (!changes.length) return ids.length ? 'Our road is not priced yet' : '';
   if (changes.length === 1) return `${names[changes[0]] ?? 'One road change'} not priced yet`;
   return `${changes.length} road changes not priced yet`;
+}
+
+/** While there is no project total: what IS priced, so it is not lost from view. Each other road's own
+ * price (as if it were the only change; core `cost.alone`), never added up. The active road's own price
+ * is the big number above this line. */
+export function aloneText(alone: Readonly<Record<RouteId, number>>, activeRouteId: RouteId | undefined, ours: ReadonlySet<RouteId>,
+  names: Readonly<Record<RouteId, string>>, money: (v: number) => string): string {
+  const activeOurs = activeRouteId !== undefined && ours.has(activeRouteId);
+  const others = Object.keys(alone).filter(id => id !== activeRouteId && !(activeOurs && ours.has(id)));
+  if (!others.length) return '';
+  const label = (id: RouteId) => ours.has(id) ? 'our road' : names[id] ?? 'a road';
+  if (others.length === 1) { const l = label(others[0]); return `${l.charAt(0).toUpperCase()}${l.slice(1)} alone: ${money(alone[others[0]])}`; }
+  const shown = others.slice(0, 3).map(id => `${label(id)} ${money(alone[id])}`);
+  return `Alone: ${shown.join(', ')}${others.length > 3 ? ` and ${others.length - 3} more` : ''}`;
 }
