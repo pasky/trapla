@@ -1,5 +1,29 @@
 # Evaluate performance regression
 
+## Tunnels as built, cost model 32 (2026-11-17)
+
+The grade search's tunnel mode (autoprofile.ts) costs nothing where the line takes no tunnel: the plain search
+runs first and its line is kept when no sample on it takes a tunnel (checked only where deeper than a portal);
+only then a second search with two layers of states (≈ 2× the DP). On the D11 designs that is 1 solve in 32 on
+demo, none on the others (town-centre's profile phase 106 ms when the mode ran on every solve → 65 ms). The
+auto-profile cost tables now keep 24 material values instead of 8: one evaluation's balance searches visit 20–30
+(start, the fixed steps from it, interpolated ones; lifts and retries revisit them), so 20–35 % fewer table
+entries are computed on a repeated design (≈ 8 MB more heap).
+
+Interleaved against main d88a0db (`scripts/dev/interleave.ts`, 16 rounds, host load 13–18), min / median ms:
+
+| design | main | now |
+|---|---:|---:|
+| best | 163.5 / 265.2 | 177.4 / 246.9 |
+| demo | 185.1 / 240.9 | 180.5 / 262.2 |
+| direct-80 | 181.2 / 270.8 | 214.5 / 282.4 |
+| direct-90 | 254.4 / 326.9 | 214.1 / 298.4 |
+| town-centre | 345.6 / 499.2 | 340.2 / 476.5 |
+
+CPU per round −7 %, sum of minima −0.3 %, of medians −2 % (the host was loaded; phase timings, min of 8:
+profile 49–52 ms on both, demo +4 ms for its one tunnel-mode solve). Drag budgets pass in all six modes (road
+failed once at 61 ms median under load 24, passed at 45 ms).
+
 ## Design realism, cost model 31 (2026-11-16)
 
 Per-bend design speed, VL 1 slopes by ground layer, terrain class and buried-bridge culverts cost time; offsets,
