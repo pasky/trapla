@@ -16,6 +16,21 @@ export const CLASS_TRAFFIC: Record<'I' | 'II' | 'III', { aadt: number; heavyShar
   III: { aadt: 736, heavyShare: 0.064 },
 };
 
+/** Roads the census does not count at all (it counts class I–III roads only): local streets, service roads,
+ * field tracks. No Czech source gives their average traffic (research/43). PROVISIONAL game priors, low on
+ * purpose and labelled as a guess on the card:
+ * - local street: 300 vehicles/24 h, below the 500/24 h TP 132 (2024, § 7.2) recommends at most for a
+ *   residential zone ("obytná zóna") — a design ceiling, not an average;
+ * - service road: 50/24 h, an access to a few buildings or a yard;
+ * - field track: 10/24 h, within TP 170's lowest pavement load class VI (fewer than 15 heavy vehicles a day;
+ *   2024, § 3.2.2, tab. 3) — a pavement-design class, not a count.
+ * Heavy shares: none sourced; 3 % (street) and 5 % (service road, track) PROVISIONAL. */
+export const UNCOUNTED_TRAFFIC: Record<'local' | 'service' | 'track', { aadt: number; heavyShare: number; what: string }> = {
+  local: { aadt: 300, heavyShare: 0.03, what: 'a quiet street' },
+  service: { aadt: 50, heavyShare: 0.05, what: 'a service road' },
+  track: { aadt: 10, heavyShare: 0.05, what: 'a field track' },
+};
+
 /** A census section counts for a mapped road when its line passes this close to the middle of the
  * rebuilt stretch, m. PROVISIONAL: the census line is ŘSD's road axis, the map's is OpenStreetMap's;
  * across the four packs 97 % of mapped ways that carry a counted road number lie within 15 m of that

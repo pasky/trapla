@@ -13,6 +13,7 @@ import { createRailwayProject, railwayMission as railwayMissionOf } from './core
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, rejoinStretch } from './core/project-motorway';
 import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
 import { classTraffic } from './core/traffic-census';
+import { UNCOUNTED_TRAFFIC } from './core/data/traffic';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
@@ -524,15 +525,16 @@ async function main() {
     };
     // where the numbers come from, while they are still the ones the game filled in
     const cls = route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
+    const uncounted = UNCOUNTED_TRAFFIC[cls as keyof typeof UNCOUNTED_TRAFFIC];
     const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
     const basis = document.createElement('small'); basis.className = 'traffic-basis';
     if (filled && isTraffic(op, filled)) {
       basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
-        : averaged !== cls ? 'Not counted: a guess (the average class III road). Change it to what you expect.'
+        : uncounted ? `Not counted: a guess for ${uncounted.what}. Change it to what you expect.`
         : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new road: the average class ${averaged} road is assumed.`;
       basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
         : averaged === cls ? 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.'
-        : 'The traffic census (ŘSD) counts class I–III roads only; the average class III road stands in for this one. Change it to what you expect.';
+        : `The traffic census (ŘSD) counts class I–III roads only. For ${uncounted?.what ?? 'this road'} the game guesses low (a residential zone is recommended up to 500 vehicles a day, TP 132). Change it to what you expect.`;
       form.append(basis);
     }
     for (const f of fields) f.onchange = apply;

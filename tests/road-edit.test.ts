@@ -9,7 +9,7 @@ import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
 import { bendAt, coveredStretches, derivedStretch, fitBends, isTraffic, moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
-import { CLASS_TRAFFIC } from '../src/core/data/traffic';
+import { CLASS_TRAFFIC, UNCOUNTED_TRAFFIC } from '../src/core/data/traffic';
 import { basePerKm } from '../src/core/cost';
 import type { TrafficCensus } from '../src/core/traffic-census';
 import { coveredText, mappedRoadName } from '../src/core/terms';
@@ -59,6 +59,8 @@ describe('rebuilding a mapped road', () => {
     const route = p.routes[0];
     // the lowest speed its norm allows (a secondary track), the player can raise it
     expect(route.specification).toMatchObject({ policy: 'legacy-road', legalClass: 'track', crossSection: 'P4', designSpeed: 20 });
+    // the census counts no tracks: a field track's low guess, not the average class III road (QA f9f5d9d: 736 a day)
+    expect(route.specification.kind === 'road' && route.specification.operations).toMatchObject({ aadt: UNCOUNTED_TRAFFIC.track.aadt, heavyShare: UNCOUNTED_TRAFFIC.track.heavyShare });
     if (route.alignment.kind !== 'pi') throw new Error('converted');
     // dragged 40 m off its line: a new part, under the track's own rules and price
     route.alignment.pis = [{ x: 540, y: 1200, r: null }];

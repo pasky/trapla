@@ -1,7 +1,7 @@
 // The traffic census shipped with a map pack (`traffic.json`, pipeline/build_traffic.py): what a mapped
 // road carries today. A rebuilt stretch starts with the count of its own census section; a road the
 // census did not count, and a new road, start with the average of their class, labelled as an estimate.
-import { CENSUS_MATCH, CLASS_TRAFFIC } from './data/traffic';
+import { CENSUS_MATCH, CLASS_TRAFFIC, UNCOUNTED_TRAFFIC } from './data/traffic';
 
 export interface CensusSection {
   /** ŘSD section number (CIS_SU) */ id: string;
@@ -40,9 +40,10 @@ export function censusSection(census: TrafficCensus | null | undefined, ref: str
   return found;
 }
 
-/** The average road of a class (the estimate for a road nobody counted). */
+/** The average road of a class (the estimate for a road nobody counted); a local street, service road or
+ * track: the game's low guess for one (UNCOUNTED_TRAFFIC). */
 export function classTraffic(legalClass: string): TrafficDefault {
-  const row = CLASS_TRAFFIC[legalClass as keyof typeof CLASS_TRAFFIC] ?? CLASS_TRAFFIC.III;
+  const row = CLASS_TRAFFIC[legalClass as keyof typeof CLASS_TRAFFIC] ?? UNCOUNTED_TRAFFIC[legalClass as keyof typeof UNCOUNTED_TRAFFIC] ?? CLASS_TRAFFIC.III;
   return { aadt: row.aadt, heavyShare: row.heavyShare, basis: 'class' };
 }
 
