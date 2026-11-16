@@ -96,6 +96,19 @@ describe('a reroute the player shaped', () => {
     expect(() => assertProjectDesign(bad)).toThrow(/Invalid project/);
     expect(legacyDesignForRoute(project, project.routes[0].id).crossingOverrides).toEqual(design.crossingOverrides);
   });
+  it('keeps the straightening choice only on an underpass or a bridge over us, through the project', () => {
+    expect(normalizeCrossingOverrides([{ roadId: 2, type: 'underpass', square: false }, { roadId: 3, type: 'junction', square: true },
+      { roadId: 4, type: 'overbridge', square: 'yes' }])).toEqual([{ roadId: 2, type: 'underpass', square: false }, { roadId: 3, type: 'junction' }, { roadId: 4, type: 'overbridge' }]);
+    const terrain = syntheticTerrain(260, 120, 5, () => 100), context = makeLegacyProjectContext({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 1100, y: 250 } },
+      { presetId: 'legacy-road', packId: 'd11', objectData: 'objects', transportData: null });
+    const design = { ...startDesign(), crossingOverrides: [{ roadId: 2, type: 'underpass' as const, square: false }] };
+    const project = projectFromLegacyDesign(design, context);
+    expect(() => assertProjectDesign(project)).not.toThrow();
+    expect(legacyDesignForRoute(project, project.routes[0].id).crossingOverrides).toEqual(design.crossingOverrides);
+    const bad = structuredClone(project), crossing = (bad.routes[0].alignment as { controls: { crossings: { choice: string }[] } }).controls.crossings[0];
+    crossing.choice = 'junction';
+    expect(() => assertProjectDesign(bad)).toThrow(/Invalid project/);
+  });
   it('starting from the automatic path\'s own bends gives back the same road, with no new problems', () => {
     const slope = (x: number, y: number) => 400 + Math.sin(x / 90) * 4 + Math.max(0, -30 - y) * .05;
     const auto = build([{ roadId: 1, type: 'reconnection' }], slope);
