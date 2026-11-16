@@ -734,3 +734,45 @@ offset. main a8d8de5 (motorway-rail, model 23) must be merged first; ours become
   (kept-road band infeasible above the class's max gradient, the fallback ignores every band).
 - drag-perf on the final head still to run; then self-review since 80168c3, yield; merge needs main a8d8de5
   (model 23) first, ours 24; afterwards make project-kept.ts kind-generic for railways (docs/mode-foundations.md).
+
+## 17. QA re-test 2 fixed (2026-11-16, sixth pass)
+
+Each QA repro is now an automated scene check (any-road-scene D11, owner-d3-scene), so none needs a human re-test.
+
+- **Cold start (`96ba824`, `5ad9748`).** A press on a mapped road before the road links load is held: the view
+  asks `onRoadDrag` again (`'wait'`, `view.resumeRoadDrag()`) until the links are in, then the drag rebuilds
+  the road from the pressed ground point (re-projected: a camera flight may have moved on); released early it
+  is a click where it was pressed. A rebuildable mapped road shows the grab cursor before and after the links
+  load. Scenes: any-road-scene 0b (fresh page: grab cursor, card on the first click, first drag rebuilds, no
+  pan); owner-d3-scene 0b (fresh page, crossing card open, a drag on III/1057 25 m from our bridge rebuilds it).
+  The "drag next to a crossing pans" QA item was this cold start (with the links loaded every point near the
+  bridge already grabbed: `scripts/_probe-cross.mjs`).
+- **A track our road covers (`cfcc787`).** D11 km 4.1: our road runs 270 m over a track and reroutes it. The
+  derived stretch now stops where another road's earthworks plus the 10 m working strip cover the old road
+  (`coveredStretches` in `ui/road-edit.ts`; carried crossings — bridge, overbridge, underpass, junction — are no
+  cover); a grab on a covered part: "Our road covers it here: pick it further away." `shared-road` no longer
+  counts a rebuilt stretch's whole old way (`extraRoads` removed: every other road's network has the stretch
+  cut out) nor a stretch going on into its own old road (`continuation`), and it says where. Tests: road-edit,
+  edited-network D11; scene: the track dragged north of us is priced (9.846 bn).
+- **III/1057 rebuilt made the motorway cheaper (`5ad9748`).** Our retaining walls ignored designed roads (they
+  used `roads.ground`): the abutments no longer kept clear of the rebuilt road (bridge 90 → 70 m, two walls
+  gone: −14.7 M on an untouched rebuild, −38 M in QA). `planRetainingWalls` now gets the edited network with
+  designed roads; relocation still sees mapped roads only. Untouched rebuild: +0.1 M. A real new line beside
+  an abutment may cost the motorway more (owner scene: +17 M, its bridge 10 m longer); the scene asserts the
+  bill never falls. Not shown on the rebuilt road's card (open).
+- **Houses between two roads (`a623b4a`).** A house one road takes is gone: another road's noise there is no
+  interaction (that was every QA "Two roads take the same house"). A house two roads take is taken once, by
+  the demolishing (higher-ranking) road, the other credited ("House our road takes as well: billed there
+  once"). D11 I/37 batch (`_i37b.ts`, 42 pulls of ±37 m): all priced. Tests: tie-in shed; scene: I/37 45 px.
+- **P2 (`6c1f389`).** Street/track traffic labelled "Not counted: a guess (the average class III road)" (no
+  sourced lower prior yet); source pick uses the screen scale across the road (it used the scale along it).
+
+Gates during this pass (tiered, per the parent): tsc, vitest 662, eval-regression 11 PASS bit-exact after each
+commit; any-road-scene D11 and owner-d3-scene PASS on `6c1f389`.
+
+**Next (handoff):** merge main `27aeda6` (core-play-polish, model 24; 13 conflicting files, 45 hunks — attempted
+and aborted to start with fresh context), set `COST_MODEL_VERSION` 25, then all gates incl. any-road-scene
+SCENARIO=d3, bench, outcome-audit, land-screen, smoke, playtest, and the six-mode drag-perf once; self-review
+since 80168c3; yield. Open: forced S 7.5/III on the steep Nový Rokytník street misses the deck (kept-road band
+infeasible above the class's max gradient); the motorway's cost change from a rebuilt road is not on any card;
+a sourced traffic prior for local roads/tracks.
