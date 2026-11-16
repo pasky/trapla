@@ -7,14 +7,11 @@ import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
-import { ENDPOINT_JUNCTIONS, ROAD_CLASSES } from './core/data/urban';
-import { ROUNDABOUT_HOSTS } from './core/tie-in';
+import { ROAD_CLASSES } from './core/data/urban';
 import { missionProject } from './core/project-mission';
 import { routeCrownWidth } from './core/route-section';
 import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinCorridor, rejoinStretch } from './core/project-motorway';
-import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
-import { classTraffic } from './core/traffic-census';
-import { UNCOUNTED_TRAFFIC } from './core/data/traffic';
+import { DIRECTIONS_TEXT } from './core/terms';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
@@ -32,13 +29,11 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { bendAt, coveredStretches, DEFAULT_SPEED, isTraffic, startSpeed, strayDistance } from './ui/road-edit';
+import { bendAt, coveredStretches } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
-import './ui/mode-kinds';
+import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
 import { fitPlacedBend } from './core/bend-fit';
-import { routeIndicationHeight } from './render/route-indication'; // Build → Motorway / Railway, rebuilding mapped railways
 import { RoadNet } from './core/roadnet';
-import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
 import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
@@ -51,8 +46,8 @@ import { View } from './render/view';
 import { endpointJunctions, loadPack } from './scenario';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
-import { makeLegacyProjectContext, replaceRouteFromLegacy } from './core/project-legacy';
-import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
+import { makeLegacyProjectContext } from './core/project-legacy';
+import type { ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
 import { acceptsProjectMessage, type ProjectWorkerIn } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
@@ -61,12 +56,15 @@ import { StorageGuard, showStorageNotice } from './ui/storage-guard';
 import { RouteBar } from './ui/route-bar';
 import { activeSelection, qualifySelection, type RouteSelection } from './ui/route-selection';
 import { CurveEditor } from './ui/curve-edit';
-import { fillDirections, Hud, type DirectionsState } from './ui/hud';
+import { Hud, type DirectionsState } from './ui/hud';
+import { noLinksCard, proposalCard, routeHeadCard, type RouteCardDeps } from './ui/route-cards';
 import { lineFrame, setLineFrame } from './ui/chainage';
 import { ProfilePanel } from './ui/profile';
 import { provisionalProfile } from './ui/provisional';
-import { ViewBar, type ViewPrefs } from './ui/viewbar';
+import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
+import { bendStations } from './ui/bend-stations';
+import { installAutomation } from './automation';
 import type { WorkerIn, WorkerOut } from './worker-protocol';
 import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
@@ -421,208 +419,28 @@ async function main() {
     if (off || small) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
   };
   /** the active route's card when the road widgets cannot edit it: a proposed change on map geometry */
-  const routeCard = () => {
-    const route = store.route, result = route ? projectFull?.routes[route.id] : undefined;
-    if (!route || store.read()) { inspector.clear(route ? 'This road has not been checked yet.' : 'Choose a road to inspect.'); return; }
-    const root = inspector.host(), h = document.createElement('div'), title = document.createElement('b'), close = document.createElement('button');
-    root.replaceChildren(); root.className = 'card ctx inspector k-proposal';
-    h.className = 'ctx-h'; title.textContent = route.name; close.className = 'x'; close.textContent = '✕'; close.title = 'Close';
-    close.onclick = () => { const mission = missionRouteId(); if (mission) switchRoute(mission); };
-    h.append(title, close);
-    const state = document.createElement('div'); state.className = 'ctx-state'; state.textContent = 'Proposed change · not checked yet';
-    const note = document.createElement('p'); note.textContent = 'The old road stays until this change is checked.';
-    const length = route.alignment.kind === 'reference' ? route.alignment.path[route.alignment.path.length - 1].s : result?.surface?.points.at(-1)?.s;
-    const size = document.createElement('div'); size.className = 'sub'; size.textContent = length ? `${Math.round(length)} m` : '';
-    const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route'; remove.textContent = 'Remove change';
-    remove.onclick = () => {
-      if (!projectStore.snapshot.design.routes.some(r => r.id === route.id) || projectStore.inTransaction) return;
-      const mission = missionRouteId(); projectStore.dispatch({ type: 'delete-route', routeId: route.id });
-      if (mission && mission !== route.id) switchRoute(mission);
-    };
-    root.append(h, state, note, size, remove);
-  };
-  /** A side road's own settings, above whatever is selected on it: what it is, its traffic, its junctions
-   * and works, and how to undo it. */
-  let strayKey = '', stray = 0;
+  const routeCard = () => proposalCard(routeCards);
+
   inspector.isSideRoad = () => !!store.route && store.route.role !== 'mission';
-  inspector.routeHead = (shown) => {
-    const route = store.route, r = last;
-    // a motorway's own card: what a drag bends (both directions or one), where they run apart
-    const directions = directionsState();
-    if (route?.kind === 'motorway' && directions && (shown === null || shown === 'stretch')) {
-      // below a selected stretch's card; alone when nothing is selected
-      const box = document.createElement('div'); box.className = 'route-head motorway-head'; box.dataset.place = 'below';
-      box.innerHTML = `<div class="mode-h"><b>${DIRECTIONS_TEXT.heading}</b></div>
-        <div class="seg" role="radiogroup" aria-label="Directions"><button type="button" data-dir="both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" data-dir="forward" role="radio"></button><button type="button" data-dir="reverse" role="radio"></button></div>
-        <p data-dir="explain" class="mode-explain"></p><div data-dir="apart" class="dir-apart"></div>`;
-      fillDirections(box, directions, { onDirection: w => hud.ev.onDirection?.(w), onJoin: joinStretch });
-      return box;
-    }
-    if (!route || route.role === 'mission' || (route.kind !== 'road' && route.kind !== 'railway') || !r) return null;
-    // a railway's card: what it is, its own works and removing it (no traffic or junction choices)
-    const rail = route.kind === 'railway', old = rail ? 'old track' : 'old road';
-    const head = document.createElement('div'); head.className = 'route-head';
-    const h = document.createElement('div'); h.className = 'ctx-h';
-    const title = document.createElement('b'); title.textContent = route.name;
-    const sub = document.createElement('small'); sub.textContent = `${(r.length / 1000).toFixed(2)} km`;
-    h.append(title, sub);
-    const what = document.createElement('div'); what.className = 'sub';
-    const interval = route.source?.intervals[0];
-    if (interval && transportIndex) {
-      const key = `${route.id}:${route.revision}:${r.n}:${r.x[r.n >> 1]}`;
-      if (key !== strayKey) {
-        strayKey = key;
-        try {
-          const old = transportIndex.path(interval), line = Array.from({ length: Math.ceil(r.n / 2) }, (_, k) => ({ x: r.x[2 * k], y: r.y[2 * k] }));
-          stray = strayDistance(line, old);
-        } catch { stray = NaN; }
-      }
-      const accepted = rail ? !!projectFull?.routes[route.id]?.legacy
-        : projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
-      if (route.kind === 'railway') what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old track` : ''}. ${accepted
-        ? `On the old track it is kept as it is. Off it, a new track is built for ${route.specification.designSpeed} km/h.` : 'Checking the change…'}`;
-      else {
-      // why this design speed: the lowest the norm allows for a new road; the map's limit is for noise and time
-      const signed = (() => { try { return groundRoadSourceInfo(transportIndex, interval.sourceId).taggedSpeed; } catch { return null; } })();
-      const lowest = route.specification.crossSection === 'existing' ? DEFAULT_SPEED : startSpeed(route.specification.crossSection);
-      const speed = route.specification.designSpeed === lowest
-        ? ` for ${lowest} km/h (the lowest the norm allows${signed && signed !== lowest ? `; signed ${signed}` : ''})` : '';
-      what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
-        ? `On the old road it is kept as it is. Off it, a new road is built${speed} and the old one removed.` : 'Checking the change…'}`;
-      }
-    } else {
-      const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
-        : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
-          return !host ? 'a road' : host.role === 'mission' ? 'our road' : host.name; })()
-        : e.anchor.kind === 'source' ? (rail ? (() => { const t = transportIndex?.source(e.anchor.location.sourceId)?.tags; return t?.name || (t?.ref ? `railway ${t.ref}` : 'a railway'); })()
-          : mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road')) : 'a scenario end';
-      what.textContent = `New ${rail ? 'railway' : 'road'} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
-    }
-    const form = document.createElement('form'); form.className = 'source-operations route-traffic';
-    const fields: HTMLInputElement[] = [];
-    if (route.kind === 'road') { const op = route.specification.operations;
-    for (const [key, label, unit, value] of [
-      ['traffic', 'Traffic', 'a day,', String(op.aadt)],
-      ['heavy', 'heavy', '%', String(Math.round(op.heavyShare * 1000) / 10)],
-    ] as const) {
-      const row = document.createElement('label'); row.textContent = label;
-      const input = document.createElement('input'); input.type = 'number'; input.required = true; input.min = '0';
-      input.max = key === 'traffic' ? '100000' : '100'; input.step = key === 'traffic' ? '1' : 'any'; input.name = key; input.value = value;
-      const small = document.createElement('small'); small.textContent = unit;
-      input.setAttribute('aria-label', key === 'traffic' ? 'Traffic, vehicles a day' : 'Heavy vehicles, percent');
-      row.append(input, small); form.append(row); fields.push(input);
-    }
-    const apply = () => {
-      const [traffic, heavy] = fields.map(f => f.value === '' ? NaN : Number(f.value));
-      if (!(traffic >= 0 && traffic <= 100000 && heavy >= 0 && heavy <= 100)) return;
-      const id = route.id;
-      store.editProject(d => {
-        const q = d.routes.find(x => x.id === id); if (!q || q.kind !== 'road') return;
-        q.specification.operations = { ...q.specification.operations, aadt: Math.round(traffic), heavyShare: heavy / 100 };
-      });
-      // the card is not redrawn under a focused field: the player's own number carries no "counted" label
-      if (!filled || Math.round(traffic) !== filled.aadt || Math.abs(heavy / 100 - filled.heavyShare) > 1e-9) basis.remove();
-    };
-    // where the numbers come from, while they are still the ones the game filled in
-    const cls = route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
-    const uncounted = UNCOUNTED_TRAFFIC[cls as keyof typeof UNCOUNTED_TRAFFIC];
-    const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
-    const basis = document.createElement('small'); basis.className = 'traffic-basis';
-    if (filled && isTraffic(op, filled)) {
-      basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
-        : uncounted ? `Not counted: a guess for ${uncounted.what}. Change it to what you expect.`
-        : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new road: the average class ${averaged} road is assumed.`;
-      basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
-        : averaged === cls ? 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.'
-        : `The traffic census (ŘSD) counts class I–III roads only. For ${uncounted?.what ?? 'this road'} the game guesses low (a residential zone is recommended up to 500 vehicles a day, TP 132). Change it to what you expect.`;
-      form.append(basis);
-    }
-    for (const f of fields) f.onchange = apply;
-    form.onsubmit = e => { e.preventDefault(); apply(); };
-    }
-    const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route';
-    remove.textContent = route.source ? `Keep the ${old}` : rail ? 'Remove railway' : 'Remove road';
-    remove.onclick = () => {
-      if (projectStore.inTransaction) return;
-      const mission = missionRouteId();
-      try { projectStore.dispatch({ type: 'delete-route', routeId: route.id }); }
-      catch { toast(rail ? 'Another railway joins this one: remove that railway first.' : 'Another road joins this one: remove that road first.'); return; }
-      if (mission) switchRoute(mission);
-      toast(route.source ? `The ${old} is kept.` : rail ? 'Railway removed.' : 'Road removed.', 'Undo', () => store.undo());
-    };
-    // what replacing the old stretch adds to this road's own price (C1 b)
-    // (a line that rounds to 0.0 M stays in the bill, not on the card)
-    const works = projectFull?.works.items.filter(w => w.owner.kind === 'route' && w.owner.id === route.id && w.label && (Math.abs(w.cost) >= 5e4 || w.id.includes(':kept:'))) ?? [];
-    const list = document.createElement('ul'); list.className = 'route-works';
-    for (const w of works) {
-      const li = document.createElement('li'), label = document.createElement('span'), cost = document.createElement('b');
-      // (what stays on the old road costs nothing: no amount)
-      label.textContent = w.label!; cost.textContent = w.cost ? `${(w.cost / 1e6).toFixed(w.cost < 1e7 ? 1 : 0)} M CZK` : '';
-      li.append(label, cost);
-      if (w.at) li.onclick = () => { view.flyTo(w.at!.x, w.at!.y, 700); };
-      list.append(li);
-    }
-    // each end that joins a road: its junction, Auto (a priority T) or a roundabout — plain choices
-    const junctions = document.createElement('div'); junctions.className = 'route-junctions';
-    if (!rail && !route.source && route.alignment.kind === 'pi') for (const end of ['a', 'b'] as const) {
-      const anchor: Anchor = route.endpoints[end].anchor;
-      const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : anchor.kind === 'route' ? 'designed' : undefined;
-      if (!cls || ROAD_CLASSES[cls]?.noAtGrade) continue;
-      const row = document.createElement('div'); row.className = 'ctx-row';
-      const label = document.createElement('span'); label.textContent = end === 'a' ? 'Start junction' : 'End junction';
-      const choice = document.createElement('div'); choice.className = 'seg choice';
-      const current = route.alignment.controls.junctionForms?.[end];
-      const options: [string, 'roundabout' | undefined, string][] = [['Auto', undefined, 'A priority T junction (research/29)']];
-      if (cls === 'designed' || ROUNDABOUT_HOSTS.includes(cls)) options.push(['Roundabout', 'roundabout', `A roundabout, ${Math.round(ENDPOINT_JUNCTIONS.roundabout.cost / 1e6)} M CZK plus its ring's land (ŘSD awards, research/08)`]);
-      if (options.length < 2) continue;
-      for (const [text, value, title] of options) {
-        const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.dataset.end = end;
-        b.className = current === value ? 'on' : ''; b.setAttribute('aria-pressed', String(current === value));
-        b.onclick = () => {
-          if (current === value) return;
-          const id = route.id;
-          store.editProject(d => {
-            const q = d.routes.find(x => x.id === id); if (!q || q.alignment.kind !== 'pi') return;
-            const forms = { ...q.alignment.controls.junctionForms };
-            if (value) forms[end] = value; else delete forms[end];
-            if (Object.keys(forms).length) q.alignment.controls.junctionForms = forms; else delete q.alignment.controls.junctionForms;
-          });
-        };
-        choice.append(b);
-      }
-      row.append(label, choice); junctions.append(row);
-    }
-    // where the line stays on the old road, the old road is kept although a new road could not be built so
-    const notes = document.createElement('div'); notes.className = 'route-kept';
-    const bends = [...new Set((r.inherited ?? []).flatMap(v => v.pis ?? (v.pi !== undefined ? [v.pi] : [])))].sort((p, q) => p - q);
-    if (r.inherited?.length) {
-      const text = document.createElement('span');
-      text.textContent = `The ${old} is tighter than the norm ${bends.length ? `at bend${bends.length > 1 ? 's' : ''} ` : 'here'}`;
-      notes.append(text);
-      bends.forEach((i, k) => {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = String(i + 1);
-        b.title = r.inherited!.filter(v => v.pi === i || v.pis?.includes(i)).map(v => v.title).join('; ');
-        b.onclick = () => select({ kind: 'bend', i }, true);
-        notes.append(b, k + 1 < bends.length ? ', ' : '');
-      });
-      notes.append(`: kept as it is. Move it off the ${old} and it must meet the norm.`);
-    }
-    head.append(h, what, ...(notes.childElementCount ? [notes] : []), ...(junctions.childElementCount ? [junctions] : []), ...(works.length ? [list] : []), ...(rail ? [] : [form]), remove);
-    return head;
+  /** what the whole-road cards (ui/route-cards.ts) read and may do */
+  const routeCards: RouteCardDeps = {
+    route: () => store.route, result: () => last, project: () => projectFull, design: () => projectStore.snapshot.design,
+    transport: () => transportIndex, editable: () => store.read() !== null, directions: () => directionsState(),
+    onDirection: w => hud.ev.onDirection?.(w), joinStretch: id => joinStretch(id),
+    editProject: edit => store.editProject(edit), inTransaction: () => projectStore.inTransaction,
+    deleteRoute: id => projectStore.dispatch({ type: 'delete-route', routeId: id }),
+    missionRouteId: () => missionRouteId(), switchRoute: id => { switchRoute(id); }, undo: () => store.undo(),
+    flyTo: (x, y, dist) => { view.flyTo(x, y, dist); }, selectBend: i => select({ kind: 'bend', i }, true),
+    host: () => inspector.host(), clear: message => inspector.clear(message),
   };
+  inspector.routeHead = routeHeadCard(routeCards);
+
   const showSource = (hit: SourceHit) => {
     if (!sourceEditor) return;
     select(null); inspector.host(); sourceEditor.show(hit); hud.revealContext('inspector');
   };
-  const showNoLinks = () => {
-    select(null);
-    const root = inspector.host(), h = document.createElement('div'), title = document.createElement('b'), close = document.createElement('button');
-    root.replaceChildren(); root.className = 'card ctx inspector k-source';
-    h.className = 'ctx-h'; title.textContent = 'Road'; close.className = 'x'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.type = 'button';
-    close.onclick = () => select(null); h.append(title, close);
-    const p = document.createElement('p'); p.textContent = 'This map’s roads cannot be changed yet: its road links are missing.';
-    root.append(h, p); hud.revealContext('inspector');
-  };
+  const showNoLinks = () => { select(null); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
+
   const selectPiece = (s: number, fly = false) => {
     if (!last) return;
     const p = pieceAt(last, s);
@@ -1658,171 +1476,15 @@ async function main() {
   setStatus('computing…');
   requestEval();
 
-  // ---- debug / automation API ----
-  (window as unknown as { trapla: unknown }).trapla = {
-    getDesign: () => structuredClone(store.design),
-    setDesign: (d: Design) => {
-      const id = missionRouteId() ?? store.activeRouteId; if (!id) return; switchRoute(id);
-      store.editProject(draft => {
-        Object.assign(draft, replaceRouteFromLegacy(draft, id, d));
-        const route = draft.routes.find(r => r.id === id)!;
-        // Explicit legacy automation semantics: its one speed also governed traffic emissions.
-        if (route.kind === 'road' && route.specification.operations.speedPolicy !== 'independent') route.specification.operations.speed = d.speed;
-      });
-    },
-    getProject: () => structuredClone(projectStore.snapshot.design),
-    projectSnapshot: () => structuredClone(projectStore.snapshot),
-    projectResult: () => projectFull,
-    /** a road's works around station s: its bridge there (m), retaining walls within 150 m (count, length), billed parts within `reach` m */
-    localWorks: (r: Result, s: number, reach = 300) => {
-      const run = r.runs.find(x => x.kind === KIND.bridge && x.s0 <= s && x.s1 >= s);
-      let cost = 0;
-      for (const part of Object.values(r.parts)) for (let i = 0; i < r.n; i++) if (Math.abs(r.s[i] - s) <= reach) cost += part[i];
-      const walls = r.retainingWalls.filter(w => w.s1 >= s - 150 && w.s0 <= s + 150);
-      return { bridge: run ? run.s1 - run.s0 : 0, walls: walls.length, wallLength: walls.reduce((t, w) => t + w.s1 - w.s0, 0), cost };
-    },
-    activeRoute: () => store.activeRouteId,
-    routeEndpoints: () => structuredClone(store.route?.endpoints ?? null),
-    renderRoutes: () => view.routeGeometryStats(),
-    groundHeight: (x: number, y: number) => pack.terrain.heightAt(x, y),
-    routeScreen: (id: RouteId, s: number) => {
-      const route = projectFull?.routes[id], r = route?.legacy;
-      if (!r) { // an unaccepted proposal: its drawn reference line
-        const p = route?.surface?.points; if (!p?.length) return null;
-        const q = p.reduce((a, b) => (Math.abs(b.s - s) < Math.abs(a.s - s) ? b : a));
-        return view.project(q.x, q.y, view.drape(q.x, q.y) + 2.5);
-      }
-      const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
-      return view.project(r.x[i], r.y[i], r.kind[i] === KIND.tunnel ? view.drape(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5);
-    },
-    handledRequest: () => received,
-    /** promotable ground base roads at least minLength long, with their distance from the routes (m) */
-    baseRoads: (minLength = 600) => {
-      if (!transportIndex) return [];
-      const routes = Object.values(projectFull?.routes ?? {}).flatMap(r => r.legacy ? [r.legacy] : []);
-      return transportIndex.graph.sources.flatMap(source => {
-        const length = source.stations[source.stations.length - 1];
-        if (source.kind !== 'road' || length < minLength) return [];
-        let info; try { info = groundRoadSourceInfo(transportIndex!, source.id); } catch { return []; }
-        let clear = Infinity;
-        for (let i = 0; i < source.xy.length; i += 2) for (const r of routes) for (let k = 0; k < r.n; k += 10)
-          clear = Math.min(clear, Math.hypot(r.x[k] - source.xy[i], r.y[k] - source.xy[i + 1]));
-        const mid = transportIndex!.branches({ transportData: transportIndex!.transportData, sourceId: source.id, s0: 0, s1: length })
-          .filter(b => b.s > 50 && b.s < length - 50).map(b => b.s);
-        return [{ id: source.id, name: info.name, legalClass: info.legalClass, length, clear, branches: mid, rebuildable: mappedLineKindFor(transportIndex!, source.id).verdict.ok }];
-      });
-    },
-    /** mapped ways tagged highway=`highway` ('railway': railway lines), at least minLength long (ids, longest first) */
-    sourceIds: (highway: string, minLength = 0) => (transportIndex?.graph.sources ?? []).filter(q => (highway === 'railway' ? q.kind === 'railway' : q.tags.highway === highway)
-      && q.stations[q.stations.length - 1] >= minLength)
-      .sort((p, q) => q.stations[q.stations.length - 1] - p.stations[p.stations.length - 1]).map(q => q.id),
-    sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
-    sourceSelection: () => sourceEditor?.selection ?? null,
-    /** the road links are loaded and parsed (they load on first need) */
-    transportLoaded: () => !!transportGraph,
-    /** the screen point (px inside the view) of the drawn ground at x, y */
-    groundScreen: (x: number, y: number) => view.project(x, y, view.drape(x, y)),
-    /** would a press at this client point drag something (bend our road, rebuild a mapped road) instead of panning? */
-    grabsAt: (clientX: number, clientY: number) => { const on = view.ev.hitRoad?.(clientX, clientY) ?? false; grabbing = null; grabbedSource = null; grabbedEarly = null; return on; },
-    sourcePoint: (id: string, s: number) => transportIndex?.position(id, s) ?? null,
-    buildHover: () => buildTool.hoverText,
-    building: () => buildTool.active,
-    /** what a Build click at this client point would place (no change) */
-    placementAt: (clientX: number, clientY: number) => { const g = view.pick(clientX, clientY); return g ? placeAt(clientX, clientY, g.x, g.y) : null; },
-    /** a point on a drawn road away from ours (for checking the no-road-links card) */
-    legacyRoadPoint: () => {
-      const net = pack.overlays.net, r = last; if (!net || !r) return null;
-      for (const w of net.ways) {
-        if (!['tertiary', 'secondary', 'residential', 'unclassified'].includes(net.cls[w[0]]) || w.length < 5) continue;
-        const x = (w[1] + w[3]) / 2, y = (w[2] + w[4]) / 2;
-        let near = Infinity; for (let i = 0; i < r.n; i += 5) near = Math.min(near, Math.hypot(r.x[i] - x, r.y[i] - y));
-        if (near > 400 && near < 3000 && !pack.terrain.isOob(x, y) && Math.hypot(w[3] - w[1], w[4] - w[2]) > 30) return { x, y };
-      }
-      return null;
-    },
-    lookAtSource: (id: string, s: number, dist = 900) => { const p = transportIndex?.position(id, s); if (p) view.lookAt(p.x, p.y, dist, 0, 55); },
-    proposalLines: () => view.proposalCount,
-    photoWithNetwork: () => view.photoWithNetwork,
-    setActiveRoute: switchRoute,
-    projectSelection: () => structuredClone(qualifiedSelection),
-    setProject: (design: ProjectDesign) => {
-      select(null);
-      if (projectStore.inTransaction) projectStore.cancel();
-      projectStore.begin(); projectStore.update(draft => Object.assign(draft, structuredClone(design))); projectStore.commit();
-    },
-    result: () => last,
-    summary: () => last && {
-      length: last.length, travelMin: last.travelMin, valid: last.valid, cost: last.cost, violations: last.violations,
-      quantities: { ...last.quantities, massHaul: undefined, hitBuildings: last.quantities.hitBuildings.length },
-      runs: last.runs, timing: last.timing, vpis: last.vpis.length, crossings: last.crossings, walls: last.walls,
-    },
-    whenIdle: () => new Promise<void>((res) => { if (sceneIdle()) res(); else idleWaiters.push(res); }),
-    /** parse the lazily loaded transport graph now (base-road hooks below need it) */
-    whenTransport: () => ensureTransport().then(() => !!transportGraph),
-    lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
-    screenOf: (x: number, y: number, z: number) => view.project(x, y, z),
-    resetCamera: () => view.resetCamera(),
-    /** select something (as a click would): a bend, pin, crossing, building, stretch or piece at a station */
-    select: (t: Sel | null) => select(t),
-    selectPiece: (s: number) => selectPiece(s),
-    selection: () => sel && JSON.parse(JSON.stringify(sel)),
-    selectPi: (i: number | null) => select(i === null ? null : { kind: 'bend', i }),
-    selectStation: (s: number) => select({ kind: 'pin', s }),
-    selectCrossing: (roadId: number) => select({ kind: 'crossing', roadId }, true),
-    selectBuilding: (j: number) => select({ kind: 'building', j }),
-    maxRadius: (i: number) => curveEdit.maxRadius(i),
-    pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
-    project: (x: number, y: number, z: number) => view.project(x, y, z),
-    /** screen position (px inside the view) of building j's centroid, `up` metres above its ground */
-    /** building j is drawn in 3D (false: removed as demolished, or no mesh) */
-    buildingShown: (j: number) => { const k = view.buildingMesh(j); return k >= 0 && !view.buildingMeshes?.isHidden(k); },
-    buildingScreen: (j: number, up = 2) => {
-      const b = pack.overlays.buildings[j];
-      return b && view.project(b[0], b[1], pack.terrain.heightAt(b[0], b[1]) + up);
-    },
-    profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
-    profileFit: () => profile.fit(),
-    profileView: () => profile.view,
-    profileHasRoad: () => profile.hasRoad,
-    /** By hand: the height points with a handle at the profile's zoom */
-    profileShownPoints: () => profile.shownPoints,
-    profileHover: () => profile.hover,
-    profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
-    bendStations: () => last && bendStations(last, store.design),
-    cameraTarget: () => view.target,
-    cameraDistance: () => view.cameraDistance,
-    cameraPose: () => view.pose,
-    undoLabels: () => ({ undo: store.undoLabel(), redo: store.redoLabel() }),
-    selectRange: (s0: number | null, s1?: number) => select(s0 === null || s1 === undefined ? null : { kind: 'stretch', s0, s1 }),
-    range: () => (sel?.kind === 'stretch' ? { s0: sel.s0, s1: sel.s1 } : null),
-    /** the road's screen point (px inside the view) at station s */
-    // where the road is drawn to grab: a tunnel at its ground-level indication, as picking uses
-    roadScreen: (s: number) => { if (!last) return null; const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds))); return view.project(last.x[i], last.y[i], routeIndicationHeight(last, i, (x, y) => view.drape(x, y))); },
-    mapWindow: () => (profile as unknown as { mapWindow: unknown }).mapWindow,
-    setExaggeration: (e: number) => viewBar.set({ exag: e }),
-    setView: (p: Partial<ViewPrefs>) => viewBar.set(p),
-    viewBusy: () => view.busy,
-    handlerTiming: () => ({ ...handlerTiming }),
-    /** the last full result's sliced 3D rebuild: slices, busy / longest-slice / wall / commit ms */
-    rebuildStats: () => ({ ...heavyStats }),
-    /** live shader programs (a growing / changing list during edits means recompiles) */
-    programs: () => (view.renderer.info.programs ?? []).map((p) => `${p.id}:${p.cacheKey.slice(0, 40)}`),
-    /** debugging only: the 3D view */
-    debugView: () => view,
-    meta,
-    official: meta.official.xy,
-    A, B,
-  };
-}
-
-/** the plan's bends at their stations along the route: the middle of the bend's arc, or the nearest station */
-function bendStations(r: Result, d: Design): { i: number; s: number }[] {
-  return d.pis.map((p, i) => {
-    const c = r.curves.find((c) => c.index === i);
-    if (c && c.sEnd > c.sStart + 1) return { i, s: (c.sStart + c.sEnd) / 2 };
-    let bd = Infinity, s = 0;
-    for (let k = 0; k < r.n; k++) { const dd = (r.x[k] - p.x) ** 2 + (r.y[k] - p.y) ** 2; if (dd < bd) { bd = dd; s = r.s[k]; } }
-    return { i, s };
+  // ---- debug / automation API (src/automation.ts) ----
+  installAutomation({
+    store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A, B, handlerTiming,
+    get last() { return last; }, get projectFull() { return projectFull; },
+    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; }, get sourceEditor() { return sourceEditor; },
+    get sel() { return sel; }, get qualifiedSelection() { return qualifiedSelection; },
+    get received() { return received; }, get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
+    sceneIdle, missionRouteId, switchRoute, select, selectPiece, placeAt, ensureTransport,
+    releaseGrab: () => { grabbing = null; grabbedSource = null; grabbedEarly = null; },
   });
 }
 
