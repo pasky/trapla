@@ -78,6 +78,10 @@ const PASSES: Pass[] = [
 const PLOT_LAYERS = ['plots', 'plot-edges', 'buyout-rings'];
 /** how far a bought-out building's ring stands off its walls, m */
 const RING_OFFSET = 3;
+/** plots changes are redrawn in boxes of the buildings within cells of this size, m */
+const REPAINT_CELL = 250;
+/** boxes redrawn per frame */
+const REPAINT_PER_FRAME = 3;
 /** Physical crossing roads use the exact same class palette as the rasterised base map. */
 export function existingRoadColor(cls: string): number {
   const layer = cls === 'trunk' ? 'motorway' : ['residential', 'unclassified', 'living_street'].includes(cls) ? 'minor' : cls;
@@ -700,7 +704,7 @@ export class LandCover {
 
   /** forget everything drawn so far; redrawn by update() (photos come from the cache when they can) */
   private reset() {
-    this.queue = [];
+    this.queue = []; this.dirty = [];
     this.baseGen++;
     this.baseDone = this.basePhoto = false;
     this.uniforms.lcBaseOn.value = 0;
@@ -806,17 +810,25 @@ export class LandCover {
         for (const i of a) if (!c.has(i)) changed.add(i);
       this.plots = { demolished: dKey, bought: bKey };
       this.demolishedSet = new Set(demolished); this.boughtSet = new Set(bought);
-      // only where something changed: the footprints, their rings and the line widths around them
-      const box: BBox = [Infinity, Infinity, -Infinity, -Infinity];
-      for (const i of changed) for (let v = b.starts[i]; v < b.starts[i + 1]; v++) {
-        const x = b.verts[2 * v], y = b.verts[2 * v + 1];
-        box[0] = Math.min(box[0], x); box[1] = Math.min(box[1], y); box[2] = Math.max(box[2], x); box[3] = Math.max(box[3], y);
+      // only where something changed (the footprints, their rings and line widths around them), in boxes of
+      // nearby buildings, redrawn a few per frame by update() rather than all at once here
+      const boxes = new Map<number, BBox>();
+      for (const i of changed) {
+        const key = buildingChunk(b, REPAINT_CELL, i);
+        let box = boxes.get(key);
+        if (!box) boxes.set(key, box = [Infinity, Infinity, -Infinity, -Infinity]);
+        for (let v = b.starts[i]; v < b.starts[i + 1]; v++) {
+          const x = b.verts[2 * v], y = b.verts[2 * v + 1];
+          box[0] = Math.min(box[0], x); box[1] = Math.min(box[1], y); box[2] = Math.max(box[2], x); box[3] = Math.max(box[3], y);
+        }
       }
-      if (changed.size) this.withState(() => this.repaint(box, RING_OFFSET * 2 + 2));
+      this.dirty.push(...boxes.values());
       this.onChange?.();
     } };
   }
   private boughtSet: ReadonlySet<number> = new Set();
+  /** map areas still to redraw after a plots change (local metres), a few per frame */
+  private dirty: BBox[] = [];
 
   /** Redraw the map inside `box` (local metres, grown by `pad` m and a few texels) in the base and every
    * level, keeping everything else (the photo is not the map: nothing to redraw there). */
@@ -1001,7 +1013,12 @@ export class LandCover {
    * Draws at most one level per call; returns true while more are pending (call again next frame).
    */
   update(fx: number, fy: number, mPerPx: number): boolean {
-    if (!this.baseDone) { this.drawBase(); this.pump(); return true; }
+    if (!this.baseDone) { this.dirty = []; this.drawBase(); this.pump(); return true; }
+    if (this.dirty.length) {
+      const boxes = this.dirty.splice(0, REPAINT_PER_FRAME);
+      this.withState(() => { for (const box of boxes) this.repaint(box, RING_OFFSET * 2 + 2); });
+      return true;
+    }
     this.fx = fx; this.fy = fy;
     const want = Math.log2(Math.max(1e-3, mPerPx) / R0), k0 = this.k0, S = this.size;
     // hysteresis so a zoom hovering around a boundary does not thrash
