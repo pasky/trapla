@@ -4,6 +4,66 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Session 2 — 2026-11-16, main @ 217cfa4 (SwiftShader, 1440×900 then 1280×720, fresh localStorage)
+
+Flows: Continue / Start over across D3 road ↔ D3 motorway, Nová Paka (drag, town, houses), D11 houses and walls
+(wall None per side, fix buttons, buy out, Keep a demolished building), D35 road and motorway endpoints, 1280×720
+pass (picker, intro, piece / crossing / house cards, Your choices, noise view). Screenshots `/tmp/trapla-qa/s2/`.
+
+What worked: presets of one scenario keep separate designs (`trapla.project:<scenario>:<preset>`); Continue
+restores each; Start over returns to the preset with an Undo toast (`006`); wall fix buttons and "Buy out N" make
+the design valid in two clicks (`025`–`027`); Keep shows "Road through a kept building" with Buy out / Stop keeping;
+at 1280×720 every card fits and nothing is cut off (`039`, `041`).
+
+### P0 — broken / untruthful
+
+1. **Demolished buildings — same as S1 #5, also on Nová Paka and D11 at Poříčí.** NP after one drag toward the bypass
+   reference, km 2.4: a demolished house is a flat roof slab half under our embankment, two black squares above it
+   (`015`, `016`). D11 straight, km 6.6–6.8: industrial halls as flat red slabs with the road running across them
+   (`024`).
+
+### P1 — confusing
+
+2. **Bridges over ponds can never be valid.** D3 road preset: drag the road between bends 6 and 7 about 50 px east
+   (to bend 7 at Chleby). → 38 violations, 34 of them "A bridge pier stands on a pond or river · Move the route at
+   km 13.xx a little so the support misses the water", one per pier of a bridge across a ~500 m fishpond (`004`,
+   `005`, a red X on every pier). Moving "a little" cannot help; piers in ponds are normal practice (or a causeway).
+   Expected: Auto spans or accepts piers in standing water (priced), at most one violation per bridge. Same drag also
+   leaves "Our earthworks cover 30 m of a track" at km 9.97 unresolved — an ordinary conflict Auto should solve.
+   Area: bridges / crossing-links.
+3. **Auto walls that protect nobody?** D11 straight start, select cut km 8.89–9.53 (profile): card says Auto 3 m
+   left and 3 m right. Set Right → None: still VALID, −1.5 M; Left → None too: still VALID, −2.4 M in total, no
+   house warning. No wall is drawn in that cut and no houses are near (`044`–`046`). Either Auto builds walls that
+   are not needed, or the card reports walls from the neighbouring pieces and *None* removes them unchecked. Area:
+   noise-walls-seams.
+4. **A wall choice reaches beyond the selected piece.** D11, cut km 6.48–7.49, Left → None: removal and the two
+   resulting violations cover km 6.25–7.70 (profile pink stripe, `025`). The card then reads "5 m, none (yours)"
+   after the fix. Expected: the choice applies to the selected stretch (or the card says it changes the whole wall
+   km 6.25–7.70). Area: noise-walls-seams.
+5. **Keep on a demolished building**: the building is drawn standing across our road, and the pink wall-removal dashes
+   are painted on its roof (`030`). The choices read Auto / Buy out / Keep where Auto currently means *demolished* —
+   "Buy out" for a building in the road's way reads as a different thing than demolition. One word for it.
+6. **D35 road and D35 motorway end in fields at B** (Staré Město, nothing connects, `033`, `035`). At A the new road
+   starts beside the end of the existing road rather than on it; the motorway's 4 lanes start as a cut-off slab next
+   to a 2-lane road (`032`, `034`). Same class as S1 #9. Area: long-corridors.
+7. **Selecting something does not bring it into view.** Profile click on a piece that is partly on screen does not
+   move the map even when the clicked km is off screen (`022`); *Your choices → Buy out house* at overview leaves the
+   map at overview — the house is a dot (`041`). Clicking a 1 km piece from the overview never zooms in. Expected:
+   fly so the selection fills a sensible part of the map.
+8. **Zoom-in floor is high on Nová Paka**: six wheel steps over a house do nothing at ~200 m; houses cannot be looked
+   at closer (`017`, `018`). D11 lets the camera much closer (S1 `014`).
+
+### P2 — polish
+
+9. 1280×720: the map gets 420 px, the profile 300 px; the intro card covers a third of the map (`038`).
+10. Profile labels overlap: "5 m / 3 m" wall labels on top of "left: no wall" (`028`); D35 bend markers 6/7 overlap a
+    crossing icon (`031`).
+11. Noise band is clipped to a stepped box around the road; its limit line runs along the box edges, not the sound
+    field (`045`; also S1 `093`).
+12. The picker cannot start a preset fresh; only Continue (Start over is inside the game).
+
+Retracted from S1: none. (A suspected road pick offset on Nová Paka was my aim; the road's hit band matches its line.)
+
 ## Session 1 — 2026-11-16, main @ 217cfa4 (SwiftShader, 1440×900, fresh localStorage)
 
 Flows played: picker → D11 road (drag, crossings, houses, buy-out, noise view, photo, camera), D3 motorway (A/B,
