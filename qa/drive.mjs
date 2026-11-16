@@ -38,12 +38,12 @@ http.createServer(async (req, res) => {
   let body = '';
   for await (const c of req) body += c;
   let out;
+  if (body.trim() === 'QUIT') { res.end('bye\n'); await browser.close(); await server.close(); process.exit(0); }
   try {
     const fn = new Function('page', 'shot', 'T', 'idle', 'S', 'base', 'log', `return (async () => { ${body} })();`);
     out = await fn(page, shot, T, idle, S, base, log);
   } catch (e) { out = { error: String(e?.stack ?? e) }; }
   const errs = log.splice(0);
   res.end(JSON.stringify({ out, errs }, null, 1) + '\n');
-  if (body.trim() === 'QUIT') { await browser.close(); await server.close(); process.exit(0); }
 }).listen(CTL, '127.0.0.1');
 console.log(`ready: app ${base}, control 127.0.0.1:${CTL}, shots ${OUT}`);
