@@ -38,6 +38,9 @@ interface Pass {
   dash?: [number, number];
   /** only drawn at resolutions finer than this many metres per texel (fades out over the octave below it) */
   maxRes?: number;
+  /** polygons: diagonal stripes of this colour, period (m) and duty, faded out where a texel is coarser
+   * than a third of the period */
+  hatch?: { color: RGB; period: number; duty: number };
 }
 
 export const BUILDING_COLOR: RGB = [156, 92, 78];
@@ -66,7 +69,17 @@ const PASSES: Pass[] = [
   { layer: 'primary', kind: 'line', color: [250, 226, 150], alpha: 0.95, width: 9, minPx: 2.0 },
   { layer: 'motorway', kind: 'line', color: [240, 176, 128], alpha: 0.95, width: 11, minPx: 2.6 },
   { layer: 'buildings', kind: 'poly', color: BUILDING_COLOR, alpha: 1 },
+  // what the route takes (setPlots): a demolished building's footprint becomes a cleared plot (pale
+  // ground, dark hatch, dashed edge) in its own shape; a bought-out one keeps its roof inside a dashed ring
+  { layer: 'plots', kind: 'poly', color: [214, 206, 190], alpha: 0.92, hatch: { color: [92, 96, 104], period: 2.4, duty: 0.24 } },
+  { layer: 'plot-edges', kind: 'line', color: [61, 67, 75], alpha: 0.95, width: 0.7, minPx: 1.4, dash: [3.2, 0.62] },
+  { layer: 'buyout-rings', kind: 'line', color: [196, 60, 155], alpha: 0.95, width: 0.9, minPx: 1.6, dash: [4, 0.62] },
 ];
+const PLOT_LAYERS = ['plots', 'plot-edges', 'buyout-rings'];
+/** how far a bought-out building's ring stands off its walls, m */
+const RING_OFFSET = 3;
+/** plots changes are redrawn in boxes of the buildings within cells of this size, m */
+const REPAINT_CELL = 250;
 /** Physical crossing roads use the exact same class palette as the rasterised base map. */
 export function existingRoadColor(cls: string): number {
   const layer = cls === 'trunk' ? 'motorway' : ['residential', 'unclassified', 'living_street'].includes(cls) ? 'minor' : cls;
@@ -141,9 +154,24 @@ void main() {
 const POLY_FRAG = /* glsl */ `
 uniform vec4 color;
 void main() { gl_FragColor = color; }`;
+const HATCH_VERT = /* glsl */ `
+uniform vec4 box;
+varying vec2 vXY;
+void main() { vXY = position.xy; gl_Position = vec4((position.xy - box.xy) * box.zw * 2.0 - 1.0, 0.0, 1.0); }`;
+const HATCH_FRAG = /* glsl */ `
+uniform vec4 color;
+uniform vec4 hatch;
+uniform vec2 hpar;
+uniform float res;
+varying vec2 vXY;
+void main() {
+  float t = fract((vXY.x + vXY.y) / hpar.x);
+  float k = step(t, hpar.y) * (1.0 - smoothstep(hpar.x / 4.0, hpar.x / 2.0, res));
+  gl_FragColor = mix(color, hatch, k);
+}`;
 
 type BBox = [number, number, number, number];
-interface Geo { geo: THREE.BufferGeometry; bbox: BBox }
+interface Geo { geo: THREE.BufferGeometry; bbox: BBox; key?: number }
 
 /** 2-component positions: give three.js a bounding sphere so it does not try to compute one (culling is ours) */
 function flat(geo: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -278,17 +306,21 @@ export function* buildLineGeos(layer: LineLayer, chunk: number, caps: boolean, c
   return out;
 }
 
-function buildingGeos(b: BuildingData, chunk: number): Geo[] {
+const buildingChunk = (b: BuildingData, chunk: number, i: number) =>
+  Math.floor(b.verts[2 * b.starts[i] + 1] / chunk) * 4096 + Math.floor(b.verts[2 * b.starts[i]] / chunk);
+/** footprints by chunk (`keep`: which buildings; `keys`: only these chunks) */
+function buildingGeos(b: BuildingData, chunk: number, keep?: (i: number) => boolean, keys?: ReadonlySet<number>): Geo[] {
   const groups = new Map<number, number[]>();
   for (let i = 0; i < b.count; i++) {
-    const v = b.starts[i];
-    const key = Math.floor(b.verts[2 * v + 1] / chunk) * 4096 + Math.floor(b.verts[2 * v] / chunk);
+    if (keep && !keep(i)) continue;
+    const key = buildingChunk(b, chunk, i);
+    if (keys && !keys.has(key)) continue;
     let g = groups.get(key);
     if (!g) groups.set(key, g = []);
     g.push(i);
   }
   const out: Geo[] = [];
-  for (const g of groups.values()) {
+  for (const [key, g] of groups) {
     let nv = 0, nt = 0;
     for (const i of g) { nv += b.starts[i + 1] - b.starts[i]; nt += b.triStarts[i + 1] - b.triStarts[i]; }
     const pos = new Float32Array(nv * 2), idx = new Uint32Array(nt);
@@ -306,9 +338,32 @@ function buildingGeos(b: BuildingData, chunk: number): Geo[] {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 2));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
-    out.push({ geo: flat(geo), bbox });
+    out.push({ geo: flat(geo), bbox, key });
   }
   return out;
+}
+
+/** closed footprint rings of buildings `set` as a line layer, `offset` m outside their walls (rings are
+ * counter-clockwise: outside is to the right; mitred corners, limited) */
+function footprintRings(b: BuildingData, set: Iterable<number>, offset = 0): LineLayer {
+  const verts: number[] = [], starts: number[] = [];
+  for (const i of set) {
+    const v0 = b.starts[i], n = b.starts[i + 1] - v0;
+    if (n < 3) continue;
+    starts.push(verts.length / 2);
+    const x = (k: number) => b.verts[2 * (v0 + ((k % n) + n) % n)], y = (k: number) => b.verts[2 * (v0 + ((k % n) + n) % n) + 1];
+    for (let k = 0; k <= n; k++) {
+      if (!offset) { verts.push(x(k), y(k)); continue; }
+      // outward normals of the edges before and after vertex k
+      const ex0 = x(k) - x(k - 1), ey0 = y(k) - y(k - 1), l0 = Math.hypot(ex0, ey0) || 1;
+      const ex1 = x(k + 1) - x(k), ey1 = y(k + 1) - y(k), l1 = Math.hypot(ex1, ey1) || 1;
+      const nx = ey0 / l0 + ey1 / l1, ny = -ex0 / l0 - ex1 / l1, nl = Math.hypot(nx, ny);
+      const cos = nl / 2, m = nl > 1e-6 ? offset / Math.max(0.5, cos) / nl : 0;
+      verts.push(x(k) + nx * m, y(k) + ny * m);
+    }
+  }
+  starts.push(verts.length / 2);
+  return { name: 'rings', verts: new Float32Array(verts), starts: new Uint32Array(starts) };
 }
 
 /**
@@ -408,6 +463,7 @@ export class LandCover {
     for (const l of vectors.polys) geos.set(l.name, polyGeos(l.verts, l.idx, l.chunks));
     for (const l of vectors.lines) geos.set(l.name, finish(buildLineGeos(l, vectors.chunk, CAPPED.has(l.name))));
     if (vectors.buildings) geos.set('buildings', buildingGeos(vectors.buildings, vectors.chunk));
+    if (vectors.buildings) for (const layer of PLOT_LAYERS) geos.set(layer, []);
     this.passes = this.makePasses(PASSES, geos, this.scene);
     const samples = Math.min(4, renderer.capabilities.maxSamples);
     this.scratch = new THREE.WebGLRenderTarget(this.size, this.size, {
@@ -469,13 +525,15 @@ export class LandCover {
       const gl = geos.get(pass.layer);
       if (!gl) return;
       const line = pass.kind === 'line';
+      const h = pass.hatch;
       const mat = new THREE.ShaderMaterial({
         uniforms: {
           box: this.box, res: this.res, color: { value: new THREE.Vector4() },
           wpar: { value: new THREE.Vector4((pass.width ?? 0) / 2, (pass.minPx ?? 0) / 2, pass.extra ?? 0, pass.extraPx ?? 0) },
           dash: { value: new THREE.Vector2(pass.dash?.[0] ?? 0, pass.dash?.[1] ?? 1) },
+          hatch: { value: new THREE.Vector4() }, hpar: { value: new THREE.Vector2(h?.period ?? 1, h?.duty ?? 0) },
         },
-        vertexShader: line ? LINE_VERT : POLY_VERT, fragmentShader: line ? FRAG : POLY_FRAG,
+        vertexShader: line ? LINE_VERT : h ? HATCH_VERT : POLY_VERT, fragmentShader: line ? FRAG : h ? HATCH_FRAG : POLY_FRAG,
         blending: THREE.NoBlending, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
       });
       const meshes = gl.map((g) => this.mesh(g, mat, order, scene));
@@ -485,7 +543,7 @@ export class LandCover {
   }
   private mesh(g: Geo, mat: THREE.Material, order: number, scene: THREE.Scene) {
     const m = new THREE.Mesh(g.geo, mat);
-    m.frustumCulled = false; m.matrixAutoUpdate = false; m.renderOrder = order; m.userData.bbox = g.bbox;
+    m.frustumCulled = false; m.matrixAutoUpdate = false; m.renderOrder = order; m.userData.bbox = g.bbox; m.userData.key = g.key;
     scene.add(m); return m;
   }
   /** polylines of a line layer the transport graph maps (no graph: none — nothing is clickable) */
@@ -536,6 +594,7 @@ export class LandCover {
       const fade = pass.maxRes === undefined ? 1 : Math.max(0, Math.min(1, 2 - (2 * res) / pass.maxRes));
       const a = pass.alpha * fade;
       mat.uniforms.color.value.set((pass.color[0] / 255) * a, (pass.color[1] / 255) * a, (pass.color[2] / 255) * a, a);
+      if (pass.hatch) mat.uniforms.hatch.value.set((pass.hatch.color[0] / 255) * a, (pass.hatch.color[1] / 255) * a, (pass.hatch.color[2] / 255) * a, a);
       for (const m of meshes) {
         const b = m.userData.bbox as BBox;
         m.visible = fade > 0 && b[2] + pad >= x0 && b[0] - pad <= x0 + w && b[3] + pad >= y0 && b[1] - pad <= y0 + h;
@@ -643,7 +702,7 @@ export class LandCover {
 
   /** forget everything drawn so far; redrawn by update() (photos come from the cache when they can) */
   private reset() {
-    this.queue = [];
+    this.queue = []; this.dirty = [];
     this.baseGen++;
     this.baseDone = this.basePhoto = false;
     this.uniforms.lcBaseOn.value = 0;
@@ -701,6 +760,110 @@ export class LandCover {
         settled = true;
       } };
     } finally { if (!handedOver) dispose(); }
+  }
+
+  /** the buildings drawn as cleared plots / ringed (render indices), as committed */
+  private plots = { demolished: '', bought: '' };
+  private demolishedSet: ReadonlySet<number> = new Set();
+
+  /** Stage the map for what the route takes: demolished buildings (render indices) leave the footprint
+   * layer and become cleared plots in their own shape; bought-out ones get a ring. Only the chunks whose
+   * buildings changed are rebuilt; everything is redrawn on commit (as for source replacements). */
+  *buildPlots(demolished: ReadonlySet<number>, bought: ReadonlySet<number>): Generator<void, Staged> {
+    const b = this.vectors.buildings, chunk = this.vectors.chunk;
+    const key = (set: ReadonlySet<number>) => [...set].sort((x, y) => x - y).join(',');
+    const dKey = key(demolished), bKey = key(bought);
+    if (!b || (dKey === this.plots.demolished && bKey === this.plots.bought)) return { commit() {}, dispose() {} };
+    const changedChunks = new Set<number>();
+    for (const i of demolished) if (!this.demolishedSet.has(i)) changedChunks.add(buildingChunk(b, chunk, i));
+    for (const i of this.demolishedSet) if (!demolished.has(i)) changedChunks.add(buildingChunk(b, chunk, i));
+    const footprints = changedChunks.size ? buildingGeos(b, chunk, i => !demolished.has(i), changedChunks) : [];
+    yield;
+    const fill = buildingGeos(b, chunk, i => demolished.has(i));
+    const edges = yield* buildLineGeos(footprintRings(b, demolished), chunk, false);
+    const rings = yield* buildLineGeos(footprintRings(b, bought, RING_OFFSET), chunk, false);
+    let settled = false;
+    const dispose = () => {
+      if (settled) return; settled = true;
+      for (const g of [...footprints, ...fill, ...edges, ...rings]) g.geo.dispose();
+    };
+    return { dispose, commit: () => {
+      if (settled) return;
+      settled = true;
+      const replace: Record<string, { geos: Geo[]; keys?: ReadonlySet<number> }> = {
+        buildings: { geos: footprints, keys: changedChunks }, plots: { geos: fill }, 'plot-edges': { geos: edges }, 'buyout-rings': { geos: rings } };
+      for (const entry of this.passes) {
+        const r = replace[entry.pass.layer];
+        if (!r) continue;
+        const order = PASSES.indexOf(entry.pass);
+        const keep: THREE.Mesh[] = [];
+        for (const mesh of entry.meshes) {
+          if (r.keys && !r.keys.has(mesh.userData.key as number)) { keep.push(mesh); continue; }
+          this.scene.remove(mesh); mesh.geometry.dispose();
+        }
+        entry.meshes = [...keep, ...r.geos.map(g => this.mesh(g, entry.mat, order, this.scene))];
+      }
+      const changed = new Set<number>();
+      for (const [a, c] of [[demolished, this.demolishedSet], [bought, this.boughtSet], [this.demolishedSet, demolished], [this.boughtSet, bought]] as const)
+        for (const i of a) if (!c.has(i)) changed.add(i);
+      this.plots = { demolished: dKey, bought: bKey };
+      this.demolishedSet = new Set(demolished); this.boughtSet = new Set(bought);
+      // only where something changed (the footprints, their rings and line widths around them), in boxes of
+      // nearby buildings, redrawn by the next update() (one mipmap pass per texture) rather than in the commit
+      const boxes = new Map<number, BBox>();
+      for (const i of changed) {
+        const key = buildingChunk(b, REPAINT_CELL, i);
+        let box = boxes.get(key);
+        if (!box) boxes.set(key, box = [Infinity, Infinity, -Infinity, -Infinity]);
+        for (let v = b.starts[i]; v < b.starts[i + 1]; v++) {
+          const x = b.verts[2 * v], y = b.verts[2 * v + 1];
+          box[0] = Math.min(box[0], x); box[1] = Math.min(box[1], y); box[2] = Math.max(box[2], x); box[3] = Math.max(box[3], y);
+        }
+      }
+      this.dirty.push(...boxes.values());
+      this.onChange?.();
+    } };
+  }
+  private boughtSet: ReadonlySet<number> = new Set();
+  /** map areas still to redraw after a plots change (local metres), on the next update */
+  private dirty: BBox[] = [];
+
+  /** Redraw the map inside `boxes` (local metres, each grown by `pad` m and a few texels) in the base and
+   * every level, keeping everything else; mipmaps once per texture (the photo is not the map: nothing to
+   * redraw there). */
+  private repaint(boxes: readonly BBox[], pad: number) {
+    if (this.showPhoto) return;
+    const S = this.size;
+    if (this.baseDone && !this.basePhoto) {
+      const bw = this.base.width, bh = this.base.height, rx = this.width / bw, ry = this.height / bh;
+      for (const box of boxes) {
+        const x0 = Math.max(0, Math.floor((box[0] - pad) / rx) - 4), y0 = Math.max(0, Math.floor((box[1] - pad) / ry) - 4);
+        const x1 = Math.min(bw, Math.ceil((box[2] + pad) / rx) + 4), y1 = Math.min(bh, Math.ceil((box[3] + pad) / ry) + 4);
+        for (let ty = y0; ty < y1; ty += S) for (let tx = x0; tx < x1; tx += S) {
+          const w = Math.min(S, x1 - tx), h = Math.min(S, y1 - ty);
+          this.drawVectors(tx * rx, ty * ry, w * rx, h * ry, w, h);
+          this.blit(this.base, 0, 0, tx, ty, w, h, false);
+        }
+      }
+      this.base.viewport.set(0, 0, bw, bh);
+      this.base.texture.mipmapsAutoUpdate = true;
+      this.renderer.setRenderTarget(this.base);
+      this.renderer.autoClear = false;
+      this.renderer.render(this.emptyScene, this.cam);
+    }
+    for (const sl of this.slots) {
+      if (sl.k < 0) continue;
+      const t = R0 * 2 ** sl.k;
+      let drawn = false;
+      for (const box of boxes) {
+        const x0 = Math.floor((box[0] - pad) / t) - 4, y0 = Math.floor((box[1] - pad) / t) - 4;
+        const r: Rect = [x0, y0, Math.ceil((box[2] + pad) / t) + 4 - x0, Math.ceil((box[3] + pad) / t) + 4 - y0];
+        if (!clip(r, [sl.ix, sl.iy, S, S])) continue;
+        this.paint(sl, r, 'map'); drawn = true;
+      }
+      if (drawn) this.finish(sl);
+    }
+    this.publish();
   }
 
   private disposeNetwork() {
@@ -858,7 +1021,11 @@ export class LandCover {
    * Draws at most one level per call; returns true while more are pending (call again next frame).
    */
   update(fx: number, fy: number, mPerPx: number): boolean {
-    if (!this.baseDone) { this.drawBase(); this.pump(); return true; }
+    if (!this.baseDone) { this.dirty = []; this.drawBase(); this.pump(); return true; }
+    if (this.dirty.length) {
+      const boxes = this.dirty; this.dirty = [];
+      this.withState(() => this.repaint(boxes, RING_OFFSET * 2 + 2));
+    }
     this.fx = fx; this.fy = fy;
     const want = Math.log2(Math.max(1e-3, mPerPx) / R0), k0 = this.k0, S = this.size;
     // hysteresis so a zoom hovering around a boundary does not thrash

@@ -65,7 +65,11 @@ export function rememberFull(ctx: EvalContext, d: Design, opts: EvalOptions, res
  * and building lists, which no preview shows (keeps the full worker → preview worker message small). */
 export function previewBase(r: Result): Result {
   return { ...r, crossings: r.crossings.map(({ geometry: _g, ...c }) => c), waterCrossings: [], footprintConflicts: [], retainingWalls: [],
-    walls: [], demolished: [], boughtOut: [], kept: [], noise: { receivers: [], footprint: null } };
+    walls: [], wallsAroundChoices: [], demolished: [], boughtOut: [], kept: [], noise: quietNoise(r) };
+}
+/** No receivers or source: no preview shows noise. */
+function quietNoise(r: Result): Result['noise'] {
+  return { ...r.noise, receivers: [], source: null, L: new Float64Array(0), R: new Float64Array(0) };
 }
 
 /** A full result evaluated elsewhere (the full worker) becomes a base for windowed previews here. */
@@ -243,9 +247,10 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     curves: al.curves.map(c => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations: violations.filter(v => !v.goal).length, cost, parts,
     cell: { width: stitch(f64, w.cell.width, r.cell.width), urban: stitch(f32, w.cell.urban, r.cell.urban),
-      forest: stitch(f32, w.cell.forest, r.cell.forest), wall: stitch(u8, w.cell.wall, r.cell.wall) },
-    crossings, waterCrossings: [], footprintConflicts: [], retainingWalls: [], walls: [], demolished: [], boughtOut: [], kept: [],
-    noise: { receivers: [], footprint: null },
+      forest: stitch(f32, w.cell.forest, r.cell.forest), wall: stitch(u8, w.cell.wall, r.cell.wall),
+      wallLength: stitch(f64, w.cell.wallLength, r.cell.wallLength), wallArea: stitch(f64, w.cell.wallArea, r.cell.wallArea) },
+    crossings, waterCrossings: [], footprintConflicts: [], retainingWalls: [], walls: [], wallsAroundChoices: [], demolished: [], boughtOut: [], kept: [],
+    noise: quietNoise(w),
     travelMin, valid: false, profileFeasible: w.profileFeasible,
     timing: { ...w.timing, total: performance.now() - started, 'window.length': s1 - s0,
       'w.setup': tWindow - started, 'w.window': tStitch - tWindow, 'w.stitch': performance.now() - tStitch },

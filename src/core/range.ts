@@ -55,10 +55,9 @@ export function rangeSummary(r: Result, s0 = 0, s1 = r.length): RangeSummary {
       q.forestArea += r.cell.width[i] * r.cell.forest[i] * len;
     }
     if (k !== KIND.tunnel) q.urbanLength += r.cell.urban[i] * len;
-    const w = r.cell.wall[i];
-    q.wallLength += ((w & 1) + ((w >> 1) & 1)) * len;
+    // as billed: along the walls' own lines (a cut-top wall beside a bend is longer or shorter than the axis)
+    q.wallLength += r.cell.wallLength[i]; q.wallArea += r.cell.wallArea[i];
   }
-  for (const w of r.walls) q.wallArea += Math.max(0, Math.min(end, w.s1) - Math.max(start, w.s0)) * w.height;
   for (const b of r.demolished) if (b.i >= i0 && b.i <= i1) q.buildings++;
   for (const b of r.boughtOut) if (b.i >= i0 && b.i <= i1) q.noiseBuyouts++;
   for (const c of r.crossings) if (c.i >= i0 && c.i <= i1) { q.crossings++; if (c.cost > 0) q.crossingsPaid++; }

@@ -102,6 +102,7 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 #legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: 2px; margin-right: 4px; }
 #legend i.wall { background: #18b0b0; height: 5px; box-shadow: 0 0 0 1px #0b3a3a; }
 #legend i.diamond { background: #c43c9b; width: 7px; height: 7px; border-radius: 0; transform: rotate(45deg); margin-left: 2px; }
+#legend i.plot { width: 10px; height: 8px; border-radius: 0; vertical-align: -1px; background: repeating-linear-gradient(135deg, #5c6068 0 1px, #d6cebe 1px 3px); outline: 1px dashed #3d434b; outline-offset: -1px; }
 #noise-legend { position: absolute; left: 12px; bottom: 54px; max-width: min(640px, calc(100% - 24px)); background: rgba(255,255,255,0.92); border-radius: 6px; padding: 5px 9px; font-size: 11px; line-height: 1.6; pointer-events: none; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
 #noise-legend span { margin-right: 10px; white-space: nowrap; }
 #noise-legend i { display: inline-block; width: 14px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
@@ -135,7 +136,7 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 .profile-tip, .map-tip { position: fixed; z-index: 20; pointer-events: none; background: rgba(255,255,255,0.97); border: 1px solid #c8ccd2; border-radius: 7px; box-shadow: 0 3px 12px rgba(0,0,0,0.25); padding: 7px 9px; font-size: 12px; width: 290px; }
 .profile-tip .tip-sub, .map-tip .tip-sub { color: #667; margin-bottom: 3px; }
 .profile-tip .tip-fact, .map-tip .tip-fact { color: #7a4a00; }
-.map-tip { width: 330px; }
+.map-tip { width: max-content; max-width: 330px; }
 .profile-tip table { margin-top: 5px; border-top: 1px solid #e3e6ea; }
 .profile-tip td { padding: 1px 0; }
 .profile-tip td:nth-child(2) { white-space: nowrap; font-variant-numeric: tabular-nums; }

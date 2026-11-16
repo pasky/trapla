@@ -8,10 +8,8 @@ import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
 import { ROUNDABOUT_HOSTS } from './core/tie-in';
-import { createRailNoiseModel } from './core/rail-noise';
-import { railTraffic } from './core/project-railway';
 import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
-import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
+import { CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
 import { DIRECTIONS_TEXT } from './core/terms';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
@@ -38,7 +36,6 @@ import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/bu
 import { DecisionList } from './ui/build-tools';
 import { buildingInfo, Inspector, type Sel } from './ui/inspector';
 import { pieceAt } from './ui/pieces';
-import { createNoiseModel } from './core/road-noise';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -48,7 +45,7 @@ import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
 import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
-import { acceptsProjectMessage, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
+import { acceptsProjectMessage, type NoiseBandOut, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -199,20 +196,7 @@ async function main() {
   let sel: Sel | null = null;
   /** shaping reroutes on the map (constructed once the store hooks exist) */
   let linkEdit: LinkEditor | undefined;
-  let models: { key: string; model: ReturnType<typeof createNoiseModel> } | null = null;
   const inspector = new Inspector(document.getElementById('inspector')!, {
-    noiseModel: (d) => {
-      // the active route's own acoustic inputs, as its evaluation used them (road, motorway, railway)
-      const route = store.route, design = projectStore.snapshot.design;
-      const corridor = route?.kind === 'motorway' ? corridorOfRoute(design, route.id) : undefined;
-      const ops = corridor ? corridorOperations(design, corridor) : route?.kind === 'road' ? route.specification.operations : null;
-      const key = route?.kind === 'railway' ? `rail:${JSON.stringify(route.specification.operations)}`
-        : `${d.category}:${d.speed}:${ops?.aadt ?? scenario.traffic}:${ops?.heavyShare ?? scenario.heavyShare}`;
-      if (!models || models.key !== key) models = { key, model: route?.kind === 'railway' ? createRailNoiseModel(railTraffic(route))
-        : createNoiseModel(ops?.aadt ?? scenario.traffic, d.speed, { heavyShare: ops?.heavyShare ?? scenario.heavyShare,
-          ...(corridor ? { profile: 'motorway' as const } : {}) }) };
-      return models.model;
-    },
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
   });
@@ -694,9 +678,23 @@ async function main() {
     inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
   };
 
-  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | { type: 'ready' }>) => {
+  // the noise view's band: asked from the worker for the displayed result when the view needs it
+  let bandAsked = 0;
+  noise.requestBand = () => {
+    const full = projectFull, routeId = store.activeRouteId, d = store.read();
+    if (!full || !routeId || !d) return;
+    worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
+      crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
+  };
+  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
+    if (m.type === 'noise-band') {
+      const r = projectFull?.routes[m.routeId]?.legacy;
+      if (m.id === bandAsked && r && projectFull!.epoch === m.identity.epoch && projectFull!.revision === m.identity.revision
+        && m.routeId === store.activeRouteId) noise.setBand(r, m.footprint);
+      return;
+    }
     const request = inflight.get(m.id);
     for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
     if (m.id < received || !acceptsProjectMessage(projectStore.snapshot, m, store.activeRouteId ?? undefined, previewGesture ?? undefined)) return;
@@ -755,7 +753,8 @@ async function main() {
     heavy = runSliced((function* () {
       let geometry: Staged | undefined, sources: Staged | undefined, handedOver = false;
       try {
-        geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex));
+        geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex),
+          result.buildings.filter(b => b.action === 'buy').map(b => b.buildingIndex));
         const graph = transportGraph;
         // A project with rebuilt mapped roads (e.g. after undo/reload) whose graph is not parsed yet.
         if (!graph && result.acceptedRenderReplacements.length) void ensureTransport().then(() => { if (transportGraph) requestEval(false); });

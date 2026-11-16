@@ -85,6 +85,77 @@ GFX1150, host load 4–7, unchanged budgets, all pass. Preview latency p50 / p95
 The first preview of a drag can still be a whole-route one (no full result of that lineage yet in the preview
 worker, e.g. just after loading): 300–450 ms on the whole D3, once.
 
+## Staged noise decisions (2026-11-16)
+
+The grouped far sums are within `FAR_ERROR` (0.3 of their own value; 0.07 for the finer grouping) of the
+cell-by-cell sums. Every decision that compares a level with a threshold now checks that margin and, where it
+could flip, sums that house more finely and then cell by cell (research/36 §2). Walls, buyouts and violations
+are those of the cell-by-cell sum on every fixture (tested against an all-cells run). In town-centre 108 of
+367 houses are summed finely and 48 cell by cell (a wall's growth stops just under the limit, so many houses
+end near it). A house's exact decision windows are derived from the narrower one (the cells the wider
+window takes in are subtracted) and kept per house and stage; a refined house redoes only the step it was
+in. Interleaved A/B (warm, 16 rounds, host load ≈ 6–10), min / median ms:
+
+| design | noise main | noise a903bda | noise now | whole evaluate main | a903bda | now |
+|---|---:|---:|---:|---:|---:|---:|
+| best | 4.9 / 6.6 | 4.1 / 5.1 | 6.5–7.0 / 7.7–10.2 | 70.9 / 92.9 | 69.4 / 84.0 | 72.8–79.6 / 88.1–92.4 |
+| demo | 5.3 / 6.6 | 4.7 / 5.4 | 7.4–7.8 / 8.4–10.3 | 106.4 / 117.0 | 98.1 / 112.5 | 101.2–103.9 / 116.1–125.7 |
+| direct-80 | 5.3 / 6.3 | 8.4 / 10.2 | 14.3–15.4 / 15.9–20.7 | 83.0 / 99.3 | 83.7 / 94.4 | 89.6–94.1 / 98.6–117.5 |
+| direct-90 | 4.8 / 6.0 | 5.8 / 7.3 | 9.4–9.8 / 11.1–11.8 | 78.4 / 88.6 | 77.8 / 83.8 | 80.3–82.0 / 87.7–93.1 |
+| town-centre | 7.1 / 8.6 | 15.0 / 15.7 | 27.5–31.2 / 28.9–33.0 | 87.4 / 99.2 | 96.0 / 105.8 | 108.1–113.8 / 116.5–123.2 |
+
+("now" ranges over the two runs.) `noiseOutcome` alone, town-centre, 30 calls: 14.6–16.1 → 27.6–28.6 ms.
+The cell-by-cell sums of those 48 houses are most of the increase (≈ 1,900 cells each): ≈ +12 ms on town-centre's full
+evaluation, a reviewed trade-off (2026-11-16) for decisions identical to the cell-by-cell sums. `node
+scripts/drag-perf.mjs --gpu --check`: every mode OK (drags evaluate without the noise step until they settle).
+
+## Finite-segment noise, cost model 21 (2026-11-16)
+
+The finite-segment noise sum (research/36) replaced the per-station maximum. Its first version made the
+noise step of a full evaluation 6 / 7 / 13 / 10 / 27 ms (best / demo / direct-80 / direct-90 / town-centre)
+against 5 / 5 / 5 / 5 / 7 ms on main. The performance pass:
+
+- **Segment tree** instead of fixed 4-cell chunks and 32-cell groups: segments of 4·2^k cells, each taken
+  whole once its bounding circle's diameter is ≤ 0.32 × its distance (the old group ratio), unscreened
+  ones beyond 3 km once their diameter ≤ their distance. ≈ 30 far segments per house instead of ≈ 100.
+- **Two screening samples per far segment** (edges and walls; walls per block and height, not per cell).
+- **Rigorous open-road bound from each segment's own line distance** (d·10^(−U/10) bounded over the
+  interval of distances its cells' lines can have, instead of its maximum M everywhere): it rules out
+  houses 120–370 m away by itself (780 → 80 open-road sums in town-centre); checked at the receiver
+  point.
+- **Typed scratch kernels**: geometry, energies and screening per storey through module Float64Arrays,
+  the hot path of U small enough to inline — doubles crossing a non-inlined call are boxed (28 → 11 MB
+  allocated per town-centre noise step).
+- **Candidates**: stamped scratch grids reused across calls, the nearest station by descent from the
+  house's projection onto the tangent (squared façade distances), one visited-set per building index.
+- Accuracy against the cell-by-cell sum on every storey of 7 saved designs: within 3 dB of the limit
+  ≤ 0.100 dB over, 0.082 under (since the staged decisions above: no decision depends on that error; the
+  loudest floor as shown, within 3 dB of the limit, +0.099 / −0.067 dB) (was 0.078; far walls now take a share of what passes the edges, never more,
+  and segments must be straight); bills moved by ≤ 0.5 M CZK (demo, direct-80, town fixtures; research/36 §3).
+
+Interleaved A/B in one process (both evaluate bundles loaded, alternating, warm, 20 rounds, host load
+≈ 6), min / median ms:
+
+| design | noise main | noise now | whole evaluate main | whole evaluate now |
+|---|---:|---:|---:|---:|
+| best | 4.7 / 6.4 | 3.8 / 5.5 | 72.2 / 87.5 | 70.3 / 93.9 |
+| demo | 5.3 / 6.8 | 4.4 / 6.4 | 106.5 / 123.4 | 105.3 / 129.9 |
+| direct-80 | 5.3 / 6.8 | 7.8 / 10.5 | 84.6 / 94.4 | 90.1 / 99.1 |
+| direct-90 | 4.8 / 6.2 | 5.9 / 8.3 | 83.4 / 90.8 | 80.7 / 91.6 |
+| town-centre | 7.7 / 9.6 | 15.7 / 19.3 | 99.9 / 119.7 | 106.8 / 131.3 |
+
+`scripts/bench-drag.ts` (24 steps, nothing repeated), town phase means: town-centre 15.8–17.6 ms against
+10.0 on main, direct-80 15.1 against 10.9–13.1; best, demo and direct-90 equal or faster. The noise step
+alone (`noiseOutcome`, town-centre, warm p10): 22 → 12.5 ms.
+
+Reviewed trade-off (owner's lead, 2026-11-16: keep the accuracy): town-centre (367 dwellings at the road,
+221 over the limit) remains ≈ 7 ms slower at the minimum in the whole evaluation (the evaluate-performance
+rework of long corridors may recover it); the rest is arithmetic every house needs (≈ 30 far segments with their screening, the
+±150 m decision window cell by cell, four wall heights for every house over the limit, the far walls'
+effect on every house). Not done: caching per-house sums across evaluations (any length change moves
+every station, so nothing would be reused during a drag), and coarser far grouping (θ = 0.4 with two
+samples saves ≈ 1 ms at 0.10 dB near the limit).
+
 ## New scenarios: route length sets the cost (2026-11-15)
 
 Evaluation time grows with route length. Node, warm, median of 10 full evaluations on the same host:

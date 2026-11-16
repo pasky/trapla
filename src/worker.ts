@@ -11,7 +11,8 @@ import type { GroundData } from './core/ground';
 import { Terrain } from './core/terrain';
 import type { ProjectEnvironment, ProjectResult } from './core/project';
 import { evaluateProject, previewProjectRoute } from './core/project-evaluate';
-import type { ProjectWorkerIn } from './core/project-protocol';
+import type { NoiseBandOut, ProjectWorkerIn } from './core/project-protocol';
+import { noiseBand } from './core/noise';
 
 export type WorkerIn =
   | { type: 'init'; nx: number; ny: number; cell: number; base: number; scale: number; q: Uint16Array; lc: Uint8Array;
@@ -26,7 +27,9 @@ export type WorkerIn =
   | ProjectWorkerIn;
 
 let ctx: EvalContext | null = null;
-let pending: Exclude<WorkerIn, { type: 'init' | 'source-ways' }> | null = null;
+let pending: Exclude<WorkerIn, { type: 'init' | 'source-ways' | 'noise-band' }> | null = null;
+/** the newest noise-band request: served only when no evaluation waits */
+let band: Extract<WorkerIn, { type: 'noise-band' }> | null = null;
 let scheduled = false;
 let projectEnvironment: ProjectEnvironment | null = null;
 let lastProject: ProjectResult | null = null;
@@ -46,9 +49,23 @@ function previewBuffers(r: Result): ArrayBuffer[] {
   return [...buffers];
 }
 
+function runBand() {
+  const job = band!;
+  band = null;
+  const route = lastProject && lastProject.epoch === job.identity.epoch && lastProject.revision === job.identity.revision
+    ? lastProject.routes[job.routeId]?.legacy : undefined;
+  const terrain = ctx!.terrain;
+  let footprint = null;
+  try { footprint = route ? noiseBand(route, (x, y) => terrain.heightAt(x, y), job.crownWidth) : null; }
+  catch (e) { console.error('noise band', e); }
+  const out: NoiseBandOut = { type: 'noise-band', id: job.id, identity: job.identity, routeId: job.routeId, footprint };
+  (self as unknown as Worker).postMessage(out);
+}
+
 function run() {
   scheduled = false;
-  if (!pending || !ctx) return;
+  if (!ctx) return;
+  if (!pending) { if (band) runBand(); return; }
   const job = pending;
   pending = null;
   try {
@@ -80,13 +97,15 @@ function run() {
     const message = String((e as Error)?.stack ?? e);
     (self as unknown as Worker).postMessage(job.type === 'eval' ? { type: 'error', id: job.id, message }
       : { type: 'project-error', id: job.id, identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, message });
+  } finally {
+    if (band && !scheduled) { scheduled = true; setTimeout(run, 0); }
   }
 }
 
 self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const m = ev.data;
   if (m.type === 'init') {
-    pending = null; lastProject = null; sourceWays = undefined; projectEnvironment = m.projectEnvironment ?? null;
+    pending = null; band = null; lastProject = null; sourceWays = undefined; projectEnvironment = m.projectEnvironment ?? null;
     basePort = m.role === 'full' ? m.port ?? null : null;
     if (m.role === 'preview' && m.port) m.port.onmessage = (e: MessageEvent<Result[]>) => {
       if (ctx) for (const r of e.data) adoptFull(ctx.terrain, r);
@@ -100,7 +119,7 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   } else if (m.type === 'source-ways') {
     sourceWays = new Map(m.ways);
   } else {
-    pending = m;
+    if (m.type === 'noise-band') band = m; else pending = m;
     if (!scheduled) { scheduled = true; setTimeout(run, 0); }
   }
 };

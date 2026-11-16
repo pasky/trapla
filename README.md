@@ -121,8 +121,10 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
 - **First run:** three steps at the top left of the map (drag the road, click anything, the cost counts once
   valid); *Got it*, <kbd>Esc</kbd> or the first click dismiss it; *Help → Show the intro* brings it back.
 - **Colours** are the same on the map, in the profile and in the cards: road orange, bridge blue, tunnel purple,
-  noise wall teal, problems red, demolished buildings dark grey squares, bought-out magenta diamonds, kept
-  green. On the map these are symbols for the zoomed-out view (from 2.5 m per pixel, where the road is a few
+  noise wall teal, problems red, kept green. A demolished building's plot is drawn on the ground in its own
+  shape as cleared (pale, hatched, dashed edge); a bought-out house stands magenta in every view with a dashed
+  magenta ring on the ground; where a house is only a few pixels across they are a dark grey square and a
+  magenta diamond with a white outline. On the map these are symbols for the zoomed-out view (from 2.5 m per pixel, where the road is a few
   pixels wide) and for a road being dragged; closer, the road is drawn as built: asphalt with white Czech
   markings, noise walls as panels between posts, tunnels as a purple dashed trace on the ground, problem
   stretches tinted red. The tangent lines of a bend show only while it is dragged, hovered or selected. The
@@ -171,11 +173,12 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
 - **Walls:** player walls keep their exact extent (no automatic end margins); tunnels suppress walls. Teal walls
   show the actual height, dotted marks your choice, pink dashes removals. **Any wall decision of yours at an
   exposed house stops its automatic buyout**: remaining noise becomes a violation with a sufficient wall height
-  and extent (a fix button) or a buyout. Clearing the decisions restores automatic 3/4/5 m walls and the
-  fallback buyout; **Keep** still forbids acquisition.
-- Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
-  floor feed a geometric source–wall–receiver diffraction check. Distant upper floors can be shadowed; floors
-  with a clear sightline over the wall get no benefit. Assumptions and limitations are in `PLAN.md`.
+  and extent (a fix button) or a buyout. Clearing the decisions restores the automatic walls (the cheapest of
+  2 / 3 / 4 / 5 m, on the crown or deck edge, or on a cut's top edge) and the fallback buyout; **Keep** still
+  forbids acquisition.
+- Noise is a **provisional feasibility model**, not an acoustic assessment: every 10 m of road is a piece of
+  the Czech manual's calculation (its angle of view, distance, the wall, cut edge or road edge in the way),
+  added up at every floor of each house. Assumptions and limitations: `research/36`, `PLAN.md`.
 
 ### Playtest gallery
 
@@ -279,6 +282,16 @@ raised to meet it instead of being buried under its slope:
 [after](docs/screenshots/115-crossing-works-after-junction-street-tie-demo.png);
 [a click on a reroute far from the crossing opens its card](docs/screenshots/116-crossing-pick-link.png).
 (`node scripts/crossing-works-shots.mjs`, `--before` on the older code.)
+
+Noise model 21 and what the route takes (`node scripts/noise-shots.mjs`, `ROOT=` an older checkout for the
+before): the deep cut at km 10.1, [walls inside the slope before](docs/screenshots/120-noise-cut-km10-before.png),
+[on the cut's top edge now](docs/screenshots/121-noise-cut-km10-after.png); [the house beside a junction
+opening, walled instead of bought out](docs/screenshots/122-noise-gap-house-card.png); [a card with the wall on
+the cut](docs/screenshots/123-noise-wall-on-cut-card.png); demolished buildings under a viaduct, [roof patches
+and floating squares before](docs/screenshots/124-demolished-before.png), [cleared plots now](docs/screenshots/125-demolished-after.png);
+[a bought-out house with its ring](docs/screenshots/126-bought-out-after.png); [far away: outlined markers on
+the ground](docs/screenshots/127-demolished-far-markers.png); the ground beside an abutment, [sky-coloured
+slivers before](docs/screenshots/128-seam-abutment-before.png), [closed now](docs/screenshots/129-seam-abutment-after.png).
 
 Shaping a reroute by dragging it (`node scripts/link-shape-shots.mjs`):
 [the drag](docs/screenshots/117-link-shape-drag.png) (the first drag starts from the automatic path's own bends),
