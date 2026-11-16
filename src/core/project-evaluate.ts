@@ -142,7 +142,8 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
 }
 /** `last`: the last full result of this project. A dragged road keeps following the roads it joins and the
  * crossings a higher-ranking road built with it (under its bridge, on its own deck over it), as they
- * were last evaluated. */
+ * were last evaluated. (A preview builds no reroutes: its crossings carry the last full result's prices, whose
+ * reroutes were already planned clear of the player's roads; evaluateProject's keepClear is not needed here.) */
 export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, prices: PreviewPrices = {},
   last?: ProjectResult | null): RouteResult {
   assertProjectDesign(snapshot.design);
