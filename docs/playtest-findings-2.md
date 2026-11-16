@@ -1,0 +1,378 @@
+# Playtest findings 2 (second independent UX QA)
+
+Played like a first-time player in headless Chromium with real mouse / keyboard (driver `qa2/drive.mjs`, a copy of
+`qa/drive.mjs` from the first QA that can also serve a second app root for save migration). The page API is used
+only to frame a camera on A / B and to read state for exact repros. Screenshots under `/tmp/trapla-qa2/` (not
+committed). Newest session on top. Severity: **P0** broken / untruthful, **P1** confusing, **P2** polish.
+
+## Re-test 6 — core-play-polish @ 79a7e1c (2026-11-16)
+
+Detached snapshot with the worktree's packs, SwiftShader, three chunks (`p1`, `p2`, `p3`), fresh localStorage.
+Screenshots `/tmp/trapla-qa2/p1`–`p3`.
+
+| item | verdict | evidence |
+|---|---|---|
+| By hand switch is bill-identical | **PASS** | D11 start 9.81 → By hand 9.81 → Auto 9.81; with a pin at km 9 (10.19 bn) → By hand 10.19; the pin card then says "Not used while the height is set by hand" (`p1/001`, `003`). |
+| By hand handles thinned by zoom | **PASS** | 19 shown points at the whole-route view instead of ~70 (`p1/001`). |
+| height point naming | **PASS** | card "Height point · km 9.04 · 471.0 m · dip"; drag tip "◆ height point · 491.0 m", readout "471.0 m · lowered 20.0 m" (`p1/004`). (No "height point at km X" problem came up in this test to read.) |
+| Poříčí km 4.9–5.9 | **PASS** | Auto now bridges it (1,020 m, 1.75 bn, VALID): "Auto: bridges the river", no pier problems (`p1/006`); Earthwork there → 8 problems ("A bridge is needed here"). Elsewhere: "Auto: at this height cheaper than a bridge" / "at this depth cheaper than a tunnel". |
+| pin drag ≤ 0.5 m/px, live readout | **PASS** | 30 px → +15.0 m; tip "488.3 m · raised 15.0 m" while dragging (`p1/002`). |
+| selections fly into view | **PASS** | "Where the money goes" → the Poříčí bridge fills the map (`p1/006`); Your choices → crossed road: camera 22.5 km → 900 m (`p2/013`). |
+| 1280×720 | **PASS** | buttons in one row, A / B clear, compact legend, full profile key (`p2/009`, `010`). |
+| 1024×700 | **PASS** (P2) | view buttons wrap to a second row, Build below them, no overlap; noise legend moved to the right, A clear (`p2/011`, `012`). The profile key drops "ground" and "road height"; the compact map legend is icons only (no words for a first-time player). |
+| "up to 9.1 dB" | **PASS** | "3 houses up to 9.1 dB too loud" (`p2/000`). |
+| bought-out hover level | **PASS** | "House 1 floor · bought out · 55.1 dB on the loudest floor even behind a 5 m wall (limit 50)" (`p1/011`). |
+| "Auto: N m" on the house card | **PASS / P2** | "Auto: none · km 15.38–15.43". But after Keep the same line reads "Auto: none · km 15.25–15.54" while the house plan and the map show 5 m walls on both sides of the road there (`p1/014`). |
+| Demolish / Keep wording | **PASS** | Nová Paka hall: "Demolished · 322 M CZK · In the 3 m working strip beside our cut, km 1.91 · Demolish · Keep" (`p2/008`). |
+| one explanation | **PASS** | "Behind a 5 m wall: too loud. 88 % of the noise comes through the gap in the wall where the side road joins, km 15.41" with the matching cross-section (`p1/012`). |
+| gap button | **PASS** | kept house: "Buy out · Stop keeping · The side road"; the last opens the class I road's junction card (`p1/014`, `015`). |
+| Nová Paka km 1.97 chimney | **PASS** | hatched cleared plots, no chimney, from both sides (`p2/002`, `003`). |
+| Nová Paka A / B shards | **PASS** | none (`p2/005`, `006`). P2: at A the "bypass reference" tag overprints "Kumburský Újezd". |
+| sawtooth at km 2.0 | **PASS** | cut edges clean where the side road crosses (`p2/004`). |
+| cleared plots in the photo view | **PASS** | hatched plots drawn over the aerial photo (`p2/007`). |
+
+Regressions / new:
+- **P1 — D11: a 3–5° bend changes heights along the whole route and leaves distant problems.** Fresh D11
+  (9.81 bn VALID), one drag each, clean reload in between:
+  - +10 px at km 3 (bend turns 5°): 9.28 bn, NOT VALID, problems at km 3.91 and **km 8.97**.
+  - +10 px at km 9 (bend turns 3°): **11.65 bn (+1.84 bn)**, NOT VALID, problems at km 8.75 and **km 1.27**. The
+    profile changes from km 0 to km 18: new tunnels at ~4.5 and ~9 km, longer bridges at 12–15 km (`p3/002`).
+  - −20 px at km 3 (12°): 8.90 bn, VALID (−905 M).
+  - A pin 15 m higher at km 9 adds problems at **km 16.54 / 16.58** (`p1/002`).
+  - Same class as long-corridors Re-test 4 "D11 prices are not stable".
+- P2 — By hand: the drag preview showed ≈ 9.69 bn; the result was 10.09 bn (`p1/004`).
+- P2 — Earthwork on the Poříčí bridge: the card repeats "⚠ A bridge is needed here · Back to Auto" three times
+  before "+5 more in Violations".
+- P2 — the Nová Paka hall demolished "in the 3 m working strip beside our cut" costs 322 M CZK; a retaining wall
+  along that edge could be the cheaper engineering answer.
+
+## Re-test 5 — motorway-rail @ 7c7d043, Re-test 3 P1s only (2026-11-16, one 4 min chunk)
+
+| item | verdict | evidence |
+|---|---|---|
+| D3 km 4.6 Posázavský pacifik: select + 40 px drag | **PASS** | bend 1 turns 14° (R 360 m), steepest grade −13.5 ‰, **0 violations** (only the two "not checked yet" notes: taking up the old track, junctions); no grey slab at the stretch end (`r4/001`). |
+| Build → Railway at the overview zoom (D35, 1440×900) | **PASS, with a P2** | a click at the terrain centre places the start, a second click builds the line (`r4/005`). Two earlier clicks on the terrain nearer its south edge (470,380 / 660,400) were silently ignored: the card stayed at "Click where it starts." with no reason given. |
+
+## Re-test 4 — long-corridors @ 376c9ed (967d9b1 + handoff notes) (2026-11-16)
+
+Detached snapshot with the worktree's packs. Chunks `l1`, `l2` SwiftShader 1440×900 (host load 9–22); `g2` = a
+short GPU run under the exclusive lock (load ≈ 8–13, so the timings are indicative only). Screenshots
+`/tmp/trapla-qa2/l1`, `l2`, `g2`.
+
+| item | verdict | evidence |
+|---|---|---|
+| P0 1 far crossings, whole D3 | **PASS** | from the new start view (14 px per km), drags at km 24.5 / 29.5 / 18.9 / 40 / 50.5 each give problems only inside the edited stretch (km 23.65; 30.46 + 32.35; 19.23; 38.9–41.2; 49.3–49.7); every Undo returns exactly 42.19 bn VALID. |
+| P0 1 far crossings, whole D35 | **FAIL (one case)** | drag at km 8.2: problem at km 6.97 only (local). Drags at **km 11.7** and **km 25.4** each add "No buildable reroute for the track · Raise our road here by 0.1 m and put it on a bridge over the track" at **km 6.98**, 5 and 18 km from the edit (`l2/005`). After Undo the design is VALID again (also after a reload). |
+| P1 2/3 interchange ends: signs + cards | **PASS** | an end sign beside A / B; clicking it: "Interchange with road I/18 · B · Voračice (on to 0305/I) · km 15.45 · Its ramps are not part of this job. The motorway goes on as section 0305/I." (`l1/015`). The motorway still ends flush against the I/18 / II/101 on the map (disclosed now). |
+| P1 4 framing | **PASS** | whole D3 opens with A left and B right, both named, clear of the intro (`l1/000`); 0301 and 0303 show B above the legend (`l1/009`, `013`). |
+| P1 5 live price while dragging whole D3 | **PASS** | GPU: during a 2.6 s drag the score updates every ~250 ms (≈ 42.48 → 44.85 bn, change line "≈ +2.67 bn"); frames 16.7 ms p50/p95; result 2.8 s after release (`g2/000`). P2: the last preview (≈ 44.85) is 1.8 bn below the result (46.67). |
+| P1 6 starter bends near B | **PASS** | 0302 has one bend at km 1.39; the same 40 px drag at km 3 is VALID and −421 M (`l1/017`). |
+| P1 7 ordinary conflicts after drags | **FAIL** | whole D3, drag at km 50.5: 10 problems, 8 × "A bridge pier stands in a stream" (one per pier of a bridge along a stream) and a pier on a class III road (`l1/005`); drag at km 18.9: a track under our earthworks; D11 (see below): "earthworks cover 44 m of a service road" / "37 m of a track" after single drags. |
+| P2 8 wording while waiting | **PASS** | the chip says "checking" once the drag is let go ("⋯ checked when you pause" only while the mouse is down); startup not re-checked. |
+| P2 9 planned line past the ends | **PASS** | 0302 B: the dashed planned D3 runs on past B (`g2/001`). |
+| P2 10 picker | **PASS** | Nová Paka under its own "I/16" heading; D11 "Class I road · 90 km/h"; "Built 27.5 m wide, our usual motorway; the planned road is 26 m wide"; whole D3 explains 120 vs 130 km/h. |
+| P2 12 crossing card level line | **PASS** | "our road 1 m below the crossed road's level today". |
+| P2 11, 13 | not re-checked | |
+| S3 (playtest-qa) Nová Paka photo note | **PASS** (P2) | turning Photo on shows "The photo was taken while the real bypass was being built: the bare earth you see is its construction site, not our road." It stays on screen after Photo is turned off (`l2/011`). |
+| S3 D35 first-section ends | **PASS** | A card "Joins the open D35 … that road is not part of this job"; B card "Goes on as the next section, to Mohelnice". P2: at B the "planned D35" tag covers the B marker (`l2/008`). |
+| S3 roundabout arm sign | **PASS** | Nová Paka B: "Joins the roundabout on road I/16 · Our road gets its own arm into it here, with a splitter island, priced as a junction" (`l2/011`). |
+
+### New
+
+- **P1 — a 2.47 bn bridge for a class III road that runs alongside.** Whole D3 start design, "Cut km 20.18–20.91 ·
+  up to 3 m deep · **3.41 bn CZK**" (Crossed roads 2.47 bn of it). The class III road at km 20.89 runs beside the
+  motorway and crosses it twice at a shallow angle; Auto carries it "over our road on a **698 m bridge** with 267 m
+  of ramps · 2.47 bn CZK" (`l1/008`). The alternatives are cheaper but invalid: Cut and reroute 39.28 bn (2
+  problems, +4.2 km of new road), Underpass 38.98 bn ("Underpass: 0 m concrete box", 2 problems), Our bridge over it
+  40.55 bn (17 problems). Expected: a parallel road gets moved beside the motorway (relocation) at a few tens of
+  millions, not a 700 m viaduct. The profile cost strip's scale goes to 54 M CZK/m because of it, so every other
+  cost bar is flat (`l1/000`). This is why the whole-D3 starter is now 42.19 bn (was 40.74).
+- **P1 — D11 straight start: the first small drag changes the bill by −0.5 to −2 bn and leaves a conflict.**
+  10.01 bn VALID start; a 10 px drag at km 3: 9.52 bn NOT VALID ("earthworks cover 44 m of a service road" at km
+  3.92); −20 px instead: **7.96 bn** (−2.05 bn, a 7° bend), NOT VALID ("37 m of a track" at km 5.59), with the
+  heights and bridges changing from km 4 to the end (`l2/015`, `016`). Undo is exact (back to 10.01). Either the
+  starter's 10.01 bn heights are far from what the solver now finds, or the cheaper heights skip a conflict check.
+  Either way the price is not stable under small edits.
+- P2 — D35 first-section starter is now 21.36 bn (main 19.37) with a 2.7 km, 7.94 bn bridge km 6.95–9.65
+  running down the slope 20–40 m above the ground (`l2/008`).
+
+## Re-test 3 — motorway-rail @ 1c967bb (2026-11-16)
+
+Detached snapshot with that worktree's packs, SwiftShader 1440×900, two chunks (`r3`, `r3b`, the second cut short
+for a queued timed run). Verdicts on Re-test 2 items:
+
+| item | verdict | evidence |
+|---|---|---|
+| P1 2 drag an unselected railway | **PASS** | D3 km 4.6: hovering the Posázavský pacifik shows "drag to change its line"; a drag rebuilds it, the camera does not move (`r3/007`–`009`). |
+| P1 3 rebuild at D3 km 4.6: no U-turn | **PASS** | bend 1 turns 16° (R 330 m). |
+| P1 3 rebuild: structures heighted | **FAIL** | the same 40 px drag: 7 violations: "A long bridge span is too low … raise by 4.1 m / 6.1 m", "Embankment too low for an underpass", "Ramps down to the underpass would be longer than 250 m", "Our earthworks cover 47 m of a track / block a stream / cover a pond or river". The profile shows **−71.3 ‰** and **31.0 ‰** grades on a single-track railway (60 km/h), with no "too steep" problem. A large grey slab is drawn at the stretch's far end (`r3/009`). |
+| P1 4 counting | **PASS** | one Build → Motorway: "New motorway not priced yet" (was "2 road changes"). Still open: the header becomes "THIS MOTORWAY ONLY 40 M CZK" and hides the project total; the motorway built under the D3 viaduct still gets "Roads cross here" ×4 (the same two problems listed twice) (`r3/011`). |
+| P1 5 railway mission starter | **PASS** (P2 below) | VALID 10.43 bn; leaves Trutnov hl. n. along the track field into a short cut and a tunnel from km 0.65; no street demolished (one small marker at the cut) (`r3/001`, `003`, `004`). Streets at km 0.75 / 1.81 / 4.62 pass over the tunnel, over a new street bridge, or under our bridge. The tracks at km 0.52 / 0.65 are rerouted to the crossings at km 0.95 / 0.75, which are themselves built (over the tunnel), not cut. |
+| P2 6 violation location wrap | **PASS** | the location is its own small line above the title ("Motorway towards Václavice") (`r3/017`). |
+| P2 8 150 pilot | **PASS** | "on the D3 39 % of the time in its first winter half-year … Travel time counts that"; D35 7.6 → 7.2 min, +46 M CZK. (It still only costs money while the goal is met at 130.) |
+| P2 9 railway wording | **PASS** | Build → Railway: "A click on a railway joins it there." |
+| P2 10 Edit shown twice | **PASS** | the direction choice appears once: in the card, or in the Motorway section while a build card replaces it. |
+| P2 11 profile end labels | **PASS** | A / B sit at the ends of the bend row; towards Opatovec reads B → A (`r3/014`). |
+
+New / still open:
+- **P1** — Build → Railway at the overview zoom: clicks on the terrain (D35, 1440×900) do not place the start; the
+  card stays at "Click where it starts." with no reason given (`r3/016`). At a closer zoom (D3, earlier session) it
+  worked.
+- P2 — Railway mission: the track at km 0.52 is rerouted with +1,034 m of new track to cross at km 0.95 (130 m
+  before the tunnel portal); the one at km 0.65 buys out a house for its 282 m reroute. A short underpass or
+  continuing the tunnel would be the obvious alternatives.
+- P2 — One-direction overlap still reports "Raise the bridge at km 6.00 by at least 0.1 m" (Re-test 2 P2 7).
+- Motorway noise (D35 km 1.0, 9.5, 12.5, noise view): the band peaks on each carriageway and fades smoothly; no
+  walls needed in these open stretches; nothing odd seen (`r3b/000`–`003`). Walls next to houses were not reached
+  in the shortened chunk.
+
+## Session 4 — main @ 93f849d, noise work (2026-11-16, short)
+
+D11 road preset, fresh localStorage, SwiftShader 1440×900, one chunk. Screenshots `/tmp/trapla-qa2/s4/`.
+
+| item | verdict | evidence |
+|---|---|---|
+| demolished visuals | **PASS** | Poříčí halls at km 5.2–5.5 are hatched plots on bare ground, no slabs or floating squares; far view: small outlined ground markers (`004`, `005`). Legend shows the hatched symbol. |
+| "what takes the building" | **PASS** | "Industrial / commercial · Demolished · 32 M CZK · Under our embankment, km 5.19" (`006`). |
+| bought-out card | **PASS** | "As built 57.8 dB at night; behind a 5 m wall still 55.1 dB (limit 50)"; house plan readable; wall menu 2–6 m on both cards (`002`). |
+| walls in cuts | **PASS** | cut km 3.48–3.77 (36 m deep) and km 13.16–13.68: Auto none on both sides. |
+| wall choice beyond the piece (S1-QA re-test P1) | **PASS** | cut km 6.48–7.49, Left → None: +7.8 M, explained on the card: "none (yours) · Auto adds 350 m of 5 m wall at km 6.13–6.48 instead · Show"; the violation sits inside the piece ("3 houses 9.1 dB too loud · 4 m wall left km 6.49–6.61 · Buy out 3") (`010`). |
+| noise view | **PASS** | limit line follows the sound field, no stepped boxes at km 15.5 or km 6.5 (`000`, `011`); clicking the violation flies to the house, the cross-section shows each floor with "was …" (`013`). |
+
+Still open / new, all P2:
+1. The violation title "3 houses 9.1 dB too loud" reads as if each were 9.1 dB over; the house it selects is
+   50.8 dB (0.8 over) (`013`). Say "up to 9.1 dB".
+2. Noise-view hover on a bought-out house still gives no level: "House 1 floor · bought out" (`001`).
+3. House card "Wall left · Auto" still does not say what Auto chose (piece cards do: "Auto: 3 m, 2 m").
+4. Demolished building card offers "Auto · Buy out · Keep": for a building under the embankment, "Buy out" reads
+   as a third outcome next to demolition (S2 #5 wording).
+5. The bought-out card's summary says "51 % of the noise comes where no wall stands, km 15.34–15.47" while its
+   cross-section is labelled "gap: side road"; one cause, two descriptions (`002`).
+
+## Session 3 — main @ 217cfa4, first-time player (2026-11-16)
+
+Fresh localStorage, D11 road preset, SwiftShader. Chunk `s3a` at 1440×900, chunk `s3b` at 1280×720, then the
+same page resized to 1024×700. Areas: intro / help, noise view, house cards with buy out / keep, structure choice
+per piece, profile pins, By hand points, Start over, best Load, small windows. Screenshots under
+`/tmp/trapla-qa2/s3a/` and `s3b/`.
+
+What worked:
+- The intro is three short steps; Help is one screen of plain lines (`s3a/002`).
+- The noise legend says what it shows ("Night noise at the top floors · houses in their own colour"); a kept
+  house gets a notch in the limit line and its own KEEP tag (`s3a/010`).
+- The bought-out house card explains itself ("Loudest from km 15.41: through the gap in the wall where the side
+  road joins. A wall cannot close it.") and has a cross-section. Keep → "House 8.0 dB too loud · Buy out, or cross
+  the side road without a junction"; Auto adds 3 m walls on both sides (`s3a/009`, `010`).
+- Pins: drag the road line in the profile → "Pinned height 517.1 m · road now 516.6 m", with Set / Unpin
+  (`s3a/019`).
+- Start over shows "Back to the starting road. Undo" (`s3a/021`); Load says "Loaded your best design. Undo"
+  (`s3b/012`).
+- At 1280×720 every card fits.
+
+### P1 — confusing
+
+1. **Switching Road height to By hand changes the bill.** README: "By hand starts from the current heights".
+   - D11 straight start with one pin: 10.96 → 10.81 bn (−143 M) on the switch alone (`s3a/020`).
+   - Fresh D11 at 1024 px: 10.01 → 9.98 bn (−29 M), which becomes "★ your best" (`s3b/007`).
+   - Switching back to Auto gives 10.01 bn, "+1.0 M" against the previous Auto state (`s3b/011`).
+   - Expected: no change on the switch. If By hand points are cheaper, Auto is leaving money on the table and the
+     player is rewarded for a mode toggle.
+2. **By hand gives ~70 points, too dense to use.** They overlap, especially at 1024 px (`s3b/007`).
+   - Dragging point 53 by 16 px produces "Two roundings of the road height overlap · Move height point 51 … from
+     height point 52" — about points the player never touched (`s3b/010`).
+   - The card calls the point "Dip 53"; the problem text calls the points "height point 51/52". Two names for one
+     thing.
+   - The Auto pin from before ("pinned 517.1 m") is still drawn in By hand mode, where pins do nothing
+     (`s3a/020`).
+3. **Auto rejects a cheaper bridge because of its own pier placement.**
+   - D11 straight, embankment km 5.09–5.50 (Poříčí halls), card: "Auto: cheaper here than a bridge".
+   - Choosing Bridge makes the project **107 M cheaper** (9.90 bn; presumably fewer halls demolished under a bridge) but NOT VALID: 9 × "A
+     bridge pier stands on a service road / class I road · Move the route … or make our bridge longer"
+     (`s3a/014`). The bridge card repeats "A bridge pier stands on a service road" twice.
+   - Expected: Auto moves the piers (span lengths) off the roads, which is what designers do, and then picks the
+     cheaper bridge. The "cheaper here" reason is per piece, not for the project.
+   - Embankment card: "up to 10 m high"; bridge card for the same stretch: "up to 36 m high".
+4. **1024 px wide window: the Build button covers the Contours button** (`s3b/003`); the profile legend drops
+   embankment / cut / bridge / tunnel (only "ground, road height" left); the A label sits under the map legend.
+   At 1024×700 the noise legend plus the map legend cover the lower-left third of a 400 px map; a bought-out house at
+   km 15.5 is half under them (`s3b/006`).
+5. **Selecting from "Where the money goes" never moves the map** (S2 #7 still open): at 1280×720 the selected
+   embankment stays a yellow blob at the overview (`s3b/002`).
+
+### P2 — polish
+
+6. Profile pins: 1 px of drag is about 1.5 m at the default profile scale. A 30 px drag pinned the road 44 m higher
+   and added 946 M (a 2 km bridge) (`s3a/019`). No live height readout while dragging the line; the label
+   "pinned 517.1 m" overlaps the line.
+7. Noise view tooltip on a bought-out house says only "House 1 floor · bought out" (no level, no limit), and is
+   ~330 px wide for that text (`s3a/008`).
+8. House plan strip: the house square is drawn on the road band although the house is 18 m from the road
+   (`s3a/010`).
+9. House card "Wall left · Auto" does not say what Auto chose (piece cards say "Auto: 3 m").
+10. The "cross the side road without a junction" fix is text only; no button takes the player to that side road's
+    card.
+11. The noise band is still a stepped box with straight limit lines at km 5.5 and km 3 (S2 #11) (`s3a/004`,
+    `006`); the demolished Poříčí halls are flat red footprints with black squares (S2 #1).
+12. 1280×720: the map is 420 px tall and the profile 300 px, so the A marker of D11 sits under the legend
+    (`s3b/001`).
+13. Help places the Relief 1× / 1.5× / 2× / 3× buttons at the end of the Help text (`s3a/002`).
+
+## Re-test 2 — motorway-rail @ 0464fb1 (2026-11-16)
+
+Detached snapshot of `side-agent/motorway-rail` 0464fb1 (newer than the asked 931c5dc) with that worktree's
+packs; SwiftShader 1440×900, fresh localStorage, two ≤ 20 min chunks (`m1`, `m2`). No timings quoted.
+
+| item | verdict | evidence |
+|---|---|---|
+| S1 #3 choosing a direction changes nothing | **PASS** | D3 motorway: *Towards Václavice*, *Towards Jílové*: 15.31 bn, VALID, Undo stays "Nothing to undo" (`m1/002`, `003`). |
+| #3 a drag splits only a stretch | **PASS** | Towards Jílové, drag the road at km ~5 outward: the two carriageways part over km 4.1–6.3 only, VALID, +457 M (`m1/011`); the card lists "The directions run apart km 4.1–6.3 · Join". |
+| #3 Join restores the exact paired price | **PASS** | Join → 15.31 bn, VALID, −457 M (`m1/012`). |
+| #11 one direction discoverable from the motorway's own card | **PASS** | "Edit: Both directions · Towards … · Towards …" on the no-selection card, on every piece card and in the Motorway section; hover says "drag to bend towards Jílové only" (`m1/001`, `006`, `017`). |
+| mirrored profile for the direction towards A | **PASS** | Towards Jílové: profile reads from Václavice, bends renumbered from that end, piece kilometres in the cards remapped (`m1/003`). |
+| 150 km/h pilot | **PASS** (P2 below) | D35 motorway (130): Motorway section → Speed limit 130 / 150 (pilot), plain explanation; 150 → +40 M CZK, cars 7.6 → 6.6 min; Undo back. D3 at 120: not offered (`m1/020`, `021`). |
+| #10 railway mission ends on the network, "our railway" | **PASS** | "Railway: Trutnov → Královec" starts in Trutnov hl. n. track field and joins the old line at Královec (`m1/022`–`024`); crossing cards read "our railway 4 m above it" (`m2/000`). |
+| #14 railway pick offset | **PASS** | D3 km 4.6 oblique: drawn Posázavský pacifik at y 280–284 px, clickable over 278–288 px (pixel check of `m2/004`). |
+| #4 railway rebuild by drag | **PASS with P1s** | click the railway, then drag: the 676 m between its junctions becomes "Posázavský pacifik" single-track 120 km/h, priced on its own (`m2/008`, `010`); see P1 2–3. |
+| Build → Motorway / Railway | **works, P1/P2s** | both build and price "this … only"; see P1 4, P2 9–10. |
+
+### P1 — confusing
+
+1. **A small drag changes heights and crossings far from it (same pattern as Re-test 1 P0 1, also in this
+   branch).** Railway mission, drag the line between bends 2 and 3 (km 7.3) 20 px: +1.90 bn, most of the climb
+   becomes one 5 km tunnel, the first tunnel's grade changes from 12.0 to 8.0 ‰ and "Our earthworks cover 18 m of a
+   track" appears at km 2.07, before bend 2, outside the changed stretch (`m2/021`). Both track conflicts are
+   ordinary ones Auto should resolve. Area: auto-profile / crossing-links.
+2. **An unselected railway cannot be dragged.** Pressing on the drawn railway (on its click band) and dragging
+   pans the map (`m2/005`; camera moved 35 m in a second try). No hover hint either; "drag to change" appears only
+   after a click selects it (`m2/008`). Roads are dragged directly, so the player who reads "drag it like a road"
+   thinks railways cannot be changed.
+3. **The first rebuild of the railway starts with a U-turn.** Select the Posázavský pacifik at D3 km 4.6, drag the
+   middle of the highlighted stretch ~40 px: "Bend 1 turns back almost on itself (172°)" at km 0.05 and "A long
+   bridge span is too low … raise the bridge at km 0.11 by at least 12.4 m" (`m2/010`); the start label and bend 1
+   sit on top of each other. Expected: the rebuilt stretch keeps the old line's direction at its ends and Auto
+   heights its bridge.
+4. **Build → Motorway / Railway: no line from the start to the cursor**, and a motorway built across the valley
+   under our D3 viaduct is "Roads cross here · Move one road so they do not cross" ×4 although the viaduct spans
+   130 m above it; its carriageways run through the viaduct piers (`m2/017`, `018`). The project shows "2 road
+   changes not priced yet" after one build and the total is replaced by "THIS MOTORWAY ONLY 49 M CZK" (S1 #8 still
+   open).
+5. **The railway mission's Auto design demolishes a street in Trutnov.** Out of Trutnov hl. n. the line runs
+   0.4 km in an open cut through the town before its first tunnel; about 25 buildings are demolished, drawn as
+   floating black squares (`m1/023`). A real design would start the tunnel at the station (cut and cover). Also two
+   streets near A are each rerouted to the next crossing, which is itself cut (km 0.04 → 0.14 → 0.28), as in S1 #13.
+
+### P2 — polish
+
+6. Violation list location column wraps as "Motorway / towards / Václavice / km 6.17" in four lines (`m1/009`).
+7. Overlap after dragging one direction across the other: "The two directions overlap · Move the directions at
+   least 14 m further apart" also reports a 0.1 m bridge clearance shortfall ("Raise the bridge … by at least
+   0.1 m") that Auto could add itself (`m1/009`).
+8. 150 km/h pilot: the goal (≤ 8.3 min) is already met at 130, so the pilot only costs money; nothing in the game
+   rewards it. Travel time assumes 150 km/h everywhere, though the card says only "when it is dry, clear and not
+   busy".
+9. Build → Railway card: "A click on a road joins it there" (should be a railway); railway violations still say
+   "road": "Lower the road here", "Auto found no legal road height", "Embankment never reaches the ground … now up
+   to 0.0 m above the ground" (`m2/020`).
+10. The "Edit" direction selector appears twice when a piece is selected and the Motorway section is open
+    (`m1/021`).
+11. The profile of the direction towards A has no end labels; with A / B on the map unchanged, which end is which
+    has to be inferred from bend 1.
+
+## Re-test 1 — long-corridors @ f058dc7 (2026-11-16)
+
+Detached snapshot of `side-agent/long-corridors` f058dc7 with that worktree's packs (d3-0301…0305, d3-full,
+d35-full). 1440×900. Chunks `c1`, `c2`, `c3` = SwiftShader (untimed; host load 12–25, so SwiftShader timings are
+meaningless and are not quoted); `g1` = hardware GPU under the exclusive lock, load ≈ 3 (all timings below are from
+`g1`). Old saves were made on main 217cfa4 (D3 road, D3 motorway, D35 two-lane road, one drag each) and their
+localStorage copied to the snapshot's origin, as happens when the user's tab picks up the merge.
+
+### Verdicts on the assignment
+
+| item | verdict | evidence |
+|---|---|---|
+| Picker: Středočeská D3 group (whole first, then 0301…0305/I), D35 group (whole, first section) | **PASS** | `c1/000`, `002`, `004`. Section titles carry the real names, each card says what it follows / continues as. |
+| P2 #18 cards missing class / speed | **PASS (one left)** | every D3 / D35 / Nová Paka card shows "Motorway · 120 km/h" etc.; the D11 card still reads only "Class I road" (no speed) (`c1/000`). |
+| 0301 A "starts in the D0 interchange" | **FAIL (visual)** | see P1 2 (`c1/013`, `014`). |
+| Voračice / I-18 interchange (0304 B, 0305 A) | **FAIL (visual)** | see P1 2 (`c1/033`, `039`). |
+| 0305/I B merges onto the open D3 | **PASS** | our carriageways run into the mapped motorway at Nová Hospoda (`c1/040`, `041`). |
+| "on to 03xx" section ends | **PASS with caveats** | B labels name the next section, the planned line runs on past B (0301 `c1/017`, 0303 `c1/027`, 0304 `c1/032`); exceptions in P1 3 / P2 4. |
+| Owner: "D3 starts and ends in the middle of fields"; P1 #9 motorway ends in fields | **Partly fixed** | 0305/I B is real; section ends are explained; 0301 A and both Voračice ends still read as a motorway stopping dead at a minor road. |
+| Whole D3: startup | **PASS (GPU)**, wording P2 | 5.0 s from navigation to ✓ VALID 40.74 bn (2.9 s of "—", 1 s of "≈ 40.74"). |
+| Whole D3 / D35: framing | **FAIL** | see P1 4. |
+| Whole D3: drag feel | **PASS** frames, **P1** bill | drag 16.7 ms p50 / 16.8 p95 / 33 ms max frames; but the price does not move during the drag (P1 5); settles 2.5–2.8 s after release. |
+| Whole D3 / D35: edits | **FAIL** | see P0 1: a local edit breaks crossings 9–24 km away. |
+| Retired old Jílové → Václavice presets, Continue for old saves | **PASS** | without saves the picker hides them (`c1/002`); with main's saves three Continue cards appear ("…(earlier map)", "Opatovec → Staré Město (two-lane road)") (`c2/006`) and each restores the exact bill and violations of main (5.41 / 15.29 / 6.28 bn, 5 / 4 / 1 violations) (`c2/008`–`010`). |
+| Undo / reload | **PASS** | Undo returns the whole-D3 bill exactly (40.74 bn) in 2.5 s; a 0302 edit survives reload and the picker then offers Continue (`c2/027`). |
+| P2 #24 Nová Paka route tiny at start | **PASS** | route fills the middle of the map (`c2/021`). |
+| Crossings spot check (0303 class II road km 3.06) | **PASS** | overbridge with ramps, card readable (`c2/023`, `025`). |
+
+### P0 — broken / untruthful
+
+1. **A local edit on a whole corridor breaks crossings 9–24 km away.** Every repro survives a reload (it is the
+   settled evaluation, not a preview artefact).
+   - Whole D3, start view, drag the road just before bend 14 (km 24.5) 20 px sideways: 6 violations, all at
+     km 33.05–34.85 ("Ramps up to the bridge over our road would be more than 10 m high", "… longer than 250 m",
+     "Our earthworks cover 49 m / 88 m of a class III road"). Nothing near the edit (`c3/001`, pink marks in the
+     profile at 33 and 35 km).
+   - Whole D3, drag the road between bends 16 and 17 (km 29.5) 60 px east: besides the local S-bend violation,
+     4 violations at km 45.15–45.17 (`g1/003`, `g1/008`). The crossing card there says Auto chose "Carried over
+     our road on a 67 m bridge … our road 4 m **above** it", then "⚠ Ramps … more than 10 m high". So Auto
+     picks a remedy that cannot work, at a crossing the player never touched.
+   - Whole D35, drag the road at km 8.2 15 px: violation at **km 32.31** near Mohelnice, "Our earthworks cover
+     46 m of a class I road" (`c3/004`, `c3/005`).
+   - Every one of these designs was ✓ VALID before the edit, and the far stretch's ground plan did not change (km
+     only shifts). Expected: an edit changes heights and crossings only around the edit (or Auto re-resolves the far
+     crossings so they stay valid). The bill moves too (e.g. −1.39 bn for a 20 px nudge), so part of the bill
+     changes far from the edit. Likely the auto profile re-solving the whole route differently. Area:
+     long-corridors / auto-profile / crossing-links.
+
+### P1 — confusing
+
+2. **"Interchange" ends are drawn as a motorway stopping dead at a minor road.**
+   - 0301 A (D0): the 4-lane cut ends flush against road II/101; the D0 runs ~150 m away and does not connect to
+     anything; no ramps; the label "D0 Praha" sits on the II/101 (`c1/012` top, `c1/013`, `c1/014`). Clicking A
+     selects the 5.3 km "Cut" piece; no card mentions the interchange (the disclosure is only on the picker card).
+   - 0304 B and 0305/I A (Voračice, I/18): the motorway T-ends into the I/18 at grade (`c1/033`, `c1/039`).
+     Clicking the I/18 next to B selects nothing (`c1/036`).
+   - Expected: at least a drawn junction (ramp stubs / a marker with a card "Interchange with I/18 — ramps not in
+     this job"), and for the section boundary the motorway continuing over the I/18 rather than ending on it.
+3. **0303 B ends 60–80 m short of a road, as if it should join it.** B "Václavice (on to 0304)" stops in the
+   field right before the II/112 link road, which crosses the planned line just beyond (`c1/027`, `c1/028`).
+   The interchange "MÚK Václavice" is not visible on either side. Same for 0301 B (MÚK Jílové with II/104 at
+   km ~8.4, nothing drawn) and 0302 B (MÚK Hostěradice). Fine as a section boundary, but the player sees
+   a motorway that ignores the road it is obviously meant to serve.
+4. **Whole corridors are not framed.** Whole D3 opens on km ≈ 8–35: neither A (Praha) nor B (Nová Hospoda) is on
+   screen (`c1/043`); whole D35 has A behind the intro card and B off the right edge (`c2/011`). Section starts
+   put B under the attribution bar (0301 `c1/006`, 0303 `c1/024`, 0304 `c1/029`) or below the map (0305/I
+   `c1/037`). Expected: A and B visible, clear of the intro card and the legend.
+5. **Whole D3: the price does not follow the drag.** Drag the road between bends 16 and 17 for 1.9 s: the score
+   shows "≈ 40.74 bn" (the pre-drag price) and "⋯ checked when you pause" the whole time; after release it stays
+   at ≈ 40.74 for another 1.9 s, then ≈ 40.81, then the result at 2.8 s (`g1/001`, `g1/002`). Map and bends
+   follow the mouse smoothly. The player cannot see what the drag costs until it is over.
+6. **A small first drag on 0302 runs into the starter's bend sitting on B.** The starter has bend 2 about 30 m
+   before B (`c1/023`). Drag the road at km 3 by 40 px: −819 M CZK but "Bend 3 is too close to B · Move bend 3 at
+   least 117 m further from B" (`c2/026`). The player did not place that bend and it cannot move "further from B"
+   without leaving the planned line. Also the B marker in the overview is half hidden by that bend's circle
+   (`c1/019`).
+7. **Ordinary track / road conflicts left to the player after a drag on whole D3.** km 19.97 "Our earthworks
+   cover 44 m of a track" (`g1/004`); km 25.25 "A tunnel entrance stands on a track" (`c1/050`). Same class as the
+   first QA's S2 #2; owner rule: Auto resolves ordinary conflicts.
+
+### P2 — polish
+
+8. Startup / undo wording: while a whole corridor loads, or after Undo, the chip says "⋯ checked when you pause"
+   although the player is not dragging; the cost is "—" for 2.9 s with an empty outlined box where the card goes
+   and an empty profile (`c1/044`). During Undo the change line keeps the old "+3.27 bn" next to the new
+   ≈ 40.74 for ~1.6 s.
+9. Planned line beyond the ends has gaps: 0302 B — nothing drawn for ~500 m past B, then a stub (`c1/022`);
+   0302 A — the 0301 planned line stops ~100 m before A (`c1/021`).
+10. Picker: Nová Paka sits under the "D35" heading (no heading of its own) (`c1/004`); D11 card has no speed;
+    "Built as D 27.5; the planned road is D 26.0" is category code jargon; whole D3 says 120 km/h while 0304
+    and 0305/I say 130 km/h.
+11. Retired cards only offer Continue; a player cannot discard an old save from the picker.
+12. Crossing card line "our road 1 m below it" (0303 km 3.06, `c2/023`) is ambiguous: below the crossed road's
+    old level or below its new bridge? Below an overbridge it reads like a clearance of 1 m.
+13. The fan-shaped ramp earthworks at the km 45.17 crossing look like a green star around the crossing point
+    (`g1/008`).
+14. Undo history is lost on reload (after a reload of an edited whole D3, Undo is greyed out; *best → Load* is
+    the only way back).
