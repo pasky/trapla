@@ -248,6 +248,10 @@ What exists (details and commands in `README.md`):
   line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
   RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
   crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
+- 150 km/h speed-limit pilot (research/41) for motorways designed for 130: a posted limit (Act 361/2000
+  §18(7)), never a design speed; travel time at 150, light-vehicle lane speeds +20 km/h in the motorway noise
+  source (PROVISIONAL extrapolation, all-day upper bound), variable signs 54.4 M CZK / 47 km (ŘSD). D35 motorway:
+  7.6 → 6.6 min, +40 M CZK (signs and the louder noise).
 - Build → Motorway / Railway and drag-to-rebuild of mapped railways (`ui/mode-kinds.ts`). A Build motorway is
   unpriced (no interchanges); a rebuilt railway stretch is unpriced until taking up the old track is priced.
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every

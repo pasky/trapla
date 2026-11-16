@@ -13,6 +13,8 @@ import { assertProjectDesign } from './project-validation';
 import { noiseSource } from './road-noise';
 import { evaluateProjectRailway, railTraffic, type RailPaths, type RailwayEvaluation } from './project-railway';
 import { createRailNoiseModel } from './rail-noise';
+import { MOTORWAY_150_PILOT } from './data/motorway';
+import { speedLimit150 } from './project-motorway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 import * as dm from './detmath';
@@ -136,7 +138,8 @@ function routeOutcome(ctx: ProjectEvalContext, design: ProjectDesign, route: Rou
   const corridor = route.kind === 'motorway' ? corridorOfRoute(design, route.id) : undefined;
   const op = corridor ? corridorOperations(design, corridor) : route.specification.kind === 'road' ? route.specification.operations : null;
   const rail = route.kind === 'railway' ? createRailNoiseModel(railTraffic(route)) : null;
-  const source = rail ?? (op ? noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare, ...(corridor ? { profile: 'motorway' as const } : {}) }) : null);
+  const source = rail ?? (op ? noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare,
+    ...(corridor ? { profile: 'motorway' as const, ...(speedLimit150(route) ? { lightSpeedRise: MOTORWAY_150_PILOT.lightSpeedRise } : {}) } : {}) }) : null);
   const limits = rail?.limits ?? { dayDb: NOISE.limitDayDb, nightDb: NOISE.limitNightDb };
   const levels = (excess: number) => source && Number.isFinite(source.excessDb) ? {
     day: source.dayDb - source.excessDb + excess, night: source.nightDb - source.excessDb + excess,

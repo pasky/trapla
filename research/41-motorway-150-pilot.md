@@ -44,3 +44,13 @@ Research checked 2026-11-15. “UNVERIFIED” means I could not confirm it in th
 Offer an optional **“150 km/h speed limit (pilot)”** only for a motorway with 130-design geometry and an equipped variable-sign / line-control system, where the higher limit can be shown conditionally: dry surface, good visibility, low traffic, no incident (and revert to 130/100 when conditions worsen). This is a game abstraction of the D3 operating conditions, not a new geometry class. [D3 launch conditions](https://www.ods.cz/clanek/27663-rychlosti-az-150-km-h-mohou-ridici-zkusebne-projet-po-dalnici-d3); [130 design-speed summary](https://konference-projektovani.cz/wp-content/uploads/2022/03/9.pdf)
 
 It changes eligible cars’ posted-speed/travel-time calculation and their noise emission; it does **not** change geometric design norms or permit heavy vehicles above 80 km/h. For noise, prefer CNOSSOS-EU’s published speed formula evaluated at actual 150 km/h, while clearly marking it **PROVISIONAL: extrapolation beyond the model’s ordinary 20–130 km/h range, not validated or measured for the D3 pilot**. The +1.9 dB figure is the rolling component only, not a total-road-noise multiplier. [Act 361/2000 §18](https://www.zakonyprolidi.cz/cs/2000-361#p18); [CNOSSOS/EU source](https://eur-lex.europa.eu/eli/dir/2015/996/oj); [speed extrapolation discussion](https://dgmr.nl/wp-content/uploads/files/Euronoise%20Conversion%20of%20existing%20road%20source%20data%20to%20use%20CNOSSOS-EU%20-%20000564.pdf)
+
+## Price of the signing (added by the motorway agent)
+
+- ŘSD's itemised price of the D3 150 km/h signing project: **54.4 M CZK** — documentation 0.5 M, variable signs
+  7.3 M, temporary signs during works 3.9 M, guardrail changes 22.9 M, power distribution incl. earthworks
+  15.9 M (ŘSD's Mátl); **42** signs at 173 k CZK each incl. foundations, earthworks and posts (141.3 k the sign
+  alone). The critic (Bláha) quotes 59 M for installation plus 2 M software. Tender estimate 89.1–90 M CZK.
+  [Ekonomický deník, 27 Aug 2025](https://ekonomickydenik.cz/spor-o-dopravni-znaceni-pro-150-km-h/);
+  [Zdopravy, tender: 90 M estimate, 9 junctions and one rest area on the section, solar + battery, wireless control](https://zdopravy.cz/mezi-taborem-a-budejovicemi-150-km-h-stat-vypsal-tendr-na-promenne-znacky-227037/)
+- Game: 54.4 M / 47 km ≈ 1.16 M CZK per km of motorway (PROVISIONAL: spread by length, D3's junction density).

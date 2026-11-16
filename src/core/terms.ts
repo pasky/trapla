@@ -120,6 +120,17 @@ export const DIRECTIONS_TEXT = {
   oneTitle: (place: string) => `Bend and raise only the direction towards ${place}; the other stays where it is`,
 } as const;
 
+/** The 150 km/h speed-limit pilot on a motorway designed for 130 (data/motorway.ts, research/41). */
+export const SPEED_LIMIT_TEXT = {
+  heading: 'Speed limit',
+  normal: '130 km/h',
+  pilot: '150 km/h (pilot)',
+  normalTitle: 'The normal motorway limit',
+  pilotTitle: 'Like the ministry’s pilot on the D3 since October 2025: variable signs allow 150 km/h when the road is dry, clear and not busy',
+  explainNormal: 'Cars may drive 130 km/h.',
+  explainPilot: (signs: string) => `Variable signs allow 150 km/h when it is dry, clear and not busy; trucks stay at 80. Shorter travel time, a little more noise; curves and slopes stay those of 130. The signs cost about ${signs} per km.`,
+} as const;
+
 /** Automatic on a motorway: no junction anywhere along it. */
 export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
 

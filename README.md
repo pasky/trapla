@@ -217,7 +217,10 @@ drawn as [two carriageways with a grass median and barrier](docs/screenshots/132
 [one portal per tunnel tube](docs/screenshots/134-motorway-twin-tunnel.png). "Edit: Towards …" (in the
 Motorway card) splits the directions; [one direction bent on its own](docs/screenshots/135-motorway-split.png)
 keeps its height points on their ground and runs as one body with the other wherever they still meet.
-"Both directions" joins them again. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130`.
+"Both directions" joins them again. On a motorway designed for 130 km/h the Motorway card offers "Speed limit:
+150 km/h (pilot)", like the ministry's D3 pilot (research/41): cars' travel time at 150, their noise at +20 km/h
+(an extrapolation, marked PROVISIONAL), the variable signs priced (about 1.2 M CZK per km, ŘSD's D3 contract);
+curves and slopes stay those of 130. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130`.
 
 ### Railway (cost model 21)
 

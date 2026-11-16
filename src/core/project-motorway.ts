@@ -5,6 +5,7 @@ import type { Design, EvalContext, EvalOptions, Result } from './evaluate';
 import { evaluate } from './evaluate';
 import { CATEGORIES } from './data/categories';
 import { designSpeeds } from './data/norms';
+import { MOTORWAY_150_PILOT } from './data/motorway';
 import { modeCapability } from './mode-policy';
 import type { CorridorDesign, ProjectDesign, RouteDesign, RoadOperations } from './project';
 import { buildAlignment, station, type Alignment, type PI, type Vec2 } from './horizontal';
@@ -28,6 +29,26 @@ export function corridorOfRoute(project: ProjectDesign, routeId: string): Corrid
 }
 
 /** Corridor-wide traffic: the children's directional demands added (never one copied twice). */
+/** Whether a motorway runs the 150 km/h speed-limit pilot (data/motorway.ts): the posted limit set to 150
+ * on a motorway designed for 130. Any other design speed keeps the design speed as the limit. */
+export function speedLimit150(route: RouteDesign): boolean {
+  return route.kind === 'motorway' && route.specification.designSpeed === MOTORWAY_150_PILOT.designSpeed
+    && route.specification.operations.speedPolicy === 'independent' && route.specification.operations.speed === MOTORWAY_150_PILOT.limit;
+}
+/** Turn the pilot on/off for a whole corridor (both directions), one edit. */
+export function setSpeedLimit150(project: ProjectDesign, corridorId: string, on: boolean): ProjectDesign {
+  const next = structuredClone(project), corridor = next.corridors.find(c => c.id === corridorId);
+  if (!corridor) throw new Error('Unknown corridor');
+  for (const id of [corridor.children.forward, corridor.children.reverse]) {
+    const r = next.routes.find(x => x.id === id);
+    if (r?.kind !== 'motorway') continue;
+    if (on && r.specification.designSpeed !== MOTORWAY_150_PILOT.designSpeed) throw new Error('The pilot needs a motorway designed for 130 km/h');
+    r.specification.operations = { ...r.specification.operations, speed: on ? MOTORWAY_150_PILOT.limit : r.specification.designSpeed, speedPolicy: on ? 'independent' : 'design' };
+    r.revision++;
+  }
+  return next;
+}
+
 export function corridorOperations(project: ProjectDesign, corridor: CorridorDesign): RoadOperations {
   const kids = [corridor.children.forward, corridor.children.reverse].map(id => project.routes.find(r => r.id === id));
   if (kids.some(k => !k || k.kind !== 'motorway')) throw new Error('Corridor children must be motorway routes');
@@ -70,7 +91,10 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
   for (const id of [corridor.children.forward, corridor.children.reverse]) {
     const r = next.routes.find(x => x.id === id);
     if (r?.kind === 'motorway' && r.specification.designSpeed !== speed) {
+      const pilot = speedLimit150(r);
       r.specification.designSpeed = speed;
+      // a new design speed ends the 150 km/h pilot (it needs a motorway designed for 130)
+      if (pilot) r.specification.operations = { ...r.specification.operations, speed, speedPolicy: 'design' };
       if (r.specification.operations.speedPolicy !== 'independent') r.specification.operations.speed = speed;
     }
   }
@@ -145,7 +169,7 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   const result = evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, corridorDesign(project, corridor),
-  { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: ops.speed,
+  { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: ops.speed, speedLimit150: kids.every(speedLimit150),
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: goal?.maxTravelMin !== undefined, capacity: goal?.demand !== undefined } });
   return { status: 'evaluated', result, ...(unpriced ? { unpriced } : {}) };
@@ -301,7 +325,10 @@ export function replaceCarriagewayFromDesign(project: ProjectDesign, routeId: st
   for (const id of corridor ? [corridor.children.forward, corridor.children.reverse] : [routeId]) {
     const r = next.routes.find(x => x.id === id);
     if (r?.kind === 'motorway' && r.specification.designSpeed !== speed) {
+      const pilot = speedLimit150(r);
       r.specification.designSpeed = speed;
+      // a new design speed ends the 150 km/h pilot (it needs a motorway designed for 130)
+      if (pilot) r.specification.operations = { ...r.specification.operations, speed, speedPolicy: 'design' };
       if (r.specification.operations.speedPolicy !== 'independent') r.specification.operations.speed = speed;
     }
   }
@@ -363,11 +390,11 @@ export function evaluateCarriageway(ctx: EvalContext, project: ProjectDesign, ro
   options: Pick<EvalOptions, 'preview' | 'materialValue' | 'sharedCrossings'> = {}): Result {
   const route = project.routes.find(r => r.id === routeId) as MotorwayRoute, corridor = corridorOfRoute(project, routeId)!;
   const other = project.routes.find(r => r.id === (corridor.children.forward === routeId ? corridor.children.reverse : corridor.children.forward)) as MotorwayRoute;
-  const ops = corridorOperations(project, corridor), goal = project.mission.connections[0];
+  const ops = corridorOperations(project, corridor), goal = route.role === 'mission' ? project.mission.connections[0] : undefined;
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, carriagewayDesign(project, route),
-  { ...options, endpointElevations: { a: a.z, b: b.z }, operatingSpeed: ops.speed,
+  { ...options, endpointElevations: { a: a.z, b: b.z }, operatingSpeed: ops.speed, speedLimit150: speedLimit150(route) && speedLimit150(other),
     leftJoined: joinedRanges(carriagewayLine(route), carriagewayLine(other)),
     goals: { time: goal?.maxTravelMin !== undefined, capacity: false } });
 }

@@ -11,7 +11,7 @@ import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from 
 import { trainsPerDay } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
-import { DIRECTIONS_TEXT } from '../core/terms';
+import { DIRECTIONS_TEXT, SPEED_LIMIT_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
@@ -38,6 +38,8 @@ export interface HudEvents {
   onReset?: () => void;
   /** motorway: edit both directions together, or one of them on its own */
   onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
+  /** motorway designed for 130: the 150 km/h speed-limit pilot on / off */
+  onSpeedLimit?: (pilot: boolean) => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
   onExaggeration?: (e: number) => void;
@@ -220,6 +222,13 @@ export class Hud {
           </div>
           <p id="dir-explain" class="mode-explain"></p>
         </div>
+        <div class="mode" id="speed-limit" hidden>
+          <div class="mode-h"><b>${SPEED_LIMIT_TEXT.heading}</b></div>
+          <div class="seg" role="radiogroup" aria-label="${SPEED_LIMIT_TEXT.heading}">
+            <button type="button" id="limit-normal" role="radio" title="${SPEED_LIMIT_TEXT.normalTitle}">${SPEED_LIMIT_TEXT.normal}</button><button type="button" id="limit-pilot" role="radio" title="${SPEED_LIMIT_TEXT.pilotTitle}">${SPEED_LIMIT_TEXT.pilot}</button>
+          </div>
+          <p id="limit-explain" class="mode-explain"></p>
+        </div>
         <div class="mode">
           <div class="mode-h"><b id="height-h">Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
@@ -263,6 +272,8 @@ export class Hud {
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
     for (const which of ['both', 'forward', 'reverse'] as const) this.$(`dir-${which}`).onclick = () => this.ev.onDirection?.(which);
+    this.$('limit-normal').onclick = () => this.ev.onSpeedLimit?.(false);
+    this.$('limit-pilot').onclick = () => this.ev.onSpeedLimit?.(true);
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
     // the first listed item (project mode: the first real violation, else the first not-checked item)
     this.$('chip-viol').onclick = () => {
@@ -363,6 +374,17 @@ export class Hud {
       : 'Drag the ◆ points in the profile; double-click the line adds one.';
     this.$('mode-help').title = auto ? AUTO_LONG : MANUAL_LONG;
     this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'Auto height' : 'height by hand'}`;
+  }
+
+  /** The 150 km/h pilot switch; null hides it (anything but a motorway designed for 130 km/h). */
+  setSpeedLimit(state: { pilot: boolean; signsPerKm: string } | null) {
+    const box = this.$('speed-limit');
+    box.hidden = !state;
+    if (!state) return;
+    for (const [id, on] of [['limit-normal', !state.pilot], ['limit-pilot', state.pilot]] as const) {
+      const b = this.$(id); b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+    }
+    this.$('limit-explain').textContent = state.pilot ? SPEED_LIMIT_TEXT.explainPilot(state.signsPerKm) : SPEED_LIMIT_TEXT.explainNormal;
   }
 
   /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */

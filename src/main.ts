@@ -10,6 +10,9 @@ import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
 import { ROUNDABOUT_HOSTS } from './core/tie-in';
 import { createRailNoiseModel } from './core/rail-noise';
 import { railTraffic } from './core/project-railway';
+import { MOTORWAY_150_PILOT } from './core/data/motorway';
+import { czk } from './ui/costgroups';
+import { setSpeedLimit150, speedLimit150 } from './core/project-motorway';
 import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
 import { DIRECTIONS_TEXT } from './core/terms';
@@ -802,6 +805,8 @@ async function main() {
     const kind = route?.kind ?? scenario.mode ?? 'road';
     document.getElementById('legend-route')!.textContent = kind;
     document.getElementById('legend-height')!.textContent = kind === 'railway' ? 'track height' : 'road height';
+    hud.setSpeedLimit(route?.kind === 'motorway' && route.specification.designSpeed === MOTORWAY_150_PILOT.designSpeed
+      ? { pilot: speedLimit150(route), signsPerKm: czk(MOTORWAY_150_PILOT.signsPerM * 1000) } : null);
     if (!corridor) { hud.setDirections(null); return; }
     // the mission's motorway runs between the scenario's places; any other between its own start and end
     const mission = route!.role === 'mission';
@@ -1203,6 +1208,12 @@ async function main() {
       toast('Back to the starting road.', 'Undo', () => store.undo());
     },
     onIntro: () => intro.show(),
+    onSpeedLimit: (pilot) => {
+      const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;
+      if (!corridor || projectStore.inTransaction || speedLimit150(route!) === pilot) return;
+      try { store.editProject(d => { Object.assign(d, setSpeedLimit150(d, corridor.id, pilot)); }); }
+      catch (error) { console.warn('Speed limit not changed', error); }
+    },
     onDirection: (which) => {
       const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;
       if (!corridor || projectStore.inTransaction) return;

@@ -40,3 +40,18 @@ export function motorwayHorizontalEvidence(speed: number) {
  * dashes with double gaps (§3.2: "Na dálnici a SMV se úsečka provádí v délce 6 m … Délka mezery je
  * dvojnásobná"). */
 export const MOTORWAY_MARKINGS = { edgeLine: 0.25, laneLine: 0.125, dash: 6, gap: 12 } as const;
+
+/** The 150 km/h speed-limit pilot (research/41): a posted limit, never a design speed. MD's D3 pilot
+ * (exits 84–131, 47 km, from 5 Oct 2025, extended to the end of 2026) runs on a motorway built for 130 km/h
+ * (ČSN 73 6101:2018 tops out at 130), under Act 361/2000 §18(7) (+20 km/h by local regulation on a divided
+ * motorway), shown by variable signs only in dry, clear, light traffic; trucks stay at 80 km/h.
+ * - `designSpeed`: offered only on a motorway designed for 130 km/h.
+ * - `signsPerM`: ŘSD's itemised price of the D3 signing project, 54.4 M CZK (documentation, 42 variable signs,
+ *   temporary signs, guardrail changes, power incl. earthworks; ŘSD's Mátl in Ekonomický deník 27 Aug 2025)
+ *   over its 47 km. PROVISIONAL: spread by length (the D3 section has 9 junctions; denser junctions would need
+ *   more signs).
+ * - `lightSpeedRise`: light vehicles' lane speeds in the motorway noise source rise by the limit's +20 km/h.
+ *   PROVISIONAL extrapolation: the Czech manual's lane speeds are measured under 130; its emission formula is
+ *   used beyond its data (CNOSSOS-EU does the same above 130; its rolling term would give +1.9 dB for
+ *   130 → 150). Counted as if 150 applied all day and night: an upper bound. */
+export const MOTORWAY_150_PILOT = { limit: 150, designSpeed: 130, signsPerM: 54.4e6 / 47_000, lightSpeedRise: 20 } as const;

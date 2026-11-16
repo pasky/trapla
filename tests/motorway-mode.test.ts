@@ -3,7 +3,8 @@ import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { createMotorwayProject, motorwayMission } from '../src/core/project-motorway';
+import { createMotorwayProject, motorwayMission, setSpeedLimit150, speedLimit150 } from '../src/core/project-motorway';
+import { MOTORWAY_150_PILOT } from '../src/core/data/motorway';
 import { projectBindingsCurrent, type ProjectLoadOptions } from '../src/project-persistence';
 import { isScorableProject } from '../src/core/project-protocol';
 import { assertProjectDesign } from '../src/core/project-validation';
@@ -132,5 +133,27 @@ describe('split motorway', () => {
     const clash = evaluateProject(ctx, { ...snapshot, revision: 3, design: raised });
     expect(clash.issues.some(i => i.violation.title === 'Slopes of the two directions clash')).toBe(true);
     expect(clash.valid).toBe(false);
+  });
+});
+
+describe('the 150 km/h speed-limit pilot (research/41)', () => {
+  it('is a posted limit on a motorway designed for 130: faster cars, louder cars, the signs priced, the same geometry', () => {
+    const { ctx, snapshot } = fixture();
+    const corridor = snapshot.design.corridors[0].id;
+    const on = setSpeedLimit150(snapshot.design, corridor, true);
+    expect(on.routes.every(speedLimit150)).toBe(true);
+    const [p0, p1] = [snapshot.design, on].map((design, k) => evaluateProject(ctx, { epoch: 'e', revision: k + 1, design }));
+    const [r0, r1] = [p0, p1].map(p => p.routes[snapshot.design.routes[0].id].legacy!);
+    expect(r1.vpis).toEqual(r0.vpis); // geometry norms stay those of 130
+    expect(r1.length).toBe(r0.length);
+    expect(r1.travelMin).toBeCloseTo(r0.length / (150 / 3.6) / 60, 9);
+    expect(r1.cost.total - r0.cost.total).toBeCloseTo(r0.length * MOTORWAY_150_PILOT.signsPerM, -4);
+    const loud = (rise: number) => noiseSource(30000, 130, { heavyShare: 0.2256, profile: 'motorway', lightSpeedRise: rise }).dayDb;
+    expect(loud(20) - loud(0)).toBeGreaterThan(0.5); // cars at +20 km/h: about +1 dB by day
+    expect(loud(20) - loud(0)).toBeLessThan(2);
+    // a new design speed ends it; it cannot run on a motorway designed for 120
+    const slower = replaceRouteFromLegacy(on, on.routes[0].id, { ...legacyDesignForRoute(on, on.routes[0].id), speed: 120 });
+    expect(slower.routes.some(speedLimit150)).toBe(false);
+    expect(() => setSpeedLimit150(slower, corridor, true)).toThrow();
   });
 });

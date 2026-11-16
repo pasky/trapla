@@ -33,6 +33,7 @@ import {
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
 import { RAIL_TURNOUT_M } from './data/railway';
+import { MOTORWAY_150_PILOT } from './data/motorway';
 import { crossingWallGaps } from './crossing-walls';
 import { protectedRasterCells } from './protected-raster';
 import { mergeCrossings, type RoadNet } from './roadnet';
@@ -191,6 +192,9 @@ export interface EvalOptions {
   railTieIn?: { a: number; b: number };
   /** Railway rebuilding mapped stretches: their old track (polylines) is taken up, no obstacle. */
   railRetired?: readonly (readonly { x: number; y: number }[])[];
+  /** Motorway designed for 130 km/h with the 150 km/h speed-limit pilot (data/motorway.ts): cars' travel
+   * time at 150, their noise at +20 km/h, and the variable signs priced. Ignored on anything else. */
+  speedLimit150?: boolean;
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -256,6 +260,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const maxGradient = cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient;
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
+  const pilot150 = !!opts.speedLimit150 && cat.mode === 'motorway' && d.speed === MOTORWAY_150_PILOT.designSpeed;
   let manualStructures = overrideMask(st.s, d.structureOverrides);
   const crossingOverrides = normalizeCrossingOverrides(d.crossingOverrides);
   const ground = new Float64Array(n);
@@ -1047,7 +1052,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
   // Railway: CNOSSOS-EU train source and line propagation (rail-noise.ts) against the new-line limits.
   const noiseModel = cat.mode === 'railway' ? createRailNoiseModel(opts.railTraffic ?? [])
-    : createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare, ...(cat.mode === 'motorway' ? { profile: 'motorway' as const } : {}) });
+    : createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare,
+      ...(cat.mode === 'motorway' ? { profile: 'motorway' as const, ...(pilot150 ? { lightSpeedRise: MOTORWAY_150_PILOT.lightSpeedRise } : {}) } : {}) });
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
@@ -1101,7 +1107,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const tunnels = runs.filter((r) => r.kind === KIND.tunnel).map((r) => r.length);
   const bridgeLength = bridges.reduce((a, v) => a + v, 0);
   const tunnelLength = tunnels.reduce((a, v) => a + v, 0);
-  const parts = costParts({
+  const parts = costParts({ ...(pilot150 ? { signsPerM: MOTORWAY_150_PILOT.signsPerM } : {}),
     category: d.category, terrainClass: scenario.terrainClass, n, ds, kind, urban, h,
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
@@ -1204,14 +1210,16 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       if (ours) v[k] = v[k]!.replace(/^Road too low/, 'Our railway too low').replace(/\bthe road\b/g, 'our railway');
     }
   }
-  const travelMin = al.length / (d.speed / 3.6) / 60;
+  // the 150 km/h pilot is a posted limit for cars: travel time at it (the goal's time is a car's)
+  const travelSpeed = pilot150 ? MOTORWAY_150_PILOT.limit : d.speed;
+  const travelMin = al.length / (travelSpeed / 3.6) / 60;
   const capacityTraffic = opts.capacityTraffic ?? scenario.traffic;
   const minCategory = minCategoryForTraffic(capacityTraffic);
   if ((opts.goals?.capacity ?? true) && cat.mode !== 'railway' && CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
     violations.push(categoryViolation(al.length, d.category, capacityTraffic, minCategory));
   }
   if ((opts.goals?.time ?? true) && travelMin > scenario.maxTravelMin + 1e-9) {
-    violations.push(timeViolation(al.length, d.speed, travelMin, scenario.maxTravelMin));
+    violations.push(timeViolation(al.length, travelSpeed, travelMin, scenario.maxTravelMin));
   }
   violations.push(...noiseViolations); // grouped noise issues never hide geometric/goal constraints
   const geomViolations = violations.filter((v) => !v.goal).length;
