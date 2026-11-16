@@ -229,6 +229,7 @@ export class NoiseLayer {
       const el = document.createElement('div');
       el.className = 'wall-label';
       el.textContent = twin ? `${w.height} m both sides` : `${w.height} m`;
+      el.style.display = 'none'; // shown by the next frame, where it belongs (not stacked in the map's corner until then)
       this.overlay.appendChild(el);
       this.labels.push({ el, x: r.x[i] - r.ty[i] * off * sgn, y: r.y[i] + r.tx[i] * off * sgn, z: r.grade[i] + foot + w.height });
     }
