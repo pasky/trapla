@@ -27,7 +27,7 @@ short GPU run under the exclusive lock (load ≈ 8–13, so the timings are indi
 | P1 5 live price while dragging whole D3 | **PASS** | GPU: during a 2.6 s drag the score updates every ~250 ms (≈ 42.48 → 44.85 bn, change line "≈ +2.67 bn"); frames 16.7 ms p50/p95; result 2.8 s after release (`g2/000`). P2: the last preview (≈ 44.85) is 1.8 bn below the result (46.67). |
 | P1 6 starter bends near B | **PASS** | 0302 has one bend at km 1.39; the same 40 px drag at km 3 is VALID and −421 M (`l1/017`). |
 | P1 7 ordinary conflicts after drags | **FAIL** | whole D3, drag at km 50.5: 10 problems, 8 × "A bridge pier stands in a stream" (one per pier of a bridge along a stream) and a pier on a class III road (`l1/005`); drag at km 18.9: a track under our earthworks; D11 (see below): "earthworks cover 44 m of a service road" / "37 m of a track" after single drags. |
-| P2 8 wording while waiting | **PASS** | the chip says "checking" once the drag is let go and on startup ("⋯ checked when you pause" only while the mouse is down). |
+| P2 8 wording while waiting | **PASS** | the chip says "checking" once the drag is let go ("⋯ checked when you pause" only while the mouse is down); startup not re-checked. |
 | P2 9 planned line past the ends | **PASS** | 0302 B: the dashed planned D3 runs on past B (`g2/001`). |
 | P2 10 picker | **PASS** | Nová Paka under its own "I/16" heading; D11 "Class I road · 90 km/h"; "Built 27.5 m wide, our usual motorway; the planned road is 26 m wide"; whole D3 explains 120 vs 130 km/h. |
 | P2 12 crossing card level line | **PASS** | "our road 1 m below the crossed road's level today". |
