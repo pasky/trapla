@@ -642,7 +642,30 @@ Houses a roundabout's ring removes are not decided again. `shared-noise` no long
 owner case (III/1057 dragged 40 m near our bridge at km 11.78): "no total: shared-land" only (owner-d3-scene asserts
 no shared-noise). Tests: tie-in "are decided once, from both roads' own finite-segment noise", trial-wall wiring.
 
+**Review fixes (`d845627`, deep review of 13f9af8..70f6a23).** The decider now sums every road cell by cell (Sum 2)
+for the as-built level and every trial alike, so a trial's level is the committed level; a rebuilt road's kept
+cells carry no energy and no wall; the player's wall choices (any height, 0 = none) are never changed and a house
+the player keeps is never bought (left too loud it is a violation "Too loud with both roads together"); trial walls
+stand 2, 4 or 8 × the house's distance (an existing wall can be extended), billed by their wall line
+(`wallLineLengths`, as the road's own); the road's walls are redrawn from the final heights (`wallStretches`); houses
+on a designed road's roundabout ring are not decided again; a project buyout is listed on its owner's houses. A drag
+on a mapped road before the road links are loaded holds the map and opens the road's card once they are.
+Tests: tie-in "the player's wall choices and Keep stand…".
+
+**Gates on `d845627`** (2026-11-16 08:45–09:30): tsc, vitest 655, build, eval-regression (11 PASS, bit-identical
+with main's frozen model-22 bills), bench (5 saved designs VALID), outcome-audit (`--straight … --random 24`, exit 0),
+land-screen-check (6 OK), smoke, any-road-scene D11 and D3, owner-d3-scene ("no total: shared-land"): PASS.
+playtest (`PORT=5246`): PASS at load 8.6 (Undo clicked 3.95 s after Start over); it had failed twice at load 22–31
+when the 6 s toast was gone before the click (main itself took 5.47 s at that load). drag-perf `--gpu --check`:
+bend, radius, pin, vpi, link OK at load 7–15; road failed once at load 15 (median preview 67 ms > 60) and passed on
+the rerun at load 4–5 (`/tmp/g15-perf-*.log`, `/tmp/g15-perf-road2.log`). `_lengthen-batch` (on 70f6a23; nothing
+since touches it): convert 6, tail 1, head 0 of 433, unchanged.
+
 **Open**
+- From the review, in main's code (crossing-links): an engineered reroute (`link-route.ts`) checks houses and
+  obstacles against its pavement width, not its earthworks' slopes (a 7 m cut 6 m from a motorway's axis passes).
+- After a project wall the house card still shows the level from its own road's receiver (the project's combined
+  level is in `ProjectResult.receivers`).
 - A rebuilt road riding a higher-ranking road's **bridge over it** (`holds` decks: the Nový Rokytník street over our
   D11, also a class III road there) gets "Your bridge is too close to the ground" (the 4 m rule measured to the
   original ground under the owner's cutting) and "Not on its bridge over our road" by ~1 m. Pre-existing for every
