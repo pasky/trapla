@@ -79,8 +79,12 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running
   along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a crossed way whose cut
   ends stay connected over other roads is still rerouted instead of closed; merged crossings of different ways
-  within 30 m keep one remedy for the group. Lowered underpasses ignore groundwater; pier placement near
-  the Polish border can fail (engine limit).
+  within 30 m keep one remedy for the group unless that leaves one buried (then it is a crossing of its own,
+  a retry). Lowered underpasses ignore groundwater; pier placement near the Polish border can fail (engine limit).
+- Project roads (2026-11-16 final-sweep P1s, PLAN.md "Final-sweep P1s"): the player's road takes over from
+  our reroutes (they are planned again clear of it); new railways and motorways are crossed by the
+  higher-ranking line; `scripts/reroute-takeover-audit.ts` still leaves 47 of 292 D11 bends near our reroutes
+  unpriced (mostly the rebuilt road's own body within 10 m of our embankment, a real conflict).
 - Junction approaches on class I–III roads are not ramp-capped.
 - Vertical-curve minima and max gradient are older-edition (pre-2018) values; transition curves not drawn;
   no superelevation / sight-distance checks.

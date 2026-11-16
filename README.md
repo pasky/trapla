@@ -366,6 +366,10 @@ Crossing remedies as designers choose them (model 28, `node scripts/crossing-eco
 [town-centre's skewed service road straightened (57 m box → 25 m)](docs/screenshots/174-town-centre-service-road-straightened.png),
 [best: a service road moved aside](docs/screenshots/175-best-service-road-moved-aside.png),
 [Nová Paka: a service road and a track joined to one box](docs/screenshots/176-nova-paka-roads-joined-to-one-box.png).
+Final-sweep P1s (`tests/edited-network`, `new-line-crossings`, `merged-crossings`): [D11 km 4.1: a track the
+QA dragged beside our reroute, priced](docs/screenshots/180-d11-track-beside-reroute-priced.png),
+[a new road across the Královec valley passes high over our railway bridge on its own](docs/screenshots/181-rail-new-road-over-our-bridge.png),
+[whole D3 dragged at km 30: both tracks crossing within 30 m rerouted, none buried](docs/screenshots/182-d3-full-km296-both-tracks-rerouted.png).
 Final-sweep P2s (`node scripts/p2-scene.mjs`, research/58): [III/1057 rebuilt past our bridge: the score says
 which roads' bills moved, the bend label stays clear of the map's key](docs/screenshots/195-d3-1057-rebuilt-change-explained.png),
 [a drag's ≈ price says what it leaves out; the direction card names the place](docs/screenshots/196-d3-0302-drag-estimate.png),
