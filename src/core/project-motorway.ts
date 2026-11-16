@@ -65,8 +65,37 @@ function rawCorridorDesign(project: ProjectDesign, corridor: CorridorDesign): De
     objectData: project.objectData });
 }
 
-/** Write the edited spine back; speed edits apply to both directions. Building choices stay project-wide. */
+/** Write the displayed paired line back without saving untouched Auto-follow copies. A local body
+ * control accepts that bend as shared; a distant edit leaves its separate edit and Reset intact. */
 export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: string, d: Design): ProjectDesign {
+  const saved = project.corridors.find(c => c.id === corridorId);
+  if (!saved || saved.mode !== 'paired') throw new Error('Unknown paired corridor');
+  if (!saved.stretches?.length) return replaceRawCorridorFromDesign(project, corridorId, d);
+  const shown = corridorDesign(project, saved);
+  project = acceptControlledFollows(project, saved, shown, d, d.speed !== shown.speed || d.profileMode !== shown.profileMode);
+  const corridor = project.corridors.find(c => c.id === corridorId)!;
+  if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
+  const raw = rawCorridorDesign(project, corridor), display = corridorDesign(project, corridor);
+  const follows = followedStretches(project, corridor);
+  const copies = follows.map(t => ({ ...t, forward: t.forward ?? t.reverse }));
+  const pis = stripFollowCopies(raw.pis, display.pis, d.pis, copies, 'forward', new Set(copies.map(t => t.id)), 1);
+  // A nearby shared bend edit accepts the followed body too, including controls already on it.
+  const kept = new Set(carryStretches(raw.pis, pis, corridor.stretches ?? []).kept.map(t => t.id));
+  const accepted = new Set(follows.filter(t => !kept.has(t.id)).map(t => t.id));
+  const controlBase = accepted.size ? rawCorridorDesign(project, autoFollowingCorridor(project, corridor, accepted)) : raw;
+  const controls = <T>(before: T[] | undefined, after: T[] | undefined, base: T[] | undefined) => {
+    const delta = controlChanges(before ?? [], after ?? []);
+    const result = [...dropControls(base, delta.removed), ...delta.added];
+    return result.length || base || after ? result : undefined;
+  };
+  return replaceRawCorridorFromDesign(project, corridorId, { ...d, pis,
+    gradePins: controls(display.gradePins, d.gradePins, controlBase.gradePins),
+    structureOverrides: controls(display.structureOverrides, d.structureOverrides, controlBase.structureOverrides),
+    wallOverrides: controls(display.wallOverrides, d.wallOverrides, controlBase.wallOverrides) });
+}
+
+/** Internal writes already use saved spine coordinates, not the displayed Auto-follow composite. */
+function replaceRawCorridorFromDesign(project: ProjectDesign, corridorId: string, d: Design): ProjectDesign {
   const next = structuredClone(project), corridor = next.corridors.find(c => c.id === corridorId);
   if (!corridor || corridor.mode !== 'paired') throw new Error('Unknown paired corridor');
   if (d.category !== MOTORWAY_CATEGORY || !designSpeeds(d.category).includes(d.speed)) throw new Error('Motorway design needs a motorway category and speed');
@@ -509,12 +538,13 @@ const within = (ranges: readonly (readonly [number, number])[], s0: number, s1 =
  * This is a derived corridor, not a saved edit: pulling back out restores the original peer, and Undo
  * restores both. The widgets read the same derived geometry as the evaluator. Explicit peer lines,
  * nearby separate stretches and a shared manual profile are never silently overwritten. */
-export function autoFollowingCorridor(project: ProjectDesign, saved: CorridorDesign): CorridorDesign {
+export function autoFollowingCorridor(project: ProjectDesign, saved: CorridorDesign, only?: ReadonlySet<string>): CorridorDesign {
   if (saved.mode !== 'paired' || !saved.stretches?.length || saved.spine.kind !== 'pi' || saved.spine.vertical.kind !== 'auto') return saved;
   let corridor = saved;
   const rules = horizontalRules(corridorSpeed(project, saved), MOTORWAY_CATEGORY);
   const A = saved.endpoints.a.position, B = saved.endpoints.b.position;
   for (const id of saved.stretches.map(t => t.id)) {
+    if (only && !only.has(id)) continue;
     if (corridor.spine.kind !== 'pi' || corridor.spine.vertical.kind !== 'auto') break;
     const stretches = corridor.stretches ?? [], t = stretches.find(t => t.id === id);
     if (!t || !!t.forward === !!t.reverse) continue;
@@ -529,18 +559,75 @@ export function autoFollowingCorridor(project: ProjectDesign, saved: CorridorDes
     const al = buildAlignment(A, B, pis, rules), nextAl = buildAlignment(A, B, nextPis, rules);
     const p = pair(station(nextAl, 10), station(al, 10));
     if (!p.d.some(d => dir === 'forward' ? d < -JOIN_RULES.deviation : d > JOIN_RULES.deviation)) continue;
-    const outside = <T extends { s0: number; s1: number }>(xs: T[] | undefined) =>
-      (xs ?? []).filter(x => x.s1 < t.a || x.s0 > t.b);
-    const structures = [...outside(controls.structureOverrides), ...own.structureOverrides ?? []];
-    const walls = [...outside(controls.wallOverrides), ...own.wallOverrides ?? []];
+    const structures = [...controls.structureOverrides ?? [], ...own.structureOverrides ?? []];
+    const walls = [...controls.wallOverrides ?? [], ...own.wallOverrides ?? []];
     carried.kept.forEach((s, j) => { if (carried.after[j]) shiftStretch(s, nextAl.length - al.length); });
     const remaining = locateStretches(A, B, nextPis, carried.kept, rules);
     corridor = { ...corridor, spine: { ...corridor.spine, pis: nextPis,
-      vertical: { ...corridor.spine.vertical, pins: [...corridor.spine.vertical.pins.filter(p => p.s < t.a || p.s > t.b), ...own.pins].sort((a, b) => a.s - b.s) },
+      vertical: { ...corridor.spine.vertical, pins: [...corridor.spine.vertical.pins, ...own.pins].sort((a, b) => a.s - b.s) },
       controls: { ...controls, ...(controls.structureOverrides || structures.length ? { structureOverrides: structures } : {}),
         ...(controls.wallOverrides || walls.length ? { wallOverrides: walls } : {}) } }, stretches: remaining };
   }
   return corridor;
+}
+
+function followedStretches(project: ProjectDesign, corridor: CorridorDesign): SeparateStretch[] {
+  if (corridor.mode !== 'paired' || !corridor.stretches?.length) return [];
+  const shown = autoFollowingCorridor(project, corridor);
+  const remaining = new Set(shown.mode === 'paired' ? shown.stretches?.map(t => t.id) : []);
+  return corridor.stretches.filter(t => !remaining.has(t.id));
+}
+
+function controlChanges<T>(before: readonly T[], after: readonly T[]) {
+  const key = (x: T) => JSON.stringify(x);
+  return { added: after.filter(x => !before.some(y => key(y) === key(x))),
+    removed: before.filter(x => !after.some(y => key(y) === key(x))).map(key) };
+}
+function dropControls<T>(list: readonly T[] | undefined, removed: string[]): T[] {
+  return (list ?? []).filter(x => !removed.includes(JSON.stringify(x)));
+}
+
+/** A deliberate control of the followed body makes that local bend shared. It must not end up owned
+ * by the direction that happened to cause the follow and leave the clicked direction on separation. */
+function acceptControlledFollows(project: ProjectDesign, corridor: CorridorDesign, shown: Design, d: Design, all = false): ProjectDesign {
+  const changed = <T>(a: T[] | undefined, b: T[] | undefined) => {
+    const delta = controlChanges(a ?? [], b ?? []);
+    return [...delta.added, ...(a ?? []).filter(x => delta.removed.includes(JSON.stringify(x)))];
+  };
+  const pins = changed(shown.gradePins, d.gradePins);
+  const works = [...changed(shown.structureOverrides, d.structureOverrides), ...changed(shown.wallOverrides, d.wallOverrides)];
+  if (!all && !pins.length && !works.length) return project;
+  const ids = new Set(followedStretches(project, corridor).filter(t => all
+    || pins.some(p => p.s >= t.a && p.s <= t.b)
+    || works.some(o => o.s1 >= t.a && o.s0 <= t.b)).map(t => t.id));
+  if (!ids.size) return project;
+  const accepted = { ...autoFollowingCorridor(project, corridor, ids) };
+  if (accepted.mode === 'paired' && !accepted.stretches?.length) delete accepted.stretches;
+  return { ...project, corridors: project.corridors.map(c => c.id === corridor.id ? accepted : c) };
+}
+
+/** Translate untouched automatic bend copies back to the saved spine. Adjacent geometry edits keep
+ * the shown copy: they intentionally choose a new local line. Reverse order keeps splice indices stable. */
+function stripFollowCopies(spine: PI[], shown: PI[], edited: PI[], stretches: SeparateStretch[], dir: Direction, copies: ReadonlySet<string>, margin = 0): PI[] {
+  if (!copies.size) return edited;
+  const displayed = compositePis(spine, stretches.map(t => copies.has(t.id)
+    ? { ...t, [dir]: t.forward ?? t.reverse } : t), dir);
+  const same = (p: PI, q: PI) => p.x === q.x && p.y === q.y && p.r === q.r;
+  let prefix = 0, suffix = 0;
+  while (prefix < shown.length && prefix < edited.length && same(shown[prefix], edited[prefix])) prefix++;
+  while (suffix < shown.length - prefix && suffix < edited.length - prefix
+    && same(shown[shown.length - 1 - suffix], edited[edited.length - 1 - suffix])) suffix++;
+  const unchanged = prefix === shown.length && prefix === edited.length;
+  const saved = edited.map(p => ({ ...p }));
+  for (const seg of [...displayed.segs].reverse()) {
+    const t = seg.stretch === null ? undefined : stretches[seg.stretch];
+    if (!t || !copies.has(t.id)) continue;
+    if (unchanged || seg.c1 < prefix - margin || seg.c0 > shown.length - suffix + margin) {
+      const shift = unchanged || seg.c1 <= prefix ? 0 : edited.length - shown.length;
+      saved.splice(seg.c0 + shift, seg.c1 - seg.c0, ...spine.slice(t.k0, t.k1));
+    }
+  }
+  return saved;
 }
 
 /** One direction of a paired motorway as the road widgets edit it: the common spine with this direction's
@@ -565,11 +652,16 @@ export function directionDesign(project: ProjectDesign, routeId: string): Design
  * shared body; crossings and the design speed are the motorway's. */
 export function replaceDirectionFromDesign(project: ProjectDesign, routeId: string, d: Design,
   newId: () => string = () => `stretch:${Math.random().toString(36).slice(2, 10)}`): ProjectDesign {
-  const corridor = corridorOfRoute(project, routeId);
+  let corridor = corridorOfRoute(project, routeId);
   if (!corridor || corridor.mode !== 'paired') throw new Error('Not a direction of a paired motorway');
-  const dir = directionOf(corridor, routeId), shown = directionDesign(project, routeId), spine = rawCorridorDesign(project, corridor);
+  const before = project, initialShown = directionDesign(project, routeId);
+  project = acceptControlledFollows(project, corridor, initialShown, d);
+  corridor = corridorOfRoute(project, routeId)!;
+  if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
+  const dir = directionOf(corridor, routeId), shown = project === before ? initialShown : directionDesign(project, routeId);
+  const spine = rawCorridorDesign(project, corridor);
   // one design speed for the motorway: a new one changes the shared line (both directions)
-  if (d.speed !== shown.speed) return replaceCorridorFromDesign(project, corridor.id, { ...spine, speed: d.speed });
+  if (d.speed !== shown.speed) return replaceCorridorFromDesign(project, corridor.id, { ...corridorDesign(project, corridor), speed: d.speed });
   const rules = horizontalRules(spine.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
   let stretches = structuredClone(corridor.stretches ?? []);
   const followed = autoFollowingCorridor(project, corridor);
@@ -577,34 +669,15 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   const follows = new Set(stretches.filter(t => !remaining.has(t.id)).map(t => t.id));
   // The peer's widgets show its Auto-followed bends, not saved player choices. Strip those copies
   // outside the changed bends and their neighbours before comparing with the saved composite.
-  const displayed = compositePis(spine.pis, stretches.map(t => follows.has(t.id) && !t[dir]
-    ? { ...t, [dir]: t.forward ?? t.reverse } : t), dir);
-  const same = (p: PI, q: PI) => p.x === q.x && p.y === q.y && p.r === q.r;
-  let prefix = 0, suffix = 0;
-  while (prefix < shown.pis.length && prefix < d.pis.length && same(shown.pis[prefix], d.pis[prefix])) prefix++;
-  while (suffix < shown.pis.length - prefix && suffix < d.pis.length - prefix
-    && same(shown.pis[shown.pis.length - 1 - suffix], d.pis[d.pis.length - 1 - suffix])) suffix++;
-  const unchanged = prefix === shown.pis.length && prefix === d.pis.length;
-  const savedPis = d.pis.map(p => ({ ...p }));
-  for (const seg of [...displayed.segs].reverse()) {
-    const t = seg.stretch === null ? undefined : stretches[seg.stretch];
-    if (!t || t[dir] || !follows.has(t.id)) continue;
-    if (unchanged || seg.c1 < prefix || seg.c0 > shown.pis.length - suffix) {
-      const shift = unchanged || seg.c1 <= prefix ? 0 : d.pis.length - shown.pis.length;
-      savedPis.splice(seg.c0 + shift, seg.c1 - seg.c0, ...spine.pis.slice(t.k0, t.k1));
-    }
-  }
+  const copies = new Set(stretches.filter(t => follows.has(t.id) && !t[dir]).map(t => t.id));
+  const savedPis = stripFollowCopies(spine.pis, shown.pis, d.pis, stretches, dir, copies);
   const edited = editStretches(spine.pis, stretches, dir, savedPis, newId);
   if (edited) stretches = locateStretches(A, B, spine.pis, edited, rules);
   const lineOf = (t: SeparateStretch) => t[dir] ?? (follows.has(t.id) ? t.forward ?? t.reverse : undefined);
   const own = (s0: number, s1 = s0) => stretches.find(t => lineOf(t) && s1 >= t.a && s0 <= t.b);
-  const changes = <T>(before: readonly T[], after: readonly T[]) => {
-    const key = (x: T) => JSON.stringify(x);
-    return { added: after.filter(x => !before.some(y => key(y) === key(x))), removed: before.filter(x => !after.some(y => key(y) === key(x))).map(key) };
-  };
-  const pins = changes(shown.gradePins ?? [], d.gradePins ?? []);
-  const so = changes(shown.structureOverrides ?? [], d.structureOverrides ?? []), wo = changes(shown.wallOverrides ?? [], d.wallOverrides ?? []);
-  const drop = <T>(list: readonly T[] | undefined, removed: string[]) => (list ?? []).filter(x => !removed.includes(JSON.stringify(x)));
+  const pins = controlChanges(shown.gradePins ?? [], d.gradePins ?? []);
+  const so = controlChanges(shown.structureOverrides ?? [], d.structureOverrides ?? []), wo = controlChanges(shown.wallOverrides ?? [], d.wallOverrides ?? []);
+  const drop = dropControls;
   for (const t of stretches) {
     const line = lineOf(t);
     if (!line) continue;
@@ -623,7 +696,7 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   const kept = <T>(list: T[], was: T[] | undefined) => list.length || was ? { list } : null;
   const so2 = kept(spineSo, spine.structureOverrides), wo2 = kept(spineWo, spine.wallOverrides);
   const { structureOverrides: _so, wallOverrides: _wo, ...rest } = spine;
-  const next = replaceCorridorFromDesign(project, corridor.id, { ...rest, gradePins: spinePins.sort((p, q) => p.s - q.s),
+  const next = replaceRawCorridorFromDesign(project, corridor.id, { ...rest, gradePins: spinePins.sort((p, q) => p.s - q.s),
     ...(so2 ? { structureOverrides: so2.list } : {}), ...(wo2 ? { wallOverrides: wo2.list } : {}),
     crossingOverrides: d.crossingOverrides, buildingOverrides: d.buildingOverrides });
   const c = next.corridors.find(x => x.id === corridor.id)!;

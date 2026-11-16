@@ -237,16 +237,61 @@ describe('one direction on its own (separate stretches)', () => {
     const result = evaluateProject(ctx, { ...snapshot, revision: 3, design: bentPeer });
     expect(result.routes[f.id].apart).toHaveLength(1);
     expect(result.routes[f.id].apart![0].s0).toBeGreaterThan(2500);
-    // A pin on the followed body belongs to that body, without freezing the Auto peer's bends.
-    const local = replaceRouteFromLegacy(inward, r.id, { ...peer, gradePins: [{ s: 500, z: 106 }] }, { oneDirection: true });
-    expect(local.corridors[0].mode === 'paired' && local.corridors[0].stretches![0].reverse).toBeUndefined();
-    expect(legacyDesignForRoute(local, f.id, { oneDirection: true }).gradePins).toContainEqual({ s: 500, z: 106 });
-    expect(legacyDesignForRoute(local, r.id, { oneDirection: true }).gradePins).toContainEqual({ s: 500, z: 106 });
+    // A deliberate control of the followed body accepts that local bend as shared, not as the
+    // owner's pin: if the owner later leaves, the direction clicked keeps both the bend and its pin.
+    for (const oneDirection of [true, false]) {
+      const local = replaceRouteFromLegacy(inward, r.id, { ...peer, gradePins: [{ s: 500, z: 106 }] }, { oneDirection });
+      expect(local.corridors[0].mode === 'paired' && local.corridors[0].stretches).toBeUndefined();
+      expect(legacyDesignForRoute(local, f.id, { oneDirection: true }).gradePins).toContainEqual({ s: 500, z: 106 });
+      expect(legacyDesignForRoute(local, r.id, { oneDirection: true }).gradePins).toContainEqual({ s: 500, z: 106 });
+      const pulled = replaceRouteFromLegacy(local, f.id, { ...legacyDesignForRoute(local, f.id, { oneDirection: true }),
+        pis: peer.pis.map((p, i) => i === 0 ? { ...p, y: 260 } : p) }, { oneDirection: true });
+      expect(legacyDesignForRoute(pulled, r.id, { oneDirection: true }).gradePins).toContainEqual({ s: 500, z: 106 });
+      expect(legacyDesignForRoute(pulled, r.id, { oneDirection: true }).pis).toEqual(peer.pis);
+      const localResult = evaluateProject(ctx, { ...snapshot, revision: 4, design: local });
+      expect(localResult.routes[f.id].legacy).toBe(localResult.routes[r.id].legacy);
+    }
     // Explicit shared controls pre-dating the pull constrain the peer; never discard them to follow.
     const constrained = replaceRouteFromLegacy(base, f.id, { ...legacyDesignForRoute(base, f.id), gradePins: [{ s: 500, z: 106 }] });
     const constrainedPull = replaceRouteFromLegacy(constrained, f.id, { ...legacyDesignForRoute(constrained, f.id, { oneDirection: true }),
       pis: before.pis.map((p, i) => i === 0 ? { ...p, y: 300 } : p) }, { oneDirection: true });
     expect(legacyDesignForRoute(constrainedPull, r.id, { oneDirection: true }).pis).toEqual(before.pis);
+  });
+  it('preserves Reset through unchanged and distant Both edits, including existing followed controls', () => {
+    const { snapshot } = fixture(30000, 4700), [f, r] = snapshot.design.routes;
+    const base = replaceRouteFromLegacy(snapshot.design, f.id, { ...legacyDesignForRoute(snapshot.design, f.id),
+      pis: Array.from({ length: 5 }, (_, i) => ({ x: 800 + i * 800, y: i % 2 ? 220 : 280, r: null })) });
+    const before = legacyDesignForRoute(base, f.id, { oneDirection: true });
+    const inward = replaceRouteFromLegacy(base, f.id, { ...before, gradePins: [{ s: 500, z: 106 }],
+      pis: before.pis.map((p, i) => i === 0 ? { ...p, y: 300 } : p) }, { oneDirection: true });
+    const shown = legacyDesignForRoute(inward, r.id), c = inward.corridors[0];
+    if (c.mode !== 'paired') throw new Error('paired corridor');
+    expect(replaceRouteFromLegacy(inward, r.id, shown)).toEqual(inward);
+    const pin = { s: 4500, z: 146 };
+    for (const edit of [
+      { ...shown, gradePins: [...shown.gradePins!, pin] },
+      { ...shown, crossingOverrides: [{ roadId: 1, type: 'overbridge' as const }] },
+      { ...shown, pis: shown.pis.map((p, i) => i === 4 ? { ...p, y: 300 } : p) },
+    ]) {
+      const edited = replaceRouteFromLegacy(inward, r.id, edit), ec = edited.corridors[0];
+      if (ec.mode !== 'paired' || ec.spine.kind !== 'pi') throw new Error('paired corridor');
+      // The station grid can move the sampled departure by a fraction of a metre on a far bend.
+      expect(ec.stretches?.map(({ a: _a, b: _b, ...t }) => t)).toEqual(c.stretches?.map(({ a: _a, b: _b, ...t }) => t));
+      expect(ec.spine.pis[0]).toEqual(before.pis[0]);
+      expect(legacyDesignForRoute(edited, r.id).pis[0]).toEqual(shown.pis[0]);
+      expect(legacyDesignForRoute(rejoinStretch(edited, c.id, c.stretches![0].id), r.id).pis[0]).toEqual(before.pis[0]);
+      expect(ec.spine.vertical.kind === 'auto' && ec.spine.vertical.pins).not.toContainEqual({ s: 500, z: 106 });
+    }
+    // A neighbouring Both bend edit deliberately accepts the body, including its existing pin.
+    const nearby = replaceRouteFromLegacy(inward, r.id, { ...shown,
+      pis: shown.pis.map((p, i) => i === 2 ? { ...p, y: 300 } : p) });
+    expect(nearby.corridors[0].mode === 'paired' && nearby.corridors[0].stretches).toBeUndefined();
+    expect(legacyDesignForRoute(nearby, r.id).gradePins).toContainEqual({ s: 500, z: 106 });
+    expect(legacyDesignForRoute(nearby, r.id).pis[0]).toEqual(shown.pis[0]);
+    // A shared speed change deliberately accepts the shown line, unlike an incidental write.
+    const slower = replaceRouteFromLegacy(inward, r.id, { ...shown, speed: 120 });
+    expect(legacyDesignForRoute(slower, r.id).pis).toEqual(shown.pis);
+    expect(slower.corridors[0].mode === 'paired' && slower.corridors[0].stretches).toBeUndefined();
   });
   it('takes edits at the route ends and says when a pin asks one direction to leave the shared height', () => {
     const { ctx, snapshot, r } = bent();

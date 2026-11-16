@@ -871,14 +871,18 @@ Reset or Undo restores the original line. Both editors read the derived line too
 this bend”, with Reset rather than Join. An explicit peer line, shared manual heights, or shared pins/works in
 that stretch constrain the peer and are not overwritten. Another separate stretch that cannot be carried
 without losing its edits likewise prevents Auto following. The whole affected stretch follows, even if only
-part of it would overlap; a radius edit can also require this. Editing both directions accepts the shown
-paired line as their new shared line, including when the edit is a pin.
+part of it would overlap; a radius edit can also require this. An unchanged write or a distant Both-directions
+edit keeps the original stretch and Reset. Editing the shared bends nearby, changing the shared speed or
+profile mode, or deliberately changing a height/works control on the followed body accepts that local bend
+as shared. Undo restores the earlier Auto-follow state.
 
 Self-review caught that the Auto peer's displayed bends were being saved as player edits by unrelated pins
 or distant drags. Those automatic copies are now removed outside the actually edited bends and their
-neighbours before writing back; a pin/works choice on the followed body belongs to that body. Tests cover
-both directions, pulling back out, explicit peer edits, distant peer pins/drags, local pins and preservation
-of existing shared controls. The exact browser repro is now in `stretch-play.mjs`: valid, one body evaluated
+neighbours before writing back. A pin/works choice on the followed body makes its bend shared, rather than
+storing the choice on whichever direction caused the follow: if that direction later pulls away, the peer
+keeps the chosen bend and control. Tests cover both directions, pulling back out, explicit peer edits,
+distant peer/Both pins and drags, unchanged writes, crossing choices, local pins through separation,
+nearby shared bend edits with existing controls, and preservation of existing shared controls. The exact browser repro is now in `stretch-play.mjs`: valid, one body evaluated
 and drawn, no violations, matching peer widgets, Reset restores the original bill (7.542 bn after the pull).
 
 **QA (6), road list (`9f4d7d3`).** Each motorway has its own name; duplicates are numbered. Choosing an
@@ -898,11 +902,20 @@ no long tasks). Crossing scene: III/1057's motorway bridge stays 230 m, its wall
 +2.28 M; whole bill +2.26 M. Screenshots inspected: crossing, combined-noise card and inward-follow body.
 Photo tiles did not arrive from the external service, so the photo-overlay check was skipped by both scenes.
 
-Final review since `f9f5d9d` on `35e2cee`: no P1 findings. Two P2 edit-semantics cases remain for the next pass:
-a distant pin/crossing edit in Both directions mode bakes the followed line into the saved spine and removes
-Reset; a pin placed through the Auto peer is stored on the owning direction, so pulling that owner outward
-moves the pin's ownership away from the direction through which it was placed. The latter is not yet covered
-by the local-pin test (which only checks the still-followed body). Decide/fix these before the final yield.
+Final review since `f9f5d9d` on `35e2cee`: no P1 findings. Both P2 edit-semantics findings are now addressed:
+Both-direction writes translate untouched automatic copies back to the saved spine, and a deliberate local
+body control accepts only the followed bend it touches. No identical independently evaluated half-bodies
+are created. Shared speed changes intentionally accept the displayed line. Redundant overlap filters after
+the shared-control guard were removed; no billed math changed.
+
+Follow-up gates: tsc; 83 test files / 694 tests; build; 11 frozen bills bit-exact; stretch-play PASS (inward
+one-body screenshot inspected); edit-locality PASS with the same accepted 0.11 m whole-D3 reach. All six GPU
+drag modes PASS. Whole-D3 forward bend PASS (p95 preview latency 81 ms, max result gap 115 ms, no long tasks).
+Earlier whole-D3 attempts intermittently failed latency/long-task budgets; a locked comparison of committed
+`2436f58` also failed with 3 drag and 1 post-release long tasks (another baseline run passed). One redundant
+display derivation introduced by the fix was removed before the final runs. Logs: `/tmp/model28-follow-*`.
+A fresh full-range review is still required before final yield. Main has since advanced to `230c1c2`
+(crossing-economy model 28); that is not merged here yet, so the model number/fixtures need reconciling at merge.
 
 Still open:
 - Rebuilt railway `routeHead` is null: no works list or “Keep the old track” button on its own card.
