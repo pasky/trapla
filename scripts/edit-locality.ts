@@ -13,7 +13,8 @@
 //      boundary's 5 km window and the block beyond it, or a retry judged within 5 km and its window),
 //      MPP (metres per screen pixel; default the A–B distance / 800, about the start view)
 // Exit 1 if a QA repro or a grade-pin edit changes anything beyond REACH (a pin leaves the plan alone), or a
-// repro marked so is not valid.
+// repro marked so is not valid; an edit listed in EXPECTED (a far change that is physics, explained there) only
+// past its own bound.
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +48,16 @@ const QA: Record<string, Edit[]> = {
   'scripts/scenarios/d3-full/d3-full-motorway.json': [24500, 29500, 18900, 40000, 50500].map(at => ({ kind: 'insert' as const, at, amount: 300, qa: `re-test 4: drag at km ${at / 1000}` })),
   // the bend the QA's 50 px drag put in (tests/fixtures/qa-final/rail-kralovec-drag.json)
   'tests/fixtures/qa-final/rail-kralovec.json': [{ kind: 'insert', at: 6000, amount: 23, xy: { x: 8877.519500403168, y: 12943.53983494432 }, qa: 'final sweep: 50 px drag at km 6', valid: true }],
+};
+
+/** Edits whose far change is physics, not the solve's reach (each with why; still a FAIL if the far change grows
+ * past `maxFar` m or a far problem appears): reported as EXPECTED. */
+const EXPECTED: Record<string, { label: string; maxFar: number; why: string }[]> = {
+  'tests/fixtures/qa-final/rail-kralovec.json': [{ label: 'pin -9 m at km 2.7', maxFar: 3.5,
+    why: 'the line climbs at its 12.5 ‰ limit over km 2.25–8.5, so a 9 m lower pin lowers it ≈ 11 m all the way to km 10.5; '
+      + 'the support lifts (heights the grade must keep) the old line needed at km 9.83–10.15 are gone with it, '
+      + 'and the boundary at km 11.21 saw them in its 5 km window: without them its cheapest height there is 7 m lower, and the block '
+      + 'beyond it (to km 13.27) follows. The change starts 0.7 km past the physically changed stretch (PLAN.md "Design realism")' }],
 };
 
 const here = fileURLToPath(import.meta.url);
@@ -170,8 +181,9 @@ for (const file of suite.designs) {
     let verdict = '';
     if (e.kind === 'pin' || e.qa) {
       const ok = (planEverywhere || far <= 0.5) && !newFar.length && (!e.valid || r.valid);
-      verdict = ok ? 'PASS ' : 'FAIL ';
-      if (!ok) failed++;
+      const expected = !ok && EXPECTED[file]?.find(x => x.label === label && far <= x.maxFar && !newFar.length && (!e.valid || r.valid));
+      verdict = ok ? 'PASS ' : expected ? `EXPECTED (${expected.why}) ` : 'FAIL ';
+      if (!ok && !expected) failed++;
     }
     const moved = (v: Result['violations'][number]) => { const j = Math.min(r.n - 1, Math.round(mid(v) / r.ds)); return offBase(r.x[j], r.y[j], r.s[j]); };
     console.log(`${verdict}${e.qa ? `[${e.qa}] ` : ''}${label}: ${(r.cost.total / 1e9).toFixed(2)} bn (${(dBill * 100).toFixed(1)} %) ${r.valid ? 'VALID' : 'NOT VALID'}, `

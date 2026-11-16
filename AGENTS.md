@@ -90,6 +90,7 @@ findings and the refactoring plan: `docs/architecture-review.md`.
   hairpins; cost model 31, PLAN.md "Design realism"); transition curves not drawn; no superelevation /
   sight-distance checks. Tunnel portals still end in deep open cuts (cut-and-cover next, design-realism M2);
   bridge styles (M3) not yet.
-- Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7 (a boundary window
-  that sees the physically changed stretch falls on the other side of a near-tie; PLAN.md "Design realism").
+- Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7, an EXPECTED exception
+  in scripts/edit-locality.ts (the old line's support lifts at km 9.8–10.2 go with the lowered line, and the
+  boundary at km 11.21 sees that in its window; PLAN.md "Design realism").
 - See PLAN.md "Next steps" and each section's "Known issues".

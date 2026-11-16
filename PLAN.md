@@ -551,10 +551,12 @@ Plan and sources: docs/design-realism-plan.md (M1, M4), research/46–54.
   loaded host): CPU +5 %, sum of minima +12 %, almost all town-centre (+60 ms: a tunnel became a long cut with
   walls, two more support lifts, a stream retry) and demo (+13 ms: one more overbridge and reconnection planned);
   best / direct-80 / direct-90 within noise.
-- **Residuals.** Edit locality, Křálovec railway "pin −9 m at km 2.7": the grade changes 2.76 m at km 12.7.
-  The line climbs at its limit over km 2.25–8.5, so the pin lowers it ≈ 11 m up to km 10.5 (physics); the
-  boundary at km 11.21 then sees that changed stretch in its 5 km window and falls on the other side of a
-  near-tie (507.6 vs 514.6 m; the unpinned line itself flips between the two across its retry passes).
+- **Residuals.** Edit locality, Královec railway "pin −9 m at km 2.7" (an EXPECTED exception in
+  scripts/edit-locality.ts, bounded at 3.5 m): the grade changes 2.76 m at km 12.7. The line climbs at its limit
+  over km 2.25–8.5, so the pin lowers it ≈ 11 m up to km 10.5 (physics). The support lifts the old line needed at
+  km 9.83–10.15 go with it; the boundary at km 11.21 saw them in its 5 km window (with them 514.6 m there, without
+  507.6 m; the unpinned line's first pass, before its lifts, also has 507.6), and the block beyond it follows.
+  No tie-break helps: the window's inputs really differ, 0.6–1.1 km before the boundary.
   Whole D3 dragged at km 30: the 30 m span at km 16.66 stays 0.1 m short (the changed stretch, end of a 4 %
   climb; tests/merged-crossings notes it).
 
