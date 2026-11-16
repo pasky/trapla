@@ -941,7 +941,7 @@ export class View {
           const day = push(toe.x, toe.y, toe.z+groundLift, color, toe.z, slopeInk, kind, geology(s.day.z-toe.z));
           const edge = push(s.edge.x, s.edge.y, s.edge.z+lift, color, s.edge.z, slopeInk, kind, geology(natural(s.edge.x,s.edge.y)-s.edge.z));
           let knee: number | undefined;
-          if ((k0 || k1) && !s.slopeDay) {
+          if (k0 || k1) { // (also beside a wall's last station: the unretained end keeps its bend, so the next stretch meets it)
             const u = (k0?.u ?? 0.5) * (1 - t) + (k1?.u ?? 0.5) * t, dz = (k0?.dz ?? 0) * (1 - t) + (k1?.dz ?? 0) * t;
             const kx = s.edge.x + u * (toe.x - s.edge.x), ky = s.edge.y + u * (toe.y - s.edge.y), kz = s.edge.z + u * (toe.z - s.edge.z) + dz;
             knee = push(kx, ky, kz + groundLift, color, kz, slopeInk, kind, geology(natural(kx, ky) - kz));

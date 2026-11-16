@@ -86,8 +86,11 @@ export function daylightSections(r: EarthworkRoute, i: number, side: number, hal
     const day = at(a,b), outer = at(ao,bo);
     const ground = { ...day, z: natural(day.x,day.y) };
     // NaN means no wall. Preserve the fine natural daylight there, and taper a wall to
-    // the neighbouring unretained station without ever lifting its ground collar.
-    const slopeDay = wallA || wallB ? { ...day, z: az+(bz-az)*t } : undefined;
+    // the neighbouring unretained station without ever lifting its ground collar. A wall is billed half a
+    // station past its last one (cellLength): its end comes down to the ground there, the slope runs on.
+    const g = ground.z;
+    const top = wallA && wallB ? az+(bz-az)*t : wallA ? (t < 0.5 ? az+(g-az)*t/0.5 : g) : wallB ? (t > 0.5 ? g+(bz-g)*(t-0.5)/0.5 : g) : NaN;
+    const slopeDay = wallA || wallB ? { ...day, z: top } : undefined;
     return { edge: { ...at(ae,be), z: ae.z+(be.z-ae.z)*t }, day: ground,
       outer: { ...outer, z: natural(outer.x,outer.y) }, slopeDay };
   });

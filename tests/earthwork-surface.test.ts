@@ -49,6 +49,11 @@ describe('daylight stitching', () => {
       const noWall = Number.isNaN(walls[0]) ? sections[0] : sections.at(-1)!;
       expect(noWall.slopeDay!.z).toBeCloseTo(noWall.day.z);
       expect(sections.every(s => Number.isFinite(s.slopeDay!.z))).toBe(true);
+      // the wall's end is down on the ground by the half station it is billed to (no unbilled flare)
+      const wallEnd = Number.isNaN(walls[0]) ? sections.at(-1)! : sections[0];
+      expect(wallEnd.slopeDay!.z).toBeCloseTo(110);
+      sections.forEach((s, j) => { const t = j / (sections.length - 1);
+        if (Number.isNaN(walls[0]) ? t <= 0.5 : t >= 0.5) expect(s.slopeDay!.z).toBeCloseTo(s.day.z); });
     }
     for (const wallSurfaceL of [undefined,f([NaN,NaN])]) {
       const sections = daylightSections({ ...route, wallSurfaceL },0,1,5,natural);
