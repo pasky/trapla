@@ -102,3 +102,29 @@ Done (task 1, 3 of the 09:15 list), all in model 23 (unmerged, version unchanged
 - Scratch: /tmp/lc-tmp-scripts (runall.sh = all designs in parallel; mkdbg.py = LC_DBG diagnostics patch for
   evaluate.ts; locdiff/movedump/gradedump helpers were in scripts/, deleted — recreate from this note), /tmp/lc-base
   = main 2decf53 worktree (remove with `git worktree remove --force /tmp/lc-base` when done).
+
+## Session 2026-11-16 ≈ 10:30 (main a8d8de5 merged: the local grade solve is now model 24)
+
+- **Merge** of main a8d8de5 (motorway-rail, its railway model 23): `startGrade` / `endGrade` (+ slack) replace
+  `endpointGrades`; railway grids (0.5 m) also in blocks and `knotCount`; railway tie-in / retired track in the
+  block-placed raster samples (window-shifted tie-in for previews); `fixedProfile` stretches solve without
+  blocks; lift loop keeps main's `liftStop` / `keepsExterior`. A lift DP retry is now kept only if it meets a
+  stretch the lifts could not (it broke main's railway tie-in test: a target 10 m from A, unreachable, swapped
+  the line for one paying the penalty). UI: live total + corridor groups, run-batched grade strokes skipping
+  stretches where the directions run apart. Fixtures recaptured as model 24. All saved designs and starters
+  VALID (sweep), the Královec railway starter VALID 10.23 bn (main 10.43).
+- **P1 straight start**: not blocks. A drag on the straight puts in a bend and turns the whole line about B;
+  main gives the same swings (research/39 "Second pass"). Grid boundaries on long straights (lines across
+  the A–B axis every 3 / 4 km) tried and dropped: no locality gain, single designs ±10 %. Scratch:
+  /tmp/lc-tmp-scripts/autoprofile.grid.ts, evaluate.grid.ts, evaluate.gridexp.ts. A real fix is an editing
+  one (a drag on a long straight could keep the rest of the line in place) — interface work.
+- **P0 residue (km 6.98 track, whole D35)**: not reproduced (all 18 bends ±20/60 m and new bends at 11.7 / 25.4);
+  6/72 far changes are one class I road at km 32.0 from the 9.7 km last block (a chain of slightly shorter
+  straights leaves no boundary; `profileBlocks`).
+- **D35 first section viaduct**: a near-tie of the coarse 2 m corridor pass, not blocks (whole-route on the
+  same inputs 20.71; main's line 19.28 under this model, DP objective −1.3 %).
+- **P2**: photo note hidden with the photo (`hideToast(text)`); the planned-line tag no longer covers B
+  (`Declutter` measures a marker's absolutely placed parts). Whole-D3 last preview −1.8 bn vs settled: within the
+  documented windowed-preview accuracy (−8 … +10 %), not changed.
+- Timing: 5 km windows cost ≈ +15–20 ms per full D11 evaluation against 1.5 km (see abw.txt in scratch); best-design
+  also pays a strict retry main does not (its line buries a road first).

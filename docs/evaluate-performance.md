@@ -1,9 +1,9 @@
 # Evaluate performance regression
 
-## Local grade solve (cost model 23, 2026-11-16)
+## Local grade solve (cost model 24, 2026-11-16)
 
 The Auto grade line is now solved in blocks (research/39 "Local edits"): one corridor pass per boundary
-window (≈ 3 km, coarse grid only) on top of the blocks' own corridor and mass-balance passes, which together
+window (5 km either side since model 24's recapture, coarse grid only; measured with the earlier 1.5 km) on top of the blocks' own corridor and mass-balance passes, which together
 cover the route once as before. Inputs are placed from the block ends (≈ 1 even cost sample per 20 m with
 its ground and geology looked up at its own place, a traced line every ≈ 10 m for crossings, raster
 samples every 2.5 m). Interleaved A/B against main 93f849d (Node, warm, 10 evaluations, two rounds, host

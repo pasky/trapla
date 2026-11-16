@@ -177,7 +177,7 @@ grade beyond ±5 km of the bend, far bill, far violations; downstream compared a
 | | whole D3, 16 moves | whole D35, 10 moves |
 |---|---|---|
 | before (899e6bb) | far grade up to 14.8 m; far violations changed in 2 (0 → 4, 0 → 8); far bill up to −1.5 bn | far grade up to 40.8 m (19 km away); far violations changed in 1 |
-| after (model 23, on main 2decf53) | far grade up to 3.9 m (6–7 km away), ≤ 0.2 m beyond 8 km except one 0.7 m spot; far violations changed in 0; far bill ≤ 0.53 bn | far violations changed in 3, all the same track at km 6.98 10–17 km from the edit with the grade there unchanged: the viaduct's station-based end moves a station and the track falls off it onto a reroute that cannot be built (crossing remedy choice); far grade up to 7.8 m (one valley 6.6 km away) |
+| after (local grade solve, first pass, on main 2decf53) | far grade up to 3.9 m (6–7 km away), ≤ 0.2 m beyond 8 km except one 0.7 m spot; far violations changed in 0; far bill ≤ 0.53 bn | far violations changed in 3, all the same track at km 6.98 10–17 km from the edit with the grade there unchanged: the viaduct's station-based end moves a station and the track falls off it onto a reroute that cannot be built (crossing remedy choice); far grade up to 7.8 m (one valley 6.6 km away) |
 
 Causes found (each measured on its own; a fixed material value and an unchanged route length gave a
 bit-identical line far away, so the solver itself is not chaotic):
@@ -199,8 +199,8 @@ What changed (`core/autoprofile.ts` `profileBlocks`/`blockwise`, `core/evaluate.
 
 - **Blocks from the plan alone.** A boundary in the middle of each straight that is the longest within
   2 km either side (blocks of 2–6 km on these routes). Moving a bend moves only the boundaries next to it.
-- **Each boundary's heights from its own surroundings**: the grade line within 1.5 km of it (a railway
-  looks further: as far as its steepest grade climbs 60 m, up to 5 km), at the starting material value;
+- **Each boundary's heights from its own surroundings**: the grade line within 5 km of it (first 1.5 km,
+  see "Second pass" below), at the starting material value;
   its height and the knots either side are pinned. Each block is then solved between its pins with
   **its own mass balance** (the block-wise balance the handoff recommended). Where two boundaries
   cannot be joined (they saw different ways through a valley) the block runs on to the next boundary.
@@ -225,7 +225,51 @@ designs best +1.6 %, demo +10.5 % (after an 8 m repair), direct-80 +4.9 %, direc
 −2.0 %, the railway +6 %; outcome audit (D11, 30 designs) better than main: violations of the random
 designs 144 → 128, footprint flags 110 → 95, bills −0.9 %. Where the earthworks still bury a road nothing
 else could keep, a narrowing retry asks Auto for 2 m less embankment (cutting) there (lifts keep it), kept
-per stretch like the separation retry. Starter repairs under model 23: whole D35 bends 16/17/2 (60/12/12 m),
+per stretch like the separation retry. Starter repairs under the local grade solve: whole D35 bends 16/17/2 (60/12/12 m),
 the D35 first section bend 2 (25 m), the earlier D3 map's last bends. Residual non-locality: support targets still come from the
 station-based engineering (a ±0.7–2 m lift difference at one or two spots), and a bend move that moves a
 block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
+
+### Second pass (model 24 after merging main's railway model 23, 2026-11-16)
+
+- **The demo design's +10.5 % was a gradient-reserve bug, not the blocks.** The DP kept `u / span` of grade
+  in reserve on every interval for B's off-grid height; with blocks the span was the last block only, and
+  the knot spacings that hold the gradient sit just above a whole number of grid steps, so the reserve cost
+  a whole step everywhere (6 % → 5.6 %): a tunnel at demo km 8. Now only the last block keeps it. Demo
+  5.16 → 4.90 bn against 4.79 for a whole-route solve on the same inputs; what remains is mid-block (each
+  block's own material value, 261 / −196 CZK/m³ against one 114), not the boundaries.
+- **Window 1.5 → 5 km.** The sum of the 13 valid saved designs and starters equals a whole-route solve
+  (112.2 against 112.3 bn; 1.5 km windows: 114.7). Boundaries chosen within 3 km instead of 2: worse or
+  mixed. Far violations still do not change more often.
+- **Three non-localities of the DP inputs** found with the 5 km windows: the strict retry lost the lift
+  targets of the pass before it; a narrowing check rejected every lift on the route once the line missed one
+  narrowing; and a crossing's clearance was put on as many stations as its raster samples fell on (1–3,
+  depending on the station grid), each unmet one adding a penalty, so a length change upstream could tip
+  a river 22 km away from paid to cleared. Now each crossing is one run whose highest requirement sits at
+  points spread along it, each on a free station near its own chainage. A support-lift DP retry is kept
+  only if it meets a stretch the lifts could not (a target nothing can reach, e.g. next to a fixed end,
+  only swapped the line for one that pays its clearance penalty).
+- **Locality on the repaired starters** (`scripts/locality.ts`, bend moves of 20 / 60 m, 5 km): whole D3 far
+  violations changed in 4 of 16 moves (worst far grade 7.7 m), whole D35 in 1 of 10 (4.9 m); every bend of the
+  whole D35 at ±20 / ±60 m: 6 of 72. The DP is local now; each far change traced comes from the
+  station-based engineering on a shifted station grid (`ds = L / ⌈L / 10⌉` moves every station when the length
+  changes): a bridge's support layout (a lift target 12 km away), an overbridge's ramp check (separation
+  retry), a track reroute, a culvert. The next lever is a station grid anchored like the knots.
+- **The km 6.98 track on the whole D35** (playtest: drags at km 11.7 / 25.4 broke it 5–18 km away) did not
+  recur in those 72 moves nor in new bends put in at km 11.7 / 25.4. The 6 far changes are one class I road
+  at km 32.0 (ramps over 10 m high) after moves at km 22.5–26.3: the last block runs 23.5 km → B (9.7 km)
+  because the straights there are each a little shorter than the one before, so none is the longest within
+  2 km; the remedy for that road belongs to the crossing choice.
+- **A drag on the D11 straight start is not a block effect.** It puts a bend on a straight from A to B, so
+  the whole line from the bend to B turns about B: 20 m at km 3 is 15 m at km 7. The price change is that of
+  another road (at km 3, −150 … +150 m: main a8d8de5, one whole-route solve, −1.95 … +0.52 bn, 3 of 6
+  invalid; this model −1.91 … +0.33 bn, 3 of 6 invalid, much the same conflicts). Boundaries on long straights at fixed lines across
+  the A–B axis were tried (every 3 / 4 km): the sum of all designs equal within 0.4 %, single designs ±10 %,
+  locality no better (the moved geometry dominates), so not kept.
+- **The D35 first section's 2.8 km viaduct** (20.34 bn, main 19.32): not the blocks; a whole-route solve on
+  the same inputs gives 20.71. Main's line costs 19.28 bn under this model and a lower DP objective (−1.3 %)
+  than the line the DP finds: the 2 m corridor pass (grade steps of 0.8 % per 250 m knot) starts the 6 m
+  fine pass in the viaduct corridor, main's knots started it in the tunnel one. A boundary's pins taken
+  from a refined window instead: 20.63 bn. The coarse-to-fine search is a heuristic; on single designs it
+  lands on either side of such near-ties (D3 earlier map −6 %, the D35 section +5 % against main).
+

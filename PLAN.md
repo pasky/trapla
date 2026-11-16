@@ -1017,15 +1017,17 @@ the bill change: **research/36**.
   town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
   unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.
 
-## Local edits: the grade line in blocks (cost model 23, 2026-11-16)
+## Local edits: the grade line in blocks (cost model 24, 2026-11-16)
 
 Playtest (whole D3 / D35): a small nudge redesigned the grade and broke crossings 9–24 km away. Same design,
 same bill stays the rule (no edit history), so the solve itself became local (research/39 "Local edits"):
-blocks between long straights (from the plan only), each boundary's heights from the 1.5 km around it, each
+blocks between long straights (from the plan only), each boundary's heights from the 5 km around it, each
 block with its own mass balance, every input placed from the block ends rather than the stations; the
 separation and strict retries and the support lifts act and are judged per stretch. Whole D3, 16 bend moves:
-far grade change 14.8 → 2.4 m, far violations changed 2 → 0. Price: the line is no longer the whole-route
-optimum (bills ±5 %, the whole D35 +10 %); five designs and starters needed 8–60 m bend repairs.
-Known issues: support-lift targets still come from the station-based engineering; a bend move that shifts a
-block boundary re-solves both neighbouring blocks (up to ≈ 8 km); interchange ramps are not modelled (the
-ends say so on their card).
+far grade change 14.8 → 2.4 m, far violations changed 2 → 0. Price: each block balances its own earth
+(with 5 km boundary windows the sum of all saved designs equals a whole-route solve; single designs ±5–10 %);
+five designs and starters needed 8–90 m bend repairs.
+Known issues: far changes left (whole D3 4 of 16 moves, whole D35 1 of 10) come from the station-based
+engineering on a shifted station grid (support lifts, overbridge ramp checks, reroutes, culverts); a chain of
+straights each a little shorter than the last leaves one long block (the whole D35's last 9.7 km), which an edit
+anywhere in it re-solves to B; interchange ramps are not modelled (the ends say so on their card).
