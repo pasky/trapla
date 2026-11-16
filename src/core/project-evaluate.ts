@@ -532,10 +532,12 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
       ...(corridor ? { profile: 'motorway' as const } : {}),
       ...(way !== undefined ? { extraRoads: [way] } : {}),
       ...(designedJunctions.has(route.id) ? { junctions: designedJunctions.get(route.id) } : {}),
-      ...(replacements.get(route.id)?.works.some(w => w.kind === 'reconnection' && w.length > 1)
-        ? { extraLines: replacements.get(route.id)!.works.filter(w => w.kind === 'reconnection' && w.length > 1).map(w => {
+      // its other works on the ground: the links that reconnect side roads, the old road where it is removed
+      ...(replacements.has(route.id) ? { extraLines: [
+        ...replacements.get(route.id)!.works.filter(w => w.kind === 'reconnection' && w.length > 1).map(w => {
           const n = nearestStation(legacy, w.x, w.y); return { ax: w.x, ay: w.y, bx: legacy.x[n], by: legacy.y[n], r: (ROAD_CLASSES[w.cls ?? '']?.width ?? 6.5) / 2 };
-        }) } : {}) };
+        }),
+        ...replacements.get(route.id)!.removed.map(l => ({ ...l, r: replacements.get(route.id)!.removedWidth / 2 }))] } : {}) };
   }), ctx.legacy.buildings);
   // Houses heard by two or more roads are decided together when the combined-noise calculator is there;
   // every other interaction (shared land, roads, buildings) still keeps the project unpriced.

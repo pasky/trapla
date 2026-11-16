@@ -58,7 +58,8 @@ export function defaultTraffic(legalClass: string, census?: TrafficCensus | null
 
 export function validTrafficCensus(value: unknown): value is TrafficCensus {
   const v = value as TrafficCensus;
-  return !!v && v.version === 1 && Number.isFinite(v.year) && Array.isArray(v.sections) && v.sections.every(s =>
-    typeof s.id === 'string' && typeof s.road === 'string' && s.vehicles >= 0 && s.heavy >= 0
-    && Array.isArray(s.lines) && s.lines.every(l => Array.isArray(l) && l.length >= 4 && l.length % 2 === 0 && l.every(Number.isFinite)));
+  const count = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+  return !!v && v.version === 1 && typeof v.year === 'number' && Number.isFinite(v.year) && Array.isArray(v.sections) && v.sections.every(s =>
+    !!s && typeof s.id === 'string' && typeof s.road === 'string' && count(s.vehicles) && count(s.heavy)
+    && Array.isArray(s.lines) && s.lines.every(l => Array.isArray(l) && l.length >= 4 && l.length % 2 === 0 && l.every(c => typeof c === 'number' && Number.isFinite(c))));
 }

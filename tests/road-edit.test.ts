@@ -152,6 +152,22 @@ describe('rebuilding a mapped road', () => {
     expect(bendAt(a, b, [], 70, 'S7.5', { x: 600, y: 300 })).toBeNull();
   });
 
+  it('is not kept where another road\'s crossing lifts it onto a bridge or lowers it: there it is rebuilt with its ramps', async () => {
+    const { releaseHeld, HELD_APPROACH } = await import('../src/core/project-kept');
+    const s = Float64Array.from({ length: 101 }, (_, i) => i * 10), flat = () => 100;
+    const all = () => new Uint8Array(101).fill(1), count = (k: Uint8Array) => k.reduce((t, v) => t + v, 0);
+    // under the other road's bridge with room to spare: the old road stays as it lies
+    const under = all(); releaseHeld(under, s, flat, [{ s: 500, min: -Infinity, max: 104 }], 0.06, 0.5);
+    expect(count(under)).toBe(101);
+    // on its own bridge over the other road, deck 6 m up: the 40 m deck, 100 m of ramp at 6 % and the curves' room
+    const over = all(); releaseHeld(over, s, flat, [{ s: 500, min: 105.5, max: 106.5, bridge: [480, 520] }], 0.06, 0.5);
+    const reach = 20 + 5.5 / 0.06 + HELD_APPROACH;
+    for (let i = 0; i < 101; i++) expect(over[i]).toBe(Math.abs(s[i] - 500) <= reach ? 0 : 1);
+    // lowered 3 m to pass under: rebuilt as far as the ramps reach
+    const lowered = all(); releaseHeld(lowered, s, flat, [{ s: 500, min: -Infinity, max: 97 }], 0.06, 0.5);
+    expect(lowered[50]).toBe(0); expect(lowered[50 + Math.ceil((3 / 0.06 + HELD_APPROACH) / 10) + 1]).toBe(1);
+  });
+
   it('names mapped roads as Czech maps do', () => {
     expect(mappedRoadName({ highway: 'tertiary', ref: '1057' })).toBe('road III/1057');
     expect(mappedRoadName({ highway: 'primary', ref: '14;16' })).toBe('road I/14 and I/16');
@@ -316,6 +332,11 @@ describe('pricing a rebuilt stretch (C1 b)', () => {
     const land = replacementWorks(route, bought, new RoadNet(net), 0, [], () => undefined).works.find(w => w.kind === 'land')!;
     expect(land.cost).toBeLessThan(0);
     expect(-land.cost).toBeLessThan(bought.parts.land.reduce((t, v) => t + v, 0));
+    // the removed old road is this road's work on the ground too: its pieces go into the land screen, so no
+    // other road is priced as if that ground were free
+    const gone = replacementWorks(route, own, new RoadNet(net), 0, [], () => undefined, own.keptCells);
+    expect(gone.removed.reduce((t, l) => t + Math.hypot(l.bx - l.ax, l.by - l.ay), 0)).toBeCloseTo(removed, 3);
+    expect(gone.removedWidth).toBe(ROAD_CLASSES.tertiary.width);
     // (and without anything kept, the side road at the stretch's end would get a junction with the new road)
     expect(replacementWorks(route, own, new RoadNet(net), 0, p.connections, id => ctx.sourceWays.get(id)).works.filter(w => w.kind === 'reconnection').map(w => w.label)).toEqual([expect.stringMatching(/^Junction with the track at km \d\.\d\d$/)]);
     // near its ends the new line is still on the old road: kept as it is there, and the road's own bill
@@ -335,4 +356,13 @@ describe('pricing a rebuilt stretch (C1 b)', () => {
     expect(result.cost.routes.r).toBe(result.cost.total);
     expect(result.acceptedReplacements).toEqual([interval]);
   });
+});
+
+it('takes a traffic census only with real numbers; anything else falls back to class averages', async () => {
+  const { validTrafficCensus } = await import('../src/core/traffic-census');
+  const section = { id: '1-0010', road: '123', vehicles: 2400, heavy: 180, lines: [[0, 0, 10, 0]] };
+  expect(validTrafficCensus({ version: 1, source: 'test', year: 2025, sections: [section] })).toBe(true);
+  for (const bad of [{ vehicles: '2400' }, { heavy: null }, { vehicles: Infinity }, { lines: [[0, 0, '10', 0]] }, { lines: [[0, 0]] }])
+    expect(validTrafficCensus({ version: 1, source: 'test', year: 2025, sections: [{ ...section, ...bad }] })).toBe(false);
+  expect(validTrafficCensus({ version: 2, year: 2025, sections: [] })).toBe(false);
 });

@@ -1,13 +1,13 @@
 // Explicit dispatch boundary for the legacy road kernel. This is a ROUTE evaluation, not a network bill.
 import { editedNetwork, type ResolvedEnds, type SourceWays } from './project-roadnet';
 import { KIND } from './structures';
-import { evaluate, STEP, type EvalContext, type EvalOptions, type Result } from './evaluate';
+import { evaluate, OLD_ROAD_TIE, STEP, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { legacyDesignForRoute } from './project-legacy';
 import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, XYZ } from './project';
 import { ringWorks, tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
-import { applyKept, keptCells } from './project-kept';
+import { applyKept, keptCells, releaseHeld } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
 import { CATEGORIES } from './data/categories';
 import { horizontalRules } from './data/norms';
@@ -103,6 +103,8 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     const st = station(buildAlignment(a, b, design.pis, horizontalRules(design.speed, design.category)), STEP);
     const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
     kept = keptCells(st, ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db)));
+    // (not where another road's crossing lifts or lowers it: there it is rebuilt, ramps included)
+    if (options.holds?.length) releaseHeld(kept, st.s, i => ctx.terrain.heightAt(st.x[i], st.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
   }
   const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,

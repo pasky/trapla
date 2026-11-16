@@ -36,7 +36,10 @@ export interface ReplacementWork {
   label: string;
   cls?: string;
 }
-export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number }
+export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number;
+  /** the old road where it is removed (pieces of its centreline) and its width, m: this road's works too,
+   * so no other road may be priced as if that ground were free (project-ledger.ts) */
+  removed: { ax: number; ay: number; bx: number; by: number }[]; removedWidth: number }
 
 const nearest = (r: Result, x: number, y: number) => {
   let best = Infinity, i = 0;
@@ -65,13 +68,17 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
   // research/30 §3). Its cadastral width is unknown, so only the old pavement's width is credited (the
   // least it certainly owns; the class's study width), at the price the new road paid for land there.
   let removed = 0, at: { x: number; y: number } | null = null, owned = 0, ownedLength = 0;
-  const credited = new Float64Array(r.n);
+  const credited = new Float64Array(r.n), removedLines: Replacement['removed'] = [];
   for (let k = 1; k < old.length; k++) {
     const p = old[k - 1], q = old[k], len = Math.hypot(q.x - p.x, q.y - p.y), steps = Math.max(1, Math.ceil(len / 5));
     for (let j = 0; j < steps; j++) {
       const t = (j + 0.5) / steps, x = p.x + t * (q.x - p.x), y = p.y + t * (q.y - p.y), n = nearest(r, x, y);
       if (kept?.[n.i]) continue; // the old road stays as it is here
-      if (n.d > r.cell.width[n.i] / 2 + UNDER) { removed += len / steps; at ??= { x, y }; continue; }
+      if (n.d > r.cell.width[n.i] / 2 + UNDER) {
+        removed += len / steps; at ??= { x, y };
+        removedLines.push({ ax: p.x + (j / steps) * (q.x - p.x), ay: p.y + (j / steps) * (q.y - p.y), bx: p.x + ((j + 1) / steps) * (q.x - p.x), by: p.y + ((j + 1) / steps) * (q.y - p.y) });
+        continue;
+      }
       // land credit: this piece of old road inside the new road's land take, at that station's land price
       const area = (len / steps) * Math.min(width, r.cell.width[n.i]), rate = r.cell.width[n.i] > 0 ? r.parts.land[n.i] / (r.cell.width[n.i] * r.ds) : 0;
       const credit = Math.min(area * rate, Math.max(0, r.parts.land[n.i] - credited[n.i]));
@@ -116,5 +123,5 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
       // which one: where along the rebuilt road (the card's line also flies there)
       label: gap > 1 ? `${cap(what)} at km ${km(r.s[n.i])} reconnected: ${Math.round(gap)} m of new road and a junction` : `Junction with the ${what} at km ${km(r.s[n.i])}` });
   }
-  return { works, violations, total: works.reduce((t, w) => t + w.cost, 0) };
+  return { works, violations, total: works.reduce((t, w) => t + w.cost, 0), removed: removedLines, removedWidth: width };
 }

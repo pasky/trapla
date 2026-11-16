@@ -483,3 +483,14 @@ roads touch).
 Scratch (untracked): `_census.ts` (sidecar vs mapped ways), `_census-roads.ts` (what each D3 stretch starts
 with), `_d11-jic.ts` / `_d11-jic2.ts` (Jičínská: profile against ground, raw kernel with and without `oldRoad`),
 `_d3-mid.ts`, `_d3-land.ts` (land touch with the motorway), `_d3-alone.ts`.
+
+**Review of 001ecb5..e0423ca (deep reviewer), fixed:** (P1) a rebuilt stretch is not kept where another road's
+crossing lifts it onto its bridge or lowers it (`project-kept.ts` `releaseHeld`: the deck, the ramp at the
+scenario's steepest gradient and `HELD_APPROACH` = 100 m, PROVISIONAL, for the curves): there it is rebuilt as
+before F, instead of staying on the ground under its own deck; (P1) the old road where it is removed is this
+road's work in the land screen (`Replacement.removed` → `extraLines`), so another road built on that ground is
+not priced independently now that the screen is tighter; (P2) no retaining wall or wall surface stays on kept
+cells; (P2) the census sidecar is taken only with finite numbers. **Open for the merge:** multi-road bills
+changed (kept parts, 125 m knots), so `COST_MODEL_VERSION` must be bumped (main's + 1) or saved bests of
+multi-road projects show a cost their design no longer evaluates to. `tests/geometry.test.ts` "the acceptance
+case…" takes 4.9 s alone and can exceed its 5 s limit when the host load is above ~15 (not touched here).

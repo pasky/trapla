@@ -54,14 +54,38 @@ function layOnGround(r: Result, kept: Uint8Array, crownHalf: number) {
   for (let i = r.n - 1, d = Infinity; i >= 0; i--) { d = kept[i] ? d + r.ds : 0; far[i] = Math.min(far[i], d); }
   const grade = r.grade.slice(), cut = r.cut.slice(), fill = r.fill.slice();
   const dayL = r.dayL.slice(), dayR = r.dayR.slice(), zDayL = r.zDayL.slice(), zDayR = r.zDayR.slice();
+  // (no retaining wall is built along the old road either: its slope edges are natural ground again)
+  const wallSurfaceL = r.wallSurfaceL.slice(), wallSurfaceR = r.wallSurfaceR.slice();
   for (let i = 0; i < r.n; i++) {
     if (!kept[i] || r.kind[i] !== KIND.earth) continue;
+    wallSurfaceL[i] = NaN; wallSurfaceR[i] = NaN;
     const w = Math.max(0, 1 - far[i] / TIE_LENGTH), z = r.ground[i] + w * (r.grade[i] - r.ground[i]);
     grade[i] = z; cut[i] *= w; fill[i] *= w;
     dayL[i] = crownHalf + w * (r.dayL[i] - crownHalf); dayR[i] = crownHalf + w * (r.dayR[i] - crownHalf);
     zDayL[i] = z + w * (r.zDayL[i] - r.grade[i]); zDayR[i] = z + w * (r.zDayR[i] - r.grade[i]);
   }
-  Object.assign(r, { grade, cut, fill, dayL, dayR, zDayL, zDayR });
+  Object.assign(r, { grade, cut, fill, dayL, dayR, zDayL, zDayR, wallSurfaceL, wallSurfaceR,
+    retainingWalls: r.retainingWalls.filter(w => !(kept[w.i] && r.kind[w.i] === KIND.earth)) });
+}
+
+/** PROVISIONAL, m: room for the vertical curves at either end of a ramp (70 km/h: crest 2 500 m, sag
+ * 1 500 m; a 6 % change of grade takes 150 m and 90 m of curve, half of each beyond the ramp). */
+export const HELD_APPROACH = 100;
+/** Where a higher-ranking road's crossing takes this road off its old height (onto its bridge over that
+ * road, or down under that road's bridge), the road is rebuilt there with its ramps: those cells are not
+ * kept. `holds` as EvalOptions.holds; `ground`: the old road's surface at a cell; `tie`: how far a hold
+ * may be from it and still be the old road as it lies. */
+export function releaseHeld(kept: Uint8Array, s: ArrayLike<number>, ground: (i: number) => number,
+  holds: readonly { s: number; min: number; max: number; bridge?: [number, number] }[], maxGradient: number, tie: number): void {
+  const n = kept.length; if (n < 2) return;
+  const ds = s[1] - s[0];
+  for (const h of holds) {
+    const i = Math.max(0, Math.min(n - 1, Math.round(h.s / ds))), g = ground(i);
+    const rise = Math.max(h.min - g, g - h.max, 0);
+    if (!h.bridge && !(rise > tie)) continue;
+    const reach = (h.bridge ? (h.bridge[1] - h.bridge[0]) / 2 : 0) + rise / Math.max(0.01, maxGradient) + HELD_APPROACH;
+    for (let k = 0; k < n; k++) if (Math.abs(s[k] - h.s) <= reach) kept[k] = 0;
+  }
 }
 
 /** Applies "kept as the old road" to a rebuilt stretch's own result: what the norm would ask there becomes
