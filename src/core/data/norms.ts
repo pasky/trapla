@@ -103,7 +103,7 @@ export function designSpeeds(category: CategoryId): number[] {
 // (fce.vutbr.cz/pko/sad/pdf/aplikace.pdf, chapters "Směrové oblouky" and "Přechodnice").
 // Older edition, not independently verified for 2018. Omission threshold below uses actual model L,
 // whereas VUT prescribes 1.5vn for that calculation: this is a game concession (research/15).
-import type { HorizontalRules } from '../horizontal';
+import type { HorizontalRules, PI } from '../horizontal';
 import { CATEGORIES, type CategoryId } from './categories';
 
 export interface HorizontalNormRow {
@@ -125,17 +125,54 @@ export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
   70: { maxShiftWithoutTransition: 0.25, maxCompoundRatio: 2, minReverseStraight: 140 },
 };
 
+/** Hairpin bend (research/47 §3): 17.5 m on the axis, the smallest found on a Czech class I road (I/44
+ * Červenohorské sedlo, S 9.5/60, built under an approved departure from ČSN 73 6101; the forest-road floor is
+ * 15 m), a plain circular arc (no transitions: Swiss SN 640 198a; the forest-road guide), no straight required
+ * next to it (the forest guide's ≈ 20 m straights "may be dropped where cramped"). */
+export const HAIRPIN = { radius: 17.5, banking: 0.075 };
+export const HAIRPIN_RULES: HorizontalRules = { minRadius: HAIRPIN.radius, transition: 0, plainRadius: 0, compoundRatio: 2, reverseStraight: 0, hairpin: true };
+
+/** A bend's own rules where its stretch has another design speed or it is a hairpin (undefined: the road's).
+ * Speeds the category does not have are ignored (the road's apply). */
+export function bendRules(pis: readonly PI[], speed: number, category?: CategoryId): ((k: number) => HorizontalRules | undefined) | undefined {
+  if (!pis.some(p => p.hairpin || (p.speed !== undefined && p.speed !== speed))) return undefined;
+  const allowed = new Set(category ? designSpeeds(category) : [speed]);
+  const memo = new Map<number, HorizontalRules>();
+  return (k) => {
+    const p = pis[k];
+    if (!p) return undefined;
+    if (p.hairpin) return HAIRPIN_RULES;
+    if (p.speed === undefined || p.speed === speed || !allowed.has(p.speed)) return undefined;
+    let r = memo.get(p.speed);
+    if (!r) memo.set(p.speed, r = horizontalRules(p.speed, category));
+    return r;
+  };
+}
+
+/** The road's norms with the vertical radii of the fastest stretch: until the grade line takes each stretch's
+ * own radii (docs/design-realism-plan.md M4-2), the strictest apply everywhere (never too lenient). */
+export function roadNorms(pis: readonly PI[], speed: number, category?: CategoryId): SpeedNorms {
+  const n = speedNorms(speed, category);
+  const allowed = new Set(category ? designSpeeds(category) : [speed]);
+  let crest = n.minCrestRadius, sag = n.minSagRadius;
+  for (const p of pis) if (p.speed !== undefined && p.speed !== speed && allowed.has(p.speed)) {
+    const o = speedNorms(p.speed, category);
+    crest = Math.max(crest, o.minCrestRadius); sag = Math.max(sag, o.minSagRadius);
+  }
+  return crest === n.minCrestRadius && sag === n.minSagRadius ? n : { ...n, minCrestRadius: crest, minSagRadius: sag };
+}
+
 /** Everything the horizontal geometry and its checks need for a design speed. */
 export function horizontalRules(speed: number, category?: CategoryId): HorizontalRules {
   const n = speedNorms(speed, category);
   // Track: every curve gets its cant ramp (no omission threshold); compound ratio as for roads (PROVISIONAL).
   if (category && CATEGORIES[category].mode === 'railway')
-    return { minRadius: n.minRadius, transition: n.minTransition, plainRadius: Infinity, compoundRatio: 2, reverseStraight: 0 };
+    return { minRadius: n.minRadius, transition: n.minTransition, plainRadius: Infinity, compoundRatio: 2, reverseStraight: 0, speed };
   // Local roads and tracks: plain circular curves, no straight required between opposite curves (ČSN 73
   // 6110 §9.3.1 only recommends room for the change of crossfall; ČSN 73 6109 gives none); compound ratio
   // as for roads (PROVISIONAL, research/42).
   if (category && CATEGORIES[category].minor)
-    return { minRadius: n.minRadius, transition: 0, plainRadius: 0, compoundRatio: 2, reverseStraight: 0 };
+    return { minRadius: n.minRadius, transition: 0, plainRadius: 0, compoundRatio: 2, reverseStraight: 0, speed };
   const h = HORIZONTAL_NORMS[speed];
   if (!h) throw new Error(`no horizontal rules for design speed ${speed}`);
   return {
@@ -145,5 +182,6 @@ export function horizontalRules(speed: number, category?: CategoryId): Horizonta
     plainRadius: (n.minTransition * n.minTransition) / (24 * h.maxShiftWithoutTransition),
     compoundRatio: h.maxCompoundRatio,
     reverseStraight: h.minReverseStraight,
+    speed,
   };
 }

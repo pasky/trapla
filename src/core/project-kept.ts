@@ -10,7 +10,7 @@ import type { ReplacementWork } from './project-replacement';
 import { PART_KEYS, sumParts, type CostParts } from './cost';
 import { KIND } from './structures';
 import { buildAlignment, station } from './horizontal';
-import { horizontalRules } from './data/norms';
+import { bendRules, horizontalRules } from './data/norms';
 import { oldLineWords, type OurLine } from './terms';
 
 type Pt = { x: number; y: number };
@@ -132,7 +132,7 @@ export function releaseHeld(kept: Uint8Array, s: ArrayLike<number>, ground: (i: 
  * (`old`): known before the kernel runs (it depends on the line only), so the kernel builds nothing there
  * (EvalOptions.oldRoad). Null: none of it does. */
 export function plannedKept(a: Pt, b: Pt, design: Pick<Design, 'pis' | 'speed' | 'category'>, old: OldPaths) {
-  const st = station(buildAlignment(a, b, design.pis, horizontalRules(design.speed, design.category)), STEP);
+  const st = station(buildAlignment(a, b, design.pis, horizontalRules(design.speed, design.category), bendRules(design.pis, design.speed, design.category)), STEP);
   return { kept: keptCells(st, old), st };
 }
 

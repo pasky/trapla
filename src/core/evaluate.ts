@@ -20,7 +20,8 @@ import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
 import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
-import { horizontalRules, speedNorms } from './data/norms';
+import { bendRules, horizontalRules, roadNorms } from './data/norms';
+import { speedStretches, travelMinutes } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
@@ -418,8 +419,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const lap = (k: string) => { timing[k] = performance.now() - t0; };
   const { terrain, scenario } = ctx;
   const cat = CATEGORIES[d.category];
-  const norms = speedNorms(d.speed, d.category);
-  const fullAlignment = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
+  const norms = roadNorms(d.pis, d.speed, d.category);
+  const fullAlignment = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
   const win = opts.window;
   const al = win ? { ...fullAlignment, length: win.s1 - win.s0 } : fullAlignment;
   // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
@@ -1912,14 +1913,14 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         .replace(/\broad heights?\b/g, m => m.replace('road', 'track'));
     }
   }
-  const travelMin = al.length / (d.speed / 3.6) / 60;
+  const travelMin = travelMinutes(speedStretches(al, d.pis, d.speed, d.category));
   const capacityTraffic = opts.capacityTraffic ?? scenario.traffic;
   const minCategory = minCategoryForTraffic(capacityTraffic);
   if ((opts.goals?.capacity ?? true) && cat.mode !== 'railway' && CATEGORY_RANK[d.category] < CATEGORY_RANK[minCategory]) {
     violations.push(categoryViolation(al.length, d.category, capacityTraffic, minCategory));
   }
   if ((opts.goals?.time ?? true) && travelMin > scenario.maxTravelMin + 1e-9) {
-    violations.push(timeViolation(al.length, d.speed, travelMin, scenario.maxTravelMin));
+    violations.push(timeViolation(al.length, d.speed, travelMin, scenario.maxTravelMin, al.length / (travelMin * 60) * 3.6));
   }
   violations.push(...noiseViolations); // grouped noise issues never hide geometric/goal constraints
   const geomViolations = violations.filter((v) => !v.goal).length;

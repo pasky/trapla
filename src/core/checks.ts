@@ -5,9 +5,9 @@
 // for every violation kind by tests/player-text.test.ts.
 
 import { CATEGORIES, type CategoryId } from './data/categories';
-import { horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
+import { bendRules, horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
-import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type PI, type Vec2 } from './horizontal';
+import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type HorizontalRules, type PI, type Vec2 } from './horizontal';
 import type { Profile } from './vertical';
 import { RAIL_MAX_GRADIENT } from './data/railway';
 import { acos, sin, tan } from './detmath';
@@ -106,9 +106,10 @@ export const R_MAX = 30000;
  * when such a value fits, otherwise to the metre.
  */
 export function radiusOptions(a: Vec2, b: Vec2, pis: PI[], i: number, speed: number, category?: CategoryId): { auto: number; max: number | null } | null {
-  const rules = horizontalRules(speed, category);
+  const rules = bendRules(pis, speed, category)?.(i) ?? horizontalRules(speed, category);
   const viol = (r: number | null) => {
-    const al = buildAlignment(a, b, pis.map((p, k) => (k === i ? { ...p, r } : p)), rules);
+    const changed = pis.map((p, k) => (k === i ? { ...p, r } : p));
+    const al = buildAlignment(a, b, changed, horizontalRules(speed, category), bendRules(changed, speed, category));
     return { al, v: horizontalViolations(al, speed, category ? { a, b, pis: [], category } : undefined) };
   };
   const base = viol(null);
@@ -206,9 +207,11 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
   const out: Violation[] = [];
   const rail = !!input?.category && CATEGORIES[input.category].mode === 'railway';
   const minor = input?.category ? CATEGORIES[input.category].minor : undefined;
-  const RR = al.rules, lt = RR.transition, tol = 1e-6;
-  const plain = Math.ceil(RR.plainRadius);
-  const rules = {
+  const tol = 1e-6;
+  /** the rule texts for a bend's own rules (its stretch's design speed) */
+  const texts = (RR: HorizontalRules, speed: number) => {
+  const lt = RR.transition, plain = Math.ceil(RR.plainRadius);
+  return {
     minRadius: rail ? `${RAIL_NORM}: at ${speed} km/h a curve needs a radius of at least ${fmt(RR.minRadius)} m (150 mm cant, 80 mm cant deficiency)`
       : minor === 'track' ? `${TRACK_NORM}: at ${speed} km/h a curve on a paved track must have a radius of at least ${fmt(RR.minRadius)} m`
       : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
@@ -221,6 +224,13 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
     noJoin: `Game geometry model: joined arcs must stay within ${fmt(EDIT_TOLERANCE)} m of the tangent legs; intermediate easing curves are not modelled. Failure to join is not proof that no ČSN-compliant alignment exists`,
   };
+  };
+  /** a bend's rules, design speed and rule texts */
+  const at = (k: number) => {
+    const RR = al.rulesAt?.[k] ?? al.rules, v = RR.speed ?? speed;
+    return { RR, speed: v, lt: RR.transition, plain: Math.ceil(RR.plainRadius), rules: texts(RR, v) };
+  };
+  const rules = texts(al.rules, speed);
   // fixes that need the design itself (only when the caller passed it; never in the radius search).
   // A search costs ~25 ms on a 13-bend route, so only the first few bends get one per evaluation.
   const cache = new Map<number, ReturnType<typeof radiusOptions>>();
@@ -264,6 +274,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     });
   }
   for (const u of al.units) {
+    const { RR, speed, lt, plain, rules } = at(u.first);
     const where = { s0: u.sStart, s1: Math.max(u.sEnd, u.sStart), pi: u.first, pis: range(u.first, u.last) };
     const easeNeed = (u.transitions * lt) / 2;
     if (u.first === u.last) {
@@ -335,6 +346,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     }
   }
   for (const j of al.joints) {
+    const { RR, rules } = at(j.to >= 0 ? j.to : Math.max(0, j.from));
     const a = j.from >= 0 ? al.curves[j.from] : null, b = j.to >= 0 ? al.curves[j.to] : null;
     const where = { s0: j.s0, s1: j.s1, pi: j.to >= 0 ? j.to : j.from, pis: [j.from, j.to].filter((k) => k >= 0) };
     if (j.kind === 'compound') {
@@ -631,14 +643,18 @@ export function categoryViolation(length: number, category: CategoryId, traffic:
   };
 }
 
-export function timeViolation(length: number, speed: number, travelMin: number, maxMin: number): Violation {
-  const maxLen = (maxMin * 60 * speed) / 3.6;
-  const faster = Object.keys(SPEED_NORMS).map(Number).filter((v) => v > speed && (length / (v / 3.6)) / 60 <= maxMin).sort((p, q) => p - q)[0];
+/** `average`: length ÷ travel time where stretches have their own design speeds (absent: `speed` throughout) */
+export function timeViolation(length: number, speed: number, travelMin: number, maxMin: number, average = speed): Violation {
+  const mixed = Math.abs(average - speed) > 1e-6;
+  const maxLen = (maxMin * 60 * average) / 3.6;
+  const faster = mixed ? undefined : Object.keys(SPEED_NORMS).map(Number).filter((v) => v > speed && (length / (v / 3.6)) / 60 <= maxMin).sort((p, q) => p - q)[0];
   return {
     kind: 'time', goal: true, s0: 0, s1: length,
     title: `Too slow: ${fmt(travelMin, 2)} min`,
-    fix: `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m${faster ? ` (or raise the design speed to ${faster} km/h)` : ''}`,
-    detail: `Travel time is length ÷ speed: ${fmt(length / 1000, 2)} km at ${fmt(speed)} km/h. The target is ${fmt(maxMin, 1)} min, i.e. at most ${fmt(maxLen / 1000, 2)} km at ${fmt(speed)} km/h.${faster ? ' A higher design speed needs wider curves.' : ''}`,
+    fix: mixed ? `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m, or raise the design speed of a slower stretch`
+      : `Shorten the route by at least ${fmt(up(length - maxLen, 10))} m${faster ? ` (or raise the design speed to ${faster} km/h)` : ''}`,
+    detail: mixed ? `Travel time is each stretch's length ÷ its design speed: ${fmt(length / 1000, 2)} km at ${fmt(average)} km/h on average. The target is ${fmt(maxMin, 1)} min.`
+      : `Travel time is length ÷ speed: ${fmt(length / 1000, 2)} km at ${fmt(speed)} km/h. The target is ${fmt(maxMin, 1)} min, i.e. at most ${fmt(maxLen / 1000, 2)} km at ${fmt(speed)} km/h.${faster ? ' A higher design speed needs wider curves.' : ''}`,
     basis: 'game', rule: `Scenario goal: travel time at most ${fmt(maxMin, 1)} min`,
   };
 }

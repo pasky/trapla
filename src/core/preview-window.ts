@@ -10,7 +10,8 @@
 
 import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
 import { CATEGORIES } from './data/categories';
-import { speedNorms, horizontalRules } from './data/norms';
+import { bendRules, roadNorms, horizontalRules } from './data/norms';
+import { speedStretches, travelMinutes } from './design-speed';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
@@ -48,7 +49,7 @@ const KEEP = 6;
 
 /** Everything except the plan and the grade inputs must match for a full result to stand in. */
 function lineageKey(ctx: EvalContext, d: Design, opts: EvalOptions): string {
-  return JSON.stringify([ctx.a, ctx.b, d.category, d.speed, d.profileMode, d.structureOverrides ?? [], d.crossingOverrides ?? [],
+  return JSON.stringify([ctx.a, ctx.b, d.category, d.speed, d.pis.map(p => [p.speed ?? null, p.hairpin ?? null]), d.profileMode, d.structureOverrides ?? [], d.crossingOverrides ?? [],
     d.buildingOverrides ?? [], d.wallOverrides ?? [], d.objectData ?? null, opts.endpointElevations ?? null, opts.goals ?? null,
     opts.operatingSpeed ?? null, opts.capacityTraffic ?? null, opts.railTraffic ?? null]);
   // Not keyed: a split direction's joined ranges follow its plan, and its preview prices crossings the
@@ -168,7 +169,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const started = performance.now();
   const base = fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts));
   if (!base) return null;
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category));
+  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
   const st = station(al, STEP), L = al.length, n = st.n, ds = st.ds;
   const range = changedRange(base, d, st, L, al.curves);
   if (!range) return null;
@@ -176,7 +177,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   if ((i1 - i0) * ds > WINDOW_MAX_SHARE * L) return null;
   const s0 = st.s[i0], s1 = st.s[i1];
   const r = base.result, shift = L - r.length, old1 = s1 - shift;
-  const norms = speedNorms(d.speed, d.category);
+  const norms = roadNorms(d.pis, d.speed, d.category);
   const baseProfile = buildProfile(r.vpis, norms.minCrestRadius, norms.minSagRadius);
   // Heights and grades of the full result's line where the window meets it (the route ends keep theirs).
   const z = elevations(baseProfile, [s0, s0 + 1, old1 - 1, old1]);
@@ -271,7 +272,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   });
   const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...windowCrossings,
     ...r.crossings.filter(c => c.s > old1).map(c => ({ ...lean(c), s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];
-  const travelMin = L / (d.speed / 3.6) / 60;
+  const travelMin = travelMinutes(speedStretches(al, d.pis, d.speed, d.category));
   const cost = sumParts(parts);
   return {
     ...r,

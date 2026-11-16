@@ -3,7 +3,7 @@
 // drag's bend is then moved along the line, bounded, to where its curve fits; a player's later moves are
 // left alone (their violation and its fix stay the player's).
 import { ROAD_CHECKS } from './checks';
-import { horizontalRules, speedNorms } from './data/norms';
+import { bendRules, horizontalRules, speedNorms } from './data/norms';
 import type { CategoryId } from './data/categories';
 import { buildAlignment, type PI, type Vec2 } from './horizontal';
 
@@ -11,7 +11,7 @@ import { buildAlignment, type PI, type Vec2 } from './horizontal';
 export const BEND_FIT_MAX = 150;
 
 const crowding = (a: Vec2, b: Vec2, pis: PI[], category: CategoryId, speed: number) => {
-  const al = buildAlignment(a, b, pis, horizontalRules(speed, category));
+  const al = buildAlignment(a, b, pis, horizontalRules(speed, category), bendRules(pis, speed, category));
   return ROAD_CHECKS.horizontal(al, speedNorms(speed, category), { a, b, pis, category }).filter(v => v.horizontal?.extraDistance !== undefined);
 };
 
