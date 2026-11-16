@@ -106,7 +106,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
   // separate stretches: the forward direction carries the drawn parts; both carry the shared line
   const separated = evaluated.status === 'split' && evaluated.drawn ? { ...(corridor?.children.forward === route.id || preview ? { drawn: evaluated.drawn } : {}),
-    ...(evaluated.spine ? { shared: evaluated.spine } : {}) } : {};
+    ...(evaluated.spine ? { shared: evaluated.spine } : {}), ...(evaluated.apart ? { apart: evaluated.apart } : {}) } : {};
   return { route: { routeId: route.id, revision: route.revision, ...separated,
     engineeringRevision: `${snapshot.epoch}:${snapshot.revision}:${route.revision}:${preview ? 'preview' : 'full'}`,
     surface: legacy ? roadSurface(route, legacy) : referenceRoadSurface(ctx.legacy, route), geometry: null,

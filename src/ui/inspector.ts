@@ -19,6 +19,7 @@ import { czk } from './costgroups';
 import { noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
 import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './pieces';
 import { activeStructure } from './structure-bar';
+import { shownRange, shownS, shownSide, shownText } from './chainage';
 
 export type Sel =
   | { kind: 'stretch'; s0: number; s1: number; piece?: PieceKind }
@@ -55,7 +56,9 @@ export interface InspectorEvents {
   deleteVpi?: (i: number) => void;
 }
 
-const km = (s: number) => (s / 1000).toFixed(2);
+/** kilometres as the player reads them on the active line (ui/chainage.ts) */
+const km = (s: number) => (shownS(s) / 1000).toFixed(2);
+const kmr = (s0: number, s1: number) => { const [a, b] = shownRange(s0, s1); return `${(a / 1000).toFixed(2)}–${(b / 1000).toFixed(2)}`; };
 const m0 = (v: number) => `${Math.round(v).toLocaleString('en-US')} m`;
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
@@ -212,7 +215,7 @@ export class Inspector {
   /** violations about this thing: title, short fix, and fix buttons */
   private issues(list: { v: Violation; fixes: string }[]) {
     if (!list.length) return '';
-    return list.slice(0, 3).map(({ v, fixes }) => `<div class="ctx-issue"><b>⚠ ${esc(v.title)}</b>${fixes ? `<div class="fixes">${fixes}</div>` : `<div class="vfix">${esc(v.fix)}</div>`}</div>`).join('')
+    return list.slice(0, 3).map(({ v, fixes }) => `<div class="ctx-issue"><b>⚠ ${esc(shownText(v.title))}</b>${fixes ? `<div class="fixes">${fixes}</div>` : `<div class="vfix">${esc(shownText(v.fix))}</div>`}</div>`).join('')
       + (list.length > 3 ? `<div class="sub">+${list.length - 3} more in Violations</div>` : '');
   }
 
@@ -220,7 +223,7 @@ export class Inspector {
   private money(r: Result) {
     const top = topPieces(r, 5);
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
-      <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${km(p.s0)}–${km(p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
+      <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${kmr(p.s0, p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
       <div class="sub hint">Drag the ${this.d ? CATEGORIES[this.d.category].mode : 'road'} to bend it. Click anything to inspect it.</div>`;
   }
 
@@ -260,18 +263,18 @@ export class Inspector {
     const wallRow = (side: 'L' | 'R') => {
       const st = wallState(side);
       const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall: too-loud houses become violations'], ...[3, 4, 5, 6].map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall along the whole stretch`])];
-      return `<div class="wall-row"><span class="lbl">${cap(SIDE[side])}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, st.active)}<small>${st.now}</small></div>`;
+      return `<div class="wall-row"><span class="lbl">${cap(SIDE[shownSide(side)])}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, st.active)}<small>${st.now}</small></div>`;
     };
     const vio = r.violations.filter((v) => !v.goal && v.s1 >= s0 && v.s0 <= s1).map((v) => ({ v, fixes: this.fixes(v, d) }));
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = Math.max(0, Math.min(r.n - 1, Math.round(pinAt / r.ds)));
-    return `${this.head(title, `km ${km(s0)}–${km(s1)}`)}
+    return `${this.head(title, `km ${kmr(s0, s1)}`)}
       <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
       ${this.issues(vio)}
       ${this.choices('structure-choice', 'data-structure', STRUCTURE_OPTIONS, active)}
-      ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow('L')}${wallRow('R')}` : ''}
+      ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
-        ${near ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow('L')}${wallRow('R')}`}
+        ${near ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
         <div class="ctx-lbl">Road height</div>
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
           : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height point here</button></div>`}
@@ -301,7 +304,7 @@ export class Inspector {
     const b: string[] = [];
     const btn = (attrs: string, label: string) => b.push(`<button type="button" class="fix" ${attrs}>${label}</button>`);
     const t = v.target;
-    if (t?.wall) btn(`data-fix-wall="${t.wall.sides.join('')},${t.wall.height},${t.wall.s0},${t.wall.s1}"`, `${t.wall.height} m wall ${t.wall.sides.map((s) => SIDE[s]).join(' + ')} <small>km ${km(t.wall.s0)}–${km(t.wall.s1)}</small>`);
+    if (t?.wall) btn(`data-fix-wall="${t.wall.sides.join('')},${t.wall.height},${t.wall.s0},${t.wall.s1}"`, `${t.wall.height} m wall ${t.wall.sides.map((s) => SIDE[shownSide(s)]).join(' + ')} <small>km ${kmr(t.wall.s0, t.wall.s1)}</small>`);
     if (t?.buildings?.length) {
       btn(`data-fix-buy="${t.buildings.join(',')}"`, t.buildings.length === 1 ? 'Buy out' : `Buy out ${t.buildings.length}`);
       if (t.buildings.some((j) => d.buildingOverrides?.some((o) => o.j === j && o.action === 'keep'))) btn(`data-fix-unkeep="${t.buildings.join(',')}"`, 'Stop keeping');
@@ -426,7 +429,7 @@ export class Inspector {
       const mine = (d.wallOverrides ?? []).find((o) => o.side === side && o.s0 <= r.s[i] && o.s1 >= r.s[i]);
       const active = mine ? String(mine.height) : 'auto';
       const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...[3, 4, 5, 6].map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];
-      walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[side]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>km ${km(s0)}–${km(s1)}</small></div>`;
+      walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[shownSide(side)]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>km ${kmr(s0, s1)}</small></div>`;
     }
     const opt: [string, string, string][] = [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];
     return `${this.head(cap(info.kind), `${info.levels} floor${info.levels === 1 ? '' : 's'}`)}

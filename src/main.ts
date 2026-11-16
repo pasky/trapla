@@ -63,6 +63,7 @@ import { RouteBar } from './ui/route-bar';
 import { activeSelection, qualifySelection, type RouteSelection } from './ui/route-selection';
 import { CurveEditor } from './ui/curve-edit';
 import { fillDirections, Hud, type DirectionsState } from './ui/hud';
+import { setLineFrame } from './ui/chainage';
 import { ProfilePanel } from './ui/profile';
 import { provisionalProfile } from './ui/provisional';
 import { ViewBar, type ViewPrefs } from './ui/viewbar';
@@ -282,6 +283,9 @@ async function main() {
   /** a side road's end on another road follows that road: its drawn end is where it was built */
   const endAt = (end: 'a' | 'b') => {
     const route = store.route, r = route && projectFull?.routes[route.id]?.legacy;
+    // a paired motorway's directions are shown on its shared line (A→B): its ends are the motorway's
+    const paired = route && corridorOfRoute(projectStore.snapshot.design, route.id);
+    if (paired?.mode === 'paired') return paired.endpoints[end].position;
     if (!route || route.endpoints[end].anchor.kind !== 'route' || !r) return route?.endpoints[end].position;
     const i = end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], z: r.grade[i] };
   };
@@ -699,11 +703,27 @@ async function main() {
   /** the result the active design was evaluated as: a motorway with separate stretches edited as one
    * road shows its shared line; one direction, that direction composed */
   const activeLegacy = (rr: RouteResult | undefined) => rr?.shared && !store.oneDirection ? rr.shared : rr?.legacy;
+  /** A motorway edited as one line while its directions run apart somewhere: there the profile shows each
+   * direction's own heights (composed on the same stations), not the shared line's. */
+  const syncApart = (shown: Result) => {
+    const design = projectStore.snapshot.design, corridor = store.route && corridorOfRoute(design, store.route.id);
+    const fr = corridor && projectFull?.routes[corridor.children.forward], f = fr?.legacy, r = corridor && projectFull?.routes[corridor.children.reverse]?.legacy;
+    const state = directionsState();
+    if (!corridor || store.oneDirection || !fr?.apart?.length || !f || !r || !state || f.n !== shown.n || r.n !== shown.n) { profile.setApart([]); return; }
+    profile.setApart(fr.apart.map(a => ({ ...a, lines: [
+      { label: DIRECTIONS_TEXT.towards(state.places.forward), grade: f.grade, kind: f.kind },
+      { label: DIRECTIONS_TEXT.towards(state.places.reverse), grade: r.grade, kind: r.kind }] })));
+  };
+  /** the motorway's direction towards A, edited on its own, reads from its own start (B): ui/chainage.ts */
+  const readsBackwards = () => store.oneDirection && !!store.route
+    && projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.reverse === store.route!.id);
   const showActiveResult = () => {
     const rd = store.read(), r = store.activeRouteId ? activeLegacy(projectFull?.routes[store.activeRouteId]) : undefined;
+    setLineFrame(r?.length ?? 0, !!r && readsBackwards());
     last = lastFull = r ?? null;
     hud.setRouteState(!!rd, !!r && !!rd);
-    document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = store.route ? `Profile · ${store.route.name}` : 'Profile';
+    const together = !!store.route && !store.oneDirection && projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.forward === store.route!.id);
+    document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = store.route ? `Profile · ${together ? `${store.route.kind === 'motorway' ? 'Motorway' : store.route.name}, ${DIRECTIONS_TEXT.both.toLowerCase()}` : store.route.name}` : 'Profile';
     if (!r || !rd) {
       profile.clear(store.route && !store.read() ? 'No heights yet: this change is not checked.' : ''); if (!sourceEditor?.selected) routeCard();
       view.clearDesign(activeEndpoints()); return;
@@ -712,6 +732,7 @@ async function main() {
     const cat = CATEGORIES[rd.category];
     profile.setGradeRule({ max: cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient, perMille: cat.mode === 'railway', line: cat.mode });
     profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+    syncApart(r);
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
@@ -738,6 +759,7 @@ async function main() {
       const r = activeLegacy(m.result), rd = request?.design;
       if (r && rd) {
         const shown = r.preview ? r : { ...r, preview: true }; last = shown;
+        setLineFrame(shown.length, readsBackwards());
         // a paired motorway is drawn once, under its forward direction; with separate stretches, each
         // drawn part of the moved line (the shared body where both move)
         const corridor = projectStore.snapshot.design.corridors.find(c => c.children.reverse === m.routeId || c.children.forward === m.routeId);
@@ -752,6 +774,7 @@ async function main() {
         }
         took('view');
         profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+        syncApart(shown);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
         if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
@@ -827,6 +850,7 @@ async function main() {
 
   /** the motorway direction switch follows the active route */
   const syncDirections = () => {
+    { const r = store.activeRouteId ? activeLegacy(projectFull?.routes[store.activeRouteId]) : undefined; setLineFrame(r?.length ?? 0, !!r && readsBackwards()); }
     const design = projectStore.snapshot.design, route = store.route, corridor = route ? corridorOfRoute(design, route.id) : undefined;
     inspector.oneDirection = corridor?.mode === 'independent';
     document.getElementById('profile')!.classList.toggle('one-direction', !!corridor && store.oneDirection);

@@ -262,8 +262,10 @@ export interface RouteResult {
   /** A motorway with separate stretches (forward direction only): what is drawn, i.e. the shared body's
    * parts outside the stretches and each direction's own carriageway inside. */
   drawn?: DrawnPart[];
-  /** …and the common spine's evaluation, shown while both directions are edited together. */
+  /** …and the common spine's evaluation, shown while both directions are edited together, with the
+   * stretches (its stations) where they run apart. */
   shared?: Result;
+  apart?: { s0: number; s1: number }[];
   complete: boolean; valid: boolean; accepted: boolean;
   attributedCost: number | null;
   dependencies: ProjectDependency[]; influence: Bounds[];

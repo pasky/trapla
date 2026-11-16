@@ -141,7 +141,7 @@ export type CorridorEvaluation =
   | { status: 'split'; results: Record<string, Result>; ledger: SplitLedger | null; unpriced?: 'motorway-needs-interchange'[];
       /** Separate stretches of a paired corridor: what is drawn (the shared body's parts outside them, each
        * direction's own carriageway inside), and the spine's evaluation they were cut from. */
-      drawn?: DrawnPart[]; spine?: Result }
+      drawn?: DrawnPart[]; spine?: Result; apart?: { s0: number; s1: number }[] }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment' | 'unresolved-binding'
       | 'mission-needs-network' | 'unsupported-crossing' | 'separate-carriageways' };
 
@@ -823,7 +823,8 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
     from = g.i1;
   });
   if (from < spine.n - 1) drawn.push({ id: `${corridor.id}#shared:${from}`, result: sliceResult(spine, from, spine.n - 1), section: 'paired' });
-  if (options.preview || dirs.length < 2) return { status: 'split', results, ledger: null, drawn, spine };
+  const apart = groups.map(g => ({ s0: spine.s[g.i0], s1: spine.s[g.i1] }));
+  if (options.preview || dirs.length < 2) return { status: 'split', results, ledger: null, drawn, spine, apart };
   // the bill: the shared body once (its parts outside the stretches) plus both carriageways inside, less
   // what the two carriageways share (splitLedger) and houses the shared body and a carriageway both take
   const shared = results[corridor.children.forward].cost.total - pieces.forward.reduce((t, p) => t + p.result.cost.total, 0);
@@ -843,5 +844,5 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
     overlapCut: ledgers.reduce((t, l) => t + l.overlapCut, 0),
     violations: ledgers.flatMap((l, j) => l.violations.map(v => ({ ...v, s0: at(j)(v.s0), s1: at(j)(v.s1) }))),
   };
-  return { status: 'split', results, ledger, drawn, spine };
+  return { status: 'split', results, ledger, drawn, spine, apart };
 }

@@ -195,6 +195,9 @@ curve has). Bill = spine cost parts outside the stretches + both carriageways âˆ
 âˆ’ houses both take. Results are composed on the spine's stations per direction (`core/result-stitch.ts`: lists,
 bend numbers and kilometres in problem texts remapped); drawn: the spine's slices + the carriageways.
 Both-direction edits keep stretches away from the change and drop those whose boundary bends it touches.
+The profile: with both directions edited together it shows each direction's own heights where they run apart
+(`RouteResult.apart`); the direction towards A reads from its own start (mirrored profile, kilometres counted
+back, left/right and grades turned in texts: `ui/chainage.ts`; bends keep the motorway's numbers).
 Known limits: E0 reroutes aimed at a crossing inside a stretch are not re-aimed; the noise band of the shared
 line is shown while both directions are edited; the shared body's mass haul is split by cell.
 

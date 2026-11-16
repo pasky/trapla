@@ -19,6 +19,7 @@ import { rangeSummary } from '../core/range';
 import type { Best, StationRange } from '../state';
 import { COST_GROUPS, czk } from './costgroups';
 import { footprintConflictsInRange, footprintConflictText, footprintConflictTitle } from './footprint';
+import { shownRange, shownS, shownText } from './chainage';
 
 export { czk };
 // toLocaleString with options builds a formatter per call (≈ 0.1 ms; hundreds per HUD render)
@@ -155,9 +156,9 @@ export class Hud {
       this.$('sec-viol').hidden = !(n + notChecked.length);
       const line = (v: ListedIssue, cls: string) => {
         const open = this.openWhy.has(whyKey(v));
-        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.s0 !== undefined ? `km ${num(v.s0 / 1000, 2)}` : ''}</span>
-        <div><div class="vt">${esc(v.title)}</div><div class="vfix">${esc(v.fix)} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
-        <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(v.detail) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
+        return `<li data-k="${v.k}" class="${cls}"><span class="where">${v.road ? `${esc(v.road)}<br>` : ''}${v.s0 !== undefined ? `km ${num(shownS(v.s0) / 1000, 2)}` : ''}</span>
+        <div><div class="vt">${esc(shownText(v.title))}</div><div class="vfix">${esc(shownText(v.fix))} <button type="button" class="why" data-why="${v.k}">${open ? 'less' : 'why?'}</button></div>
+        <div class="vdetail"${open ? '' : ' hidden'}>${v.detail ? esc(shownText(v.detail)) : ''}<small>${esc(v.rule)}</small></div></div></li>`;
       };
       this.$('viol').innerHTML = violations.slice(0, 60).map(v => line(v, '')).join('')
         + (notChecked.length ? `<li class="not-checked-h">Not checked yet</li>${notChecked.slice(0, 20).map(v => line(v, 'not-checked')).join('')}` : '');
@@ -429,7 +430,7 @@ export class Hud {
     time.className = `chip ${tOk ? 'ok' : 'bad'}`;
     time.innerHTML = `${tOk ? '✓' : '✗'} ${num(r.travelMin, 1)} <small>/ ${this.sc.maxTravelMin.toFixed(1)} min</small>`;
     const sel = this.range && this.range.s0 < r.length ? rangeSummary(r, this.range.s0, Math.min(this.range.s1, r.length)) : null;
-    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${num(sel.s0 / 1000, 2)}–${num(sel.s1 / 1000, 2)}</small>` : `Cost <small>${this.oneDirection ? 'this direction · ' : ''}${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
+    this.$('cost-h').innerHTML = sel ? `Cost <small class="sel-tag">km ${shownRange(sel.s0, sel.s1).map(v => num(v / 1000, 2)).join('–')}</small>` : `Cost <small>${this.oneDirection ? 'this direction · ' : ''}${czk(whole.total / (r.length / 1000))} per km · ${km(r.length)}</small>`;
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
       const v = g.of(c);
@@ -454,7 +455,7 @@ export class Hud {
     const conflicts = footprintConflictsInRange(r.footprintConflicts ?? [], sel?.s0 ?? 0, sel?.s1 ?? r.length);
     const footprint = conflicts.length ? `<tr class="${conflicts.some(c => c.action === 'blocked') ? 'warn' : ''}"><td colspan="2"><details>
       <summary>Things in the road's way: ${conflicts.length}</summary>
-      ${conflicts.map(c => `<div class="sub" title="${esc(footprintConflictTitle(c))}">km ${num(c.s0 / 1000, 2)}–${num(c.s1 / 1000, 2)} · ${esc(footprintConflictText(c))}</div>`).join('')}
+      ${conflicts.map(c => `<div class="sub" title="${esc(footprintConflictTitle(c))}">km ${shownRange(c.s0, c.s1).map(v => num(v / 1000, 2)).join('–')} · ${esc(shownText(footprintConflictText(c)))}</div>`).join('')}
       </details></td></tr>` : '';
     const cls = q.cutByClass.map((v) => num((100 * v) / Math.max(1, q.cut), 0)).join(' / ');
     const common = (cut: number, fill: number, len: number, fp: number, forest: number, urban: number, bld: number, buyouts: number, walls: number, wallArea: number) => `
@@ -509,7 +510,7 @@ export class Hud {
     this.$('viol').innerHTML = v.slice(0, 60).map((x, k) => {
       const open = this.openWhy.has(whyKey(x));
       return `<li data-k="${k}" class="${x.goal ? 'goal' : ''}">
-          <span class="where">${x.goal ? 'goal' : `km ${num(x.s0 / 1000, 2)}`}</span>
+          <span class="where">${x.goal ? 'goal' : `km ${num(shownS(x.s0) / 1000, 2)}`}</span>
           <div><div class="vt">${esc(x.title)}</div>
           <div class="vfix">${esc(x.fix)} <button type="button" class="why" data-why="${k}">${open ? 'less' : 'why?'}</button></div>
           <div class="vdetail"${open ? '' : ' hidden'}>${x.detail ? esc(x.detail) : ''}<small>${esc(x.rule)}</small></div></div>
@@ -568,7 +569,8 @@ export function fillDirections(box: HTMLElement, state: DirectionsState, ev: { o
   apart.append(h);
   for (const t of state.apart) {
     const row = document.createElement('div'); row.className = 'apart-row';
-    const where = document.createElement('span'); where.textContent = DIRECTIONS_TEXT.stretch((t.s0 / 1000).toFixed(1), (t.s1 / 1000).toFixed(1));
+    const [a, b] = shownRange(t.s0, t.s1);
+    const where = document.createElement('span'); where.textContent = DIRECTIONS_TEXT.stretch((a / 1000).toFixed(1), (b / 1000).toFixed(1));
     const join = document.createElement('button'); join.type = 'button'; join.textContent = DIRECTIONS_TEXT.joinHere; join.title = DIRECTIONS_TEXT.joinTitle;
     join.onclick = () => ev.onJoin(t.id);
     row.append(where, join); apart.append(row);
