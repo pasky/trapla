@@ -38,7 +38,7 @@ import { d275CrossSection } from './data/motorway';
 import { sourceReach, type SourceLane } from './noise-field';
 import { crossingWallGaps } from './crossing-walls';
 import { protectedRasterCells } from './protected-raster';
-import { mergeCrossings, type RoadNet } from './roadnet';
+import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, DEFAULT_SLOPES, flatCutBands, type SectionCache } from './sections';
 import { chooseStructures, KIND, type Run } from './structures';
@@ -187,6 +187,8 @@ export interface Result {
    * work.* are elapsed milliseconds summed across all passes (engineering includes its substeps).
    * count.* count calls, not milliseconds. Missing work/count keys mean that path did not run. */
   timing: Record<string, number>;
+  /** Ways merged into another way's crossing (mergeCrossings: within 30 m of it along our road). */
+  mergedWays?: number[];
   /** A fast drag preview (see EvalOptions.preview): approximate, never a score. */
   preview?: boolean;
   /** A trial pass (EvalOptions.trial, inside evaluate only): the same pass with its noise. */
@@ -276,6 +278,9 @@ export interface EvalOptions {
   /** Land and works of other roads of the project that Auto's reroutes keep clear of (the player's road
    * takes over: project-evaluate.ts plans them again where they came too close). */
   keepClear?: KeepClear;
+  /** Ways merged into another way's crossing that our earthworks buried: each a crossing of its own here
+   * (set by evaluate's retry, not by callers). */
+  splitWays?: readonly number[];
 }
 
 interface PassCache {
@@ -385,6 +390,17 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       const keep = groups.filter(g => regionCount(retry, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
       if (keep.length === groups.length) { result = retry; used = sep(groups); }
       else if (keep.length) { result = run(keep); used = sep(keep); result.timing['count.separationRetry'] = 2; }
+    }
+  }
+  // A way merged into another way's crossing that our earthworks bury (it could not be rebuilt beside
+  // them) is a crossing of its own, treated like any other: once more, kept where it resolves more than it breaks.
+  if (!opts.preview && !opts.window && result.mergedWays?.length) {
+    const r0 = result, buried = r0.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && f.roadId !== undefined && r0.mergedWays!.includes(f.roadId));
+    if (buried.length) {
+      const split = { ...used, splitWays: [...new Set(buried.map(f => f.roadId!))] };
+      const retry = evaluateRoute(ctx, d, split);
+      retry.timing['count.splitRetry'] = 1;
+      if (regionCount(retry, buried.map(f => (f.s0 + f.s1) / 2)) < regionCount(r0, buried.map(f => (f.s0 + f.s1) / 2))) { result = retry; used = split; }
     }
   }
   // Where our earthworks bury a road that could neither be rebuilt beside them nor kept behind a wall, a
@@ -1150,6 +1166,9 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Centreline crossings own their connected stretch inside the footprint (crossing remedy);
   // grade-separated classes cannot be diverted and stay ordinary retaining obstacles.
   // Ways merged into another crossing's billing group have no remedy of their own.
+  // (a way merged into another's crossing is one of its own where our earthworks meet it: below)
+  /** the other ways merged into a crossing (mergeCrossings), each a crossing of its own on our earthworks */
+  const mergedInto = new WeakMap<CrossingResult, readonly RoadCrossing[]>();
   const crossingWays = new Map<number, number[]>(), remedied = new Set(roadX.map(c => c.way));
   if (ctx.roads) for (const c of rawRoadX) {
     if (!remedied.has(c.way) || ROAD_CLASSES[c.cls].noAtGrade) continue;
@@ -1305,6 +1324,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     s: c.s, i: Math.min(n - 1, Math.round(c.s / ds)), x: c.x, y: c.y, cls: c.cls, roadId: c.way,
     h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0, ...(ctx.roads?.isDesigned(c.way) ? { designed: true as const } : {}),
   }));
+  roadX.forEach((c, k) => { if (c.members?.length) mergedInto.set(crossings[k], c.members); });
   // A way weaving along our road crosses it again without ever leaving our earthworks in between (and
   // the strip a new road keeps clear of them): one crossing, its first, whose treatment takes the
   // whole stretch (a second one would bill the same stretch twice, e.g. a bridge over us along it).
@@ -1692,6 +1712,15 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
   const joinedRight = opts.joinedSide === 'R';
   const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * (joinedRight ? sec.dayL[i] : sec.dayR[i]) : v) : width;
+  // Ways merged into one crossing (dual carriageways, a junction lying on our line) share its treatment; one
+  // that our earthworks then bury (evaluate's retry) is a crossing of its own here (cut and reconnected,
+  // bridged over us or boxed under us).
+  if (opts.splitWays?.length) for (const c of [...crossings]) for (const m of mergedInto.get(c) ?? []) {
+    const i = Math.min(n - 1, Math.round(m.s / ds));
+    if (!opts.splitWays.includes(m.way) || kind[i] !== KIND.earth || ROAD_CLASSES[m.cls].noAtGrade || crossings.some(o => o.roadId === m.way && Math.abs(o.s - m.s) < 1e-6)) continue;
+    crossings.push({ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - terrain.heightAt(m.x, m.y), type: 'atGrade', cost: 0 });
+  }
+  crossings.sort((a, b) => a.s - b.s);
   const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
     ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor);
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
@@ -1960,6 +1989,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
+    ...(roadX.some(c => c.members?.length) ? { mergedWays: roadX.flatMap(c => (c.members ?? []).map(m => m.way)) } : {}),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, wallsAroundChoices, demolished, boughtOut, kept,
     retainingWalls, walledOff: retention.walledBuildings.flatMap(b => {
       // the walls standing for it (its own cells and the one either side each wall reaches over)
