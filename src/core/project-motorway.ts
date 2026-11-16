@@ -664,10 +664,10 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
   const dirs = (['forward', 'reverse'] as const).filter(dir => !only || corridor.children[dir] === only);
   type Piece = { result: Result; bend0: number; line: ReturnType<typeof station> };
   const pieces: Record<Direction, Piece[]> = { forward: [], reverse: [] };
-  const designs = groups.map(g => {
+  const planOf = (g: (typeof groups)[number]) => {
     const s0 = spine.s[g.i0], s1 = spine.s[g.i1], k0 = firstBendAfter(s0), k1 = firstBendAfter(s1);
     const J0 = pointAt(spineAl, s0), J1 = pointAt(spineAl, s1);
-    const plan = Object.fromEntries((['forward', 'reverse'] as const).map(dir => {
+    return Object.fromEntries((['forward', 'reverse'] as const).map(dir => {
       const comp = compositePis(sd.pis, stretches, dir), shownAl = buildAlignment(A, B, comp.pis, rules);
       const c0 = compositeStart(comp.segs, k0, comp.pis.length), c1 = compositeStart(comp.segs, k1, comp.pis.length);
       // the shown line's own arcs, fixed: the piece runs exactly on it
@@ -680,6 +680,33 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
       const al = buildAlignment(bends.a, bends.b, bends.pis, horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY));
       return [dir, { bends, al, vAl, offset, bend0: c0, line: station(al, 10), own: g.members.some(t => t[dir]) }];
     })) as Record<Direction, { bends: ReturnType<typeof offsetBends>; al: Alignment; vAl: Alignment; offset: number; bend0: number; line: ReturnType<typeof station>; own: boolean }>;
+  };
+  // A join is no route end: where a carriageway's curve and its easing need more room before (after) it
+  // than the straight gives, the join moves further out along the spine's allowed stations.
+  const endShort = (al: Alignment, first: boolean) => {
+    const j = first ? al.joints.find(x => x.from < 0) : [...al.joints].reverse().find(x => x.to < 0);
+    return j ? j.tFrom + j.needFrom + j.tTo + j.needTo - j.length : 0;
+  };
+  const settle = (g: (typeof groups)[number]) => {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const plan = planOf(g);
+      const short0 = Math.max(...(['forward', 'reverse'] as const).map(d => endShort(plan[d].al, true)));
+      const short1 = Math.max(...(['forward', 'reverse'] as const).map(d => endShort(plan[d].al, false)));
+      let moved = false;
+      if (short0 > 0.5 && g.i0 > 0) { g.i0 = Math.max(0, g.i0 - Math.ceil((short0 + JOIN_RULES.margin) / spine.ds)); while (g.i0 > 0 && !ok[g.i0]) g.i0--; moved = true; }
+      if (short1 > 0.5 && g.i1 < spine.n - 1) { g.i1 = Math.min(spine.n - 1, g.i1 + Math.ceil((short1 + JOIN_RULES.margin) / spine.ds)); while (g.i1 < spine.n - 1 && !ok[g.i1]) g.i1++; moved = true; }
+      if (!moved) return;
+    }
+  };
+  groups.forEach(settle);
+  for (let j = 1; j < groups.length;) {
+    if (groups[j].i0 > groups[j - 1].i1) { j++; continue; }
+    const [p, q] = groups.splice(j - 1, 2);
+    const merged = { i0: Math.min(p.i0, q.i0), i1: Math.max(p.i1, q.i1), members: [...p.members, ...q.members] };
+    groups.splice(j - 1, 0, merged); settle(merged); j = Math.max(1, j - 1);
+  }
+  const designs = groups.map(g => {
+    const plan = planOf(g), s0 = spine.s[g.i0], s1 = spine.s[g.i1];
     return Object.fromEntries((['forward', 'reverse'] as const).map(dir => {
       const { bends, al, vAl, offset, bend0, line, own } = plan[dir], other = plan[dir === 'forward' ? 'reverse' : 'forward'];
       const Lp = al.length, toPiece = (s: number) => (s - s0) / (s1 - s0) * Lp;
@@ -694,12 +721,22 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
         let n0 = 0, n1 = line.n - 1;
         while (n0 < line.n && !apart(n0)) n0++;
         while (n1 >= 0 && !apart(n1)) n1--;
-        const x0 = line.s[Math.min(n0, line.n - 1)] + KNOT / 2, x1 = line.s[Math.max(0, n1)] - KNOT / 2;
+        let x0 = line.s[Math.min(n0, line.n - 1)] + KNOT / 2, x1 = line.s[Math.max(0, n1)] - KNOT / 2;
         // the shared heights on this carriageway's chainage: by distance from the nearer join
         const map = (s: number) => s - s0 <= s1 - s ? Math.min(Lp, s - s0) : Math.max(0, Lp - (s1 - s));
         const shared: VPI[] = [{ s: 0, z: spine.grade[g.i0], r: null },
           ...spine.vpis.filter(v => v.s > s0 + 1 && v.s < s1 - 1).map(v => ({ s: map(v.s), z: v.z, r: v.r })).filter(v => v.s > 1 && v.s < Lp - 1),
           { s: Lp, z: spine.grade[g.i1], r: null }].sort((a, b) => a.s - b.s);
+        // the curve where Auto takes over must not overlap a rounding of the shared line
+        for (let moved = true, guard = 0; moved && guard < 20; guard++) {
+          moved = false;
+          for (const c of spine.vcurves) {
+            if (c.s <= s0 || c.s >= s1 || x0 >= x1) continue;
+            const at = map(c.s);
+            if (at - c.len / 2 < x0 + KNOT / 2 && at + c.len / 2 > x0 - KNOT / 2) { x0 = at + c.len / 2 + KNOT / 2; moved = true; }
+            if (at - c.len / 2 < x1 + KNOT / 2 && at + c.len / 2 > x1 - KNOT / 2) { x1 = at - c.len / 2 - KNOT / 2; moved = true; }
+          }
+        }
         const pins = (shown.gradePins ?? []).filter(q => inside(q.s)).map(q => ({ s: toPiece(q.s), z: q.z }));
         if (x1 - x0 >= MIN_OWN_HEIGHTS) { vertical = { profileMode: 'auto', vpis: [], gradePins: pins }; fixedProfile = { x0, x1, vpis: shared }; }
         else vertical = { profileMode: 'manual', vpis: shared, gradePins: pins };

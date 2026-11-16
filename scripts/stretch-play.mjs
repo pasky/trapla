@@ -43,14 +43,15 @@ try {
   console.log('start', JSON.stringify(start));
   await shot('start');
   // the motorway's own card offers the direction switch (nothing selected)
-  await page.locator('.motorway-head [data-dir="forward"]').click();
+  const dir = process.env.DIR ?? 'forward', side = dir === 'forward' ? -1 : 1; // the reverse carriageway lies left of A→B
+  await page.locator(`.motorway-head [data-dir="${dir}"]`).click();
   await settle();
   const picked = await state();
   console.log('picked', JSON.stringify(picked));
   if (picked.total !== start.total || picked.stretches.length) throw new Error('choosing a direction changed the design');
   await shot('picked');
   // drag the carriageway between bends 3 and 4 (shown order) sideways, the way a player bends a road
-  const k = 2;
+  const k = Number(process.env.BEND ?? 2);
   const target = await page.evaluate(k => {
     const d = window.trapla.getDesign(), p = d.pis[k], q = d.pis[k + 1], r = window.trapla.result();
     const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
@@ -62,11 +63,11 @@ try {
   await settle();
   const box = await page.locator('#view canvas').first().boundingBox();
   // the grab point on the forward carriageway and the way away from the other direction (its right)
-  const [p, q] = await page.evaluate(([s, away]) => {
+  const [p, q] = await page.evaluate(([s, away, side]) => {
     const r = window.trapla.result(), i = Math.round(s / r.ds), z = r.grade[i] + 1.5;
-    const nx = r.ty[i], ny = -r.tx[i];
+    const nx = -side * r.ty[i], ny = side * r.tx[i];
     return [window.trapla.screenOf(r.x[i] + nx * 6.9, r.y[i] + ny * 6.9, z), window.trapla.screenOf(r.x[i] + nx * (6.9 + away), r.y[i] + ny * (6.9 + away), z)];
-  }, [target.s, Number(process.env.AWAY ?? 120)]);
+  }, [target.s, Number(process.env.AWAY ?? 120), side]);
   const at = { x: box.x + p.sx, y: box.y + p.sy }, to = { x: box.x + q.sx, y: box.y + q.sy };
   await page.mouse.move(at.x, at.y); await page.mouse.down();
   for (let j = 1; j <= 20; j++) { await page.mouse.move(at.x + (to.x - at.x) * j / 20, at.y + (to.y - at.y) * j / 20); await page.waitForTimeout(30); }

@@ -119,7 +119,14 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
   ].sort((a, b) => a.index - b.index);
   // problems: the spine's outside the pieces, each piece's inside
   const remap = (v: Violation, bend: (i: number) => number | null, vpi: (i: number) => number | undefined, s: (x: number) => number): Violation => {
-    const out: Violation = { ...v, s0: s(v.s0), s1: s(v.s1) };
+    // the words carry the piece's own numbers: its bends and its kilometres
+    const text = (t: string) => t
+      .replace(/\b([Bb]ends?) (\d+)(?: and (\d+))?/g, (all, word: string, a: string, b?: string) => {
+        const p = bend(Number(a) - 1), q = b === undefined ? null : bend(Number(b) - 1);
+        return p === null || (b !== undefined && q === null) ? all : `${word} ${p + 1}${q !== null ? ` and ${q + 1}` : ''}`;
+      })
+      .replace(/\bkm (\d+(?:\.\d+)?)/g, (_all, x: string) => `km ${(s(Number(x) * 1000) / 1000).toFixed(x.split('.')[1]?.length ?? 0)}`);
+    const out: Violation = { ...v, s0: s(v.s0), s1: s(v.s1), title: text(v.title), fix: text(v.fix), ...(v.detail ? { detail: text(v.detail) } : {}) };
     if (v.pi !== undefined) { const i = bend(v.pi); if (i === null) delete out.pi; else out.pi = i; }
     if (v.pis) out.pis = v.pis.flatMap(i => { const j = bend(i); return j === null ? [] : [j]; });
     if (v.horizontal) out.horizontal = { ...v.horizontal, manualRadii: v.horizontal.manualRadii.flatMap(m => { const j = bend(m.pi); return j === null ? [] : [{ ...m, pi: j }]; }) };
