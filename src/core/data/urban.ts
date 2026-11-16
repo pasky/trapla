@@ -1,4 +1,4 @@
-import { railRouteBasePerKm } from './railway';
+import { RAIL_MAX_GRADIENT, RAILWAY_EVIDENCE, railRouteBasePerKm, SPOZES, TRACK_CENTRES_M } from './railway';
 // Built-up areas: buildings, building land, urban construction rates, crossings of existing roads,
 // noise walls. CZK excl. VAT: SPK CN norms are 2026; research examples are at their original dates,
 // NOT escalated to 2026. Sources: research/07-property-land.md (buildings,
@@ -260,7 +260,18 @@ export const ROAD_CLASSES: Record<string, RoadClassRow> = {
   /** Paved P4 standard, not the unsupported 1.5 M/km gravel allowance (research/13).
    * Conservative for forest/unpaved tracks, but a reproducible SPK 2026 unit price. */
   track: { label: 'track', minRadius: 25, width: 4, rampGradient: 0.1, rampSteepest: 0.15, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', roadPerKm: [13_985_684.5, 13_985_684.5], roadCodes: ['A.1.P4.NE', 'A.1.P4.NE'] },
+  /** A new or rebuilt railway of the project where a higher-ranking line crosses it (never on the map: mapped
+   * railways are raster obstacles). Never crossed at the same level; its own formation width, SPOŽES 2026
+   * route-km and H02 bridge prices and steepest grade, as the railway kernel builds it (data/categories.ts R1/R2). */
+  railway: railRow(1),
+  railway2: railRow(2),
 };
+function railRow(tracks: 1 | 2): RoadClassRow {
+  const width = 2 * RAILWAY_EVIDENCE.uncantedFormationHalfWidthM + (tracks === 2 ? TRACK_CENTRES_M : 0);
+  return { label: 'railway', minRadius: 0, width, rampGradient: RAIL_MAX_GRADIENT, rampSteepest: RAIL_MAX_GRADIENT,
+    bridgePerKm: SPOZES.bridgeLongPerM2 * width * 1000, bridgeCode: 'SPOŽES H02', separable: true, noAtGrade: true,
+    roadPerKm: [railRouteBasePerKm(tracks), railRouteBasePerKm(tracks, true)], roadCodes: ['SPOŽES 2026', 'SPOŽES 2026'] };
+}
 
 // ---------------------------------------------------------------------------------------------
 // Czech source + calibrated ground class, with PROVISIONAL geometric mitigation.

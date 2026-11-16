@@ -70,7 +70,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
-type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
+type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
   | 'culverts' | 'houses' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
@@ -110,7 +110,9 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     label: `Moved beside our road (+${m(c.linkLength)} m of new ${c.type === 'diversion' ? 'track' : 'road'})`,
     explain: `The ${what} runs into our earthworks and comes back out on the same side, so it does not need to cross our road: that stretch is rebuilt beside the earthworks.${link}` };
   switch (c.type) {
-    case 'bridge': return { tag: 'under our bridge', label: 'Passes under our bridge',
+    case 'bridge': return c.above ? { tag: 'over our bridge', label: 'Passes over our bridge on its own bridge',
+      explain: `Our road is on a bridge here; the ${what} crosses high above it on a bridge of its own.` }
+      : { tag: 'under our bridge', label: 'Passes under our bridge',
       explain: `Our road crosses over the ${what} on a bridge; the ${what} stays as it is.` };
     case 'tunnel': return { tag: 'above our tunnel', label: 'Our road is in a tunnel below it',
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };

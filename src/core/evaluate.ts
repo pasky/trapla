@@ -1088,9 +1088,23 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         // A surface stream above a deep bored tunnel is already separated. Never let that
         // crossing raise every other clearance by the hill's entire height.
         if (c.what === 'watercourse' && z0[k] <= c.g - STRUCTURE_RULES.tunnelMinDepth) return;
-        if (c.below !== undefined && (z0[k] <= c.g - c.below || rawRoadX.some((road) => Math.abs(road.s - c.s) < 1e-6 && crossingChoice(road.way, crossingOverrides) === 'overbridge'))) return;
+        if (c.below !== undefined && z0[k] <= c.g - c.below) {
+          // passing under it: kept there by whatever comes next (support lifts and their re-solve)
+          const i0 = Math.min(n - 2, Math.floor(c.s / ds));
+          for (const i of [i0, i0 + 1]) apOpt.maxH[i] = Math.min(Number.isNaN(apOpt.maxH[i]) ? Infinity : apOpt.maxH[i], c.g - c.below - ground[i]);
+          return;
+        }
+        if (c.below !== undefined && rawRoadX.some((road) => Math.abs(road.s - c.s) < 1e-6 && crossingChoice(road.way, crossingOverrides) === 'overbridge')) return;
         const deficit = c.g + c.need - z0[k];
         if (deficit <= 1e-6) return;
+        // (a line that may pass under it instead, and is nearer to that: lowered the rest of the way)
+        const under = c.below !== undefined ? z0[k] - (c.g - c.below) : Infinity;
+        if (under < deficit) {
+          short = Math.max(short, under);
+          const i0 = Math.min(n - 2, Math.floor(c.s / ds));
+          for (const i of [i0, i0 + 1]) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], c.g - c.below! - ground[i] - under - 0.5);
+          return;
+        }
         short = Math.max(short, deficit);
         const slots = runSlots.get(c);
         if (slots) { for (const j of slots) minH[j] = Math.max(minH[j], c.g + c.need - ground[j] + deficit + 0.5); return; }
@@ -1489,6 +1503,15 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       const z0 = elevations(buildProfile(before, norms.minCrestRadius, norms.minSagRadius), xs);
       return narrowAt.every(({ r }, k) => r.fill ? z[k] <= Math.max(r.z, z0[k]) + 0.05 : z[k] >= Math.min(r.z, z0[k]) - 0.05);
     };
+    // (nor out of the cutting it passes a motorway or railway in)
+    const under = mustBridge.filter(c => c.below !== undefined);
+    const keepsUnder = (v: VPI[], before: VPI[]) => {
+      if (!under.length) return true;
+      const xs = under.map(c => c.s);
+      const z = elevations(buildProfile(v, norms.minCrestRadius, norms.minSagRadius), xs);
+      const z0 = elevations(buildProfile(before, norms.minCrestRadius, norms.minSagRadius), xs);
+      return under.every((c, k) => z0[k] > c.g - c.below! + 1e-6 || z[k] <= c.g - c.below! + 1e-6);
+    };
     const liftAll = (from: VPI[]) => {
       let out = from;
       const failed: { s: number; z: number }[][] = [];
@@ -1503,7 +1526,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         const lifted = liftProfile(out, c, range, free) ?? (wide ? liftProfile(out, c, [Math.max(reach[0], wide[0]), Math.min(reach[1], wide[1])], wide) : undefined);
         // the shared heights outside a separate stretch's own part are not ours to lift
         if (lifted && !keepsExterior(lifted)) liftShared = true;
-        if (lifted && keepsNarrow(lifted, out) && keepsExterior(lifted)) out = lifted; else failed.push(c);
+        if (lifted && keepsNarrow(lifted, out) && keepsUnder(lifted, out) && keepsExterior(lifted)) out = lifted; else failed.push(c);
       }
       return { out, failed };
     };

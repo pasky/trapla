@@ -96,6 +96,8 @@ export interface CrossingResult {
   /** The crossed road is a designed road of the project (it draws and bills its own body; this crossing
    * holds its height there, project-roadnet.ts). */
   designed?: true;
+  /** Our bridge here: that designed road passes high above it on its own bridge (set by the project evaluator). */
+  above?: true;
   /** That designed road (set by the project evaluator), for the crossing card. */
   crossedRoute?: { id: string; name: string };
   issues?: CrossingIssue[];
