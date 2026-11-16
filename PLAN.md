@@ -592,10 +592,11 @@ starter: 60 m, its stage-1 motorway 95 m, random D11 lines 45–60 m).
   8,524 → 10,152 (a 680 m twin tunnel instead of 240 m between 21–29 m cuts), d35 4,755 → 6,729 (1.1 km
   instead of 740 m between 58–68 m cuts), d35-full 27,332 → 29,969, d35 stage-1 motorway 17,123 → 19,497 M CZK;
   the others unchanged. Křálovec railway (QA fixture) 8.87 → 9.45 bn VALID (one 3.9 km tunnel where three
-  tunnels alternated with 25–53 m cuts). Outcome audit (24 random D11 lines): 6 VALID (6), 90 violations (86;
-  random-10 and -15 each meet one more where their longer tunnels' ends moved), links > 1 km 20 (21), ramps > 250 m
-  5 (5); the lines with tunnels cost 11–28 % more (random-12: 9.51 → 12.13 bn, its 960 m tunnel between 55 m
-  cuts is 1.36 km with 8 m approach cuts).
+  tunnels alternated with 25–53 m cuts). Outcome audit (24 random D11 lines): 6 VALID (6), 86 violations (86),
+  links > 1 km 20 (21), ramps > 250 m 5 (5); the lines with tunnels cost 11–28 % more (random-12: 9.51 → 12.13 bn,
+  its 960 m tunnel between 55 m cuts is 1.36 km with 8 m approach cuts; random-8 9.45 → 11.27 bn, 6 → 3 problems).
+- **A cutting whose slope never reaches the top of the hillside** is a tunnel where deep enough (as such an
+  embankment is a bridge): station by station a short tunnel used to cover it; a whole-run tunnel may not pay.
 - **Known limits.** The grade search prices the tube per metre; a long one's escape provision is weighed by
   the structure choice only. Portals stand on the 10 m station grid. Pre-portal works (nailed faces, micropile
   umbrellas) are not billed (research/49 §3; small beside a 9 m portal). No TBM (no Czech road case, no SPK row).
