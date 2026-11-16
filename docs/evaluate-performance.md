@@ -1,5 +1,36 @@
 # Evaluate performance regression
 
+
+## Crossing remedies, cost model 26 (2026-11-16)
+
+Straightened crossings, the consolidation pass, moving roads beside ours and reroutes joining their target's
+road where it comes nearest build more candidate geometry (best: ≈ 17 candidate reroute sides per evaluation
+against main's 6). Offsets, all bit-identical: a build memo per `buildCrossingGeometry` call (each way's stretch
+through our earthworks, its straightened line, the geometry of a crossing built only to anchor candidates,
+anchors per line and width); the consolidation pass tries only what the first look could not see (a crossing
+that began to carry traffic after the other was weighed, a reroute never retried against the same target);
+square variants only where they can pay (the old line's treatment costs more than the square structure's
+least price plus the new line's least length) and not where the old one failed for its height or ramps;
+allocation-free deck and box-floor searches; anchor lines built lazily; a reroute's slope queries memoised.
+
+Interleaved in one process (both evaluate bundles loaded, alternating, warm, 20 rounds for the five saved D11
+designs and 10 for the D3 motorway starter and Nová Paka; host load ≈ 3–7), min / median ms, main 3d01d57
+(model 25) → this branch:
+
+| design | main | now |
+|---|---:|---:|
+| best | 112.4 / 151.8 | 107.2 / 138.5 |
+| demo | 98.1 / 157.2 | 102.5 / 167.6 |
+| direct-80 | 118.8 / 152.2 | 129.2 / 155.3 |
+| direct-90 | 118.8 / 140.3 | 126.7 / 147.4 |
+| town-centre | 147.5 / 160.7 | 149.9 / 178.3 |
+| D3 motorway starter | 149.4 / 197.9 | 144.5 / 187.4 |
+| Nová Paka | 73.1 / 102.8 | 77.3 / 89.4 |
+
+Sums: min 818 → 837 ms (+2 %), median 1063 → 1063 ms. The crossing step itself is ≈ 4–15 ms dearer on
+direct-80 / direct-90 (their squared and joined candidates); designs whose absurd remedies are gone (a 704 m
+bridge along the D3 motorway, the strict retry it triggered) got faster.
+
 ## Local grade solve (cost model 25, 2026-11-16)
 
 The Auto grade line is now solved in blocks (research/39 "Local edits"): one corridor pass per boundary
