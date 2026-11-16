@@ -10,8 +10,8 @@
 
 import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
 import { CATEGORIES } from './data/categories';
-import { bendRules, roadNorms, horizontalRules } from './data/norms';
-import { hairpinViolations, speedStretches, travelMinutes } from './design-speed';
+import { bendRules, horizontalRules, speedNorms } from './data/norms';
+import { hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
@@ -177,8 +177,8 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   if ((i1 - i0) * ds > WINDOW_MAX_SHARE * L) return null;
   const s0 = st.s[i0], s1 = st.s[i1];
   const r = base.result, shift = L - r.length, old1 = s1 - shift;
-  const norms = roadNorms(d.pis, d.speed, d.category);
-  const baseProfile = buildProfile(r.vpis, norms.minCrestRadius, norms.minSagRadius);
+  const norms = speedNorms(d.speed, d.category), radii = stretchRadii(al, d.pis, d.speed, d.category);
+  const baseProfile = buildProfile(r.vpis, radii.crest, radii.sag);
   // Heights and grades of the full result's line where the window meets it (the route ends keep theirs).
   const z = elevations(baseProfile, [s0, s0 + 1, old1 - 1, old1]);
   const startsAtA = i0 === 0, endsAtB = i1 === n - 1;
@@ -189,7 +189,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const grades = { ...(startsAtA ? {} : { a: z[1] - z[0] }), ...(endsAtB ? {} : { b: z[3] - z[2] }) };
   // By hand: the design's own line throughout (its window ends included), only engineered in the window.
   const zA = opts.endpointElevations?.a ?? ctx.terrain.heightAt(st.x[0], st.y[0]), zB = opts.endpointElevations?.b ?? ctx.terrain.heightAt(st.x[n - 1], st.y[n - 1]);
-  const manual = d.profileMode === 'auto' ? null : buildProfile(normalizeVpis(d.vpis, L, zA, zB), norms.minCrestRadius, norms.minSagRadius);
+  const manual = d.profileMode === 'auto' ? null : buildProfile(normalizeVpis(d.vpis, L, zA, zB), radii.crest, radii.sag);
   if (manual) {
     const zm = elevations(manual, [s0, s1]);
     if (!startsAtA) endpointElevations.a = zm[0];
@@ -216,7 +216,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     ...w.vpis.map(v => ({ ...v, s: v.s + s0 })),
     ...r.vpis.filter(v => v.s > old1 + 1e-6).map(v => ({ ...v, s: v.s + shift })),
   ];
-  const profile = buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius);
+  const profile = buildProfile(vpis, radii.crest, radii.sag);
   const grade = elevations(profile, st.s);
   const ground = new Float64Array(n);
   for (let i = 0; i < n; i++) ground[i] = inWindow(i) ? w.ground[i - i0] : ctx.terrain.heightAt(st.x[i], st.y[i]);

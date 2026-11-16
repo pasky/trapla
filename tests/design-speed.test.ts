@@ -2,7 +2,7 @@
 // stretch's travel time; the vertical radii take the fastest stretch's until the grade line takes each stretch's.
 import { describe, expect, it } from 'vitest';
 import { ROAD_CHECKS } from '../src/core/checks';
-import { bendRules, horizontalRules, roadNorms, speedNorms } from '../src/core/data/norms';
+import { bendRules, horizontalRules, speedNorms } from '../src/core/data/norms';
 import { speedStretches, travelMinutes } from '../src/core/design-speed';
 import { buildAlignment, type PI } from '../src/core/horizontal';
 
@@ -33,10 +33,14 @@ describe('design speed by stretch', () => {
     expect(speedStretches(build(pis()), pis(), 90, 'S9.5')).toEqual([{ s0: 0, s1: build(pis()).length, speed: 90 }]);
   });
 
-  it('the vertical radii are the fastest stretch\'s until the grade line takes each stretch\'s own', () => {
-    expect(roadNorms(pis(70), 90, 'S9.5').minCrestRadius).toBe(speedNorms(90, 'S9.5').minCrestRadius);
-    expect(roadNorms(pis(90), 70, 'S9.5').minCrestRadius).toBe(speedNorms(90, 'S9.5').minCrestRadius);
-    expect(roadNorms(pis(90), 70, 'S9.5').minRadius).toBe(speedNorms(70, 'S9.5').minRadius);
+  it('each stretch rounds hilltops and dips with its own speed\'s radii', async () => {
+    const { stretchRadii } = await import('../src/core/design-speed');
+    const p = pis(70), al = build(p), st = speedStretches(al, p, 90, 'S9.5'), r = stretchRadii(al, p, 90, 'S9.5');
+    const crest = r.crest as (s: number) => number;
+    expect(crest(10)).toBe(speedNorms(90, 'S9.5').minCrestRadius);
+    expect(crest((st[1].s0 + st[1].s1) / 2)).toBe(speedNorms(70, 'S9.5').minCrestRadius);
+    expect(r.crestMin).toBe(speedNorms(70, 'S9.5').minCrestRadius);
+    expect(stretchRadii(build(pis()), pis(), 90, 'S9.5').crest).toBe(speedNorms(90, 'S9.5').minCrestRadius);
   });
 });
 
@@ -68,5 +72,27 @@ describe('hairpins (research/47 §3)', () => {
     expect(hairpinViolations(al(zig), zig, 70, 'S9.5', steep)).toEqual([]);
     expect(hairpinViolations(al(zig), zig, 70, 'S9.5', flat).map(v => v.title)).toEqual(['Hairpin at bend 1 outside the mountains']);
     expect(hairpinViolations(al(zig), zig, 90, 'S9.5', steep).map(v => v.title)).toEqual(['Hairpin at bend 1 on a 90 km/h stretch']);
+  });
+});
+
+describe('grade limits along the road (M4-2)', () => {
+  it('the steepest grade follows the terrain class of the ground; a hairpin is flatter', async () => {
+    const { verticalLimits } = await import('../src/core/design-speed');
+    const { HAIRPIN } = await import('../src/core/data/norms');
+    const { syntheticTerrain } = await import('../src/core/terrain');
+    // steep ground (25 %) for x > 1000 m, flat before it
+    const t = syntheticTerrain(400, 250, 5, (x, y) => 300 + (x > 1000 ? 0.25 * y : 0));
+    const p: PI[] = [{ x: 1500, y: 500, r: null, hairpin: true }];
+    const al = buildAlignment({ x: 100, y: 500 }, { x: 100, y: 1000 }, p, horizontalRules(70, 'S9.5'), bendRules(p, 70, 'S9.5'));
+    const { station } = await import('../src/core/horizontal');
+    const st = station(al, 10);
+    const v = verticalLimits(st, al, p, 70, 'S9.5', t);
+    expect(v.maxGradient).toBe(0.08); // S 9.5, mountainous
+    expect(v.gradeAt!(0, 100)).toBe(0.06); // hilly ground
+    const c = al.curves[0];
+    expect(v.gradeAt!(c.sStart, c.sEnd)).toBeCloseTo(HAIRPIN.maxGrade, 9);
+    expect(HAIRPIN.maxGrade).toBeCloseTo(0.0661, 4);
+    // a rebuilt railway's own fixed grade stays
+    expect(verticalLimits(st, al, [], 70, 'S9.5', t, 0.012).gradeAt).toBeUndefined();
   });
 });

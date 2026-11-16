@@ -2,7 +2,8 @@
 // speed; a stretch is a run of consecutive bends of one speed, and where two stretches meet the speed changes
 // in the middle of the straight between their curves (PROVISIONAL: no public rule says where).
 import { CATEGORIES, type CategoryId } from './data/categories';
-import { designSpeeds, HAIRPIN, hairpinLaneWidening } from './data/norms';
+import { designSpeeds, HAIRPIN, hairpinLaneWidening, speedNorms, type SpeedNorms } from './data/norms';
+import type { RadiusLimit } from './vertical';
 import type { Alignment, PI } from './horizontal';
 import { terrainClassAt } from './terrain-class';
 import type { Terrain } from './terrain';
@@ -16,7 +17,7 @@ export function bendSpeed(p: PI | undefined, roadSpeed: number, category?: Categ
 }
 
 /** The road from 0 to its length in stretches of one design speed (one stretch where no bend has its own). */
-export function speedStretches(al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category?: CategoryId): SpeedStretch[] {
+export function speedStretches(al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category?: CategoryId, hairpins = true): SpeedStretch[] {
   const out: SpeedStretch[] = [];
   let speed = roadSpeed, s0 = 0, lastEnd = 0, first = true;
   for (const c of al.curves) {
@@ -31,7 +32,7 @@ export function speedStretches(al: Pick<Alignment, 'curves' | 'length'>, pis: re
   }
   out.push({ s0, s1: al.length, speed });
   // a hairpin is driven at the speed its radius allows (ČSN 73 6101:2018 "mezní rychlost", research/47 §5)
-  for (const c of al.curves) {
+  if (hairpins) for (const c of al.curves) {
     if (!pis[c.index]?.hairpin || c.sEnd <= c.sStart) continue;
     const v = hairpinSpeed(c.rEff);
     for (let k = 0; k < out.length; k++) {
@@ -100,4 +101,65 @@ export function hairpinWidening(al: Pick<Alignment, 'curves'>, pis: readonly PI[
 /** pavement price of a hairpin's widening, CZK/m² (data/norms.ts HAIRPIN) */
 export function hairpinPavementPerM2(category: CategoryId): number {
   return CATEGORIES[category].roadClass === 'I' ? HAIRPIN.pavementClassI : HAIRPIN.pavementOther;
+}
+
+/** What limits the grade line along a road (M4-2): the steepest grade by the terrain class of the ground at each
+ * station (category × terrain, ČSN 73 6101:2018 via research/47 §1.1; core/terrain-class.ts) and less in a
+ * hairpin (HAIRPIN.maxGrade), and each stretch's own crest / sag radii. Numbers where nothing varies. */
+export interface VerticalLimits {
+  /** the steepest grade anywhere; `gradeAt` where it varies */
+  maxGradient: number;
+  gradeAt?: (s0: number, s1: number) => number;
+  crest: RadiusLimit; sag: RadiusLimit;
+  /** the smallest crest / sag radius anywhere */
+  crestMin: number; sagMin: number;
+  /** a stretch's norms at a chainage, where stretches differ */
+  stretch?: (s: number) => SpeedNorms;
+}
+export function verticalLimits(st: { s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; n: number; ds: number },
+  al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category: CategoryId,
+  terrain: Terrain, fixed?: number, offset = 0): VerticalLimits {
+  const cat = CATEGORIES[category], n = st.n;
+  // grades: fixed (a rebuilt railway's own), else the category's by terrain class per station
+  let at: Float64Array | null = null;
+  const byClass = cat.maxGradient;
+  if (fixed === undefined && byClass) {
+    at = new Float64Array(n);
+    for (let i = 0; i < n; i++) at[i] = byClass[terrainClassAt(terrain, st.x[i], st.y[i])];
+  }
+  // hairpins (their own arcs; window chainage = route chainage − offset)
+  for (const c of al.curves) {
+    if (!pis[c.index]?.hairpin || c.sEnd <= c.sStart) continue;
+    if (!at) at = new Float64Array(n).fill(fixed ?? byClass?.hilly ?? Infinity);
+    for (let i = 0; i < n; i++) { const s = st.s[i] + offset; if (s >= c.sStart && s <= c.sEnd) at[i] = Math.min(at[i], HAIRPIN.maxGrade); }
+  }
+  let lo = Infinity, hi = -Infinity;
+  if (at) for (const g of at) { lo = Math.min(lo, g); hi = Math.max(hi, g); }
+  const varies = !!at && hi - lo > 1e-12;
+  const maxGradient = varies ? hi : at ? hi : fixed ?? NaN;
+  const gradeAt = varies ? (s0: number, s1: number) => {
+    const a = Math.max(0, Math.min(n - 1, Math.floor((s0 - offset) / st.ds))), b = Math.max(a, Math.min(n - 1, Math.ceil((s1 - offset) / st.ds)));
+    let g = Infinity;
+    for (let i = a; i <= b; i++) if (at![i] < g) g = at![i];
+    return g;
+  } : undefined;
+  return { maxGradient, gradeAt, ...stretchRadii(al, pis, roadSpeed, category, offset) };
+}
+
+/** Each stretch's own crest / sag radii (the design speeds, not a hairpin's driving speed); numbers where the
+ * whole road has one speed. `offset`: route chainage of chainage 0 (a window). */
+export function stretchRadii(al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category: CategoryId, offset = 0):
+  Pick<VerticalLimits, 'crest' | 'sag' | 'crestMin' | 'sagMin' | 'stretch'> {
+  const stretches = speedStretches(al, pis, roadSpeed, category, false);
+  const own = speedNorms(roadSpeed, category);
+  if (stretches.length === 1 && stretches[0].speed === roadSpeed)
+    return { crest: own.minCrestRadius, sag: own.minSagRadius, crestMin: own.minCrestRadius, sagMin: own.minSagRadius };
+  const normsAt = (s: number) => {
+    let k = 0;
+    while (k + 1 < stretches.length && s + offset >= stretches[k].s1) k++;
+    return speedNorms(stretches[k].speed, category);
+  };
+  const all = stretches.map(x => speedNorms(x.speed, category));
+  return { crest: (s) => normsAt(s).minCrestRadius, sag: (s) => normsAt(s).minSagRadius,
+    crestMin: Math.min(...all.map(x => x.minCrestRadius)), sagMin: Math.min(...all.map(x => x.minSagRadius)), stretch: normsAt };
 }

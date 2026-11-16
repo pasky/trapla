@@ -8,7 +8,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, LOCAL_NORM, SPEED_NORMS, TRACK_NORM, type SpeedNorms } from './data/norms';
 import { CATEGORY_RANK, TRAFFIC_THRESHOLDS } from './data/scenario';
 import { buildAlignment, EDIT_TOLERANCE, MAX_DEFLECTION, ratioExcess, type Alignment, type CurveInfo, type HorizontalRules, type PI, type Vec2 } from './horizontal';
-import type { Profile } from './vertical';
+import { gradeLimitOf, type GradeLimit, type Profile } from './vertical';
 import { RAIL_MAX_GRADIENT } from './data/railway';
 import { acos, sin, tan } from './detmath';
 
@@ -83,7 +83,7 @@ export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: Categ
 
 export interface CheckFamily {
   horizontal(al: Alignment, norms: SpeedNorms, input?: HorizontalInput): Violation[];
-  vertical(p: Profile, norms: SpeedNorms, maxGradient: number, rail?: boolean): Violation[];
+  vertical(p: Profile, norms: SpeedNorms, maxGradient: GradeLimit, rail?: boolean, stretch?: StretchNorms): Violation[];
 }
 
 const fmt = (v: number, d = 0) => v.toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -450,7 +450,10 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
 
 // ---- vertical (roads) ----------------------------------------------------------------------------
 
-export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number, rail = false): Violation[] {
+/** Norms that vary along the road: a stretch's own design speed at a chainage (M4) */
+export type StretchNorms = (s: number) => SpeedNorms;
+
+export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradientAt: GradeLimit, rail = false, stretch?: StretchNorms): Violation[] {
   const out: Violation[] = [];
   const last = p.pts.length - 1;
   // "the height point at km …": the points carry no numbers in the profile, the station finds them
@@ -458,14 +461,15 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
   // track grades in per mille, road grades in per cent
   const G = (g: number) => rail ? `${fmt(Math.abs(g) * 1000, 1)} ‰` : `${fmt(Math.abs(g) * 100, 1)} %`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
-  const gradeRule = rail && maxGradient > RAIL_MAX_GRADIENT + 1e-9 ? `Game rule: a rebuilt stretch of a line may be as steep as that line is there, ${fmt(maxGradient * 1000, 1)} ‰`
+  const gradeRule = (maxGradient: number) => rail && maxGradient > RAIL_MAX_GRADIENT + 1e-9 ? `Game rule: a rebuilt stretch of a line may be as steep as that line is there, ${fmt(maxGradient * 1000, 1)} ‰`
     : rail ? `TSI INF §4.2.3.3: the steepest grade is set for the line's traffic; for passenger and freight trains the game uses ${fmt(maxGradient * 1000, 1)} ‰, as SŽDC's new-line study did (Čech 2018)`
     : norms.norm ? `${norms.norm}: at most ${pct(maxGradient)} % gradient for this road`
-    : `ČSN 73 6101: at most ${pct(maxGradient)} % gradient for this road here`;
+    : `ČSN 73 6101: at most ${pct(maxGradient)} % gradient for this road here (by the steepness of the ground around it; less in a hairpin)`;
   for (let i = 0; i < p.grades.length; i++) {
     const g = p.grades[i];
-    if (Math.abs(g) <= maxGradient + 1e-6) continue;
     const a = p.pts[i], b = p.pts[i + 1], L = b.s - a.s;
+    const maxGradient = gradeLimitOf(maxGradientAt, a.s, b.s);
+    if (Math.abs(g) <= maxGradient + 1e-6) continue;
     const dz = (Math.abs(g) - maxGradient) * L; // height to take out of this stretch
     const rise = g > 0;
     // move one interior end of the stretch; prefer the one whose other grade stays (more) within the limit
@@ -487,7 +491,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
       title: `Too steep: ${G(g)} ${rise ? 'climb' : 'descent'}`,
       fix: cands.length ? `${cands[0].verb} ${vpi(cands[0].k)} by ${fmt(h, 1)} m` : 'Pin a lower / higher height here, or make the route longer',
       detail: `Between ${vpi(i)} and ${vpi(i + 1)} the road ${rise ? 'climbs' : 'falls'} ${G(g)}; the limit is ${G(maxGradient)}. ${lengthen}${cands.length > 1 ? ` ${cands[1].verb} ${vpi(cands[1].k)} by ${fmt(h, 1)} m also works.` : ''} Automatic road height stays within the limit when it can.`,
-      basis: 'norm', rule: gradeRule,
+      basis: 'norm', rule: gradeRule(maxGradient),
     });
   }
   const reported = new Set<string>();
@@ -495,16 +499,17 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     if (c.type === 'none') continue;
     const where = { s0: c.s - c.lenEff / 2, s1: c.s + c.lenEff / 2, vpi: c.index };
     const crest = c.type === 'crest';
-    const min = crest ? norms.minCrestRadius : norms.minSagRadius;
+    const n = stretch?.(c.s) ?? norms;
+    const min = crest ? n.minCrestRadius : n.minSagRadius;
     const word = crest ? 'Hilltop' : 'Dip';
     if (c.r < min - 1e-6) {
       out.push({
         kind: c.type, ...where,
         title: `${word} too sharp`,
         fix: `Set the ${crest ? 'hilltop' : 'dip'} rounding at ${vpi(c.index)} to ≥ ${fmt(min)} m`,
-        detail: `Its radius is ${fmt(c.r)} m; ${norms.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
-        basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
-          : `${norms.verticalNorm ?? norms.norm ?? 'ČSN 73 6101'}: ${crest ? 'crest' : 'sag'} curves at ${norms.speed} km/h need a radius of at least ${fmt(min)} m`,
+        detail: `Its radius is ${fmt(c.r)} m; ${n.speed} km/h needs at least ${fmt(min)} m${crest ? ' so that drivers can see far enough over the top' : ' for comfort and for headlights to reach far enough at night'}.`,
+        basis: 'norm', rule: rail ? `Plášek, VUT 2009 (provisional): rail vertical curves at ${n.speed} km/h need a radius of at least ${fmt(min)} m (2,000 m, or 0.4·V²)`
+          : `${n.verticalNorm ?? n.norm ?? 'ČSN 73 6101'}: ${crest ? 'crest' : 'sag'} curves at ${n.speed} km/h need a radius of at least ${fmt(min)} m`,
       });
     }
     if (c.lenEff < c.len - 1e-3) {
@@ -537,8 +542,8 @@ export const ROAD_CHECKS: CheckFamily = {
   horizontal(al, norms, input) {
     return horizontalViolations(al, norms.speed, input);
   },
-  vertical(p, norms, maxGradient, rail) {
-    return verticalViolations(p, norms, maxGradient, rail);
+  vertical(p, norms, maxGradient, rail, stretch) {
+    return verticalViolations(p, norms, maxGradient, rail, stretch);
   },
 };
 

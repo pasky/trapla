@@ -131,6 +131,9 @@ export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
  * next to it (the forest guide's ≈ 20 m straights "may be dropped where cramped"). */
 export const HAIRPIN = {
   radius: 17.5, banking: 0.075,
+  /** Steepest grade in a hairpin: the resultant of grade and banking √(s² + p²) at most 10 % where icing is
+   * frequent (ČSN 73 6101:2018 §8.10.1, Radimský slides 12–14; mountain passes), with p = 7.5 %: s ≤ 6.6 % */
+  maxGrade: Math.sqrt(0.1 ** 2 - 0.075 ** 2),
   /** Lane width a 16.5 m articulated lorry sweeps turning through 90° on a lane of radius R (VUT/HBH, Metodika
    * pro rozšíření jízdních pruhů ve směrových obloucích, 2015, tab. 5 p. 11), [R, m] */
   sweptLane: [[15, 5.3], [20, 4.7], [25, 4.3], [30, 4.0], [40, 3.6], [50, 3.4]] as [number, number][],
@@ -168,19 +171,6 @@ export function bendRules(pis: readonly PI[], speed: number, category?: Category
     if (!r) memo.set(p.speed, r = horizontalRules(p.speed, category));
     return r;
   };
-}
-
-/** The road's norms with the vertical radii of the fastest stretch: until the grade line takes each stretch's
- * own radii (docs/design-realism-plan.md M4-2), the strictest apply everywhere (never too lenient). */
-export function roadNorms(pis: readonly PI[], speed: number, category?: CategoryId): SpeedNorms {
-  const n = speedNorms(speed, category);
-  const allowed = new Set(category ? designSpeeds(category) : [speed]);
-  let crest = n.minCrestRadius, sag = n.minSagRadius;
-  for (const p of pis) if (p.speed !== undefined && p.speed !== speed && allowed.has(p.speed)) {
-    const o = speedNorms(p.speed, category);
-    crest = Math.max(crest, o.minCrestRadius); sag = Math.max(sag, o.minSagRadius);
-  }
-  return crest === n.minCrestRadius && sag === n.minSagRadius ? n : { ...n, minCrestRadius: crest, minSagRadius: sag };
 }
 
 /** Everything the horizontal geometry and its checks need for a design speed. */
