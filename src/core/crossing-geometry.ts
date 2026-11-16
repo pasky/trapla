@@ -8,7 +8,7 @@ import { engineerLink, LINK_CORRIDOR, LINK_MAX_SUPPORT, profileLink, routeAlong,
 import { crossingWorks, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
 import { LOWERING_RULES, RETAINING_RULES, retainingAssembly, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { KIND } from './structures';
-import { acos } from './detmath';
+import { acos, atan2, cos, sin, tan } from './detmath';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
@@ -136,6 +136,29 @@ export const SQUARE_BELOW = 70;
 /** How far along the old way beyond our corridor a straightened line may rejoin it, m (PROVISIONAL
  * engine bound: a local realignment, not a reroute). */
 const SQUARE_SEARCH = 400;
+/** Tangent lengths tried for a straightened line's bend, as shares of its chord (engine search). */
+const BEND_SHARES = [0.15, 0.3, 0.45], CURVE_SHARES = [0.4, 0.25, 0.55];
+/** The line from p (heading u) to q (arriving heading v) as p → m1 = p + u·a → m2 = q − v·b → q, its two
+ * corners rounded by circular arcs of radius r (sampled every ≈ 5 m), or undefined where they do not fit. */
+function twoBends(p: XY, u: XY, q: XY, v: XY, a: number, b: number, r: number): XY[] | undefined {
+  const m1 = { x: p.x + u.x * a, y: p.y + u.y * a }, m2 = { x: q.x - v.x * b, y: q.y - v.y * b };
+  const mid = Math.hypot(m2.x - m1.x, m2.y - m1.y);
+  if (mid < 1e-6) return undefined;
+  const w = { x: (m2.x - m1.x) / mid, y: (m2.y - m1.y) / mid };
+  const turn = (d1: XY, d2: XY) => acos(Math.max(-1, Math.min(1, d1.x * d2.x + d1.y * d2.y)));
+  const t1 = r * tan(turn(u, w) / 2), t2 = r * tan(turn(w, v) / 2);
+  if (!(t1 <= a + 1e-6 && t2 <= b + 1e-6 && t1 + t2 <= mid + 1e-6)) return undefined;
+  const arc = (m: XY, d1: XY, d2: XY, t: number): XY[] => {
+    const cross = d1.x * d2.y - d1.y * d2.x;
+    if (t < 1e-3 || Math.abs(cross) < 1e-9) return [m];
+    const side = cross > 0 ? 1 : -1, s0 = { x: m.x - d1.x * t, y: m.y - d1.y * t };
+    const centre = { x: s0.x - d1.y * side * r, y: s0.y + d1.x * side * r };
+    const a0 = atan2(s0.y - centre.y, s0.x - centre.x), sweep = turn(d1, d2) * side;
+    const count = Math.max(2, Math.ceil(Math.abs(sweep) * r / 5));
+    return Array.from({ length: count + 1 }, (_, k) => ({ x: centre.x + r * cos(a0 + sweep * k / count), y: centre.y + r * sin(a0 + sweep * k / count) }));
+  };
+  return [p, ...arc(m1, u, w, t1), ...arc(m2, w, v, t2), q];
+}
 /** Bounded engine work: rounds of the consolidation pass. */
 const JOIN_ROUNDS = 3;
 /** A reroute joins its target's road away from the crossing only where that line is at most this share
@@ -586,38 +609,48 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     if (cut.sides[0] === cut.sides[1]) return { problem: 'same' as const };
     const row = ROAD_CLASSES[c.cls], radius = row.minRadius, C = at(c.s), half = g.width / 2;
     const clear = (q: XY) => margin(q, half, false);
-    // The bend from the old way at chainage d (travelling towards our road) into the square run at its
-    // end beside our earthworks: a cubic curve tangent to both, tried ever further out along the old way.
+    // The bend(s) from the old way at chainage d (travelling towards our road) into the square run at its
+    // end beside our earthworks, no sharper than the class's smallest radius: one smooth cubic curve
+    // tangent to both (its tangent lengths a share of the chord), else two circular bends with a straight
+    // between (an S, where the old way and the square run meet inside our corridor). Each shape is tried
+    // ever further out along the old way before the next: it may rejoin the old way at another road's
+    // junction, never beyond it (that road keeps its junction).
+    const curveOf = (p: XY, u: XY, q: XY, v: XY, shape: number): XY[] | undefined => {
+      const span = Math.hypot(q.x - p.x, q.y - p.y);
+      if (shape >= CURVE_SHARES.length) {
+        for (const ta of BEND_SHARES) for (const tb of BEND_SHARES) { const line = twoBends(p, u, q, v, ta * span, tb * span, radius); if (line) return line; }
+        return undefined;
+      }
+      const l = CURVE_SHARES[shape] * span, b1 = { x: p.x + u.x * l, y: p.y + u.y * l }, b2 = { x: q.x - v.x * l, y: q.y - v.y * l };
+      const curve: XY[] = [];
+      let tightest = Infinity;
+      for (let t = 0; t <= 1 + 1e-9; t += 1 / 24) {
+        const m = 1 - t;
+        curve.push({ x: m * m * m * p.x + 3 * m * m * t * b1.x + 3 * m * t * t * b2.x + t * t * t * q.x,
+          y: m * m * m * p.y + 3 * m * m * t * b1.y + 3 * m * t * t * b2.y + t * t * t * q.y });
+        const dx = 3 * m * m * (b1.x - p.x) + 6 * m * t * (b2.x - b1.x) + 3 * t * t * (q.x - b2.x);
+        const dy = 3 * m * m * (b1.y - p.y) + 6 * m * t * (b2.y - b1.y) + 3 * t * t * (q.y - b2.y);
+        const ddx = 6 * m * (b2.x - 2 * b1.x + p.x) + 6 * t * (q.x - 2 * b2.x + b1.x), ddy = 6 * m * (b2.y - 2 * b1.y + p.y) + 6 * t * (q.y - 2 * b2.y + b1.y);
+        const speed = Math.hypot(dx, dy), bend = Math.abs(dx * ddy - dy * ddx);
+        if (bend > 1e-12) tightest = Math.min(tightest, speed * speed * speed / bend);
+      }
+      return tightest >= radius - 1e-6 ? curve : undefined;
+    };
     const leg = (side: number, direction: number): { d: number; points: XY[] } | undefined => {
       const o = (side > 0 ? C.left : C.right) + half + SETBACK;
-      const q = { x: C.x - C.ty * o * side, y: C.y + C.tx * o * side }, vx = C.ty * side, vy = -C.tx * side;
+      const q = { x: C.x - C.ty * o * side, y: C.y + C.tx * o * side }, v = { x: C.ty * side, y: -C.tx * side };
       const start = direction < 0 ? cut.d0 : cut.d1, end = direction < 0 ? path[0].d : path[path.length - 1].d;
-      // (it rejoins the old way short of any other road joining it, which keeps its junction)
-      for (let k = 0; k <= SQUARE_SEARCH / STEP; k++) {
-        const d = start + direction * k * STEP;
-        if (direction * (d - end) > 0 || (k && junctionsIn(path, Math.min(d, d - direction * STEP), Math.max(d, d - direction * STEP)).length)) break;
+      for (let shape = 0; shape <= CURVE_SHARES.length; shape++) for (let k = 0, last = false; k <= SQUARE_SEARCH / STEP && !last; k++) {
+        let d = start + direction * k * STEP;
+        if (direction * (d - end) > 0) break;
+        const crossed = k ? junctionsIn(path, Math.min(d, d - direction * STEP), Math.max(d, d - direction * STEP)) : [];
+        if (crossed.length) { d = crossed.reduce((w, j) => direction < 0 ? Math.max(w, j.d) : Math.min(w, j.d), direction * Infinity); last = true; }
         // (u: the old way's direction at p, travelling towards our road)
         const p = along(path, d), p2 = along(path, d - direction), ul = Math.hypot(p2.x - p.x, p2.y - p.y) || 1;
-        const ux = (p2.x - p.x) / ul, uy = (p2.y - p.y) / ul;
-        const span = Math.hypot(q.x - p.x, q.y - p.y), l = 0.4 * span;
-        const b1 = { x: p.x + ux * l, y: p.y + uy * l }, b2 = { x: q.x - vx * l, y: q.y - vy * l };
-        const points: XY[] = [];
-        let sharpest = Infinity;
-        for (let t = 0; t <= 1 + 1e-9; t += 1 / 24) {
-          const m = 1 - t;
-          const x = m * m * m * p.x + 3 * m * m * t * b1.x + 3 * m * t * t * b2.x + t * t * t * q.x;
-          const y = m * m * m * p.y + 3 * m * m * t * b1.y + 3 * m * t * t * b2.y + t * t * t * q.y;
-          const dx = 3 * m * m * (b1.x - p.x) + 6 * m * t * (b2.x - b1.x) + 3 * t * t * (q.x - b2.x);
-          const dy = 3 * m * m * (b1.y - p.y) + 6 * m * t * (b2.y - b1.y) + 3 * t * t * (q.y - b2.y);
-          const ddx = 6 * m * (b2.x - 2 * b1.x + p.x) + 6 * t * (q.x - 2 * b2.x + b1.x), ddy = 6 * m * (b2.y - 2 * b1.y + p.y) + 6 * t * (q.y - 2 * b2.y + b1.y);
-          const speed = Math.hypot(dx, dy), bend = Math.abs(dx * ddy - dy * ddx);
-          if (bend > 1e-12) sharpest = Math.min(sharpest, speed * speed * speed / bend);
-          points.push({ x, y });
-        }
-        // (the radius first: the clearance walk is the dear part)
-        if (sharpest < radius - 1e-6) continue;
-        // (a few probes first: most failing curves cut the corner into our earthworks)
-        if ([12, 6, 18, 3, 21].some(i => clear(points[i]) < SETBACK - 0.5)) continue;
+        const points = curveOf(p, { x: (p2.x - p.x) / ul, y: (p2.y - p.y) / ul }, q, v, shape);
+        if (!points) continue;
+        // (a few probes first: most failing lines cut the corner into our earthworks)
+        if ([points.length >> 1, points.length >> 2, (3 * points.length) >> 2].some(i => clear(points[i]) < SETBACK - 0.5)) continue;
         if (points.every((q, i) => i === 0 || i === points.length - 1 || clear(q) >= SETBACK - 0.5)) return { d, points };
       }
       return undefined;
