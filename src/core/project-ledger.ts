@@ -138,8 +138,18 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     line(g.road, g.width); line(g.links?.[0], g.width); line(g.links?.[1], g.width);
     line(g.turnarounds, g.width, g.turnaroundRadius ?? 0);
   };
-  // a designed road under/over our crossing is its own road (its own envelope), not ours
-  for (const c of result.crossings) if (!c.designed) geometry(c.geometry);
+  // a designed road under/over our crossing is its own road (its own envelope), not ours. Where a crossed
+  // road is raised or lowered to meet us (a junction, its bridge over us), its drawn terrain tails beyond the
+  // ramps' feet are the old road as it is (crossing-geometry.ts): no works there.
+  for (const c of result.crossings) if (!c.designed) {
+    const g = c.geometry, road = g?.road;
+    if (g && road && (c.type === 'junction' || c.type === 'overbridge')) {
+      let i = 0, j = road.length - 1;
+      while (i + 1 < road.length && road[i].surface === 'terrain' && road[i + 1].surface === 'terrain') i++;
+      while (j > i && road[j].surface === 'terrain' && road[j - 1].surface === 'terrain') j--;
+      geometry({ ...g, road: road.slice(i, j + 1) });
+    } else geometry(g);
+  }
   for (const f of result.footprintConflicts) {
     geometry(f.geometry);
     for (const old of [f.original, ...(f.originals ?? [])]) line(old, f.geometry?.width ?? 0);

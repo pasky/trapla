@@ -309,13 +309,19 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     // QA (main f9f5d9d): bent right at its start, where our reroute of the rest of the track begins and
     // another track meets it: the two roads' works meet at that end as at a junction, and what our road does
     // to the rest of its old track is ours alone (no "two roads change the same old road")
+    // ... and a quarter along, bent 60 m away from our road: it now crosses another track at a junction whose
+    // drawn ends are that track as it is (not works beside our reroute). Bent 60 m towards our road it runs
+    // 7 m from our embankment (a real conflict, with its concrete fix); 50 m towards it, it keeps clear.
     const { nearestLeg } = await import('../src/core/horizontal');
-    for (const [at, off] of [[10, -60], [21, -60]]) {
+    const quarter = (interval.s1 - interval.s0) / 4;
+    for (const [at, off, shared] of [[10, -60, []], [21, -60, []], [quarter, -60, []], [quarter, 50, []],
+      [quarter, 60, ['Move one of them about 6 m away here']]] as [number, number, string[]][]) {
       const near = structuredClone(edited), q = near.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
       const g = index.position(track.id, interval.s0 + at)!, g2 = index.position(track.id, interval.s0 + at + 5)!, tl = Math.hypot(g2.x - g.x, g2.y - g.y);
       q.alignment.pis.splice(nearestLeg(q.endpoints.a.position, q.endpoints.b.position, q.alignment.pis, g), 0, { x: g.x - (g2.y - g.y) / tl * off, y: g.y + (g2.x - g.x) / tl * off, r: null });
       const res = evaluateProject(ctx, { epoch: 'e', revision: 3, design: near });
-      expect(res.issues.filter(i => i.code.startsWith('shared')).map(i => i.violation.title)).toEqual([]);
+      expect(res.issues.filter(i => i.code.startsWith('shared')).map(i => i.violation.fix)).toEqual(shared);
+      if (!shared.length) expect(res.cost.total).not.toBeNull();
     }
   }, 120_000);
 });
