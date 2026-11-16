@@ -1,6 +1,7 @@
 // Close-up screenshots of earthworks (design realism, docs/design-realism-plan.md). Untimed: run under
 //   flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/realism-shots.mjs name:design.json:chainage[:dist:az:elev:offset-left[:select]] …
-// select: bN opens bend N's card (0-based PI index), cN the crossing card of pack way N.
+// select: bN opens bend N's card (0-based PI index), cN the crossing card of pack way N, bridge / tunnel the card of
+// that structure at (else the first one on the route).
 // Writes docs/screenshots/<name>.png and prints what the engine built there.
 import { readFileSync, mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -24,7 +25,9 @@ try {
     }
     const info = await page.evaluate(([s, d, a, e, o, sel]) => {
       const t = window.trapla, r = t.result(), i = Math.round(s / r.ds);
-      if (sel[0] === 'b') t.selectPi(Number(sel.slice(1))); else if (sel[0] === 'c') t.selectCrossing(Number(sel.slice(1))); else t.select(null);
+      const piece = { bridge: 1, tunnel: 2 }[sel], run = piece && (r.runs.find(q => q.kind === piece && q.s0 <= s && q.s1 >= s) ?? r.runs.find(q => q.kind === piece));
+      if (run) t.select({ kind: 'stretch', s0: run.s0, s1: run.s1, piece: sel });
+      else if (sel[0] === 'b') t.selectPi(Number(sel.slice(1))); else if (sel[0] === 'c') t.selectCrossing(Number(sel.slice(1))); else t.select(null);
       const x = r.x[i] - r.ty[i] * o, y = r.y[i] + r.tx[i] * o; // o m to the left of the axis
       t.setView({ contours: false, slope: false, exag: 1, photo: false });
       t.lookAt(x, y, d, a, e); t.profileFocus(s - 600, s + 600);
