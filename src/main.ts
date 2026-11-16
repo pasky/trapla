@@ -1,8 +1,6 @@
 import './style.css';
 import { scenarioParams } from './core/data/scenario';
-import type { Result } from './core/evaluate';
 import { missionProject } from './core/project-mission';
-import { corridorOfRoute } from './core/project-motorway';
 import { RouteExtras } from './render/extras';
 import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
@@ -25,7 +23,6 @@ import { newSession } from './session';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext } from './core/project-legacy';
-import type { RouteId } from './core/project';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -42,6 +39,9 @@ import { createSelection } from './ui/selection';
 import { createRoadLinks } from './ui/road-links';
 import { createResultDisplay } from './ui/result-display';
 import { createRoutes } from './ui/routes';
+import { createActiveLine } from './ui/active-line';
+import { createProjectScore } from './ui/project-score';
+import { installMapWindow } from './ui/map-window';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
 import { hudEvents } from './ui/hud-events';
@@ -147,51 +147,10 @@ async function main() {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
     if (photoNote) photoNote.hidden = !on;
   }, noise, () => frameRoute());
-  /** the active route as built (else its ends and bends) in view */
-  /** `r`: the road to frame (default: the last result shown; right after a switch that is still the old road's) */
-  const frameRoute = (r: Result | null = session.last) => {
-    const d = store.read() ? store.design : null;
-    view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
-      : d ? [ends.a, ...d.pis, ends.b] : []);
-  };
-
-  const missionRouteId = () => projectStore.snapshot.design.routes.find(r => r.role === 'mission')?.id;
-  /** exactly the one legacy road: the unchanged single-road score/verdict applies (core's facade) */
-  const legacyFacade = () => {
-    const d = projectStore.snapshot.design, only = d.routes[0];
-    return d.routes.length === 1 && !d.corridors.length && !d.connections.length && only.role === 'mission' && !only.source
-      && store.activeRouteId === only.id && store.read() !== null;
-  };
-  /** player names of the routes; a motorway's two directions are one motorway (its forward name) */
-  const routeNames = () => {
-    const d = projectStore.snapshot.design, names = Object.fromEntries(d.routes.map(r => [r.id, r.name]));
-    for (const c of d.corridors) if (names[c.children.forward]) names[c.children.reverse] = names[c.children.forward];
-    return names;
-  };
-  const projectScore = (pending: boolean) => {
-    const mission = missionRouteId(), active = store.activeRouteId, alone = session.projectFull?.cost.alone ?? {};
-    // While a road is dragged the project total follows its live price: the last full total with this road's
-    // own bill replaced by the preview's (≈).
-    const total = session.projectFull?.cost.total;
-    const live = session.activePreviewPrice !== null && total !== null && total !== undefined && active && active in alone
-      ? total - alone[active] + session.activePreviewPrice : null;
-    // our road: the mission's route, and a motorway mission's other direction
-    const missionCorridor = mission ? corridorOfRoute(projectStore.snapshot.design, mission) : undefined;
-    const ours = new Set([mission, missionCorridor?.children.forward, missionCorridor?.children.reverse].filter((id): id is RouteId => !!id));
-    const groups = Object.fromEntries(projectStore.snapshot.design.corridors.flatMap(c => [[c.children.forward, c.id], [c.children.reverse, c.id]]));
-    // "Our road only" / "This railway only": what the price shown is for, in the active line's own word
-    const word = (id: RouteId | null | undefined) => { const k = projectStore.snapshot.design.routes.find(r => r.id === id)?.kind; return k === 'railway' ? 'railway' : k === 'motorway' ? 'motorway' : 'road'; };
-    const only = (id: RouteId | null | undefined) => `${id && ours.has(id) ? 'Our' : 'This'} ${word(id)} only`;
-    const own = session.activePreviewPrice !== null ? { total: session.activePreviewPrice, approx: true, label: only(active), routeId: active ?? undefined }
-      : active && active in alone ? { total: alone[active], approx: false, label: only(active), routeId: active }
-        : mission && mission in alone ? { total: alone[mission], approx: false, label: only(mission), routeId: mission } : null;
-    hud.setProject(session.projectFull, pending, projectStore.best, { missionRouteId: mission, ours, groups, legacy: legacyFacade(), ownPrice: own,
-      liveTotal: live, dragging: session.activePreviewPrice !== null && projectStore.inTransaction,
-      activeRouteId: active ?? undefined, names: routeNames(),
-      lengths: Object.fromEntries(Object.values(session.projectFull?.routes ?? {}).flatMap(r => {
-        const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
-      })) });
-  };
+  // ---- the active line on the map: its ends as drawn, bringing it into view (ui/active-line.ts) ----
+  const { endInfo, activeEndpoints, frameRoute } = createActiveLine({ session, store, projectStore, scenario, view, positionA, positionB });
+  // ---- the score (ui/project-score.ts) ----
+  const { missionRouteId, legacyFacade, projectScore } = createProjectScore({ session, store, projectStore, hud });
   /** main-thread ms per consumer of the last handled result (drag-perf probe) */
   const handlerTiming: Record<string, number> = {};
 
@@ -216,25 +175,6 @@ async function main() {
   view.onNeedTransport = () => { void ensureTransport(); };
   if (viewBar.photo) void ensureTransport(); // the photo was already on from the saved view
   const buildTool = new BuildRoadTool(() => inspector.host(), document.getElementById('overlay')!, view);
-  // a rebuilt stretch's ends carry their own drag handles (labelled), so the tick stays unlabelled
-  /** a side road's end on another road follows that road: its drawn end is where it was built */
-  const endAt = (end: 'a' | 'b') => {
-    const route = store.route, r = route && session.projectFull?.routes[route.id]?.legacy;
-    // a paired motorway's directions are shown on its shared line (A→B): its ends are the motorway's
-    const paired = route && corridorOfRoute(projectStore.snapshot.design, route.id);
-    if (paired?.mode === 'paired') return paired.endpoints[end].position;
-    if (!route || route.endpoints[end].anchor.kind !== 'route' || !r) return route?.endpoints[end].position;
-    const i = end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], z: r.grade[i] };
-  };
-  // the motorway's return direction starts at B
-  const reversed = () => !!store.route && projectStore.snapshot.design.corridors.some(c => c.mode === 'independent' && c.children.reverse === store.route!.id);
-  /** what the active road's ends meet (the mission's interchanges), in its own direction */
-  const endInfo = (end: 'a' | 'b') => store.route?.role === 'mission' ? scenario.ends?.[reversed() ? (end === 'a' ? 'b' : 'a') : end] : undefined;
-  const activeEndpoints = () => ({
-    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start', sign: endInfo('a')?.kind },
-    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', sign: endInfo('b')?.kind },
-    plain: !!store.route && store.route.role !== 'mission',
-  });
   // ---- the selection (ui/selection.ts) ----
   const selection = createSelection({
     session, store, projectStore, pack, view, profile, extras, hud, inspector, annotations, intro, buildTool, activeEndpoints,
@@ -348,24 +288,8 @@ async function main() {
     ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
   });
 
-  // map → profile: the part of the route the map shows (a light window), recomputed after camera moves
-  let windowTimer = 0;
-  const updateMapWindow = () => {
-    windowTimer = 0;
-    const r = session.last;
-    if (!r) return;
-    const box = canvasBox();
-    let lo = Infinity, hi = -Infinity, seen = 0, total = 0;
-    const step = Math.max(1, Math.floor(r.n / 400));
-    for (let i = 0; i < r.n; i += step) {
-      total++;
-      const p = view.project(r.x[i], r.y[i], r.grade[i]);
-      if (p.vis && p.sx >= 0 && p.sy >= 0 && p.sx <= box.width && p.sy <= box.height) { seen++; lo = Math.min(lo, r.s[i]); hi = Math.max(hi, r.s[i]); }
-    }
-    profile.setMapWindow(seen && seen < total * 0.9 ? { s0: lo, s1: hi } : null);
-  };
-  const prevRender = view.onRender;
-  view.onRender = () => { prevRender?.(); if (!windowTimer) windowTimer = window.setTimeout(updateMapWindow, 120); };
+  // map → profile: the part of the route the map shows (ui/map-window.ts)
+  installMapWindow({ session, view, profile, canvasBox });
 
   // ---- HUD (ui/hud-events.ts) ----
   hud.ev = hudEvents({
