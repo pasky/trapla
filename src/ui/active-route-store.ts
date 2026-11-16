@@ -13,7 +13,8 @@ export class ActiveRouteStore {
   /** A motorway's direction is edited on its own (its bends, then, change only it). Selection only:
    * choosing it never changes the project. */
   oneDirection = false;
-  onHistory?: () => void;
+  /** before an undo / redo (and before loading the best design); what it returns runs after the step */
+  onHistory?: () => (() => void) | void;
   private atomic = false;
   private cached: { project: ProjectDesign; id: RouteId; one: boolean; design: Design | null } | null = null;
   constructor(readonly project: ProjectStoreApi, private initialProject: () => ProjectDesign) {
@@ -119,8 +120,8 @@ export class ActiveRouteStore {
     this.project.update(draft => Object.assign(draft, structuredClone(best.design)));
     this.project.commit();
   }
-  undo() { this.onHistory?.(); this.project.undo(); }
-  redo() { this.onHistory?.(); this.project.redo(); }
+  undo() { const after = this.onHistory?.(); this.project.undo(); after?.(); }
+  redo() { const after = this.onHistory?.(); this.project.redo(); after?.(); }
   undoLabel() { return this.project.canUndo() ? 'Undo edit' : ''; }
   redoLabel() { return this.project.canRedo() ? 'Redo edit' : ''; }
   offerBest(result: ProjectResult) { return this.project.offerBest(result); }

@@ -41,6 +41,14 @@ describe('active road widgets on project history', () => {
     expect(adapter.activeRouteId).toBe(first.id); adapter.switchRoute('other'); expect(adapter.design.pis[0].y).toBe(105);
   });
 
+  it('tells its owner before an undo / redo, and again after it with the design as the step left it', () => {
+    const { adapter } = setup(); const seen: (number | string)[] = [];
+    adapter.update(d => { d.pis[0].r = 400; });
+    adapter.onHistory = () => { seen.push(`before ${adapter.design.pis[0].r}`); return () => seen.push(`after ${adapter.design.pis[0].r}`); };
+    adapter.undo(); adapter.redo();
+    expect(seen).toEqual(['before 400', 'after null', 'before null', 'after 400']);
+  });
+
   it('keeps drags atomic and refuses switching halfway through a transaction', () => {
     const { adapter, project } = setup(); const events: boolean[] = [];
     adapter.on((_d, committed) => events.push(committed));
