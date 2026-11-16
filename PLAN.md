@@ -255,17 +255,18 @@ What exists (details and commands in `README.md`):
   way bought out, never on the ground across railways, ponds/rivers or motorways; where the line beside our
   earthworks fails, a gentler line is searched within 100 m of our road. One that still cannot be built is a
   violation with its reasons and a computed fix, and Auto picks another treatment. Before: 730 of 871 automatic
-  reroutes on the audit designs were silently unbuildable; now 24 are reported and 1 slips through (a stream
-  touching only a link's edge).
+  reroutes on the audit designs were silently unbuildable; now 7, all reported.
 - Lowered underpass (research/37): under a low embankment the crossed track or road is lowered into a cut (at
   most 6 m, PROVISIONAL) on class-gradient ramps, its low point drained by a gravity pipe or a pumped sump
   (TP 83). The D11 straight start line and town-centre are VALID on their own (local road 2244 lowered 3.3 m,
   service road 5162 lowered 2.9 m). A bridge over us may slope like its road.
-- Auto avoids boxes and bridges over us whose kept road runs straight back under our slope.
-- Published designs: straight +28.9 M, best −34.6 M, demo −55.1 M, direct-80 +13.0 M, direct-90 +60.6 M,
-  town-centre +76.5 M (cheap unbuildable reroutes replaced by honest ones or structures; lowered boxes save
-  elsewhere), all VALID. No net full-evaluate creep within the host's noise (candidate reroutes that cannot be
-  worth it are not built, reroutes reused by the strict retry). Details: `docs/footprint-conflicts.md` § Model 21.
+- A reroute leads only to a crossing that carries traffic over or under us, never to another cut road
+  (playtest-qa P1 #13; 152 such chains on main's audit designs, none now). A selected crossing outlines all
+  its works on the map. Auto avoids boxes whose kept road runs straight back under our slope.
+- Published designs: straight +33.5 M, best −48.5 M, demo −43.8 M, direct-80 −7.9 M, direct-90 +48.7 M,
+  town-centre +91.5 M (cheap unbuildable reroutes replaced by honest ones or structures; lowered boxes save
+  elsewhere), all VALID. No net full-evaluate creep on the saved designs (sum 569 → 568 ms; candidate reroutes
+  that cannot be worth it are not built, reroutes reused by the strict retry). Details: `docs/footprint-conflicts.md` § Model 21.
 - Not modelled: groundwater and utilities under a lowered road; the pump station's installation and power
   connection (no installed price found).
 
