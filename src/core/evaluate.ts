@@ -258,7 +258,7 @@ interface PassCache {
   profile: Map<string, unknown>; support: Map<string, number>; retaining: RetainingFeatureCache;
   reroutes: ReturnType<typeof crossingCache>; sections: SectionCache;
 }
-interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
+interface GeometryRow { width: number; area: number; bridge: number; bridgeUrban?: number; engineering: number; cuts: [number, number, number][] }
 interface ProfileTables {
   /** Flat-ground earth geometry and rural bridge estimate by profile height index. */
   geometry: GeometryRow[];
@@ -532,17 +532,21 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     mustBridge.push({ s: c.s, g, need, what: 'watercourse' });
   }
   // Distinct sparse crossing classes retain their actual size, skew and multiplicity in the DP.
-  const costClasses = groundProfiles.map((_, ground) => ({ ground, water: [] as WaterCrossing[], elevation: 0 }));
-  const profileCostClass = Uint16Array.from(groundIds);
+  // Ground classes, rural then built-up: on the axis in a built-up area the town rates, surcharge and land
+  // (SPK CN urban rows, building land), as the bill charges them there; then the watercourses' own classes.
+  const G = groundProfiles.length, builtUp = (x: number, y: number) => terrain.cover(x, y) & BUILTUP_BIT ? 1 : 0;
+  type CostClass = { ground: number; water: WaterCrossing[]; elevation: number; urban: number };
+  const costClasses: CostClass[] = [0, 1].flatMap(urban => groundProfiles.map((_, ground) => ({ ground, water: [] as WaterCrossing[], elevation: 0, urban })));
+  const profileCostClass = Uint16Array.from(groundIds, (g, i) => g + G * builtUp(st.x[i], st.y[i]));
   /** Blocks: each crossing priced where it is (its own class at its own chainage and ground). */
   const profilePoints: { s: number; g: number; cls: number }[] = [];
   if (blocks) for (const c of water) {
     const g = waterGround.get(c)!;
     profilePoints.push({ s: c.s, g, cls: costClasses.length });
-    costClasses.push({ ground: groundIds[Math.min(n - 1, Math.round(c.s / ds))], water: [c], elevation: g });
+    costClasses.push({ ground: groundIds[Math.min(n - 1, Math.round(c.s / ds))], water: [c], elevation: g, urban: builtUp(c.x, c.y) });
   } else for (let i = 0; i < n; i++) if (waterAt[i].length) {
     profileCostClass[i] = costClasses.length;
-    costClasses.push({ ground: groundIds[i], water: waterAt[i], elevation: ground[i] });
+    costClasses.push({ ground: groundIds[i], water: waterAt[i], elevation: ground[i], urban: builtUp(st.x[i], st.y[i]) });
   }
   const crossingCost = (cs: WaterCrossing[], width: number, z: number) => cs.reduce((v, c) => v + (z > waterGround.get(c)! ? culvertCost(c, width) : 0), 0);
   const forceWater = (mask: Uint8Array, ss: ArrayLike<number>, heights: ArrayLike<number>, widths: ArrayLike<number>, chosen?: ArrayLike<number>) => {
@@ -632,7 +636,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   mustBridge.sort((a, b) => a.s - b.s);
   lap('stations');
 
-  // --- per-metre costs for the auto-profile: rural rates on flat ground, incl. the surcharge ---
+  // --- per-metre costs for the auto-profile: on flat ground, rural or town rates, incl. the surcharge ---
   // Markups by kind of work: SPK's rural/urban "other objects" surcharge (roads), or a price book's own
   // per-profession markups (railway, data/categories.ts). Road expressions stay bit-identical.
   const mk = cat.markup;
@@ -650,6 +654,10 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const tunnelPerM = (cat.tunnelTubes * tunnelKm() / 1000) * surTunnel;
   const bridge = bridgeModel(cat);
   const bridgeRural = (h: number) => bridge.estimatePerM(h) * surBridge + cat.crownWidth * LAND.perM2;
+  // in a built-up area: the town surcharge, town land and the town tunnel rate (SPK CN urban rows)
+  const landUrban = landPerM2(1);
+  const bridgeUrban = (h: number) => bridge.estimatePerM(h) * (1 + surB(1)) + cat.crownWidth * landUrban;
+  const tunnelPerMUrban = (cat.tunnelTubes * tunnelKm(1) / 1000) * (1 + surT(1));
   const { fillSlope, cutSlope } = DEFAULT_SLOPES;
   const b = cat.crownWidth;
   const topsoilPerM2 = PRICES.topsoilDepth * PRICES.topsoil;
@@ -710,29 +718,32 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const costFor = (materialValue: number) => {
     const dp = decisionPrices(materialValue);
     const cost = (h: number, kind = -1, costClass = 0) => {
-      if (kind === KIND.tunnel) return tunnelPerM;
-      const geo = geometryAt(h);
-      if (kind === KIND.bridge) return geo.bridge;
+      const town = costClasses[costClass].urban;
+      const tunnel = town ? tunnelPerMUrban : tunnelPerM;
+      if (kind === KIND.tunnel) return tunnel;
+      const geo = geometryAt(h), bridgeCost = town ? geo.bridgeUrban ??= bridgeUrban(h) : geo.bridge;
+      if (kind === KIND.bridge) return bridgeCost;
       let earth: number;
       const wd = geo.width;
       const waterPrice = waterOption(costClass, h, wd);
+      const base = town ? baseUrban : baseRural, mul = town ? 1 + surE(1) : sur, land = town ? landUrban : LAND.perM2;
       if (h >= 0) {
-        earth = (baseRural + geo.area * dp.fillPerM3 + geo.engineering + wd * topsoilPerM2
-          + waterPrice.cost) * sur + wd * LAND.perM2;
+        earth = (base + geo.area * dp.fillPerM3 + geo.engineering + wd * topsoilPerM2
+          + waterPrice.cost) * mul + wd * land;
       } else {
         const [a1, a2, a3] = cutsAt(geo, h, costClasses[costClass].ground);
-        earth = (baseRural + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
-          + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2 + waterPrice.cost) * sur + wd * LAND.perM2;
+        earth = (base + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
+          + earthEngineeringPerM(h, a1 + a2 + a3, 0) + wd * topsoilPerM2 + waterPrice.cost) * mul + wd * land;
       }
       const waterBridge = waterPrice.bridge;
-      if (waterBridge) earth = geo.bridge + 1e7; // unavailable earthwork, not a free zero-price culvert
-      if (waterPrice.tunnel) earth = tunnelPerM + 1e7;
+      if (waterBridge) earth = bridgeCost + 1e7; // unavailable earthwork, not a free zero-price culvert
+      if (waterPrice.tunnel) earth = tunnel + 1e7;
       if (kind === KIND.earth) return earth;
-      if (waterPrice.tunnel) return tunnelPerM;
-      if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return geo.bridge;
+      if (waterPrice.tunnel) return tunnel;
+      if (waterBridge && h >= STRUCTURE_RULES.riverClearance) return bridgeCost;
       let best = earth;
-      if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, geo.bridge);
-      if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnelPerM);
+      if (h >= STRUCTURE_RULES.bridgeMinHeight) best = Math.min(best, bridgeCost);
+      if (-h >= STRUCTURE_RULES.tunnelMinDepth) best = Math.min(best, tunnel);
       return best;
     };
     const table: SharedCostTable = (kind, costClass) => {
@@ -743,7 +754,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         if (!values) wetTables.set(key, values = new Float64Array(heightCount).fill(NaN));
         return values;
       }
-      return tables.dry(materialValue, groundPackIds[entry.ground], kind, heightCount);
+      return tables.dry(materialValue, groundPackIds[entry.ground] * 2 + entry.urban, kind, heightCount);
     };
     return Object.assign(cost, { table });
   };
@@ -927,7 +938,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       costClass: profileCostClass, costClassCount: costClasses.length,
       ...(blocks ? { blocks, points: profilePoints, pointWeight: STEP, clearanceS,
         groundAt: (x: number) => { const p = atS(x); return terrain.heightAt(p.x, p.y); },
-        classAt: (x: number) => { const p = atS(x); return groundClasses.get(terrain.groundIdAt(p.x, p.y)) ?? -1; } } : {}),
+        classAt: (x: number) => { const p = atS(x), g = groundClasses.get(terrain.groundIdAt(p.x, p.y)); return g === undefined ? -1 : g + G * builtUp(p.x, p.y); } } : {}),
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
