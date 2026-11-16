@@ -392,17 +392,6 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       else if (keep.length) { result = run(keep); used = sep(keep); result.timing['count.separationRetry'] = 2; }
     }
   }
-  // A way merged into another way's crossing that our earthworks bury (it could not be rebuilt beside
-  // them) is a crossing of its own, treated like any other: once more, kept where it resolves more than it breaks.
-  if (!opts.preview && !opts.window && result.mergedWays?.length) {
-    const r0 = result, buried = r0.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && f.roadId !== undefined && r0.mergedWays!.includes(f.roadId));
-    if (buried.length) {
-      const split = { ...used, splitWays: [...new Set(buried.map(f => f.roadId!))] };
-      const retry = evaluateRoute(ctx, d, split);
-      retry.timing['count.splitRetry'] = 1;
-      if (regionCount(retry, buried.map(f => (f.s0 + f.s1) / 2)) < regionCount(r0, buried.map(f => (f.s0 + f.s1) / 2))) { result = retry; used = split; }
-    }
-  }
   // Where our earthworks bury a road that could neither be rebuilt beside them nor kept behind a wall, a
   // designer lowers the grade there (or raises it out of a cutting) so the slope stays off the road: once
   // more with Auto asked for NARROW_STEP less embankment (cutting) there, kept per stretch where it
@@ -416,15 +405,28 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         return { at: (f.s0 + f.s1) / 2, s0: f.s0 - NARROW_REACH, s1: f.s1 + NARROW_REACH, fill: h >= 0, z: r0.grade[f.i] + (h >= 0 ? -NARROW_STEP : NARROW_STEP) };
       });
       const groups = clusterBy(items, t => t.at, REGION);
-      const run = (gs: typeof groups) => evaluateRoute(ctx, d, { ...used, narrow: gs.flat().map(({ s0, s1, fill, z }) => ({ s0, s1, fill, z })) });
+      const with_ = (gs: typeof groups): EvalOptions => ({ ...used, narrow: gs.flat().map(({ s0, s1, fill, z }) => ({ s0, s1, fill, z })) });
+      const run = (gs: typeof groups) => evaluateRoute(ctx, d, with_(gs));
       const retry = run(groups);
       retry.timing["count.narrowRetry"] = 1;
       const keep = groups.filter(g => regionCount(retry, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
-      if (keep.length === groups.length) result = retry;
-      else if (keep.length) { result = run(keep); result.timing['count.narrowRetry'] = 2; }
+      if (keep.length === groups.length) { result = retry; used = with_(groups); }
+      else if (keep.length) { result = run(keep); result.timing['count.narrowRetry'] = 2; used = with_(keep); }
     }
   }
   if (result.withNoise) result = result.withNoise();
+  // A way merged into another way's crossing that our earthworks still bury (it could not be rebuilt beside
+  // them, nor the grade kept off it) is a crossing of its own, treated like any other: once more, kept where it resolves more than it breaks.
+  if (!opts.preview && !opts.window && result.mergedWays?.length) {
+    const r0 = result, buried = r0.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && f.roadId !== undefined && r0.mergedWays!.includes(f.roadId));
+    if (buried.length) {
+      const split = { ...used, splitWays: [...new Set(buried.map(f => f.roadId!))] };
+      let retry = evaluateRoute(ctx, d, split);
+      if (retry.withNoise) retry = retry.withNoise();
+      retry.timing['count.splitRetry'] = 1;
+      if (regionCount(retry, buried.map(f => (f.s0 + f.s1) / 2)) < regionCount(r0, buried.map(f => (f.s0 + f.s1) / 2))) { result = retry; used = split; }
+    }
+  }
   if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
   return result;
 }
@@ -1587,7 +1589,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     engineering = engineer(vpis, relaxed, strict);
   }
   const { prof, grade, waterZ, sec, retention,
-    h, geotechnicalPerM, culverts, crossings, selection, supported, structureValue } = engineering;
+    h, geotechnicalPerM, culverts, crossings: engineeredCrossings, selection, supported, structureValue } = engineering;
+  let crossings = engineeredCrossings;
   const { kind, runs } = supported;
   // Auto support clearances are repaired by the lift loop above, which a preview skips: do not
   // flash them as violations in a drag preview (the full evaluation reports any it cannot fix).
@@ -1715,12 +1718,13 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Ways merged into one crossing (dual carriageways, a junction lying on our line) share its treatment; one
   // that our earthworks then bury (evaluate's retry) is a crossing of its own here (cut and reconnected,
   // bridged over us or boxed under us).
-  if (opts.splitWays?.length) for (const c of [...crossings]) for (const m of mergedInto.get(c) ?? []) {
+  // (on copies: an engineering pass may be shared with the evaluation this one retries)
+  const split = (opts.splitWays ?? []).length ? crossings.flatMap(c => (mergedInto.get(c) ?? []).flatMap(m => {
     const i = Math.min(n - 1, Math.round(m.s / ds));
-    if (!opts.splitWays.includes(m.way) || kind[i] !== KIND.earth || ROAD_CLASSES[m.cls].noAtGrade || crossings.some(o => o.roadId === m.way && Math.abs(o.s - m.s) < 1e-6)) continue;
-    crossings.push({ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - terrain.heightAt(m.x, m.y), type: 'atGrade', cost: 0 });
-  }
-  crossings.sort((a, b) => a.s - b.s);
+    return opts.splitWays!.includes(m.way) && kind[i] === KIND.earth && !ROAD_CLASSES[m.cls].noAtGrade
+      ? [{ s: m.s, i, x: m.x, y: m.y, cls: m.cls, roadId: m.way, h: elevations(prof, [m.s])[0] - terrain.heightAt(m.x, m.y), type: 'atGrade' as const, cost: 0 }] : [];
+  })) : [];
+  if (split.length) crossings = [...crossings.map(c => ({ ...c })), ...split].sort((a, b) => a.s - b.s);
   const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
     ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor);
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
