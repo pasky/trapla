@@ -177,7 +177,7 @@ grade beyond ±5 km of the bend, far bill, far violations; downstream compared a
 | | whole D3, 16 moves | whole D35, 10 moves |
 |---|---|---|
 | before (899e6bb) | far grade up to 14.8 m; far violations changed in 2 (0 → 4, 0 → 8); far bill up to −1.5 bn | far grade up to 40.8 m (19 km away); far violations changed in 1 |
-| after | far grade up to 2.4 m (7 km away), ≤ 0.2 m beyond 8 km except one 0.7 m spot; far violations changed in 0; far bill ≤ 0.34 bn | far violations changed in 1 (8 km away, a block boundary moved); two valley flips 5–8 km away |
+| after (model 23, on main 2decf53) | far grade up to 3.9 m (6–7 km away), ≤ 0.2 m beyond 8 km except one 0.7 m spot; far violations changed in 0; far bill ≤ 0.53 bn | far violations changed in 3, all the same track at km 6.98 10–17 km from the edit with the grade there unchanged: the viaduct's station-based end moves a station and the track falls off it onto a reroute that cannot be built (crossing remedy choice); far grade up to 7.8 m (one valley 6.6 km away) |
 
 Causes found (each measured on its own; a fixed material value and an unchanged route length gave a
 bit-identical line far away, so the solver itself is not chaotic):
@@ -220,8 +220,12 @@ Determinism: every step is a function of the design (plan → boundaries → win
 state carried between evaluations. Previews are unchanged in kind (one fixed-value solve of the window).
 
 Cost of locality: a block is solved without seeing beyond its boundaries' windows and balances its own
-earth, so the line is no longer the whole-route optimum. Bills against model 21 (main 93f849d): D11
-designs −2 … +3.5 % (demo +12 %), the railway +6 %, D3 sections −12 … +5 %, whole D3 −5 %, whole D35
-+10 % (after a 60 m / 12 m starter repair). Residual non-locality: support targets still come from the
+earth, so the line is no longer the whole-route optimum. Bills against model 22 (main 2decf53): D11
+designs best +1.6 %, demo +10.5 % (after an 8 m repair), direct-80 +4.9 %, direct-90 +2.7 %, town-centre
+−2.0 %, the railway +6 %; outcome audit (D11, 30 designs) better than main: violations of the random
+designs 144 → 128, footprint flags 110 → 95, bills −0.9 %. Where the earthworks still bury a road nothing
+else could keep, a narrowing retry asks Auto for 2 m less embankment (cutting) there (lifts keep it), kept
+per stretch like the separation retry. Starter repairs under model 23: whole D35 bends 16/17/2 (60/12/12 m),
+the D35 first section bend 2 (25 m), the earlier D3 map's last bends. Residual non-locality: support targets still come from the
 station-based engineering (a ±0.7–2 m lift difference at one or two spots), and a bend move that moves a
 block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
