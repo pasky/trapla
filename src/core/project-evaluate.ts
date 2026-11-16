@@ -8,7 +8,7 @@ import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type Interactio
 import { evaluateProjectRoad, type SourceWays } from './project-road';
 import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
-import { combineNoise, type NoiseDecider } from './project-noise';
+import { combineNoise, finiteSegmentDecider, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
 import { evaluateProjectRailway, type RailwayEvaluation } from './project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
@@ -22,7 +22,8 @@ import { thisRoadWords } from './terms';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Combined noise of several roads (C1 c): answers each road's per-storey energy at a house from its
-   * physical source, and project walls. Absent: houses heard by two roads keep the project unpriced. */
+   * physical source, and project walls. Absent: each road's own finite-segment source (project-noise.ts
+   * finiteSegmentDecider). */
   combinedNoise?: (routes: readonly { route: RouteDesign; result: Result }[]) => NoiseDecider | null }
 
 const issue = (routeId: string, code: string): ProjectIssue => ({ code, scope: { routeIds: routeId ? [routeId] : [] }, locations: [], blocking: 'incomplete', check: 'not-checked',
@@ -538,10 +539,13 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
         }),
         ...replacements.get(route.id)!.removed.map(l => ({ ...l, r: replacements.get(route.id)!.removedWidth / 2 }))] } : {}) };
   }), ctx.legacy.buildings);
-  // Houses heard by two or more roads are decided together when the combined-noise calculator is there;
-  // every other interaction (shared land, roads, buildings) still keeps the project unpriced.
+  // Houses heard by two or more roads are decided together from both roads' own sources; every other
+  // interaction (shared land, roads, buildings) still keeps the project unpriced.
   const heard = screen.interactions.filter(i => i.reason === 'shared-noise' && i.buildingIndex !== undefined);
-  const decider = heard.length && ctx.legacy.buildings ? ctx.combinedNoise?.(units.flatMap(u => u.parts).map(({ route, legacy }) => ({ route, result: legacy }))) ?? null : null;
+  const heardRoutes = units.flatMap(u => u.parts).map(({ route, legacy }) => ({ route, result: legacy }));
+  const builtIn = heard.length && ctx.legacy.buildings && !ctx.combinedNoise
+    ? finiteSegmentDecider(heardRoutes.map(({ route, result }) => ({ routeId: route.id, result })), ctx.legacy.buildings, (x, y) => ctx.legacy.terrain.heightAt(x, y)) : null;
+  const decider = heard.length && ctx.legacy.buildings ? builtIn ?? ctx.combinedNoise?.(heardRoutes) ?? null : null;
   const blocking = screen.interactions.filter(i => !(decider && heard.includes(i)));
   if (blocking.length) {
     // one line per thing the roads share, with its place; the houses that hear the same roads are one line
@@ -562,7 +566,8 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     return finish();
   }
   const together = decider ? combineNoise(heard.map(i => i.buildingIndex!), decider, ctx.legacy.buildings!,
-    new Set(priced.flatMap(({ legacy }) => [...legacy.demolished, ...legacy.boughtOut].map(b => b.j)))) : [];
+    new Set([...priced.flatMap(({ legacy }) => [...legacy.demolished, ...legacy.boughtOut].map(b => b.j)),
+      ...[...ringsOf.values()].flatMap(ws => ws.flatMap(w => w.removes ?? []))])) : [];
   for (const h of together) {
     const owner = h.wall?.routeId ?? h.buyout?.routeId; if (!owner) continue;
     const p = priced.find(q => q.route.id === owner)!, r = p.legacy, b = ctx.legacy.buildings!.items[h.buildingIndex];
@@ -574,6 +579,12 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
       : { kind: 'buyout', s: r.s[k], x: b[0], y: b[1], length: 0, cost: h.buyout!.cost, label: 'House bought out: too loud with both roads together' };
     list.push(work);
     result.works.items.push({ ...replacementWork(p.route, list.length - 1, work), id: `${owner}:noise:${h.buildingIndex}` });
+  }
+  // the project's walls are drawn with each road's own (a copy of its result: the kernel's stays as computed)
+  for (const [routeId, w] of builtIn?.walls() ?? []) {
+    const rr = result.routes[routeId], r = rr?.legacy; if (!r || !w.stretches.length) continue;
+    rr.legacy = { ...r, noise: { ...r.noise, L: w.L, R: w.R },
+      walls: [...r.walls, ...w.stretches.map(t => ({ ...t, s0: r.s[t.i0], s1: r.s[t.i1] }))] };
   }
   let total = 0, valid = true;
   const receivers: ProjectReceiver[] = [];

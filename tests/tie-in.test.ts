@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { finiteSegmentDecider } from '../src/core/project-noise';
 import { BuildingIndex } from '../src/core/buildings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { ENDPOINT_JUNCTIONS, JUNCTION } from '../src/core/data/urban';
@@ -143,8 +144,9 @@ describe('a roundabout where the player chooses it', () => {
     const ring = project.works.items.find(w => w.owner.id === 'side' && /^Roundabout's ring/.test(w.label ?? ''))!;
     expect(ring.label).toMatch(/1 building removed/);
     expect(ring.cost).toBeGreaterThan(new BuildingIndex([[292, 866, 4]]).cost[0]);
-    // (the removed house is also within our road's noise reach: that interaction keeps this project unpriced)
-    expect(project.cost.unpriced.map(u => u.reason)).toContain('shared-noise');
+    // (the removed house is also within our road's noise reach: the ring takes it, so nobody decides its noise again)
+    expect(project.cost.unpriced).toEqual([]);
+    expect(project.works.items.filter(w => /both roads/.test(w.label ?? ''))).toEqual([]);
     // no T-junction sight triangle at a roundabout
     expect(side.violations.some(v => /No clear view/.test(v.title))).toBe(false);
   });
@@ -157,11 +159,23 @@ describe('a roundabout where the player chooses it', () => {
 describe('houses heard by both roads', () => {
   const at = (routeId: string, db: number) => ({ routeId, sourceId: `physical-${routeId}`, dayLimit: 60, nightLimit: 50,
     storeys: [{ height: 1.5, rawDay: 10 ** (db / 10), rawNight: 10 ** ((db - 10) / 10), day: 10 ** (db / 10), night: 10 ** ((db - 10) / 10) }] });
-  it('stay unpriced without the combined-noise calculator, and are decided once with it', () => {
+  it('are decided once, from both roads\' own finite-segment noise (or a given calculator)', () => {
     const house = new BuildingIndex([[650, 550, 5]]); // between our road (y = 250) and the side road (y = 850)
     const { ctx, snapshot } = fixture('tertiary', [], house);
-    const alone = evaluateProject(ctx, snapshot);
-    expect(alone.cost.unpriced.map(u => u.reason)).toContain('shared-noise');
+    const both = evaluateProject(ctx, snapshot);
+    expect(both.cost.unpriced).toEqual([]);
+    const heard = both.receivers.find(r => r.buildingIndex === 0)!;
+    expect(heard.contributions.map(c => c.routeId).sort()).toEqual([snapshot.design.routes[0].id, 'side'].sort());
+    // a trial wall on the side road in front of a house 50 m from it: quieter there, at least twice its distance long
+    const f = fixture('tertiary', [], new BuildingIndex([[650, 800, 5]])), p = evaluateProject(f.ctx, f.snapshot);
+    const decider = finiteSegmentDecider(['side', snapshot.design.routes[0].id].map(id => ({ routeId: id, result: p.routes[id].legacy! })), f.ctx.legacy.buildings!, (x, y) => f.ctx.legacy.terrain.heightAt(x, y));
+    const open = decider.sources(0).find(q => q.routeId === 'side')!, trial = decider.tryWall('side', 0, 4)!;
+    expect(trial.length).toBeGreaterThanOrEqual(2 * 45);
+    expect(trial.area).toBeCloseTo(4 * trial.length, 6);
+    trial.storeys.forEach((st, k) => { expect(st.day).toBeLessThan(open.storeys[k].day * 0.5); expect(st.rawDay).toBeCloseTo(open.storeys[k].rawDay, 6); });
+    trial.commit();
+    expect(decider.walls().get('side')!.stretches).toEqual([expect.objectContaining({ side: expect.any(String), height: 4 })]);
+    expect(decider.sources(0).find(q => q.routeId === 'side')!.storeys[0].day).toBeCloseTo(trial.storeys[0].day, 3);
     const mission = snapshot.design.routes[0].id;
     const decided = evaluateProject({ ...ctx, combinedNoise: routes => {
       expect(routes.map(r => r.route.id).sort()).toEqual([mission, 'side'].sort());

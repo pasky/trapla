@@ -35,6 +35,8 @@ export interface ReplacementWork {
   cost: number;
   label: string;
   cls?: string;
+  /** buildings this work removes (a roundabout's ring) */
+  removes?: number[];
 }
 export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number;
   /** the old road where it is removed (pieces of its centreline) and its width, m: this road's works too,

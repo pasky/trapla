@@ -113,6 +113,8 @@ try {
   assert(!after.issues.some(i => i.code === 'roads-cross'), 'no unchecked crossing');
 
   // 5. the score: a total, or which change holds it back and what is priced
+  // houses that hear both roads are decided together (combined noise): never what holds the total back
+  assert(!after.cost.unpriced.some(u => u.reason === 'shared-noise'), `houses heard by both roads are decided together (${after.cost.unpriced.map(u => u.reason)})`);
   const scope = await text('#cost-scope'), sub = await text('#perkm');
   if (after.cost.total === null) {
     assert.equal(scope, 'This road only');
