@@ -11,19 +11,12 @@ import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
 import { footprintHit } from './render/route-pick';
-import { SourcePicker, type SourceHit } from './render/source-pick';
+import type { SourceHit } from './render/source-pick';
 import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
-import { lineHalfWidth } from './render/landcover';
-import { ProjectTransportIndex } from './core/project-network';
-import type { TransportGraphData } from './core/project-transport';
-import { MappedRoadCard } from './ui/mapped-road';
-import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { coveredStretches } from './ui/road-edit';
-import { buildInProject, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
+import { buildInProject, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
-import { RoadNet } from './core/roadnet';
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
 import { DecisionList } from './ui/build-tools';
@@ -57,6 +50,7 @@ import { EditBar } from './ui/editbar';
 import { bendStations } from './ui/bend-stations';
 import { createDesignEdits } from './ui/design-edits';
 import { createSelection } from './ui/selection';
+import { createRoadLinks } from './ui/road-links';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
 import { hudEvents } from './ui/hud-events';
@@ -65,7 +59,6 @@ import { installMapHover } from './ui/map-hover';
 import { installProfileBar } from './ui/profile-bar';
 import { installShortcuts } from './ui/shortcuts';
 import { installAutomation } from './automation';
-import type { WorkerIn } from './worker-protocol';
 import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
@@ -227,69 +220,14 @@ async function main() {
       return { receiver, name: (id) => { const r = routes.find(q => q.id === id); return !r || r.role === 'mission' ? 'our road' : r.name; } };
     },
   });
-  // ---- base roads: any mapped road can be inspected and offered for change (one inspector card) ----
-  // The transport graph is not part of startup: its bytes are fetched when idle after the first frame
-  // and parsed on first need (base-road click, photo overlay, a project that already rebuilds roads).
-  let transportIndex: ProjectTransportIndex | null = null, sourcePicker: SourcePicker | null = null;
-  let transportGraph: TransportGraphData | null = null, sourceEditor: MappedRoadCard | null = null, stretchEnds: StretchEnds | null = null;
-  const syncEnds = () => (stretchEnds as StretchEnds | null)?.sync(store.route);
-  const inspectorEl = document.getElementById('inspector')!;
-  const claimedSources = () => projectStore.snapshot.design.routes.flatMap(r => r.source?.intervals ?? []);
-  let transportReady: Promise<void> | null = null;
-  const ensureTransport = () => transportReady ??= (async () => {
-    let graph: TransportGraphData | null;
-    try { graph = await pack.loadTransport(); } catch (error) {
-      // Visible, and retried on the next need (a click on a road, the photo, a reload of a project).
-      console.warn('Road map links are unavailable', error); transportReady = null;
-      toast(error instanceof Error && /Reload|Rebuild/.test(error.message) ? error.message : 'Mapped roads could not be loaded. Click a road to try again.');
-      return;
-    }
-    if (!graph || !pack.vectors || !transportData) return;
-    // what the mapped roads carry today (the pack's traffic census; without it: class averages)
-    const census = await pack.loadTraffic();
-    try {
-      transportIndex = new ProjectTransportIndex(graph, transportData, graph.vectorData, pack.terrain, census);
-      // only the drawn road is clickable: its drawn width at the local scale (map or photo overlay), plus slack
-      sourcePicker = new SourcePicker(graph, pack.vectors, (layer, res) => lineHalfWidth(layer, res, view.photoWithNetwork));
-    } catch (error) { console.warn('Road map links are unavailable', error); transportIndex = null; sourcePicker = null; return; }
-    transportGraph = graph;
-    // where other roads' earthworks cover a mapped road it is gone: a rebuilt stretch stops short of them
-    const covered = (sourceId: string) => coveredStretches(transportIndex!, sourceId, projectStore.snapshot.design.routes.flatMap(r => {
-      const built = session.projectFull?.routes[r.id]?.legacy;
-      return built && !r.source?.intervals.some(i => i.sourceId === sourceId) ? [{ ...built, name: r.role === 'mission' ? 'our road' : r.name }] : [];
-    }));
-    const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, view, transportIndex, claimedSources, covered);
-    editor.onClose = () => select(null);
-    const ends = stretchEnds = new StretchEnds(document.getElementById('overlay')!, view, transportIndex,
-      () => projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))));
-    ends.onMove = (id, s0, s1) => {
-      const kind = mappedLineKindOf(store.route!);
-      try { if (!kind) throw new Error('No kind moves these ends'); store.editProject(d => { const next = kind.moveEnds(transportIndex!, d, id, s0, s1); Object.assign(d, next); }); }
-      catch (error) { console.warn('Stretch ends not moved', error); toast('The rebuilt stretch cannot end there.'); ends.sync(store.route); }
-    };
-    ends.sync(store.route);
-    // Road links let the game change mapped roads: the worker learns which legacy way each mapped road is.
-    // ... and where each mapped railway runs (what a rebuilt railway stretch takes up).
-    const sourceWays = { type: 'source-ways', ways: graph.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]),
-      rails: graph.sources.flatMap(s => s.kind === 'railway' ? [[s.id, s.xy, s.stations]] : []) } satisfies WorkerIn;
-    worker.postMessage(sourceWays); previewWorker.postMessage(sourceWays);
-    view.setTransport(graph);
-  })();
+  // ---- road links: the transport graph, loaded on first need (ui/road-links.ts) ----
+  const links = createRoadLinks({ session, store, projectStore, pack, view, transportData, worker, previewWorker, select: next => select(next) });
+  const { ensure: ensureTransport, syncEnds, claimedSources, mappedRoadNear, legacyRoadAt } = links;
   // A saved project that already rebuilds mapped roads needs the graph before its first scene.
   if (claimedSources().length) await ensureTransport();
   view.onNeedTransport = () => { void ensureTransport(); };
   if (viewBar.photo) void ensureTransport(); // the photo was already on from the saved view
   const buildTool = new BuildRoadTool(() => inspector.host(), document.getElementById('overlay')!, view);
-  /** Without road links (an older map pack) mapped roads are still recognised, to say why they cannot change. */
-  let legacyNet: RoadNet | null = null;
-  /** a drawn mapped road near this ground point (the pack's road overlay; no road links needed) */
-  const mappedRoadNear = (x: number, y: number, px = 8, min = 6) => {
-    if (!pack.overlays.net) return false;
-    legacyNet ??= new RoadNet(pack.overlays.net);
-    return legacyNet.nearestWay(x, y, Math.max(min, px * view.metresPerPixel)) !== undefined;
-  };
-  /** a mapped road in a pack without road links (its card says it cannot be changed here) */
-  const legacyRoadAt = (x: number, y: number) => !transportData && mappedRoadNear(x, y, 4, 4);
   // a rebuilt stretch's ends carry their own drag handles (labelled), so the tick stays unlabelled
   /** a side road's end on another road follows that road: its drawn end is where it was built */
   const endAt = (end: 'a' | 'b') => {
@@ -313,7 +251,7 @@ async function main() {
   const selection = createSelection({
     session, store, projectStore, pack, view, profile, extras, hud, inspector, annotations, intro, buildTool, activeEndpoints,
     get curveEdit() { return curveEdit; }, get linkEdit() { return linkEdit; }, get works() { return works; },
-    get sourceEditor() { return sourceEditor; },
+    get sourceEditor() { return links.editor; },
     switchRoute: id => switchRoute(id), routeCard: () => routeCard(),
   });
   const { selectedPi, select, selectPiece, revalidate } = selection;
@@ -325,7 +263,7 @@ async function main() {
   /** what the whole-road cards (ui/route-cards.ts) read and may do */
   const routeCards: RouteCardDeps = {
     route: () => store.route, result: () => session.last, project: () => session.projectFull, design: () => projectStore.snapshot.design,
-    transport: () => transportIndex, editable: () => store.read() !== null, directions: () => directionsState(),
+    transport: () => links.index, editable: () => store.read() !== null, directions: () => directionsState(),
     onDirection: w => hud.ev.onDirection?.(w), joinStretch: id => joinStretch(id),
     editProject: edit => store.editProject(edit), inTransaction: () => projectStore.inTransaction,
     deleteRoute: id => projectStore.dispatch({ type: 'delete-route', routeId: id }),
@@ -336,8 +274,8 @@ async function main() {
   inspector.routeHead = routeHeadCard(routeCards);
 
   const showSource = (hit: SourceHit) => {
-    if (!sourceEditor) return;
-    select(null); inspector.host(); sourceEditor.show(hit); hud.revealContext('inspector');
+    if (!links.editor) return;
+    select(null); inspector.host(); links.editor.show(hit); hud.revealContext('inspector');
   };
   const showNoLinks = () => { select(null); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
 
@@ -458,7 +396,7 @@ async function main() {
     const together = !!store.route && !store.oneDirection && projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.forward === store.route!.id);
     document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = store.route ? `Profile · ${together ? `${store.route.kind === 'motorway' ? 'Motorway' : store.route.name}, ${DIRECTIONS_TEXT.both.toLowerCase()}` : store.route.name}` : 'Profile';
     if (!r || !rd) {
-      profile.clear(store.route && !store.read() ? 'No heights yet: this change is not checked.' : ''); if (!sourceEditor?.selected) routeCard();
+      profile.clear(store.route && !store.read() ? 'No heights yet: this change is not checked.' : ''); if (!links.editor?.selected) routeCard();
       view.clearDesign(activeEndpoints()); return;
     }
     revalidate(r, rd);
@@ -520,8 +458,8 @@ async function main() {
     for (const k in handlerTiming) delete handlerTiming[k];
     session.projectFull = m.result; session.activePreviewPrice = null;
     // Accepted rebuilt stretches leave the map: their drawn features follow from the road links here.
-    if (!m.result.acceptedRenderReplacements.length && m.result.acceptedReplacements.length && transportIndex) {
-      const base = transportIndex;
+    if (!m.result.acceptedRenderReplacements.length && m.result.acceptedReplacements.length && links.index) {
+      const base = links.index;
       m.result.acceptedRenderReplacements = m.result.acceptedReplacements.flatMap(i => { try { return base.renderIntervals(i); } catch { return []; } });
     }
     const result = m.result;
@@ -552,15 +490,15 @@ async function main() {
       try {
         geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex),
           result.buildings.filter(b => b.action === 'buy').map(b => b.buildingIndex));
-        const graph = transportGraph;
+        const graph = links.graph;
         // A project with rebuilt mapped roads (e.g. after undo/reload) whose graph is not parsed yet.
-        if (!graph && result.acceptedRenderReplacements.length) void ensureTransport().then(() => { if (transportGraph) requestEval(false); });
+        if (!graph && result.acceptedRenderReplacements.length) void ensureTransport().then(() => { if (links.graph) requestEval(false); });
         if (graph) sources = yield* view.buildSourceReplacements(graph, result.acceptedRenderReplacements);
         handedOver = true; return [geometry, sources] as const;
       } finally { if (!handedOver) { sources?.dispose(); geometry?.dispose(); } }
     })(), ([geometry, sources]) => {
       const t0 = performance.now(); geometry.commit(); const t1 = performance.now(); sources?.commit(); const t2 = performance.now();
-      sourcePicker?.setAccepted(result.acceptedRenderReplacements);
+      links.picker?.setAccepted(result.acceptedRenderReplacements);
       syncDecorations(result);
       session.displayedProject = result; heavy = null;
       projectStore.offerBest(result); projectScore(false);
@@ -705,7 +643,7 @@ async function main() {
     if (under && underRoute && ur && joins(underRoute.kind)) return building.onRoute(underRoute, ur, under.s);
     const source = sourceAt(clientX, clientY);
     if (source?.kind === 'route-hit' && joins(projectStore.snapshot.design.routes.find(r => r.id === source.routeId)?.kind)) return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
-    if (source?.kind === 'source' && transportIndex && joins(transportIndex.source(source.hit.sourceId)?.kind)) return building.onSource(transportIndex, source.hit.sourceId, source.hit.s);
+    if (source?.kind === 'source' && links.index && joins(links.index.source(source.hit.sourceId)?.kind)) return building.onSource(links.index, source.hit.sourceId, source.hit.s);
     if (pack.terrain.isOob(x, y)) return { ok: false, why: 'Put the end on the map.' };
     if (building.kind === 'road' && legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
@@ -739,13 +677,13 @@ async function main() {
       if (session.sel?.kind === 'bend' && session.sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
       profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
-    } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
+    } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!links.editor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
     syncEnds();
     syncDirections();
     // a borrowed card (a proposal's) may belong to a road undo just removed: restore the right card
-    if (committed && inspector.isHosting && !sourceEditor?.selected) { if (d) inspector.set(session.sel); else routeCard(); }
+    if (committed && inspector.isHosting && !links.editor?.selected) { if (d) inspector.set(session.sel); else routeCard(); }
     requestEval(!committed);
   });
 
@@ -755,15 +693,15 @@ async function main() {
     view, pack, extras, buildingPicker, transportData,
     get projectFull() { return session.projectFull; }, get last() { return session.last; }, get activeRouteId() { return store.activeRouteId; },
     get editable() { return store.read() !== null; }, get routes() { return projectStore.snapshot.design.routes; },
-    get sourcePicker() { return sourcePicker; }, get sourceEditor() { return sourceEditor; },
+    get sourcePicker() { return links.picker; }, get sourceEditor() { return links.editor; },
   });
   // ---- map gestures: click, drag to bend / rebuild / shape, double click (ui/map-gestures.ts) ----
   const lastClient = { x: 0, y: 0 };
   const { events: mapEvents, mappedGrab, releaseGrab } = createMapGestures({
     store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingWorksAt, sourceAt, thingAt,
     get A() { return A; }, get B() { return B; },
-    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
-    get sourceEditor() { return sourceEditor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
+    get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
+    get sourceEditor() { return links.editor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
     ensureTransport, select, selectPiece, switchRoute, showSource, showNoLinks, deletePi, placeAt, mappedRoadNear, legacyRoadAt,
   });
   view.ev = mapEvents;
@@ -782,7 +720,7 @@ async function main() {
   const { highlightBend } = installMapHover({
     view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt,
     get last() { return session.last; }, get lastFull() { return session.lastFull; }, get design() { return store.design; },
-    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
+    get transportIndex() { return links.index; }, get transportGraph() { return links.graph; },
     ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
   });
 
@@ -814,7 +752,7 @@ async function main() {
   // ---- keyboard (ui/shortcuts.ts) ----
   installShortcuts({
     buildTool, intro, keyBox, showKey, select, setStructure, deletePi, undo: () => store.undo(), redo: () => store.redo(),
-    get sel() { return session.sel; }, get mappedRoadSelected() { return !!sourceEditor?.selected; },
+    get sel() { return session.sel; }, get mappedRoadSelected() { return !!links.editor?.selected; },
   });
 
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
@@ -828,7 +766,7 @@ async function main() {
   installAutomation({
     store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A, B, handlerTiming,
     get last() { return session.last; }, get projectFull() { return session.projectFull; },
-    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; }, get sourceEditor() { return sourceEditor; },
+    get transportIndex() { return links.index; }, get transportGraph() { return links.graph; }, get sourceEditor() { return links.editor; },
     get sel() { return session.sel; }, get qualifiedSelection() { return session.qualifiedSelection; },
     get received() { return evals.received; }, get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
     sceneIdle, missionRouteId, switchRoute, select, selectPiece, placeAt, ensureTransport,
