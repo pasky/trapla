@@ -287,10 +287,10 @@ km 14.18 plus track remedies at km 3.6–3.7, 7.7–7.9: routed by the parent to
 in Node), `scripts/stretch-check.ts`, `scripts/stretch-play.mjs`.
 
 Pending / limits found (2026-11-16):
-1. A rebuilt railway stretch is evaluated as new everywhere: in a narrow valley the old line's own neighbours
-   (river, roads, tracks) become conflicts, and a short drag can leave long-span bridges Auto cannot lift
-   (the line is grade-bound to its fixed ends). any-road's "kept old road" model (project-kept.ts, not yet
-   in main) should apply to railways too: kept cells = the old track, no norm, nothing billed.
+1. **Resolved in any-road-editing, model 28:** `project-kept.ts` applies to rebuilt railways too. Where the
+   line stays on the old track it keeps that track's heights, neighbours and crossings, with no new works
+   billed. New formation is engineered where it leaves; its ends must meet the continuing track within
+   the turnout-angle rule. See `docs/any-road-editing.md` §18 for the remaining end/card limits.
 2. Rubber-band line while placing and crossings between project lines of different kinds come with
    any-road-editing's build tool and crossing engine (not in main yet): extend to motorway / railway there.
 3. "A long bridge span is too low": a railway's own track (the station it joins, a stretch it rebuilds along

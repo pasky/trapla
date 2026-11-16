@@ -44,7 +44,9 @@
  * the same side is moved beside them (and crossings of one way inside our earthworks are one); neighbouring
  * tracks and service roads are joined to one crossing (research/45), reroutes join the target's road where
  * it comes nearest; a reroute's earth slopes take the houses they reach; a dead-end stub left with no room
- * to turn is removed; an automatic crossing with nothing buildable under a high embankment lengthens our bridge. */
+ * to turn is removed; an automatic crossing with nothing buildable under a high embankment lengthens our bridge.
+ * Rebuilt railways keep their old track where unchanged; railway clearance retries use structured
+ * diagnostics; an untouched motorway direction follows an inward pull as one paired body. */
 export const COST_MODEL_VERSION = 28;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

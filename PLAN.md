@@ -437,7 +437,7 @@ What exists (details and commands in `README.md`):
   no curve lacks room ("too close for an S-bend", "too close to the end"). Measured on 200 random drags each on the
   best and demo designs (curve-room problems from the drag alone): 41 / 51 → 0 / 1.
 
-### Any mapped road can be rebuilt (cost model 25, 2026-11-16)
+### Any mapped road can be rebuilt (cost model 28, 2026-11-16)
 
 - Any mapped road, street or track (and, from model 23, a railway along its own line) is dragged directly to
   rebuild a stretch of it; see `docs/any-road-editing.md`. A rebuilt stretch keeps its old road where its line
