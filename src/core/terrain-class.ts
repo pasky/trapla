@@ -47,9 +47,10 @@ export function terrainClassAt(terrain: Terrain, x: number, y: number): TerrainC
  * TERRAIN_CLASS.window of chainage (centred, clipped at the ends) exceeds mountainousFrom. */
 export function routeMountainous(terrain: Terrain, st: { s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; n: number }): Uint8Array {
   const { sample, window, mountainousFrom } = TERRAIN_CLASS, n = st.n, L = st.s[n - 1];
-  const m = Math.max(1, Math.round(L / sample)) + 1, at: number[] = [], slope: number[] = [];
+  // samples at whole multiples of `sample` m of chainage (and the end): a change of length elsewhere moves none
+  const m = Math.floor(L / sample) + 2, at: number[] = [], slope: number[] = [];
   for (let k = 0, i = 0; k < m; k++) {
-    const s = (k / (m - 1 || 1)) * L;
+    const s = Math.min(k * sample, L);
     while (i + 1 < n && st.s[i + 1] <= s) i++;
     at.push(s); slope.push(groundSlopeAt(terrain, st.x[i], st.y[i]));
   }
