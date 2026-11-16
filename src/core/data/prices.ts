@@ -137,6 +137,10 @@ export const TUNNEL_RULES = {
   pitSlope: 1,
   /** PROVISIONAL: the structure's walls beside the crown, m each side */
   wallThickness: 1,
+  /** PROVISIONAL game rule: the cut in front of a portal is at most this deep, m (the deepest Czech portal pits: D0
+   * Komořany 30 m in sand, Mrázovka 27 m rock walls; Hessen Mobil: pre-cuts over ≈ 20 m "only with high effort";
+   * research/49 §2). Auto's portals stand where the cut is a structure height deep; the player's may be deeper. */
+  maxPortalCut: 30,
   /** NV 264/2009: requirements apply to tunnels over this length, m */
   escapeFromLength: 500,
   /** NV 264/2009 annex 1 §3.6 / §1.2: emergency exits above, two tubes above, veh/day/lane */

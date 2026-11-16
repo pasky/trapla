@@ -110,6 +110,15 @@ describe("the player's tunnel method", () => {
     const shallow = chooseStructures({ ...input, h: new Float64Array(n).fill(-12) });
     expect(shallow.violations).toEqual([]);
   });
+
+  it('a tunnel the player chose may start in a deep cut, but not deeper than any Czech portal', () => {
+    const n = 81, ds = 10, h = hill(n, 80), s = Float64Array.from({ length: n }, (_, i) => i * ds);
+    const paint = (s0: number, s1: number) => chooseStructures({ ds, h, earthPerM: new Float64Array(n).fill(1), bridgePerM: 1e9, tunnelPerM: 100,
+      overrides: overrideMask(s, [{ s0, s1, kind: KIND.tunnel }]) }).violations.map(v => v.title + ' ' + v.fix);
+    expect(paint(145, 655)).toEqual([]); // its ends 30 m deep
+    const deep = paint(255, 545); // 52 m
+    expect(deep).toEqual(['km 0.05', 'km 0.75'].map(km => `A tunnel entrance stands in a very deep cut Extend the tunnel to ${km}, where the ground is 9 m above the road, or set it back to Automatic`));
+  });
 });
 
 describe("the grade search's tunnel mode", () => {

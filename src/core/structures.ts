@@ -196,6 +196,16 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
         fix: `Extend it to the ${min} m minimum (now ${length.toFixed(0)} m), or set the stretch back to Automatic`,
         basis: 'game', rule: `Game rule: a bridge or tunnel is at least ${min} m long`,
         detail: 'Your choice stays as you made it and is priced; the game does not extend it for you.' });
+      // A tunnel the player chose, starting in a cut deeper than any Czech portal's: where it would end as Auto builds it
+      if (r.kind === KIND.tunnel && manual && !held) for (const [end, step] of [[r.i0, -1], [r.i1, 1]] as const) {
+        if (-inp.h[end] <= TUNNEL_RULES.maxPortalCut) continue;
+        let j = end;
+        while (j + step > 0 && j + step < n - 1 && -inp.h[j + step] >= rules.portalDepth) j += step;
+        violations.push({ kind: 'structure', s0: end * inp.ds, s1: end * inp.ds, title: 'A tunnel entrance stands in a very deep cut',
+          fix: `Extend the tunnel to km ${(j * inp.ds / 1000).toFixed(2)}, where the ground is ${rules.portalDepth} m above the road, or set it back to Automatic`,
+          basis: 'game', rule: `Game rule: the cut in front of a tunnel is at most ${TUNNEL_RULES.maxPortalCut} m deep (the deepest Czech ones: D0 Komořany 30 m, Mrázovka 27 m)`,
+          detail: `Here it is ${(-inp.h[end]).toFixed(0)} m deep. A tunnel usually goes on, built from a pit that is filled in again, to where only its own height of cut is left.` });
+      }
     }
     const flagRanges = (bad: (i: number) => boolean, title: string, fix: string, rule: string) => {
       for (let i = 0; i < n; i++) {
