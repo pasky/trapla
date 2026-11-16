@@ -245,8 +245,15 @@ export class NoiseLayer {
     this.tip.innerHTML = html;
     this.tip.style.display = '';
     const w = this.tip.offsetWidth, h = this.tip.offsetHeight;
-    this.tip.style.left = `${Math.min(window.innerWidth - w - 8, p.x + 16)}px`;
-    this.tip.style.top = `${Math.max(8, Math.min(window.innerHeight - h - 8, p.y + 16))}px`;
+    // beside the pointer, never over the legends: below / above it, right / left of it, the first that is clear
+    const keep = ['noise-legend', 'legend'].map((id) => document.getElementById(id)).filter((e): e is HTMLElement => !!e && e.offsetParent !== null)
+      .map((e) => e.getBoundingClientRect());
+    const place = (x: number, y: number) => [Math.max(8, Math.min(window.innerWidth - w - 8, x)), Math.max(8, Math.min(window.innerHeight - h - 8, y))];
+    const spots = [place(p.x + 16, p.y + 16), place(p.x + 16, p.y - h - 12), place(p.x - w - 16, p.y + 16), place(p.x - w - 16, p.y - h - 12)];
+    const clear = ([x, y]: number[]) => keep.every((b) => x + w <= b.left || x >= b.right || y + h <= b.top || y >= b.bottom);
+    const [left, top] = spots.find(clear) ?? spots[0];
+    this.tip.style.left = `${left}px`;
+    this.tip.style.top = `${top}px`;
   }
 
   private wallTip(w: WallStretch | null): string | null {

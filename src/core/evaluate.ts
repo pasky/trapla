@@ -119,6 +119,8 @@ export interface Result {
   /** Engineering surface at a retained slope edge; NaN means natural daylight. */
   wallSurfaceL: Float64Array; wallSurfaceR: Float64Array;
   walls: WallStretch[];
+  /** walls Auto adds for houses beside the player's wall choices (part of `walls`): the card of that choice says so */
+  wallsAroundChoices: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
@@ -1045,7 +1047,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // --- noise walls ---
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
   const noiseBuyouts = new Float64Array(n);
-  let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
+  let walls: WallStretch[] = [], wallsAroundChoices: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
   let receivers: NoiseReceiver[] = [];
   let acoustic: Result["noise"]["source"] = null, builtL: Float64Array = new Float64Array(0), builtR: Float64Array = new Float64Array(0);
   // Railway: CNOSSOS-EU train source and line propagation (rail-noise.ts) against the new-line limits.
@@ -1082,7 +1084,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       wallLength[i] = (fl[i] ? lineL[i] : 0) + (fr[i] ? lineR[i] : 0);
       wallArea[i] = fl[i] * lineL[i] + fr[i] * lineR[i];
     }
-    walls = outcome.walls;
+    walls = outcome.walls; wallsAroundChoices = outcome.aroundChoices;
     receivers = outcome.receivers;
     noiseViolations.push(...noiseControlViolations(receivers, st.s));
   }
@@ -1208,7 +1210,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, wallsAroundChoices, demolished, boughtOut, kept,
     retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
     noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
       limit: noiseModel.controlling === 'night' ? noiseModel.limits?.nightDb ?? NOISE.limitNightDb : noiseModel.limits?.dayDb ?? NOISE.limitDayDb },

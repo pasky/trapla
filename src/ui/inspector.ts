@@ -251,7 +251,7 @@ export class Inspector {
     }
     // walls along it, per side: the player's paint or Auto's walls
     const wallState = (side: 'L' | 'R') => {
-      const mineW = (d.wallOverrides ?? []).filter((o) => o.side === side && o.s1 > s0 + 1 && o.s0 < s1 - 1);
+      const mineW = (d.wallOverrides ?? []).filter((o) => o.side === side && o.s1 > s0 + r.ds / 2 && o.s0 < s1 - r.ds / 2);
       const auto = r.walls.filter((w) => w.side === side && w.s1 > s0 && w.s0 < s1);
       const covers = mineW.length === 1 && mineW[0].s0 <= s0 + r.ds && mineW[0].s1 >= s1 - r.ds;
       const active = covers ? String(mineW[0].height) : mineW.length ? null : 'auto';
@@ -262,8 +262,13 @@ export class Inspector {
     const near = r.noise.receivers.some((p) => p.i >= i0 - 10 && p.i <= i1 + 10 && p.raw > -3) || r.walls.some((w) => w.s1 > s0 && w.s0 < s1) || (d.wallOverrides ?? []).some((o) => o.s1 > s0 && o.s0 < s1);
     const wallRow = (side: 'L' | 'R') => {
       const st = wallState(side);
-      const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall: too-loud houses become violations'], ...[3, 4, 5, 6].map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall along the whole stretch`])];
-      return `<div class="wall-row"><span class="lbl">${cap(SIDE[side])}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, st.active)}<small>${st.now}</small></div>`;
+      const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall: too-loud houses become violations'], ...NOISE.playerWallHeights.map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall along the whole stretch`])];
+      // walls Auto adds for the houses beside the player's choice (which may take a wall away from them)
+      const mineW = (d.wallOverrides ?? []).filter((o) => o.side === side && o.s1 > s0 + r.ds / 2 && o.s0 < s1 - r.ds / 2);
+      const none = mineW.some((o) => !o.height);
+      const around = mineW.length ? (r.wallsAroundChoices ?? []).filter((w) => w.side === side && w.s1 > s0 - 2000 && w.s0 < s1 + 2000) : [];
+      const adds = around.map((w) => `<div class="sub around">Auto adds ${m0(w.s1 - w.s0)} of ${w.height} m wall at km ${km(w.s0)}–${km(w.s1)} ${none ? 'instead' : 'as well'} <button type="button" class="link" data-stretch="${w.s0},${w.s1}">Show</button></div>`).join('');
+      return `<div class="wall-row"><span class="lbl">${cap(SIDE[side])}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, st.active)}<small>${st.now}</small></div>${adds}`;
     };
     const vio = r.violations.filter((v) => !v.goal && v.s1 >= s0 && v.s0 <= s1).map((v) => ({ v, fixes: this.fixes(v, d) }));
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
@@ -413,7 +418,12 @@ export class Inspector {
       why = removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
         : `${removed.in === 'cut' ? 'In' : 'Under'} ${ours}, km ${km(r.s[removed.i])}.`;
     }
-    else if (bought) { state = `Bought out · ${czk(bought.cost)}`; why = bought.reason === 'manual' ? 'Your choice.' : `Too loud even behind a ${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall.`; }
+    else if (bought) {
+      state = `Bought out · ${czk(bought.cost)}`;
+      const top = NOISE.wallHeights[NOISE.wallHeights.length - 1];
+      why = bought.reason === 'manual' ? 'Your choice.' : rec ? `Behind a ${top} m wall still ${(limit + rec.mitigated).toFixed(1)} dB ${period} (limit ${limit}).`
+        : `Too loud even behind a ${top} m wall.`;
+    }
     else if (kept?.hit) state = 'Kept — in the road\'s way';
     else if (rec?.unresolved) { state = `Stays · ${(limit + rec.mitigated).toFixed(1)} dB ${period} (limit ${limit})`; why = action === 'keep' ? 'You keep it, so it is not bought out.' : 'Your wall choice stops the automatic buyout.'; }
     else if (rec) {
@@ -436,7 +446,7 @@ export class Inspector {
       const s0 = own?.[0] ?? w?.s0 ?? fix?.s0 ?? Math.max(0, r.s[i] - half), s1 = own?.[1] ?? w?.s1 ?? fix?.s1 ?? Math.min(r.length, r.s[i] + half);
       const mine = (d.wallOverrides ?? []).find((o) => o.side === side && o.s0 <= r.s[i] && o.s1 >= r.s[i]);
       const active = mine ? String(mine.height) : 'auto';
-      const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...[2, 3, 4, 5, 6].map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];
+      const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...NOISE.playerWallHeights.map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];
       walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[side]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>km ${km(s0)}–${km(s1)}</small></div>`;
     }
     const opt: [string, string, string][] = [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];
@@ -459,6 +469,7 @@ export class Inspector {
       try { localStorage.setItem(MORE_KEY, this.more ? '1' : '0'); } catch { /* private mode */ }
       this.render(); return;
     }
+    if (b.dataset.stretch) { const [s0, s1] = b.dataset.stretch.split(',').map(Number); this.ev.select?.({ kind: 'stretch', s0, s1 }); return; }
     if (b.dataset.piece) { const [s0, s1, kind] = b.dataset.piece.split(','); this.ev.select?.({ kind: 'stretch', s0: Number(s0), s1: Number(s1), piece: kind as PieceKind }); return; }
     if (b.dataset.fixWall) {
       const [sides, h, s0, s1] = b.dataset.fixWall.split(',');

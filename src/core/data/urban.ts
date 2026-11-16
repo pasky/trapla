@@ -264,6 +264,9 @@ export const NOISE = {
   /** Automatic wall heights. 2.0 m stands on a D6 cut top and 2.0–5.5 m in its replacement (ŘSD/DESÚ
    * notice 2024, research/11 §6); 5 m top of the automatic menu is PROVISIONAL (player: 2–6 m). */
   wallHeights: [2, 3, 4, 5],
+  /** The player's wall heights (every card offers these): the automatic ones and 6 m (PROVISIONAL top; the D6
+   * replacement uses up to 5.5 m, research/11 §6). */
+  playerWallHeights: [2, 3, 4, 5, 6],
   /** Propagation: calibrated equivalent near-lane line, m above grade / towards the receiver from the axis
    * (research/11 §3). */
   sourceHeight: 0.5,

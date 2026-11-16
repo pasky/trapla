@@ -97,7 +97,8 @@ export function noisePlan(r: PlanRoute, rect: HouseRect, rec: NoiseReceiver, ray
   for (const k of order) { if (acc >= 0.97 * total || shown.length >= 60) break; shown.push(k); acc += energy[k]; }
   let lo = rec.i, hi = rec.i;
   for (const k of shown) { lo = Math.min(lo, rays[k].i); hi = Math.max(hi, rays[k].i); }
-  const c = rec.i, i0 = Math.max(0, lo - 2), i1 = Math.min(r.n - 1, hi + 2);
+  const c = rec.i;
+  let i0 = Math.max(0, lo - 2), i1 = Math.min(r.n - 1, hi + 2);
   const ox = r.x[c], oy = r.y[c], tx = r.tx[c], ty = r.ty[c];
   const U = (x: number, y: number) => (x - ox) * tx + (y - oy) * ty, V = (x: number, y: number) => -(x - ox) * ty + (y - oy) * tx;
   const at = (i: number, off: number) => [r.x[i] - r.ty[i] * off, r.y[i] + r.tx[i] * off];
@@ -112,7 +113,19 @@ export function noisePlan(r: PlanRoute, rect: HouseRect, rec: NoiseReceiver, ray
   for (let i = i0; i <= i1; i++) { grow(r.x[i], r.y[i]); const [wx, wy] = at(i, wallOff(rec.side, i)); grow(wx, wy); }
   for (const [x, y] of corners) grow(x, y);
   v0 -= 2; v1 += 2;
-  const band = 14, k = Math.min((W - 2 * pad) / Math.max(1, u1 - u0), (Hmax - 2 * pad - band) / Math.max(1, v1 - v0));
+  const band = 14, Hmin = 120;
+  let k = Math.min((W - 2 * pad) / Math.max(1, u1 - u0), (Hmax - 2 * pad - band) / Math.max(1, v1 - v0));
+  if ((v1 - v0) * k + 2 * pad + band < Hmin) {
+    // a long stretch beside a near house: at least Hmin tall, the road cut to what fits around the house (lines
+    // from farther pieces come in over the edge)
+    k = (Hmin - 2 * pad - band) / Math.max(1, v1 - v0);
+    const span = (W - 2 * pad) / k, hu = U(rec.x, rec.y);
+    let a = Math.max(u0, hu - span / 2), b = Math.min(u1, a + span);
+    a = Math.max(u0, b - span);
+    u0 = a; u1 = b;
+    while (i0 < c && U(r.x[i0], r.y[i0]) < u0) i0++;
+    while (i1 > c && U(r.x[i1], r.y[i1]) > u1) i1--;
+  }
   const H = Math.round((v1 - v0) * k + 2 * pad + band), left = (W - (u1 - u0) * k) / 2, top = pad + (side > 0 ? 0 : band);
   const X = (x: number, y: number) => (left + (U(x, y) - u0) * k).toFixed(1), Y = (x: number, y: number) => (top + (v1 - V(x, y)) * k).toFixed(1);
   const pt = ([x, y]: number[]) => `${X(x, y)},${Y(x, y)}`;

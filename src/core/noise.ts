@@ -69,7 +69,7 @@ export interface NoisePolicy {
 }
 function manualWall(policy: NoisePolicy | undefined, left: boolean, i: number): number | undefined {
   const h = (left ? policy?.wallL : policy?.wallR)?.[i];
-  return h !== undefined && Number.isFinite(h) && (h === 0 || (h >= 2 && h <= 6)) ? h : undefined;
+  return h !== undefined && Number.isFinite(h) && (h === 0 || (h >= NOISE.playerWallHeights[0] && h <= NOISE.playerWallHeights[NOISE.playerWallHeights.length - 1])) ? h : undefined;
 }
 
 // ---- receivers -----------------------------------------------------------------------------------
@@ -140,6 +140,8 @@ export interface NoiseOutcome {
   /** final wall heights per station (manual decisions included), m */
   L: Float64Array; R: Float64Array;
   walls: WallStretch[];
+  /** walls Auto adds for houses beside the player's wall choices (part of `walls`) */
+  aroundChoices: WallStretch[];
   receivers: NoiseReceiver[];
   boughtOut: { j: number; i: number; cost: number }[];
   unresolved: NoiseUnresolved[];
@@ -376,6 +378,8 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   let maxL: Float64Array | null = null, maxR: Float64Array | null = null;
   // walls as they stand during the decisions: the player's, then Auto's (Auto never grows over a player cell)
   const curL = Float64Array.from(fixedL), curR = Float64Array.from(fixedR);
+  // walls Auto adds for houses beside a wall choice of the player's (reported with that choice)
+  const aroundL = new Float64Array(n), aroundR = new Float64Array(n);
   /** Grow one wall of option `o` on the house's side from the most useful cell; the interval and whether
    * it suffices. `cur` = that side's walls (changed only by `commit`). */
   const grow = (c: Candidate, d: Decision, cur: Float64Array, other: Float64Array, o: number, bestEffort: boolean) => {
@@ -485,13 +489,21 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
       data.set(c.j, d);
     }
     if (done) {
+      if (manualHere) {
+        // walled because of the player's choice beside it: what this adds is reported with that choice
+        const h = heights[pick.o - 1], mine = c.left ? 1 : 0, around = c.left ? aroundL : aroundR;
+        for (let i = pick.lo; i <= pick.hi; i++) if (d.cells.wallable[i - d.w0] && d.cells.side[i - d.w0] === mine && cur[i] < h) around[i] = Math.max(around[i], h);
+      }
       commit(c, d, cur, auto, pick.lo, pick.hi, heights[pick.o - 1]);
       c.need = heights[pick.o - 1]; c.lo = pick.lo; c.hi = pick.hi;
       continue;
     }
     c.need = Infinity;
     if (!keep) { failed.set(c.j, c); continue; }
-    // kept by the player: best effort with the highest automatic wall, while it still helps
+    // kept by the player: best effort with the highest automatic wall, while it still helps. A house left too
+    // loud by the player's own wall choice beside it stays as that choice leaves it (a violation): no wall
+    // elsewhere half makes up for it.
+    if (!retained.has(c.j)) continue;
     const g = grow(c, d, cur, other, autoMax, true);
     if (g.lo >= 0) { commit(c, d, cur, auto, g.lo, g.hi, heights[autoMax - 1]); c.lo = g.lo; c.hi = g.hi; }
   }
@@ -568,7 +580,8 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
     receivers.push(rec);
   }
   return { L, R, receivers, boughtOut, unresolved, field,
-    walls: [...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, L, 'L'), ...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, R, 'R')] };
+    walls: [...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, L, 'L'), ...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, R, 'R')],
+    aroundChoices: [...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, aroundL, 'L'), ...wallStretches(n > 1 ? ds : 0, s[n - 1] ?? 0, aroundR, 'R')] };
 }
 
 /** Does most of the remaining noise come through junction openings on the house's side? */

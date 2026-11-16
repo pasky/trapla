@@ -241,6 +241,19 @@ describe('automatic walls and buyouts', () => {
     expect(removed.boughtOut).toEqual([]);
     expect(removed.L[200]).toBe(0);
   });
+  it('a wall the player removes beside a house: Auto walls around it only where that suffices, and says so', () => {
+    // no 5 m wall saves this one: with the player's None beside it, it stays too loud and nothing is built
+    const none = (w: number) => Float64Array.from(ss, (x) => (Math.abs(x - 2000) < w ? 0 : NaN));
+    const lost = noiseOutcome(src, model, house(0, 16, 3), [0], () => 0, ss, { wallL: none(50) });
+    expect(lost.boughtOut).toEqual([]);
+    expect(lost.unresolved).toHaveLength(1);
+    expect(lost.walls).toEqual([]);
+    // a nearer gap the walls beside it can make up for: those walls are reported with the choice
+    const around = noiseOutcome(src, model, house(0, 60), [0], () => 0, ss, { wallL: none(20) });
+    expect(around.unresolved).toEqual([]);
+    expect(around.aroundChoices.length).toBeGreaterThan(0);
+    for (const w of around.aroundChoices) for (let i = w.i0; i <= w.i1; i++) expect(around.L[i]).toBeGreaterThanOrEqual(w.height);
+  });
   it('never stands a wall in a junction opening; the opening still lets noise through', () => {
     const gap = road(401, -2000, { gapL: (i) => (i === 200 ? 1 : 0) });
     const o = noiseOutcome(gap, model, house(0, 50), [0], () => 0, s(gap));

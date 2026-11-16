@@ -89,7 +89,11 @@ acoustic study**. Code: `src/core/noise-field.ts` (the sum), `src/core/noise.ts`
   ≥ 2 × the house's distance from the wall (§1.11 h; replaces the PROVISIONAL 50 m margins), and the
   height adding the least wall area (measured along the wall line) wins; the minimum length counts only the
   wall actually standing (openings excluded). Walls step between heights along their length (no promotion of
-  a whole run). 2 m is in the menu because it is used (D6); 5 m stays the automatic maximum (PROVISIONAL;
+  a whole run). A house the player keeps gets the 5 m wall as far as it still helps when nothing suffices;
+  a house left too loud by the player's own wall choice beside it (None, or a lower wall) is not bought out
+  and gets no such partial wall elsewhere: it stays a violation, as the None button says. Walls Auto does
+  add beside a player's choice (where they suffice) are reported on that choice's card ("Auto adds 340 m
+  of 5 m wall at km 6.14–6.48 instead", with a button that selects it). 2 m is in the menu because it is used (D6); 5 m stays the automatic maximum (PROVISIONAL;
   player walls 2–6 m).
 - **Bill = drawing:** billed length is the wall line's own length beside the axis (cut-top walls on curves
   and their jogs included), billed height above the wall's foot; the 3D panels, the plan and the section
