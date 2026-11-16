@@ -88,6 +88,7 @@ try {
   assert(pi, 'the bend marker sits on its bend');
   await page.mouse.move(pi.x + pi.width / 2, pi.y + pi.height / 2); await page.mouse.down();
   await page.mouse.move(pi.x + pi.width / 2 - 120, pi.y + pi.height / 2 + 40, { steps: 15 }); await page.mouse.up();
+  await idle(); // (without it this read whatever was shown when the mouse came up: on a busy host a preview, and the full result of a pause mid-drag)
   await seen('bend dragged');
   await shot('bend-dragged');
   await page.locator('#undo').click(); await idle();
