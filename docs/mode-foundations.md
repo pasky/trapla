@@ -165,8 +165,10 @@ road width. Increments, each committed green:
   sag UNVERIFIED). No level junctions (`resolveCrossings(..., gradeSeparated)`): crossed roads get a bridge,
   an overbridge, an underpass or a reroute to such a crossing, never to the motorway's ends.
 - Noise: Manuál 2018 v2020 motorway rows (LOA/LNA, tab. 7 night shares, tab. 9/15 lane shares and speeds),
-  `road-noise.ts` `MOTORWAY_NOISE`. One equivalent source per corridor (≈ two carriageways for receivers
-  beyond 20 m); two directional sources are requested from the finite-segment noise rework.
+  `road-noise.ts` `MOTORWAY_NOISE`, on the finite-segment model (cost model 22): two directional sources,
+  half the traffic each on the lane-pair axes ±6.0 m (`AcousticSource.lanes`, evaluate.ts `motorwayLanes`;
+  screening from the axis source, Manuál §1.11 a). 150 km/h pilot: cars' travel time at 150 for the 39 % of
+  the time the D3 signs showed it (research/41), 130 otherwise; noise counts 150 always (upper bound).
 - Ends are the mission's scenario ports (motorway continues off-map; SPK's norm includes earth-built
   interchange branches at 1 per 7 km). Other connections stay unpriced.
 - Presets `d3-motorway` (D 27.5/120, research/25) and `d35-stage1-motorway` (built as D 27.5; the real
@@ -175,7 +177,35 @@ road width. Increments, each committed green:
 - Rendering: two carriageways (TP 133 markings), grass median with concrete barrier, twin decks (open
   median), one portal per tube.
 
-**Split / rejoin (scored).** HUD "Both directions / Towards A / Towards B". Split = one undoable edit:
+**One direction on its own: separate stretches (scored, 2026-11-16, playtest P0 #3 / P1 #11).**
+Replaces the whole-route split for player edits (old saves with `mode: 'independent'` still load and price as
+below). The Edit switch ("Both directions / Towards A / Towards B", on the motorway's own card and in the
+Motorway section) is a selection only (`ActiveRouteStore.oneDirection`). A direction is shown as the spine with
+its own bends in its stretches (`directionDesign`; its carriageway is that line's offset, so the line stays
+continuous). Its first plan edit (`replaceDirectionFromDesign` → `core/motorway-stretches.ts editStretches`)
+records a `SeparateStretch` on the paired corridor: spine bends [k0, k1) replaced by the direction's own line,
+[a, b] where it leaves the spine (+ its easing room). Pins / structure / wall choices go to the direction's own
+line inside, to the shared body outside; crossings and speed are the motorway's; By hand is set for both.
+Evaluation (`evaluateSeparated`): the spine's ONE D 27.5 evaluation (memoised per terrain, so a one-direction
+drag never redoes it); joins at the nearest allowed spine stations outside [a, b] (on a straight, `JOIN_RULES`
+editor tolerances, moved out until each carriageway's curve and easing fit before them); between the joins each
+direction a D 27.5-1 kernel run along its carriageway (A→B; the reverse one mirrored, its median on the right,
+`joinedSide: 'R'`), the shown line's arcs fixed. A direction without an own line there keeps the shared heights;
+one with an own line keeps them while within `SIDE_BY_SIDE` = 30 m (PROVISIONAL) of the other and is Auto
+between (the search continues the shared grade at both ends, its grade change there limited to the room its
+curve has). Bill = spine cost parts outside the stretches + both carriageways − `splitLedger` (same-way pairing)
+− houses both take. Results are composed on the spine's stations per direction (`core/result-stitch.ts`: lists,
+bend numbers and kilometres in problem texts remapped); drawn: the spine's slices + the carriageways.
+Both-direction edits keep stretches away from the change and drop those whose boundary bends it touches.
+The profile: with both directions edited together it shows each direction's own heights where they run apart
+(`RouteResult.apart`); the direction towards A reads from its own start (mirrored profile, kilometres counted
+back, left/right and grades turned in texts, bends numbered from its own start on the map, the profile, the
+cards and in problem texts: `ui/chainage.ts`).
+Known limits: E0 reroutes aimed at a crossing inside a stretch are not re-aimed; the noise band of the shared
+line is shown while both directions are edited; the shared body's mass haul is split by cell; inside a
+stretch the other carriageway is screened as if by the direction's own cut edges and walls (axis convention).
+
+**Split / rejoin (old saves).** HUD "Both directions / Towards A / Towards B". Split = one undoable edit:
 each direction gets the exact offset bends (radii R ± 6.875 m, never below its own Auto radius) and the
 shared grade line mapped to its chainage (By hand). Each is evaluated as `D27.5-1` (half formation incl. half
 median, 60 % SPK norm = SPK "half of a divided road", ½ bridge row per m², one tube). `splitLedger` then
@@ -184,9 +214,13 @@ D 27.5 body (50 % norm each), overlapping embankment/cutting volumes, land and h
 direction standing on (or undermining) the other carriageway is a violation with a concrete distance.
 Crossed roads where the directions run joined are built once: the forward direction prices and draws
 one structure spanning both bodies (the other mirrored), the reverse direction reuses it at no cost.
-Noise per direction uses the whole corridor's traffic (safe upper bound, ≤ +3 dB where only one direction
-is near); houses beside joined stretches belong to the outer direction, and where "joined" in plan is not
-one body at one height the ledger reports noise as not checked. Join = explicit reset to the kept shared
+Noise per direction (also in separate stretches): the whole corridor's traffic on its own lane-pair axis, a
+safe upper bound (≤ +3 dB where only one direction is near): the other carriageway as a second lane of the
+same source was tried and rejected in review (far apart, its bounds, geometry and far grouping do not hold);
+deciding houses heard by two sources needs the project's joint decisions (C1). Houses beside joined
+stretches are the outer direction's to decide (the median side is that direction's check), and where "joined" in plan is not one
+body at one height the ledger reports noise as not checked. A stitched result's noise source is the spine's
+cells outside and each piece's inside (`result-stitch.ts stitchSource`). Join = explicit reset to the kept shared
 line (Undo restores the separate edits). Unchanged, a split prices like the pair on open ground (+0.06 %
 in the test) and ≈ 3 % above it on D3 (structure choices differ per direction near bridge ends and
 tunnel portals; reroutes of roads crossed several times). C0's `exact`/frozen helpers stay for materialised
@@ -200,7 +234,12 @@ PROVISIONAL), SPOŽES 2026 items (track, layers, ditches, catenary, signalling, 
 utilities; H02 bridges, J01/J03 tunnels) with SPOŽES P1 markups (research/32). No level crossings (game
 rule). Train noise: CNOSSOS-EU rolling + traction source from the Annex II Appendix G tables, line
 propagation over hard ground, new-line limits 60/55 dB (research/35); compositions and train counts are
-explicit PROVISIONAL game priors. Rendering: ballast beds, sleepers and rails for one or two tracks.
+explicit PROVISIONAL game priors; on the finite-segment model a single track on its axis, a double track
+on its two tracks (±2.0 m, half the trains each). Ends on a track (a mission station: its tracks' axis on
+the map; a mapped line a new one branches off) leave it at no more than a turnout's angle, 4.76°
+(J60-1:12-500, research/38 §5). A rebuilt stretch of a mapped line keeps its line's own speed (OSM
+maxspeed; 100 / 80 / 60 km/h rows, Rmin 190 m) and may be as steep as its old line there
+(`RailwaySpec.maxGradient`, a game rule). Rendering: ballast beds, sleepers and rails for one or two tracks.
 New railways join the project through the generic Build / drag-to-rebuild flow (any-road-editing).
 
 ## M1 continuation notes (handoff, 2026-11-15 22:20)
@@ -220,15 +259,46 @@ Then: railway mission preset `d11-railway` (`createRailwayProject`, `railwayMiss
 red above the category's own maximum; legend / hint / "Track height" wording), screenshots 136–139,
 `scripts/railway-shots.mjs`. Split "By hand" density checked: same as roads (every auto grade break, each real).
 
-Pending, in order:
-1. **Build flow** (any-road-editing, not merged yet): hook Build → Motorway (`createMotorwayProject`-like
-   corridor creation at picked ends; non-port ends stay unpriced) and Build → Railway
-   (`createRailwayRoute(id, name, endpoints, tracks)`); railway rerouting = their generic drag-to-rebuild
-   with kind `railway` (we supply `project-railway.ts` kernel/rules), not a separate stub.
-2. **Noise contract** (noise-walls-seams, cost model 21): move motorway (two directional sources, half
-   traffic each on lane axes ±6.0 m; `MOTORWAY_NOISE` emission) and railway (`rail-noise.ts`
-   `railLinePower` per period, CNOSSOS source) onto its per-source per-storey day/night energy model;
-   then drop the split "full traffic per direction" bound and the `leftJoined` shield in evaluate.ts.
+Then (cost model 21): the railway mission moved onto the rail network (`d11-rail-kralovec`, Trutnov hl.n. →
+Královec, research/38; `d11-railway` retired); `railTrackOurs` (tie-in / rebuild-along) and `railRetired`
+(a rebuilt stretch's old track) in evaluate.ts / footprint.ts; autoprofile 0.5 m grid for gentle limits.
+Build flow done (`ui/mode-kinds.ts`: MOTORWAY_BUILD via `addMotorwayCorridor`, RAIL_BUILD, RAIL_LINE via
+`promoteGroundRailway`; the worker receives mapped rail lines with `source-ways`).
+
+Then (2026-11-16, playtest session 1): separate stretches replace the whole-route split for player edits (see
+"One direction on its own" above); `scripts/stretch-play.mjs` / `stretch-check.ts` play and check it;
+screenshot 135; source picking in 20 m pieces; crossing words name our railway / motorway.
+
+Then (2026-11-16, playtest re-test 2, cost model 22 after merging main 93f849d): mirrored bend numbers
+from the shown direction's start; an unselected mapped railway is dragged directly; railway ends held to a
+turnout's angle and the Královec starter re-fitted (leaves Trutnov hl.n. north-west along its tracks into a
+tunnel, VALID 10.4 bn after main's valid reroutes; the streets near the station pass over its tunnel, none is rerouted to a cut crossing); rebuilt stretches at their line's own speed and grade; railway words in the bill
+tooltips, intro, Build card and slope / Auto-height problems; one unpriced change per motorway; profile end
+letters A / B for motorways; 150 pilot travel time from its sourced share; paired motorway noise as two
+directional sources, railway noise per track (above). Merged main 2decf53 (valid reroutes): cost model 23. `scripts/rail-rebuild-check.ts` rebuilds a D3 railway
+stretch in Node.
+
+Handoff (2026-11-16, head 9b496b9, cost model 23, all gates green on 1c967bb; tsc / 636 tests / eval-regression /
+mode-play on 9b496b9): merge to main waits for playtest-qa-2's re-test of 1c967bb + 9b496b9 (parent forwards it;
+fix its P0/P1s first). After any-road-editing merges, extend its kept-old-road model (project-kept.ts) to rebuilt
+railways (pending 1). The D3 motorway starter's +3.4 bn after main's valid reroutes is one 704 m skew overbridge at
+km 14.18 plus track remedies at km 3.6–3.7, 7.7–7.9: routed by the parent to a crossing-economy agent. Tools:
+`scripts/rail-starter.ts` (CROSSINGS=1, FIX=1, DETAIL=1, AT=s, PINS=…), `scripts/rail-rebuild-check.ts` (D3 rebuild
+in Node), `scripts/stretch-check.ts`, `scripts/stretch-play.mjs`.
+
+Pending / limits found (2026-11-16):
+1. A rebuilt railway stretch is evaluated as new everywhere: in a narrow valley the old line's own neighbours
+   (river, roads, tracks) become conflicts, and a short drag can leave long-span bridges Auto cannot lift
+   (the line is grade-bound to its fixed ends). any-road's "kept old road" model (project-kept.ts, not yet
+   in main) should apply to railways too: kept cells = the old track, no norm, nothing billed.
+2. Rubber-band line while placing and crossings between project lines of different kinds come with
+   any-road-editing's build tool and crossing engine (not in main yet): extend to motorway / railway there.
+3. "A long bridge span is too low": a railway's own track (the station it joins, a stretch it rebuilds along
+   or takes up) no longer asks for a bridge clearance over itself (those impossible targets made every lift
+   fail; support-layout `ownTrack`). Where a lift still fails, the problem says why in numbers (the steepest
+   grade runs into a fixed start / end / pin, or into the heights both motorway directions share), and a
+   shortfall is rounded up (never "0.0 m"). A rebuilt stretch's grade limit is its old line's end-to-end grade
+   (the ground under a track holds its embankments and the valleys it bridges).
 
 Key code map: `core/project-motorway.ts` (corridor eval, split/rejoin, `splitLedger`, shared crossings via
 `EvalOptions.sharedCrossings`), `core/project-railway.ts`, `core/rail-noise.ts` + `data/cnossos-rail.ts`,

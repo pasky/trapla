@@ -10,8 +10,24 @@
  * 21: finite-segment noise (Manuál 2018 §1.10–1.11, §1.19), walls on the cross-section's line, the
  * cheapest automatic wall per house (research/36).
  * 22: valid automatic reroutes (engineered links within the class gradient, culverts, houses bought
- * out, a gentler line along our road), lowered underpasses (research/37), sloped decks over us. */
-export const COST_MODEL_VERSION = 22;
+ * out, a gentler line along our road), lowered underpasses (research/37), sloped decks over us.
+ * 23: railway grade lines on a 0.5 m search grid (12.5 ‰ left the 2 m / 1 m grids too few steps to rise
+ * over a crossing); a railway between two points of an existing line joins its track in the stations and
+ * rebuilds it where it runs along it; railway ends leave the tracks they join at a turnout's angle; rebuilt
+ * railway stretches at their line's own speed and grade; a paired motorway's noise as its two directional
+ * sources, a double track's per track; road bills unchanged (eval-regression identical).
+ * 24: the structure choice prices the buildings each option demolishes and settles the fill value on
+ * the final grade line (By hand from Auto's heights bills the same); piers of a chosen bridge miss
+ * what lies below; an automatic bridge whose piers cannot is not chosen; a stream at a bridge's end
+ * is spanned; a chimney / silo / shed standing within a demolished building goes with it; a building no
+ * one lives in that only the working strip beside our slopes reaches stays behind a retaining wall (research/18 rates)
+ * where that wall costs less than buying and demolishing it, and a building the player keeps is walled
+ * off wherever a wall can stand.
+ * 25: any mapped road can be rebuilt: a rebuilt stretch keeps its old road where its line stays on it
+ * (nothing built or billed there), every road is checked against the network as the player edited it
+ * (designed roads crossed by the same crossing engine, the lower-ranking road held on the other's deck
+ * and credited once), a house two roads take is billed once; single-road bills unchanged. */
+export const COST_MODEL_VERSION = 25;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

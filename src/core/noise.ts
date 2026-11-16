@@ -7,7 +7,7 @@ import { NOISE } from './data/urban';
 import * as dm from './detmath';
 import { KIND } from './structures';
 import {
-  cellOptions, segmentFlags, MAX_STOREYS, openBound, lineEnvelope, openTransfer, type CellOptions, emptyScreen, lineTransfer, noiseField, transferDelta, pointTransfer, transferBuffers, NOISE_REACH,
+  cellOptions, segmentFlags, MAX_STOREYS, openBound, lineEnvelope, openTransfer, sourceReach, type CellOptions, emptyScreen, lineTransfer, noiseField, transferDelta, pointTransfer, transferBuffers, NOISE_REACH,
   type AcousticSource, type NoiseField, type Propagation, type SideScreen, type Sum, FAR_ERROR,
 } from './noise-field';
 
@@ -194,8 +194,8 @@ function searchRadius(model: NoiseModel): number {
   return Math.min(NOISE_REACH, hi);
 }
 /** max over d and receiver height of d · 10^(−U/10), per ground class (noise-field's lineEnvelope) */
-function maxDLin(ground: Propagation): number {
-  return lineEnvelope(ground).M;
+function maxDLin(ground: Propagation, reach?: number): number {
+  return lineEnvelope(ground, reach).M;
 }
 /**
  * Beyond this distance from every cell no house can reach the limit (research/36 §2): a cell r away adds at
@@ -203,8 +203,8 @@ function maxDLin(ground: Propagation): number {
  * from the house on both sides of its nearest point and sweeps at most 360° around it, Σ l/r² ≤ (2 + 2π)/R
  * (ds ≤ |dr| + r|dθ|), so the whole road adds ≤ (2 + 2π)·M/(π R).
  */
-function boundRadius(excessDb: number, ground: Propagation): number {
-  return (2 + 2 * Math.PI) / Math.PI * maxDLin(ground) * dm.pow(10, excessDb / 10);
+function boundRadius(excessDb: number, ground: Propagation, reach?: number): number {
+  return (2 + 2 * Math.PI) / Math.PI * maxDLin(ground, reach) * dm.pow(10, excessDb / 10);
 }
 /** dB: the far grouping's error against the cell-by-cell sum stays below this (research/36 §2) */
 const OUTER_CHECK_DB = 0.5;
@@ -224,7 +224,9 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   demolished: ArrayLike<number>, groundAt: (x: number, y: number) => number, s: ArrayLike<number>,
   policy?: NoisePolicy): NoiseOutcome {
   const n = src.n, field = noiseField(src);
-  const radius = searchRadius(model);
+  // a source of several lines (a motorway's carriageways) reaches as far towards a house as its nearest line
+  const reach = sourceReach(src), extra = Math.max(0, reach - NOISE.sourceOffset);
+  const radius = searchRadius(model) + extra;
   const T = dm.pow(10, -model.excessDb / 10); // energy fraction of Y at which the controlling period meets its limit
   const excessOf = (q: number) => dB(q) + model.excessDb;
   // manual walls as fixed heights (0 where removed; NaN auto)
@@ -246,8 +248,8 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   // the emission weight a cell may carry above the source's reference (1 without weights)
   let wMax = 1;
   if (src.weight) for (let i = 0; i < n; i++) wMax = Math.max(wMax, src.weight[i]);
-  const env = lineEnvelope(field.ground);
-  const outer = Number.isFinite(model.excessDb) ? Math.max(radius, boundRadius(model.excessDb, field.ground) * wMax) : 0;
+  const env = lineEnvelope(field.ground, src.lanes ? reach : undefined);
+  const outer = Number.isFinite(model.excessDb) ? Math.max(radius, boundRadius(model.excessDb, field.ground, src.lanes ? reach : undefined) * wMax + extra) : 0;
   const ds = n > 1 ? (s[n - 1] - s[0]) / (n - 1) : 1;
   if (outer > 0) buildings.alongCells(src.x, src.y, n, outer + NOISE.facadeOffset + NOISE.sourceOffset, (cell, i) => {
     for (const j of cell) if (!seen.has(j)) { seen.add(j); candidate(j, i); }

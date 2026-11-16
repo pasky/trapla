@@ -23,6 +23,9 @@ export interface SupportRoute {
 export interface SupportDiagnostic {
   s: number;
   reason: 'manual' | 'terrain' | 'boundary' | 'tunnel' | 'span-depth' | 'span-limit' | 'limit';
+  /** span-limit: the bridge's cells, and whether Auto chose it (no player paint; it may hold forced cells) */
+  cells?: [number, number];
+  automatic?: boolean;
   /** Proposed clear abutment station, if one exists within the route. */
   targetS?: number;
   /** Required extension if targetS exists; otherwise the searched distance (a lower bound). */
@@ -45,9 +48,10 @@ function cellAt(r: SupportRoute, s: number, along: number, width: number): Footp
     tx: tx / len, ty: ty / len, along, left: width, right: width };
 }
 
+export type OwnTrack = (x: number, y: number, i: number) => boolean;
 /** Same support envelopes and raster uncertainty as structureFootprints/footprintConflicts.
  * Returns the highest required deck elevation over a protected feature, or -Infinity. */
-function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, relocatable?: ReadonlySet<number>): number {
+function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, relocatable?: ReadonlySet<number>, ownTrack?: OwnTrack): number {
   let height = -Infinity;
   roads?.nearSegments(cellBounds(c, 14), segment => {
     if (relocatable && !ROAD_CLASSES[segment.cls].separable && !relocatable.has(segment.way)) return;
@@ -65,6 +69,8 @@ function obstacleHeight(c: FootprintCell, terrain: Terrain, roads?: RoadNet, rel
     height = Math.max(height, terrain.heightAt(segment.ax + t * (segment.bx - segment.ax), segment.ay + t * (segment.by - segment.ay)) + R.riverClearance);
   });
   protectedRasterCells(terrain, c, ({ x, y, feature }) => {
+    // a railway's own track (the station we join, a stretch we rebuild along or take up) is no obstacle
+    if (feature === 'railway' && ownTrack?.(x, y, c.i)) return;
     height = Math.max(height, terrain.heightAt(x, y) + (feature === 'railway' ? R.railClearance : R.riverClearance));
   });
   return height;
@@ -81,7 +87,9 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   strictWays?: ReadonlySet<number>,
   /** 1 = a higher-ranking road's deck this road rides (built, supported and checked with that road's
    * crossing): a run made only of such cells is left as it is. */
-  held?: ArrayLike<number>): {
+  held?: ArrayLike<number>,
+  /** A railway's own track at a raster point near station i (EvalOptions.railTieIn / railRetired). */
+  ownTrack?: OwnTrack): {
   kind: Uint8Array; runs: Run[]; diagnostics: SupportDiagnostic[]; violations: Violation[];
   /** Only failing cells, deduplicated at shared spans. Caller may lift AUTO profiles; this
    * routine never changes grade, profile controls, or any explicitly requested structure. */
@@ -101,10 +109,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   // Memo keys stay valid across strict retries: `relocatable` rows are keyed by the strict set.
   const strictKey = strictWays ? [...strictWays].join() : 'all';
   const obstacle = (cell: FootprintCell, relocatable?: ReadonlySet<number>) => {
-    if (!memo) return obstacleHeight(cell, terrain, roads, relocatable);
+    if (!memo) return obstacleHeight(cell, terrain, roads, relocatable, ownTrack);
     const key = `${cell.s.toFixed(3)}/${cell.along.toFixed(3)}/${cell.left}/${relocatable ? strictKey : ''}`;
     let height = memo.get(key);
-    if (height === undefined) { height = obstacleHeight(cell, terrain, roads, relocatable); memo.set(key, height); }
+    if (height === undefined) { height = obstacleHeight(cell, terrain, roads, relocatable, ownTrack); memo.set(key, height); }
     return height;
   };
   const blocked = (s: number, pier = false) => obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
@@ -209,12 +217,14 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   for (const run of runs) {
     if (run.kind !== KIND.bridge || heldRun(run)) continue;
     const isManual = manual.subarray(run.i0, run.i1 + 1).some(Boolean);
+    // The player chooses a bridge, not its piers: only a given support arrangement stays fixed.
+    const fixedSupports = isManual && run.pierStations !== undefined;
     const ordinary = bridgeLayout(run.length), spans = Math.max(1, Math.round(run.length / ordinary.span));
     const originalPiers = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + (k + 1) * ordinary.span);
     let piers: number[] = [];
     let changed = false;
     for (const s of originalPiers) {
-      if (isManual || !blocked(s, true)) { piers.push(s); continue; }
+      if (fixedSupports || !blocked(s, true)) { piers.push(s); continue; }
       changed = true;
       // Seek the nearest free support in this pier's own half-span neighbourhood. Disjoint
       // neighbourhoods preserve ordering. A fully obstructed neighbourhood becomes a priced
@@ -231,7 +241,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     if (changed && layout.span > SUPPORT_LIMITS.spanM) {
       // Retain the original, fully billed supports; the downstream screen must still flag
       // their collisions. Do not fabricate an arbitrarily long feasible bridge from a price proxy.
-      diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-limit', extensionM: 0, raiseM: 0, requiredSpanM: layout.span });
+      diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-limit', extensionM: 0, raiseM: 0, requiredSpanM: layout.span,
+        cells: [run.i0, run.i1], automatic: !isManual });
       piers = [...originalPiers];
       layout = supportBridgeLayout(run.s0, run.s1, piers);
       changed = false;
@@ -270,7 +281,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       diagnostics.push({ s: r.s[worstI], reason: 'span-depth', extensionM: 0, raiseM, requiredZ });
       violations.push({ kind: 'structure', basis: 'game', s0: r.s[worstI], s1: r.s[worstI],
         title: 'A long bridge span is too low over what it crosses',
-        fix: `Raise the bridge at km ${(r.s[worstI] / 1000).toFixed(2)} by at least ${raiseM.toFixed(1)} m, or move the route so the ${layout.span.toFixed(0)} m span can be shorter`,
+        fix: `Raise the bridge at km ${(r.s[worstI] / 1000).toFixed(2)} by at least ${(Math.ceil(raiseM * 10 - 1e-9) / 10).toFixed(1)} m, or move the route so the ${layout.span.toFixed(0)} m span can be shorter`,
         rule: 'Game rule: the clearance under the bridge, plus a deck about 1/20 of the span deep',
         detail: 'To keep its supports off the roads, railways or water below, this bridge has a long span; a long span needs a deeper deck, which eats into the clearance.' });
     }

@@ -6,6 +6,7 @@ import type { Design, Result } from '../core/evaluate';
 import { CROSSING_CHOICE_TEXT } from '../core/terms';
 import { BUILDING_KINDS, ROAD_CLASSES } from '../core/data/urban';
 import { crossedRoads, type Sel } from './inspector';
+import { shownRange, shownS } from './chainage';
 
 export interface DecisionEvents {
   select?: (sel: Sel) => void;
@@ -13,7 +14,9 @@ export interface DecisionEvents {
   forget?: (roadId: number) => void;
 }
 
-const km = (s: number) => (s / 1000).toFixed(2);
+/** kilometres as the player reads them on the active line (ui/chainage.ts) */
+const km = (s: number) => (shownS(s) / 1000).toFixed(2);
+const kmr = (s0: number, s1: number) => { const [a, b] = shownRange(s0, s1); return `${(a / 1000).toFixed(2)}–${(b / 1000).toFixed(2)}`; };
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const CHOICE = Object.fromEntries(CROSSING_CHOICE_TEXT.map(([v, label]) => [v, label])) as Record<string, string>;
 
@@ -40,8 +43,8 @@ export class DecisionList {
   setResult(r: Result, d: Design, kind: (j: number) => string = () => 'building') {
     const items: string[] = [];
     const li = (attrs: string, text: string) => items.push(`<li><button type="button" class="link" ${attrs}>${text}</button></li>`);
-    for (const o of [...(d.structureOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="st-${o.kind}"></i>${['Earthwork', 'Bridge', 'Tunnel'][o.kind]} <small>km ${km(o.s0)}–${km(o.s1)}</small>`);
-    for (const o of [...(d.wallOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="wall"></i>${o.height ? `${o.height} m wall` : 'No wall'} ${o.side === 'L' ? 'left' : 'right'} <small>km ${km(o.s0)}–${km(o.s1)}</small>`);
+    for (const o of [...(d.structureOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="st-${o.kind}"></i>${['Earthwork', 'Bridge', 'Tunnel'][o.kind]} <small>km ${kmr(o.s0, o.s1)}</small>`);
+    for (const o of [...(d.wallOverrides ?? [])].sort((a, b) => a.s0 - b.s0)) li(`data-range="${o.s0},${o.s1}"`, `<i class="wall"></i>${o.height ? `${o.height} m wall` : 'No wall'} ${o.side === 'L' ? 'left' : 'right'} <small>km ${kmr(o.s0, o.s1)}</small>`);
     for (const p of d.gradePins ?? []) li(`data-pin="${p.s}"`, `<i class="pin"></i>Height ${p.z.toFixed(1)} m <small>km ${km(p.s)}${p.s > r.length ? ' · past the end' : ''}</small>`);
     const inactive: number[] = [];
     for (const o of d.crossingOverrides ?? []) {

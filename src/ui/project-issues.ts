@@ -54,13 +54,14 @@ export function projectBadge(result: ProjectResult | null, pending: boolean, vio
 }
 
 /** What is not priced yet, counted per road change (distinct roads that are not ours), named when there is
- * one. `ours`: our road, or every road of it (a motorway is two: its other direction is no "road change").
- * Our road appears only when no road change is unpriced. */
+ * one. Our road appears only when no road change is unpriced. */
 export function unpricedText(unpriced: readonly { routeId: RouteId }[], ours: RouteId | undefined | ReadonlySet<RouteId>,
-  names: Readonly<Record<RouteId, string>>): string {
+  names: Readonly<Record<RouteId, string>>, groups: Readonly<Record<RouteId, string>> = {}): string {
+  // `ours`: our road, or every road of it (a motorway mission is two: its other direction is no change)
   const mine = typeof ours === 'string' ? new Set([ours]) : ours ?? new Set<RouteId>();
   const ids = [...new Set(unpriced.map(u => u.routeId))];
-  const changes = ids.filter(id => !mine.has(id));
+  // one change per physical line: the two directions of a motorway are one (`groups`: its corridor)
+  const changes = [...new Map(ids.filter(id => !mine.has(id)).map(id => [groups[id] ?? id, id])).values()];
   if (!changes.length) return ids.length ? 'Our road is not priced yet' : '';
   if (changes.length === 1) return `${names[changes[0]] ?? 'One road change'} not priced yet`;
   return `${changes.length} road changes not priced yet`;

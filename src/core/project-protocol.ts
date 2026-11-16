@@ -6,7 +6,7 @@ export interface PreviewWindow { id: string; lastDisplayedSequence: number }
 /** Additive worker messages; legacy init/eval/result remain unchanged. */
 export type ProjectWorkerIn =
   | { type: 'project-eval'; id: number; snapshot: ProjectSnapshot; displayedResult: ProjectIdentity | null }
-  | { type: 'project-preview'; id: number; snapshot: ProjectSnapshot; routeId: RouteId; materialValue?: number; gesture?: PreviewGesture }
+  | { type: 'project-preview'; id: number; snapshot: ProjectSnapshot; routeId: RouteId; materialValue?: number; structureValue?: number; gesture?: PreviewGesture }
   /** The noise view's band for a route of the last full result (computed on demand, after evaluations). */
   | { type: 'noise-band'; id: number; identity: ProjectIdentity; routeId: RouteId; crownWidth: number };
 /** Reply to `noise-band`: null when that result is no longer the worker's last one. */

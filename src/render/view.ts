@@ -22,7 +22,7 @@ import { buildRouteSurfaces, routeSurfaceContext, type RouteSurfaceContext } fro
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
 import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
 import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
@@ -33,6 +33,8 @@ import { CATEGORIES } from '../core/data/categories';
 export interface ViewEvents {
   /** a click on the map (not a drag) at ground point x, y */
   onPickTerrain?: (x: number, y: number, clientX: number, clientY: number) => void;
+  /** a click beside the map (beyond its edge, or the sky) */
+  onPickNothing?: () => void;
   /** a double-click on the ground */
   onDoublePick?: (x: number, y: number) => void;
   /** is the road under this screen point? (a press there drags a new bend instead of panning) */
@@ -93,6 +95,10 @@ export interface RenderEndpoints {
  * invisible close up, keep a dashed trace on the ground.
  */
 const STRUCTURE_LINE_FROM = 2.5;
+/** Ground drawn over a tunnel behind its portal face's top, m: past the terrain mask's bleed (≈ 3 m,
+ * route-mask.ts) with an overlap onto the drawn terrain; within PORTAL_LID_BLEND it rises from the face's
+ * ground to the drawn terrain. */
+const PORTAL_LID = 7.5, PORTAL_LID_BLEND = 3;
 
 /** Carriageway cross-sections by index (`roadSections`; 0 = none: plain asphalt) and the index of a
  * crown width's category. All have the same centre-line dash (TP 133: 3 / 6 m outside motorways). */
@@ -134,6 +140,8 @@ export class View {
   private guideFor: number | null = null;
   private designPts: { x: number; y: number }[] = [];
   private hoverPi: number | null = null;
+  /** the shown line reads from B (a motorway's direction towards A): its bends are numbered from there */
+  bendsReversed: () => boolean = () => false;
   /** a drag preview's centreline is newer than the road body */
   private stale = false;
   private officialPts: { x: number; y: number; z: number }[] = [];
@@ -736,8 +744,9 @@ export class View {
     d.pis.forEach((p, i) => {
       const m = this.piMarkers[i];
       m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y);
-      m.el.textContent = String(i + 1);
-      m.el.title = `Bend ${i + 1}`;
+      const no = this.bendsReversed() ? d.pis.length - i : i + 1;
+      m.el.textContent = String(no);
+      m.el.title = `Bend ${no}`;
       m.el.classList.toggle('sel', selected === i);
     });
     if (this.hoverPi !== null && this.hoverPi >= d.pis.length) this.hoverPi = null;
@@ -795,7 +804,7 @@ export class View {
    * builders consume it explicitly rather than reading mutable staging state from View.
    */
   *buildResult(r: Result, crownWidth: number, routeId = LEGACY_ROUTE,
-    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true): Generator<void, StagedRoute> {
+    sharedContext?: RouteSurfaceContext, batch = false, buildingMarkers = true, mirrored = false): Generator<void, StagedRoute> {
     const out: THREE.Object3D[] = [];
     const owned = this.routeGroups.stage(routeId, out);
     let handedOver = false, settled = false;
@@ -810,6 +819,9 @@ export class View {
     yield;
     const n = r.n, w = crownWidth / 2;
     const bad = badStations(r), section = sectionIndex(crownWidth);
+    // one direction of a separate motorway stretch run against its travel (the reverse direction, A→B):
+    // its median side is on the right
+    const side = mirrored && section === CARRIAGEWAY_SECTION ? -1 : 1;
     // ---- ribbon (crown + slopes) and bridge decks ----
     const pos: number[] = [], col: number[] = [], idx: number[] = [], elev: number[] = [], ink: number[] = [];
     const kinds: number[] = [], geo: number[] = [];
@@ -846,8 +858,8 @@ export class View {
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
-        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
-        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
         dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,
@@ -945,7 +957,28 @@ export class View {
         if (prev) quad(prev[0], at[0], prev[1], at[1]);
         prev = at;
       }
+      // Ground over the tunnel behind the face's top edge, out past the side collars: the terrain mask's bleed
+      // (≈ a texel) leaves a strip of it cut away, and the drawn terrain (coarser than the face's ground)
+      // stands above or below the face's top. From the face's ground it rises to the drawn terrain within
+      // PORTAL_LID_BLEND and overlaps it beyond, as the side collars do; without it sky slivers line the top.
+      const into = i < run.i0 ? 1 : -1, wide = Math.max(2, Math.ceil((L + R + 2 * GROUND_COLLAR) / 2.5));
+      const rows = Math.ceil(PORTAL_LID / 2.5), base = groundPos.length / 3;
+      for (let k = 0; k <= wide; k++) {
+        const o = L + GROUND_COLLAR - (L + R + 2 * GROUND_COLLAR) * k / wide;
+        // beside the cut, the side collar's own blend towards the drawn terrain (collarPoint)
+        const out = o > L ? o - L : o < -R ? -R - o : 0, side = Math.max(0, Math.min(1, (out - 10) / (GROUND_COLLAR - COLLAR_OVERLAP - 2.5 - 10)));
+        for (let j = 0; j <= rows; j++) {
+          const d = PORTAL_LID * j / rows, px = x + nx * o + r.tx[i] * into * d, py = y + ny * o + r.ty[i] * into * d;
+          const g = natural(px, py), blend = Math.max(side, Math.min(1, d / PORTAL_LID_BLEND));
+          this.local(px, py, g + (blend ? (Math.max(g, coarse(px, py)) - g) * blend : 0) + groundLift, v); groundPos.push(v.x, v.y, v.z);
+        }
+      }
+      for (let k = 0; k < wide; k++) for (let j = 0; j < rows; j++) {
+        const a = base + k * (rows + 1) + j, b = a + rows + 1;
+        groundIdx.push(a, b, a + 1, b, b + 1, a + 1);
+      }
     }
+    flushGround();
     // bridge deck edges and piers, tunnel portals
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
       const nx = -ty, ny = tx;
@@ -964,7 +997,7 @@ export class View {
     // A paired motorway is carried on twin decks and runs through twin tubes: the median is open.
     const gap = section === PAIRED_SECTION || section === CARRIAGEWAY_SECTION ? D275_SECTION.median / 2 : 0;
     // one direction of a split motorway: its half of the median (on its left) is open on a bridge
-    const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [[-w, w - gap]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
+    const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [side > 0 ? [-w, w - gap] : [-w + gap, w]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
     const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;
     for (const run of r.runs) {
       if (run.kind === KIND.bridge) {
@@ -1558,7 +1591,7 @@ export class View {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       if (down.btn === 0 && moved < 5) {
         const p = this.pick(e.clientX, e.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, e.clientX, e.clientY); else this.ev.onPickNothing?.();
       }
       down = null;
     });
@@ -1603,7 +1636,7 @@ export class View {
         stop();
         if (started) { grab.end(); return; }
         const p = this.pick(ev.clientX, ev.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY); else this.ev.onPickNothing?.();
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);
@@ -1652,7 +1685,7 @@ export class View {
         if (i !== null) { this.dragging = null; this.ev.onPiDragEnd?.(i); return; }
         // released while still held: a click where it was pressed
         const cx = waiting ? x0 : ev.clientX, cy = waiting ? y0 : ev.clientY, p = this.pick(cx, cy);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, cx, cy);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, cx, cy); else this.ev.onPickNothing?.();
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);

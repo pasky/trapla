@@ -53,3 +53,28 @@ export function footprintBlend(polygons: readonly GroundFootprint[]) {
     return Math.max(0, Math.min(1, (Math.sqrt(distance2) - 10) / 2.5));
   };
 }
+
+/** Is (x, y) inside one of the polygons (our road's earthworks between its daylight lines)? */
+export function footprintContains(polygons: readonly GroundFootprint[]) {
+  const cell = 25, grid = new Map<number, number[]>(), KEY = 1 << 20, OFF = 1 << 19;
+  polygons.forEach((p, i) => {
+    for (let x = Math.floor(p.x0 / cell); x <= Math.floor(p.x1 / cell); x++)
+      for (let y = Math.floor(p.y0 / cell); y <= Math.floor(p.y1 / cell); y++) {
+        const key = (x + OFF) * KEY + y + OFF, list = grid.get(key);
+        if (list) list.push(i); else grid.set(key, [i]);
+      }
+  });
+  return (x: number, y: number) => {
+    for (const index of grid.get((Math.floor(x / cell) + OFF) * KEY + Math.floor(y / cell) + OFF) ?? []) {
+      const p = polygons[index];
+      if (x < p.x0 || x > p.x1 || y < p.y0 || y > p.y1) continue;
+      let inside = false;
+      for (let i = 0, j = 3; i < 4; j = i++) {
+        const ax = p.xy[j * 2], ay = p.xy[j * 2 + 1], bx = p.xy[i * 2], by = p.xy[i * 2 + 1];
+        if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
+      }
+      if (inside) return true;
+    }
+    return false;
+  };
+}

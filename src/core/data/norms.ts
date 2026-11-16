@@ -54,10 +54,15 @@ export const MOTORWAY_SPEED_NORMS: Record<number, SpeedNorms> = {
  *   and dips. Train noise and the freight ruling gradient have no sourced Czech values: not checked. */
 const railNorms = (v: number): SpeedNorms => {
   const rv = Math.max(2000, Math.ceil(0.4 * v * v / 100) * 100);
-  return { speed: v, minRadius: Math.ceil(11.8 * v * v / (150 + 80)), noSuperelevationRadius: Infinity,
+  return { speed: v, minRadius: Math.max(RAIL_RMIN, Math.ceil(11.8 * v * v / (150 + 80))), noSuperelevationRadius: Infinity,
     minTransition: 10 * v * 150 / 1000, minCrestRadius: rv, minSagRadius: rv };
 };
-export const RAIL_SPEED_NORMS: Record<number, SpeedNorms> = { 160: railNorms(160), 140: railNorms(140), 120: railNorms(120) };
+/** PROVISIONAL: smallest radius on an open line whatever the speed, ČSN 73 6360-1:2008 Rmin = 190 m as cited
+ * by Plášek 2009 p. 23 (older edition, research/34); binds below ≈ 61 km/h. */
+const RAIL_RMIN = 190;
+/** 100, 80 and 60 km/h are for rebuilding stretches of existing lines at their own speed (a mapped line's
+ * maxspeed): the same cant envelope, ramps and roundings (2,000 m, Plášek's desired value below 80 km/h). */
+export const RAIL_SPEED_NORMS: Record<number, SpeedNorms> = Object.fromEntries([160, 140, 120, 100, 80, 60].map(v => [v, railNorms(v)]));
 
 export const LOCAL_NORM = 'ČSN 73 6110 (local roads)';
 export const TRACK_NORM = 'ČSN 73 6109 (field tracks, as reproduced by Vébr 2022)';

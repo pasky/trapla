@@ -85,7 +85,9 @@ await page.evaluate((d) => window.trapla.setDesign(d), design);
 await page.evaluate(() => window.trapla.whenIdle());
 if (split) {
   await page.evaluate(() => { const b = document.querySelector('#sec-design .fold-h button'); if (b?.getAttribute('aria-expanded') === 'false') b.click(); });
-  await page.click(`#dir-${split}`);
+  // the switch is on the motorway's own card (the Motorway section's copy steps aside while it is shown)
+  const own = page.locator(`.motorway-head [data-dir="${split}"]`);
+  await ((await own.count()) && await own.first().isVisible() ? own.first() : page.locator(`#dir-${split}`)).click();
   await page.evaluate(() => window.trapla.whenIdle());
 }
 const pi = (await page.evaluate(() => window.trapla.getDesign())).pis[bend]; // the live design (a split direction has its own bends)
@@ -167,7 +169,10 @@ if (mode === 'bend') {
     // a height point By hand (in Auto, dragging the line pins it instead)
     await T(() => document.getElementById('grade-manual').click());
     await T(() => window.trapla.whenIdle());
-    grab = async () => T(() => { const r = window.trapla.result(), v = r.vpis[Math.floor(r.vpis.length / 2)]; return window.trapla.profilePoint(v.s, v.z); });
+    // the shown height point nearest the middle (the others have no handle at this zoom)
+    grab = async () => T(() => { const r = window.trapla.result(), mid = r.vpis.length / 2;
+      const k = window.trapla.profileShownPoints().reduce((a, b) => (Math.abs(b - mid) < Math.abs(a - mid) ? b : a)), v = r.vpis[k];
+      return window.trapla.profilePoint(v.s, v.z); });
   }
   path = (u, size) => ({ x: 0, y: -size * 0.4 * Math.sin(u * 2 * Math.PI) });
 } else if (mode === 'link') {

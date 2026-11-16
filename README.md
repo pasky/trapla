@@ -113,9 +113,11 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   the road on the map marks the spot here; when the map is zoomed in, a light blue window shows which part of
   the route it is looking at. **Key ▾** explains every mark.
 - **Road height: Auto | By hand** (the *Road* section): Auto sets the cheapest legal heights and redoes them after
-  every change (an approximate search); pins steer it. By hand starts from the current heights as **◆ points**:
-  drag one, double-click the line to add one, right-click to delete. Back to Auto replaces them (Undo brings them
-  back).
+  every change (an approximate search); pins steer it. By hand starts from exactly the current heights (the same
+  bill) as **◆ points**; at each zoom only the points that shape the line have a handle (zoom in for more), and
+  the hidden ones between follow a drag in proportion. Drag one, double-click the line to add one, right-click to
+  delete. Back to Auto replaces them (Undo brings them back). Height drags (pins, points) move at most 0.5 m per
+  pixel, finer when the profile is zoomed in; the tip shows the height and how far it moved.
 - **Map:** left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms about the ground under the
   cursor. The view always turns and zooms about the ground at its centre, never looks out flat along the horizon,
   and stays over the map; a click in the profile or a list brings what it picks into view (looking down on it
@@ -217,25 +219,47 @@ Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scena
 [the aerial photo showing the real bypass under construction](docs/screenshots/78-nova-paka-photo.png).
 See `docs/new-scenario.md`.
 
-### Motorway (cost model 20)
+### Motorway (cost model 23)
 
 Two motorway places on the start screen ([picker](docs/screenshots/130-motorway-picker.png)): both directions
 are designed together as one D 27.5 corridor ([D3 overview](docs/screenshots/131-motorway-overview.png)),
 drawn as [two carriageways with a grass median and barrier](docs/screenshots/132-motorway-carriageways.png),
 [twin bridge decks on their own piers](docs/screenshots/133-motorway-twin-bridge.png) and
-[one portal per tunnel tube](docs/screenshots/134-motorway-twin-tunnel.png). "Edit: Towards …" (in the
-Motorway card) splits the directions; [one direction bent on its own](docs/screenshots/135-motorway-split.png)
-keeps its height points on their ground and runs as one body with the other wherever they still meet.
-"Both directions" joins them again. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130`.
+[one portal per tunnel tube](docs/screenshots/134-motorway-twin-tunnel.png). The motorway's own card (click
+it, or nothing selected) says what a drag bends: "Both directions", or "Towards …" one of them. Choosing changes
+nothing; the first drag of that direction makes it run on its own only over the stretch it changes, from a join
+on a straight before the change to one after it ([one direction through its own tunnel](docs/screenshots/135-motorway-one-direction.png));
+elsewhere both stay one road body with one bill. Inside, each direction keeps the shared heights while the two
+run side by side and gets Auto heights where they are apart. The card lists where the directions run apart,
+each with "Join". On a motorway designed for 130 km/h the Motorway card offers "Speed limit:
+150 km/h (pilot)", like the ministry's D3 pilot (research/41): cars' travel time at 150 for the 39 % of the time
+the D3 signs showed it (130 otherwise), their noise at +20 km/h
+(an extrapolation, marked PROVISIONAL), the variable signs priced (about 1.2 M CZK per km, ŘSD's D3 contract);
+curves and slopes stay those of 130. Its noise comes from two directional sources, half the traffic each on the
+lane axes 6 m either side of the middle (a direction on its own: all of it on its own lane axis, an upper bound). The direction
+towards A reads from its own start: its profile, kilometres and bend numbers count from B. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130` (its
+one-direction shot is 135); `node scripts/stretch-play.mjs --gpu` plays choose, drag, join.
 
-### Railway (cost model 20)
+### Railway (cost model 23)
 
-"Railway: Trutnov → Polish border" is an exercise in the D11 pass, not a planned line (the line there today is
-single-track and not electrified): a double-track electric line at up to 160 km/h between the same ends,
-slopes ≤ 12.5 ‰ (shown in ‰ in the profile), no level crossings, CNOSSOS train noise.
-[Overview](docs/screenshots/136-railway-overview.png), [double track in a cut](docs/screenshots/137-railway-track.png),
-[viaduct over Trutnov](docs/screenshots/138-railway-viaduct.png), [tunnel portal](docs/screenshots/139-railway-portal.png).
-Reproduce with `node scripts/railway-shots.mjs --docs 136`.
+"Railway: Trutnov → Královec" starts and ends on the rail network: at Trutnov hlavní nádraží and at Královec,
+the last station before the Polish border, on today's single-track, non-electrified line (passenger trains
+run on to Lubawka; 26 min with four stops in the 2022 timetable). No upgrade of it has been announced
+(research/38): the card says it is a game proposal. A single-track electric line at up to 120 km/h, slopes
+≤ 12.5 ‰ (‰ in the profile), no level crossings, CNOSSOS train noise from each track. The new line joins the old
+track in both stations, leaving it at no more than a turnout's angle (4.8°, research/38 §5), and rebuilds it
+where it runs along it; elsewhere the old line stays. The starter leaves Trutnov hl.n. north-west along the
+station tracks into a tunnel under the hill (VALID, 10.4 bn CZK). The first railway card (between
+the motorway's ends) is retired; its saves still load (`?scenario=d11&preset=d11-railway`).
+[Overview](docs/screenshots/136-railway-overview.png), [out of Trutnov along the station tracks](docs/screenshots/137-railway-trutnov.png),
+[the viaduct over the old line's valley](docs/screenshots/138-railway-bridge.png), [joining the old line at Královec](docs/screenshots/139-railway-kralovec.png)
+(`node scripts/railway-shots.mjs --docs 136`; played end to end with `node scripts/mode-play.mjs --gpu`).
+
+Build → Motorway makes both directions of a D 27.5 between two points of open ground (shown, not priced: the
+game has no interchanges). Build → Railway ends on a mapped railway or open ground. A mapped railway can be
+rebuilt by dragging it like a road (no need to select it first): the dragged stretch becomes an editable
+single-track railway at the old line's own speed (its mapped limit) and steepness that takes up its old track
+(taking it up is not priced yet).
 
 ### Editing any road
 
@@ -310,6 +334,16 @@ Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-unde
 Map camera and labels (`node scripts/camera-check.mjs`): [*Whole route* after panning off the map](docs/screenshots/157-camera-whole-route.png),
 [a low view: no names piled up on the horizon or printed over each other](docs/screenshots/158-camera-low-view-labels.png),
 [noise walls on both sides labelled once](docs/screenshots/159-camera-wall-labels.png).
+Core play polish (model 24): [By hand from Auto's heights: the same bill, handles only where the line bends](docs/screenshots/160-byhand-same-bill.png),
+[dragging a height point: the height and the change in the tip](docs/screenshots/161-byhand-drag-readout.png),
+[a pin dragged up 15 m by 30 px](docs/screenshots/162-pin-drag-readout.png),
+[1024 × 700: Build under the view buttons, the map key as symbols](docs/screenshots/163-1024-start.png),
+[… with the noise key bottom right, clear of A](docs/screenshots/164-1024-noise.png),
+[1280 × 720: A clear of the key](docs/screenshots/165-1280x720-start.png),
+[Auto bridges the Poříčí halls on its own heights](docs/screenshots/166-porici-auto-bridge.png),
+[the player's bridge over km 5.09–5.50: its piers clear the roads (a crossed track's reroute is still reported)](docs/screenshots/167-player-bridge-piers-clear.png),
+[a bought-out house drawn behind the 5 m wall Auto tried: one story](docs/screenshots/168-bought-out-one-story.png),
+[Nová Paka km 1.97: the tower inside the demolished hall goes with it](docs/screenshots/169-nova-paka-tower-with-hall.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

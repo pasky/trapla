@@ -11,16 +11,19 @@ import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
+import type { OurLine } from '../core/terms';
+import { bendNo, lineFrame, shownGrade, shownS, shownText } from './chainage';
 import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
 import type { WallOverride } from '../core/build-controls';
 import type { VPI } from '../core/vertical';
 import type { ProvisionalProfile } from './provisional';
 import type { StationRange } from '../state';
-import { COST_GROUPS, perM } from './costgroups';
+import { COST_GROUPS, groupLabel, groupShort, perM } from './costgroups';
 
 export interface ProfileEvents {
-  onVpiDrag?: (i: number, s: number, z: number) => void;
+  /** `a`, `b`: the nearest height points shown on either side; the hidden ones between follow the drag */
+  onVpiDrag?: (i: number, s: number, z: number, a: number, b: number) => void;
   onVpiDragEnd?: () => void;
   onVpiAdd?: (s: number, z: number) => void;
   onVpiDelete?: (i: number) => void;
@@ -66,6 +69,10 @@ const BEND_Y = 12;
 /** the cost strip never averages over less than this, so lump sums (buildings, junctions) stay readable, m */
 const MIN_WINDOW = 50;
 const BAND_H = 11, STRIP_H = 54, GAP_CHART = 6, GAP_BAND = 3;
+/** By hand, shown height points are at least this far apart, px */
+const SHOWN_GAP = 28;
+/** a drag moves a height or pin by at most this much per px (finer when zoomed in), m */
+const DRAG_M_PER_PX = 0.5;
 
 interface Element { s0: number; s1: number; curve: boolean; label: string }
 
@@ -97,6 +104,8 @@ export class ProfilePanel {
   private under: Under = { kind: 'none' };
   /** a height point or pin is being dragged */
   private dragging = false;
+  /** live readout of a height drag: the height and how far it moved */
+  private dragLabel: { s: number; z: number; dz: number } | null = null;
   private flash: { s0: number; s1: number } | null = null;
   private sel: StationRange | null = null;
   /** the part of the route the map shows (light window), null when it shows all of it */
@@ -123,10 +132,17 @@ export class ProfilePanel {
     this.tip.className = 'profile-tip';
     this.tip.style.display = 'none';
     document.body.appendChild(this.tip);
+    this.setLine('road');
+    this.install();
+  }
+
+  /** what the line is (road / motorway / railway): the cost strip's words follow it */
+  private line = 'road';
+  setLine(line: string) {
+    this.line = line;
     // the cost strip's colours in the profile's key
     const key = document.getElementById('cost-key');
-    if (key) key.innerHTML = COST_GROUPS.map((g) => `<div><i class="sw" style="background:${g.color}"></i>${g.label}</div>`).join('');
-    this.install();
+    if (key) key.innerHTML = COST_GROUPS.map((g) => `<div><i class="sw" style="background:${g.color}"></i>${groupLabel(g, line)}</div>`).join('');
   }
 
   /** shown on an empty profile (e.g. a proposed change that has no checked heights yet) */
@@ -139,8 +155,8 @@ export class ProfilePanel {
   }
 
   /** the steepest slope the shown route's category allows (labels above it are red); tracks in per mille */
-  private gradeRule = { max: 0.06, perMille: false };
-  setGradeRule(rule: { max: number; perMille: boolean }) { this.gradeRule = rule; }
+  private gradeRule: { max: number; perMille: boolean; line?: OurLine } = { max: 0.06, perMille: false };
+  setGradeRule(rule: { max: number; perMille: boolean; line?: OurLine }) { this.gradeRule = rule; }
   setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = [], pins: readonly { s: number; z: number }[] = [], walls: readonly WallOverride[] = []) {
     this.overrides = overrides;
     this.pins = pins;
@@ -193,10 +209,42 @@ export class ProfilePanel {
     this.updateTip();
   }
 
+  /** By hand, the height points with a handle at this zoom: the sharpest changes of grade first,
+   * at least SHOWN_GAP px apart (the selected / dragged one always); the ends always. The others stay
+   * part of the line and follow a drag of their shown neighbours. */
+  private shownVpis(): boolean[] {
+    const v = this.vpis, shown = v.map((_, k) => k === 0 || k === v.length - 1);
+    if (this.mode !== 'manual') return shown;
+    const grade = (k: number) => (v[k + 1].z - v[k].z) / Math.max(1e-6, v[k + 1].s - v[k].s);
+    const order = v.map((_, k) => k).filter((k) => k > 0 && k < v.length - 1)
+      .sort((a, b) => (b === this.selected ? 1 : 0) - (a === this.selected ? 1 : 0) || Math.abs(grade(b) - grade(b - 1)) - Math.abs(grade(a) - grade(a - 1)) || a - b);
+    const xs: number[] = [];
+    for (const k of order) {
+      const x = this.X(v[k].s);
+      if (k !== this.selected && xs.some((q) => Math.abs(q - x) < SHOWN_GAP)) continue;
+      shown[k] = true; xs.push(x);
+    }
+    return shown;
+  }
+  /** By hand, the height points with a handle at this zoom (indices) */
+  get shownPoints(): number[] { this.flush(); return this.shownVpis().flatMap((on, k) => (on && k > 0 && k < this.vpis.length - 1 ? [k] : [])); }
+  /** the nearest shown height points on either side of k */
+  private shownAround(k: number): [number, number] {
+    const shown = this.shownVpis();
+    let a = k - 1, b = k + 1;
+    while (a > 0 && !shown[a]) a--;
+    while (b < this.vpis.length - 1 && !shown[b]) b++;
+    return [a, b];
+  }
+
   select(i: number | null) { this.selected = i; this.draw(); }
   selectStation(s: number | null) { this.pinStation = s; this.draw(); }
   /** the crossed road whose options are open (highlighted) */
   selectCrossing(roadId: number | null) { this.selCrossing = roadId; this.draw(); }
+  /** a motorway shown as one line while its directions run apart over these stretches: each direction's
+   * own heights there (on the shown line's stations) */
+  private apart: { s0: number; s1: number; lines: { label: string; grade: ArrayLike<number>; kind: ArrayLike<number> }[] }[] = [];
+  setApart(apart: typeof this.apart) { this.apart = apart; this.draw(); }
   setPreview(p: ProvisionalProfile | null) { if (p !== this.preview) { this.preview = p; this.draw(); } }
 
   /** show the selected station range (set by the owner of the selection state) */
@@ -287,8 +335,11 @@ export class ProfilePanel {
   private get bandT() { return this.chartB + GAP_CHART; }
   private get stripT() { return this.bandT + BAND_H + GAP_BAND; }
   private get stripB() { return this.H - this.pad.b; }
-  private X(s: number) { return this.pad.l + ((s - this.v0) / (this.v1 - this.v0)) * (this.W - this.pad.l - this.pad.r); }
-  private S(px: number) { return this.v0 + ((px - this.pad.l) / (this.W - this.pad.l - this.pad.r)) * (this.v1 - this.v0); }
+  // a line read from its own start the other way (core: chainage.ts) is drawn mirrored
+  private X(s: number) { const f = (s - this.v0) / (this.v1 - this.v0); return this.pad.l + (lineFrame.reversed ? 1 - f : f) * (this.W - this.pad.l - this.pad.r); }
+  /** the screen span of stations s0…s1, left to right whichever way the line is drawn */
+  private Xr(s0: number, s1: number): [number, number] { const a = this.X(s0), b = this.X(s1); return a <= b ? [a, b] : [b, a]; }
+  private S(px: number) { const f = (px - this.pad.l) / (this.W - this.pad.l - this.pad.r); return this.v0 + (lineFrame.reversed ? 1 - f : f) * (this.v1 - this.v0); }
   private Y(z: number) { return this.pad.t + (1 - (z - this.zr.lo) / (this.zr.hi - this.zr.lo)) * (this.chartB - this.pad.t); }
   private Z(py: number) { return this.zr.lo + (1 - (py - this.pad.t) / (this.chartB - this.pad.t)) * (this.zr.hi - this.zr.lo); }
 
@@ -334,6 +385,7 @@ export class ProfilePanel {
       hi = Math.max(hi, r.ground[i], r.grade[i]);
     }
     for (const v of [...this.vpis, ...this.pins]) if (v.s >= this.v0 && v.s <= this.v1) { lo = Math.min(lo, v.z); hi = Math.max(hi, v.z); }
+    for (const a of this.apart) for (const line of a.lines) for (let i = i0; i <= i1; i++) if (r.s[i] > a.s0 && r.s[i] < a.s1) { lo = Math.min(lo, line.grade[i]); hi = Math.max(hi, line.grade[i]); }
     // A provisional route can leave the last result's height range (a ridge, a hollow).
     const pv = this.preview;
     if (pv) for (let j = 0; j < pv.s.length; j++) if (pv.s[j] >= this.v0 && pv.s[j] <= this.v1) {
@@ -349,12 +401,12 @@ export class ProfilePanel {
     g.fillStyle = 'rgba(255,40,40,0.12)';
     for (const v of r.violations) {
       if (v.goal) continue;
-      const a = this.X(v.s0 - r.ds), b = this.X(v.s1 + r.ds);
+      const [a, b] = this.Xr(v.s0 - r.ds, v.s1 + r.ds);
       g.fillRect(a, T, Math.max(3, b - a), B - T);
     }
     if (this.flash) {
       g.fillStyle = 'rgba(255,200,0,0.25)';
-      const a = this.X(this.flash.s0), b = this.X(this.flash.s1);
+      const [a, b] = this.Xr(this.flash.s0, this.flash.s1);
       g.fillRect(a, T, Math.max(4, b - a), B - T);
     }
     // ground
@@ -385,12 +437,12 @@ export class ProfilePanel {
     g.stroke();
     // structures
     for (const run of r.runs) {
-      const a = this.X(run.s0), b = this.X(run.s1);
+      const [a, b] = this.Xr(run.s0, run.s1);
       if (b < L || a > R) continue;
       if (run.kind === KIND.bridge) {
         g.fillStyle = 'rgba(47,143,255,0.18)';
         g.beginPath();
-        g.moveTo(a, this.Y(r.grade[run.i0]));
+        g.moveTo(this.X(run.s0), this.Y(r.grade[run.i0]));
         for (let i = run.i0; i <= run.i1; i++) g.lineTo(this.X(r.s[i]), this.Y(r.grade[i]));
         for (let i = run.i1; i >= run.i0; i--) g.lineTo(this.X(r.s[i]), this.Y(r.ground[i]));
         g.closePath(); g.fill();
@@ -440,17 +492,42 @@ export class ProfilePanel {
     const bad = new Uint8Array(r.n);
     for (const v of r.violations) if (!v.goal) for (let i = Math.max(0, Math.floor(v.s0 / r.ds)); i <= Math.min(r.n - 1, Math.ceil(v.s1 / r.ds)); i++) bad[i] = 1;
     g.lineWidth = 2.5;
+    // where a motorway's directions run apart, the shared line is not built: their own lines instead
+    const apartAt = (s: number) => this.apart.some(a => s > a.s0 + 1e-6 && s < a.s1 - 1e-6);
     for (let i = i0; i < i1; i++) {
+      if (apartAt((r.s[i] + r.s[i + 1]) / 2)) continue;
       g.strokeStyle = bad[i] ? '#e01e1e' : r.kind[i] === KIND.bridge ? '#2f6fcf' : r.kind[i] === KIND.tunnel ? '#7a4fc0' : '#222';
       if (r.kind[i] === KIND.tunnel) g.setLineDash([6, 4]); else g.setLineDash([]);
       g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(r.grade[i])); g.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1])); g.stroke();
     }
     g.setLineDash([]);
+    // the second direction first, dashed: where both keep one height the first one's colours stay on top
+    for (const a of this.apart) for (const [k, line] of [...a.lines.entries()].reverse()) {
+      const j0 = Math.max(i0, Math.floor(a.s0 / r.ds)), j1 = Math.min(i1, Math.ceil(a.s1 / r.ds));
+      g.lineWidth = 2;
+      let far = j0, gap = -1;
+      for (let i = j0; i < j1; i++) {
+        const kind = line.kind[i];
+        g.strokeStyle = kind === KIND.bridge ? '#2f6fcf' : kind === KIND.tunnel ? '#7a4fc0' : k ? '#6b4a1f' : '#222';
+        g.setLineDash(kind === KIND.tunnel ? [6, 4] : k ? [5, 2] : []);
+        g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(line.grade[i])); g.lineTo(this.X(r.s[i + 1]), this.Y(line.grade[i + 1])); g.stroke();
+        const d = Math.abs(line.grade[i] - (a.lines[1 - k]?.grade[i] ?? line.grade[i]));
+        if (d > gap) { gap = d; far = i; }
+      }
+      g.setLineDash([]);
+      // which is which, where they are furthest apart (the higher one labelled above, the lower below)
+      const other = a.lines[1 - k]?.grade[far] ?? line.grade[far], up = k === 0 ? line.grade[far] >= other : line.grade[far] > other;
+      const x = this.X(r.s[far]);
+      if (x >= L && x <= R) {
+        g.font = 'bold 10px system-ui'; g.textAlign = 'center'; g.fillStyle = k ? '#6b4a1f' : '#222';
+        g.fillText(line.label, x, this.Y(line.grade[far]) + (up ? -7 : 13));
+      }
+    }
     // Manual ranges are marked separately from the resulting structures (including invalid paint).
     g.save();
     for (const o of this.overrides) {
-      const a = this.X(Math.max(this.v0, o.s0)), b = this.X(Math.min(this.v1, r.length, o.s1));
-      if (b <= a) continue;
+      const xa = this.X(Math.max(this.v0, o.s0)), xb = this.X(Math.min(this.v1, r.length, o.s1)), a = Math.min(xa, xb), b = Math.max(xa, xb);
+      if (b <= a || Math.max(this.v0, o.s0) >= Math.min(this.v1, r.length, o.s1)) continue;
       const y = this.pad.t + 5;
       g.strokeStyle = g.fillStyle = ['#976025', '#2f6fcf', '#7a4fc0'][o.kind];
       g.lineWidth = 3; g.setLineDash([3, 3]);
@@ -459,8 +536,8 @@ export class ProfilePanel {
       if (b - a > 24) g.fillText(`your ${['earthwork', 'bridge', 'tunnel'][o.kind]}`, a + 3, y + 15, b - a - 5);
     }
     for (const o of this.wallOverrides) {
-      const a = this.X(Math.max(this.v0, o.s0)), b = this.X(Math.min(this.v1, r.length, o.s1));
-      if (b <= a) continue;
+      const xa = this.X(Math.max(this.v0, o.s0)), xb = this.X(Math.min(this.v1, r.length, o.s1)), a = Math.min(xa, xb), b = Math.max(xa, xb);
+      if (b <= a || Math.max(this.v0, o.s0) >= Math.min(this.v1, r.length, o.s1)) continue;
       const y = this.pad.t + (o.side === 'L' ? 30 : 46);
       g.strokeStyle = g.fillStyle = o.height ? '#087575' : '#c12d80';
       g.lineWidth = 2; g.setLineDash([3, 3]);
@@ -528,9 +605,9 @@ export class ProfilePanel {
     // the category's steepest slope (the scenarios' road value 6 % otherwise); track grades in per mille
     const { max: maxGrade, perMille: rail } = this.gradeRule;
     for (let k = 0; k < this.vpis.length - 1; k++) {
-      const a = this.X(this.vpis[k].s), b = this.X(this.vpis[k + 1].s);
+      const xa = this.X(this.vpis[k].s), xb = this.X(this.vpis[k + 1].s), a = Math.min(xa, xb), b = Math.max(xa, xb);
       if (b - a < 46 || b < L || a > R) continue;
-      const gr = r.grades[k] ?? 0;
+      const gr = shownGrade(r.grades[k] ?? 0);
       const ym = this.Y((this.vpis[k].z + this.vpis[k + 1].z) / 2);
       g.fillStyle = Math.abs(gr) > maxGrade + 1e-6 ? '#d00' : '#333';
       g.fillText(rail ? `${(gr * 1000).toFixed(1)} ‰` : `${(gr * 100).toFixed(1)} %`, (a + b) / 2, ym - 8);
@@ -546,11 +623,11 @@ export class ProfilePanel {
       g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 9); g.stroke();
       g.beginPath(); g.arc(x, y - 9 - hr, hr, 0, 2 * Math.PI); g.fill(); g.stroke();
       g.beginPath(); g.arc(x, y, 2.5, 0, 2 * Math.PI); g.fillStyle = '#864000'; g.fill();
-      g.fillStyle = '#864000';
-      // the label above the head, or beside it near the top of the chart
-      if (y - 14 - 2 * hr < T + 10) { g.textAlign = 'left'; g.fillText(`pinned ${pin.z.toFixed(1)} m`, x + hr + 4, y - 9 - hr + 4); g.textAlign = 'center'; }
-      else g.fillText(`pinned ${pin.z.toFixed(1)} m`, x, y - 12 - 2 * hr);
+      if (this.dragLabel && Math.abs(this.dragLabel.s - pin.s) < 0.1) continue;
+      // the label beside the head, on a white halo so the lines under it do not run through the text
+      haloText(g, `pinned ${pin.z.toFixed(1)} m`, x + hr + 4, y - 9 - hr + 4, '#864000', 'left');
     }
+
     if (this.pinStation !== null) {
       g.strokeStyle = '#b45800'; g.setLineDash([3, 4]);
       const x = this.X(this.pinStation);
@@ -559,9 +636,10 @@ export class ProfilePanel {
     // height points (VPIs) are handles only By hand; in Automatic they are the game's and not drawn
     // (the player's handles there are the pins). The hovered / selected one grows.
     const hovK = this.under.kind === 'vpi' ? this.under.k : -1;
+    const shown = this.shownVpis();
     if (this.mode === 'manual') this.vpis.forEach((v, k) => {
       const x = this.X(v.s), y = this.Y(v.z);
-      if (x < L - 8 || x > R + 8) return;
+      if (x < L - 8 || x > R + 8 || !shown[k]) return;
       const end = k === 0 || k === this.vpis.length - 1;
       const rad = k === this.selected || k === hovK ? 6.5 : 5;
       g.beginPath();
@@ -584,14 +662,14 @@ export class ProfilePanel {
     g.save();
     g.beginPath(); g.rect(L, T - 4, R - L, this.stripB - T + 4); g.clip();
     if (this.mapWindow) {
-      const a = this.X(this.mapWindow.s0), b = this.X(this.mapWindow.s1);
+      const [a, b] = this.Xr(this.mapWindow.s0, this.mapWindow.s1);
       g.fillStyle = 'rgba(31,111,235,0.07)';
       g.fillRect(a, T, b - a, this.stripB - T);
       g.fillStyle = 'rgba(31,111,235,0.55)';
       g.fillRect(a, T - 3, Math.max(2, b - a), 3);
     }
     if (this.sel) {
-      const a = this.X(this.sel.s0), b = this.X(this.sel.s1);
+      const [a, b] = this.Xr(this.sel.s0, this.sel.s1);
       g.fillStyle = 'rgba(255,214,0,0.16)';
       g.fillRect(a, T, b - a, this.stripB - T);
       g.strokeStyle = '#c79a00';
@@ -620,10 +698,12 @@ export class ProfilePanel {
     g.textAlign = 'center';
     const span = this.v1 - this.v0;
     const kstep = niceStep(span / 8);
-    for (let s = Math.ceil(this.v0 / kstep) * kstep; s <= this.v1; s += kstep) {
-      const x = this.X(s);
+    // ticks on round kilometres as shown
+    for (let k0 = Math.ceil(Math.min(shownS(this.v0), shownS(this.v1)) / kstep) * kstep; k0 <= Math.max(shownS(this.v0), shownS(this.v1)); k0 += kstep) {
+      const s = shownS(k0), x = this.X(s);
       // as many decimals as the step needs (a short side road steps by 50 m: 0.05, 0.10, …)
-      g.fillText(kstep >= 1000 ? `${(s / 1000).toFixed(0)} km` : `${(s / 1000).toFixed(kstep >= 100 ? 1 : kstep >= 10 ? 2 : 3)}`, x, H - 6);
+      const k = shownS(s) / 1000;
+      g.fillText(kstep >= 1000 ? `${k.toFixed(0)} km` : `${k.toFixed(kstep >= 100 ? 1 : kstep >= 10 ? 2 : 3)}`, x, H - 6);
       g.strokeStyle = 'rgba(0,0,0,0.07)'; g.beginPath(); g.moveTo(x, T); g.lineTo(x, B); g.stroke();
     }
     g.textAlign = 'right';
@@ -695,7 +775,7 @@ export class ProfilePanel {
     // numbered like the map markers; a marker crowding the previous numbered one shrinks to a dot
     const full = new Set<number>();
     let lastX = -Infinity;
-    for (const b of [...vis].sort((p, q) => p.s - q.s)) { const x = this.X(b.s); if (x - lastX >= 17) { full.add(b.i); lastX = x; } }
+    for (const b of [...vis].sort((p, q) => this.X(p.s) - this.X(q.s))) { const x = this.X(b.s); if (x - lastX >= 17) { full.add(b.i); lastX = x; } }
     // the hovered / selected ones last, on top
     const order = [...vis].sort((a, b) => Number(a.i === this.hoverBend || a.i === this.selectedBend) - Number(b.i === this.hoverBend || b.i === this.selectedBend));
     for (const b of order) {
@@ -705,7 +785,17 @@ export class ProfilePanel {
       g.beginPath(); g.arc(x, BEND_Y, rad, 0, 2 * Math.PI);
       g.fillStyle = sel ? '#ffd400' : hov ? '#fff3a8' : '#fff'; g.fill();
       g.strokeStyle = '#1d232a'; g.lineWidth = 1.8; g.stroke();
-      if (rad === 8) { g.fillStyle = '#1d232a'; g.fillText(String(b.i + 1), x, BEND_Y + 0.5); }
+      if (rad === 8) { g.fillStyle = '#1d232a'; g.fillText(String(bendNo(b.i)), x, BEND_Y + 0.5); }
+    }
+    // the line's ends as on the map (A at its start: on the right where the line is read from B)
+    if (this.endLabels && this.r) {
+      g.font = 'bold 10px system-ui, sans-serif';
+      for (const [s, label] of [[0, this.endLabels[0]], [this.r.length, this.endLabels[1]]] as const) {
+        if (s < this.v0 || s > this.v1) continue;
+        const x = this.X(s);
+        g.beginPath(); g.arc(x, BEND_Y, 8, 0, 2 * Math.PI); g.fillStyle = '#1d232a'; g.fill();
+        g.fillStyle = '#fff'; g.fillText(label, x, BEND_Y + 0.5);
+      }
     }
     g.restore();
     if (this.bends.length) {
@@ -713,11 +803,14 @@ export class ProfilePanel {
       g.fillText('bends', L - 6, BEND_Y + 3);
     }
   }
+  /** the letters of the line's ends on the map (A, B), drawn at its ends; null: none */
+  private endLabels: readonly [string, string] | null = null;
+  setEndLabels(labels: readonly [string, string] | null) { this.endLabels = labels; this.draw(); }
 
   /** "km x.xx" over the hover line when the mouse is on the map; an arrow at the edge when off view */
   private drawMapHoverLabel(g: CanvasRenderingContext2D, s: number, L: number, R: number, T: number) {
-    const off = s < this.v0 ? -1 : s > this.v1 ? 1 : 0;
-    const text = `${off < 0 ? '◀ ' : ''}km ${(s / 1000).toFixed(2)}${off > 0 ? ' ▶' : ''}`;
+    const before = s < this.v0 ? -1 : s > this.v1 ? 1 : 0, off = lineFrame.reversed ? -before : before;
+    const text = `${off < 0 ? '◀ ' : ''}km ${(shownS(s) / 1000).toFixed(2)}${off > 0 ? ' ▶' : ''}`;
     g.save();
     g.font = 'bold 11px system-ui, sans-serif';
     const w = g.measureText(text).width + 10;
@@ -736,7 +829,7 @@ export class ProfilePanel {
     g.font = '9px system-ui, sans-serif';
     g.textAlign = 'center';
     for (const e of this.elements) {
-      const a = this.X(e.s0), b = this.X(e.s1);
+      const [a, b] = this.Xr(e.s0, e.s1);
       if (b < L || a > R) continue;
       g.fillStyle = e.curve ? '#8fa3bd' : '#ddd6c6';
       g.fillRect(a + 0.5, y, Math.max(1, b - a - 1), BAND_H);
@@ -749,7 +842,7 @@ export class ProfilePanel {
     g.fillText('curves', L - 6, y + BAND_H - 2);
     // the element under the mouse is outlined: a click selects it
     if (this.under.kind === 'band') {
-      const a = this.X(this.under.el.s0), b = this.X(this.under.el.s1);
+      const [a, b] = this.Xr(this.under.el.s0, this.under.el.s1);
       g.strokeStyle = '#1d232a'; g.lineWidth = 1.5;
       g.strokeRect(Math.max(L, a) + 0.5, y + 0.5, Math.min(R, b) - Math.max(L, a) - 1, BAND_H - 1);
     }
@@ -839,7 +932,7 @@ export class ProfilePanel {
     const groups = COST_GROUPS.map((gr, gi) => { const v = (this.cum[gi][b + 1] - this.cum[gi][a]) / len; total += v; return [gr, v] as const; })
       .filter(([, v]) => v > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 2);
     const facts: string[] = [];
-    for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x)}`);
+    for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x, this.gradeRule.line)}`);
     for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(`${c.waterKind}: ${c.structure}`);
     let nb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) nb++;
@@ -847,10 +940,12 @@ export class ProfilePanel {
     const v = r.violations.find((x) => !x.goal && x.s0 <= r.s[b] + r.ds && x.s1 >= r.s[a] - r.ds);
     const e = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
     const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin';
-    if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
-    else this.tip.innerHTML = `<div><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
-      <div class="tip-sub"><b>${perM(total)} CZK/m</b> · ${groups.map(([gr, v]) => `<i style="background:${gr.color}"></i>${gr.short} ${perM(v)}`).join(' ')}</div>
-      ${v ? `<div class="tip-bad">⚠ ${e(v.title)}</div>` : facts.length ? `<div class="tip-fact">${e(facts[0])}${facts.length > 1 ? ` +${facts.length - 1}` : ''}</div>` : ''}`;
+    // a height drag: the height it is set to and how far it moved
+    if (this.dragLabel) this.tip.innerHTML = `<div><b>${this.dragLabel.z.toFixed(1)} m</b> · ${this.dragLabel.dz >= 0 ? 'raised' : 'lowered'} ${Math.abs(this.dragLabel.dz).toFixed(1)} m</div>`;
+    else if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
+    else this.tip.innerHTML = `<div><b>km ${(shownS(r.s[i]) / 1000).toFixed(2)}</b> · ${how}</div>
+      <div class="tip-sub"><b>${perM(total)} CZK/m</b> · ${groups.map(([gr, v]) => `<i style="background:${gr.color}"></i>${groupShort(gr, this.line)} ${perM(v)}`).join(' ')}</div>
+      ${v ? `<div class="tip-bad">⚠ ${e(shownText(v.title))}</div>` : facts.length ? `<div class="tip-fact">${e(facts[0])}${facts.length > 1 ? ` +${facts.length - 1}` : ''}</div>` : ''}`;
     this.tip.style.display = '';
     // inside the profile, above the cursor (the map's spot it marks stays visible)
     const box = this.canvas.getBoundingClientRect();
@@ -866,7 +961,7 @@ export class ProfilePanel {
     const u = this.under, manual = this.mode === 'manual';
     switch (u.kind) {
       case 'vpi': { const v = this.vpis[u.k]; return v ? `<b>◆ ${v.z.toFixed(1)} m</b> · drag up / down${manual ? ' · right-click deletes' : ''}` : ''; }
-      case 'bend': return `<b>Bend ${u.i + 1}</b> · click to select`;
+      case 'bend': return `<b>Bend ${bendNo(u.i)}</b> · click to select`;
       case 'pin': { const p = this.pins.find((q) => Math.abs(q.s - u.s) < 0.1); return `<b>Pinned ${p ? p.z.toFixed(1) : ''} m</b> · drag up / down · click for options`; }
       default: return '';
     }
@@ -891,8 +986,9 @@ export class ProfilePanel {
       return { kind: 'strip' };
     }
     let k: number | null = null, bd = 10;
+    const shown = this.shownVpis();
     if (this.mode === 'manual') this.vpis.forEach((v, j) => {
-      if (j === 0 || j === this.vpis.length - 1) return;
+      if (j === 0 || j === this.vpis.length - 1 || !shown[j]) return;
       const d = Math.hypot(this.X(v.s) - px, this.Y(v.z) - py);
       if (d < bd) { bd = d; k = j; }
     });
@@ -936,12 +1032,16 @@ export class ProfilePanel {
     const cursor = (u: Under) => u.kind === 'vpi' || (u.kind === 'pin' && this.mode === 'auto') || (u.kind === 'line' && this.mode === 'auto') ? 'ns-resize'
       : u.kind === 'line' ? 'copy' : u.kind === 'none' ? 'default' : 'pointer';
     // 'press': a left button down on the chart / band / strip — a click if it does not move, else a range drag
-    let drag: { mode: 'vpi' | 'pin' | 'pan' | 'press' | 'select' | 'line'; under: Under; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean; y0: number; dy: number } | null = null;
+    let drag: { mode: 'vpi' | 'pin' | 'pan' | 'press' | 'select' | 'line'; under: Under; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean; y0: number;
+      /** height at the start of a height drag, and the shown neighbours of a dragged height point */
+      z0?: number; a?: number; b?: number } | null = null;
+    /** height under a vertical drag: at most DRAG_M_PER_PX per px, finer when the chart is zoomed in */
+    const dragZ = (z0: number, y0: number, y: number) => Math.round((z0 + (y0 - y) * Math.min(DRAG_M_PER_PX, Math.abs(this.Z(0) - this.Z(1)))) * 10) / 10;
     c.addEventListener('pointerdown', (e) => {
       if (!this.r) return;
       const p = rel(e);
       const u = this.hit(p.x, p.y);
-      const base = { under: u, i: -1, x0: p.x, y0: p.y, dy: 0, v0: this.v0, v1: this.v1, s0: this.S(p.x), moved: false };
+      const base = { under: u, i: -1, x0: p.x, y0: p.y, v0: this.v0, v1: this.v1, s0: this.S(p.x), moved: false };
       if (e.button === 2 && u.kind === 'vpi') { this.ev.onVpiDelete?.(u.k); return; }
       if (e.button === 1 || e.button === 2) {
         e.preventDefault();
@@ -958,9 +1058,10 @@ export class ProfilePanel {
       if (u.kind === 'pin') {
         // keep the grab offset: the pin's point follows the mouse at the distance it was grabbed
         const pin = this.pins.find((q) => Math.abs(q.s - u.s) < 0.1)!;
-        drag = { ...base, mode: 'pin', s0: u.s, dy: p.y - this.Y(pin.z) };
+        drag = { ...base, mode: 'pin', s0: u.s, z0: pin.z };
       } else if (u.kind === 'vpi') {
-        drag = { ...base, mode: 'vpi', i: u.k };
+        const [a, b] = this.shownAround(u.k);
+        drag = { ...base, mode: 'vpi', i: u.k, z0: this.vpis[u.k].z, a, b };
         this.selected = u.k;
         this.ev.onVpiSelect?.(u.k);
         c.style.cursor = 'grabbing';
@@ -976,17 +1077,21 @@ export class ProfilePanel {
         this.dragging = true;
         const prev = this.vpis[drag.i - 1].s, next = this.vpis[drag.i + 1].s;
         const s = Math.max(prev + 20, Math.min(next - 20, this.S(p.x)));
-        const z = Math.round(this.Z(p.y) * 10) / 10;
-        this.ev.onVpiDrag?.(drag.i, s, z);
+        const z = dragZ(drag.z0!, drag.y0, p.y);
+        this.dragLabel = { s, z, dz: z - drag.z0! };
+        this.hoverClient = { x: e.clientX, y: e.clientY }; this.updateTip();
+        this.ev.onVpiDrag?.(drag.i, s, z, drag.a!, drag.b!);
         return;
       }
       if (drag?.mode === 'pin') {
         if (!drag.moved && Math.abs(p.y - drag.y0) < 3) return;
         drag.moved = true;
         this.dragging = true;
-        const z = Math.round(this.Z(p.y - drag.dy) * 10) / 10, s0 = drag.s0;
+        const z = dragZ(drag.z0!, drag.y0, p.y), s0 = drag.s0;
         this.pins = this.pins.map((q) => (Math.abs(q.s - s0) < 0.1 ? { s: q.s, z } : q)); // at once, before the recompute
+        this.dragLabel = { s: s0, z, dz: z - drag.z0! };
         this.draw();
+        this.hoverClient = { x: e.clientX, y: e.clientY }; this.updateTip();
         this.ev.onPinDrag?.(s0, z);
         return;
       }
@@ -994,7 +1099,7 @@ export class ProfilePanel {
         const dx = p.x - drag.x0;
         if (Math.abs(dx) > 3) drag.moved = true;
         const span = drag.v1 - drag.v0;
-        const ds = -(dx / (this.W - this.pad.l - this.pad.r)) * span;
+        const ds = (lineFrame.reversed ? 1 : -1) * (dx / (this.W - this.pad.l - this.pad.r)) * span;
         this.v0 = Math.max(0, Math.min(this.r.length - span, drag.v0 + ds));
         this.v1 = this.v0 + span;
         this.draw();
@@ -1005,14 +1110,16 @@ export class ProfilePanel {
       if (drag?.mode === 'press' && drag.under.kind === 'line' && this.mode === 'auto' && Math.abs(p.y - drag.y0) > 3 && Math.abs(p.y - drag.y0) > Math.abs(p.x - drag.x0)) {
         drag.mode = 'line';
         drag.s0 = Math.round(drag.under.s);
-        drag.dy = drag.y0 - this.Y(this.gradeAt(drag.s0));
+        drag.z0 = this.gradeAt(drag.s0);
       }
       if (drag?.mode === 'line') {
         drag.moved = true;
         this.dragging = true;
-        const z = Math.round(this.Z(p.y - drag.dy) * 10) / 10, s0 = drag.s0;
+        const z = dragZ(drag.z0!, drag.y0, p.y), s0 = drag.s0;
         this.pins = [...this.pins.filter((q) => Math.abs(q.s - s0) >= 0.1), { s: s0, z }];
+        this.dragLabel = { s: s0, z, dz: z - drag.z0! };
         this.draw();
+        this.hoverClient = { x: e.clientX, y: e.clientY }; this.updateTip();
         this.ev.onLineDrag?.(s0, z);
         c.style.cursor = 'ns-resize';
         return;
@@ -1030,7 +1137,7 @@ export class ProfilePanel {
       this.hoverFromMap = false;
       this.hoverClient = { x: e.clientX, y: e.clientY };
       const u = this.under;
-      if (u.kind === 'vpi') this.ev.onHover?.(this.vpis[u.k].s, `◆ height point ${u.k} · ${this.vpis[u.k].z.toFixed(1)} m`);
+      if (u.kind === 'vpi') this.ev.onHover?.(this.vpis[u.k].s, `◆ height point · ${this.vpis[u.k].z.toFixed(1)} m`);
       else this.ev.onHover?.(this.hoverS);
       this.draw();
       this.updateTip();
@@ -1039,6 +1146,7 @@ export class ProfilePanel {
       const d = drag;
       drag = null;
       this.dragging = false;
+      if (this.dragLabel) { this.dragLabel = null; this.draw(); this.updateTip(); }
       if (!d || !this.r) return;
       if (d.mode === 'vpi' && d.moved) this.ev.onVpiDragEnd?.();
       if (d.mode === 'pin') { if (d.moved) this.ev.onPinDragEnd?.(); else this.ev.onStationSelect?.(d.s0); }
@@ -1075,7 +1183,7 @@ export class ProfilePanel {
       // sideways scrolling (touchpad, Shift+wheel) scrolls along the route; plain wheel zooms at the mouse
       const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.shiftKey ? e.deltaY : 0;
       if (sideways) {
-        const ds = (sideways / (this.W - this.pad.l - this.pad.r)) * span0;
+        const ds = (lineFrame.reversed ? -1 : 1) * (sideways / (this.W - this.pad.l - this.pad.r)) * span0;
         this.v0 = Math.max(0, Math.min(this.r.length - span0, this.v0 + ds));
         this.v1 = this.v0 + span0;
       } else {
@@ -1104,4 +1212,12 @@ function niceStep(x: number): number {
   const p = Math.pow(10, Math.floor(Math.log10(x)));
   const m = x / p;
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
+}
+
+/** text on a white halo, readable over the lines of the chart */
+function haloText(g: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, align: CanvasTextAlign) {
+  g.save();
+  g.textAlign = align; g.lineJoin = 'round'; g.lineWidth = 4; g.strokeStyle = 'rgba(255,255,255,0.92)';
+  g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
+  g.restore();
 }

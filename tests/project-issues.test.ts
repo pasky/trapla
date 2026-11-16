@@ -43,6 +43,12 @@ describe('project issue list', () => {
     expect(unpricedText([{ routeId: 'road' }], 'road', names)).toBe('Our road is not priced yet');
     // a motorway is two roads of ours: its other direction is not a "road change"
     expect(unpricedText([{ routeId: 'there' }, { routeId: 'back' }, { routeId: 'side' }], new Set(['there', 'back']), names)).toBe('Valley road not priced yet');
+    // a motorway mission: its other direction is ours too; a new motorway's two directions are one change
+    const mw = { fwd: 'Motorway D3', rev: 'Motorway D3', nf: 'New motorway', nr: 'New motorway' };
+    expect(unpricedText([{ routeId: 'rev' }, { routeId: 'nf' }, { routeId: 'nr' }], new Set(['fwd', 'rev']), mw, { nf: 'c', nr: 'c' })).toBe('New motorway not priced yet');
+    // lines named alike (two rebuilt stretches, or one named like ours) are separate changes
+    expect(unpricedText([{ routeId: 'old' }], 'rail', { rail: 'Railway', old: 'Railway' })).toBe('Railway not priced yet');
+    expect(unpricedText([{ routeId: 'a' }, { routeId: 'b' }], 'rail', { rail: 'Railway', a: 'Railway', b: 'Railway' })).toBe('2 road changes not priced yet');
   });
   it('keeps what is priced in view while there is no total: every other road alone, never added up', () => {
     const names = { road: 'Road', side: 'Valley road', track: 'Track' }, money = (v: number) => `${v} M`, ours = new Set(['road', 'back']);

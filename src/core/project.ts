@@ -100,6 +100,9 @@ export interface RailwaySpec {
   tracks: 1 | 2; electrification: 'unknown' | 'none' | 'AC25kV' | 'DC3kV' | 'other';
   operations: { passengerDay: number; passengerNight: number; freightDay: number; freightNight: number;
     passengerSpeed: number; freightSpeed: number };
+  /** Steepest grade allowed where it is steeper than the new-line limit: a rebuilt stretch of a mapped line
+   * may be as steep as that line is there (a game rule; absent = the category's limit). */
+  maxGradient?: number;
 }
 export type RouteSpecification = RoadSpec | MotorwaySpec | RailwaySpec;
 export interface SourceReplacement {
@@ -128,8 +131,22 @@ interface CorridorBase {
   formationPolicy: string;
   correspondence: { spineS: number; forwardS: number; reverseS: number }[];
 }
+/** One direction's own line inside a separate stretch of a paired motorway (core/motorway-stretches.ts):
+ * the bends of its centre line (the common spine displaced there; its carriageway is that line's
+ * offset) replacing the spine's bends k0…k1−1, and its own height pins / structure and wall choices.
+ * Stations are spine chainage. */
+export interface SeparateLine {
+  pis: Design['pis'];
+  pins: NonNullable<Design['gradePins']>;
+  structureOverrides?: Design['structureOverrides'];
+  wallOverrides?: Design['wallOverrides'];
+}
+/** Where one or both directions leave the common line: spine bends [k0, k1) replaced by own lines, the
+ * lines differ from the spine over spine chainage [a, b]. Outside, both directions are the one paired
+ * body; a direction without an own line here follows the spine (its carriageway is the spine's offset). */
+export interface SeparateStretch { id: string; k0: number; k1: number; a: number; b: number; forward?: SeparateLine; reverse?: SeparateLine }
 export type CorridorDesign = CorridorBase & (
-  | { mode: 'paired'; spine: OwnedAlignment }
+  | { mode: 'paired'; spine: OwnedAlignment; stretches?: SeparateStretch[] }
   | { mode: 'independent'; retainedSpine: OwnedAlignment }
 );
 export type ConnectionPort = { kind: 'route'; routeId: RouteId; s: number } | { kind: 'source'; location: SourceLocation };
@@ -264,10 +281,20 @@ export interface RouteResult {
   geometry: EngineeringGeometry | null;
   /** Present only for the road kernel. Other modes never impersonate road Result. */
   legacy?: Result;
+  /** A motorway with separate stretches (forward direction only): what is drawn, i.e. the shared body's
+   * parts outside the stretches and each direction's own carriageway inside. */
+  drawn?: DrawnPart[];
+  /** …and the common spine's evaluation, shown while both directions are edited together, with the
+   * stretches (its stations) where they run apart. */
+  shared?: Result;
+  apart?: { s0: number; s1: number }[];
   complete: boolean; valid: boolean; accepted: boolean;
   attributedCost: number | null;
   dependencies: ProjectDependency[]; influence: Bounds[];
 }
+/** A part of a motorway with separate stretches as drawn: the shared body (paired section) or one direction's
+ * own carriageway (`mirrored`: the reverse direction run A→B, its median on its right). */
+export interface DrawnPart { id: string; result: Result; section: 'paired' | 'carriageway'; mirrored?: boolean; direction?: 'forward' | 'reverse' }
 export interface ProjectCost {
   /** null while reconciliation is incomplete; no partial bill can become a best. */
   total: number | null;

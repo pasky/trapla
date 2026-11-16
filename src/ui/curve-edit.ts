@@ -10,6 +10,7 @@ import { buildAlignment, pointAt, type Alignment, type Vec2 } from '../core/hori
 import type { Terrain } from '../core/terrain';
 import type { View } from '../render/view';
 import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
+import { bendNo } from './chainage';
 
 export interface CurveEditHost {
   a: Vec2;
@@ -295,7 +296,8 @@ export class CurveEditor {
 
 function listOthers(first: number, last: number, self: number): string {
   const others: number[] = [];
-  for (let k = first; k <= last; k++) if (k !== self) others.push(k + 1);
+  for (let k = first; k <= last; k++) if (k !== self) others.push(bendNo(k));
+  others.sort((a, b) => a - b);
   if (others.length <= 2) return others.join(' and ');
   // runs of three or more consecutive numbers as ranges
   const out: string[] = [];

@@ -241,12 +241,43 @@ What exists (details and commands in `README.md`):
   height point and made both directions clash downstream); motorway bests are kept (the store was keyed by the
   road mission). Drag budget holds on D3 motorway, paired and split (`drag-perf --scenario d3 --preset
   d3-motorway [--split forward]`).
-- Railway mission (preset `d11-railway`, screenshots 136–139): the D11 ports joined by an R1/R2 railway, an
-  honest exercise (OSM: today's line is tracks=1, electrified=no); trains = the PROVISIONAL prior (128 a day);
-  time target 9 min is a mission choice. Straight starter VALID at 27.9 bn CZK; perf design
-  `scripts/scenarios/d11/d11-railway.json` 25.4 bn CZK. Drag budget holds in all five modes.
+- Railway mission `d11-rail-kralovec` (cost model 21, research/38): Trutnov hl.n. → Královec on the mapped
+  line (owner: a railway mission must start and end on the rail network). A game proposal (no announced
+  upgrade); trains a labelled prior (an hourly passenger train each way, 36 a day; 2022 ran 4 each way);
+  9 min target a mission choice. Starter VALID at 10.4 bn CZK (leaves the station along its tracks, research/38 §5). A railway between two points of an existing
+  line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
+  RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
+  crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
+- 150 km/h speed-limit pilot (research/41) for motorways designed for 130: a posted limit (Act 361/2000
+  §18(7)), never a design speed; travel time at 150, light-vehicle lane speeds +20 km/h in the motorway noise
+  source (PROVISIONAL extrapolation, all-day upper bound), variable signs 54.4 M CZK / 47 km (ŘSD). D35 motorway:
+  7.6 → 6.6 min, +40 M CZK (signs and the louder noise).
+- Build → Motorway / Railway and drag-to-rebuild of mapped railways (`ui/mode-kinds.ts`). A Build motorway is
+  unpriced (no interchanges); a rebuilt railway stretch is unpriced until taking up the old track is priced.
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
   ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
+- Playtest session 1 (motorway-rail findings): choosing one motorway direction no longer changes the design
+  (P0 #3). Its first drag makes it run on its own only over a *separate stretch* (`core/motorway-stretches.ts`):
+  from a join on a straight of the shared line (clear of arcs and their easing, structures, crossings and
+  vertical curves) before the change to one after it. Outside, both directions stay the ONE paired D 27.5
+  evaluation (reused while only one direction is edited); inside, each direction is its own D 27.5-1 carriageway,
+  keeping the shared heights while the two run within 30 m of each other (PROVISIONAL) and Auto heights between
+  (the search starts and ends on the shared line's grade: `autoprofile` start/end grade, `evaluate`
+  `fixedProfile`). The bill: the shared body's cost parts outside, both carriageways inside, what they share
+  once (`splitLedger`). D3, one direction 50–300 m off between bends 3 and 4: +0.3–1.6 bn CZK, VALID, no
+  problems outside the stretch; Join restores the paired price exactly. The Edit switch is on the motorway's
+  own card (P1 #11). Mapped lines are picked on the ground under them in 20 m pieces (P1 #14), crossing cards
+  name "our railway" / "our motorway" (P1 #10).
+- Cost model 22–23 (playtest re-test 2, merged with main's finite-segment noise; D11 bills identical): a
+  paired motorway's noise is its two directional sources (half the traffic each on the lane-pair axes ±6.0 m;
+  a direction on its own keeps the whole traffic on its own lane axis, an upper bound, until houses heard by
+  two sources are decided jointly): D3 motorway noise walls +12.5 M CZK, D35 +2.7 M. Cost model 23 after
+  merging main's valid reroutes (Královec starter re-fitted, 10.4 bn). A double track's noise on its two tracks, a single track's on its axis.
+  Railway ends on a track leave it at no more than a turnout's angle (4.76°, research/38 §5): the Královec
+  starter now leaves Trutnov hl.n. along its tracks (VALID 10.4 bn). Rebuilt railway stretches keep their line's
+  speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. The 150 km/h
+  pilot's travel time uses the 39 % share of time at 150 (MD evaluation, research/41). A mapped railway is
+  dragged without selecting it first; the direction towards A numbers its bends from its own start.
 
 ### Buildable automatic reroutes, lowered underpasses (cost model 22, 2026-11-16)
 
@@ -294,6 +325,44 @@ What exists (details and commands in `README.md`):
   by rank (towns first); names further than 6 camera distances are left out (none pile up on the horizon). Noise
   walls of one height on both sides of a stretch get one label ("3 m both sides").
 - `node scripts/camera-check.mjs` plays these with real mouse input (screenshots 157–159).
+
+### Structure choice at the real prices; By hand keeps the bill (cost model 24, 2026-11-16)
+
+- Playtest S3 #1: switching to By hand changed the bill (D11 straight −29 M, with a pin −143 M) although the
+  heights were the same. The bridge / embankment choice priced fill at the value the profile search had found
+  before the support lifts, on only four tries; the final designs were far from balanced (town-centre priced
+  as surplus while 455k m³ short; By hand fell back to the starting value). Now the choice settles the value on
+  the final grade line (regula falsi, ≤ 6 tries of the selection only, the same in both modes): By hand from
+  Auto's heights bills identically (checked on every fixture in `tests/evaluate-costs.test.ts`), and Auto no
+  longer leaves that money on the table.
+- S3 #3: the choice now weighs the buildings each option demolishes (slopes vs deck strip plus the working
+  strip, each building's price shared over the cells reaching it). The piers of a bridge the player chooses
+  still move off roads, rails and water (the player picks the bridge, not its piers); an automatic bridge whose
+  piers cannot all stand clear within the span limit is not chosen there. Poříčí halls (D11 straight km
+  4.9–5.9) are now bridged by Auto on its own heights.
+- Remaining gap (not fixed here): the auto-profile's per-metre costs are rural (no buildings, no urban land), so
+  Auto does not raise the line to bridge a town. On D11 straight, painting a bridge over km 5.09–5.50 makes Auto
+  re-plan the heights (cut through the hill at km 4.7 instead of a tunnel, a 33 m viaduct) and the project
+  ≈ 80 M cheaper than Auto's own design. The piece card therefore says "Auto: at this height cheaper than a
+  bridge", and "Your choice; Auto set the road height for it" when the player's choice re-planned the heights.
+- A chimney, silo or shed (≤ 200 m², ≤ 1/4 of the other) wholly within a demolished building's outline goes
+  with it (Nová Paka km 1.97); a stream left under the earthwork just beyond a bridge's end with too little
+  cover is spanned by one more engineering pass.
+- A building no one lives in that only the 3 m working strip beside our slopes reaches (not the slopes or deck
+  themselves) stays when a retaining wall ending the slope 3 m short of it costs less than buying and demolishing it
+  (the retaining-wall machinery and its research/18 OTSKP assembly; `retaining.ts` `wallBuildings`): Nová Paka km
+  1.91, a hall demolished for 322 M CZK, now stays behind a 0.6 m wall for ≈ 0.3 M. Auto keeps no dwelling this way:
+  a home metres from our slope's top needs noise walls or a buyout that the noise check decides only later (tried:
+  random D11 designs gained +170 M of noise walls for 40 M of houses). A building the player keeps is walled off
+  wherever a wall fits between our crown and it, whatever the slopes reach. The card says which wall keeps it and
+  what demolition would have cost. Limit: a wall planned at a cell that then becomes a bridge leaves its one-cell
+  extension beside the bridge end.
+- Fixtures against model 23 (motorway-rail, D11 road bills identical to model 22): straight −33.9, best −23.1,
+  best-drag −8.7, best-pin −36.7, best-structures −36.4, best-manual −17.3, demo −90.6, direct-80 −120.3,
+  direct-90 −119.3, town-centre / town-controls −421.5 M CZK, validity as before (the merge changes no bill; the
+  walls for buildings: demo −43.2, the others within ±0.1). outcome-audit (5 designs + straight + 24 random):
+  violations 144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch
+  fails); the walls for buildings alone: no design dearer by more than 1 M, four random ones 34–59 M cheaper.
 
 ### Travel-time target X and traffic Y
 

@@ -60,6 +60,11 @@ export const BUILDING_RULES = {
    * Additional land at building-land price × 1.5; no cadastral boundaries / parcel overlap model. */
   buyoutPlotMultiple: 3,
   buyoutPlotMinimum: 400,
+  /** GAME RULE: a small structure (chimney, silo, tower, shed: ≤ this many m² and ≤ hostedShare of the
+   * other's area) standing wholly within a demolished building's outline is demolished with it — it is
+   * part of the same works / plot and cannot stay standing in the middle of the cleared site. */
+  hostedMaxArea: 200,
+  hostedShare: 0.25,
 };
 
 // ---------------------------------------------------------------------------------------------

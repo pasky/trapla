@@ -6,6 +6,7 @@ import { STRUCTURE_RULES } from './data/prices';
 import { LOWERING_RULES, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { underpassFits } from './crossing-geometry';
 import { crossingOutcome } from './terms';
+import type { OurLine } from './terms';
 import { KIND } from './structures';
 import type { Violation } from './checks';
 import type { RoadCrossing } from './roadnet';
@@ -409,7 +410,7 @@ function compatible(c: CrossingResult, cls?: string): boolean {
 }
 
 /** Player-facing label with the built quantities (src/core/terms.ts). */
-export function crossingLabel(c: CrossingResult): string { return crossingOutcome(c).label; }
+export function crossingLabel(c: CrossingResult, line: OurLine = 'road'): string { return crossingOutcome(c, line).label; }
 
 /** Geometry inputs deliberately do not import evaluate.ts; safe in the worker and synthetic tests. */
 export interface CrossingRoute {
