@@ -6,8 +6,8 @@ import { NORM_CAP_I, NORM_CAP_II, UNKNOWN_GROUND, type GroundProfile } from './g
 
 type Bands = Pick<GroundProfile, 'classIto' | 'classIIto' | 'normMix' | 'key'>;
 import type { Terrain } from './terrain';
-import { SIDE_SLOPES } from './data/prices';
-import { cutFace, fillFace, treatedSubgrade } from './earthengineering';
+import { SIDE_SLOPES, SUBGRADE } from './data/prices';
+import { treatedSubgrade } from './earthengineering';
 
 export interface SectionTemplate {
   crownWidth: number;
@@ -108,16 +108,25 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
   let o0 = w, d0 = dPrev, zs = z, since = 0;
   if (trace) trace.push(w, z);
   const limit = Math.min(w + MAX_OFF, Math.max(w, maxOffset));
+  // (the faces of earthengineering.ts fillFace / cutFace, inline: this loop runs for every section of every edit)
+  const upper = S.fillUpper + (S.fillHighUpper - S.fillUpper) * Math.max(0, Math.min(1, (height - S.fillStandardTo) / S.fillHighBlend));
+  const soil = height <= S.cutShallowDepth ? S.cutShallow : S.cutSoil;
+  let g: Bands = typeof bands === 'function' ? UNKNOWN_GROUND : bands;
   while (o0 < limit - 1e-8) {
     let n: number, hold: number, rock = false, bench = false;
-    if (isFill) [n, hold] = fillFace(d0, height);
-    else {
-      const g = typeof bands === 'function' ? bands(o0 + 0.01) : bands; // the ground the face's foot stands in
-      [n, hold, rock] = cutFace(-d0, height, g.normMix ? Infinity : g.classIIto);
+    if (isFill) {
+      if (d0 > S.fillUpperFrom + 1e-6) { n = upper; hold = d0 - S.fillUpperFrom; }
+      else if (d0 > S.fillToeHeight + 1e-6) { n = height > S.fillUpperFrom ? S.fillMiddle : S.fillUpper; hold = d0 - S.fillToeHeight; }
+      else { n = S.fillToe; hold = Infinity; }
+    } else {
+      if (typeof bands === 'function') g = bands(o0 + 0.01); // the ground the face's foot stands in
+      const rockFrom = g.normMix ? Infinity : g.classIIto;
+      if (-d0 > rockFrom + 1e-6) { n = S.cutRock; hold = -d0 - rockFrom; rock = true; } else { n = soil; hold = Infinity; }
       const every = rock ? S.rockBenchEvery : S.soilBenchEvery;
-      if (since >= every - 1e-9) bench = true; else hold = Math.min(hold, every - since);
+      if (since >= every - 1e-9) bench = true; else if (every - since < hold) hold = every - since;
     }
-    const dx = bench ? S.benchWidth : Math.min(STEP, n * Math.max(1e-9, Math.min(hold, RISE)));
+    // (at least 5 cm of height a step: on sloping ground the next band begins a little further on each time)
+    const dx = bench ? S.benchWidth : Math.min(STEP, n * Math.max(0.05, Math.min(hold, RISE)));
     const o = Math.min(o0 + dx, limit), rise = bench ? 0 : (o - o0) / n;
     const zFace = zs + sign * rise; // fill: the face falls, cut: it rises
     const d = zFace - ground(o);
@@ -126,15 +135,15 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       const t = d0 === d ? 0 : d0 / (d0 - d); // d0 = d = 0: slope lies on the ground
       const od = o0 + t * (o - o0);
       // triangle from o0 to daylight
-      if (isFill) fill += 0.5 * d0 * (od - o0); else { cut -= 0.5 * d0 * (od - o0); addBands(out, bands, o0, d0, od, 0); }
+      if (isFill) fill += 0.5 * d0 * (od - o0); else { cut -= 0.5 * d0 * (od - o0); addBands(out, g, o0, d0, od, 0); }
       if (rock && !bench) out.rockFace += t * Math.hypot(o - o0, rise);
       out.cut = cut; out.fill = fill; out.cutII -= out.cutI;
       out.day = od; out.zDay = out.zSlope = zs + (zFace - zs) * t;
-      if (isFill && treatedSubgrade(height, typeof bands === 'function' ? bands(od / 2) : bands)) out.subgrade = od;
+      if (isFill && height > SUBGRADE.fromHeight && treatedSubgrade(height, typeof bands === 'function' ? bands(od / 2) : bands)) out.subgrade = od;
       if (trace) trace.push(od, out.zDay);
       return out;
     }
-    if (isFill) fill += 0.5 * (d0 + d) * (o - o0); else { cut -= 0.5 * (d0 + d) * (o - o0); addBands(out, bands, o0, d0, o, d); }
+    if (isFill) fill += 0.5 * (d0 + d) * (o - o0); else { cut -= 0.5 * (d0 + d) * (o - o0); addBands(out, g, o0, d0, o, d); }
     if (rock && !bench) out.rockFace += Math.hypot(o - o0, rise);
     since = bench ? 0 : since + rise;
     o0 = o; d0 = d; zs = zFace;
