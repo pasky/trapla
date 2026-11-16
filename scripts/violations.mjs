@@ -44,10 +44,24 @@ const msgs = await page.evaluate(async (demo) => {
 for (const m of msgs) console.log(JSON.stringify(m));
 // unfold the explanation of the first one, select bend 10 so the map label shows its headline too
 await page.evaluate(() => { document.querySelector('#viol .why')?.click(); window.trapla.selectPi(9); });
-await page.evaluate(() => window.trapla.whenIdle());
+await game.idle();
+// The HUD brings the selected bend's card into view with a smooth scroll of its own: the list is scrolled
+// into view once that has come to rest (it used to race it: one run in six framed the list, five the card).
+const hudStill = async () => {
+  let last = -1, same = 0;
+  for (let k = 0; k < 60 && same < 3; k++) {
+    await page.waitForTimeout(100);
+    const top = await page.evaluate(() => document.getElementById('hud').scrollTop);
+    same = top === last ? same + 1 : 0; last = top;
+  }
+};
+await hudStill();
+// (under the score, which stays on top)
+await page.evaluate(() => { const hud = document.getElementById('hud'), list = document.querySelector('#viol').closest('section');
+  hud.scrollBy({ top: list.getBoundingClientRect().top - document.getElementById('score').getBoundingClientRect().bottom - 8, behavior: 'instant' }); });
+await hudStill();
 const box = await page.evaluate(() => { const r = document.querySelector('#viol').closest('section').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
-await page.evaluate(() => document.querySelector('#viol').closest('section').scrollIntoView());
-await page.waitForTimeout(1500);
+await page.waitForTimeout(500);
 await page.screenshot({ path: OUT });
 await page.evaluate(() => { document.querySelector('#viol').style.maxHeight = 'none'; });
 await page.waitForTimeout(300);
