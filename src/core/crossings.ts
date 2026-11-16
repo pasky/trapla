@@ -166,7 +166,8 @@ export function crossingBridgeMask(s: ArrayLike<number>, raw: readonly RoadCross
   const ds = s[1] - s[0];
   const pad = Math.max(1, Math.ceil((STRUCTURE_RULES.minBridgeLength / ds - 1) / 2));
   for (const c of raw) if (crossingChoice(c.way, overrides) === 'bridge') {
-    const i = Math.max(0, Math.min(s.length - 1, Math.round(c.s / ds)));
+    if (c.s < s[0] - ds || c.s > s[s.length - 1] + ds) continue;
+    const i = Math.max(0, Math.min(s.length - 1, Math.round((c.s - s[0]) / ds)));
     // Tie-ins remain at grade. An endpoint request is still diagnosed by resolveCrossings rather
     // than drawing a bridge into A/B; a clipped short run remains a structure violation.
     for (let j = Math.max(1, i - pad); j <= Math.min(s.length - 2, i + pad); j++) mask[j] = KIND.bridge;

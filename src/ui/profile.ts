@@ -409,31 +409,43 @@ export class ProfilePanel {
       const [a, b] = this.Xr(this.flash.s0, this.flash.s1);
       g.fillRect(a, T, Math.max(4, b - a), B - T);
     }
+    // A long route has several stations per pixel: lines and areas step over them (at most ~2 per
+    // pixel; ends of runs are always kept), so a 60 km profile paints as fast as an 18 km one.
+    const stride = Math.max(1, Math.floor((i1 - i0) / Math.max(1, 2 * (R - L))));
+    const along = (a: number, b: number, f: (i: number) => void) => { for (let i = a; i < b; i += stride) f(i); f(b); };
     // ground
     g.beginPath();
     g.moveTo(this.X(r.s[i0]), B);
-    for (let i = i0; i <= i1; i++) g.lineTo(this.X(r.s[i]), this.Y(r.ground[i]));
+    along(i0, i1, i => g.lineTo(this.X(r.s[i]), this.Y(r.ground[i])));
     g.lineTo(this.X(r.s[i1]), B);
     g.closePath();
     g.fillStyle = '#e3d6bb';
     g.fill();
     // cut / fill between grade and ground
-    for (let i = i0; i < i1; i++) {
-      if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
-      const h0 = r.grade[i] - r.ground[i], h1 = r.grade[i + 1] - r.ground[i + 1];
-      g.fillStyle = h0 + h1 > 0 ? 'rgba(110,160,60,0.55)' : 'rgba(215,140,50,0.6)';
-      g.beginPath();
-      g.moveTo(this.X(r.s[i]), this.Y(r.ground[i]));
-      g.lineTo(this.X(r.s[i + 1]), this.Y(r.ground[i + 1]));
-      g.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1]));
-      g.lineTo(this.X(r.s[i]), this.Y(r.grade[i]));
-      g.closePath();
-      g.fill();
+    // One area per run of earthwork cells of one sign (embankment / cutting).
+    const earthSign = (i: number) => r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth ? 0
+      : r.grade[i] - r.ground[i] + r.grade[i + 1] - r.ground[i + 1] > 0 ? 1 : -1;
+    for (let i = i0; i < i1;) {
+      const sign = earthSign(i);
+      let j = i;
+      while (j + 1 < i1 && earthSign(j + 1) === sign) j++;
+      if (sign) {
+        g.fillStyle = sign > 0 ? 'rgba(110,160,60,0.55)' : 'rgba(215,140,50,0.6)';
+        g.beginPath();
+        g.moveTo(this.X(r.s[i]), this.Y(r.ground[i]));
+        along(i, j + 1, k => g.lineTo(this.X(r.s[k]), this.Y(r.ground[k])));
+        for (let k = j + 1; k > i; k -= stride) g.lineTo(this.X(r.s[k]), this.Y(r.grade[k]));
+        g.lineTo(this.X(r.s[i]), this.Y(r.grade[i]));
+        g.closePath();
+        g.fill();
+      }
+      i = j + 1;
     }
     g.strokeStyle = '#8a7148';
     g.lineWidth = 1.2;
     g.beginPath();
-    for (let i = i0; i <= i1; i++) { const x = this.X(r.s[i]), y = this.Y(r.ground[i]); if (i === i0) g.moveTo(x, y); else g.lineTo(x, y); }
+    g.moveTo(this.X(r.s[i0]), this.Y(r.ground[i0]));
+    along(i0, i1, i => g.lineTo(this.X(r.s[i]), this.Y(r.ground[i])));
     g.stroke();
     // structures
     for (const run of r.runs) {
@@ -492,13 +504,22 @@ export class ProfilePanel {
     const bad = new Uint8Array(r.n);
     for (const v of r.violations) if (!v.goal) for (let i = Math.max(0, Math.floor(v.s0 / r.ds)); i <= Math.min(r.n - 1, Math.ceil(v.s1 / r.ds)); i++) bad[i] = 1;
     g.lineWidth = 2.5;
-    // where a motorway's directions run apart, the shared line is not built: their own lines instead
+    // One stroke per run of stations drawn alike; where a motorway's directions run apart, the shared
+    // line is not built: their own lines instead.
     const apartAt = (s: number) => this.apart.some(a => s > a.s0 + 1e-6 && s < a.s1 - 1e-6);
-    for (let i = i0; i < i1; i++) {
-      if (apartAt((r.s[i] + r.s[i + 1]) / 2)) continue;
-      g.strokeStyle = bad[i] ? '#e01e1e' : r.kind[i] === KIND.bridge ? '#2f6fcf' : r.kind[i] === KIND.tunnel ? '#7a4fc0' : '#222';
-      if (r.kind[i] === KIND.tunnel) g.setLineDash([6, 4]); else g.setLineDash([]);
-      g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(r.grade[i])); g.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1])); g.stroke();
+    const gradeStyle = (i: number) => apartAt((r.s[i] + r.s[i + 1]) / 2) ? null
+      : bad[i] ? '#e01e1e' : r.kind[i] === KIND.bridge ? '#2f6fcf' : r.kind[i] === KIND.tunnel ? '#7a4fc0' : '#222';
+    for (let i = i0; i < i1;) {
+      const style = gradeStyle(i), tunnel = r.kind[i] === KIND.tunnel;
+      let j = i;
+      while (j < i1 && gradeStyle(j) === style && (r.kind[j] === KIND.tunnel) === tunnel) j++;
+      if (style === null) { i = j; continue; }
+      g.strokeStyle = style;
+      g.setLineDash(tunnel ? [6, 4] : []);
+      g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(r.grade[i]));
+      along(i + 1, j, k => g.lineTo(this.X(r.s[k]), this.Y(r.grade[k])));
+      g.stroke();
+      i = j;
     }
     g.setLineDash([]);
     // the second direction first, dashed: where both keep one height the first one's colours stay on top

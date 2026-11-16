@@ -22,8 +22,16 @@
  * is spanned; a chimney / silo / shed standing within a demolished building goes with it; a building no
  * one lives in that only the working strip beside our slopes reaches stays behind a retaining wall (research/18 rates)
  * where that wall costs less than buying and demolishing it, and a building the player keeps is walled
- * off wherever a wall can stand. */
-export const COST_MODEL_VERSION = 24;
+ * off wherever a wall can stand.
+ * 25: local grade solve (research/39 "Local edits"): the Auto grade line in blocks between long straights
+ * (a straight over 4 km, and any block over 5 km: at lines across the A–B axis every 4 km), each with its own
+ * mass balance
+ * (boundaries from the route within 5 km), nothing placed by the stations, the full gradient outside the
+ * last block; separation and strict retries judged per stretch, support lifts within their block (pins
+ * kept where the line had them); grade-separated routes retry once to clear crossed roads where no
+ * crossing could be built, and deepen a cutting a sag filled in under a bridge over us; retries judged
+ * without noise problems. */
+export const COST_MODEL_VERSION = 25;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

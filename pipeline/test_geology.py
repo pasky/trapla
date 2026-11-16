@@ -35,16 +35,23 @@ class GeologyTests(unittest.TestCase):
         ]:
             self.assertEqual(classify({"hor_karto": rock}), expected)
 
-    def test_posazavi_descriptions_use_broad_rock_priors_not_norm_mix(self):
-        for rock, expected in [
-            ("granodiorit, tonalit, křemenný diorit (sázavský typ)", "igneous"),
-            ("biotitové rohovce s polohami metadrob", "hard"),
-            ("droby, prachovce, břidlice", "hard"),
-            ("jílovité břidlice", "phyllite"),
-            ("intermediální až kyselé metatufy se sulfidy", "tuff"),
-            ("neznámá hornina", "unknown"),
+    def test_moldanubian_descriptions_of_southern_d3(self):
+        for attrs, expected in [
+            ({"hor_karto": "biotitové migmatity stromatitického až nebulitického typu"}, "gneiss"),
+            ({"hor_karto": "pararula"}, "gneiss"),
+            ({"hor_karto": "porfyr (nečleněno)"}, "igneous"),
+            ({"hor_karto": "žilný křemen s turmalínem"}, "hard"),
+            ({"hor_karto": "amf.-flogopitový ortopyroxenit"}, "igneous"),
+            ({"hor_karto": "leptynit"}, "hard"),
+            ({"hor_karto": "vápenec,dolomit"}, "carbonate"),
+            ({"hor_karto": "krystalické vápence, erlany"}, "carbonate"),
+            ({"utvar": "KARBON", "hor_karto": "granit"}, "igneous"),
+            ({"hor_karto": "křemenný pískovec"}, "hard"),
+            ({"hor_karto": "střídání drob, pískovců, prachovců a jílovitých břidlic"}, "hard"),
+            ({"hor_karto": "černošedé jílovité břidlice"}, "phyllite"),
+            ({"utvar": "KARBON", "hor_karto": "neznámá hornina"}, "unknown"),
         ]:
-            self.assertEqual(classify({"hor_karto": rock}), expected)
+            self.assertEqual(classify(attrs), expected)
 
     def test_keyset_pagination_and_offline_cache(self):
         requests = []

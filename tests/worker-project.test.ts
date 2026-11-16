@@ -38,7 +38,7 @@ it('coalesces project requests, echoes preview gesture identity, and resets delt
   await vi.runAllTimersAsync();
   expect(previewProjectRoute).toHaveBeenCalledTimes(1);
   expect(scope.postMessage).toHaveBeenLastCalledWith({ type: 'project-preview', id: 16, identity: { epoch: 'load', revision: 16 },
-    routeId: 'route', routeRevision: 16, result: route(16), gesture: { id: 'drag', sequence: 3 } });
+    routeId: 'route', routeRevision: 16, result: route(16), gesture: { id: 'drag', sequence: 3 } }, []);
   send({ type: 'project-eval', id: 17, snapshot: snapshot(17), displayedResult: null });
   send(init); // An old queued job must not run against a newly loaded terrain/context.
   await vi.runAllTimersAsync();

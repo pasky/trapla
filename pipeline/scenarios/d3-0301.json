@@ -1,0 +1,103 @@
+{
+  "id": "d3-0301",
+  "name": "D3 0301 Praha → Jílové",
+  "bbox5514": [
+    -745000,
+    -1068000,
+    -736500,
+    -1054500
+  ],
+  "cell": 5,
+  "requireComplete": true,
+  "coherentTransport": true,
+  "official": {
+    "strategy": "strict",
+    "query": "way[\"ref\"=\"D3\"];",
+    "ref": "D3",
+    "highway": "motorway",
+    "wayIds": [
+      149101901
+    ],
+    "wayNodeRanges": {
+      "149101901": [
+        8227650623,
+        1621272717
+      ]
+    },
+    "startNode": 8227650623,
+    "lengthRangeM": [
+      11256,
+      11456
+    ],
+    "publishedProjectLengthM": 9514,
+    "note": "The mapped line is drawn across the whole map, beyond the section ends, where the planned D3 continues (research/39)."
+  },
+  "A": {
+    "latlon": [
+      49.9625454,
+      14.496702
+    ],
+    "note": "Praha: start of the mapped D3 mainline inside the D0 × D3 interchange, under the road II/101 bridge about 185 m south of the Prague ring (section km 0 lies inside the interchange)",
+    "junction": {
+      "kind": "interchange",
+      "osmWayIds": [
+        312960727,
+        171863669
+      ],
+      "about": "The mapped southbound D3 mainline (way 149101901, first node 8227650623) begins 13.7 m north of A, where road II/101 crosses the corridor on an existing bridge (way 171863668, bridge=yes, not in the ground network); the declared ways are that bridge’s two approaches. The D0 carriageways lie about 185 m further north. Section 0301 starts at km 0.000 inside this interchange (ŘSD leaflet)."
+    }
+  },
+  "B": {
+    "alongOfficial": 8710,
+    "note": "Section boundary beyond the Jílové interchange (II/104), km 9.514; continues as section 0302"
+  },
+  "groundProfileOverrides": {
+    "perm_sand": {
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "perm_congl": {
+      "classIto": 1.5,
+      "classIIto": 4
+    },
+    "perm_fine": {
+      "classIto": 3,
+      "classIIto": 9
+    },
+    "carb_sand": {
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "carb_mixed": {
+      "classIto": 2.5,
+      "classIIto": 7
+    },
+    "phyllite": {
+      "name": "Shale / phyllite — uncalibrated regional prior",
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "hard": {
+      "name": "Hornfels / greywacke / quartzite — uncalibrated regional prior",
+      "classIto": 1,
+      "classIIto": 3
+    },
+    "igneous": {
+      "name": "Granitoid / volcanic rock — uncalibrated regional prior",
+      "classIto": 1,
+      "classIIto": 3
+    },
+    "gneiss": {
+      "name": "Paragneiss / migmatite — uncalibrated regional prior",
+      "classIto": 1.5,
+      "classIIto": 4
+    }
+  },
+  "baselineNote": "Section 0301 of the Středočeská D3 (ŘSD leaflet 09/2025), a D 27.5 motorway mission. Starts in the D0 × D3 interchange (declared junction, PROVISIONAL price); ends beyond the Jílové interchange, where section 0302 continues. Section boundaries are placed on the mapped proposed line by the leaflet chainage (research/39); the proposed OSM line is context, not surveyed design geometry. Ground depths are uncalibrated regional priors.",
+  "sources": [
+    "https://apdos.roadmedia.cz/Upload/Stavby/45/infoletak_d3-0301-praha-jilove.pdf",
+    "https://www.stredoceskad3.cz/usek-0301-praha-jilove/",
+    "https://md.gov.cz/Media/Media-a-tiskove-zpravy/Aktualni-stav-pripravy-stredoceske-D3",
+    "https://www.openstreetmap.org/way/149101901"
+  ]
+}

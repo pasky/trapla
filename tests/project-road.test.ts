@@ -22,7 +22,7 @@ it('preserves the legacy kernel bill, grade and geometry through the project ada
   const legacy = evaluate(ctx, design), adapted = evaluateProjectRoad(ctx, p, p.routes[0].id, 'objects');
   expect(adapted.status).toBe('evaluated');
   if (adapted.status !== 'evaluated') throw new Error('adapter');
-  const { timing: _a, ...a } = legacy, { timing: _b, ...b } = adapted.result;
+  const { timing: _a, lineage: _la, ...a } = legacy, { timing: _b, lineage: _lb, ...b } = adapted.result;
   expect(b).toEqual(a);
 });
 
@@ -31,8 +31,8 @@ it('keeps legacy speed edits acoustically identical unless separate operations w
   const edited = replaceRouteFromLegacy(p, id, { ...legacyDesignForRoute(p, id), speed: 80 });
   const result = evaluateProjectRoad(ctx, edited, id, 'objects');
   if (result.status !== 'evaluated') throw new Error('adapter');
-  const { timing: _a, ...actual } = result.result;
-  const { timing: _b, ...expected } = evaluate(ctx, { ...design, speed: 80 });
+  const { timing: _a, lineage: _la, ...actual } = result.result;
+  const { timing: _b, lineage: _lb, ...expected } = evaluate(ctx, { ...design, speed: 80 });
   expect(actual).toEqual(expected);
   const route = p.routes[0]; if (route.kind !== 'road') throw new Error('fixture');
   route.specification.operations.speedPolicy = 'independent'; route.specification.operations.speed = 40;

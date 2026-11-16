@@ -130,7 +130,12 @@ async function main() {
   if (storage.problem !== null) storageNotice();
   const store = new ActiveRouteStore(projectStore, initialProject);
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
+  // Full evaluations and drag previews run in separate workers, so that a preview never waits behind a
+  // full evaluation (hundreds of ms on long routes). The full worker hands each full result to the
+  // preview worker directly (MessageChannel): the base its windowed previews re-solve locally.
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  const previewWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  const bases = new MessageChannel();
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
@@ -138,7 +143,9 @@ async function main() {
     projectEnvironment: { objectData, transportData, pricingData, waterData: meta.watercourses?.sha256 ?? 'raster-water',
       terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
   };
-  worker.postMessage(init, [init.q.buffer, init.lc.buffer]);
+  const previewInit: WorkerIn = { ...init, q: pack.q.slice(), lc: pack.lc.slice(), role: 'preview', port: bases.port2 };
+  worker.postMessage({ ...init, role: 'full', port: bases.port1 }, [init.q.buffer, init.lc.buffer, bases.port1]);
+  previewWorker.postMessage(previewInit, [previewInit.q.buffer, previewInit.lc.buffer, bases.port2]);
 
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
@@ -153,6 +160,17 @@ async function main() {
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
   const intro = new Intro(document.getElementById('view')!, scenario.mode ?? 'road');
+  // The start view frames A and B in what the toolbar, legend and attribution leave, clear of the intro.
+  view.frameSafe = () => {
+    const host = document.getElementById('view')!.getBoundingClientRect();
+    const box = (id: string) => { const el = document.getElementById(id); const r = el && !el.hidden ? el.getBoundingClientRect() : null;
+      return r && r.width && r.height ? { left: r.left - host.left, top: r.top - host.top, right: r.right - host.left, bottom: r.bottom - host.top } : null; };
+    const bars = [box('editbar'), box('viewbar'), box('brand')].filter(b => b !== null);
+    const lows = [box('legend'), box('attrib')].filter(b => b !== null);
+    return { left: 0, right: host.width, top: Math.max(0, ...bars.map(b => b.bottom)), bottom: Math.min(host.height, ...lows.map(b => b.top)),
+      avoid: [box('intro')].filter(b => b !== null) };
+  };
+  view.resetCamera();
   const decisions = new DecisionList(hud.decisions, (n) => { document.getElementById('decisions-count')!.textContent = n ? String(n) : ''; });
   decisions.objectDataChanged = store.objectDataChanged;
   const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0), pack.overlays.buildings[j]); };
@@ -195,11 +213,17 @@ async function main() {
     const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: only(active) }
       : active && active in alone ? { total: alone[active], approx: false, label: only(active) }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: only(mission) } : null;
+    // While a road is dragged the project total follows its live price: the last full total with this road's
+    // own bill replaced by the preview's (≈).
+    const total = projectFull?.cost.total;
+    const live = activePreviewPrice !== null && total !== null && total !== undefined && active && active in alone
+      ? total - alone[active] + activePreviewPrice : null;
     // our road: the mission's route, and a motorway mission's other direction
     const missionCorridor = mission ? corridorOfRoute(projectStore.snapshot.design, mission) : undefined;
     const ours = new Set([mission, missionCorridor?.children.forward, missionCorridor?.children.reverse].filter((id): id is RouteId => !!id));
     const groups = Object.fromEntries(projectStore.snapshot.design.corridors.flatMap(c => [[c.children.forward, c.id], [c.children.reverse, c.id]]));
     hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, ours, groups, legacy: legacyFacade(), ownPrice: own,
+      liveTotal: live, dragging: activePreviewPrice !== null && projectStore.inTransaction,
       activeRouteId: active ?? undefined, names: routeNames(),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
@@ -254,8 +278,9 @@ async function main() {
     ends.sync(store.route);
     // Road links let the game change mapped roads: the worker learns which legacy way each mapped road is.
     // ... and where each mapped railway runs (what a rebuilt railway stretch takes up).
-    worker.postMessage({ type: 'source-ways', ways: graph.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]),
-      rails: graph.sources.flatMap(s => s.kind === 'railway' ? [[s.id, s.xy, s.stations]] : []) } satisfies WorkerIn);
+    const sourceWays = { type: 'source-ways', ways: graph.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]),
+      rails: graph.sources.flatMap(s => s.kind === 'railway' ? [[s.id, s.xy, s.stations]] : []) } satisfies WorkerIn;
+    worker.postMessage(sourceWays); previewWorker.postMessage(sourceWays);
     view.setTransport(graph);
   })();
   // A saved project that already rebuilds mapped roads needs the graph before its first scene.
@@ -282,9 +307,11 @@ async function main() {
   };
   // the motorway's return direction starts at B
   const reversed = () => !!store.route && projectStore.snapshot.design.corridors.some(c => c.mode === 'independent' && c.children.reverse === store.route!.id);
+  /** what the active road's ends meet (the mission's interchanges), in its own direction */
+  const endInfo = (end: 'a' | 'b') => store.route?.role === 'mission' ? scenario.ends?.[reversed() ? (end === 'a' ? 'b' : 'a') : end] : undefined;
   const activeEndpoints = () => ({
-    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start' },
-    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End' },
+    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start', sign: endInfo('a')?.kind },
+    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', sign: endInfo('b')?.kind },
     plain: !!store.route && store.route.role !== 'mission',
   });
   const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);
@@ -311,8 +338,10 @@ async function main() {
         const s = stationNear(b[0], b[1]);
         return { x: b[0], y: b[1], s0: s, s1: s };
       }
+      case 'end': { const i = t.end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], s0: r.s[i], s1: r.s[i] }; }
     }
   };
+  view.onEndClick = (end) => select({ kind: 'end', end });
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   let selectGeneration = 0; // a deferred base-road pick yields to any later selection
   /** A single selected place seen from further than this (m per pixel) is too small to make out: framing flies in. */
@@ -663,7 +692,7 @@ async function main() {
           structureValue: lastFull?.quantities.structureValue,
           gesture: { id: previewGesture!.id, sequence: ++previewGesture!.sequence } }
       : { type: 'project-eval', id: posted, snapshot, displayedResult: displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision } };
-    worker.postMessage(message);
+    (message.type === 'project-preview' ? previewWorker : worker).postMessage(message);
     projectScore(true);
     if (preview) fullTimer = window.setTimeout(() => { fullTimer = 0; requestEval(false); }, FULL_AFTER_IDLE_MS);
     schedulePreview();
@@ -751,6 +780,8 @@ async function main() {
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
+    const ends = activeEndpoints();
+    inspector.ends = { a: endInfo('a'), b: endInfo('b'), names: { a: ends.a.label, b: ends.b.label } };
     inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
   };
 
@@ -762,7 +793,7 @@ async function main() {
     worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
       crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
   };
-  worker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
+  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
     if (m.type === 'noise-band') {
@@ -865,7 +896,7 @@ async function main() {
     }, error => {
       console.error('3D rebuild failed', error); setStatus('The 3D view could not be updated.');
       heavy = null; lastPost = null; settle();
-    }, 8, stats); took('view');
+    }, 8, stats, ([geometry, sources]) => { sources?.dispose(); geometry.dispose(); }); took('view');
     showActiveResult(); took('profile'); projectScore(true); took('hud');
     setStatus(''); settle();
   };

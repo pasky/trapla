@@ -1,5 +1,129 @@
 # Evaluate performance regression
 
+## Local grade solve (cost model 25, 2026-11-16)
+
+The Auto grade line is now solved in blocks (research/39 "Local edits"): one corridor pass per boundary
+window (5 km either side, coarse grid only; the timings in this paragraph were measured with 1.5 km windows,
+see "Reviewed trade-off" below) on top of the blocks' own corridor and mass-balance passes, which together
+cover the route once as before. Inputs are placed from the block ends (≈ 1 even cost sample per 20 m with
+its ground and geology looked up at its own place, a traced line every ≈ 10 m for crossings, raster
+samples every 2.5 m). Interleaved A/B against main 93f849d (Node, warm, 10 evaluations, two rounds, host
+load ≈ 8–9), min / median ms: D11 best 91 / 112 and 86 / 97 → 92 / 109 and 89 / 104; town-centre 142 / 178
+and 119 / 150 → 134 / 152 and 130 / 151 (within noise). D3 0303 11 km motorway 97–105 / 101–133. A design
+whose separation retry splits into kept and dropped stretches pays a third evaluation of the route
+(rare: none of the starters).
+
+### Reviewed trade-off: 5 km boundary windows (2026-11-16)
+
+Locality and the bill want each boundary's heights from 5 km either side (1.5 km windows cost ≈ 2 % on the
+sum of all designs and miss valleys); that window pass is the solve's extra work: +15–25 ms per D11 full
+evaluation at first. Offsetting savings, each checked bit for bit against the evaluation without it
+(bills, grade lines, problems and crossings identical) unless marked:
+- **One evaluation, one set of caches.** The passes of a design's evaluation (the separation and narrowing
+  retries, the clearance, support-lift and strict retries) share Auto's window and block solves (keyed by
+  every input they read: an unchanged block is not solved again, so a retry re-solves only the blocks
+  its constraints reach), cross-sections, retaining screens, support obstacles and reroutes.
+- **Noise once.** Retry passes leave out the noise (walls, buy-outs, noise problems; not what a retry
+  changes, so retries are now judged without noise problems: a reviewed model change) and only the kept
+  pass is completed with it.
+- **Cheaper windows.** A boundary's window searches ±15 m around the ground envelope (not ±25; the full
+  band where that finds nothing; not railways) and prices every other 20 m cost sample (the corridor only:
+  sum of all saved designs and starters within 0.1 %).
+- Typed cost samples and one multiply-add per height-table position in the DP's inner loop (same bills).
+
+Interleaved A/B against main a8d8de5 (Node, warm, 10 evaluations, two rounds, exclusive lock), min ms:
+best 88–109 → 116–118, demo 105–111 → 95, direct-80 102–104 → 120–121, direct-90 105 → 125–127,
+town-centre 127–132 → 158–170, D35 first section 87–109 → 85–88: on average ≈ +15 ms per D11 design.
+What is left is design-specific: best's line buries a road that the strict pass must keep (main's line
+did not; demo is the reverse), town-centre's repaired line takes five engineering passes of support lifts.
+The whole D3 settles in 1.4–1.5 s (was 4.2–4.3 s: four full passes, now one with noise and three
+re-solving only their blocks).
+
+## Long routes: windowed previews, a preview worker (2026-11-16)
+
+Goal: complete corridors (Středočeská D3 58.5 km, D35 Opatovec → Mohelnice 34 km) with unchanged drag
+budgets. Everything in `evaluate()` is linear in route length (the auto-profile DP is knots × heights ×
+grades; sections, structures, crossings, noise per station), so a long route is not a complexity problem
+but a constant-factor one: at ≈ 2 ms/km for a road preview and ≈ 11 ms/km for a full motorway evaluation,
+60 km means ≈ 120–140 ms per preview and ≈ 0.65–1 s per full evaluation. Two things break the budget:
+
+1. **Preview cost grows with the route, not with the edit.** Measured (Node, this host, median of 12 drag
+   steps, `PREVIEW=1 scripts/bench-drag.ts`): D3 15.7 km motorway 33 ms, D3 road 30–35 ms, D11 18–20 km
+   24–37 ms; full motorway evaluation of a 11–17 km D3 section 150–260 ms (phases: engineering passes incl.
+   retaining 65 ms, crossings 21, profile 19, noise 7, footprint 6 for 11 km).
+2. **A preview waits behind a full evaluation.** One worker ran both; a pause in a drag starts a full
+   evaluation that cannot be interrupted, so every later preview waits up to its whole duration (the D35
+   34 km pin-mode failure, p50 69 ms > 60).
+
+What changed (full evaluations and bills are untouched: `eval-regression` passes both paths):
+
+- **Windowed preview** (`core/preview-window.ts`). Each full result is remembered per lineage (same ends,
+  category, speed, profile mode, overrides). A preview finds where the new design differs from it: the plan
+  (stations compared with the full result's at the same chainage upstream and at chainage − ΔL
+  downstream; 0.2 m tolerance) and the grade inputs (pins in Auto, height points By hand). It evaluates only
+  that stretch ± 1.5 km as its own route (`EvalOptions.window`: the whole route's stationing sliced, heights
+  and grades of the full line at both window ends; the auto-profile DP continues those grades within one
+  vertical curve, `endpointGrades`), and stitches: grade line = full VPIs before + window VPIs + full VPIs
+  after (shifted by ΔL); per-station arrays and per-cell costs from the window inside, from the full result
+  (mapped by chainage) outside. A window over more than 60 % of the route, a changed override or no full
+  result yet falls back to the whole-route preview. The preview is shown as before (`≈`, provisional).
+- **Preview worker.** Previews run in a second worker; the full worker posts each full result to it over a
+  `MessageChannel` (structured clone in the workers, not on the main thread) as the base of its windows.
+  A preview never waits for a full evaluation any more.
+
+Measured, Node, previews of bend drags (`STEPS=12 PREVIEW=1 [WINDOW=0] scripts/bench-drag.ts`), whole-route
+→ windowed, median ms: D11 best 30 → 17, demo 24 → 9, direct-80 34 → 10, direct-90 37 → 13, town-centre
+26 → 33 (window over 60 %: whole-route); D3 15.7 km motorway 33 → 17, road 30 → 21. Windows are
+6.3–7.6 km here, so the gain grows with route length.
+
+Accuracy against the full evaluation of the same design (6 bend moves of 20 / 80 m on two D3 designs): bill
+−8.0 … +10.0 % windowed vs −12.2 … −3.9 % whole-route; grade line within 2–9 m of the full one in both
+(the full Auto line itself jumps by metres between neighbouring designs). The window carries the full
+result's retaining walls, remedies and noise outside the edit, so it is usually closer; it misses changes
+the edit causes far away (a mass-balance material value, a strict retry).
+
+Also for long motorways: where Auto's grade leaves a crossed road with neither our bridge nor a buildable
+bridge over us (ramps > 250 m or > 10 m), or pays the clearance penalty over a river or railway instead of
+bridging it, a grade-separated route retries once with Auto asked to clear those (research/39). That is a
+second full evaluation only on such (otherwise invalid) designs; valid motorway/railway bills are unchanged.
+
+### Main thread on long routes
+
+Once the worker was fast, the GPU drag runs on the 56 km D3 showed the main thread as the limit (profiled
+with `drag-perf.mjs --profile`):
+
+- **Preview messages.** A stitched preview first carried the full result's crossing geometry (hundreds of
+  crossings): deserialising it cost most of the handler. Previews now carry crossings without geometry, like
+  whole-route previews; the full worker sends the preview worker a slim base (`previewBase`). A 56 km
+  preview is ≈ 1.7 MB (19 per-cell cost arrays are half of it): its own typed arrays are transferred to the
+  main thread, not copied (main-thread time per preview on the whole D3: p95 25–28 → 15 ms).
+- **Profile painting** drew one fill and one stroke per station (5,600 on the whole D3): now one area per run
+  of embankment / cutting, one stroke per run of the grade line, and at most ≈ 2 points per pixel.
+- **Long tasks after release.** The 3D rebuild's indivisible steps grew with the route: the shared mask and
+  ground blend computed at the swap (≈ 40 ms), crossing reuse keys hashed for all surfaces in one step
+  (≈ 35 ms), whole-route passes of the earthwork ribbon. The mask and blend are now prepared in slices before
+  the swap (`View.prepareRouteScene`), keys a few surfaces per slice, the ribbon passes yield, and the swap
+  runs as its own task. Longest slice on the 56 km D3: 52–110 → 16–23 ms; swap 38–50 → 11–14 ms.
+- **Start view.** Framing a whole 57 km route at once costs the integrated GPU 50–130 ms frames; long
+  missions keep D11's camera distance, shorter ones (Nová Paka, D3 0302) come closer.
+
+`node scripts/drag-perf.mjs --gpu --check [--scenario <id> --preset <id>-motorway] --mode <m>`, AMD RADV
+GFX1150, host load 4–7, unchanged budgets, all pass. Preview latency p50 / p95 (worker p50 / p95), ms:
+
+| Route | bend | road | radius | pin | vpi |
+|---|---|---|---|---|---|
+| D11 18.9 km road | 17 / 29 (9 / 21) | 15 / 25 | 16 / 33 | 11 / 15 | 13 / 16 |
+| D3 0305/I 17 km motorway | 17 / 25 | 17 / 48 | 16 / 36 | 15 / 25 | 21 / 42 |
+| D35 Opatovec → Mohelnice 33 km | 22 / 54 | 18 / 24 | 17 / 32 | 15 / 20 | 16 / 27 |
+| Whole D3 56 km motorway | 27 / 74 (11 / 38) | 23 / 47 | 26 / 37 | 21 / 33 | 24 / 33 |
+
+(D11 before this work, same host: bend 34 / 68, pin 34 / 76.) Bend drags on D3 0301–0304 pass too
+(p50 14–19 ms). Release → settled: D11 0.2–0.4 s, D3 sections 0.2–0.6 s, D35 0.5–0.7 s, whole D3 0.7–1.8 s
+(a full motorway evaluation is ≈ 11 ms per km; linear, in its own worker).
+
+The first preview of a drag can still be a whole-route one (no full result of that lineage yet in the preview
+worker, e.g. just after loading): 300–450 ms on the whole D3, once.
+
 ## Staged noise decisions (2026-11-16)
 
 The grouped far sums are within `FAR_ERROR` (0.3 of their own value; 0.07 for the finer grouping) of the
@@ -81,7 +205,8 @@ D11's 90–150 ms. On the GPU drag gate it passed bend/road/radius/vpi, but **pi
 preview latency budget in 2 of 3 runs (69 / 59 / 75 ms > 60). Per the agreed rule the scenario ships as
 the first stage, which passes all five modes with margin (preview p50/p95 ms: bend 20/43, road 21/60,
 radius 19/50, pin 28/61, vpi 12/22). `node scripts/drag-perf.mjs --gpu --scenario <id> --mode <m> --check`
-measures any pack with unchanged budgets. Mohelnice needs a cheaper long-route auto-profile first.
+measures any pack with unchanged budgets. Mohelnice needed a cheaper long-route preview first: done by the
+windowed previews and the preview worker above; the whole D35 now passes all five modes.
 
 D11 startup no longer waits for the 18 MB transport graph (lazy: bytes fetched when idle after the
 first settled scene, parsed on first need). `scripts/startup-perf.mjs --gpu`, median of 5: ready

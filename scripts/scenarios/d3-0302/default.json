@@ -1,0 +1,18 @@
+{
+  "scenario": "d3-0302",
+  "purpose": "Fresh motorway mission (starter)",
+  "design": {
+    "category": "D27.5",
+    "speed": 120,
+    "pis": [
+      {
+        "x": 2608.6,
+        "y": 6143.7,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}
