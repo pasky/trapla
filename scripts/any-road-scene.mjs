@@ -407,6 +407,19 @@ try {
       assert(pr.cost.total !== null, 'priced together');
       console.log(`the km 4.1 track rebuilt from ${Math.round(r.source.intervals[0].s0)} m (beyond our earthworks): total ${(pr.cost.total / 1e9).toFixed(3)} bn CZK`);
     }
+    // One pull of road I/37 through the houses beside our road (QA re-test 2: 5× "Two roads take the same
+    // house", no total): a house our road takes is gone, the other road's noise there is moot; a house both
+    // roads take is taken once
+    {
+      await page.evaluate(d => window.trapla.setProject(d), initial); await idle();
+      await dragOn('osm:way:234919601', 280, -45, 0);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(r.source?.intervals[0].sourceId, 'osm:way:234919601', 'road I/37 is rebuilt');
+      const pr = await page.evaluate(() => window.trapla.projectResult());
+      const shared = pr.issues.filter(i => i.code === 'shared-building' || i.code === 'shared-noise');
+      assert.deepEqual(shared.map(i => i.violation.title), [], 'no house is left undecided between the two roads');
+      console.log(`road I/37 pulled 45 px: ${pr.cost.total === null ? `not priced (${[...new Set(pr.cost.unpriced.map(u => u.reason))]})` : `total ${(pr.cost.total / 1e9).toFixed(3)} bn CZK`}`);
+    }
     let motorway = null;
     for (const id of await page.evaluate(() => ['motorway', 'trunk', 'railway'].flatMap(h => window.trapla.sourceIds(h, 400)))) {
       await page.evaluate(id => window.trapla.lookAtSource(id, 200, 500), id); await idle();

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { finiteSegmentDecider } from '../src/core/project-noise';
 import { BuildingIndex } from '../src/core/buildings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
-import { ENDPOINT_JUNCTIONS, JUNCTION } from '../src/core/data/urban';
+import { BUILDING_KIND, ENDPOINT_JUNCTIONS, JUNCTION } from '../src/core/data/urban';
 import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { makeLegacyProjectContext, projectFromLegacyDesign } from '../src/core/project-legacy';
 import { isScorableProject } from '../src/core/project-protocol';
@@ -217,4 +217,26 @@ describe('houses heard by both roads', () => {
     expect(togetherHouseText(decided.receivers.find(r => r.buildingIndex === 0)!, () => 'our road', v => `${v}`)!.state).toBe(`Bought out · ${buy.cost}`);
     expect(decided.buildings.filter(b => b.buildingIndex === 0 && b.action === 'buy')).toHaveLength(1);
   });
+});
+
+it('a house two roads take is taken once: billed by the road that demolishes it, credited on the other', () => {
+  // a long shed reaching from our road (y = 250) to the side road (y = 330), under both
+  const shed = new BuildingIndex([[650, 290, 62]], [[120 * 20, 1, BUILDING_KIND.industrial, 650, 290, 60, 10, 90]]);
+  const { ctx, snapshot } = fixture('tertiary', [], shed);
+  ctx.legacy.roads = new RoadNet({ cls: ['tertiary', 'tertiary'], ways: [[0, 300, 300, 300, 1100], [1, 1000, 300, 1000, 1100]] });
+  const side = snapshot.design.routes[1], mission = snapshot.design.routes[0].id;
+  for (const [end, x] of [['a', 300], ['b', 1000]] as const) {
+    side.endpoints[end].position = { x, y: 340, z: 100 };
+    const anchor = side.endpoints[end].anchor; if (anchor.kind === 'source') anchor.location.s = 40;
+  }
+  const p = evaluateProject(ctx, snapshot), own = (id: string) => p.routes[id].legacy!;
+  expect(own(mission).demolished.map(b => b.j)).toEqual([0]);
+  expect(own('side').demolished.map(b => b.j)).toEqual([0]);
+  expect(p.issues.filter(i => i.code === 'shared-building')).toEqual([]);
+  const credit = p.works.items.filter(w => w.id === 'side:house:0');
+  expect(credit).toHaveLength(1);
+  expect(credit[0].cost).toBeCloseTo(-own('side').demolished[0].cost, 6);
+  expect(credit[0]).toMatchObject({ accepted: true, label: 'House our road takes as well: billed there once' });
+  expect(jargonIn(credit[0].label!, true)).toEqual([]);
+  expect(p.buildings.find(b => b.buildingIndex === 0)).toMatchObject({ action: 'demolish', routeId: mission });
 });

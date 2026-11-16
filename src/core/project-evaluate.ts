@@ -14,7 +14,7 @@ import { evaluateProjectRailway, type RailwayEvaluation } from './project-railwa
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 import * as dm from './detmath';
-import { draws, editedNetwork, lineStation, planEnds, planLine, registerNet, type ResolvedEnds } from './project-roadnet';
+import { draws, editedNetwork, lineStation, outranks, planEnds, planLine, registerNet, type ResolvedEnds } from './project-roadnet';
 import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STEP, type EvalOptions } from './evaluate';
@@ -548,7 +548,31 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     ? finiteSegmentDecider(heardRoutes.map(({ route, result }) => ({ routeId: route.id, result, wallOverrides: wallChoices(design, route) })),
       ctx.legacy.buildings, (x, y) => ctx.legacy.terrain.heightAt(x, y)) : null;
   const decider = heard.length && ctx.legacy.buildings ? builtIn ?? ctx.combinedNoise?.(heardRoutes) ?? null : null;
-  const blocking = screen.interactions.filter(i => !(decider && heard.includes(i)));
+  // A house two roads take (under one, bought out by another, …) is taken once: by a road that demolishes
+  // it (the higher-ranking one if several do; else the higher-ranking buyer) and billed there; the others'
+  // bills for it are credited. A house a road keeps in its way stays the player's to settle.
+  const takenBy = (id: string, j: number) => { const r = result.routes[id]?.legacy; if (!r) return null;
+    const d = r.demolished.find(b => b.j === j); if (d) return { cost: d.cost, demolish: true };
+    const b = r.boughtOut.find(q => q.j === j); return b ? { cost: b.cost, demolish: false } : null; };
+  const routeOf = (id: string) => design.routes.find(r => r.id === id)!;
+  const takenTogether = screen.interactions.filter(i => i.reason === 'shared-building' && i.buildingIndex !== undefined
+    && i.routeIds.every(id => takenBy(id, i.buildingIndex!) && !result.routes[id]!.legacy!.kept.some(k => k.j === i.buildingIndex && k.hit)));
+  const housePayer = new Map<number, string>();
+  for (const i of takenTogether) {
+    const j = i.buildingIndex!, demolishers = i.routeIds.filter(id => takenBy(id, j)!.demolish);
+    const payer = (demolishers.length ? demolishers : i.routeIds).reduce((a, b) => outranks(design, routeOf(b), routeOf(a)) ? b : a);
+    housePayer.set(j, payer);
+    const b = ctx.legacy.buildings?.items[j];
+    for (const id of i.routeIds) if (id !== payer) {
+      const r = result.routes[id]!.legacy!, k = b ? nearestStation(r, b[0], b[1]) : 0, route = routeOf(id);
+      const work: ReplacementWork = { kind: 'buyout', s: r.s[k], x: b?.[0] ?? r.x[k], y: b?.[1] ?? r.y[k], length: 0, cost: -takenBy(id, j)!.cost,
+        label: `House ${ownerName(routeOf(payer))} takes as well: billed there once` };
+      let list = ownWorks.get(id); if (!list) ownWorks.set(id, list = []);
+      list.push(work);
+      result.works.items.push({ ...replacementWork(route, list.length - 1, work), id: `${id}:house:${j}` });
+    }
+  }
+  const blocking = screen.interactions.filter(i => !(decider && heard.includes(i)) && !takenTogether.includes(i));
   if (blocking.length) {
     // one line per thing the roads share, with its place; the houses that hear the same roads are one line
     const heardBy = new Map<string, number>();
@@ -639,7 +663,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     if (k >= 0) result.receivers[k] = decided; else result.receivers.push(decided);
     if (h.decision === 'buy') result.buildings.push({ buildingIndex: h.buildingIndex, action: 'buy', cost: h.buyout!.cost, routeId: h.buyout!.routeId });
   }
-  result.buildings = mergeBuildings(result.buildings);
+  result.buildings = mergeBuildings(result.buildings).map(b => housePayer.has(b.buildingIndex) ? { ...b, routeId: housePayer.get(b.buildingIndex)! } : b);
   result.cost.total = total; result.complete = true; result.valid = valid;
   result.acousticScreen = { bounds: [], omittedDayEnergyUpperBound: screen.omittedDayEnergy,
     omittedNightEnergyUpperBound: screen.omittedNightEnergy, complete: true };

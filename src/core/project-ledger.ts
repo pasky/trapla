@@ -245,11 +245,12 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
   for (let j = 0; j < buildings.n; j++) {
     if (!buildings.dwelling[j]) continue;
     const [x, y] = buildings.items[j], radius = buildings.extent(j);
+    // a house a road takes (demolished, bought out) is gone: no other road's noise reaches anyone there
+    // (two roads taking it are reported above)
+    if (noise.some(n => n.receivers.get(j)?.removed)) continue;
     const contributors: number[] = [];
-    let removed = false;
     for (let k = 0; k < noise.length; k++) {
       const n = noise[k], known = n.receivers.get(j), reach = n.reach + radius;
-      if (known?.removed) { removed = true; contributors.push(k); continue; }
       // A house in a road's own noise list (it could reach the limit there) is that road's house, even
       // when its walls made it quiet. Otherwise the road counts where its all-height bound exceeds
       // limit − margin, i.e. within its reach (bound is monotone in distance). NaN reach fails closed.
@@ -258,7 +259,7 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
       if (known || inReach) contributors.push(k);
     }
     if (contributors.length > 1) {
-      interactions.push({ routeIds: contributors.map(k => routes[k].routeId), reason: removed ? 'shared-building' : 'shared-noise', buildingIndex: j });
+      interactions.push({ routeIds: contributors.map(k => routes[k].routeId), reason: 'shared-noise', buildingIndex: j });
       continue;
     }
     // One road per house. The others, each ≥ margin below the limit there, add ≤ 1 % of one limit
