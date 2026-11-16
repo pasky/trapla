@@ -1206,9 +1206,6 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
   // Centreline crossings own their connected stretch inside the footprint (crossing remedy);
   // grade-separated classes cannot be diverted and stay ordinary retaining obstacles.
   // Ways merged into another crossing's billing group have no remedy of their own.
-  // (a way merged into another's crossing is one of its own where our earthworks meet it: below)
-  /** the other ways merged into a crossing (mergeCrossings), each a crossing of its own on our earthworks */
-  const mergedInto = new WeakMap<CrossingResult, readonly RoadCrossing[]>();
   const crossingWays = new Map<number, number[]>(), remedied = new Set(roadX.map(c => c.way));
   if (ctx.roads) for (const c of rawRoadX) {
     if (!remedied.has(c.way) || ROAD_CLASSES[c.cls].noAtGrade) continue;
@@ -1284,6 +1281,9 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const { profileFeasible, autoOptions, constrainedSolve, keepsExterior, pinViolations, materialValue, blockValues,
     liftBlocks, blockDecision, autoVpis, crossingWays } = solved;
   const caches = routeCaches(ctx, d, opts, setup);
+  /** the other ways merged into a crossing (mergeCrossings): one our earthworks bury is a crossing of its own
+   * (evaluate's split retry, EvalOptions.splitWays) */
+  const mergedInto = new WeakMap<CrossingResult, readonly RoadCrossing[]>();
   const { supportMemo, retainingMemo, streamBridge, reroutes, sectionMemo, coverLeft, coverRight, urbanEarth,
     forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck, deckHits, earthHits, earthHitL, earthHitR,
     wideHits, wideHitL, wideHitR, hitsAt, deckBuildings, earthBuildings, work, wallable } = caches;
