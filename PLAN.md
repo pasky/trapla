@@ -531,9 +531,12 @@ Plan and sources: docs/design-realism-plan.md (M1, M4), research/46–54.
   5,440, d3-0304 8,524, d3-0305 9,124, d3-full 32,391, d35 4,755, d35-full 27,332, Nová Paka 2,063 M.
   Outcome audit (24 random D11 lines): 6 VALID (main 4), 86 violations (102), links > 1 km 21 (25), ramps >
   250 m 5 (2).
-- **Bridge or fill** (`scripts/bridge-break-even.ts`, height above which a bridge is cheaper): firm ground,
-  120 m bridge 32.2 m (was 17.2); over a stream, 30 m bridge 14.0 m (14.1); over a stream, long valley 24.1 m
-  (16.2). Steeper, benchless fills and no reserve make fills cheaper; the culvert stays the stream's price.
+- **Bridge or fill** (`scripts/bridge-break-even.ts`, S 9.5 on a flat valley floor, material valued at
+  λ = 200 CZK/m³; old model in brackets): a 120 m bridge on firm ground is cheaper than a fill above 32.2 m (17.2);
+  a 30 m bridge over a stream above 14.0 m (14.1); a 120 m one over a stream from 24.1 m (16.2), where the culvert
+  under the fill would pass 100 m and the fill can no longer be built (a limit, not a price). At λ = 0 the firm
+  ground heights are 54–65 m (≈ 20), at λ = 536 ≈ 20 m (≈ 15). Steeper, benchless fills and no reserve make
+  fills cheaper; over a stream the culvert keeps the price close.
 - **Crossings after the new grade line** (no validity regression against main): an infeasible crossing others
   are led to lets those look again first (D3 km 5.43: road 1732 joins 1813's overbridge); a merged crossing
   keeps every hit of its ways (the same way weaving back too) and the split retry skips a way's own crossing
