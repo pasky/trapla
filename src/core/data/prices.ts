@@ -232,10 +232,13 @@ export const SUBGRADE = { fromHeight: 3, perM2: 226.28, grounds: ['loam', 'alluv
 export const STRUCTURE_RULES = {
   /** a bridge is only considered where the grade is at least this high above ground, m */
   bridgeMinHeight: 4,
-  /** a bored tunnel needs at least this much cover above the crown, m (tunnel crown ≈ 8 m) */
+  /** mining starts where the ground is this far above the grade: ≈ 6 m of cover over an 8 m crown (Czech mined
+   * portals 5.5–8.5 m, research/49 §1); shallower, a tunnel is cut and cover */
   tunnelMinDepth: 14,
   minBridgeLength: 30,
-  minTunnelLength: 150,
+  /** TKP-D kap. 7: a road tunnel is longer than 100 m (shorter covered sections are underpasses); research/49 §5.
+   * 150 → 100 m changed no outcome of the audits (outcome-audit, every scenario pack) */
+  minTunnelLength: 100,
   /** a tunnel's portal: where the ground is a structure height over the grade (TUNNEL_RULES) */
   portalDepth: TUNNEL_RULES.structureHeight,
   /** cut and cover at each portal at least, m */
