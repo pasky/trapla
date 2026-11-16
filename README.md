@@ -306,6 +306,16 @@ Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-unde
 Map camera and labels (`node scripts/camera-check.mjs`): [*Whole route* after panning off the map](docs/screenshots/157-camera-whole-route.png),
 [a low view: no names piled up on the horizon or printed over each other](docs/screenshots/158-camera-low-view-labels.png),
 [noise walls on both sides labelled once](docs/screenshots/159-camera-wall-labels.png).
+Core play polish (model 23): [By hand from Auto's heights: the same bill, handles only where the line bends](docs/screenshots/160-byhand-same-bill.png),
+[dragging a height point: the height and the change in the tip](docs/screenshots/161-byhand-drag-readout.png),
+[a pin dragged up 15 m by 30 px](docs/screenshots/162-pin-drag-readout.png),
+[1024 × 700: Build under the view buttons, the map key as symbols](docs/screenshots/163-1024-start.png),
+[… with the noise key bottom right, clear of A](docs/screenshots/164-1024-noise.png),
+[1280 × 720: A clear of the key](docs/screenshots/165-1280x720-start.png),
+[Auto bridges the Poříčí halls on its own heights](docs/screenshots/166-porici-auto-bridge.png),
+[the player's bridge over km 5.09–5.50: its piers clear the roads (a crossed track's reroute is still reported)](docs/screenshots/167-player-bridge-piers-clear.png),
+[a bought-out house drawn behind the 5 m wall Auto tried: one story](docs/screenshots/168-bought-out-one-story.png),
+[Nová Paka km 1.97: the tower inside the demolished hall goes with it](docs/screenshots/169-nova-paka-tower-with-hall.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),
