@@ -1,23 +1,15 @@
 // Reproducible oblique crossing views; --before saves outside the tracked documentation.
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
-const port = Number(process.env.PORT ?? 5197);
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-// the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
-const errors = []; page.on('pageerror', e => errors.push(e.message));
+import { startGame } from './lib/browser.mjs';
+const game = await startGame();
+const { page, pageErrors: errors } = game;
 const out = process.argv.includes('--before') ? '/tmp/trapla-crossings-before' : 'docs/screenshots';
 mkdirSync(out, { recursive: true });
 const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
-const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); await page.waitForTimeout(500); };
+const idle = () => game.idle(500);
 try {
-  await page.goto(`http://localhost:${port}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
+  await game.open('scenario=d11'); await idle();
   for (const [k, type] of ['overbridge', 'bridge', 'reconnection', 'diversion', 'junction'].entries()) {
     await page.evaluate(d => window.trapla.setDesign(d), design); await idle();
     // Keep the original short track example reproducible after Auto learns cheaper alternatives.
@@ -55,4 +47,4 @@ try {
     }
   }
   assert.deepEqual(errors, []);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

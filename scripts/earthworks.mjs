@@ -2,39 +2,18 @@
 // contour lines on, at 1× and 2× relief.
 // Usage: node scripts/earthworks.mjs [design.json] [outdir]   (starts its own Vite dev server); writes 24…27-*.png
 import { mkdirSync, readFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
 const design = JSON.parse(readFileSync(process.argv[2] ?? 'scripts/demo-design.json', 'utf8')).design;
 const OUT = process.argv[3] ?? 'docs/screenshots';
 mkdirSync(OUT, { recursive: true });
-const PORT = Number(process.env.PORT ?? 5197); // set PORT when several checkouts run at once
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const args = process.env.GPU
-  ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
-  : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-// the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(`http://localhost:${PORT}/?scenario=d11`);
-await page.evaluate(() => localStorage.clear());
-await page.reload();
-await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
+// GPU=1 (or --gpu): the hardware GPU instead of SwiftShader
+const game = await startGame({ gpu: !!process.env.GPU || process.argv.includes('--gpu') });
+const { page, errors } = game;
+await game.open('scenario=d11');
 await page.evaluate((d) => window.trapla.setDesign(d), design);
-await page.waitForTimeout(500);
-await page.evaluate(() => window.trapla.whenIdle());
-const settle = async () => {
-  await page.evaluate(() => new Promise((res) => {
-    const f = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? f() : res()));
-    requestAnimationFrame(() => requestAnimationFrame(f));
-  }));
-  await page.waitForTimeout(500); // contour labels are laid out once the camera rests
-};
+const settle = () => game.idle(500); // contour labels are laid out once the camera rests
+await settle();
 const shot = async (name) => { await settle(); await page.screenshot({ path: `${OUT}/${name}.png` }); console.log('saved', `${OUT}/${name}.png`); };
 const view = (prefs) => page.evaluate((p) => window.trapla.setView({ contours: false, slope: false, exag: 1, photo: false, ...p }), prefs);
 
@@ -64,5 +43,4 @@ for (const [name, p, turn, elev] of [['cut', spots.cut, 210, 32], ['embankment',
   }
 }
 if (errors.length) { console.log('errors', errors); process.exitCode = 1; }
-await browser.close();
-await server.close();
+await game.close();

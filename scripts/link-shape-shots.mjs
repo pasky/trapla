@@ -3,27 +3,16 @@
 // node scripts/link-shape-shots.mjs   (writes docs/screenshots/117…119)
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
-const port = Number(process.env.PORT ?? 5199);
 const out = process.env.OUT ?? 'docs/screenshots';
 mkdirSync(out, { recursive: true });
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); localStorage.setItem('trapla.intro.v2', '1'); } catch { /* opaque origin */ } });
-const errors = []; page.on('pageerror', e => errors.push(e.message));
+const game = await startGame({ viewport: { width: 1400, height: 900 } });
+const { page, pageErrors: errors } = game;
 const T = (f, a) => page.evaluate(f, a);
-const idle = async (ms = 600) => {
-  await T(() => window.trapla.whenIdle());
-  await T(() => new Promise(res => { const f = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? f() : res())); requestAnimationFrame(f); }));
-  await page.waitForTimeout(ms);
-};
+const idle = (ms = 600) => game.idle(ms);
 try {
-  await page.goto(`http://localhost:${port}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
+  await game.open('scenario=d11'); await idle();
   await T(d => window.trapla.setDesign(d), JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design); await idle();
   // the demo's service road 4742, cut at km 7.96 and reconnected along our road
   const link = await T(() => {
@@ -65,4 +54,4 @@ try {
   await page.mouse.move(5, 5);
   await page.screenshot({ path: `${out}/119-link-shape-rejected.png` });
   assert.deepEqual(errors, []);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

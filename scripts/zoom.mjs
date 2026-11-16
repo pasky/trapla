@@ -4,25 +4,16 @@
 // (and a wheel during the glide stops it), anywhere on the screen, and close to the minimum distance.
 // node scripts/zoom.mjs
 import { readFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
-const PORT = Number(process.env.PORT ?? 5201);
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
+const game = await startGame();
+const { page, pageErrors: errors } = game;
 const ok = (c, m) => { console.log(c ? 'PASS' : 'FAIL', m); if (!c) process.exitCode = 1; };
 const T = (fn, arg) => page.evaluate(fn, arg);
 const frames = () => T(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
 try {
-  await page.goto(`http://localhost:${PORT}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
-  await T(() => window.trapla.whenIdle());
+  await game.open('scenario=d11');
   // the demo route with hand-set 50 m radii: bend violations to click
   const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
   await T((d) => { for (const p of d.pis) p.r = 50; window.trapla.setDesign(d); }, design);
@@ -122,7 +113,4 @@ try {
   const pageZoom = await T(() => document.getElementById('hud').dispatchEvent(new WheelEvent('wheel', { deltaY: -3, ctrlKey: true, bubbles: true, cancelable: true })));
   ok(pageZoom === false, 'a pinch over the HUD is kept from zooming the page');
   ok(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-} finally {
-  await browser.close();
-  await server.close();
-}
+} finally { await game.close(); }

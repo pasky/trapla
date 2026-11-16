@@ -1,25 +1,19 @@
 // Rendering performance probe: load time and frame times while orbiting / panning / zooming.
 // node scripts/perf.mjs [--root DIR] [--gpu] [--photo] [--contours]   (--gpu: the hardware GPU instead of SwiftShader)
 import { readFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame, dismissIntro } from './lib/browser.mjs';
 
 const arg = (k) => { const i = process.argv.indexOf(k); return i < 0 ? null : process.argv[i + 1] ?? true; };
 const root = arg('--root') && arg('--root') !== true ? arg('--root') : process.cwd();
 const gpu = process.argv.includes('--gpu');
-const server = await createServer({ root, server: { port: 5196, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const args = gpu
-  ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan', '--disable-gpu-vsync', '--disable-frame-rate-limit']
-  : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--disable-gpu-vsync', '--disable-frame-rate-limit'];
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-// the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
+const game = await startGame({ root, gpu, args: ['--disable-gpu-vsync', '--disable-frame-rate-limit'] });
+const { page } = game;
+// the load is timed: one navigation, the first-run intro (it would be drawn over the map) dismissed beforehand
+await dismissIntro(page);
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text().slice(0, 300)); });
 const t0 = Date.now();
-await page.goto('http://localhost:5196/?scenario=d11');
+await page.goto(`${game.base}?scenario=d11`);
 await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 180000 });
 await page.evaluate(() => window.trapla.whenIdle());
 console.log(`load → first result: ${Date.now() - t0} ms (dev server, cold module graph)`);
@@ -67,5 +61,4 @@ console.log(await run('orbit close 500 m (town)', seq((u) => [9900, 7300, 500, 3
 console.log(await run('pan close 600 m, 3 km', seq((u) => [8500 + 3000 * u, 7300 + 800 * u, 600, 30, 35])));
 console.log(await run('zoom 20 km → 300 m', seq((u) => [9900, 7300, 20000 * Math.pow(300 / 20000, u), 20, 40])));
 console.log(await run('zoom 300 m → 20 km', seq((u) => [9900, 7300, 300 * Math.pow(20000 / 300, u), 20, 40])));
-await browser.close();
-await server.close();
+await game.close();

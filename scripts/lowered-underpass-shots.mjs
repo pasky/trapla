@@ -1,29 +1,22 @@
 // Player pass over model 21 (lowered underpasses, engineered reroutes): the straight start line a new
 // player opens, its lowered boxes clicked on the map (real mouse), their cards, town-centre's lowered service
 // road, an engineered reroute's card, and a player's unbuildable reroute.
-// CHROME=/usr/bin/chromium PORT=5267 node scripts/lowered-underpass-shots.mjs [--out docs/screenshots] [--first 150]
+// node scripts/lowered-underpass-shots.mjs [--out docs/screenshots] [--first 150]
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
-const port = Number(process.env.PORT ?? 5198);
+import { startGame } from './lib/browser.mjs';
 const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : fallback; };
 const out = arg('--out', 'docs/screenshots'); let number = Number(arg('--first', 150));
 mkdirSync(out, { recursive: true });
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-const errors = []; page.on('pageerror', e => errors.push(e.message));
-const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); await page.waitForTimeout(600); };
+const game = await startGame();
+const { page, pageErrors: errors } = game;
+const idle = (ms = 600) => game.idle(ms);
 const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await page.mouse.move(5, 5); await page.screenshot({ path }); console.log('SHOT', path); };
 const card = () => page.evaluate(() => document.getElementById('inspector')?.innerText ?? '');
 const T = (f, a) => page.evaluate(f, a);
 try {
   // a new player: nothing saved, the intro dismissed
-  await page.addInitScript(() => { try { if (!sessionStorage.getItem('fresh')) { localStorage.clear(); localStorage.setItem('trapla.intro.v1', '1'); sessionStorage.setItem('fresh', '1'); } } catch { /* opaque */ } });
-  await page.goto(`http://localhost:${port}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
+  await game.open('scenario=d11'); await idle();
   const start = await T(() => { const r = window.trapla.result(); return { valid: r.valid, violations: r.violations.map(v => v.title), pis: window.trapla.getDesign().pis.length,
     lowered: r.crossings.filter(c => c.type === 'underpass' && c.lowered).map(c => ({ roadId: c.roadId, s: c.s, x: c.x, y: c.y, i: c.i, lowered: c.lowered, cls: c.cls })) }; });
   console.log('START', JSON.stringify({ ...start, lowered: start.lowered.length }));
@@ -107,4 +100,4 @@ try {
   await T(() => window.trapla.setDesign({ category: 'S9.5', speed: 90, pis: [{ x: 8200, y: 9300, r: null }], profileMode: 'auto', vpis: [] })); await idle(1500);
   assert.ok(!(await tipShown()), 'the tip goes when the design changes');
   assert.deepEqual(errors, []);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

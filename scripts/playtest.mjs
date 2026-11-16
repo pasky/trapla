@@ -10,8 +10,7 @@
 // node scripts/playtest.mjs [--docs] [--size=1280x800]   (every step into /tmp/trapla-playtest; --docs writes
 // the gallery subset to docs/screenshots/60…)
 import { mkdirSync, readFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
 const DOCS = process.argv.includes('--docs');
 const [W, H] = (process.argv.find((a) => a.startsWith('--size='))?.slice(7) ?? '1280x800').split('x').map(Number);
@@ -19,14 +18,8 @@ const OUT = DOCS ? 'docs/screenshots' : process.env.OUT ?? '/tmp/trapla-playtest
 const GALLERY = ['first-run', 'drag-road', 'money', 'piece', 'violation', 'noise-fix', 'noise-view', 'forced-bridge', 'walls', 'crossing', 'pin', 'overview'];
 const FIRST = 60; // docs numbering continues after the highest existing screenshot
 mkdirSync(OUT, { recursive: true });
-const PORT = Number(process.env.PORT ?? 5207);
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: W, height: H } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+const game = await startGame({ viewport: { width: W, height: H } });
+const { page, errors } = game;
 const ok = (c, m) => { console.log(c ? 'PASS' : 'FAIL', m); if (!c) process.exitCode = 1; };
 const T = (fn, arg) => page.evaluate(fn, arg);
 const idle = async (ms = 150) => {
@@ -54,19 +47,14 @@ const clickable = (s) => T((s) => {
 }, s);
 const demo = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
 const fresh = async (design) => {
-  await T(() => { localStorage.clear(); localStorage.setItem('trapla.intro.v2', '1'); });
-  await page.reload();
-  await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
+  await game.open('scenario=d11'); // nothing stored, the intro dismissed
   if (design) await T((d) => window.trapla.setDesign(d), design);
   await T(() => window.trapla.resetCamera());
   await idle(300);
 };
 
 try {
-  await page.goto(`http://localhost:${PORT}/?scenario=d11`);
-  await T(() => localStorage.clear());
-  await page.reload();
-  await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
+  await game.open('scenario=d11', { intro: true }); // a first run: nothing stored, the intro shows
   await idle(300);
   const view = await page.locator('#view').boundingBox();
   const at = (p) => ({ x: view.x + p.sx, y: view.y + p.sy });
@@ -312,4 +300,4 @@ try {
   await shot('demolished');
 
   ok(errors.length === 0, `no browser errors ${errors.join(' | ')}`);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

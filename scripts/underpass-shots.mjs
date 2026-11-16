@@ -2,22 +2,15 @@
 // CHROME=/usr/bin/chromium node scripts/underpass-shots.mjs [--out dir]
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
-const port = Number(process.env.PORT ?? 5198);
+import { startGame } from './lib/browser.mjs';
 const outIndex = process.argv.indexOf('--out'), out = outIndex > 0 ? process.argv[outIndex + 1] : 'docs/screenshots/underpass';
 mkdirSync(out, { recursive: true });
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
-const errors = []; page.on('pageerror', e => errors.push(e.message));
+const game = await startGame({ viewport: { width: 1400, height: 900 } });
+const { page, pageErrors: errors } = game;
 const design = JSON.parse(readFileSync('scripts/demo-design.json', 'utf8')).design;
-const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); await page.waitForTimeout(500); };
+const idle = () => game.idle(500);
 try {
-  await page.goto(`http://localhost:${port}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
+  await game.open('scenario=d11'); await idle();
   await page.evaluate(d => window.trapla.setDesign(d), design); await idle();
   const boxes = await page.evaluate(() => window.trapla.result().crossings.filter(c => c.type === 'underpass' && !c.issues?.length)
     .map(c => ({ roadId: c.roadId, cls: c.cls, s: c.s, x: c.x, y: c.y, length: c.underpassLength, cost: c.cost })));
@@ -35,4 +28,4 @@ try {
     }
   }
   assert.deepEqual(errors, []);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

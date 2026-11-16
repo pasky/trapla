@@ -1,24 +1,13 @@
 // Interaction smoke test with real mouse events: a click on empty ground adds nothing, dragging the road
 // adds a bend, drag it, the inspector for a stretch (buttons + keys), By hand height points, undo,
 // right-click delete, double-click add, persistence.
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
-const PORT = Number(process.env.PORT ?? 5197); // set PORT when several checkouts run at once
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const game = await startGame();
 try {
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(`http://localhost:${PORT}/?scenario=d11`);
-await page.evaluate(() => localStorage.clear());
-await page.reload();
-await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
+const { page, errors } = game;
+await game.open('scenario=d11', { intro: true }); // a first run: nothing stored, the intro shows
 const idle = () => page.evaluate(() => window.trapla.whenIdle());
-await idle();
 // markers are positioned by the view's next frame, which can lag an edit under software rendering
 const frames = () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 const ok = (c, m) => { console.log(c ? 'PASS' : 'FAIL', m); if (!c) process.exitCode = 1; };
@@ -190,4 +179,4 @@ s = await st();
 ok(s.d.pis.length === 0 && s.d.profileMode === 'manual' && s.d.structureOverrides[0]?.kind === 0, 'design and structure choice persisted across reload');
 ok(await page.locator('#intro').isHidden(), 'the dismissed intro stays away after a reload');
 ok(errors.length === 0, `no console errors ${errors.join(' | ')}`);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

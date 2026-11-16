@@ -12,13 +12,12 @@
 //
 // --check: exit 1 when the thresholds below are missed (p95 frame on GPU, preview latency).
 import { readFileSync, writeFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame, dismissIntro } from './lib/browser.mjs';
 
 const arg = (k, d = null) => { const i = process.argv.indexOf(k); return i < 0 ? d : process.argv[i + 1] ?? d; };
 const root = arg('--root', process.cwd());
 const gpu = process.argv.includes('--gpu');
-const port = Number(arg('--port', 5197));
+const port = Number(arg('--port', process.env.PORT ?? 5300));
 const scenarioId = arg('--scenario', 'd11');
 const presetId = arg('--preset'); // e.g. d3-motorway: design defaults to scripts/scenarios/<id>/<preset>.json
 const designFile = arg('--design', presetId ? `scripts/scenarios/${scenarioId}/${presetId}.json` : scenarioId === 'd11' ? 'scripts/best-design.json' : `scripts/scenarios/${scenarioId}/default.json`);
@@ -30,18 +29,15 @@ const profileOut = arg('--profile'), traceOut = arg('--trace');
 const check = process.argv.includes('--check');
 const shot = arg('--shot'); // screenshot path, taken once in the middle of the measured drag (skews its timing)
 
-// other agents / scripts may hold the port: take the next free one
-const server = await createServer({ root, server: { port, strictPort: false }, logLevel: 'warn' });
-await server.listen();
-const url = `${server.resolvedUrls.local[0]}?scenario=${encodeURIComponent(scenarioId)}${presetId ? `&preset=${encodeURIComponent(presetId)}` : ''}`;
-const args = gpu
-  ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
-  : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
+// (other agents / scripts may hold the port: the next free one is taken)
+const game = await startGame({ root, gpu, port });
+const { page, browser } = game;
+const url = `${game.base}?scenario=${encodeURIComponent(scenarioId)}${presetId ? `&preset=${encodeURIComponent(presetId)}` : ''}`;
 try {
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// one navigation (the page's Worker is wrapped before its own code runs), the first-run intro dismissed beforehand:
+// it lies over the map's corner and the start view is framed around it
+await dismissIntro(page);
 await page.addInitScript(() => {
-  try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ }
   const D = window.__drag = { on: false, posts: new Map(), results: [], frames: [], longtasks: [], moves: [] };
   const Orig = window.Worker;
   window.Worker = class extends Orig {
@@ -304,4 +300,4 @@ if (check) {
   if (fails.length) { console.log('FAIL:', fails.join('; ')); process.exitCode = 1; }
   else console.log('OK');
 }
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

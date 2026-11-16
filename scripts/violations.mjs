@@ -1,26 +1,13 @@
 // HUD screenshot of typical violations: two bends too close for a hand-set radius, a too steep grade and
 // the grade too low over a river / railway. Prints the messages; screenshot to OUT (default /tmp).
-import { chromium } from 'playwright-core';
 import { readFileSync } from 'node:fs';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
-const PORT = Number(process.env.PORT ?? 5198);
 const OUT = process.env.OUT ?? '/tmp/trapla-violations.png';
 const demo = JSON.parse(readFileSync(new URL(process.env.DESIGN ?? './demo-design.json', import.meta.url))).design;
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-// the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(`http://localhost:${PORT}/?scenario=d11`);
-await page.evaluate(() => localStorage.clear());
-await page.reload();
-await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
-await page.evaluate(() => window.trapla.whenIdle());
+const game = await startGame();
+const { page, errors } = game;
+await game.open('scenario=d11');
 
 const msgs = await page.evaluate(async (demo) => {
   const t = window.trapla;
@@ -67,5 +54,4 @@ await page.waitForTimeout(300);
 await page.screenshot({ path: OUT.replace(/\.png$/, '-hud.png'), clip: await page.evaluate(() => { const r = document.querySelector('#viol').closest('section').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: Math.min(r.height, 900) }; }) });
 console.log('screenshots:', OUT, OUT.replace(/\.png$/, '-hud.png'), JSON.stringify(box));
 if (errors.length) { console.log('page errors:', errors); process.exitCode = 1; }
-await browser.close();
-await server.close();
+await game.close();
