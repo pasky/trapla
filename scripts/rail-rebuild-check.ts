@@ -42,7 +42,7 @@ const show = (p: ProjectDesign, label: string) => {
   const r = evaluateProject(ctx, { epoch: 'x', revision: 1, design: p });
   const res = r.routes['route:rail']?.legacy;
   console.log(label, 'pis', JSON.stringify(legacyDesignForRoute(p, 'route:rail').pis.map(q => [Math.round(q.x), Math.round(q.y)])));
-  if (res) console.log('   grades ‰', res.grades.map(g => (g * 1000).toFixed(1)).join(' '), 'limit', p.routes.find(r => r.id === 'route:rail')!.specification.maxGradient ?? 'category');
+  if (res) console.log('   grades ‰', res.grades.map(g => (g * 1000).toFixed(1)).join(' '), 'limit', (() => { const spec = p.routes.find(r => r.id === 'route:rail')!.specification; return ('maxGradient' in spec ? spec.maxGradient : undefined) ?? 'category'; })());
   console.log('  ', res ? `${Math.round(res.cost.total / 1e6)} M, ${res.length.toFixed(0)} m` : 'no result', (res?.violations ?? []).map(v => `${Math.round(v.s0)} ${v.title} | ${v.fix}${process.env.DETAIL ? ` | ${v.detail ?? ''}` : ''}`));
 };
 show(project, 'rebuilt');
@@ -59,7 +59,7 @@ show(replaceRouteFromLegacy(project, 'route:rail', d), `dragged ${away} m (bend 
 {
   const r = evaluateProject(ctx, { epoch: 'x', revision: 1, design: project }).routes['route:rail']?.legacy;
   if (r && process.env.DEBUG) {
-    console.log('crossings', r.crossings.filter(c => c.s < 150 || c.s > r.length - 150).map(c => `${Math.round(c.s)} ${c.cls} ${c.outcome?.kind ?? ''}`));
+    console.log('crossings', r.crossings.filter(c => c.s < 150 || c.s > r.length - 150).map(c => `${Math.round(c.s)} ${c.cls} ${c.type}`));
     console.log('water', r.waterCrossings.filter(c => c.s < 150).map(c => Math.round(c.s)));
     console.log('runs', r.runs.map(u => `${u.kind}:${Math.round(u.s0)}-${Math.round(u.s1)}`).join(' '));
     console.log('grade', Array.from({ length: 8 }, (_, i) => { const k = Math.round(i * 10 / r.ds); return `${Math.round(r.s[k])}:${r.ground[k].toFixed(1)}/${r.grade[k].toFixed(1)}`; }).join(' '));
