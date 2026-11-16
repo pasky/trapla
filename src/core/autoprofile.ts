@@ -780,7 +780,23 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   /** the smallest crest / sag radius at knot k */
   function crestAtKnot(k: number) { return opt.crestAt ? opt.crestAt(knotS[Math.min(k, nK)]) : opt.minCrest; }
   function sagAtKnot(k: number) { return opt.sagAt ? opt.sagAt(knotS[Math.min(k, nK)]) : opt.minSag; }
+  /**
+   * Tunnel mode: a tunnel goes on out to its portals, where the ground is portalDepth above the grade
+   * (structures.ts), so a stretch deeper than that is all tunnel or all open, never a tunnel ending in a deep
+   * cut. Station by station the search would mix them (a short tunnel between deep cuts it could not build).
+   * Where its line takes no tunnel anywhere, that line is also the best under the rule (no other line is
+   * cheaper under it: an open line costs no less than station by station, and so does a line in a tunnel, as
+   * cut and cover costs more than the shallow cut it replaces), so it is kept; else the search runs again with a
+   * second layer of states (in a tunnel): an open line prices Auto without a tunnel, a line in a tunnel
+   * prices a tunnel wherever the ground is deeper than its portal, and a line enters or leaves a tunnel
+   * only at a knot where the ground is shallower than that.
+   */
   function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step = 1): Solved | null {
+    const plain = solveIn(table, gmax, u, padM, around, range, step, false);
+    if (!plain?.tunnel) return plain;
+    return solveIn(table, gmax, u, padM, around, range, step, true) ?? plain;
+  }
+  function solveIn(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step: number, tunnelMode: boolean): Solved | null {
     const { ka, kb, fixed } = range;
     const lut = table.values;
     // the end correction below spreads ≤ u/2 over the knots after corrFrom: keep that much grade in
@@ -880,24 +896,10 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       return values;
     };
     for (let block = 0; block < low.length; block++) if (high[block] >= 0) fill(block, low[block], high[block]);
-    // Tunnel mode: a tunnel goes on out to its portals, where the ground is portalDepth above the grade
-    // (structures.ts), so a deep stretch is all tunnel or all open, never a tunnel ending in a deep cut.
-    // A second layer of states (in a tunnel) where some Auto sample within reach would take a tunnel:
-    // there an open line prices Auto without a tunnel, a line in a tunnel prices a tunnel wherever the
-    // ground is deeper than the portal; it may enter or leave a tunnel only at a knot where the ground is
-    // shallower than that. Elsewhere one layer, the same as before.
-    let tunnelMode = false;
     const autoBlock = (block: number) => block % perBlock % PROFILE_KINDS === 0;
-    if (opt.portalDepth !== undefined) {
-      for (let block = 0; block < low.length && !tunnelMode; block++) {
-        if (high[block] < 0 || !autoBlock(block)) continue;
-        const auto = lut[block], open = fill(block + PROFILE_KIND.open + 1, low[block], high[block]);
-        for (let j = low[block]; j <= high[block]; j++) if (auto[j] !== open[j]) { tunnelMode = true; break; }
-      }
-      if (tunnelMode) for (let block = 0; block < low.length; block++) if (high[block] >= 0 && autoBlock(block)) {
-        fill(block + PROFILE_KIND.open + 1, low[block], high[block]);
-        fill(block + PROFILE_KIND.inTunnel + 1, low[block], high[block]);
-      }
+    if (tunnelMode) for (let block = 0; block < low.length; block++) if (high[block] >= 0 && autoBlock(block)) {
+      fill(block + PROFILE_KIND.open + 1, low[block], high[block]);
+      fill(block + PROFILE_KIND.inTunnel + 1, low[block], high[block]);
     }
     // the tables each sample reads on an open line / in a tunnel (the player's kinds: their own)
     const oOpen = tunnelMode ? new Int32Array(cO.length) : cO, oTunnel = tunnelMode ? new Int32Array(cO.length) : cO;
@@ -1066,6 +1068,19 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       st = parents[k - 1 - ka][st];
     }
     zs[ka] = zlo[ka] + Math.floor(st % layerSize(ka) / ndAt(ka));
+    // (a line found station by station: does it take a tunnel anywhere? Then the tunnel mode decides)
+    let tunnel = false;
+    if (!tunnelMode && opt.portalDepth !== undefined) for (let k = ka; k < kb && !tunnel; k++) {
+      const sk = knotS[k], d = Dk(k), cIn = corrAt(k), cSlope = (corrAt(k + 1) - cIn) / d, zm = zA + zs[k] * u, dz = zs[k + 1] - zs[k];
+      for (let q = costStart[k]; q < costStart[k + 1] && !tunnel; q += step) {
+        if (!autoBlock(cO[q])) continue;
+        const dsq = cS[q] - sk, gi = cG[q] - cIn - cSlope * dsq;
+        let x = (zm - gi + H_MAX) / H_STEP + dz * (u * dsq) / (d * H_STEP);
+        if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
+        const j = x | 0, auto = lut[cO[q]], open = fill(cO[q] + PROFILE_KIND.open + 1, j, Math.min(lutMax, j + 1));
+        if (auto[j] !== open[j] || (j < lutMax && auto[j + 1] !== open[j + 1])) tunnel = true;
+      }
+    }
     // grid → metres, with B's correction
     const z = new Float64Array(nK + 1).fill(NaN);
     for (let k = ka; k <= kb; k++) z[k] = zA + zs[k] * u + corrAt(k);
@@ -1077,9 +1092,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (turns) vpis.push({ s: knotS[k], z: z[k], r: null });
     }
     vpis.push({ s: knotS[kb], z: z[kb], r: null });
-    return { vpis, cost: best, z };
+    return { vpis, cost: best, z, tunnel };
   }
 }
 
 /** a DP solution: the VPIs, the objective and the elevation at every knot (NaN outside its range) */
-interface Solved { vpis: VPI[]; cost: number; z: Float64Array }
+interface Solved { vpis: VPI[]; cost: number; z: Float64Array; /** a station-by-station line that takes a tunnel */ tunnel?: boolean }
