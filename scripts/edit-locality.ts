@@ -8,8 +8,8 @@
 // Plus QA's exact repros (playtest-qa-2 re-tests 4 and 6) with pass / fail.
 //   npx tsx scripts/edit-locality.ts                 all suites in parallel (one process per pack)
 //   npx tsx scripts/edit-locality.ts d11 d3-full     only these suites
-// env: N (random edits per design, default 8; 4 on the 30+ km routes), SEED, REACH (m, default 8000: a
-//      boundary's 5 km window and the block beyond it),
+// env: N (random edits per design, default 8; 4 on the 30+ km routes), SEED, REACH (m, default 10000: a
+//      boundary's 5 km window and the block beyond it, or a retry judged within 5 km and its window),
 //      MPP (metres per screen pixel; default the A–B distance / 800, about the start view)
 // Exit 1 if a QA repro or a grade-pin edit changes anything beyond REACH (a pin leaves the plan alone).
 import { readFileSync } from 'node:fs';
@@ -59,7 +59,7 @@ if (!process.env.EDIT_SUITE) {
 const suite = SUITES[process.env.EDIT_SUITE];
 const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
 const ctx: EvalContext = { terrain, scenario, buildings, roads, junctions, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] } };
-const REACH = Number(process.env.REACH ?? 8000);
+const REACH = Number(process.env.REACH ?? 10000);
 const MPP = Number(process.env.MPP ?? Math.hypot(ctx.b.x - ctx.a.x, ctx.b.y - ctx.a.y) / 800);
 let seed = Number(process.env.SEED ?? 1);
 const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };

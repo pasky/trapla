@@ -116,6 +116,9 @@ export interface AutoProfileOptions {
   endGradeSlack?: number;
   /** search band above/below the local ground envelope, m */
   pad?: number;
+  /** With `blocks` and `balance`: boundary and block solves shared by the evaluations of one design (its
+   * retries), keyed by everything they read: one whose inputs did not change is not repeated. */
+  memo?: Map<string, unknown>;
 }
 
 export interface AutoProfileResult {
@@ -141,13 +144,36 @@ export const BLOCK_SPACING = 2000;
  * "Local edits"): 1.5 km windows cost 2–9 % on the D3/D35 routes against a whole-route solve, 5 km
  * ones match it on the sum of all saved designs, and far violations still do not change. */
 export const BLOCK_WINDOW = 5000;
+/** A boundary's window searches this far above / below the ground envelope (its corridor only fixes the
+ * boundary's heights; the blocks search the full band), m. Not a railway's (gentle grade: its corridor
+ * leaves the ground by more, e.g. a tunnel's approach). */
+const WINDOW_PAD = 15;
+// …and prices every other cost sample (twice the weight): the sum of all saved designs and starters within
+// 0.1 % of every sample, half the work.
 /** Blocks shorter than this (from the previous boundary or to B) are not split off, m. */
 const MIN_BLOCK = 1000;
 
 /** A straight longer than this has its boundaries at the BLOCK_GRID lines, not in its middle, m. */
 const LONG_STRAIGHT = 2 * BLOCK_SPACING;
 /** Lines across the A–B axis this far apart (measured along the axis from A), m. */
-export const BLOCK_GRID = 3000;
+export const BLOCK_GRID = 4000;
+
+/** A block longer than this (no straight long enough to bound it, e.g. straights each a little shorter than
+ * the one before) is split where the route crosses the BLOCK_GRID lines, m. */
+const LONG_BLOCK = 5000;
+
+/**
+ * `bounds` (ascending boundaries) with the BLOCK_GRID crossings `grid` (route chainage, ascending) added
+ * inside every block longer than LONG_BLOCK, at least MIN_BLOCK from its ends.
+ */
+export function fillLongBlocks(bounds: readonly number[], grid: readonly number[], L: number): number[] {
+  const ends = [0, ...bounds, L], out = [...bounds];
+  for (let q = 0; q + 1 < ends.length; q++) {
+    if (ends[q + 1] - ends[q] <= LONG_BLOCK) continue;
+    for (const g of grid) if (g > ends[q] + MIN_BLOCK && g < ends[q + 1] - MIN_BLOCK) out.push(g);
+  }
+  return out.sort((x, y) => x - y);
+}
 
 /** A straight of the plan: its chainage and its ends' distance along the A–B axis (from A, m); `end`:
  * it starts at A or ends at B. */
@@ -568,6 +594,31 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     return sum / L;
   }
 
+  /** A key of everything a solve over range `r` reads (knots, cost samples, clearances, bands, pins, the
+   * grid anchor and B's correction) and `extra`. */
+  function rangeKey(tag: string, r: Range, extra: readonly number[]): string {
+    const f = new Float64Array(1), w = new Uint32Array(f.buffer);
+    let h1 = 0x811c9dc5, h2 = 0x01000193 ^ 0x5bd1e995, count = 0;
+    const add = (x: number) => { f[0] = x; h1 = Math.imul(h1 ^ w[0], 16777619); h1 = Math.imul(h1 ^ w[1], 16777619); h2 = Math.imul(h2 ^ w[1], 0x5bd1e995) ^ w[0]; count++; };
+    for (const x of extra) add(x);
+    add(r.ka); add(r.kb);
+    for (const [k, v] of [...r.fixed].sort((a, b) => a[0] - b[0])) { add(k); add(v); }
+    add(zA); add(zB); add(L); add(nK); add(corrFrom); add(opt.maxGradient); add(opt.minCrest); add(opt.minSag); add(opt.vpiPenalty ?? NaN); add(pad);
+    if (r.ka === 0) { add(opt.startGrade ?? NaN); add(opt.startGradeSlack ?? NaN); }
+    if (r.kb === nK) { add(opt.endGrade ?? NaN); add(opt.endGradeSlack ?? NaN); }
+    for (let k = r.ka; k <= r.kb; k++) {
+      add(knotS[k]); add(gmin[k]); add(gmaxEnv[k]);
+      if (knotPins) for (const p of knotPins[k]) { add(p.s); add(p.z); }
+    }
+    for (let q = costStart[r.ka]; q < costStart[r.kb]; q++) { add(costS[q]); add(costG[q]); add(costWeight[q]); add(costOffset[q]); }
+    for (let q = clrStart[r.ka]; q < clrStart[r.kb]; q++) {
+      const i = clrIdx[q];
+      add(clrX[q]); add(g[i]); add(minH?.[i] ?? NaN); add(maxH?.[i] ?? NaN); add(opt.eitherH?.above[i] ?? NaN); add(opt.eitherH?.below[i] ?? NaN);
+      add(penaltyAt ? penaltyAt[i] : clearancePenalty);
+    }
+    return `${tag}:${(h1 >>> 0).toString(36)}:${(h2 >>> 0).toString(36)}:${count}`;
+  }
+
   /**
    * Block-wise solve. Each boundary's heights (its knot and the knots either side of it) come from a
    * solve of the route within BLOCK_WINDOW of it, with free ends and the starting material value; each
@@ -578,6 +629,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    */
   function blockwise(): AutoProfileResult | null {
     const fixedVals = opt.blockValues && opt.blockValues.length === nb ? opt.blockValues : null;
+    // shared solves only where every input is in the key (a balance search's cost function is one of the
+    // material value)
+    const memo = bal ? opt.memo : undefined;
     const pre = buildLut(Array(nb).fill(bal ? bal.costFor(bal.start) : opt.costPerM), classes);
     const half = Math.max(2, Math.round(BLOCK_WINDOW / spacing));
     const pinsAt: Map<number, number>[] = [new Map()];
@@ -587,10 +641,18 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       if (ka === 0) fixed.set(0, zA);
       if (kb === nK) fixed.set(nK, zB);
       const r: Range = { ka, kb, fixed };
-      const c = coarse(pre, r);
-      if (!c) return null;
-      // the corridor pass suffices: its heights are on the fine grid too
-      pinsAt.push(new Map([K - 1, K, K + 1].map(k => [k, c.z[k]])));
+      const key = memo && rangeKey('w', r, [bal!.start]);
+      let pins = key ? memo!.get(key) as number[] | null | undefined : undefined;
+      if (pins === undefined) {
+        // a narrower band first (it only fixes the corridor), the full passes where that finds nothing
+        const w = gentle ? null : solve(pre, opt.maxGradient, coarseGrid, WINDOW_PAD, null, r, 2);
+        const c = w && ok(w) ? w : coarse(pre, r);
+        // the corridor pass suffices: its heights are on the fine grid too
+        pins = c ? [c.z[K - 1], c.z[K], c.z[K + 1]] : null;
+        if (key) memo!.set(key, pins);
+      }
+      if (!pins) return null;
+      pinsAt.push(new Map([K - 1, K, K + 1].map((k, q) => [k, pins![q]])));
     }
     pinsAt.push(new Map());
     const z = new Float64Array(nK + 1).fill(NaN);
@@ -605,15 +667,27 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         if (e === nb) fixed.set(nK, zB);
         const r: Range = { ka, kb, fixed };
         const s0 = bounds[j], s1 = bounds[e];
-        let line: Solved | null = null, v = NaN, b = 0;
-        if (fixedVals || !bal) {
-          line = fixedSolve(r, Array(nb).fill(fixedVals ? fixedVals[j] : 0));
-        } else {
-          const res = searchBalance(r, x => Array(nb).fill(x), (vp, x) => bal.balanceOf(vp, x, [s0, s1]), bal.tolerance * (s1 - s0) / L);
-          if (!('fail' in res)) ({ line, v, b } = res);
+        type Block = { z: number[]; v: number; b: number; cost: number } | null;
+        const key = memo && rangeKey('b', r, [fixedVals ? fixedVals[j] : NaN, bal!.start, bal!.lo, bal!.hi, bal!.tolerance, s0, s1]);
+        let blk = key ? memo!.get(key) as Block | undefined : undefined;
+        if (blk === undefined) {
+          let line: Solved | null = null, v = NaN, b = 0;
+          if (fixedVals || !bal) {
+            line = fixedSolve(r, Array(nb).fill(fixedVals ? fixedVals[j] : 0));
+          } else {
+            const res = searchBalance(r, x => Array(nb).fill(x), (vp, x) => bal.balanceOf(vp, x, [s0, s1]), bal.tolerance * (s1 - s0) / L);
+            if (!('fail' in res)) ({ line, v, b } = res);
+          }
+          blk = line ? { z: Array.from(line.z.subarray(ka, kb + 1)), v, b, cost: line.cost } : null;
+          if (key) memo!.set(key, blk);
+          // the line a balance search kept is the one a later solve at its value finds (a retry that keeps
+          // the values found: the corridor at the starting value, the fine pass at that value)
+          if (key && blk && !fixedVals) memo!.set(rangeKey('b', r, [v, bal!.start, bal!.lo, bal!.hi, bal!.tolerance, s0, s1]), { ...blk, b: 0 });
         }
-        if (!line) continue;
-        for (let k = ka; k <= kb; k++) z[k] = line.z[k];
+        if (!blk) continue;
+        const { v, b } = blk;
+        const line = { cost: blk.cost };
+        for (let k = ka; k <= kb; k++) z[k] = blk.z[k - ka];
         for (let q = j; q < e; q++) values.push(fixedVals ? fixedVals[j] : v);
         cost += line.cost; balance += b;
         j = e; done = true;
@@ -641,7 +715,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
    * the shorter of its two intervals. B's height off the grid is met by a correction spread over the
    * last block (the whole route without blocks).
    */
-  function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range): Solved | null {
+  /** `step` 2: every other cost sample of an interval with the pair's weight (a boundary's corridor). */
+  function solve(table: CostLut, gmax: number, u: number, padM: number, around: Float64Array | null, range: Range, step = 1): Solved | null {
     const { ka, kb, fixed } = range;
     const lut = table.values;
     // the end correction below spreads ≤ u/2 over the knots after corrFrom: keep that much grade in
@@ -787,8 +862,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         const d2lo = Math.max(reachLo, zlo[k + 1] - z + dzMax), d2hi = Math.min(reachHi, zhi[k + 1] - z + dzMax);
         seg.fill(Infinity);
         for (let d2 = d2lo; d2 <= d2hi; d2++) seg[d2] = 0;
-        for (let q = c0; q < c1; q++) {
-          const dsq = costS[q] - sk, gi = costG[q] - cIn - cSlope * dsq, weight = costWeight[q];
+        for (let q = c0; q < c1; q += step) {
+          const dsq = costS[q] - sk, gi = costG[q] - cIn - cSlope * dsq, weight = step === 1 || q + 1 >= c1 ? costWeight[q] : costWeight[q] + costWeight[q + 1];
           const values = lut[costOffset[q]];
           for (let d2 = d2lo; d2 <= d2hi; d2++) {
             const h = zm + slopes[d2] * dsq - gi;

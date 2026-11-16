@@ -2,7 +2,7 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, CLEARANCE_PENALTY, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
+import { autoProfile, BLOCK_GRID, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
@@ -172,6 +172,8 @@ export interface Result {
   timing: Record<string, number>;
   /** A fast drag preview (see EvalOptions.preview): approximate, never a score. */
   preview?: boolean;
+  /** A trial pass (EvalOptions.trial, inside evaluate only): the same pass with its noise. */
+  withNoise?: () => Result;
   /** Full results: what windowed drag previews need to start from this one (core/preview-window.ts). */
   lineage?: { key: string; design: Design };
 }
@@ -226,6 +228,12 @@ export interface EvalOptions {
   /** Stretches where our earthworks buried a road: the grade at most (`fill`) or at least `z` there
    * (set by evaluate's retry, not by callers). */
   narrow?: readonly { s0: number; s1: number; fill: boolean; z: number }[];
+  /** A pass of evaluate's retries: its result leaves out the noise until `withNoise` (set by evaluate). */
+  trial?: boolean;
+  /** What the passes of one design's evaluation (its retries change only the grade) share: Auto's block
+   * solves, cross-sections, retaining screens, support obstacles and reroutes, each checked against its
+   * own inputs (set by evaluate, not by callers). */
+  passCache?: PassCache;
   /** Railway between two points of an existing railway: metres from each end where the mapped railway is
    * the station track it joins; elsewhere, where our axis runs along the mapped track we rebuild it in
    * place (no bridge over it, no conflict with it). Crossing or running beside it stays a conflict. */
@@ -238,6 +246,10 @@ export interface EvalOptions {
   speedLimit150?: boolean;
 }
 
+interface PassCache {
+  profile: Map<string, unknown>; support: Map<string, number>; retaining: RetainingFeatureCache;
+  reroutes: ReturnType<typeof crossingCache>; sections: SectionCache;
+}
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
 interface ProfileTables {
   /** Flat-ground earth geometry and rural bridge estimate by profile height index. */
@@ -293,6 +305,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const windowed = windowedPreview(ctx, d, opts, evaluateRoute);
     if (windowed) return windowed;
   }
+  // Every pass of a full evaluation shares its caches and leaves the noise for the one kept.
+  if (!opts.preview && !opts.window && !opts.passCache) {
+    opts = { ...opts, trial: true, passCache: { profile: new Map(), support: new Map(), retaining: new Map(), reroutes: crossingCache(), sections: [] } };
+  }
   let result = evaluateRoute(ctx, d, opts);
   if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
   /** the options the kept result was evaluated with (a separation retry adds its targets) */
@@ -342,6 +358,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       else if (keep.length) { result = run(keep); result.timing['count.narrowRetry'] = 2; }
     }
   }
+  if (result.withNoise) result = result.withNoise();
   if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
   return result;
 }
@@ -393,7 +410,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const clearance = new Float64Array(n).fill(NaN);
   // A full evaluation solves the grade in blocks so a local edit re-solves only its own stretch
   // (autoprofile.ts profileBlocks); everything the solve reads is then placed by its exact chainage.
-  const blocks = preview || opts.fixedProfile ? undefined : profileBlocks(planStraights(fullAlignment, ctx.a, ctx.b));
+  const blocks = preview || opts.fixedProfile ? undefined
+    : fillLongBlocks(profileBlocks(planStraights(fullAlignment, ctx.a, ctx.b)), gridCrossings(fullAlignment, ctx.a, ctx.b, BLOCK_GRID), fullAlignment.length);
   /** chainage at which a station's clearance applies (NaN: the station itself) */
   const clearanceS = new Float64Array(n).fill(NaN);
   const atS = (x: number) => { const p = pointAt(fullAlignment, x); return { x: p.x, y: p.y }; };
@@ -899,6 +917,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
       },
+      ...(blocks && opts.passCache ? { memo: opts.passCache.profile } : {}),
     };
     autoOptions = apOpt;
     // Auto between the ends of a given grade line (one direction of a separate motorway stretch): the
@@ -1003,10 +1022,11 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     const list = crossingWays.get(c.way) ?? [];
     list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
   }
-  const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
+  const pc = opts.passCache;
+  const supportMemo = pc?.support ?? new Map<string, number>(), retainingMemo: RetainingFeatureCache = pc?.retaining ?? new Map();
   // Reroutes traced and engineered by the first pass, reused by the strict retry where our footprint is unchanged.
-  const reroutes = crossingCache();
-  const sectionMemo: SectionCache = [];
+  const reroutes = pc?.reroutes ?? crossingCache();
+  const sectionMemo: SectionCache = pc?.sections ?? [];
   // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
   // or daylight changes the two widths; deck/centre cover never changes within this evaluation.
   // These buffers describe the last engineer() call, which is always the accepted engineering;
@@ -1305,7 +1325,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const buildingOverrides = normalizeBuildingOverrides(d.buildingOverrides, bld?.n ?? 0);
   const keptIds = new Set(buildingOverrides.filter((o) => o.action === 'keep').map((o) => o.j));
   const kept: Result['kept'] = [], manualBuys: Result['boughtOut'] = [];
-  const buildingViolations: Violation[] = [], noiseViolations: Violation[] = [];
+  const buildingViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
     const best = new Map<number, { i: number; along: number; core: boolean }>();
@@ -1450,7 +1470,10 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     crossingLump[c.i] += c.lumpCost ?? 0;
   }
   lap('footprint');
-  const complete = (): Result => {
+  /** `withNoise` false (a trial pass of evaluate's retries): no noise walls, buy-outs or noise problems;
+   * the result's `withNoise` adds them. */
+  const complete = (withNoise = !opts.trial): Result => {
+  const noiseViolations: Violation[] = [];
 
   // --- noise walls ---
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
@@ -1470,7 +1493,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   for (const r of opts.leftJoined ?? []) for (let i = 0; i < n; i++) if (st.s[i] >= r.s0 && st.s[i] <= r.s1) { joinedSideMask[i] = 1; (joinedRight ? wallGaps.R : wallGaps.L)[i] = 1; }
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
-  if (noiseBuildings && !preview) {
+  if (noiseBuildings && !preview && withNoise) {
     // walls and screening edges where the cross-section puts them (cut top, crown / deck edge)
     const screens = crossSectionScreens(n, kind, grade, cat.crownWidth, sec.dayL, sec.dayR, sec.zDayL, sec.zDayR,
       (i, left, o) => terrain.heightAt(st.x[i] - st.ty[i] * o * (left ? 1 : -1), st.y[i] + st.tx[i] * o * (left ? 1 : -1)), wallGaps);
@@ -1650,6 +1673,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       crossingsPaid, noiseDistance: noiseModel.contour, materialValue,
     },
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing, ...(preview ? { preview: true } : {}),
+    ...(withNoise ? {} : { withNoise: () => complete(true) }),
   };
   };
   return { vpis, footprintConflicts: footprintCheck.conflicts, lift: { targets: repairTargets, retried }, complete };
@@ -1671,7 +1695,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const retry = strictFor(groups).complete();
   // Every blocked road conflict is reported as a footprint violation, so a clean retry wins
   // without completing (noise, bill, checks) the first pass.
-  if (!retry.violations.length) return retry;
+  if (!retry.violations.some(v => v.kind !== 'noise')) return retry;
   const result = first.complete();
   // Kept where it resolves more than it breaks, each stretch on its own.
   const keep = groups.filter(g => regionCount(retry, g.map(b => b.s0)) < regionCount(result, g.map(b => b.s0)));
@@ -1691,6 +1715,25 @@ function planStraights(al: Alignment, a: Vec2, b: Vec2): PlanStraight[] {
   }
   return out;
 }
+/** Where the route crosses lines across the A–B axis every `spacing` m (from A), ascending chainage. */
+function gridCrossings(al: Alignment, a: Vec2, b: Vec2, spacing: number): number[] {
+  const len = Math.hypot(b.x - a.x, b.y - a.y) || 1, ex = (b.x - a.x) / len, ey = (b.y - a.y) / len;
+  const along = (s: number) => { const p = pointAt(al, s); return (p.x - a.x) * ex + (p.y - a.y) * ey; };
+  const L = al.length, m = Math.max(1, Math.ceil(L / 20)), out: number[] = [];
+  let s0 = 0, p0 = along(0);
+  for (let j = 1; j <= m; j++) {
+    const s1 = L * j / m, p1 = along(s1);
+    for (let k = Math.floor(Math.min(p0, p1) / spacing) + 1; k * spacing <= Math.max(p0, p1); k++) {
+      if (k <= 0) continue;
+      const target = k * spacing;
+      let lo = s0, hi = s1, plo = p0;
+      for (let it = 0; it < 30; it++) { const mid = (lo + hi) / 2, pm = along(mid); if ((pm - target) * (plo - target) <= 0) hi = mid; else { lo = mid; plo = pm; } }
+      out.push((lo + hi) / 2);
+    }
+    s0 = s1; p0 = p1;
+  }
+  return out.sort((x, y) => x - y);
+}
 /** Items (sorted by `at`) in groups whose neighbours are at most `gap` apart. */
 function clusterBy<T>(items: readonly T[], at: (t: T) => number, gap: number): T[][] {
   const out: T[][] = [];
@@ -1703,7 +1746,8 @@ function clusterBy<T>(items: readonly T[], at: (t: T) => number, gap: number): T
 /** violations of a result within REGION of the given chainages' span */
 function regionCount(r: Result, at: readonly number[]): number {
   const s0 = Math.min(...at) - REGION, s1 = Math.max(...at) + REGION;
-  return r.violations.filter(v => (v.s0 + v.s1) / 2 >= s0 && (v.s0 + v.s1) / 2 <= s1).length;
+  // noise problems are not what a retry changes (and a trial pass leaves them out)
+  return r.violations.filter(v => v.kind !== 'noise' && (v.s0 + v.s1) / 2 >= s0 && (v.s0 + v.s1) / 2 <= s1).length;
 }
 /** A retry is judged on the violations this close to what it retried, m: about as far as it can move
  * the grade line (a block and the window of its boundaries, see autoprofile.ts). */
