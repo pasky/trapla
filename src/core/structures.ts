@@ -36,6 +36,9 @@ export interface StructureInput {
   forcedTunnel?: ArrayLike<number>;
   /** −1 = automatic; otherwise KIND. Applied after automatic run decisions, even when invalid. */
   overrides?: ArrayLike<number>;
+  /** 1 = a higher-ranking road's deck this road rides (its bridge over that road, built and billed
+   * there): a bridge in `overrides`, but none of the player's bridge rules apply to it. */
+  held?: ArrayLike<number>;
 }
 
 
@@ -103,9 +106,10 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     runs.length = 0;
     for (const r of findRuns(kind)) {
       const length = (r.i1 - r.i0 + 1 - (r.i0 === 0 ? 0.5 : 0) - (r.i1 === n - 1 ? 0.5 : 0)) * inp.ds;
-      let manual = false, forced = false;
+      let manual = false, forced = false, held = true;
       for (let i = r.i0; i <= r.i1; i++) {
         manual ||= inp.overrides[i] >= 0;
+        held &&= !!inp.held?.[i];
         forced ||= !!locked[i];
       }
       const min = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
@@ -128,7 +132,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       // Do not turn an existing clipped crossing bridge into a new violation merely because
       // the player painted an unrelated range. Validate manual runs and fragments paint shortened.
       const shortened = (r.i0 > 0 && automatic[r.i0 - 1] === r.kind) || (r.i1 + 1 < n && automatic[r.i1 + 1] === r.kind);
-      if (length < min && (manual || shortened)) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
+      if (length < min && (manual || shortened) && !held) violations.push({ kind: 'structure', s0: r.i0 * inp.ds, s1: r.i1 * inp.ds,
         title: `${manual ? 'Your' : 'Remaining'} ${r.kind === KIND.bridge ? 'bridge' : 'tunnel'} is too short`,
         fix: `Extend it to the ${min} m minimum (now ${length.toFixed(0)} m), or set the stretch back to Automatic`,
         basis: 'game', rule: `Game rule: a bridge or tunnel is at least ${min} m long`,
@@ -143,7 +147,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
         i = j;
       }
     };
-    flagRanges((i) => inp.overrides![i] === KIND.bridge && inp.h[i] < rules.bridgeMinHeight,
+    flagRanges((i) => inp.overrides![i] === KIND.bridge && !inp.held?.[i] && inp.h[i] < rules.bridgeMinHeight,
       'Your bridge is too close to the ground', `Raise the road to at least ${rules.bridgeMinHeight} m above ground, or shorten the bridge / set it back to Automatic`,
       `Bridges you choose need ${rules.bridgeMinHeight} m of height (game simplification)`);
     flagRanges((i) => inp.overrides![i] === KIND.tunnel && -inp.h[i] < rules.tunnelMinDepth,

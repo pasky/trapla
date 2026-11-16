@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { finiteSegmentDecider } from '../src/core/project-noise';
 import { BuildingIndex } from '../src/core/buildings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
-import { ENDPOINT_JUNCTIONS, JUNCTION } from '../src/core/data/urban';
+import { BUILDING_KIND, ENDPOINT_JUNCTIONS, JUNCTION } from '../src/core/data/urban';
 import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { makeLegacyProjectContext, projectFromLegacyDesign } from '../src/core/project-legacy';
 import { isScorableProject } from '../src/core/project-protocol';
 import { RoadNet, type RoadNetData } from '../src/core/roadnet';
-import { footprintOutcome, jargonIn } from '../src/core/terms';
+import { footprintOutcome, jargonIn, togetherHouseText } from '../src/core/terms';
 import { syntheticTerrain } from '../src/core/terrain';
 import { newRoad } from '../src/ui/road-edit';
 
@@ -106,8 +107,11 @@ describe('a side road joined to our road', () => {
     // its first metres inside our road's earthworks are not built (or bought) twice
     const credit = project.works.items.find(w => w.owner.id === 'side' && w.cost < 0)!;
     expect(credit.label).toMatch(/^Its first \d+ m are inside our road’s earthworks: not built twice$/);
-    expect(-credit.cost).toBeLessThan(project.cost.alone.side / 10);
-    expect(project.cost.total).toBeCloseTo(project.cost.alone[mission.id] + project.cost.alone.side + junction.cost + credit.cost, 3);
+    const own = project.routes.side.legacy!.cost.total;
+    expect(-credit.cost).toBeLessThan(own / 10);
+    // a road's own price is its bill with its own works (junction, credit); the project adds the roads up
+    expect(project.cost.alone.side).toBeCloseTo(own + junction.cost + credit.cost, 3);
+    expect(project.cost.total).toBeCloseTo(project.cost.alone[mission.id] + project.cost.alone.side, 3);
     expect(project.issues.some(i => i.code === 'roads-cross' || i.code === 'roads-overlap' || i.code === 'connection-pending')).toBe(false);
   });
   it('keeps 1.5 km from our road\'s ends and other junctions, and follows our road when it moves', () => {
@@ -140,8 +144,9 @@ describe('a roundabout where the player chooses it', () => {
     const ring = project.works.items.find(w => w.owner.id === 'side' && /^Roundabout's ring/.test(w.label ?? ''))!;
     expect(ring.label).toMatch(/1 building removed/);
     expect(ring.cost).toBeGreaterThan(new BuildingIndex([[292, 866, 4]]).cost[0]);
-    // (the removed house is also within our road's noise reach: that interaction keeps this project unpriced)
-    expect(project.cost.unpriced.map(u => u.reason)).toContain('shared-noise');
+    // (the removed house is also within our road's noise reach: the ring takes it, so nobody decides its noise again)
+    expect(project.cost.unpriced).toEqual([]);
+    expect(project.works.items.filter(w => /both roads/.test(w.label ?? ''))).toEqual([]);
     // no T-junction sight triangle at a roundabout
     expect(side.violations.some(v => /No clear view/.test(v.title))).toBe(false);
   });
@@ -152,13 +157,52 @@ describe('a roundabout where the player chooses it', () => {
 });
 
 describe('houses heard by both roads', () => {
+  const loud = (y: number) => {
+    const f = fixture('tertiary', [], new BuildingIndex([[650, y, 5]])), side = f.snapshot.design.routes[1];
+    if (side.kind === 'road') side.specification.operations.aadt = 40000;
+    return f;
+  };
+  it('the player\'s wall choices and Keep stand: no project wall where the player said none, no buyout of a kept house', () => {
+    const walled = evaluateProject(loud(300).ctx, loud(300).snapshot);
+    expect(walled.works.items.filter(w => /both roads/.test(w.label ?? '')).map(w => w.kind)).toEqual(['noise']);
+    // its card: the level of both roads added together after the project's wall, each road's share, the wall
+    const rec = walled.receivers.find(r => r.buildingIndex === 0)!, t = rec.together!;
+    expect(t).toMatchObject({ decision: 'wall', wall: { routeId: t.prevailing } });
+    const shares = rec.contributions.map(c => c.storeys![t.storey].day);
+    expect(10 * Math.log10(shares[0] + shares[1])).toBeCloseTo(rec.dayDb, 6);
+    const text = togetherHouseText(rec, id => id === 'side' ? 'Road III/123' : 'our road', v => `${(v / 1e6).toFixed(1)} M CZK`)!;
+    expect(text.state).toBe(`Stays · behind a ${t.wall!.height} m wall`);
+    expect(text.why).toMatch(new RegExp(`^(${rec.dayDb.toFixed(1)} dB by day|${rec.nightDb.toFixed(1)} dB at night) on the (only|top|loudest) floor, both roads together \\(limit (60|50)\\): (our road|Road III/123) [\\d.]+ dB, (our road|Road III/123) [\\d.]+ dB\\. A ${t.wall!.height} m wall, \\d+ m long, along (our road|Road III/123): [\\d.]+ M CZK\\.$`));
+    // no walls anywhere (the player's choice on both roads), and the house kept: left too loud, a violation
+    const none = loud(300);
+    for (const r of none.snapshot.design.routes) if (r.alignment.kind === 'pi')
+      (r.alignment.controls as { wallOverrides?: unknown }).wallOverrides = [{ s0: 0, s1: 1e6, side: 'L', height: 0 }, { s0: 0, s1: 1e6, side: 'R', height: 0 }];
+    none.snapshot.design.buildingOverrides = [{ j: 0, action: 'keep' }];
+    const p = evaluateProject(none.ctx, none.snapshot);
+    expect(p.works.items.filter(w => /both roads/.test(w.label ?? ''))).toEqual([]);
+    expect(p.buildings.filter(b => b.buildingIndex === 0 && b.action === 'buy')).toEqual([]);
+    expect(p.issues.filter(i => i.scope.buildingIndex === 0).map(i => i.violation.title)).toEqual(['Too loud with both roads together']);
+    expect(p.valid).toBe(false);
+  });
   const at = (routeId: string, db: number) => ({ routeId, sourceId: `physical-${routeId}`, dayLimit: 60, nightLimit: 50,
     storeys: [{ height: 1.5, rawDay: 10 ** (db / 10), rawNight: 10 ** ((db - 10) / 10), day: 10 ** (db / 10), night: 10 ** ((db - 10) / 10) }] });
-  it('stay unpriced without the combined-noise calculator, and are decided once with it', () => {
+  it('are decided once, from both roads\' own finite-segment noise (or a given calculator)', () => {
     const house = new BuildingIndex([[650, 550, 5]]); // between our road (y = 250) and the side road (y = 850)
     const { ctx, snapshot } = fixture('tertiary', [], house);
-    const alone = evaluateProject(ctx, snapshot);
-    expect(alone.cost.unpriced.map(u => u.reason)).toContain('shared-noise');
+    const both = evaluateProject(ctx, snapshot);
+    expect(both.cost.unpriced).toEqual([]);
+    const heard = both.receivers.find(r => r.buildingIndex === 0)!;
+    expect(heard.contributions.map(c => c.routeId).sort()).toEqual([snapshot.design.routes[0].id, 'side'].sort());
+    // a trial wall on the side road in front of a house 50 m from it: quieter there, at least twice its distance long
+    const f = fixture('tertiary', [], new BuildingIndex([[650, 800, 5]])), p = evaluateProject(f.ctx, f.snapshot);
+    const decider = finiteSegmentDecider(['side', snapshot.design.routes[0].id].map(id => ({ routeId: id, result: p.routes[id].legacy! })), f.ctx.legacy.buildings!, (x, y) => f.ctx.legacy.terrain.heightAt(x, y));
+    const open = decider.sources(0).find(q => q.routeId === 'side')!, trial = decider.tryWall('side', 0, 4)!;
+    expect(trial.length).toBeGreaterThanOrEqual(2 * 45);
+    expect(trial.area).toBeCloseTo(4 * trial.length, 6);
+    trial.storeys.forEach((st, k) => { expect(st.day).toBeLessThan(open.storeys[k].day * 0.5); expect(st.rawDay).toBeCloseTo(open.storeys[k].rawDay, 6); });
+    trial.commit();
+    expect(Math.max(...decider.walls().get('side')!.L, ...decider.walls().get('side')!.R)).toBe(4);
+    expect(decider.sources(0).find(q => q.routeId === 'side')!.storeys[0].day).toBeCloseTo(trial.storeys[0].day, 3);
     const mission = snapshot.design.routes[0].id;
     const decided = evaluateProject({ ...ctx, combinedNoise: routes => {
       expect(routes.map(r => r.route.id).sort()).toEqual([mission, 'side'].sort());
@@ -170,6 +214,29 @@ describe('houses heard by both roads', () => {
     expect(decided.cost.total).toBeCloseTo(decided.cost.routes[mission] + decided.cost.routes.side, 3);
     expect(decided.cost.routes[mission]).toBeCloseTo(decided.cost.alone[mission] + buy.cost, 3);
     expect(decided.receivers.find(r => r.buildingIndex === 0)).toMatchObject({ action: 'buy', dayLimit: 60 });
+    expect(togetherHouseText(decided.receivers.find(r => r.buildingIndex === 0)!, () => 'our road', v => `${v}`)!.state).toBe(`Bought out · ${buy.cost}`);
     expect(decided.buildings.filter(b => b.buildingIndex === 0 && b.action === 'buy')).toHaveLength(1);
   });
+});
+
+it('a house two roads take is taken once: billed by the road that demolishes it, credited on the other', () => {
+  // a long shed reaching from our road (y = 250) to the side road (y = 330), under both
+  const shed = new BuildingIndex([[650, 290, 62]], [[120 * 20, 1, BUILDING_KIND.industrial, 650, 290, 60, 10, 90]]);
+  const { ctx, snapshot } = fixture('tertiary', [], shed);
+  ctx.legacy.roads = new RoadNet({ cls: ['tertiary', 'tertiary'], ways: [[0, 300, 300, 300, 1100], [1, 1000, 300, 1000, 1100]] });
+  const side = snapshot.design.routes[1], mission = snapshot.design.routes[0].id;
+  for (const [end, x] of [['a', 300], ['b', 1000]] as const) {
+    side.endpoints[end].position = { x, y: 340, z: 100 };
+    const anchor = side.endpoints[end].anchor; if (anchor.kind === 'source') anchor.location.s = 40;
+  }
+  const p = evaluateProject(ctx, snapshot), own = (id: string) => p.routes[id].legacy!;
+  expect(own(mission).demolished.map(b => b.j)).toEqual([0]);
+  expect(own('side').demolished.map(b => b.j)).toEqual([0]);
+  expect(p.issues.filter(i => i.code === 'shared-building')).toEqual([]);
+  const credit = p.works.items.filter(w => w.id === 'side:house:0');
+  expect(credit).toHaveLength(1);
+  expect(credit[0].cost).toBeCloseTo(-own('side').demolished[0].cost, 6);
+  expect(credit[0]).toMatchObject({ accepted: true, label: 'House our road takes as well: billed there once' });
+  expect(jargonIn(credit[0].label!, true)).toEqual([]);
+  expect(p.buildings.find(b => b.buildingIndex === 0)).toMatchObject({ action: 'demolish', routeId: mission });
 });

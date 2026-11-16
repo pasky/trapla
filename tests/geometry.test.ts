@@ -252,7 +252,8 @@ describe('compound curves', () => {
       for (const c of al.curves) if (c.unit >= 0) expect(c.rEff).toBeGreaterThanOrEqual(355 - 1e-6);
       if (t % 10 === 0) expectG1(al, a, b);
     }
-  });
+  // (300 random cases take about 5 s on their own: the default 5 s limit failed whenever the machine was busy)
+  }, 20_000);
 
   it('uneven legs: tangency to the inner legs is relaxed just enough for the radius rules', () => {
     // equal 6° turns on legs of 150, 120, 180, 110 m: arcs meeting exactly on the legs would need radii 5 : 1

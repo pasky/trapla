@@ -7,6 +7,7 @@ import { assertProjectDesign } from '../src/core/project-validation';
 import { loadProjectSave, projectMissionKey } from '../src/project-persistence';
 import { openProjectStore, type ProjectStoreOptions } from '../src/project-store';
 import { projectStorageKeys, repairProjectEditor } from '../src/project-store-contract';
+import { CLASS_TRAFFIC } from '../src/core/data/traffic';
 
 const original: Design = { category: 'S9.5', speed: 80, pis: [{ x: 500, y: 120, r: null }], profileMode: 'auto',
   vpis: [{ s: 0, z: 100, r: null }, { s: 1000, z: 101, r: null }], gradePins: [{ s: 300, z: 102 }],
@@ -256,4 +257,24 @@ it('rejects orphan paired controls and incompatible corridor children at the per
   expect(() => assertProjectDesign(d)).toThrow('orphan');
   (d.routes[0].alignment as unknown as { controls: object }).controls = { wallOverrides: [] };
   expect(() => assertProjectDesign(d)).toThrow('route');
+});
+
+it('opens a save from before traffic was pre-filled: "traffic not set" becomes the average road of its class', () => {
+  const { data, options, keys } = setup();
+  const design = projectFromLegacyDesign(original, context);
+  const side = structuredClone(design.routes[0]) as RouteDesign & { kind: 'road' };
+  side.id = 'route:side'; side.acousticSourceId = 'acoustic:side'; side.role = 'auxiliary'; side.name = 'Side road';
+  side.endpoints = { a: { position: { x: 0, y: 500, z: 100 }, binding: 'resolved', anchor: { kind: 'free' } },
+    b: { position: { x: 900, y: 500, z: 100 }, binding: 'resolved', anchor: { kind: 'free' } } };
+  side.specification = { ...side.specification, legalClass: 'III', operations: { aadt: 0, heavyShare: 0, speed: 70, speedPolicy: 'design', trafficUnknown: true } };
+  design.routes.push(side);
+  const raw = JSON.stringify({ schemaVersion: 1, design, best: null });
+  data.set(keys.project, raw);
+  const { load, store } = openProjectStore(options);
+  expect(load.status).toBe('loaded');
+  const opened = store!.snapshot.design.routes[1];
+  expect(opened.kind === 'road' && opened.specification.operations).toEqual({ aadt: CLASS_TRAFFIC.III.aadt, heavyShare: CLASS_TRAFFIC.III.heavyShare, speed: 70, speedPolicy: 'design' });
+  // the rewritten save keeps the exact old one recoverable
+  expect(data.get(keys.projectRecovery)).toBe(raw);
+  expect(JSON.parse(data.get(keys.project)!).design.routes[1].specification.operations.trafficUnknown).toBeUndefined();
 });

@@ -98,6 +98,10 @@ export const URBAN_NORM_PER_KM: Record<CategoryId, { hilly: number; mountainous:
   'S7.5': { hilly: 42_883_000, mountainous: 48_046_000, codes: ['A.1.S2.7,5.NIR', 'A.1.S2.7,5.NIH'] },
   'S9.5': { hilly: 67_852_000, mountainous: 78_271_000, codes: ['A.1.S1.9,5.NIR', 'A.1.S1.9,5.NIH'] },
   'S11.5': { hilly: 82_035_000, mountainous: 94_666_000, codes: ['A.1.S1.11,5.NIR', 'A.1.S1.11,5.NIH'] },
+  // Local road in town: M 11,5/7,5, the 7.5 m traffic space with pavements on both sides (SPK report p. 7).
+  'M7.5': { hilly: 32_930_000, mountainous: 43_906_000, codes: ['A.1.M.11,5.NIR', 'A.1.M.11,5.NIH'] },
+  // Track: SPK has no built-up row; its rural row is used.
+  'P4': { hilly: 13_985_684.5, mountainous: 13_985_684.5, codes: ['A.1.P4.NE', 'A.1.P4.NE'] },
   'D27.5': { hilly: 187_632_000, mountainous: 214_512_000, codes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NEH'] },
   // Railway: SPOŽES has no built-up row for track; its dense-area utility relocations (I01) apply instead.
   'R1': { hilly: railRouteBasePerKm(1, true), mountainous: railRouteBasePerKm(1, true), codes: ['SPOŽES 2026', 'SPOŽES 2026'] },
@@ -217,6 +221,20 @@ export const ENDPOINT_JUNCTIONS = {
 export type EndpointJunctionKind = keyof typeof ENDPOINT_JUNCTIONS;
 /** Simple sjezd onto the service link, NOT onto the class-I road. Very low confidence — research/13. */
 export const ACCESS = 500_000;
+/** A crossroads where our local road or track meets another minor road at the same level: what it adds to
+ * the two pavements (research/43, PROVISIONAL; no separately priced Czech crossroads of this kind was found).
+ * Two local roads: 1 M CZK, its extra paved area and edges at the MMR/ÚÚR 2025 local-road unit prices (low
+ * confidence). A track meeting a track or service road: 0.25 M CZK, from KoPÚ track budgets (very low
+ * confidence). A track meeting a local road (or a local road a track): the access above (research/13). */
+export const MINOR_CROSSROADS = { local: 1_000_000, track: 250_000, mixed: ACCESS } as const;
+const LOCAL_WAYS = new Set(['unclassified', 'residential', 'living_street']), TRACK_WAYS = new Set(['service', 'track']);
+/** The crossroads where our minor road (`ours`: its category's `minor`) meets a crossed way of class `cls`
+ * at grade, CZK; undefined when either is not a minor road. */
+export function minorCrossroads(ours: 'local' | 'track' | undefined, cls: string): number | undefined {
+  const theirs = LOCAL_WAYS.has(cls) ? 'local' : TRACK_WAYS.has(cls) ? 'track' : undefined;
+  if (!ours || !theirs) return undefined;
+  return theirs === ours ? MINOR_CROSSROADS[ours] : MINOR_CROSSROADS.mixed;
+}
 const LOCAL_ROAD = {
   roadPerKm: [24_133_000, 32_930_000] as [number, number],
   roadCodes: ['A.1.M.7,5.NER', 'A.1.M.11,5.NIR'] as [string, string],

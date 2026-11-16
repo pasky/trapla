@@ -39,8 +39,9 @@ export interface ViewEvents {
   onDoublePick?: (x: number, y: number) => void;
   /** is the road under this screen point? (a press there drags a new bend instead of panning) */
   hitRoad?: (clientX: number, clientY: number) => boolean;
-  /** the road was dragged from ground point x, y: insert a bend there, return its index (null: none) */
-  onRoadDrag?: (x: number, y: number) => number | null;
+  /** the road was dragged from ground point x, y: insert a bend there, return its index (null: none;
+   * 'wait': not yet, the press is held and asked again on the next move or `resumeRoadDrag()`) */
+  onRoadDrag?: (x: number, y: number) => number | null | 'wait';
   onPiDragStart?: (i: number) => void;
   onPiDrag?: (i: number, x: number, y: number) => void;
   onPiDragEnd?: (i: number) => void;
@@ -477,6 +478,8 @@ export class View {
   /** drape the orthophoto (streamed per view from the scenario's image service) instead of the map layers */
   /** the photo's known-network overlay needs the lazily loaded transport graph */
   onNeedTransport?: () => void;
+  /** a held road drag (`onRoadDrag` said 'wait') asks again now, at the pointer's last position */
+  resumeRoadDrag: () => void = () => {};
   setPhoto(on: boolean) {
     if (on) this.onNeedTransport?.();
     this.landcover?.setPhoto(on);
@@ -1768,12 +1771,15 @@ export class View {
       const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
       canvas.setPointerCapture(id);
       const g0 = this.pick(x0, y0);
-      let i: number | null = null;
-      const move = (ev: PointerEvent) => {
+      let i: number | null = null, waiting = false, at = { x: x0, y: y0 };
+      const move = (ev: { pointerId: number; clientX: number; clientY: number }) => {
         if (ev.pointerId !== id) return;
+        at = { x: ev.clientX, y: ev.clientY };
         if (i === null) {
-          if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5 || !g0) return;
-          i = this.ev.onRoadDrag?.(g0.x, g0.y) ?? null;
+          if ((!waiting && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) || !g0) return;
+          const k = this.ev.onRoadDrag?.(g0.x, g0.y) ?? null;
+          if (k === 'wait') { waiting = true; return; }
+          waiting = false; i = k;
           if (i === null) { stop(); return; }
           this.dragging = i;
           this.ev.onPiDragStart?.(i);
@@ -1785,7 +1791,9 @@ export class View {
         this.dirty = true;
         this.ev.onPiDrag?.(i, p.x, p.y);
       };
+      this.resumeRoadDrag = () => { if (waiting) move({ pointerId: id, clientX: at.x, clientY: at.y }); };
       const stop = () => {
+        this.resumeRoadDrag = () => {};
         canvas.removeEventListener('pointermove', move);
         canvas.removeEventListener('pointerup', up);
         canvas.removeEventListener('pointercancel', cancel);
@@ -1796,8 +1804,9 @@ export class View {
       const up = (ev: PointerEvent) => {
         stop();
         if (i !== null) { this.dragging = null; this.ev.onPiDragEnd?.(i); return; }
-        const p = this.pick(ev.clientX, ev.clientY);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY); else this.ev.onPickNothing?.();
+        // released while still held: a click where it was pressed
+        const cx = waiting ? x0 : ev.clientX, cy = waiting ? y0 : ev.clientY, p = this.pick(cx, cy);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, cx, cy); else this.ev.onPickNothing?.();
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);

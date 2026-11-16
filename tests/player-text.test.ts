@@ -7,7 +7,7 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   trackEndViolations, verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, footprintOutcome, jargonIn } from '../src/core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, footprintOutcome, jargonIn, MINOR_CROSSING_TEXT, togetherHouseText } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate, type Design, type Result } from '../src/core/evaluate';
@@ -60,6 +60,15 @@ describe('player-facing text', () => {
     check('closure', footprintOutcome({ feature: 'road', action: 'relocation', cls: 'service', length: 0, closed: { length: 60, detour: 140 } }).label);
     expect(CROSSING_CHOICE_TEXT.map(([v]) => v).filter(Boolean).sort()).toEqual([...CROSSING_CHOICES].sort());
     for (const [, label, title] of CROSSING_CHOICE_TEXT) { check('choice label', label); check('choice tooltip', title); }
+    for (const text of Object.values(MINOR_CROSSING_TEXT)) check('minor road choice tooltip', text);
+    const storeys = [{ height: 1.5, rawDay: 1e6, rawNight: 1e5, day: 1e6, night: 1e5 }];
+    for (const together of [{ decision: 'wall', wall: { routeId: 'b', height: 3, length: 120, cost: 4e6 } }, { decision: 'buy', buyout: { routeId: 'a', cost: 5e6 } },
+      { decision: 'none', over: 1.2 }, { decision: 'none' }] as const) {
+      const text = togetherHouseText({ buildingIndex: 0, height: 1.5, dayDb: 63, nightDb: 53, dayLimit: 60, nightLimit: 50, action: 'retain',
+        contributions: ['a', 'b'].map(routeId => ({ sourceId: routeId, routeId, buildingIndex: 0, height: 1.5, dayEnergy: 1e6, nightEnergy: 1e5, policy: 'combined', storeys })),
+        together: { prevailing: 'a', storey: 0, ...together } }, id => id === 'a' ? 'our road' : 'Jičínská', v => `${v / 1e6} M CZK`)!;
+      check(`house card, decided together (${together.decision})`, text.state); check(`house card, decided together (${together.decision})`, text.why);
+    }
     for (const g of COST_GROUPS) check('bill line', g.label);
     // the cards of the mission ends (interchanges, roads joined): every mission's, both ends
     let ends = 0;

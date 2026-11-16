@@ -223,7 +223,7 @@ const H_MAX = PROFILE_HEIGHT_MAX, H_STEP = PROFILE_HEIGHT_STEP;
 /** CZK per required-clearance station that is not met */
 export const CLEARANCE_PENALTY = 1e8;
 /** extra clearance asked of the polyline grade: vertical curves later shave up to ~1 m off crests */
-const CLEARANCE_MARGIN = 1.0;
+export const CLEARANCE_MARGIN = 1.0;
 /** the DP evaluates the cost on every k-th station only (≈ 20 m) */
 const DP_STATION_STEP = 20;
 /** elevation grids of the coarse and the fine pass, m */

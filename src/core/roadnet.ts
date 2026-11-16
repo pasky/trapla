@@ -32,7 +32,9 @@ const RANK: Record<string, number> = Object.fromEntries(Object.keys(ROAD_CLASSES
 
 export class RoadNet {
   private readonly cell = 100;
-  private readonly map = new Map<number, number[]>();
+  private readonly map: Map<number, number[]>;
+  /** An edited network shares its pack network's grid: only the cells its changed ways touch are its own. */
+  private readonly override?: Map<number, number[]>;
   private readonly x0: Float64Array;
   private readonly y0: Float64Array;
   private readonly x1: Float64Array;
@@ -49,35 +51,60 @@ export class RoadNet {
   private readonly clsNames: readonly string[];
   readonly segments: number;
 
-  constructor(data: RoadNetData) {
+  /** `overlay`: the same network as `base` except its `changed` ways (an edit of a few roads costs
+   * their segments, not a rebuild of the whole grid). */
+  constructor(data: RoadNetData, overlay?: { base: RoadNet; changed: readonly number[] }) {
     this.ways = data.ways; this.clsNames = data.cls;
-    let m = 0;
-    for (const w of data.ways) m += Math.max(0, (w.length - 1) / 2 - 1);
+    const count = (w: readonly number[]) => Math.max(0, (w.length - 1) / 2 - 1);
+    const base = overlay?.base, kept = base ? base.segments : 0;
+    let m = kept;
+    if (overlay) for (const wi of overlay.changed) m += count(data.ways[wi]);
+    else for (const w of data.ways) m += count(w);
     this.x0 = new Float64Array(m); this.y0 = new Float64Array(m); this.x1 = new Float64Array(m); this.y1 = new Float64Array(m);
     this.way = new Int32Array(m); this.stamp = new Int32Array(m);
     this.querySeen = new Int32Array(m); this.distance = new Float64Array(m);
     this.wayCls = data.ways.map((w) => data.cls[w[0]]);
-    let k = 0;
-    data.ways.forEach((w, wi) => {
+    if (base) {
+      this.x0.set(base.x0.subarray(0, kept)); this.y0.set(base.y0.subarray(0, kept)); this.x1.set(base.x1.subarray(0, kept));
+      this.y1.set(base.y1.subarray(0, kept)); this.way.set(base.way.subarray(0, kept)); this.distance.set(base.distance.subarray(0, kept));
+      this.map = base.map; this.override = new Map();
+    } else this.map = new Map();
+    const cellsOf = (q: number, visit: (key: number) => void) => {
+      const ax = this.x0[q], ay = this.y0[q], bx = this.x1[q], by = this.y1[q];
+      const c0 = Math.floor(Math.min(ax, bx) / this.cell), c1 = Math.floor(Math.max(ax, bx) / this.cell);
+      const r0 = Math.floor(Math.min(ay, by) / this.cell), r1 = Math.floor(Math.max(ay, by) / this.cell);
+      for (let cx = c0; cx <= c1; cx++) for (let cy = r0; cy <= r1; cy++) visit(cx * 100003 + cy);
+    };
+    /** this network's own list of a cell (an overlay copies the shared one on first change) */
+    const own = (key: number) => {
+      const lists = this.override ?? this.map;
+      let a = lists.get(key);
+      if (!a) lists.set(key, (a = this.override ? (this.map.get(key) ?? []).slice() : []));
+      return a;
+    };
+    let k = kept;
+    const add = (wi: number) => {
+      const w = data.ways[wi];
       if (!(this.wayCls[wi] in ROAD_CLASSES)) return;
       let distance = 0;
       for (let j = 1; j + 3 < w.length; j += 2) {
         const ax = w[j], ay = w[j + 1], bx = w[j + 2], by = w[j + 3];
         this.x0[k] = ax; this.y0[k] = ay; this.x1[k] = bx; this.y1[k] = by; this.way[k] = wi;
         this.distance[k] = distance; distance += Math.hypot(bx - ax, by - ay);
-        const c0 = Math.floor(Math.min(ax, bx) / this.cell), c1 = Math.floor(Math.max(ax, bx) / this.cell);
-        const r0 = Math.floor(Math.min(ay, by) / this.cell), r1 = Math.floor(Math.max(ay, by) / this.cell);
-        for (let cx = c0; cx <= c1; cx++) for (let cy = r0; cy <= r1; cy++) {
-          const key = cx * 100003 + cy;
-          let a = this.map.get(key);
-          if (!a) this.map.set(key, (a = []));
-          a.push(k);
-        }
+        const q = k;
+        cellsOf(q, key => own(key).push(q));
         k++;
       }
-    });
+    };
+    if (overlay) {
+      const changed = new Set(overlay.changed);
+      for (let q = 0; q < kept; q++) if (changed.has(this.way[q])) cellsOf(q, key => { const a = own(key), at = a.indexOf(q); if (at >= 0) a.splice(at, 1); });
+      for (const wi of overlay.changed) add(wi);
+    } else for (let wi = 0; wi < data.ways.length; wi++) add(wi);
     this.segments = k;
   }
+  /** Segments indexed in a grid cell. */
+  private at(key: number): number[] | undefined { return this.override?.get(key) ?? this.map.get(key); }
 
   /** Existing segment grid reused by footprint checks; no full-network scan per evaluation. */
   nearSegments(bounds: readonly number[], visit: (segment: RoadSegment) => void): void {
@@ -85,7 +112,7 @@ export class RoadNet {
     const [x0, y0, x1, y1] = bounds;
     for (let x = Math.floor(x0 / this.cell); x <= Math.floor(x1 / this.cell); x++)
       for (let y = Math.floor(y0 / this.cell); y <= Math.floor(y1 / this.cell); y++)
-        for (const k of this.map.get(x * 100003 + y) ?? []) {
+        for (const k of this.at(x * 100003 + y) ?? []) {
           if (this.querySeen[k] === this.queryStamp) continue;
           this.querySeen[k] = this.queryStamp;
           if (Math.max(this.x0[k], this.x1[k]) < x0 || Math.min(this.x0[k], this.x1[k]) > x1
@@ -97,20 +124,66 @@ export class RoadNet {
 
   wayClass(way: number): string { return this.wayCls[way]; }
   /** The same network without the given stretches (way chainages d0 < d1): a rebuilt stretch of an
-   * existing road is not a road its own replacement crosses. Existing way indices keep their meaning
-   * (the part before d0 keeps the index); the part after d1 is appended as a new way. */
+   * existing road is not a road its own replacement crosses. See `edited` for the numbering. */
   without(cuts: readonly { way: number; d0: number; d1: number }[]): RoadNet {
-    const ways = this.ways.slice();
-    for (const cut of cuts) {
-      const w = ways[cut.way];
-      if (!w || !(cut.d1 > cut.d0)) continue;
-      const total = this.wayPath(cut.way, 0, Infinity).at(-1)?.d ?? 0;
-      const piece = (start: number, end: number) => [w[0], ...this.wayPath(cut.way, start, end).flatMap(p => [p.x, p.y])];
-      const before = cut.d0 > 0.01 ? piece(0, cut.d0) : null, after = cut.d1 < total - 0.01 ? piece(cut.d1, total) : null;
-      ways[cut.way] = before && before.length >= 5 ? before : [w[0]];
-      if (after && after.length >= 5) ways.push(after);
+    return this.edited(cuts, []);
+  }
+  /** Ways in the pack's network (designed roads of an edited network are numbered from here). */
+  get wayCount(): number { return this.ways.length; }
+  /** The network as the player edited it: rebuilt stretches cut out and designed roads added as ways of
+   * their class. Numbering is stable whatever else is edited: every pack way keeps its index (a cut way:
+   * its part before the first cut); `extra[k]` is way `wayCount + k`; what follows cut `i` on its way (up
+   * to the next cut) is way `wayCount + extra.length + (cuts[i].slot ?? i)`. */
+  edited(cuts: readonly { way: number; d0: number; d1: number; slot?: number }[], extra: readonly { cls: string; xy: readonly number[] }[]): RoadNet {
+    const cls = this.clsNames.slice();
+    const clsIndex = (name: string) => { let i = cls.indexOf(name); if (i < 0) { i = cls.length; cls.push(name); } return i; };
+    const remnants = this.ways.length + extra.length;
+    const slots = cuts.reduce((n, c, i) => Math.max(n, (c.slot ?? i) + 1), 0);
+    const ways = [...this.ways, ...extra.map(e => [clsIndex(e.cls), ...e.xy]), ...Array.from({ length: slots }, () => [0])];
+    const changed = extra.map((_, k) => this.ways.length + k);
+    // Several cuts of one way: what is left between them; the part before the first cut keeps the way's index.
+    const byWay = new Map<number, [number, number, number][]>();
+    cuts.forEach((cut, i) => {
+      if (!this.ways[cut.way] || !(cut.d1 > cut.d0)) return;
+      let list = byWay.get(cut.way); if (!list) byWay.set(cut.way, list = []);
+      list.push([cut.d0, cut.d1, cut.slot ?? i]);
+    });
+    for (const [way, list] of byWay) {
+      const w = this.ways[way], total = this.wayPath(way, 0, Infinity).at(-1)?.d ?? 0;
+      const piece = (start: number, end: number) => [w[0], ...this.wayPath(way, start, end).flatMap(p => [p.x, p.y])];
+      list.sort((p, q) => p[0] - q[0]);
+      // a cut from the way's start leaves its own index empty
+      const first = list[0][0] > 0.01 ? piece(0, list[0][0]) : [w[0]];
+      ways[way] = first.length >= 5 ? first : [w[0]]; changed.push(way);
+      // what follows a cut belongs to it (overlapping cuts: to the one reaching furthest)
+      let at = -Infinity, owner = -1;
+      list.forEach(([, d1, slot], q) => {
+        if (d1 > at) { at = d1; owner = slot; }
+        const end = q + 1 < list.length ? list[q + 1][0] : total;
+        if (end <= at + 0.01) return;
+        const rest = piece(at, end);
+        if (rest.length >= 5) { ways[remnants + owner] = rest; changed.push(remnants + owner); }
+      });
     }
-    return new RoadNet({ cls: this.clsNames as string[], ways });
+    // an edit of an edited network (not used by the game) is rebuilt in full
+    const net = this.override ? new RoadNet({ cls, ways }) : new RoadNet({ cls, ways }, { base: this, changed });
+    if (extra.length) {
+      net.designedWays = { from: this.ways.length, to: this.ways.length + extra.length };
+      net.makeGround = () => this.edited(cuts, extra.map(e => ({ cls: e.cls, xy: [] })));
+    }
+    return net;
+  }
+  /** Ways `from` ≤ way < `to` are designed roads of the project (see project-roadnet.ts). */
+  designedWays?: { from: number; to: number };
+  isDesigned(way: number): boolean { return !!this.designedWays && way >= this.designedWays.from && way < this.designedWays.to; }
+  private groundNet?: RoadNet;
+  private makeGround?: () => RoadNet;
+  /** The same network without designed roads: what earthworks, walls and relocations deal with (designed
+   * roads meet each other at crossings and junctions, never as relocated existing roads). */
+  get ground(): RoadNet {
+    if (!this.designedWays || !this.makeGround) return this;
+    if (!this.groundNet) { this.groundNet = this.makeGround(); this.groundNet.groundNet = this.groundNet; }
+    return this.groundNet;
   }
   /** Absolute distance along a way at its nearest point, for interval subtraction and real tie-ins. */
   wayStation(way: number, x: number, y: number): number {
@@ -189,7 +262,7 @@ export class RoadNet {
       let prev = side < 0 ? path[1] : path[path.length - 2];
       const extension: typeof path = [];
       while (Math.abs(p.d) < reach - 1e-6 && path.length + extension.length < maxPoints) {
-        const candidates = this.map.get(Math.floor(p.x / this.cell) * 100003 + Math.floor(p.y / this.cell)) ?? [];
+        const candidates = this.at(Math.floor(p.x / this.cell) * 100003 + Math.floor(p.y / this.cell)) ?? [];
         let best: { x: number; y: number; d: number } | undefined, score = -Infinity;
         const dx = p.x - prev.x, dy = p.y - prev.y, len = Math.hypot(dx, dy) || 1;
         for (const k of candidates) for (let reverse = 0; reverse < 2; reverse++) {
@@ -332,7 +405,7 @@ export class RoadNet {
     let best = radius, way: number | undefined;
     for (let cx = Math.floor((x - radius) / this.cell); cx <= Math.floor((x + radius) / this.cell); cx++)
       for (let cy = Math.floor((y - radius) / this.cell); cy <= Math.floor((y + radius) / this.cell); cy++)
-        for (const k of this.map.get(cx * 100003 + cy) ?? []) {
+        for (const k of this.at(cx * 100003 + cy) ?? []) {
           const dx = this.x1[k] - this.x0[k], dy = this.y1[k] - this.y0[k];
           const t = Math.max(0, Math.min(1, ((x - this.x0[k]) * dx + (y - this.y0[k]) * dy) / (dx * dx + dy * dy || 1)));
           const distance = Math.hypot(x - this.x0[k] - t * dx, y - this.y0[k] - t * dy);
@@ -359,7 +432,7 @@ export class RoadNet {
       const r0 = Math.floor(Math.min(py, py + ry) / this.cell), r1 = Math.floor(Math.max(py, py + ry) / this.cell);
       const first = out.length;
       for (let cx = c0; cx <= c1; cx++) for (let cy = r0; cy <= r1; cy++) {
-        const a = this.map.get(cx * 100003 + cy);
+        const a = this.at(cx * 100003 + cy);
         if (!a) continue;
         for (const k of a) {
           if (stamp[k] === i + 1) continue;

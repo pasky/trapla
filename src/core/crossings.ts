@@ -1,7 +1,7 @@
 // Study-stage network resolution with terrain profiles on the actual OSM alignment.
 import { surchargeRate } from './cost';
 import { bridgeModel } from './bridge';
-import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
+import { ACCESS, CROSSING_RULES, JUNCTION, minorCrossroads, ROAD_CLASSES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
 import { LOWERING_RULES, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { underpassFits } from './crossing-geometry';
@@ -82,6 +82,11 @@ export interface CrossingResult {
   requestedType?: CrossingChoice;
   /** Built once with the other direction of a split motorway (that direction owns, bills and draws it). */
   shared?: true;
+  /** The crossed road is a designed road of the project (it draws and bills its own body; this crossing
+   * holds its height there, project-roadnet.ts). */
+  designed?: true;
+  /** That designed road (set by the project evaluator), for the crossing card. */
+  crossedRoute?: { id: string; name: string };
   issues?: CrossingIssue[];
   geometry?: CrossingGeometry;
   /** New grade minus crossed-road ground, m. */
@@ -216,8 +221,19 @@ const rank = Object.fromEntries(Object.keys(ROAD_CLASSES).map((key, i) => [key, 
  * visible and priced, but cannot become anchors for another road. */
 export function resolveCrossings(crossings: CrossingResult[], length: number, kind: ArrayLike<number>,
   footprint: ArrayLike<number>, urban: ArrayLike<number>, billingUrban: ArrayLike<number> = urban,
-  overrides: readonly CrossingOverride[] = [], gradeSeparated: false | 'motorway' | 'railway' = false): CrossingIssue[] {
+  overrides: readonly CrossingOverride[] = [], gradeSeparated: false | 'motorway' | 'railway' = false,
+  /** A designed road of the project (project-roadnet.ts): bridged, passed under or met in a junction,
+   * never cut and rerouted (the player has just drawn it there). */
+  designed: (roadId: number) => boolean = () => false,
+  /** Junctions this far apart along our road, m: ČSN 73 6101's 1.5 km; none for a local road or track, whose
+   * norms (ČSN 73 6110 group C, ČSN 73 6109) set no such spacing in the parts read (research/42). */
+  junctionSpacing: number = CROSSING_RULES.junctionSpacing,
+  /** Our road is a local road or a track (its category's `minor`): where it meets another minor road at the
+   * same level, Auto builds a crossroads (minorCrossroads), as for class I–III roads. */
+  minor?: 'local' | 'track'): CrossingIssue[] {
   const issues: CrossingIssue[] = [];
+  /** what a junction with the crossed way costs; undefined: Auto does not meet it at a junction */
+  const junctionCost = (c: CrossingResult) => minorCrossroads(minor, c.cls) ?? (ROAD_CLASSES[c.cls].junction ? JUNCTION : undefined);
   const issue = (c: CrossingResult, code: CrossingIssue['crossing']['code'], title: string, fix: string,
     actual?: number, required?: number, targetS?: number) => {
     const v: CrossingIssue = { kind: 'crossing', s0: c.s, s1: c.s, title, fix, basis: 'game',
@@ -284,11 +300,11 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       if (row.noAtGrade && c.h > -CROSSING_RULES.underDepth + 1e-6) issue(c, 'depth', 'A bridge over our road needs a deeper cutting here',
         `Lower our road here by ${(c.h + CROSSING_RULES.underDepth).toFixed(1)} m, to ${CROSSING_RULES.underDepth} m below the crossed road`, -c.h, CROSSING_RULES.underDepth);
     } else if (choice === 'junction') {
-      c.cost = JUNCTION;
+      c.cost = junctionCost(c) ?? JUNCTION;
       const near = junctions.reduce((a, s) => Math.abs(c.s - s) < Math.abs(c.s - a) ? s : a, junctions[0]);
       const gap = Math.abs(c.s - near);
-      if (gap < CROSSING_RULES.junctionSpacing) issue(c, 'spacing', 'Junctions are too close',
-        `Keep at least ${CROSSING_RULES.junctionSpacing} m from the junction (or route end) at km ${(near / 1000).toFixed(2)} — now ${gap.toFixed(0)} m — or choose a bridge instead`, gap, CROSSING_RULES.junctionSpacing, near);
+      if (gap < junctionSpacing) issue(c, 'spacing', 'Junctions are too close',
+        `Keep at least ${junctionSpacing} m from the junction (or route end) at km ${(near / 1000).toFixed(2)} — now ${gap.toFixed(0)} m — or choose a bridge instead`, gap, junctionSpacing, near);
       if (c.h <= -CROSSING_RULES.underDepth) issue(c, 'depth', 'Junction would lie deep below the crossed road',
         `Raise our road here by more than ${(-CROSSING_RULES.underDepth - c.h).toFixed(1)} m, out of the ${CROSSING_RULES.underDepth} m deep cutting, or choose "Its bridge over us"`, c.h, -CROSSING_RULES.underDepth);
       if (c.h >= CROSSING_RULES.overHeight) issue(c, 'clearance', 'Junction would lie high above the crossed road',
@@ -318,9 +334,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (!row.noAtGrade) anchors.push(c);
   }
   for (const c of priority) {
-    if (gradeSeparated || c.requestedType || c.type !== 'atGrade' || !ROAD_CLASSES[c.cls].junction || c.h <= -CROSSING_RULES.underDepth) continue;
-    if (junctions.every(s => Math.abs(c.s - s) >= CROSSING_RULES.junctionSpacing)) {
-      c.type = 'junction'; c.cost = JUNCTION;
+    const cost = junctionCost(c);
+    if (gradeSeparated || c.requestedType || c.type !== 'atGrade' || cost === undefined || c.h <= -CROSSING_RULES.underDepth) continue;
+    if (junctions.every(s => Math.abs(c.s - s) >= junctionSpacing)) {
+      c.type = 'junction'; c.cost = cost;
       junctions.push(c.s); anchors.push(c);
     }
   }
@@ -356,7 +373,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     const box = kind[c.i] === KIND.earth && underpassFits(c, footprint[c.i]) ? underpassPrice(c, footprint[c.i], urban[c.i]) : undefined;
     const linkTotal = gap <= CROSSING_RULES.linkMaxReach ? linkCost * surcharge + access : Infinity;
     const overTotal = over.cost * surcharge, boxTotal = box ? box.cost * surcharge : Infinity;
-    if (c.requestedType === 'reconnection' && !target) {
+    if (c.roadId !== undefined && designed(c.roadId)) {
+      if (c.requestedType === 'reconnection') issue(c, 'reach', 'A new road cannot be cut and rerouted', 'Choose "Our bridge over it", "Its bridge over us" or a junction');
+      if (box && boxTotal < overTotal) { c.type = 'underpass'; Object.assign(c, priced(box)); } else { c.type = 'overbridge'; Object.assign(c, over); }
+    } else if (c.requestedType === 'reconnection' && !target) {
       // A grade-separated route has no crossing yet that a cut road could be led to: say so and keep
       // the road over us so the result stays buildable and priced.
       issue(c, 'reach', 'No crossing to reroute it to', 'Choose "Its bridge over us" or an underpass, or first build a bridge or underpass for another road nearby');

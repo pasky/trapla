@@ -16,6 +16,8 @@
 import type { CrossingResult } from './crossings';
 import type { FootprintConflict } from './footprint';
 import type { RoadRealignmentPlan } from './road-realignment';
+import type { ProjectReceiver } from './project';
+import * as dm from './detmath';
 import { ROAD_CLASSES } from './data/urban';
 import { LOWERING_RULES, underpassAssembly } from './data/remedies';
 
@@ -146,6 +148,15 @@ export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; ever
 /** Automatic on a railway: no level crossing anywhere along it (game rule, M1). */
 export const RAILWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the railway, an underpass through a high enough embankment or a reroute to a nearby crossing. A new railway has no level crossings.';
 
+/** A mapped road's card where another road's earthworks cover it (ui/mapped-road.ts): `by` is "our road" or a road's name. */
+export const coveredText = (by: string) => `${by.charAt(0).toUpperCase()}${by.slice(1)} covers it here: pick it further away.`;
+
+/** Automatic and Junction on a local road or track (no junction spacing; research/42, 43). */
+export const MINOR_CROSSING_TEXT = {
+  automatic: 'The game decides: existing bridges stay; every road but a motorway or expressway meets ours at its level in a junction; those get the cheapest of a bridge over our road, an underpass or a reroute to a nearby crossing.',
+  junction: 'The crossed road meets ours at the same level in a junction (never a motorway or expressway).',
+} as const;
+
 /** The player's choices on the crossing card: [value, button label, what gets built]. */
 export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overbridge' | 'reconnection' | 'underpass', string, string][] = [
   ['', 'Automatic', 'The game decides: existing bridges stay; class I–III roads get a junction at least 1.5 km from the next one; other roads get the cheapest of a bridge over our road, an underpass or a reroute to a nearby crossing.'],
@@ -208,6 +219,52 @@ export function roadRemedyDetail(what: string, affected: number, plan: Pick<Road
 export function roadRemedySource(plan: Pick<RoadRealignmentPlan, 'roadCode' | 'closed' | 'retainingArea' | 'lumpCost'>): string | undefined {
   if (plan.closed) return undefined;
   return `SPK 2026 price per km of ${/P4/.test(plan.roadCode) ? 'paved track' : /S\d/.test(plan.roadCode) ? 'class I–III road' : 'local road'}${plan.retainingArea ? '; retaining walls per research/18' : ''}${plan.lumpCost ? `; ${(plan.lumpCost / 1e6).toFixed(1)} M CZK for access junctions (provisional estimate, research/13)` : ''}`;
+}
+
+const NUMBERED: Record<string, string> = { primary: 'I', secondary: 'II', tertiary: 'III' };
+/** A mapped road's name as Czech maps and signs write it: its own name, else "road III/1057" (class and
+ * number; a stretch shared by two numbers names both), else the kind of road ("local road"). */
+export function mappedRoadName(tags: { highway?: string; ref?: string; name?: string } | undefined, fallback = 'road'): string {
+  if (tags?.name) return tags.name;
+  const label = ROAD_CLASSES[tags?.highway ?? '']?.label ?? fallback, cls = NUMBERED[tags?.highway ?? ''];
+  const numbers = (tags?.ref ?? '').split(';').map(r => r.trim()).filter(Boolean);
+  if (!numbers.length) return label;
+  return cls ? `road ${numbers.map(n => `${cls}/${n}`).join(' and ')}` : `${label} ${numbers.join(', ')}`;
+}
+/** Does that name already say the road's class (so a card need not repeat it)? */
+export const namedByNumber = (tags: { highway?: string; ref?: string; name?: string } | undefined) => !tags?.name && !!tags?.ref && !!NUMBERED[tags.highway ?? ''];
+
+/** The kernel words everything from the designed road's side ("our road", "our earthworks", "Its bridge
+ * over us"). On a road that is not ours (a rebuilt or new side road) "our road" is the mission road, so
+ * what the kernel says about the line being designed reads "this road" there (`line`: "this railway"). */
+export function thisRoadWords(text: string, line: OurLine = 'road'): string {
+  return text.replace(/\bOur (road|railway|motorway)\b/g, 'This $1').replace(/\bour (road|railway|motorway)\b/g, 'this $1').replace(/\bours\b/g, `this ${line}`)
+    .replace(/\b(over|under|above|below|beside|across|to|from) us\b/g, `$1 this ${line}`)
+    .replace(/\bOur (?=\w)/g, `This ${line}’s `).replace(/\bour (?=\w)/g, `this ${line}’s `);
+}
+
+/** The house card of a house heard by two or more roads, decided once for the project (ProjectReceiver.together):
+ * the roads' noise added together at its loudest floor, each road's share there (as built, with the project's
+ * walls) and what was decided. `name`: a road's name in player words; `money`: the card's price format. */
+export function togetherHouseText(rec: ProjectReceiver, name: (routeId: string) => string, money: (v: number) => string): { state: string; why: string } | null {
+  const t = rec.together; if (!t) return null;
+  const night = rec.nightDb - rec.nightLimit > rec.dayDb - rec.dayLimit, period = night ? 'at night' : 'by day';
+  const level = night ? rec.nightDb : rec.dayDb, limit = night ? rec.nightLimit : rec.dayLimit;
+  const floors = Math.max(1, ...rec.contributions.map(c => c.storeys?.length ?? 1));
+  const floor = floors === 1 ? 'only' : t.storey === floors - 1 ? 'top' : 'loudest';
+  const shares = rec.contributions.flatMap(c => {
+    const e = c.storeys?.[t.storey]; if (!e) return [];
+    const v = night ? e.night : e.day;
+    return [`${name(c.routeId)} ${v > 0 ? (10 * dm.log10(v)).toFixed(1) : '—'} dB`];
+  });
+  const roads = rec.contributions.length === 2 ? 'both roads' : `all ${rec.contributions.length} roads`;
+  const heard = `${level.toFixed(1)} dB ${period} on the ${floor} floor, ${roads} together (limit ${limit}): ${shares.join(', ')}.`;
+  if (t.decision === 'wall' && t.wall) return { state: `Stays · behind a ${t.wall.height} m wall`,
+    why: `${heard} A ${t.wall.height} m wall, ${Math.round(t.wall.length)} m long, along ${name(t.wall.routeId)}: ${money(t.wall.cost)}.` };
+  if (t.decision === 'buy' && t.buyout) return { state: `Bought out · ${money(t.buyout.cost)}`,
+    why: `${heard} No single wall along ${name(t.buyout.routeId)} brings it within the limit; that road buys it.` };
+  if (t.over !== undefined && t.over > 0) return { state: `Stays · ${level.toFixed(1)} dB ${period} (limit ${limit})`, why: heard };
+  return { state: 'Stays · quiet enough', why: heard };
 }
 
 /** What a mission end meets (scenario data), for the card shown when the end is clicked. */

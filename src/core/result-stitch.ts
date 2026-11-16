@@ -152,6 +152,9 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
   out.footprintConflicts = [...base.footprintConflicts.filter(c => outsideI(c.i)), ...list.flatMap(p => p.piece.footprintConflicts.map(c => ({ ...c, i: toI(p, c.i),
     s0: mapS(p, c.s0), s1: mapS(p, c.s1), ...(c.allocations ? { allocations: c.allocations.map(a => ({ ...a, i: toI(p, a.i) })) } : {}) })))];
   out.retainingWalls = [...base.retainingWalls.filter(w => outsideI(w.i)), ...list.flatMap(p => p.piece.retainingWalls.map(w => ({ ...w, i: toI(p, w.i), s0: mapS(p, w.s0), s1: mapS(p, w.s1) })))];
+  // buildings a retaining wall keeps clear: the spine's beside the pieces, each piece's own
+  out.walledOff = [...base.walledOff.filter(w => list.every(p => w.s1 <= base.s[p.i0] + 1e-9 || w.s0 >= base.s[p.i1] - 1e-9)),
+    ...list.flatMap(p => p.piece.walledOff.map(w => ({ ...w, s0: mapS(p, w.s0), s1: mapS(p, w.s1) })))];
   out.walls = [...base.walls.filter(w => list.every(p => w.i1 <= p.i0 || w.i0 >= p.i1)), ...list.flatMap(p => p.piece.walls.map(w => ({ ...w, i0: toI(p, w.i0), i1: toI(p, w.i1), s0: mapS(p, w.s0), s1: mapS(p, w.s1) })))];
   const byI = <T extends { i: number }>(own: readonly T[], f: (p: StitchPiece) => readonly T[]) => [...own.filter(b => outsideI(b.i)), ...list.flatMap(p => f(p).map(b => ({ ...b, i: toI(p, b.i) })))];
   out.demolished = byI(base.demolished, p => p.piece.demolished);
@@ -262,6 +265,7 @@ export function sliceResult(r: Result, i0: number, i1: number): Result {
     footprintConflicts: r.footprintConflicts.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s0: sh(c.s0), s1: sh(c.s1),
       ...(c.allocations ? { allocations: c.allocations.filter(a => inI(a.i)).map(a => ({ ...a, i: at(a.i) })) } : {}) })),
     retainingWalls: r.retainingWalls.filter(w => inI(w.i)).map(w => ({ ...w, i: at(w.i), s0: sh(w.s0), s1: sh(w.s1) })),
+    walledOff: r.walledOff.filter(w => inS(w.s0) || inS(w.s1)).map(w => ({ ...w, s0: Math.max(0, sh(w.s0)), s1: Math.min(r.s[i1] - s0, sh(w.s1)) })),
     walls: r.walls.filter(w => inI(w.i0) && inI(w.i1)).map(w => ({ ...w, i0: at(w.i0), i1: at(w.i1), s0: sh(w.s0), s1: sh(w.s1) })),
     demolished: r.demolished.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),
     boughtOut: r.boughtOut.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),

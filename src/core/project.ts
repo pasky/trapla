@@ -38,12 +38,16 @@ export interface EndpointConstraint {
 }
 export interface EndpointPair { a: EndpointConstraint; b: EndpointConstraint }
 export type CrossingTarget =
-  | { kind: 'legacy-way'; objectData: string; roadId: number }
+  /** `after`: what is left of an old road after the stretch rebuilt as that route (its way number in the
+   * edited network is derived from the route, `roadId` is only the number it had when chosen). */
+  | { kind: 'legacy-way'; objectData: string; roadId: number; after?: RouteId }
   | { kind: 'source'; interval: SourceInterval }
   | { kind: 'route'; routeId: RouteId; s0: number; s1: number };
 export type RouteControls = Omit<Design, 'category' | 'speed' | 'buildingOverrides' | 'objectData' | 'pis'
   | 'profileMode' | 'vpis' | 'gradePins' | 'crossingOverrides'> & {
-    crossings?: { target: CrossingTarget; choice: CrossingChoice; via?: LinkVia; to?: number }[];
+    crossings?: { target: CrossingTarget; choice: CrossingChoice; via?: LinkVia; to?: number;
+      /** `to` is a designed road of the project, or what follows a rebuilt stretch: that route */
+      toRef?: { kind: 'route' | 'after'; routeId: RouteId } }[];
   };
 export type DesignedVertical =
   | { kind: 'auto'; pins: NonNullable<Design['gradePins']>; /** Dormant legacy manual controls, not grade authority. */ manualVpis?: Design['vpis'] }
@@ -69,8 +73,9 @@ export interface RoadOperations {
   aadt: number; heavyShare: number; speed: number;
   /** Legacy speed edits remain coupled unless separate operating assumptions are explicitly chosen. */
   speedPolicy?: 'design' | 'independent';
-  /** The player has not said how much traffic uses this road yet: aadt is 0 and nothing that depends
-   * on traffic (noise, capacity) is checked; the project cannot be priced. */
+  /** Saves from before traffic was pre-filled (census count or class average, core/traffic-census.ts):
+   * aadt 0, "not set". Replaced by the class average when such a save is opened (project-persistence.ts);
+   * nothing creates it any more. */
   trafficUnknown?: true;
 }
 export interface RoadSpec {
@@ -253,6 +258,14 @@ export interface ProjectReceiver {
   buildingIndex: number; height: number; contributions: AcousticContribution[];
   dayDb: number; nightDb: number; dayLimit: number; nightLimit: number;
   action: 'retain' | 'demolish' | 'buy';
+  /** A house heard by two or more roads, decided once for the project (project-noise.ts): the road whose noise
+   * prevails there, what was decided, and the deciding storey (index into each contribution's `storeys`, which
+   * are then as built with the project's walls). dayDb / nightDb are the roads' noise added together there. */
+  together?: { prevailing: RouteId; decision: 'none' | 'wall' | 'buy'; storey: number;
+    wall?: { routeId: RouteId; height: number; length: number; cost: number };
+    buyout?: { routeId: RouteId; cost: number };
+    /** a house the player keeps that stays over the limit: by how much, dB */
+    over?: number };
 }
 export interface AcousticScreen {
   bounds: Bounds[];
@@ -293,14 +306,21 @@ export interface ProjectCost {
   /** Road changes not covered by a project price yet. Non-empty ⇒ total === null, no verdict, no best. */
   unpriced: { routeId: RouteId; reason: string }[];
 }
+/** What happens to a building. While the project is not priced (`complete` false) the list still holds
+ * every road's own physical consequences (houses under its works, its own buy-outs): only decisions
+ * between roads (combined noise) are withheld, never what a road does on its own. */
 export interface ProjectBuildingOutcome {
   buildingIndex: number; action: 'retain' | 'demolish' | 'buy';
+  /** the road whose works remove it, or whose noise decides it */
+  routeId?: RouteId;
   /** One physical acquisition owner after the global mitigation/acquisition loop. */
   workId?: WorkId; cost: number;
 }
 export interface ProjectResult extends ProjectIdentity {
   routes: Record<RouteId, RouteResult>;
   works: SharedWorkLedger; cost: ProjectCost; issues: ProjectIssue[];
+  /** Old stretches the project rebuilds: gone from the map, its checks and picking as soon as their new
+   * line is engineered without them, whether or not the project can be priced. */
   acceptedReplacements: SourceInterval[];
   acceptedRenderReplacements: TransportRenderInterval[];
   buildings: ProjectBuildingOutcome[];

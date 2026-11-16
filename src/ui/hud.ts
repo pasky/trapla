@@ -7,7 +7,7 @@ import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
-import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
+import { aloneText, listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
 import { trainsPerDay } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
@@ -108,8 +108,8 @@ export class Hud {
   private last: { r: Result; d: Design } | null = null;
   private projectIssuesFor: ProjectResult | null | undefined;
   private issuesActive: RouteId | undefined;
-  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>;
-    ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId;
+  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId; ours: ReadonlySet<RouteId>; groups?: Record<RouteId, string>;
+    ownPrice: { total: number; approx: boolean; label: string; routeId?: RouteId } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId;
     liveTotal: number | null; dragging: boolean } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
@@ -121,14 +121,16 @@ export class Hud {
   setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>; legacy?: boolean;
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
-    ownPrice?: { total: number; approx: boolean; label: string } | null;
+    ownPrice?: { total: number; approx: boolean; label: string; routeId?: RouteId } | null;
     /** the project total while a road is dragged (≈: the last full total with that road's live price) */
     liveTotal?: number | null;
     /** a drag is under way (its checks wait for a pause); otherwise a pending result is just being checked */
     dragging?: boolean;
     /** road names, to say which road an issue belongs to when it is not the active one */
     names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number> } = {}) {
-    const { missionRouteId, ours, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
+    const { missionRouteId, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
+    // every road that is "our road" (a motorway's two directions); default: the mission road
+    const ours = opts.ours ?? new Set(missionRouteId ? [missionRouteId] : []);
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       this.$('best').style.display = '';
@@ -152,7 +154,10 @@ export class Hud {
       : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : pending ? '…' : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
-    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, ours ?? missionRouteId, names, groups) : this.goalText;
+    // no total: say which change holds it back, and keep what IS priced in view (each road alone, never added up)
+    const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups) : '';
+    this.$('perkm').textContent = !priced && unpriced ? `${unpricedText(result!.cost.unpriced, ours, names, groups)}${others ? `. ${others}` : ''}` : this.goalText;
+    this.$('perkm').title = others ? 'Each road priced as if it were the only change. Not added up: roads that affect each other can cost more or less together.' : '';
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {
@@ -373,6 +378,9 @@ export class Hud {
     if (cat.mode === 'railway') {
       norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${Math.round(grade * 10000) / 10} ‰</b>`;
       norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; vertical rounding radius ≥ ${num(n.minCrestRadius)} m.`;
+    } else if (cat.minor) {
+      norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
+      norms.title = `${n.norm} at ${d.speed} km/h: smallest curve radius ${num(n.minRadius)} m${cat.minor === 'local' ? ` (with 6 % banking; from ${num(n.noSuperelevationRadius)} m no banking is needed)` : ''}; no easement curves are needed; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags)${n.verticalNorm ? ` (${n.verticalNorm})` : ''}.`;
     } else {
       norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
       // motorways: radii from the 2018 edition (research/33 §7); its slope and vertical radii are not public, the older edition's stand in

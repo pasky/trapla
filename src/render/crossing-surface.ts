@@ -55,7 +55,8 @@ export function crossingSurfaces(crossings: CrossingResult[], height: (x: number
     if (!g || crossing.shared) continue; // drawn once, by the direction that builds it
     const base = crossing.type === 'junction' ? formation : height;
     const paths: [CrossingPoint[], boolean, { cls: string; width: number } | undefined][] = [
-      ...(g.road ? [[g.road, false, undefined] as [CrossingPoint[], boolean, undefined]] : []),
+      // a designed road of the project draws its own body (on its deck over us, under our bridge)
+      ...(g.road && !crossing.designed ? [[g.road, false, undefined] as [CrossingPoint[], boolean, undefined]] : []),
       ...(g.links ?? []).map(p => [p, true, undefined] as [CrossingPoint[], boolean, undefined]),
       ...(g.ties ?? []).map(t => [t.path, false, { cls: t.cls, width: ROAD_CLASSES[t.cls]?.width ?? g.width }] as [CrossingPoint[], boolean, { cls: string; width: number }])];
     for (const [source, link, tie] of paths) {

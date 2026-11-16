@@ -4,7 +4,8 @@ import { auditCrossingGeometry, buildCrossingGeometry, crossingCache, crossingPl
   type CrossingOverride, type CrossingResult, type CrossingRoute } from '../src/core/crossings';
 import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet';
 import { bridgeModel } from '../src/core/bridge';
-import { ROAD_CLASSES } from '../src/core/data/urban';
+import { ENDPOINT_JUNCTIONS, JUNCTION, MINOR_CROSSROADS, ROAD_CLASSES } from '../src/core/data/urban';
+import { sideJunctionCost } from '../src/core/project-replacement';
 import { LOWERING_RULES, underpassAssembly } from '../src/core/data/remedies';
 import { chooseStructures, KIND } from '../src/core/structures';
 import { CrossingRenderer } from '../src/render/crossings';
@@ -70,6 +71,27 @@ describe('explicit crossing choices (automatic policy already covered in town.te
       expect(resolve([c], [{ roadId: 1, type: 'junction' }], [kind]).map(v => v.crossing.code)).toContain(code);
       expect(c.type).toBe('junction'); expect(c.cost).toBeGreaterThan(0);
     }
+  });
+
+  // A rebuilt street (M 7.5) or track (P 4.0) meets the minor roads it crosses in a crossroads, priced as such
+  // (research/43); before, Auto cut each one and rerouted it to the next crossing (D11 Za Vápenkou: 30 M CZK).
+  it('a local road or track meets the minor roads it crosses in a crossroads, without junction spacing', () => {
+    const ours = (minor: 'local' | 'track', cs: CrossingResult[]) => resolveCrossings(cs, 9000, [KIND.earth], [30, 30, 30], [0], [0], [], false, undefined, 0, minor);
+    const street = [cross(1, 3000, 'residential'), cross(2, 3010, 'track'), cross(3, 3020, 'living_street'), cross(4, 3030, 'primary'), cross(5, 3040, 'trunk')];
+    expect(ours('local', street)).toEqual([]);
+    expect(street.map(c => [c.type, c.cost])).toEqual([['junction', MINOR_CROSSROADS.local], ['junction', MINOR_CROSSROADS.mixed],
+      ['junction', MINOR_CROSSROADS.local], ['junction', JUNCTION], [expect.not.stringMatching(/junction/), expect.any(Number)]]);
+    const track = [cross(1, 3000, 'service'), cross(2, 3100, 'unclassified')];
+    ours('track', track);
+    expect(track.map(c => [c.type, c.cost])).toEqual([['junction', MINOR_CROSSROADS.track], ['junction', MINOR_CROSSROADS.mixed]]);
+    // deep below the crossed road there is no crossroads; a road of a higher class keeps its reroutes
+    const deep = [cross(1, 3000, 'residential', -8)];
+    ours('local', deep); expect(deep[0].type).not.toBe('junction');
+    const main = [cross(1, 3000, 'residential')];
+    resolve(main); expect(main[0].type).not.toBe('junction');
+    // a side street's junction on a rebuilt street is such a crossroads too (a class road's stays a T)
+    expect([sideJunctionCost('residential', 'local'), sideJunctionCost('track', 'local'), sideJunctionCost('residential')])
+      .toEqual([MINOR_CROSSROADS.local, MINOR_CROSSROADS.mixed, ENDPOINT_JUNCTIONS['tie-in-minor'].cost]);
   });
 
   it('validates all requested bridge hits and motorway clearance, while the main-road bill owns their cost', () => {

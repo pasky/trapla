@@ -53,6 +53,7 @@ try {
   };
   const revision = () => page.evaluate(() => window.trapla.projectSnapshot().revision);
   const routes = () => page.evaluate(() => window.trapla.getProject().routes.map(r => r.id));
+  const initial = await page.evaluate(() => window.trapla.getProject());
 
   // 0. one road: no road list, a Build button
   assert.equal(await page.locator('#active-route').isVisible(), false, 'no road list with a single road');
@@ -61,7 +62,7 @@ try {
   // a long rebuildable road well clear of our road
   const roads = await page.evaluate(() => window.trapla.baseRoads(700));
   // far from our road first (its noise reaches ~3.6 km on D11, so a nearer change waits for combined noise)
-  const far = roads.filter(r => r.rebuildable && r.clear > 800 && r.length < 3000).sort((a, b) => (b.clear > 4000) - (a.clear > 4000) || b.length - a.length);
+  const far = roads.filter(r => r.rebuildable && ['I', 'II', 'III'].includes(r.legalClass) && r.clear > 800 && r.length < 3000).sort((a, b) => (b.clear > 4000) - (a.clear > 4000) || b.length - a.length);
   let road = null;
   for (const r of far) {
     await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 900), [r.id, r.length / 2]);
@@ -71,6 +72,42 @@ try {
   const mid = road.length / 2;
   console.log(`mapped road ${road.name} ${Math.round(road.length)} m, ${Math.round(road.clear)} m from our road`);
   await idle();
+
+  // 0b. cold start: a fresh page, before the road links are loaded. Hovering the road shows the grab cursor;
+  // a click opens its card; a drag at once never pans the map and rebuilds the road once the links are in
+  {
+    const p0 = await page.evaluate(([id, s]) => window.trapla.sourcePoint(id, s), [road.id, mid]);
+    const fresh = async () => {
+      const c = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+      await c.addInitScript(() => localStorage.setItem('trapla.intro.v2', '1'));
+      const p = await c.newPage(); watch(p);
+      await p.goto(url); await p.waitForFunction(() => !!window.trapla, null, { timeout: 180000 }); await idle(p);
+      await p.evaluate(([x, y]) => window.trapla.lookAt(x, y, 900, 0, 55), [p0.x, p0.y]); await idle(p);
+      assert.equal(await p.evaluate(() => window.trapla.transportLoaded()), false, 'a fresh page has not loaded the road links');
+      const q = await p.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [p0.x, p0.y]); assert(q?.vis);
+      return { c, p, at: { x: box.x + q.sx, y: box.y + q.sy } };
+    };
+    let { c, p, at } = await fresh();
+    await p.mouse.move(at.x - 4, at.y); await p.mouse.move(at.x, at.y); await p.waitForTimeout(100);
+    assert.equal(await p.evaluate(() => document.querySelector('#view canvas').style.cursor), 'grab', 'a mapped road shows the grab cursor at once');
+    await p.mouse.click(at.x, at.y);
+    await p.locator('#inspector.k-source').waitFor({ timeout: 20000 });
+    assert.match(await p.locator('#inspector').textContent(), /Drag it to change its line/, 'the first click opens its card');
+    await c.close();
+    ({ c, p, at } = await fresh());
+    const pose = await p.evaluate(() => window.trapla.cameraTarget());
+    await p.mouse.move(at.x, at.y); await p.mouse.down();
+    const cold = !(await p.evaluate(() => window.trapla.transportLoaded()));
+    await p.mouse.move(at.x + 30, at.y - 30, { steps: 12 });
+    await p.waitForFunction(() => window.trapla.transportLoaded(), null, { timeout: 20000 });
+    await p.mouse.move(at.x + 32, at.y - 30); await p.mouse.up(); await idle(p);
+    const after = await p.evaluate(() => window.trapla.cameraTarget());
+    assert(Math.hypot(after.x - pose.x, after.y - pose.y) < 0.5, `the first drag does not pan the map (${JSON.stringify([pose, after])})`);
+    const rebuiltCold = (await p.evaluate(() => window.trapla.getProject())).routes.find(r => r.source);
+    assert(rebuiltCold?.source.intervals[0].sourceId === road.id, 'the first drag rebuilds the road');
+    console.log(`cold start: grab cursor, card on the first click, the first drag rebuilt ${road.name}${cold ? ' (pressed before the links were in)' : ''}`);
+    await c.close();
+  }
 
   // 1. click: its card and highlighted stretch, no edit; Escape closes it
   const before = await revision();
@@ -99,10 +136,16 @@ try {
   assert(project.connections.filter(c => c.ports.some(p => p.kind === 'route' && p.routeId === rebuilt)).length >= 2, 'its ends stay joined to the old road');
   const result = await page.evaluate(() => window.trapla.projectResult());
   assert(result.routes[rebuilt].legacy, 'the rebuilt road is engineered');
-  assert.equal(result.cost.total, null, 'not priced yet'); assert.equal(result.valid, false);
-  assert(result.issues.some(i => i.code === 'traffic-unknown'), 'its traffic is asked for');
+  // its traffic is filled in (its census count, or the average of its class) and says where it comes from
+  const ops0 = route.specification.operations;
+  assert(ops0.aadt > 0 && ops0.trafficUnknown === undefined, 'its traffic is filled in');
+  const basis = await page.locator('.route-traffic .traffic-basis').textContent();
+  assert.match(basis, /Counted in the \d{4} traffic census|the average class I+ road is assumed/);
+  assert(!result.issues.some(i => /traffic/.test(i.code)) && !/Traffic not set/.test(await page.locator('#inspector').textContent()), 'traffic is never asked for');
+  assert.deepEqual(result.cost.unpriced.map(u => u.reason).filter(r => !/^shared-|too-many/.test(r)), [], 'priced from the first drag unless roads interact');
+  console.log(`${route.name}: ${ops0.aadt} vehicles/day, ${Math.round(ops0.heavyShare * 1000) / 10} % heavy. ${basis}`);
   assert.equal(await page.evaluate(() => window.trapla.profileHasRoad()), true, 'it has a profile');
-  assert.equal(await page.locator('#cost-scope').textContent(), 'This road only');
+  assert.equal(await page.locator('#cost-scope').textContent(), result.cost.total === null ? 'This road only' : 'Total cost', 'a priced project shows its total, an unpriced one this road\'s own price');
   assert.equal(await page.locator('#active-route').isVisible(), true, 'two roads: the road list appears');
   await page.evaluate(() => window.trapla.select(null));
   await page.screenshot({ path: shot(first + 1, 'mapped-road-rebuilt') });
@@ -136,15 +179,15 @@ try {
     assert((await page.evaluate(() => window.trapla.projectResult())).routes[rebuilt].legacy, 'still engineered');
   }
 
-  // 4. its traffic, typed into its card
+  // 4. its traffic stays editable in its card
   await page.fill('.route-traffic input[name=traffic]', '2500');
   await page.fill('.route-traffic input[name=heavy]', '10');
   await page.locator('.route-traffic input[name=heavy]').press('Enter'); await idle();
   const ops = (await page.evaluate(() => window.trapla.getProject())).routes[1].specification.operations;
-  assert.equal(ops.aadt, 2500); assert.equal(ops.heavyShare, 0.1); assert.equal(ops.trafficUnknown, undefined);
-  assert(!(await page.evaluate(() => window.trapla.projectResult())).issues.some(i => i.code === 'traffic-unknown'));
+  assert.equal(ops.aadt, 2500); assert.equal(ops.heavyShare, 0.1);
+  assert.equal(await page.locator('.route-traffic .traffic-basis').count(), 0, 'the player\'s own number carries no label');
 
-  // 4b. now the replacement is priced: nothing but road interactions may keep it unpriced
+  // 4b. the replacement stays priced: nothing but road interactions may keep it unpriced
   const priced = await page.evaluate(() => window.trapla.projectResult());
   const left = priced.cost.unpriced.map(u => u.reason).filter(r => !/^shared-|too-many/.test(r));
   assert.deepEqual(left, [], 'a rebuilt stretch with its traffic is priced (removal, side roads) unless roads interact');
@@ -164,7 +207,7 @@ try {
 
   // 6. Build → Road: start on the mapped road beyond the rebuilt stretch, end on open ground
   await page.locator('#build-route').click();
-  assert.deepEqual(await page.locator('.route-build-choices button').allTextContents(), ['Road'], 'only Road can be built yet');
+  assert.ok((await page.locator('.route-build-choices button').allTextContents()).includes('Road'), 'a road can be built');
   await page.locator('.route-build-choices button', { hasText: 'Road' }).click();
   assert.equal(await page.evaluate(() => window.trapla.building()), true);
   const now = (await page.evaluate(() => window.trapla.getProject())).routes[1].source.intervals[0];
@@ -188,6 +231,22 @@ try {
   assert.equal(await page.evaluate(() => window.trapla.activeRoute()), fresh.id);
   const r3 = await page.evaluate(() => window.trapla.projectResult());
   assert(r3.issues.some(i => i.code === 'road-ends-nowhere'), 'a free end is reported');
+  assert.equal(r3.cost.total, null, 'a road that ends nowhere is not priced');
+  // not priced withholds the total only: houses under our road are gone from the map and say so
+  {
+    const result = r3, own = result.routes[mission].legacy.demolished.map(b => b.j);
+    assert.deepEqual(own.filter(j => !result.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the unpriced project still lists our demolitions');
+    assert.deepEqual(await page.evaluate(list => list.filter(j => window.trapla.buildingShown(j)), own), [], 'no house stands on our road while the project is not priced');
+    if (own.length) {
+      await page.evaluate(j => window.trapla.selectBuilding(j), own[0]); await idle();
+      const card = await page.locator('#inspector').textContent();
+      assert(/Demolished/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our road says it is demolished (${card})`);
+      await page.evaluate(() => window.trapla.select(null));
+      await page.evaluate(id => window.trapla.setActiveRoute(id), fresh.id); await idle();
+      assert.equal(await page.evaluate(() => window.trapla.activeRoute()), fresh.id);
+    }
+    console.log(`unpriced project: ${own.length} houses under our road stay demolished`);
+  }
   // bend it like our road
   const s3 = await page.evaluate(id => window.trapla.projectResult().routes[id].legacy.length / 2, fresh.id);
   point = await screen('routeScreen', fresh.id, s3);
@@ -237,6 +296,23 @@ try {
     await page.screenshot({ path: shot(first + 5, 'side-road-joins-ours') });
   } else console.log('no mapped road on screen near our road: join-ours step skipped');
 
+  // 6c. a side road's crossing card speaks of "this road" ("our road" is the mission road)
+  {
+    const pr = await page.evaluate(() => window.trapla.projectResult()), p = await page.evaluate(() => window.trapla.getProject());
+    const side = p.routes.filter(r => r.role !== 'mission').flatMap(r => (pr.routes[r.id]?.legacy?.crossings ?? []).filter(c => !c.crossedRoute).map(c => ({ route: r.id, c })));
+    // the road an end is placed on is that end's junction, never a crossing a few metres on
+    assert.deepEqual(side.filter(({ c }) => c.s < 5).map(({ c }) => c.cls), [], 'no crossing at a side road\'s start');
+    if (side.length) {
+      const { route, c } = side[0];
+      await page.evaluate(id => window.trapla.setActiveRoute(id), route); await idle();
+      await page.evaluate(id => window.trapla.selectCrossing(id), c.roadId); await idle();
+      const card = await page.locator('#inspector').textContent();
+      console.log(`a side road's crossing card: ${card.slice(card.indexOf('km ')).replace(/\s+/g, ' ')}`);
+      assert(!/\b[Oo]ur road/.test(card), `a side road's crossing with a mapped road never calls the side road "our road" (${card})`);
+      await page.evaluate(() => window.trapla.select(null));
+    } else console.log('no side road crosses a mapped road: crossing-card wording not checked');
+  }
+
   // 7. the photo keeps the mapped roads drawn (what is clickable)
   await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 1400), [road.id, mid]);
   await page.evaluate(() => window.trapla.setView({ photo: true }));
@@ -244,6 +320,141 @@ try {
   if (await page.evaluate(() => window.trapla.photoWithNetwork())) await page.screenshot({ path: shot(first + 3, 'photo-mapped-roads') });
   else console.log('photo tiles did not arrive (external service): overlay not checked');
   await page.evaluate(() => window.trapla.setView({ photo: false }));
+
+  // 7b. D11 villages: a street (Nový Rokytník) and a track (Lampertice) are rebuilt by a drag that starts on
+  // them, unselected, under their own norms (ČSN 73 6110 local road, ČSN 73 6109 track); a drag on a mapped
+  // motorway never pans the map: its card says it cannot be changed
+  if (scenario === 'd11') {
+    const dragOn = async (id, s, dx, dy) => {
+      await page.keyboard.press('Escape'); await page.evaluate(() => window.trapla.select(null));
+      await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 500), [id, s]); await idle();
+      const p = await screen('sourceScreen', id, s);
+      await page.mouse.move(p.x, p.y); await page.mouse.down();
+      await page.mouse.move(p.x + dx, p.y + dy, { steps: 12 }); await page.mouse.up(); await idle();
+      return p;
+    };
+    for (const [id, s, cs, cls, words] of [['osm:way:275065891', 1150, 'M7.5', 'local', /M 7\.5 \(local road\)/], ['osm:way:88594820', 620, 'P4', 'track', /P 4\.0 \(one-lane track\)/]]) {
+      const n0 = (await routes()).length;
+      await dragOn(id, s, 25, -25);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(p.routes.length, n0 + 1, `a drag on the ${cls} road ${id} rebuilt it`);
+      assert.equal(r.source.intervals[0].sourceId, id);
+      assert.deepEqual([r.specification.crossSection, r.specification.legalClass], [cs, cls]);
+      const pr = await page.evaluate(() => window.trapla.projectResult()), own = pr.routes[r.id].legacy;
+      assert(own, 'it is engineered');
+      const rules = own.violations.filter(v => v.basis === 'norm').map(v => v.rule);
+      assert(rules.every(t => !/6101/.test(t)), `its norm is its own, never ČSN 73 6101 (${rules.join(' | ')})`);
+      // the street crosses our road's cutting on our bridge: it rides that deck, which is not its own bridge
+      if (cls === 'local') {
+        assert(pr.works.items.some(w => w.owner.id === r.id && /built with that bridge/.test(w.label)), 'the street rides our bridge over our road');
+        assert(!own.violations.some(v => /Your bridge|on its bridge over/.test(v.title)), `on our bridge it is neither its own bridge nor off the deck (${own.violations.map(v => v.title).join('; ')})`);
+      }
+      assert.match(await page.locator('#norms').getAttribute('title'), cs === 'P4' ? /ČSN 73 6109/ : /ČSN 73 6110/);
+      assert.match(await page.locator('#cat option:checked').textContent(), words);
+      // the census counts class I–III roads only: its traffic is a guess, and says so
+      assert.match(await page.locator('.route-traffic .traffic-basis').textContent(), /^Not counted: a guess/);
+      console.log(`${cls} ${r.name} rebuilt as ${cs} at ${r.specification.designSpeed} km/h: ${Math.round(own.length)} m, ${(own.cost.total / 1e6).toFixed(1)} M CZK alone, ${own.violations.length} problems${own.violations.length ? ` (${own.violations.map(v => v.title).join('; ')})` : ''}`);
+      await page.evaluate(() => window.trapla.select(null));
+      await page.screenshot({ path: `${out}/rebuilt-${cls}.png` });
+    }
+    // A street bent 30 m off its old line across another street (D11 Hořice, osm:way:227688877): a crossroads at
+    // that street's level, never a cut and a reroute (it used to be cut and rerouted for millions).
+    {
+      const id = 'osm:way:227688877', s = 122; // Topolová, 244 m
+      await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 500), [id, s]); await idle();
+      const [g, g2] = await page.evaluate(([id, s]) => [window.trapla.sourcePoint(id, s), window.trapla.sourcePoint(id, s + 5)], [id, s]);
+      const l = Math.hypot(g2.x - g.x, g2.y - g.y), to = await page.evaluate(([x, y, z]) => window.trapla.project(x, y, z),
+        [g.x - (g2.y - g.y) / l * 30, g.y + (g2.x - g.x) / l * 30, g.z]);
+      const from = await screen('sourceScreen', id, s), n0 = (await routes()).length;
+      await dragOn(id, s, box.x + to.sx - from.x, box.y + to.sy - from.y);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(p.routes.length, n0 + 1, 'the street is rebuilt');
+      const own = (await page.evaluate(() => window.trapla.projectResult())).routes[r.id].legacy;
+      const minor = own.crossings.filter(c => ['residential', 'unclassified', 'living_street', 'service', 'track'].includes(c.cls));
+      assert(minor.length, 'its new line crosses another street');
+      assert(minor.every(c => c.type === 'junction' && c.cost <= 1e6), `it meets them in crossroads (${minor.map(c => `${c.cls} ${c.type} ${(c.cost / 1e6).toFixed(2)} M`).join('; ')})`);
+      await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 350), [minor[0].x, minor[0].y]); await idle();
+      console.log(`a street bent 30 m across another street: ${minor.map(c => `${c.cls} ${c.type} ${(c.cost / 1e6).toFixed(2)} M CZK, ${c.h.toFixed(1)} m from its level`).join('; ')}`);
+      await page.evaluate(() => window.trapla.select(null));
+      await page.screenshot({ path: `${out}/rebuilt-crossroads.png` });
+    }
+    // A house heard by our road and a rebuilt street (Nový Rokytník, over our cutting), decided once for the
+    // project: its card gives both roads' noise added together, each road's share and what was decided.
+    {
+      await page.evaluate(d => window.trapla.setProject(d), initial); await idle();
+      await dragOn('osm:way:275065891', 1150, 25, -25);
+      const pr = await page.evaluate(() => window.trapla.projectResult());
+      assert(pr.complete, 'our road and the rebuilt street are priced together');
+      const both = pr.receivers.find(q => q.together && q.contributions.length > 1);
+      assert(both, 'a house hears both roads');
+      await page.evaluate(j => window.trapla.selectBuilding(j), both.buildingIndex); await idle();
+      const card = await page.locator('#inspector').textContent();
+      assert.match(card, /both roads together \(limit \d+\): (our road|Street) [\d.]+ dB, (our road|Street) [\d.]+ dB\./, 'the house card gives both roads’ noise added together');
+      const k = card.indexOf('roads together');
+      console.log(`house ${both.buildingIndex} heard by both roads (${both.together.decision}): "…${card.slice(Math.max(0, k - 50), k + 110)}…"`);
+      await page.screenshot({ path: `${out}/house-together.png` });
+    }
+    // The km 4.1 track our road runs over (and reroutes to the bridge at km 4.01): a drag on it north of us
+    // rebuilds it from where our earthworks end; our reroute of what is left stays ours: one total
+    {
+      await page.evaluate(d => window.trapla.setProject(d), initial); await idle();
+      const id = 'osm:way:1315656940', s = 405;
+      await dragOn(id, s, 25, -25);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(r.source?.intervals[0].sourceId, id, 'the track is rebuilt');
+      assert(r.source.intervals[0].s0 > 270, `it starts where our earthworks end (${Math.round(r.source.intervals[0].s0)} m)`);
+      const pr = await page.evaluate(() => window.trapla.projectResult());
+      if (process.env.DUMP_TRACK) console.log(JSON.stringify({ route: r, issues: pr.issues }));
+      assert.deepEqual(pr.issues.filter(i => i.check === 'not-checked').map(i => i.violation.title), [], 'nothing keeps the project from its total');
+      assert(pr.cost.total !== null, 'priced together');
+      console.log(`the km 4.1 track rebuilt from ${Math.round(r.source.intervals[0].s0)} m (beyond our earthworks): total ${(pr.cost.total / 1e9).toFixed(3)} bn CZK`);
+    }
+    // One pull of road I/37 through the houses beside our road (QA re-test 2: 5× "Two roads take the same
+    // house", no total): a house our road takes is gone, the other road's noise there is moot; a house both
+    // roads take is taken once
+    {
+      await page.evaluate(d => window.trapla.setProject(d), initial); await idle();
+      await dragOn('osm:way:234919601', 280, -45, 0);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(r.source?.intervals[0].sourceId, 'osm:way:234919601', 'road I/37 is rebuilt');
+      const pr = await page.evaluate(() => window.trapla.projectResult());
+      const shared = pr.issues.filter(i => i.code === 'shared-building' || i.code === 'shared-noise');
+      assert.deepEqual(shared.map(i => i.violation.title), [], 'no house is left undecided between the two roads');
+      console.log(`road I/37 pulled 45 px: ${pr.cost.total === null ? `not priced (${[...new Set(pr.cost.unpriced.map(u => u.reason))]})` : `total ${(pr.cost.total / 1e9).toFixed(3)} bn CZK`}`);
+    }
+    const visible = async (kinds) => {
+      for (const id of await page.evaluate(kinds => kinds.flatMap(h => window.trapla.sourceIds(h, 400)), kinds)) {
+        await page.evaluate(id => window.trapla.lookAtSource(id, 200, 500), id); await idle();
+        if ((await page.evaluate(id => window.trapla.sourceScreen(id, 200), id))?.vis) return id;
+      }
+      return null;
+    };
+    const motorway = await visible(['motorway', 'trunk']);
+    if (motorway) {
+      const n0 = (await routes()).length;
+      const at = await dragOn(motorway, 200, 60, -40);
+      assert.equal((await routes()).length, n0, 'a mapped motorway is not rebuilt');
+      const still = await screen('sourceScreen', motorway, 200);
+      assert(Math.hypot(still.x - at.x, still.y - at.y) < 2, 'a drag on it does not pan the map');
+      const card = await page.locator('#inspector').textContent();
+      assert.match(card, /Motorways and expressways cannot be changed yet/);
+      console.log(`a drag on a mapped motorway: no pan, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
+    } else console.log('no mapped motorway on the map: refusal not checked');
+    // a mapped railway is grabbed like any road (main: rebuilt along its own line, as a railway)
+    await page.keyboard.press('Escape');
+    const railway = await visible(['railway']);
+    if (railway) {
+      const n0 = (await routes()).length;
+      await dragOn(railway, 200, 60, -40);
+      const now = await page.evaluate(() => window.trapla.getProject().routes);
+      if (now.length === n0) console.log(`a drag on mapped railway ${railway}: not rebuilt (its card: "${(await page.locator('#inspector').textContent()).slice(0, 80)}")`);
+      else {
+        assert.equal(now.at(-1).kind, 'railway', 'a mapped railway is rebuilt as a railway');
+        console.log(`a drag on mapped railway ${railway}: rebuilt as a railway`);
+      }
+    } else console.log('no mapped railway on the map: not checked');
+    await page.keyboard.press('Escape');
+  }
 
   // 8. a map without road links says so instead of doing nothing
   if (process.env.NO_LINKS_SCENARIO) {

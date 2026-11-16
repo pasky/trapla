@@ -90,7 +90,12 @@ export class SourcePicker {
       const { distance, length2 } = found;
       let half = 0;
       if (this.halfWidth) {
-        const pxPerMetre = Math.sqrt(length2) / seg.length;
+        // the drawn width lies across the road: its scale on the screen there (a road seen end-on is not
+        // narrower, one across the view is foreshortened), else along it
+        const t = found.along, mx = seg.ax + t * (seg.bx - seg.ax), my = seg.ay + t * (seg.by - seg.ay);
+        const ux = (seg.bx - seg.ax) / seg.length, uy = (seg.by - seg.ay) / seg.length;
+        const m = project(mx, my), side = project(mx - uy, my + ux);
+        const pxPerMetre = m.vis && side.vis ? Math.hypot(side.sx - m.sx, side.sy - m.sy) : Math.sqrt(length2) / seg.length;
         const metres = pxPerMetre > 0 ? this.halfWidth(seg.feature.layer, 1 / pxPerMetre) : null;
         if (metres === null) continue; // not drawn at this scale: not clickable
         half = metres * pxPerMetre;
