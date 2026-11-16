@@ -4,6 +4,31 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Re-test — crossing-links camera-polish @ 6358d41 (2026-11-16, one 9 min chunk)
+
+Detached snapshot (rebased on main 93f849d). Screenshots `/tmp/trapla-qa/cam/`.
+
+| item | verdict | evidence |
+|---|---|---|
+| S1 #15 wheel at low pitch | **PASS** | tilt stops short of the horizon (`002`); wheel halves the distance each step down to 80 m (681 → 339 → 162 → 84 → 80), also at Voletiny where it used to stall at ~150 m (`001`). |
+| S1 #15 pan at low pitch | **PASS** | a 300 px drag at 80 m moves the view ~25 m, the road stays in view (`004`). |
+| S1 #15 profile flight from a low view | **PASS** | flies and looks down at km 6.3 (`005`). |
+| S1 #15 rotate keeps the subject | **PASS** | right-drag 300 px: the selected piece stays near the centre (`006`). |
+| S1 #15 way back to the whole route | **PASS** | "Whole route W" button frames A–B (`007`). |
+| S1 #17 our road vs official line | **PASS** | after a drag our road is drawn in its own colours with a short solid bend guide; the dashed line is only the official D11, as in the legend (`008`). |
+| S1 #19 labels | **PASS** (P2) | no horizon pile-up at low pitch (`002`); one label per wall. An "official D11" tag can sit under the top button bar (`004`). |
+| S2 #8 Nová Paka zoom floor | **PASS** | 80 m, houses readable (`013`). |
+
+Still open / new (not necessarily this branch):
+- **P1 — a profile click from the overview selects but does not zoom.** D11 start view (22.5 km) or Whole route: clicking
+  the profile at km 6.3 / 14 / 3 / 11 selects the piece, the camera stays put (it flies only when the place is off-screen
+  or the view is low, `main.ts` `off`). The player sees a tiny highlight; S2 #7 remains. Dragging the road from there
+  moves it kilometres (my 70 px drag made bend 1 turn 41° and +4 bn).
+- **P1 — a tower stands on a demolished plot.** Nová Paka km 1.97: "Industrial / commercial · Demolished · In our cut"
+  is a hatched plot, but a tall round chimney/silo with a red top still stands in its middle; it is not clickable (the
+  click opens the plot's card) (`013`, `014`, `015`). Area: demolished drawing (noise-walls-seams, merged).
+- P2 — the cut slope beside the Nová Paka cut at km ~2.0 has a sawtooth edge at close zoom (`013`).
+
 ## Re-test — crossing-links valid-reroutes @ f09ab24 (2026-11-16, two short chunks)
 
 Detached snapshot (does not contain main 93f849d yet). Screenshots `/tmp/trapla-qa/vr/` (numbering restarts in chunk 2).
