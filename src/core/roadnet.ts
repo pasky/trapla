@@ -46,10 +46,11 @@ export class RoadNet {
   // Segment endpoints are immutable; lazily retain their cycle-detection keys across traversals.
   private readonly endpointKeys: string[] = [];
   private readonly ways: readonly number[][];
+  private readonly clsNames: readonly string[];
   readonly segments: number;
 
   constructor(data: RoadNetData) {
-    this.ways = data.ways;
+    this.ways = data.ways; this.clsNames = data.cls;
     let m = 0;
     for (const w of data.ways) m += Math.max(0, (w.length - 1) / 2 - 1);
     this.x0 = new Float64Array(m); this.y0 = new Float64Array(m); this.x1 = new Float64Array(m); this.y1 = new Float64Array(m);
@@ -95,6 +96,22 @@ export class RoadNet {
   }
 
   wayClass(way: number): string { return this.wayCls[way]; }
+  /** The same network without the given stretches (way chainages d0 < d1): a rebuilt stretch of an
+   * existing road is not a road its own replacement crosses. Existing way indices keep their meaning
+   * (the part before d0 keeps the index); the part after d1 is appended as a new way. */
+  without(cuts: readonly { way: number; d0: number; d1: number }[]): RoadNet {
+    const ways = this.ways.slice();
+    for (const cut of cuts) {
+      const w = ways[cut.way];
+      if (!w || !(cut.d1 > cut.d0)) continue;
+      const total = this.wayPath(cut.way, 0, Infinity).at(-1)?.d ?? 0;
+      const piece = (start: number, end: number) => [w[0], ...this.wayPath(cut.way, start, end).flatMap(p => [p.x, p.y])];
+      const before = cut.d0 > 0.01 ? piece(0, cut.d0) : null, after = cut.d1 < total - 0.01 ? piece(cut.d1, total) : null;
+      ways[cut.way] = before && before.length >= 5 ? before : [w[0]];
+      if (after && after.length >= 5) ways.push(after);
+    }
+    return new RoadNet({ cls: this.clsNames as string[], ways });
+  }
   /** Absolute distance along a way at its nearest point, for interval subtraction and real tie-ins. */
   wayStation(way: number, x: number, y: number): number {
     const w = this.ways[way];

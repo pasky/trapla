@@ -20,6 +20,8 @@ export interface FootprintConflict {
   id: string;
   feature: 'road' | 'railway' | 'water' | 'stream';
   action: 'relocation' | 'culvert' | 'retaining-wall' | 'channel-relocation' | 'blocked' | 'junction';
+  /** junction only: a rebuilt stretch joining its own old road, not a new junction */
+  continuation?: boolean;
   i: number; s0: number; s1: number; x: number; y: number;
   /** Constructed path/barrel length (affected length for blocked features), m. */
   length: number;
@@ -58,7 +60,8 @@ export interface FootprintRoute {
    * earthworks over these ways are the junction's own works (one allowance), not conflicts. */
   junctions?: readonly FootprintJunction[];
 }
-export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string }
+export interface FootprintJunction { end: 'a' | 'b'; kind: string; ways: ReadonlySet<number>; zone: number; cost: number; source: string;
+  /** a rebuilt stretch continuing as its old road, not a junction */ continuation?: boolean }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 interface Hit { a: number; b: number; i: number; j: number; structure?: FootprintCell['structure'] }
 const SAMPLE = 5, TIE_IN_SETBACK = 3;
@@ -287,7 +290,7 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       s0: junction.end === 'a' ? 0 : Math.max(0, length - junction.zone), s1: junction.end === 'a' ? Math.min(length, junction.zone) : length,
       x: r.x[i], y: r.y[i], length: covered, affectedLength: covered, cost: junction.cost, lumpCost: junction.cost,
       ...(way !== undefined && roads ? { roadId: way, cls: roads.wayClass(way) } : {}),
-      detail: '', source: junction.source });
+      ...(junction.continuation ? { continuation: true } : {}), detail: '', source: junction.source });
   }
   for (const { way, cls, hits } of roadHits.values()) {
     const merged = union(hits);

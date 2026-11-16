@@ -63,6 +63,9 @@ export interface Design {
   wallOverrides?: WallOverride[];
   /** Scenario object-pack identity for positional building/road IDs; not a scoring version. */
   objectData?: string;
+  /** A side road's junction at each end where it joins a road: Auto (a priority T) or a roundabout.
+   * Read by the project (core/tie-in.ts), never by this road kernel. */
+  junctionForms?: { a?: 'roundabout'; b?: 'roundabout' };
 }
 
 export interface EvalContext {

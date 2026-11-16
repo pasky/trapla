@@ -35,6 +35,7 @@ Other commands:
 | `npm run shots` | drives the app headlessly (Chromium + SwiftShader; `GPU=1 npm run shots` uses the hardware GPU via Vulkan) and writes `docs/screenshots/*.png` |
 | `npm run smoke` | interaction smoke test with real mouse events (empty clicks add nothing, drag the road to add a bend, drag / delete / double-click bends, the inspector's stretch choices and keys, By hand, undo, persistence) |
 | `node scripts/playtest.mjs [--docs] [--size=1280x800]` | three players' sessions with real mouse / keyboard: a first-time player (intro, harmless clicks, drag the road, where the money goes, inspect pieces), one fixing violations (fix buttons, the house cross-section, noise view) and a power user (bridge from the map, walls, keep a house, crossing, pin by dragging the line, undo / redo, Start over); a screenshot per step into `/tmp/trapla-playtest`; `--docs` writes the gallery 60–71 |
+| `node scripts/any-road-scene.mjs [--gpu] [--docs]` | editing any road with the real mouse (D11 by default, `SCENARIO=d3`): select a mapped road, drag it to rebuild its stretch, one Undo, end handles, its traffic, the road list, reload, Build → Road (free end, joining our road, roundabout), priced rebuilt stretch, photo with mapped roads; `--docs` writes 100–105 |
 | `npx tsx scripts/optimize.ts <speed> <iters> [start.json / official / -] [out.json] [seed]` | crude local search; fresh official-corridor or straight-line seed supported |
 | `PACK=/path/to/d11 npx tsx scripts/footprint-audit.ts --straight scripts/*-design.json` | automatic footprint remedies, measured wall/road works, remaining violations and bill reconciliation; `DETAIL=1` adds individual diagnostics |
 | `PACK=/path/to/d11 npx tsx scripts/eval-regression.ts` | frozen model-16 bills, validity and built geometry on either recognized data pack |
@@ -230,15 +231,21 @@ slopes ≤ 12.5 ‰ (shown in ‰ in the profile), no level crossings, CNOSSOS t
 [viaduct over Trutnov](docs/screenshots/138-railway-viaduct.png), [tunnel portal](docs/screenshots/139-railway-portal.png).
 Reproduce with `node scripts/railway-shots.mjs --docs 136`.
 
-### Several roads (foundation, not priced together yet)
+### Editing any road
 
-| A second road: our road keeps its own price, the other is not priced yet | Change road: Start and End along a mapped road |
+Any mapped road behaves like our road: click it (its stretch between junctions is highlighted), then drag it
+to rebuild that stretch, bent under the pointer, with its profile and price. **Build → Road** places a new
+road from a click to a click; an end on a road joins it with a junction (Auto: a T, or a roundabout).
+See [docs/any-road-editing.md](docs/any-road-editing.md).
+
+| A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|
-| ![Our road priced, side road not](docs/screenshots/79-our-road-priced-side-road-not.png) | ![Change road handles](docs/screenshots/80-base-road-handles.png) |
-| The proposed change over the old road, not checked yet | With the photo: the roads the game knows |
-| ![Proposed change](docs/screenshots/81-base-road-proposal.png) | ![Photo with mapped roads](docs/screenshots/83-photo-mapped-roads.png) |
+| ![Mapped road selected](docs/screenshots/100-mapped-road-selected.png) | ![Mapped road rebuilt](docs/screenshots/101-mapped-road-rebuilt.png) |
+| Priced: old road removed, its land not bought again, side roads reconnected | A side road joining our road at a roundabout |
+| ![Rebuilt road priced](docs/screenshots/104-rebuilt-road-priced.png) | ![Side road joins ours](docs/screenshots/105-side-road-joins-ours.png) |
 
-Also: [two roads crossing, not priced](docs/screenshots/82-two-roads-not-priced.png). See `docs/multi-road-ux.md`.
+Also: [a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
+roads](docs/screenshots/103-photo-mapped-roads.png); the earlier foundation views 79–83 are in `docs/multi-road-ux.md`.
 
 ### Physical crossings
 

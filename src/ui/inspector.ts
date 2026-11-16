@@ -81,6 +81,8 @@ export class Inspector {
   private r: Result | null = null;
   private d: Design | null = null;
   private networkPending = false;
+  /** The active road's own header when nothing is selected (null: none, e.g. our road). */
+  routeHead?: () => HTMLElement | null;
   setNetworkPending(pending: boolean) { this.networkPending = pending; this.render(); }
   private pending = false;
 
@@ -196,6 +198,9 @@ export class Inspector {
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
     this.el.className = `card ctx inspector${shown ? ` k-${shown.kind}` : ' idle'}${this.more ? ' more' : ''}`;
+    // nothing selected on a side road: what this road is, its traffic and how to remove it, above the money
+    const head = !shown ? this.routeHead?.() : null;
+    if (head) this.el.prepend(head);
   }
 
   // ---- shared pieces of a card ----

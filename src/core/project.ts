@@ -69,6 +69,9 @@ export interface RoadOperations {
   aadt: number; heavyShare: number; speed: number;
   /** Legacy speed edits remain coupled unless separate operating assumptions are explicitly chosen. */
   speedPolicy?: 'design' | 'independent';
+  /** The player has not said how much traffic uses this road yet: aadt is 0 and nothing that depends
+   * on traffic (noise, capacity) is checked; the project cannot be priced. */
+  trafficUnknown?: true;
 }
 export interface RoadSpec {
   kind: 'road';
@@ -200,7 +203,9 @@ export interface WorkProposal {
   cost: number;
   dependencies: ProjectDependency[];
 }
-export interface SharedWork extends WorkProposal { accepted: boolean }
+export interface SharedWork extends WorkProposal { accepted: boolean;
+  /** Player words for the work (e.g. "Old road removed …") and where it is, for its road's card. */
+  label?: string; at?: { x: number; y: number; s: number } }
 export interface SharedWorkLedger { items: SharedWork[] }
 export interface ProjectDependency {
   kind: 'route' | 'source' | 'work' | 'building' | 'corridor'; id: string; revision: string;

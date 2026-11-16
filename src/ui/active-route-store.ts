@@ -39,9 +39,10 @@ export class ActiveRouteStore {
     const corridor = this.project.snapshot.design.corridors.find(c => c.mode === 'paired' && c.children.reverse === id);
     return corridor ? corridor.children.forward : id;
   }
-  switchRoute(id: RouteId): boolean {
+  /** `created`: a road this open transaction just created (e.g. by the first drag of a mapped road). */
+  switchRoute(id: RouteId, created = false): boolean {
     if (!this.project.snapshot.design.routes.some(r => r.id === id)) return false;
-    if (this.project.inTransaction) return false;
+    if (this.project.inTransaction && !created) return false;
     this.activeRouteId = this.togetherAs(id);
     return true;
   }
