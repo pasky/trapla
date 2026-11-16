@@ -8,7 +8,8 @@
 // Anything this cannot map (another category, overrides changed, no full result yet, or a window over
 // most of the route) returns null and the caller runs the ordinary whole-route preview.
 
-import { sumParts, PART_KEYS, type CostParts } from './cost';
+import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
+import { CATEGORIES } from './data/categories';
 import { speedNorms, horizontalRules } from './data/norms';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
@@ -59,6 +60,30 @@ export function rememberFull(ctx: EvalContext, d: Design, opts: EvalOptions, res
   if (!list) fullResults.set(ctx.terrain, list = []);
   result.lineage = { key: lineageKey(ctx, d, opts), design: structuredClone(d) };
   adoptFull(ctx.terrain, result);
+}
+
+/** A whole-route preview prices its crossings without their geometry (ramps, links): one built the same
+ * way in the last full result of its lineage, near where it was, keeps that price (the plan moved too far
+ * for a window). Changes `result` in place. */
+export function carryCrossingPrices(ctx: EvalContext, d: Design, opts: EvalOptions, result: Result): void {
+  const base = fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts))?.result;
+  if (!base) return;
+  const markup = CATEGORIES[d.category].markup;
+  let changed = false;
+  for (const c of result.crossings) {
+    let o: Result['crossings'][number] | undefined, od = 300;
+    for (const f of base.crossings) {
+      if (f.roadId !== c.roadId || f.type !== c.type) continue;
+      const dist = Math.hypot(f.x - c.x, f.y - c.y);
+      if (dist < od) { od = dist; o = f; }
+    }
+    if (!o || o.cost === c.cost) continue;
+    const delta = o.cost - c.cost;
+    result.parts.crossings[c.i] += delta;
+    result.parts.surcharge[c.i] += delta * (markup ? markup.bridge : surchargeRate(result.cell.urban[c.i]));
+    c.cost = o.cost; changed = true;
+  }
+  if (changed) result.cost = sumParts(result.parts);
 }
 
 /** What a windowed preview takes from a full result: without crossing geometry, noise maps, remedies
@@ -230,7 +255,21 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   // Without their measured geometry, like a whole-route preview's (a long route's would dominate the
   // message to the main thread).
   const lean = (c: Result['crossings'][number]) => { const { geometry: _g, ...rest } = c; return rest; };
-  const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...w.crossings.map(c => ({ ...c, s: c.s + s0, i: c.i + i0 })),
+  // A window prices its crossings without their geometry (ramps, links), far below what a long overbridge
+  // costs: one built the same way in the full result keeps that price.
+  const markup = CATEGORIES[d.category].markup;
+  const windowCrossings = w.crossings.map(c => {
+    const at = oldS(c.s + s0);
+    let o: Result['crossings'][number] | undefined;
+    for (const f of r.crossings) if (f.roadId === c.roadId && f.type === c.type && Math.abs(f.s - at) < 200 && (!o || Math.abs(f.s - at) < Math.abs(o.s - at))) o = f;
+    const j = c.i + i0;
+    if (o && o.cost !== c.cost) {
+      const delta = o.cost - c.cost;
+      parts.crossings[j] += delta; parts.surcharge[j] += delta * (markup ? markup.bridge : surchargeRate(w.cell.urban[c.i]));
+    }
+    return { ...c, s: c.s + s0, i: j, ...(o ? { cost: o.cost } : {}) };
+  });
+  const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...windowCrossings,
     ...r.crossings.filter(c => c.s > old1).map(c => ({ ...lean(c), s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];
   const travelMin = L / (d.speed / 3.6) / 60;
   const cost = sumParts(parts);

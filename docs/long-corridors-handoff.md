@@ -113,7 +113,7 @@ Done (task 1, 3 of the 09:15 list), all in model 23 (unmerged, version unchanged
   the line for one paying the penalty). UI: live total + corridor groups, run-batched grade strokes skipping
   stretches where the directions run apart. Fixtures recaptured as model 24. All saved designs and starters
   VALID (sweep), the Královec railway starter VALID 10.23 bn (main 10.43).
-- **P1 straight start** (acceptance: `npx tsx scripts/d11-stability.ts`): a drag on the straight puts in a bend
+- **P1 straight start** (acceptance: `npx tsx scripts/edit-locality.ts`): a drag on the straight puts in a bend
   that turns the whole line about A and B (10 px ≈ 220–240 m): another road, the same swings on main. Grade
   edits were global (no boundary on a straight start; lifts chained km 2–17; a pin failed every lift): now
   long straights get boundaries at lines across the A–B axis every 3 km, lifts stay in their block, a lift

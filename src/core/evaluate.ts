@@ -45,7 +45,7 @@ import { chooseStructures, KIND, type Run } from './structures';
 import { overrideMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
-import { rememberFull, stationWindow, windowedPreview } from './preview-window';
+import { carryCrossingPrices, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
 import { barrelLength, culvertEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, waterCoverFits, type WaterCrossing, type WaterResult } from './watercourses';
 
@@ -294,6 +294,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     if (windowed) return windowed;
   }
   let result = evaluateRoute(ctx, d, opts);
+  if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
   /** the options the kept result was evaluated with (a separation retry adds its targets) */
   let used: EvalOptions = opts;
   const sep = (gs: { road?: { s: number; g: number }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...opts,

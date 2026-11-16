@@ -266,7 +266,7 @@ block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
   invalid; this model −1.91 … +0.33 bn, 3 of 6 invalid, much the same conflicts). What the solve can make
   local are edits that leave the plan alone, and there the straight start was not: it had no boundary at
   all (one block, the whole-route optimum), so a 15 m grade pin at km 9 changed the grade by 2 m at km 1.7
-  (re-test 6 saw problems appear at km 16.5). Now (`scripts/d11-stability.ts`, the acceptance repros):
+  (re-test 6 saw problems appear at km 16.5). Now (`scripts/edit-locality.ts`, the acceptance repros):
   - a straight longer than 4 km (also the first and the last) has its boundaries where it crosses lines
     across the A–B axis every 3 km, fixed on the map, instead of one in its middle (which moves with
     either end); the knot count of a block of a round length is chosen a hair short of the exact
@@ -279,6 +279,15 @@ block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
   - where a sag curve fills in the cutting a bridge over us needs, the clearance retry deepens it (as it
     raises a crest over a river).
   Pin +15 / −15 m at km 9: far grade change 0.00 m (was 2.0 / 2.1 m), the bill +0.19 / +0.34 bn.
+- **`scripts/edit-locality.ts`** (seed 1: 8 random bend moves of 5–20 screen pixels at the start view's scale,
+  new bends and pins of 3–15 m per design, 4 on the whole routes, plus QA's repros; 125 edits): the grade
+  changes at most 7.4 km from the edited stretch on D11 and the sections (p50 0–3.7 km), 12.8 km once on the
+  whole D3 (0.22 m beyond 8 km); no new problem beyond 8 km in any edit; every pin and repro passes. The bill
+  moves by a median 1–9 % (the moves are large: 5–20 px is 115–460 m on D11). Drag previews against the
+  settled bill: a window priced its crossings without their geometry (a 2.5 bn overbridge on 0303 became
+  0.3 bn: −40 %); it now keeps the full result's price for a crossing built the same way (0303 −40 → −12 %,
+  whole D3 −9 → −1 %). Left: −21 … +12 % where the settled design changes the crossing type or runs a
+  strict retry the preview does not.
 - **The D35 first section's 2.8 km viaduct** (20.34 bn, main 19.32): not the blocks; a whole-route solve on
   the same inputs gives 20.71. Main's line costs 19.28 bn under this model and a lower DP objective (−1.3 %)
   than the line the DP finds: the 2 m corridor pass (grade steps of 0.8 % per 250 m knot) starts the 6 m
