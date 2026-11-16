@@ -98,11 +98,12 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const junctions = ties.length ? { junctions: [...ctx.junctions ?? [], ...ties.map(t => t.junction)] } : {};
   // Where a rebuilt stretch's line stays on its old road, the old road is kept as it is (project-kept.ts).
   // Known before the kernel runs (it depends on the line only), so the kernel builds nothing there.
-  let kept: Uint8Array | undefined;
+  let kept: Uint8Array | undefined, oldPath: { x: number; y: number }[] = [];
   if (route.source && sourceWay !== undefined && ctx.roads) {
     const st = station(buildAlignment(a, b, design.pis, horizontalRules(design.speed, design.category)), STEP);
     const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
-    kept = keptCells(st, ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db)));
+    oldPath = ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db));
+    kept = keptCells(st, oldPath);
     // (not where another road's crossing lifts or lowers it: there it is rebuilt, ramps included)
     if (options.holds?.length) releaseHeld(kept, st.s, i => ctx.terrain.heightAt(st.x[i], st.y[i]), options.holds, ctx.scenario.maxGradient, OLD_ROAD_TIE);
   }
@@ -120,7 +121,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   let keptWork: ReplacementWork | null = null;
   if (kept) {
     if (kept.length !== result.n) throw new Error('Kept cells do not match the road’s stations');
-    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2);
+    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { path: oldPath, heightAt: (x, y) => ctx.terrain.heightAt(x, y) });
   }
   // The replacement's own works; without the old road's link (no road links) it cannot be priced.
   const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview

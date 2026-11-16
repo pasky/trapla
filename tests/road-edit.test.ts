@@ -287,6 +287,24 @@ describe('a rebuilt stretch inherits no violations from its old road', () => {
     expect(result.violations.every(v => v.s1 < 650)).toBe(true);
     expect(base.path(whole).length).toBe(3);
   });
+  // QA (D11 class I Novorokytnická, a 45 px drag): "321 m stay on the old road: kept as it is", 0 CZK, while
+  // the map drew it up to 11 m off its old line
+  it('what is kept is drawn on the old road\'s own line, however far within the tolerance the bends went', async () => {
+    const { evaluateProject } = await import('../src/core/project-evaluate');
+    const { KEPT_TOLERANCE } = await import('../src/core/project-kept');
+    const { ctx, p, route, base, interval } = corner();
+    const moved = p.routes[0];
+    if (moved.alignment.kind !== 'pi' || route.alignment.kind !== 'pi') throw new Error('fixture');
+    // its corner pulled 7 m outwards: still within the tolerance everywhere
+    moved.alignment.pis = route.alignment.pis.map(q => ({ ...q, x: q.x + 5, y: q.y - 5 }));
+    const own = evaluateProject(ctx, { epoch: 'e', revision: 1, design: p }).routes.r.legacy!;
+    expect(own.keptCells!.every(k => k === 1), String(own.keptCells)).toBe(true);
+    expect(own.cost.total).toBe(0);
+    const old = base.path(interval), line = Array.from({ length: own.n }, (_, i) => ({ x: own.x[i], y: own.y[i] }));
+    expect(strayDistance(line, old)).toBeLessThan(0.01);
+    for (let i = 0; i < own.n; i++) expect(own.ground[i]).toBe(ctx.legacy.terrain.heightAt(own.x[i], own.y[i]));
+    expect(KEPT_TOLERANCE).toBeGreaterThan(10);
+  });
   // QA (D11 Novorokytnická dragged near its end): "Junction with the class I road at km 0.00 · 25 M CZK"
   // where that class I road was the edited road itself, going on as another mapped way
   it('where it is built anew up to its end, the old road going on there is no junction; a track there is', async () => {

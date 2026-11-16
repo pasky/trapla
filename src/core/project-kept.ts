@@ -45,13 +45,45 @@ export function keptCells(r: Pick<Result, 'n' | 'x' | 'y' | 'ds'>, old: readonly
  * road's surface over this length of old road (drawn only; the old road there is still not billed). */
 export const TIE_LENGTH = 50;
 
-/** The old road is drawn as it lies: on the ground, as wide as the road, without slopes. Beside a new
- * part the kernel's heights (held near the ground there, evaluate.ts OLD_ROAD_TIE) fade into it. The
- * result gets its own arrays: the kernel's are never changed. */
-function layOnGround(r: Result, kept: Uint8Array, crownHalf: number) {
+/** The old road where it is drawn: its centreline (`path`) and the ground (`heightAt`). */
+export interface OldRoad { path: readonly { x: number; y: number }[]; heightAt: (x: number, y: number) => number }
+/** The point of a polyline nearest to (x, y). */
+function nearestPoint(path: readonly { x: number; y: number }[], x: number, y: number) {
+  let best = Infinity, px = x, py = y;
+  for (let k = 1; k < path.length; k++) {
+    const a = path[k - 1], b = path[k], dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+    const qx = a.x + t * dx, qy = a.y + t * dy, d = (qx - x) ** 2 + (qy - y) ** 2;
+    if (d < best) { best = d; px = qx; py = qy; }
+  }
+  return { x: px, y: py };
+}
+/** The old road is drawn as it lies: on its own line (`old`; the new line may stray up to KEPT_TOLERANCE
+ * and still be "kept", which must not show as a moved road), on the ground, as wide as the road, without
+ * slopes. Beside a new part the kernel's line and heights (held near the ground there, evaluate.ts
+ * OLD_ROAD_TIE) fade into it over TIE_LENGTH. The result gets its own arrays: the kernel's are never changed. */
+function layOnGround(r: Result, kept: Uint8Array, crownHalf: number, old?: OldRoad) {
   const far = new Float64Array(r.n).fill(Infinity);
   for (let i = 0, d = Infinity; i < r.n; i++) { d = kept[i] ? d + r.ds : 0; far[i] = d; }
   for (let i = r.n - 1, d = Infinity; i >= 0; i--) { d = kept[i] ? d + r.ds : 0; far[i] = Math.min(far[i], d); }
+  if (old && old.path.length > 1) {
+    const x = r.x.slice(), y = r.y.slice(), tx = r.tx.slice(), ty = r.ty.slice(), ground = r.ground.slice();
+    let moved = false;
+    for (let i = 0; i < r.n; i++) {
+      if (!kept[i]) continue;
+      const w = Math.max(0, 1 - far[i] / TIE_LENGTH), p = nearestPoint(old.path, r.x[i], r.y[i]);
+      x[i] = p.x + w * (r.x[i] - p.x); y[i] = p.y + w * (r.y[i] - p.y);
+      if (x[i] !== r.x[i] || y[i] !== r.y[i]) { moved = true; ground[i] = old.heightAt(x[i], y[i]); }
+    }
+    if (moved) {
+      for (let i = 0; i < r.n; i++) {
+        if (!kept[i] && !(i > 0 && kept[i - 1]) && !(i + 1 < r.n && kept[i + 1])) continue;
+        const a = Math.max(0, i - 1), b = Math.min(r.n - 1, i + 1), dx = x[b] - x[a], dy = y[b] - y[a], l = Math.hypot(dx, dy);
+        if (l > 1e-9) { tx[i] = dx / l; ty[i] = dy / l; }
+      }
+      Object.assign(r, { x, y, tx, ty, ground });
+    }
+  }
   const grade = r.grade.slice(), cut = r.cut.slice(), fill = r.fill.slice();
   const dayL = r.dayL.slice(), dayR = r.dayR.slice(), zDayL = r.zDayL.slice(), zDayR = r.zDayR.slice();
   // (no retaining wall is built along the old road either: its slope edges are natural ground again)
@@ -92,7 +124,7 @@ export function releaseHeld(kept: Uint8Array, s: ArrayLike<number>, ground: (i: 
  * a note (`inherited`), houses there are untouched, nothing is billed there (the bill and its per-cell
  * parts cover the new parts only) and the road is drawn on the ground there (`crownHalf`: half its paved
  * width, m). Returns the line that says so in the road's works (no amount; null: nothing kept). */
-export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number): ReplacementWork | null {
+export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?: OldRoad): ReplacementWork | null {
   let cells = 0, first = -1;
   for (let i = 0; i < r.n; i++) if (kept[i]) { cells++; if (first < 0) first = i; }
   if (!cells) return null;
@@ -126,7 +158,7 @@ export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number): Repl
   }
   // noise walls that would stand wholly along a kept part are not built
   r.walls = r.walls.filter(w => { for (let i = w.i0; i <= w.i1; i++) if (!kept[i]) return true; return false; });
-  if (crownHalf !== undefined) layOnGround(r, kept, crownHalf);
+  if (crownHalf !== undefined) layOnGround(r, kept, crownHalf, old);
   // Nothing is built there, so nothing is billed: the road's bill is what it builds anew. (The kernel
   // designs and prices the whole line; its own arrays are not changed.)
   const parts = {} as CostParts;
