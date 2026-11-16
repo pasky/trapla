@@ -5,6 +5,29 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 only to frame a camera on A / B and to read state for exact repros. Screenshots under `/tmp/trapla-qa2/` (not
 committed). Newest session on top. Severity: **P0** broken / untruthful, **P1** confusing, **P2** polish.
 
+## Session 4 — main @ 93f849d, noise work (2026-11-16, short)
+
+D11 road preset, fresh localStorage, SwiftShader 1440×900, one chunk. Screenshots `/tmp/trapla-qa2/s4/`.
+
+| item | verdict | evidence |
+|---|---|---|
+| demolished visuals | **PASS** | Poříčí halls at km 5.2–5.5 are hatched plots on bare ground, no slabs or floating squares; far view: small outlined ground markers (`004`, `005`). Legend shows the hatched symbol. |
+| "what takes the building" | **PASS** | "Industrial / commercial · Demolished · 32 M CZK · Under our embankment, km 5.19" (`006`). |
+| bought-out card | **PASS** | "As built 57.8 dB at night; behind a 5 m wall still 55.1 dB (limit 50)"; house plan readable; wall menu 2–6 m on both cards (`002`). |
+| walls in cuts | **PASS** | cut km 3.48–3.77 (36 m deep) and km 13.16–13.68: Auto none on both sides. |
+| wall choice beyond the piece (S1-QA re-test P1) | **PASS** | cut km 6.48–7.49, Left → None: +7.8 M, explained on the card: "none (yours) · Auto adds 350 m of 5 m wall at km 6.13–6.48 instead · Show"; the violation sits inside the piece ("3 houses 9.1 dB too loud · 4 m wall left km 6.49–6.61 · Buy out 3") (`010`). |
+| noise view | **PASS** | limit line follows the sound field, no stepped boxes at km 15.5 or km 6.5 (`000`, `011`); clicking the violation flies to the house, the cross-section shows each floor with "was …" (`013`). |
+
+Still open / new, all P2:
+1. The violation title "3 houses 9.1 dB too loud" reads as if each were 9.1 dB over; the house it selects is
+   50.8 dB (0.8 over) (`013`). Say "up to 9.1 dB".
+2. Noise-view hover on a bought-out house still gives no level: "House 1 floor · bought out" (`001`).
+3. House card "Wall left · Auto" still does not say what Auto chose (piece cards do: "Auto: 3 m, 2 m").
+4. Demolished building card offers "Auto · Buy out · Keep": for a building under the embankment, "Buy out" reads
+   as a third outcome next to demolition (S2 #5 wording).
+5. The bought-out card's summary says "51 % of the noise comes where no wall stands, km 15.34–15.47" while its
+   cross-section is labelled "gap: side road"; one cause, two descriptions (`002`).
+
 ## Session 3 — main @ 217cfa4, first-time player (2026-11-16)
 
 Fresh localStorage, D11 road preset, SwiftShader. Chunk `s3a` at 1440×900, chunk `s3b` at 1280×720, then the
