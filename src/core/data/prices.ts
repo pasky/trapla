@@ -16,6 +16,13 @@
  * rebuilds it where it runs along it; railway ends leave the tracks they join at a turnout's angle; rebuilt
  * railway stretches at their line's own speed and grade; a paired motorway's noise as its two directional
  * sources, a double track's per track; road bills unchanged (eval-regression identical).
+ * 24: the structure choice prices the buildings each option demolishes and settles the fill value on
+ * the final grade line (By hand from Auto's heights bills the same); piers of a chosen bridge miss
+ * what lies below; an automatic bridge whose piers cannot is not chosen; a stream at a bridge's end
+ * is spanned; a chimney / silo / shed standing within a demolished building goes with it; a building no
+ * one lives in that only the working strip beside our slopes reaches stays behind a retaining wall (research/18 rates)
+ * where that wall costs less than buying and demolishing it, and a building the player keeps is walled
+ * off wherever a wall can stand.
  * 25: local grade solve (research/39 "Local edits"): the Auto grade line in blocks between long straights
  * (a straight over 4 km, and any block over 5 km: at lines across the A–B axis every 4 km), each with its own
  * mass balance
@@ -24,7 +31,7 @@
  * kept where the line had them); grade-separated routes retry once to clear crossed roads where no
  * crossing could be built, and deepen a cutting a sag filled in under a bridge over us; retries judged
  * without noise problems. */
-export const COST_MODEL_VERSION = 24;
+export const COST_MODEL_VERSION = 25;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

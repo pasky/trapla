@@ -166,6 +166,15 @@ const LONG_BLOCK = 5000;
  * `bounds` (ascending boundaries) with the BLOCK_GRID crossings `grid` (route chainage, ascending) added
  * inside every block longer than LONG_BLOCK, at least MIN_BLOCK from its ends.
  */
+/** The ends of the blocks a solve with `blocks` uses (0, the boundaries kept, L): a boundary closer than
+ * MIN_BLOCK to the previous one or to the end is dropped. */
+export function blockEnds(blocks: readonly number[], L: number): number[] {
+  const bounds = [0];
+  for (const b of blocks) if (b - bounds[bounds.length - 1] >= MIN_BLOCK && L - b >= MIN_BLOCK) bounds.push(b);
+  bounds.push(L);
+  return bounds;
+}
+
 export function fillLongBlocks(bounds: readonly number[], grid: readonly number[], L: number): number[] {
   const ends = [0, ...bounds, L], out = [...bounds];
   for (let q = 0; q + 1 < ends.length; q++) {
@@ -308,11 +317,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
   // Knots: evenly over the route, or (blocks) evenly within each block, so a block's knots, cost
   // samples and material value depend on that block alone.
   const anchored = !!opt.blocks;
-  const bounds = [0];
-  if (anchored) {
-    for (const b of opt.blocks!) if (b - bounds[bounds.length - 1] >= MIN_BLOCK && L - b >= MIN_BLOCK) bounds.push(b);
-  }
-  bounds.push(L);
+  const bounds = anchored ? blockEnds(opt.blocks!, L) : [0, L];
   const nb = bounds.length - 1;
   const knotList: number[] = [], knotBlock: number[] = [];
   let nK: number, D: number;

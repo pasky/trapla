@@ -179,19 +179,15 @@ async function main() {
   const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0), pack.overlays.buildings[j]); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  // after the HUD: it syncs the HUD's exaggeration select
-  let photoNoted = false;
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
-    // what the photo shows that the map does not (e.g. the real road being built): said once
-    if (on && scenario.photoNote && !photoNoted) { photoNoted = true; toast(scenario.photoNote, undefined, undefined, 9000); }
-    if (!on && scenario.photoNote) hideToast(scenario.photoNote);
-  }, noise, () => {
-    // the active route as built (else its ends and bends)
+  }, noise, () => frameRoute());
+  /** the active route as built (else its ends and bends) in view */
+  const frameRoute = () => {
     const r = last, d = store.read() ? store.design : null;
     view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
       : d ? [A, ...d.pis, B] : []);
-  });
+  };
 
   let last: Result | null = null;
   let projectFull: ProjectResult | null = null;
@@ -696,6 +692,7 @@ async function main() {
     if (preview && !previewGesture) previewGesture = { id: crypto.randomUUID(), sequence: 0, lastDisplayedSequence: -1 };
     const message: ProjectWorkerIn = preview && store.activeRouteId
       ? { type: 'project-preview', id: posted, snapshot, routeId: store.activeRouteId, materialValue: lastFull?.quantities.materialValue,
+          structureValue: lastFull?.quantities.structureValue,
           gesture: { id: previewGesture!.id, sequence: ++previewGesture!.sequence } }
       : { type: 'project-eval', id: posted, snapshot, displayedResult: displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision } };
     (message.type === 'project-preview' ? previewWorker : worker).postMessage(message);
@@ -780,7 +777,7 @@ async function main() {
     revalidate(r, rd);
     const cat = CATEGORIES[rd.category];
     profile.setGradeRule({ max: rd.maxGradient ?? cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient, perMille: cat.mode === 'railway', line: cat.mode });
-    profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+    profile.setResult(r, r.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
     syncApart(r);
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));
@@ -838,7 +835,7 @@ async function main() {
           if (on) routeScene.preview(on, shown);
         }
         took('view');
-        profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+        profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
         syncApart(shown);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
@@ -1038,7 +1035,8 @@ async function main() {
     if (building.kind === 'road' && legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
   };
-  routeBar.onSelect = switchRoute;
+  // a road picked from the list comes into view
+  routeBar.onSelect = (id) => { switchRoute(id); frameRoute(); };
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
   syncEnds();
   syncDirections();
@@ -1256,14 +1254,28 @@ async function main() {
     },
   };
   const lastClient = { x: 0, y: 0 };
+  /** the height points as they were when a By hand drag began */
+  let vpiDragBase: Design['vpis'] | null = null;
 
   // ---- profile: the same verbs ----
   profile.ev = {
     onStationSelect: (s) => select({ kind: 'pin', s }, true),
     onCrossingSelect: (roadId) => select({ kind: 'crossing', roadId }, true),
     onPick: (s) => selectPiece(s, true),
-    onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
-    onVpiDragEnd: () => store.commit(),
+    onVpiDrag: (i, s, z, a, b) => store.update((d) => {
+      takeProfile(d);
+      const base = vpiDragBase ??= d.vpis.map((v) => ({ ...v }));
+      if (!d.vpis[i] || !base[a] || !base[b]) return;
+      d.vpis[i].s = s; d.vpis[i].z = z;
+      // the height points hidden between it and its shown neighbours keep their shape and follow
+      // in proportion, so the line bends only at the points the player sees
+      const dz = z - base[i].z;
+      for (let j = a + 1; j < b; j++) if (j !== i) {
+        const t = j < i ? (base[j].s - base[a].s) / Math.max(1e-6, s - base[a].s) : (base[b].s - base[j].s) / Math.max(1e-6, base[b].s - s);
+        d.vpis[j].z = Math.round((base[j].z + dz * Math.max(0, Math.min(1, t))) * 100) / 100;
+      }
+    }, false),
+    onVpiDragEnd: () => { vpiDragBase = null; store.commit(); },
     onVpiAdd: (s, z) => {
       const vp = store.design.profileMode === 'auto' && last ? last.vpis : store.design.vpis;
       if (vp.some((v) => Math.abs(v.s - s) < MIN_VPI_GAP)) return;
@@ -1422,7 +1434,6 @@ async function main() {
       switchRoute(corridor.children[which], false, corridor.mode === 'paired');
     },
     onLoadBest: () => { if (store.best) { store.loadBest(); toast('Loaded your best design.', 'Undo', () => store.undo()); } },
-    onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {
       // the list shows the last full result's violations (previews do not replace it)
       if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }
@@ -1623,6 +1634,8 @@ async function main() {
     profileFit: () => profile.fit(),
     profileView: () => profile.view,
     profileHasRoad: () => profile.hasRoad,
+    /** By hand: the height points with a handle at the profile's zoom */
+    profileShownPoints: () => profile.shownPoints,
     profileHover: () => profile.hover,
     profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
     bendStations: () => last && bendStations(last, store.design),
@@ -1644,6 +1657,8 @@ async function main() {
     rebuildStats: () => ({ ...heavyStats }),
     /** live shader programs (a growing / changing list during edits means recompiles) */
     programs: () => (view.renderer.info.programs ?? []).map((p) => `${p.id}:${p.cacheKey.slice(0, 40)}`),
+    /** debugging only: the 3D view */
+    debugView: () => view,
     meta,
     official: meta.official.xy,
     A, B,

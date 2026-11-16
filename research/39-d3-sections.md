@@ -230,7 +230,7 @@ the D35 first section bend 2 (25 m), the earlier D3 map's last bends. Residual n
 station-based engineering (a ±0.7–2 m lift difference at one or two spots), and a bend move that moves a
 block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
 
-### Second pass (model 24 after merging main's railway model 23, 2026-11-16)
+### Second pass (model 25: after merging main's railway model 23 and core-play-polish's model 24, 2026-11-16)
 
 - **The demo design's +10.5 % was a gradient-reserve bug, not the blocks.** The DP kept `u / span` of grade
   in reserve on every interval for B's off-grid height; with blocks the span was the last block only, and
@@ -283,7 +283,10 @@ block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
     lines: +0.7 % on the sum of all designs, 4 km +0.3 %, 5 km +2 %); 0301 4.78 → 5.47 bn (+14 %, it was
     one whole-route block), 0304 +2 %, 0305 +3 %, D11 designs within ±1 %;
   - retries are judged per stretch on what they can change, not on noise problems (their passes skip the
-    noise, which the kept pass adds; docs/evaluate-performance.md "Reviewed trade-off").
+    noise, which the kept pass adds; docs/evaluate-performance.md "Reviewed trade-off");
+  - the structure choice's fill value, settled on the final grade line (core-play-polish, model 24), is
+    settled per block of the plan (Auto and By hand alike, so By hand from Auto's heights still bills the
+    same): one value for the route would re-price every earthwork-or-bridge choice after any edit.
   Pin +15 / −15 m at km 9: far grade change 0.00 m (was 2.0 / 2.1 m), the bill +0.19 / +0.34 bn.
 - **`scripts/edit-locality.ts`** (seed 1: 8 random bend moves of 5–20 screen pixels at the start view's scale,
   new bends and pins of 3–15 m per design, 4 on the whole routes, plus QA's repros; 125 edits): the grade

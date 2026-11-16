@@ -557,6 +557,16 @@ export class LandCover {
   }
   private owned: Set<string> | null = null;
   private netLayers() { return new Set(NET_PASSES.map(p => p.layer)); }
+  /** Over the photo too, what the route takes: the cleared plots and buyout rings (the map's own passes,
+   * sharing the map scene's geometries) */
+  private plotPasses() { return PASSES.filter(p => PLOT_LAYERS.includes(p.layer)); }
+  private plotGeos(): Map<string, Geo[]> {
+    const out = new Map<string, Geo[]>();
+    for (const entry of this.passes) if (PLOT_LAYERS.includes(entry.pass.layer))
+      out.set(entry.pass.layer, entry.meshes.map(m => ({ geo: m.geometry as THREE.BufferGeometry, bbox: m.userData.bbox, key: m.userData.key })));
+    for (const layer of PLOT_LAYERS) if (!out.has(layer)) out.set(layer, []);
+    return out;
+  }
   /** build the known-network overlay once, from the current accepted cuts */
   private ensureNetwork() {
     if (this.net) return;
@@ -564,7 +574,8 @@ export class LandCover {
     for (const l of this.vectors.lines) if (layers.has(l.name))
       geos.set(l.name, finish(buildLineGeos(l, this.vectors.chunk, CAPPED.has(l.name), this.sourceCuts.get(l.name), this.mapped(l.name))));
     const scene = new THREE.Scene();
-    this.net = { scene, passes: this.makePasses(NET_PASSES, geos, scene) };
+    for (const [layer, list] of this.plotGeos()) geos.set(layer, list);
+    this.net = { scene, passes: this.makePasses([...NET_PASSES, ...this.plotPasses()], geos, scene) };
   }
   /** composite the network overlay of the slot window c (texels) over what the level holds there */
   private overlayNetwork(rt: THREE.WebGLRenderTarget, c: Rect, t: number, pieces: [number, number, number, number, number, number][], mips: boolean) {
@@ -803,6 +814,17 @@ export class LandCover {
         }
         entry.meshes = [...keep, ...r.geos.map(g => this.mesh(g, entry.mat, order, this.scene))];
       }
+      // the photo overlay shares those geometries (already disposed above where replaced)
+      if (this.net) {
+        const geos = this.plotGeos();
+        for (const entry of this.net.passes) {
+          const list = PLOT_LAYERS.includes(entry.pass.layer) ? geos.get(entry.pass.layer) : undefined;
+          if (!list) continue;
+          const order = entry.meshes[0]?.renderOrder ?? NET_PASSES.length + this.plotPasses().indexOf(entry.pass);
+          for (const mesh of entry.meshes) this.net.scene.remove(mesh);
+          entry.meshes = list.map(g => this.mesh(g, entry.mat, order, this.net!.scene));
+        }
+      }
       const changed = new Set<number>();
       for (const [a, c] of [[demolished, this.demolishedSet], [bought, this.boughtSet], [this.demolishedSet, demolished], [this.boughtSet, bought]] as const)
         for (const i of a) if (!c.has(i)) changed.add(i);
@@ -869,7 +891,7 @@ export class LandCover {
   private disposeNetwork() {
     if (!this.net) return;
     const geos = new Set<THREE.BufferGeometry>();
-    for (const entry of this.net.passes) { entry.mat.dispose(); for (const m of entry.meshes) geos.add(m.geometry); }
+    for (const entry of this.net.passes) { entry.mat.dispose(); if (!PLOT_LAYERS.includes(entry.pass.layer)) for (const m of entry.meshes) geos.add(m.geometry); }
     for (const g of geos) g.dispose();
     this.net = null;
   }

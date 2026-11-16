@@ -130,3 +130,15 @@ Done (task 1, 3 of the 09:15 list), all in model 23 (unmerged, version unchanged
   documented windowed-preview accuracy (−8 … +10 %), not changed.
 - Timing: 5 km windows cost ≈ +15–20 ms per full D11 evaluation against 1.5 km (see abw.txt in scratch); best-design
   also pays a strict retry main does not (its line buries a road first).
+
+## Session 2026-11-16 ≈ 12:40 (main 27aeda6 merged: core-play-polish model 24; this branch model 25)
+
+- Parent decisions: straight-start swing accepted (PLAN "Next steps": editing aid for the future); 5 km
+  windows kept with offsetting savings (docs/evaluate-performance.md "Reviewed trade-off": shared pass caches,
+  noise only on the kept pass, cheaper windows; D11 ≈ +15 ms per design against main, whole D3 1.5 s);
+  blocks over 5 km split at the fixed 4 km lines; merge order core-play-polish → any-road-editing → this.
+- Merge of core-play-polish: its settled structure fill value is settled per plan block (`settleEnds`),
+  for Auto and By hand alike (its By-hand-equals-Auto tests pass).
+- Acceptance loop: `npx tsx scripts/edit-locality.ts` (all pass; reach ≤ 6.9 km on D11 / sections, 10.1 km
+  once on the whole D3).
+- Next: merge any-road-editing once on main (model number then 26), full gates on the merged tree.

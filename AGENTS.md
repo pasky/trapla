@@ -56,7 +56,7 @@ broken visuals and jargon before.
   missions (whole D3 56 km, whole D35) pass the drag budgets (docs/evaluate-performance.md). A full motorway
   evaluation is ≈ 11 ms/km (≈ 0.7–1.8 s settle on the whole D3). While it runs the score shows "≈ … · ≈ CHECKING".
   The whole-D3 pack (24.7 M cells) costs ≈ 471 MB of JS heap (D11 221 MB): accepted for now (research/39).
-- The Auto grade line is solved in blocks between long straights (model 24, research/39 "Local edits"):
+- The Auto grade line is solved in blocks between long straights (model 25, research/39 "Local edits"):
   an edit re-solves the boundaries within 5 km of it and the blocks next to them, never the far end. Its
   price: each block balances its own earth (the sum of all saved designs equals a whole-route solve; single
   designs ±5–10 %, the coarse 2 m corridor pass picks the other side of a near-tie as often as main did).

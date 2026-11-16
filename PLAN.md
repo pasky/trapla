@@ -326,6 +326,44 @@ What exists (details and commands in `README.md`):
   walls of one height on both sides of a stretch get one label ("3 m both sides").
 - `node scripts/camera-check.mjs` plays these with real mouse input (screenshots 157–159).
 
+### Structure choice at the real prices; By hand keeps the bill (cost model 24, 2026-11-16)
+
+- Playtest S3 #1: switching to By hand changed the bill (D11 straight −29 M, with a pin −143 M) although the
+  heights were the same. The bridge / embankment choice priced fill at the value the profile search had found
+  before the support lifts, on only four tries; the final designs were far from balanced (town-centre priced
+  as surplus while 455k m³ short; By hand fell back to the starting value). Now the choice settles the value on
+  the final grade line (regula falsi, ≤ 6 tries of the selection only, the same in both modes): By hand from
+  Auto's heights bills identically (checked on every fixture in `tests/evaluate-costs.test.ts`), and Auto no
+  longer leaves that money on the table.
+- S3 #3: the choice now weighs the buildings each option demolishes (slopes vs deck strip plus the working
+  strip, each building's price shared over the cells reaching it). The piers of a bridge the player chooses
+  still move off roads, rails and water (the player picks the bridge, not its piers); an automatic bridge whose
+  piers cannot all stand clear within the span limit is not chosen there. Poříčí halls (D11 straight km
+  4.9–5.9) are now bridged by Auto on its own heights.
+- Remaining gap (not fixed here): the auto-profile's per-metre costs are rural (no buildings, no urban land), so
+  Auto does not raise the line to bridge a town. On D11 straight, painting a bridge over km 5.09–5.50 makes Auto
+  re-plan the heights (cut through the hill at km 4.7 instead of a tunnel, a 33 m viaduct) and the project
+  ≈ 80 M cheaper than Auto's own design. The piece card therefore says "Auto: at this height cheaper than a
+  bridge", and "Your choice; Auto set the road height for it" when the player's choice re-planned the heights.
+- A chimney, silo or shed (≤ 200 m², ≤ 1/4 of the other) wholly within a demolished building's outline goes
+  with it (Nová Paka km 1.97); a stream left under the earthwork just beyond a bridge's end with too little
+  cover is spanned by one more engineering pass.
+- A building no one lives in that only the 3 m working strip beside our slopes reaches (not the slopes or deck
+  themselves) stays when a retaining wall ending the slope 3 m short of it costs less than buying and demolishing it
+  (the retaining-wall machinery and its research/18 OTSKP assembly; `retaining.ts` `wallBuildings`): Nová Paka km
+  1.91, a hall demolished for 322 M CZK, now stays behind a 0.6 m wall for ≈ 0.3 M. Auto keeps no dwelling this way:
+  a home metres from our slope's top needs noise walls or a buyout that the noise check decides only later (tried:
+  random D11 designs gained +170 M of noise walls for 40 M of houses). A building the player keeps is walled off
+  wherever a wall fits between our crown and it, whatever the slopes reach. The card says which wall keeps it and
+  what demolition would have cost. Limit: a wall planned at a cell that then becomes a bridge leaves its one-cell
+  extension beside the bridge end.
+- Fixtures against model 23 (motorway-rail, D11 road bills identical to model 22): straight −33.9, best −23.1,
+  best-drag −8.7, best-pin −36.7, best-structures −36.4, best-manual −17.3, demo −90.6, direct-80 −120.3,
+  direct-90 −119.3, town-centre / town-controls −421.5 M CZK, validity as before (the merge changes no bill; the
+  walls for buildings: demo −43.2, the others within ±0.1). outcome-audit (5 designs + straight + 24 random):
+  violations 144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch
+  fails); the walls for buildings alone: no design dearer by more than 1 M, four random ones 34–59 M cheaper.
+
 ### Travel-time target X and traffic Y
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.
@@ -1021,7 +1059,7 @@ the bill change: **research/36**.
   town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
   unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.
 
-## Local edits: the grade line in blocks (cost model 24, 2026-11-16)
+## Local edits: the grade line in blocks (cost model 25, 2026-11-16)
 
 Playtest (whole D3 / D35): a small nudge redesigned the grade and broke crossings 9–24 km away. Same design,
 same bill stays the rule (no edit history), so the solve itself became local (research/39 "Local edits"):

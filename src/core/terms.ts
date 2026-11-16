@@ -168,7 +168,7 @@ export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overb
 
 /** Footprint outcomes (things our earthworks cover beside the road). */
 export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation'>): OutcomeText {
-  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : 'stream';
+  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : 'stream';
   switch (c.action) {
     case 'relocation': return c.closed
       ? { tag: 'closed', label: `${what}: ${m(c.closed.length)} m closed (its ends stay connected by ${m(c.closed.detour)} m of other roads)`,
@@ -176,7 +176,8 @@ export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action'
       : { tag: 'moved aside', label: `${what}: ${m(c.affectedLength ?? c.length)} m under our earthworks, ${m(c.length)} m rebuilt beside them`,
         explain: `Part of the ${what} lies under our earthworks; that part is rebuilt next to them and keeps its connections.` };
     case 'retaining-wall': return { tag: 'retaining wall', label: `Retaining wall ${m(c.length)} m`,
-      explain: `A concrete wall ends our slope early so that it does not cover the ${what} next to it.` };
+      explain: c.feature === 'building' ? 'A concrete wall ends our slope early, so that the building next to it can stay.'
+        : `A concrete wall ends our slope early so that it does not cover the ${what} next to it.` };
     case 'culvert': return { tag: 'longer culvert', label: `Longer culvert ${m(c.length)} m`,
       explain: 'The stream runs under our earthworks in a longer concrete pipe or box.' };
     case 'channel-relocation': return { tag: 'stream moved', label: `Stream moved: ${m(c.length)} m of new bed`,

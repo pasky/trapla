@@ -90,7 +90,7 @@ export const D3_SCENARIO: ScenarioParams = {
   id: 'd3', presetId: 'd3-road', title: 'Jílové → Václavice (earlier map)', retired: true, group: 'Středočeská D3',
   // Editable starter near the reference, validated on this pack; no hidden structure overrides.
   // Three bends moved <12 m by the existing bounded repair tool to resolve a track conflict; under the local
-  // grade solve (model 24) the last one 60 + 25 m more for another track and an underpass approach, and the
+  // grade solve (model 25) the last one 60 + 25 m more for another track and an underpass approach, and the
   // second one 25 m for a track underpass near A.
   initial: { category: 'S9.5', speed: 90, pis: [
     { x: 3872.4, y: 14182.6, r: null }, { x: 3583.7, y: 12646, r: null },
@@ -110,7 +110,7 @@ export const D35_SCENARIO: ScenarioParams = {
   // Superseded by the motorway missions (the two-lane road exercise in a motorway corridor); kept loadable.
   id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město (two-lane road)', retired: true, group: 'D35',
   // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
-  // bend 7 by 7.6 m to clear a track (research/27); under model 24 bend 2 by 25 m (a track with no buildable
+  // bend 7 by 7.6 m to clear a track (research/27); under model 25 bend 2 by 25 m (a track with no buildable
   // reroute at km 6.99). No junction: B is the section boundary.
   initial: { category: 'S9.5', speed: 90, pis: [
     { x: 3911.6, y: 4138.6, r: null }, { x: 5364.7, y: 4523.8, r: null }, { x: 7639.4, y: 4311.8, r: null },
@@ -151,7 +151,7 @@ export const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
 export const D3_MOTORWAY: ScenarioParams = {
   ...D3_SCENARIO, presetId: 'd3-motorway', mode: 'motorway', title: 'Motorway D3: Jílové → Václavice (earlier map)',
   // The real 0302/0303 sections are D 27.5/120 (research/25). Starter = the road exercise's bends with
-  // the last bend moved 30 m (bounded validity-first search) so the wider body clears a track, and (model 24)
+  // the last bend moved 30 m (bounded validity-first search) so the wider body clears a track, and (model 25)
   // the one before it 12 m for another track; not optimised.
   initial: { category: 'D27.5', speed: 120, pis: [
     { x: 3872.4, y: 14182.6, r: null }, { x: 3608.6, y: 12643.7, r: null },
@@ -239,7 +239,7 @@ export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospo
 // mapped line to where it starts to merge with I/35 (declared merge, PROVISIONAL) is 33.3 km. Built as
 // D 27.5 (the project is D 26.0/130, no SPK row). Time target: reference + 10 % at 130 km/h. Starter:
 // mapped-line bends every ~1.5 km, the last (400 m before B) dropped, four moved 12–100 m (and under the local grade
-// solve, model 24, bends 16/17 another 60/12 m for a stream before B and a class I road, bend 2 12 m for a track
+// solve, model 25, bends 16/17 another 60/12 m for a stream before B and a class I road, bend 2 12 m for a track
 // with no buildable reroute, then bend 17 90 + 150 m more for the stream 170 m before B, which the grade cannot
 // clear so close to the tie-in) by a bounded
 // greedy search (research/39); B at 33.35 km on the mapped line, where it starts to merge with I/35.

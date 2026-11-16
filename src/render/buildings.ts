@@ -134,26 +134,28 @@ export class Buildings {
         }
       }
     }
-    let best = -1, bestD = tol;
+    let best = -1, bestD = tol, insideBest = -1, insideArea = Infinity;
     const seen = new Set<number>();
     for (let gx = Math.floor((x - tol) / G); gx <= Math.floor((x + tol) / G); gx++) for (let gy = Math.floor((y - tol) / G); gy <= Math.floor((y + tol) / G); gy++) {
       for (const i of this.grid.get(gx * 65536 + gy) ?? []) {
         if (seen.has(i)) continue;
         seen.add(i);
         // inside test (even-odd) and distance to the ring
-        let inside = false, d = Infinity;
+        let inside = false, d = Infinity, area = 0;
         const v0 = b.starts[i], n = b.starts[i + 1] - v0;
         for (let k = 0, l = n - 1; k < n; l = k++) {
           const ax = b.verts[2 * (v0 + k)], ay = b.verts[2 * (v0 + k) + 1], bx = b.verts[2 * (v0 + l)], by = b.verts[2 * (v0 + l) + 1];
           if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
           const ex = bx - ax, ey = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey || 1)));
           d = Math.min(d, Math.hypot(x - ax - ex * t, y - ay - ey * t));
+          area += ax * by - bx * ay;
         }
-        if (inside) return i;
+        // a chimney inside a hall: the innermost outline is the one meant
+        if (inside && Math.abs(area) < insideArea) { insideArea = Math.abs(area); insideBest = i; }
         if (d < bestD) { bestD = d; best = i; }
       }
     }
-    return best;
+    return insideBest >= 0 ? insideBest : best;
   }
 
   /** standing colours (bought-out houses): over every tint, in every view */

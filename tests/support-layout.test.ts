@@ -163,11 +163,13 @@ describe('automatic bridge support remedies', () => {
     expect(result.clearanceRequirements.every(c => c.z > 107.5)).toBe(true);
     expect(r.grade).toEqual(before);
     const manual = new Int8Array(r.n).fill(-1); manual[15] = KIND.bridge;
+    // The player chose the bridge, not its piers: the pier at km 0.155 still moves off the motorway.
     const fixed = remedyBridgeSupports(r, terrain(), roadAt(255, 'motorway'), manual);
-    expect(fixed.runs).toEqual(r.runs);
+    expect(fixed.runs[0]).toMatchObject({ s0: 95, s1: 215, pierStations: [125, 146, 185] });
     expect(fixed.kind).toEqual(r.kind);
-    expect(fixed.clearanceRequirements).toContainEqual({ s: 150, z: 107.8 });
-    expect(fixed.diagnostics.find(d => d.reason === 'span-depth')!.raiseM).toBeCloseTo(0.8);
+    // its longer 39 m span needs a deeper deck: the clearance is still checked, not hidden
+    expect(fixed.clearanceRequirements).toContainEqual({ s: 150, z: 108.25 });
+    expect(fixed.diagnostics.find(d => d.reason === 'span-depth')!.raiseM).toBeCloseTo(1.25);
     expect(fixed.violations).toHaveLength(1);
     expect(r.grade).toEqual(before);
   });

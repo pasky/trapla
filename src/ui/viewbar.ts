@@ -72,9 +72,6 @@ export class ViewBar {
     this.view.setPhoto(this.prefs.photo);
     this.noise?.setOn(this.prefs.noise);
     this.onPhoto?.(this.prefs.photo && this.view.hasPhoto);
-    // the HUD has its own exaggeration select; keep it in step
-    const sel = document.getElementById('exag') as HTMLSelectElement | null;
-    if (sel) sel.value = String(this.prefs.exag);
     this.paint();
   }
 

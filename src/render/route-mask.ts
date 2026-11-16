@@ -63,19 +63,41 @@ export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: num
         if (points === P) {
           if (i > 0 && !ground[i - 1]) { if (fill(i, 1)) a0 = toward(a0, a1); if (fill(i, -1)) b0 = toward(b0, b1); }
           if (i + 2 < r.n && !ground[i + 2]) { if (fill(i + 1, 1)) a1 = toward(a1, a0); if (fill(i + 1, -1)) b1 = toward(b1, b0); }
+          // The route's own ends meet the ground (at grade): nothing covers what lies beyond them either,
+          // so the mask stops short there too, or a line of sky-coloured slivers opens across the road.
+          if (i === 0) { a0 = toward(a0, a1); b0 = toward(b0, b1); }
+          if (i + 2 === r.n) { a1 = toward(a1, a0); b1 = toward(b1, b0); }
         }
         for (const p of [a0, b0, a1, b0, b1, a1]) out.push(p[0], 0, p[1]);
       }
     }
-    for (const surface of surfaces) for (let i = 0; i + 1 < surface.sections.length; i++) {
-      if (!groundSegment(surface, i)) continue;
-      const a = surface.sections[i], b = surface.sections[i + 1];
-      const inset = (p: typeof a.p, q: typeof a.p) => {
-        const t = Math.max(0, 1 - 2 * COLLAR_OVERLAP / Math.hypot(q.x - p.x, q.y - p.y));
-        return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
-      };
-      addQuad(terrain, inset(a.p, a.outer[0]), inset(a.p, a.outer[1]), inset(b.p, b.outer[0]), inset(b.p, b.outer[1]));
-      if (surface.crossing.type === 'junction') addQuad(cuts, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
+    for (const surface of surfaces) {
+      // A crossed road's deck end on ground (an abutment at or above it): as at our structures, its mask stops
+      // MASK_END_INSET short of the end section, or the raster's bleed opens a sky-coloured line beside the deck.
+      const sections = surface.sections, along = [0];
+      for (let i = 1; i < sections.length; i++) along.push(along[i - 1] + Math.hypot(sections[i].p.x - sections[i - 1].p.x, sections[i].p.y - sections[i - 1].p.y));
+      const onGround = (k: number) => { const p = sections[k].p; return p.z >= natural(p.x, p.y) - 0.05; };
+      const deck = !surface.link && surface.deck ? surface.deck : undefined;
+      const stopBefore = deck && onGround(deck.start) ? along[deck.start] - MASK_END_INSET : Infinity;
+      const startAfter = deck && onGround(deck.end) ? along[deck.end] + MASK_END_INSET : -Infinity;
+      for (let i = 0; i + 1 < sections.length; i++) {
+        if (!groundSegment(surface, i)) continue;
+        const a = sections[i], b = sections[i + 1];
+        const inset = (p: typeof a.p, q: typeof a.p) => {
+          const t = Math.max(0, 1 - 2 * COLLAR_OVERLAP / Math.hypot(q.x - p.x, q.y - p.y));
+          return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
+        };
+        let a0 = inset(a.p, a.outer[0]), a1 = inset(a.p, a.outer[1]), b0 = inset(b.p, b.outer[0]), b1 = inset(b.p, b.outer[1]);
+        const s0 = Math.max(along[i], i < (deck?.start ?? 0) ? -Infinity : startAfter), s1 = Math.min(along[i + 1], i < (deck?.start ?? 0) ? stopBefore : Infinity);
+        if (s1 <= s0) continue;
+        if (s0 > along[i] || s1 < along[i + 1]) {
+          const len = along[i + 1] - along[i], lerp = (p: { x: number; y: number }, q: { x: number; y: number }, t: number) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+          const t0 = (s0 - along[i]) / len, t1 = (s1 - along[i]) / len;
+          [a0, a1, b0, b1] = [lerp(a0, b0, t0), lerp(a1, b1, t0), lerp(a0, b0, t1), lerp(a1, b1, t1)];
+        }
+        addQuad(terrain, a0, a1, b0, b1);
+        if (surface.crossing.type === 'junction') addQuad(cuts, a.toe[0], a.toe[1], b.toe[0], b.toe[1]);
+      }
     }
     for (const surface of surfaces) for (const [a, b, c, d] of endCollars(surface, natural)) {
       const inset = (p: typeof a, q: typeof a, metres: number) => {

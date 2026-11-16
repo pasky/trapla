@@ -64,7 +64,7 @@ describe('review regressions', () => {
     const pts = [{ s: 0, z: 0, r: null }, { s: 500, z: 40, r: null }, { s: 1000, z: 45, r: null }];
     const grades = (q: typeof pts) => ROAD_CHECKS.vertical(buildProfile(q, 6000, 3400), speedNorms(90), 0.06).filter((v) => v.kind === 'gradient');
     const [v] = grades(pts);
-    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower height point 1 (km 0.50) by 10.0 m' });
+    expect(v).toMatchObject({ vpi: 1, basis: 'norm', fix: 'Lower the height point at km 0.50 by 10.0 m' });
     pts[1].z -= 10;
     expect(grades(pts)).toEqual([]);
   });

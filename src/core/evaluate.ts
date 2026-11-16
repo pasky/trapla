@@ -2,7 +2,7 @@
 // earthworks → buildings, crossings, noise → cost per station cell → checks. Pure (no DOM); runs in
 // a Web Worker in the app.
 
-import { autoProfile, BLOCK_GRID, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
+import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
 import { footprintConflicts, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SUPPORT_LIMITS } from './support-layout';
@@ -133,11 +133,16 @@ export interface Result {
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
   /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
-  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean }[];
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean;
+    /** a small structure standing within this demolished building, which goes with it */
+    host?: number }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
   kept: { j: number; i: number; hit: boolean }[];
+  /** buildings a retaining wall keeps clear of our works (instead of their demolition): where, how high,
+   * the walls' estimated price and what demolition would have cost, CZK; `kept`: the player keeps it */
+  walledOff: RetainingPlan['walledBuildings'];
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
   /** `source`: the road as an acoustic line source (cells, wall lines, screening edges, junction openings);
    * `L` / `R`: built wall heights per station (manual included), m — the same the bill and 3D use */
@@ -161,6 +166,9 @@ export interface Result {
     noiseDistance: number;
     /** value of a m³ of fill material the auto-profile / structure choice settled on, CZK/m³ */
     materialValue: number;
+    /** value of a m³ of fill the structure choice settled on along the final grade line (balances
+     * the chosen structures' usable cut and fill as far as the price range allows), CZK/m³ */
+    structureValue: number;
   };
   travelMin: number;
   minCategory: CategoryId;
@@ -195,6 +203,9 @@ export interface EvalOptions {
   /** Material value to price the preview's single solve at (the last full result's; default the
    * mass-balance search's starting value). */
   materialValue?: number;
+  /** Fill value the preview's structure choice is priced at (the last full result's settled value;
+   * default the profile's). */
+  structureValue?: number;
   /** Stable physical acoustic source id of this carriageway (project `acousticSourceId`). */
   acousticSourceId?: string;
   /** One direction of a split motorway: station ranges where the other direction runs alongside on the
@@ -412,6 +423,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // (autoprofile.ts profileBlocks); everything the solve reads is then placed by its exact chainage.
   const blocks = preview || opts.fixedProfile ? undefined
     : fillLongBlocks(profileBlocks(planStraights(fullAlignment, ctx.a, ctx.b)), gridCrossings(fullAlignment, ctx.a, ctx.b, BLOCK_GRID), fullAlignment.length);
+  const settleEnds = blocks && blockEnds(blocks, al.length);
   /** chainage at which a station's clearance applies (NaN: the station itself) */
   const clearanceS = new Float64Array(n).fill(NaN);
   const atS = (x: number) => { const p = pointAt(fullAlignment, x); return { x: p.x, y: p.y }; };
@@ -538,13 +550,19 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   }
   const crossingCost = (cs: WaterCrossing[], width: number, z: number) => cs.reduce((v, c) => v + (z > waterGround.get(c)! ? culvertCost(c, width) : 0), 0);
   const forceWater = (mask: Uint8Array, ss: ArrayLike<number>, heights: ArrayLike<number>, widths: ArrayLike<number>, chosen?: ArrayLike<number>) => {
+    const step = ss[1] - ss[0];
     for (const c of water) {
-      const i = Math.max(0, Math.min(ss.length - 1, Math.round((c.s - ss[0]) / (ss[1] - ss[0]))));
+      const i = Math.max(0, Math.min(ss.length - 1, Math.round((c.s - ss[0]) / step)));
       const size = waterSize(c, widths[i]);
-      if (size.type !== 'bridge' && chosen?.[i] !== KIND.bridge) continue;
       const opening = Math.max(c.width + 2 * CULVERT_RULES.bridgeBanks, size.q100 / (CULVERT_RULES.velocity * 2) + 2 * CULVERT_RULES.bridgeBanks);
       const halfSpan = opening / Math.max(0.01, c.sine) / 2;
-      for (let j = 0; j < ss.length; j++) if (Math.abs(ss[j] - c.s) <= halfSpan + (ss[1] - ss[0]) / 2 && heights[j] > 0) mask[j] = 1;
+      // a bridge chosen anywhere over the channel's opening spans it
+      const near = (j: number) => Math.abs(ss[j] - c.s) <= halfSpan + step / 2;
+      let bridged = size.type === 'bridge';
+      for (let j = Math.max(0, Math.floor((c.s - halfSpan) / step) - 1); !bridged && chosen && j < ss.length && ss[j] <= c.s + halfSpan + step; j++)
+        if (near(j) && chosen[j] === KIND.bridge) bridged = true;
+      if (!bridged) continue;
+      for (let j = 0; j < ss.length; j++) if (near(j) && heights[j] > 0) mask[j] = 1;
     }
   };
 
@@ -734,6 +752,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     return Object.assign(cost, { table });
   };
   const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
+  const balanceTolerance = MATERIAL_VALUE.tolerancePerM * al.length;
   const tpl = { crownWidth: b, fillSlope, cutSlope };
   // Mass balance of a candidate grade line over a stretch [r0, r1] (a block of the grade solve, or
   // the whole route): the same steps as the bill below (cross-sections, structure choice incl.
@@ -1024,6 +1043,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   }
   const pc = opts.passCache;
   const supportMemo = pc?.support ?? new Map<string, number>(), retainingMemo: RetainingFeatureCache = pc?.retaining ?? new Map();
+  /** cells a bridge must span for a stream its end would otherwise bury (set by a retry below) */
+  const streamBridge = new Uint8Array(n);
   // Reroutes traced and engineered by the first pass, reused by the strict retry where our footprint is unchanged.
   const reroutes = pc?.reroutes ?? crossingCache();
   const sectionMemo: SectionCache = pc?.sections ?? [];
@@ -1035,7 +1056,28 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const urbanEarth = new Float32Array(n), forestEarth = new Float32Array(n), urbanDeck = new Float32Array(n);
   const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
   let deckCoverReady = false;
+  /** per cell: buildings under the deck strip / the earthwork (at the widths it was found for) */
+  const deckHits: number[][] = [], earthHits: number[][] = Array.from({ length: n }, () => []);
+  const earthHitL = new Float64Array(n).fill(NaN), earthHitR = new Float64Array(n).fill(NaN);
+  // the same before any retaining wall narrows a section (walls only narrow: the lists after them are subsets)
+  const wideHits: number[][] = Array.from({ length: n }, () => []);
+  const wideHitL = new Float64Array(n).fill(NaN), wideHitR = new Float64Array(n).fill(NaN);
+  /** buildings the slopes (width l left, r right) plus the working strip reach at station i */
+  const hitsAt = (i: number, l: number, r: number, from?: readonly number[]) => {
+    const bld = ctx.buildings!, x = st.x[i], y = st.y[i], tx = st.tx[i], ty = st.ty[i], list: number[] = [];
+    const off = (l - r) / 2, half = (l + r) / 2 + BUILDING_RULES.clearance, cx = x - ty * off, cy = y + tx * off;
+    const test = (j: number) => { if (bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) list.push(j); };
+    if (from) from.forEach(test); else bld.near(x, y, Math.max(l, r) + BUILDING_RULES.clearance + ds, test);
+    return list;
+  };
+  const deckBuildings = new Float64Array(n), earthBuildings = new Float64Array(n);
   const work = (key: string, start: number) => { timing[`work.${key}`] = (timing[`work.${key}`] ?? 0) + performance.now() - start; };
+  // Buildings a retaining wall may keep clear of our works (the player's kept ones; Auto's where only the
+  // working strip reaches them and the wall is cheaper); bought ones are never walled for.
+  const wallable = ctx.buildings ? (() => {
+    const o = normalizeBuildingOverrides(d.buildingOverrides, ctx.buildings!.n);
+    return { index: ctx.buildings!, keep: new Set(o.filter(b => b.action === 'keep').map(b => b.j)), skip: new Set(o.filter(b => b.action === 'buy').map(b => b.j)) };
+  })() : undefined;
   const engineer = (candidate: VPI[], crossingWays: CrossingChainages, strict: ReadonlySet<number>) => {
   timing['count.engineer'] = (timing['count.engineer'] ?? 0) + 1;
   const engineeringStart = performance.now();
@@ -1048,15 +1090,16 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const sectionsStart = performance.now();
   const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo);
   work('sections', sectionsStart);
+  if (ctx.buildings) for (let i = 0; i < n; i++) if (wideHitL[i] !== sec.dayL[i] || wideHitR[i] !== sec.dayR[i]) {
+    wideHits[i] = hitsAt(i, sec.dayL[i], sec.dayR[i]); wideHitL[i] = sec.dayL[i]; wideHitR[i] = sec.dayR[i];
+  }
   const retainingStart = performance.now();
   // A preview keeps natural slopes: no retaining walls, nor the bridges an impossible wall forces.
   const retention: RetainingPlan = preview ? {
     walls: [], perCell: new Float64Array(n), landPerCell: new Float64Array(n), forcedBridge: new Uint8Array(n), forcedTunnel: new Uint8Array(n),
-    wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [],
-  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays);
+    wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [], walledBuildings: [],
+  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits });
   work('retaining', retainingStart);
-  const dec = decisionPrices(materialValue);
-  let cutP = dec.cutPerM3, fillP = dec.fillPerM3;
   lap('sections');
 
   // --- land cover under each station, for each way of building it: the slope-to-slope footprint of
@@ -1088,6 +1131,29 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     }
   }
   deckCoverReady = true;
+  // Buildings each option would demolish (its slopes or deck plus the working strip, as billed
+  // below), each building's price shared over the cells that reach it. The deck strip never changes
+  // within an evaluation; a cell's earthwork hits are redone only where its widths changed.
+  if (ctx.buildings) {
+    const bld = ctx.buildings;
+    const share = (hits: readonly (readonly number[])[], out: Float64Array) => {
+      const count = new Map<number, number>();
+      for (const list of hits) for (const j of list) count.set(j, (count.get(j) ?? 0) + 1);
+      for (let i = 0; i < n; i++) {
+        let v = 0;
+        for (const j of hits[i]) v += bld.cost[j] / count.get(j)!;
+        out[i] = v / cellLength(i, n, ds);
+      }
+    };
+    if (!deckHits.length) { for (let i = 0; i < n; i++) deckHits.push(hitsAt(i, w, w)); share(deckHits, deckBuildings); }
+    let changed = false;
+    for (let i = 0; i < n; i++) if (earthHitL[i] !== sec.dayL[i] || earthHitR[i] !== sec.dayR[i]) {
+      const list = sec.dayL[i] === wideHitL[i] && sec.dayR[i] === wideHitR[i] ? wideHits[i] : hitsAt(i, sec.dayL[i], sec.dayR[i], wideHits[i]);
+      if (!changed && (list.length !== earthHits[i].length || list.some((j, k) => j !== earthHits[i][k]))) changed = true;
+      earthHits[i] = list; earthHitL[i] = sec.dayL[i]; earthHitR[i] = sec.dayR[i];
+    }
+    if (changed) share(earthHits, earthBuildings);
+  }
 
   // --- structures: the earthwork option against a bridge / tunnel, each at the rates of its own
   // footprint (as the bill will charge it) ---
@@ -1096,22 +1162,24 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const h = new Float64Array(n);
   const geotechnicalPerM = new Float64Array(n), culverts = new Float64Array(n);
   const earthPerM = new Float64Array(n), bridgePerM = new Float64Array(n), tunnelPerMAt = new Float64Array(n);
+  const earthBase = new Float64Array(n), earthMul = new Float64Array(n), earthLand = new Float64Array(n), earthBox = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
     geotechnicalPerM[i] = earthEngineeringPerM(h[i], sec.cut[i], sec.fill[i]);
     for (const c of waterAt[i]) culverts[i] += crossingCost([c], sec.dayL[i] + sec.dayR[i], waterElevation.get(c)!);
     const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
-    if (materialAt) ({ cutPerM3: cutP, fillPerM3: fillP } = blockDecision(materialAt[i]));
-    earthPerM[i] = (baseRural + (baseUrban - baseRural) * ue + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II
-      + sec.cutIII[i] * cutP.III + sec.fill[i] * fillP + wd * topsoilPerM2
-      + geotechnicalPerM[i] + (culverts[i] + retention.perCell[i]) / cellLength(i, n, ds)) * (1 + surE(ue))
-      + wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2) + retention.landPerCell[i] / cellLength(i, n, ds);
-    bridgePerM[i] = bridge.perM(h[i]) * (1 + surB(ud)) + b * landPerM2(ud);
+    // the earthwork option's rates without its material terms, which depend on the fill price
+    earthBase[i] = baseRural + (baseUrban - baseRural) * ue + wd * topsoilPerM2
+      + geotechnicalPerM[i] + (culverts[i] + retention.perCell[i]) / cellLength(i, n, ds);
+    earthMul[i] = 1 + surE(ue);
+    earthLand[i] = wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2) + retention.landPerCell[i] / cellLength(i, n, ds) + earthBuildings[i];
+    bridgePerM[i] = bridge.perM(h[i]) * (1 + surB(ud)) + b * landPerM2(ud) + deckBuildings[i];
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelKm(ut) / 1000) * (1 + surT(ut));
   }
   // Rivers / water / railways and watercourses exceeding practical culvert limits need bridges.
   // Inadequate clearance stays a violation, never a fake buried bridge.
   const forced = retention.forcedBridge.slice();
+  for (let i = 0; i < n; i++) if (streamBridge[i] && h[i] > 0) forced[i] = 1;
   for (let i = 0; i < n; i++) if (clearance[i] > -Infinity && h[i] > 0) forced[i] = 1;
   forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]));
   forceParallelWater(forced, stationSides, grade, sec.dayL, sec.dayR,
@@ -1128,22 +1196,102 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     // An Auto local road may instead keep its level in an underpass: the selector weighs that
     // box (estimated over the footprint width) against our bridge; crossings price the built one.
     const wd = sec.dayL[c.i] + sec.dayR[c.i], box = !choice && underpassFits(c, wd) ? underpassPrice(c, wd, urbanCentre[c.i]) : undefined;
-    if (box) earthPerM[c.i] += box.cost * (1 + surB(urbanEarth[c.i])) / cellLength(c.i, n, ds);
+    if (box) earthBox[c.i] += box.cost * (1 + surB(urbanEarth[c.i])) / cellLength(c.i, n, ds);
     else forced[c.i] = 1;
   }
   const forcedTunnel = tunnelWater(st.s, grade);
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
-  const structureInput = { ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel, overrides: manualStructures,
-    bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i])) };
-  let selection = chooseStructures(structureInput);
-  // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
-  // was hydraulically possible. Extend crossing spans, retaining manual overrides and checks.
-  forceWater(forced, st.s, h, Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]), selection.kind);
-  selection = chooseStructures(structureInput);
+  const runCost = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width);
+  const widths = Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]);
+  // The plan's blocks (those of the Auto grade solve, also By hand) settle their own fill value (as they
+  // balance their own earth), so the structures an edit re-prices are those of its own blocks; without
+  // blocks (a preview), one value for the route.
+  const nbS = settleEnds ? settleEnds.length - 1 : 1, blk = new Int32Array(n);
+  if (settleEnds) for (let i = 0, j = 0; i < n; i++) { while (j < nbS - 1 && st.s[i] > settleEnds[j + 1] + 1e-6) j++; blk[i] = j; }
+  const tolOf = (j: number) => settleEnds ? MATERIAL_VALUE.tolerancePerM * (settleEnds[j + 1] - settleEnds[j]) : balanceTolerance;
+  type Settled = { selection: ReturnType<typeof chooseStructures>; balances: number[]; values: number[]; value: number };
+  /** the structure choice at given values of a m³ of fill (one per block), and the usable cut minus fill it
+   * leaves in each block */
+  const selectAt = (values: readonly number[]): Settled => {
+    const dps = values.map(v => blockDecision(v));
+    for (let i = 0; i < n; i++) {
+      const dp = dps[blk[i]], cutP = dp.cutPerM3;
+      earthPerM[i] = (earthBase[i] + sec.cutI[i] * cutP.I + sec.cutII[i] * cutP.II + sec.cutIII[i] * cutP.III
+        + sec.fill[i] * dp.fillPerM3) * earthMul[i] + earthLand[i] + earthBox[i];
+    }
+    const forcedAt = forced.slice();
+    const input = { ds, h, earthPerM, bridgePerM: noBridgeAny ? bridgeOpen : bridgePerM, tunnelPerM: tunnelPerMAt, forced: forcedAt, forcedTunnel, overrides: manualStructures,
+      bridgeRunCost: noBridgeAny ? (i0: number, i1: number, length: number) => noBridge.subarray(i0, i1 + 1).some(Boolean) && !forcedAt.subarray(i0, i1 + 1).some(Boolean) ? Infinity : runCost(i0, i1, length) : runCost };
+    let chosen = chooseStructures(input);
+    // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
+    // was hydraulically possible. Extend crossing spans, retaining manual overrides and checks;
+    // again if the new choice bridges another channel.
+    for (let pass = 0; pass < 3; pass++) {
+      const before = forcedAt.slice();
+      forceWater(forcedAt, st.s, h, widths, chosen.kind);
+      if (pass && forcedAt.every((v, i) => v === before[i])) break;
+      chosen = chooseStructures(input);
+    }
+    const balances = new Array<number>(nbS).fill(0);
+    for (let i = 0; i < n; i++) if (chosen.kind[i] === KIND.earth) balances[blk[i]] += (usable * sec.cut[i] - sec.fill[i]) * cellLength(i, n, ds);
+    let value = 0;
+    for (let j = 0; j < nbS; j++) value += values[j] * (settleEnds ? (settleEnds[j + 1] - settleEnds[j]) / al.length : 1);
+    return { selection: chosen, balances, values: [...values], value };
+  };
+  /** cells of automatic bridges whose piers found no place clear of what lies below: not an option */
+  const noBridge = new Uint8Array(n), bridgeOpen = bridgePerM.slice();
+  let noBridgeAny = false;
+  const settle = (): Settled => {
+    const first = selectAt(Array(nbS).fill(preview ? opts.structureValue ?? materialValue : MATERIAL_VALUE.start));
+    const off = (r: Settled, j: number) => Math.abs(r.balances[j]) > tolOf(j);
+    if (preview || !first.balances.some((_, j) => off(first, j))) return first;
+    // The grade line is fixed here: find, block by block, the fill value at which the structures chosen
+    // along it neither buy fill nor tip a surplus (the profile search's value was set before repairs).
+    const tried = [first];
+    const best = first.values.map((v, j) => ({ v, b: first.balances[j] }));
+    const neg: ({ v: number; b: number } | undefined)[] = [], pos: ({ v: number; b: number } | undefined)[] = [];
+    const record = (r: Settled, keep: boolean) => r.values.forEach((v, j) => {
+      const b = r.balances[j];
+      if (Math.abs(b) < Math.abs(best[j].b)) best[j] = { v, b };
+      if (b < 0) { if (!keep || !neg[j]) neg[j] = { v, b }; } else if (!keep || !pos[j]) pos[j] = { v, b };
+    });
+    record(first, false);
+    let last = selectAt(first.values.map((v, j) => !off(first, j) ? v : first.balances[j] < 0 ? MATERIAL_VALUE.hi : MATERIAL_VALUE.lo));
+    tried.push(last); record(last, true);
+    for (let it = 0; it < SETTLE_EVALS; it++) {
+      const next = best.map((x, j) => {
+        const n0 = neg[j], p0 = pos[j];
+        if (Math.abs(x.b) <= tolOf(j) || !n0 || !p0) return x.v;
+        const t = Math.max(0.15, Math.min(0.85, -n0.b / (p0.b - n0.b)));
+        return n0.v + (p0.v - n0.v) * t;
+      });
+      if (next.every((v, j) => v === best[j].v)) break;
+      last = selectAt(next); tried.push(last); record(last, false);
+    }
+    const want = best.map(x => x.v);
+    return tried.find(r => r.values.every((v, j) => v === want[j])) ?? selectAt(want);
+  };
+  let settled = settle(), selection = settled.selection;
   work('selection', selectionStart);
-  const supportStart = performance.now();
-  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, ownTrack);
+  let supportStart = performance.now();
+  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, ownTrack);
   work('support', supportStart);
+  // A bridge Auto chose whose piers cannot all miss the roads, railways and water under it (no span
+  // within the limit reaches past them) is no option there: choose again without it.
+  for (let pass = 0; pass < 2; pass++) {
+    // (cells that must be bridged stay: their bridge is reported if it still cannot stand)
+    let more = false;
+    for (const f of supported.diagnostics) if (f.reason === 'span-limit' && f.automatic && f.cells)
+      for (let i = f.cells[0]; i <= f.cells[1]; i++) if (!forced[i] && !noBridge[i]) { noBridge[i] = 1; bridgeOpen[i] = Infinity; more = true; }
+    if (!more) break;
+    noBridgeAny = true;
+    const again = performance.now();
+    settled = settle(); selection = settled.selection;
+    work('selection', again);
+    supportStart = performance.now();
+    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, ownTrack);
+    work('support', supportStart);
+  }
   const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
   for (const issue of supported.diagnostics) if (issue.structure === 'abutment' && issue.reason === 'terrain' && issue.targetS !== undefined && issue.raiseM > 0) {
@@ -1155,7 +1303,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   }
   work('engineering', engineeringStart);
   return { prof, grade, waterZ, sec, retention,
-    h, geotechnicalPerM, culverts, crossings, selection, supported, supportHeights };
+    h, geotechnicalPerM, culverts, crossings, selection, supported, supportHeights, structureValue: settled.value };
   };
   /** why the last lift failed: the station whose fixed height (an end or a pin) its steepest grade ran into */
   let liftStop: number | null = null;
@@ -1175,7 +1323,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
    * engineer() buffers, so it stays valid after a later pass. */
   /** Support-lift state of a pass, handed on to a later pass that starts from its lifted line. */
   interface LiftState { targets: Map<number, number>; retried: Map<number, number> }
-  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis, from?: LiftState): { vpis: VPI[]; footprintConflicts: FootprintConflict[]; lift: LiftState; complete: () => Result } => {
+  const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; lift: LiftState; complete: () => Result } => {
   const oob = oobInput.slice();
   let vpis = start;
   let engineering = engineer(vpis, relaxed, strict);
@@ -1270,7 +1418,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     engineering = engineer(vpis, relaxed, strict);
   }
   const { prof, grade, waterZ, sec, retention,
-    h, geotechnicalPerM, culverts, crossings, selection, supported } = engineering;
+    h, geotechnicalPerM, culverts, crossings, selection, supported, structureValue } = engineering;
   const { kind, runs } = supported;
   // Auto support clearances are repaired by the lift loop above, which a preview skips: do not
   // flash them as violations in a drag preview (the full evaluation reports any it cannot fix).
@@ -1361,6 +1509,12 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
       demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : cutSide ? 'cut' : 'embankment', strip: !p.core });
     }
+    // a chimney, silo or tower standing within a demolished building's outline goes with it
+    for (const p of demolished.slice()) bld.near(items[p.j][0], items[p.j][1], items[p.j][2], (k) => {
+      if (gone[k] || keptIds.has(k) || bld.area[k] > BUILDING_RULES.hostedMaxArea || bld.area[k] > BUILDING_RULES.hostedShare * bld.area[p.j] || !bld.within(k, p.j)) return;
+      gone[k] = 1; buildingCost[p.i] += bld.cost[k];
+      demolished.push({ ...p, j: k, cost: bld.cost[k], host: p.j });
+    });
     for (const o of buildingOverrides) {
       if (gone[o.j]) continue; // footprint acquisition already pays the building once
       const hit = best.get(o.j);
@@ -1523,7 +1677,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     }
     walls = outcome.walls; wallsAroundChoices = outcome.aroundChoices;
     receivers = outcome.receivers;
-    noiseViolations.push(...noiseControlViolations(receivers, st.s));
+    noiseViolations.push(...noiseControlViolations(receivers, st.s, crossings.filter(c => c.type === 'junction')));
   }
   lap('town');
 
@@ -1661,7 +1815,13 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, wallsAroundChoices, demolished, boughtOut, kept,
-    retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
+    retainingWalls, walledOff: retention.walledBuildings.flatMap(b => {
+      // the walls standing for it (its own cells and the one either side each wall reaches over)
+      const own = retainingWalls.filter(w => w.feature === 'building' && w.s1 > b.s0 - ds && w.s0 < b.s1 + ds);
+      return !gone[b.j] && own.some(w => st.s[w.i] > b.s0 && st.s[w.i] < b.s1)
+        ? [{ ...b, s0: Math.min(...own.map(w => w.s0)), s1: Math.max(...own.map(w => w.s1)), height: Math.max(...own.map(w => w.height)), wall: own.reduce((a, w) => a + w.cost, 0) }] : [];
+    }),
+    wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
     noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
       limit: noiseModel.controlling === 'night' ? noiseModel.limits?.nightDb ?? NOISE.limitNightDb : noiseModel.limits?.dayDb ?? NOISE.limitDayDb },
     quantities: {
@@ -1670,16 +1830,26 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       bridgeLength, tunnelLength, bridges: bridges.length, tunnels: tunnels.length, massHaul: vol.mass,
       urbanLength, wallLength: wallLength.reduce((a, v) => a + v, 0),
       wallArea: wallArea.reduce((a, v) => a + v, 0), noiseBuyouts: boughtOut.length,
-      crossingsPaid, noiseDistance: noiseModel.contour, materialValue,
+      crossingsPaid, noiseDistance: noiseModel.contour, materialValue, structureValue,
     },
     travelMin, minCategory, valid: violations.length === 0, profileFeasible, timing, ...(preview ? { preview: true } : {}),
     ...(withNoise ? {} : { withNoise: () => complete(true) }),
   };
   };
-  return { vpis, footprintConflicts: footprintCheck.conflicts, lift: { targets: repairTargets, retried }, complete };
+  return { vpis, kind, footprintConflicts: footprintCheck.conflicts, lift: { targets: repairTargets, retried }, complete };
   };
-  const first = finish(crossingWays);
+  let first = finish(crossingWays);
   if (preview) return first.complete();
+  // A stream left under the earthwork just beyond a bridge's end with too little cover for a culvert
+  // (an oblique channel under the slope): carry the bridge over it and engineer again.
+  const streams = first.footprintConflicts.filter(c => c.feature === 'stream' && c.action === 'blocked' && c.id.endsWith(':earth'));
+  let spanned = false;
+  for (const c of streams) {
+    const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
+    if (!first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
+    for (let i = i0; i <= i1; i++) if (manualStructures[i] < 0) { streamBridge[i] = 1; spanned = true; }
+  }
+  if (spanned) { timing['count.streamRetry'] = 1; first = finish(crossingWays, new Set(), first.vpis); }
   // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
   const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
@@ -1775,6 +1945,8 @@ function motorwayLanes(cat: (typeof CATEGORIES)[CategoryId], medianRight: boolea
 
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
 const STRICT_RETRY_REACH = 300;
+/** regula-falsi steps after the bracket when settling the fill value on a fixed grade line */
+const SETTLE_EVALS = 4;
 
 /** Stations where the mapped railway under us is the track we join or rebuild (EvalOptions.railTieIn):
  * the station areas at both ends, and stretches where our axis runs along it (three consecutive stations

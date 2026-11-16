@@ -1,6 +1,6 @@
 # Evaluate performance regression
 
-## Local grade solve (cost model 24, 2026-11-16)
+## Local grade solve (cost model 25, 2026-11-16)
 
 The Auto grade line is now solved in blocks (research/39 "Local edits"): one corridor pass per boundary
 window (5 km either side, coarse grid only; the timings in this paragraph were measured with 1.5 km windows,
