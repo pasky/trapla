@@ -120,7 +120,9 @@ export interface Result {
   wallSurfaceL: Float64Array; wallSurfaceR: Float64Array;
   walls: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
-  demolished: { j: number; i: number; cost: number }[];
+  /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
+   * construction working strip beside one of them (`strip`) */
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
@@ -912,7 +914,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const buildingViolations: Violation[] = [], noiseViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
-    const best = new Map<number, { i: number; along: number }>();
+    const best = new Map<number, { i: number; along: number; core: boolean }>();
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel) continue;
       const left = kind[i] === KIND.earth ? sec.dayL[i] : w, right = kind[i] === KIND.earth ? sec.dayR[i] : w;
@@ -922,8 +924,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       bld.near(x, y, Math.max(left, right) + BUILDING_RULES.clearance + ds, (j) => {
         if (!bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) return;
         const along = Math.abs((items[j][0] - x) * tx + (items[j][1] - y) * ty);
+        // the slopes / deck themselves, not only the working strip beside them (what the card names)
+        const core = bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half - BUILDING_RULES.clearance);
         const p = best.get(j);
-        if (!p) best.set(j, { i, along }); else if (along < p.along) { p.i = i; p.along = along; }
+        if (!p) best.set(j, { i, along, core }); else if ((core && !p.core) || (core === p.core && along < p.along)) { p.i = i; p.along = along; p.core = core; }
       });
     }
     for (const [j, p] of best) {
@@ -938,7 +942,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
       gone[j] = 1;
       buildingCost[p.i] += bld.cost[j];
-      demolished.push({ j, i: p.i, cost: bld.cost[j] });
+      demolished.push({ j, i: p.i, cost: bld.cost[j], in: kind[p.i] === KIND.bridge ? 'bridge' : h[p.i] >= 0 ? 'embankment' : 'cut', strip: !p.core });
     }
     for (const o of buildingOverrides) {
       if (gone[o.j]) continue; // footprint acquisition already pays the building once

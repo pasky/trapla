@@ -8,7 +8,7 @@ import { shapeable } from './link-shape';
 import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
-import { BUILDING_KINDS, NOISE, ROAD_CLASSES } from '../core/data/urban';
+import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
 import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls';
 import type { Design, Result } from '../core/evaluate';
 import type { StructureKind } from '../core/overrides';
@@ -407,7 +407,12 @@ export class Inspector {
     const kept = r.kept.find((p) => p.j === j), rec = r.noise.receivers.find((p) => p.j === j);
     const limit = r.noise.limit, period = r.noise.controlling === 'night' ? 'at night' : 'by day';
     let state: string, why = '';
-    if (removed) { state = `Demolished · ${czk(removed.cost)}`; why = 'In the road\'s way.'; }
+    if (removed) {
+      state = `Demolished · ${czk(removed.cost)}`;
+      const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
+      why = removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
+        : `${removed.in === 'cut' ? 'In' : 'Under'} ${ours}, km ${km(r.s[removed.i])}.`;
+    }
     else if (bought) { state = `Bought out · ${czk(bought.cost)}`; why = bought.reason === 'manual' ? 'Your choice.' : `Too loud even behind a ${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall.`; }
     else if (kept?.hit) state = 'Kept — in the road\'s way';
     else if (rec?.unresolved) { state = `Stays · ${(limit + rec.mitigated).toFixed(1)} dB ${period} (limit ${limit})`; why = action === 'keep' ? 'You keep it, so it is not bought out.' : 'Your wall choice stops the automatic buyout.'; }
