@@ -58,7 +58,7 @@ try {
   // 1. the start screen: the railway card, then the mission
   await page.goto('http://localhost:5296/');
   await page.waitForSelector('.scenario-picker-card');
-  const cards = await page.locator('.scenario-picker-card h2').allTextContents();
+  const cards = await page.locator('.scenario-picker-card :is(h2, h3)').allTextContents();
   console.log('cards', JSON.stringify(cards));
   assert(cards.includes('Railway: Trutnov → Královec') && !cards.includes('Railway: Trutnov → Polish border'));
   await open('scenario=d11&preset=d11-rail-kralovec');

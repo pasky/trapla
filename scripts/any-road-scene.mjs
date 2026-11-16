@@ -416,6 +416,11 @@ try {
     {
       await page.evaluate(d => window.trapla.setProject(d), initial); await idle();
       await dragOn('osm:way:275065891', 1150, 25, -25);
+      // This scene tests combined-noise decisions, not the uncounted-street prior. Keep its original
+      // class-III demand as an explicit player choice; a quiet street need not affect any decision.
+      await page.locator('.route-traffic input[name="traffic"]').fill('736');
+      await page.locator('.route-traffic input[name="heavy"]').fill('6.4');
+      await page.locator('.route-traffic input[name="heavy"]').press('Tab'); await idle();
       const pr = await page.evaluate(() => window.trapla.projectResult());
       assert(pr.complete, 'our road and the rebuilt street are priced together');
       const both = pr.receivers.find(q => q.together && q.contributions.length > 1);

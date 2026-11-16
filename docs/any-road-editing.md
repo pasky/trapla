@@ -826,3 +826,85 @@ bench 5 VALID; land-screen-check 6 OK; outcome-audit exit 0 (violations 106, VAL
 (d3-full: one edit 0.11 m beyond 10 km, within its rule); smoke, playtest, mode-play, stretch-play PASS;
 any-road-scene D11 and D3, owner-d3-scene PASS (around the rebuilt crossing: bridge 230 → 230 m, walls 1 → 1,
 +2.3 M); drag-perf `--gpu --check` all six modes OK (max result gap 49–84 ms).
+
+## 18. Railway kept track and QA f9f5d9d (2026-11-16, model 28)
+
+**Railway kept track (`aa343b4`).** `project-kept.ts` accepts several old paths and works for either kind of
+line. A rebuilt railway keeps the old track's heights, crossings and neighbours where its line stays on it:
+no new works there and a kept credit in the project's works. End straights that leave the continuing track
+must meet the turnout-angle rule (J60-1:12-500, a game rule); a wholly kept end straight is exempt. Conversion
+compares the old track's bends with a road-style fit and chooses fewer cells built anew, then fewer problems.
+D11's fresh rebuild survey: 4111/4448 cells kept; flagged ends fell from 15 to 4 of 59 tracks. The inspector
+says “old track”, not “old road”. A waiting press released before road links arrive is a click at its original
+ground point, re-projected after any camera movement (any-road-scene 0b).
+
+**QA (1)(2), shared land and old-road ends (`6ca6c2d`).** Crossing zones include the crossed road's width and
+clearance divided by the crossing angle, plus the bridge and its abutments. A rebuilt stretch continuing the
+old road into another road's reroute gets an end-connection zone. Its own old way is not a shared-road conflict;
+a removed road is not extra occupied land. The screen uses each side's actual earthworks width. Tests cover
+III/1057 beside the D3 bridge and the D11 km 4.1 track bent at its start.
+
+**QA (3), uncounted traffic (`47780d8`).** Local streets start at 300 vehicles/day, service roads at 50, field
+tracks at 10 (heavy shares 3/5/5%). All are explicitly PROVISIONAL, not census counts (research/43). The card
+says “Not counted: a guess for …”. The combined-noise browser scene retains its former 736/day, 6.4% demand as
+an explicit player choice: the new quiet-street prior need not change any house's noise decision.
+
+**QA (4), crossing a mapped railway (`8565d5d`).** A real railway retry bug: the clearance retry matched
+“Road too low”, but railway wording had already changed that title. `Violation.clearance` now carries the
+structured diagnostic; the retry no longer reads player text. R1/R2/D27.5 regression cases build over an
+unrelated mapped railway's 4 m embankment, clear it and keep both new endpoints on the ground.
+
+The exact D3-0302 QA build is also geometrically constrained, not a missing crossing engine: A
+(5817.219, 5844.977, 356.691), B (5747.153, 3959.624, 295.654), length 1886.65 m. The railway would descend
+32.4‰ on average (limit 12.5‰). The crossed old track is only about 100 m before B; the motorway cannot gain
+9.3 m for the crossing and descend to grounded B at 4%. We do not float free endpoints or silently exceed
+the grade limit. Extending that railway farther downhill does not cure its excessive average descent.
+
+**QA (5), inward carriageway drag (`3d147ee`, review fix `75ac9a9`).** D3-0302, Towards Hostěradice, km 3,
+40 px east: the forward direction crossed the untouched reverse twice and ran on the wrong side between.
+Relaxing the overlap check would hide real wrong-way geometry. Evaluating two Auto-followed half-bodies also
+failed: independent heights and structure lifts left incompatible slopes/noise checks.
+
+`autoFollowingCorridor` instead derives ONE paired D27.5 body for an inward-pulled stretch whose peer is still
+Auto. The saved spine and own-direction edit stay intact: pulling back outward restores the original peer;
+Reset or Undo restores the original line. Both editors read the derived line too. The card says “Both follow
+this bend”, with Reset rather than Join. An explicit peer line, shared manual heights, or shared pins/works in
+that stretch constrain the peer and are not overwritten. Another separate stretch that cannot be carried
+without losing its edits likewise prevents Auto following. The whole affected stretch follows, even if only
+part of it would overlap; a radius edit can also require this. Editing both directions accepts the shown
+paired line as their new shared line, including when the edit is a pin.
+
+Self-review caught that the Auto peer's displayed bends were being saved as player edits by unrelated pins
+or distant drags. Those automatic copies are now removed outside the actually edited bends and their
+neighbours before writing back; a pin/works choice on the followed body belongs to that body. Tests cover
+both directions, pulling back out, explicit peer edits, distant peer pins/drags, local pins and preservation
+of existing shared controls. The exact browser repro is now in `stretch-play.mjs`: valid, one body evaluated
+and drawn, no violations, matching peer widgets, Reset restores the original bill (7.542 bn after the pull).
+
+**QA (6), road list (`9f4d7d3`).** Each motorway has its own name; duplicates are numbered. Choosing an
+off-screen road frames that road, not the stale previously selected result (unit and scene checks).
+
+**Main merged (`a203151`, model 28 `f2313eb`).** Main `caa8d40` brings model 27's town rates into the grade
+search, bridges over water where walls cannot hold the bank, and bend drags that do not crowd neighbours.
+No merge conflicts. All 11 main model-27 D11 fixtures pass bit-exact before and after changing only their
+version stamp to 28; no bills recaptured. The mode scene now accepts grouped picker cards' h3 headings.
+
+Gates after this merge: tsc; vitest 83 files / 693 tests; build; eval-regression 11 PASS; bench 5 VALID;
+land-screen 6 OK; outcome audit exit 0 (30 designs, 124 violations, 8 VALID); edit-locality exit 0 (same
+whole-D3 one edit 0.11 m beyond 10 km, no new far problems); smoke, playtest, mode-play, stretch-play,
+any-road-scene D11 and D3, owner-d3-scene PASS. GPU drag checks: bend / road / radius / pin / vpi / link all
+OK (max result gaps 58/73/100/64/68/100 ms, no long tasks); whole-D3 forward-direction bend also OK (128 ms,
+no long tasks). Crossing scene: III/1057's motorway bridge stays 230 m, its wall stays 10 m, nearby works
++2.28 M; whole bill +2.26 M. Screenshots inspected: crossing, combined-noise card and inward-follow body.
+Photo tiles did not arrive from the external service, so the photo-overlay check was skipped by both scenes.
+
+Still open:
+- Rebuilt railway `routeHead` is null: no works list or “Keep the old track” button on its own card.
+- Rebuilt railway continuations can still be `connection-pending`; some fresh rebuild ends meet tight old
+  track too sharply (e.g. D11 osm:way:35609502).
+- The screen still flags a bent rebuilt track beside reroute links at D11 km 4.1, fraction 0.25 / offset 60 m.
+- Stretch controls are still station-based; length changes can shift their physical positions (the general
+  station-grid issue). `pairStations` may return NaN on widely divergent paths whose normal meets a segment
+  beyond the nearest two; inward detection here sees the sign change near the departure before that gap.
+- Review raised broad bridge/continuation screen zones as a follow-up: bridge supports are checked by the
+  engineering kernel against the edited network, but the land screen itself does not certify pier clearance.
