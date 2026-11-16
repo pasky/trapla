@@ -1,43 +1,25 @@
 // Drive the real app headlessly (Chromium + SwiftShader WebGL) and save screenshots.
 // Usage: node scripts/screenshots.mjs [designs.json]   (starts its own Vite dev server)
 import { mkdirSync, readFileSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
 const OUT = 'docs/screenshots';
 mkdirSync(OUT, { recursive: true });
-const PORT = Number(process.env.PORT ?? 5199); // set PORT when several checkouts run at once
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const url = `http://localhost:${PORT}/?scenario=d11`;
-// GPU=1: use the hardware GPU (Vulkan) instead of SwiftShader — much faster where one is available
-const browser = await chromium.launch({
-  executablePath: process.env.CHROME ?? '/usr/bin/chromium',
-  args: process.env.GPU
-    ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
-    : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
-});
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-// the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
+// GPU=1 (or --gpu): the hardware GPU (Vulkan) instead of SwiftShader — much faster where one is available
+const game = await startGame({ gpu: !!process.env.GPU || process.argv.includes('--gpu') });
+const { page } = game;
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}`));
 
 const idle = async () => {
-  await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
   await page.evaluate(() => window.trapla.whenIdle());
   await page.waitForLoadState('networkidle');
   await page.waitForTimeout(1500);
 };
-// wait until the land-cover textures for the current camera are drawn (and photos fetched)
-const settle = async () => {
-  await page.evaluate(() => new Promise((res) => {
-    const f = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? f() : res()));
-    requestAnimationFrame(() => requestAnimationFrame(f));
-  }));
-  await page.waitForTimeout(500); // contour labels are laid out once the camera rests
-};
+// the land-cover textures for the current camera are drawn (and photos fetched); contour labels are laid out
+// once the camera rests
+const settle = () => game.idle(500);
 const shot = async (name) => {
   await settle();
   await page.screenshot({ path: `${OUT}/${name}.png` });
@@ -46,9 +28,7 @@ const shot = async (name) => {
 const view = (prefs) => page.evaluate((p) => window.trapla.setView({ contours: false, slope: false, exag: 1, photo: false, ...p }), prefs);
 const look = (...a) => page.evaluate((a) => window.trapla.lookAt(...a), a);
 
-await page.goto(url);
-await page.evaluate(() => localStorage.clear());
-await page.reload();
+await game.open('scenario=d11');
 await idle();
 console.log('start', JSON.stringify(await page.evaluate(() => {
   const s = window.trapla.summary();
@@ -210,5 +190,4 @@ const perf = await page.evaluate(async () => {
 });
 console.log(`round-trip ms per edit (${process.env.GPU ? 'hardware GPU' : 'SwiftShader'} page):`, perf?.map((x) => x.toFixed(0)).join(' '));
 console.log('console errors/warnings:', errors.length ? errors : 'none');
-await browser.close();
-await server.close();
+await game.close();

@@ -2,21 +2,16 @@
 // running along the motorway moved beside it, a skewed track's box straightened, two field tracks on one
 // bridge, the player keeping a skewed line and straightening it again; town-centre's skewed service road
 // straightened; Nová Paka's neighbouring tracks joined to one box; best's service road moved aside.
-// flock -s /tmp/trapla-browser.lock nice -n 10 env CHROME=/usr/bin/chromium PORT=5271 node scripts/crossing-economy-shots.mjs [--out docs/screenshots] [--first 170]
+// flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/crossing-economy-shots.mjs [--out docs/screenshots] [--first 170]
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
-const port = Number(process.env.PORT ?? 5271);
+import { startGame } from './lib/browser.mjs';
 const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : fallback; };
 const out = arg('--out', 'docs/screenshots'); let number = Number(arg('--first', 170));
 mkdirSync(out, { recursive: true });
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-const errors = []; page.on('pageerror', e => errors.push(e.message));
-const idle = async () => { await page.evaluate(() => window.trapla.whenIdle()); await page.waitForTimeout(700); };
+const game = await startGame();
+const { page, pageErrors: errors } = game;
+const idle = () => game.idle(700);
 const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await page.mouse.move(5, 5); await page.screenshot({ path }); console.log('SHOT', path); };
 const card = async () => (await page.evaluate(() => document.getElementById('inspector')?.innerText ?? '')).replace(/\s+/g, ' ');
 const T = (f, a) => page.evaluate(f, a);
@@ -28,10 +23,8 @@ const show = async (c, distance, azimuth, tilt, span = 300) => {
   await idle();
 };
 try {
-  await page.addInitScript(() => { try { if (!sessionStorage.getItem('fresh')) { localStorage.clear(); localStorage.setItem('trapla.intro.v1', '1'); sessionStorage.setItem('fresh', '1'); } } catch { /* opaque */ } });
   // D3 motorway starter
-  await page.goto(`http://localhost:${port}/?scenario=d3&preset=d3-motorway`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 180000 }); await idle();
+  await game.open('scenario=d3&preset=d3-motorway'); await idle();
   await T(d => window.trapla.setDesign(d), design('scripts/scenarios/d3/d3-motorway.json')); await idle();
   const total = await T(() => { const r = window.trapla.result(); return { total: r.cost.total, valid: r.valid, v: r.violations.map(v => v.title) }; });
   console.log('D3 MOTORWAY', JSON.stringify(total));
@@ -64,8 +57,7 @@ try {
   console.log('CARD 3.63', (await card()).slice(0, 400));
   await shot('d3-motorway-neighbouring-tracks');
   // town-centre: the skewed service road at km 15.98
-  await page.goto(`http://localhost:${port}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 180000 }); await idle();
+  await game.open('scenario=d11'); await idle();
   await T(d => window.trapla.setDesign(d), design('scripts/town-centre-design.json')); await idle();
   const service = await crossingNear(15980, 5162);
   console.log('TOWN 5162', service.type, service.squared, service.underpassLength, service.lowered);
@@ -81,8 +73,7 @@ try {
     await shot('best-service-road-moved-aside');
   }
   // Nová Paka: the service road and the track beside the track's box, joined to it
-  await page.goto(`http://localhost:${port}/?scenario=i16-nova-paka`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 180000 }); await idle();
+  await game.open('scenario=i16-nova-paka'); await idle();
   await T(d => window.trapla.setDesign(d), design('scripts/scenarios/i16-nova-paka/default.json')); await idle();
   const joined = await crossingNear(3480, undefined);
   console.log('NOVA PAKA 3.48', joined.type, joined.targetS, joined.linkLength);
@@ -90,7 +81,4 @@ try {
   console.log('CARD 3.48', (await card()).slice(0, 400));
   await shot('nova-paka-roads-joined-to-one-box');
   assert.deepEqual(errors, [], `page errors: ${errors}`);
-} finally {
-  await browser.close();
-  await server.close();
-}
+} finally { await game.close(); }

@@ -4,24 +4,14 @@
 // node scripts/crossing-works-shots.mjs [--before]   (writes docs/screenshots/110…)
 import assert from 'node:assert/strict';
 import { readFileSync, mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
 const BEFORE = process.argv.includes('--before');
-const port = Number(process.env.PORT ?? 5198);
 const out = process.env.OUT ?? 'docs/screenshots';
 mkdirSync(out, { recursive: true });
-const server = await createServer({ server: { port, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); localStorage.setItem('trapla.intro.v2', '1'); } catch { /* opaque origin */ } });
-const errors = []; page.on('pageerror', e => errors.push(e.message));
-const idle = async (ms = 600) => {
-  await page.evaluate(() => window.trapla.whenIdle());
-  await page.evaluate(() => new Promise(res => { const f = () => requestAnimationFrame(() => (window.trapla.viewBusy() ? f() : res())); requestAnimationFrame(f); }));
-  await page.waitForTimeout(ms);
-};
+const game = await startGame({ viewport: { width: 1400, height: 900 } });
+const { page, pageErrors: errors } = game;
+const idle = (ms = 600) => game.idle(ms);
 const load = (name) => name === 'straight' ? { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }
   : JSON.parse(readFileSync(`scripts/${name}-design.json`, 'utf8')).design;
 // [file number, design, crossed way, camera centre (the same before and after: the regraded side road /
@@ -32,8 +22,7 @@ const scenes = [
   [114, 'demo', 1975, [9840, 8528], 170, 20, 45, 'junction-street-tie-demo'],
 ];
 try {
-  await page.goto(`http://localhost:${port}/?scenario=d11`);
-  await page.waitForFunction(() => window.trapla, null, { timeout: 120000 }); await idle();
+  await game.open('scenario=d11'); await idle();
   for (const [number, name, roadId, [x, y], dist, bearing, elev, label] of scenes) {
     await page.evaluate(d => window.trapla.setDesign(d), load(name)); await idle();
     const c = await page.evaluate(([id, x, y, dist, bearing, elev]) => {
@@ -69,4 +58,4 @@ try {
     await page.screenshot({ path }); console.log(path, JSON.stringify(target));
   }
   assert.deepEqual(errors, []);
-} finally { await browser.close(); await server.close(); }
+} finally { await game.close(); }

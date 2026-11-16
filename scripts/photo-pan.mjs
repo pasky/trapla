@@ -2,22 +2,12 @@
 // the image requests (a revisit must not refetch what was loaded) and screenshots mid-pan to $OUT.
 // node scripts/photo-pan.mjs [--gpu]
 import { mkdirSync } from 'node:fs';
-import { chromium } from 'playwright-core';
-import { createServer } from 'vite';
+import { startGame } from './lib/browser.mjs';
 
-const PORT = Number(process.env.PORT ?? 5207);
 const OUT = process.env.OUT ?? '/tmp/trapla-photo';
 mkdirSync(OUT, { recursive: true });
-const gpu = process.argv.includes('--gpu');
-const server = await createServer({ server: { port: PORT, strictPort: true }, logLevel: 'warn' });
-await server.listen();
-const args = gpu
-  ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
-  : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
-const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/usr/bin/chromium', args });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-// the first-run intro would cover the map in the screenshots
-await page.addInitScript(() => { try { localStorage.setItem('trapla.intro.v1', '1'); } catch { /* opaque origin */ } });
+const game = await startGame({ viewport: { width: 1280, height: 800 } });
+const { page } = game;
 page.on('pageerror', (e) => { console.log('pageerror', e.message); process.exitCode = 1; });
 page.on('console', (m) => { if (m.type() === 'error') { console.log('console error', m.text().slice(0, 300)); process.exitCode = 1; } });
 let started = 0, done = 0, failed = 0;
@@ -25,12 +15,8 @@ const urls = new Map();
 page.on('request', (r) => { if (r.url().includes('/export?')) { started++; urls.set(r.url(), (urls.get(r.url()) ?? 0) + 1); } });
 page.on('requestfinished', (r) => { if (r.url().includes('/export?')) done++; });
 page.on('requestfailed', (r) => { if (r.url().includes('/export?')) failed++; });
-await page.goto(`http://localhost:${PORT}/?scenario=d11`);
-await page.evaluate(() => localStorage.clear());
-await page.reload();
-await page.waitForFunction(() => window.trapla !== undefined, null, { timeout: 120000 });
-await page.evaluate(() => window.trapla.whenIdle());
-if (!(await page.evaluate(() => !!window.trapla.meta.orthophoto))) { console.log('no orthophoto source'); process.exit(0); }
+await game.open('scenario=d11');
+if (!(await page.evaluate(() => !!window.trapla.meta.orthophoto))) { console.log('no orthophoto source'); await game.close(); process.exit(0); }
 const idle = async (ms = 60000) => {
   const t0 = Date.now();
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -78,5 +64,4 @@ await page.evaluate(() => window.trapla.setView({ photo: true }));
 await idle();
 await page.screenshot({ path: `${OUT}/4-toggled.png` });
 ok(started === n, `photo off and on again: no requests (${started - n})`);
-await browser.close();
-await server.close();
+await game.close();
