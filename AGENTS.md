@@ -54,6 +54,11 @@ broken visuals and jargon before.
   missions (whole D3 56 km, whole D35) pass the drag budgets (docs/evaluate-performance.md). A full motorway
   evaluation is ≈ 11 ms/km (≈ 0.7–1.8 s settle on the whole D3). While it runs the score shows "≈ … · ≈ CHECKING".
   The whole-D3 pack (24.7 M cells) costs ≈ 471 MB of JS heap (D11 221 MB): accepted for now (research/39).
+- The Auto grade line is solved in blocks between long straights (model 22, research/39 "Local edits"):
+  an edit re-solves its own block and its neighbours' boundaries (≈ 3–8 km), never the far end. Its price:
+  a block does not see past its boundaries' 1.5 km windows and balances its own earth (bills ±5 %, the
+  whole D35 +10 %). Support-lift targets still come from the station-based engineering (a 0.7–2 m lift
+  difference can appear far from an edit).
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
 - Some reroutes > 1 km remain where neither underpass nor bridge fits (lowering the crossed road into a

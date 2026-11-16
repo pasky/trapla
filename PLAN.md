@@ -938,3 +938,16 @@ the bill change: **research/36**.
 - Performance (open): the noise step is +2–3 ms on best / demo, +4–6 ms on direct-80/90 and ≈ +12 ms on
   town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
   unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.
+
+## Local edits: the grade line in blocks (cost model 22, 2026-11-16)
+
+Playtest (whole D3 / D35): a small nudge redesigned the grade and broke crossings 9–24 km away. Same design,
+same bill stays the rule (no edit history), so the solve itself became local (research/39 "Local edits"):
+blocks between long straights (from the plan only), each boundary's heights from the 1.5 km around it, each
+block with its own mass balance, every input placed from the block ends rather than the stations; the
+separation and strict retries and the support lifts act and are judged per stretch. Whole D3, 16 bend moves:
+far grade change 14.8 → 2.4 m, far violations changed 2 → 0. Price: the line is no longer the whole-route
+optimum (bills ±5 %, the whole D35 +10 %); five designs and starters needed 8–60 m bend repairs.
+Known issues: support-lift targets still come from the station-based engineering; a bend move that shifts a
+block boundary re-solves both neighbouring blocks (up to ≈ 8 km); interchange ramps are not modelled (the
+ends say so on their card).

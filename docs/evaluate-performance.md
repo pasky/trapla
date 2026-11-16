@@ -1,5 +1,17 @@
 # Evaluate performance regression
 
+## Local grade solve (cost model 22, 2026-11-16)
+
+The Auto grade line is now solved in blocks (research/39 "Local edits"): one corridor pass per boundary
+window (≈ 3 km, coarse grid only) on top of the blocks' own corridor and mass-balance passes, which together
+cover the route once as before. Inputs are placed from the block ends (≈ 1 even cost sample per 20 m with
+its ground and geology looked up at its own place, a traced line every ≈ 10 m for crossings, raster
+samples every 2.5 m). Interleaved A/B against main 93f849d (Node, warm, 10 evaluations, two rounds, host
+load ≈ 8–9), min / median ms: D11 best 91 / 112 and 86 / 97 → 92 / 109 and 89 / 104; town-centre 142 / 178
+and 119 / 150 → 134 / 152 and 130 / 151 (within noise). D3 0303 11 km motorway 97–105 / 101–133. A design
+whose separation retry splits into kept and dropped stretches pays a third evaluation of the route
+(rare: none of the starters).
+
 ## Long routes: windowed previews, a preview worker (2026-11-16)
 
 Goal: complete corridors (Středočeská D3 58.5 km, D35 Opatovec → Mohelnice 34 km) with unchanged drag
