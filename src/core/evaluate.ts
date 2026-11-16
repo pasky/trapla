@@ -374,12 +374,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
   /** the options the kept result was evaluated with (a separation retry adds its targets) */
   let used: EvalOptions = opts;
-  const sep = (gs: { road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...opts,
-    separate: gs.flat().flatMap(t => t.road ? [t.road] : []), separateWater: gs.flat().flatMap(t => t.water ? [t.water] : []) });
   // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
   // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
-  // with Auto asked to clear those roads (kept only if it resolves more than it breaks).
-  if (!opts.preview && !opts.window && !opts.separate && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') {
+  // with Auto asked to clear those roads (kept only if it resolves more than it breaks). `base`: the
+  // options of the kept result, whose own clearances stay.
+  const separation = (base: EvalOptions) => {
+    const sep = (gs: { road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...base,
+      separate: [...base.separate ?? [], ...gs.flat().flatMap(t => t.road ? [t.road] : [])],
+      separateWater: [...base.separateWater ?? [], ...gs.flat().flatMap(t => t.water ? [t.water] : [])] });
     const stuck = result.crossings.filter(c => c.type === 'overbridge' && !c.requestedType
       && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
     // …and where it paid the clearance penalty over a river, railway or stream instead of clearing it.
@@ -421,7 +423,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         else { result = part; used = sep(keep); }
       }
     }
-  }
+  };
+  if (!opts.preview && !opts.window && !opts.separate && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') separation(opts);
   // Where our earthworks bury a road that could neither be rebuilt beside them nor kept behind a wall, a
   // designer lowers the grade there (or raises it out of a cutting) so the slope stays off the road: once
   // more with Auto asked for NARROW_STEP less embankment (cutting) there, kept per stretch where it
@@ -454,7 +457,14 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       let retry = evaluateRoute(ctx, d, split);
       if (retry.withNoise) retry = retry.withNoise();
       retry.timing['count.splitRetry'] = 1;
-      if (regionCount(retry, buried.map(f => (f.s0 + f.s1) / 2)) < regionCount(r0, buried.map(f => (f.s0 + f.s1) / 2))) { result = retry; used = split; }
+      if (regionCount(retry, buried.map(f => (f.s0 + f.s1) / 2)) < regionCount(r0, buried.map(f => (f.s0 + f.s1) / 2))) {
+        result = retry; used = split;
+        // (a way of its own may now be left neither room under us nor a buildable bridge over us)
+        if (CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') {
+          separation(used);
+          if (result !== retry && result.withNoise) result = result.withNoise();
+        }
+      }
     }
   }
   if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
