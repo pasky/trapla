@@ -217,6 +217,8 @@ export class ProfilePanel {
     }
     return shown;
   }
+  /** By hand, the height points with a handle at this zoom (indices) */
+  get shownPoints(): number[] { this.flush(); return this.shownVpis().flatMap((on, k) => (on && k > 0 && k < this.vpis.length - 1 ? [k] : [])); }
   /** the nearest shown height points on either side of k */
   private shownAround(k: number): [number, number] {
     const shown = this.shownVpis();

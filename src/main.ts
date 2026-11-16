@@ -1432,6 +1432,8 @@ async function main() {
     profileFit: () => profile.fit(),
     profileView: () => profile.view,
     profileHasRoad: () => profile.hasRoad,
+    /** By hand: the height points with a handle at the profile's zoom */
+    profileShownPoints: () => profile.shownPoints,
     profileHover: () => profile.hover,
     profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
     bendStations: () => last && bendStations(last, store.design),
