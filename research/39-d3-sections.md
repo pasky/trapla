@@ -136,7 +136,9 @@ mapped line + 1.5 km), 5 m cells, 2400 × 10300 = **24.7 M cells**, above the 15
 (`maxRasterCells` raised for this pack only). Why not coarser: the hydrology grid (25 m) must be a whole
 multiple of the cell, so the only alternatives are 12.5 or 25 m, too coarse for a 27.5 m formation and
 inconsistent with the section packs. Measured: build peak RSS 1.6 GB, pack 40.5 MB (D11 ≈ 22 MB); the
-GPU height texture is 2400 × 10300 (below the 16384 limit); drag runs at 60 fps with the camera framed as
+GPU height texture is 2400 × 10300 (below the 16384 limit); startup (`startup-perf.mjs --gpu`, median of 3):
+ready 1.70 s (D11 1.40, whole D35 1.17), first settled scene 4.7 s (D11 2.3), JS heap 471 MB (D11 221, D35 275),
+longest startup task 0.98 s (D11 0.72); drag runs at 60 fps with the camera framed as
 for D11 (framing the whole 57 km at once costs the integrated GPU more than a frame, so long missions keep
 D11's distance; shorter ones come closer).
 
