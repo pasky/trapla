@@ -25,7 +25,7 @@ import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
-import { rockFacePerM } from './earthengineering';
+import { groundWorksPerM, treatedSubgrade } from './earthengineering';
 import { buildAlignment, pointAt, station, type Alignment, type PI, type PointOnAlignment, type Vec2 } from './horizontal';
 import {
   crossSectionScreens, noiseOutcome, wallLineLengths,
@@ -599,7 +599,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     profileCostClass[i] = costClasses.length;
     costClasses.push({ ground: groundIds[i], water: waterAt[i], elevation: ground[i], urban: builtUp(st.x[i], st.y[i]) });
   }
-  const crossingCost = (cs: WaterCrossing[], width: number, z: number) => cs.reduce((v, c) => v + (z > waterGround.get(c)! ? culvertCost(c, width) : 0), 0);
+  const crossingCost = (cs: WaterCrossing[], width: number, z: number) => cs.reduce((v, c) => v + (z > waterGround.get(c)! ? culvertCost(c, width, z - waterGround.get(c)!) : 0), 0);
   const forceWater = (mask: Uint8Array, ss: ArrayLike<number>, heights: ArrayLike<number>, widths: ArrayLike<number>, chosen?: ArrayLike<number>) => {
     const step = ss[1] - ss[0];
     for (const c of water) {
@@ -741,7 +741,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       for (const c of entry.water) {
         const bed = waterGround.get(c)!;
         if (z > bed) {
-          const size = waterSizes.get(c)!(wd);
+          const size = waterSizes.get(c)!(wd, z - bed);
           if (size.type === 'bridge') flags |= 1;
           else cost += barrelLength(c, wd) * size.perM + 2 * size.head;
         }
@@ -787,12 +787,13 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       const waterPrice = waterOption(costClass, h, wd);
       const base = town ? baseUrban : baseRural, mul = town ? 1 + surE(1) : sur, land = town ? landUrban : LAND.perM2;
       if (h >= 0) {
-        earth = (base + geo.area * dp.fillPerM3 + wd * topsoilPerM2
+        const subgrade = treatedSubgrade(h, groundProfiles[costClasses[costClass].ground]) ? wd : 0;
+        earth = (base + geo.area * dp.fillPerM3 + groundWorksPerM(0, subgrade) + wd * topsoilPerM2
           + waterPrice.cost) * mul + wd * land;
       } else {
         const [a1, a2, a3] = cutRow!.a;
         earth = (base + a1 * dp.cutPerM3.I + a2 * dp.cutPerM3.II + a3 * dp.cutPerM3.III
-          + rockFacePerM(cutRow!.rockFace) + wd * topsoilPerM2 + waterPrice.cost) * mul + wd * land;
+          + groundWorksPerM(cutRow!.rockFace, 0) + wd * topsoilPerM2 + waterPrice.cost) * mul + wd * land;
       }
       const waterBridge = waterPrice.bridge;
       if (waterBridge) earth = bridgeCost + 1e7; // unavailable earthwork, not a free zero-price culvert
@@ -872,7 +873,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       const u = urban[k], su = 1 + surE(u), land = landPerM2(u), wd = sc.dayL[k] + sc.dayR[k];
       earth[k] = (baseRural + (baseUrban - baseRural) * u + sc.cutI[k] * dp.cutPerM3.I + sc.cutII[k] * dp.cutPerM3.II
         + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2
-        + rockFacePerM(sc.rockFace[k])
+        + groundWorksPerM(sc.rockFace[k], sc.subgrade[k])
         + crossingCost(sw[k], wd, z[k]) / w) * su + wd * land;
       bp[k] = bridge.perM(hh[k]) * (mk ? 1 + surB(u) : su) + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelKm(u) / 1000) * (mk ? 1 + surT(u) : su);
@@ -1263,7 +1264,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const earthBase = new Float64Array(n), earthMul = new Float64Array(n), earthLand = new Float64Array(n), earthBox = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = grade[i] - ground[i];
-    geotechnicalPerM[i] = rockFacePerM(sec.rockFace[i]);
+    geotechnicalPerM[i] = groundWorksPerM(sec.rockFace[i], sec.subgrade[i]);
     for (const c of waterAt[i]) culverts[i] += crossingCost([c], sec.dayL[i] + sec.dayR[i], waterElevation.get(c)!);
     const ue = urbanEarth[i], ud = urbanDeck[i], ut = urbanCentre[i], wd = sec.dayL[i] + sec.dayR[i];
     // the earthwork option's rates without its material terms, which depend on the fill price
@@ -1828,8 +1829,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   ];
   const waterCrossings: WaterResult[] = water.map((c, k) => {
     const i = Math.min(n - 1, Math.round(c.s / ds));
-    const wd = sec.dayL[i] + sec.dayR[i], size = waterSize(c, wd);
-    const above = waterZ[k] - terrain.heightAt(c.x, c.y);
+    const wd = sec.dayL[i] + sec.dayR[i], above = waterZ[k] - terrain.heightAt(c.x, c.y), size = waterSize(c, wd, above);
     const tunnelRun = runs.find(r => r.kind === KIND.tunnel && i >= r.i0 && i <= r.i1);
     const shortTunnel = !!tunnelRun && tunnelRun.length < STRUCTURE_RULES.minTunnelLength;
     const isTunnel = kind[i] === KIND.tunnel && above <= -STRUCTURE_RULES.tunnelMinDepth && !shortTunnel;
@@ -1845,7 +1845,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       detail: `It may carry about ${size.q100.toFixed(1)} m³/s in a 100-year flood, from ${c.catchmentKm2.toFixed(1)} km² of land draining into it${c.truncated ? ' (a rough estimate: its area runs off the map)' : ''}. The game does not move streams for you; a deep tunnel can pass under it.`,
       basis: 'game', rule: 'Game estimate (research/17): flood size, culvert cover and fish passage are screened, not a hydraulic design',
     });
-    let cost = kind[i] === KIND.earth && above > 0 ? culvertCost(c, wd) : 0;
+    let cost = kind[i] === KIND.earth && above > 0 ? culvertCost(c, wd, above) : 0;
     if (run) {
       for (let j = run.i0; j <= run.i1; j++) cost += parts.bridges[j];
       cost /= water.filter(other => other.s >= run.s0 && other.s <= run.s1).length;

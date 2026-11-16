@@ -101,7 +101,7 @@ export function planRetainingWalls(r: RetainingRoute, terrain: Terrain, roads?: 
   // against the shortened sections, rebuilding from the untouched input so quantities and
   // wall costs are never applied twice. Side-width limits only shrink; the final screen
   // validates the actual envelope. Local query caches are reused.
-  const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open', 'rockFace'] as const;
+  const fields = ['cut', 'cutI', 'cutII', 'cutIII', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'open', 'rockFace', 'subgrade'] as const;
   const original = fields.map(key => r[key].slice()), sideL = r.sideL?.slice(), sideR = r.sideR?.slice();
   const restore = () => {
     fields.forEach((key, k) => r[key].set(original[k]));
@@ -404,7 +404,7 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
     r.cut[i] += after.cut - before.cut; r.fill[i] += after.fill - before.fill;
     r.cutI[i] += after.cutI - before.cutI; r.cutII[i] += after.cutII - before.cutII;
     r.cutIII[i] = Math.max(0, r.cut[i] - r.cutI[i] - r.cutII[i]);
-    r.rockFace[i] += after.rockFace - before.rockFace;
+    r.rockFace[i] += after.rockFace - before.rockFace; r.subgrade[i] += after.subgrade - before.subgrade;
     day[i] = after.day; zDay[i] = after.zDay;
     if (sideCache) sideCache[i] = after;
     (side > 0 ? wallSurfaceL : wallSurfaceR)[i] = surface;

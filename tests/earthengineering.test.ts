@@ -7,9 +7,9 @@ import { LC, syntheticTerrain } from '../src/core/terrain';
 
 const tpl = { crownWidth: 9.5 };
 describe('side slopes (research/48)', () => {
-  it('fills follow VL 1 (2022): 1:2.5 up to 3 m, then 1:1.5, or 1:1.75 from 3 to 6 m on higher fills; no benches', () => {
-    // both slope wedges, without the crown core (research/48 §1.1 table)
-    for (const [h, wedges, run] of [[2, 10, 5], [4, 33, 9], [10, 165.75, 18.75], [20, 615.75, 33.75]]) {
+  it('fills follow VL 1 (2022) up to 10 m: 1:2.5 up to 3 m, then 1:1.5, or 1:1.75 from 3 to 6 m on higher fills, no benches; higher fills 1:1.8 above 6 m', () => {
+    // both slope wedges, without the crown core (research/48 §1.1 table; above 10 m research/52)
+    for (const [h, wedges, run] of [[2, 10, 5], [4, 33, 9], [10, 165.75, 18.75], [20, 724.95, 37.95]]) {
       const f = flatSection(h, 9.5);
       expect(f.area - 9.5 * h).toBeCloseTo(wedges, 6);
       expect(f.width).toBeCloseTo(9.5 + 2 * run, 6);

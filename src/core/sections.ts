@@ -4,10 +4,10 @@
 
 import { NORM_CAP_I, NORM_CAP_II, UNKNOWN_GROUND, type GroundProfile } from './ground';
 
-type Bands = Pick<GroundProfile, 'classIto' | 'classIIto' | 'normMix'>;
+type Bands = Pick<GroundProfile, 'classIto' | 'classIIto' | 'normMix' | 'key'>;
 import type { Terrain } from './terrain';
 import { SIDE_SLOPES } from './data/prices';
-import { cutFace, fillFace } from './earthengineering';
+import { cutFace, fillFace, treatedSubgrade } from './earthengineering';
 
 export interface SectionTemplate {
   crownWidth: number;
@@ -28,6 +28,8 @@ export interface SideResult {
   open: boolean;
   /** rock face of the cut slope (sound rock, netted), measured down the slope, m */
   rockFace: number;
+  /** soft ground treated under this side of a fill, m across (crown half and slope to the toe) */
+  subgrade: number;
   /** the slope's own surface at `day` (= zDay where it reached the ground; where a wall cut it short, the
    * height the wall retains is |zSlope − ground|) */
   zSlope: number;
@@ -56,7 +58,7 @@ const flatGround = () => 0;
 export function flatSection(h: number, crown: number, bands: Bands = UNKNOWN_GROUND) {
   const s = sideSection(h, crown / 2, { crownWidth: crown }, flatGround, bands);
   const area = 2 * (h >= 0 ? s.fill : s.cut), cutI = 2 * s.cutI, cutII = 2 * s.cutII;
-  return { area, width: 2 * s.day, rockFace: 2 * s.rockFace,
+  return { area, width: 2 * s.day, rockFace: 2 * s.rockFace, subgrade: 2 * s.subgrade,
     cuts: (h >= 0 ? [0, 0, 0] : [cutI, cutII, Math.max(0, area - cutI - cutII)]) as [number, number, number] };
 }
 
@@ -79,7 +81,7 @@ function addBands(out: SideResult, bands: Bands | ((o: number) => Bands), o0: nu
 export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground: (o: number) => number,
   bands: Bands | ((o: number) => Bands) = UNKNOWN_GROUND, maxOffset = Infinity, trace?: number[]): SideResult {
   let cut = 0, fill = 0;
-  const out: SideResult = { cut: 0, cutI: 0, cutII: 0, fill: 0, day: 0, zDay: 0, open: false, rockFace: 0, zSlope: z };
+  const out: SideResult = { cut: 0, cutI: 0, cutII: 0, fill: 0, day: 0, zDay: 0, open: false, rockFace: 0, subgrade: 0, zSlope: z };
   // Under the crown: integrate (z - G) with sign split. No per-section helper closures:
   // balance search and final billing call this thousands of times on every edit.
   const nCrown = Math.max(2, Math.ceil(w / STEP));
@@ -115,7 +117,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       const every = rock ? S.rockBenchEvery : S.soilBenchEvery;
       if (since >= every - 1e-9) bench = true; else hold = Math.min(hold, every - since);
     }
-    const dx = bench ? S.benchWidth : Math.min(STEP, n * Math.max(1e-3, Math.min(hold, RISE)));
+    const dx = bench ? S.benchWidth : Math.min(STEP, n * Math.max(1e-9, Math.min(hold, RISE)));
     const o = Math.min(o0 + dx, limit), rise = bench ? 0 : (o - o0) / n;
     const zFace = zs + sign * rise; // fill: the face falls, cut: it rises
     const d = zFace - ground(o);
@@ -128,6 +130,7 @@ export function sideSection(z: number, w: number, _tpl: SectionTemplate, ground:
       if (rock && !bench) out.rockFace += t * Math.hypot(o - o0, rise);
       out.cut = cut; out.fill = fill; out.cutII -= out.cutI;
       out.day = od; out.zDay = out.zSlope = zs + (zFace - zs) * t;
+      if (isFill && treatedSubgrade(height, typeof bands === 'function' ? bands(od / 2) : bands)) out.subgrade = od;
       if (trace) trace.push(od, out.zDay);
       return out;
     }
@@ -163,6 +166,8 @@ export interface Sections {
   open: Uint8Array;
   /** netted rock face of both cut slopes, m measured down the slope */
   rockFace: Float64Array;
+  /** soft ground treated under the fill, m across */
+  subgrade: Float64Array;
   /** Optional final-engineering cache; omitted from DP/balance sampling and from Result. */
   sideL?: SideResult[]; sideR?: SideResult[];
 }
@@ -178,7 +183,7 @@ export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number
   const out: Sections = {
     cut: new Float64Array(n), cutI: new Float64Array(n), cutII: new Float64Array(n), cutIII: new Float64Array(n),
     fill: new Float64Array(n), dayL: new Float64Array(n), dayR: new Float64Array(n),
-    zDayL: new Float64Array(n), zDayR: new Float64Array(n), open: new Uint8Array(n), rockFace: new Float64Array(n),
+    zDayL: new Float64Array(n), zDayR: new Float64Array(n), open: new Uint8Array(n), rockFace: new Float64Array(n), subgrade: new Float64Array(n),
     ...(keepSides ? { sideL: new Array<SideResult>(n), sideR: new Array<SideResult>(n) } : {}),
   };
   const w = tpl.crownWidth / 2;
@@ -201,6 +206,7 @@ export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number
     out.zDayL[i] = L.zDay; out.zDayR[i] = R.zDay;
     out.open[i] = L.open || R.open ? 1 : 0;
     out.rockFace[i] = L.rockFace + R.rockFace;
+    out.subgrade[i] = L.subgrade + R.subgrade;
   }
   return out;
 }

@@ -30,6 +30,8 @@ export interface WaterSize {
   type: 'pipe' | 'box' | 'bridge'; width: number; height: number;
   q100: number; capacity: number; perM: number; head: number; minHeight: number;
   naturalBed: boolean;
+  /** a box under more fill than a precast frame takes: built as a buried bridge */
+  buried?: boolean;
 }
 export interface WaterResult extends WaterCrossing {
   i: number; bed: number; h: number; q100: number; structure: 'pipe' | 'box' | 'bridge' | 'tunnel' | 'blocked';
@@ -93,15 +95,17 @@ export function barrelIntervals(segment: Segment2, b: BarrelEnvelope): [number, 
   }
   return out;
 }
-/** An assembly includes TWO ends, not an arbitrary "excess" beyond an unmeasured norm allowance. */
-export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
+/** An assembly includes TWO ends, not an arbitrary "excess" beyond an unmeasured norm allowance. `depth` = our
+ * grade above the bed, m (omitted: the fill over the barrel is not checked): a pipe or a frame takes only so
+ * much fill over it; deeper, the passage is a buried bridge. */
+export function waterSize(c: WaterCrossing, footprint: number, depth = 0): WaterSize {
   const q100 = estimateQ100(c), length = barrelLength(c, footprint);
   const naturalBed = c.waterKind === 'stream' && (c.catchmentKm2 >= R.naturalBedArea || c.width >= 1.5);
   if (c.waterKind !== 'river' && !naturalBed && length <= R.maxPipeLength) {
     for (const p of PIPE_SIZES) {
       const capacity = Math.PI * p.width ** 2 / 4 * R.pipeFlowShare * R.velocity;
       // DN1000 minimum for long barrels is our conservative class-I game floor.
-      if (p.width < c.width || (length > 15 && p.width < 1) || capacity < q100) continue;
+      if (p.width < c.width || (length > 15 && p.width < 1) || capacity < q100 || depth - p.width > p.maxCover) continue;
       return { type: 'pipe', ...p, height: p.width, capacity, q100, minHeight: p.width + R.cover, naturalBed };
     }
   }
@@ -110,6 +114,9 @@ export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
       const bank = naturalBed ? R.dryBank : 0;
       const capacity = (p.width - bank) * p.height * R.boxDepthShare * R.velocity;
       if (p.width < c.width + bank || capacity < q100) continue;
+      if (depth - p.height > R.maxFrameCover)
+        return { type: 'box', ...p, perM: R.buriedPerM2 * Math.max(R.buriedMinSpan, p.width + 2 * R.buriedWall), head: 0,
+          capacity, q100, minHeight: p.height + R.cover, naturalBed, buried: true };
       return { type: 'box', ...p, capacity, q100, minHeight: p.height + R.cover, naturalBed };
     }
   }
@@ -118,20 +125,23 @@ export function waterSize(c: WaterCrossing, footprint: number): WaterSize {
 }
 /** Per-crossing sizing cache for a profile search. Width only changes the three length tests;
  * Q100, opening and prices are otherwise constant. Lifetime is one evaluation, not a mutable pack. */
-export function waterSizer(c: WaterCrossing): (footprint: number) => WaterSize {
-  const sizes: WaterSize[] = [];
-  return (footprint) => {
+export function waterSizer(c: WaterCrossing): (footprint: number, depth?: number) => WaterSize {
+  const sizes = new Map<number, WaterSize>();
+  return (footprint, depth = 0) => {
     const length = barrelLength(c, footprint);
-    const key = (length > 15 ? 1 : 0) | (length > R.maxPipeLength ? 2 : 0) | (length > R.maxBoxLength ? 4 : 0);
-    return sizes[key] ?? (sizes[key] = waterSize(c, footprint));
+    // the sizes change only at these lengths and at the covers the pipes and frames take (whole decimetres)
+    const key = ((length > 15 ? 1 : 0) | (length > R.maxPipeLength ? 2 : 0) | (length > R.maxBoxLength ? 4 : 0)) + 8 * Math.ceil(10 * depth);
+    let size = sizes.get(key);
+    if (!size) sizes.set(key, size = waterSize(c, footprint, Math.ceil(10 * depth) / 10));
+    return size;
   };
 }
-export function culvertCost(c: WaterCrossing, footprint: number): number {
-  const size = waterSize(c, footprint);
+export function culvertCost(c: WaterCrossing, footprint: number, depth = 0): number {
+  const size = waterSize(c, footprint, depth);
   return size.type === 'bridge' ? 0 : barrelLength(c, footprint) * size.perM + 2 * size.head;
 }
 export function waterOpening(size: WaterSize): string {
-  return size.type === 'pipe' ? `DN${Math.round(size.width * 1000)}` : `${size.width.toFixed(1)} × ${size.height.toFixed(1)} m`;
+  return size.type === 'pipe' ? `DN${Math.round(size.width * 1000)}` : `${size.width.toFixed(1)} × ${size.height.toFixed(1)} m${size.buried ? ', built as a buried bridge' : ''}`;
 }
 
 /** Bounded segment buckets; no road × network Cartesian-product arrays. */

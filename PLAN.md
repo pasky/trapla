@@ -508,6 +508,8 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
 
 ### Known limitations
 
+- Junction approaches on class I–III roads are not length-capped (the 250 m cap is for ramps up to bridges over
+  us): since cost model 29 town-centre km 11.65 meets class I road 2136 5.6 m up and regrades it over 271 m.
 - Free haul (1 km) is credited on the pooled haul moment, not per movement.
 - Mass haul uses a single balance line: cut may be hauled the whole route length if that is still cheaper than
   tip + borrow; no intermediate tips/borrow pits.

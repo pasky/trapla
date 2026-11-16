@@ -151,10 +151,28 @@ export const LAND = {
  */
 export const SIDE_SLOPES = {
   fillToe: 2.5, fillToeHeight: 3, fillMiddle: 1.75, fillUpper: 1.5, fillUpperFrom: 6,
+  /** The standard profile holds for fills up to 10 m (VL 2 1995 sheet 302.02 "V = 6,00–10,00"; ČSN 73 6133:1998
+   * "1:1,5 – 6,0 m až 10,0 m"); a higher soil fill is designed individually (VL 1 2022 note 1). Game assumption
+   * for that design (research/52): the part above 6 m at 1:1.8 (Adam, Grundbau-Taschenbuch tab. 4: 1:1.5–1.8 above
+   * 10 m, 1:1.8–2 for silty/clayey sands), reached linearly between 10 and 15 m so the shape has no step. Not
+   * modelled: rock fill at 1:1.5 at any height (the route's cut is pooled), counterweight berms on weak ground. */
+  fillStandardTo: 10, fillHighUpper: 1.8, fillHighBlend: 5,
   cutShallow: 2, cutShallowDepth: 2, cutSoil: 1.75, cutRock: 0.25,
   soilBenchEvery: 6, rockBenchEvery: 5, benchWidth: 1,
   rockFacePerM2: 2_513.47,
 };
+
+/**
+ * Subgrade treatment under fills on soft cohesive ground (research/48 §5, /52): VL 1 2022 sheet 32-01 note 1
+ * asks high fills for bearing capacity / settlement checks and "popřípadě úpravy podloží"; D11 1107 treated the
+ * subgrade under every fill over 3 m on its fine clayey soils. The SPK road norm leaves out "zlepšování
+ * podloží" (research/46 §2), so it is billed: OTSKP 215662 hydraulic binder ≤ 1.5 %, ≤ 0.5 m deep, 226.28 CZK/m²
+ * over the fill's footprint (the binder share PROVISIONAL: the middle of the 1–2 % items). Ground: the
+ * Quaternary loams, floodplain, peat, mixed slope/stream deposits and made ground of the ČGS profiles
+ * (pipeline/ground_profiles.json keys; PROVISIONAL which count as soft). Vertical drains, consolidation
+ * time and counterweight berms are not priced (no source).
+ */
+export const SUBGRADE = { fromHeight: 3, perM2: 226.28, grounds: ['loam', 'alluvium', 'peat', 'mixed', 'fill'] as readonly string[] };
 
 /** Structure selection parameters (game rules, not norm values) */
 export const STRUCTURE_RULES = {

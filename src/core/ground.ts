@@ -3,6 +3,8 @@
 import { EXCAVATION_MIX } from './data/prices';
 
 export interface GroundProfile {
+  /** pipeline/ground_profiles.json key (packs since the ČGS ground grid) */
+  key?: string;
   name: string;
   /** Depth below original ground, m: loose / decomposed material (class I estimate). */
   classIto: number;
