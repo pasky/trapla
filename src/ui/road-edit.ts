@@ -3,7 +3,7 @@
 import { buildAlignment, station, type PI, type Vec2 } from '../core/horizontal';
 import { horizontalViolations } from '../core/checks';
 import { acos } from '../core/detmath';
-import { horizontalRules } from '../core/data/norms';
+import { bendRules, horizontalRules } from '../core/data/norms';
 import { CATEGORIES, type CategoryId, type LegalClass } from '../core/data/categories';
 import { KEPT_TOLERANCE } from '../core/project-kept';
 import type { Anchor, EndpointConstraint, ProjectDesign, RoadSpec, RouteDesign, SourceInterval, XYZ } from '../core/project';
@@ -191,7 +191,7 @@ export function fitBends(path: readonly { x: number; y: number; s: number }[], t
  * a straight, where a drag adds a bend. */
 export function bendAt(a: Vec2, b: Vec2, pis: PI[], speed: number, category: CategoryId, p: Vec2, reach = 15, along = 0): number | null {
   if (!pis.length) return null;
-  const al = buildAlignment(a, b, pis, horizontalRules(speed, category)), st = station(al, 5);
+  const al = buildAlignment(a, b, pis, horizontalRules(speed, category), bendRules(pis, speed, category)), st = station(al, 5);
   let best = reach * reach, s = -1;
   for (let k = 0; k < st.n; k++) { const d = (st.x[k] - p.x) ** 2 + (st.y[k] - p.y) ** 2; if (d <= best) { best = d; s = st.s[k]; } }
   if (s < 0) return null;

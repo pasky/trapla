@@ -4,7 +4,7 @@
 // all changes go through the store, so the HUD radius field, undo/redo and persistence stay in sync.
 
 import './curve-edit.css';
-import { horizontalRules } from '../core/data/norms';
+import { bendRules, horizontalRules } from '../core/data/norms';
 import type { Design, Result } from '../core/evaluate';
 import { buildAlignment, pointAt, type Alignment, type Vec2 } from '../core/horizontal';
 import type { Terrain } from '../core/terrain';
@@ -120,7 +120,7 @@ export class CurveEditor {
       if (this.drag && now !== this.drag.design) this.drag.abort(false);
       else if (this.drag && i !== this.drag.i) this.drag.abort(true);
     }
-    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed, d.category));
+    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
     const info = i === null || !this.al ? undefined : this.al.curves[i];
     this.shown = !!info;
     if (!info || !this.al || i === null) { this.place(); return; }

@@ -400,7 +400,7 @@ export class Inspector {
       <div class="ctx-state"><b>${status}</b><div class="why">${pi.hairpin ? 'A hairpin: a tight turn for climbing steep ground, driven at about 25 km/h.' : auto ? 'Tightest the rules allow.' : 'Your radius.'}</div>${hairpinNote}</div>
       ${this.issues(vio)}
       ${pi.hairpin ? '' : this.choices('radius-choice', 'data-radius', [['auto', 'Tightest', `Smallest radius allowed (${n.minRadius} m at ${speed} km/h)`], ['max', 'Widest', 'Largest radius that fits between the neighbours']], active)}
-      ${speeds.length > 1 && !pi.hairpin ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole road` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>` : ''}
+      ${speeds.length > 1 ? `<div class="ctx-row">Design speed here ${this.choices('bend-speed', 'data-bend-speed', speeds.map((v) => [String(v), `${v}`, v === d.speed ? `${v} km/h, as the whole road` : `${v} km/h for this bend's stretch: curves down to ${speedNorms(v, d.category).minRadius} m`] as [string, string, string]), String(speed))}</div>` : ''}
       ${road ? `<div class="ctx-row">${this.choices('bend-type', 'data-hairpin', [['0', 'Curve', 'An ordinary curve'], ['1', 'Hairpin', `A ${HAIRPIN.radius} m hairpin with widened lanes, for steep mountain ground`]], pi.hairpin ? '1' : '0')}</div>` : ''}
       <div class="more-box">
         <div class="ctx-row"><label>Radius <input id="pi-r" type="number" min="50" step="5" value="${Math.round(rv)}"> m</label></div>
