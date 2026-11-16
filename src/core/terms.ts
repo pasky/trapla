@@ -95,7 +95,7 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   // a skewed crossing laid on a new line at a right angle to ours (crossing-geometry.ts squarePath)
   const square = c.squared !== undefined ? `, the ${what} straightened to cross at a right angle` : '';
   const thing = c.type === 'underpass' ? 'box' : 'bridge';
-  const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; near our road it is laid on a new line that crosses at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what} beyond the ${thing} and its ramps).` : '';
+  const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; nearby it is laid on a new line crossing at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what}).` : '';
   const joinedTo = c.targetRoadId === undefined ? 'the road our road joins at its end' : `the road that crosses at km ${km(c.targetS ?? 0)}`;
   const crossesAt = c.targetRoadId === undefined ? 'the road at our road\'s end' : `the crossing at km ${km(c.targetS ?? 0)}`;
   // (its cut ends lie on the road that crosses there: nothing new to build)
