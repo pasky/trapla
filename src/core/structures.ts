@@ -1,7 +1,7 @@
 // Automatic structure choice per station: embankment vs bridge, cut vs bored tunnel, followed by
 // gap merging and a run-level cost comparison so the result is not confetti.
 
-import { STRUCTURE_RULES } from './data/prices';
+import { STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import type { Violation } from './checks';
 import type { BridgeLayout } from './bridge';
 
@@ -15,6 +15,9 @@ export interface Run {
   pierStations?: number[];
   /** Bank regraded under the first/last span in front of each abutment, m³ (support-layout). */
   regradeM3?: [number, number];
+  /** A tunnel: its tubes and escape provision against one tube (cost.ts tunnelTubeFactor), how much of it is
+   * cut and cover, m, and 'cut' where the player chose cut and cover throughout (evaluate). */
+  tubes?: number; cutCoverM?: number; method?: 'cut';
 }
 
 export interface StructureInput {
@@ -30,9 +33,15 @@ export interface StructureInput {
   bridgeRunCost?: (i0: number, i1: number, length: number) => number;
   /** tunnel cost per m (short-tunnel rate; long rate applied in the bill), number or per station */
   tunnelPerM: number | ArrayLike<number>;
+  /** cut-and-cover tunnel cost per m incl. any pit earthworks it needs (default: the bored price) */
+  cutCoverPerM?: number | ArrayLike<number>;
+  /** a tunnel's tubes and escape provision for its length, against one tube (default 1) */
+  tunnelFactor?: (length: number) => number;
+  /** 1 = the player chose cut and cover for the tunnel painted here */
+  cutMethod?: ArrayLike<number>;
   /** stations that must be bridged (river / railway crossings), unless deep in cut */
   forced?: ArrayLike<number>;
-  /** A surface watercourse above a sufficiently deep grade must retain a bored tunnel, not an open cut. */
+  /** A surface watercourse above a grade a tunnel's height below it keeps a tunnel, not an open cut. */
   forcedTunnel?: ArrayLike<number>;
   /** −1 = automatic; otherwise KIND. Applied after automatic run decisions, even when invalid. */
   overrides?: ArrayLike<number>;
@@ -42,12 +51,51 @@ export interface StructureInput {
 }
 
 
+/** Stations at each portal that are cut and cover at the least (TUNNEL_RULES.portalCutCoverMin). */
+export function portalCells(ds: number, rules = STRUCTURE_RULES): number {
+  return Math.max(1, Math.ceil(rules.portalCutCoverMin / ds - 1e-9));
+}
+
+/** Is station i of the tunnel i0…i1 cut and cover? Where the cover is too thin to mine (anywhere along it),
+ * the first and last `portal` stations (each portal's block), or all of it when chosen so. */
+export function cutCoverAt(h: ArrayLike<number>, i0: number, i1: number, i: number, portal: number, cut: boolean, rules = STRUCTURE_RULES): boolean {
+  return cut || -h[i] < rules.tunnelMinDepth || i - i0 < portal || i1 - i < portal;
+}
+
+/** Cut-and-cover mask over a route's tunnels (1 = cut and cover). */
+export function cutCoverMask(kind: ArrayLike<number>, runs: readonly Run[], h: ArrayLike<number>, ds: number, cutMethod?: ArrayLike<number>, rules = STRUCTURE_RULES): Uint8Array {
+  const out = new Uint8Array(kind.length), portal = portalCells(ds, rules);
+  for (const r of runs) if (r.kind === KIND.tunnel) {
+    const cut = runMethodCut(r.i0, r.i1, cutMethod);
+    for (let i = r.i0; i <= r.i1; i++) if (kind[i] === KIND.tunnel && cutCoverAt(h, r.i0, r.i1, i, portal, cut, rules)) out[i] = 1;
+  }
+  return out;
+}
+
+/** a tunnel is cut and cover throughout where the player chose so for most of it */
+export function runMethodCut(i0: number, i1: number, cutMethod?: ArrayLike<number>): boolean {
+  if (!cutMethod) return false;
+  let c = 0;
+  for (let i = i0; i <= i1; i++) c += cutMethod[i] ? 1 : 0;
+  return 2 * c > i1 - i0 + 1;
+}
+
 export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): { kind: Uint8Array; runs: Run[]; violations: Violation[] } {
   const n = inp.h.length;
   const kind = new Uint8Array(n);
-  const bp = inp.bridgePerM, tp = inp.tunnelPerM;
+  const bp = inp.bridgePerM, tp = inp.tunnelPerM, cp = inp.cutCoverPerM ?? tp;
   const bridgeAt = typeof bp === 'number' ? () => bp : (i: number) => bp[i];
   const tunnelAt = typeof tp === 'number' ? () => tp : (i: number) => tp[i];
+  const cutCoverPerMAt = typeof cp === 'number' ? () => cp : (i: number) => cp[i];
+  const portal = portalCells(inp.ds, rules);
+  /** a tunnel i0…i1's whole price: bored where the cover allows, cut and cover elsewhere and at the portals,
+   * times its tubes / escape provision (`cell`: the length of station i's cell) */
+  const tunnelRunCost = (i0: number, i1: number, length: number, cell: (i: number) => number) => {
+    const cut = runMethodCut(i0, i1, inp.cutMethod);
+    let c = 0;
+    for (let i = i0; i <= i1; i++) c += (cutCoverAt(inp.h, i0, i1, i, portal, cut, rules) ? cutCoverPerMAt(i) : tunnelAt(i)) * cell(i);
+    return c * (inp.tunnelFactor ? inp.tunnelFactor(length) : 1);
+  };
   for (let i = 0; i < n; i++) {
     const h = inp.h[i];
     if (h >= rules.bridgeMinHeight && bridgeAt(i) < inp.earthPerM[i]) kind[i] = KIND.bridge;
@@ -69,7 +117,7 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     const pad = Math.ceil((rules.minTunnelLength / inp.ds - 1) / 2);
     for (let i = 0; i < n; i++) if (inp.forcedTunnel[i]) {
       for (let j = Math.max(1, i - pad); j <= Math.min(n - 2, i + pad); j++) {
-        if (inp.h[j] <= -rules.tunnelMinDepth) { kind[j] = KIND.tunnel; locked[j] = 1; }
+        if (inp.h[j] <= -rules.portalDepth) { kind[j] = KIND.tunnel; locked[j] = 1; }
       }
     }
   }
@@ -77,16 +125,26 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
   kind[0] = 0; kind[n - 1] = 0;
   const gapStations = (m: number) => Math.round(m / inp.ds);
   mergeGaps(kind, KIND.bridge, gapStations(rules.bridgeGapMerge), (i) => inp.h[i] > 0);
+  // (a dip between two tunnels: cut and cover across it, backfilled over, as across a side valley)
+  mergeGaps(kind, KIND.tunnel, gapStations(rules.tunnelGapMerge), (i) => inp.h[i] < 0);
+  // A tunnel goes on (cut and cover where the cover is too thin to mine) out to its portals, where the
+  // ground is about a structure height above the grade: no deep open cut ends at a bare face.
+  for (const r of findRuns(kind)) if (r.kind === KIND.tunnel) {
+    for (let j = r.i0 - 1; j >= 1 && kind[j] === 0 && -inp.h[j] >= rules.portalDepth; j--) kind[j] = KIND.tunnel;
+    for (let j = r.i1 + 1; j <= n - 2 && kind[j] === 0 && -inp.h[j] >= rules.portalDepth; j++) kind[j] = KIND.tunnel;
+  }
   mergeGaps(kind, KIND.tunnel, gapStations(rules.tunnelGapMerge), (i) => inp.h[i] < 0);
   // run-level decision
   const runs: Run[] = [];
+  const whole = () => inp.ds;
   for (const r of findRuns(kind)) {
     const len = (r.i1 - r.i0 + 1) * inp.ds;
     let earth = 0, struct = 0;
     for (let i = r.i0; i <= r.i1; i++) {
       earth += inp.earthPerM[i] * inp.ds;
-      struct += (r.kind === KIND.bridge ? bridgeAt(i) : tunnelAt(i)) * inp.ds;
+      if (r.kind === KIND.bridge) struct += bridgeAt(i) * inp.ds;
     }
+    if (r.kind === KIND.tunnel) struct = tunnelRunCost(r.i0, r.i1, len, whole);
     if (r.kind === KIND.bridge && inp.bridgeRunCost) struct = inp.bridgeRunCost(r.i0, r.i1, len);
     const minLen = r.kind === KIND.bridge ? rules.minBridgeLength : rules.minTunnelLength;
     let isLocked = false;
@@ -117,11 +175,12 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
       // automatic: reconsider them rather than forcing the player to repair our leftover pieces.
       if (!manual && !forced) {
         let earth = 0, structure = 0;
+        const cellOf = (i: number) => (i === 0 || i === n - 1 ? 0.5 : 1) * inp.ds;
         for (let i = r.i0; i <= r.i1; i++) {
-          const cell = (i === 0 || i === n - 1 ? 0.5 : 1) * inp.ds;
-          earth += inp.earthPerM[i] * cell;
-          structure += (r.kind === KIND.bridge ? bridgeAt(i) : tunnelAt(i)) * cell;
+          earth += inp.earthPerM[i] * cellOf(i);
+          if (r.kind === KIND.bridge) structure += bridgeAt(i) * cellOf(i);
         }
+        if (r.kind === KIND.tunnel) structure = tunnelRunCost(r.i0, r.i1, length, cellOf);
         if (r.kind === KIND.bridge && inp.bridgeRunCost) structure = inp.bridgeRunCost(r.i0, r.i1, length);
         if (length < min || structure >= earth) {
           for (let i = r.i0; i <= r.i1; i++) kind[i] = KIND.earth;
@@ -150,9 +209,13 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     flagRanges((i) => inp.overrides![i] === KIND.bridge && !inp.held?.[i] && inp.h[i] < rules.bridgeMinHeight,
       'Your bridge is too close to the ground', `Raise the road to at least ${rules.bridgeMinHeight} m above ground, or shorten the bridge / set it back to Automatic`,
       `Bridges you choose need ${rules.bridgeMinHeight} m of height (game simplification)`);
-    flagRanges((i) => inp.overrides![i] === KIND.tunnel && -inp.h[i] < rules.tunnelMinDepth,
-      'Your tunnel has too little cover', `Lower the road to at least ${rules.tunnelMinDepth} m below ground, or shorten the tunnel / set it back to Automatic`,
-      `Tunnels you choose need ${rules.tunnelMinDepth} m of depth (game simplification)`);
+    flagRanges((i) => inp.overrides![i] === KIND.tunnel && -inp.h[i] < rules.portalDepth,
+      'Your tunnel has too little cover', `Lower the road to at least ${rules.portalDepth} m below ground, or shorten the tunnel / set it back to Automatic`,
+      `A tunnel needs the ground at least ${rules.portalDepth} m above the road, its own height (game simplification)`);
+    const deepest = rules.portalDepth + TUNNEL_RULES.cutCoverMaxCover;
+    flagRanges((i) => inp.overrides![i] === KIND.tunnel && !!inp.cutMethod?.[i] && -inp.h[i] > deepest + 1e-9,
+      'Too deep to dig from above', `Choose Mined, or raise the road to at most ${deepest} m below ground`,
+      `Cut and cover is dug from the surface, with at most ${TUNNEL_RULES.cutCoverMaxCover} m of ground over the tunnel`);
     flagRanges((i) => !!inp.forcedTunnel?.[i] && inp.overrides![i] >= 0 && kind[i] !== KIND.tunnel,
       'A stream needs our road in a tunnel here', 'Set this stretch back to Automatic, or keep a tunnel under the stream',
       'Game rule: an open cutting cannot cut through a stream');

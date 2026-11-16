@@ -102,6 +102,48 @@ export const PRICES = {
   /** SPK CN A.3.R.2.NE.D bored 2-lane tunnel, rural, over 500 m: CZK per km */
   tunnelLongPerKm: 1_549_899_000,
   tunnelLongThreshold: 500,
+  /** SPK CN A.3.H.2.NE.K cut-and-cover 2-lane tunnel, rural, up to 500 m: CZK per km (+7.5 % on the bored row;
+   * the row includes the pit's earthworks up to 5 m of cover over the structure, research/49 §3, /51 §1.1) */
+  cutCoverShortPerKm: 1_598_997_000,
+  /** SPK CN A.3.H.2.NE.D cut-and-cover 2-lane tunnel, rural, over 500 m: CZK per km */
+  cutCoverLongPerKm: 1_666_020_000,
+  /** OTSKP 17411 "zásyp jam a rýh zeminou se zhutněním": backfilling a cut-and-cover pit, CZK/m³ (research/49 §3) */
+  pitBackfill: 195.56,
+};
+
+/**
+ * Tunnels as Czech ones are built (research/49 portals, /51 methods). Mining starts at ≈ 6 m of cover over
+ * the crown (STRUCTURE_RULES.tunnelMinDepth); from there out to the portal a tunnel is cut and cover: built
+ * in an open pit that is backfilled, so the ground is put back over it and only about one structure height
+ * of approach cut stays open (D11 Poříčí / Opevnění, Radejčín, Mezno, Valík: 12–50 m per portal, cover
+ * 0 m at the portal). Cut and cover is also the method where the ground is too thin to mine (any cover up to
+ * 7.5 m, Radejčín / Prackovice backfill); SPK prices its pit up to 5 m of cover, earthworks beyond that are
+ * billed (excavation + backfill). Escape provision: NV 264/2009 (tunnels over 500 m) requires emergency
+ * exits ≤ 500 m apart above 2,000 veh/day/lane and two tubes above 10,000; for one 2-lane tube that is an
+ * escape gallery, ≈ 1.3 × the tube (Hessen Mobil 2006 Fig. 3-6: 121–135 %, research/51 §3).
+ */
+export const TUNNEL_RULES = {
+  /** a tunnel structure's height over the grade, m: the ground is level with its roof here (D11 Poříčí
+   * excavation 8.8 m high): the portal stands where the ground is this far above the grade */
+  structureHeight: 9,
+  /** each portal is at least this much cut and cover, m (one D11 block; typical 12–50 m) */
+  portalCutCoverMin: 12,
+  /** cut and cover is dug from above with at most this much cover over the structure, m (Radejčín 7.5 m) */
+  cutCoverMaxCover: 7.5,
+  /** SPK's cut-and-cover rows include the pit up to this cover, m: earthworks beyond are billed */
+  cutCoverPricedCover: 5,
+  /** PROVISIONAL: the pit's side slopes, horizontal per vertical: 1:1 on average over its steep (3:1–5:1,
+   * nailed) lower and sloped (1:1.5–1:2) upper faces (research/49 §2) */
+  pitSlope: 1,
+  /** PROVISIONAL: the structure's walls beside the crown, m each side */
+  wallThickness: 1,
+  /** NV 264/2009: requirements apply to tunnels over this length, m */
+  escapeFromLength: 500,
+  /** NV 264/2009 annex 1 §3.6 / §1.2: emergency exits above, two tubes above, veh/day/lane */
+  escapeFromLaneTraffic: 2_000,
+  twinTubesFromLaneTraffic: 10_000,
+  /** one tube with an escape gallery against one tube (Hessen Fig. 3-6: 121–135 %) */
+  escapeGalleryFactor: 1.3,
 };
 
 /**
@@ -194,6 +236,10 @@ export const STRUCTURE_RULES = {
   tunnelMinDepth: 14,
   minBridgeLength: 30,
   minTunnelLength: 150,
+  /** a tunnel's portal: where the ground is a structure height over the grade (TUNNEL_RULES) */
+  portalDepth: TUNNEL_RULES.structureHeight,
+  /** cut and cover at each portal at least, m */
+  portalCutCoverMin: TUNNEL_RULES.portalCutCoverMin,
   /** grade must be at least this far above a river / railway the road crosses, m (deck + clearance) */
   riverClearance: 3,
   railClearance: 7.5,

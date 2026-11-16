@@ -6,7 +6,7 @@
 // totals are simply the sums of the arrays (`costParts` → `sumParts`).
 
 import { CATEGORIES, type Category, type CategoryId, type TerrainClass } from './data/categories';
-import { EXCAVATION_BY_CLASS, LAND, NORM_EARTHWORK_ALLOWANCE, PRICES } from './data/prices';
+import { EXCAVATION_BY_CLASS, LAND, NORM_EARTHWORK_ALLOWANCE, PRICES, TUNNEL_RULES } from './data/prices';
 import { NOISE, URBAN_LAND, URBAN_NORM_PER_KM, URBAN_RATES } from './data/urban';
 import { KIND, type Run } from './structures';
 import { bridgeModel, bridgeVariableCosts } from './bridge';
@@ -37,18 +37,44 @@ export function basePerKmUrban(cat: CategoryId, terrain: TerrainClass): number {
   return URBAN_NORM_PER_KM[cat][terrain] - allowanceValuePerKm(cat);
 }
 
-/** bored tunnel tube price per km for a tunnel of the given length; `urban` = built-up share 0…1 */
-export function tunnelPerKm(length: number, urban = 0): number {
+/** tunnel tube price per km for a tunnel of the given length, bored or (`cut`) cut and cover; `urban` =
+ * built-up share 0…1. SPK prices urban cut and cover "individuálně": PROVISIONAL, the urban bored row with
+ * the rural rows' cut-and-cover premium. */
+export function tunnelPerKm(length: number, urban = 0, cut = false): number {
   const long = length > PRICES.tunnelLongThreshold;
-  const rural = long ? PRICES.tunnelLongPerKm : PRICES.tunnelShortPerKm;
-  const town = long ? URBAN_RATES.tunnelLongPerKm : URBAN_RATES.tunnelShortPerKm;
+  const bored = long ? PRICES.tunnelLongPerKm : PRICES.tunnelShortPerKm;
+  const rural = cut ? long ? PRICES.cutCoverLongPerKm : PRICES.cutCoverShortPerKm : bored;
+  const town = (long ? URBAN_RATES.tunnelLongPerKm : URBAN_RATES.tunnelShortPerKm) * rural / bored;
   return rural + (town - rural) * urban;
 }
 
-/** tunnel price per km of tube for a category: its own price book (railway) or the SPK road tube rows */
-export function categoryTunnelPerKm(cat: Category, length: number, urban = 0): number {
+/** tunnel price per km of tube for a category: its own price book (railway: SPOŽES has one row for both
+ * methods) or the SPK road tube rows */
+export function categoryTunnelPerKm(cat: Category, length: number, urban = 0, cut = false): number {
   const own = cat.tunnelPerKm;
-  return own ? own.rural + (own.urban - own.rural) * urban : tunnelPerKm(length, urban);
+  return own ? own.rural + (own.urban - own.rural) * urban : tunnelPerKm(length, urban, cut);
+}
+
+/** A tunnel's tubes and escape provision against one tube (NV 264/2009, TUNNEL_RULES): a two-lane road's
+ * single tube over 500 m gets an escape gallery above 2,000 veh/day/lane and a second tube above 10,000.
+ * Motorways already have two tubes (cross-passages between them); a motorway direction's tube has the
+ * other direction's beside it; railways follow their own price book. */
+export function tunnelTubeFactor(cat: Category, length: number, aadt: number): number {
+  const T = TUNNEL_RULES;
+  if (cat.tunnelPerKm || cat.tunnelTubes > 1 || cat.carriageway || length <= T.escapeFromLength) return 1;
+  const perLane = aadt / 2;
+  return perLane > T.twinTubesFromLaneTraffic ? 2 : perLane > T.escapeFromLaneTraffic ? T.escapeGalleryFactor : 1;
+}
+
+/** Cut-and-cover pit beyond what the SPK row includes (cover over the structure above 5 m), CZK per m of
+ * tunnel: excavation (class II) and backfill of the pit's top layer. `depth` = ground − grade, m. */
+export function cutCoverPitPerM(depth: number, crownWidth: number): number {
+  const T = TUNNEL_RULES, extra = depth - T.structureHeight - T.cutCoverPricedCover;
+  if (extra <= 0) return 0;
+  // pit bottom: the structure; sides at pitSlope; the extra layer is its top `extra` metres
+  const top = crownWidth + 2 * T.wallThickness + 2 * T.pitSlope * depth;
+  const area = extra * (top - T.pitSlope * extra);
+  return area * (EXCAVATION_BY_CLASS.II + PRICES.pitBackfill);
 }
 
 /** "other objects" surcharge rate for a built-up share 0…1; `divided` (a motorway's own objects) adds B.6
@@ -166,6 +192,8 @@ export interface StationCostInput {
   wallArea?: ArrayLike<number>;
   /** extra road per metre beyond the norm's crown, CZK/m (a hairpin's widened lanes), earthwork cells */
   extraRoadPerM?: ArrayLike<number>;
+  /** 1 = a tunnel cell built cut and cover (structures.ts cutCoverMask) */
+  cutCover?: ArrayLike<number>;
 }
 
 /**
@@ -179,11 +207,12 @@ export function costParts(inp: StationCostInput): CostParts {
   const cat = CATEGORIES[inp.category];
   const baseRural = basePerKm(inp.category, inp.terrainClass) / 1000;
   const baseUrban = basePerKmUrban(inp.category, inp.terrainClass) / 1000;
-  const runLen = new Float64Array(n);
+  const runLen = new Float64Array(n), tubes = new Float64Array(n);
   const bridge = bridgeModel(cat), divided = dividedRoad(cat);
   for (const r of inp.runs) {
     if (r.kind === KIND.tunnel) {
-      for (let i = r.i0; i <= r.i1; i++) runLen[i] = r.length;
+      const f = cat.tunnelTubes * (r.tubes ?? 1);
+      for (let i = r.i0; i <= r.i1; i++) { runLen[i] = r.length; tubes[i] = f; }
     } else if (r.kind === KIND.bridge) {
       for (const [i, variable] of bridgeVariableCosts(bridge, inp.h, ds, r)) parts.bridges[i] = variable;
       parts.bridges[r.i0] += bridge.abutments / 2;
@@ -236,7 +265,11 @@ export function costParts(inp: StationCostInput): CostParts {
     } else if (k === KIND.bridge) {
       construction = parts.bridges[i];
     } else {
-      construction = parts.tunnels[i] = cat.tunnelTubes * (len / 1000) * categoryTunnelPerKm(cat, runLen[i], u);
+      const cut = !!inp.cutCover?.[i];
+      parts.tunnels[i] = (tubes[i] || cat.tunnelTubes) * (len / 1000) * categoryTunnelPerKm(cat, runLen[i], u, cut);
+      // a cut-and-cover pit deeper than the SPK row covers: its top dug and backfilled (earthworks)
+      if (cut) parts.excavation[i] = len * cutCoverPitPerM(-inp.h[i], cat.crownWidth);
+      construction = parts.tunnels[i] + parts.excavation[i];
     }
     // Railway track, catenary and systems run over bridges and through tunnels as well.
     const everywhere = cat.everywherePerKm;
