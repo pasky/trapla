@@ -26,7 +26,7 @@ const reasons = new Map<string, number>();
 let n = 0, unpriced = 0;
 for (const src of candidates) {
   const length = src.stations.at(-1)!;
-  for (const f of [0.25, 0.5, 0.75]) {
+  for (const f of (process.env.F ?? '0.25,0.5,0.75').split(',').map(Number)) {
     const interval = derivedStretch(index, src.id, f * length, coveredStretches(index, src.id, [{ ...ours, name: 'our road' }]));
     if (!interval || interval.s1 - interval.s0 < 60) continue;
     let command; try { command = rebuildCommand(index, interval, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' }); } catch { continue; }

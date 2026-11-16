@@ -489,8 +489,12 @@ saved project in Node as the full worker does.
   on, ways meeting at its end); a junction leaves the way it meets whole (no 'two roads change the same old
   road'). Rebuilt service roads and tracks are drawn in the higher road's network too, a designed road keeps
   its own crossing (never merged), roads one above the other as built are no contact. D11 audit
-  (`scripts/reroute-takeover-audit.ts`): unpriced 112 → 47 of 292; the rest is mostly the rebuilt road's own
-  body near our embankment (a real conflict with its fix) and closures (detours are not routed).
+  (`scripts/reroute-takeover-audit.ts`): unpriced 112 → 13 of 292. A rebuilt stretch's end also meets the
+  other road as at a junction where it stopped short of that road's works (its old road beyond the end, or
+  what is left of it, a way of its own in the edited networks, is under them); a closure's detour interacts
+  only with changes within its own reach (closed length + detour); roads one above the other are compared
+  point by point. The 13 left: a player's road bent into our embankment or our reroute (0.2–31 m inside the
+  10 m clearance) and two roads changing one way at the same place.
 - **New lines across ours.** New or rebuilt railways (ROAD_CLASSES railway / railway2: formation width,
   SPOŽES route-km and H02 bridge prices, 12.5 ‰) and new paired motorways are drawn in the network of the
   line that outranks them (mission first, then motorways and railways, then side roads); their kernels follow

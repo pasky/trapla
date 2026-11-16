@@ -348,8 +348,8 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
       sourceWays: new Map(graph.sources.flatMap((s: { id: string; legacyNetIndex?: number }) => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]])) };
     const ours = evaluateProject(ctx, { epoch: 'e', revision: 1, design }).routes[design.routes[0].id].legacy!;
     const wayOf = (id: string) => graph.sources.find((s: { id: string }) => s.id === id).legacyNetIndex as number;
-    const rebuilt = (id: string, bend: (q: RouteDesign & { alignment: { kind: 'pi' } }, at: (s: number) => { x: number; y: number; nx: number; ny: number }, s0: number, s1: number) => void) => {
-      const interval = derivedStretch(index, id, 0.5 * index.source(id)!.stations.at(-1)!, coveredStretches(index, id, [{ ...ours, name: 'our road' }]))!;
+    const rebuilt = (id: string, bend: (q: RouteDesign & { alignment: { kind: 'pi' } }, at: (s: number) => { x: number; y: number; nx: number; ny: number }, s0: number, s1: number) => void, grab = 0.5) => {
+      const interval = derivedStretch(index, id, grab * index.source(id)!.stations.at(-1)!, coveredStretches(index, id, [{ ...ours, name: 'our road' }]))!;
       const command = rebuildCommand(index, interval, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
       const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
       const q = edited.routes[1]; if (q.alignment.kind !== 'pi') throw new Error('converted');
@@ -377,6 +377,12 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const after = street.routes[design.routes[0].id].legacy!.crossings.find(c => c.roadId === wayOf('osm:way:1315656940'))!;
     expect([after.type, after.targetRoadId]).toEqual([before.type, before.targetRoadId]);
     expect(after.cost).not.toBe(before.cost);
+    // Rebuilt roads that end beside our embankment, where they stop short of it: their ends meet our works as
+    // at a junction (reroute-takeover-audit): a dead-end track (its last 3 m under our slope), a street whose
+    // rest our road reroutes (a way of its own beyond the stretch), a street whose closure's detour lies
+    // nowhere near the roads our road changes.
+    for (const [id, off, grab] of [['osm:way:251829053', 30, 0.5], ['osm:way:209632923', 30, 0.25], ['osm:way:314107194', -30, 0.5]] as const)
+      expect(rebuilt(id, insert(off), grab).issues.filter(i => i.check === 'not-checked').map(i => i.code)).toEqual([]);
     // A service road that ends under our bridge at km 4.03 keeps its own crossing there (passes under it).
     const service = rebuilt('osm:way:36347941', insert(30));
     expect(service.issues.map(i => i.violation.title)).toEqual([]);
