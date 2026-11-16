@@ -1368,26 +1368,52 @@ export class View {
     // each end's name is written to the right of its disc: keep room for it
     const room = (end: RenderEndpoints['a']) => 42 + 7.5 * (end.label?.length ?? 0);
     const rooms = [room(this.endpoints.a), room(this.endpoints.b)];
-    const fits = (dir: THREE.Vector3, d: number) => {
-      this.camera.position.copy(target).addScaledVector(dir, d);
-      this.camera.lookAt(target); this.camera.updateMatrixWorld();
-      return [a, b].every((p, k) => {
+    /** Screen positions of A and B looking along `dir` from `d` at `center`, or null if one is behind. */
+    const place = (dir: THREE.Vector3, d: number, center: THREE.Vector3) => {
+      this.camera.position.copy(center).addScaledVector(dir, d);
+      this.camera.lookAt(center); this.camera.updateMatrixWorld();
+      const out: { sx: number; sy: number }[] = [];
+      for (const p of [a, b]) {
         const v = p.clone().project(this.camera);
-        if (!(v.z > -1 && v.z < 1)) return false;
-        const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
-        return sx >= safe.left + margin && sx <= safe.right - margin - rooms[k] && sy >= safe.top + margin && sy <= safe.bottom - margin
-          && safe.avoid.every(r => sx < r.left - margin || sx > r.right + margin || sy < r.top - margin || sy > r.bottom + margin);
-      });
+        if (!(v.z > -1 && v.z < 1)) return null;
+        out.push({ sx: (v.x * 0.5 + 0.5) * w, sy: (-v.y * 0.5 + 0.5) * h });
+      }
+      return out;
     };
-    let d = 22600, dir = usual;
+    const clear = (pts: { sx: number; sy: number }[]) => pts.every(({ sx, sy }, k) =>
+      sx >= safe.left + margin && sx <= safe.right - margin - rooms[k] && sy >= safe.top + margin && sy <= safe.bottom - margin
+      && safe.avoid.every(r => sx < r.left - margin || sx > r.right + margin || sy < r.top - margin || sy > r.bottom + margin));
+    /** The view centre at distance d that frames both ends: the midpoint, or panned so that the ends
+     * clear a box (the intro card) by moving them right or down; null if none does. */
+    const fits = (dir: THREE.Vector3, d: number): THREE.Vector3 | null => {
+      const pts = place(dir, d, target);
+      if (!pts) return null;
+      if (clear(pts)) return target;
+      // metres per pixel at the target, along the camera's right and (ground-projected) up directions
+      const mpp = (2 * d * Math.tan((this.camera.fov * Math.PI) / 360)) / h;
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+      for (const r of safe.avoid) for (const [dx, dy] of [[r.right + margin + 1, 0], [0, r.bottom + margin + 1]] as const) {
+        const shiftX = Math.max(0, ...pts.map(p => dx ? dx - p.sx : 0)), shiftY = Math.max(0, ...pts.map(p => dy ? dy - p.sy : 0));
+        if (!shiftX && !shiftY) continue;
+        // moving the view centre left / up moves the ends right / down on screen
+        const center = target.clone().addScaledVector(right, -shiftX * mpp).addScaledVector(up, shiftY * mpp);
+        const moved = place(dir, d, center);
+        if (moved && clear(moved)) return center;
+      }
+      return null;
+    };
+    let d = 22600, dir = usual, center = target;
     for (const candidate of [usual, across]) {
-      if (!w || !h || !fits(candidate, this.controls.maxDistance)) continue;
-      let lo = 300, hi = this.controls.maxDistance;
-      for (let it = 0; it < 30 && hi - lo > 10; it++) { const mid = (lo + hi) / 2; if (fits(candidate, mid)) hi = mid; else lo = mid; }
-      d = hi; dir = candidate; break;
+      if (!w || !h) break;
+      // the closest distance that frames the ends (scanning outwards: a pan can make a closer view fit)
+      let found: { d: number; c: THREE.Vector3 } | null = null;
+      for (let dd = 600; dd <= this.controls.maxDistance && !found; dd *= 1.06) { const c = fits(candidate, dd); if (c) found = { d: dd, c }; }
+      if (!found) continue;
+      d = found.d; dir = candidate; center = found.c; break;
     }
-    this.controls.target.copy(target);
-    this.camera.position.copy(target).addScaledVector(dir, Math.max(this.controls.minDistance, d));
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).addScaledVector(dir, Math.max(this.controls.minDistance, d));
     this.controls.update();
     this.dirty = true;
   }
