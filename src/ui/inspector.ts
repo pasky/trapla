@@ -5,7 +5,7 @@
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, type OurLine } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -65,8 +65,8 @@ const MORE_KEY = 'trapla.more';
 /** the crossing card's choices: the shared vocabulary (core/terms.ts) */
 const CROSSING_OPTIONS = CROSSING_CHOICE_TEXT as unknown as [string, string, string][];
 /** A motorway has no level junctions: Automatic never offers one, and neither does the card. */
-const MOTORWAY_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => v === ''
-  ? [v, label, MOTORWAY_AUTOMATIC] : [v, label, why]);
+const crossingOptions = (line: OurLine): [string, string, string][] => line === 'road' ? CROSSING_OPTIONS
+  : CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => [v, label, v === '' ? (line === 'railway' ? RAILWAY_AUTOMATIC : MOTORWAY_AUTOMATIC) : ourWords(why, line)]);
 const STRUCTURE_OPTIONS: [string, string, string][] = [
   ['clear', 'Auto', 'Let the game choose (key A)'], ['1', 'Bridge', 'Bridge the whole stretch (key B)'],
   ['2', 'Tunnel', 'Tunnel the whole stretch (key T)'], ['0', 'Earthwork', 'Only cuts and embankments (key E)'],
@@ -376,12 +376,13 @@ export class Inspector {
     const roads = crossedRoads(r), k = roads.findIndex((x) => x.roadId === roadId);
     const nav = `<button type="button" class="nav" data-nav="-1" title="Previous crossed road" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button>`;
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
-    const rel = `our road ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c);
+    const line = CATEGORIES[d.category].mode;
+    const rel = `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c, line);
     return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div><div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
       ${this.linkPath(c, d)}
-      ${this.choices('crossing-choice', 'data-crossing', CATEGORIES[d.category].gradeSeparated ? MOTORWAY_CROSSING_OPTIONS : CROSSING_OPTIONS, choice)}`;
+      ${this.choices('crossing-choice', 'data-crossing', crossingOptions(CATEGORIES[d.category].gradeSeparated ? line : 'road'), choice)}`;
   }
   /** a reroute's path: drag it on the map; once shaped, one button takes it back to Automatic */
   private linkPath(c: Result['crossings'][number], d: Design) {

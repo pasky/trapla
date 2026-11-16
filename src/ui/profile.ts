@@ -11,6 +11,7 @@ import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
 import { crossingLabel } from '../core/crossings';
+import type { OurLine } from '../core/terms';
 import { KIND } from '../core/structures';
 import type { StructureOverride } from '../core/overrides';
 import type { WallOverride } from '../core/build-controls';
@@ -139,8 +140,8 @@ export class ProfilePanel {
   }
 
   /** the steepest slope the shown route's category allows (labels above it are red); tracks in per mille */
-  private gradeRule = { max: 0.06, perMille: false };
-  setGradeRule(rule: { max: number; perMille: boolean }) { this.gradeRule = rule; }
+  private gradeRule: { max: number; perMille: boolean; line?: OurLine } = { max: 0.06, perMille: false };
+  setGradeRule(rule: { max: number; perMille: boolean; line?: OurLine }) { this.gradeRule = rule; }
   setResult(r: Result, vpis: VPI[], overrides: readonly StructureOverride[] = [], pins: readonly { s: number; z: number }[] = [], walls: readonly WallOverride[] = []) {
     this.overrides = overrides;
     this.pins = pins;
@@ -839,7 +840,7 @@ export class ProfilePanel {
     const groups = COST_GROUPS.map((gr, gi) => { const v = (this.cum[gi][b + 1] - this.cum[gi][a]) / len; total += v; return [gr, v] as const; })
       .filter(([, v]) => v > 0.5).sort((p, q) => q[1] - p[1]).slice(0, 2);
     const facts: string[] = [];
-    for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x)}`);
+    for (const x of r.crossings) if (x.i >= a && x.i <= b) facts.push(`${ROAD_CLASSES[x.cls].label}: ${crossingLabel(x, this.gradeRule.line)}`);
     for (const c of r.waterCrossings) if (c.i >= a && c.i <= b) facts.push(`${c.waterKind}: ${c.structure}`);
     let nb = 0;
     for (const d of r.demolished) if (d.i >= a && d.i <= b) nb++;

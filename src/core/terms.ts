@@ -69,13 +69,18 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'>;
-export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>): OutcomeText {
+/** What our line is, in the player's words: "our road", "our railway", "our motorway". */
+export type OurLine = 'road' | 'railway' | 'motorway';
+export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
+  : text.replace(/\bour road\b/g, `our ${line}`).replace(/\bOur road\b/g, `Our ${line}`).replace(/\bthe new road\b/g, `the new ${line}`);
+export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, line: OurLine = 'road'): OutcomeText {
+  const words = (o: OutcomeText) => ({ ...o, label: ourWords(o.label, line), explain: ourWords(o.explain, line) });
   if (c.shared) {
     const o = ownOutcome({ ...c, targetS: undefined });
-    return { ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
-      explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` };
+    return words({ ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
+      explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` });
   }
-  return ownOutcome(c);
+  return words(ownOutcome(c));
 }
 function ownOutcome(c: OutcomeOf): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
@@ -139,6 +144,8 @@ export const SPEED_LIMIT_TEXT = {
 
 /** Automatic on a motorway: no junction anywhere along it. */
 export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
+/** Automatic on a railway: no level crossing anywhere along it (game rule, M1). */
+export const RAILWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the railway, an underpass through a high enough embankment or a reroute to a nearby crossing. A new railway has no level crossings.';
 
 /** The player's choices on the crossing card: [value, button label, what gets built]. */
 export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overbridge' | 'reconnection' | 'underpass', string, string][] = [

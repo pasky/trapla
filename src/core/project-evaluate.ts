@@ -1,5 +1,6 @@
 // Project publication boundary. Legacy single-road semantics remain exact; unimplemented interactions
 // expose proposed geometry with null project total, never a sum of independently completed road bills.
+import { ourWords } from './terms';
 import { CATEGORIES } from './data/categories';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './data/urban';
 import type { EvalContext, Result } from './evaluate';
@@ -126,8 +127,8 @@ const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
   // Define arbitrary stable IDs safely, including object-prototype names.
   Object.defineProperty(record, id, { value, enumerable: true, configurable: true, writable: true });
 /** The kernel names the mission's ends A and B; any other road's ends are its start and end. */
-const endWords = (route: RouteDesign, text: string) => route.role === 'mission' ? text
-  : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end');
+const endWords = (route: RouteDesign, text: string) => ourWords(route.role === 'mission' ? text
+  : text.replace(/\b(to|from|near|at) A\b/g, '$1 its start').replace(/\b(to|from|near|at) B\b/g, '$1 its end'), route.kind);
 const issueKey = (i: ProjectIssue) => JSON.stringify([i.code, i.violation?.title, i.violation?.fix, i.locations.map(l => [l.s0, l.s1])]);
 const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violations.map(v => ({ code: v.kind, blocking: 'invalid', check: 'violation', scope: { routeIds: [route.id] },
   locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
