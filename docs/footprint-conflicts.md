@@ -1,4 +1,4 @@
-# Automatic footprint engineering (cost models 16–24)
+# Automatic footprint engineering (cost models 16–26)
 
 The evaluator now **builds and prices remedies**, rather than simply invalidating every design
 whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
@@ -322,14 +322,14 @@ lowered-box card states the steeper ramp allowance; the works outline breaks whe
 
 **Known remaining.** A very skewed crossing gets a box as long as its oblique path under our embankment
 (town-centre km 15.98, 57 m); a designer would square it by realigning the crossed road near our road (done in
-model 24 below). Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
+model 26 below). Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
 station is priced as equipment plus catalogue items without installation and power connection; cut ramps and
 their slopes are priced per metre of road like bridge-over-us ramps, without their earth volume. A shaped
 first drag can still start with a footprint violation when the player's override changes our road's
 structure choice (1 of 12 sampled). Reroutes are not checked against buildings' gardens or other roads they
 run along.
 
-### Model 24: crossing remedies as designers choose them
+### Model 26: crossing remedies as designers choose them
 
 **Problem.** With reroutes checked (model 22), Auto sometimes picked remedies no designer would: the D3
 motorway starter went from 14.97 to 18.34 bn CZK. Km 14.18: a class III road running along the motorway
@@ -422,7 +422,7 @@ Audits (straight + five published + 24 random designs): `outcome-audit` violatio
 (each way's stretch through our earthworks, its straightened line, the geometry of a crossing built only to
 anchor candidates, anchors per line and width), the consolidation pass tries only what the first look could not
 see, allocation-free deck and box-floor searches, lazy anchor lines, and slope queries memoised. See the timing
-table in `docs/evaluate-performance.md` § Model 24.
+table in `docs/evaluate-performance.md` § Model 26.
 
 **Known remaining.** The straightened line is draped on the ground beyond its ramps (its profile is checked, not
 drawn engineered). Bends are circular arcs or a cubic curve no sharper than the class minimum, without transition curves; an S

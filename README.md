@@ -113,9 +113,11 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   the road on the map marks the spot here; when the map is zoomed in, a light blue window shows which part of
   the route it is looking at. **Key ▾** explains every mark.
 - **Road height: Auto | By hand** (the *Road* section): Auto sets the cheapest legal heights and redoes them after
-  every change (an approximate search); pins steer it. By hand starts from the current heights as **◆ points**:
-  drag one, double-click the line to add one, right-click to delete. Back to Auto replaces them (Undo brings them
-  back).
+  every change (an approximate search); pins steer it. By hand starts from exactly the current heights (the same
+  bill) as **◆ points**; at each zoom only the points that shape the line have a handle (zoom in for more), and
+  the hidden ones between follow a drag in proportion. Drag one, double-click the line to add one, right-click to
+  delete. Back to Auto replaces them (Undo brings them back). Height drags (pins, points) move at most 0.5 m per
+  pixel, finer when the profile is zoomed in; the tip shows the height and how far it moved.
 - **Map:** left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms about the ground under the
   cursor. The view always turns and zooms about the ground at its centre, never looks out flat along the horizon,
   and stays over the map; a click in the profile or a list brings what it picks into view (looking down on it
@@ -216,6 +218,23 @@ Pick a place on the start screen: [the four scenarios](docs/screenshots/73-scena
 [its end joining the retained roundabout](docs/screenshots/77-nova-paka-roundabout-junction.png),
 [the aerial photo showing the real bypass under construction](docs/screenshots/78-nova-paka-photo.png).
 See `docs/new-scenario.md`.
+
+The Středočeská D3 is offered whole (57 km, Prague ring → Nová Hospoda) and as its five construction
+sections 0301–0305/I ([picker](docs/screenshots/140-picker-d3-sections.png), research/39), each a motorway
+mission with its real ends: [0301 starts in the D0 interchange](docs/screenshots/141-d3-0301-d0-interchange.png),
+[0305/I joins the D3 that is already open](docs/screenshots/142-d3-0305-joins-open-d3.png), a section boundary
+[continues as the next section](docs/screenshots/143-d3-0303-continues.png) (the planned line runs on),
+[the whole corridor](docs/screenshots/144-d3-whole.png). D35 is offered whole too, Opatovec → Mohelnice,
+[ending on the I/35 merge](docs/screenshots/145-d35-mohelnice-merge.png). Long routes stay live while dragging:
+previews re-solve only the edited stretch (`docs/evaluate-performance.md`). Reproduce with
+`node scripts/scenarios/screenshots.mjs <id> --docs-overview|--docs-A|--docs-B <name>`.
+The start view [frames A and B](docs/screenshots/146-whole-d3-start-framed.png) (the whole D3 looked at across);
+an end that meets an interchange or a road has a sign and [a card](docs/screenshots/147-interchange-card-i18.png)
+("Interchange with road I/18 — its ramps are not part of this job"); the total
+[follows a drag live](docs/screenshots/148-whole-d3-live-price-drag.png) (≈); the D35 first section
+[joins the open D35 and goes on as the next section](docs/screenshots/149-d35-first-section-ends.png).
+A local edit re-solves only its own stretch of the grade line (model 25, research/39 "Local edits",
+`scripts/locality.ts`).
 
 ### Motorway (cost model 23)
 
@@ -326,7 +345,17 @@ Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-unde
 Map camera and labels (`node scripts/camera-check.mjs`): [*Whole route* after panning off the map](docs/screenshots/157-camera-whole-route.png),
 [a low view: no names piled up on the horizon or printed over each other](docs/screenshots/158-camera-low-view-labels.png),
 [noise walls on both sides labelled once](docs/screenshots/159-camera-wall-labels.png).
-Crossing remedies as designers choose them (model 24, `node scripts/crossing-economy-shots.mjs`):
+Core play polish (model 24): [By hand from Auto's heights: the same bill, handles only where the line bends](docs/screenshots/160-byhand-same-bill.png),
+[dragging a height point: the height and the change in the tip](docs/screenshots/161-byhand-drag-readout.png),
+[a pin dragged up 15 m by 30 px](docs/screenshots/162-pin-drag-readout.png),
+[1024 × 700: Build under the view buttons, the map key as symbols](docs/screenshots/163-1024-start.png),
+[… with the noise key bottom right, clear of A](docs/screenshots/164-1024-noise.png),
+[1280 × 720: A clear of the key](docs/screenshots/165-1280x720-start.png),
+[Auto bridges the Poříčí halls on its own heights](docs/screenshots/166-porici-auto-bridge.png),
+[the player's bridge over km 5.09–5.50: its piers clear the roads (a crossed track's reroute is still reported)](docs/screenshots/167-player-bridge-piers-clear.png),
+[a bought-out house drawn behind the 5 m wall Auto tried: one story](docs/screenshots/168-bought-out-one-story.png),
+[Nová Paka km 1.97: the tower inside the demolished hall goes with it](docs/screenshots/169-nova-paka-tower-with-hall.png).
+Crossing remedies as designers choose them (model 26, `node scripts/crossing-economy-shots.mjs`):
 [D3 motorway: a class III road running along it moved beside it (was a 704 m bridge)](docs/screenshots/170-d3-motorway-road-moved-beside.png),
 [a skewed track straightened through a 50 m box](docs/screenshots/171-d3-motorway-track-straightened-box.png),
 [the player keeps its line](docs/screenshots/172-d3-motorway-track-kept-line.png),

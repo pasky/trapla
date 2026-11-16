@@ -184,7 +184,7 @@ export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overb
 
 /** Footprint outcomes (things our earthworks cover beside the road). */
 export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action' | 'cls' | 'length' | 'affectedLength' | 'closed' | 'continuation'>): OutcomeText {
-  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : 'stream';
+  const what = c.feature === 'road' ? label(c.cls ?? 'unclassified') : c.feature === 'railway' ? 'railway' : c.feature === 'water' ? 'pond or river' : c.feature === 'building' ? 'building' : 'stream';
   switch (c.action) {
     case 'relocation': return c.closed && !c.closed.detour
       ? { tag: 'removed', label: `${what}: ${m(c.closed.length)} m removed (a dead end under our earthworks)`,
@@ -195,7 +195,8 @@ export function footprintOutcome(c: Pick<FootprintConflict, 'feature' | 'action'
       : { tag: 'moved aside', label: `${what}: ${m(c.affectedLength ?? c.length)} m under our earthworks, ${m(c.length)} m rebuilt beside them`,
         explain: `Part of the ${what} lies under our earthworks; that part is rebuilt next to them and keeps its connections.` };
     case 'retaining-wall': return { tag: 'retaining wall', label: `Retaining wall ${m(c.length)} m`,
-      explain: `A concrete wall ends our slope early so that it does not cover the ${what} next to it.` };
+      explain: c.feature === 'building' ? 'A concrete wall ends our slope early, so that the building next to it can stay.'
+        : `A concrete wall ends our slope early so that it does not cover the ${what} next to it.` };
     case 'culvert': return { tag: 'longer culvert', label: `Longer culvert ${m(c.length)} m`,
       explain: 'The stream runs under our earthworks in a longer concrete pipe or box.' };
     case 'channel-relocation': return { tag: 'stream moved', label: `Stream moved: ${m(c.length)} m of new bed`,
@@ -237,4 +238,25 @@ export function roadRemedyDetail(what: string, affected: number, plan: Pick<Road
 export function roadRemedySource(plan: Pick<RoadRealignmentPlan, 'roadCode' | 'closed' | 'retainingArea' | 'lumpCost'>): string | undefined {
   if (plan.closed) return undefined;
   return `SPK 2026 price per km of ${/P4/.test(plan.roadCode) ? 'paved track' : /S\d/.test(plan.roadCode) ? 'class I–III road' : 'local road'}${plan.retainingArea ? '; retaining walls per research/18' : ''}${plan.lumpCost ? `; ${(plan.lumpCost / 1e6).toFixed(1)} M CZK for access junctions (provisional estimate, research/13)` : ''}`;
+}
+
+/** What a mission end meets (scenario data), for the card shown when the end is clicked. */
+export interface EndConnection {
+  /** 'interchange': an interchange with a road, its ramps not built here; 'joins': the motorway carries on
+   * as an open road here; 'continues': the planned road goes on as another section; 'roundabout': our road
+   * gets its own arm into an existing roundabout */
+  kind: 'interchange' | 'joins' | 'continues' | 'roundabout';
+  /** the road(s) met, in player words: 'road I/18', 'the D0 and road II/101', 'the open D3' */
+  with: string;
+  /** a section end: the section the motorway goes on as (at B) or comes from (at A) */
+  section?: string;
+}
+/** The end's card: a title and short lines, plain words. */
+export function endCard(info: EndConnection, end: 'a' | 'b'): { title: string; lines: string[] } {
+  if (info.kind === 'continues') return { title: `Goes on as ${info.with}`, lines: ['That part is not in this job.'] };
+  if (info.kind === 'roundabout') return { title: `Joins the roundabout on ${info.with}`,
+    lines: ['Our road gets its own arm into it here, with a splitter island, priced as a junction; the roundabout itself stays as it is.'] };
+  if (info.kind === 'joins') return { title: `Joins ${info.with}`, lines: [`Our motorway carries on as ${info.with} here; that road is not part of this job.`] };
+  return { title: `Interchange with ${info.with}`, lines: ['Its ramps are not part of this job.',
+    ...(info.section ? [end === 'b' ? `The motorway goes on as ${info.section}.` : `The motorway comes from ${info.section}.`] : [])] };
 }

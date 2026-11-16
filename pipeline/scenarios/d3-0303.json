@@ -1,0 +1,92 @@
+{
+  "id": "d3-0303",
+  "name": "D3 0303 Hostěradice → Václavice",
+  "bbox5514": [
+    -744000,
+    -1080000,
+    -732000,
+    -1066500
+  ],
+  "cell": 5,
+  "requireComplete": true,
+  "coherentTransport": true,
+  "official": {
+    "strategy": "strict",
+    "query": "way[\"ref\"=\"D3\"];",
+    "ref": "D3",
+    "highway": "motorway",
+    "wayIds": [
+      149101901
+    ],
+    "wayNodeRanges": {
+      "149101901": [
+        5108369472,
+        5108369456
+      ]
+    },
+    "startNode": 5108369472,
+    "lengthRangeM": [
+      16107,
+      16307
+    ],
+    "publishedProjectLengthM": 11292,
+    "note": "The mapped line is drawn across the whole map, beyond the section ends, where the planned D3 continues (research/39)."
+  },
+  "A": {
+    "alongOfficial": 2448.519,
+    "note": "Section boundary beyond the Hostěradice interchange (II/106), km 13.900; section 0302 ends here"
+  },
+  "B": {
+    "alongOfficial": 13808.519,
+    "note": "Section boundary beyond the Václavice interchange (II/112 link to Benešov), km 25.200; continues as section 0304"
+  },
+  "groundProfileOverrides": {
+    "perm_sand": {
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "perm_congl": {
+      "classIto": 1.5,
+      "classIIto": 4
+    },
+    "perm_fine": {
+      "classIto": 3,
+      "classIIto": 9
+    },
+    "carb_sand": {
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "carb_mixed": {
+      "classIto": 2.5,
+      "classIIto": 7
+    },
+    "phyllite": {
+      "name": "Shale / phyllite — uncalibrated regional prior",
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "hard": {
+      "name": "Hornfels / greywacke / quartzite — uncalibrated regional prior",
+      "classIto": 1,
+      "classIIto": 3
+    },
+    "igneous": {
+      "name": "Granitoid / volcanic rock — uncalibrated regional prior",
+      "classIto": 1,
+      "classIIto": 3
+    },
+    "gneiss": {
+      "name": "Paragneiss / migmatite — uncalibrated regional prior",
+      "classIto": 1.5,
+      "classIIto": 4
+    }
+  },
+  "baselineNote": "Section 0303 of the Středočeská D3 (ŘSD leaflet 09/2025), a D 27.5 motorway mission. Starts and ends at section boundaries beyond the Hostěradice and Václavice interchanges; sections 0302 and 0304 continue there. Section boundaries are placed on the mapped proposed line by the leaflet chainage (research/39); the proposed OSM line is context, not surveyed design geometry. Ground depths are uncalibrated regional priors.",
+  "sources": [
+    "https://apdos.roadmedia.cz/Upload/Stavby/43/infoletak_d3-0303-hosteradice-vaclavice.pdf",
+    "https://www.stredoceskad3.cz/usek-0303-hosteradice-vaclavice/",
+    "https://md.gov.cz/Media/Media-a-tiskove-zpravy/Aktualni-stav-pripravy-stredoceske-D3",
+    "https://www.openstreetmap.org/way/149101901"
+  ]
+}

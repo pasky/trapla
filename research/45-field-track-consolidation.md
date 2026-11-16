@@ -36,7 +36,7 @@
 3. **Cost the replacement route as a project-specific choice:** motorway project, KoPÚ/shared-facilities works, or an agreed split. Do not charge KoPÚ automatically; for major motorway-triggered KoPÚ, represent a negotiated investor contribution. **Confidence: high** on case-by-case principle.
 4. **Use SPÚ category guidance for cost/footprint defaults:** secondary P 3.5/20 or P 4.0/20; primary P 4.0/30 or P 4.5/30; supplementary unpaved ≥3.0 m and short. Select class by use/machinery, not solely by whether it replaces a crossing. **Confidence: high**.
 
-## Adopted in the game (cost model 24)
+## Adopted in the game (cost model 26)
 
 - No Czech maximum detour or crossing spacing was found, so none is imposed: Auto leads a cut track or
   service road to a neighbouring crossing (or a structure and the roads led to it to a neighbour within the

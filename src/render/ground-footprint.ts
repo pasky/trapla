@@ -10,8 +10,14 @@ export interface GroundFootprint {
   key: string;
 }
 export function mainRoadFootprints(roads: readonly Result[]): GroundFootprint[] {
+  const run = mainRoadFootprintsSliced(roads);
+  for (let step = run.next(); ; step = run.next()) if (step.done) return step.value;
+}
+/** The same, yielding every few hundred stations (a long route's 3D rebuild runs in slices). */
+export function* mainRoadFootprintsSliced(roads: readonly Result[]): Generator<void, GroundFootprint[]> {
   const polygons: GroundFootprint[] = [];
   for (const r of roads) for (let i = 0; i + 1 < r.n; i++) {
+    if (i % 400 === 399) yield;
     if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
     const points = [daylightPoint(r, i, 1), daylightPoint(r, i, -1), daylightPoint(r, i + 1, -1), daylightPoint(r, i + 1, 1)];
     const xy = points.flatMap(p => [p.x, p.y]);
@@ -51,5 +57,30 @@ export function footprintBlend(polygons: readonly GroundFootprint[]) {
       if (inside || distance2 <= 100) return 0;
     }
     return Math.max(0, Math.min(1, (Math.sqrt(distance2) - 10) / 2.5));
+  };
+}
+
+/** Is (x, y) inside one of the polygons (our road's earthworks between its daylight lines)? */
+export function footprintContains(polygons: readonly GroundFootprint[]) {
+  const cell = 25, grid = new Map<number, number[]>(), KEY = 1 << 20, OFF = 1 << 19;
+  polygons.forEach((p, i) => {
+    for (let x = Math.floor(p.x0 / cell); x <= Math.floor(p.x1 / cell); x++)
+      for (let y = Math.floor(p.y0 / cell); y <= Math.floor(p.y1 / cell); y++) {
+        const key = (x + OFF) * KEY + y + OFF, list = grid.get(key);
+        if (list) list.push(i); else grid.set(key, [i]);
+      }
+  });
+  return (x: number, y: number) => {
+    for (const index of grid.get((Math.floor(x / cell) + OFF) * KEY + Math.floor(y / cell) + OFF) ?? []) {
+      const p = polygons[index];
+      if (x < p.x0 || x > p.x1 || y < p.y0 || y > p.y1) continue;
+      let inside = false;
+      for (let i = 0, j = 3; i < 4; j = i++) {
+        const ax = p.xy[j * 2], ay = p.xy[j * 2 + 1], bx = p.xy[i * 2], by = p.xy[i * 2 + 1];
+        if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
+      }
+      if (inside) return true;
+    }
+    return false;
   };
 }

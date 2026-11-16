@@ -1,7 +1,7 @@
 import type { Result } from '../core/evaluate';
 import { CrossingRenderer } from './crossings';
 import type { CrossingSurface } from './crossing-surface';
-import { buildRouteSurfaces, routeSurfaceContext } from './route-surfaces';
+import { buildRouteSurfaces, routeSurfaceContextSliced } from './route-surfaces';
 import type { Staged } from './slices';
 import type { View } from './view';
 
@@ -58,7 +58,7 @@ export class RouteScene {
         if (old?.input.result === entry.input.result && old.input.crownWidth === entry.input.crownWidth && old.input.buildingMarkers === entry.input.buildingMarkers &&
           old.dependencies.length === entry.dependencies.length && old.dependencies.every((r, i) => r === entry.dependencies[i])) continue;
         const surfaces = neighbours.flatMap(other => other.surfaces);
-        const context = routeSurfaceContext(entry.surfaces, surfaces,
+        const context = yield* routeSurfaceContextSliced(entry.surfaces, surfaces,
           (x, y) => this.view.groundHeight(x, y), (x, y) => this.view.drape(x, y),
           neighbours.map(other => other.input.result));
         stages.push(yield* this.view.buildResult(entry.input.result, entry.input.crownWidth, entry.input.id, context, true, entry.input.buildingMarkers, entry.input.mirrored));
@@ -68,6 +68,8 @@ export class RouteScene {
       const shown = inputs.filter(i => i.buildingMarkers !== false);
       stages.push(yield* this.view.buildPlots(globalDemolished ?? inputs.flatMap(i => i.result.demolished.map(b => b.j)),
         globalBought ?? shown.flatMap(i => i.result.boughtOut.map(b => b.j))));
+      // The shared mask and blend for the routes shown after the swap, ahead of it (in slices).
+      const prepared = yield* this.view.prepareRouteScene([...next.values()].map(entry => ({ result: entry.input.result, surfaces: entry.surfaces })));
       handedOver = true;
       return {
         commit: () => {
@@ -82,7 +84,7 @@ export class RouteScene {
             const entry = next.get(id); if (entry) this.view.setPreview(entry.input.result, id);
           }
           this.previews.clear();
-          this.view.commitRouteScene(new Set(next.keys()), globalDemolished, globalBought ?? shown.flatMap(i => i.result.boughtOut.map(b => b.j)));
+          this.view.commitRouteScene(new Set(next.keys()), globalDemolished, globalBought ?? shown.flatMap(i => i.result.boughtOut.map(b => b.j)), prepared);
           settled = true;
         },
         dispose,

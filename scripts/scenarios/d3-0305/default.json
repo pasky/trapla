@@ -1,0 +1,58 @@
+{
+  "scenario": "d3-0305",
+  "purpose": "Fresh motorway mission (starter)",
+  "design": {
+    "category": "D27.5",
+    "speed": 130,
+    "pis": [
+      {
+        "x": 3018.9,
+        "y": 15108.2,
+        "r": null
+      },
+      {
+        "x": 2562.2,
+        "y": 13483.7,
+        "r": null
+      },
+      {
+        "x": 2847,
+        "y": 11675.1,
+        "r": null
+      },
+      {
+        "x": 3706.9,
+        "y": 10000.3,
+        "r": null
+      },
+      {
+        "x": 4588.5,
+        "y": 8638.8,
+        "r": null
+      },
+      {
+        "x": 5054.1,
+        "y": 6964.2,
+        "r": null
+      },
+      {
+        "x": 6481.5,
+        "y": 6188.7,
+        "r": null
+      },
+      {
+        "x": 7979.2,
+        "y": 5463.5,
+        "r": null
+      },
+      {
+        "x": 9211.5,
+        "y": 4014.4,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

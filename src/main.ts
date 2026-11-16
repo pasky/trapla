@@ -133,7 +133,12 @@ async function main() {
   if (storage.problem !== null) storageNotice();
   const store = new ActiveRouteStore(projectStore, initialProject);
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
+  // Full evaluations and drag previews run in separate workers, so that a preview never waits behind a
+  // full evaluation (hundreds of ms on long routes). The full worker hands each full result to the
+  // preview worker directly (MessageChannel): the base its windowed previews re-solve locally.
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  const previewWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  const bases = new MessageChannel();
   const init: WorkerIn = {
     type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
     q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
@@ -141,7 +146,9 @@ async function main() {
     projectEnvironment: { objectData, transportData, pricingData, waterData: meta.watercourses?.sha256 ?? 'raster-water',
       terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
   };
-  worker.postMessage(init, [init.q.buffer, init.lc.buffer]);
+  const previewInit: WorkerIn = { ...init, q: pack.q.slice(), lc: pack.lc.slice(), role: 'preview', port: bases.port2 };
+  worker.postMessage({ ...init, role: 'full', port: bases.port1 }, [init.q.buffer, init.lc.buffer, bases.port1]);
+  previewWorker.postMessage(previewInit, [previewInit.q.buffer, previewInit.lc.buffer, bases.port2]);
 
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
@@ -156,20 +163,31 @@ async function main() {
   const hud = new Hud(document.getElementById('hud')!, scenario);
   const routeBar = new RouteBar(document.getElementById('view')!, registeredBuildKinds());
   const intro = new Intro(document.getElementById('view')!, scenario.mode ?? 'road');
+  // The start view frames A and B in what the toolbar, legend and attribution leave, clear of the intro.
+  view.frameSafe = () => {
+    const host = document.getElementById('view')!.getBoundingClientRect();
+    const box = (id: string) => { const el = document.getElementById(id); const r = el && !el.hidden ? el.getBoundingClientRect() : null;
+      return r && r.width && r.height ? { left: r.left - host.left, top: r.top - host.top, right: r.right - host.left, bottom: r.bottom - host.top } : null; };
+    const bars = [box('editbar'), box('viewbar'), box('brand')].filter(b => b !== null);
+    const lows = [box('legend'), box('attrib')].filter(b => b !== null);
+    return { left: 0, right: host.width, top: Math.max(0, ...bars.map(b => b.bottom)), bottom: Math.min(host.height, ...lows.map(b => b.top)),
+      avoid: [box('intro')].filter(b => b !== null) };
+  };
+  view.resetCamera();
   const decisions = new DecisionList(hud.decisions, (n) => { document.getElementById('decisions-count')!.textContent = n ? String(n) : ''; });
   decisions.objectDataChanged = store.objectDataChanged;
   const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0), pack.overlays.buildings[j]); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  // after the HUD: it syncs the HUD's exaggeration select
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
-  }, noise, () => {
-    // the active route as built (else its ends and bends)
+  }, noise, () => frameRoute());
+  /** the active route as built (else its ends and bends) in view */
+  const frameRoute = () => {
     const r = last, d = store.read() ? store.design : null;
     view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
       : d ? [A, ...d.pis, B] : []);
-  });
+  };
 
   let last: Result | null = null;
   let projectFull: ProjectResult | null = null;
@@ -198,11 +216,17 @@ async function main() {
     const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: only(active) }
       : active && active in alone ? { total: alone[active], approx: false, label: only(active) }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: only(mission) } : null;
+    // While a road is dragged the project total follows its live price: the last full total with this road's
+    // own bill replaced by the preview's (≈).
+    const total = projectFull?.cost.total;
+    const live = activePreviewPrice !== null && total !== null && total !== undefined && active && active in alone
+      ? total - alone[active] + activePreviewPrice : null;
     // our road: the mission's route, and a motorway mission's other direction
     const missionCorridor = mission ? corridorOfRoute(projectStore.snapshot.design, mission) : undefined;
     const ours = new Set([mission, missionCorridor?.children.forward, missionCorridor?.children.reverse].filter((id): id is RouteId => !!id));
     const groups = Object.fromEntries(projectStore.snapshot.design.corridors.flatMap(c => [[c.children.forward, c.id], [c.children.reverse, c.id]]));
     hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, ours, groups, legacy: legacyFacade(), ownPrice: own,
+      liveTotal: live, dragging: activePreviewPrice !== null && projectStore.inTransaction,
       activeRouteId: active ?? undefined, names: routeNames(),
       lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
@@ -257,8 +281,9 @@ async function main() {
     ends.sync(store.route);
     // Road links let the game change mapped roads: the worker learns which legacy way each mapped road is.
     // ... and where each mapped railway runs (what a rebuilt railway stretch takes up).
-    worker.postMessage({ type: 'source-ways', ways: graph.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]),
-      rails: graph.sources.flatMap(s => s.kind === 'railway' ? [[s.id, s.xy, s.stations]] : []) } satisfies WorkerIn);
+    const sourceWays = { type: 'source-ways', ways: graph.sources.flatMap(s => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]]),
+      rails: graph.sources.flatMap(s => s.kind === 'railway' ? [[s.id, s.xy, s.stations]] : []) } satisfies WorkerIn;
+    worker.postMessage(sourceWays); previewWorker.postMessage(sourceWays);
     view.setTransport(graph);
   })();
   // A saved project that already rebuilds mapped roads needs the graph before its first scene.
@@ -285,9 +310,11 @@ async function main() {
   };
   // the motorway's return direction starts at B
   const reversed = () => !!store.route && projectStore.snapshot.design.corridors.some(c => c.mode === 'independent' && c.children.reverse === store.route!.id);
+  /** what the active road's ends meet (the mission's interchanges), in its own direction */
+  const endInfo = (end: 'a' | 'b') => store.route?.role === 'mission' ? scenario.ends?.[reversed() ? (end === 'a' ? 'b' : 'a') : end] : undefined;
   const activeEndpoints = () => ({
-    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start' },
-    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End' },
+    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start', sign: endInfo('a')?.kind },
+    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', sign: endInfo('b')?.kind },
     plain: !!store.route && store.route.role !== 'mission',
   });
   const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);
@@ -314,8 +341,10 @@ async function main() {
         const s = stationNear(b[0], b[1]);
         return { x: b[0], y: b[1], s0: s, s1: s };
       }
+      case 'end': { const i = t.end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], s0: r.s[i], s1: r.s[i] }; }
     }
   };
+  view.onEndClick = (end) => select({ kind: 'end', end });
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   let selectGeneration = 0; // a deferred base-road pick yields to any later selection
   /** A single selected place seen from further than this (m per pixel) is too small to make out: framing flies in. */
@@ -667,9 +696,10 @@ async function main() {
     if (preview && !previewGesture) previewGesture = { id: crypto.randomUUID(), sequence: 0, lastDisplayedSequence: -1 };
     const message: ProjectWorkerIn = preview && store.activeRouteId
       ? { type: 'project-preview', id: posted, snapshot, routeId: store.activeRouteId, materialValue: lastFull?.quantities.materialValue,
+          structureValue: lastFull?.quantities.structureValue,
           gesture: { id: previewGesture!.id, sequence: ++previewGesture!.sequence } }
       : { type: 'project-eval', id: posted, snapshot, displayedResult: displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision } };
-    worker.postMessage(message);
+    (message.type === 'project-preview' ? previewWorker : worker).postMessage(message);
     projectScore(true);
     if (preview) fullTimer = window.setTimeout(() => { fullTimer = 0; requestEval(false); }, FULL_AFTER_IDLE_MS);
     schedulePreview();
@@ -751,12 +781,14 @@ async function main() {
     revalidate(r, rd);
     const cat = CATEGORIES[rd.category];
     profile.setGradeRule({ max: rd.maxGradient ?? cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient, perMille: cat.mode === 'railway', line: cat.mode });
-    profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+    profile.setResult(r, r.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
     syncApart(r);
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
+    const ends = activeEndpoints();
+    inspector.ends = { a: endInfo('a'), b: endInfo('b'), names: { a: ends.a.label, b: ends.b.label } };
     inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
   };
 
@@ -768,7 +800,7 @@ async function main() {
     worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
       crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
   };
-  worker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
+  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
     if (m.type === 'noise-band') {
@@ -807,7 +839,7 @@ async function main() {
           if (on) routeScene.preview(on, shown);
         }
         took('view');
-        profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+        profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
         syncApart(shown);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
@@ -871,7 +903,7 @@ async function main() {
     }, error => {
       console.error('3D rebuild failed', error); setStatus('The 3D view could not be updated.');
       heavy = null; lastPost = null; settle();
-    }, 8, stats); took('view');
+    }, 8, stats, ([geometry, sources]) => { sources?.dispose(); geometry.dispose(); }); took('view');
     showActiveResult(); took('profile'); projectScore(true); took('hud');
     setStatus(''); settle();
   };
@@ -1007,7 +1039,8 @@ async function main() {
     if (building.kind === 'road' && legacyRoadAt(x, y)) return { ok: false, why: 'This map’s road links are missing, so a new road cannot join its roads yet. Join our road, or end on open ground.' };
     return { ok: true, label: `open ground (joins no ${building.kind === 'railway' ? 'railway' : 'road'})`, end: { position: { x, y, z: pack.terrain.heightAt(x, y) }, anchor: { kind: 'free' } } };
   };
-  routeBar.onSelect = switchRoute;
+  // a road picked from the list comes into view
+  routeBar.onSelect = (id) => { switchRoute(id); frameRoute(); };
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
   syncEnds();
   syncDirections();
@@ -1225,14 +1258,28 @@ async function main() {
     },
   };
   const lastClient = { x: 0, y: 0 };
+  /** the height points as they were when a By hand drag began */
+  let vpiDragBase: Design['vpis'] | null = null;
 
   // ---- profile: the same verbs ----
   profile.ev = {
     onStationSelect: (s) => select({ kind: 'pin', s }, true),
     onCrossingSelect: (roadId) => select({ kind: 'crossing', roadId }, true),
     onPick: (s) => selectPiece(s, true),
-    onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
-    onVpiDragEnd: () => store.commit(),
+    onVpiDrag: (i, s, z, a, b) => store.update((d) => {
+      takeProfile(d);
+      const base = vpiDragBase ??= d.vpis.map((v) => ({ ...v }));
+      if (!d.vpis[i] || !base[a] || !base[b]) return;
+      d.vpis[i].s = s; d.vpis[i].z = z;
+      // the height points hidden between it and its shown neighbours keep their shape and follow
+      // in proportion, so the line bends only at the points the player sees
+      const dz = z - base[i].z;
+      for (let j = a + 1; j < b; j++) if (j !== i) {
+        const t = j < i ? (base[j].s - base[a].s) / Math.max(1e-6, s - base[a].s) : (base[b].s - base[j].s) / Math.max(1e-6, base[b].s - s);
+        d.vpis[j].z = Math.round((base[j].z + dz * Math.max(0, Math.min(1, t))) * 100) / 100;
+      }
+    }, false),
+    onVpiDragEnd: () => { vpiDragBase = null; store.commit(); },
     onVpiAdd: (s, z) => {
       const vp = store.design.profileMode === 'auto' && last ? last.vpis : store.design.vpis;
       if (vp.some((v) => Math.abs(v.s - s) < MIN_VPI_GAP)) return;
@@ -1391,7 +1438,6 @@ async function main() {
       switchRoute(corridor.children[which], false, corridor.mode === 'paired');
     },
     onLoadBest: () => { if (store.best) { store.loadBest(); toast('Loaded your best design.', 'Undo', () => store.undo()); } },
-    onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {
       // the list shows the last full result's violations (previews do not replace it)
       if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }
@@ -1592,6 +1638,8 @@ async function main() {
     profileFit: () => profile.fit(),
     profileView: () => profile.view,
     profileHasRoad: () => profile.hasRoad,
+    /** By hand: the height points with a handle at the profile's zoom */
+    profileShownPoints: () => profile.shownPoints,
     profileHover: () => profile.hover,
     profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
     bendStations: () => last && bendStations(last, store.design),
@@ -1613,6 +1661,8 @@ async function main() {
     rebuildStats: () => ({ ...heavyStats }),
     /** live shader programs (a growing / changing list during edits means recompiles) */
     programs: () => (view.renderer.info.programs ?? []).map((p) => `${p.id}:${p.cacheKey.slice(0, 40)}`),
+    /** debugging only: the 3D view */
+    debugView: () => view,
     meta,
     official: meta.official.xy,
     A, B,

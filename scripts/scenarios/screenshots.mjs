@@ -5,12 +5,14 @@ import { chromium } from 'playwright-core';
 import { createServer } from 'vite';
 
 // node scripts/scenarios/screenshots.mjs picker [--docs]: the integrated start screen (73)
+// Other packs (e.g. d3-0301): --docs-overview / --docs-A / --docs-B <name> save those views to docs/screenshots.
 const id = process.argv[2];
-if (!['picker', 'd3', 'd35', 'i16-nova-paka'].includes(id)) throw new Error('Choose a new scenario or picker.');
+const docsArg = (k) => { const i = process.argv.indexOf(`--docs-${k}`); return i > 0 ? process.argv[i + 1] : null; };
+if (id !== 'picker' && !/^[a-z0-9-]+$/.test(id)) throw new Error('Choose a new scenario or picker.');
 const design = id === 'picker' ? null : JSON.parse(readFileSync(`scripts/scenarios/${id}/default.json`, 'utf8')).design;
 const out = `/tmp/trapla-scenarios/${id}`;
 mkdirSync(out, { recursive: true });
-const server = await createServer({ server: { port: 5292, strictPort: true }, logLevel: 'warn' });
+const server = await createServer({ server: { port: Number(process.env.PORT ?? 5292), strictPort: false }, logLevel: 'warn' });
 let browser;
 try {
   await server.listen();
@@ -21,16 +23,17 @@ try {
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   if (id === 'picker') {
-    await page.goto('http://localhost:5292/');
+    await page.goto(server.resolvedUrls.local[0]);
     await page.waitForSelector('.scenario-picker-card');
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${out}/picker.png` });
     if (process.argv.includes('--docs')) await page.screenshot({ path: 'docs/screenshots/73-scenario-picker.png' });
+    if (docsArg('picker')) await page.screenshot({ path: `docs/screenshots/${docsArg('picker')}.png`, fullPage: true });
     if (errors.length) throw new Error(errors.join('\n'));
     console.log(JSON.stringify({ id, out }));
     process.exit(0);
   }
-  await page.goto(`http://localhost:5292/?scenario=${id}`);
+  await page.goto(`${server.resolvedUrls.local[0]}?scenario=${id}`);
   await page.waitForFunction(() => !!window.trapla, null, { timeout: 180_000 });
   await page.evaluate(d => window.trapla.setDesign(d), design);
   await page.evaluate(() => window.trapla.whenIdle());
@@ -48,6 +51,8 @@ try {
     await page.screenshot({ path: `${out}/${name}.png` });
     if (process.argv.includes('--docs') && docsName)
       await page.screenshot({ path: `docs/screenshots/${docsName}.png` });
+    const extra = docsArg(name.replace('endpoint-', ''));
+    if (extra) await page.screenshot({ path: `docs/screenshots/${extra}.png` });
   };
   await page.evaluate(() => window.trapla.resetCamera());
   await shot('overview', ({ d3: '74-d3-posazavi', d35: '75-d35-opatovec-stare-mesto', 'i16-nova-paka': '76-nova-paka' })[id]);

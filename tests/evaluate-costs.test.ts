@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { bill, regressionFixtures, numericLeaves, regressionContext, regressionPackAvailable } from '../scripts/eval-regression';
-import { evaluate, type EvalContext } from '../src/core/evaluate';
+import { evaluate, normalizeVpis, type EvalContext } from '../src/core/evaluate';
 
 // Model 15 changes actual profiles/structures/earthwork, not merely additive bill lines.
 // Both recognized packs retain frozen computed bills; the model-13 archive stays untouched.
@@ -24,5 +24,11 @@ describe.skipIf(!regressionPackAvailable())('engineered-design bills survive eva
     expect(actual.geometryHash).toBe(f.expected.geometryHash);
     expect(actual.valid).toBe(f.expected.valid);
     expect(actual.violations).toEqual(f.expected.violations);
+    // By hand starts from exactly Auto's heights: the same structures and the same bill
+    if (f.design.profileMode !== 'auto') return;
+    const vpis = normalizeVpis(result.vpis, result.length, result.vpis[0].z, result.vpis[result.vpis.length - 1].z);
+    const byHand = evaluate(ctx, { ...structuredClone(f.design), profileMode: 'manual', vpis });
+    expect(byHand.cost.total).toBe(result.cost.total);
+    expect(byHand.violations.map(v => v.title)).toEqual(result.violations.map(v => v.title));
   });
 });

@@ -169,7 +169,10 @@ if (mode === 'bend') {
     // a height point By hand (in Auto, dragging the line pins it instead)
     await T(() => document.getElementById('grade-manual').click());
     await T(() => window.trapla.whenIdle());
-    grab = async () => T(() => { const r = window.trapla.result(), v = r.vpis[Math.floor(r.vpis.length / 2)]; return window.trapla.profilePoint(v.s, v.z); });
+    // the shown height point nearest the middle (the others have no handle at this zoom)
+    grab = async () => T(() => { const r = window.trapla.result(), mid = r.vpis.length / 2;
+      const k = window.trapla.profileShownPoints().reduce((a, b) => (Math.abs(b - mid) < Math.abs(a - mid) ? b : a)), v = r.vpis[k];
+      return window.trapla.profilePoint(v.s, v.z); });
   }
   path = (u, size) => ({ x: 0, y: -size * 0.4 * Math.sin(u * 2 * Math.PI) });
 } else if (mode === 'link') {
@@ -263,6 +266,7 @@ const shownAt = during.map((r) => r.t1);
 const first = Math.min(...posts.values());
 const gaps = [...shownAt, tUp].map((t, i, a) => ({ at: (i ? a[i - 1] : first) - D.start, gap: t - (i ? a[i - 1] : first), full: i < during.length && !during[i].preview }));
 const resultGap = Math.max(0, ...gaps.map((g) => g.gap));
+if (process.env.DRAG_DEBUG) console.log('previews (worker ms, latency ms, handler ms)', JSON.stringify(previews.map((r) => [Math.round(r.worker ?? -1), Math.round(r.t0 - posts.get(r.id)), Math.round(r.t1 - r.t0)])));
 if (process.env.DRAG_DEBUG) console.log('gaps', JSON.stringify(gaps.filter((g) => g.gap > 60).map((g) => [Math.round(g.at), Math.round(g.gap), g.full])));
 const out = {
   mode, renderer, moves, evalsPosted: posts.size, resultsDuringDrag: during.length, previewResults: previews.length,

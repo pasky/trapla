@@ -3,7 +3,7 @@
 import { ourWords } from './terms';
 import { CATEGORIES } from './data/categories';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './data/urban';
-import type { EvalContext, Result } from './evaluate';
+import type { EvalContext, EvalOptions, Result } from './evaluate';
 import type { XYZ, SharedWork, ProjectBuildingOutcome, ProjectEnvironment, ProjectIssue, ProjectReceiver, ProjectResult, ProjectSnapshot, RouteDesign, RouteResult, TransportSurface } from './project';
 import { INDEPENDENCE_SCREEN, routeContacts, screenIndependence, type RouteContact } from './project-ledger';
 import { evaluateProjectRoad, type SourceWays } from './project-road';
@@ -83,8 +83,10 @@ const UNPRICED: Record<'source-needs-network' | 'traffic-unknown' | 'motorway-ne
     fix: 'Enter how many vehicles a day use this road in its card',
     rule: 'Game rule: noise and capacity depend on traffic, so a road without traffic cannot be priced.' } },
 };
+/** The last full evaluation's fill values, which a drag preview prices at (EvalOptions). */
+export type PreviewPrices = Pick<EvalOptions, 'materialValue' | 'structureValue'>;
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
-  preview = false, materialValue?: number, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ }): { route: RouteResult; issues: ProjectIssue[];
+  preview = false, prices: PreviewPrices = {}, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ }): { route: RouteResult; issues: ProjectIssue[];
     junctionEnds: ('a' | 'b')[]; replacement?: Replacement; ringWorks?: ReplacementWork[] } {
   const corridor = route.kind === 'motorway' ? corridorOfRoute(snapshot.design, route.id) : undefined;
   let evaluated: CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
@@ -92,11 +94,11 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     let cached = corridors.get(corridor.id);
     // A drag preview of one separate direction evaluates only that direction.
     if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(ctx.legacy, snapshot.design, corridor.id, ctx.environment.objectData,
-      { preview, materialValue, ...(preview ? { only: route.id } : {}) }));
+      { preview, ...prices, ...(preview ? { only: route.id } : {}) }));
     evaluated = cached;
-  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue,
+  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices,
     ...(ctx.railPaths ? { railPaths: ctx.railPaths } : {}) });
-  else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, materialValue, sourceWays: ctx.sourceWays,
+  else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays,
     ...(ends ? { ends } : {}) });
   const road = route.kind === 'road' && !corridor && evaluated.status === 'evaluated' ? evaluated as Extract<ReturnType<typeof evaluateProjectRoad>, { status: 'evaluated' }> : null;
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
@@ -113,10 +115,10 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
       : (road?.unpriced ?? ('unpriced' in evaluated && corridor?.children.reverse !== route.id ? evaluated.unpriced ?? [] : [])).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
 }
-export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, materialValue?: number): RouteResult {
+export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, routeId: string, prices: PreviewPrices = {}): RouteResult {
   assertProjectDesign(snapshot.design);
   const route = snapshot.design.routes.find(r => r.id === routeId); if (!route) throw new Error('Unknown preview route');
-  return routeProposal(ctx, snapshot, route, true, materialValue).route;
+  return routeProposal(ctx, snapshot, route, true, prices).route;
 }
 
 const defineRoute = <T>(record: Record<string, T>, id: string, value: T) =>
@@ -233,7 +235,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     return out.a || out.b ? out : undefined;
   };
   for (const route of [...order, ...cyclic]) {
-    const proposal = routeProposal(ctx, snapshot, route, false, undefined, corridorCache, route.kind === 'road' ? followEnds(route) : undefined);
+    const proposal = routeProposal(ctx, snapshot, route, false, {}, corridorCache, route.kind === 'road' ? followEnds(route) : undefined);
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
     defineRoute(result.routes, route.id, proposal.route);
     if (proposal.route.legacy) engineered.push({ route, legacy: proposal.route.legacy });

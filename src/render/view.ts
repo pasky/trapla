@@ -18,11 +18,11 @@ import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import type { CrossingSurface } from './crossing-surface';
 import { routeMask, type RouteMaskInput } from './route-mask';
-import { buildRouteSurfaces, routeSurfaceContext, type RouteSurfaceContext } from './route-surfaces';
+import { buildRouteSurfaces, routeSurfaceContext, routeSurfaceContextSliced, type RouteSurfaceContext } from './route-surfaces';
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
-import { GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
+import { COLLAR_OVERLAP, GROUND_COLLAR, collarPoint, daylightSections, groundStations } from './earthwork-surface';
 import { CARRIAGEWAY_SECTION, RAIL_SECTION, RAIL2_SECTION, EW_KIND, makeEarthworkMaterial, makeTerrainMaterial, oobTexture, PAIRED_SECTION, terrainUniforms } from './terrainMaterial';
 import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
@@ -79,9 +79,20 @@ const LEGACY_ROUTE = 'legacy';
  * demolished one's far-zoom marker */
 export const BOUGHT_COLOR = 0xc43c9b, DEMOLISHED_COLOR = 0x3d434b;
 export interface StagedRoute extends Staged { context: RouteSurfaceContext }
+export type EndSign = 'interchange' | 'roundabout' | 'joins' | 'continues';
+/** small symbols for an end's marker: an interchange (two roads crossing with loop ramps), a roundabout
+ * with our arm, a road carrying on */
+const svg = (body: string) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${body}</svg>`;
+const END_SIGNS: Record<EndSign, string> = {
+  interchange: svg('<path d="M8 1v14M1 8h14" stroke="#1d232a" stroke-width="2.2"/><path d="M8 5a3 3 0 1 1 3 3M8 11a3 3 0 1 1-3-3" fill="none" stroke="#1d232a" stroke-width="1.4"/>'),
+  roundabout: svg('<circle cx="10" cy="7" r="4" fill="none" stroke="#1d232a" stroke-width="2"/><path d="M1 13l5.5-3.5" stroke="#1d232a" stroke-width="2.2"/><path d="M6 12.5l1.5-2.5" stroke="#1d232a" stroke-width="1"/>'),
+  joins: svg('<path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="#1d232a" stroke-width="2.2"/>'),
+  continues: svg('<path d="M2 8h3M7 8h3" stroke="#1d232a" stroke-width="2.2"/><path d="M11 4l4 4-4 4" fill="none" stroke="#1d232a" stroke-width="2"/>'),
+};
 export interface RenderEndpoints {
-  a: { x: number; y: number; z?: number; label?: string };
-  b: { x: number; y: number; z?: number; label?: string };
+  /** `sign`: what the end meets (an interchange, a roundabout, a road it joins): a symbol and a card */
+  a: { x: number; y: number; z?: number; label?: string; sign?: EndSign };
+  b: { x: number; y: number; z?: number; label?: string; sign?: EndSign };
   /** another road's ends (not the scenario's A / B): plain end markers without the A / B discs */
   plain?: boolean;
 }
@@ -94,6 +105,10 @@ export interface RenderEndpoints {
  * invisible close up, keep a dashed trace on the ground.
  */
 const STRUCTURE_LINE_FROM = 2.5;
+/** Ground drawn over a tunnel behind its portal face's top, m: past the terrain mask's bleed (≈ 3 m,
+ * route-mask.ts) with an overlap onto the drawn terrain; within PORTAL_LID_BLEND it rises from the face's
+ * ground to the drawn terrain. */
+const PORTAL_LID = 7.5, PORTAL_LID_BLEND = 3;
 
 /** Carriageway cross-sections by index (`roadSections`; 0 = none: plain asphalt) and the index of a
  * crown width's category. All have the same centre-line dash (TP 133: 3 / 6 m outside motorways). */
@@ -114,6 +129,14 @@ function badStations(r: Result) {
     for (let i = 0; i < r.n; i++) if (r.s[i] >= v.s0 - r.ds && r.s[i] <= v.s1 + r.ds) bad[i] = 1;
   }
   return bad;
+}
+
+/** View.prepareRouteScene: what commitRouteScene would compute for these routes. */
+export interface PreparedScene {
+  inputs: readonly { result: Result; surfaces: readonly CrossingSurface[] }[];
+  crossingSurfaces: CrossingSurface[];
+  replacementHeight: (x: number, y: number) => number;
+  mask: ReturnType<typeof routeMask>;
 }
 
 export class View {
@@ -566,7 +589,16 @@ export class View {
 
   private buildOfficial() {
     const pts: number[] = [];
-    const xy = this.pack.meta.official.xy;
+    // The mapped line's vertices can be hundreds of metres apart: draped only there, a straight piece
+    // would run through the hills in between (and vanish under them). Draped every ≤ 25 m.
+    const raw = this.pack.meta.official.xy as [number, number][], xy: [number, number][] = [];
+    for (let i = 0; i < raw.length; i++) {
+      if (i > 0) {
+        const [x0, y0] = raw[i - 1], [x1, y1] = raw[i], m = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 25);
+        for (let k = 1; k < m; k++) xy.push([x0 + (x1 - x0) * k / m, y0 + (y1 - y0) * k / m]);
+      }
+      xy.push(raw[i]);
+    }
     let along = Infinity;
     for (let i = 0; i < xy.length; i++) {
       const [x, y] = xy[i];
@@ -646,7 +678,11 @@ export class View {
     for (const letter of ['A', 'B']) {
       const el = document.createElement('div'); el.className = 'endpoint';
       const badge = document.createElement('b'); badge.textContent = letter;
-      el.append(badge, document.createElement('span')); this.overlay.appendChild(el);
+      // an end at an interchange (or joining a road): a symbol by its name; the marker opens its card
+      const sign = document.createElement('i'); sign.className = 'interchange-sign';
+      el.append(badge, sign, document.createElement('span')); this.overlay.appendChild(el);
+      el.addEventListener('pointerdown', (e) => { if (el.classList.contains('info')) e.stopPropagation(); });
+      el.addEventListener('click', () => { if (el.classList.contains('info')) this.onEndClick?.(letter === 'A' ? 'a' : 'b'); });
       this.endpointMarkers.push({ el, x: 0, y: 0, z: 0 });
     }
     this.setEndpoints(this.endpoints);
@@ -658,6 +694,9 @@ export class View {
     }
   }
 
+  /** a click on an end that has a card (see RenderEndpoints.interchange) */
+  onEndClick?: (end: 'a' | 'b') => void;
+
   // ---- route ---------------------------------------------------------------------------------
   setEndpoints(endpoints: RenderEndpoints) {
     this.endpoints = endpoints;
@@ -667,6 +706,10 @@ export class View {
       marker.x = point.x; marker.y = point.y; marker.z = point.z ?? this.terrain.heightAt(point.x, point.y);
       marker.el.querySelector('span')!.textContent = point.label ?? '';
       marker.el.classList.toggle('plain', !!endpoints.plain);
+      marker.el.classList.toggle('info', !!point.sign && !endpoints.plain);
+      const sign = marker.el.querySelector('.interchange-sign')!;
+      if (point.sign && sign.getAttribute('data-sign') !== point.sign) { sign.innerHTML = END_SIGNS[point.sign]; sign.setAttribute('data-sign', point.sign); }
+      this.labelRoom.forget(marker.el);
     }
     this.dirty = true;
   }
@@ -918,7 +961,9 @@ export class View {
       kinds.push(EW_KIND.structure); geo.push(...noGeo);
       return pos.length / 3 - 1;
     };
+    yield; // a long route's whole-route passes below are sliced too
     for (let i = 0; i < n; i++) {
+      if (i % 512 === 511) yield;
       if (!ground[i] || !((i > 0 && !ground[i-1]) || (i+1 < n && !ground[i+1]))) continue;
       const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
       const zl = this.terrain.heightAt(x+nx*w, y+ny*w), zr = this.terrain.heightAt(x-nx*w, y-ny*w);
@@ -950,7 +995,28 @@ export class View {
         if (prev) quad(prev[0], at[0], prev[1], at[1]);
         prev = at;
       }
+      // Ground over the tunnel behind the face's top edge, out past the side collars: the terrain mask's bleed
+      // (≈ a texel) leaves a strip of it cut away, and the drawn terrain (coarser than the face's ground)
+      // stands above or below the face's top. From the face's ground it rises to the drawn terrain within
+      // PORTAL_LID_BLEND and overlaps it beyond, as the side collars do; without it sky slivers line the top.
+      const into = i < run.i0 ? 1 : -1, wide = Math.max(2, Math.ceil((L + R + 2 * GROUND_COLLAR) / 2.5));
+      const rows = Math.ceil(PORTAL_LID / 2.5), base = groundPos.length / 3;
+      for (let k = 0; k <= wide; k++) {
+        const o = L + GROUND_COLLAR - (L + R + 2 * GROUND_COLLAR) * k / wide;
+        // beside the cut, the side collar's own blend towards the drawn terrain (collarPoint)
+        const out = o > L ? o - L : o < -R ? -R - o : 0, side = Math.max(0, Math.min(1, (out - 10) / (GROUND_COLLAR - COLLAR_OVERLAP - 2.5 - 10)));
+        for (let j = 0; j <= rows; j++) {
+          const d = PORTAL_LID * j / rows, px = x + nx * o + r.tx[i] * into * d, py = y + ny * o + r.ty[i] * into * d;
+          const g = natural(px, py), blend = Math.max(side, Math.min(1, d / PORTAL_LID_BLEND));
+          this.local(px, py, g + (blend ? (Math.max(g, coarse(px, py)) - g) * blend : 0) + groundLift, v); groundPos.push(v.x, v.y, v.z);
+        }
+      }
+      for (let k = 0; k < wide; k++) for (let j = 0; j < rows; j++) {
+        const a = base + k * (rows + 1) + j, b = a + rows + 1;
+        groundIdx.push(a, b, a + 1, b, b + 1, a + 1);
+      }
     }
+    flushGround();
     // bridge deck edges and piers, tunnel portals
     const boxAt = (x: number, y: number, tx: number, ty: number, zb: number, zt: number, along: number, across: number, c: THREE.Color) => {
       const nx = -ty, ny = tx;
@@ -972,6 +1038,7 @@ export class View {
     const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [side > 0 ? [-w, w - gap] : [-w + gap, w]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
     const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;
     for (const run of r.runs) {
+      yield;
       if (run.kind === KIND.bridge) {
         const piers = supports.filter(p => p.structure === 'pier' && p.s > run.s0 && p.s < run.s1);
         const spans = bridgeDeckSpans(run.s0,run.s1,piers.map(p => p.s));
@@ -1035,6 +1102,7 @@ export class View {
         }
       }
     }
+    yield;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -1047,6 +1115,7 @@ export class View {
     ribbon.name = 'ribbon';
     out.push(ribbon); // owned (disposed on abort) before the next yield
     g.computeBoundingSphere();
+    yield;
     g.computeVertexNormals();
     yield;
 
@@ -1202,16 +1271,30 @@ export class View {
     this.dirty = true;
   }
 
+  /** The route-length part of commitRouteScene for the routes that will be shown, computed ahead in
+   * slices (a long route's mask and blend would otherwise be one long task at the swap). */
+  *prepareRouteScene(inputs: readonly { result: Result; surfaces: readonly CrossingSurface[] }[]): Generator<void, PreparedScene> {
+    const crossingSurfaces = inputs.flatMap(input => [...input.surfaces]);
+    const context = yield* routeSurfaceContextSliced(crossingSurfaces, crossingSurfaces, (x, y) => this.groundHeight(x, y), (x, y) => this.drape(x, y));
+    yield;
+    const mask = routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
+    yield;
+    return { inputs, crossingSurfaces, replacementHeight: context.replacementHeight, mask };
+  }
+
   /** Complete a staged scene swap once, after all route and crossing groups commit synchronously. */
-  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[], globalBought?: readonly number[]) {
+  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[], globalBought?: readonly number[], prepared?: PreparedScene) {
     this.routeGroups.retain(ids);
     for (const id of this.routeInputs.keys()) if (!ids.has(id)) this.routeInputs.delete(id);
     this.maskSources = [...this.routeInputs.values()];
-    this.crossingSurfaces = this.maskSources.flatMap(input => [...input.surfaces]);
-    this.replacementHeight = routeSurfaceContext(this.crossingSurfaces, this.crossingSurfaces,
+    // Prepared for exactly these routes (any order): use it; otherwise compute now.
+    const ready = prepared && prepared.inputs.length === this.maskSources.length
+      && this.maskSources.every(m => prepared.inputs.some(p => p.result === m.result && p.surfaces === m.surfaces)) ? prepared : undefined;
+    this.crossingSurfaces = ready?.crossingSurfaces ?? this.maskSources.flatMap(input => [...input.surfaces]);
+    this.replacementHeight = ready?.replacementHeight ?? routeSurfaceContext(this.crossingSurfaces, this.crossingSurfaces,
       (x, y) => this.groundHeight(x, y), (x, y) => this.drape(x, y)).replacementHeight;
     this.contourLabels?.schedule(this.contourStep * 5);
-    this.drawMask(this.maskSources);
+    this.drawMask(this.maskSources, ready?.mask);
     const demolished = new Set<number>();
     const indices = globalDemolished ?? [...this.routeInputs.values()].flatMap(({ result }) => result.demolished.map(b => b.j));
     for (const j of indices) { const mesh = this.buildingMesh(j); if (mesh >= 0) demolished.add(mesh); }
@@ -1225,8 +1308,8 @@ export class View {
     this.dirty = true;
   }
 
-  private drawMask(inputs: readonly RouteMaskInput[]) {
-    const { terrain: pos, original, cuts, box: bounds } = routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
+  private drawMask(inputs: readonly RouteMaskInput[], prepared?: ReturnType<typeof routeMask>) {
+    const { terrain: pos, original, cuts, box: bounds } = prepared ?? routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
     if (!bounds) {
       this.maskUniforms.maskOn.value = this.originalMask.maskOn.value = this.crossingCut.maskOn.value = 0;
       return;
@@ -1296,12 +1379,75 @@ export class View {
   }
 
   // ---- camera --------------------------------------------------------------------------------
+  /** Free part of the view for framing (px inside the container): what the toolbar, legend and
+   * attribution leave, and boxes to keep clear of (the intro card). Set by the app. */
+  frameSafe: (() => { left: number; top: number; right: number; bottom: number; avoid: readonly { left: number; top: number; right: number; bottom: number }[] }) | null = null;
+
+  /** The start view: A and B both on screen, clear of the panels, as close as that allows, looking from the
+   * usual direction (from the south, north up); a long route the usual view cannot take in (the whole D3 runs
+   * north–south) is looked at across, A on the left. */
   resetCamera() {
-    const A = this.pack.meta.A.xy, B = this.pack.meta.B.xy;
-    const mx = A[0] + (B[0] - A[0]) * 0.45, my = A[1] + (B[1] - A[1]) * 0.45;
-    const t = this.local(mx, my, 500);
-    this.controls.target.copy(t);
-    this.camera.position.set(t.x + 2500, t.y + 17500, t.z + 14000);
+    const w = this.container.clientWidth, h = this.container.clientHeight;
+    if (w && h && Math.abs(this.camera.aspect - w / h) > 1e-6) { this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); }
+    const A = this.pack.meta.A.xy as [number, number], B = this.pack.meta.B.xy as [number, number];
+    const zA = this.terrain.heightAt(A[0], A[1]), zB = this.terrain.heightAt(B[0], B[1]);
+    const a = this.local(A[0], A[1], zA * this.exag), b = this.local(B[0], B[1], zB * this.exag);
+    const target = a.clone().add(b).multiplyScalar(0.5);
+    const safe = this.frameSafe?.() ?? { left: 0, top: 0, right: w, bottom: h, avoid: [] };
+    const margin = 36;
+    // the usual direction: camera south-south-east of the target, ≈ 51° up; across: from the right of A → B
+    const usual = new THREE.Vector3(2500, 17500, 14000).normalize();
+    const ax = b.x - a.x, az = b.z - a.z, al = Math.hypot(ax, az) || 1, flat = Math.hypot(usual.x, usual.z);
+    const across = new THREE.Vector3(-az / al * flat, usual.y, ax / al * flat);
+    // each end's name is written to the right of its disc: keep room for it
+    const room = (end: RenderEndpoints['a']) => 42 + 7.5 * (end.label?.length ?? 0);
+    const rooms = [room(this.endpoints.a), room(this.endpoints.b)];
+    /** Screen positions of A and B looking along `dir` from `d` at `center`, or null if one is behind. */
+    const place = (dir: THREE.Vector3, d: number, center: THREE.Vector3) => {
+      this.camera.position.copy(center).addScaledVector(dir, d);
+      this.camera.lookAt(center); this.camera.updateMatrixWorld();
+      const out: { sx: number; sy: number }[] = [];
+      for (const p of [a, b]) {
+        const v = p.clone().project(this.camera);
+        if (!(v.z > -1 && v.z < 1)) return null;
+        out.push({ sx: (v.x * 0.5 + 0.5) * w, sy: (-v.y * 0.5 + 0.5) * h });
+      }
+      return out;
+    };
+    const clear = (pts: { sx: number; sy: number }[]) => pts.every(({ sx, sy }, k) =>
+      sx >= safe.left + margin && sx <= safe.right - margin - rooms[k] && sy >= safe.top + margin && sy <= safe.bottom - margin
+      && safe.avoid.every(r => sx < r.left - margin || sx > r.right + margin || sy < r.top - margin || sy > r.bottom + margin));
+    /** The view centre at distance d that frames both ends: the midpoint, or panned so that the ends
+     * clear a box (the intro card) by moving them right or down; null if none does. */
+    const fits = (dir: THREE.Vector3, d: number): THREE.Vector3 | null => {
+      const pts = place(dir, d, target);
+      if (!pts) return null;
+      if (clear(pts)) return target;
+      // metres per pixel at the target, along the camera's right and (ground-projected) up directions
+      const mpp = (2 * d * Math.tan((this.camera.fov * Math.PI) / 360)) / h;
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+      for (const r of safe.avoid) for (const [dx, dy] of [[r.right + margin + 1, 0], [0, r.bottom + margin + 1]] as const) {
+        const shiftX = Math.max(0, ...pts.map(p => dx ? dx - p.sx : 0)), shiftY = Math.max(0, ...pts.map(p => dy ? dy - p.sy : 0));
+        if (!shiftX && !shiftY) continue;
+        // moving the view centre left / up moves the ends right / down on screen
+        const center = target.clone().addScaledVector(right, -shiftX * mpp).addScaledVector(up, shiftY * mpp);
+        const moved = place(dir, d, center);
+        if (moved && clear(moved)) return center;
+      }
+      return null;
+    };
+    let d = 22600, dir = usual, center = target;
+    for (const candidate of [usual, across]) {
+      if (!w || !h) break;
+      // the closest distance that frames the ends (scanning outwards: a pan can make a closer view fit)
+      let found: { d: number; c: THREE.Vector3 } | null = null;
+      for (let dd = 600; dd <= this.controls.maxDistance && !found; dd *= 1.06) { const c = fits(candidate, dd); if (c) found = { d: dd, c }; }
+      if (!found) continue;
+      d = found.d; dir = candidate; center = found.c; break;
+    }
+    this.controls.target.copy(center);
+    this.camera.position.copy(center).addScaledVector(dir, Math.max(this.controls.minDistance, d));
     this.controls.update();
     this.dirty = true;
   }

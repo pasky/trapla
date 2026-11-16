@@ -412,8 +412,8 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
 export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: number, rail = false): Violation[] {
   const out: Violation[] = [];
   const last = p.pts.length - 1;
-  // "height point k (km …)": the points carry no numbers in the profile, the station finds them
-  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `height point ${k} (km ${fmt(p.pts[k].s / 1000, 2)})`);
+  // "the height point at km …": the points carry no numbers in the profile, the station finds them
+  const vpi = (k: number) => (k === 0 ? 'the start' : k === last ? 'the end' : `the height point at km ${fmt(p.pts[k].s / 1000, 2)}`);
   // track grades in per mille, road grades in per cent
   const G = (g: number) => rail ? `${fmt(Math.abs(g) * 1000, 1)} ‰` : `${fmt(Math.abs(g) * 100, 1)} %`;
   const pct = (g: number) => fmt(g * 100, Number.isInteger(Math.round(g * 1000) / 10) ? 0 : 1);
@@ -454,7 +454,7 @@ export function verticalViolations(p: Profile, norms: SpeedNorms, maxGradient: n
     const where = { s0: c.s - c.lenEff / 2, s1: c.s + c.lenEff / 2, vpi: c.index };
     const crest = c.type === 'crest';
     const min = crest ? norms.minCrestRadius : norms.minSagRadius;
-    const word = crest ? 'Crest' : 'Dip';
+    const word = crest ? 'Hilltop' : 'Dip';
     if (c.r < min - 1e-6) {
       out.push({
         kind: c.type, ...where,

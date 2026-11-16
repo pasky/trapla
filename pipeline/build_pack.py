@@ -751,8 +751,8 @@ def endpoint_junction(end: str) -> dict:
     spec = SCENARIO[end].get("junction")
     if spec is None:
         return {}
-    if spec.get("kind") not in ("roundabout-arm", "merge") or not spec.get("osmWayIds"):
-        raise ValueError(f"endpoint {end}: junction needs kind roundabout-arm|merge and osmWayIds")
+    if spec.get("kind") not in ("roundabout-arm", "merge", "interchange") or not spec.get("osmWayIds"):
+        raise ValueError(f"endpoint {end}: junction needs kind roundabout-arm|merge|interchange and osmWayIds")
     ways = []
     for wid in spec["osmWayIds"]:
         found = [i for i, source in enumerate(LEGACY_SOURCE_IDS) if source == wid]

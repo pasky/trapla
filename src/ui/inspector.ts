@@ -6,7 +6,7 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, type OurLine } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, type EndConnection, type OurLine } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -27,7 +27,9 @@ export type Sel =
   | { kind: 'pin'; s: number }
   | { kind: 'vpi'; i: number }
   | { kind: 'crossing'; roadId: number }
-  | { kind: 'building'; j: number };
+  | { kind: 'building'; j: number }
+  /** a mission end that meets an interchange or a road (scenario data) */
+  | { kind: 'end'; end: 'a' | 'b' };
 
 export interface InspectorEvents {
   close?: () => void;
@@ -140,8 +142,10 @@ export class Inspector {
     const wall = v === null || v === 'auto' || !side || !mask ? undefined
       : { side, height: Number(v), at: (i: number) => !Number.isNaN(mask[i]) };
     const r = this.r;
-    box.innerHTML = this.noiseViews(r, this.d, rec, wall);
+    box.innerHTML = wall ? this.noiseViews(r, this.d, rec, wall) : this.noiseViews(r, this.d, rec, this.restWall?.wall, this.restWall?.lead);
   }
+  /** the wall a house card shows when no choice is previewed (a bought-out house: the best wall Auto tried) */
+  private restWall: { wall: { side: 'L' | 'R'; height: number; at: (i: number) => boolean }; lead: string } | null = null;
 
   private field: { r: Result; f: NoiseField } | null = null;
   private noiseFieldOf(r: Result): NoiseField {
@@ -151,7 +155,7 @@ export class Inspector {
 
   /** the house's plan (where the noise comes from) and cross-section (its floors), as built or with a
    * previewed wall choice: the same sum the game decided with */
-  private noiseViews(r: Result, d: Design, rec: NoiseReceiver, wall?: { side: 'L' | 'R'; height: number; at: (i: number) => boolean }) {
+  private noiseViews(r: Result, d: Design, rec: NoiseReceiver, wall?: { side: 'L' | 'R'; height: number; at: (i: number) => boolean }, lead = '') {
     const info = this.ctx.building(rec.j), crown = CATEGORIES[d.category].crownWidth, src = r.noise.source;
     if (!src) return '';
     const limit = r.noise.limit;
@@ -168,7 +172,7 @@ export class Inspector {
     const { rays } = noiseBreakdown(field, rec.x, rec.y, z, walls.L, walls.R);
     const plan = info.rect ? noisePlan(r, info.rect, rec, rays, crown, loud.after, walls) : null;
     const section = noiseSectionSvg(r, rec, floors, crown, limit, walls[rec.side][rec.i], r.s[rec.i]);
-    return `${plan ? `${plan.svg}<div class="why plan-why">${esc(plan.caption)}</div>` : ''}${section}`;
+    return `${plan ? `${plan.svg}<div class="why plan-why">${esc(lead ? lead + plan.caption[0].toLowerCase() + plan.caption.slice(1) : plan.caption)}</div>` : ''}${section}`;
   }
   setResult(r: Result, d: Design) { this.r = r; this.d = d; this.render(); }
   /** Another card (a base road, a proposed change) borrows this ONE inspector until the next selection. */
@@ -176,13 +180,13 @@ export class Inspector {
   host(): HTMLElement {
     const a = document.activeElement as HTMLElement | null;
     if (a && this.el.contains(a)) a.blur();
-    this.hosted = true; this.sel = null; this.pending = false; return this.el;
+    this.hosted = true; this.sel = null; this.pending = false; this.el.hidden = false; return this.el;
   }
   get isHosting() { return this.hosted; }
   clear(message = 'Choose a road to inspect.') {
     this.hosted = false;
     this.r = null; this.d = null; this.sel = null;
-    this.el.replaceChildren(); this.el.className = 'card ctx inspector idle';
+    this.el.replaceChildren(); this.el.className = 'card ctx inspector idle'; this.el.hidden = false;
     const text = document.createElement('p'); text.textContent = message; this.el.append(text);
   }
 
@@ -193,6 +197,8 @@ export class Inspector {
     if (!force && document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=range]')) { this.pending = true; return; }
     this.pending = false;
     const r = this.r, d = this.d, sel = this.sel;
+    // nothing to show yet (the first result is still being worked out): no empty card outline
+    this.el.hidden = !r || !d;
     if (!r || !d) { this.el.innerHTML = ''; return; }
     let html = '';
     if (sel?.kind === 'stretch') html = this.stretch(r, d, sel);
@@ -201,6 +207,7 @@ export class Inspector {
     else if (sel?.kind === 'vpi') html = this.vpi(r, sel.i);
     else if (sel?.kind === 'crossing') html = this.crossing(r, d, sel.roadId);
     else if (sel?.kind === 'building') html = this.building(r, d, sel.j);
+    else if (sel?.kind === 'end') html = this.end(r, sel.end);
     const shown = html ? sel : null;
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
@@ -222,8 +229,19 @@ export class Inspector {
   /** violations about this thing: title, short fix, and fix buttons */
   private issues(list: { v: Violation; fixes: string }[]) {
     if (!list.length) return '';
-    return list.slice(0, 3).map(({ v, fixes }) => `<div class="ctx-issue"><b>⚠ ${esc(shownText(v.title))}</b>${fixes ? `<div class="fixes">${fixes}</div>` : `<div class="vfix">${esc(shownText(v.fix))}</div>`}</div>`).join('')
-      + (list.length > 3 ? `<div class="sub">+${list.length - 3} more in Violations</div>` : '');
+    // the same problem with the same fix at several places: once, with how many
+    // (the same buttons, for their places: one set over all of them)
+    const groups = new Map<string, { v: Violation; fixes: string; count: number }>();
+    for (const { v, fixes } of list) {
+      const key = `${v.kind}\n${shownText(v.title)}\n${fixes.replace(/data-[a-z-]+="[^"]*"/g, '') || shownText(v.fix)}`, g = groups.get(key);
+      if (!g) { groups.set(key, { v, fixes, count: 1 }); continue; }
+      g.count++;
+      g.v = { ...g.v, s0: Math.min(g.v.s0, v.s0), s1: Math.max(g.v.s1, v.s1) };
+      if (this.d && !g.v.target) g.fixes = this.fixes(g.v, this.d);
+    }
+    const shown = [...groups.values()].slice(0, 3), rest = list.length - shown.reduce((a, g) => a + g.count, 0);
+    return shown.map(({ v, fixes, count }) => `<div class="ctx-issue"><b>⚠ ${esc(shownText(v.title))}${count > 1 ? ` <small>(${count} places)</small>` : ''}</b>${fixes ? `<div class="fixes">${fixes}</div>` : `<div class="vfix">${esc(shownText(v.fix))}</div>`}</div>`).join('')
+      + (rest > 0 ? `<div class="sub">+${rest} more in Violations</div>` : '');
   }
 
   // ---- nothing selected: where the money goes ----
@@ -248,8 +266,10 @@ export class Inspector {
       const what = sel.piece === 'bridge' ? 'high' : sel.piece === 'tunnel' ? 'under ground' : sel.piece === 'cut' ? 'deep' : 'high';
       status = `${m0(len)} · up to ${depth.toFixed(0)} m ${what} · ${czk(cost)}`;
       const water = r.waterCrossings.find((c) => c.s >= s0 && c.s <= s1 && sel.piece === 'bridge' && c.structure === 'bridge');
-      why = mine ? 'Your choice.' : water ? `Auto: bridges the ${esc(water.waterKind)}.`
-        : { bridge: 'Auto: cheaper here than an embankment.', tunnel: 'Auto: cheaper here than a cut.', fill: 'Auto: cheaper here than a bridge.', cut: 'Auto: cheaper here than a tunnel.' }[sel.piece];
+      // Auto compares the options at the road's present height, buildings and land included; a choice
+      // of the player's lets Auto set the height again for it (so its figures may differ from before)
+      why = mine ? (d.profileMode === 'auto' ? 'Your choice; Auto set the road height for it.' : 'Your choice.') : water ? `Auto: bridges the ${esc(water.waterKind)}.`
+        : { bridge: 'Auto: at this height cheaper than an embankment.', tunnel: 'Auto: at this depth cheaper than a cut.', fill: 'Auto: at this height cheaper than a bridge.', cut: 'Auto: at this depth cheaper than a tunnel.' }[sel.piece];
     } else {
       let b = 0, t = 0;
       for (let i = i0; i <= i1; i++) { if (r.kind[i] === KIND.bridge) b++; else if (r.kind[i] === KIND.tunnel) t++; }
@@ -321,6 +341,7 @@ export class Inspector {
       btn(`data-fix-buy="${t.buildings.join(',')}"`, t.buildings.length === 1 ? 'Buy out' : `Buy out ${t.buildings.length}`);
       if (t.buildings.some((j) => d.buildingOverrides?.some((o) => o.j === j && o.action === 'keep'))) btn(`data-fix-unkeep="${t.buildings.join(',')}"`, 'Stop keeping');
     }
+    if (t?.road !== undefined) btn(`data-road-card="${t.road}"`, 'The side road');
     const roadId = (v as Violation & { crossing?: { roadId?: number } }).crossing?.roadId;
     // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
@@ -367,14 +388,25 @@ export class Inspector {
       <div class="ctx-row"><label>Height <input id="pin-z" type="number" step="0.1" value="${p.z.toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${s}">Set</button><button type="button" id="pin-clear" data-s="${s}">Unpin</button></div>`;
   }
 
+  // ---- a mission end (an interchange, a road it joins) ----
+  /** what the mission's ends meet and their names (set by the app; reversed directions swap them) */
+  ends: { a?: EndConnection; b?: EndConnection; names: { a: string; b: string } } | null = null;
+  private end(r: Result, end: 'a' | 'b') {
+    const info = this.ends?.[end];
+    if (!info) return '';
+    const card = endCard(info, end);
+    return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
+      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
+  }
+
   // ---- height point (By hand) ----
   private vpi(r: Result, i: number) {
     if (i <= 0 || i >= r.vpis.length - 1) return '';
     const vc = r.vcurves[i - 1], v = r.vpis[i];
-    const what = vc?.type === 'crest' ? 'Hilltop' : vc?.type === 'sag' ? 'Dip' : 'Height point';
+    const what = vc?.type === 'crest' ? 'hilltop' : vc?.type === 'sag' ? 'dip' : '';
     const vio = r.violations.filter((x) => x.vpi === i).map((x) => ({ v: x, fixes: '' }));
-    return `${this.head(`${what} ${i}`, `km ${km(v.s)}`)}
-      <div class="ctx-state"><b>${v.z.toFixed(1)} m</b> · rounding R ${m0(vc?.r ?? 0)}<div class="why">Drag it in the profile.</div></div>
+    return `${this.head('Height point', `km ${km(v.s)}`)}
+      <div class="ctx-state"><b>${v.z.toFixed(1)} m</b>${what ? ` · ${what}` : ''} · rounding R ${m0(vc?.r ?? 0)}<div class="why">Drag it in the profile.</div></div>
       ${this.issues(vio)}
       <div class="ctx-row"><label>Rounding <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
         <label><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> smallest</label></div>
@@ -392,8 +424,10 @@ export class Inspector {
     const roads = crossedRoads(r), k = roads.findIndex((x) => x.roadId === roadId);
     const nav = `<button type="button" class="nav" data-nav="-1" title="Previous crossed road" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button>`;
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
+    // against the crossed road as it is today (an overbridge lifts it; "below it" read like the clearance under it)
     const line = CATEGORIES[d.category].mode;
-    const rel = `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c, line);
+    const rel = Math.abs(c.h) < 0.5 ? `our ${line} at the crossed road’s level today`
+      : `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} the crossed road’s level today`, outcome = crossingOutcome(c, line);
     const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our ${line} ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';
     return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}`, nav)}
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}<div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
@@ -440,7 +474,9 @@ export class Inspector {
     if (removed) {
       state = `Demolished · ${czk(removed.cost)}`;
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
-      why = removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
+      const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
+      why = host ? `It stands within ${/^[aeiou]/i.test(host) ? 'an' : 'a'} ${host} that is demolished, km ${km(r.s[removed.i])}, and goes with it.`
+        : removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
         : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
         : `${removed.in === 'cut' ? 'In' : 'Under'} ${ours}, km ${km(r.s[removed.i])}.`;
     }
@@ -458,11 +494,19 @@ export class Inspector {
       state = rec.status === 'wall' ? (rec.wall > 0 ? `Stays · behind a ${rec.wall} m wall` : 'Stays · behind walls') : rec.status === 'cut' ? 'Stays · shielded by a cut' : 'Stays · quiet enough';
       why = `${(limit + rec.mitigated).toFixed(1)} dB ${period} on the ${rec.storeys === 1 ? 'only' : rec.floor === rec.storeys - 1 ? 'top' : 'loudest'} floor (limit ${limit}).`;
     } else state = 'Stays · far from the road';
-    if (action === 'keep' && !kept?.hit && !rec?.unresolved) why = (why ? `${why} ` : '') + 'You keep it.';
+    // kept clear of our works by a retaining wall instead of demolished (Auto's price comparison, or the player keeps it)
+    const walled = !removed && !bought ? r.walledOff?.find((p) => p.j === j) : undefined;
+    if (walled) {
+      if (!rec) state = 'Stays · a wall keeps our works clear';
+      const wall = `a ${walled.height.toFixed(1)} m retaining wall along our road, km ${kmr(walled.s0, walled.s1)},`;
+      why = (why ? `${why} ` : '') + (walled.kept ? `You keep it: ${wall} keeps the works clear of it (${czk(walled.wall)}).`
+        : `Auto: ${wall} keeps the works clear of it for ${czk(walled.wall)}; demolishing it would cost ${czk(walled.demolition)}.`);
+    }
+    if (action === 'keep' && !kept?.hit && !rec?.unresolved && !walled) why = (why ? `${why} ` : '') + 'You keep it.';
     const vio = r.violations.filter((v) => v.target?.buildings?.includes(j)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     let section = '', walls = '';
+    this.restWall = null;
     if (rec && r.noise.source && !removed && !(bought && bought.reason === 'manual')) {
-      section = `<div class="noise-views">${this.noiseViews(r, d, rec)}</div>`;
       // the wall on that side, next to the house: its stretch, the computed fix, or the shortest wall the
       // house would need (twice its distance from the wall line)
       const side = rec.side, i = rec.i, src = r.noise.source;
@@ -472,12 +516,35 @@ export class Inspector {
       // its own wall request (which may step over several heights) first, then the stretch standing there
       const own = rec.span && [Math.max(0, r.s[rec.span[0]] - r.ds / 2), Math.min(r.length, r.s[rec.span[1]] + r.ds / 2)];
       const s0 = own?.[0] ?? w?.s0 ?? fix?.s0 ?? Math.max(0, r.s[i] - half), s1 = own?.[1] ?? w?.s1 ?? fix?.s1 ?? Math.min(r.length, r.s[i] + half);
+      // bought out: drawn behind the highest wall Auto tried, so plan, section and the card tell one story
+      const top = NOISE.wallHeights[NOISE.wallHeights.length - 1];
+      // (over the stretch Auto tried it on: the whole stretch its level was summed over, cell by cell)
+      if (bought) this.restWall = { wall: { side, height: top, at: (k: number) => k >= rec.window[0] && k <= rec.window[1] }, lead: `Behind a ${top} m wall: ` };
+      section = `<div class="noise-views">${this.noiseViews(r, d, rec, this.restWall?.wall, this.restWall?.lead)}</div>`;
       const mine = (d.wallOverrides ?? []).find((o) => o.side === side && o.s0 <= r.s[i] && o.s1 >= r.s[i]);
       const active = mine ? String(mine.height) : 'auto';
       const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...NOISE.playerWallHeights.map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];
-      walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[shownSide(side)]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>km ${kmr(s0, s1)}</small></div>`;
+      // what stands there now: the player's choice, or what Auto built (as piece cards say)
+      // (the walls standing along this stretch on that side, as the map draws them, not only at the house)
+      const built = r.walls.filter((x) => x.side === side && x.s1 > s0 && x.s0 < s1);
+      const heights = (list: typeof built) => [...new Set(list.map((x) => `${x.height} m`))].join(', ');
+      // beside the player's own stretch, Auto's walls on the rest of it
+      const beside = mine ? built.filter((x) => x.s0 < mine.s0 - 1 || x.s1 > mine.s1 + 1) : [];
+      const now = mine ? `${mine.height ? `${mine.height} m` : 'none'} (yours)${beside.length ? ` · Auto: ${heights(beside)} beside it` : ''}`
+        : built.length ? `Auto: ${heights(built)}` : 'Auto: none';
+      // the walls Auto builds beside the player's choice for the stretch this house hears (as the piece card says)
+      const around = mine ? (r.wallsAroundChoices ?? []).filter((x) => x.side === side && x.i1 >= rec.window[0] && x.i0 <= rec.window[1]) : [];
+      const adds = around.map((x) => `<div class="sub around">Auto adds ${m0(x.s1 - x.s0)} of ${x.height} m wall at km ${kmr(x.s0, x.s1)} ${mine?.height ? 'as well' : 'instead'} <button type="button" class="link" data-stretch="${x.s0},${x.s1}">Show</button></div>`).join('');
+      walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[shownSide(side)]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>${now} · km ${kmr(s0, s1)}</small></div>${adds}`;
+      // the wall it stays behind is Auto's beside the player's choice, not the choice itself
+      if (mine && rec.status === 'wall' && around.length && !(mine.height && mine.height >= rec.wall)) {
+        state = `Stays · behind Auto's ${rec.wall > 0 ? `${rec.wall} m ` : ''}wall beside your choice`;
+      }
     }
-    const opt: [string, string, string][] = [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];
+    // In the road's way it is demolished whatever else is chosen: no separate "buy out" next to that
+    const opt: [string, string, string][] = removed && action !== 'buy'
+      ? [['', 'Demolish', 'It is in our road\'s way: bought and demolished'], ['keep', 'Keep', 'Never demolish it: our road must miss it']]
+      : [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];
     return `${this.head(cap(info.kind), `${info.levels} floor${info.levels === 1 ? '' : 's'}`)}
       <div class="ctx-state"><b>${state}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
       ${this.issues(vio)}
@@ -497,6 +564,7 @@ export class Inspector {
       try { localStorage.setItem(MORE_KEY, this.more ? '1' : '0'); } catch { /* private mode */ }
       this.render(); return;
     }
+    if (b.dataset.roadCard) { this.ev.select?.({ kind: 'crossing', roadId: Number(b.dataset.roadCard) }); return; }
     if (b.dataset.stretch) { const [s0, s1] = b.dataset.stretch.split(',').map(Number); this.ev.select?.({ kind: 'stretch', s0, s1 }); return; }
     if (b.dataset.piece) { const [s0, s1, kind] = b.dataset.piece.split(','); this.ev.select?.({ kind: 'stretch', s0: Number(s0), s1: Number(s1), piece: kind as PieceKind }); return; }
     if (b.dataset.fixWall) {

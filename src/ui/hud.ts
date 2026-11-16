@@ -47,7 +47,6 @@ export interface HudEvents {
   onSpeedLimit?: (pilot: boolean) => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
-  onExaggeration?: (e: number) => void;
   /** show the first-run introduction again */
   onIntro?: () => void;
 }
@@ -113,7 +112,8 @@ export class Hud {
   private projectIssuesFor: ProjectResult | null | undefined;
   private issuesActive: RouteId | undefined;
   private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>;
-    ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId } | null = null;
+    ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId;
+    liveTotal: number | null; dragging: boolean } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
     for (const id of ['sec-cost', 'sec-stats', 'sec-decisions']) this.$(id).hidden = !hasResult;
@@ -125,9 +125,13 @@ export class Hud {
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
     ownPrice?: { total: number; approx: boolean; label: string } | null;
+    /** the project total while a road is dragged (≈: the last full total with that road's live price) */
+    liveTotal?: number | null;
+    /** a drag is under way (its checks wait for a pause); otherwise a pending result is just being checked */
+    dragging?: boolean;
     /** road names, to say which road an issue belongs to when it is not the active one */
     names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number> } = {}) {
-    const { missionRouteId, ours, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {} } = opts;
+    const { missionRouteId, ours, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       this.$('best').style.display = '';
@@ -136,18 +140,19 @@ export class Hud {
       if (this.last && (was || (best?.cost ?? null) !== (this.legacyBest?.cost ?? null))) this.setResult(this.last.r, this.last.d, best);
       return;
     }
-    this.project = { result, pending, best, missionRouteId, ours, groups, ownPrice, names, lengths, activeRouteId }; this.renderProjectScore();
+    this.project = { result, pending, best, missionRouteId, ours, groups, ownPrice, names, lengths, activeRouteId, liveTotal, dragging }; this.renderProjectScore();
   }
   /** the listed project issue k */
   listedIssue(k: number) { return this.project?.result?.issues[k] ?? null; }
   private renderProjectScore() {
     if (!this.project) return;
-    const { result, pending, best, missionRouteId, ours, groups, ownPrice, names, lengths, activeRouteId } = this.project, total = result?.cost.total;
+    const { result, pending, best, missionRouteId, ours, groups, ownPrice, names, lengths, activeRouteId, liveTotal, dragging } = this.project, total = result?.cost.total;
     const priced = total !== null && total !== undefined, unpriced = result?.cost.unpriced.length ?? 0;
+    const shownTotal = pending && liveTotal !== null ? liveTotal : total;
     // An unpriced network keeps one road's own price visible, plainly labelled, never as a total.
     this.$('cost-scope').textContent = priced ? 'Total cost' : ownPrice ? ownPrice.label : 'Total cost';
-    this.$('total').textContent = priced ? `${pending ? '≈ ' : ''}${czk(total)}`
-      : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : '—';
+    this.$('total').textContent = priced ? `${pending ? '≈ ' : ''}${czk(shownTotal!)}`
+      : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : pending ? '…' : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
     this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, ours ?? missionRouteId, names, groups) : this.goalText;
@@ -164,7 +169,7 @@ export class Hud {
     this.$('valid').textContent = badge.text; this.$('valid').className = `badge ${badge.cls}`;
     const n = violations.length;
     chip.className = `chip ${pending ? 'pending' : n ? 'bad' : result?.complete ? 'ok' : 'pending'}`;
-    chip.innerHTML = pending ? '⋯ checked when you pause' : n ? `⚠ ${n} violation${n === 1 ? '' : 's'} <small>show ›</small>`
+    chip.innerHTML = pending ? (dragging ? '⋯ checked when you pause' : '⋯ checking') : n ? `⚠ ${n} violation${n === 1 ? '' : 's'} <small>show ›</small>`
       : result?.complete ? '✓ no violations' : notChecked.length ? `${notChecked.length} not checked yet <small>show ›</small>` : 'Checks not finished';
     chip.toggleAttribute('disabled', pending || !(n + notChecked.length));
     if (this.projectIssuesFor !== result || this.issuesActive !== activeRouteId) {
@@ -181,12 +186,11 @@ export class Hud {
       this.$('viol').innerHTML = violations.slice(0, 60).map(v => line(v, '')).join('')
         + (notChecked.length ? `<li class="not-checked-h">Not checked yet</li>${notChecked.slice(0, 20).map(v => line(v, 'not-checked')).join('')}` : '');
     }
-    if (!pending) {
-      const delta = this.baseline !== null && priced ? total - this.baseline : 0;
-      this.$('delta').textContent = Math.abs(delta) >= 5e5 ? `${delta < 0 ? '−' : '+'}${czk(Math.abs(delta))}` : '';
-      this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
-      this.lastTotal = priced ? total : null;
-    }
+    // The change line follows the shown total: live while dragging, cleared while a result is only checked.
+    const delta = this.baseline !== null && priced && (!pending || liveTotal !== null) ? shownTotal! - this.baseline : 0;
+    this.$('delta').textContent = Math.abs(delta) >= 5e5 ? `${pending ? '≈ ' : ''}${delta < 0 ? '−' : '+'}${czk(Math.abs(delta))}` : '';
+    this.$('delta').className = `delta ${delta < 0 ? 'down' : 'up'}`;
+    if (!pending) this.lastTotal = priced ? total : null;
     // no best while the project is not priced: a stored best is not comparable to an unpriced change
     this.$('best').style.display = priced ? '' : 'none';
     const isBest = !!best && !!result?.valid && total !== null && total !== undefined && Math.abs(best.cost - total) < 1;
@@ -274,8 +278,7 @@ export class Hud {
           <li><b>Keys:</b> <kbd>Esc</kbd> deselect, <kbd>Del</kbd> delete a bend, <kbd>Ctrl+Z</kbd> undo; on a stretch <kbd>A</kbd> <kbd>B</kbd> <kbd>T</kbd> <kbd>E</kbd> = Auto / Bridge / Tunnel / Earthwork.</li>
           <li><b>The model:</b> real terrain, Czech prices and norms; noise and some crossings are rough estimates.</li>
         </ul>
-        <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>
-        <label class="exag">Relief <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
+        <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>`)}`;
     this.goalText = sc.mode === 'motorway'
       ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
       : sc.mode === 'railway' ? `Goal: cheapest valid railway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(trainsPerDay(sc.railTraffic))} trains a day`
@@ -292,7 +295,6 @@ export class Hud {
     }
     this.$<HTMLSelectElement>('cat').onchange = (e) => this.ev.onCategory?.((e.target as HTMLSelectElement).value);
     this.$<HTMLSelectElement>('speed').onchange = (e) => this.ev.onSpeed?.(Number((e.target as HTMLSelectElement).value));
-    this.$<HTMLSelectElement>('exag').onchange = (e) => this.ev.onExaggeration?.(Number((e.target as HTMLSelectElement).value));
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();

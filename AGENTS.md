@@ -34,7 +34,9 @@ scenarios), `research/` (sources for every number).
 `node scripts/drag-perf.mjs --gpu --check` (all modes), `npx tsx scripts/bench.ts scripts/*.json` (all saved
 designs VALID, parts sums match), `npx tsx scripts/eval-regression.ts` (bills frozen unless a reviewed model
 change: bump `COST_MODEL_VERSION`), `npx tsx scripts/outcome-audit.ts --straight scripts/*-design.json
---random 24` for crossing/footprint changes. Look at the screenshots yourself; reviews of numbers alone missed
+--random 24` for crossing/footprint changes, `npx tsx scripts/edit-locality.ts` (≈ 1 min: random small edits
+on D11, the D3 sections and the whole D3 / D35, plus QA's repros; exit 1 if a grade pin or a repro changes
+anything beyond 8 km) for anything touching the grade solve, retries or previews. Look at the screenshots yourself; reviews of numbers alone missed
 broken visuals and jargon before.
 
 ## Workflow gotchas
@@ -50,10 +52,23 @@ broken visuals and jargon before.
 
 ## Open items (2026-11-15)
 
+- Drag previews are windowed (only the edited stretch is re-solved) and run in their own worker; long
+  missions (whole D3 56 km, whole D35) pass the drag budgets (docs/evaluate-performance.md). A full motorway
+  evaluation is ≈ 11 ms/km (≈ 0.7–1.8 s settle on the whole D3). While it runs the score shows "≈ … · ≈ CHECKING".
+  The whole-D3 pack (24.7 M cells) costs ≈ 471 MB of JS heap (D11 221 MB): accepted for now (research/39).
+- The Auto grade line is solved in blocks between long straights (model 25, research/39 "Local edits"):
+  an edit re-solves the boundaries within 5 km of it and the blocks next to them, never the far end. Its
+  price: each block balances its own earth (the sum of all saved designs equals a whole-route solve; single
+  designs ±5–10 %, the coarse 2 m corridor pass picks the other side of a near-tie as often as main did).
+  Far changes left come from the station-based engineering on a shifted station grid (support lifts,
+  overbridge ramp checks, reroutes, culverts; `ds = L/⌈L/10⌉`): anchoring the station grid is the next lever.
+  A drag on a straight start puts in a bend that turns the whole line about A and B (10 px ≈ 220–240 m at
+  km 3–9): the price of a different road, the same on main; grade edits there are local
+  (`scripts/edit-locality.ts`).
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running
-  along ours moved beside it, neighbouring minor roads joined to one crossing (model 24); a crossed way whose cut
+  along ours moved beside it, neighbouring minor roads joined to one crossing (model 26); a crossed way whose cut
   ends stay connected over other roads is still rerouted instead of closed; merged crossings of different ways
   within 30 m keep one remedy for the group. Lowered underpasses ignore groundwater; pier placement near
   the Polish border can fail (engine limit).

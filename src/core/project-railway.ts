@@ -192,7 +192,7 @@ export function stationAxis(terrain: Terrain, p: { x: number; y: number }): { x:
 export type RailwayEvaluation = { status: 'evaluated'; result: Result; unpriced?: 'track-removal-unpriced'[] } | { status: 'incomplete'; reason: 'unsupported-policy'
   | 'unsupported-alignment' | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign, routeId: string, objectData: string,
-  options: Pick<EvalOptions, 'preview' | 'materialValue'> & { railPaths?: RailPaths } = {}): RailwayEvaluation {
+  options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> & { railPaths?: RailPaths } = {}): RailwayEvaluation {
   const route = project.routes.find(r => r.id === routeId);
   if (!route || route.kind !== 'railway') throw new Error('Unknown railway');
   const { railPaths, ...evalOptions } = options;

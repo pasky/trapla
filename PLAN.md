@@ -304,9 +304,9 @@ What exists (details and commands in `README.md`):
 - Future improvement: a crossed road meeting ours very obliquely gets a box as long as its skewed path under
   our embankment (town-centre km 15.98: a 57 m box sticking out of the slope). A designer would square the
   crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); done in
-  model 24.
+  model 26.
 
-### Crossing remedies as designers choose them (cost model 24, 2026-11-16)
+### Crossing remedies as designers choose them (cost model 26, 2026-11-16)
 
 - A road running along ours (crossing it and back without leaving our earthworks) is one crossing and is moved
   beside our earthworks as an accompanying road where that is cheaper than keeping a crossing for it (D3 motorway
@@ -323,7 +323,7 @@ What exists (details and commands in `README.md`):
   bridge over it.
 - All published designs stay VALID and get cheaper (best −29 M, demo −13 M, direct-80 −42 M, direct-90 −29 M,
   town-centre −39 M); D3 motorway starter 18.34 → 14.90 bn; Nová Paka 2.69 → 2.50 bn, its km 3.3 drags 10/24 →
-  1/24 invalid. Details, audits and timing: `docs/footprint-conflicts.md` § Model 24.
+  1/24 invalid. Details, audits and timing: `docs/footprint-conflicts.md` § Model 26.
 
 ### Map camera and labels (playtest-qa S1 #15, #17, #19, 2026-11-16)
 
@@ -345,6 +345,44 @@ What exists (details and commands in `README.md`):
   by rank (towns first); names further than 6 camera distances are left out (none pile up on the horizon). Noise
   walls of one height on both sides of a stretch get one label ("3 m both sides").
 - `node scripts/camera-check.mjs` plays these with real mouse input (screenshots 157–159).
+
+### Structure choice at the real prices; By hand keeps the bill (cost model 24, 2026-11-16)
+
+- Playtest S3 #1: switching to By hand changed the bill (D11 straight −29 M, with a pin −143 M) although the
+  heights were the same. The bridge / embankment choice priced fill at the value the profile search had found
+  before the support lifts, on only four tries; the final designs were far from balanced (town-centre priced
+  as surplus while 455k m³ short; By hand fell back to the starting value). Now the choice settles the value on
+  the final grade line (regula falsi, ≤ 6 tries of the selection only, the same in both modes): By hand from
+  Auto's heights bills identically (checked on every fixture in `tests/evaluate-costs.test.ts`), and Auto no
+  longer leaves that money on the table.
+- S3 #3: the choice now weighs the buildings each option demolishes (slopes vs deck strip plus the working
+  strip, each building's price shared over the cells reaching it). The piers of a bridge the player chooses
+  still move off roads, rails and water (the player picks the bridge, not its piers); an automatic bridge whose
+  piers cannot all stand clear within the span limit is not chosen there. Poříčí halls (D11 straight km
+  4.9–5.9) are now bridged by Auto on its own heights.
+- Remaining gap (not fixed here): the auto-profile's per-metre costs are rural (no buildings, no urban land), so
+  Auto does not raise the line to bridge a town. On D11 straight, painting a bridge over km 5.09–5.50 makes Auto
+  re-plan the heights (cut through the hill at km 4.7 instead of a tunnel, a 33 m viaduct) and the project
+  ≈ 80 M cheaper than Auto's own design. The piece card therefore says "Auto: at this height cheaper than a
+  bridge", and "Your choice; Auto set the road height for it" when the player's choice re-planned the heights.
+- A chimney, silo or shed (≤ 200 m², ≤ 1/4 of the other) wholly within a demolished building's outline goes
+  with it (Nová Paka km 1.97); a stream left under the earthwork just beyond a bridge's end with too little
+  cover is spanned by one more engineering pass.
+- A building no one lives in that only the 3 m working strip beside our slopes reaches (not the slopes or deck
+  themselves) stays when a retaining wall ending the slope 3 m short of it costs less than buying and demolishing it
+  (the retaining-wall machinery and its research/18 OTSKP assembly; `retaining.ts` `wallBuildings`): Nová Paka km
+  1.91, a hall demolished for 322 M CZK, now stays behind a 0.6 m wall for ≈ 0.3 M. Auto keeps no dwelling this way:
+  a home metres from our slope's top needs noise walls or a buyout that the noise check decides only later (tried:
+  random D11 designs gained +170 M of noise walls for 40 M of houses). A building the player keeps is walled off
+  wherever a wall fits between our crown and it, whatever the slopes reach. The card says which wall keeps it and
+  what demolition would have cost. Limit: a wall planned at a cell that then becomes a bridge leaves its one-cell
+  extension beside the bridge end.
+- Fixtures against model 23 (motorway-rail, D11 road bills identical to model 22): straight −33.9, best −23.1,
+  best-drag −8.7, best-pin −36.7, best-structures −36.4, best-manual −17.3, demo −90.6, direct-80 −120.3,
+  direct-90 −119.3, town-centre / town-controls −421.5 M CZK, validity as before (the merge changes no bill; the
+  walls for buildings: demo −43.2, the others within ±0.1). outcome-audit (5 designs + straight + 24 random):
+  violations 144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch
+  fails); the walls for buildings alone: no design dearer by more than 1 M, four random ones 34–59 M cheaper.
 
 ### Travel-time target X and traffic Y
 
@@ -421,6 +459,10 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   exaggeration. The aerial photo is streamed from ČÚZK's view service (needs a connection; see README).
 
 ### Next steps
+- Editing aid (future, not planned now): a drag on a long straight puts in one bend, so the whole line turns
+  about its neighbouring bends (on the D11 straight start, about A and B: 10 px ≈ 230 m moves 15 km of road).
+  A drag could instead keep the rest of the line in place (two holding bends), so a small drag is a local edit
+  and a local price. Accepted for now (research/39 "Second pass").
 
 1. Auto-profile: price ordinary-road crossings, buildings and urban rates beyond clearance requirements.
    Player-marked structures and high-earthwork reserves are implemented (research/15); replace provisional
@@ -1036,3 +1078,18 @@ the bill change: **research/36**.
 - Performance (open): the noise step is +2–3 ms on best / demo, +4–6 ms on direct-80/90 and ≈ +12 ms on
   town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
   unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.
+
+## Local edits: the grade line in blocks (cost model 25, 2026-11-16)
+
+Playtest (whole D3 / D35): a small nudge redesigned the grade and broke crossings 9–24 km away. Same design,
+same bill stays the rule (no edit history), so the solve itself became local (research/39 "Local edits"):
+blocks between long straights (from the plan only), each boundary's heights from the 5 km around it, each
+block with its own mass balance, every input placed from the block ends rather than the stations; the
+separation and strict retries and the support lifts act and are judged per stretch. Whole D3, 16 bend moves:
+far grade change 14.8 → 2.4 m, far violations changed 2 → 0. Price: each block balances its own earth
+(with 5 km boundary windows the sum of all saved designs equals a whole-route solve; single designs ±5–10 %);
+five designs and starters needed 8–90 m bend repairs.
+Known issues: far changes left (whole D3 4 of 16 moves, whole D35 1 of 10) come from the station-based
+engineering on a shifted station grid (support lifts, overbridge ramp checks, reroutes, culverts); a chain of
+straights each a little shorter than the last leaves one long block (the whole D35's last 9.7 km), which an edit
+anywhere in it re-solves to B; interchange ramps are not modelled (the ends say so on their card).

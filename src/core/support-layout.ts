@@ -23,6 +23,9 @@ export interface SupportRoute {
 export interface SupportDiagnostic {
   s: number;
   reason: 'manual' | 'terrain' | 'boundary' | 'tunnel' | 'span-depth' | 'span-limit' | 'limit';
+  /** span-limit: the bridge's cells, and whether Auto chose it (no player paint; it may hold forced cells) */
+  cells?: [number, number];
+  automatic?: boolean;
   /** Proposed clear abutment station, if one exists within the route. */
   targetS?: number;
   /** Required extension if targetS exists; otherwise the searched distance (a lower bound). */
@@ -205,12 +208,14 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   for (const run of runs) {
     if (run.kind !== KIND.bridge) continue;
     const isManual = manual.subarray(run.i0, run.i1 + 1).some(Boolean);
+    // The player chooses a bridge, not its piers: only a given support arrangement stays fixed.
+    const fixedSupports = isManual && run.pierStations !== undefined;
     const ordinary = bridgeLayout(run.length), spans = Math.max(1, Math.round(run.length / ordinary.span));
     const originalPiers = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + (k + 1) * ordinary.span);
     let piers: number[] = [];
     let changed = false;
     for (const s of originalPiers) {
-      if (isManual || !blocked(s, true)) { piers.push(s); continue; }
+      if (fixedSupports || !blocked(s, true)) { piers.push(s); continue; }
       changed = true;
       // Seek the nearest free support in this pier's own half-span neighbourhood. Disjoint
       // neighbourhoods preserve ordering. A fully obstructed neighbourhood becomes a priced
@@ -227,7 +232,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     if (changed && layout.span > SUPPORT_LIMITS.spanM) {
       // Retain the original, fully billed supports; the downstream screen must still flag
       // their collisions. Do not fabricate an arbitrarily long feasible bridge from a price proxy.
-      diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-limit', extensionM: 0, raiseM: 0, requiredSpanM: layout.span });
+      diagnostics.push({ s: (run.s0 + run.s1) / 2, reason: 'span-limit', extensionM: 0, raiseM: 0, requiredSpanM: layout.span,
+        cells: [run.i0, run.i1], automatic: !isManual });
       piers = [...originalPiers];
       layout = supportBridgeLayout(run.s0, run.s1, piers);
       changed = false;

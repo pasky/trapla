@@ -45,7 +45,7 @@ function networkWithout(roads: RoadNet, route: RouteDesign, sourceWays: SourceWa
 const legalClassFits = (spec: RoadSpec) => ({ 'S7.5': ['II', 'III'], 'S9.5': ['I', 'II'], 'S11.5': ['I'] } as Record<string, string[]>)[spec.crossSection]?.includes(spec.legalClass) ?? false;
 
 export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, routeId: string,
-  objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue'> & { sourceWays?: SourceWays;
+  objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> & { sourceWays?: SourceWays;
     /** Ends on another designed road follow that road's CURRENT line (its nearest point and height). */
     ends?: { a?: XYZ; b?: XYZ } } = {}): ProjectRoadEvaluation {
   const route = project.routes.find(r => r.id === routeId);
