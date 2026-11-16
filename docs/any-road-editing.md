@@ -446,3 +446,40 @@ engineered, priced or not (scene asserts `acceptedReplacements`; screenshot 107)
 
 `scripts/owner-d3-scene.mjs` plays the owner's exact steps on the D3 motorway preset with a real mouse and
 checks all of the above (screenshots 106–109 with `--docs`).
+
+## 11. Handoff (2026-11-16, HEAD after 98d24e4)
+
+Committed green: `001ecb5` E (traffic pre-filled, Czech road names; §9), `a0ee32f` F + drag on a curve + located
+interactions + QA session 1 (§10), `98d24e4` screenshots 106–109 and the README section.
+
+**Gates run on a0ee32f/98d24e4**: tsc, vitest 617, build, eval-regression (11 D11 bills bit-identical), smoke,
+playtest (`PORT=5246`: 5207 was taken), bench (5 saved designs VALID), outcome-audit (`--straight … --random 24`,
+exit 0), any-road-scene D11 and D3 PASS, owner-d3-scene PASS. **drag-perf `--gpu --check` (bend, road, radius,
+pin, vpi, link): see `/tmp/gate-perf.log` and `/tmp/gate-perf-<mode>.log`**; the exclusive browser lock was held
+by long QA sessions and three other waiters when this was written, so re-check before merging (the changes that
+touch a drag: `bendAt` once per drag start; `oldRoad` only for rebuilt stretches; interactions located only when
+roads touch).
+
+**For the parent**:
+- The pack is gitignored: after the merge run `uv run --with requests python pipeline/fetch_census.py` and
+  `uv run python pipeline/build_traffic.py` in the main checkout (or copy `pipeline/cache/csd/` and
+  `public/scenarios/*/traffic.json` from this worktree; complete packs also need their rewritten
+  `manifest.json`). Without `traffic.json` every rebuilt road starts with the labelled class average.
+- `REPAIR_TOLERANCE` = `KEPT_TOLERANCE` = 12 m (15 m was approved; lowered so the conversion never builds anew).
+- Kept parts are no longer a credit line: the bill of a rebuilt road is zero on kept cells (§10).
+- The land screen is tighter (to the slope edge, not the whole width as a radius; §10): fewer projects are
+  held back as "sharing land". Reviewed by the tests in `tests/project-ledger.test.ts`; worth a second look.
+- `COST_MODEL_VERSION`: single-road bills are unchanged; a multi-road project's total can change (kept parts,
+  knots every 125 m on rebuilt stretches). Assign main's + 1 at merge if bests of multi-road projects matter.
+- **G** combined noise still waits for noise-walls-seams (not in main 217cfa4): a house that hears two roads
+  keeps the project without a total ("2 houses hear both roads · Their noise together is not checked yet…").
+  That is the one thing left between the owner's D3 case and a priced project (plus keeping the new line
+  10 m clear of our embankment's foot, which the card now says with a number).
+- Screenshot 104 is stale (the flat cut, typed traffic) and no longer referenced by the README; it was not
+  regenerated (only 106–109 were allowed).
+- Side roads' crossing findings still say "our road" for the road being edited ("Lower our road here…").
+- Main 217cfa4 is an ancestor of this branch: `git merge --ff-only side-agent/any-road-editing` works as is.
+
+Scratch (untracked): `_census.ts` (sidecar vs mapped ways), `_census-roads.ts` (what each D3 stretch starts
+with), `_d11-jic.ts` / `_d11-jic2.ts` (Jičínská: profile against ground, raw kernel with and without `oldRoad`),
+`_d3-mid.ts`, `_d3-land.ts` (land touch with the motorway), `_d3-alone.ts`.
