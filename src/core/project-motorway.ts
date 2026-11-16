@@ -600,10 +600,26 @@ function acceptControlledFollows(project: ProjectDesign, corridor: CorridorDesig
   const ids = new Set(followedStretches(project, corridor).filter(t => all
     || pins.some(p => p.s >= t.a && p.s <= t.b)
     || works.some(o => o.s1 >= t.a && o.s0 <= t.b)).map(t => t.id));
+  return acceptFollowedBends(project, corridor, ids);
+}
+
+function acceptFollowedBends(project: ProjectDesign, corridor: CorridorDesign, ids: ReadonlySet<string>): ProjectDesign {
   if (!ids.size) return project;
-  const accepted = { ...autoFollowingCorridor(project, corridor, ids) };
+  const derived = autoFollowingCorridor(project, corridor, ids);
+  if (derived === corridor) return project;
+  const accepted = { ...derived };
   if (accepted.mode === 'paired' && !accepted.stretches?.length) delete accepted.stretches;
   return { ...project, corridors: project.corridors.map(c => c.id === corridor.id ? accepted : c) };
+}
+
+const sameBend = (p: PI, q: PI) => p.x === q.x && p.y === q.y && p.r === q.r;
+/** Changed bends in the old displayed list; insertions have an empty range at their boundary. */
+function changedBends(shown: PI[], edited: PI[]): { lo: number; hi: number; unchanged: boolean } {
+  let lo = 0, suffix = 0;
+  while (lo < shown.length && lo < edited.length && sameBend(shown[lo], edited[lo])) lo++;
+  while (suffix < shown.length - lo && suffix < edited.length - lo
+    && sameBend(shown[shown.length - 1 - suffix], edited[edited.length - 1 - suffix])) suffix++;
+  return { lo, hi: shown.length - suffix, unchanged: lo === shown.length && lo === edited.length };
 }
 
 /** Translate untouched automatic bend copies back to the saved spine. Adjacent geometry edits keep
@@ -612,17 +628,12 @@ function stripFollowCopies(spine: PI[], shown: PI[], edited: PI[], stretches: Se
   if (!copies.size) return edited;
   const displayed = compositePis(spine, stretches.map(t => copies.has(t.id)
     ? { ...t, [dir]: t.forward ?? t.reverse } : t), dir);
-  const same = (p: PI, q: PI) => p.x === q.x && p.y === q.y && p.r === q.r;
-  let prefix = 0, suffix = 0;
-  while (prefix < shown.length && prefix < edited.length && same(shown[prefix], edited[prefix])) prefix++;
-  while (suffix < shown.length - prefix && suffix < edited.length - prefix
-    && same(shown[shown.length - 1 - suffix], edited[edited.length - 1 - suffix])) suffix++;
-  const unchanged = prefix === shown.length && prefix === edited.length;
+  const { lo: prefix, hi, unchanged } = changedBends(shown, edited);
   const saved = edited.map(p => ({ ...p }));
   for (const seg of [...displayed.segs].reverse()) {
     const t = seg.stretch === null ? undefined : stretches[seg.stretch];
     if (!t || !copies.has(t.id)) continue;
-    if (unchanged || seg.c1 < prefix - margin || seg.c0 > shown.length - suffix + margin) {
+    if (unchanged || seg.c1 < prefix - margin || seg.c0 > hi + margin) {
       const shift = unchanged || seg.c1 <= prefix ? 0 : edited.length - shown.length;
       saved.splice(seg.c0 + shift, seg.c1 - seg.c0, ...spine.slice(t.k0, t.k1));
     }
@@ -672,6 +683,25 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   const copies = new Set(stretches.filter(t => follows.has(t.id) && !t[dir]).map(t => t.id));
   const savedPis = stripFollowCopies(spine.pis, shown.pis, d.pis, stretches, dir, copies);
   const edited = editStretches(spine.pis, stretches, dir, savedPis, newId);
+  if (edited && copies.size) {
+    // A neighbouring peer edit can merge with a followed stretch even when its automatic bends
+    // were stripped above. First accept that body as shared, otherwise merging resurrects the
+    // original crossing or saves two identical independently evaluated half-bodies. Direct edits
+    // to bends actually moved by the owner remain explicit peer choices, including conflicts.
+    const displayed = compositePis(spine.pis, stretches.map(t => copies.has(t.id)
+      ? { ...t, [dir]: t.forward ?? t.reverse } : t), dir);
+    const { lo, hi } = changedBends(shown.pis, d.pis), accept = new Set<string>();
+    for (const seg of displayed.segs) {
+      const t = seg.stretch === null ? undefined : stretches[seg.stretch];
+      if (!t || !copies.has(t.id) || !edited.some(u => u[dir] && u.k0 <= t.k0 && u.k1 >= t.k1)) continue;
+      const original = spine.pis.slice(t.k0, t.k1);
+      const explicit = shown.pis.slice(Math.max(lo, seg.c0), Math.min(hi, seg.c1))
+        .some(p => !original.some(q => sameBend(p, q)) && !d.pis.some(q => sameBend(p, q)));
+      if (!explicit) accept.add(t.id);
+    }
+    const accepted = acceptFollowedBends(project, corridor, accept);
+    if (accepted !== project) return replaceDirectionFromDesign(accepted, routeId, d, newId);
+  }
   if (edited) stretches = locateStretches(A, B, spine.pis, edited, rules);
   const lineOf = (t: SeparateStretch) => t[dir] ?? (follows.has(t.id) ? t.forward ?? t.reverse : undefined);
   const own = (s0: number, s1 = s0) => stretches.find(t => lineOf(t) && s1 >= t.a && s0 <= t.b);

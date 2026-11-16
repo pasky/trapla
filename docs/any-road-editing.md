@@ -874,7 +874,9 @@ without losing its edits likewise prevents Auto following. The whole affected st
 part of it would overlap; a radius edit can also require this. An unchanged write or a distant Both-directions
 edit keeps the original stretch and Reset. Editing the shared bends nearby, changing the shared speed or
 profile mode, or deliberately changing a height/works control on the followed body accepts that local bend
-as shared. Undo restores the earlier Auto-follow state.
+as shared. A nearby peer bend edit that would merge with the followed stretch accepts its shared body first;
+directly changing a bend actually moved by the owner remains an explicit peer choice (even if it conflicts).
+Undo restores the earlier Auto-follow state.
 
 Self-review caught that the Auto peer's displayed bends were being saved as player edits by unrelated pins
 or distant drags. Those automatic copies are now removed outside the actually edited bends and their
@@ -914,10 +916,24 @@ drag modes PASS. Whole-D3 forward bend PASS (p95 preview latency 81 ms, max resu
 Earlier whole-D3 attempts intermittently failed latency/long-task budgets; a locked comparison of committed
 `2436f58` also failed with 3 drag and 1 post-release long tasks (another baseline run passed). One redundant
 display derivation introduced by the fix was removed before the final runs. Logs: `/tmp/model28-follow-*`.
-A fresh full-range review is still required before final yield. Main has since advanced to `230c1c2`
-(crossing-economy model 28); that is not merged here yet, so the model number/fixtures need reconciling at merge.
+The full-range review on `8297580` found one P1 boundary case: a peer edit of bend 1/2/3 after an inward pull
+of bend 0 merged the followed stretch and either copied the owner's bend as an explicit peer choice or
+restored the original crossing. The follow is now accepted before that merge unless the peer directly edits
+a bend actually moved by the owner. Six ±10 m regressions cover all three adjacent bends; they stay valid
+and match first choosing the shared bend and then editing the peer. Existing deliberate-conflict tests still
+pass. Latest gates: tsc, 83 files / 700 tests, build, 11 frozen bills, stretch-play, whole-D3 forward bend
+(p95 preview 115 ms, max result gap 121 ms, no long tasks). Logs: `/tmp/model28-near-*`. A fresh review of
+this boundary fix is still required before final yield.
+
+Main has since advanced to `230c1c2` (crossing-economy model 28); that is not merged here yet, so the model
+number/fixtures need reconciling at merge.
 
 Still open:
+- The latest review's synthetic 40 km / four-stretch probe measured a 27–29 ms editor write; the browser
+  timing gates start with at most one stretch. Repeated derivations should be reduced with explicit
+  within-operation reuse (draft corridor objects are mutable: do not blindly cache by object identity).
+- Minor wording: a followed stretch's Reset still says the directions run together again, and the hover
+  label says “only” although Auto may bring the peer alongside. The direction card explains Auto correctly.
 - Rebuilt railway `routeHead` is null: no works list or “Keep the old track” button on its own card.
 - Rebuilt railway continuations can still be `connection-pending`; some fresh rebuild ends meet tight old
   track too sharply (e.g. D11 osm:way:35609502).

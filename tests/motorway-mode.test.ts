@@ -257,6 +257,30 @@ describe('one direction on its own (separate stretches)', () => {
       pis: before.pis.map((p, i) => i === 0 ? { ...p, y: 300 } : p) }, { oneDirection: true });
     expect(legacyDesignForRoute(constrainedPull, r.id, { oneDirection: true }).pis).toEqual(before.pis);
   });
+  it.each([[1, -10], [1, 10], [2, -10], [2, 10], [3, -10], [3, 10]])(
+    'accepts a neighbouring followed body before the peer moves bend %s by %s m', (k, dy) => {
+      const { ctx, snapshot } = fixture(30000, 4700), [f, r] = snapshot.design.routes;
+      const base = replaceRouteFromLegacy(snapshot.design, f.id, { ...legacyDesignForRoute(snapshot.design, f.id),
+        pis: Array.from({ length: 5 }, (_, i) => ({ x: 800 + i * 800, y: i % 2 ? 220 : 280, r: null })) });
+      const before = legacyDesignForRoute(base, f.id, { oneDirection: true });
+      const pulled = { ...before, pis: before.pis.map((p, i) => i === 0 ? { ...p, y: 300 } : p) };
+      const inward = replaceRouteFromLegacy(base, f.id, pulled, { oneDirection: true });
+      const peer = legacyDesignForRoute(inward, r.id, { oneDirection: true });
+      const changed = { ...peer, pis: peer.pis.map((p, i) => i === k ? { ...p, y: p.y + dy } : p) };
+      const edited = replaceRouteFromLegacy(inward, r.id, changed, { oneDirection: true });
+      const c = edited.corridors[0];
+      if (c.mode !== 'paired' || c.spine.kind !== 'pi') throw new Error('paired corridor');
+      expect(c.spine.pis[0]).toEqual(pulled.pis[0]);
+      expect(c.stretches?.every(t => !t.forward)).toBe(true);
+      const result = evaluateProject(ctx, { ...snapshot, revision: 2, design: edited });
+      expect(result.issues).toEqual([]);
+      expect(result.valid).toBe(true);
+      // Equivalent to choosing the shared bend first, then making the adjacent direction edit:
+      // never two identical own lines, nor a return to the original wrong-side crossing.
+      const shared = replaceRouteFromLegacy(base, f.id, pulled);
+      const expected = replaceRouteFromLegacy(shared, r.id, changed, { oneDirection: true });
+      expect(result.cost.total).toBe(evaluateProject(ctx, { ...snapshot, revision: 3, design: expected }).cost.total);
+    });
   it('preserves Reset through unchanged and distant Both edits, including existing followed controls', () => {
     const { snapshot } = fixture(30000, 4700), [f, r] = snapshot.design.routes;
     const base = replaceRouteFromLegacy(snapshot.design, f.id, { ...legacyDesignForRoute(snapshot.design, f.id),
