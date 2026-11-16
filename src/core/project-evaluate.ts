@@ -91,6 +91,55 @@ const UNPRICED: Record<'source-needs-network' | 'motorway-needs-interchange' | '
     fix: 'Its new line is checked; removing the old road and reconnecting its side roads is not priced yet',
     rule: 'Engine limit: the price of a rebuilt stretch still lacks removing the old road and reconnecting the roads that joined it.' } },
 };
+/** What evaluating one route needs, whatever its kind (routeProposal assembles it). */
+interface KindInput {
+  ctx: ProjectEvalContext; snapshot: ProjectSnapshot; route: RouteDesign;
+  /** the paired motorway the route is a direction of */
+  corridor: ReturnType<typeof corridorOfRoute>;
+  preview: boolean; prices: PreviewPrices;
+  /** a corridor is evaluated once for both its directions */
+  corridors: CorridorCache;
+  ends?: { a?: XYZ; b?: XYZ }; holds?: EvalOptions['holds']; endsOf?: (route: RouteDesign) => ResolvedEnds;
+  /** the single-road context with the road network as the player edited it, seen by these routes */
+  edited(owners: RouteDesign[]): EvalContext;
+}
+type KindEvaluation = CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
+const evaluateAsRoad = ({ ctx, snapshot, route, preview, prices, ends, holds, endsOf }: KindInput): KindEvaluation =>
+  evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays,
+    ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}), ...(endsOf ? { endsOf } : {}) });
+/**
+ * How each kind of line is handled inside a project: its evaluator, the noise method its receivers are
+ * computed by, and the clearance another line needs over it. One row per RouteKind, and the compiler insists
+ * on it: a new kind (or a kind's new rule) is a row or a field here, not another `kind === …` below.
+ * (The evaluation half of the kernel seam sketched in project.ts, RouteKernel.)
+ */
+const ROUTE_KINDS: Record<RouteDesign['kind'], {
+  evaluate(k: KindInput): KindEvaluation;
+  noise: 'legacy-road' | 'cnossos-rail';
+  /** m: how far a line passing over this one stays above its grade */
+  clearanceOver: number;
+}> = {
+  road: { evaluate: evaluateAsRoad, noise: 'legacy-road', clearanceOver: CROSSING_RULES.overHeight },
+  motorway: {
+    // both directions of a corridor in one evaluation; a motorway route outside a corridor has no evaluator
+    // of its own (the road kernel reports it as not supported)
+    evaluate(k) {
+      const { ctx, snapshot, route, corridor, preview, prices, corridors, holds, edited } = k;
+      if (!corridor) return evaluateAsRoad(k);
+      let cached = corridors.get(corridor.id);
+      // A drag preview of one separate direction evaluates only that direction.
+      if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(edited(snapshot.design.routes.filter(r => r.id === corridor.children.forward || r.id === corridor.children.reverse)),
+        snapshot.design, corridor.id, ctx.environment.objectData, { preview, ...prices, ...(preview ? { only: route.id } : {}), ...(holds?.length ? { holds } : {}) }));
+      return cached;
+    },
+    noise: 'legacy-road', clearanceOver: STRUCTURE_RULES.railClearance,
+  },
+  railway: {
+    evaluate: ({ ctx, snapshot, route, preview, prices, holds, edited }) => evaluateProjectRailway(edited([route]), snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices,
+      ...(ctx.railPaths ? { railPaths: ctx.railPaths } : {}), ...(holds?.length ? { holds } : {}) }),
+    noise: 'cnossos-rail', clearanceOver: STRUCTURE_RULES.railClearance,
+  },
+};
 /** The last full evaluation's fill values, which a drag preview prices at (EvalOptions). */
 export type PreviewPrices = Pick<EvalOptions, 'materialValue' | 'structureValue'> & Pick<EvalOptions, 'keepClear'>;
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
@@ -100,22 +149,12 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
   const corridor = route.kind === 'motorway' ? corridorOfRoute(snapshot.design, route.id) : undefined;
   // (Auto's reroutes planned again clear of another road the player built: evaluateProject)
   if (keepClear?.length) prices = { ...prices, keepClear };
-  let evaluated: CorridorEvaluation | RailwayEvaluation | ReturnType<typeof evaluateProjectRoad>;
   // motorways and railways are checked against the network as the player edited it too
   const edited = (owners: RouteDesign[]) => {
     const net = ctx.legacy.roads ? editedNetwork(ctx.legacy.roads, snapshot.design, owners, ctx.sourceWays, endsOf) : null;
     return net ? { ...ctx.legacy, roads: net.roads } : ctx.legacy;
   };
-  if (corridor) {
-    let cached = corridors.get(corridor.id);
-    // A drag preview of one separate direction evaluates only that direction.
-    if (!cached) corridors.set(corridor.id, cached = evaluateProjectCorridor(edited(snapshot.design.routes.filter(r => r.id === corridor.children.forward || r.id === corridor.children.reverse)),
-      snapshot.design, corridor.id, ctx.environment.objectData, { preview, ...prices, ...(preview ? { only: route.id } : {}), ...(holds?.length ? { holds } : {}) }));
-    evaluated = cached;
-  } else if (route.kind === 'railway') evaluated = evaluateProjectRailway(edited([route]), snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices,
-    ...(ctx.railPaths ? { railPaths: ctx.railPaths } : {}), ...(holds?.length ? { holds } : {}) });
-  else evaluated = evaluateProjectRoad(ctx.legacy, snapshot.design, route.id, ctx.environment.objectData, { preview, ...prices, sourceWays: ctx.sourceWays,
-    ...(ends ? { ends } : {}), ...(holds?.length ? { holds } : {}), ...(endsOf ? { endsOf } : {}) });
+  const evaluated = ROUTE_KINDS[route.kind].evaluate({ ctx, snapshot, route, corridor, preview, prices, corridors, ends, holds, endsOf, edited });
   const road = route.kind === 'road' && !corridor && evaluated.status === 'evaluated' ? evaluated as Extract<ReturnType<typeof evaluateProjectRoad>, { status: 'evaluated' }> : null;
   const legacy = evaluated.status === 'evaluated' ? evaluated.result : evaluated.status === 'split' ? evaluated.results[route.id] : undefined;
   // the kernel names the mission's ends A and B and calls the designed road "our road"; every other road's
@@ -228,7 +267,7 @@ function routeOutcome(_ctx: ProjectEvalContext, _design: ProjectDesign, route: R
   const buildings = ownBuildings(route, r);
   // Energies per storey come from the route's own finite-segment sum (day and night separately).
   const limits = r.noise.source?.limits ?? { dayDb: NOISE.limitDayDb, nightDb: NOISE.limitNightDb };
-  const policy = route.kind === 'railway' ? 'cnossos-rail' as const : 'legacy-road' as const;
+  const policy = ROUTE_KINDS[route.kind].noise;
   const receivers = r.noise.receivers.map(receiver => {
     const e = receiver.energy, k = receiver.floor;
     const height = NOISE.receiverHeight + k * NOISE.storeyHeight;
@@ -288,7 +327,7 @@ function storeyed(c: RouteContact, surfaces: readonly TransportSurface[], design
     return { route: design.routes.find(r => r.id === id), near };
   });
   if (parts.some(p => !p.route || !p.near.length)) return false;
-  const need = (lower: RouteDesign) => lower.kind === 'road' ? CROSSING_RULES.overHeight : STRUCTURE_RULES.railClearance;
+  const need = (lower: RouteDesign) => ROUTE_KINDS[lower.kind].clearanceOver;
   for (const [up, low] of [[parts[0], parts[1]], [parts[1], parts[0]]]) {
     // (each point of the lower one against the upper one's nearest point in plan)
     const gap = Math.min(...low.near.map(q => { const o = up.near.reduce((a, b) => Math.hypot(b.x - q.x, b.y - q.y) < Math.hypot(a.x - q.x, a.y - q.y) ? b : a); return o.z - q.z; }));
@@ -916,7 +955,7 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readon
 const ownerName = (r: RouteDesign) => r.role === 'mission' ? (r.kind === 'railway' ? 'our railway' : r.kind === 'motorway' ? 'our motorway' : 'our road') : r.name;
 /** How far a road passing over the owner's bridge on its own bridge stays above the owner's grade, m: the
  * clearance over a road (CROSSING_RULES.overHeight), over a railway or motorway STRUCTURE_RULES.railClearance. */
-const clearOver = (owner: RouteDesign) => owner.kind === 'road' ? CROSSING_RULES.overHeight : STRUCTURE_RULES.railClearance;
+const clearOver = (owner: RouteDesign) => ROUTE_KINDS[owner.kind].clearanceOver;
 /** The held road's grade at station s, m. */
 function gradeAt(r: Result, s: number): number {
   const k = Math.max(0, Math.min(r.n - 2, Math.floor(s / r.ds))), t = (s - r.s[k]) / r.ds;

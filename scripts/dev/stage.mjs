@@ -6,6 +6,9 @@
 //   node scripts/dev/stage.mjs extract src/core/evaluate.ts evaluateRoute 413 700 routeSetup setup
 //   node scripts/dev/stage.mjs prune   src/core/evaluate.ts evaluateRoute     (after each extract: names of
 //        earlier records that only the new stage read are dropped from the function's destructurings)
+//   node scripts/dev/stage.mjs hoist   src/core/evaluate.ts routeFinish 1510 2040 finishDesign
+//        (`const finish = (…) => { … }` on those lines becomes `function finishDesign(…)` with the same body,
+//        handed what it read from routeFinish; the closure stays as a one-line call. Its stages are next.)
 //
 // The statements of lines L0…L1 move verbatim into `function routeSetup(<params it reads>, <earlier stage
 // records it reads>)`, which returns the locals later code reads; the original place becomes
@@ -16,7 +19,8 @@
 //
 // It refuses what a verbatim move would break:
 //  - a `let` of the stage that later code reassigns while a closure of the stage reads it (or the reverse:
-//    a closure of the stage assigns it and later code reads it): the two would see different variables;
+//    a closure of the stage assigns it and later code reads it): the two would see different variables
+//    (`--sync name` vouches that the assigning closure is a helper that only runs inside the stage);
 //  - a variable from before the stage that the stage assigns, or that is reassigned later while a closure
 //    of the stage reads it;
 //  - a top-level `return`, or a name the stage reads that is declared after it;
@@ -27,8 +31,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseAst } from 'rolldown/parseAst';
 
-const [mode, file, fnName, l0s, l1s, stageName, recordName] = process.argv.slice(2);
-if (!['analyse', 'extract', 'prune'].includes(mode) || !file || !fnName || (mode !== 'prune' && !l1s) || (mode === 'extract' && !recordName)) {
+const argv = process.argv.slice(2), syncAt = argv.indexOf('--sync');
+/** lets whose assigning closures are known to run only inside the stage (helpers called within it) */
+const sync = new Set(syncAt >= 0 ? argv.splice(syncAt, 2)[1].split(',') : []);
+const [mode, file, fnName, l0s, l1s, stageName, recordName] = argv;
+if (!['analyse', 'extract', 'prune', 'hoist'].includes(mode) || !file || !fnName || (mode !== 'prune' && !l1s) || (mode === 'extract' && !recordName) || (mode === 'hoist' && !stageName)) {
   console.error('usage: stage.mjs analyse|extract <file.ts> <function> <firstLine> <lastLine> [<stageFunction> <recordName>]'); process.exit(2);
 }
 const L0 = Number(l0s), L1 = Number(l1s);
@@ -157,13 +164,13 @@ function freeReferences(root) {
 }
 
 // ---- the function's top-level names ---------------------------------------------------------------------
-const params = new Map(fn.params.map(p => { const id = p.type === 'AssignmentPattern' ? p.left : p; return [id.name, code.slice(id.typeAnnotation.typeAnnotation.start, id.typeAnnotation.typeAnnotation.end)]; }));
+const params = new Map(fn.params.map(p => { const id = p.type === 'AssignmentPattern' ? p.left : p; return [id.name, code.slice(id.typeAnnotation.typeAnnotation.start, id.typeAnnotation.typeAnnotation.end) + (id.optional ? ' | undefined' : '')]; }));
 /** name → { index of its statement, kind, record: the stage record it is destructured from } */
 const top = new Map();
 const records = new Map(); // record name → callee (stage function)
 statements.forEach((s, index) => {
   if (s.type === 'VariableDeclaration') for (const d of s.declarations) {
-    const record = d.id.type === 'ObjectPattern' && d.init?.type === 'Identifier' && records.has(d.init.name) ? d.init.name : undefined;
+    const record = d.id.type === 'ObjectPattern' && d.init?.type === 'Identifier' && (records.has(d.init.name) || params.has(d.init.name)) ? d.init.name : undefined;
     if (d.id.type === 'Identifier' && d.init?.type === 'CallExpression' && d.init.callee.type === 'Identifier') records.set(d.id.name, d.init.callee.name);
     for (const name of patternNames(d.id)) top.set(name, { index, kind: s.kind, record });
   } else if (s.type === 'FunctionDeclaration') top.set(s.id.name, { index, kind: 'function' });
@@ -178,12 +185,14 @@ if (mode === 'prune') {
   for (const s of [...statements].reverse()) {
     if (s.type !== 'VariableDeclaration' || s.declarations.length !== 1) continue;
     const d = s.declarations[0];
-    if (d.id.type !== 'ObjectPattern' || d.init?.type !== 'Identifier' || !records.has(d.init.name)) continue;
+    if (d.id.type !== 'ObjectPattern' || d.init?.type !== 'Identifier' || !(records.has(d.init.name) || params.has(d.init.name))) continue;
     const names = patternNames(d.id), kept = names.filter(n => used.has(n));
     if (kept.length === names.length) continue;
     dropped += names.length - kept.length;
     const indent = code.slice(lineStarts[lineOf(s.start) - 1], s.start);
-    text = text.slice(0, s.start) + (kept.length ? `${s.kind} { ${wrap(kept, `${indent}  `)} } = ${d.init.name};` : `// (${d.init.name}: read by later stages only)`) + text.slice(s.end);
+    // (a record nothing is read from here any more is only handed on: its destructuring line goes)
+    if (kept.length) text = text.slice(0, s.start) + `${s.kind} { ${wrap(kept, `${indent}  `)} } = ${d.init.name};` + text.slice(s.end);
+    else text = text.slice(0, lineStarts[lineOf(s.start) - 1]) + text.slice(lineStarts[lineOf(s.end - 1)] ?? text.length);
   }
   writeFileSync(file, text);
   console.log(`pruned ${dropped} unused names from stage-record destructurings`);
@@ -221,7 +230,7 @@ statements.forEach((_s, i) => { for (const r of refsOf[i]) {
 for (const [name, t] of top) {
   if (inRange(t.index) && t.kind !== 'type' && (readsAfter.has(name) || writesAfter.has(name))) {
     if (t.kind === 'let' && writesAfter.has(name) && (nestedReadsIn.has(name) || nestedWritesIn.has(name))) problems.push(`${name}: a let of the stage that later code reassigns while a closure of the stage uses it`);
-    if (t.kind === 'let' && nestedWritesIn.has(name) && readsAfter.has(name)) problems.push(`${name}: a let of the stage that one of its closures assigns and later code reads`);
+    if (t.kind === 'let' && nestedWritesIn.has(name) && readsAfter.has(name) && !sync.has(name)) problems.push(`${name}: a let of the stage that one of its closures assigns and later code reads (if that closure only runs inside the stage: --sync ${name})`);
     outputs.set(name, { kind: t.kind === 'let' && writesAfter.has(name) ? 'let' : 'const' });
   }
 }
@@ -253,6 +262,10 @@ for (const t of statements.slice(first, last + 1).filter(s => TYPE_DECLS.has(s.t
 
 const usedParams = [...params.keys()].filter(p => inputs.has(p));
 const usedRecords = [...new Set([...inputs.values()].filter(v => v.record).map(v => v.record))];
+/** what the new function is handed: the parameters it reads, then the stage records it reads (a record may
+ * itself be a parameter of this function) */
+const handed = [...new Set([...usedParams, ...usedRecords])];
+const typeOf = (name) => params.get(name) ?? `ReturnType<typeof ${records.get(name)}>`;
 console.log(`${fnName} lines ${lineOf(statements[first].start)}–${lineOf(statements[last].end - 1)}: ${last - first + 1} statements`);
 console.log(`  reads parameters: ${usedParams.join(', ') || '—'}`);
 for (const rec of usedRecords) console.log(`  reads from ${rec}: ${[...inputs].filter(([, v]) => v.record === rec).map(([n]) => n).join(', ')}`);
@@ -262,8 +275,40 @@ console.log(`  returns (${outputs.size}): ${[...outputs].map(([n, v]) => v.kind 
 if (typesInRange.length) console.log(`  types hoisted: ${typesInRange.map(t => t.id.name).join(', ')}`);
 if (aliased.length) console.log(`  types aliased at module level: ${aliased.length}`);
 console.log(`  module-level names used: ${[...moduleNames].sort().join(', ')}`);
-if (problems.length) { for (const p of new Set(problems)) console.log(`  PROBLEM ${p}`); if (mode === 'extract') fail('fix the problems above (move the boundary, or handle that variable by hand first)'); }
+if (problems.length) { for (const p of new Set(problems)) console.log(`  PROBLEM ${p}`); if (mode !== 'analyse') fail('fix the problems above (move the boundary, or handle that variable by hand first)'); }
 if (mode === 'analyse') process.exit(problems.length ? 1 : 0);
+
+if (mode === 'hoist') {
+  // `const name = (params) => { body }` (one top-level statement) becomes a module-level function with the
+  // same body; the closure stays as a one-line call of it, with its signature (and defaults) as they were.
+  const decl = first === last && statements[first].type === 'VariableDeclaration' && statements[first].declarations.length === 1 ? statements[first].declarations[0] : null;
+  const arrow = decl?.init;
+  if (!arrow || arrow.type !== 'ArrowFunctionExpression' || arrow.body.type !== 'BlockStatement' || decl.id.type !== 'Identifier') fail('hoist needs one statement: const name = (…) => { … }');
+  const own = arrow.params.map(q => { const id = q.type === 'AssignmentPattern' ? q.left : q;
+    if (id.type !== 'Identifier' || !id.typeAnnotation) fail(`parameter at line ${lineOf(q.start)} needs a plain name with a type (write the type out first)`);
+    return { name: id.name, type: code.slice(id.typeAnnotation.typeAnnotation.start, id.typeAnnotation.typeAnnotation.end), optional: id.optional }; });
+  if (freeReferences(arrow).some(r => r.name === decl.id.name)) console.log(`  NOTE ${decl.id.name} calls itself: write that call as ${stageName}(…same arguments…) by hand`);
+  const returns = arrow.returnType ? `: ${code.slice(arrow.returnType.typeAnnotation.start, arrow.returnType.typeAnnotation.end)}` : '';
+  const lines = code.split('\n');
+  const open = lineOf(arrow.body.start), close = lineOf(arrow.body.end - 1);
+  if (!lines[open - 1].trimEnd().endsWith('{') || !/^\s*\};?\s*$/.test(lines[close - 1])) fail('the closure must open with `=> {` at a line end and close with `};` on its own line');
+  const body = lines.slice(open, close - 1);
+  const fnText = [
+    `/** ${decl.id.name}() of ${fnName}, as a function of its own (moved verbatim by scripts/dev/stage.mjs). */`,
+    `function ${stageName}(${[...handed.map(q => `${q}: ${typeOf(q)}`), ...own.map(q => `${q.name}${q.optional ? '?' : ''}: ${q.type}`)].join(', ')})${returns} {`,
+    ...usedRecords.map(r => `  const { ${wrap([...inputs].filter(([, v]) => v.record === r).map(([n]) => n), '    ')} } = ${r};`),
+    ...body,
+    '}',
+    '',
+  ];
+  const head = lines[open - 1].slice(0, lines[open - 1].lastIndexOf('{')).replace(/\s+$/, '');
+  const call = `${head} ${stageName}(${[...handed, ...own.map(q => q.name)].join(', ')});`;
+  let fnLine = lineOf((ast.body.find(n => (n.type === 'ExportNamedDeclaration' ? n.declaration : n) === fn)).start);
+  while (fnLine > 1 && /^\s*(\/\/|\/\*|\*)/.test(lines[fnLine - 2])) fnLine--;
+  writeFileSync(file, [...lines.slice(0, fnLine - 1), ...fnText, ...lines.slice(fnLine - 1, open - 1), call, ...lines.slice(close)].join('\n'));
+  console.log(`hoisted ${decl.id.name} → ${stageName}(): ${body.length} lines; run prune, tsc, exact.ts --compare and the timing comparison`);
+  process.exit(0);
+}
 
 // ---- extract ------------------------------------------------------------------------------------------
 const lines = code.split('\n');
@@ -277,7 +322,7 @@ for (const t of typesInRange) {
   hoisted.push(...lines.slice(a - 1, b).map(l => l.replace(/^ {2}/, '')));
   for (let k = a; k <= b; k++) body[k - start] = null;
 }
-const signature = [...usedParams.map(p => `${p}: ${params.get(p)}`), ...usedRecords.map(r => `${r}: ReturnType<typeof ${records.get(r)}>`)].join(', ');
+const signature = handed.map(p => `${p}: ${typeOf(p)}`).join(', ');
 const constOut = [...outputs].filter(([, v]) => v.kind === 'const').map(([n]) => n), letOut = [...outputs].filter(([, v]) => v.kind === 'let').map(([n]) => n);
 const stage = [
   ...hoisted, ...aliased,
@@ -290,7 +335,7 @@ const stage = [
   '',
 ];
 const call = [
-  `  const ${recordName} = ${stageName}(${[...usedParams, ...usedRecords].join(', ')});`,
+  `  const ${recordName} = ${stageName}(${handed.join(', ')});`,
   ...(constOut.length ? [`  const { ${wrap(constOut, '    ')} } = ${recordName};`] : []),
   ...(letOut.length ? [`  let { ${wrap(letOut, '    ')} } = ${recordName};`] : []),
 ];

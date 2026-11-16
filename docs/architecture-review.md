@@ -32,14 +32,14 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 |---|---|---|---|---|
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
-| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done in part: 1,840 → 933 lines, 13 modules out; rest planned (§ main.ts) |
+| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done: 1,840 → 550 lines, 17 modules out, the shared state is a `Session`; routes / Build left (§ main.ts) |
 | 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | `evaluateRoute` done: six named stages, itself 60 lines (two diffs of +74 −13 and +50 −25); the other two functions next (§ Core) |
 | 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
 | 8 | The mission bootstrap, pack identities and a route's crown width each derived in 2–4 places | medium | low | done: `core/project-mission.ts`, `packIdentities()`, `core/route-section.ts` |
 | 9 | Dead code: the old single-road `Store`, 7 unreferenced exports | medium | none | done |
-| 10 | A new line kind touches ≈ 15 files outside the registries; the designed kernel seam is unused | high | medium | next / sequence (§ Extensibility) |
+| 10 | A new line kind touches ≈ 15 files outside the registries; the designed kernel seam is unused | high | medium | started: `ROUTE_KINDS` in project-evaluate.ts (evaluator, noise method, clearance per kind); rest next (§ Extensibility) |
 | 11 | Player words per kind ("road / railway / motorway", "old track", ‰ vs %) re-derived in ≥ 8 places | medium | low | next |
 | 12 | Browser gates run against the live working tree (vite); fixed ports collide between worktrees | medium | none | done in part: port per checkout; run gates from a clean checkout (§ Tooling) |
 | 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | next: `scripts/lib/browser.mjs`, migrate when touched |
@@ -106,27 +106,28 @@ objects passed directly, `main()`'s variables as live getters, commands as funct
 | `src/ui/map-gestures.ts` | click, drag to bend / rebuild a mapped road / shape a reroute, double click; what a gesture grabbed is its own state | 194 |
 | `src/ui/profile-events.ts`, `src/ui/hud-events.ts` | what the profile's gestures and the HUD's controls do; where a listed problem leads | 73 / 115 |
 | `src/core/project-mission.ts` | scenario → starting project (also used by Node scripts) | 42 |
+| `src/eval-client.ts` | what is asked of the workers, which replies count (unit-tested) | 102 |
+| `src/session.ts` | what is on screen: the results shown and the selection (was seven `let`s of `main()`) | 26 |
+| `src/ui/selection.ts` | `select()`, where a selection is, bringing it into view | 153 |
+| `src/ui/road-links.ts` | the lazily loaded transport graph and what it brings (index, picker, mapped-road card, stretch ends) | 99 |
+| `src/ui/result-display.ts` | what happens with a preview / a full result: the sliced 3D rebuild, cards, other roads' decorations, settled / idle | 293 |
 
-Next steps, in this order (each its own commit, verified by tsc, the browser gates and the scene scripts
-that play the flow):
+`EvalClient` is the one piece that was not a verbatim move (request ids, the in-flight map, the preview
+gesture, "no repeat of a full request for the same design", the full-after-idle timer, which replies
+count), so it has unit tests (`tests/eval-client.test.ts`, fake ports and timers) and was measured: six
+drag modes at p95 frame 17 ms, handler p50 5 ms, as before.
 
-1. Done: **`EvalClient`** (`src/eval-client.ts`, 102 lines): request ids, the in-flight map, the preview
-   gesture, "no repeat of a full request for the same design", the full-after-idle timer, the noise-band
-   request and which replies count; `main.ts` keeps what to *do* with a result (`showPreview`,
-   `showFull`). Not a verbatim move, so it has unit tests (`tests/eval-client.test.ts`, fake ports and
-   timers) and was measured: six drag modes at p95 frame 17 ms, handler p50 5 ms, as before.
-2. **Showing a result** (`showActiveResult`, `syncDecorations`, the preview branch of the message
-   handler, the sliced 3D rebuild): ≈ 200 lines, the largest piece left.
-3. **`SelectionController`** (`select`, `placeOf`, `frameSelection`, `revalidate`).
-4. **Road links** (`ensureTransport`, the source picker / mapped-road card / stretch ends it creates).
-5. **Routes** (`switchRoute`, the motorway's directions, Build: `placeAt`, `buildTool` wiring).
-6. What remains is the composition root: construct, connect, start (target ≈ 300 lines).
+What is left in `main.ts` (550 lines): start-up (picker, pack, store, recovery: ≈ 90 lines), the score
+line (`projectScore`), the active road's ends, and **routes**: `switchRoute`, the motorway's directions,
+Build (`placeAt`, the build tool), the store listener (≈ 170 lines). Routes are the next module; they
+own the last two mutable things of `main()` (the ends `A` / `B` of the line being edited, the kind being
+built). After that `main.ts` is the composition root: construct, connect, start.
 
-After 1–2 the shared state should become an explicit `Session` object (active result, last full result,
-selection) instead of getters over closure variables: the getters are the bridge that made verbatim moves
-possible, not the end state.
+The context interfaces with live getters were the bridge that made verbatim moves possible. Now that the
+state is a `Session`, new modules should take the `Session` (and the stable objects they use) rather than
+grow more getters; `ui/selection.ts`, `ui/road-links.ts` and `ui/result-display.ts` already do.
 
-### 4–5, 22. Core engine (not touched: needs sequencing)
+### 4–5, 22. Core engine
 
 - `evaluate.ts` `evaluateRoute` (lines 412–1999) is three nested closures: `engineer(candidate)` (profile →
   sections → retaining → cover → structure selection → supports), `finish(relaxed, strict)` (lift retries,
@@ -183,10 +184,12 @@ for it, but kind is also branched on in code:
 | `ui/hud.ts`, `ui/road-edit.ts`, `ui/profile.ts`, `ui/inspector.ts`, `render/view.ts` | 8 / 7 / 1 / 1 / 2 | headings, type lists, units, drawn section |
 
 - `project.ts:335` declares the seam (`RouteKernel { propose, acoustics, finalize }`, `CorridorKernel`)
-  but nothing implements it: `routeProposal` (project-evaluate.ts:94–140) dispatches by hand. Implementing
-  the seam as a `Record<RouteKind, RouteKernel>` registry over the three existing evaluators is a pure
-  refactor of ≈ 50 lines and makes "add a kind" one registration. Sequence with the P1 agent
-  (project-evaluate.ts).
+  but nothing implements it: `routeProposal` dispatched by hand. Done as a first step:
+  `ROUTE_KINDS: Record<RouteKind, …>` in project-evaluate.ts, one row per kind with its evaluator (road /
+  paired corridor / railway), the noise method of its receivers and the clearance another line needs over
+  it; the compiler insists on a row for a new kind. Still branching on kind there (each a candidate field
+  of the row): who may end on open ground, whose ends follow the road they join, the wording of junction
+  issues, `crownOf`, and the capacity / operations of a route.
 - **One descriptor for a kind's words** in `terms.ts`: `LINE_WORDS[mode] = { noun: 'railway', old: 'old
   track', height: 'track height', gradeUnit: '‰', … }`, read by hud, profile, checks, route-cards and
   project-evaluate instead of `rail ? … : …` ternaries (≥ 8 places today). Text stays byte-identical;
@@ -291,6 +294,11 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 4. Browser gates from a clean checkout of the commit (`scripts/gates.sh full --only smoke,playtest,drag-bend,…`),
    and the scene script that plays what was touched.
 5. A move is a *move*: no rewording, no reordering of floating-point sums, no "while I'm here".
+6. tsc proves the identifiers of a mechanical rename, not the strings. After moving UI code, compare the
+   string literals of the old and new files (`scripts/dev/strings.mjs`, a sorted `comm -23`), and the
+   transcripts of the scene scripts that play the flow against the base checkout. (A rename here turned
+   "Undo the last change" into "Undo the session.last change" for two commits; neither tsc nor the unit
+   tests could see it, the transcript of `lazy-transport-check.mjs` did.)
 
 ## Merge batches
 
@@ -305,8 +313,14 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
    The one product fix in this work came out of that: noise-view wall labels were created visible and
    unplaced (all stacked in the map's corner until the next frame); they stay hidden until placed.
 5. `routeEngineer` and `routeFinish` (#4).
-6. Next, as sequenced by the parent: the kernel registry (#10), the stages inside `routeFinish`, the other
-   two long functions; in `main.ts`: showing a result, selection, road links.
+6. Merged (`e25f005` + the registry): `ROUTE_KINDS` in project-evaluate.ts (#10, first step).
+7. A click on the shown road keeps the profile's zoom (the one behaviour change asked for), `mode-play.mjs`
+   reads its drag after it has settled; `main.ts`: the `Session`, selection, road links, result display.
+8. Held until the design-realism merge has landed (it changes pricing, sections and the grade solve): the
+   steps of a design pass (`finishDesign` = `finishLift` → `finishQuantities` → `finishBuildings` →
+   `finishCrossings`, and `completeDesign`): done once by the tool (branch `side-agent/arch-batch5-backup`,
+   commit `9da55d4`: +123 −39, 177 / 177 identical), to be redone on the new code by the same commands.
+9. Next: the stage functions into files, the other two long functions; in `main.ts`: routes.
 
 Noticed, not changed: a click on our own road on the map goes through `switchRoute`, which fits the
 profile, so a zoomed profile zooms out on every such click (`main.ts` `switchRoute` → `profile.fit()`).
