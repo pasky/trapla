@@ -256,7 +256,7 @@ export interface EvalOptions {
    * or too high) at the first Auto grade. Auto then keeps clear of each: our bridge over it, or a
    * cutting deep enough for its bridge at its own level (set by evaluate's retry, not by callers).
    * Present (even empty): unmet clearances cost more than any structure. */
-  separate?: readonly { s: number; g: number }[];
+  separate?: readonly { s: number; g: number; above?: boolean }[];
   /** With `separate`: stretches where the first grade passed too low over a river or railway. */
   separateWater?: readonly { s0: number; s1: number }[];
   /** Stretches where our earthworks buried a road: the grade at most (`fill`) or at least `z` there
@@ -364,7 +364,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
   /** the options the kept result was evaluated with (a separation retry adds its targets) */
   let used: EvalOptions = opts;
-  const sep = (gs: { road?: { s: number; g: number }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...opts,
+  const sep = (gs: { road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...opts,
     separate: gs.flat().flatMap(t => t.road ? [t.road] : []), separateWater: gs.flat().flatMap(t => t.water ? [t.water] : []) });
   // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
   // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
@@ -374,7 +374,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
     // …and where it paid the clearance penalty over a river or railway instead of bridging it.
     const missed = result.violations.filter(v => v.kind === 'crossing' && v.clearance === 'above');
-    const items: { at: number; road?: { s: number; g: number }; water?: { s0: number; s1: number } }[] = [
+    const items: { at: number; road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[] = [
       ...stuck.map(c => ({ at: c.s, road: { s: c.s, g: ctx.terrain.heightAt(c.x, c.y) } })),
       ...missed.map(v => ({ at: (v.s0 + v.s1) / 2, water: { s0: v.s0, s1: v.s1 } }))];
     if (items.length) {
@@ -383,8 +383,23 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       const run = (gs: typeof groups) => evaluateRoute(ctx, d, sep(gs));
       const retry = run(groups);
       retry.timing['count.separationRetry'] = 1;
-      const keep = groups.filter(g => regionCount(retry, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
-      if (keep.length === groups.length) { result = retry; used = sep(groups); }
+      let keep = groups.filter(g => regionCount(retry, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
+      // Where a cutting for its bridge did not help either (the road falls away from us, so no ramp within its
+      // slope gets back down to it), a designer carries our road over it instead: once more, above only.
+      const failed = groups.filter(g => !keep.includes(g) && g.some(t => t.road));
+      let tried = retry, triedGroups = groups;
+      if (failed.length) {
+        const over = groups.map(g => failed.includes(g) ? g.map(t => t.road ? { ...t, road: { ...t.road, above: true } } : t) : g);
+        const again = run(over);
+        again.timing['count.separationRetry'] = 3;
+        const better = over.filter((g, k) => failed.includes(groups[k]) && regionCount(again, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
+        if (better.length) {
+          keep = [...keep, ...better];
+          tried = again; triedGroups = over;
+        }
+      }
+      if (keep.length === triedGroups.length && tried !== retry) { result = tried; used = sep(triedGroups); }
+      else if (keep.length === groups.length) { result = retry; used = sep(groups); }
       else if (keep.length) { result = run(keep); used = sep(keep); result.timing['count.separationRetry'] = 2; }
     }
   }
@@ -995,7 +1010,8 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
           if (blocks) clearanceS[i] = c.s;
           penaltyAt![i] = SEPARATION_PENALTY;
           above[i] = Math.max(Number.isNaN(above[i]) ? -Infinity : above[i], c.g + CROSSING_RULES.overHeight - ground[i]);
-          below[i] = Math.min(Number.isNaN(below[i]) ? Infinity : below[i], c.g - CROSSING_RULES.underDepth - ground[i]);
+          // (above only: no cutting can be deep enough)
+          below[i] = Math.min(Number.isNaN(below[i]) ? Infinity : below[i], c.above ? -Infinity : c.g - CROSSING_RULES.underDepth - ground[i]);
         }
       }
       return { above, below };
