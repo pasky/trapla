@@ -271,3 +271,43 @@ a house that still stands gets the visible note "Not checked yet: the noise of t
 while the project's noise is pending. Regression: `tests/edited-network.test.ts` ("a house under a road is
 demolished whether or not the project can be priced") and `scripts/any-road-scene.mjs` (houses under our road stay
 off the map and say Demolished while the project is unpriced; D3: 23 houses).
+
+## 7. A rebuilt stretch: kept as the old road, or built anew (2026-11-16, follow-up 1 / item D)
+
+Owner's case (D3 III/1057): right after the first drag the card showed "R 69 m: wanted 205 m, no room" and
+"Bend 1 is too close to its start" for bends the player never touched. Decided with the parent:
+
+- **Where the new line stays on the old road, the old road is kept as it is** (`core/project-kept.ts`): within
+  12 m of the old centreline (`KEPT_TOLERANCE`, PROVISIONAL: the 8 m fit plus bend rounding) over at least 50 m
+  (`KEPT_MIN_RUN`, PROVISIONAL). Nothing is built there, so: no norm (ČSN 73 6101 covers new roads, relocations
+  and earth-body rebuilds; a repair keeps line and heights, Decree 104/1997 §9; research/30 §1), what the norm
+  would ask is a non-blocking note on the road card ("The old road is tighter than the norm at bend 1: kept as
+  it is. Move it off the old road and it must meet the norm."), every other finding wholly on a kept part is
+  dropped (it is about works that are not built), its crossings, culverts and edge conflicts are the old road's
+  (not listed), houses beside it are untouched ("The old road is kept as it is here: nothing changes for this
+  house"), walls wholly along it are not built, and **everything the road's own bill charged for those cells is
+  credited in one work line** ("975 m stay on the old road: kept as it is, not built anew"). No resurfacing is
+  charged: nothing is done there. Removal, the old-road land credit and side-road junctions apply only where the
+  road is built anew; kept parts add no land, no works and no noise source to the independence screen.
+  `cost.alone` is a road's bill with its own works, so "This road only" shows what is billed.
+- **The norm applies exactly where the player builds anew**: a bend (or a pair of bends) with any cell off the
+  old road is an ordinary violation.
+- **The conversion builds nothing anew** (`ui/road-edit.ts` `fitRoad`): `fitBends`, then a bend whose norm-sized
+  curve would leave the old road by more than `REPAIR_TOLERANCE` (= `KEPT_TOLERANCE`; the parent approved 15 m,
+  lowered to 12 m so a repair can never create a built-anew part) keeps the old road's own tighter curve (largest
+  radius within 8 m), then a bounded validity-first repair (remove a bend of the first problem or slide it along
+  a leg; ≤ 8 rounds; fewest problems, then least stray). D3: of 433 rebuildable stretches 158 had problems after
+  the plain fit, 85 after the repair (those are kept-as-old-road notes); ≤ 60 ms, mean 5 ms.
+- **Speed**: designed for 70 km/h, the lowest ČSN 73 6101:2018 allows for S 7.5 / S 9.5 (nominal 90, lowered by
+  up to 20 where justified; research/00 §4.1); the map's `maxspeed` is the signed limit and is used for noise and
+  travel time (`operations.speed`, `speedPolicy: 'independent'`). The card says so.
+- D3 III/1057 untouched after conversion: valid, one note, 975 m kept, 0 CZK, priced with the motorway. Dragged
+  40 m at its middle: 536 m kept, 438 m of old road removed, ≈ 34 M CZK.
+- **Known limits**: on kept cells the drawn body is still the kernel's norm-compliant Auto profile (small cuts and
+  fills on a bumpy old road are drawn but not billed; item F should make it hug the old road); a house whose
+  loudest exposure is from a kept part is not re-checked against the adjoining new part; a dragged bend near the
+  old road's side roads can still raise crossing findings of the player's own new line (e.g. "Ramps up to the
+  bridge over our road would be longer than 250 m" for a track it now crosses).
+- Tests: `tests/road-edit.test.ts` "a rebuilt stretch inherits no violations from its old road" (conversion of a
+  sharp corner; untouched = valid, note, nothing billed, house stays; moved bend = violation, billed), and the
+  pricing test (kept credit equals the kernel's parts on kept cells).

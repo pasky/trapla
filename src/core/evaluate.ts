@@ -124,6 +124,15 @@ export interface Result {
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
   kept: { j: number; i: number; hit: boolean }[];
+  /** A rebuilt stretch (project-kept.ts): where its line stays on the old road, what the norm would ask of a
+   * new road there. Not violations: the old road is kept as it is. */
+  inherited?: Violation[];
+  /** A rebuilt stretch: houses beside a part kept as the old road (nothing is built or decided there). */
+  besideOldRoad?: number[];
+  /** A rebuilt stretch: what this bill charged where the old road is kept as it is (≤ 0; a work of the road). */
+  keptCredit?: number;
+  /** A rebuilt stretch: station cells where the old road is kept as it is (1); nothing is built there. */
+  keptCells?: Uint8Array;
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
   /** `gaps`: junction openings in the wall lines, per station (1 = no wall can stand there) */
   noise: { receivers: NoiseReceiver[]; footprint: NoiseFootprint | null; gaps?: { L: Uint8Array; R: Uint8Array } };

@@ -24,7 +24,8 @@ export const REMOVAL = {
 const UNDER = 1;
 
 export interface ReplacementWork {
-  kind: 'removal' | 'reconnection' | 'junction' | 'land' | 'noise-wall' | 'buyout';
+  /** `kept`: where the old road stays as it is, what the road's own bill charged there (a credit) */
+  kind: 'removal' | 'reconnection' | 'junction' | 'land' | 'noise-wall' | 'buyout' | 'kept';
   /** where along the new road, for display */
   s: number; x: number; y: number;
   /** removed old road length, or link length (0: the side road meets the new road where it is), m */
@@ -49,7 +50,9 @@ export function sideJunctionCost(cls: string): number {
 /** `base` is the network WITH the old stretch (the cut network has lost it); `way` the old stretch's
  * legacy way; `branchWays` the legacy way of every side road at the stretch's branch connections. */
 export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, way: number,
-  connections: readonly ConnectionDesign[], branchWay: (sourceId: string) => number | undefined): Replacement {
+  connections: readonly ConnectionDesign[], branchWay: (sourceId: string) => number | undefined,
+  /** station cells where the old road is kept as it is (project-kept.ts): no works, already credited whole */
+  kept?: Uint8Array): Replacement {
   const works: ReplacementWork[] = [], violations: Violation[] = [];
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   const da = base.wayStation(way, a.x, a.y), db = base.wayStation(way, b.x, b.y);
@@ -65,6 +68,7 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
     const p = old[k - 1], q = old[k], len = Math.hypot(q.x - p.x, q.y - p.y), steps = Math.max(1, Math.ceil(len / 5));
     for (let j = 0; j < steps; j++) {
       const t = (j + 0.5) / steps, x = p.x + t * (q.x - p.x), y = p.y + t * (q.y - p.y), n = nearest(r, x, y);
+      if (kept?.[n.i]) continue; // the old road stays as it is here
       if (n.d > r.cell.width[n.i] / 2 + UNDER) { removed += len / steps; at ??= { x, y }; continue; }
       // land credit: this piece of old road inside the new road's land take, at that station's land price
       const area = (len / steps) * Math.min(width, r.cell.width[n.i]), rate = r.cell.width[n.i] > 0 ? r.parts.land[n.i] / (r.cell.width[n.i] * r.ds) : 0;
@@ -95,6 +99,8 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
     if (side !== undefined && crossed.has(side)) continue;
     const sideCls = side !== undefined ? base.wayClass(side) : 'unclassified', row = ROAD_CLASSES[sideCls] ?? ROAD_CLASSES.unclassified;
     const n = nearest(r, c.position.x, c.position.y), gap = Math.max(0, n.d - r.cell.width[n.i] / 2);
+    // where the old road is kept, its junction with this side road stays as it is
+    if (kept?.[n.i]) continue;
     const urban = r.cell.urban[n.i] >= 0.5 ? 1 : 0, link = gap * row.roadPerKm[urban] / 1000;
     const what = row.label;
     if (gap > 2000) {

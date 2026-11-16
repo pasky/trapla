@@ -7,6 +7,7 @@ import { modeCapability } from './mode-policy';
 import type { ProjectDesign, RoadSpec, XYZ } from './project';
 import { ringWorks, tieInChecks, tieIns } from './tie-in';
 import { replacementWorks, type Replacement, type ReplacementWork } from './project-replacement';
+import { applyKept, keptCells } from './project-kept';
 import { ROAD_CLASSES } from './data/urban';
 
 export type ProjectRoadEvaluation =
@@ -17,7 +18,9 @@ export type ProjectRoadEvaluation =
       /** A rebuilt stretch: removing its old road and reconnecting its side roads (C1 b). */
       replacement?: Replacement;
       /** A roundabout's ring at an end: its land and the houses on it. */
-      ringWorks?: ReplacementWork[] }
+      ringWorks?: ReplacementWork[];
+      /** A rebuilt stretch: what the kernel billed where the old road is kept as it is (a credit). */
+      keptWork?: ReplacementWork }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment'
       | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 
@@ -100,9 +103,16 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
     const found = tieInChecks(ties, result, roads, ctx.terrain, ctx.buildings);
     if (found.length) { result.violations.push(...found); result.valid = false; }
   }
+  // Where a rebuilt stretch stays on its old road, the old road is kept as it is: no norm, no works, no bill.
+  let kept: Uint8Array | undefined, keptWork: ReplacementWork | null = null;
+  if (route.source && sourceWay !== undefined && ctx.roads) {
+    const da = ctx.roads.wayStation(sourceWay, a.x, a.y), db = ctx.roads.wayStation(sourceWay, b.x, b.y);
+    kept = keptCells(result, ctx.roads.wayPath(sourceWay, Math.min(da, db), Math.max(da, db)));
+    keptWork = applyKept(result, kept);
+  }
   // The replacement's own works; without the old road's link (no road links) it cannot be priced.
   const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview
-    ? replacementWorks(route, result, ctx.roads, sourceWay, project.connections, id => options.sourceWays?.get(id)) : undefined;
+    ? replacementWorks(route, result, ctx.roads, sourceWay, project.connections, id => options.sourceWays?.get(id), kept) : undefined;
   if (replacement?.violations.length) { result.violations.push(...replacement.violations); result.valid = false; }
   const unpriced = [...route.source && !replacement && !options.preview ? ['source-needs-network' as const] : [], ...spec.operations.trafficUnknown ? ['traffic-unknown' as const] : []];
   const junctionEnds = ties.filter(t => t.junction.kind !== 'continuation').map(t => t.end);
@@ -113,5 +123,5 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
       label: `Roundabout's ring: ${Math.round(w.area)} m² of land${w.removed.length ? `, ${w.removed.length} building${w.removed.length > 1 ? 's' : ''} removed` : ''}` };
   });
   return { status: 'evaluated', result, ...(unpriced.length ? { unpriced } : {}), ...(junctionEnds.length ? { junctionEnds } : {}),
-    ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}) };
+    ...(replacement ? { replacement } : {}), ...(rings.length ? { ringWorks: rings } : {}), ...(keptWork ? { keptWork } : {}) };
 }

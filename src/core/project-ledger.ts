@@ -94,7 +94,9 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     for (const v of [result.dayL[i], result.dayR[i]]) if (Number.isFinite(v)) r = Math.max(r, Math.abs(v));
     return r;
   };
-  for (let i = 1; i < result.n; i++) out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i],
+  // (where a rebuilt stretch keeps its old road nothing is built: no land, no works; project-kept.ts)
+  const kept = result.keptCells;
+  for (let i = 1; i < result.n; i++) if (!(kept?.[i - 1] && kept[i])) out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i],
     r: Math.max(reach(i - 1), reach(i)) + pad });
   if (result.n === 1) out.push({ ax: result.x[0], ay: result.y[0], bx: result.x[0], by: result.y[0], r: reach(0) + pad });
   const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0) => {
@@ -134,8 +136,10 @@ function touchedRoads(result: Result): { roads: Set<number>; closes: boolean } {
 
 interface NoiseRoute { chunks: Chunk[]; excess: number; reach: number; minX: number; minY: number; maxX: number; maxY: number;
   receivers: Map<number, { removed: boolean; level: number }> }
-const noiseLine = (result: Result) => chunks(Array.from({ length: Math.max(0, result.n - 1) }, (_, k) =>
-  ({ ax: result.x[k], ay: result.y[k], bx: result.x[k + 1], by: result.y[k + 1], r: 0 })));
+// (a part kept as the old road is the existing road with its existing traffic, not a new source)
+const noiseLine = (result: Result) => chunks(Array.from({ length: Math.max(0, result.n - 1) }, (_, k) => k)
+  .filter(k => !(result.keptCells?.[k] && result.keptCells[k + 1]))
+  .map(k => ({ ax: result.x[k], ay: result.y[k], bx: result.x[k + 1], by: result.y[k + 1], r: 0 })));
 /** Is any part of the road line closer than `reach`? Early exit: the decision, not the distance. */
 function withinReach(route: NoiseRoute, x: number, y: number, reach: number): boolean {
   if (!(reach > 0)) return false;
@@ -164,7 +168,10 @@ function noiseRoute(route: ScreenRoute, margin: number): NoiseRoute {
     r.reach = high;
   } else if (!Number.isFinite(excess) && excess > 0) r.reach = Infinity;
   if (Number.isNaN(excess)) r.reach = NaN; // unknown source: counts at every house
+  const kept = route.result.keptCells;
   for (let i = 0; i < route.result.n; i++) {
+    // (a cell with kept cells on both sides is no source: an all-kept stretch reaches no house)
+    if (kept?.[i] && kept[Math.max(0, i - 1)] && kept[Math.min(route.result.n - 1, i + 1)]) continue;
     r.minX = Math.min(r.minX, route.result.x[i]); r.maxX = Math.max(r.maxX, route.result.x[i]);
     r.minY = Math.min(r.minY, route.result.y[i]); r.maxY = Math.max(r.maxY, route.result.y[i]);
   }

@@ -106,8 +106,11 @@ describe('a side road joined to our road', () => {
     // its first metres inside our road's earthworks are not built (or bought) twice
     const credit = project.works.items.find(w => w.owner.id === 'side' && w.cost < 0)!;
     expect(credit.label).toMatch(/^Its first \d+ m are inside our road’s earthworks: not built twice$/);
-    expect(-credit.cost).toBeLessThan(project.cost.alone.side / 10);
-    expect(project.cost.total).toBeCloseTo(project.cost.alone[mission.id] + project.cost.alone.side + junction.cost + credit.cost, 3);
+    const own = project.routes.side.legacy!.cost.total;
+    expect(-credit.cost).toBeLessThan(own / 10);
+    // a road's own price is its bill with its own works (junction, credit); the project adds the roads up
+    expect(project.cost.alone.side).toBeCloseTo(own + junction.cost + credit.cost, 3);
+    expect(project.cost.total).toBeCloseTo(project.cost.alone[mission.id] + project.cost.alone.side, 3);
     expect(project.issues.some(i => i.code === 'roads-cross' || i.code === 'roads-overlap' || i.code === 'connection-pending')).toBe(false);
   });
   it('keeps 1.5 km from our road\'s ends and other junctions, and follows our road when it moves', () => {

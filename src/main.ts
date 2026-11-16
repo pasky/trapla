@@ -29,7 +29,7 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { strayDistance } from './ui/road-edit';
+import { DEFAULT_SPEED, strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
@@ -392,8 +392,12 @@ async function main() {
         } catch { stray = NaN; }
       }
       const accepted = projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
+      // why this design speed: the lowest the norm allows for a new road; the map's limit is for noise and time
+      const signed = (() => { try { return groundRoadSourceInfo(transportIndex, interval.sourceId).taggedSpeed; } catch { return null; } })();
+      const speed = route.specification.designSpeed === DEFAULT_SPEED
+        ? ` New parts are designed for ${DEFAULT_SPEED} km/h, the lowest the norm allows for a new road${signed && signed !== DEFAULT_SPEED ? ` (signed ${signed} km/h)` : ''}.` : '';
       what.textContent = `Rebuilt stretch: its line is drawn as bends${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
-        ? 'The old road is gone where the new line leaves it.' : 'Checking the change…'}`;
+        ? 'Where it stays on the old road, the old road is kept as it is; where it leaves it, a new road is built and the old one removed.' : 'Checking the change…'}${speed}`;
     } else {
       const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
         : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
@@ -476,7 +480,22 @@ async function main() {
       }
       row.append(label, choice); junctions.append(row);
     }
-    head.append(h, what, ...(junctions.childElementCount ? [junctions] : []), ...(works.length ? [list] : []), form, remove);
+    // where the line stays on the old road, the old road is kept although a new road could not be built so
+    const notes = document.createElement('div'); notes.className = 'route-kept';
+    const bends = [...new Set((r.inherited ?? []).flatMap(v => v.pis ?? (v.pi !== undefined ? [v.pi] : [])))].sort((p, q) => p - q);
+    if (r.inherited?.length) {
+      const text = document.createElement('span');
+      text.textContent = `The old road is tighter than the norm ${bends.length ? `at bend${bends.length > 1 ? 's' : ''} ` : 'here'}`;
+      notes.append(text);
+      bends.forEach((i, k) => {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = String(i + 1);
+        b.title = r.inherited!.filter(v => v.pi === i || v.pis?.includes(i)).map(v => v.title).join('; ');
+        b.onclick = () => select({ kind: 'bend', i }, true);
+        notes.append(b, k + 1 < bends.length ? ', ' : '');
+      });
+      notes.append(': kept as it is. Move it off the old road and it must meet the norm.');
+    }
+    head.append(h, what, ...(notes.childElementCount ? [notes] : []), ...(junctions.childElementCount ? [junctions] : []), ...(works.length ? [list] : []), form, remove);
     return head;
   };
   const showSource = (hit: SourceHit) => {
@@ -718,7 +737,7 @@ async function main() {
         profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
-        if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
+        if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total + (shown.keptCredit ?? 0);
         hud.setResult(shown, rd, store.best); projectScore(true); took('hud');
         curveEdit.refresh(); took('curveEdit');
       }

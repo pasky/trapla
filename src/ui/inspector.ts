@@ -410,7 +410,8 @@ export class Inspector {
     else if (rec) {
       state = rec.status === 'wall' ? `Stays · behind a ${rec.wall} m wall` : rec.status === 'cut' ? 'Stays · shielded by a cut' : 'Stays · quiet enough';
       why = `${(limit + rec.mitigated).toFixed(1)} dB at night at the top floor (limit ${limit}).`;
-    } else state = 'Stays · far from the road';
+    } else if (r.besideOldRoad?.includes(j)) { state = 'Stays'; why = 'The old road is kept as it is here: nothing changes for this house.'; }
+    else state = 'Stays · far from the road';
     if (action === 'keep' && !kept?.hit && !rec?.unresolved) why = (why ? `${why} ` : '') + 'You keep it.';
     // What this road does on its own always stands (a house in its way is gone, priced or not); only the
     // noise of the project's other roads may still be missing here, and the card says so.

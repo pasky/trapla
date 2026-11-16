@@ -1,6 +1,10 @@
 // Turning any mapped road into an editable project road, and building a new one. Pure helpers: the
 // caller dispatches the returned commands as one undoable step.
-import type { PI } from '../core/horizontal';
+import { buildAlignment, station, type PI, type Vec2 } from '../core/horizontal';
+import { horizontalViolations } from '../core/checks';
+import { horizontalRules } from '../core/data/norms';
+import type { CategoryId } from '../core/data/categories';
+import { KEPT_TOLERANCE } from '../core/project-kept';
 import type { Anchor, EndpointConstraint, ProjectDesign, RoadSpec, RouteDesign, SourceInterval, XYZ } from '../core/project';
 import type { ProjectCommand } from '../project-store-contract';
 import type { ProjectTransportIndex } from '../core/project-network';
@@ -19,8 +23,14 @@ export const MIN_STRETCH = 60;
 export const FIT_TOLERANCE = 8;
 /** Bends closer than this along the old road are merged: room for two curves at 70 km/h, m. */
 export const MIN_BEND_GAP = 80;
-/** First design speed of a rebuilt or new road: the lowest the game has rules for (70/80/90). */
+/** First design speed of a rebuilt or new road, km/h: the lowest ČSN 73 6101:2018 allows for S 7.5 / S 9.5
+ * (nominal 90, lowered by up to 20 where justified; research/00 §4.1). An existing corridor is that
+ * justification; the player can raise it. The map's `maxspeed` is the signed limit, not a design speed. */
 export const DEFAULT_SPEED = 70;
+/** PROVISIONAL game tolerance, m: how far the automatic conversion may move the line off the old road so
+ * that its bends meet the norm: as far as still counts as "on the old road" (core/project-kept.ts), so the
+ * conversion itself never builds anything anew. Beyond it the bend stays as the old road has it. */
+export const REPAIR_TOLERANCE = KEPT_TOLERANCE;
 
 export type Rebuildable = { ok: true; info: ReturnType<typeof groundRoadSourceInfo>; spec: Pick<RoadSpec, 'legalClass' | 'crossSection'> }
   | { ok: false; why: string };
@@ -95,6 +105,84 @@ export function fitBends(path: readonly { x: number; y: number; s: number }[], t
   }
   return out;
 }
+/** The old line as bends, ready to be edited: `fitBends`, then
+ * 1. a bend whose norm-sized curve would leave the old road by more than REPAIR_TOLERANCE (a sharp old
+ *    corner) keeps the old road's own, tighter curve: the largest radius that stays within FIT_TOLERANCE;
+ * 2. a bounded validity-first repair: each round removes one bend involved in a problem, or slides it along
+ *    one of its legs, taking the change that leaves the fewest problems and then strays least, never
+ *    further than REPAIR_TOLERANCE from the old road.
+ * What still misses the norm lies on the old road and is kept as it is (core/project-kept.ts): the
+ * conversion itself builds nothing anew. */
+export function fitRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: number }[], speed: number, category: CategoryId): PI[] {
+  const rules = horizontalRules(speed, category), far = distanceTo(path);
+  const measure = (pis: PI[]) => {
+    const al = buildAlignment(a, b, pis, rules), st = station(al, 5);
+    const off = new Float64Array(st.n); let stray = 0;
+    for (let k = 0; k < st.n; k++) stray = Math.max(stray, off[k] = far(st.x[k], st.y[k]));
+    /** how far bend i's curve leaves the old road */
+    const bend = (i: number) => {
+      const c = al.curves[i]; let worst = 0;
+      if (c) for (let k = Math.max(0, Math.floor((c.sStart - 5) / 5)); k < st.n && st.s[k] <= c.sEnd + 5; k++) worst = Math.max(worst, off[k]);
+      return worst;
+    };
+    // (without the design: no fix suggestions are worked out, only what is wrong and at which bends)
+    return { problems: horizontalViolations(al, speed), stray, bend, radius: (i: number) => al.curves[i]?.r ?? 0 };
+  };
+  let pis = fitBends(path), now = measure(pis);
+  for (let i = 0; i < pis.length; i++) {
+    if (now.bend(i) <= REPAIR_TOLERANCE) continue;
+    let low = 10, high = now.radius(i);
+    if (!(high > low)) continue;
+    const at = (r: number) => pis.map((p, k) => k === i ? { ...p, r } : p);
+    for (let k = 0; k < 6; k++) { const mid = (low + high) / 2; if (measure(at(mid)).bend(i) <= FIT_TOLERANCE) low = mid; else high = mid; }
+    pis = at(Math.round(low)); now = measure(pis);
+  }
+  // bounded: the bends of the first problem only, eight rounds
+  for (let round = 0; round < 8 && now.problems.length; round++) {
+    let best: { pis: PI[]; m: ReturnType<typeof measure> } | null = null;
+    const limit = Math.max(REPAIR_TOLERANCE, now.stray), first = now.problems.find(v => v.pis?.length || v.pi !== undefined);
+    for (const i of first?.pis ?? (first?.pi !== undefined ? [first.pi] : [])) {
+      if (!pis[i]) continue;
+      const candidates: PI[][] = [pis.filter((_, k) => k !== i)];
+      for (const toward of [pis[i - 1] ?? a, pis[i + 1] ?? b]) {
+        const d = Math.hypot(toward.x - pis[i].x, toward.y - pis[i].y);
+        for (const step of [20, 40, 70, 110]) if (step < 0.6 * d)
+          candidates.push(pis.map((p, k) => k === i ? { ...p, x: p.x + (toward.x - p.x) * step / d, y: p.y + (toward.y - p.y) * step / d } : p));
+      }
+      for (const c of candidates) {
+        const m = measure(c);
+        if (m.stray > limit || m.problems.length >= now.problems.length) continue;
+        if (!best || m.problems.length < best.m.problems.length || (m.problems.length === best.m.problems.length && m.stray < best.m.stray)) best = { pis: c, m };
+      }
+    }
+    if (!best) break;
+    pis = best.pis; now = best.m;
+  }
+  return pis;
+}
+/** Distance from a point to a polyline, through a 100 m grid of its segments (a whole-line scan only for
+ * points further than 100 m from it). */
+function distanceTo(path: readonly { x: number; y: number }[]): (x: number, y: number) => number {
+  const CELL = 100, grid = new Map<string, number[]>();
+  for (let k = 1; k < path.length; k++) {
+    const p = path[k - 1], q = path[k];
+    for (let cx = Math.floor(Math.min(p.x, q.x) / CELL) - 1; cx <= Math.floor(Math.max(p.x, q.x) / CELL) + 1; cx++)
+      for (let cy = Math.floor(Math.min(p.y, q.y) / CELL) - 1; cy <= Math.floor(Math.max(p.y, q.y) / CELL) + 1; cy++) {
+        const key = `${cx}:${cy}`, list = grid.get(key); if (list) list.push(k); else grid.set(key, [k]);
+      }
+  }
+  const segment = (k: number, x: number, y: number) => {
+    const p = path[k - 1], q = path[k], dx = q.x - p.x, dy = q.y - p.y;
+    const t = Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(x - p.x - t * dx, y - p.y - t * dy);
+  };
+  return (x, y) => {
+    let best = Infinity;
+    for (const k of grid.get(`${Math.floor(x / CELL)}:${Math.floor(y / CELL)}`) ?? []) best = Math.min(best, segment(k, x, y));
+    if (best === Infinity) for (let k = 1; k < path.length; k++) best = Math.min(best, segment(k, x, y));
+    return best;
+  };
+}
 function intersect(p: { x: number; y: number }, q: { x: number; y: number }, u: { x: number; y: number }, v: { x: number; y: number }) {
   const d1x = q.x - p.x, d1y = q.y - p.y, d2x = v.x - u.x, d2y = v.y - u.y, den = d1x * d2y - d1y * d2x;
   if (Math.abs(den) < 1e-9) return null;
@@ -129,8 +217,12 @@ export function rebuildCommand(base: ProjectTransportIndex, interval: SourceInte
       existingWidth: what.info.width, designSpeed: DEFAULT_SPEED, operations: unknownTraffic(DEFAULT_SPEED) } });
   const route = command.routes[0];
   if (route.kind !== 'road' || route.alignment.kind !== 'reference') throw new Error('Unexpected promotion');
-  route.specification = { kind: 'road', policy: 'legacy-road', ...what.spec, designSpeed: DEFAULT_SPEED, operations: unknownTraffic(DEFAULT_SPEED) };
-  route.alignment = { kind: 'pi', pis: fitBends(route.alignment.path), vertical: { kind: 'auto', pins: [] }, controls: { structureOverrides: [] } };
+  // Noise and travel time use the signed speed where the map has one; the line is designed for DEFAULT_SPEED.
+  const operations = unknownTraffic(DEFAULT_SPEED);
+  if (what.info.taggedSpeed !== null && what.info.taggedSpeed !== DEFAULT_SPEED) { operations.speed = what.info.taggedSpeed; operations.speedPolicy = 'independent'; }
+  route.specification = { kind: 'road', policy: 'legacy-road', ...what.spec, designSpeed: DEFAULT_SPEED, operations };
+  route.alignment = { kind: 'pi', pis: fitRoad(route.endpoints.a.position, route.endpoints.b.position, route.alignment.path, DEFAULT_SPEED, what.spec.crossSection as CategoryId),
+    vertical: { kind: 'auto', pins: [] }, controls: { structureOverrides: [] } };
   return command;
 }
 
