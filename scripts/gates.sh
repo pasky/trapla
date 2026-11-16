@@ -12,8 +12,8 @@
 #
 # Each gate's output goes to $GATES_LOG/<gate>.log (default /tmp/trapla-gates-<branch>); the summary says
 # PASS / FAIL and the time taken; exit 1 if any gate failed. Timed runs (drag-perf) take the exclusive
-# browser lock and are run again once if they miss a budget while the host is loaded (load > 6); untimed
-# browser runs wait for queued timed runs, then take the shared lock under nice (the protocol in AGENTS.md).
+# browser lock; untimed browser runs wait for queued timed runs, then take the shared lock under nice (the
+# protocol in AGENTS.md). Either is run again once if it fails while the host is loaded (load > 6).
 # The outcome audit never fails the run: its flags are for reading (it prints how many).
 set -u
 cd "$(dirname "$0")/.."
@@ -76,7 +76,13 @@ run() { # name kind command
       fi ;;
     browser)
       while pgrep -f "^flock -x" >/dev/null; do sleep 10; done
-      flock -s "$LOCK" nice -n 10 bash -c "$cmd" >"$log/$name.log" 2>&1; status=$? ;;
+      flock -s "$LOCK" nice -n 10 bash -c "$cmd" >"$log/$name.log" 2>&1; status=$?
+      # (they play in real time: on a loaded host a 6 s toast can be gone before the script clicks it)
+      if [ $status -ne 0 ] && awk '{ exit !($1 > 6) }' /proc/loadavg; then
+        mv "$log/$name.log" "$log/$name.first.log"; sleep 20
+        flock -s "$LOCK" nice -n 10 bash -c "$cmd" >"$log/$name.log" 2>&1; status=$?
+        [ $status -eq 0 ] && echo "(failed once under load, passed the second time: $log/$name.first.log)" >>"$log/$name.log"
+      fi ;;
   esac
   local took=$((SECONDS - start)) note=""
   [ "$name" = outcome-audit ] && note="  $(grep -o '^## Flags ([0-9]*)' "$log/$name.log" | tr -d '#' | xargs): for reading, in $log/$name.log"
