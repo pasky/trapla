@@ -165,6 +165,8 @@ export const DIRECTIONS_TEXT = {
 
 
 /** Automatic on a motorway: no junction anywhere along it. */
+/** A hairpin where it may stand (core/design-speed.ts hairpinViolations): what it still needs (research/47 §3) */
+export const HAIRPIN_NOTE = 'Needs the road authority\'s approval: the road standard has no hairpins (as on I/44 Červenohorské sedlo).';
 export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
 /** Automatic on a railway: no level crossing anywhere along it (game rule, M1). */
 export const RAILWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the railway, an underpass through a high enough embankment or a reroute to a nearby crossing. A new railway has no level crossings.';

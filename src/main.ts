@@ -703,6 +703,10 @@ async function main() {
     heightAt: (s) => addHeightAt(s),
     commit: () => store.commit(),
     radius: (i, r, commit = true) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
+    // a bend's stretch speed: the road's own is no setting of its own
+    bendSpeed: (i, v) => store.update((d) => { const p = d.pis[i]; if (!p) return; if (v === null || v === d.speed) delete p.speed; else p.speed = v; }),
+    // a hairpin takes its own radius: back to Auto either way
+    hairpin: (i, on) => store.update((d) => { const p = d.pis[i]; if (!p) return; if (on) p.hairpin = true; else delete p.hairpin; p.r = null; }),
     deletePi,
     bendHeight: (i) => { const b = last && bendStations(last, store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     vpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
