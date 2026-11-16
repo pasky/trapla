@@ -898,6 +898,12 @@ no long tasks). Crossing scene: III/1057's motorway bridge stays 230 m, its wall
 +2.28 M; whole bill +2.26 M. Screenshots inspected: crossing, combined-noise card and inward-follow body.
 Photo tiles did not arrive from the external service, so the photo-overlay check was skipped by both scenes.
 
+Final review since `f9f5d9d` on `35e2cee`: no P1 findings. Two P2 edit-semantics cases remain for the next pass:
+a distant pin/crossing edit in Both directions mode bakes the followed line into the saved spine and removes
+Reset; a pin placed through the Auto peer is stored on the owning direction, so pulling that owner outward
+moves the pin's ownership away from the direction through which it was placed. The latter is not yet covered
+by the local-pin test (which only checks the still-followed body). Decide/fix these before the final yield.
+
 Still open:
 - Rebuilt railway `routeHead` is null: no works list or “Keep the old track” button on its own card.
 - Rebuilt railway continuations can still be `connection-pending`; some fresh rebuild ends meet tight old
