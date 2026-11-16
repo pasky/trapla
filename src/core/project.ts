@@ -123,8 +123,22 @@ interface CorridorBase {
   formationPolicy: string;
   correspondence: { spineS: number; forwardS: number; reverseS: number }[];
 }
+/** One direction's own line inside a separate stretch of a paired motorway (core/motorway-stretches.ts):
+ * the bends of its centre line (the common spine displaced there; its carriageway is that line's
+ * offset) replacing the spine's bends k0…k1−1, and its own height pins / structure and wall choices.
+ * Stations are spine chainage. */
+export interface SeparateLine {
+  pis: Design['pis'];
+  pins: NonNullable<Design['gradePins']>;
+  structureOverrides?: Design['structureOverrides'];
+  wallOverrides?: Design['wallOverrides'];
+}
+/** Where one or both directions leave the common line: spine bends [k0, k1) replaced by own lines, the
+ * lines differ from the spine over spine chainage [a, b]. Outside, both directions are the one paired
+ * body; a direction without an own line here follows the spine (its carriageway is the spine's offset). */
+export interface SeparateStretch { id: string; k0: number; k1: number; a: number; b: number; forward?: SeparateLine; reverse?: SeparateLine }
 export type CorridorDesign = CorridorBase & (
-  | { mode: 'paired'; spine: OwnedAlignment }
+  | { mode: 'paired'; spine: OwnedAlignment; stretches?: SeparateStretch[] }
   | { mode: 'independent'; retainedSpine: OwnedAlignment }
 );
 export type ConnectionPort = { kind: 'route'; routeId: RouteId; s: number } | { kind: 'source'; location: SourceLocation };

@@ -2,13 +2,18 @@
 // two carriageway kernels. Directional children carry identity, operations and acoustic sources;
 // the spine owns the alignment, profile and structure controls (C0 corridor contract).
 import type { Design, EvalContext, EvalOptions, Result } from './evaluate';
+import type { VPI } from './vertical';
 import { evaluate } from './evaluate';
 import { CATEGORIES } from './data/categories';
 import { designSpeeds } from './data/norms';
 import { MOTORWAY_150_PILOT } from './data/motorway';
 import { modeCapability } from './mode-policy';
-import type { CorridorDesign, ProjectDesign, RouteDesign, RoadOperations } from './project';
-import { buildAlignment, station, type Alignment, type PI, type Vec2 } from './horizontal';
+import type { CorridorDesign, ProjectDesign, RouteDesign, RoadOperations, SeparateStretch, XYZ } from './project';
+import { buildAlignment, pointAt, station, type Alignment, type PI, type Vec2 } from './horizontal';
+import { carryStretches, compositePis, compositeStart, editStretches, JOIN_RULES, joinedRanges as joinedOn, locateStretches,
+  pairStations as pair, type Direction } from './motorway-stretches';
+import { sliceResult, stitchResult } from './result-stitch';
+import { timeViolation } from './checks';
 import { horizontalRules } from './data/norms';
 import { childStationAt, offsetCurvePath } from './offset-path';
 import { childControls } from './motorway-commands';
@@ -84,6 +89,7 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
   if (d.category !== MOTORWAY_CATEGORY || !designSpeeds(d.category).includes(d.speed)) throw new Error('Motorway design needs a motorway category and speed');
   if (d.objectData && d.objectData !== project.objectData) throw new Error('Foreign object binding needs repair');
   const { category: _c, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, ...controls } = structuredClone(d);
+  const before = corridor.spine.kind === 'pi' ? corridor.spine.pis : [], oldSpeed = corridorSpeed(next, corridor);
   corridor.spine = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
     : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId } })) }) },
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
@@ -99,7 +105,31 @@ export function replaceCorridorFromDesign(project: ProjectDesign, corridorId: st
     }
   }
   next.buildingOverrides = buildingOverrides ?? [];
+  if (corridor.stretches?.length) {
+    // Both directions moved: where the shared line changed next to a separate stretch, they follow it
+    // there again; elsewhere the own lines stay (a new design speed changes the shared line everywhere).
+    const carried = speed === oldSpeed ? carryStretches(before, pis, corridor.stretches) : { kept: [], after: [], dropped: corridor.stretches.length };
+    const rules = horizontalRules(speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
+    const dL = buildAlignment(A, B, pis, rules).length - buildAlignment(A, B, before, rules).length;
+    carried.kept.forEach((t, j) => { if (carried.after[j] && dL) shiftStretch(t, dL); });
+    const located = locateStretches(A, B, pis, carried.kept, rules);
+    if (located.length) corridor.stretches = located; else delete corridor.stretches;
+  }
   return next;
+}
+const corridorSpeed = (project: ProjectDesign, corridor: CorridorDesign) => {
+  const r = project.routes.find(x => x.id === corridor.children.forward);
+  return r?.kind === 'motorway' ? r.specification.designSpeed : NaN;
+};
+/** Own height pins and choices are spine chainage: a change before the stretch moves them along. */
+function shiftStretch(t: SeparateStretch, dL: number) {
+  t.a += dL; t.b += dL;
+  for (const line of [t.forward, t.reverse]) {
+    if (!line) continue;
+    line.pins = line.pins.map(p => ({ ...p, s: p.s + dL }));
+    if (line.structureOverrides) line.structureOverrides = line.structureOverrides.map(o => ({ ...o, s0: o.s0 + dL, s1: o.s1 + dL }));
+    if (line.wallOverrides) line.wallOverrides = line.wallOverrides.map(o => ({ ...o, s0: o.s0 + dL, s1: o.s1 + dL }));
+  }
 }
 
 /** `unpriced`: engineered and shown, but the project cannot price it (no interchange at its ends). */
@@ -107,7 +137,10 @@ export type CorridorEvaluation =
   | { status: 'evaluated'; result: Result; unpriced?: 'motorway-needs-interchange'[] }
   /** Separate directions: each its own kernel result; the corridor ledger (absent in a drag preview,
    * which evaluates only the dragged direction) counts their shared formation, land and houses once. */
-  | { status: 'split'; results: Record<string, Result>; ledger: SplitLedger | null; unpriced?: 'motorway-needs-interchange'[] }
+  | { status: 'split'; results: Record<string, Result>; ledger: SplitLedger | null; unpriced?: 'motorway-needs-interchange'[];
+      /** Separate stretches of a paired corridor: what is drawn (the shared body's parts outside them, each
+       * direction's own carriageway inside), and the spine's evaluation they were cut from. */
+      drawn?: DrawnPart[]; spine?: Result }
   | { status: 'incomplete'; reason: 'unsupported-mode' | 'unsupported-policy' | 'unsupported-alignment' | 'unresolved-binding'
       | 'mission-needs-network' | 'unsupported-crossing' | 'separate-carriageways' };
 
@@ -165,14 +198,21 @@ export function evaluateProjectCorridor(ctx: EvalContext, project: ProjectDesign
     const [f, r] = kids.map(k => results[k.id]);
     return { status: 'split', results, ledger: f && r && !options.preview ? splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y)) : null, ...(unpriced ? { unpriced } : {}) };
   }
+  const { only: _only, ...spineOptions } = options;
+  if (corridor.stretches?.length) return { ...evaluateSeparated(ctx, project, corridor, kids, goal, options), ...(unpriced ? { unpriced } : {}) };
+  return { status: 'evaluated', result: evaluateSpine(ctx, project, corridor, kids, goal, spineOptions), ...(unpriced ? { unpriced } : {}) };
+}
+type Goal = ProjectDesign['mission']['connections'][number] | undefined;
+/** ONE kernel evaluation of the paired corridor's common spine (D 27.5). */
+function evaluateSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
+  options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
   const ops = corridorOperations(project, corridor), a = corridor.endpoints.a.position, b = corridor.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
-  const result = evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
+  return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, corridorDesign(project, corridor),
   { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: ops.speed, speedLimit150: kids.every(speedLimit150),
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: goal?.maxTravelMin !== undefined, capacity: goal?.demand !== undefined } });
-  return { status: 'evaluated', result, ...(unpriced ? { unpriced } : {}) };
 }
 
 /** A fresh paired motorway mission: corridor A→B plus two directional children (half the demand each). */
@@ -336,44 +376,12 @@ export function replaceCarriagewayFromDesign(project: ProjectDesign, routeId: st
   return next;
 }
 
-/** For every station of `a`, the other direction's matching point: lateral offset (left of `a`
- * positive), its chainage and tangent agreement. Bounded local search along both polylines. */
 interface Line { n: number; s: ArrayLike<number>; x: ArrayLike<number>; y: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number> }
-export function pairStations(a: Line, b: Line): { d: Float64Array; sb: Float64Array; dot: Float64Array } {
-  const d = new Float64Array(a.n).fill(NaN), sb = new Float64Array(a.n).fill(NaN), dot = new Float64Array(a.n).fill(NaN);
-  let j = -1;
-  const dist = (i: number, k: number) => (a.x[i] - b.x[k]) ** 2 + (a.y[i] - b.y[k]) ** 2;
-  for (let i = 0; i < a.n; i++) {
-    if (j < 0 || i % 50 === 0) { let best = Infinity; for (let k = 0; k < b.n; k += 4) { const q = dist(i, k); if (q < best) { best = q; j = k; } } }
-    for (let moved = true, guard = 0; moved && guard < 400; guard++) {
-      moved = false;
-      for (const k of [j - 1, j + 1]) if (k >= 0 && k < b.n && dist(i, k) < dist(i, j)) { j = k; moved = true; }
-    }
-    // foot of the perpendicular from b's segment onto a's normal line
-    const nx = -a.ty[i], ny = a.tx[i];
-    for (const k of [j - 1, j]) {
-      if (k < 0 || k + 1 >= b.n) continue;
-      const u0 = (b.x[k] - a.x[i]) * a.tx[i] + (b.y[k] - a.y[i]) * a.ty[i], u1 = (b.x[k + 1] - a.x[i]) * a.tx[i] + (b.y[k + 1] - a.y[i]) * a.ty[i];
-      if ((u0 > 0) === (u1 > 0) && u0 !== 0) continue;
-      const t = u0 / (u0 - u1 || 1e-12), px = b.x[k] + (b.x[k + 1] - b.x[k]) * t, py = b.y[k] + (b.y[k + 1] - b.y[k]) * t;
-      d[i] = (px - a.x[i]) * nx + (py - a.y[i]) * ny; sb[i] = b.s[k] + (b.s[k + 1] - b.s[k]) * t;
-      dot[i] = a.tx[i] * b.tx[k] + a.ty[i] * b.ty[k];
-      break;
-    }
-  }
-  return { d, sb, dot };
-}
-
+export const pairStations = pair;
 /** Plan-only: where the other direction runs alongside on the left as one formation (crowns touch). */
 export const JOINED_TOLERANCE = 0.5;
-export function joinedRanges(a: Line, b: Line): { s0: number; s1: number }[] {
-  const p = pairStations(a, b), out: { s0: number; s1: number }[] = [];
-  for (let i = 0; i < a.n; i++) {
-    if (!(Math.abs(p.d[i] - 2 * CARRIAGEWAY_OFFSET) <= JOINED_TOLERANCE && p.dot[i] < -0.95)) continue;
-    const last = out[out.length - 1];
-    if (last && a.s[i] - last.s1 <= a.s[1] - a.s[0] + 1e-6) last.s1 = a.s[i]; else out.push({ s0: a.s[i], s1: a.s[i] });
-  }
-  return out;
+export function joinedRanges(a: Line, b: Line, side: 'L' | 'R' = 'L', same = false): { s0: number; s1: number }[] {
+  return joinedOn(a, b, 2 * CARRIAGEWAY_OFFSET, JOINED_TOLERANCE, side, same);
 }
 
 const carriagewayLine = (route: MotorwayRoute) => {
@@ -413,7 +421,10 @@ export interface SplitLedger {
  * joined, the formation is one D 27.5 body (SPK: 50 % of the whole-category norm each, not 60 %).
  * A slope of one direction must not land on the other's carriageway. Station-wise transverse check on
  * the forward direction's normal (linear slope faces; benches ignored). */
-export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: number) => number): SplitLedger {
+export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: number) => number, same = false): SplitLedger {
+  // `same`: both run A→B (a separate stretch), so r's right side faces f; else r runs B→A, its left faces f
+  const facing = same ? { day: r.dayR, z: r.zDayR, farDay: r.dayL, farZ: r.zDayL } : { day: r.dayL, z: r.zDayL, farDay: r.dayR, farZ: r.zDayR };
+  const along = (dot: number, limit: number) => same ? dot > limit : dot < -limit;
   const w = CARRIAGEWAY_OFFSET, p = pairStations(f, r), out: SplitLedger = { credit: 0, parts: { joinedBase: 0, overlapEarth: 0, overlapLand: 0, buildings: 0 }, joinedLength: 0, overlapFill: 0, overlapCut: 0, violations: [] };
   const rate = (res: Result) => ({
     fill: res.quantities.fill > 0 ? (res.cost.earthDetail.fillPlacing + res.cost.earthDetail.borrow) / res.quantities.fill : 0,
@@ -448,9 +459,9 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
       if (!separated) clash(f.s[i], 2 * w - Math.abs(d), true);
       continue;
     }
-    if (!(p.dot[i] < -0.9) || d < 0) continue;
+    if (!along(p.dot[i], 0.9) || d < 0) continue;
     const joined = d <= 2 * w + JOINED_TOLERANCE;
-    if (joined && p.dot[i] < -0.95 && (Math.abs(zf - zr) > JOINED_TOLERANCE || (kf === KIND.tunnel) !== (kr === KIND.tunnel)))
+    if (joined && along(p.dot[i], 0.95) && (Math.abs(zf - zr) > JOINED_TOLERANCE || (kf === KIND.tunnel) !== (kr === KIND.tunnel)))
       // houses beside a joined stretch were left to the outer direction's noise check; that holds only
       // where the two run as one body at one height
       noiseGap(f.s[i]);
@@ -463,9 +474,9 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
     }
     if (kf !== KIND.earth || kr !== KIND.earth) continue;
     // Bodies in f's frame, left of f: f's crown edge w, slope to dayL; r's crown edge d − w, slope to d − dayL_r.
-    const dayF = f.dayL[i], dayR = at(r, p.sb[i], r.dayL), zDayF = f.zDayL[i], zDayR = at(r, p.sb[i], r.zDayL);
+    const dayF = f.dayL[i], dayR = at(r, p.sb[i], facing.day), zDayF = f.zDayL[i], zDayR = at(r, p.sb[i], facing.z);
     // Each body's top surface across f's normal: crown, then its slope faces on both sides (NaN outside it).
-    const farF = f.dayR[i], zFarF = f.zDayR[i], farR = at(r, p.sb[i], r.dayR), zFarR = at(r, p.sb[i], r.zDayR);
+    const farF = f.dayR[i], zFarF = f.zDayR[i], farR = at(r, p.sb[i], facing.farDay), zFarR = at(r, p.sb[i], facing.farZ);
     const face = (z: number, zDay: number, u: number, day: number) => u <= w ? z : u <= day ? z + (zDay - z) * (u - w) / Math.max(1e-6, day - w) : NaN;
     const topF = (x: number) => x >= 0 ? face(zf, zDayF, x, dayF) : face(zf, zFarF, -x, farF);
     const topR = (x: number) => x <= d ? face(zr, zDayR, d - x, dayR) : face(zr, zFarR, x - d, farR);
@@ -507,4 +518,266 @@ export function splitLedger(f: Result, r: Result, heightAt: (x: number, y: numbe
     detail: 'Where the two directions run side by side at different heights, the slope of one would stand on the other. Walls in the median are not built by the game.',
     rule: 'Engine limit: the two directions of a motorway share one formation only at the same height; otherwise each needs room for its own slopes.' });
   return out;
+}
+
+// ---- Separate stretches (core/motorway-stretches.ts) ---------------------------------------------------
+
+/** A part of a corridor with separate stretches as drawn: the shared body (paired section) or one
+ * direction's own carriageway (its median side `mirrored` when it is the reverse direction run A→B). */
+export interface DrawnPart { id: string; result: Result; section: 'paired' | 'carriageway'; mirrored?: boolean; direction?: Direction }
+
+const directionOf = (corridor: CorridorDesign, routeId: string): Direction => corridor.children.forward === routeId ? 'forward' : 'reverse';
+/** Station ranges a direction's own lines cover (spine chainage). */
+const ownRanges = (corridor: CorridorDesign, dir: Direction) => (corridor.mode === 'paired' ? corridor.stretches ?? [] : []).filter(t => t[dir]).map(t => [t.a, t.b] as const);
+const within = (ranges: readonly (readonly [number, number])[], s0: number, s1 = s0) => ranges.some(([a, b]) => s1 >= a && s0 <= b);
+
+/** One direction of a paired motorway as the road widgets edit it: the common spine with this direction's
+ * own bends in its separate stretches; heights pins and structure / wall choices of the shared body,
+ * and its own inside its stretches. Heights are Auto here (By hand is set for both directions). */
+export function directionDesign(project: ProjectDesign, routeId: string): Design {
+  const corridor = corridorOfRoute(project, routeId);
+  if (!corridor || corridor.mode !== 'paired') throw new Error('Not a direction of a paired motorway');
+  const dir = directionOf(corridor, routeId), d = corridorDesign(project, corridor), stretches = corridor.stretches ?? [];
+  const mine = ownRanges(corridor, dir), lines = stretches.flatMap(t => t[dir] ? [t[dir]!] : []);
+  return { ...d, pis: compositePis(d.pis, stretches, dir).pis, profileMode: 'auto', vpis: [],
+    gradePins: [...(d.profileMode === 'auto' ? d.gradePins ?? [] : []).filter(p => !within(mine, p.s)), ...lines.flatMap(l => l.pins)].sort((p, q) => p.s - q.s),
+    structureOverrides: [...(d.structureOverrides ?? []).filter(o => !within(mine, o.s0, o.s1)), ...lines.flatMap(l => l.structureOverrides ?? [])],
+    wallOverrides: [...(d.wallOverrides ?? []).filter(o => !within(mine, o.s0, o.s1)), ...lines.flatMap(l => l.wallOverrides ?? [])] };
+}
+
+/** Write one direction's edit back: a change of its bends makes it run on its own from a join before the
+ * change to a join after it (core/motorway-stretches.ts); outside, both directions stay the shared body.
+ * Height pins and structure / wall choices go to this direction's own line where it has one, else to the
+ * shared body; crossings and the design speed are the motorway's. */
+export function replaceDirectionFromDesign(project: ProjectDesign, routeId: string, d: Design,
+  newId: () => string = () => `stretch:${Math.random().toString(36).slice(2, 10)}`): ProjectDesign {
+  const corridor = corridorOfRoute(project, routeId);
+  if (!corridor || corridor.mode !== 'paired') throw new Error('Not a direction of a paired motorway');
+  const dir = directionOf(corridor, routeId), shown = directionDesign(project, routeId), spine = corridorDesign(project, corridor);
+  // one design speed for the motorway: a new one changes the shared line (both directions)
+  if (d.speed !== shown.speed) return replaceCorridorFromDesign(project, corridor.id, { ...spine, speed: d.speed });
+  const rules = horizontalRules(spine.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
+  let stretches = structuredClone(corridor.stretches ?? []);
+  const edited = editStretches(spine.pis, stretches, dir, d.pis, newId);
+  if (edited) stretches = locateStretches(A, B, spine.pis, edited, rules);
+  const own = (s0: number, s1 = s0) => stretches.find(t => t[dir] && s1 >= t.a && s0 <= t.b);
+  const changes = <T>(before: readonly T[], after: readonly T[]) => {
+    const key = (x: T) => JSON.stringify(x);
+    return { added: after.filter(x => !before.some(y => key(y) === key(x))), removed: before.filter(x => !after.some(y => key(y) === key(x))).map(key) };
+  };
+  const pins = changes(shown.gradePins ?? [], d.gradePins ?? []);
+  const so = changes(shown.structureOverrides ?? [], d.structureOverrides ?? []), wo = changes(shown.wallOverrides ?? [], d.wallOverrides ?? []);
+  const drop = <T>(list: readonly T[] | undefined, removed: string[]) => (list ?? []).filter(x => !removed.includes(JSON.stringify(x)));
+  for (const t of stretches) {
+    const line = t[dir];
+    if (!line) continue;
+    line.pins = drop(line.pins, pins.removed);
+    line.structureOverrides = drop(line.structureOverrides, so.removed); line.wallOverrides = drop(line.wallOverrides, wo.removed);
+  }
+  let spinePins = drop(spine.gradePins, pins.removed), spineSo = drop(spine.structureOverrides, so.removed), spineWo = drop(spine.wallOverrides, wo.removed);
+  for (const p of pins.added) { const t = own(p.s); if (t) t[dir]!.pins.push(p); else spinePins = [...spinePins, p]; }
+  for (const o of so.added) { const t = own(o.s0, o.s1); if (t) (t[dir]!.structureOverrides ??= []).push(o); else spineSo = [...spineSo, o]; }
+  for (const o of wo.added) { const t = own(o.s0, o.s1); if (t) (t[dir]!.wallOverrides ??= []).push(o); else spineWo = [...spineWo, o]; }
+  for (const t of stretches) for (const line of [t.forward, t.reverse]) {
+    if (!line) continue;
+    if (!line.structureOverrides?.length) delete line.structureOverrides;
+    if (!line.wallOverrides?.length) delete line.wallOverrides;
+  }
+  const kept = <T>(list: T[], was: T[] | undefined) => list.length || was ? { list } : null;
+  const so2 = kept(spineSo, spine.structureOverrides), wo2 = kept(spineWo, spine.wallOverrides);
+  const { structureOverrides: _so, wallOverrides: _wo, ...rest } = spine;
+  const next = replaceCorridorFromDesign(project, corridor.id, { ...rest, gradePins: spinePins.sort((p, q) => p.s - q.s),
+    ...(so2 ? { structureOverrides: so2.list } : {}), ...(wo2 ? { wallOverrides: wo2.list } : {}),
+    crossingOverrides: d.crossingOverrides, buildingOverrides: d.buildingOverrides });
+  const c = next.corridors.find(x => x.id === corridor.id)!;
+  if (c.mode !== 'paired') throw new Error('Corridor mode changed');
+  if (stretches.length) c.stretches = stretches; else delete c.stretches;
+  return next;
+}
+
+/** Both directions on the shared line again over one stretch (Undo brings its own lines back). */
+export function rejoinStretch(project: ProjectDesign, corridorId: string, stretchId: string): ProjectDesign {
+  const next = structuredClone(project), c = next.corridors.find(x => x.id === corridorId);
+  if (!c || c.mode !== 'paired' || !c.stretches?.some(t => t.id === stretchId)) throw new Error('Unknown separate stretch');
+  c.stretches = c.stretches.filter(t => t.id !== stretchId);
+  if (!c.stretches.length) delete c.stretches;
+  return next;
+}
+
+/** Crowns of the two directions closer than this keep one height (two slopes between them would clash):
+ * the gap two 1 : 1.5 slopes take for 10 m of height difference. Editor choice, PROVISIONAL. */
+const SIDE_BY_SIDE = 30;
+/** the Auto search's knot spacing (autoprofile.ts default) and the shortest own-heights stretch it can
+ * shape (two knots and their curves); shorter: the shared heights throughout */
+const KNOT = 250, MIN_OWN_HEIGHTS = 2 * KNOT;
+/** The last full spine evaluation per terrain: one direction's edits leave the shared line unchanged,
+ * so its evaluation (heights at the joins, the shared body's bill) is reused, never redone. */
+const spineMemo = new WeakMap<object, { key: string; result: Result }>();
+function memoSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
+  options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
+  const key = JSON.stringify([corridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), kids.map(speedLimit150), goal, ctx.a, ctx.b]);
+  const hit = spineMemo.get(ctx.terrain);
+  if (hit?.key === key) return hit.result;
+  if (options.preview) return evaluateSpine(ctx, project, corridor, kids, goal, options);
+  const result = evaluateSpine(ctx, project, corridor, kids, goal, { materialValue: options.materialValue });
+  spineMemo.set(ctx.terrain, { key, result });
+  return result;
+}
+
+/** Spine stations where a separate stretch may join the shared body: on a straight clear of the arcs
+ * (and the transition room beside them), off structures, crossings and vertical curves. Route ends always. */
+function joinStations(spine: Result, al: Alignment, rules: ReturnType<typeof horizontalRules>): Uint8Array {
+  const n = spine.n, ok = new Uint8Array(n), L = al.length, margin = JOIN_RULES.curve + rules.transition / 2;
+  for (let i = 0; i < n; i++) {
+    const s = spine.s[i];
+    const straight = al.elements.some(e => e.kind === 'line' && s >= e.s0 + (e.s0 > 1e-6 ? margin : 0) && s <= e.s0 + e.len - (e.s0 + e.len < L - 1e-6 ? margin : 0));
+    const clear = straight && !spine.runs.some(r => s >= r.s0 - JOIN_RULES.structure && s <= r.s1 + JOIN_RULES.structure)
+      && !spine.crossings.some(c => Math.abs(c.s - s) < JOIN_RULES.crossing)
+      && !spine.waterCrossings.some(c => Math.abs(c.s - s) < JOIN_RULES.structure)
+      && !spine.vcurves.some(c => Math.abs(c.s - s) < c.len / 2 + JOIN_RULES.curve);
+    ok[i] = clear ? 1 : 0;
+  }
+  ok[0] = ok[n - 1] = 1;
+  return ok;
+}
+
+/** A paired corridor with separate stretches: the spine's ONE D 27.5 evaluation outside them; inside, each
+ * direction's own carriageway (D 27.5-1) between the joins, its heights Auto from the shared grade line at
+ * the joins (a direction without an own line there keeps the shared heights). Shared works between the two
+ * carriageways are counted once (splitLedger); each direction is shown composed on the spine's stations. */
+function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
+  options: Pick<EvalOptions, 'preview' | 'materialValue'> & { only?: string }): Extract<CorridorEvaluation, { status: 'split' }> {
+  if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
+  const spine = memoSpine(ctx, project, corridor, kids, goal, options);
+  const sd = corridorDesign(project, corridor), stretches = corridor.stretches ?? [];
+  const rules = horizontalRules(sd.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
+  const spineAl = buildAlignment(A, B, sd.pis, rules), ok = joinStations(spine, spineAl, rules);
+  // joins: the last allowed station at or before each stretch, the first at or after it; stretches whose
+  // joins meet are one
+  const groups: { i0: number; i1: number; members: SeparateStretch[] }[] = [];
+  for (const t of stretches) {
+    let i0 = Math.min(spine.n - 1, Math.floor(t.a / spine.ds)), i1 = Math.max(0, Math.ceil(t.b / spine.ds));
+    while (i0 > 0 && !ok[i0]) i0--;
+    while (i1 < spine.n - 1 && !ok[i1]) i1++;
+    const last = groups[groups.length - 1];
+    if (last && i0 <= last.i1) { last.i1 = Math.max(last.i1, i1); last.members.push(t); } else groups.push({ i0, i1, members: [t] });
+  }
+  const ops = corridorOperations(project, corridor), W = CARRIAGEWAY_OFFSET, minR = horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY).minRadius;
+  const firstBendAfter = (s: number) => { const k = spineAl.curves.findIndex(c => c.sStart >= s); return k < 0 ? sd.pis.length : k; };
+  const { only, ...evalOptions } = options;
+  const dirs = (['forward', 'reverse'] as const).filter(dir => !only || corridor.children[dir] === only);
+  type Piece = { result: Result; bend0: number; line: ReturnType<typeof station> };
+  const pieces: Record<Direction, Piece[]> = { forward: [], reverse: [] };
+  const designs = groups.map(g => {
+    const s0 = spine.s[g.i0], s1 = spine.s[g.i1], k0 = firstBendAfter(s0), k1 = firstBendAfter(s1);
+    const J0 = pointAt(spineAl, s0), J1 = pointAt(spineAl, s1);
+    const plan = Object.fromEntries((['forward', 'reverse'] as const).map(dir => {
+      const comp = compositePis(sd.pis, stretches, dir), shownAl = buildAlignment(A, B, comp.pis, rules);
+      const c0 = compositeStart(comp.segs, k0, comp.pis.length), c1 = compositeStart(comp.segs, k1, comp.pis.length);
+      // the shown line's own arcs, fixed: the piece runs exactly on it
+      const pis = comp.pis.slice(c0, c1).map((p, j) => { const c = shownAl.curves[c0 + j];
+        return { x: p.x, y: p.y, r: c && c.unit >= 0 && !c.ignored && !c.tooSharp ? c.rEff : p.r }; });
+      const vAl = buildAlignment(J0, J1, pis, rules), offset = dir === 'forward' ? -W : W;
+      const bends = offsetBends(J0, J1, pis, vAl, offset);
+      const auto = buildAlignment(bends.a, bends.b, bends.pis.map(p => ({ ...p, r: null })), horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY));
+      bends.pis.forEach((p, i) => { if (p.r !== null) p.r = Math.max(minR, auto.curves[i]?.rEff ?? 0, Math.round(p.r * 100) / 100); });
+      const al = buildAlignment(bends.a, bends.b, bends.pis, horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY));
+      return [dir, { bends, al, vAl, offset, bend0: c0, line: station(al, 10), own: g.members.some(t => t[dir]) }];
+    })) as Record<Direction, { bends: ReturnType<typeof offsetBends>; al: Alignment; vAl: Alignment; offset: number; bend0: number; line: ReturnType<typeof station>; own: boolean }>;
+    return Object.fromEntries((['forward', 'reverse'] as const).map(dir => {
+      const { bends, al, vAl, offset, bend0, line, own } = plan[dir], other = plan[dir === 'forward' ? 'reverse' : 'forward'];
+      const Lp = al.length, toPiece = (s: number) => (s - s0) / (s1 - s0) * Lp;
+      const inside = (x0: number, x1 = x0) => x1 > s0 && x0 < s1;
+      const shown = directionDesign(project, corridor.children[dir]);
+      let vertical: Pick<Design, 'profileMode' | 'vpis' | 'gradePins'>, fixedProfile: EvalOptions['fixedProfile'];
+      if (own) {
+        // Where the two directions run side by side (closer than SIDE_BY_SIDE between the crowns) they keep
+        // the shared heights, and half a knot spacing beyond for the curve that leaves them; Auto between.
+        const p = pairStations(line, other.line);
+        const apart = (i: number) => Number.isFinite(p.d[i]) && (!(Math.abs(Math.abs(p.d[i]) - 2 * W) < SIDE_BY_SIDE) || !(p.dot[i] > 0.9));
+        let n0 = 0, n1 = line.n - 1;
+        while (n0 < line.n && !apart(n0)) n0++;
+        while (n1 >= 0 && !apart(n1)) n1--;
+        const x0 = line.s[Math.min(n0, line.n - 1)] + KNOT / 2, x1 = line.s[Math.max(0, n1)] - KNOT / 2;
+        // the shared heights on this carriageway's chainage: by distance from the nearer join
+        const map = (s: number) => s - s0 <= s1 - s ? Math.min(Lp, s - s0) : Math.max(0, Lp - (s1 - s));
+        const shared: VPI[] = [{ s: 0, z: spine.grade[g.i0], r: null },
+          ...spine.vpis.filter(v => v.s > s0 + 1 && v.s < s1 - 1).map(v => ({ s: map(v.s), z: v.z, r: v.r })).filter(v => v.s > 1 && v.s < Lp - 1),
+          { s: Lp, z: spine.grade[g.i1], r: null }].sort((a, b) => a.s - b.s);
+        const pins = (shown.gradePins ?? []).filter(q => inside(q.s)).map(q => ({ s: toPiece(q.s), z: q.z }));
+        if (x1 - x0 >= MIN_OWN_HEIGHTS) { vertical = { profileMode: 'auto', vpis: [], gradePins: pins }; fixedProfile = { x0, x1, vpis: shared }; }
+        else vertical = { profileMode: 'manual', vpis: shared, gradePins: pins };
+      } else {
+        // the shared heights, mapped onto this carriageway's own chainage
+        const path = offsetCurvePath({ elements: vAl.elements, length: vAl.length }, offset, 1);
+        const map = (s: number) => childStationAt(path, s - s0) * Lp / path.path.length;
+        vertical = { profileMode: 'manual', gradePins: [], vpis: [{ s: 0, z: spine.grade[g.i0], r: null },
+          ...spine.vpis.filter(v => v.s > s0 + 1 && v.s < s1 - 1).map(v => ({ s: map(v.s), z: v.z, r: v.r })),
+          { s: Lp, z: spine.grade[g.i1], r: null }] };
+      }
+      const clip = <T extends { s0: number; s1: number }>(list: readonly T[] | undefined) => (list ?? []).filter(o => inside(o.s0, o.s1))
+        .map(o => ({ ...o, s0: toPiece(Math.max(s0, o.s0)), s1: toPiece(Math.min(s1, o.s1)) }));
+      const design: Design = { ...sd, category: CARRIAGEWAY_CATEGORY, pis: bends.pis, ...vertical,
+        structureOverrides: clip(shown.structureOverrides), wallOverrides: clip(shown.wallOverrides) };
+      return [dir, { design, fixedProfile, a: { ...bends.a, z: spine.grade[g.i0] }, b: { ...bends.b, z: spine.grade[g.i1] }, bend0, line }];
+    })) as Record<Direction, { design: Design; fixedProfile: EvalOptions['fixedProfile']; a: XYZ; b: XYZ; bend0: number; line: ReturnType<typeof station> }>;
+  });
+  const runPiece = (g: number, dir: Direction, from?: Result) => {
+    const p = designs[g][dir], other = designs[g][dir === 'forward' ? 'reverse' : 'forward'], side = dir === 'forward' ? 'L' as const : 'R' as const;
+    const result = evaluate({ ...ctx, a: p.a, b: p.b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare } }, p.design,
+      { ...evalOptions, endpointElevations: { a: p.a.z, b: p.b.z }, operatingSpeed: ops.speed, speedLimit150: kids.every(speedLimit150),
+        ...(p.fixedProfile ? { fixedProfile: p.fixedProfile } : {}),
+        leftJoined: joinedRanges(p.line, other.line, side, true), joinedSide: side,
+        ...(dir === 'forward' ? { sharedCrossings: { own: true } } : from ? { sharedCrossings: { own: false, from: from.crossings } } : {}),
+        goals: { time: false, capacity: false } });
+    pieces[dir].push({ result, bend0: p.bend0, line: p.line });
+    return result;
+  };
+  const ledgers: SplitLedger[] = [];
+  groups.forEach((_, g) => {
+    const f = dirs.includes('forward') ? runPiece(g, 'forward') : undefined;
+    const r = dirs.includes('reverse') ? runPiece(g, 'reverse', f) : undefined;
+    if (f && r && !options.preview) ledgers.push(splitLedger(f, r, (x, y) => ctx.terrain.heightAt(x, y), true));
+  });
+  const results: Record<string, Result> = {};
+  for (const dir of dirs) {
+    const comp = compositePis(sd.pis, stretches, dir);
+    const baseBend = (k: number) => { const g = comp.segs.find(x => (x.stretch === null || !x.own) && k >= x.k0 && k < x.k1); return g ? g.c0 + k - g.k0 : null; };
+    const st = stitchResult(spine, groups.map((g, j) => ({ i0: g.i0, i1: g.i1, piece: pieces[dir][j].result, offset: dir === 'forward' ? -W : W, bend0: pieces[dir][j].bend0 })), baseBend);
+    if (goal?.maxTravelMin !== undefined && st.travelMin > goal.maxTravelMin + 1e-9) {
+      st.violations.push(timeViolation(st.length, kids[0].specification.designSpeed, st.travelMin, goal.maxTravelMin)); st.valid = false;
+    }
+    results[corridor.children[dir]] = st;
+  }
+  // the shared body's parts outside the stretches and the pieces, as drawn
+  const drawn: DrawnPart[] = [];
+  let from = 0;
+  groups.forEach((g, j) => {
+    if (g.i0 > from) drawn.push({ id: `${corridor.id}#shared:${from}`, result: sliceResult(spine, from, g.i0), section: 'paired' });
+    for (const dir of dirs) drawn.push({ id: `${corridor.children[dir]}#own:${groups[j].members[0].id}`, result: pieces[dir][j].result, section: 'carriageway',
+      ...(dir === 'reverse' ? { mirrored: true } : {}), direction: dir });
+    from = g.i1;
+  });
+  if (from < spine.n - 1) drawn.push({ id: `${corridor.id}#shared:${from}`, result: sliceResult(spine, from, spine.n - 1), section: 'paired' });
+  if (options.preview || dirs.length < 2) return { status: 'split', results, ledger: null, drawn, spine };
+  // the bill: the shared body once (its parts outside the stretches) plus both carriageways inside, less
+  // what the two carriageways share (splitLedger) and houses the shared body and a carriageway both take
+  const shared = results[corridor.children.forward].cost.total - pieces.forward.reduce((t, p) => t + p.result.cost.total, 0);
+  let houses = 0;
+  const spineTaken = new Map<number, number>();
+  for (const b of [...spine.demolished, ...spine.boughtOut]) if (!groups.some(g => b.i > g.i0 && b.i < g.i1)) spineTaken.set(b.j, b.cost);
+  const pieceTaken = new Map<number, number>();
+  for (const dir of ['forward', 'reverse'] as const) for (const p of pieces[dir]) for (const b of [...p.result.demolished, ...p.result.boughtOut])
+    pieceTaken.set(b.j, Math.min(b.cost, pieceTaken.get(b.j) ?? Infinity));
+  for (const [j, cost] of pieceTaken) if (spineTaken.has(j)) houses += Math.min(cost, spineTaken.get(j)!);
+  const sum = (k: keyof SplitLedger['parts']) => ledgers.reduce((t, l) => t + l.parts[k], 0);
+  const at = (j: number) => (s: number) => spine.s[groups[j].i0] + s / pieces.forward[j].result.length * (spine.s[groups[j].i1] - spine.s[groups[j].i0]);
+  const ledger: SplitLedger = {
+    credit: shared + ledgers.reduce((t, l) => t + l.credit, 0) + houses,
+    parts: { joinedBase: sum('joinedBase'), overlapEarth: sum('overlapEarth'), overlapLand: sum('overlapLand'), buildings: sum('buildings') + houses },
+    joinedLength: ledgers.reduce((t, l) => t + l.joinedLength, 0), overlapFill: ledgers.reduce((t, l) => t + l.overlapFill, 0),
+    overlapCut: ledgers.reduce((t, l) => t + l.overlapCut, 0),
+    violations: ledgers.flatMap((l, j) => l.violations.map(v => ({ ...v, s0: at(j)(v.s0), s1: at(j)(v.s1) }))),
+  };
+  return { status: 'split', results, ledger, drawn, spine };
 }

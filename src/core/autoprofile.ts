@@ -57,6 +57,10 @@ export interface AutoProfileOptions {
   knotSpacing?: number;
   /** penalty per grade change, CZK (keeps the line calm) */
   vpiPenalty?: number;
+  /** The grade line continues a given one at A / at B with this grade: the grade change there must fit one
+   * vertical curve of the minimum radius within half a knot spacing, like any other knot. Absent: any grade. */
+  startGrade?: number;
+  endGrade?: number;
   /** search band above/below the local ground envelope, m */
   pad?: number;
 }
@@ -422,9 +426,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           const base = cur[zi * ND + d];
           if (base === Infinity) continue;
           const dz = d - dzMax;
-          // knot 0 has no incoming grade: any first grade is allowed
-          const dmin = k === 0 ? -dzMax : Math.max(-dzMax, dz - crestLim);
-          const dmax = k === 0 ? dzMax : Math.min(dzMax, dz + sagLim);
+          // knot 0 has no incoming grade: any first grade is allowed (unless it continues a given line)
+          const dmin = k === 0 ? (opt.startGrade === undefined ? -dzMax : Math.max(-dzMax, Math.ceil(opt.startGrade * D / u - crestLim - 1e-9)))
+            : Math.max(-dzMax, dz - crestLim);
+          const dmax = k === 0 ? (opt.startGrade === undefined ? dzMax : Math.min(dzMax, Math.floor(opt.startGrade * D / u + sagLim + 1e-9)))
+            : Math.min(dzMax, dz + sagLim);
           for (let dz2 = dmin; dz2 <= dmax; dz2++) {
             const d2 = dz2 + dzMax;
             const sc = seg[d2];
@@ -452,7 +458,11 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
       cur = next;
     }
     let best = Infinity, bi = -1;
-    for (let d = 0; d < ND; d++) if (cur[d] < best) { best = cur[d]; bi = d; }
+    for (let d = 0; d < ND; d++) {
+      // continuing a given line at B: its grade must follow within one curve, as at any knot
+      if (opt.endGrade !== undefined && (opt.endGrade * D / u < d - dzMax - crestLim - 1e-9 || opt.endGrade * D / u > d - dzMax + sagLim + 1e-9)) continue;
+      if (cur[d] < best) { best = cur[d]; bi = d; }
+    }
     if (bi < 0) return null;
     const zs = new Float64Array(nK + 1);
     const dzs = new Int32Array(nK + 1);

@@ -1,0 +1,243 @@
+// A kernel Result composed of pieces on one station grid (core/motorway-stretches.ts): the common spine's
+// result, and inside separate stretches one direction's own carriageway mapped onto the spine's stations
+// (its own chainage scaled linearly between the two joins). Bill lines come from the cost parts,
+// rebinned by length, so the parts still sum to the bill. Display and bookkeeping only: nothing here
+// engineers anything.
+import type { Result } from './evaluate';
+import { cellLength, PART_KEYS, sumParts, type CostParts } from './cost';
+import { RAY_STRIDE } from './noise';
+import type { Violation } from './checks';
+import type { VPI } from './vertical';
+
+export interface StitchPiece {
+  /** spine station indices of the joins; the piece runs over spine chainage base.s[i0]…base.s[i1] */
+  i0: number; i1: number;
+  /** the direction's carriageway over that stretch, A→B */
+  piece: Result;
+  /** carriageway axis = shown line + offset × left normal (the shown line is the direction's own centre
+   * line, the spine displaced) */
+  offset: number;
+  /** shown-design bend index of the piece's first bend */
+  bend0: number;
+}
+
+const lerp = (a: ArrayLike<number>, t: number) => {
+  const k = Math.max(0, Math.min(a.length - 2, Math.floor(t))), f = Math.max(0, Math.min(1, t - k));
+  return a.length === 1 ? a[0] : a[k] + (a[k + 1] - a[k]) * f;
+};
+
+/** Composed result on `base`'s station grid. `baseBend(k)`: shown-design index of the spine's bend k
+ * (null where an own line replaced it); `baseVpi` likewise is computed here. */
+export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseBend: (k: number) => number | null): Result {
+  const n = base.n, ds = base.ds;
+  const list = [...pieces].sort((p, q) => p.i0 - q.i0);
+  const inside = (i: number) => list.find(p => i > p.i0 && i < p.i1);
+  const outsideS = (s: number) => !list.some(p => s > base.s[p.i0] + 1e-9 && s < base.s[p.i1] - 1e-9);
+  const outsideI = (i: number) => !inside(i);
+  /** piece fractional index ↔ stitched index / chainage */
+  const toS = (p: StitchPiece, sp: number) => base.s[p.i0] + sp / p.piece.length * (base.s[p.i1] - base.s[p.i0]);
+  const toI = (p: StitchPiece, ip: number) => Math.max(p.i0, Math.min(p.i1, Math.round(p.i0 + ip / (p.piece.n - 1) * (p.i1 - p.i0))));
+  const F = (a: Float64Array) => Float64Array.from(a);
+  const out: Result = {
+    ...base, s: base.s, x: F(base.x), y: F(base.y), tx: F(base.tx), ty: F(base.ty), ground: F(base.ground),
+    geology: { ids: Uint8Array.from(base.geology.ids), profiles: [...base.geology.profiles] },
+    grade: F(base.grade), kind: Uint8Array.from(base.kind), cut: F(base.cut), fill: F(base.fill),
+    dayL: F(base.dayL), dayR: F(base.dayR), zDayL: F(base.zDayL), zDayR: F(base.zDayR), oob: Uint8Array.from(base.oob),
+    wallSurfaceL: F(base.wallSurfaceL), wallSurfaceR: F(base.wallSurfaceR),
+    cell: { width: F(base.cell.width), urban: Float32Array.from(base.cell.urban), forest: Float32Array.from(base.cell.forest), wall: Uint8Array.from(base.cell.wall) },
+    parts: Object.fromEntries(PART_KEYS.map(k => [k, F(base.parts[k])])) as CostParts,
+  };
+  const gaps = base.noise.gaps ? { L: Uint8Array.from(base.noise.gaps.L), R: Uint8Array.from(base.noise.gaps.R) } : undefined;
+  for (const p of list) {
+    const r = p.piece, ids0 = out.geology.profiles.length;
+    out.geology.profiles.push(...r.geology.profiles);
+    // the half of each join cell beyond the join stays the spine's; the piece fills the rest
+    for (const k of PART_KEYS) {
+      const a = out.parts[k];
+      for (let i = p.i0 + 1; i < p.i1; i++) a[i] = 0;
+      if (p.i0 > 0) a[p.i0] *= 0.5; else a[p.i0] = 0;
+      if (p.i1 < n - 1) a[p.i1] *= 0.5; else a[p.i1] = 0;
+    }
+    for (let i = p.i0; i <= p.i1; i++) {
+      const t = (i - p.i0) / (p.i1 - p.i0) * (r.n - 1), k = Math.max(0, Math.min(r.n - 1, Math.round(t)));
+      let tx = lerp(r.tx, t), ty = lerp(r.ty, t);
+      const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l;
+      // the shown line: the carriageway axis displaced back by its offset
+      out.x[i] = lerp(r.x, t) + p.offset * ty; out.y[i] = lerp(r.y, t) - p.offset * tx;
+      out.tx[i] = tx; out.ty[i] = ty;
+      out.ground[i] = lerp(r.ground, t); out.grade[i] = lerp(r.grade, t);
+      out.kind[i] = r.kind[k]; out.oob[i] = r.oob[k]; out.geology.ids[i] = ids0 + r.geology.ids[k];
+      out.cut[i] = lerp(r.cut, t); out.fill[i] = lerp(r.fill, t);
+      // daylight distances from the shown line
+      out.dayL[i] = lerp(r.dayL, t) + p.offset; out.dayR[i] = lerp(r.dayR, t) - p.offset;
+      out.zDayL[i] = lerp(r.zDayL, t); out.zDayR[i] = lerp(r.zDayR, t);
+      out.wallSurfaceL[i] = lerp(r.wallSurfaceL, t); out.wallSurfaceR[i] = lerp(r.wallSurfaceR, t);
+      out.cell.width[i] = lerp(r.cell.width, t); out.cell.urban[i] = lerp(r.cell.urban, t); out.cell.forest[i] = lerp(r.cell.forest, t);
+      out.cell.wall[i] = r.cell.wall[k];
+      if (gaps) { gaps.L[i] = r.noise.gaps?.L[k] ?? 0; gaps.R[i] = r.noise.gaps?.R[k] ?? 0; }
+    }
+    // cost per piece cell, spread over the stitched cells its mapped length covers
+    const scale = (base.s[p.i1] - base.s[p.i0]) / r.length;
+    for (let k = 0; k < r.n; k++) {
+      const half = cellLength(k, r.n, r.ds);
+      const lo = toS(p, Math.max(0, r.s[k] - (k === 0 ? 0 : r.ds / 2))), hi = lo + half * scale;
+      if (!(hi > lo)) continue;
+      for (let i = Math.max(0, Math.floor((lo - base.s[0]) / ds - 0.5)); i < n; i++) {
+        const c0 = i === 0 ? base.s[0] : base.s[i] - ds / 2, c1 = i === n - 1 ? base.s[i] : base.s[i] + ds / 2;
+        if (c0 >= hi) break;
+        const w = Math.max(0, Math.min(hi, c1) - Math.max(lo, c0)) / (hi - lo);
+        if (w > 0) for (const key of PART_KEYS) out.parts[key][i] += r.parts[key][k] * w;
+      }
+    }
+  }
+  out.cost = sumParts(out.parts);
+  // ---- lists: the spine's outside the pieces, each piece's mapped inside ----
+  const mapS = (p: StitchPiece, s: number) => toS(p, s);
+  const pieceRuns = list.flatMap(p => p.piece.runs.map(r => ({ ...r, i0: toI(p, r.i0), i1: toI(p, r.i1), s0: mapS(p, r.s0), s1: mapS(p, r.s1),
+    ...(r.pierStations ? { pierStations: r.pierStations.map(s => mapS(p, s)) } : {}) })));
+  out.runs = [...base.runs.filter(r => list.every(p => r.i1 <= p.i0 || r.i0 >= p.i1)), ...pieceRuns].sort((a, b) => a.i0 - b.i0);
+  // heights: the spine's grade points outside, each piece's inside (its first and last on the joins)
+  const vpiMap = new Map<string, number>();
+  const vpis: VPI[] = [];
+  let piecesLeft = [...list];
+  base.vpis.forEach((v, k) => {
+    while (piecesLeft.length && v.s >= base.s[piecesLeft[0].i0] - 1e-9) {
+      const p = piecesLeft.shift()!;
+      p.piece.vpis.forEach((w, j) => { vpiMap.set(`p${list.indexOf(p)}:${j}`, vpis.length); vpis.push({ ...w, s: mapS(p, w.s) }); });
+    }
+    if (outsideS(v.s) && !list.some(p => Math.abs(v.s - base.s[p.i0]) < 1e-9 || Math.abs(v.s - base.s[p.i1]) < 1e-9)) { vpiMap.set(`b:${k}`, vpis.length); vpis.push({ ...v }); }
+  });
+  for (const p of piecesLeft) p.piece.vpis.forEach((w, j) => { vpiMap.set(`p${list.indexOf(p)}:${j}`, vpis.length); vpis.push({ ...w, s: mapS(p, w.s) }); });
+  out.vpis = vpis;
+  out.grades = vpis.slice(1).map((v, k) => (v.z - vpis[k].z) / Math.max(1e-9, v.s - vpis[k].s));
+  out.vcurves = [...base.vcurves.filter(c => outsideS(c.s)), ...list.flatMap(p => p.piece.vcurves.map(c => ({ ...c, s: mapS(p, c.s) })))].sort((a, b) => a.s - b.s);
+  // bends: the spine's (renumbered) outside, each piece's own inside (radius of the shown line)
+  out.curves = [
+    ...base.curves.flatMap(c => { const index = baseBend(c.index); return index === null || !outsideS((c.sStart + c.sEnd) / 2) ? [] : [{ ...c, index }]; }),
+    // (radii stay the carriageway's own: what is built)
+    ...list.flatMap(p => p.piece.curves.map(c => ({ ...c, index: p.bend0 + c.index, sStart: mapS(p, c.sStart), sEnd: mapS(p, c.sEnd) }))),
+  ].sort((a, b) => a.index - b.index);
+  // problems: the spine's outside the pieces, each piece's inside
+  const remap = (v: Violation, bend: (i: number) => number | null, vpi: (i: number) => number | undefined, s: (x: number) => number): Violation => {
+    const out: Violation = { ...v, s0: s(v.s0), s1: s(v.s1) };
+    if (v.pi !== undefined) { const i = bend(v.pi); if (i === null) delete out.pi; else out.pi = i; }
+    if (v.pis) out.pis = v.pis.flatMap(i => { const j = bend(i); return j === null ? [] : [j]; });
+    if (v.horizontal) out.horizontal = { ...v.horizontal, manualRadii: v.horizontal.manualRadii.flatMap(m => { const j = bend(m.pi); return j === null ? [] : [{ ...m, pi: j }]; }) };
+    if (v.vpi !== undefined) { const i = vpi(v.vpi); if (i === undefined) delete out.vpi; else out.vpi = i; }
+    if (v.target?.wall) out.target = { ...v.target, wall: { ...v.target.wall, s0: s(v.target.wall.s0), s1: s(v.target.wall.s1) } };
+    return out;
+  };
+  const spineSide = (v: Violation) => list.every(p => v.s1 <= base.s[p.i0] + 1e-9 || v.s0 >= base.s[p.i1] - 1e-9) || (v.s0 === v.s1 && outsideS(v.s0));
+  out.violations = [
+    // goals: the spine's, except travel time (the caller decides it again on the composed length)
+    ...base.violations.filter(v => v.goal && v.kind !== 'time'),
+    ...base.violations.filter(v => !v.goal && spineSide(v)).map(v => remap(v, baseBend, k => vpiMap.get(`b:${k}`), s => s)),
+    ...list.flatMap((p, j) => p.piece.violations.filter(v => !v.goal).map(v => remap(v, i => p.bend0 + i, k => vpiMap.get(`p${j}:${k}`), s => mapS(p, s)))),
+  ];
+  out.crossings = [...base.crossings.filter(c => outsideS(c.s)), ...list.flatMap(p => p.piece.crossings.map(c => ({ ...c, s: mapS(p, c.s), i: toI(p, c.i),
+    ...(c.targetS !== undefined ? { targetS: mapS(p, c.targetS) } : {}) })))].sort((a, b) => a.s - b.s);
+  out.waterCrossings = [...base.waterCrossings.filter(c => outsideS(c.s)), ...list.flatMap(p => p.piece.waterCrossings.map(c => ({ ...c, s: mapS(p, c.s), i: toI(p, c.i) })))];
+  out.footprintConflicts = [...base.footprintConflicts.filter(c => outsideI(c.i)), ...list.flatMap(p => p.piece.footprintConflicts.map(c => ({ ...c, i: toI(p, c.i),
+    s0: mapS(p, c.s0), s1: mapS(p, c.s1), ...(c.allocations ? { allocations: c.allocations.map(a => ({ ...a, i: toI(p, a.i) })) } : {}) })))];
+  out.retainingWalls = [...base.retainingWalls.filter(w => outsideI(w.i)), ...list.flatMap(p => p.piece.retainingWalls.map(w => ({ ...w, i: toI(p, w.i), s0: mapS(p, w.s0), s1: mapS(p, w.s1) })))];
+  out.walls = [...base.walls.filter(w => list.every(p => w.i1 <= p.i0 || w.i0 >= p.i1)), ...list.flatMap(p => p.piece.walls.map(w => ({ ...w, i0: toI(p, w.i0), i1: toI(p, w.i1), s0: mapS(p, w.s0), s1: mapS(p, w.s1) })))];
+  const byI = <T extends { i: number }>(own: readonly T[], f: (p: StitchPiece) => readonly T[]) => [...own.filter(b => outsideI(b.i)), ...list.flatMap(p => f(p).map(b => ({ ...b, i: toI(p, b.i) })))];
+  out.demolished = byI(base.demolished, p => p.piece.demolished);
+  out.boughtOut = byI(base.boughtOut, p => p.piece.boughtOut);
+  out.kept = byI(base.kept, p => p.piece.kept);
+  // one house, one decision: a house the spine and a piece both take is listed once (the piece's)
+  for (const key of ['demolished', 'boughtOut'] as const) {
+    const seen = new Set<number>();
+    out[key] = (out[key] as { j: number; i: number; cost: number }[]).reverse().filter(b => !seen.has(b.j) && !!seen.add(b.j)).reverse() as never;
+  }
+  const receivers = [...base.noise.receivers.filter(r => outsideI(r.i)), ...list.flatMap(p => p.piece.noise.receivers.map(r => ({ ...r, i: toI(p, r.i),
+    at: r.at >= 0 ? toI(p, r.at) : r.at, ...(r.key ? { key: { ...r.key, i: toI(p, r.key.i), d: r.key.d } } : {}),
+    ...(r.quiet ? { quiet: { ...r.quiet, i: toI(p, r.quiet.i) } } : {}),
+    ...(r.rays ? { rays: (() => { const a = Float32Array.from(r.rays!); for (let k = 0; k + RAY_STRIDE <= a.length; k += RAY_STRIDE) a[k] = toI(p, a[k]); return a; })() } : {}) })))];
+  const seenR = new Set<number>();
+  out.noise = { receivers: receivers.reverse().filter(r => !seenR.has(r.j) && !!seenR.add(r.j)).reverse(), footprint: stitchFootprint(base, list, toI), ...(gaps ? { gaps } : {}) };
+  // quantities a player reads: recounted from the composed lists; the rest stay the spine's
+  const bridgeRuns = out.runs.filter(r => r.kind === 1), tunnelRuns = out.runs.filter(r => r.kind === 2);
+  let cut = 0, fill = 0, footprint = 0, forestArea = 0;
+  for (let i = 0; i < n; i++) {
+    const len = cellLength(i, n, ds);
+    cut += out.cut[i] * len; fill += out.fill[i] * len; footprint += out.cell.width[i] * len; forestArea += out.cell.width[i] * out.cell.forest[i] * len;
+  }
+  const scaleCut = base.quantities.cut > 0 ? cut / base.quantities.cut : 1;
+  out.quantities = { ...base.quantities, cut, fill, footprint, forestArea,
+    cutByClass: base.quantities.cutByClass.map(v => v * scaleCut) as [number, number, number],
+    buildingsHit: out.demolished.length, hitBuildings: out.demolished.map(b => b.j),
+    bridgeLength: bridgeRuns.reduce((t, r) => t + r.length, 0), tunnelLength: tunnelRuns.reduce((t, r) => t + r.length, 0),
+    bridges: bridgeRuns.length, tunnels: tunnelRuns.length,
+    wallLength: out.walls.reduce((t, w) => t + (w.s1 - w.s0), 0), noiseBuyouts: out.boughtOut.length,
+    crossingsPaid: out.crossings.filter(c => c.cost > 0).length };
+  // travel: the spine's time outside, each piece's own inside
+  const perM = base.travelMin / base.length;
+  out.travelMin = base.travelMin + list.reduce((t, p) => t + p.piece.travelMin - perM * (base.s[p.i1] - base.s[p.i0]), 0);
+  out.profileFeasible = base.profileFeasible && list.every(p => p.piece.profileFeasible);
+  out.geomViolations = out.violations.filter(v => !v.goal).length;
+  out.valid = out.violations.length === 0;
+  if (list.some(p => p.piece.preview)) out.preview = true;
+  return out;
+}
+
+/** Noise band: the spine's sampled stations outside, each piece's inside (same calculator, same band). */
+function stitchFootprint(base: Result, list: readonly StitchPiece[], toI: (p: StitchPiece, i: number) => number): Result['noise']['footprint'] {
+  const f = base.noise.footprint;
+  if (!f) return null;
+  const parts: { from: NonNullable<Result['noise']['footprint']>; k: number; i: number; shift: number }[] = [];
+  for (let k = 0; k < f.stations.length; k++) if (!list.some(p => f.stations[k] > p.i0 && f.stations[k] < p.i1)) parts.push({ from: f, k, i: f.stations[k], shift: 0 });
+  for (const p of list) {
+    const g = p.piece.noise.footprint;
+    if (!g || g.offsets.length !== f.offsets.length || g.offsets.some((o, j) => Math.abs(o - f.offsets[j]) > 1e-3)) continue;
+    for (let k = 0; k < g.stations.length; k++) {
+      const i = toI(p, g.stations[k]);
+      if (i > p.i0 && i < p.i1) parts.push({ from: g, k, i, shift: p.offset });
+    }
+  }
+  parts.sort((a, b) => a.i - b.i);
+  const m = parts.length, o = f.offsets.length;
+  const stations = new Int32Array(m), start = new Float32Array(2 * m), excess = new Float32Array(2 * m * o), receiver = new Float32Array(2 * m);
+  parts.forEach((q, j) => {
+    stations[j] = q.i;
+    // inner edges from the shown line
+    start[2 * j] = q.from.start[2 * q.k] + q.shift; start[2 * j + 1] = q.from.start[2 * q.k + 1] - q.shift;
+    receiver[2 * j] = q.from.receiver[2 * q.k]; receiver[2 * j + 1] = q.from.receiver[2 * q.k + 1];
+    excess.set(q.from.excess.subarray(2 * q.k * o, (2 * q.k + 2) * o), 2 * j * o);
+  });
+  return { ...f, stations, start, excess, receiver };
+}
+
+/** Stations i0…i1 of a result as a result of their own (chainage from 0): for drawing a part of it. */
+export function sliceResult(r: Result, i0: number, i1: number): Result {
+  const s0 = r.s[i0], n = i1 - i0 + 1;
+  const cut = <T extends Float64Array | Float32Array | Uint8Array>(a: T) => a.slice(i0, i1 + 1) as T;
+  const inI = (i: number) => i >= i0 && i <= i1, at = (i: number) => i - i0, sh = (s: number) => s - s0;
+  const parts = Object.fromEntries(PART_KEYS.map(k => [k, cut(r.parts[k])])) as CostParts;
+  const inS = (s: number) => s >= s0 - 1e-9 && s <= r.s[i1] + 1e-9;
+  return {
+    ...r, length: r.s[i1] - s0, n, s: Float64Array.from(cut(r.s), v => v - s0), x: cut(r.x), y: cut(r.y), tx: cut(r.tx), ty: cut(r.ty),
+    ground: cut(r.ground), geology: { ids: cut(r.geology.ids), profiles: r.geology.profiles }, grade: cut(r.grade), kind: cut(r.kind),
+    cut: cut(r.cut), fill: cut(r.fill), dayL: cut(r.dayL), dayR: cut(r.dayR), zDayL: cut(r.zDayL), zDayR: cut(r.zDayR), oob: cut(r.oob),
+    wallSurfaceL: cut(r.wallSurfaceL), wallSurfaceR: cut(r.wallSurfaceR),
+    cell: { width: cut(r.cell.width), urban: cut(r.cell.urban), forest: cut(r.cell.forest), wall: cut(r.cell.wall) },
+    parts, cost: sumParts(parts),
+    runs: r.runs.filter(x => inI(x.i0) && inI(x.i1)).map(x => ({ ...x, i0: at(x.i0), i1: at(x.i1), s0: sh(x.s0), s1: sh(x.s1),
+      ...(x.pierStations ? { pierStations: x.pierStations.map(sh) } : {}) })),
+    vpis: r.vpis.filter(v => inS(v.s)).map(v => ({ ...v, s: sh(v.s) })), vcurves: r.vcurves.filter(v => inS(v.s)).map(v => ({ ...v, s: sh(v.s) })),
+    curves: r.curves.filter(c => inS(c.sStart) && inS(c.sEnd)).map(c => ({ ...c, sStart: sh(c.sStart), sEnd: sh(c.sEnd) })),
+    violations: r.violations.filter(v => inS(v.s0) || inS(v.s1)).map(v => ({ ...v, s0: Math.max(0, sh(v.s0)), s1: Math.min(r.s[i1] - s0, sh(v.s1)) })),
+    crossings: r.crossings.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s: sh(c.s), ...(c.targetS !== undefined ? { targetS: sh(c.targetS) } : {}) })),
+    waterCrossings: r.waterCrossings.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s: sh(c.s) })),
+    footprintConflicts: r.footprintConflicts.filter(c => inI(c.i)).map(c => ({ ...c, i: at(c.i), s0: sh(c.s0), s1: sh(c.s1),
+      ...(c.allocations ? { allocations: c.allocations.filter(a => inI(a.i)).map(a => ({ ...a, i: at(a.i) })) } : {}) })),
+    retainingWalls: r.retainingWalls.filter(w => inI(w.i)).map(w => ({ ...w, i: at(w.i), s0: sh(w.s0), s1: sh(w.s1) })),
+    walls: r.walls.filter(w => inI(w.i0) && inI(w.i1)).map(w => ({ ...w, i0: at(w.i0), i1: at(w.i1), s0: sh(w.s0), s1: sh(w.s1) })),
+    demolished: r.demolished.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),
+    boughtOut: r.boughtOut.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),
+    kept: r.kept.filter(b => inI(b.i)).map(b => ({ ...b, i: at(b.i) })),
+    noise: { receivers: r.noise.receivers.filter(x => inI(x.i)).map(x => ({ ...x, i: at(x.i) })), footprint: null,
+      ...(r.noise.gaps ? { gaps: { L: cut(r.noise.gaps.L), R: cut(r.noise.gaps.R) } } : {}) },
+    quantities: { ...r.quantities, massHaul: cut(r.quantities.massHaul) },
+  };
+}

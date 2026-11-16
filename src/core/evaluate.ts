@@ -180,6 +180,13 @@ export interface EvalOptions {
    * left (one common formation). Houses on that side belong to the other direction's noise check and
    * no wall can stand in the median there. */
   leftJoined?: readonly { s0: number; s1: number }[];
+  /** One direction of a separate motorway stretch: outside x0…x1 its grade line is the given one (the
+   * shared heights where the two directions run side by side); Auto only between, continuing that line's
+   * grade at both ends. */
+  fixedProfile?: { x0: number; x1: number; vpis: readonly VPI[] };
+  /** The side `leftJoined` means (default left): a separate stretch's directions both run A→B, so the
+   * reverse carriageway has the forward one on its right. */
+  joinedSide?: 'L' | 'R';
   /** Split motorway, crossed roads where the two directions run joined: the owning direction builds one
    * crossing for both (its footprint widened by the other direction's mirror on the left); the other
    * direction reuses that structure (`from`: the owner's crossings), billing and drawing nothing. */
@@ -643,10 +650,31 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       },
     };
     autoOptions = apOpt;
+    // Auto between the ends of a given grade line (one direction of a separate motorway stretch): the
+    // search runs on those stations only and its line is spliced into the given one.
+    const fp = opts.fixedProfile;
+    let solveAuto = (o: AutoProfileOptions) => autoProfile(st.s, ground, o);
+    if (fp) {
+      const j0 = Math.max(0, Math.ceil(fp.x0 / ds - 1e-9)), j1 = Math.min(n - 1, Math.floor(fp.x1 / ds + 1e-9));
+      const fixedProf = buildProfile([...fp.vpis], norms.minCrestRadius, norms.minSagRadius);
+      const sa = st.s[j0], sb = st.s[j1], [za, za1, zb0, zb] = elevations(fixedProf, [sa, sa + 1, sb - 1, sb]);
+      const splice = (v: readonly VPI[]): VPI[] => [...fp.vpis.filter(p => p.s < sa - 1), { s: sa, z: za, r: null },
+        ...v.slice(1, -1).map(p => ({ ...p, s: p.s + sa })), { s: sb, z: zb, r: null }, ...fp.vpis.filter(p => p.s > sb + 1)];
+      const cut = <T extends ArrayLike<number>>(a: T | undefined) => a && (a as unknown as Float64Array).slice(j0, j1 + 1) as unknown as T;
+      const subS = Float64Array.from(st.s.subarray(j0, j1 + 1), v => v - sa), subG = ground.slice(j0, j1 + 1);
+      solveAuto = (o) => {
+        const r = autoProfile(subS, subG, { ...o, endpointElevations: { a: za, b: zb }, startGrade: za1 - za, endGrade: zb - zb0,
+          minH: cut(o.minH), maxH: cut(o.maxH), structureKind: cut(o.structureKind), costClass: cut(o.costClass),
+          ...(o.eitherH ? { eitherH: { above: cut(o.eitherH.above)!, below: cut(o.eitherH.below)! } } : {}),
+          pins: (o.pins ?? []).filter(p => p.s > sa && p.s < sb).map(p => ({ ...p, s: p.s - sa })),
+          ...(o.balance ? { balance: { ...o.balance, balanceOf: (v: VPI[], mv: number) => o.balance!.balanceOf(splice(v), mv) } } : {}) });
+        return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(v => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa })) };
+      };
+    }
     // a preview always solves once, at the given (else the starting) material value
     const fixed = preview ? opts.materialValue ?? MATERIAL_VALUE.start : undefined;
-    let ap = fixed === undefined ? autoProfile(st.s, ground, apOpt)
-      : { ...autoProfile(st.s, ground, { ...apOpt, costPerM: costFor(fixed), balance: undefined }), materialValue: fixed };
+    let ap = fixed === undefined ? solveAuto(apOpt)
+      : { ...solveAuto({ ...apOpt, costPerM: costFor(fixed), balance: undefined }), materialValue: fixed };
     // vertical curves can shave the clearance the polyline search provided: retry asking for more
     for (let attempt = 0; attempt < 2 && mustBridge.length && !preview; attempt++) {
       const prof0 = buildProfile(ap.vpis, norms.minCrestRadius, norms.minSagRadius);
@@ -669,7 +697,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       apOpt.minH = minH; apOpt.eitherH.above = waterAbove;
       // same material value: only the clearance changes
       const mv = ap.materialValue ?? MATERIAL_VALUE.start;
-      const retry = autoProfile(st.s, ground, { ...apOpt, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
+      const retry = solveAuto({ ...apOpt, balance: { ...apOpt.balance, start: mv, lo: mv, hi: mv } });
       // A clearance refinement must not replace an already pin-compliant solution by its straight
       // fallback. Keep the useful grade and report its clearance shortfall instead.
       if (d.gradePins?.length && !retry.feasible) break;
@@ -976,7 +1004,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Split motorway: the owning direction spans the other's body too where they run joined (mirror).
   const joinedAt = (i: number) => (opts.leftJoined ?? []).some(r => st.s[i] >= r.s0 && st.s[i] <= r.s1);
   // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
-  const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * sec.dayR[i] : v) : width;
+  const joinedRight = opts.joinedSide === 'R';
+  const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * (joinedRight ? sec.dayL[i] : sec.dayR[i]) : v) : width;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false);
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed).
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
@@ -989,8 +1018,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     return hit;
   };
   if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
-    left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width ? 0 : crossWidth[i] - width[i])),
-    right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
+    left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width || joinedRight ? 0 : crossWidth[i] - width[i])),
+    right: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayR[i] : width[i] / 2) + (crossWidth === width || !joinedRight ? 0 : crossWidth[i] - width[i])),
   }, (x, y) => terrain.heightAt(x, y), ctx.roads));
   const shared = opts.sharedCrossings;
   if (shared && !shared.own) {
@@ -1057,8 +1086,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const wallOverrides = normalizeWallOverrides(d.wallOverrides);
   const wallMasks = wallOverrideMasks(st.s, wallOverrides);
   const wallGaps = crossingWallGaps(st, crossings, cat.crownWidth);
-  const joinedLeft = new Uint8Array(n);
-  for (const r of opts.leftJoined ?? []) for (let i = 0; i < n; i++) if (st.s[i] >= r.s0 && st.s[i] <= r.s1) { joinedLeft[i] = 1; wallGaps.L[i] = 1; }
+  // the other carriageway alongside: no wall in the median, houses beyond it are the other's to check
+  const joinedSideMask = new Uint8Array(n);
+  for (const r of opts.leftJoined ?? []) for (let i = 0; i < n; i++) if (st.s[i] >= r.s0 && st.s[i] <= r.s1) { joinedSideMask[i] = 1; (joinedRight ? wallGaps.R : wallGaps.L)[i] = 1; }
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
   if (noiseBuildings && !preview) {
@@ -1066,7 +1096,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel) { shieldL[i] = shieldR[i] = 1; continue; }
-      if (joinedLeft[i]) shieldL[i] = 1;
+      if (joinedSideMask[i]) (joinedRight ? shieldR : shieldL)[i] = 1;
       if (kind[i] !== KIND.earth) continue;
       // Positive cut edges only; no terrain shield under a bridge or at an embankment toe.
       if (sec.zDayL[i] > grade[i]) edges.L[i] = { offset: sec.dayL[i], height: sec.zDayL[i] - grade[i] };
