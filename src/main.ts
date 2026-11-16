@@ -1,9 +1,7 @@
 import './style.css';
 import { CATEGORIES } from './core/data/categories';
-import { speedNorms } from './core/data/norms';
 import { scenarioParams } from './core/data/scenario';
 import type { Design, Result } from './core/evaluate';
-import { nearestLeg } from './core/horizontal';
 import { missionProject } from './core/project-mission';
 import { routeCrownWidth } from './core/route-section';
 import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinStretch } from './core/project-motorway';
@@ -22,10 +20,9 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { bendAt, coveredStretches } from './ui/road-edit';
+import { coveredStretches } from './ui/road-edit';
 import { buildInProject, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
-import { fitPlacedBend } from './core/bend-fit';
 import { RoadNet } from './core/roadnet';
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
@@ -40,7 +37,7 @@ import { startEvalWorkers } from './eval-workers';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext } from './core/project-legacy';
-import type { ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
+import type { ProjectResult, ProjectSnapshot, RouteId, RouteResult } from './core/project';
 import { acceptsProjectMessage, type ProjectWorkerIn } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
@@ -59,6 +56,7 @@ import { EditBar } from './ui/editbar';
 import { bendStations } from './ui/bend-stations';
 import { createDesignEdits } from './ui/design-edits';
 import { profileEvents } from './ui/profile-events';
+import { createMapGestures } from './ui/map-gestures';
 import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
@@ -878,146 +876,17 @@ async function main() {
     get editable() { return store.read() !== null; }, get routes() { return projectStore.snapshot.design.routes; },
     get sourcePicker() { return sourcePicker; }, get sourceEditor() { return sourceEditor; },
   });
-  /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
-  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
-  /** a press on a mapped road before the road links are loaded (client point; `ready` once they are) */
-  type EarlyGrab = { x: number; y: number; ready: boolean };
-  let grabbedEarly = null as EarlyGrab | null;
-  const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
-    const interval = sourceEditor?.interval; if (!interval) return null;
-    const g = view.pick(clientX, clientY);
-    return g && sourceEditor!.covers(g.x, g.y, Math.max(6, 8 * view.metresPerPixel)) ? { ...interval } : null;
-  };
-  /** The first drag of a mapped road: its stretch becomes a project road (line converted to bends that
-   * follow the old road) and the drag bends it, all ONE undo step (committed when the drag ends). */
-  const rebuildByDrag = (interval: SourceInterval, x: number, y: number): number | null => {
-    const lineKind = sourceEditor?.lineKind;
-    if (!transportIndex || !lineKind) return null;
-    let command;
-    try { command = lineKind.rebuild(transportIndex, interval, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` }); }
-    catch (error) { console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
-    const id = command.routes[0].id;
-    intro.hide(); sourceEditor?.clear();
-    if (projectStore.inTransaction) projectStore.commit();
-    projectStore.begin();
-    try { projectStore.dispatch(command); }
-    catch (error) { projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
-    switchRoute(id, true);
-    const k = bendByDrag(x, y);
-    // (a new bend, not one the old line's own curve already had, is fitted where its curve has room on release)
-    return k;
-  };
-  /** A drag that starts on the road: on a straight it adds a bend there, which is fitted on release where
-   * its curve has room (no curve-room problem from one drag, core/bend-fit.ts); on the curve of a bend, or
-   * within an easement's length of it (a new bend there would crowd it), it moves that bend, which keeps its
-   * distance from the pointer for the rest of the drag. */
-  let grabOffset: { i: number; dx: number; dy: number } | null = null;
-  const bendByDrag = (x: number, y: number): number => {
-    const d = store.design, near = speedNorms(d.speed, d.category).minTransition;
-    const on = bendAt(A, B, d.pis, d.speed, d.category, { x, y }, 15, near);
-    if (on !== null) { grabOffset = { i: on, dx: d.pis[on].x - x, dy: d.pis[on].y - y }; select({ kind: 'bend', i: on }); return on; }
-    grabOffset = null;
-    const k = insertBend(x, y, false); select({ kind: 'bend', i: k });
-    if (store.activeRouteId) placedByDrag = { routeId: store.activeRouteId, i: k };
-    return k;
-  };
-  /** the new bend a drag placed (also the one a rebuilding drag adds): on release it is fitted where its curve
-   * has room (core/bend-fit.ts) */
-  let placedByDrag: { routeId: RouteId; i: number } | null = null;
-  const insertBend = (x: number, y: number, commit: boolean) => {
-    const k = nearestLeg(A, B, store.design.pis, { x, y });
-    store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); }, commit);
-    return k;
-  };
-  view.ev = {
-    onPickTerrain: (_x, _y, clientX, clientY) => {
-      intro.hide();
-      if (buildTool.active) { buildTool.place(placeAt(clientX, clientY, _x, _y)); return; }
-      const t = thingAt(clientX, clientY);
-      // First click on a base road before the graph is parsed: parse it, then pick the road at the
-      // clicked ground point (wherever the camera is by then), unless something else was selected meanwhile.
-      const ground = !t && !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
-      if (t?.kind === 'route-hit') { if (switchRoute(t.routeId) && store.read()) selectPiece(t.s); }
-      else if (t?.kind === 'source') showSource(t.hit);
-      else if (!t && legacyRoadAt(_x, _y)) showNoLinks();
-      else select(t);
-      if (ground) {
-        const generation = selectGeneration;
-        void ensureTransport().then(() => {
-          if (generation !== selectGeneration) return;
-          const p = view.project(ground.x, ground.y, view.drape(ground.x, ground.y)), box = canvasBox();
-          const late = p.vis ? sourceAt(box.left + p.sx, box.top + p.sy) : null;
-          if (late?.kind === 'source') showSource(late.hit);
-        });
-      }
-    },
-    // placing a new line: a click beside the map says so (never nothing at all)
-    onPickNothing: () => { if (buildTool.active) buildTool.place({ ok: false, why: 'That is beside the map: click on the map itself.' }); },
-    onDoublePick: (x, y) => { if (!store.read() || routeAt(lastClient.x, lastClient.y, 10)) return; select({ kind: 'bend', i: insertBend(x, y, true) }); },
-    // a drag from the road always bends it (a click there still inspects the nearest thing); so does a
-    // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch
-    hitRoad: (clientX, clientY) => {
-      grabbing = null; grabbedSource = null; grabbedEarly = null;
-      if (buildTool.active) return false;
-      if (roadAt(clientX, clientY, 9) >= 0) return true;
-      grabbing = mappedGrab(clientX, clientY);
-      if (grabbing) return true;
-      // another designed road drawn there comes first (a click there picks it, as the hover says)
-      const other = routeAt(clientX, clientY, 10);
-      const corridorOf = (id: RouteId | null | undefined) => id ? corridorOfRoute(projectStore.snapshot.design, id)?.id ?? id : undefined;
-      if (other && corridorOf(other.routeId) !== corridorOf(store.activeRouteId)) return false;
-      // a drag that starts on any other mapped road never pans the map: it rebuilds the stretch there, or
-      // its card says why it cannot be changed
-      const s = sourceAt(clientX, clientY);
-      if (s?.kind === 'source') { grabbedSource = s.hit; return true; }
-      // before the road links are loaded: a mapped road there is held (no pan); a drag waits for the links
-      // and then rebuilds it (a click opens its card once they are loaded)
-      const g = !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
-      if (g && mappedRoadNear(g.x, g.y)) {
-        const early: EarlyGrab = { x: g.x, y: g.y, ready: false }; grabbedEarly = early;
-        void ensureTransport().then(() => { early.ready = true; if (grabbedEarly === early) view.resumeRoadDrag(); });
-        return true;
-      }
-      return false;
-    },
-    onRoadDrag: (x, y) => {
-      if (grabbedEarly) {
-        if (!grabbedEarly.ready) return 'wait';
-        // the pressed ground point, where it is on the screen now (a camera flight may have moved on)
-        const g = grabbedEarly, at = view.project(g.x, g.y, view.drape(g.x, g.y)), box = canvasBox(); grabbedEarly = null;
-        const s = at.vis ? sourceAt(box.left + at.sx, box.top + at.sy) : null;
-        if (s?.kind !== 'source') return null;
-        grabbedSource = s.hit;
-      }
-      if (grabbedSource) {
-        showSource(grabbedSource); grabbedSource = null;
-        const interval = sourceEditor?.interval;
-        return interval ? rebuildByDrag({ ...interval }, x, y) : null;
-      }
-      if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
-      if (!store.read()) return null; intro.hide(); return bendByDrag(x, y);
-    },
-    onPiSelect: (i) => { grabOffset = null; placedByDrag = null; select(i === null ? null : { kind: 'bend', i }); },
-    onPiDrag: (i, x, y) => { const o = grabOffset?.i === i ? grabOffset : null; store.update((d) => { d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0); }, false); },
-    onPiDragEnd: () => {
-      grabOffset = null;
-      const placed = placedByDrag; placedByDrag = null;
-      const d = store.read(), ends = store.route?.endpoints;
-      if (placed && d && ends && placed.routeId === store.activeRouteId) {
-        const fitted = fitPlacedBend(ends.a.position, ends.b.position, d.pis, placed.i, d.category, d.speed);
-        if (fitted) store.update(draft => { draft.pis = fitted; }, false);
-      }
-      store.commit();
-    },
-    onPiDelete: (i) => deletePi(i),
-    // a reroute link: dragging it shapes it (adds a bend point there)
-    grab: (clientX, clientY) => {
-      if (!store.read() || buildTool.active) return null;
-      const w = crossingWorksAt(clientX, clientY);
-      return w?.link !== undefined && linkEdit ? linkEdit.grab(w) : null;
-    },
-  };
+  // ---- map gestures: click, drag to bend / rebuild / shape, double click (ui/map-gestures.ts) ----
   const lastClient = { x: 0, y: 0 };
+  const { events: mapEvents, mappedGrab, releaseGrab } = createMapGestures({
+    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingWorksAt, sourceAt, thingAt,
+    get A() { return A; }, get B() { return B; },
+    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
+    get sourceEditor() { return sourceEditor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selectGeneration; },
+    ensureTransport, select, selectPiece, switchRoute, showSource, showNoLinks, deletePi, placeAt, mappedRoadNear, legacyRoadAt,
+  });
+  view.ev = mapEvents;
+
   // ---- profile: the same verbs (ui/profile-events.ts) ----
   profile.ev = profileEvents({
     store, view, select, selectPiece, takeProfile, commitFields, addHeightAt, setPin,
@@ -1082,7 +951,7 @@ async function main() {
     get sel() { return sel; }, get qualifiedSelection() { return qualifiedSelection; },
     get received() { return received; }, get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
     sceneIdle, missionRouteId, switchRoute, select, selectPiece, placeAt, ensureTransport,
-    releaseGrab: () => { grabbing = null; grabbedSource = null; grabbedEarly = null; },
+    releaseGrab,
   });
 }
 
