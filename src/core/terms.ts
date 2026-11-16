@@ -107,7 +107,7 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
       const box = row?.underpass ? underpassAssembly(row.underpass, 0) : undefined;
       const inside = box ? ` (${box.width} × ${box.height} m inside)` : '';
       if (c.lowered) return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}, the ${what} lowered by ${c.lowered.toFixed(1)} m`,
-        explain: `Our embankment is too low for the box, so the ${what} is lowered into a cutting on ramps no steeper than ${pct(row?.rampGradient ?? 0.08)} (${m(c.approachLength)} m) and passes through it in a concrete box. Rainwater from the lowest point ${c.drainage === 'pump' ? 'is pumped out' : 'runs off in a pipe to lower ground'}.${works}` };
+        explain: `Our embankment is too low for the box, so the ${what} is lowered into a cutting on ramps (${m(c.approachLength)} m) no steeper than ${pct(row?.rampGradient ?? 0.08)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''} and passes through it in a concrete box. Rainwater from the lowest point ${c.drainage === 'pump' ? 'is pumped out' : 'runs off in a pipe to lower ground'}.${works}` };
       return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}`,
         explain: `The ${what} keeps its level and passes through our embankment in a concrete box.` };
     }

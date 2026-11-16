@@ -200,14 +200,16 @@ because they were cheap, and nothing checked them.
 
 **Reroutes are engineered** (`src/core/link-route.ts`), automatic or shaped by the player alike:
 
+- Surveyed every 5 m, and more finely wherever the ground departs from a straight line between samples by
+  more than 0.2 m (as drawn terrain is refined), so that the profile sees every hump the drawn road follows.
 - A profile as close to the ground as the class gradient allows (research/20; `rampGradient`, and the
   justified-case `rampSteepest` where the ordinary value cannot be met), cut or fill at most 10 m
   (`LINK_MAX_SUPPORT`, PROVISIONAL: the same limit as rebuilt roads and bridge-over-us ramps), ending on the
   ground at the roads it joins. Profile samples every 5 m (≤ 450 per line).
-- Streams crossed get a culvert sized like ours (`waterSize`, research/17) with its cover built up in the
-  profile; a river too big for a culvert is a problem. Houses in its way are bought out and demolished like
+- Streams crossed get a culvert sized like ours (`waterSize`, research/17), one per crossing, with its cover
+  built up in the profile exactly where it crosses (a stream at a tie-in itself cannot be covered there); a river too big for a culvert is a problem. Houses in its way are bought out and demolished like
   those under our road (`evaluate.ts` books them as buildings); a house the player keeps blocks it. Railways,
-  ponds/rivers (raster) and motorways are never crossed on the ground.
+  ponds/rivers (raster) and motorways (anywhere under the new road's width) are never crossed on the ground.
 - Where the line beside our earthworks cannot be built (or buying houses out is over a quarter of its price),
   `routeAlong` searches a gentler or clearer line beside our road: a dynamic programme over ≤ 60 stations ×
   11 offsets of 10 m, up to 100 m out (`LINK_CORRIDOR`, PROVISIONAL), with a soft penalty of 50 m of road per
@@ -229,8 +231,8 @@ for the local-road box: clear height, roof and cover, research/19), the crossed 
   as for a sloped deck) is chosen for the shortest ramps. Ramps back to the old road at the class gradient
   (`rampLimit`, research/20), at most 250 m each (`MAX_RAMP_LENGTH`).
 - Deepest lowering 6 m (`LOWERING_RULES.maxDepth`, PROVISIONAL: no norm gives one; level-crossing
-  replacement underpasses drop the road by the whole clearance plus structure, e.g. Studénka ≈ 5.47 m road to
-  structure top, research/37 §7). Rebuilt-railway-bridge lowerings in the sample were only 0.65–1.40 m, but
+  replacement underpasses drop the road by the whole clearance plus structure, e.g. Studénka ≈ 4.67 m road to
+  structure top plus an unreported track build-up, research/37 §7). Rebuilt-railway-bridge lowerings in the sample were only 0.65–1.40 m, but
   they needed only that much.
 - Drainage of the low point (TP 83 §6.1: by gravity where the fall allows, else pumped): two street gullies
   (OTSKP 89712) and either a DN 300 concrete pipe (9183A1) at 0.5 % fall (PROVISIONAL: TP 83's ditch minimum)
@@ -238,7 +240,8 @@ for the local-road box: clear height, roof and cover, research/19), the crossed 
   500 m, with an outlet head (89516); or a concrete wet well (894146), a duplex packaged pump chamber
   (74,355 CZK, equipment only: installation and the power connection are not included, PROVISIONAL, no
   installed price was found) and a rising main to where a ramp ends (DN 300 plastic pipe 9183A3 as a proxy).
-  Groundwater is not modelled.
+  The gravity check is a terrain screen (ground lower than the pipe's invert), not the recipient water level
+  and invert check research/37 asks for. Groundwater is not modelled.
 - The cut ramps are priced per metre at the crossed road's SPK rate, like bridge-over-us ramps; side roads
   joining them are regraded or walled exactly as for model 19's ramps (`crossing-works.ts`).
 - A player may choose an underpass down to 6 m below the box's height; Auto uses it wherever it is cheapest
@@ -275,14 +278,14 @@ for the local-road box: clear height, roof and cover, research/19), the crossed 
 | Design | Model 20 | Model 21 | Main reasons |
 |---|---:|---:|---|
 | straight | 10.011062 | 10.044549 | +33.5 M. Was VALID only because reroutes were unchecked; km 16.58 local road 2244: a silently unbuildable reroute (a railway between it and the next crossing) becomes a 75 m box with the road lowered 3.3 m (89 m of ramps, gravity drain), 33.6 M. Steep track reroutes become boxes or bridges over us (km 4.55 +11.8 M, km 4.64 +8.0 M, km 6.56 street +9.0 M); lowered boxes save at km 18.24 (−11.2 M) and km 6.32. |
-| best | 4.255851 | 4.207356 | −48.5 M: lowered boxes replace bridges over us or reroutes at km 3.69 (track lowered 5.8 m under our road at grade), 6.31, 8.19, 17.64, 18.98 (−29 M); km 9.93 track reroute 13.0 → 0.3 M (its own crossing's neighbour now carries it). |
+| best | 4.255851 | 4.210085 | −45.8 M: lowered boxes replace bridges over us or reroutes at km 3.69 (track lowered 5.8 m under our road at grade), 6.31, 8.19, 17.64, 18.98 (−29 M); km 9.93 track reroute 13.0 → 0.3 M (its own crossing's neighbour now carries it). |
 | demo | 4.881066 | 4.837294 | −43.8 M: km 7.96 service road 41.7 M reroute → box with the road lowered 0.7 m (17.6 M); lowered boxes at km 4.44 and 19.29; a 22.3 M track bridge over us → 12.3 M reroute at km 4.00; chains broken at km 2.60 and 6.89 (+8.1 M). |
-| direct-80 | 4.945392 | 4.937457 | −7.9 M: lowered boxes save 35 M (km 1.24, 2.15, 6.73, 15.29); unbuildable steep reroutes become bridges over us or boxes (km 6.55 +16.6 M, 4.62 +14.1 M, 5.68 +11.5 M); km 14.34 street reroute engineered (+8.4 M). |
+| direct-80 | 4.945392 | 4.937433 | −8.0 M: lowered boxes save 35 M (km 1.24, 2.15, 6.73, 15.29); unbuildable steep reroutes become bridges over us or boxes (km 6.55 +16.6 M, 4.62 +14.1 M, 5.68 +11.5 M); km 14.34 street reroute engineered (+8.4 M). |
 | direct-90 | 5.555314 | 5.603972 | +48.7 M: track diversions on ground steeper than a track may be become bridges over us or boxes (km 8.26 +27.7 M, 5.71 +10.3 M, 8.93 +6.7 M) or engineered longer lines (km 9.80 +12.9 M); a lowered box saves 17.5 M at km 1.25; km 5.67 −7.7 M. |
 | town-centre | 11.442013 | 11.533493 | +91.5 M: km 10.11 track 3637: the 1.5 km reroute (21.5 M) runs on ground far steeper than a track may be; a 148 m bridge over the cutting (89.5 M). Km 15.98 service road 5162: 43.0 M reroute → box with the road lowered 2.9 m (17.0 M). Km 4.90/4.98 street reroutes (one too steep to build, the other 43 M once engineered) → boxes with the streets lowered 1.7 m (+12.1 M). Km 6.29 track no longer chained (+11.5 M). |
 
 Frozen fixtures recaptured (`eval-regression.ts --capture=current --reviewed-model-change`): the six above;
-best-drag −67.4 M, best-pin −47.1 M, best-structures −53.9 M and best-manual −48.5 M move with best (the same
+best-drag −67.4 M, best-pin −44.3 M, best-structures −51.2 M and best-manual −45.8 M move with best (the same
 lowered boxes; best-manual stays invalid by its manual grade), town-controls +91.5 M with town-centre (stays
 invalid by its player overrides). `tests/fixtures/service-loop-design.json` is now VALID: the service road is
 lowered 4.4 m under a box and the class III road joining its ramp is regraded (41 m); the model 19 engine
@@ -303,7 +306,18 @@ footprint within 200 m of them is unchanged (`CrossingCache`). Auto's preference
 back under our slope also removes best's new strict retry. A/B interleaved against main 217cfa4 (`scripts/` designs, min of 12, under the exclusive browser lock;
 host load ≈ 20): sums over the six saved designs 569 → 568 ms and 582 → 580 ms in two runs. Per design,
 demo is ≈ 15 ms faster and best ≈ 4 ms faster (the strict retry pass now reuses reroutes), straight and
-direct-90 ≈ 4–7 ms slower (their crossing step does more engineering, ≈ +7 ms).
+direct-90 ≈ 4–7 ms slower (their crossing step does more engineering, ≈ +7 ms). Measured before the review
+fixes (finer ground survey of reroutes, reuse tracked per consulted chainage); those could not be timed on
+the overloaded host (load 15–35, ±50 % run to run) and need a re-measure on a quiet one.
+
+Review fixes (deep review of this model): a reroute reused across passes is now invalidated by any change of
+our footprint at the chainages its computation consulted (it compared only a window around its anchors: a
+shaped bulge or a hairpin could reuse a stale plan); the ground between survey samples is profiled (a 1 m hump
+between samples drew a 40 % piece); culvert cover sits at the stream crossing (not the nearest sample) and a
+stream is billed once where two survey pieces meet; motorways met exactly at a piece boundary are caught; the
+box decision probes the same points as its final check (a ridge between samples rejected a box a 0.7 m
+lowering fits); Studénka's derived depth corrected to 4.67 m plus track build-up (research/37 §7); the
+lowered-box card states the steeper ramp allowance; the works outline breaks where it leaves the view.
 
 **Known remaining.** Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
 station is priced as equipment plus catalogue items without installation and power connection; cut ramps and

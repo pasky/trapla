@@ -23,9 +23,9 @@ export interface CrossingCache {
   links: Map<string, { i0: number; left: Float64Array; right: Float64Array; value: unknown }>;
 }
 export const crossingCache = (): CrossingCache => ({ paths: new Map(), links: new Map() });
-/** Our footprint this far beyond a reroute's stations (its search corridor and more) bounds what it
- * can meet: our earthworks, the houses they take. */
-const PERSIST_REACH = LINK_CORRIDOR + 100;
+/** Beyond the chainages a reroute's computation consulted, our footprint decides which houses under it are
+ * already demolished (a house is taken by the sections of our road beside it), m. */
+const PERSIST_PAD = 50;
 /** How far beyond a kept crossed way's rebuilt stretch Auto looks for it running back under our
  * earthworks, m (engine screen, the reroute search corridor). */
 const RUN_BACK = LINK_CORRIDOR;
@@ -210,7 +210,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     basis: 'game', rule: `Game estimate (research/19): an underpass box is at most ${UNDERPASS_RULES.maxLength} m long` };
   if (message === UNDERPASS_TOO_LOW) return { title: 'Embankment too low for an underpass',
     fix: 'Raise our road here, or choose another crossing',
-    detail: `Somewhere under our road the box would stick out of the embankment, even with the ${what} lowered by ${LOWERING_RULES.maxDepth} m: it needs room for its height, roof and earth cover.`,
+    detail: `Somewhere under our road the box would stick out of the embankment${c.lowered === undefined ? '' : `, even with the ${what} lowered as far as it may be (${LOWERING_RULES.maxDepth} m)`}: it needs room for its height, roof and earth cover.`,
     basis: 'game', rule: `Game estimate (research/19, 37): an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` };
   if (message === 'This road class cannot pass in a small underpass') return { title: `A ${what} cannot pass through a small underpass`,
     fix: 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"', detail: 'Underpass boxes are sized for tracks, service roads and local roads only.',
@@ -241,7 +241,11 @@ function lerpAt(v: ArrayLike<number>, lo: number, hi: number, t: number): number
 
 function routeGeometry(route: CrossingRoute) {
   const n = route.s.length;
+  // Chainages consulted while `reads.on` (a reroute reused across evaluation passes depends on them).
+  const reads = { on: false, lo: Infinity, hi: -Infinity };
+  const note = (s: number) => { if (s < reads.lo) reads.lo = s; if (s > reads.hi) reads.hi = s; };
   const at = (s: number) => {
+    if (reads.on) note(s);
     let lo = 0, hi = n - 1;
     while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (route.s[m] <= s) lo = m; else hi = m; }
     const t = Math.max(0, Math.min(1, (s - route.s[lo]) / (route.s[hi] - route.s[lo] || 1)));
@@ -364,7 +368,7 @@ function routeGeometry(route: CrossingRoute) {
   const project = (q: XY, cache = true) => {
     let column = cache ? projected.get(q.x) : undefined;
     const cached = column?.get(q.y);
-    if (cached) return cached;
+    if (cached) { if (reads.on) note(cached.s); return cached; }
     nearest(q);
     const p = at(station), result = { s: p.s, x: p.x, y: p.y, tx: p.tx, ty: p.ty, z: p.z,
       left: p.left, right: p.right, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
@@ -382,6 +386,7 @@ function routeGeometry(route: CrossingRoute) {
   /** One-off probe (e.g. link chord clearance): project/at arithmetic without allocating. */
   const marginOnce = (q: XY, extra: number) => {
     nearest(q);
+    if (reads.on) note(station);
     let lo = 0, hi = n - 1;
     while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (route.s[m] <= station) lo = m; else hi = m; }
     const t = Math.max(0, Math.min(1, (station - route.s[lo]) / (route.s[hi] - route.s[lo] || 1)));
@@ -392,7 +397,7 @@ function routeGeometry(route: CrossingRoute) {
       : route.right ? lerpAt(route.right, lo, hi, t) : lerpAt(route.width, lo, hi, t) / 2;
     return Math.abs(lateral) - edge - extra;
   };
-  return { at, project, margin };
+  return { at, project, margin, reads };
 }
 
 function along(path: readonly Readonly<WayPoint>[], d: number): WayPoint {
@@ -431,7 +436,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>, routed: Map<string, LinkPlan>,
   linkMemo: NonNullable<LinkEnv['memo']>,
   sidesOf = new Map<string, [boolean, boolean]>(), budget = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>): CrossingIssue[] {
-  const { at, project, margin } = spatial;
+  const { at, project, margin, reads } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => !built(v));
   // Works are remeasured on every build (Auto tries candidates, then rebuilds the network).
   for (const c of crossings) {
@@ -647,11 +652,13 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         // Under the carriageway the box needs its clear height + roof + cover below our grade.
         const crown = (route.crownWidth ?? 0) / 2 + g.width / 2;
         const inside = [along(path, d0), ...path.filter(q => q.d > d0 && q.d < d1), along(path, d1)];
-        let lowest = Infinity;
-        for (const q of inside) {
-          const p = project(q);
-          if (Math.abs(p.lateral) <= crown) lowest = Math.min(lowest, p.z - heightAt(q.x, q.y));
+        // (the way's samples and their quarter points, as the final check on the drawn way probes them)
+        const probes: { d: number; z: number; ground: number }[] = [];
+        for (let k = 0; k < inside.length; k++) for (const t of k + 1 < inside.length ? [0, 0.25, 0.5, 0.75] : [0]) {
+          const a = inside[k], b = inside[Math.min(inside.length - 1, k + 1)], q = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, p = project(q);
+          if (Math.abs(p.lateral) <= crown) probes.push({ d: a.d + (b.d - a.d) * t, z: p.z - box.minHeight, ground: heightAt(q.x, q.y) });
         }
+        const lowest = Math.min(Infinity, ...probes.map(q => q.z + box.minHeight - q.ground));
         delete c.lowered; delete c.drainage; delete c.drainCost; delete c.approachLength;
         const rate = (c.roadPerKm ?? row.roadPerKm[0]) / 1000;
         if (lowest < box.minHeight - 1e-6) {
@@ -661,11 +668,6 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
           // hillside a level floor would leave the uphill ramp running on in a deep cut.
           const g0 = heightAt(inside[0].x, inside[0].y), g1 = heightAt(inside[inside.length - 1].x, inside[inside.length - 1].y);
           const steepest = Math.max(row.rampGradient, Math.abs(g1 - g0) / Math.max(1, length));
-          const probes: { d: number; z: number }[] = [];
-          for (let k = 0; k < inside.length; k++) for (const t of k + 1 < inside.length ? [0, 0.25, 0.5, 0.75] : [0]) {
-            const a = inside[k], b = inside[Math.min(inside.length - 1, k + 1)], p = project({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-            if (Math.abs(p.lateral) <= crown) probes.push({ d: a.d + (b.d - a.d) * t, z: p.z - box.minHeight });
-          }
           const ground = inside.map(q => heightAt(q.x, q.y));
           const old = (g1 - g0) / Math.max(1, length), slopes = [old, Math.max(-row.rampGradient, Math.min(row.rampGradient, old))];
           for (let k = -8; k <= 8; k++) slopes.push(steepest * k / 8);
@@ -675,7 +677,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
           let best = { base: Infinity, slope: 0, depth: Infinity, rank: [2, 2, 0, 0] };
           for (const slope of slopes) {
             const base = Math.min(...probes.map(q => q.z - slope * q.d));
-            const depth = Math.max(0, ...inside.map((q, i) => ground[i] - base - slope * q.d));
+            const depth = Math.max(0, ...inside.map((q, i) => ground[i] - base - slope * q.d), ...probes.map(q => q.ground - base - slope * q.d));
             const mine = rank(depth, foot(d0, -1, base + slope * d0, true), foot(d1, 1, base + slope * d1, true));
             const i = mine.findIndex((v, j) => Math.abs(v - best.rank[j]) > 1e-6);
             if (i >= 0 && mine[i] < best.rank[i]) best = { base, slope, depth, rank: mine };
@@ -831,20 +833,21 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       // route and terrain are immutable, so reuse the smoothed controls (copied, never shared).
       const key = `${a.x},${a.y},${b.x},${b.y},${side},${g.width},${stations.length}`;
       const shape = c.via?.[k];
-      // Across evaluate()'s engineering passes a line is reused only where our footprint near it is unchanged.
-      let footprint: { i0: number; left: Float64Array; right: Float64Array } | undefined;
+      // Across evaluate()'s engineering passes a line is reused only where our footprint is exactly
+      // unchanged at every chainage its computation consulted (and PERSIST_PAD beyond).
       const remember = <T>(name: string, compute: () => T): T => {
         if (!persist) return compute();
-        if (!footprint) {
-          const i0 = firstAbove(route.s, lo - PERSIST_REACH, true), i1 = Math.max(i0, firstAbove(route.s, hi + PERSIST_REACH, false));
-          const left = route.left ?? Float64Array.from(route.width, w => w / 2), right = route.right ?? left;
-          footprint = { i0, left: Float64Array.from({ length: i1 - i0 }, (_, i) => left[i0 + i]), right: Float64Array.from({ length: i1 - i0 }, (_, i) => right[i0 + i]) };
-        }
-        const here = footprint, hit = persist.links.get(name);
-        if (hit && hit.i0 === here.i0 && hit.left.length === here.left.length && hit.left.every((v, i) => v === here.left[i]) && hit.right.every((v, i) => v === here.right[i])) return hit.value as T;
-        const value = compute();
-        persist.links.set(name, { ...here, value });
-        return value;
+        const left: ArrayLike<number> = route.left ?? Float64Array.from(route.width, w => w / 2), right: ArrayLike<number> = route.right ?? left;
+        const hit = persist.links.get(name);
+        if (hit && hit.left.every((v, i) => v === left[hit.i0 + i]) && hit.right.every((v, i) => v === right[hit.i0 + i])) return hit.value as T;
+        const outer = { ...reads };
+        Object.assign(reads, { on: true, lo, hi }); // (its stations, the side points it starts from)
+        try {
+          const value = compute();
+          const i0 = firstAbove(route.s, reads.lo - PERSIST_PAD, true), i1 = Math.max(i0, firstAbove(route.s, reads.hi + PERSIST_PAD, false));
+          persist.links.set(name, { i0, left: Float64Array.from({ length: i1 - i0 }, (_, i) => left[i0 + i]), right: Float64Array.from({ length: i1 - i0 }, (_, i) => right[i0 + i]), value });
+          return value;
+        } finally { Object.assign(reads, outer); }
       };
       let cached = smoothed.get(key);
       if (!cached) {

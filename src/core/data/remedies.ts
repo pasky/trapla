@@ -85,7 +85,8 @@ export const UNDERPASS_RULES = {
 export const LOWERING_RULES = {
   /** Deepest lowering below the old road level, m. PROVISIONAL game cap (research/37 §7): no norm
    * gives one; level-crossing replacement underpasses drop the road by the whole clear height plus
-   * structure (Studénka, ≈ 5.47 m road to structure top), and 6 m rounds above that design. */
+   * structure (Studénka: ≈ 4.67 m road to the railway structure's top, plus its unreported track build-up);
+   * 6 m covers that with margin. */
   maxDepth: 6,
   /** Drain-pipe invert below the low point's road surface (gully outlet), m. PROVISIONAL: no
    * sourced pipe-cover rule was found (research/37 §2). */

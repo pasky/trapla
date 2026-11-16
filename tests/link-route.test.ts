@@ -39,6 +39,29 @@ describe('a reroute built as a designer builds it', () => {
     expect(plan.houses).toEqual([5]); expect(plan.houseCost).toBe(4e6);
   });
 
+  it('profiles the ground between its samples, gives a stream its cover where it crosses (once), and meets motorways at any point', () => {
+    // a 1 m hump only 5 m wide: the drawn road must not climb over it at 40 % between profile samples
+    const hump = (x: number) => 100 + Math.max(0, 1 - Math.abs(x - 202.5) / 2.5);
+    const over = engineerLink(line, 4, env(hump), 0.08);
+    expect(over.problems).toEqual([]);
+    for (let i = 1; i < over.points.length; i++) {
+      const a = over.points[i - 1], b = over.points[i];
+      expect(Math.abs(b.z - a.z)).toBeLessThanOrEqual((b.d! - a.d!) * 0.08 + 1e-9);
+      for (const t of [0.25, 0.5, 0.75]) if (a.surface === 'terrain' && b.surface === 'terrain')
+        expect(Math.abs(a.z + (b.z - a.z) * t - hump(a.x + (b.x - a.x) * t))).toBeLessThanOrEqual(0.2 + 1e-9);
+    }
+    // a stream between samples, and one exactly where two survey pieces meet: one culvert each, its cover there
+    for (const at of [202, 200]) {
+      const crossing: WaterCrossing = { s: 0, x: at, y: 20, id: 7, waterKind: 'stream', width: 0.5, catchmentKm2: 0.4, truncated: false, sine: 1 };
+      const plan = engineerLink(line, 4, env(() => 100, { streams: (a, b) => (Math.min(a.x, b.x) <= at && Math.max(a.x, b.x) >= at ? [{ x: at, y: 20, crossing }] : []) }), 0.08);
+      expect(plan.culverts).toHaveLength(1);
+      const size = waterSize(crossing, 4 + 2 * 1.5 * waterSize(crossing, 7).minHeight);
+      expect(plan.points.find(p => Math.abs(p.x - at) < 1e-6)!.z - 100).toBeGreaterThanOrEqual(size.minHeight - 1e-9);
+    }
+    // a motorway across the line exactly where two survey pieces meet
+    expect(engineerLink(line, 4, env(() => 100, { roads: new RoadNet({ cls: ['motorway'], ways: [[0, 150, 0, 150, 40]] }) }), 0.08).problems).toEqual(['motorway']);
+  });
+
   it('never runs on the ground across a railway or a pond', () => {
     const rail = env(() => 100, { obstacle: (a, b) => (Math.min(a.x, b.x) <= 150 && Math.max(a.x, b.x) >= 150 ? 'railway' : null) });
     expect(engineerLink(line, 4, rail, 0.08).problems).toEqual(['railway']);

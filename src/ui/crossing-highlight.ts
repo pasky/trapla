@@ -7,7 +7,7 @@ import type { View } from '../render/view';
 
 export class CrossingHighlight {
   private svg: SVGSVGElement;
-  private lines: SVGPolylineElement[] = [];
+  private lines: SVGPathElement[] = [];
 
   constructor(private view: View, overlay: HTMLElement, private host: { selected(): number | null; result(): Result | null | undefined }) {
     this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -24,15 +24,20 @@ export class CrossingHighlight {
       return g ? [...(g.road ? [g.road] : []), ...(g.links ?? []), ...(g.ties ?? []).map(t => t.path)] : [];
     }).filter(p => p.length > 1);
     while (this.lines.length < paths.length) {
-      const l = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      const l = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       this.svg.appendChild(l); this.lines.push(l);
     }
     this.lines.forEach((l, k) => {
       const path = paths[k];
-      if (!path) { l.setAttribute('points', ''); return; }
-      // (a piece behind the camera breaks the line rather than drawing it across the screen)
-      const pts = path.map(p => this.view.project(p.x, p.y, p.z + 0.3));
-      l.setAttribute('points', pts.filter(p => p.vis).map(p => `${p.sx.toFixed(1)},${p.sy.toFixed(1)}`).join(' '));
+      if (!path) { l.setAttribute('d', ''); return; }
+      // (a point off the view breaks the line: each visible run is its own stroke)
+      let d = '', open = false;
+      for (const p of path) {
+        const q = this.view.project(p.x, p.y, p.z + 0.3);
+        if (!q.vis) { open = false; continue; }
+        d += `${open ? 'L' : 'M'}${q.sx.toFixed(1)},${q.sy.toFixed(1)}`; open = true;
+      }
+      l.setAttribute('d', d);
     });
   }
 }

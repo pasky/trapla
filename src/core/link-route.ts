@@ -17,6 +17,9 @@ export type LinkProblem = 'steep' | 'footprint' | 'motorway' | 'railway' | 'wate
 export const LINK_MAX_SUPPORT = 10;
 /** Profile sampling along the line, m; obstacles are queried per piece of at most PIECE m. */
 const SAMPLE = 5, PIECE = 50, MAX_SAMPLES = 450;
+/** Ground departing from a chord between samples by more than this is sampled more finely (the same
+ * 0.2 m as crossing-geometry.ts refineTerrain), to at most MAX_REFINED samples. */
+const REFINE = 0.2, MAX_REFINED = 480;
 /** PROVISIONAL length of a reroute's mouth at either end where it may touch our corridor's edge, m. */
 const END_MOUTH = 10;
 /** PROVISIONAL search corridor for a gentler line: up to this far out from our earthworks, m. */
@@ -79,7 +82,7 @@ export interface LinkSurvey {
 }
 export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv): LinkSurvey {
   const half = width / 2, problems = new Set<LinkProblem>(), ourClearance = 0;
-  const points: CrossingPoint[] = [], leg = [0];
+  let points: CrossingPoint[] = [], leg = [0], base = [true];
   let run = 0, total = 0;
   for (let i = 1; i < controls.length; i++) total += Math.hypot(controls[i].x - controls[i - 1].x, controls[i].y - controls[i - 1].y);
   // bounded like every crossing path (crossing-geometry.ts MAX_POINTS): coarser on a very long line
@@ -88,15 +91,32 @@ export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv)
     if (!i) { points.push(point(env, controls[0].x, controls[0].y, 0)); continue; }
     const a = controls[i - 1], b = controls[i], len = Math.hypot(b.x - a.x, b.y - a.y);
     const count = Math.max(1, Math.ceil(len / sample));
-    for (let k = 1; k <= count; k++) { points.push(point(env, a.x + (b.x - a.x) * k / count, a.y + (b.y - a.y) * k / count, run + len * k / count)); leg.push(i); }
+    for (let k = 1; k <= count; k++) { points.push(point(env, a.x + (b.x - a.x) * k / count, a.y + (b.y - a.y) * k / count, run + len * k / count)); leg.push(i); base.push(true); }
     run += len;
   }
-  const culverts: LinkPlan['culverts'] = [], houses = new Set<number>();
-  const lower = points.map(p => p.ground - LINK_MAX_SUPPORT), upper = points.map(p => p.ground + LINK_MAX_SUPPORT);
-  // Off our earthworks (every profile sample), except where it leaves and joins the real roads at its
+  // The ground between samples is not assumed straight: where it departs from the chord by more than
+  // REFINE, samples are added (as crossing-geometry.ts refines drawn terrain), so that the profile below
+  // sees every hump and dip the drawn road will follow (bounded).
+  {
+    const out: CrossingPoint[] = [points[0]], outLeg = [leg[0]], outBase = [true];
+    let budget = Math.max(0, MAX_REFINED - points.length);
+    const split = (a: CrossingPoint, b: CrossingPoint, l: number, depth: number) => {
+      let error = 0;
+      for (const t of [0.25, 0.5, 0.75]) error = Math.max(error, Math.abs(a.ground + (b.ground - a.ground) * t - env.heightAt(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)));
+      if (error > REFINE && budget > 0 && depth < 4) {
+        budget--;
+        const m = point(env, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.d! + b.d!) / 2);
+        split(a, m, l, depth + 1); out.push(m); outLeg.push(l); outBase.push(false); split(m, b, l, depth + 1);
+      }
+    };
+    for (let i = 1; i < points.length; i++) { split(points[i - 1], points[i], leg[i], 0); out.push(points[i]); outLeg.push(leg[i]); outBase.push(base[i]); }
+    points = out; leg = outLeg; base = outBase;
+  }
+  const culverts: LinkPlan['culverts'] = [], houses = new Set<number>(), streams: { x: number; y: number; d: number; need: number }[] = [], seen = new Set<string>();
+  // Off our earthworks (every survey sample), except where it leaves and joins the real roads at its
   // ends: those tie-ins stand on the edge of our corridor by construction (a few metres of mouth).
   const last = points[points.length - 1].d!;
-  for (let i = 1; i + 1 < points.length; i++) if (points[i].d! > END_MOUTH && points[i].d! < last - END_MOUTH
+  for (let i = 1; i + 1 < points.length; i++) if (base[i] && points[i].d! > END_MOUTH && points[i].d! < last - END_MOUTH
     && env.margin(points[i], half + ourClearance) < -1e-6) { problems.add("footprint"); break; }
   // What it runs across, in pieces of at most PIECE m along its legs (bounded spatial queries).
   for (let i = 1; i < points.length;) {
@@ -105,27 +125,48 @@ export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv)
     while (j + 1 < points.length && leg[j + 1] === leg[i] && points[j + 1].d! - points[i - 1].d! <= PIECE) j++;
     const lo = i - 1, hi = j, a = points[lo], b = points[hi];
     i = j + 1;
-    if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-9) continue;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len < 1e-9) continue;
     const blocked = env.obstacle?.(a, b, half);
     if (blocked) problems.add(blocked);
     for (const h of env.houses?.(a, b, half) ?? []) houses.add(h);
+    // a motorway under the new road's own width (also one met exactly at a piece's end)
     env.roads?.nearSegments([Math.min(a.x, b.x) - half, Math.min(a.y, b.y) - half, Math.max(a.x, b.x) + half, Math.max(a.y, b.y) + half], s => {
-      if (ROAD_CLASSES[s.cls]?.noAtGrade && crosses(a, b, { x: s.ax, y: s.ay }, { x: s.bx, y: s.by })) problems.add('motorway');
+      if (ROAD_CLASSES[s.cls]?.noAtGrade && segmentGap(a, b, { x: s.ax, y: s.ay }, { x: s.bx, y: s.by }) <= half) problems.add('motorway');
     });
-    // A stream under the new road: a culvert sized like ours (research/17), with its cover built up.
+    // A stream under the new road: a culvert sized like ours (research/17), with its cover built up
+    // where it crosses (one culvert per crossing, also where two pieces meet on it).
     for (const w of env.streams?.(a, b) ?? []) {
+      const key = `${w.crossing.id}:${Math.round(w.x)},${Math.round(w.y)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       const fill = (footprint: number) => waterSize(w.crossing, footprint);
       let size = fill(width + 3);
       size = fill(width + 2 * 1.5 * size.minHeight);
       if (size.type === 'bridge') { problems.add('river'); continue; }
       const length = barrelLength(w.crossing, width + 2 * 1.5 * size.minHeight);
       culverts.push({ x: w.x, y: w.y, length, cost: length * size.perM + 2 * size.head });
-      // the profile sample nearest to the crossing carries the cover
-      let near = lo, gap = Infinity;
-      for (let k = lo; k <= hi; k++) { const d = Math.hypot(points[k].x - w.x, points[k].y - w.y); if (d < gap) { gap = d; near = k; } }
-      lower[near] = Math.max(lower[near], env.heightAt(w.x, w.y) + size.minHeight);
+      const t = Math.max(0, Math.min(1, ((w.x - a.x) * (b.x - a.x) + (w.y - a.y) * (b.y - a.y)) / (len * len)));
+      streams.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, d: a.d! + (b.d! - a.d!) * t, need: env.heightAt(w.x, w.y) + size.minHeight });
     }
   }
+  // the crossing itself is a sample of the profile, carrying the culvert's cover (at an end, where the
+  // line must meet the old road's ground, the profile reports it cannot)
+  for (const w of streams) {
+    // (not on a tie-in itself, which stays at the old road's ground: 1 m inside it)
+    if (w.d < 1 || w.d > last - 1) {
+      const d = Math.max(Math.min(1, last / 2), Math.min(last - Math.min(1, last / 2), w.d)), q = along(points, d);
+      w.x = q.x; w.y = q.y; w.d = d;
+    }
+    let k = points.findIndex(p => p.d! >= w.d - 1e-6);
+    if (k < 0) k = points.length - 1;
+    if (Math.abs(points[k].d! - w.d) > 0.05 && k > 0) { points.splice(k, 0, point(env, w.x, w.y, w.d)); }
+    else if (Math.abs(points[k].d! - w.d) > 0.05) { points.splice(k + 1, 0, point(env, w.x, w.y, w.d)); k++; }
+    (points[k] as CrossingPoint & { cover?: number }).cover = Math.max((points[k] as CrossingPoint & { cover?: number }).cover ?? -Infinity, w.need);
+  }
+  const lower = points.map(p => Math.max(p.ground - LINK_MAX_SUPPORT, (p as CrossingPoint & { cover?: number }).cover ?? -Infinity));
+  const upper = points.map(p => p.ground + LINK_MAX_SUPPORT);
+  for (const p of points) delete (p as CrossingPoint & { cover?: number }).cover;
   return { points, problems: [...problems], culverts, houses: [...houses], lower, upper };
 }
 
@@ -157,9 +198,22 @@ export function profileLink(survey: LinkSurvey, grade: number, env: LinkEnv): Li
     houses: list, houseCost: list.reduce((a, j) => a + (env.houseCost?.(j) ?? 0), 0), grade };
 }
 
-function crosses(a: XY, b: XY, c: XY, d: XY) {
+/** The point at distance d along sampled points (by their d). */
+function along(points: readonly CrossingPoint[], d: number): XY {
+  let k = 1;
+  while (k < points.length - 1 && points[k].d! < d) k++;
+  const a = points[k - 1], b = points[k], t = Math.max(0, Math.min(1, (d - a.d!) / ((b.d! - a.d!) || 1)));
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+/** Least distance between segments ab and cd (0 where they cross or touch). */
+function segmentGap(a: XY, b: XY, c: XY, d: XY) {
   const cross = (o: XY, p: XY, q: XY) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
-  return cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0;
+  if (cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0) return 0;
+  const to = (q: XY, p: XY, r: XY) => {
+    const dx = r.x - p.x, dy = r.y - p.y, t = Math.max(0, Math.min(1, ((q.x - p.x) * dx + (q.y - p.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(q.x - p.x - t * dx, q.y - p.y - t * dy);
+  };
+  return Math.min(to(a, c, d), to(b, c, d), to(c, a, b), to(d, a, b));
 }
 
 /** A gentler line from a to b beside our road, as a designer lays it out along the slope: at every

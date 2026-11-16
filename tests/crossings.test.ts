@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { auditCrossingGeometry, buildCrossingGeometry, crossingPlanLength, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
+import { auditCrossingGeometry, buildCrossingGeometry, crossingCache, crossingPlanLength, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
   type CrossingOverride, type CrossingResult, type CrossingRoute } from '../src/core/crossings';
 import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet';
 import { bridgeModel } from '../src/core/bridge';
@@ -170,6 +170,25 @@ describe('crossing geometry and map overlay', () => {
     expect(net.connectedCrossingPath(0, 0, -10, 60)).toEqual(expected);
   });
 
+  it('reuses a reroute across evaluation passes only where our footprint it consulted is unchanged', () => {
+    // a shaped reroute bulging out to x = 4500, well beyond its anchors' chainages (3000–3800)
+    const net = new RoadNet({ cls: ['primary', 'residential'], ways: [[0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 300]] });
+    const via: CrossingOverride['via'] = [[{ x: 4500, y: -30 }], []];
+    const run = (r: CrossingRoute, cache: ReturnType<typeof crossingCache>) => {
+      const cs = [cross(0, 3000), cross(1, 3800, 'residential')];
+      resolveCrossings(cs, 9000, new Uint8Array(s.length), r.width, new Float64Array(s.length), undefined,
+        [{ roadId: 0, type: 'junction' }, { roadId: 1, type: 'reconnection', via, to: 0 }]);
+      buildCrossingGeometry(cs, r, () => 400, net, cache);
+      return cs[1].issues?.map(v => v.title) ?? [];
+    };
+    const cache = crossingCache();
+    expect(run(route, cache)).toEqual([]);
+    // our earthworks widen under the bulge in the second pass: the reroute is rebuilt and now runs onto them
+    const wide = { ...route, width: Float64Array.from(route.width, (w, i) => i >= 420 && i < 460 ? 100 : w) };
+    expect(run(wide, cache)).toEqual(run(wide, crossingCache()));
+    expect(run(wide, cache).length).toBeGreaterThan(0);
+  });
+
   it('shares candidate alignments within a build but refreshes mutable route and terrain inputs on the next build', () => {
     const net = new RoadNet({ cls: ['primary', 'residential'], ways: [
       [0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 2],
@@ -258,7 +277,7 @@ describe('crossing geometry and map overlay', () => {
     resolve(auto, [], [KIND.bridge]); expect(auto[0].type).toBe('bridge');
   });
 
-  it('rechecks the box under the crown on refined terrain and lets a measured skewed box lose to a link', () => {
+  it('probes the box under the crown between the way samples (a ridge there lowers the track) and lets a measured skewed box lose to a link', () => {
     const t = Float64Array.from({ length: 301 }, (_, i) => i * 10), kind = new Uint8Array(t.length); kind[100] = KIND.bridge;
     const flat: CrossingRoute = { s: t, x: t, y: new Float64Array(t.length), tx: new Float64Array(t.length).fill(1), ty: new Float64Array(t.length),
       grade: new Float64Array(t.length).fill(7), width: new Float64Array(t.length).fill(40), crownWidth: 9.5, kind };
@@ -268,7 +287,10 @@ describe('crossing geometry and map overlay', () => {
     resolveCrossings(ridge, 3000, kind, flat.width, new Uint8Array(t.length), undefined, [{ roadId: 0, type: 'underpass' }]);
     const bump = (_x: number, y: number) => Math.max(0, 3 * (1 - Math.abs(y - 3) / 2.5));
     buildCrossingGeometry(ridge, flat, bump, net);
-    expect(ridge[0].geometry!.diagnostics).toContain('Embankment is too low over the underpass box');
+    // (seen between the samples, the ridge leaves 4 m of fill: the track is lowered under the box)
+    expect(ridge[0].geometry!.diagnostics).toBeUndefined();
+    expect(ridge[0].lowered).toBeGreaterThan(0.5); expect(ridge[0].lowered).toBeLessThan(2);
+    expect(auditCrossingGeometry(ridge, flat, bump, net)).toEqual([]);
     // A 30° track: the 40 m footprint is an 80 m box, dearer than its measured link to a junction.
     const skew = new RoadNet({ cls: ['primary', 'track'], ways: [[0, 1000, -300, 1000, 300], [1, 1500 - 300 * Math.sqrt(3), -300, 1500 + 300 * Math.sqrt(3), 300]] });
     const cs = [cross(0, 1000, 'primary', 7, 100), cross(1, 1500, 'track', 7, 150)];

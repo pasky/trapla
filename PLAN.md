@@ -263,10 +263,11 @@ What exists (details and commands in `README.md`):
 - A reroute leads only to a crossing that carries traffic over or under us, never to another cut road
   (playtest-qa P1 #13; 152 such chains on main's audit designs, none now). A selected crossing outlines all
   its works on the map. Auto avoids boxes whose kept road runs straight back under our slope.
-- Published designs: straight +33.5 M, best −48.5 M, demo −43.8 M, direct-80 −7.9 M, direct-90 +48.7 M,
+- Published designs: straight +33.5 M, best −45.8 M, demo −43.8 M, direct-80 −8.0 M, direct-90 +48.7 M,
   town-centre +91.5 M (cheap unbuildable reroutes replaced by honest ones or structures; lowered boxes save
-  elsewhere), all VALID. No net full-evaluate creep on the saved designs (sum 569 → 568 ms; candidate reroutes
-  that cannot be worth it are not built, reroutes reused by the strict retry). Details: `docs/footprint-conflicts.md` § Model 21.
+  elsewhere), all VALID. No net full-evaluate creep on the saved designs before the review fixes (sum 569 → 568 ms;
+  candidate reroutes that cannot be worth it are not built, reroutes reused by the strict retry); the fixes'
+  finer reroute survey still needs timing on a quiet host. Details: `docs/footprint-conflicts.md` § Model 21.
 - Not modelled: groundwater and utilities under a lowered road; the pump station's installation and power
   connection (no installed price found).
 
