@@ -32,8 +32,8 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 |---|---|---|---|---|
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
-| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done in part: 1,840 → 958 lines, 12 modules out; rest planned (§ main.ts) |
-| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | first four stages done (750 lines, a +74 −13 diff); the closures next (§ Core) |
+| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done in part: 1,840 → 933 lines, 13 modules out; rest planned (§ main.ts) |
+| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | `evaluateRoute` done: six named stages, itself 60 lines (two diffs of +74 −13 and +50 −25); the other two functions next (§ Core) |
 | 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
@@ -110,10 +110,11 @@ objects passed directly, `main()`'s variables as live getters, commands as funct
 Next steps, in this order (each its own commit, verified by tsc, the browser gates and the scene scripts
 that play the flow):
 
-1. **`EvalClient`** (`src/eval-client.ts`): `requestEval`, the in-flight map, preview gestures, `settle`,
-   idle waiters and the message handler's acceptance, emitting `preview(result, design)`,
-   `full(result)` and `error`. `main.ts` keeps what to *do* with a result. This is the drag path and not
-   a verbatim move: measure `drag-perf` (all modes) before and after on a quiet host.
+1. Done: **`EvalClient`** (`src/eval-client.ts`, 102 lines): request ids, the in-flight map, the preview
+   gesture, "no repeat of a full request for the same design", the full-after-idle timer, the noise-band
+   request and which replies count; `main.ts` keeps what to *do* with a result (`showPreview`,
+   `showFull`). Not a verbatim move, so it has unit tests (`tests/eval-client.test.ts`, fake ports and
+   timers) and was measured: six drag modes at p95 frame 17 ms, handler p50 5 ms, as before.
 2. **Showing a result** (`showActiveResult`, `syncDecorations`, the preview branch of the message
    handler, the sliced 3D rebuild): ≈ 200 lines, the largest piece left.
 3. **`SelectionController`** (`select`, `placeOf`, `frameSelection`, `revalidate`).
@@ -146,17 +147,16 @@ possible, not the end state.
   of +74 −13 lines; tsc clean, 177 / 177 results identical, interleaved timing against main unchanged
   within the noise of a loaded host (`scripts/dev/interleave.ts <base checkout> <this checkout>`: six runs,
   median ratio 0.91–1.04, CPU time ratio 0.99–1.01).
-  Then, each again by the tool:
-  1. the closures as factories: `const { engineer } = routeEngineer(ctx, opts, setup, prices, solved,
-     caches)` (250 lines), then `liftStop` + `liftProfile` + `finish` together (560 lines, containing
-     `complete`; `liftStop` is assigned by `liftProfile` and read by `finish`, so they share a stage).
-     `let deckCoverReady` (assigned only in `engineer`) already sits next to it and goes into its stage. The
-     retry logic (≈ 45 lines) is then what is left of `evaluateRoute`;
-  2. inside `finish`: quantities / buildings / crossings / footprint as stages, `complete()` (noise,
-     violations, the `Result`) as its own function;
-  3. only then move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports,
-     since they no longer share a scope. The same tool applies to `buildCrossingGeometryOnce` and
-     `evaluateProject`.
+  Then `routeEngineer` (254 lines: one engineering pass of a grade line) and `routeFinish` (526: lift
+  retries, quantities, buildings, crossings, footprint, `complete()`) the same way (+50 −25; same checks,
+  four timing runs at median ratio 0.98–1.01): `evaluateRoute` itself is now the 60 lines of retry logic.
+  Next, each again by the tool:
+  1. inside `routeFinish`: quantities / buildings / crossings / footprint as stages, `complete()` (noise,
+     violations, the `Result`) as its own function (the tool works on top-level functions: `finish`'s body
+     first becomes one, by the same destructuring);
+  2. only then move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports,
+     since they no longer share a scope;
+  3. `buildCrossingGeometryOnce` (840 lines) and `evaluateProject` (443) with the same tool.
 - **Engine logic keyed on player text.** `evaluate.ts:1548` (`v.title.startsWith('A long bridge span is too
   low')`, set in `support-layout.ts:283`) and `:1905` (`'Road too low'`, set in `checks.ts:549`) decide
   lifts and railway wording from a *title*; `crossing-geometry.ts` passes diagnostics as message strings
@@ -295,11 +295,20 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 ## Merge batches
 
 1. Merged (`6fb4a7b`): tooling, typed worker protocol, mission bootstrap, dead code.
-2. `main.ts` leaf modules (cards, automation, picks, hover, gestures, edits, profile / HUD events,
-   shortcuts, workers), the two title constants, this document, the stage tool.
-3. `EvalClient`, showing a result, selection, road links (the drag path: with drag-perf before / after).
-4. Core, as sequenced by the parent: the `evaluateRoute` stages (#4, prepared), the kernel registry (#10).
+2. Merged (`533b887`): `main.ts` leaf modules (cards, automation, picks, hover, gestures, edits, profile /
+   HUD events, shortcuts, workers), the two title constants, this document, the stage tool.
+3. Merged (`cb63fcf`): the first four stages of `evaluateRoute`.
+4. `EvalClient`, the 30 s test timeout, and two check scripts repaired: `scripts/layout.mjs` (it passed
+   bends without `r`, edited through a hook that re-fits the profile, and expected a 300 px profile in
+   short windows: 23 / 23 now) and `scripts/camera-check.mjs` (it measured after fixed pauses: mid-flight
+   and before the wall labels' first frame on a loaded host; it waits for the camera to stop now: 18 / 18).
+   The one product fix in this work came out of that: noise-view wall labels were created visible and
+   unplaced (all stacked in the map's corner until the next frame); they stay hidden until placed.
+5. `routeEngineer` and `routeFinish` (#4).
+6. Next, as sequenced by the parent: the kernel registry (#10), the stages inside `routeFinish`, the other
+   two long functions; in `main.ts`: showing a result, selection, road links.
 
-Found on the way, not fixed (they fail the same on main `8ac09c5`): `scripts/layout.mjs` (its `setDesign`
-passes a design the project validation refuses) and `scripts/camera-check.mjs` (2 of 18: wall labels
-overprinted in the far noise view).
+Noticed, not changed: a click on our own road on the map goes through `switchRoute`, which fits the
+profile, so a zoomed profile zooms out on every such click (`main.ts` `switchRoute` → `profile.fit()`).
+The playtest's "Start over → Undo" step clicks a toast that lasts 6 s; on a loaded host the script gets
+there after 4–7 s (`gates.sh` runs a failed untimed browser gate once more under load).

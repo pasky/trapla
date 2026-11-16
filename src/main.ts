@@ -34,11 +34,12 @@ import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
 import { loadPack, packIdentities } from './scenario';
 import { startEvalWorkers } from './eval-workers';
+import { EvalClient, type EvalRequest } from './eval-client';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext } from './core/project-legacy';
-import type { ProjectResult, ProjectSnapshot, RouteId, RouteResult } from './core/project';
-import { acceptsProjectMessage, type ProjectWorkerIn } from './core/project-protocol';
+import type { ProjectResult, RouteId, RouteResult } from './core/project';
+import type { ProjectWorkerOut } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -63,7 +64,7 @@ import { installMapHover } from './ui/map-hover';
 import { installProfileBar } from './ui/profile-bar';
 import { installShortcuts } from './ui/shortcuts';
 import { installAutomation } from './automation';
-import type { WorkerIn, WorkerOut } from './worker-protocol';
+import type { WorkerIn } from './worker-protocol';
 import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
@@ -212,7 +213,6 @@ async function main() {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
       })) });
   };
-  let posted = 0, received = 0;
   /** main-thread ms per consumer of the last handled result (drag-perf probe) */
   const handlerTiming: Record<string, number> = {};
   let idleWaiters: (() => void)[] = [];
@@ -453,59 +453,48 @@ async function main() {
   annotations.onCulvert = (s) => selectPiece(s);
 
   // ---- evaluation in the worker ----
-  // designs of in-flight requests: intermediate results are shown (live feedback while dragging), but
-  // always rendered with the design they were computed for
-  const inflight = new Map<number, { snapshot: ProjectSnapshot; design: Design | null; routeId: RouteId | null }>();
   // While the worker lags behind a drag (an older request is still running), show the moved
   // route's ground with the previous heights at once, at most once per frame. Display only.
   let previewFrame = 0;
   const schedulePreview = () => {
-    if (previewFrame || received >= posted - 1 || !last) return;
+    if (previewFrame || evals.received >= evals.posted - 1 || !last) return;
     previewFrame = requestAnimationFrame(() => {
       previewFrame = 0;
-      if (received < posted && last && store.read()) profile.setPreview(provisionalProfile(A, B, store.design, last, (x, y) => pack.terrain.heightAt(x, y)));
+      if (evals.received < evals.posted && last && store.read()) profile.setPreview(provisionalProfile(A, B, store.design, last, (x, y) => pack.terrain.heightAt(x, y)));
     });
   };
-  // Two tiers: while a drag is in progress (uncommitted store updates) the worker runs the fast
-  // preview evaluation and only cheap things follow it (centreline, profile, "≈" total); the full
-  // evaluation, the 3D rebuild, the inspector and any best score follow once the drag pauses or ends.
-  const FULL_AFTER_IDLE_MS = 150;
-  let fullTimer = 0;
-  let previewGesture: { id: string; sequence: number; lastDisplayedSequence: number } | null = null;
-  /** the newest request: a full one for this design needs no repeat when the drag ends */
-  let lastPost: { full: boolean; identity: string } | null = null;
   /** last full result: the preview's single auto-profile solve is priced at its material value */
   let lastFull: Result | null = null;
   /** the newest request is a full one and its result is in (the 3D rebuild may still run) */
-  const settled = () => received === posted && !fullTimer;
+  const settled = () => evals.settled;
   /** …and its 3D scene is up (whenIdle) */
   const sceneIdle = () => settled() && !heavy;
   /** the full result's 3D rebuild, run in slices between frames (see render/slices.ts) */
   let heavy: SlicedJob | null = null;
   let heavyStats = { slices: 0, busy: 0, maxSlice: 0, wall: 0, commit: 0, commitView: 0, commitCrossings: 0, overlays: 0 };
-  const requestEval = (preview = false) => {
-    clearTimeout(fullTimer); fullTimer = 0;
-    const snapshot = projectStore.snapshot, identity = `${snapshot.epoch}:${snapshot.revision}`;
-    if (!preview && lastPost?.full && lastPost.identity === identity) return;
-    heavy?.cancel(); heavy = null; // a rebuild for an older design would only be thrown away
-    hud.setProfileBusy(true);
-    posted++;
-    lastPost = { full: !preview, identity };
-    inflight.set(posted, { snapshot, design: store.read(), routeId: store.activeRouteId });
-    if (preview && !previewGesture) previewGesture = { id: crypto.randomUUID(), sequence: 0, lastDisplayedSequence: -1 };
-    const message: ProjectWorkerIn = preview && store.activeRouteId
-      ? { type: 'project-preview', id: posted, snapshot, routeId: store.activeRouteId, materialValue: lastFull?.quantities.materialValue,
-          structureValue: lastFull?.quantities.structureValue,
-          gesture: { id: previewGesture!.id, sequence: ++previewGesture!.sequence } }
-      : { type: 'project-eval', id: posted, snapshot, displayedResult: displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision } };
-    (message.type === 'project-preview' ? previewWorker : worker).postMessage(message);
-    projectScore(true);
-    if (preview) fullTimer = window.setTimeout(() => { fullTimer = 0; requestEval(false); }, FULL_AFTER_IDLE_MS);
-    schedulePreview();
-  };
+  // What is asked of the workers and which replies count: eval-client.ts. Here: what to do with them.
+  const evals: EvalClient = new EvalClient(worker, previewWorker, {
+    snapshot: () => projectStore.snapshot, design: () => store.read(), activeRouteId: () => store.activeRouteId,
+    previewPrices: () => ({ materialValue: lastFull?.quantities.materialValue, structureValue: lastFull?.quantities.structureValue }),
+    displayed: () => displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision },
+    willPost: () => {
+      heavy?.cancel(); heavy = null; // a rebuild for an older design would only be thrown away
+      hud.setProfileBusy(true);
+    },
+    didPost: () => { projectScore(true); schedulePreview(); },
+    error: message => { console.error('worker error', message); setStatus('This design could not be computed. Undo the last change.'); settle(); },
+    band: m => {
+      const r = projectFull?.routes[m.routeId]?.legacy;
+      if (r && projectFull!.epoch === m.identity.epoch && projectFull!.revision === m.identity.revision
+        && m.routeId === store.activeRouteId) noise.setBand(r, m.footprint);
+    },
+    preview: (m, request) => showPreview(m, request),
+    full: m => showFull(m),
+  });
+  const requestEval = (preview = false) => evals.request(preview);
   const settle = () => {
     // the worker caught up with the newest request: no stretched provisional profile any more
-    if (received === posted) profile.setPreview(null);
+    if (evals.received === evals.posted) profile.setPreview(null);
     if (!settled()) return;
     hud.setProfileBusy(false);
     if (!sceneIdle()) return;
@@ -590,62 +579,48 @@ async function main() {
   };
 
   // the noise view's band: asked from the worker for the displayed result when the view needs it
-  let bandAsked = 0;
   noise.requestBand = () => {
     const full = projectFull, routeId = store.activeRouteId, d = store.read();
     if (!full || !routeId || !d) return;
-    worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
-      crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
+    evals.requestBand({ epoch: full.epoch, revision: full.revision }, routeId, CATEGORIES[d.category].crownWidth);
   };
-  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<WorkerOut>) => {
-    const m = ev.data;
-    if (m.type === 'ready') return;
-    if (m.type === 'noise-band') {
-      const r = projectFull?.routes[m.routeId]?.legacy;
-      if (m.id === bandAsked && r && projectFull!.epoch === m.identity.epoch && projectFull!.revision === m.identity.revision
-        && m.routeId === store.activeRouteId) noise.setBand(r, m.footprint);
-      return;
-    }
-    const request = inflight.get(m.id);
-    for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
-    if (m.id < received || !acceptsProjectMessage(projectStore.snapshot, m, store.activeRouteId ?? undefined, previewGesture ?? undefined)) return;
-    received = m.id;
-    if (m.type === 'project-error') {
-      console.error('worker error', m.message);
-      setStatus('This design could not be computed. Undo the last change.'); settle(); return;
-    }
+  /** an accepted drag preview of the active road: the cheap things follow it (centreline, profile, "≈" total) */
+  const showPreview = (m: Extract<ProjectWorkerOut, { type: 'project-preview' }>, request: EvalRequest | undefined) => {
     let lap = performance.now();
     const took = (k: string) => { const now = performance.now(); handlerTiming[k] = now - lap; lap = now; };
     for (const k in handlerTiming) delete handlerTiming[k];
-    if (m.type === 'project-preview') {
-      if (previewGesture && m.gesture) previewGesture.lastDisplayedSequence = m.gesture.sequence;
-      const r = activeLegacy(m.result), rd = request?.design;
-      if (r && rd) {
-        const shown = r.preview ? r : { ...r, preview: true }; last = shown;
-        frameLine(shown.length, true, rd);
-        // a paired motorway is drawn once, under its forward direction; with separate stretches, each
-        // drawn part of the moved line (the shared body where both move)
-        const corridor = projectStore.snapshot.design.corridors.find(c => c.children.reverse === m.routeId || c.children.forward === m.routeId);
-        const parts = (m.result.drawn ?? []).filter(p => store.oneDirection ? p.direction && corridor?.children[p.direction] === m.routeId : !p.direction)
-          .filter(p => routeScene.has(p.id));
-        if (parts.length) for (const p of parts) routeScene.preview(p.id, p.result.preview ? p.result : { ...p.result, preview: true });
-        else {
-          // the drawn parts changed (a stretch appears, merges or goes): the moved line on what is drawn now
-          const drawnNow = corridor ? (projectFull?.routes[corridor.children.forward]?.drawn ?? []).map(p => p.id) : [];
-          const on = [corridor?.mode === 'paired' ? corridor.children.forward : m.routeId, ...drawnNow].find(id => routeScene.has(id));
-          if (on) routeScene.preview(on, shown);
-        }
-        took('view');
-        profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
-        syncApart(shown);
-        profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
-        profile.setBends(bendStations(shown, rd)); took('profile');
-        if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
-        hud.setResult(shown, rd, store.best); projectScore(true); took('hud');
-        curveEdit.refresh(); took('curveEdit');
+    const r = activeLegacy(m.result), rd = request?.design;
+    if (r && rd) {
+      const shown = r.preview ? r : { ...r, preview: true }; last = shown;
+      frameLine(shown.length, true, rd);
+      // a paired motorway is drawn once, under its forward direction; with separate stretches, each
+      // drawn part of the moved line (the shared body where both move)
+      const corridor = projectStore.snapshot.design.corridors.find(c => c.children.reverse === m.routeId || c.children.forward === m.routeId);
+      const parts = (m.result.drawn ?? []).filter(p => store.oneDirection ? p.direction && corridor?.children[p.direction] === m.routeId : !p.direction)
+        .filter(p => routeScene.has(p.id));
+      if (parts.length) for (const p of parts) routeScene.preview(p.id, p.result.preview ? p.result : { ...p.result, preview: true });
+      else {
+        // the drawn parts changed (a stretch appears, merges or goes): the moved line on what is drawn now
+        const drawnNow = corridor ? (projectFull?.routes[corridor.children.forward]?.drawn ?? []).map(p => p.id) : [];
+        const on = [corridor?.mode === 'paired' ? corridor.children.forward : m.routeId, ...drawnNow].find(id => routeScene.has(id));
+        if (on) routeScene.preview(on, shown);
       }
-      if (received < posted) schedulePreview(); settle(); return;
+      took('view');
+      profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
+      syncApart(shown);
+      profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
+      profile.setBends(bendStations(shown, rd)); took('profile');
+      if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
+      hud.setResult(shown, rd, store.best); projectScore(true); took('hud');
+      curveEdit.refresh(); took('curveEdit');
     }
+    if (evals.received < evals.posted) schedulePreview(); settle();
+  };
+  /** an accepted full result: the 3D rebuild (sliced), the cards, the score */
+  const showFull = (m: Extract<ProjectWorkerOut, { type: 'project-result' }>) => {
+    let lap = performance.now();
+    const took = (k: string) => { const now = performance.now(); handlerTiming[k] = now - lap; lap = now; };
+    for (const k in handlerTiming) delete handlerTiming[k];
     projectFull = m.result; activePreviewPrice = null;
     // Accepted rebuilt stretches leave the map: their drawn features follow from the road links here.
     if (!m.result.acceptedRenderReplacements.length && m.result.acceptedReplacements.length && transportIndex) {
@@ -697,7 +672,7 @@ async function main() {
       settle();
     }, error => {
       console.error('3D rebuild failed', error); setStatus('The 3D view could not be updated.');
-      heavy = null; lastPost = null; settle();
+      heavy = null; evals.forgetLastPost(); settle();
     }, 8, stats, ([geometry, sources]) => { sources?.dispose(); geometry.dispose(); }); took('view');
     showActiveResult(); took('profile'); projectScore(true); took('hud');
     setStatus(''); settle();
@@ -774,7 +749,7 @@ async function main() {
     const one = oneDirection ?? (!!here && here === corridorOfRoute(design, id) && store.oneDirection);
     if (!store.switchRoute(id, created, one)) return false;
     syncDirections();
-    previewGesture = null; activePreviewPrice = null;
+    evals.endGesture(); activePreviewPrice = null;
     frameEnds();
     sel = activeSelection(id, qualifiedSelection); qualifiedSelection = qualifySelection(id, sel);
     view.setHover(null); extras.setRange(null); profile.fit();
@@ -850,7 +825,7 @@ async function main() {
   syncDirections();
 
   store.on((d, committed) => {
-    if (committed) previewGesture = null;
+    if (committed) evals.endGesture();
     hideToast(); hud.noteEdit(committed);
     if (committed) {
       const ids = separateStretches();
@@ -954,7 +929,7 @@ async function main() {
     get last() { return last; }, get projectFull() { return projectFull; },
     get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; }, get sourceEditor() { return sourceEditor; },
     get sel() { return sel; }, get qualifiedSelection() { return qualifiedSelection; },
-    get received() { return received; }, get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
+    get received() { return evals.received; }, get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
     sceneIdle, missionRouteId, switchRoute, select, selectPiece, placeAt, ensureTransport,
     releaseGrab,
   });

@@ -1256,37 +1256,27 @@ function routeCaches(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
     const o = normalizeBuildingOverrides(d.buildingOverrides, ctx.buildings!.n);
     return { index: ctx.buildings!, keep: new Set(o.filter(b => b.action === 'keep').map(b => b.j)), skip: new Set(o.filter(b => b.action === 'buy').map(b => b.j)) };
   })() : undefined;
-  return { supportMemo, retainingMemo, streamBridge, reroutes, sectionMemo, coverLeft, coverRight, urbanEarth,
-    forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck, deckHits, earthHits, earthHitL,
-    earthHitR, wideHits, wideHitL, wideHitR, hitsAt, deckBuildings, earthBuildings, work, wallable };
-}
-
-function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
-  const setup = routeSetup(ctx, d, opts);
-  const { preview, timing, lap, terrain, scenario, cat, norms, win, al, maxGradient, st, n, ds, manualStructures,
-    heldDeck, crossingOverrides, ground, groundIds, groundProfiles, oobInput, w, clearance, blocks,
-    settleEnds, freeStation, mustBridge, railOurs, retiredAt, ownTrack, snapTraced, water, waterAt,
-    waterGround, crossingCost, forceWater, stationSides, forceParallelWater, tunnelWater, endJunctions,
-    rawRoadX, roadX, roadG } = setup;
-
-  // --- per-metre costs for the auto-profile: on flat ground, rural or town rates, incl. the surcharge ---
-  // Markups by kind of work: SPK's rural/urban "other objects" surcharge (roads), or a price book's own
-  // per-profession markups (railway, data/categories.ts). Road expressions stay bit-identical.
-  const prices = routePrices(d, setup);
-  const { surE, surB, surT, baseRural, baseUrban, tunnelKm, bridge, b, topsoilPerM2, costFor, usable,
-    balanceTolerance, tpl, roadS } = prices;
-
-  // --- vertical alignment ---
-  const solved = routeGradeLine(ctx, d, opts, setup, prices);
-  const { profileFeasible, autoOptions, constrainedSolve, keepsExterior, pinViolations, materialValue, blockValues,
-    liftBlocks, blockDecision, autoVpis, crossingWays } = solved;
-  const caches = routeCaches(ctx, d, opts, setup);
   /** the other ways merged into a crossing (mergeCrossings): one our earthworks bury is a crossing of its own
    * (evaluate's split retry, EvalOptions.splitWays) */
   const mergedInto = new WeakMap<CrossingResult, readonly RoadCrossing[]>();
-  const { supportMemo, retainingMemo, streamBridge, reroutes, sectionMemo, coverLeft, coverRight, urbanEarth,
-    forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck, deckHits, earthHits, earthHitL, earthHitR,
-    wideHits, wideHitL, wideHitR, hitsAt, deckBuildings, earthBuildings, work, wallable } = caches;
+  return { supportMemo, retainingMemo, streamBridge, reroutes, sectionMemo, coverLeft, coverRight, urbanEarth,
+    forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck, deckHits, earthHits, earthHitL,
+    earthHitR, wideHits, wideHitL, wideHitR, hitsAt, deckBuildings, earthBuildings, work, wallable, mergedInto };
+}
+
+/** Stage 5: `engineer(candidate heights)`, one engineering pass of a grade line: profile → cross-sections →
+ * retaining walls → land cover and houses under the works → structure selection (with the mass balance) →
+ * bridge supports. Called once per candidate by `finish` (lifts, retries). */
+function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>) {
+  const { timing, norms, st, water, terrain, n, preview, manualStructures, lap, w, ds, ground, waterAt,
+    crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG,
+    crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack } = setup;
+  const { tpl, b, baseRural, baseUrban, topsoilPerM2, surE, bridge, surB, tunnelKm, surT, roadS, balanceTolerance,
+    usable } = prices;
+  const { sectionMemo, work, wideHitL, wideHitR, wideHits, hitsAt, retainingMemo, wallable, coverLeft, coverRight,
+    urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre, deckHits, deckBuildings, earthHitL,
+    earthHitR, earthHits, earthBuildings, streamBridge, supportMemo, mergedInto } = caches;
+  const { blockDecision, materialValue } = solved;
   /** the deck-level cover arrays (urbanDeck, oobDeck) are sampled once, by the first engineering pass */
   let deckCoverReady = false;
   const engineer = (candidate: VPI[], crossingWays: CrossingChainages, strict: ReadonlySet<number>) => {
@@ -1544,6 +1534,22 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   return { prof, grade, waterZ, sec, retention,
     h, geotechnicalPerM, culverts, crossings, selection, supported, supportHeights, structureValue: settled.value };
   };
+  return { engineer };
+}
+
+interface LiftState { targets: Map<number, number>; retried: Map<number, number> }
+/** Stage 6: `finish(relaxed, strict, start heights)`, a whole design from a grade line: the lift retries
+ * around `engineer`, quantities and the bill's parts, buildings, crossings, the footprint check, and
+ * `complete()` (noise, violations, the Result). */
+function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>, engineerStage: ReturnType<typeof routeEngineer>, prices: ReturnType<typeof routePrices>) {
+  const { maxGradient, timing, oobInput, preview, blocks, snapTraced, norms, n, freeStation, ds, ground, st, cat,
+    al, lap, w, crossingOverrides, terrain, endJunctions, railOurs, retiredAt, water, scenario, win,
+    waterGround, mustBridge, groundIds, groundProfiles, roadX } = setup;
+  const { work, urbanEarth, forestEarth, oobEarth, urbanDeck, oobDeck, urbanCentre, reroutes, retainingMemo, mergedInto } = caches;
+  const { autoVpis, profileFeasible, liftBlocks, keepsExterior, autoOptions, blockValues, materialValue,
+    constrainedSolve, pinViolations } = solved;
+  const { engineer } = engineerStage;
+  const { costFor, b, usable } = prices;
   /** why the last lift failed: the station whose fixed height (an end or a pin) its steepest grade ran into */
   let liftStop: number | null = null;
   const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[], range?: readonly [number, number], free?: readonly [number, number]) => {
@@ -1561,7 +1567,6 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
    * rest (noise, bill, checks). It reads only this pass's own arrays, never the shared
    * engineer() buffers, so it stays valid after a later pass. */
   /** Support-lift state of a pass, handed on to a later pass that starts from its lifted line. */
-  interface LiftState { targets: Map<number, number>; retried: Map<number, number> }
   const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } => {
   const oob = oobInput.slice();
   let vpis = start;
@@ -2096,6 +2101,26 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   };
   return { vpis, kind, footprintConflicts: footprintCheck.conflicts, crossings, lift: { targets: repairTargets, retried }, complete };
   };
+  return { finish };
+}
+
+function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
+  const setup = routeSetup(ctx, d, opts);
+  const { preview, timing, n, ds, manualStructures, rawRoadX } = setup;
+
+  // --- per-metre costs for the auto-profile: on flat ground, rural or town rates, incl. the surcharge ---
+  // Markups by kind of work: SPK's rural/urban "other objects" surcharge (roads), or a price book's own
+  // per-profession markups (railway, data/categories.ts). Road expressions stay bit-identical.
+  const prices = routePrices(d, setup);
+
+  // --- vertical alignment ---
+  const solved = routeGradeLine(ctx, d, opts, setup, prices);
+  const { crossingWays } = solved;
+  const caches = routeCaches(ctx, d, opts, setup);
+  const { streamBridge } = caches;
+  const engineerStage = routeEngineer(ctx, opts, setup, prices, caches, solved);
+  const finishStage = routeFinish(ctx, d, opts, setup, caches, solved, engineerStage, prices);
+  const { finish } = finishStage;
   let first = finish(crossingWays);
   if (preview) return first.complete();
   // A stream left under the earthwork just beyond a bridge's end with too little cover for a culvert
