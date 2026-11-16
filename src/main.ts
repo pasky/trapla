@@ -1637,6 +1637,13 @@ async function main() {
     getProject: () => structuredClone(projectStore.snapshot.design),
     projectSnapshot: () => structuredClone(projectStore.snapshot),
     projectResult: () => projectFull,
+    /** a road's works around station s: its bridge there (m), retaining walls within 150 m, billed parts within `reach` m */
+    localWorks: (r: Result, s: number, reach = 300) => {
+      const run = r.runs.find(x => x.kind === KIND.bridge && x.s0 <= s && x.s1 >= s);
+      let cost = 0;
+      for (const part of Object.values(r.parts)) for (let i = 0; i < r.n; i++) if (Math.abs(r.s[i] - s) <= reach) cost += part[i];
+      return { bridge: run ? run.s1 - run.s0 : 0, walls: r.retainingWalls.filter(w => w.s1 >= s - 150 && w.s0 <= s + 150).length, cost };
+    },
     activeRoute: () => store.activeRouteId,
     routeEndpoints: () => structuredClone(store.route?.endpoints ?? null),
     renderRoutes: () => view.routeGeometryStats(),

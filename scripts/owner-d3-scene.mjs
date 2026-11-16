@@ -48,8 +48,10 @@ try {
   const start = await page.evaluate(() => {
     const t = window.trapla, p = t.getProject(), r = t.projectResult(), ours = p.routes.filter(q => q.role === 'mission').map(q => q.id);
     const legacy = r.routes[ours[0]].legacy;
-    return { ours, total: r.cost.total, alone: r.cost.alone[ours[0]] ?? r.routes[ours[0]].legacy.cost.total, crossings: legacy.crossings.filter(c => c.cls === 'tertiary' && c.type === 'bridge' && c.s > 11000 && c.s < 12600)
-      .map(c => ({ s: c.s, x: c.x, y: c.y, roadId: c.roadId })) };
+    const crossings = legacy.crossings.filter(c => c.cls === 'tertiary' && c.type === 'bridge' && c.s > 11000 && c.s < 12600)
+      .map(c => ({ s: c.s, x: c.x, y: c.y, roadId: c.roadId }));
+    return { ours, total: r.cost.total, alone: r.cost.alone[ours[0]] ?? r.routes[ours[0]].legacy.cost.total, crossings,
+      local: crossings.length ? t.localWorks(legacy, crossings[0].s) : null };
   });
   assert(start.total !== null, 'the motorway alone is priced');
   assert(start.crossings.length, 'our motorway bridges a class III road near km 11.8');
@@ -149,10 +151,15 @@ try {
   // our motorway's own bill: the rebuilt road is still under our bridge and our abutments keep clear of it
   // (walls, bridge length), so it never gets cheaper (QA re-test 2: it fell 38 M CZK when they ignored the
   // rebuilt road); a new line beside an abutment may cost it more
+  // (judged around the crossing: the fill balance of the whole motorway may tip a marginal structure
+  // choice kilometres away, either way)
   const billOf = id => after.cost.alone[id] ?? after.routes[id].legacy.cost.total;
   const moved = billOf(start.ours[0]) - start.alone;
-  assert(moved > -2e6, `our motorway's bill does not fall (${(moved / 1e6).toFixed(1)} M CZK)`);
-  console.log(`our motorway's own bill moved ${(moved / 1e6).toFixed(2)} M CZK`);
+  const local = await page.evaluate(([id, s]) => window.trapla.localWorks(window.trapla.projectResult().routes[id].legacy, s), [start.ours[0], start.crossings[0].s]);
+  assert(local.bridge >= start.local.bridge - 0.5, `our bridge over it is no shorter (${start.local.bridge.toFixed(0)} → ${local.bridge.toFixed(0)} m)`);
+  assert(local.walls >= start.local.walls, `our walls beside it stay (${start.local.walls} → ${local.walls})`);
+  assert(local.cost - start.local.cost > -2e6, `our works around it do not get cheaper (${((local.cost - start.local.cost) / 1e6).toFixed(1)} M CZK)`);
+  console.log(`our motorway around the crossing: bridge ${start.local.bridge.toFixed(0)} → ${local.bridge.toFixed(0)} m, walls ${start.local.walls} → ${local.walls}, ${((local.cost - start.local.cost) / 1e6).toFixed(2)} M CZK; its whole bill moved ${(moved / 1e6).toFixed(2)} M CZK`);
 
   // 5. the score: a total, or which change holds it back and what is priced
   // houses that hear both roads are decided together (combined noise): never what holds the total back

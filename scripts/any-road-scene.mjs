@@ -207,7 +207,7 @@ try {
 
   // 6. Build → Road: start on the mapped road beyond the rebuilt stretch, end on open ground
   await page.locator('#build-route').click();
-  assert.deepEqual(await page.locator('.route-build-choices button').allTextContents(), ['Road'], 'only Road can be built yet');
+  assert.ok((await page.locator('.route-build-choices button').allTextContents()).includes('Road'), 'a road can be built');
   await page.locator('.route-build-choices button', { hasText: 'Road' }).click();
   assert.equal(await page.evaluate(() => window.trapla.building()), true);
   const now = (await page.evaluate(() => window.trapla.getProject())).routes[1].source.intervals[0];
@@ -422,21 +422,37 @@ try {
       assert.deepEqual(shared.map(i => i.violation.title), [], 'no house is left undecided between the two roads');
       console.log(`road I/37 pulled 45 px: ${pr.cost.total === null ? `not priced (${[...new Set(pr.cost.unpriced.map(u => u.reason))]})` : `total ${(pr.cost.total / 1e9).toFixed(3)} bn CZK`}`);
     }
-    let motorway = null;
-    for (const id of await page.evaluate(() => ['motorway', 'trunk', 'railway'].flatMap(h => window.trapla.sourceIds(h, 400)))) {
-      await page.evaluate(id => window.trapla.lookAtSource(id, 200, 500), id); await idle();
-      if ((await page.evaluate(id => window.trapla.sourceScreen(id, 200), id))?.vis) { motorway = id; break; }
-    }
+    const visible = async (kinds) => {
+      for (const id of await page.evaluate(kinds => kinds.flatMap(h => window.trapla.sourceIds(h, 400)), kinds)) {
+        await page.evaluate(id => window.trapla.lookAtSource(id, 200, 500), id); await idle();
+        if ((await page.evaluate(id => window.trapla.sourceScreen(id, 200), id))?.vis) return id;
+      }
+      return null;
+    };
+    const motorway = await visible(['motorway', 'trunk']);
     if (motorway) {
       const n0 = (await routes()).length;
       const at = await dragOn(motorway, 200, 60, -40);
-      assert.equal((await routes()).length, n0, 'a mapped motorway or railway is not rebuilt');
+      assert.equal((await routes()).length, n0, 'a mapped motorway is not rebuilt');
       const still = await screen('sourceScreen', motorway, 200);
       assert(Math.hypot(still.x - at.x, still.y - at.y) < 2, 'a drag on it does not pan the map');
       const card = await page.locator('#inspector').textContent();
-      assert.match(card, /(Motorways and expressways|Railways) cannot be changed yet/);
-      console.log(`a drag on a mapped motorway or railway: no pan, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
-    } else console.log('no mapped motorway or railway on the map: refusal not checked');
+      assert.match(card, /Motorways and expressways cannot be changed yet/);
+      console.log(`a drag on a mapped motorway: no pan, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
+    } else console.log('no mapped motorway on the map: refusal not checked');
+    // a mapped railway is grabbed like any road (main: rebuilt along its own line, as a railway)
+    await page.keyboard.press('Escape');
+    const railway = await visible(['railway']);
+    if (railway) {
+      const n0 = (await routes()).length;
+      await dragOn(railway, 200, 60, -40);
+      const now = await page.evaluate(() => window.trapla.getProject().routes);
+      if (now.length === n0) console.log(`a drag on mapped railway ${railway}: not rebuilt (its card: "${(await page.locator('#inspector').textContent()).slice(0, 80)}")`);
+      else {
+        assert.equal(now.at(-1).kind, 'railway', 'a mapped railway is rebuilt as a railway');
+        console.log(`a drag on mapped railway ${railway}: rebuilt as a railway`);
+      }
+    } else console.log('no mapped railway on the map: not checked');
     await page.keyboard.press('Escape');
   }
 

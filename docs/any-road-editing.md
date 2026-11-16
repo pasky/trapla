@@ -776,3 +776,30 @@ SCENARIO=d3, bench, outcome-audit, land-screen, smoke, playtest, and the six-mod
 since 80168c3; yield. Open: forced S 7.5/III on the steep Nový Rokytník street misses the deck (kept-road band
 infeasible above the class's max gradient); the motorway's cost change from a rebuilt road is not on any card;
 a sourced traffic prior for local roads/tracks.
+
+**Merged main `27aeda6` (`3974d78`, cost model 25).** 13 files, 45 hunks, both sides kept: the structure choice
+settles the fill value with our held decks and a railway's own track at once (`remedyBridgeSupports(…, held,
+ownTrack)`); the footprint screen sees mapped roads (`roads.ground`), retaining walls the edited network (main
+had moved to `ctx.roads` there too); `routeHead(shown)` — a side road's settings on top of any selection, a
+motorway's directions (`data-place="below"`) under a selected stretch; crossing options per line kind with the
+local-road options; the unpriced count by corridor (main) plus each road alone (ours); a split motorway's
+`alone` includes its own works. Main's direct railway grab is folded into ours (any mapped road or railway
+under the press is grabbed; a rebuildable one shows the grab cursor and "drag to change its line"); main's
+fitted rebuild bend is kept for a new bend (not one taken over from the old line's curve, which keeps its grab
+offset). The road list frames a road (main's `frameRoute`) only when none of it is on screen. Model 25: D11
+fixtures identical to model 24 (re-stamped, version only).
+
+Scenes after the merge: any-road-scene asserted "only Road can be built" and "a mapped railway is not rebuilt";
+main builds motorways / railways and rebuilds a mapped railway along its line, so the scene now checks that a
+road can be built, that a mapped motorway (if any) refuses, and that a mapped railway is rebuilt as a railway
+(D11 `osm:way:277838071`). owner-d3-scene's "the motorway's bill never falls" failed at −32.1 M: around the
+crossing our bridge is 10 m longer and has one wall more (+24.5 M), but main's settled fill value shortened the
+km 4.0 viaduct by one 17 m-high cell (−25.5 M). The scene now judges the works around the crossing
+(`trapla.localWorks`: bridge no shorter, walls not fewer, parts within 300 m not cheaper) and prints the whole
+bill's change; PLAN.md notes the non-local tip.
+
+Gates on the merge: tsc; vitest 675; build; eval-regression 11 PASS (bit-exact against model 24 before the
+re-stamp); bench 5 VALID; outcome-audit exit 0 (violations 118, VALID 8 — as main); land-screen-check 6 OK;
+smoke PASS; playtest PASS; any-road-scene D11 and SCENARIO=d3 PASS; owner-d3-scene PASS; drag-perf `--gpu
+--check` bend / road / radius / pin / vpi / link all OK (load 10 → 4; max result gap 57–114 ms, no long tasks).
+

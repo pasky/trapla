@@ -364,7 +364,21 @@ What exists (details and commands in `README.md`):
   violations 144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch
   fails); the walls for buildings alone: no design dearer by more than 1 M, four random ones 34–59 M cheaper.
 
-### Travel-time target X and traffic Y
+### Any mapped road can be rebuilt (cost model 25, 2026-11-16)
+
+- Any mapped road, street or track (and, from model 23, a railway along its own line) is dragged directly to
+  rebuild a stretch of it; see `docs/any-road-editing.md`. A rebuilt stretch keeps its old road where its line
+  stays on it (nothing built or billed there); every road is checked against the network as the player edited
+  it (designed roads crossed by the same crossing engine; the lower-ranking road held on the other's deck and
+  credited once); a house two roads take is billed once, houses heard by several roads are decided on their
+  combined noise.
+- Single-road bills unchanged: the D11 fixtures are identical to model 24 (re-stamped, version only);
+  outcome-audit as model 24 (violations 118, VALID 8). Multi-road totals changed, hence the bump.
+- Known (main's settled fill value): the structure choice of a whole road shares one fill value, so a change at
+  one place can tip a marginal bridge / embankment cell kilometres away. D3: rebuilding III/1057 under our
+  bridge at km 11.8 makes that bridge 10 m longer (+24.5 M around it) but shortens the 1.45 km viaduct at km 4.0
+  by one 17 m-high cell (−25.5 M): the motorway's whole bill −32 M.
+
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.
   Since research/14 the thresholds come from TP 188 (2018): the highest AADT at which a rural two-lane
