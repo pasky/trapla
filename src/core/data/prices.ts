@@ -15,8 +15,14 @@
  * over a crossing); a railway between two points of an existing line joins its track in the stations and
  * rebuilds it where it runs along it; railway ends leave the tracks they join at a turnout's angle; rebuilt
  * railway stretches at their line's own speed and grade; a paired motorway's noise as its two directional
- * sources, a double track's per track; road bills unchanged (eval-regression identical). */
-export const COST_MODEL_VERSION = 23;
+ * sources, a double track's per track; road bills unchanged (eval-regression identical).
+ * 24: crossing remedies as designers choose them: a crossed road meeting ours at under 70° may be laid
+ * on a new line square across it (research/44); a road that runs into our earthworks and back out on
+ * the same side is moved beside them (and crossings of one way inside our earthworks are one); neighbouring
+ * tracks and service roads are joined to one crossing (research/45), reroutes join the target's road where
+ * it comes nearest; a reroute's earth slopes take the houses they reach; a dead-end stub left with no room
+ * to turn is removed; an automatic crossing with nothing buildable under a high embankment lengthens our bridge. */
+export const COST_MODEL_VERSION = 24;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

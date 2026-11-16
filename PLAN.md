@@ -303,8 +303,28 @@ What exists (details and commands in `README.md`):
   connection (no installed price found).
 - Future improvement: a crossed road meeting ours very obliquely gets a box as long as its skewed path under
   our embankment (town-centre km 15.98: a 57 m box sticking out of the slope). A designer would square the
-  crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); the
-  engine keeps every crossed road on its own line.
+  crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); done in
+  model 24.
+
+### Crossing remedies as designers choose them (cost model 24, 2026-11-16)
+
+- A road running along ours (crossing it and back without leaving our earthworks) is one crossing and is moved
+  beside our earthworks as an accompanying road where that is cheaper than keeping a crossing for it (D3 motorway
+  starter km 14.18: 700 m of class III road for 18.6 M instead of a 704 m bridge for 2.49 bn).
+- A crossed road meeting ours at under 70° (research/44: ŘSD R 111's non-standard threshold; no Czech minimum
+  bridge angle) may be straightened: a square run across our earthworks joined to the old way by bends no sharper
+  than its class allows (track 25 m, streets 27 m, class I–III 90 m), new road billed per metre; Auto keeps the
+  cheaper buildable variant, the card offers "Keep its line" / "Straighten it" (town-centre km 15.98: 57 m box →
+  25 m; D3 km 7.94: a 117 m box → 50 m, and the strict retry's extra 150 m of motorway bridge is gone).
+- Neighbouring minor roads share one crossing (research/45): a consolidation pass leads tracks' and service roads'
+  own structures and reroutes to neighbours that carry traffic, wherever cheaper; reroutes join the target's road
+  where it comes nearest. A reroute's earth slopes take the houses they reach. A dead-end stub our earthworks take
+  (almost) whole is removed. An automatic crossing with nothing buildable under a ≥ 6 m embankment lengthens our
+  bridge over it.
+- All published designs stay VALID and get cheaper (best −29 M, demo −13 M, direct-80 −42 M, direct-90 −29 M,
+  town-centre −35 M); D3 motorway starter 18.34 → 14.90 bn; Nová Paka 2.69 → 2.50 bn, its km 3.3 drags 10/24 →
+  1/24 invalid. Details, audits and timing: `docs/footprint-conflicts.md` § Model 24.
+
 ### Map camera and labels (playtest-qa S1 #15, #17, #19, 2026-11-16)
 
 - The orbit target goes back onto the ground under the screen centre after every pan, turn and zoom (the view

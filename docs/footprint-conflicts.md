@@ -1,4 +1,4 @@
-# Automatic footprint engineering (cost models 16–22)
+# Automatic footprint engineering (cost models 16–24)
 
 The evaluator now **builds and prices remedies**, rather than simply invalidating every design
 whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
@@ -321,13 +321,107 @@ lowering fits); Studénka's derived depth corrected to 4.67 m plus track build-u
 lowered-box card states the steeper ramp allowance; the works outline breaks where it leaves the view.
 
 **Known remaining.** A very skewed crossing gets a box as long as its oblique path under our embankment
-(town-centre km 15.98, 57 m); a designer would square it by realigning the crossed road near our road (future
-improvement). Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
+(town-centre km 15.98, 57 m); a designer would square it by realigning the crossed road near our road (done in
+model 24 below). Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
 station is priced as equipment plus catalogue items without installation and power connection; cut ramps and
 their slopes are priced per metre of road like bridge-over-us ramps, without their earth volume. A shaped
 first drag can still start with a footprint violation when the player's override changes our road's
 structure choice (1 of 12 sampled). Reroutes are not checked against buildings' gardens or other roads they
 run along.
+
+### Model 24: crossing remedies as designers choose them
+
+**Problem.** With reroutes checked (model 22), Auto sometimes picked remedies no designer would: the D3
+motorway starter went from 14.97 to 18.34 bn CZK. Km 14.18: a class III road running along the motorway
+(crossing it at 14.18 and back at 14.52, never leaving its earthworks in between) was "carried over our road on
+a 704 m bridge" (2.49 bn); km 7.94: a track crossing at 37° got a 117 m box (over the 100 m limit), its
+unresolved stretch sent the evaluation into the strict retry, which put 150 m more of the motorway on a bridge
+over two field tracks; km 3.63 / 3.71: two neighbouring tracks got a 2 km reroute (28 M) and a 54 M bridge.
+Nová Paka km 3.3: 10 of 24 small drags of bend 2 failed (14 of 24 on core-play-polish's count), a dead-end
+track stub under our earthworks merged into a street's crossing had "no room for a turning area", and a service
+road whose box ramps were too long kept that infeasible box although a track's box stood 60 m away.
+
+**What a designer does, and what Auto now weighs** (`crossing-geometry.ts`, `evaluate.ts`, `road-realignment.ts`):
+
+- **A road that runs along ours is moved beside it.** Crossings of one way that never leave our earthworks
+  (and the strip a new road keeps clear of them) between them are one crossing (`evaluate.ts`, like the
+  existing 150 m same-way merge). Where the way comes back out on the side it went in, it needs no crossing:
+  Auto weighs moving it beside our earthworks (one new piece of road from where it enters to where it leaves,
+  engineered and checked like a reroute, no new access) against keeping a crossing for it, the roads led to
+  that crossing then led to the nearest other one and priced together. A parallel accompanying road
+  (*doprovodná komunikace*) is ordinary practice on Czech motorways (research/45: D35 field roads "zkrácení a
+  napojení na východní doprovodnou komunikaci"). Outcome "Moved beside our road (+N m of new road)".
+- **A skewed crossing is straightened.** A crossed road meeting ours at less than 70° (`SQUARE_BELOW`: ŘSD R 111
+  treats crossings under 70° as non-standard; no Czech norm gives a minimum bridge angle, research/44; the
+  angle is that of the line from where the way enters our corridor to where it leaves it) may be laid on a new
+  line: a straight run square across our earthworks, joined on each side to the old way by one smooth bend no
+  sharper than the class's smallest radius (`minRadius`: track 25 m, service roads and streets 27 m, class I–III
+  90 m; research/44), as near our road as that allows, never past another road joining the old way (it would be
+  cut off). The bends must stay off our earthworks and are surveyed like a reroute (rivers, railways, motorways,
+  ponds, houses, no steeper than the class's justified maximum). The box or bridge over us and its ramps are
+  built on the new line; the new road beyond them is billed at the class's SPK rate per metre with its culverts
+  (`realignCost`); the old stretch is removed. Auto builds the square variant of a box or a bridge over us only
+  where it can pay (the old line's treatment is infeasible or costs more than the square structure's least price
+  plus the new road's least length), and not where the old one failed for its height or ramps (the same ground,
+  the same height). The player can keep the old line ("Keep its line") or straighten a skewed underpass or bridge
+  over us ("Straighten it"); `CrossingOverride.square`. Outcome "…, the track straightened to cross at a right
+  angle", with the old angle and the new road's length on the card.
+- **Neighbouring minor roads share one crossing** (research/45: no Czech spacing or detour rule; consolidation
+  onto service roads and neighbouring crossings is documented practice). After the first look, a consolidation
+  pass (up to three rounds) leads a track's or service road's own structure (and the roads already led to it) to
+  a neighbour within 750 m that began carrying traffic after it was weighed, and a reroute to a markedly nearer
+  crossing (0.8 of the distance), wherever that is cheaper; a reroute whose crossing stopped carrying traffic is
+  weighed afresh. A crossing others are led to may itself be led on when nothing else can be built there.
+- **A reroute joins its target's road where it comes nearest** (on the ground beyond any ramps), not only beside
+  our earthworks at the crossing (a track 12 m from the next track that crosses is joined to it by 12 m of
+  track), where that line is markedly shorter (0.8) and buildable; otherwise the line to the crossing.
+- **A reroute's earth slopes take ground too**: where its profile leaves the ground the 1:1.5 slopes (as drawn)
+  are checked for houses (bought out) and railways, ponds, rivers and kept houses (any-road-editing's review).
+- **A dead-end stub our earthworks take (almost) whole is removed** with the land it served: one whose part left
+  outside them is shorter than the turning area its cut end would need (`road-realignment.ts`; "removed (a dead
+  end under our earthworks)").
+- **Our bridge is lengthened over a crossing with nothing buildable** under an embankment high enough for it
+  (≥ 6 m): such an automatic crossing's way is retried with ordinary rules, which put our road on a bridge over it.
+- "Underpass: no box fits here" replaces "Underpass: 0 m concrete box" (QA-2 re-test 4).
+
+**Results** (bn CZK, main a8d8de5 (model 23) → model 24; all VALID unless noted):
+
+| Design | Model 23 | Model 24 | Main reasons |
+|---|---:|---:|---|
+| D3 motorway starter | 18.337155 | 14.902841 | −3.43 bn: km 14.18 class III road moved beside the motorway (700 m, 18.6 M) instead of a 704 m bridge (2.49 bn), its second crossing at 14.52 one with it; km 7.94 track straightened through a 50 m box (17.8 M), no strict retry, so km 7.67–7.77 and 7.90–7.95 stay earthworks; km 7.69 track joined to it; km 3.63 track joined to km 3.71's bridge (237 m, 3.3 M; its 2 km reroute was 28.2 M); km 3.84 box straightened 95 → 42 m. |
+| best | 4.129413 | 4.100085 | −29.3 M: tracks at km 2.51 and 9.04 joined to the next crossing's road 14 / 12 m away (−17.8 M), km 6.97 service road moved beside us (−3.7 M), km 19.65 bridge over us straightened. |
+| demo | 4.669186 | 4.656154 | −13.0 M: km 2.48 track joined 14 m away (−8.5 M), km 8.81 shorter reroute. |
+| direct-80 | 4.816992 | 4.774720 | −42.3 M: km 13.50 class I road moved (−7.6 M), km 3.81 / 7.13 tracks joined 11–12 m away, km 5.65 box carries km 5.68's track, km 6.20 bridge straightened, km 12.26 service road rerouted instead of a bridge. |
+| direct-90 | 5.494864 | 5.465526 | −29.3 M: km 8.26 bridge over us straightened (83 → 50 m span, −15.8 M), shorter reroutes at km 2.56 / 3.82; km 9.80 a bridge over us (its reroute is now found to bury houses with its slopes, +2.1 M). |
+| town-centre | 11.388358 | 11.353089 | −35.3 M: km 10.11 bridge over the 31 m cutting straightened (148 → 125 m, −19.0 M), km 7.82 box straightened (68 → 52 m), km 15.98 service road straightened (57 m box → 25 m, the future improvement of model 22), km 4.90 street rerouted 97 m instead of a lowered box. |
+| D11 railway Královec | 14.691344 (1 violation) | 14.516896 (1) | −174 M: boxes straightened at km 10.48 (98 → 58 m), 19.49; km 9.50 track joined 12 m away; km 8.13 service road led to km 8.21's bridge. The violation (a stream at km 18.20) is not a crossing. |
+| D3 road (default/reference) | 4.708147 | 4.643470 | −64.7 M (road sections). |
+| D35 road / motorway | 5.967781 / 19.322088 | 5.965575 / 19.322088 | −2.2 M / 0. |
+| Nová Paka (default/reference) | 2.693238 | 2.502167 | −191 M: the tracks and service road at km 3.4–3.6 share the km 3.41 box; shorter joins at km 1.92, 1.56 (moved). |
+
+Nová Paka bend 2 (km 3.3), 24 seeded drags up to 25 m (`scripts/small-drag-audit.ts`): invalid 10 → 1 (the one
+left: 1 m of a service road beside our slope that its relocation cannot clear: footprint walls, core-play-polish).
+D11 drags of every bend (2 each): demo 9 → 8, direct-80 15 → 14, direct-90 8 → 8 invalid (all left are footprint
+or stream conflicts, and track 4843 at km 9.8, in a shallow cutting 90 m before a viaduct on ground too steep for
+a track: no reroute, bridge or box fits; the same track on the d11-railway preset, km 9.44).
+
+Audits (straight + five published + 24 random designs): `outcome-audit` violations 124 → 111 (invalid designs
+22 → 22); `reroute-audit` links 511 → 566, with a problem 7 → 1, railway crossings 2 → 0, steeper than allowed
+3 → 1, earthworks over 10 m 3 → 1; chained reroutes 0 → 0; `crossing-audit` 0 geometry errors.
+
+**Performance.** The square variants, the consolidation pass and the joined lines build more candidate reroutes
+(best: 6 → ≈ 17 per evaluation on top of the first and final builds). Offsets: a build memo per evaluation
+(each way's stretch through our earthworks, its straightened line, the geometry of a crossing built only to
+anchor candidates, anchors per line and width), the consolidation pass tries only what the first look could not
+see, allocation-free deck and box-floor searches, lazy anchor lines, and slope queries memoised. See the timing
+table in `docs/evaluate-performance.md` § Model 24.
+
+**Known remaining.** The straightened line is draped on the ground beyond its ramps (its profile is checked, not
+drawn engineered). A bend's radius is that of a cubic curve, at least the class minimum, not a circular arc with
+transitions. Squaring keeps the crossing at its station; a designer might also move it along our road to a lower
+embankment. A crossed road already meeting ours at 70° or more is not straightened. Merged crossings of different
+ways within 30 m keep one remedy for the group; a member's own stretch is rebuilt beside our earthworks, closed or
+removed by the footprint pass (model 16), not given a crossing of its own.
 
 ## Physical and financial rules
 

@@ -35,3 +35,14 @@
 2. **Permit consolidation** when several low-volume tracks can be linked along a short service/parallel road to a neighboring crossing and all resulting parcels remain accessible. Provide a player-facing reason (“joined to the nearby crossing; this avoids another bridge”) and show the added route distance. A quantitative maximum detour should be a clearly labelled **provisional game threshold**, not attributed to ČSN/SPÚ. **Confidence: medium** (consistent with documented D35 reroutes; threshold itself unverified).
 3. **Cost the replacement route as a project-specific choice:** motorway project, KoPÚ/shared-facilities works, or an agreed split. Do not charge KoPÚ automatically; for major motorway-triggered KoPÚ, represent a negotiated investor contribution. **Confidence: high** on case-by-case principle.
 4. **Use SPÚ category guidance for cost/footprint defaults:** secondary P 3.5/20 or P 4.0/20; primary P 4.0/30 or P 4.5/30; supplementary unpaved ≥3.0 m and short. Select class by use/machinery, not solely by whether it replaces a crossing. **Confidence: high**.
+
+## Adopted in the game (cost model 24)
+
+- No Czech maximum detour or crossing spacing was found, so none is imposed: Auto leads a cut track or
+  service road to a neighbouring crossing (or a structure and the roads led to it to a neighbour within the
+  existing 750 m shortlist) wherever that is cheaper and buildable — the D35 KoPÚ practice of shortening a field
+  road and joining it to a neighbouring one or to the motorway's accompanying road.
+- A crossed road that runs into the motorway's earthworks and back out on the same side is moved beside them as
+  an accompanying road (*doprovodná komunikace*), priced as new road of its class.
+- Replacement pieces are priced at the crossed road's own SPK class (tracks: paved P4, as before), not at a
+  separate KoPÚ standard; who pays (motorway or land consolidation) is not modelled.
