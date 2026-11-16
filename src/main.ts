@@ -365,7 +365,8 @@ async function main() {
     };
     root.append(h, state, note, size, remove);
   };
-  /** A side road's own header (nothing selected): what it is, its traffic, and how to undo it. */
+  /** A side road's own settings, above whatever is selected on it: what it is, its traffic, its junctions
+   * and works, and how to undo it. */
   let strayKey = '', stray = 0;
   inspector.routeHead = () => {
     const route = store.route, r = last;
