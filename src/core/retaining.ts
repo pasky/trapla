@@ -361,16 +361,27 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
   const sets = all === firm ? [all] : [all, firm];
   for (let i = 1; i < n - 1; i++) for (let side = 1; side >= -1; side -= 2) for (const set of sets) {
     const t = set[side > 0 ? 0 : 1], other = all[side > 0 ? 1 : 0];
-    const limit = t.limit[i], day = side > 0 ? r.dayL : r.dayR, zDay = side > 0 ? r.zDayL : r.zDayR;
+    let limit = t.limit[i];
+    const day = side > 0 ? r.dayL : r.dayR, zDay = side > 0 ? r.zDayL : r.zDayR;
     if (!Number.isFinite(limit) || limit >= day[i] - 0.05) break;
     const nx = -r.ty[i] * side, ny = r.tx[i] * side;
     const ground = (o: number) => terrain.heightAt(r.x[i] + nx * o, r.y[i] + ny * o);
-    const fill = r.grade[i] >= ground(w), surface = r.grade[i] + (fill ? -1 : 1) * slopeHeight(limit - w, fill ? tpl.fillSlope : tpl.cutSlope, fill);
-    const height = Math.abs(surface - ground(limit));
-    const feature = t.cause[i] ?? t.cause[i - 1] ?? t.cause[i + 1] ?? 'road';
-    const watertight = surface < ground(limit) && (feature === 'water' || feature === 'stream');
-    const rate = retainingAssembly(height, watertight);
+    const fill = r.grade[i] >= ground(w), feature = t.cause[i] ?? t.cause[i - 1] ?? t.cause[i + 1] ?? 'road';
     const otherFoot = Math.max(w, Math.min(side > 0 ? r.dayR[i] : r.dayL[i], other.limit[i]));
+    const wallAt = (at: number) => {
+      const surface = r.grade[i] + (fill ? -1 : 1) * slopeHeight(at - w, fill ? tpl.fillSlope : tpl.cutSlope, fill);
+      const height = Math.abs(surface - ground(at)), watertight = surface < ground(at) && (feature === 'water' || feature === 'stream');
+      return { surface, height, watertight, rate: retainingAssembly(height, watertight) };
+    };
+    let { surface, height, watertight, rate } = wallAt(limit);
+    // Too high where the feature begins (ground falling away beside a bank): the wall stands nearer the road,
+    // where it is lower, wherever it fits (a wall further in protects the feature as well).
+    if (height > R.maxHeight || rate.baseWidth > limit + otherFoot) {
+      for (let at = limit - 1; at >= w + R.minimumOffset; at -= 1) {
+        const tried = wallAt(at);
+        if (tried.height <= R.maxHeight && tried.rate.baseWidth <= at + otherFoot) { limit = at; ({ surface, height, watertight, rate } = tried); break; }
+      }
+    }
     // The footing points inward, below our acquired corridor; no free foundation under a protected neighbour.
     const crossing = t.crossing[i];
     if (rate.perM > t.cap[i]) continue; // dearer than relocating that track: try the firm constraints
@@ -381,6 +392,9 @@ function retainingPass(r: RetainingRoute, terrain: Terrain, roads: RoadNet | und
       if ((overrides?.[i] ?? -1) < 0) {
         if (r.grade[i] - ground(0) >= STRUCTURE_RULES.bridgeMinHeight) forcedBridge[i] = 1;
         else if (!crossing && ground(0) - r.grade[i] >= STRUCTURE_RULES.tunnelMinDepth) forcedTunnel[i] = 1;
+        // our bank would run into water below us that no wall can hold back: a short bridge carries the road
+        // past it (its deck clear of the bank below; the bill checks its height at its ends)
+        else if (fill && (feature === 'water' || feature === 'stream')) forcedBridge[i] = 1;
       }
       break;
     }

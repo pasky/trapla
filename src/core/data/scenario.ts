@@ -72,7 +72,7 @@ export interface ScenarioParams {
 
 export const D11_SCENARIO: ScenarioParams = {
   id: 'd11',
-  title: 'Trutnov → Polish border',
+  title: 'Trutnov → Polish border', group: 'Trutnov',
   traffic: 9_000,
   maxTravelMin: 14.5,
   terrainClass: 'hilly',

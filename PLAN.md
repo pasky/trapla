@@ -365,6 +365,35 @@ What exists (details and commands in `README.md`):
   violations 144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch
   fails); the walls for buildings alone: no design dearer by more than 1 M, four random ones 34–59 M cheaper.
 
+### Town rates in the grade search; walls and short bridges by water (cost model 27, 2026-11-16)
+
+- The block-wise grade search now prices a stretch whose axis lies in a built-up area at town rates, as the bill
+  does there: SPK CN's urban road row, bridges and tunnels with the urban "other objects" surcharge (49.3 % vs
+  30.6 %), the urban tunnel row and building land (1,500 CZK/m² × 1.5) instead of farmland. Each ground class has a
+  rural and a town variant (`classAt` returns the town class where the centreline is built-up, chainage-anchored as
+  research/39 requires). Poříčí (D11 straight km 4.9–5.9): Auto's own design now bills within 0.5 M CZK of the
+  player's raised bridge over km 5.09–5.50 (it was ≈ 80 M dearer under model 23, ≈ 1.5 M under model 25).
+- Tried and left out, measured on the 10 Auto fixtures + 24 random D11 designs against main (bill sums): town
+  rates alone −1,459 M (16 cheaper, 14 dearer, validity 11 → 11); adding crossed-road remedies as priced points
+  (junction / reroute / its bridge over us / underpass by height, our short bridge with its abutments) −931 M and
+  +50 % evaluate time; adding buildings each earthwork / deck would take −1,254 M and validity 11 → 8. The full
+  evaluation's structure choice does not share those signals (it bridges a crossed road only where it is forced, and
+  keeps buildings behind walls the search cannot see), so the search raised the line for savings the bill never
+  made (demo km 6.5–7.2: −69 M of buildings for +205 M of bridge). Parked: `/tmp/w7/dp-signals-wip.patch`.
+- A retaining wall too high where the protected feature begins (ground falling away beside a bank) now stands
+  nearer the road, where it is lower, wherever it fits (`retaining.ts`). A bank over water that no wall can hold
+  back is carried past on a short bridge, also where the axis is only just above ground; water still left under
+  earthworks gets one more engineering pass with a bridge over it (as a stream beyond a bridge's end did; its
+  conflict id check never matched before). QA's D11 drag at km 9.0 (+65 m: "Our earthworks cover a pond or river
+  at km 8.55") is VALID; a sweep of 30 single-bend drags at km 9.0 (±40…120 m): VALID 7 → 14.
+- Fixtures against model 26 (M CZK): straight −135.5, best +9.2, best-drag +10.6, best-pin +13.1, best-structures
+  +10.6, best-manual +9.2 (walls), demo −37.9, direct-80 +26.7, direct-90 −137.4, town-centre / town-controls
+  +24.5; validity as before. The small rises are 1–2 m shifts of the grade in blocks that are not built-up, through
+  the mass balance; edit-locality (all suites): no change beyond 10 km, no new far problems, QA repros PASS.
+  outcome-audit (5 designs + straight + 24 random): −1,578 M in sum, VALID 8 → 8, violations 106 → 124 (random-11,
+  an S 7.5 design already invalid: a long town bridge whose piers cannot miss the roads below, an engine limit).
+  Evaluate time, sum of per-design minima over 35 designs, interleaved in one process: +1.0 % (noise).
+
 ### Any mapped road can be rebuilt (cost model 25, 2026-11-16)
 
 - Any mapped road, street or track (and, from model 23, a railway along its own line) is dragged directly to

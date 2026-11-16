@@ -34,8 +34,12 @@
  * 26: any mapped road can be rebuilt: a rebuilt stretch keeps its old road where its line stays on it
  * (nothing built or billed there), every road is checked against the network as the player edited it
  * (designed roads crossed by the same crossing engine, the lower-ranking road held on the other's deck
- * and credited once), a house two roads take is billed once; single-road bills unchanged. */
-export const COST_MODEL_VERSION = 26;
+ * and credited once), a house two roads take is billed once; single-road bills unchanged.
+ * 27: the grade search prices a built-up stretch at town rates (SPK CN urban road, bridge and tunnel rows,
+ * the urban other-objects surcharge, building land), as the bill does; a retaining wall too high where the
+ * feature begins stands nearer the road where it is low enough; a bank over water no wall can hold back
+ * gets a short bridge. */
+export const COST_MODEL_VERSION = 27;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

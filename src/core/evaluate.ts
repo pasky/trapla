@@ -1931,11 +1931,13 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   if (preview) return first.complete();
   // A stream left under the earthwork just beyond a bridge's end with too little cover for a culvert
   // (an oblique channel under the slope): carry the bridge over it and engineer again.
-  const streams = first.footprintConflicts.filter(c => c.feature === 'stream' && c.action === 'blocked' && c.id.endsWith(':earth'));
+  // Water our earthworks would still cover (no culvert, no wall): a stream just beyond a bridge's end is
+  // spanned by it; a pond or river beside us that no wall holds back gets a short bridge of its own.
+  const streams = first.footprintConflicts.filter(c => (c.feature === 'stream' || c.feature === 'water') && c.action === 'blocked' && /:earth(:|$)/.test(c.id));
   let spanned = false;
   for (const c of streams) {
     const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
-    if (!first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
+    if (c.feature === 'stream' && !first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
     for (let i = i0; i <= i1; i++) if (manualStructures[i] < 0) { streamBridge[i] = 1; spanned = true; }
   }
   if (spanned) { timing['count.streamRetry'] = 1; first = finish(crossingWays, new Set(), first.vpis); }

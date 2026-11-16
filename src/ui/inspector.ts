@@ -361,7 +361,9 @@ export class Inspector {
     // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
     else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
-    if (v.kind === 'footprint' && !t) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
+    // (not where our road already is on a bridge: a pier or a bridge end on something asks for a longer bridge)
+    const onBridge = !!this.r && this.r.kind[Math.max(0, Math.min(this.r.n - 1, Math.round(v.s0 / this.r.ds)))] === KIND.bridge;
+    if (v.kind === 'footprint' && !t && !onBridge) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
     return b.join('');
@@ -542,7 +544,9 @@ export class Inspector {
         : built.length ? `Auto: ${heights(built)}` : 'Auto: none';
       // the walls Auto builds beside the player's choice for the stretch this house hears (as the piece card says)
       const around = mine ? (r.wallsAroundChoices ?? []).filter((x) => x.side === side && x.i1 >= rec.window[0] && x.i0 <= rec.window[1]) : [];
-      const adds = around.map((x) => `<div class="sub around">Auto adds ${m0(x.s1 - x.s0)} of ${x.height} m wall at km ${kmr(x.s0, x.s1)} ${mine?.height ? 'as well' : 'instead'} <button type="button" class="link" data-stretch="${x.s0},${x.s1}">Show</button></div>`).join('');
+      const adds = around.length ? around.map((x) => `<div class="sub around">Auto adds ${m0(x.s1 - x.s0)} of ${x.height} m wall at km ${kmr(x.s0, x.s1)} ${mine?.height ? 'as well' : 'instead'} <button type="button" class="link" data-stretch="${x.s0},${x.s1}">Show</button></div>`).join('')
+        // Auto's walls beside the player's own stretch: where they stand
+        : beside.length ? `<div class="sub around">Auto's ${heights(beside)} wall beside it, km ${kmr(Math.min(...beside.map((x) => x.s0)), Math.max(...beside.map((x) => x.s1)))} <button type="button" class="link" data-stretch="${Math.min(...beside.map((x) => x.s0))},${Math.max(...beside.map((x) => x.s1))}">Show</button></div>` : '';
       walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[shownSide(side)]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>${now} · km ${kmr(s0, s1)}</small></div>${adds}`;
       // the wall it stays behind is Auto's beside the player's choice, not the choice itself
       if (mine && rec.status === 'wall' && around.length && !(mine.height && mine.height >= rec.wall)) {
