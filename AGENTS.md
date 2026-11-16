@@ -35,8 +35,8 @@ scenarios), `research/` (sources for every number).
 designs VALID, parts sums match), `npx tsx scripts/eval-regression.ts` (bills frozen unless a reviewed model
 change: bump `COST_MODEL_VERSION`), `npx tsx scripts/outcome-audit.ts --straight scripts/*-design.json
 --random 24` for crossing/footprint changes, `npx tsx scripts/edit-locality.ts` (≈ 1 min: random small edits
-on D11, the D3 sections and the whole D3 / D35, plus QA's repros; exit 1 if a grade pin or a repro changes
-anything beyond 8 km) for anything touching the grade solve, retries or previews. Look at the screenshots yourself; reviews of numbers alone missed
+on D11, the D3 sections, the whole D3 / D35 and the Královec railway, plus QA's repros; exit 1 if a grade pin or a
+repro changes anything beyond 10 km, or a repro marked so is not valid) for anything touching the grade solve, retries or previews. Look at the screenshots yourself; reviews of numbers alone missed
 broken visuals and jargon before.
 
 One command: `scripts/gates.sh quick` while iterating, `scripts/gates.sh full` once per merge (lock protocol
