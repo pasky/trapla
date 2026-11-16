@@ -717,3 +717,20 @@ rebuilding, the street off its deck (fixed above, re-check), a player's edit of 
 ("Two roads change the same old road"), rebuilding III/1057 makes the motorway 38 M cheaper unexplained, I/37
 45 px drag "Two roads take the same house" ×5 (decide jointly), P2 minor-road traffic prior and a ~5 px pick
 offset. main a8d8de5 (motorway-rail, model 23) must be merged first; ours becomes model 24.
+
+**After the QA list (2026-11-16, HEAD after `cadb1fb`):**
+- Street off its deck (QA): fixed by `f903e69`; `scripts/_deck-drags.ts` (untracked) bends the street at 5 places
+  × 3 offsets: all valid.
+- Cold start (`cadb1fb`): the early grab (`grabbedEarly`) tested `legacyRoadAt`, which is false on every pack WITH
+  road links, so a drag before the links loaded panned. Now `mappedRoadNear` (pack overlay net), the first hover
+  starts `ensureTransport()`, and a mapped road shows the grab cursor before the links arrive. A held early drag
+  opens the road's card once the links load (it does not yet rebuild). No browser check of a fresh-load drag yet.
+- Still open from QA re-test 2: drag next to a crossing (`hitRoad` returns false there: our road's `roadAt`, then
+  `mappedGrab`, `sourceAt`; a crossing card opens on click; reproduce on D3 III/1057 next to the motorway bridge at
+  km 11.78); a player's edit of the D11 km 4.1 track an automatic reroute already uses ("Two roads change the same
+  old road"); III/1057 rebuilt makes the motorway 38 M cheaper (find what moved; show it or fix double counting);
+  I/37 45 px drag: 5× "Two roads take the same house" (decide jointly, one demolition billed once); P2 minor-road
+  traffic prior (sourced, or labelled as a guess) and the ~5 px pick offset; S 7.5/III forced on the steep street
+  (kept-road band infeasible above the class's max gradient, the fallback ignores every band).
+- drag-perf on the final head still to run; then self-review since 80168c3, yield; merge needs main a8d8de5
+  (model 23) first, ours 24; afterwards make project-kept.ts kind-generic for railways (docs/mode-foundations.md).
