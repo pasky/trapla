@@ -87,6 +87,26 @@ await page.evaluate(() => window.trapla.profileFocus(5000, 5200));
 const z = await step('zoomed (violation click)');
 m = await setPis([off(0.5, 3000)], 'far bend while zoomed');
 ok(Math.abs(m.view.v1 - m.view.v0 - (z.view.v1 - z.view.v0)) < 0.5, 'a zoomed profile keeps its span');
+// a click on our own road on the map keeps the profile's zoom; it scrolls only when the place is out of view
+const vb = await page.locator('#view').boundingBox();
+const clickRoad = async (s, tag) => {
+  await page.evaluate(() => window.trapla.select(null));
+  const p = await page.evaluate((s) => window.trapla.roadScreen(s), s);
+  await page.mouse.click(vb.x + p.sx, vb.y + p.sy);
+  await page.evaluate(() => window.trapla.whenIdle());
+  const picked = await page.evaluate(() => window.trapla.range());
+  return { m: await step(tag), picked };
+};
+await page.evaluate(() => { window.trapla.select(null); window.trapla.profileFocus(5000, 5200); });
+const zoomed = await step('zoomed again');
+let c = await clickRoad(5100, 'our road clicked inside the profile\'s window');
+ok(!!c.picked, 'the click selected a piece of our road');
+ok(c.picked && c.picked.s0 >= zoomed.view.v0 && c.picked.s1 <= zoomed.view.v1
+  ? Math.abs(c.m.view.v0 - zoomed.view.v0) < 0.5 && Math.abs(c.m.view.v1 - zoomed.view.v1) < 0.5 : !whole(c.m),
+  `a click on our road inside the profile's window keeps its zoom (${c.m.view.v0.toFixed(0)}–${c.m.view.v1.toFixed(0)} m)`);
+c = await clickRoad(12000, 'our road clicked outside the window');
+ok(!whole(c.m) && c.picked && c.m.view.v0 <= c.picked.s0 + 0.5 && c.m.view.v1 >= c.picked.s1 - 0.5,
+  `a click on our road outside it scrolls the profile there without showing the whole route (${c.m.view.v0.toFixed(0)}–${c.m.view.v1.toFixed(0)} m, piece ${c.picked?.s0.toFixed(0)}–${c.picked?.s1.toFixed(0)})`);
 await page.click('#fit');
 m = await step('Fit');
 ok(whole(m), 'Fit shows the whole route again');

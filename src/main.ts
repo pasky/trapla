@@ -747,12 +747,16 @@ async function main() {
   const switchRoute = (id: RouteId, created = false, oneDirection?: boolean) => {
     const design = projectStore.snapshot.design, here = store.route && corridorOfRoute(design, store.route.id);
     const one = oneDirection ?? (!!here && here === corridorOfRoute(design, id) && store.oneDirection);
+    const shown = store.activeRouteId, shownOne = store.oneDirection;
     if (!store.switchRoute(id, created, one)) return false;
     syncDirections();
     evals.endGesture(); activePreviewPrice = null;
     frameEnds();
     sel = activeSelection(id, qualifiedSelection); qualifiedSelection = qualifySelection(id, sel);
-    view.setHover(null); extras.setRange(null); profile.fit();
+    view.setHover(null); extras.setRange(null);
+    // another line: its whole profile. The line the profile already shows (a click on our own road): the
+    // profile keeps its zoom, and the selection that follows scrolls it only if the place is out of view
+    if (store.activeRouteId !== shown || store.oneDirection !== shownOne) profile.fit();
     showActiveResult();
     if (!store.read()) curveEdit.hide();
     select(sel);
