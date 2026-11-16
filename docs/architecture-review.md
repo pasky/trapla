@@ -39,7 +39,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
 | 8 | The mission bootstrap, pack identities and a route's crown width each derived in 2–4 places | medium | low | done: `core/project-mission.ts`, `packIdentities()`, `core/route-section.ts` |
 | 9 | Dead code: the old single-road `Store`, 7 unreferenced exports | medium | none | done |
-| 10 | A new line kind touches ≈ 15 files outside the registries; the designed kernel seam is unused | high | medium | next / sequence (§ Extensibility) |
+| 10 | A new line kind touches ≈ 15 files outside the registries; the designed kernel seam is unused | high | medium | started: `ROUTE_KINDS` in project-evaluate.ts (evaluator, noise method, clearance per kind); rest next (§ Extensibility) |
 | 11 | Player words per kind ("road / railway / motorway", "old track", ‰ vs %) re-derived in ≥ 8 places | medium | low | next |
 | 12 | Browser gates run against the live working tree (vite); fixed ports collide between worktrees | medium | none | done in part: port per checkout; run gates from a clean checkout (§ Tooling) |
 | 13 | 41 browser scripts each copy the server / Chromium / idle boilerplate | medium | low | next: `scripts/lib/browser.mjs`, migrate when touched |
@@ -183,10 +183,12 @@ for it, but kind is also branched on in code:
 | `ui/hud.ts`, `ui/road-edit.ts`, `ui/profile.ts`, `ui/inspector.ts`, `render/view.ts` | 8 / 7 / 1 / 1 / 2 | headings, type lists, units, drawn section |
 
 - `project.ts:335` declares the seam (`RouteKernel { propose, acoustics, finalize }`, `CorridorKernel`)
-  but nothing implements it: `routeProposal` (project-evaluate.ts:94–140) dispatches by hand. Implementing
-  the seam as a `Record<RouteKind, RouteKernel>` registry over the three existing evaluators is a pure
-  refactor of ≈ 50 lines and makes "add a kind" one registration. Sequence with the P1 agent
-  (project-evaluate.ts).
+  but nothing implements it: `routeProposal` dispatched by hand. Done as a first step:
+  `ROUTE_KINDS: Record<RouteKind, …>` in project-evaluate.ts, one row per kind with its evaluator (road /
+  paired corridor / railway), the noise method of its receivers and the clearance another line needs over
+  it; the compiler insists on a row for a new kind. Still branching on kind there (each a candidate field
+  of the row): who may end on open ground, whose ends follow the road they join, the wording of junction
+  issues, `crownOf`, and the capacity / operations of a route.
 - **One descriptor for a kind's words** in `terms.ts`: `LINE_WORDS[mode] = { noun: 'railway', old: 'old
   track', height: 'track height', gradeUnit: '‰', … }`, read by hud, profile, checks, route-cards and
   project-evaluate instead of `rail ? … : …` ternaries (≥ 8 places today). Text stays byte-identical;
