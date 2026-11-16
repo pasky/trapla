@@ -690,8 +690,8 @@ difference is calculated once per pair, avoiding three attenuation logarithms. T
   the cut-and-overbridge alternative (which manual profiles can choose); the forced bridge is the 30 m minimum whatever
   the motorway's width and the crossing angle.
 - (Fixed in cost model 21: walls in cuts now stand on the cut's top edge, or none where the cut screens.)
-- Render: thin pale (sky-coloured) seams show at some cut / fill slope and replacement-ground boundaries
-  near structures (pre-existing; visible in the before shots 90 and 94).
+- (Fixed in cost model 21: the pale seams beside slopes and abutments, screenshots 128 / 129; see the noise
+  section's render bullet.)
 
 ## Bridges vs high fills, player overrides (cost model 11)
 
@@ -910,6 +910,12 @@ the bill change: **research/36**.
   floor's level (open ground → as built), a plan with a line from every piece of road weighted by what it
   adds, and one sentence on where most of it comes from ("62 % of the noise comes through the gap in the
   wall where the side road joins, km 6.43").
+- **Pale seams closed** (verified in the browser, screenshots 128 / 129): two causes, both where the terrain was
+  cut away with nothing drawn over it. Beside a slope's toe the replacement ground was discarded by the
+  coarse rasterised footprint mask (it now discards only texels the exact footprint covers fully); in front
+  of an embankment's end face at a bridge the terrain mask's raster bleed (≈ a 2.5 m texel) opened sky-coloured
+  wedges — the mask now stops 3 m short of an end face on the fill side (the kept ground lies inside the
+  embankment; in a cut it still reaches the face). No depth offsets.
 - **What the route takes, drawn truthfully** (owner report 2026-11-16): a demolished building leaves the
   base map's footprint layer and its plot is drawn on the ground in its own shape (pale cleared ground,
   dark hatch, dashed edge); a bought-out house stays standing in its noise-view colour in every view with a
@@ -926,6 +932,6 @@ the bill change: **research/36**.
   (emission / propagation of that mode not implemented here). Joint wall decisions across roads remain C1.
 - Performance (open): after the performance pass (segment tree, two samples per far segment, a rigorous open-road
   bound from each segment's own distance, typed scratch kernels) the noise step is faster than main on
-  best and demo, +1–3 ms on direct-80/90, and still ≈ 8 ms slower on town-centre (367 dwellings at the
-  road; whole evaluation ≈ 6 % slower there, equal or faster elsewhere within noise). Numbers and what is
+  best and demo, +1–3 ms on direct-80/90, and ≈ 7 ms slower on town-centre (367 dwellings at the
+  road), a reviewed trade-off for the exact sum (accuracy kept); equal or faster elsewhere within noise. Numbers and what is
   left: docs/evaluate-performance.md.

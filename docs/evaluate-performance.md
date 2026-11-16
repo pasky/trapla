@@ -37,8 +37,9 @@ Interleaved A/B in one process (both evaluate bundles loaded, alternating, warm,
 10.0 on main, direct-80 15.1 against 10.9–13.1; best, demo and direct-90 equal or faster. The noise step
 alone (`noiseOutcome`, town-centre, warm p10): 22 → 12.5 ms.
 
-Open: town-centre (367 dwellings at the road, 221 over the limit) remains ≈ 8 ms (≈ 6 %) slower in the
-whole evaluation; the rest is arithmetic every house needs (≈ 30 far segments with their screening, the
+Reviewed trade-off (owner's lead, 2026-11-16: keep the accuracy): town-centre (367 dwellings at the road,
+221 over the limit) remains ≈ 7 ms slower at the minimum in the whole evaluation (the evaluate-performance
+rework of long corridors may recover it); the rest is arithmetic every house needs (≈ 30 far segments with their screening, the
 ±150 m decision window cell by cell, four wall heights for every house over the limit, the far walls'
 effect on every house). Not done: caching per-house sums across evaluations (any length change moves
 every station, so nothing would be reused during a drag), and coarser far grouping (θ = 0.4 with two

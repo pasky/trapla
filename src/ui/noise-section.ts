@@ -51,20 +51,28 @@ function pathOf(p: NoiseRay, side: 'L' | 'R'): Path {
   return p.screened ? 'edge' : 'open';
 }
 
-/** One sentence: where most of the house's noise comes from and what (fails to) stop it. */
+/** One sentence: where most of the house's noise comes from and what (fails to) stop it. The place is the
+ * shortest stretch of road carrying four fifths of that part (not every metre of it, which can be km). */
 function planCaption(r: PlanRoute, rays: readonly NoiseRay[], side: 'L' | 'R', level: number): string {
-  const share = new Map<Path, { e: number; s0: number; s1: number }>();
+  const share = new Map<Path, { e: number; cells: { s: number; e: number }[] }>();
   let total = 0;
   for (const p of rays) {
-    const e = 10 ** (p.level / 10), k = pathOf(p, side), g = share.get(k) ?? { e: 0, s0: Infinity, s1: -Infinity };
+    const e = 10 ** (p.level / 10), k = pathOf(p, side), g = share.get(k) ?? { e: 0, cells: [] };
     g.e += e; total += e;
-    if (e > 0) { g.s0 = Math.min(g.s0, r.s[p.i]); g.s1 = Math.max(g.s1, r.s[p.i]); }
+    if (e > 0) g.cells.push({ s: r.s[p.i], e });
     share.set(k, g);
   }
   let top: Path = 'open', best = -1;
   for (const [k, g] of share) if (g.e > best) { best = g.e; top = k; }
   const g = share.get(top)!, pct = Math.round((100 * g.e) / Math.max(1e-30, total));
-  const where = g.s1 - g.s0 < 25 ? `km ${kmText((g.s0 + g.s1) / 2)}` : `km ${kmText(g.s0)}–${kmText(g.s1)}`;
+  const cells = [...g.cells].sort((a, b) => a.s - b.s);
+  let s0 = cells[0]?.s ?? 0, s1 = cells[cells.length - 1]?.s ?? 0;
+  for (let i = 0, j = 0, sum = 0; j < cells.length; j++) {
+    sum += cells[j].e;
+    while (sum - cells[i].e >= 0.8 * g.e) sum -= cells[i++].e;
+    if (sum >= 0.8 * g.e && cells[j].s - cells[i].s < s1 - s0) { s0 = cells[i].s; s1 = cells[j].s; }
+  }
+  const where = s1 - s0 < 25 ? `km ${kmText((s0 + s1) / 2)}` : `km ${kmText(s0)}–${kmText(s1)}`;
   const how = top === 'gap' ? 'through the gap in the wall where the side road joins'
     : top === 'wall' ? 'over the wall' : top === 'edge' ? 'over the edge of the cut or the road'
       : top === 'far' ? 'from the far side of the road' : 'where no wall stands';
@@ -128,7 +136,9 @@ export function noisePlan(r: PlanRoute, rect: HouseRect, rec: NoiseReceiver, ray
       for (let q = i; q <= j; q++) pts.push(at(q, wallOff(s, q)));
       if (pts.length === 1) { const p = pts[0], d = [r.tx[i] * r.ds / 2, r.ty[i] * r.ds / 2]; pts.splice(0, 1, [p[0] - d[0], p[1] - d[1]], [p[0] + d[0], p[1] + d[1]]); }
       parts.push(`<path d="${line(pts)}" fill="none" stroke="#18b0b0" stroke-width="${near ? 3 : 2}"${near ? '' : ' opacity=".35"'}/>`);
-      const mid = Math.round((i + j) / 2), m = at(mid, wallOff(s, mid) + (s === 'L' ? 1 : -1) * 7 / k);
+      // the label on the longer part beside the house, not in front of it
+      const mid = rec.i >= i && rec.i <= j ? Math.round(rec.i - i > j - rec.i ? (i + rec.i) / 2 : (rec.i + j) / 2) : Math.round((i + j) / 2);
+      const m = at(mid, wallOff(s, mid) + (s === 'L' ? 1 : -1) * 7 / k);
       if (near && (j - i) * r.ds * k > 34) parts.push(`<text x="${X(m[0], m[1])}" y="${(Number(Y(m[0], m[1])) + 4).toFixed(1)}" class="lbl" fill="#0b5e5e" text-anchor="middle">${m1(h[i])} m</text>`);
       i = j;
     }
@@ -166,7 +176,7 @@ export function noiseSectionSvg(r: Pick<Result, 's' | 'grade' | 'noise'>, rec: N
   const src = r.noise.source;
   if (!src || !floors.length) return '';
   const i = rec.i, side = rec.side === 'L' ? src.L : src.R;
-  const W = 316, H = 150, padL = 8, padR = 92, padT = 10, padB = 16;
+  const W = 316, H = 150, padL = 8, padR = 106, padT = 10, padB = 16;
   const half = crownWidth / 2, d = rec.d, house = Math.max(8, Math.min(14, d * 0.25));
   const groundB = rec.ground - src.grade[i]; // house ground vs our road
   const levels = floors.length, topY = groundB + levels * NOISE.storeyHeight;
@@ -199,7 +209,12 @@ export function noiseSectionSvg(r: Pick<Result, 's' | 'grade' | 'noise'>, rec: N
   if (wall > 0) {
     const wx = X(wOff), wy = Y(wFoot + wall), wb = Y(wFoot);
     parts.push(`<rect x="${(wx - 2).toFixed(1)}" y="${wy.toFixed(1)}" width="4" height="${(wb - wy).toFixed(1)}" fill="#18b0b0" stroke="#0b5e5e"/>`);
-    parts.push(`<text x="${(wx + 4).toFixed(1)}" y="${(wy + 2).toFixed(1)}" class="lbl" fill="#0b5e5e">${m1(wall)} m wall${cut && wOff >= edgeOff - 0.01 ? ' on the cut' : ''}</text>`);
+    // its label clear of the house (≈ 5.4 px per character at 10 px)
+    const label = `${m1(wall)} m wall${cut && wOff >= edgeOff - 0.01 ? ' on the cut' : ''}`;
+    const lw = label.length * 5.4, house = X(d + NOISE.facadeOffset) - 2;
+    // beside it towards the house, else towards the road, else above its top shifted clear of the house
+    const [lx, ly] = wx + 4 + lw < house ? [wx + 4, wy + 2] : wx - 4 - lw > 0 ? [wx - 4 - lw, wy + 2] : [Math.max(2, Math.min(wx + 4, house - lw)), wy - 4];
+    parts.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" class="lbl" fill="#0b5e5e">${label}</text>`);
   } else if (side.gap[i]) {
     parts.push(`<text x="${(X(wOff) + 4).toFixed(1)}" y="${(Y(0) - 6).toFixed(1)}" class="lbl" fill="#0b5e5e">gap: side road</text>`);
   }

@@ -1034,7 +1034,7 @@ export class View {
 
   private bufferSize = new THREE.Vector2();
   private markerMats: Partial<Record<'square' | 'diamond', THREE.ShaderMaterial>> = {};
-  /** far-zoom building markers: shown only where the footprint is smaller than a pixel or so */
+  /** far-zoom building markers: shown only where the footprint is a few pixels across (too small to read) */
   private markerMaterial(diamond: boolean): THREE.ShaderMaterial {
     const k = diamond ? 'diamond' : 'square';
     return this.markerMats[k] ??= new THREE.ShaderMaterial({
@@ -1044,7 +1044,7 @@ export class View {
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mv;
           float px = radius * projectionMatrix[1][1] * 0.5 * vh / max(-mv.z, 1e-3);
-          gl_PointSize = px > 1.5 ? 0.0 : size;
+          gl_PointSize = px > 3.0 ? 0.0 : size;
         }`,
       fragmentShader: `uniform vec3 color; uniform float size;
         void main() {

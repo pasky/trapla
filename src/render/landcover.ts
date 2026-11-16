@@ -77,7 +77,7 @@ const PASSES: Pass[] = [
 ];
 const PLOT_LAYERS = ['plots', 'plot-edges', 'buyout-rings'];
 /** how far a bought-out building's ring stands off its walls, m */
-const RING_OFFSET = 1.6;
+const RING_OFFSET = 3;
 /** Physical crossing roads use the exact same class palette as the rasterised base map. */
 export function existingRoadColor(cls: string): number {
   const layer = cls === 'trunk' ? 'motorway' : ['residential', 'unclassified', 'living_street'].includes(cls) ? 'minor' : cls;
