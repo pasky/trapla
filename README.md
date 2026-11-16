@@ -226,6 +226,13 @@ mission with its real ends: [0301 starts in the D0 interchange](docs/screenshots
 [ending on the I/35 merge](docs/screenshots/145-d35-mohelnice-merge.png). Long routes stay live while dragging:
 previews re-solve only the edited stretch (`docs/evaluate-performance.md`). Reproduce with
 `node scripts/scenarios/screenshots.mjs <id> --docs-overview|--docs-A|--docs-B <name>`.
+The start view [frames A and B](docs/screenshots/146-whole-d3-start-framed.png) (the whole D3 looked at across);
+an end that meets an interchange or a road has a sign and [a card](docs/screenshots/147-interchange-card-i18.png)
+("Interchange with road I/18 — its ramps are not part of this job"); the total
+[follows a drag live](docs/screenshots/148-whole-d3-live-price-drag.png) (≈); the D35 first section
+[joins the open D35 and goes on as the next section](docs/screenshots/149-d35-first-section-ends.png).
+A local edit re-solves only its own stretch of the grade line (model 23, research/39 "Local edits",
+`scripts/locality.ts`).
 
 ### Motorway (cost model 20)
 
