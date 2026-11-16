@@ -12,7 +12,7 @@ import { ROAD_CLASSES } from './data/urban';
 
 export type ProjectRoadEvaluation =
   /** `unpriced`: the road itself was engineered, but the project cannot price this change yet. */
-  | { status: 'evaluated'; result: Result; unpriced?: ('source-needs-network' | 'traffic-unknown')[];
+  | { status: 'evaluated'; result: Result; unpriced?: 'source-needs-network'[];
       /** Ends joined to an existing ground road whose junction this road's bill includes. */
       junctionEnds?: ('a' | 'b')[];
       /** A rebuilt stretch: removing its old road and reconnecting its side roads (C1 b). */
@@ -114,7 +114,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const replacement = route.source && sourceWay !== undefined && ctx.roads && !options.preview
     ? replacementWorks(route, result, ctx.roads, sourceWay, project.connections, id => options.sourceWays?.get(id), kept) : undefined;
   if (replacement?.violations.length) { result.violations.push(...replacement.violations); result.valid = false; }
-  const unpriced = [...route.source && !replacement && !options.preview ? ['source-needs-network' as const] : [], ...spec.operations.trafficUnknown ? ['traffic-unknown' as const] : []];
+  const unpriced = route.source && !replacement && !options.preview ? ['source-needs-network' as const] : [];
   const junctionEnds = ties.filter(t => t.junction.kind !== 'continuation').map(t => t.end);
   const gone = new Set([...result.demolished, ...result.boughtOut].map(b => b.j));
   const rings: ReplacementWork[] = options.preview ? [] : ties.filter(t => t.junction.kind === 'roundabout').map(t => {

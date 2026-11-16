@@ -6,7 +6,7 @@ Research snapshot: 2026-11-15. **Verified direct source:** ŘSD Geoportal ArcGIS
 
 ŘSD's Celostátní sčítání dopravy (CSD) reports RPDI, *roční průměr denních intenzit* (annual average daily traffic), for road sections. The 2025 dataset is now present as an official ŘSD Geoportal layer named “Sčítání dopravy - data z r. 2025”; this improves on the previously verified CSD2020-only evidence in [30-road-reconstruction.md](30-road-reconstruction.md). The service layer and its records are verifiable here: [MapServer directory](https://geoportal.rsd.cz/arcgis/rest/services/ScitaniDopravy/MapServer), [2025 section layer metadata](https://geoportal.rsd.cz/arcgis/rest/services/ScitaniDopravy/MapServer/3?f=pjson), and [section query endpoint](https://geoportal.rsd.cz/arcgis/rest/services/ScitaniDopravy/MapServer/3/query).
 
-ŘSD's [CSD2020 information](https://scitani.rsd.cz/csd_2020/pages/informations/default.aspx), [methodology](https://scitani.rsd.cz/csd_2020/pages/methodics/default.aspx), and [detailed results](https://scitani.rsd.cz/csd_2020/pages/shop/default.aspx) describe the earlier census, its RPDI outputs and category definitions. A 2025 service layer is published, but a full 2025 methodology note/count-period documentation was not located in this research. Do not assume the detailed collection period/method is identical to 2020 without obtaining the 2025 methodology. The 2020 reference app is [here](https://scitani.rsd.cz/csd_2020/pages/map/default.aspx); its detailed outputs page describes RPDI by vehicle category. CSD2020 methodology is not a substitute for the 2025 method.
+ŘSD's [CSD2020 information](https://scitani.rsd.cz/csd_2020/pages/informations/default.aspx), [methodology](https://scitani.rsd.cz/csd_2020/pages/methodics/default.aspx), and [detailed results](https://scitani.rsd.cz/csd_2020/pages/shop/default.aspx) describe the earlier census, its RPDI outputs and category definitions. The 2025 methodology and results are summarised in Silniční obzor 9/2026 (field work 1 April – 23 October 2025, class averages; see [41-traffic-defaults.md](41-traffic-defaults.md)). The 2020 reference app is [here](https://scitani.rsd.cz/csd_2020/pages/map/default.aspx); its detailed outputs page describes RPDI by vehicle category. CSD2020 methodology is not a substitute for the 2025 method.
 
 ## Verified downloads and fields
 
@@ -24,7 +24,7 @@ CSD values are integer rounded RPDI; the service metadata declares integer field
 
 ## Trapla fetch and use
 
-Run `uv run --with requests python pipeline/fetch_census.py`. It queries each supplied EPSG:5514 area with a 1 km margin, saves verbatim REST response JSON and normalized lists at `pipeline/cache/csd/sections-<area>.json`. Schema is `{id, road, rpdi, heavy, year, lines}`; `heavy` is TV vehicles/day and `lines` is every part of the section, `[[[x,y], ...], ...]` in EPSG:5514 (the cached files from the first run still hold `line`, the first part only: re-run the script). The script is stdlib plus `requests`, and is reproducible against the public endpoint.
+Run `uv run --with requests python pipeline/fetch_census.py`. It queries each supplied EPSG:5514 area with a 1 km margin, saves verbatim REST response JSON and normalized lists at `pipeline/cache/csd/sections-<area>.json`. Schema is `{id, road, class, rpdi, heavy, year, lines}`; `road` keeps leading zeros (III/00315 is not II/315), `class` is motorway/I/II/III from `PKOD_TR_K`, `heavy` is TV vehicles/day and `lines` is every part of the section, `[[[x,y], ...], ...]` in EPSG:5514. Areas are keyed by scenario id (`pipeline/scenarios/*.json`). The script also writes `national-classes.json` (heavy share by class, research/41). `pipeline/build_traffic.py` turns the sections into each pack's `traffic.json`. The script is stdlib plus `requests`, and is reproducible against the public endpoint.
 
 For OSM prefill, use CSD2025 in preference to CSD2020; match same normalized `ref` and nearest line (point-to-line distance), then check section endpoints and road class. Retain source year and section id in game data. Set traffic to `rpdi`; derive a heavy share as `heavy/rpdi` when positive, but label the basis explicitly as TV, not TNV. Avoid assigning one section's value indiscriminately across an entire named road: adjacent sections can differ substantially. Keep unmatched local roads unset or use a separately labelled estimate rather than pretending they were counted.
 
@@ -36,7 +36,7 @@ Counts below are all service sections intersecting the expanded query bbox, not 
 
 | Road label | Sections (id: RPDI) | RPDI range (vehicles/day) |
 |---|---|---:|
-| `1412` | 5-6240: 1316 | 1316–1316 |
+| `01412` | 5-6240: 1316 | 1316–1316 |
 | `14` | 5-0870: 5835, 5-0871: 5835, 5-0872: 5771, 5-0890: 5027, 5-0891: 5027, 5-0893: 7716, 5-0894: 7716, 5-0895: 6799, 5-0901: 10028, 5-1280: 11712, 5-1290: 11959, 5-1302: 12998, 5-1303: 17522, 5-3430: 3731 | 3731–17522 |
 | `16` | 5-0902: 17998, 5-0910: 4399, 5-0911: 4399, 5-0912: 12655, 5-0913: 15592, 5-0920: 4722, 5-1180: 3205, 5-3470: 4283, 5-3471: 4887 | 3205–17998 |
 | `252` | 5-3440: 980 | 980–980 |
@@ -60,7 +60,7 @@ Counts below are all service sections intersecting the expanded query bbox, not 
 
 | Road label | Sections (id: RPDI) | RPDI range (vehicles/day) |
 |---|---|---:|
-| `315` | 1-2250: 3796, 1-4768: 2328, 1-4769: 2328 | 2328–3796 |
+| `00315` | 1-2250: 3796, 1-4768: 2328, 1-4769: 2328 | 2328–3796 |
 | `1027` | 1-6120: 1476 | 1476–1476 |
 | `104` | 1-2630: 2439, 1-2636: 2503 | 2439–2503 |
 | `1042` | 1-6080: 1460 | 1460–1460 |
@@ -86,7 +86,7 @@ Counts below are all service sections intersecting the expanded query bbox, not 
 | `43 H` | 5-0641: 4418, 5-0642: 3478 | 3478–4418 |
 | `D35` | 5-8580: 0, 5-8590: 0 | 0–0 |
 
-### Nová Paka — 38 sections; file `pipeline/cache/csd/sections-nova-paka.json`
+### Nová Paka — 38 sections; file `pipeline/cache/csd/sections-i16-nova-paka.json`
 
 | Road label | Sections (id: RPDI) | RPDI range (vehicles/day) |
 |---|---|---:|

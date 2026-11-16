@@ -72,13 +72,10 @@ export function referenceRoadSurface(ctx: EvalContext, route: RouteDesign): Tran
 /** One evaluation per paired corridor, shared by both directions (never two priced kernels). */
 type CorridorCache = Map<string, CorridorEvaluation>;
 /** The road itself is engineered and shown with its own price; the project cannot price it yet. */
-const UNPRICED: Record<'source-needs-network' | 'traffic-unknown', Pick<ProjectIssue, 'check'> & { violation: ProjectIssue['violation'] }> = {
+const UNPRICED: Record<'source-needs-network', Pick<ProjectIssue, 'check'> & { violation: ProjectIssue['violation'] }> = {
   'source-needs-network': { check: 'not-checked', violation: { kind: 'crossing', basis: 'engine', title: 'Replacing the old road is not priced yet',
     fix: 'Its new line is checked; removing the old road and reconnecting its side roads is not priced yet',
     rule: 'Engine limit: the price of a rebuilt stretch still lacks removing the old road and reconnecting the roads that joined it.' } },
-  'traffic-unknown': { check: 'violation', violation: { kind: 'crossing', basis: 'game', title: 'Traffic not set',
-    fix: 'Enter how many vehicles a day use this road in its card',
-    rule: 'Game rule: noise and capacity depend on traffic, so a road without traffic cannot be priced.' } },
 };
 function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route: RouteDesign,
   preview = false, materialValue?: number, corridors: CorridorCache = new Map(), ends?: { a?: XYZ; b?: XYZ },

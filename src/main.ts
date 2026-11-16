@@ -12,7 +12,8 @@ import { createRailNoiseModel } from './core/rail-noise';
 import { railTraffic } from './core/project-railway';
 import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
-import { DIRECTIONS_TEXT } from './core/terms';
+import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
+import { classTraffic } from './core/traffic-census';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
@@ -29,7 +30,7 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { DEFAULT_SPEED, strayDistance } from './ui/road-edit';
+import { DEFAULT_SPEED, isTraffic, strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
@@ -230,8 +231,10 @@ async function main() {
       return;
     }
     if (!graph || !pack.vectors || !transportData) return;
+    // what the mapped roads carry today (the pack's traffic census; without it: class averages)
+    const census = await pack.loadTraffic();
     try {
-      transportIndex = new ProjectTransportIndex(graph, transportData, graph.vectorData, pack.terrain);
+      transportIndex = new ProjectTransportIndex(graph, transportData, graph.vectorData, pack.terrain, census);
       // only the drawn road is clickable: its drawn width at the local scale (map or photo overlay), plus slack
       sourcePicker = new SourcePicker(graph, pack.vectors, (layer, res) => lineHalfWidth(layer, res, view.photoWithNetwork));
     } catch (error) { console.warn('Road map links are unavailable', error); transportIndex = null; sourcePicker = null; return; }
@@ -402,15 +405,14 @@ async function main() {
       const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
         : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
           return !host ? 'a road' : host.role === 'mission' ? 'our road' : host.name; })()
-        : e.anchor.kind === 'source' ? (() => { const t = transportIndex?.source((e.anchor as { location: { sourceId: string } }).location.sourceId)?.tags;
-          return t?.name || [ROAD_CLASSES[t?.highway ?? '']?.label ?? 'a road', t?.ref].filter(Boolean).join(' '); })() : 'a scenario end';
+        : e.anchor.kind === 'source' ? mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road') : 'a scenario end';
       what.textContent = `New road from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
     }
     const form = document.createElement('form'); form.className = 'source-operations route-traffic';
     const fields: HTMLInputElement[] = [];
     for (const [key, label, unit, value] of [
-      ['traffic', 'Traffic', 'vehicles/day', op.trafficUnknown ? '' : String(op.aadt)],
-      ['heavy', 'Heavy vehicles', '%', op.trafficUnknown ? '' : String(Math.round(op.heavyShare * 1000) / 10)],
+      ['traffic', 'Traffic', 'vehicles/day', String(op.aadt)],
+      ['heavy', 'Heavy vehicles', '%', String(Math.round(op.heavyShare * 1000) / 10)],
     ] as const) {
       const row = document.createElement('label'); row.textContent = label;
       const input = document.createElement('input'); input.type = 'number'; input.required = true; input.min = '0';
@@ -424,10 +426,22 @@ async function main() {
       const id = route.id;
       store.editProject(d => {
         const q = d.routes.find(x => x.id === id); if (!q || q.kind !== 'road') return;
-        const { trafficUnknown: _unknown, ...rest } = q.specification.operations;
-        q.specification.operations = { ...rest, aadt: Math.round(traffic), heavyShare: heavy / 100 };
+        q.specification.operations = { ...q.specification.operations, aadt: Math.round(traffic), heavyShare: heavy / 100 };
       });
+      // the card is not redrawn under a focused field: the player's own number carries no "counted" label
+      if (!filled || Math.round(traffic) !== filled.aadt || Math.abs(heavy / 100 - filled.heavyShare) > 1e-9) basis.remove();
     };
+    // where the numbers come from, while they are still the ones the game filled in
+    const cls = route.specification.legalClass;
+    const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
+    const basis = document.createElement('small'); basis.className = 'traffic-basis';
+    if (filled && isTraffic(op, filled)) {
+      basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
+        : interval ? `Not counted in the traffic census: the average class ${cls} road is assumed.` : `A new road: the average class ${cls} road is assumed.`;
+      basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
+        : 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.';
+      form.append(basis);
+    }
     for (const f of fields) f.onchange = apply;
     form.onsubmit = e => { e.preventDefault(); apply(); };
     const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route';

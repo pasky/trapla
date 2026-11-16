@@ -73,8 +73,9 @@ export interface RoadOperations {
   aadt: number; heavyShare: number; speed: number;
   /** Legacy speed edits remain coupled unless separate operating assumptions are explicitly chosen. */
   speedPolicy?: 'design' | 'independent';
-  /** The player has not said how much traffic uses this road yet: aadt is 0 and nothing that depends
-   * on traffic (noise, capacity) is checked; the project cannot be priced. */
+  /** Saves from before traffic was pre-filled (census count or class average, core/traffic-census.ts):
+   * aadt 0, "not set". Replaced by the class average when such a save is opened (project-persistence.ts);
+   * nothing creates it any more. */
   trafficUnknown?: true;
 }
 export interface RoadSpec {

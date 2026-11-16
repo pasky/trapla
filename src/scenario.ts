@@ -8,6 +8,7 @@ import type { EndpointJunction } from './core/evaluate';
 import type { EndpointJunctionKind } from './core/data/urban';
 import { decodeHeights, Terrain } from './core/terrain';
 import { parseVectorPack, type VectorPack } from './render/vectorPack';
+import { validTrafficCensus, type TrafficCensus } from './core/traffic-census';
 
 /** `junction`: scenario-declared connection to retained roads (legacy net way indices). */
 export interface PackEndpoint { xy: [number, number]; latlon: [number, number]; note: string;
@@ -70,6 +71,10 @@ export interface Pack {
    * memoised; a missing graph resolves to null, a corrupt or mismatched one rejects. */
   prefetchTransport: () => Promise<ArrayBuffer | null>;
   loadTransport: () => Promise<TransportGraphData | null>;
+  /** The pack's traffic census (`traffic.json`, pipeline/build_traffic.py), fetched with the transport
+   * graph on first need. Null: the pack ships none, or it is unreadable; rebuilt roads then start with
+   * the average traffic of their class. Never rejects. */
+  loadTraffic: () => Promise<TrafficCensus | null>;
 }
 
 /** fetch a gzip file; some servers (e.g. Vite dev) already send it with Content-Encoding: gzip */
@@ -132,10 +137,19 @@ export async function loadPack(base: string, progress?: (msg: string) => void): 
     bytes = Promise.resolve(null);
     return transport;
   }).catch((error) => { graph = null; throw error; });
+  let traffic: Promise<TrafficCensus | null> | null = null;
+  const loadTraffic = () => traffic ??= (async () => {
+    const r = await fetch(`${base}/traffic.json`);
+    // Vite returns its HTML shell for an absent optional sidecar.
+    if (!r.ok || r.headers.get('content-type')?.includes('text/html')) return null;
+    const census: unknown = await r.json();
+    if (!validTrafficCensus(census)) throw new Error('Unsupported traffic census');
+    return census;
+  })().catch((error) => { console.warn('Traffic census unavailable', error); return null; });
   const q = decodeHeights(new Int16Array(hb), meta.nx, meta.ny);
   const lc = new Uint8Array(lb);
   const terrain = new Terrain({ nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale, q, lc,
     ground: meta.ground && gb ? { ...meta.ground, ids: new Uint8Array(gb) } : undefined,
     watercourses: wb ? JSON.parse(new TextDecoder().decode(wb)) : undefined });
-  return { base, meta, terrain, q, lc, overlays, vectors, transportMeta, prefetchTransport, loadTransport };
+  return { base, meta, terrain, q, lc, overlays, vectors, transportMeta, prefetchTransport, loadTransport, loadTraffic };
 }

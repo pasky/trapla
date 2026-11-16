@@ -8,6 +8,7 @@ import type { SourceHit } from '../render/source-pick';
 import type { View } from '../render/view';
 import { derivedStretch } from './road-edit';
 import { mappedLineKindFor, type MappedLineKind } from './route-kinds';
+import { mappedRoadName, namedByNumber } from '../core/terms';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
   const node = document.createElement(tag); node.textContent = text; return node;
@@ -44,10 +45,11 @@ export class MappedRoadCard {
     root.replaceChildren(); root.className = 'card ctx inspector k-source';
     const header = el('div'); header.className = 'ctx-h';
     const label = ROAD_CLASSES[source.tags.highway ?? '']?.label ?? (source.kind === 'railway' ? 'railway' : 'road');
-    const name = source.tags.name || [label, source.tags.ref].filter(Boolean).join(' ');
+    const name = mappedRoadName(source.tags, label);
     const close = el('button', '✕'); close.className = 'x'; close.title = 'Close (Esc)'; close.type = 'button';
     close.onclick = () => { this.clear(); this.onClose?.(); };
-    header.append(el('b', cap(name)), el('small', cap(ROAD_CLASSES[source.tags.highway ?? '']?.label ?? source.kind)), close);
+    // "Road III/1057" already says its class
+    header.append(el('b', cap(name)), ...(namedByNumber(source.tags) ? [] : [el('small', cap(label))]), close);
     root.append(header);
     if (!what.ok) { root.append(el('p', what.why)); return; }
     if (!this.interval) { root.append(el('p', 'Too short to change here: pick it further from its junctions or from the map edge.')); return; }

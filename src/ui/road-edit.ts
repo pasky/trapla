@@ -10,6 +10,7 @@ import type { ProjectCommand } from '../project-store-contract';
 import type { ProjectTransportIndex } from '../core/project-network';
 import { groundRoadSourceInfo, promoteGroundRoad } from '../core/project-promotion';
 import { ROAD_CLASSES } from '../core/data/urban';
+import { classTraffic, type TrafficDefault } from '../core/traffic-census';
 import { freeSpan } from './source-editor';
 
 /** A grab this close to a junction does not stop there (no 20 m stubs): it extends to the next one, m. */
@@ -205,7 +206,11 @@ export function strayDistance(line: readonly { x: number; y: number }[], from: r
   return worst;
 }
 
-const unknownTraffic = (speed: number): RoadSpec['operations'] => ({ aadt: 0, heavyShare: 0, speed, speedPolicy: 'design', trafficUnknown: true });
+/** A road's traffic where the player has not said otherwise: the census count of its stretch or the
+ * average of its class (core/traffic-census.ts). Editable in the road's card. */
+const startTraffic = (t: TrafficDefault, speed: number): RoadSpec['operations'] => ({ aadt: t.aadt, heavyShare: t.heavyShare, speed, speedPolicy: 'design' });
+/** Is this still the traffic the game filled in (so the card can say where the number comes from)? */
+export const isTraffic = (op: RoadSpec['operations'], t: TrafficDefault) => op.aadt === t.aadt && Math.abs(op.heavyShare - t.heavyShare) < 1e-9;
 
 /** The rebuilt stretch as an editable road: exact source claim and branch connections (core promotion),
  * its line converted ONCE, explicitly, into bends that follow the old road (the caller tells the player). */
@@ -214,11 +219,11 @@ export function rebuildCommand(base: ProjectTransportIndex, interval: SourceInte
   if (!what.ok) throw new Error(what.why);
   const command = promoteGroundRoad(base, { ...ids, interval, name: what.info.name.charAt(0).toUpperCase() + what.info.name.slice(1),
     specification: { kind: 'road', policy: 'existing-ground', legalClass: what.info.legalClass, crossSection: 'existing',
-      existingWidth: what.info.width, designSpeed: DEFAULT_SPEED, operations: unknownTraffic(DEFAULT_SPEED) } });
+      existingWidth: what.info.width, designSpeed: DEFAULT_SPEED, operations: startTraffic(base.traffic(interval, what.info.legalClass), DEFAULT_SPEED) } });
   const route = command.routes[0];
   if (route.kind !== 'road' || route.alignment.kind !== 'reference') throw new Error('Unexpected promotion');
   // Noise and travel time use the signed speed where the map has one; the line is designed for DEFAULT_SPEED.
-  const operations = unknownTraffic(DEFAULT_SPEED);
+  const operations = startTraffic(base.traffic(interval, what.info.legalClass), DEFAULT_SPEED);
   if (what.info.taggedSpeed !== null && what.info.taggedSpeed !== DEFAULT_SPEED) { operations.speed = what.info.taggedSpeed; operations.speedPolicy = 'independent'; }
   route.specification = { kind: 'road', policy: 'legacy-road', ...what.spec, designSpeed: DEFAULT_SPEED, operations };
   route.alignment = { kind: 'pi', pis: fitRoad(route.endpoints.a.position, route.endpoints.b.position, route.alignment.path, DEFAULT_SPEED, what.spec.crossSection as CategoryId),
@@ -227,13 +232,16 @@ export function rebuildCommand(base: ProjectTransportIndex, interval: SourceInte
 }
 
 export interface PlacedEnd { position: XYZ; anchor: Anchor }
-/** A new straight class II road between two placed ends; bent afterwards like any road. */
+/** The class a road built with Build → Road starts as. */
+export const NEW_ROAD_CLASS = 'II';
+/** A new straight class II road between two placed ends; bent afterwards like any road. Its traffic
+ * starts as the average class II road: an estimate the card labels and the player changes. */
 export function newRoad(project: ProjectDesign, a: PlacedEnd, b: PlacedEnd, ids: { routeId: string; acousticSourceId: string }): RouteDesign {
   const used = new Set(project.routes.map(r => r.name));
   let name = 'New road';
   for (let n = 2; used.has(name); n++) name = `New road ${n}`;
   const end = (e: PlacedEnd): EndpointConstraint => ({ position: { ...e.position }, anchor: structuredClone(e.anchor), binding: 'resolved' });
-  const spec: RoadSpec = { kind: 'road', policy: 'legacy-road', legalClass: 'II', crossSection: 'S7.5', designSpeed: DEFAULT_SPEED, operations: unknownTraffic(DEFAULT_SPEED) };
+  const spec: RoadSpec = { kind: 'road', policy: 'legacy-road', legalClass: NEW_ROAD_CLASS, crossSection: 'S7.5', designSpeed: DEFAULT_SPEED, operations: startTraffic(classTraffic(NEW_ROAD_CLASS), DEFAULT_SPEED) };
   return { id: ids.routeId, acousticSourceId: ids.acousticSourceId, name, revision: 0, role: 'auxiliary', kind: 'road',
     endpoints: { a: end(a), b: end(b) }, specification: spec,
     alignment: { kind: 'pi', pis: [], vertical: { kind: 'auto', pins: [] }, controls: { structureOverrides: [] } } };
@@ -302,6 +310,13 @@ export function moveStretchEnds(base: ProjectTransportIndex, project: ProjectDes
   const next = structuredClone(project);
   next.routes = next.routes.map(r => r.id !== routeId ? r : { ...r, endpoints: fresh.endpoints, source: { ...route.source!, intervals: [interval] },
     alignment: { kind: 'pi', pis, vertical, controls } } as RouteDesign);
+  // Traffic the game filled in follows the stretch (its middle may now lie in another census section);
+  // the player's own number stays.
+  const moved = next.routes.find(r => r.id === routeId)!;
+  if (moved.kind === 'road' && isTraffic(moved.specification.operations, base.traffic(old, moved.specification.legalClass))) {
+    const t = base.traffic(interval, moved.specification.legalClass);
+    moved.specification.operations = { ...moved.specification.operations, aadt: t.aadt, heavyShare: t.heavyShare };
+  }
   next.connections = [...next.connections.filter(c => !c.ports.some(p => p.kind === 'route' && p.routeId === routeId)), ...command.connections];
   return next;
 }

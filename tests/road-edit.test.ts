@@ -8,7 +8,10 @@ import { assertProjectDesign } from '../src/core/project-validation';
 import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
-import { derivedStretch, fitBends, moveStretchEnds, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
+import { derivedStretch, fitBends, isTraffic, moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
+import { CLASS_TRAFFIC } from '../src/core/data/traffic';
+import type { TrafficCensus } from '../src/core/traffic-census';
+import { mappedRoadName } from '../src/core/terms';
 
 // A 2 km class III road along y = 1000 with a gentle kink at x = 1000, side roads joining at x = 500 and x = 1550.
 function fixture() {
@@ -69,15 +72,17 @@ describe('rebuilding a mapped road', () => {
     assertProjectDesign(p);
     const route = p.routes[0];
     expect(route.alignment.kind).toBe('pi');
-    expect(route.specification).toMatchObject({ policy: 'legacy-road', legalClass: 'III', crossSection: 'S7.5', operations: { trafficUnknown: true, aadt: 0 } });
+    // no census with this map: the average class III road, never "not set"
+    expect(route.specification).toMatchObject({ policy: 'legacy-road', legalClass: 'III', crossSection: 'S7.5', operations: CLASS_TRAFFIC.III });
+    expect(route.name).toBe('Road III/123');
     // both ends and both side roads stay joined
     expect(p.connections.map(c => c.ports[1].kind === 'source' && c.ports[1].location.sourceId).sort()).toEqual(['main', 'main', 'side1', 'side2']);
     const roads = new RoadNet(net), ctx = { terrain, scenario: D11_SCENARIO, a: { x: 0, y: 0 }, b: { x: 1, y: 1 }, roads };
     const withLinks = evaluateProjectRoad(ctx, p, 'r', 'objects', { sourceWays: new Map([['main', 0], ['side1', 1], ['side2', 2]]) });
     expect(withLinks.status).toBe('evaluated');
     if (withLinks.status !== 'evaluated') return;
-    // the replacement itself is priced (C1 b); only its traffic is still unknown
-    expect(withLinks.unpriced).toEqual(['traffic-unknown']);
+    // the replacement itself is priced (C1 b), traffic included
+    expect(withLinks.unpriced).toBeUndefined();
     expect(withLinks.replacement).toBeDefined();
     // its own old road is no crossing of its own, nor a conflict along it
     expect(withLinks.result.crossings.filter(c => c.roadId === 0)).toEqual([]);
@@ -106,6 +111,44 @@ describe('rebuilding a mapped road', () => {
     expect(r.alignment.pis.map(q => Math.round(q.x))).toEqual([500, 1000, 1299]);
     expect(() => moveStretchEnds(base, p, 'r', 500, 520)).toThrow();
   });
+
+  it('starts with the traffic counted on that stretch, else the average of its class; never asks for it', () => {
+    const { graph, terrain, project } = fixture();
+    // the census counted road 123 west of x = 1000 (2 400 vehicles, 180 heavy), left its east uncounted,
+    // and counted another road number right beside it
+    const census: TrafficCensus = { version: 1, source: 'test', year: 2025, sections: [
+      { id: '1-0010', road: '123', vehicles: 2400, heavy: 180, lines: [[0, 1004, 500, 1004, 1000, 1034]] },
+      { id: '1-0011', road: '123', vehicles: 0, heavy: 0, lines: [[1000, 1034, 1550, 1004, 2000, 1004]] },
+      { id: '1-0020', road: '45', vehicles: 9000, heavy: 900, lines: [[0, 1001, 2000, 1001]] }] };
+    const base = new ProjectTransportIndex(graph, 'transport', 'vectors', terrain, census);
+    const west = { transportData: 'transport', sourceId: 'main', s0: 100, s1: 900 }, east = { ...west, s0: 1100, s1: 1900 };
+    expect(base.traffic(west, 'III')).toEqual({ aadt: 2400, heavyShare: 0.075, basis: 'census', year: 2025, section: '1-0010' });
+    expect(base.traffic(east, 'III')).toEqual({ ...CLASS_TRAFFIC.III, basis: 'class' }); // not counted is not "no traffic"
+    const command = rebuildCommand(base, west, { routeId: 'r', acousticSourceId: 'a' });
+    const route = command.routes[0]; if (route.kind !== 'road') throw new Error('fixture');
+    expect(route.specification.operations).toMatchObject({ aadt: 2400, heavyShare: 0.075 });
+    expect(isTraffic(route.specification.operations, base.traffic(west, 'III'))).toBe(true);
+    // moved into the uncounted part: the filled-in number follows; the player's own number stays
+    const p = structuredClone(project); p.routes.push(route); p.connections.push(...command.connections);
+    const moved = moveStretchEnds(base, p, 'r', 1100, 1900).routes[0];
+    expect(moved.kind === 'road' && moved.specification.operations).toMatchObject(CLASS_TRAFFIC.III);
+    route.specification.operations.aadt = 5000;
+    const own = structuredClone(project); own.routes.push(route); own.connections.push(...command.connections);
+    const kept = moveStretchEnds(base, own, 'r', 1100, 1900).routes[0];
+    expect(kept.kind === 'road' && kept.specification.operations.aadt).toBe(5000);
+    // Build → Road: the average class II road
+    const end = (x: number) => ({ position: { x, y: 500, z: 300 }, anchor: { kind: 'free' as const } });
+    expect(newRoad(project, end(100), end(900), { routeId: 'n', acousticSourceId: 'b' }).specification).toMatchObject({ legalClass: 'II', operations: CLASS_TRAFFIC.II });
+  });
+
+  it('names mapped roads as Czech maps do', () => {
+    expect(mappedRoadName({ highway: 'tertiary', ref: '1057' })).toBe('road III/1057');
+    expect(mappedRoadName({ highway: 'primary', ref: '14;16' })).toBe('road I/14 and I/16');
+    expect(mappedRoadName({ highway: 'secondary', ref: '104', name: 'Pražská' })).toBe('Pražská');
+    expect(mappedRoadName({ highway: 'residential' })).toBe('street');
+    expect(mappedRoadName({ highway: 'motorway', ref: 'D3' })).toBe('motorway D3');
+    expect(mappedRoadName(undefined, 'a road')).toBe('a road');
+  });
 });
 
 // Owner's D3 case (III/1057): right after the first drag the card showed "wanted 205 m, no room" and
@@ -130,7 +173,7 @@ describe('a rebuilt stretch inherits no violations from its old road', () => {
     const command = rebuildCommand(base, interval, { routeId: 'r', acousticSourceId: 'a' });
     const route = command.routes[0];
     if (route.kind !== 'road' || route.alignment.kind !== 'pi') throw new Error('fixture');
-    route.specification.operations = { ...route.specification.operations, aadt: 1500, heavyShare: 0.1 }; delete route.specification.operations.trafficUnknown;
+    route.specification.operations = { ...route.specification.operations, aadt: 1500, heavyShare: 0.1 };
     const p = structuredClone(project); p.routes.push(route); p.connections.push(...command.connections);
     return { base, ctx, p, route, interval };
   }

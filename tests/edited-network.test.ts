@@ -11,6 +11,7 @@ import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
 import type { RouteDesign } from '../src/core/project';
+import { CLASS_TRAFFIC } from '../src/core/data/traffic';
 
 it('an edited network cuts every rebuilt stretch (several on one way) and adds designed roads at stable slots', () => {
   const base = new RoadNet({ cls: ['tertiary'], ways: [[0, 0, 0, 1000, 0], [0, 500, -100, 500, 100]] });
@@ -165,8 +166,9 @@ describe('the edited network follows the project as it is now', () => {
   });
 });
 
-// The owner's D3 case: the motorway bridges III/1057 at km 11.8; that stretch is rebuilt (traffic not even
-// set): the old road must be gone from the motorway's checks, the new line crossed by the crossing engine.
+// The owner's D3 case: the motorway bridges III/1057 at km 11.8; that stretch is rebuilt: the old road must
+// be gone from the motorway's checks, the new line crossed by the crossing engine. Nobody is asked for its
+// traffic: the census did not count III/1057, so it starts as the average class III road.
 const PACK = 'public/scenarios/d3';
 describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16.gz'].every(f => existsSync(`${PACK}/${f}`)))('D3: III/1057 rebuilt under the motorway', () => {
   it('our motorway is checked against the rebuilt road, not the old one', async () => {
@@ -184,7 +186,7 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const lc = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B }, { presetId: scenario.presetId!, packId: pack.meta.id, objectData, transportData: fingerprint });
     const design = createMotorwayProject(projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, lc),
       { ...startDesign(), ...structuredClone(scenario.initial!) }, { aadt: scenario.traffic, heavyShare: scenario.heavyShare! });
-    const index = new ProjectTransportIndex(graph, fingerprint, graph.vectorData, pack.terrain);
+    const index = new ProjectTransportIndex(graph, fingerprint, graph.vectorData, pack.terrain, pack.census);
     const ctx: ProjectEvalContext = { legacy: { terrain: pack.terrain, scenario, a: A, b: B, buildings: pack.buildings, roads: pack.roads },
       environment: { objectData, transportData: fingerprint, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' },
       sourceWays: new Map(graph.sources.flatMap((s: { id: string; legacyNetIndex?: number }) => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]])) };
@@ -197,8 +199,10 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
     const after = evaluateProject(ctx, { epoch: 'e', revision: 2, design: edited });
     const motorway = after.routes[forward].legacy!;
-    // the old road is off the map and out of the motorway's checks, although the change is not priced yet
-    expect(after.cost.total).toBeNull();
+    expect(command.routes[0]).toMatchObject({ name: 'Road III/1057', specification: { operations: CLASS_TRAFFIC.III } });
+    // the old road is off the map and out of the motorway's checks; untouched, the change is priced at once
+    expect(after.issues.map(i => i.code)).toEqual([]);
+    expect(after.cost.total).not.toBeNull();
     expect(after.acceptedReplacements).toEqual([interval]);
     expect(motorway.crossings.some(c => c.roadId === 1515)).toBe(false);
     expect(motorway.violations.map(v => v.title).filter(t => /pier|class III/i.test(t))).toEqual([]);

@@ -1,11 +1,12 @@
 // Node-side loader for the scenario pack (bench + sanity scripts).
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { BuildingIndex } from '../src/core/buildings';
 import { DEFAULT_SCENARIO, scenarioParams } from '../src/core/data/scenario';
 import { RoadNet } from '../src/core/roadnet';
 import { decodeHeights, Terrain } from '../src/core/terrain';
 import { endpointJunctions } from '../src/scenario';
+import type { TrafficCensus } from '../src/core/traffic-census';
 
 /** SCENARIO=<id> selects public/scenarios/<id> (default d11); `scenario` = its game parameters */
 export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAULT_SCENARIO}`) {
@@ -21,6 +22,8 @@ export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAU
   return {
     meta, scenario: scenarioParams(meta.id), terrain, overlays: ov, buildings: new BuildingIndex(ov.buildings, ov.binfo),
     roads: ov.net ? new RoadNet(ov.net) : undefined,
+    /** The pack's traffic census (pipeline/build_traffic.py), if it ships one. */
+    census: existsSync(`${dir}/traffic.json`) ? JSON.parse(readFileSync(`${dir}/traffic.json`, 'utf8')) as TrafficCensus : null,
     /** Declared end connections (none for D11); spread into every EvalContext built from this pack. */
     junctions: endpointJunctions(meta),
   };

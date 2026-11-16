@@ -26,8 +26,11 @@ cohesive experience, usable end-to-end on D11 and the new scenarios; no foundati
 - **Rules by class.** A rebuilt class I road uses S 9.5, class II/III S 7.5, at 70/80/90 km/h (card).
   Local roads, service roads and tracks keep the drag and the line, but say "No design rules for this kind
   of road yet" until sourced local/track policies exist (ČSN 73 6110 / 73 6109, research/20).
-- **Traffic** is an explicit card field ("Traffic, vehicles/day"), never copied from the mission. Until it
-  is entered, noise is "not checked" for that road and the project stays unpriced, with the field as the fix.
+- **Traffic** is pre-filled, never asked for: a rebuilt stretch starts with the count of its own section in
+  the ŘSD traffic census 2025 ("Counted in the 2025 traffic census."), a road the census did not count and a
+  road built with Build → Road start with the average road of their class ("Not counted in the traffic census:
+  the average class III road is assumed."). The two fields stay editable in the road's card; the player's own
+  number carries no label. Never copied from the mission. (§9, research/40, research/41.)
 - **Build → Road** (top-left): click where it starts and where it ends. A click on a road joins it there; a
   click on empty ground leaves a free end ("Road ends nowhere / Connect both ends to a road"). The road is
   created straight and bent like any other. Motorway/Railway stay hidden until the mode kernels land.
@@ -358,3 +361,31 @@ Scratch (untracked, do not commit): `scripts/_d3-1057.ts` (D3 motorway project +
 `_d3-drag.ts` (conversion + a first drag at several places: violations, notes, works, kept metres),
 `_d3-houses.ts`, `_d3-fit.ts`, `_fit-time.ts` (all D3 stretches: problems before/after the repair, ms), `_parts.ts`,
 `_net-time.ts`, `_syn.ts`, `_fit-prof*.ts`, `_fit-worst.ts`.
+
+## 9. Traffic is pre-filled; roads are named the Czech way (2026-11-16, item E)
+
+Owner: "how would a player invent this?" The "Traffic not set" issue is gone (no `traffic-unknown`, no
+`unknownTraffic`); nothing creates `operations.trafficUnknown` any more, and a save that still holds it gets
+the class average when it is opened (`project-persistence.ts` `settleTraffic`; the exact old save stays in
+recovery).
+
+- **Data**: `pipeline/fetch_census.py` (areas keyed by scenario id; road numbers keep leading zeros: III/00315
+  is not II/315; national heavy share by class) → `pipeline/build_traffic.py` → `public/scenarios/<id>/traffic.json`
+  (local metres, 18–64 kB; `meta.json` untouched, complete packs re-published like `build_transport.py`). The
+  pack is gitignored: **after a merge run both scripts in the main checkout** (or the game falls back to class
+  averages everywhere, labelled).
+- **Game**: `Pack.loadTraffic()` (with the road links; never fails the load), `ProjectTransportIndex.census` /
+  `.traffic(interval, class)`: the nearest section of the same road number within 50 m (`CENSUS_MATCH`,
+  PROVISIONAL) of the stretch's middle, heavy share TV/SV; uncounted (`vehicles` 0) or no section → `CLASS_TRAFFIC`
+  (I 9 613 / II 3 036 / III 736 vehicles a day, CSD 2025 class averages, Silniční obzor 9/2026; heavy 10.3 /
+  7.5 / 6.4 %; GAME PRIOR, research/41). Nothing is stored about where the number came from: the card labels it
+  while it still equals what the game would fill in (`isTraffic`); moving a stretch's ends re-fills a
+  filled-in number for the new stretch and keeps the player's own.
+- **Names**: `mappedRoadName` (core/terms.ts): the mapped name, else "road III/1057" ("road I/14 and I/16" on a
+  shared stretch), else the kind of road; used by the rebuilt road's name, the mapped-road card (which no longer
+  repeats the class after a numbered name), Build → Road ("joins road II/105") and a new road's ends.
+- D3: 170 of 433 rebuildable stretches start with a census count; III/1057 is not counted → 736 / 6.4 %, and
+  untouched after conversion the project is priced at once. D11 Jičínská (I/16): 4 399 / 8.4 %, counted.
+- Tests: `tests/road-edit.test.ts` (census match, uncounted, moved ends, new road, names),
+  `tests/project-store.test.ts` (old save), `scripts/any-road-scene.mjs` (label in the card, priced from the first
+  drag unless roads interact, the player's number drops the label; the unpriced-houses check moved to the free end).

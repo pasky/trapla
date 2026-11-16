@@ -99,25 +99,16 @@ try {
   assert(project.connections.filter(c => c.ports.some(p => p.kind === 'route' && p.routeId === rebuilt)).length >= 2, 'its ends stay joined to the old road');
   const result = await page.evaluate(() => window.trapla.projectResult());
   assert(result.routes[rebuilt].legacy, 'the rebuilt road is engineered');
-  assert.equal(result.cost.total, null, 'not priced yet'); assert.equal(result.valid, false);
-  assert(result.issues.some(i => i.code === 'traffic-unknown'), 'its traffic is asked for');
-  // not priced withholds the total only: houses under our road are gone from the map and say so
-  {
-    const own = result.routes[mission].legacy.demolished.map(b => b.j);
-    assert.deepEqual(own.filter(j => !result.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the unpriced project still lists our demolitions');
-    assert.deepEqual(await page.evaluate(list => list.filter(j => window.trapla.buildingShown(j)), own), [], 'no house stands on our road while the project is not priced');
-    if (own.length) {
-      await page.evaluate(j => window.trapla.selectBuilding(j), own[0]); await idle();
-      const card = await page.locator('#inspector').textContent();
-      assert(/Demolished/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our road says it is demolished (${card})`);
-      await page.evaluate(() => window.trapla.select(null));
-      await page.evaluate(id => window.trapla.setActiveRoute(id), rebuilt); await idle();
-      assert.equal(await page.evaluate(() => window.trapla.activeRoute()), rebuilt);
-    }
-    console.log(`unpriced project: ${own.length} houses under our road stay demolished`);
-  }
+  // its traffic is filled in (its census count, or the average of its class) and says where it comes from
+  const ops0 = route.specification.operations;
+  assert(ops0.aadt > 0 && ops0.trafficUnknown === undefined, 'its traffic is filled in');
+  const basis = await page.locator('.route-traffic .traffic-basis').textContent();
+  assert.match(basis, /Counted in the \d{4} traffic census|the average class I+ road is assumed/);
+  assert(!result.issues.some(i => /traffic/.test(i.code)) && !/Traffic not set/.test(await page.locator('#inspector').textContent()), 'traffic is never asked for');
+  assert.deepEqual(result.cost.unpriced.map(u => u.reason).filter(r => !/^shared-|too-many/.test(r)), [], 'priced from the first drag unless roads interact');
+  console.log(`${route.name}: ${ops0.aadt} vehicles/day, ${Math.round(ops0.heavyShare * 1000) / 10} % heavy. ${basis}`);
   assert.equal(await page.evaluate(() => window.trapla.profileHasRoad()), true, 'it has a profile');
-  assert.equal(await page.locator('#cost-scope').textContent(), 'This road only');
+  assert.equal(await page.locator('#cost-scope').textContent(), result.cost.total === null ? 'This road only' : 'Total cost', 'a priced project shows its total, an unpriced one this road\'s own price');
   assert.equal(await page.locator('#active-route').isVisible(), true, 'two roads: the road list appears');
   await page.evaluate(() => window.trapla.select(null));
   await page.screenshot({ path: shot(first + 1, 'mapped-road-rebuilt') });
@@ -151,15 +142,15 @@ try {
     assert((await page.evaluate(() => window.trapla.projectResult())).routes[rebuilt].legacy, 'still engineered');
   }
 
-  // 4. its traffic, typed into its card
+  // 4. its traffic stays editable in its card
   await page.fill('.route-traffic input[name=traffic]', '2500');
   await page.fill('.route-traffic input[name=heavy]', '10');
   await page.locator('.route-traffic input[name=heavy]').press('Enter'); await idle();
   const ops = (await page.evaluate(() => window.trapla.getProject())).routes[1].specification.operations;
-  assert.equal(ops.aadt, 2500); assert.equal(ops.heavyShare, 0.1); assert.equal(ops.trafficUnknown, undefined);
-  assert(!(await page.evaluate(() => window.trapla.projectResult())).issues.some(i => i.code === 'traffic-unknown'));
+  assert.equal(ops.aadt, 2500); assert.equal(ops.heavyShare, 0.1);
+  assert.equal(await page.locator('.route-traffic .traffic-basis').count(), 0, 'the player\'s own number carries no label');
 
-  // 4b. now the replacement is priced: nothing but road interactions may keep it unpriced
+  // 4b. the replacement stays priced: nothing but road interactions may keep it unpriced
   const priced = await page.evaluate(() => window.trapla.projectResult());
   const left = priced.cost.unpriced.map(u => u.reason).filter(r => !/^shared-|too-many/.test(r));
   assert.deepEqual(left, [], 'a rebuilt stretch with its traffic is priced (removal, side roads) unless roads interact');
@@ -203,6 +194,22 @@ try {
   assert.equal(await page.evaluate(() => window.trapla.activeRoute()), fresh.id);
   const r3 = await page.evaluate(() => window.trapla.projectResult());
   assert(r3.issues.some(i => i.code === 'road-ends-nowhere'), 'a free end is reported');
+  assert.equal(r3.cost.total, null, 'a road that ends nowhere is not priced');
+  // not priced withholds the total only: houses under our road are gone from the map and say so
+  {
+    const result = r3, own = result.routes[mission].legacy.demolished.map(b => b.j);
+    assert.deepEqual(own.filter(j => !result.buildings.some(b => b.buildingIndex === j && b.action === 'demolish')), [], 'the unpriced project still lists our demolitions');
+    assert.deepEqual(await page.evaluate(list => list.filter(j => window.trapla.buildingShown(j)), own), [], 'no house stands on our road while the project is not priced');
+    if (own.length) {
+      await page.evaluate(j => window.trapla.selectBuilding(j), own[0]); await idle();
+      const card = await page.locator('#inspector').textContent();
+      assert(/Demolished/.test(card) && !/not finished|Not checked yet/.test(card), `a house under our road says it is demolished (${card})`);
+      await page.evaluate(() => window.trapla.select(null));
+      await page.evaluate(id => window.trapla.setActiveRoute(id), fresh.id); await idle();
+      assert.equal(await page.evaluate(() => window.trapla.activeRoute()), fresh.id);
+    }
+    console.log(`unpriced project: ${own.length} houses under our road stay demolished`);
+  }
   // bend it like our road
   const s3 = await page.evaluate(id => window.trapla.projectResult().routes[id].legacy.length / 2, fresh.id);
   point = await screen('routeScreen', fresh.id, s3);

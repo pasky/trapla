@@ -18,6 +18,7 @@ import type { ProjectCommand } from '../project-store-contract';
 import { ROAD_CLASSES } from '../core/data/urban';
 import { KIND } from '../core/structures';
 import { moveStretchEnds, newRoad, rebuildable, rebuildCommand, type PlacedEnd } from './road-edit';
+import { mappedRoadName } from '../core/terms';
 
 export interface RouteIds { routeId: string; acousticSourceId: string }
 export type Verdict<T> = ({ ok: true } & T) | { ok: false; why: string };
@@ -74,10 +75,7 @@ export function mappedLineKindFor(base: ProjectTransportIndex, sourceId: string)
 /** The mapped-line kind that owns a rebuilt route (for moving its ends). */
 export const mappedLineKindOf = (route: RouteDesign) => mappedKinds.find(k => k.kind === route.kind) ?? null;
 
-const roadName = (base: ProjectTransportIndex, sourceId: string) => {
-  const t = base.source(sourceId)?.tags;
-  return t?.name || [ROAD_CLASSES[t?.highway ?? '']?.label ?? 'road', t?.ref].filter(Boolean).join(' ');
-};
+const roadName = (base: ProjectTransportIndex, sourceId: string) => mappedRoadName(base.source(sourceId)?.tags);
 
 export const ROAD_LINE: MappedLineKind = {
   kind: 'road',

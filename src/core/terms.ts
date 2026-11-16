@@ -185,3 +185,16 @@ export function roadRemedySource(plan: Pick<RoadRealignmentPlan, 'roadCode' | 'c
   if (plan.closed) return undefined;
   return `SPK 2026 price per km of ${/P4/.test(plan.roadCode) ? 'paved track' : /S\d/.test(plan.roadCode) ? 'class I–III road' : 'local road'}${plan.retainingArea ? '; retaining walls per research/18' : ''}${plan.lumpCost ? `; ${(plan.lumpCost / 1e6).toFixed(1)} M CZK for access junctions (provisional estimate, research/13)` : ''}`;
 }
+
+const NUMBERED: Record<string, string> = { primary: 'I', secondary: 'II', tertiary: 'III' };
+/** A mapped road's name as Czech maps and signs write it: its own name, else "road III/1057" (class and
+ * number; a stretch shared by two numbers names both), else the kind of road ("local road"). */
+export function mappedRoadName(tags: { highway?: string; ref?: string; name?: string } | undefined, fallback = 'road'): string {
+  if (tags?.name) return tags.name;
+  const label = ROAD_CLASSES[tags?.highway ?? '']?.label ?? fallback, cls = NUMBERED[tags?.highway ?? ''];
+  const numbers = (tags?.ref ?? '').split(';').map(r => r.trim()).filter(Boolean);
+  if (!numbers.length) return label;
+  return cls ? `road ${numbers.map(n => `${cls}/${n}`).join(' and ')}` : `${label} ${numbers.join(', ')}`;
+}
+/** Does that name already say the road's class (so a card need not repeat it)? */
+export const namedByNumber = (tags: { highway?: string; ref?: string; name?: string } | undefined) => !tags?.name && !!tags?.ref && !!NUMBERED[tags.highway ?? ''];
