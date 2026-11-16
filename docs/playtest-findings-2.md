@@ -5,6 +5,67 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 only to frame a camera on A / B and to read state for exact repros. Screenshots under `/tmp/trapla-qa2/` (not
 committed). Newest session on top. Severity: **P0** broken / untruthful, **P1** confusing, **P2** polish.
 
+## Re-test 2 — motorway-rail @ 0464fb1 (2026-11-16)
+
+Detached snapshot of `side-agent/motorway-rail` 0464fb1 (newer than the asked 931c5dc) with that worktree's
+packs; SwiftShader 1440×900, fresh localStorage, two ≤ 20 min chunks (`m1`, `m2`). No timings quoted.
+
+| item | verdict | evidence |
+|---|---|---|
+| S1 #3 choosing a direction changes nothing | **PASS** | D3 motorway: *Towards Václavice*, *Towards Jílové*: 15.31 bn, VALID, Undo stays "Nothing to undo" (`m1/002`, `003`). |
+| #3 a drag splits only a stretch | **PASS** | Towards Jílové, drag the road at km ~5 outward: the two carriageways part over km 4.1–6.3 only, VALID, +457 M (`m1/011`); the card lists "The directions run apart km 4.1–6.3 · Join". |
+| #3 Join restores the exact paired price | **PASS** | Join → 15.31 bn, VALID, −457 M (`m1/012`). |
+| #11 one direction discoverable from the motorway's own card | **PASS** | "Edit: Both directions · Towards … · Towards …" on the no-selection card, on every piece card and in the Motorway section; hover says "drag to bend towards Jílové only" (`m1/001`, `006`, `017`). |
+| mirrored profile for the direction towards A | **PASS** | Towards Jílové: profile reads from Václavice, bends renumbered from that end, piece kilometres in the cards remapped (`m1/003`). |
+| 150 km/h pilot | **PASS** (P2 below) | D35 motorway (130): Motorway section → Speed limit 130 / 150 (pilot), plain explanation; 150 → +40 M CZK, cars 7.6 → 6.6 min; Undo back. D3 at 120: not offered (`m1/020`, `021`). |
+| #10 railway mission ends on the network, "our railway" | **PASS** | "Railway: Trutnov → Královec" starts in Trutnov hl. n. track field and joins the old line at Královec (`m1/022`–`024`); crossing cards read "our railway 4 m above it" (`m2/000`). |
+| #14 railway pick offset | **PASS** | D3 km 4.6 oblique: drawn Posázavský pacifik at y 280–284 px, clickable over 278–288 px (pixel check of `m2/004`). |
+| #4 railway rebuild by drag | **PASS with P1s** | click the railway, then drag: the 676 m between its junctions becomes "Posázavský pacifik" single-track 120 km/h, priced on its own (`m2/008`, `010`); see P1 2–3. |
+| Build → Motorway / Railway | **works, P1/P2s** | both build and price "this … only"; see P1 4, P2 9–10. |
+
+### P1 — confusing
+
+1. **A small drag changes heights and crossings far from it (same pattern as Re-test 1 P0 1, also in this
+   branch).** Railway mission, drag the line between bends 2 and 3 (km 7.3) 20 px: +1.90 bn, the whole climb
+   becomes one long tunnel, the first tunnel's grade changes from 12.0 to 8.0 ‰ and "Our earthworks cover 18 m of a
+   track" appears at km 2.07, before bend 2, outside the changed stretch (`m2/021`). Both track conflicts are
+   ordinary ones Auto should resolve. Area: auto-profile / crossing-links.
+2. **An unselected railway cannot be dragged.** Pressing on the drawn railway (on its click band) and dragging
+   pans the map (`m2/005`; camera moved 35 m in a second try). No hover hint either; "drag to change" appears only
+   after a click selects it (`m2/008`). Roads are dragged directly, so the player who reads "drag it like a road"
+   thinks railways cannot be changed.
+3. **The first rebuild of the railway starts with a U-turn.** Select the Posázavský pacifik at D3 km 4.6, drag the
+   middle of the highlighted stretch ~40 px: "Bend 1 turns back almost on itself (172°)" at km 0.05 and "A long
+   bridge span is too low … raise the bridge at km 0.11 by at least 12.4 m" (`m2/010`); the start label and bend 1
+   sit on top of each other. Expected: the rebuilt stretch keeps the old line's direction at its ends and Auto
+   heights its bridge.
+4. **Build → Motorway / Railway: no line from the start to the cursor**, and a motorway built across the valley
+   under our D3 viaduct is "Roads cross here · Move one road so they do not cross" ×4 although the viaduct spans
+   130 m above it; its carriageways run through the viaduct piers (`m2/017`, `018`). The project shows "2 road
+   changes not priced yet" after one build and the total is replaced by "THIS MOTORWAY ONLY 49 M CZK" (S1 #8 still
+   open).
+5. **The railway mission's Auto design demolishes a street in Trutnov.** Out of Trutnov hl. n. the line runs
+   0.4 km in an open cut through the town before its first tunnel; about 25 buildings are demolished, drawn as
+   floating black squares (`m1/023`). A real design would start the tunnel at the station (cut and cover). Also two
+   streets near A are each rerouted to the next crossing, which is itself cut (km 0.04 → 0.14 → 0.28), as in S1 #13.
+
+### P2 — polish
+
+6. Violation list location column wraps as "Motorway / towards / Václavice / km 6.17" in four lines (`m1/009`).
+7. Overlap after dragging one direction across the other: "The two directions overlap · Move the directions at
+   least 14 m further apart" also reports a 0.1 m bridge clearance shortfall ("Raise the bridge … by at least
+   0.1 m") that Auto could add itself (`m1/009`).
+8. 150 km/h pilot: the goal (≤ 8.3 min) is already met at 130, so the pilot only costs money; nothing in the game
+   rewards it. Travel time assumes 150 km/h everywhere, though the card says only "when it is dry, clear and not
+   busy".
+9. Build → Railway card: "A click on a road joins it there" (should be a railway); railway violations still say
+   "road": "Lower the road here", "Auto found no legal road height", "Embankment never reaches the ground … now up
+   to 0.0 m above the ground" (`m2/020`).
+10. The "Edit" direction selector appears twice when a piece is selected and the Motorway section is open
+    (`m1/021`).
+11. The profile of the direction towards A has no end labels; with A / B on the map unchanged, which end is which
+    has to be inferred from bend 1.
+
 ## Re-test 1 — long-corridors @ f058dc7 (2026-11-16)
 
 Detached snapshot of `side-agent/long-corridors` f058dc7 with that worktree's packs (d3-0301…0305, d3-full,
