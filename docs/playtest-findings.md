@@ -4,6 +4,47 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Re-test 2 — any-road-editing @ 80168c3 (2026-11-16, two chunks of 13 and 5 min)
+
+Detached snapshot with the worktree's packs (traffic.json present for d11 and d3). Screenshots `/tmp/trapla-qa/ar2/`
+(numbering restarts in chunk 2). A third chunk for dropdown framing and kept houses next to two roads did not get the
+lock within an hour of timed runs, so those two were not tested.
+
+| item | verdict | evidence |
+|---|---|---|
+| combined noise: project gets a total | **PASS** | D3 motorway + rebuilt III/1057: TOTAL 18.46 bn ✓ VALID (was "2 houses hear both roads — no total") (`010`). |
+| owner's D3 III/1057 steps end to end | **PASS** (P1 below) | profile km 11.78 now flies there; click 1057 → card; drag ~45 px → rebuilt under the motorway bridge, 0 violations, priced. |
+| #12 Build → Road onto the motorway with another road rebuilt | **PASS** | "A motorway can only be joined at an interchange…" (`011`). |
+| drawn ≠ billed on a small drag (I/37 Novorokytnická) | **PASS** | a 45 px drag moves it up to 37 m and bills it (193 M, houses, junction 7 M) (chunk 2 `003`). |
+| junction with its own class I road | **PASS** | only "Junction with the street at km 0.33". |
+| streets / tracks editable | **PASS** | Nový Rokytník street → "rebuilt as a local road (M 7.5)", 30 km/h; a track → "one-lane track (P 4.0)", 20 km/h (chunk 2 `004`, `006`). |
+| drags on a mapped road never pan | **PASS after the first click, FAIL cold** | once a road has been clicked, drags edit it (camera unmoved). On a fresh load the first click on a mapped road can do nothing and the first drag pans the map ~20–60 m (D3 1057 `008`; D11 I/37 chunk 2 `001`); mapped roads also show no hover cursor until then. Likely the lazy transport load (`ensureTransport`). |
+| card titles | **PASS** | "Road I/37", "Street", "Track", "Road III/1057" once each. |
+| bend label clipping | **PASS** | the "R 90 m · wanted 205 m — no room ⚠ …" label stays inside the map (wraps over the End marker). |
+| pick offset | **P2 still** | D3 1057: pointer from ~5 px above the drawn band. |
+| dropdown framing; kept houses / walls on the right road | **not tested** | lock contention, see above. |
+
+New:
+
+- **P0 — Auto builds a 704 m bridge for a class III road that runs beside the motorway.** D3 motorway start state:
+  "Cut km 13.98–14.77 · 3.49 bn CZK"; the crossing card at km 14.18: "Carried over our road on a 704 m bridge with
+  252 m of ramps · 2.51 bn CZK … crosses our road 2 times (km 14.18, 14.52)". The class III road runs alongside our road
+  between the two crossings and nothing like a 704 m bridge is drawn; the total went from 15.31 bn (9f1191f) to
+  18.49 bn. Possibly from main's merged crossing model (model 22) — check main. Area: crossing-links.
+- **P1 — rebuilding 1057 makes the motorway 38 M cheaper.** Same D3 steps: the total moves −31 M CZK. Per-route bills:
+  motorway 18 495 → 18 457 M, 1057 6 M. Nothing in the cards says why the motorway got cheaper (shared walls or
+  buyouts now billed to whom?).
+- **P1 — the drag can't start on the road next to its crossing.** Near the motorway bridge a click on 1057 opens the
+  crossing card ("Passes under our bridge") and a drag from there pans the map (`006`, `007`).
+- **P1 — rebuilt street not on its own bridge.** Nový Rokytník street dragged 40 px: "Not on its bridge over our road ·
+  Lower this road here by 2.5 m"; its Auto height ignores the deck it must meet (chunk 2 `004`). Auto should resolve it.
+- **P1 — editing a track that a reroute already uses loses the total.** D11 km 4.1 track north of our road: "Two roads
+  change the same old road · Change it with one of them only" + "earthworks closer than 10 m", NOT PRICED (chunk 2
+  `006`). The player can't tell which "other road" is meant: the automatic reroute isn't a road they edited.
+- **P1 — a small drag of I/37 still loses the total:** 5× "Two roads take the same house" NOT CHECKED YET, plus S-bend /
+  bend-near-end violations from one 45 px pull (chunk 2 `003`).
+- P2 — a street and a track get "Not counted in the traffic census: the average class III road is assumed" (736/day).
+
 ## Session 3 — Nová Paka and D35 motorway, first-time player (main 93f849d, 2026-11-16, one 10 min chunk)
 
 Fresh localStorage, picker → Nová Paka, then D35 motorway. Screenshots `/tmp/trapla-qa/s3/`.
