@@ -466,8 +466,9 @@ async function main() {
       fillDirections(box, directions, { onDirection: w => hud.ev.onDirection?.(w), onJoin: joinStretch });
       return box;
     }
-    if (!route || route.role === 'mission' || route.kind !== 'road' || !r) return null;
-    const op = route.specification.operations;
+    if (!route || route.role === 'mission' || (route.kind !== 'road' && route.kind !== 'railway') || !r) return null;
+    // a railway's card: what it is, its own works and removing it (no traffic or junction choices)
+    const rail = route.kind === 'railway', old = rail ? 'old track' : 'old road';
     const head = document.createElement('div'); head.className = 'route-head';
     const h = document.createElement('div'); h.className = 'ctx-h';
     const title = document.createElement('b'); title.textContent = route.name;
@@ -484,7 +485,11 @@ async function main() {
           stray = strayDistance(line, old);
         } catch { stray = NaN; }
       }
-      const accepted = projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
+      const accepted = rail ? !!projectFull?.routes[route.id]?.legacy
+        : projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
+      if (route.kind === 'railway') what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old track` : ''}. ${accepted
+        ? `On the old track it is kept as it is. Off it, a new track is built for ${route.specification.designSpeed} km/h.` : 'Checking the change…'}`;
+      else {
       // why this design speed: the lowest the norm allows for a new road; the map's limit is for noise and time
       const signed = (() => { try { return groundRoadSourceInfo(transportIndex, interval.sourceId).taggedSpeed; } catch { return null; } })();
       const lowest = route.specification.crossSection === 'existing' ? DEFAULT_SPEED : startSpeed(route.specification.crossSection);
@@ -492,15 +497,18 @@ async function main() {
         ? ` for ${lowest} km/h (the lowest the norm allows${signed && signed !== lowest ? `; signed ${signed}` : ''})` : '';
       what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
         ? `On the old road it is kept as it is. Off it, a new road is built${speed} and the old one removed.` : 'Checking the change…'}`;
+      }
     } else {
       const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
         : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
           return !host ? 'a road' : host.role === 'mission' ? 'our road' : host.name; })()
-        : e.anchor.kind === 'source' ? mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road') : 'a scenario end';
-      what.textContent = `New road from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
+        : e.anchor.kind === 'source' ? (rail ? (() => { const t = transportIndex?.source(e.anchor.location.sourceId)?.tags; return t?.name || (t?.ref ? `railway ${t.ref}` : 'a railway'); })()
+          : mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road')) : 'a scenario end';
+      what.textContent = `New ${rail ? 'railway' : 'road'} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
     }
     const form = document.createElement('form'); form.className = 'source-operations route-traffic';
     const fields: HTMLInputElement[] = [];
+    if (route.kind === 'road') { const op = route.specification.operations;
     for (const [key, label, unit, value] of [
       ['traffic', 'Traffic', 'a day,', String(op.aadt)],
       ['heavy', 'heavy', '%', String(Math.round(op.heavyShare * 1000) / 10)],
@@ -539,15 +547,16 @@ async function main() {
     }
     for (const f of fields) f.onchange = apply;
     form.onsubmit = e => { e.preventDefault(); apply(); };
+    }
     const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route';
-    remove.textContent = route.source ? 'Keep the old road' : 'Remove road';
+    remove.textContent = route.source ? `Keep the ${old}` : rail ? 'Remove railway' : 'Remove road';
     remove.onclick = () => {
       if (projectStore.inTransaction) return;
       const mission = missionRouteId();
       try { projectStore.dispatch({ type: 'delete-route', routeId: route.id }); }
-      catch { toast('Another road joins this one: remove that road first.'); return; }
+      catch { toast(rail ? 'Another railway joins this one: remove that railway first.' : 'Another road joins this one: remove that road first.'); return; }
       if (mission) switchRoute(mission);
-      toast(route.source ? 'The old road is kept.' : 'Road removed.', 'Undo', () => store.undo());
+      toast(route.source ? `The ${old} is kept.` : rail ? 'Railway removed.' : 'Road removed.', 'Undo', () => store.undo());
     };
     // what replacing the old stretch adds to this road's own price (C1 b)
     // (a line that rounds to 0.0 M stays in the bill, not on the card)
@@ -563,7 +572,7 @@ async function main() {
     }
     // each end that joins a road: its junction, Auto (a priority T) or a roundabout — plain choices
     const junctions = document.createElement('div'); junctions.className = 'route-junctions';
-    if (!route.source && route.alignment.kind === 'pi') for (const end of ['a', 'b'] as const) {
+    if (!rail && !route.source && route.alignment.kind === 'pi') for (const end of ['a', 'b'] as const) {
       const anchor: Anchor = route.endpoints[end].anchor;
       const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : anchor.kind === 'route' ? 'designed' : undefined;
       if (!cls || ROAD_CLASSES[cls]?.noAtGrade) continue;
@@ -596,7 +605,7 @@ async function main() {
     const bends = [...new Set((r.inherited ?? []).flatMap(v => v.pis ?? (v.pi !== undefined ? [v.pi] : [])))].sort((p, q) => p - q);
     if (r.inherited?.length) {
       const text = document.createElement('span');
-      text.textContent = `The old road is tighter than the norm ${bends.length ? `at bend${bends.length > 1 ? 's' : ''} ` : 'here'}`;
+      text.textContent = `The ${old} is tighter than the norm ${bends.length ? `at bend${bends.length > 1 ? 's' : ''} ` : 'here'}`;
       notes.append(text);
       bends.forEach((i, k) => {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = String(i + 1);
@@ -604,9 +613,9 @@ async function main() {
         b.onclick = () => select({ kind: 'bend', i }, true);
         notes.append(b, k + 1 < bends.length ? ', ' : '');
       });
-      notes.append(': kept as it is. Move it off the old road and it must meet the norm.');
+      notes.append(`: kept as it is. Move it off the ${old} and it must meet the norm.`);
     }
-    head.append(h, what, ...(notes.childElementCount ? [notes] : []), ...(junctions.childElementCount ? [junctions] : []), ...(works.length ? [list] : []), form, remove);
+    head.append(h, what, ...(notes.childElementCount ? [notes] : []), ...(junctions.childElementCount ? [junctions] : []), ...(works.length ? [list] : []), ...(rail ? [] : [form]), remove);
     return head;
   };
   const showSource = (hit: SourceHit) => {

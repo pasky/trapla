@@ -98,6 +98,7 @@ try {
   await page.mouse.click(free.x, free.y); await idle();
   const built = await seen('built railway');
   assert.equal((await page.evaluate(() => window.trapla.getProject())).routes.at(-1).kind, 'railway');
+  assert.equal(await page.locator('#remove-route').textContent(), 'Remove railway');
   await shot('built-railway');
   await page.locator('#undo').click(); await idle();
 
@@ -108,8 +109,22 @@ try {
   await page.mouse.down(); await page.mouse.move(p.x + 40, p.y - 30, { steps: 12 }); await page.mouse.up(); await idle();
   const project = await page.evaluate(() => window.trapla.getProject());
   console.log('rebuilt', JSON.stringify(project.routes.map(r => [r.kind, r.name, r.source?.intervals[0]])));
-  await seen('rebuilt railway');
+  const rebuilt = await seen('rebuilt railway');
+  // its own card: what it is, its works (the kept old track), and keeping the old track instead; its ends
+  // continue the old track (checked, not a pending junction)
+  assert(!rebuilt.unpriced.includes('connection-pending'), 'a rebuilt railway continues its old track');
+  const head = page.locator('.route-head').first();
+  const headText = (await head.textContent()).replace(/\s+/g, ' ');
+  console.log('railway card', headText);
+  assert(/Rebuilt stretch/.test(headText) && /old track/.test(headText) && !/old road|Traffic/.test(headText), 'a railway card in railway words');
+  assert(/kept as it is/.test(await head.locator('.route-works').textContent()), 'its works list the kept old track');
+  assert.equal(await page.locator('#remove-route').textContent(), 'Keep the old track');
   await shot('rebuilt-railway');
+  await page.locator('#remove-route').click(); await idle();
+  assert(!(await page.evaluate(() => window.trapla.getProject())).routes.some(r => r.kind === 'railway' && r.source), 'the old track is kept');
+  assert.equal(await page.locator('#toast span').textContent(), 'The old track is kept.');
+  await page.locator('#toast button', { hasText: 'Undo' }).click(); await idle();
+  assert((await page.evaluate(() => window.trapla.getProject())).routes.some(r => r.kind === 'railway' && r.source), 'Undo brings the rebuilt stretch back');
   await page.locator('#undo').click(); await idle();
 
   // 4. Build → Motorway on open ground
