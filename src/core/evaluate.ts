@@ -304,7 +304,10 @@ interface ProfileTables {
  * terrain (category, terrain class, material value, pack ground id, structure kind), so successive
  * drags reuse them bit-identically. Bounded LRU over material values. */
 const profileTableCache = new WeakMap<Terrain, Map<string, ProfileTables>>();
-const PROFILE_TABLE_VALUES = 8;
+/** One evaluation's balance searches visit ≈ 20–30 values (start, the fixed steps from it, then interpolated
+ * ones; lifts and retries revisit them): 24 keep most of them, and the fixed steps for the next evaluation
+ * (D11: −20–35 % cost-table entries computed on the repeated designs; ≈ 11 tables of 32 kB a value, ≈ 8 MB). */
+const PROFILE_TABLE_VALUES = 24;
 function profileTablesFor(terrain: Terrain, key: string): ProfileTables {
   let byKey = profileTableCache.get(terrain);
   if (!byKey) profileTableCache.set(terrain, byKey = new Map());
