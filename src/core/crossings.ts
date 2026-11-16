@@ -20,7 +20,10 @@ export interface CrossingOverride { roadId: number; type: CrossingChoice;
   via?: LinkVia;
   /** The crossing the shaped reroute leads to (its pack way; -1 / -2: the start / end of our road), so a
    * drag reshapes that connection rather than letting it pick another target. */
-  to?: number }
+  to?: number;
+  /** Underpass / bridge over us: straighten the crossed road to cross square (true) or keep its line
+   * (false); omitted: Auto decides. */
+  square?: boolean }
 export type LinkVia = [{ x: number; y: number }[], { x: number; y: number }[]];
 /** At most this many bend points per shaped reroute piece. */
 export const MAX_LINK_VIA = 24;
@@ -66,6 +69,11 @@ export interface CrossingGeometry {
   clipped?: boolean;
   /** (Auto) the kept way runs back under our earthworks right beyond its rebuilt stretch. */
   runsBack?: boolean;
+  /** The crossed way's stretch through our earthworks (and the strip a new road keeps clear of them),
+   * as measured on this build: its angle to our road in degrees (90: square; a way running along our
+   * road reads lower than its local angle), and whether it comes back out on the side it went in. */
+  skew?: number;
+  sameSide?: boolean;
   diagnostics?: string[];
 }
 export interface CrossingIssue extends Violation {
@@ -117,6 +125,17 @@ export interface CrossingResult {
   houseCost?: number;
   /** A reroute that needed its class's justified-case steepest grade (research/20) somewhere. */
   linkGrade?: number;
+  /** Laid on a new line near our road so that it crosses square (research/38): requested (by Auto's
+   * choice or the player's) / built, with the angle it met our road at before, degrees. The new road
+   * outside the structure and its ramps (realignLength, m) is billed in realignCost (pre-surcharge
+   * CZK, included in cost, culverts included). */
+  square?: boolean;
+  squared?: number;
+  realignLength?: number;
+  realignCost?: number;
+  /** A reroute that only moves the crossed road beside our earthworks: it comes back out of them on
+   * the side it went in, so it needs no crossing (no target; links on that side only). */
+  moved?: true;
   /** Side roads regraded to meet the rebuilt stretch, m (measured along them). */
   tieLength?: number;
   /** Retaining walls holding its slopes off roads beside it, m. */
@@ -132,7 +151,8 @@ export function normalizeCrossingOverrides(value: unknown): CrossingOverride[] {
     && CROSSING_CHOICES.includes(o.type)) {
     const via = o.type === 'reconnection' ? normalizeLinkVia(o.via) : undefined;
     const to = via && Number.isSafeInteger(o.to) && o.to >= -2 ? o.to as number : undefined;
-    byRoad.set(o.roadId, { roadId: o.roadId, type: o.type, ...(via ? { via } : {}), ...(to !== undefined ? { to } : {}) });
+    const square = (o.type === 'underpass' || o.type === 'overbridge') && typeof o.square === 'boolean' ? o.square as boolean : undefined;
+    byRoad.set(o.roadId, { roadId: o.roadId, type: o.type, ...(via ? { via } : {}), ...(to !== undefined ? { to } : {}), ...(square !== undefined ? { square } : {}) });
   }
   return [...byRoad.values()].sort((a, b) => a.roadId - b.roadId);
 }
@@ -146,6 +166,12 @@ export function normalizeLinkVia(value: unknown): LinkVia | undefined {
 }
 export function crossingVia(roadId: number | undefined, overrides: readonly CrossingOverride[] = []): LinkVia | undefined {
   for (let i = overrides.length - 1; i >= 0; i--) if (overrides[i].roadId === roadId) return overrides[i].type === 'reconnection' ? overrides[i].via : undefined;
+  return undefined;
+}
+
+/** The player's straightening choice for a crossing they set to an underpass or a bridge over us. */
+export function crossingSquare(roadId: number | undefined, overrides: readonly CrossingOverride[] = []): boolean | undefined {
+  for (let i = overrides.length - 1; i >= 0; i--) if (overrides[i].roadId === roadId) return overrides[i].square;
   return undefined;
 }
 
@@ -247,8 +273,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
     delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade;
-    delete c.lowered; delete c.drainage; delete c.drainCost;
+    delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved;
     c.requestedType = crossingChoice(c.roadId, overrides);
+    const square = crossingSquare(c.roadId, overrides);
+    if (square !== undefined) c.square = square; else delete c.square;
   }
   // A shape is absolute: it belongs to the one crossing of its way nearest to its bend points.
   for (const o of overrides) if (o.type === 'reconnection' && o.via) {

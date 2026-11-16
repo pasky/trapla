@@ -88,8 +88,16 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
   if (cached?.roads === roads) return cached.source;
   let path: WayPoint[] = [], targets: CrossingPoint[] = [];
   // An underpass keeps the way at its own level through the box: its stretch is built, not removed.
+  // (a way straightened to cross square, or moved beside our earthworks, also gives up its old stretch)
+  let old: WayPoint[] = [];
+  if (g.removed && (c.squared !== undefined || c.moved)) {
+    const raw = roads.connectedCrossingPath(c.roadId, c.x, c.y, CROSSING_RULES.linkHardReach, MAX_POINTS);
+    if (raw.length >= 2) old = slice(raw, Math.max(raw[0].d, g.removed[0]), Math.min(raw[raw.length - 1].d, g.removed[1]));
+  }
   if ((c.type === 'overbridge' || c.type === 'junction' || c.type === 'underpass') && g.road) {
     path = g.road.map((p, i) => ({ x: p.x, y: p.y, d: i })); targets = g.road;
+  } else if (c.moved && g.removed) {
+    path = old; targets = (g.links ?? []).flat();
   } else if ((c.type === 'reconnection' || c.type === 'diversion') && g.turnarounds?.length) {
     const raw = roads.connectedCrossingPath(c.roadId, c.x, c.y, CROSSING_RULES.linkHardReach, MAX_POINTS);
     const ds = g.turnarounds.map(p => p.d);
@@ -104,8 +112,8 @@ function crossingSource(c: CrossingResult, roads: RoadNet): CrossingSource | und
     targets = (g.links ?? []).flat();
   } else return;
   const intervals: RoadSourceInterval[] = [];
-  for (let i = 1; i < path.length; i++) {
-    const span = roads.sourceInterval(path[i - 1], path[i]);
+  for (const piece of path === old ? [path] : [path, old]) for (let i = 1; i < piece.length; i++) {
+    const span = roads.sourceInterval(piece[i - 1], piece[i]);
     if (span) intervals.push({ way: span.way, a: Math.min(span.a, span.b), b: Math.max(span.a, span.b) });
   }
   // Side roads regraded to meet a junction approach or ramp are rebuilt by the crossing too.
@@ -126,7 +134,7 @@ export function roadRealignmentCrossingIntervals(crossings: readonly CrossingRes
 /** Exact removed intervals of severed (reconnection/diversion) ways, whose link tie-ins and
  * turnarounds are construction transitions at each end. */
 export function severedCrossingIntervals(crossings: readonly CrossingResult[], roads: RoadNet): RoadSourceInterval[] {
-  return mergeIntervals(crossings.filter(c => c.type === 'reconnection' || c.type === 'diversion').flatMap(c => crossingSource(c, roads)?.intervals ?? []));
+  return mergeIntervals(crossings.filter(c => c.type === 'reconnection' || c.type === 'diversion' || c.squared !== undefined).flatMap(c => crossingSource(c, roads)?.intervals ?? []));
 }
 
 function dense(path: readonly WayPoint[]): WayPoint[] {

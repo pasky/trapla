@@ -791,6 +791,31 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     s: c.s, i: Math.min(n - 1, Math.round(c.s / ds)), x: c.x, y: c.y, cls: c.cls, roadId: c.way,
     h: roadZ[k] - roadG[k], type: 'atGrade', cost: 0,
   }));
+  // A way weaving along our road crosses it again without ever leaving our earthworks in between (and
+  // the strip a new road keeps clear of them): one crossing, its first, whose treatment takes the
+  // whole stretch (a second one would bill the same stretch twice, e.g. a bridge over us along it).
+  if (ctx.roads) for (let k = crossings.length - 1; k > 0; k--) {
+    const c = crossings[k];
+    let j = k - 1;
+    while (j >= 0 && crossings[j].roadId !== c.roadId) j--;
+    if (j < 0 || ROAD_CLASSES[c.cls].noAtGrade) continue;
+    const p = crossings[j], da = ctx.roads.wayStation(c.roadId!, p.x, p.y), db = ctx.roads.wayStation(c.roadId!, c.x, c.y);
+    const way = ctx.roads.wayPath(c.roadId!, Math.min(da, db), Math.max(da, db)), pad = ROAD_CLASSES[c.cls].width / 2 + WEAVE_SETBACK;
+    if (way.length < 2 || Math.abs(db - da) > CROSSING_RULES.linkHardReach) continue;
+    const i0 = Math.max(0, Math.min(p.i, c.i) - 30), i1 = Math.min(n - 1, Math.max(p.i, c.i) + 30);
+    let inside = true;
+    for (let q = 1; q < way.length && inside; q++) {
+      const a = way[q - 1], b = way[q], steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 5));
+      for (let t = 0; t <= steps && inside; t++) {
+        const x = a.x + (b.x - a.x) * t / steps, y = a.y + (b.y - a.y) * t / steps;
+        let best = Infinity, at = i0;
+        for (let i = i0; i <= i1; i++) { const d2 = (x - st.x[i]) ** 2 + (y - st.y[i]) ** 2; if (d2 < best) { best = d2; at = i; } }
+        const lateral = -(x - st.x[at]) * st.ty[at] + (y - st.y[at]) * st.tx[at];
+        if (Math.abs(lateral) > (lateral >= 0 ? sec.dayL[at] : sec.dayR[at]) + pad) inside = false;
+      }
+    }
+    if (inside) crossings.splice(k, 1);
+  }
   for (const c of crossings) {
     const choice = crossingChoice(c.roadId!, crossingOverrides);
     if (!((!choice || choice === 'bridge') && ROAD_CLASSES[c.cls].separable && c.h >= CROSSING_RULES.overHeight && h[c.i] > 0)) continue;
@@ -1250,6 +1275,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
   const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
+  if (process.env.DEBUG_BLOCKED) { for (const b of blocked) console.log('BLOCKED', (b.s0/1000).toFixed(2), b.roadId, b.detail); const f = first.complete(); console.log('FIRST', f.cost.total/1e9, f.violations.length, f.violations.map(v => (v.s0/1000).toFixed(2)+' '+v.title).join('; ')); }
   if (!blocked.length) return first.complete();
   const relaxed = new Map(crossingWays), strict = new Set(blocked.map(b => b.roadId!));
   for (const c of rawRoadX) if (blocked.some(b => b.roadId === c.way || Math.abs(b.s0 - c.s) <= STRICT_RETRY_REACH)) { relaxed.delete(c.way); strict.add(c.way); }
@@ -1258,9 +1284,12 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const retry = finish(relaxed, strict, first.vpis).complete();
   // Every blocked road conflict is reported as a footprint violation, so a clean retry wins
   // without completing (noise, bill, checks) the first pass.
+  if (process.env.DEBUG_BLOCKED) console.log('RETRY', retry.cost.total/1e9, retry.violations.length, retry.violations.map(v => (v.s0/1000).toFixed(2)+' '+v.title).join('; '));
   if (!retry.violations.length) return retry;
   const result = first.complete();
   return retry.violations.length < result.violations.length ? retry : result;
 }
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
 const STRICT_RETRY_REACH = 300;
+/** The strip beyond our earthworks a new road keeps clear of them (crossing-geometry.ts SETBACK), m. */
+const WEAVE_SETBACK = 3;

@@ -69,7 +69,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'linkGrade' | 'lowered' | 'drainage'>;
+  | 'culverts' | 'houses' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved'>;
 export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>): OutcomeText {
   if (c.shared) {
     const o = ownOutcome({ ...c, targetS: undefined });
@@ -87,14 +87,21 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const link = [c.linkGrade ? ` The ground is steep: it climbs up to ${pct(c.linkGrade)} in places, the most its class allows where there is no other way.` : '',
     c.culverts ? ` ${c.culverts === 1 ? 'A culvert carries a stream' : `${c.culverts} culverts carry streams`} under it.` : '',
     c.houses?.length ? ` ${c.houses.length === 1 ? 'A house stands' : `${c.houses.length} houses stand`} in its way and ${c.houses.length === 1 ? 'is' : 'are'} bought out.` : ''].join('');
+  // a skewed crossing laid on a new line at a right angle to ours (crossing-geometry.ts squarePath)
+  const square = c.squared !== undefined ? `, the ${what} straightened to cross at a right angle` : '';
+  const thing = c.type === 'underpass' ? 'box' : 'bridge';
+  const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; near our road it is laid on a new line that crosses at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what} beyond the ${thing} and its ramps).` : '';
+  if (c.moved && (c.type === 'reconnection' || c.type === 'diversion')) return { tag: 'moved aside',
+    label: `Moved beside our road (+${m(c.linkLength)} m of new ${c.type === 'diversion' ? 'track' : 'road'})`,
+    explain: `The ${what} runs into our earthworks and comes back out on the same side, so it does not need to cross our road: that stretch is rebuilt beside the earthworks.${link}` };
   switch (c.type) {
     case 'bridge': return { tag: 'under our bridge', label: 'Passes under our bridge',
       explain: `Our road crosses over the ${what} on a bridge; the ${what} stays as it is.` };
     case 'tunnel': return { tag: 'above our tunnel', label: 'Our road is in a tunnel below it',
       explain: `Our road passes below the ${what} in a tunnel; the ${what} stays as it is.` };
     case 'overbridge': return { tag: 'its bridge over us',
-      label: `Carried over our road on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}`,
-      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${works}` };
+      label: `Carried over our road on a ${m(c.span)} m bridge${c.approachLength ? ` with ${m(c.approachLength)} m of ramps` : ''}${square}`,
+      explain: `The ${what} is raised onto a new bridge over our road; earth ramps on both sides, no steeper than ${pct(row?.rampGradient ?? 0.06)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''}, bring it back down to its old level.${squareWhy}${works}` };
     case 'junction': return { tag: 'junction', label: 'Junction with our road',
       explain: `The ${what} meets our road at the same level in a new junction; near it, the ${what} is raised or lowered to our road's height.${works}` };
     case 'reconnection': return { tag: 'reconnected',
@@ -106,10 +113,10 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     case 'underpass': {
       const box = row?.underpass ? underpassAssembly(row.underpass, 0) : undefined;
       const inside = box ? ` (${box.width} × ${box.height} m inside)` : '';
-      if (c.lowered) return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}, the ${what} lowered by ${c.lowered.toFixed(1)} m`,
-        explain: `Our embankment is too low for the box, so the ${what} is lowered into a cutting on ramps (${m(c.approachLength)} m) no steeper than ${pct(row?.rampGradient ?? 0.08)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''} and passes through it in a concrete box. Rainwater from the lowest point ${c.drainage === 'pump' ? 'is pumped out' : 'runs off in a pipe to lower ground'}.${works}` };
-      return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}`,
-        explain: `The ${what} keeps its level and passes through our embankment in a concrete box.` };
+      if (c.lowered) return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}, the ${what} lowered by ${c.lowered.toFixed(1)} m${square}`,
+        explain: `Our embankment is too low for the box, so the ${what} is lowered into a cutting on ramps (${m(c.approachLength)} m) no steeper than ${pct(row?.rampGradient ?? 0.08)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''} and passes through it in a concrete box. Rainwater from the lowest point ${c.drainage === 'pump' ? 'is pumped out' : 'runs off in a pipe to lower ground'}.${squareWhy}${works}` };
+      return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}${square}`,
+        explain: `The ${what} keeps its level and passes through our embankment in a concrete box.${squareWhy}` };
     }
     case 'atGrade': return { tag: 'not allowed', label: 'Crosses our road at the same level — not allowed',
       explain: `Roads may cross ours at the same level only in a junction; the ${what} needs a junction, a bridge, an underpass or a reroute.` };

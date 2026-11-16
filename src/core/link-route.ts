@@ -171,11 +171,12 @@ export function surveyLink(controls: readonly XY[], width: number, env: LinkEnv)
 }
 
 /** The profile of a surveyed line: as close to the ground as `grade` allows, ending on the roads it joins. */
-export function profileLink(survey: LinkSurvey, grade: number, env: LinkEnv): LinkPlan {
+export function profileLink(survey: LinkSurvey, grade: number, env: LinkEnv, openEnd = false): LinkPlan {
   const points = survey.points.map(p => ({ ...p })), problems = new Set(survey.problems);
   const lower = survey.lower.slice(), upper = survey.upper.slice(), culverts = survey.culverts;
   const n = points.length;
-  lower[0] = upper[0] = points[0].ground; lower[n - 1] = upper[n - 1] = points[n - 1].ground;
+  // (`openEnd`: the line's last point meets a structure or its ramps, not the ground)
+  lower[0] = upper[0] = points[0].ground; if (!openEnd) lower[n - 1] = upper[n - 1] = points[n - 1].ground;
   for (let i = 1; i < n; i++) {
     const dz = (points[i].d! - points[i - 1].d!) * grade;
     lower[i] = Math.max(lower[i], lower[i - 1] - dz); upper[i] = Math.min(upper[i], upper[i - 1] + dz);

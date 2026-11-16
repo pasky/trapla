@@ -167,6 +167,12 @@ export interface RoadClassRow {
   /** Box size when the way may pass through our embankment in a small underpass (research/19).
    * Class I–III roads keep bridges/junctions; motorways never. */
   underpass?: UnderpassSize;
+  /** Smallest bend radius of a short new line of this road (squaring a skewed crossing), m —
+   * research/38: field track 25 m (ČSN 73 6109, 30 km/h, via project reports; medium), service roads
+   * and local streets 27 m (ČSN 73 6110 tab. 10, 30 km/h at 2.5 % crossfall; high), class I–III
+   * 90 m (ČSN 73 6101 revision table, 50 km/h with 7 % superelevation; medium). PROVISIONAL design
+   * speeds: 30 km/h for tracks and local roads, 50 km/h for class I–III roads near a grade separation. */
+  minRadius: number;
 }
 
 /** PROVISIONAL research-informed estimate for a through-road junction, all-in: based on ŘSD
@@ -215,18 +221,18 @@ const LOCAL_ROAD = {
 
 /** keyed by OSM highway class (the pack's `net.cls` list); order = rank, most important first */
 export const ROAD_CLASSES: Record<string, RoadClassRow> = {
-  motorway: { label: 'motorway', width: 27.5, rampGradient: 0.04, rampSteepest: 0.04, bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', separable: true, noAtGrade: true, roadPerKm: [187_632_000, 187_632_000], roadCodes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NER'] },
-  trunk: { label: 'expressway', width: 11.5, rampGradient: 0.05, rampSteepest: 0.05, bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', separable: true, noAtGrade: true, roadPerKm: [68_894_000, 82_035_000], roadCodes: ['A.1.S1.11,5.NER', 'A.1.S1.11,5.NIR'] },
-  primary: { label: 'class I road', width: 9.5, rampGradient: 0.06, rampSteepest: 0.07, bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', separable: true, junction: true, roadPerKm: [56_912_000, 67_852_000], roadCodes: ['A.1.S1.9,5.NER', 'A.1.S1.9,5.NIR'] },
-  secondary: { label: 'class II road', width: 7.5, rampGradient: 0.06, rampSteepest: 0.07, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, junction: true, roadPerKm: [36_142_000, 42_883_000], roadCodes: ['A.1.S2.7,5.NER', 'A.1.S2.7,5.NIR'] },
-  tertiary: { label: 'class III road', width: 6.5, rampGradient: 0.07, rampSteepest: 0.09, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, junction: true, roadPerKm: [26_616_000, 34_903_000], roadCodes: ['A.1.S3.6,5.NER', 'A.1.S3.6,5.NIR'] },
-  unclassified: { label: 'local road', width: 6.5, rampGradient: 0.08, rampSteepest: 0.12, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
-  residential: { label: 'street', width: 6.5, rampGradient: 0.08, rampSteepest: 0.12, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
-  living_street: { label: 'street', width: 6.5, rampGradient: 0.08, rampSteepest: 0.08, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
-  service: { label: 'service road', width: 4, rampGradient: 0.09, rampSteepest: 0.12, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', ...LOCAL_ROAD },
+  motorway: { label: 'motorway', minRadius: 0, width: 27.5, rampGradient: 0.04, rampSteepest: 0.04, bridgePerKm: 1_495_178_000, bridgeCode: 'A.2.D.27,5.N', separable: true, noAtGrade: true, roadPerKm: [187_632_000, 187_632_000], roadCodes: ['A.1.D.27,5.NER', 'A.1.D.27,5.NER'] },
+  trunk: { label: 'expressway', minRadius: 0, width: 11.5, rampGradient: 0.05, rampSteepest: 0.05, bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', separable: true, noAtGrade: true, roadPerKm: [68_894_000, 82_035_000], roadCodes: ['A.1.S1.11,5.NER', 'A.1.S1.11,5.NIR'] },
+  primary: { label: 'class I road', minRadius: 90, width: 9.5, rampGradient: 0.06, rampSteepest: 0.07, bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', separable: true, junction: true, roadPerKm: [56_912_000, 67_852_000], roadCodes: ['A.1.S1.9,5.NER', 'A.1.S1.9,5.NIR'] },
+  secondary: { label: 'class II road', minRadius: 90, width: 7.5, rampGradient: 0.06, rampSteepest: 0.07, bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', separable: true, junction: true, roadPerKm: [36_142_000, 42_883_000], roadCodes: ['A.1.S2.7,5.NER', 'A.1.S2.7,5.NIR'] },
+  tertiary: { label: 'class III road', minRadius: 90, width: 6.5, rampGradient: 0.07, rampSteepest: 0.09, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, junction: true, roadPerKm: [26_616_000, 34_903_000], roadCodes: ['A.1.S3.6,5.NER', 'A.1.S3.6,5.NIR'] },
+  unclassified: { label: 'local road', minRadius: 27, width: 6.5, rampGradient: 0.08, rampSteepest: 0.12, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  residential: { label: 'street', minRadius: 27, width: 6.5, rampGradient: 0.08, rampSteepest: 0.12, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  living_street: { label: 'street', minRadius: 27, width: 6.5, rampGradient: 0.08, rampSteepest: 0.08, bridgePerKm: 432_476_000, bridgeCode: 'A.2.S.6,5.N', separable: true, underpass: 'local', ...LOCAL_ROAD },
+  service: { label: 'service road', minRadius: 27, width: 4, rampGradient: 0.09, rampSteepest: 0.12, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', ...LOCAL_ROAD },
   /** Paved P4 standard, not the unsupported 1.5 M/km gravel allowance (research/13).
    * Conservative for forest/unpaved tracks, but a reproducible SPK 2026 unit price. */
-  track: { label: 'track', width: 4, rampGradient: 0.1, rampSteepest: 0.15, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', roadPerKm: [13_985_684.5, 13_985_684.5], roadCodes: ['A.1.P4.NE', 'A.1.P4.NE'] },
+  track: { label: 'track', minRadius: 25, width: 4, rampGradient: 0.1, rampSteepest: 0.15, bridgePerKm: 309_613_000, bridgeCode: 'A.2.S.4,0.N', separable: false, underpass: 'track', roadPerKm: [13_985_684.5, 13_985_684.5], roadCodes: ['A.1.P4.NE', 'A.1.P4.NE'] },
 };
 
 // ---------------------------------------------------------------------------------------------
