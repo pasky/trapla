@@ -59,6 +59,8 @@ export interface Violation {
   /** how much the fix asks for (m); of nearby entries merged into one, the largest is kept */
   size?: number;
   horizontal?: HorizontalConstraint;
+  /** A missed crossing clearance, independent of the road/railway wording (Auto separation retry). */
+  clearance?: 'above' | 'either';
   /** what the violation is about, so the UI can select it and offer the fix as a button */
   target?: ViolationTarget;
 }
@@ -544,7 +546,7 @@ export function crossingViolation(s: number, what: string, above: number, need: 
   const h = (v: number) => `${fmt(Math.abs(v), 1)} m ${v >= 0 ? 'above' : 'below'} it`;
   if (below === undefined) {
     return {
-      kind: 'crossing', s0: s, s1: s,
+      kind: 'crossing', s0: s, s1: s, clearance: 'above',
       title: `Road too low over the ${what}`,
       fix: `Raise the road here by ${fmt(raise, 1)} m`,
       detail: `To bridge the ${what} the road must be at least ${fmt(need, 1)} m above it; it is ${h(above)}.`,
@@ -555,7 +557,7 @@ export function crossingViolation(s: number, what: string, above: number, need: 
   const lower = Math.ceil((above + below) * 10 - 1e-6) / 10;
   const r = `Raise the road here by ${fmt(raise, 1)} m to bridge over it`, l = `lower it by ${fmt(lower, 1)} m to pass under it`;
   return {
-    kind: 'crossing', s0: s, s1: s,
+    kind: 'crossing', s0: s, s1: s, clearance: 'either',
     title: `The ${what} cannot be crossed on the level`,
     fix: raise <= lower ? `${r} (or ${l})` : `${cap(l)} (or ${r.charAt(0).toLowerCase()}${r.slice(1)})`,
     detail: `The road must be at least ${fmt(need, 1)} m above the ${what} (a bridge) or ${fmt(below, 1)} m below it (then its own bridge carries it over our cutting); it is ${h(above)}.`,

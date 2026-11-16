@@ -368,7 +368,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const stuck = result.crossings.filter(c => c.type === 'overbridge' && !c.requestedType
       && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
     // …and where it paid the clearance penalty over a river or railway instead of bridging it.
-    const missed = result.violations.filter(v => v.kind === 'crossing' && v.title.startsWith('Road too low over the '));
+    const missed = result.violations.filter(v => v.kind === 'crossing' && v.clearance === 'above');
     const items: { at: number; road?: { s: number; g: number }; water?: { s0: number; s1: number } }[] = [
       ...stuck.map(c => ({ at: c.s, road: { s: c.s, g: ctx.terrain.heightAt(c.x, c.y) } })),
       ...missed.map(v => ({ at: (v.s0 + v.s1) / 2, water: { s0: v.s0, s1: v.s1 } }))];

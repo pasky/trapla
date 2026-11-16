@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { evaluateProject, type ProjectEvalContext } from '../src/core/project-evaluate';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
-import { createRailwayProject, createRailwayRoute, railwayMission } from '../src/core/project-railway';
+import { createRailwayProject, createRailwayRoute, evaluateProjectRailway, railwayMission } from '../src/core/project-railway';
+import { addMotorwayCorridor, evaluateProjectCorridor } from '../src/core/project-motorway';
 import { isScorableProject } from '../src/core/project-protocol';
 import { projectBindingsCurrent, type ProjectLoadOptions } from '../src/project-persistence';
 import { assertProjectDesign } from '../src/core/project-validation';
@@ -50,6 +51,34 @@ describe('railway mode', () => {
     const r = next.routes.find(x => x.id === 'route:rail')!;
     expect(r.kind === 'railway' && r.specification.tracks).toBe(1);
     expect(legacyDesignForRoute(next, 'route:rail').speed).toBe(120);
+  });
+});
+
+describe('new lines crossing a mapped railway', () => {
+  it.each(['R1', 'R2', 'D27.5'] as const)('%s bridges a raised track even when the first grade pays the clearance penalty', category => {
+    // Unlike the station tie-in test below, this is a NEW auxiliary line with free ends, crossing an
+    // unrelated railway on a 4 m embankment. The 3 km length leaves room for the 12.5 ‰ railway grade.
+    const terrain = syntheticTerrain(640, 80, 5, x => 100 + 4 * Math.max(0, 1 - Math.abs(x - 1600) / 100));
+    for (let j = 0; j < terrain.ny; j++) (terrain.lc as Uint8Array)[j * terrain.nx + 320] |= RAIL_CROSSING_BIT;
+    const a = { x: 100, y: 200 }, b = { x: 3100, y: 200 }, ctx = { terrain, scenario: D11_SCENARIO, a, b };
+    const { base } = fixture();
+    const end = (p: typeof a) => ({ position: { ...p, z: terrain.heightAt(p.x, p.y) }, anchor: { kind: 'free' as const }, binding: 'resolved' as const });
+    const ends = { a: end(a), b: end(b) };
+    const rail = createRailwayRoute('new', 'New railway', ends, category === 'R2' ? 2 : 1, 120);
+    const project = category === 'D27.5' ? addMotorwayCorridor(base, ends,
+      { category, speed: 120, pis: [], profileMode: 'auto', vpis: [] }, { aadt: 10000, heavyShare: 0.1 },
+      { corridorId: 'new', forward: 'f', reverse: 'r', acoustic: id => `sound:${id}` }, 'auxiliary', { forward: 'New motorway', reverse: 'New motorway' })
+      : { ...base, routes: [...base.routes, rail] };
+    const evaluated = category === 'D27.5' ? evaluateProjectCorridor(ctx, project, 'new', 'objects')
+      : evaluateProjectRailway(ctx, project, 'new', 'objects');
+    expect(evaluated.status).toBe('evaluated');
+    if (evaluated.status !== 'evaluated') throw new Error('new line must be engineered');
+    const r = evaluated.result;
+    expect(r.violations).toEqual([]);
+    expect(r.kind[Math.round(1500 / r.ds)]).toBe(KIND.bridge);
+    expect(r.grade[0]).toBeCloseTo(ends.a.position.z, 8);
+    expect(r.grade[r.n - 1]).toBeCloseTo(ends.b.position.z, 8);
+    if (category !== 'D27.5') expect(r.timing['count.separationRetry']).toBe(1);
   });
 });
 
