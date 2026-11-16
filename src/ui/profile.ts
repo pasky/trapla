@@ -19,7 +19,7 @@ import type { WallOverride } from '../core/build-controls';
 import type { VPI } from '../core/vertical';
 import type { ProvisionalProfile } from './provisional';
 import type { StationRange } from '../state';
-import { COST_GROUPS, perM } from './costgroups';
+import { COST_GROUPS, groupLabel, groupShort, perM } from './costgroups';
 
 export interface ProfileEvents {
   onVpiDrag?: (i: number, s: number, z: number) => void;
@@ -125,10 +125,17 @@ export class ProfilePanel {
     this.tip.className = 'profile-tip';
     this.tip.style.display = 'none';
     document.body.appendChild(this.tip);
+    this.setLine('road');
+    this.install();
+  }
+
+  /** what the line is (road / motorway / railway): the cost strip's words follow it */
+  private line = 'road';
+  setLine(line: string) {
+    this.line = line;
     // the cost strip's colours in the profile's key
     const key = document.getElementById('cost-key');
-    if (key) key.innerHTML = COST_GROUPS.map((g) => `<div><i class="sw" style="background:${g.color}"></i>${g.label}</div>`).join('');
-    this.install();
+    if (key) key.innerHTML = COST_GROUPS.map((g) => `<div><i class="sw" style="background:${g.color}"></i>${groupLabel(g, line)}</div>`).join('');
   }
 
   /** shown on an empty profile (e.g. a proposed change that has no checked heights yet) */
@@ -886,7 +893,7 @@ export class ProfilePanel {
     const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin';
     if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
     else this.tip.innerHTML = `<div><b>km ${(shownS(r.s[i]) / 1000).toFixed(2)}</b> · ${how}</div>
-      <div class="tip-sub"><b>${perM(total)} CZK/m</b> · ${groups.map(([gr, v]) => `<i style="background:${gr.color}"></i>${gr.short} ${perM(v)}`).join(' ')}</div>
+      <div class="tip-sub"><b>${perM(total)} CZK/m</b> · ${groups.map(([gr, v]) => `<i style="background:${gr.color}"></i>${groupShort(gr, this.line)} ${perM(v)}`).join(' ')}</div>
       ${v ? `<div class="tip-bad">⚠ ${e(shownText(v.title))}</div>` : facts.length ? `<div class="tip-fact">${e(facts[0])}${facts.length > 1 ? ` +${facts.length - 1}` : ''}</div>` : ''}`;
     this.tip.style.display = '';
     // inside the profile, above the cursor (the map's spot it marks stays visible)

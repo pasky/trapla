@@ -12,7 +12,7 @@ import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate, type Design, type Result } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
-import { ROW_HELP } from '../src/ui/hud';
+import { ROW_HELP, rowHelp } from '../src/ui/hud';
 import { footprintConflictText, footprintConflictTitle } from '../src/ui/footprint';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
@@ -63,7 +63,8 @@ describe('player-facing text', () => {
     for (const g of COST_GROUPS) check('bill line', g.label);
     const terrain = syntheticTerrain(500, 80, 5, () => 400);
     const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } }, startDesign());
-    for (const [key, help] of Object.entries(ROW_HELP)) check(`bill tooltip ${key}`, help(r.cost, D11_SCENARIO), false);
+    for (const line of ['road', 'motorway', 'railway'])
+      for (const key of Object.keys(ROW_HELP)) check(`${line} bill tooltip ${key}`, rowHelp(key, r.cost, D11_SCENARIO, line), false);
     expect(problems).toEqual([]);
   });
 

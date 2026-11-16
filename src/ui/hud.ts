@@ -17,7 +17,8 @@ import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenari
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
 import type { Best, StationRange } from '../state';
-import { COST_GROUPS, czk } from './costgroups';
+import { COST_GROUPS, czk, groupLabel } from './costgroups';
+import { RAILWAY_EVIDENCE, SPOZES } from '../core/data/railway';
 import { footprintConflictsInRange, footprintConflictText, footprintConflictTitle } from './footprint';
 import { shownRange, shownS, shownText } from './chainage';
 
@@ -54,6 +55,22 @@ const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const whyKey = (v: Pick<Violation, 'kind' | 'title'>) => `${v.kind}|${v.title}`;
 
 const pct = (v: number) => `${(v * 100).toFixed(1)} %`;
+
+/** what each line of a railway's breakdown contains where it differs from a road's (data/railway.ts,
+ * data/categories.ts R1 / R2, rail-noise.ts) */
+const RAIL_ROW_HELP: Record<string, (c: CostBreakdown, sc: ScenarioParams) => string> = {
+  roadBase: () => `SPOŽES 2026 price book per km of new electrified line: track, catenary, signalling, ETCS, cables, GSM-R and moving utilities everywhere; sleeper bed and ditches on the ground. Not included: stations, turnouts, substations`,
+  bridges: () => `SPOŽES 2026 railway bridge per m² of deck, the deck as wide as the track bed (an assumption); includes the short bridges forced over rivers, railways and roads clearly below the track`,
+  tunnels: () => `SPOŽES 2026 single- or double-track tunnel per km (dearer rows under built-up areas)`,
+  crossings: () => `Roads we cross and roads our earthworks cover. No level crossings (a game rule): each road gets the cheapest of a bridge over the track with earth ramps, an underpass, or a reroute along our earthworks to a nearby crossing, priced by its measured length × the SPK 2026 road price. Roads our earthworks cover are rebuilt beside them, closed when other roads already connect their ends, or held back by retaining walls. Roads at least ${CROSSING_RULES.overHeight} m below the track pass under our bridges (under Bridges).`,
+  noiseWalls: (_c, sc) => `Walls of ${NOISE.wallHeights.join(' / ')} m (yours 2–6 m) at ${NOISE.wallPerM2.toLocaleString('en-US')} CZK/m² (estimate from research/09). A game estimate, not an acoustic study: EU train noise (CNOSSOS-EU), ${num(trainsPerDay(sc.railTraffic))} trains a day (an assumption, not a timetable), limits for a new line ${RAILWAY_EVIDENCE.newLineNoise.dayDb} dB by day and ${RAILWAY_EVIDENCE.newLineNoise.nightDb} dB at night at the façade, checked at each house's top floor. A wall or a cut edge helps a floor only where it hides the track from it; only tunnels hide it completely.`,
+  surcharge: () => `SPOŽES 2026 markups for a new line at study stage: +${Math.round(100 * SPOZES.markup.substructure)} % on earthworks and the sleeper bed, +${Math.round(100 * SPOZES.markup.bridges)} % on bridges and tunnels, none on track and systems`,
+};
+/** what a motorway's crossing line contains (no junctions on the way: its ends are interchanges) */
+const motorwayCrossings = () => `Roads we cross and roads our earthworks cover. No junctions on the way (the motorway's ends are its interchanges): each road gets the cheapest of a bridge over us with earth ramps, an underpass, or a reroute along our earthworks to a nearby crossing, priced by its measured length × the SPK 2026 road price. Roads our earthworks cover are rebuilt beside them, closed when other roads already connect their ends, or held back by retaining walls. These works get the other-objects surcharge. Roads at least ${CROSSING_RULES.overHeight} m below our road pass under our bridges (under Bridges).`;
+/** a breakdown line's tooltip for the line being built (road / motorway / railway) */
+export const rowHelp = (id: string, c: CostBreakdown, sc: ScenarioParams, line = 'road') =>
+  (line === 'railway' ? RAIL_ROW_HELP[id] : line === 'motorway' && id === 'crossings' ? motorwayCrossings : undefined)?.(c, sc) ?? ROW_HELP[id](c, sc);
 
 /** what each line of the breakdown contains (shown as a tooltip) */
 export const ROW_HELP: Record<string, (c: CostBreakdown, sc: ScenarioParams) => string> = {
@@ -196,6 +213,9 @@ export class Hud {
   /** body of the "Your decisions" section (filled by the build tools) */
   readonly decisions: HTMLElement;
 
+  /** what the active line is (road / motorway / railway): the bill's words follow it */
+  private line = 'road';
+  setLine(line: string) { this.line = line; }
   constructor(private root: HTMLElement, private sc: ScenarioParams) {
     const minCat = minCategoryForTraffic(sc.traffic);
     root.innerHTML = `
@@ -434,8 +454,8 @@ export class Hud {
     const c = sel ? sel.cost : whole;
     this.$('breakdown').innerHTML = COST_GROUPS.map((g) => {
       const v = g.of(c);
-      const label = g.id === 'surcharge' ? 'Other (drainage, safety…)' : g.label;
-      return `<tr title="${ROW_HELP[g.id](c, this.sc).replace(/"/g, '&quot;')}" class="${v > 0 ? '' : 'zero'}"><td><i class="sw" style="background:${g.color}"></i>${label}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%;background:${g.color}"></span></td></tr>`;
+      const label = g.id === 'surcharge' && this.line !== 'railway' ? 'Other (drainage, safety…)' : groupLabel(g, this.line);
+      return `<tr title="${rowHelp(g.id, c, this.sc, this.line).replace(/"/g, '&quot;')}" class="${v > 0 ? '' : 'zero'}"><td><i class="sw" style="background:${g.color}"></i>${label}</td><td>${czk(v)}</td><td class="bar"><span style="width:${Math.min(100, (100 * v) / Math.max(1, c.total)).toFixed(1)}%;background:${g.color}"></span></td></tr>`;
     }).join('') + (sel ? `<tr class="sum"><td>Selected</td><td>${czk(sel.cost.total)}</td><td></td></tr>` : '');
     const q = r.quantities;
     const x = { bridge: 0, tunnel: 0, overbridge: 0, atGrade: 0, junction: 0, reconnection: 0, diversion: 0, underpass: 0 };
