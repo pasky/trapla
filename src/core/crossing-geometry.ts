@@ -41,8 +41,9 @@ type CutOf = { d0: number; d1: number; open: boolean; sides: [number, number]; a
  * each way's stretch through our earthworks, its straightened line, and the geometry of a crossing
  * built only to anchor candidate reroutes (the same for every candidate led to it). */
 type BuildMemo = { cuts: Map<string, CutOf | undefined>; squares: Map<string, unknown>;
-  anchorBuilds: Map<string, { g: CrossingGeometry; raw: () => readonly (Readonly<WayPoint> | CrossingPoint)[]; sides: [boolean, boolean] }> };
-const buildMemo = (): BuildMemo => ({ cuts: new Map(), squares: new Map(), anchorBuilds: new Map() });
+  anchorBuilds: Map<string, { g: CrossingGeometry; raw: () => readonly (Readonly<WayPoint> | CrossingPoint)[]; sides: [boolean, boolean] }>;
+  anchorMemo: Map<object, Map<number, [CrossingPoint | undefined, CrossingPoint | undefined]>> };
+const buildMemo = (): BuildMemo => ({ cuts: new Map(), squares: new Map(), anchorBuilds: new Map(), anchorMemo: new Map() });
 type WayPoint = XY & { d: number };
 type CachedPath = { path: readonly Readonly<WayPoint>[]; diagnostics: readonly string[] };
 /** Immutable shared way paths, stably ordered by distance from their crossing. */
@@ -478,7 +479,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   linkMemo: NonNullable<LinkEnv['memo']>,
   sidesOf = new Map<string, [boolean, boolean]>(), budget = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>,
   memo: BuildMemo = buildMemo()): CrossingIssue[] {
-  const { cuts, squares, anchorBuilds } = memo;
+  const { cuts, squares, anchorBuilds, anchorMemo } = memo;
   const { at, project, margin, reads } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => !built(v));
   // Works are remeasured on every build (Auto tries candidates, then rebuilds the network).
@@ -934,7 +935,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     // (a raised or lowered way's anchors lie on the ground beyond its ramps, on its old line further out)
     // (built only when a reroute starts or ends here)
     const kept = path;
-    rawPaths.set(c, (adjusted || lowered) && road.length ? () => [...kept.filter(q => q.d < road[0].d!), ...road, ...kept.filter(q => q.d > road[road.length - 1].d!)] : () => kept);
+    let made: readonly AnchorSample[] | undefined;
+    rawPaths.set(c, (adjusted || lowered) && road.length ? () => made ??= [...kept.filter(q => q.d < road[0].d!), ...road, ...kept.filter(q => q.d > road[road.length - 1].d!)] : () => kept);
     if (['bridge', 'overbridge', 'tunnel', 'junction', 'underpass'].includes(c.type)) g.road = road;
     // A box or a bridge over us that delivers the way straight back under our earthworks (it runs along
     // our slope on one side, not across our road again) leaves that stretch to be walled or moved:
@@ -990,7 +992,15 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   };
   // (only the crossings a link starts or ends at need their anchors)
   const anchorOf = (c: CrossingResult) => {
-    if (!anchors.has(c) && rawPaths.has(c)) anchors.set(c, groundAnchors(rawOf(c)!, maxLinkWidth(c)));
+    if (!anchors.has(c) && rawPaths.has(c)) {
+      // (the same line and width give the same anchors in every build of this call)
+      const raw = rawOf(c)!, width = maxLinkWidth(c);
+      let byWidth = anchorMemo.get(raw);
+      if (!byWidth) anchorMemo.set(raw, byWidth = new Map());
+      let found = byWidth.get(width);
+      if (!found) byWidth.set(width, found = groundAnchors(raw, width));
+      anchors.set(c, found);
+    }
     return anchors.get(c);
   };
   const endAnchors = new Map<string, [CrossingPoint | undefined, CrossingPoint | undefined]>();
