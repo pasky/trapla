@@ -50,17 +50,22 @@ minus the δ of the nearest anchors, then checked against the leaflet text (“b
 | 0301 / 0302 | 9.514 | 8,710 m | II/104 crossed at 8,385 m; leaflet MÚK Jílové “v km 9,2” |
 | 0302 / 0303 | 13.900 | 13,230 m | δ 0.67 of the II/106 overbridge just before it |
 | 0303 / 0304 | 25.200 | 24,590 m | MÚK Václavice “v km 24,9”, δ 0.61 of III/1057 |
-| 0304 / 0305/I | 45.040 (41.040) | 40,410 m | after the Nový potok bridge (km 44.560); I/18 crossed at 40,407 m |
+| 0304 / 0305/I | 45.040 (41.040) | **40,406.8 m** | I/18 (way 9525057) crossed exactly here; the leaflet ends 0304 480 m after the Nový potok bridge (km 44.560), and I/18 is crossed 480 m after the mapped bridge |
+
+The 0304/0305 boundary is therefore the Voračice interchange with I/18 itself: both sections end there with a
+declared `interchange` junction on way 9525057 (a first placement at 40,410 m, 3 m off the road, left the
+end on the road: “earthworks cover 39 m of a class I road” at km 0 of 0305/I).
 
 Mapped section lengths: 0301 8.70 km (from its declared start, below), 0302 4.52, 0303 11.36,
 0304 15.82, 0305/I 17.02 km + the ≈ 250 m to the operating motorway.
 
 ## Ends
 
-- **0301 A, D0 interchange.** The route starts where the mapped mainline begins, on road II/101 inside the
-  planned D0 × D3 interchange (49.9625454 N, 14.4967020 E; 13.7 m south of node 8227650623 along the
-  first segment). Declared endpoint junction of kind `interchange` with the II/101 ways 171863668,
-  312960727, 171863669. Price: no sourced figure for a system interchange exists. The SFDI SPK 2026 report
+- **0301 A, D0 interchange.** The route starts where the mapped mainline begins inside the planned
+  D0 × D3 interchange (49.9625454 N, 14.4967020 E; 13.7 m south of node 8227650623 along the first
+  segment), under an existing bridge of road II/101 (way 171863668, `bridge=yes`, not part of the ground
+  network: our road passes beneath it). Declared endpoint junction of kind `interchange` with the bridge's
+  two approaches, ways 312960727 and 171863669 (21 m from A). Price: no sourced figure for a system interchange exists. The SFDI SPK 2026 report
   says interchange branches built on earth are part of the motorway's per-km standard (“větve MÚK budované
   na zemním tělese … za předpokladu 1 MÚK/7 km trasy”; bridges and crossed roads priced by their own
   norms), the 0301 leaflet gives only the whole section (12.9 bn CZK excl. VAT, incl. D0 widening over
@@ -74,6 +79,7 @@ Mapped section lengths: 0301 8.70 km (from its declared start, below), 0302 4.52
   115670156. The leaflet's MÚK Mezno / Nová Hospoda (figure-eight, 1,381 m of branches, I/3 relocated
   over 1,268 m) lies on our route before B; like every interchange inside a section it is covered by
   the SPK per-km norm (earth-built branches) and the I/3 crossings are priced as crossings.
+- **0304 B / 0305/I A, Voračice.** `interchange` on I/18 (above).
 - **All other ends** are section boundaries in open land just beyond an interchange. The picker says
   “Continues as section 03xx” / “Follows section 03xx”; they are mission ports (the motorway continues).
 
@@ -100,3 +106,24 @@ All below D11's 15.75 M cells. Geology: the southern sections reach the Moldanub
 migmatite; new map descriptions (pararula, migmatit, porfyr, žilný křemen, pyroxenit, leptynit, vápenec,
 Variscan granite dated Carboniferous) map to the existing broad groups, uncalibrated priors. They only
 replace former “unknown” results: every earlier pack's polygons classify exactly as before.
+
+## Starters (motorway missions, D 27.5, Auto profile)
+
+Mapped-line bends every ≈ 1.5 km (`scripts/scenarios/check.ts --seed`), then the smallest bounded move
+that makes the design valid; no norm changes, no suppressed violations, no structure or crossing overrides,
+not cost-optimised. Every bend is editable.
+
+| Section | Repair | Length | Cost | Full evaluation (Node, median) |
+|---|---|---:|---:|---:|
+| 0301 | none | 8,449 m | 5.498 bn CZK | 60–67 ms |
+| 0302 | none | 4,494 m | 7.792 bn CZK | 25–33 ms |
+| 0303 | bend 3 by 45 m (track at km 6.95) | 11,093 m | 6.582 bn CZK | 150 ms |
+| 0304 | none | 15,471 m | 9.258 bn CZK | 64–74 ms |
+| 0305/I | bend 3 by 12 m (class II road at km 7.56) | 17,044 m | 9.708 bn CZK | 260 ms |
+
+0305/I needed an engine change first: Auto left three crossed roads (km 5.03, 7.56, 16.83) where neither
+our bridge nor theirs fit (“ramps longer than 250 m / higher than 10 m”). A grade-separated route now
+retries once with Auto asked to clear such roads (our bridge 6 m above, or a 6 m cutting for theirs) at a
+penalty above any structure, and keeps the retry if it has fewer violations (`evaluate.ts`,
+`opts.separate`). That cleared two of the three; the 12 m bend move the third (an oblique crossing whose
+road runs along our cutting).

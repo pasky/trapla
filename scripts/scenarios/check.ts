@@ -33,7 +33,7 @@ const fixtureDir = `scripts/scenarios/${meta.id}`;
 if (process.argv.includes('--seed')) {
   mkdirSync(fixtureDir, { recursive: true });
   const initial: Design = { ...startDesign(), ...scenario.initial };
-  writeFileSync(`${fixtureDir}/default.json`, JSON.stringify({ scenario: meta.id, purpose: 'Fresh road exercise', design: initial }, null, 2));
+  writeFileSync(`${fixtureDir}/default.json`, JSON.stringify({ scenario: meta.id, purpose: scenario.mode === 'motorway' ? 'Fresh motorway mission (starter)' : 'Fresh road exercise', design: initial }, null, 2));
   const off = meta.official.xy as [number, number][];
   if (off.length < 2) throw new Error('No mapped reference: do not invent an official fixture.');
   const reference: Design = { ...initial, pis: [] };
@@ -43,7 +43,7 @@ if (process.argv.includes('--seed')) {
     if (distance >= 1500) { reference.pis.push({ x: off[i][0], y: off[i][1], r: null }); distance = 0; }
   }
   writeFileSync(`${fixtureDir}/reference.json`, JSON.stringify({ scenario: meta.id,
-    purpose: 'Road exercise near the mapped reference, not the official motorway design or surveyed profile', design: reference }, null, 2));
+    purpose: `${scenario.mode === 'motorway' ? 'Motorway' : 'Road exercise'} near the mapped reference, not the official motorway design or surveyed profile`, design: reference }, null, 2));
 }
 let failed = false;
 for (const name of ['default', 'reference', ...(process.argv.includes('--straight') ? ['straight'] : [])]) {

@@ -57,6 +57,9 @@ export interface AutoProfileOptions {
   minH?: ArrayLike<number>;
   /** Disjunctive crossing clearance: pass above a channel OR tunnel sufficiently below it. */
   eitherH?: { above: ArrayLike<number>; below: ArrayLike<number> };
+  /** CZK per unmet clearance station (default CLEARANCE_PENALTY); larger where a motorway's
+   * structures dwarf the default and a missed clearance would rather be paid than built. */
+  clearancePenalty?: number;
   knotSpacing?: number;
   /** penalty per grade change, CZK (keeps the line calm) */
   vpiPenalty?: number;
@@ -196,7 +199,7 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
   }
   clrStart[nK] = clrIdx.length;
-  const minH = opt.minH, maxH = opt.maxH;
+  const minH = opt.minH, maxH = opt.maxH, clearancePenalty = opt.clearancePenalty ?? CLEARANCE_PENALTY;
   // ground envelope per knot (min/max ground within ±3 knot spacings)
   const win = 3 * D;
   const gmin = new Float64Array(nK + 1), gmaxEnv = new Float64Array(nK + 1);
@@ -408,9 +411,9 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
           for (let q = clrStart[k]; q < clrStart[k + 1]; q++) {
             const i = clrIdx[q];
             const h = zm + slope * (s[i] - sk) - g[i];
-            if (minH && h < minH[i] + CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
-            if (maxH && h > maxH[i] - CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
-            if (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN) c += CLEARANCE_PENALTY;
+            if (minH && h < minH[i] + CLEARANCE_MARGIN) c += clearancePenalty;
+            if (maxH && h > maxH[i] - CLEARANCE_MARGIN) c += clearancePenalty;
+            if (opt.eitherH && h < opt.eitherH.above[i] + CLEARANCE_MARGIN && h > opt.eitherH.below[i] - CLEARANCE_MARGIN) c += clearancePenalty;
           }
           // Last half-cell has no curve: the last tangent and the exact endpoint correction.
           if (knotPins && k === nK - 1) for (const p of knotPins[nK]) {

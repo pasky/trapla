@@ -1,0 +1,1 @@
+{"scenario": "d3-0302", "preset": "d3-0302-motorway", "purpose": "Motorway preset starter (paired D 27.5/120)", "design": {"category": "D27.5", "speed": 120, "pis": [{"x": 2608.6, "y": 6143.7, "r": null}, {"x": 3588.5, "y": 3243.4, "r": null}], "profileMode": "auto", "vpis": [], "structureOverrides": []}}

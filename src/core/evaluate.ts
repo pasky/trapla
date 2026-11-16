@@ -16,6 +16,7 @@ import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
+import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
 import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
@@ -188,6 +189,10 @@ export interface EvalOptions {
    * [s0, s1] of the route's own chainage as if they were the whole route, with the grade continuing
    * `grades` at its ends (endpointElevations give the heights). Never used for a scored result. */
   window?: { s0: number; s1: number; grades: { a?: number; b?: number } };
+  /** Grade-separated routes: crossed roads whose bridge over us could not be built (ramps too long
+   * or too high) at the first Auto grade. Auto then keeps clear of each: our bridge over it, or a
+   * cutting deep enough for its bridge at its own level (set by evaluate's retry, not by callers). */
+  separate?: readonly { s: number; g: number }[];
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -245,7 +250,19 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const windowed = windowedPreview(ctx, d, opts, evaluateRoute);
     if (windowed) return windowed;
   }
-  const result = evaluateRoute(ctx, d, opts);
+  let result = evaluateRoute(ctx, d, opts);
+  // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
+  // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
+  // with Auto asked to clear those roads (kept only if it resolves more than it breaks).
+  if (!opts.preview && !opts.window && !opts.separate && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') {
+    const stuck = result.crossings.filter(c => c.type === 'overbridge' && !c.requestedType
+      && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
+    if (stuck.length) {
+      const retry = evaluateRoute(ctx, d, { ...opts, separate: stuck.map(c => ({ s: c.s, g: ctx.terrain.heightAt(c.x, c.y) })) });
+      retry.timing['count.separationRetry'] = 1;
+      if (retry.violations.length < result.violations.length) result = retry;
+    }
+  }
   if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
   return result;
 }
@@ -632,10 +649,23 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         } else if (ROAD_CLASSES[c.cls].noAtGrade) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
       }
     }
+    // Roads to clear (opts.separate): our bridge 6 m above, or a cutting 6 m below for theirs.
+    const separation = (above: Float64Array, below: Float64Array) => {
+      for (const c of opts.separate ?? []) {
+        const i0 = Math.min(n - 2, Math.floor(c.s / ds));
+        for (const i of [i0, i0 + 1]) {
+          above[i] = Math.max(Number.isNaN(above[i]) ? -Infinity : above[i], c.g + CROSSING_RULES.overHeight - ground[i]);
+          below[i] = Math.min(Number.isNaN(below[i]) ? Infinity : below[i], c.g - CROSSING_RULES.underDepth - ground[i]);
+        }
+      }
+      return { above, below };
+    };
     const apOpt = {
       endpointElevations: opts.endpointElevations, ...(win ? { endpointGrades: win.grades } : {}),
       maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
-      costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: { above: waterMin.slice(), below: waterBelow }, structureKind: manualStructures, pins: d.gradePins,
+      costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: separation(waterMin.slice(), waterBelow.slice()), structureKind: manualStructures, pins: d.gradePins,
+      // A motorway structure costs far more than the default penalty: clear the roads rather than pay it.
+      ...(opts.separate?.length ? { clearancePenalty: SEPARATION_PENALTY } : {}),
       costClass: profileCostClass, costClassCount: costClasses.length,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
@@ -1255,5 +1285,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const result = first.complete();
   return retry.violations.length < result.violations.length ? retry : result;
 }
+/** CZK per unmet clearance station in the separation retry (the default 1e8 is a 70 m motorway bridge). */
+const SEPARATION_PENALTY = 1e11;
 /** Crossing ways this close to a failed relocation are retried with ordinary retaining rules. */
 const STRICT_RETRY_REACH = 300;

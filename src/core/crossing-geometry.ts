@@ -13,6 +13,7 @@ const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SET
 export const RAMP_TOO_LONG = 'Approach ramp cannot get back down to the old road within its steepest allowed slope';
 /** PROVISIONAL game limit: longest ramp on either side of a bridge over our road, m. */
 export const MAX_RAMP_LENGTH = 250;
+export const RAMP_TOO_HIGH = 'Approach earthwork exceeds';
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
@@ -142,7 +143,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   if (message === RAMP_TOO_LONG) return { title: `Ramps up to the bridge over our road would be longer than ${MAX_RAMP_LENGTH} m`, ...ramps,
     detail: `The ${what} itself runs downhill (or uphill) away from the bridge, so a ramp within the allowed slope meets it again only far away, if at all.`, basis: 'game',
     rule: `${ramps.rule}, at most ${MAX_RAMP_LENGTH} m long on each side` };
-  if (message.startsWith('Approach earthwork exceeds')) return { title: 'Ramps up to the bridge over our road would be more than 10 m high', ...ramps,
+  if (message.startsWith(RAMP_TOO_HIGH)) return { title: 'Ramps up to the bridge over our road would be more than 10 m high', ...ramps,
     detail: `The ${what} would have to climb more than 10 m above the ground to cross over our road here.`, basis: 'game' };
   if (message === 'Existing way ends inside the crossing footprint') return { title: `The ${what} ends under our earthworks`,
     fix: c.type === 'underpass' ? 'Choose "Cut and reroute" or "Our bridge over it"' : 'Choose "Cut and reroute", or "Our bridge over it" if our road is high enough',
