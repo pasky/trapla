@@ -270,7 +270,7 @@ screenshot 135; source picking in 20 m pieces; crossing words name our railway /
 Then (2026-11-16, playtest re-test 2, cost model 22 after merging main 93f849d): mirrored bend numbers
 from the shown direction's start; an unselected mapped railway is dragged directly; railway ends held to a
 turnout's angle and the Královec starter re-fitted (leaves Trutnov hl.n. north-west along its tracks into a
-tunnel, VALID 10.2 bn); rebuilt stretches at their line's own speed and grade; railway words in the bill
+tunnel, VALID 10.4 bn after main's valid reroutes; the streets near the station pass over its tunnel, none is rerouted to a cut crossing); rebuilt stretches at their line's own speed and grade; railway words in the bill
 tooltips, intro, Build card and slope / Auto-height problems; one unpriced change per motorway; profile end
 letters A / B for motorways; 150 pilot travel time from its sourced share; motorway noise as two
 directional sources, railway noise per track (above). `scripts/rail-rebuild-check.ts` rebuilds a D3 railway

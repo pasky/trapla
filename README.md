@@ -247,7 +247,7 @@ run on to Lubawka; 26 min with four stops in the 2022 timetable). No upgrade of 
 ≤ 12.5 ‰ (‰ in the profile), no level crossings, CNOSSOS train noise from each track. The new line joins the old
 track in both stations, leaving it at no more than a turnout's angle (4.8°, research/38 §5), and rebuilds it
 where it runs along it; elsewhere the old line stays. The starter leaves Trutnov hl.n. north-west along the
-station tracks into a tunnel under the hill (VALID, 10.2 bn CZK). The first railway card (between
+station tracks into a tunnel under the hill (VALID, 10.4 bn CZK). The first railway card (between
 the motorway's ends) is retired; its saves still load (`?scenario=d11&preset=d11-railway`).
 [Overview](docs/screenshots/136-railway-overview.png), [out of Trutnov along the station tracks](docs/screenshots/137-railway-trutnov.png),
 [the viaduct over the old line's valley](docs/screenshots/138-railway-bridge.png), [joining the old line at Královec](docs/screenshots/139-railway-kralovec.png)

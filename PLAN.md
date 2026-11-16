@@ -244,7 +244,7 @@ What exists (details and commands in `README.md`):
 - Railway mission `d11-rail-kralovec` (cost model 21, research/38): Trutnov hl.n. → Královec on the mapped
   line (owner: a railway mission must start and end on the rail network). A game proposal (no announced
   upgrade); trains a labelled prior (an hourly passenger train each way, 36 a day; 2022 ran 4 each way);
-  9 min target a mission choice. Starter VALID at 10.2 bn CZK (leaves the station along its tracks, research/38 §5). A railway between two points of an existing
+  9 min target a mission choice. Starter VALID at 10.4 bn CZK (leaves the station along its tracks, research/38 §5). A railway between two points of an existing
   line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
   RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
   crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
@@ -273,7 +273,7 @@ What exists (details and commands in `README.md`):
   split direction hears the other carriageway along its own line, no full-traffic bound): D3 motorway noise
   walls +12.5 M CZK, D35 +2.7 M. A double track's noise on its two tracks, a single track's on its axis.
   Railway ends on a track leave it at no more than a turnout's angle (4.76°, research/38 §5): the Královec
-  starter now leaves Trutnov hl.n. along its tracks (VALID 10.2 bn). Rebuilt railway stretches keep their line's
+  starter now leaves Trutnov hl.n. along its tracks (VALID 10.4 bn). Rebuilt railway stretches keep their line's
   speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. The 150 km/h
   pilot's travel time uses the 39 % share of time at 150 (MD evaluation, research/41). A mapped railway is
   dragged without selecting it first; the direction towards A numbers its bends from its own start.

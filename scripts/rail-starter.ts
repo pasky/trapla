@@ -32,6 +32,7 @@ const show = (r: Result) => ({ valid: r.valid, cost: Math.round(r.cost.total / 1
   issues: r.violations.map(v => `${Math.round(v.s0)} ${v.title}${process.env.FIX ? ` | ${v.fix}` : ""}`) });
 let design = initial, result = run(design), best = score(result), used = 0, round = 0;
 console.log('start', JSON.stringify(show(result)));
+if (process.env.CROSSINGS) for (const c of result.crossings) console.log(`  ${Math.round(c.s)} ${c.cls} ${c.type}${c.targetS !== undefined ? ` → ${Math.round(c.targetS)}` : ''}${c.linkLength ? ` link ${Math.round(c.linkLength)} m` : ''} cost ${Math.round(c.cost / 1e6)} M`);
 if (process.env.AT) { const at = Number(process.env.AT), r = result;
   console.log('runs', r.runs.filter(u => u.s1 > at - 400 && u.s0 < at + 400).map(u => `${['earth', 'bridge', 'tunnel'][u.kind] ?? u.kind}:${Math.round(u.s0)}-${Math.round(u.s1)}`).join(' '));
   console.log('crossings', r.crossings.filter(c => Math.abs(c.s - at) < 400).map(c => `${Math.round(c.s)} ${c.cls} ${c.what ?? ''}`).join('; '));
