@@ -4,6 +4,22 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Re-test — noise-walls-seams QA fixes @ 8ba793d (2026-11-16, one 3 min chunk)
+
+Screenshots `/tmp/trapla-qa/nws2/`. All six fixes **PASS**:
+
+- Left → None on cut km 6.48–7.49: card "none (yours) / Auto adds 350 m of 5 m wall at km 6.13–6.48 instead · Show"; Show
+  selects stretch km 6.13–6.48 with "Auto: 5 m" (`001`, `002`). The total change is now +7.8 M (was +16 M).
+- Legend shows "▨ demolished" as a hatched swatch (`001`).
+- One wall menu: Auto / None / 2–6 m on both the piece card and the house card (`001`, `004`).
+- Bought-out card: "Behind a 5 m wall still 55.1 dB at night (limit 50)" (`004`).
+- House plan is 120 px tall and readable (`004`).
+- Noise-view hover tip sits beside the house, clear of the legend (`006`).
+
+P2 left: the bought-out card shows 55.1 dB (behind a 5 m wall) in its text and "57.8 dB was 58.0" (as built) in the
+cross-section with no label telling which is which; hover tips are ~330 px wide for one line ("House 1 floor · bought
+out", "3 m wall right · 110 m") (`005`, `003`).
+
 ## Re-test — any-road-editing @ 9f1191f (2026-11-16, SwiftShader 1440×900, two ≤ 20 min chunks)
 
 Detached snapshot of 9f1191f. Screenshots `/tmp/trapla-qa/ar/` (chunk 2 restarted numbering; names differ).
