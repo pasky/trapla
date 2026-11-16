@@ -9,10 +9,26 @@ import type { EndpointJunctionKind } from './core/data/urban';
 import { decodeHeights, Terrain } from './core/terrain';
 import { parseVectorPack, type VectorPack } from './render/vectorPack';
 import { validTrafficCensus, type TrafficCensus } from './core/traffic-census';
+import { objectDataKey } from './core/build-controls';
 
 /** `junction`: scenario-declared connection to retained roads (legacy net way indices). */
 export interface PackEndpoint { xy: [number, number]; latlon: [number, number]; note: string;
   junction?: { kind: EndpointJunctionKind; osmWayIds: number[]; ways: number[] } }
+
+/** What designs, saves, best scores and results are bound to: the pack's objects (buildings, road net), its
+ * road links, what prices a design (ground, water) and the terrain itself. One derivation for the app, the
+ * workers and the Node scripts. */
+export function packIdentities(meta: Pick<PackMeta, 'id' | 'nx' | 'ny' | 'cell' | 'heights' | 'ground' | 'watercourses'>,
+  overlays: Pick<Overlays, 'buildings' | 'binfo' | 'net'>, transport: Pick<TransportMeta, 'fingerprint'> | null | undefined) {
+  const waterData = meta.watercourses?.sha256 ?? 'raster-water';
+  return {
+    objectData: objectDataKey(overlays.buildings, overlays.binfo, overlays.net),
+    transportData: transport?.fingerprint ?? null,
+    pricingData: [meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'), waterData].join(':'),
+    waterData,
+    terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]),
+  };
+}
 
 /** Evaluator form of the declared end connections; empty for packs without them (D11). */
 export function endpointJunctions(meta: Pick<PackMeta, 'A' | 'B'>): EndpointJunction[] {

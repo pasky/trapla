@@ -6,8 +6,6 @@ import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/eva
 import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
-import { KIND } from './core/structures';
-import { ROAD_CLASSES } from './core/data/urban';
 import { missionProject } from './core/project-mission';
 import { routeCrownWidth } from './core/route-section';
 import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinCorridor, rejoinStretch } from './core/project-motorway';
@@ -16,12 +14,10 @@ import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
-import { footprintHit, pickRoute, type PickRoute } from './render/route-pick';
+import { footprintHit } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
-import { CrossingPicker } from './render/crossing-pick';
 import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
-import { shapeable } from './ui/link-shape';
 import type { LinkVia } from './core/crossings';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
@@ -30,20 +26,21 @@ import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
 import { bendAt, coveredStretches } from './ui/road-edit';
-import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
+import { buildInProject, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
 import { fitPlacedBend } from './core/bend-fit';
 import { RoadNet } from './core/roadnet';
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
-import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
+import { paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { DecisionList } from './ui/build-tools';
 import { buildingInfo, Inspector, type Sel } from './ui/inspector';
 import { pieceAt } from './ui/pieces';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
-import { endpointJunctions, loadPack } from './scenario';
+import { loadPack, packIdentities } from './scenario';
+import { startEvalWorkers } from './eval-workers';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext } from './core/project-legacy';
@@ -64,14 +61,16 @@ import { provisionalProfile } from './ui/provisional';
 import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
 import { bendStations } from './ui/bend-stations';
+import { createMapPicks } from './ui/map-picks';
+import { installMapHover } from './ui/map-hover';
+import { installProfileBar } from './ui/profile-bar';
+import { installShortcuts } from './ui/shortcuts';
 import { installAutomation } from './automation';
 import type { WorkerIn, WorkerOut } from './worker-protocol';
 import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
 const status = document.getElementById('status')!;
-/** a mapped road is hit on its drawn width plus this many pixels (a near miss on empty ground still deselects) */
-const SOURCE_PICK_SLACK_PX = 3;
 const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
 
 async function main() {
@@ -95,11 +94,9 @@ async function main() {
   document.getElementById('legend-official')!.parentElement!.hidden = meta.official.xy.length < 2;
 
   const presetId = scenario.presetId ?? scenario.id;
-  const objectData = objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net);
+  const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, pack.overlays, pack.transportMeta);
   // crossing choices on designed roads are stored on those roads; the editor maps them like the worker
   if (pack.overlays.net) registerNet(objectData, pack.overlays.net.ways.length);
-  const transportData = pack.transportMeta?.fingerprint ?? null;
-  const pricingData = [meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'), meta.watercourses?.sha256 ?? 'raster-water'].join(':');
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },
     { presetId, packId: meta.id, objectData, transportData });
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
@@ -126,22 +123,9 @@ async function main() {
   if (storage.problem !== null) storageNotice();
   const store = new ActiveRouteStore(projectStore, initialProject);
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
-  // Full evaluations and drag previews run in separate workers, so that a preview never waits behind a
-  // full evaluation (hundreds of ms on long routes). The full worker hands each full result to the
-  // preview worker directly (MessageChannel): the base its windowed previews re-solve locally.
-  const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-  const previewWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-  const bases = new MessageChannel();
-  const init: WorkerIn = {
-    type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
-    q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
-    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario, junctions: endpointJunctions(meta),
-    projectEnvironment: { objectData, transportData, pricingData, waterData: meta.watercourses?.sha256 ?? 'raster-water',
-      terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
-  };
-  const previewInit: WorkerIn = { ...init, q: pack.q.slice(), lc: pack.lc.slice(), role: 'preview', port: bases.port2 };
-  worker.postMessage({ ...init, role: 'full', port: bases.port1 }, [init.q.buffer, init.lc.buffer, bases.port1]);
-  previewWorker.postMessage(previewInit, [previewInit.q.buffer, previewInit.lc.buffer, bases.port2]);
+  // full evaluations and drag previews, each in its own worker (eval-workers.ts)
+  const { worker, previewWorker } = startEvalWorkers(pack, scenario, A, B,
+    { objectData, transportData, pricingData, waterData, terrainData, terrainClass: scenario.terrainClass });
 
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
@@ -963,91 +947,13 @@ async function main() {
   });
 
   // ---- map: click inspects, dragging the road bends it, empty ground deselects ----
-  // buildings are pickable once they are a few pixels big
-  const buildingsPickable = () => view.metresPerPixel < 3;
-  // crossed roads are clickable once they are drawn big enough; from afar a click on the road picks its piece
-  const crossingPickPx = () => (view.metresPerPixel < 4 ? 12 : view.metresPerPixel < 10 ? 6 : 0);
-  const canvasBox = () => view.renderer.domElement.getBoundingClientRect();
-  const surfacePicks = new Map<RouteId, { key: string; result: PickRoute['result'] }>();
-  /** an unaccepted proposal is picked on the reference line it is drawn on */
-  const surfacePick = (route: RouteResult): PickRoute['result'] | null => {
-    const p = route.surface?.points; if (!p || p.length < 2) return null;
-    const cached = surfacePicks.get(route.routeId); if (cached?.key === route.engineeringRevision) return cached.result;
-    const z = p.map(q => q.z);
-    const result = { n: p.length, s: p.map(q => q.s), x: p.map(q => q.x), y: p.map(q => q.y), grade: z, ground: z, kind: p.map(() => 0) };
-    surfacePicks.set(route.routeId, { key: route.engineeringRevision, result: result as unknown as PickRoute['result'] });
-    return surfacePicks.get(route.routeId)!.result;
-  };
-  const routeAt = (clientX: number, clientY: number, px: number) => {
-    const box = canvasBox();
-    const routes = Object.values(projectFull?.routes ?? {}).flatMap(route => {
-      const r = route.routeId === store.activeRouteId && last ? last : route.legacy ?? surfacePick(route);
-      return r ? [{ id: route.routeId, result: r }] : [];
-    });
-    return pickRoute(routes, clientX - box.left, clientY - box.top, px,
-      (x, y, z) => view.project(x, y, z), (x, y) => view.drape(x, y), store.activeRouteId ?? undefined);
-  };
-  const roadAt = (clientX: number, clientY: number, px: number) => {
-    const hit = routeAt(clientX, clientY, px);
-    return hit?.routeId === store.activeRouteId && store.read() ? hit.index : -1;
-  };
-  const crossingAt = (clientX: number, clientY: number) => {
-    const r = last;
-    if (!r) return null;
-    const box = canvasBox();
-    let best = crossingPickPx(), hit: Result['crossings'][number] | null = null;
-    for (const c of r.crossings) {
-      if (c.roadId === undefined) continue;
-      const p = view.project(c.x, c.y, Math.max(r.grade[c.i], r.grade[c.i] - c.h) + 2);
-      const gap = Math.hypot(p.sx - (clientX - box.left), p.sy - (clientY - box.top));
-      if (p.vis && gap < best) { best = gap; hit = c; }
-    }
-    return hit;
-  };
-  /** any drawn geometry a crossing owns (its rebuilt road stretch, reroute links, turning heads,
-   * underpass box), on the drawn width plus the same slack as a mapped road */
-  const crossingPicker = new CrossingPicker();
-  const crossingWorksAt = (clientX: number, clientY: number) => {
-    const r = last;
-    if (!r || !crossingPickPx()) return null;
-    const g = view.pick(clientX, clientY); if (!g) return null;
-    crossingPicker.set(r.crossings);
-    const box = canvasBox();
-    return crossingPicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * view.metresPerPixel), SOURCE_PICK_SLACK_PX,
-      (x, y, z) => view.project(x, y, z));
-  };
-  const buildingAt = (clientX: number, clientY: number) => {
-    if (!buildingsPickable()) return null;
-    const g = view.pick(clientX, clientY);
-    return g ? buildingPicker.at(clientX, clientY, { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) }) : null;
-  };
-  /** a mapped base road under the cursor; a stretch a project road already claims selects that road */
-  const sourceAt = (clientX: number, clientY: number): { kind: 'source'; hit: SourceHit } | { kind: 'route-hit'; routeId: RouteId; s: number } | null => {
-    if (!sourcePicker || !sourceEditor) return null;
-    const g = view.pick(clientX, clientY); if (!g) return null;
-    const box = canvasBox(), slack = SOURCE_PICK_SLACK_PX;
-    const hit = sourcePicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * view.metresPerPixel), slack,
-      (x, y) => view.project(x, y, view.drape(x, y)));
-    if (!hit) return null;
-    for (const route of projectStore.snapshot.design.routes) for (const c of route.source?.intervals ?? [])
-      if (c.sourceId === hit.sourceId && c.transportData === transportData && hit.s >= c.s0 && hit.s <= c.s1) return { kind: 'route-hit', routeId: route.id, s: hit.s - c.s0 };
-    return { kind: 'source', hit };
-  };
-  /** what a click at a client point means */
-  const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | { kind: 'source'; hit: SourceHit } | null => {
-    const c = crossingAt(clientX, clientY);
-    if (c) return { kind: 'crossing', roadId: c.roadId! };
-    const hit = routeAt(clientX, clientY, 10);
-    if (hit) return { kind: 'route-hit', routeId: hit.routeId, s: hit.s };
-    // a crossing's own works before the rest of the mapped road (whose card is the base road's)
-    const works = crossingWorksAt(clientX, clientY);
-    if (works) return { kind: 'crossing', roadId: works.crossing.roadId! };
-    const b = buildingAt(clientX, clientY);
-    if (b !== null) return { kind: 'building', j: b };
-    const w = extras.wallAt(clientX, clientY);
-    if (w) return { kind: 'stretch', s0: w.s0, s1: w.s1 };
-    return sourceAt(clientX, clientY);
-  };
+  // what is under the pointer (ui/map-picks.ts)
+  const { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt } = createMapPicks({
+    view, pack, extras, buildingPicker, transportData,
+    get projectFull() { return projectFull; }, get last() { return last; }, get activeRouteId() { return store.activeRouteId; },
+    get editable() { return store.read() !== null; }, get routes() { return projectStore.snapshot.design.routes; },
+    get sourcePicker() { return sourcePicker; }, get sourceEditor() { return sourceEditor; },
+  });
   /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
   let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
   /** a press on a mapped road before the road links are loaded (client point; `ready` once they are) */
@@ -1236,96 +1142,16 @@ async function main() {
     onPinDragEnd: () => store.commit(),
   };
 
-  // ---- the profile's key (legend) ----
-  const keyB = document.getElementById('key-toggle')!, keyBox = document.getElementById('profile-key')!;
-  const showKey = (on: boolean) => { keyBox.hidden = !on; keyB.setAttribute('aria-expanded', String(on)); keyB.classList.toggle('on', on); };
-  keyB.onclick = () => showKey(!keyB.classList.contains('on'));
-  document.addEventListener('pointerdown', (e) => { if (!keyBox.hidden && !keyBox.contains(e.target as Node) && e.target !== keyB) showKey(false); });
+  // ---- the profile's key (legend) and zoom buttons (ui/profile-bar.ts) ----
+  const { keyBox, showKey, updateZoomButtons } = installProfileBar(profile);
 
-  // ---- profile zoom buttons ----
-  const zoomOut = document.getElementById('zoom-out') as HTMLButtonElement;
-  const fitB = document.getElementById('fit') as HTMLButtonElement;
-  const updateZoomButtons = () => { zoomOut.disabled = profile.isWhole; fitB.hidden = profile.isWhole; };
-  document.getElementById('zoom-in')!.onclick = () => profile.zoom(2);
-  zoomOut.onclick = () => profile.zoom(0.5);
-  fitB.onclick = () => profile.fit();
-  updateZoomButtons();
-
-  // ---- hover links between the map and the profile ----
-  // the bend markers: profile → map
-  const highlightBend = (i: number | null) => {
-    for (const el of document.querySelectorAll<HTMLElement>('.pi.hl')) el.classList.remove('hl');
-    if (i !== null) document.querySelector<HTMLElement>(`.pi[data-i="${i}"]`)?.classList.add('hl');
-  };
-  // map → profile: a bend marker, or the road under the mouse
-  const overlayEl = document.getElementById('overlay')!;
-  overlayEl.addEventListener('pointerover', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>('.pi');
-    if (el) profile.setBendHover(Number(el.dataset.i));
+  // ---- hover links between the map and the profile, the map's cursor (ui/map-hover.ts) ----
+  const { highlightBend } = installMapHover({
+    view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt,
+    get last() { return last; }, get lastFull() { return lastFull; }, get design() { return store.design; },
+    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
+    ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
   });
-  overlayEl.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('.pi')) profile.setBendHover(null); });
-  let mapHoverAt: { x: number; y: number } | null = null, mapHoverFrame = 0, mapHoverKey = '';
-  const rebuildableSources = new Map<string, boolean>();
-  const canRebuild = (sourceId: string) => {
-    let ok = rebuildableSources.get(sourceId);
-    if (ok === undefined && transportIndex) rebuildableSources.set(sourceId, ok = mappedLineKindFor(transportIndex, sourceId).verdict.ok);
-    return ok ?? false;
-  };
-  const mapHoverTick = () => {
-    mapHoverFrame = 0;
-    const at = mapHoverAt, r = last, canvas = view.renderer.domElement;
-    let cursor = '', key = '';
-    // Build → Road: where a click would put the end, what it would join, how long the road would be
-    if (buildTool.active) {
-      const g = at && view.pick(at.x, at.y);
-      buildTool.hover(at && g ? placeAt(at.x, at.y, g.x, g.y) : null, g ? { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) } : null);
-      key = 'placing';
-    } else if (at && mappedGrab(at.x, at.y) && !(r && roadAt(at.x, at.y, 10) >= 0)) {
-      cursor = 'grab'; key = 'mapped';
-      if (key !== mapHoverKey) { const g = view.pick(at.x, at.y); if (g) view.setHover({ x: g.x, y: g.y, z: view.drape(g.x, g.y) }, 'drag to change'); }
-    } else if (at && r && !buildTool.active) {
-      const cross = crossingAt(at.x, at.y);
-      const k = cross ? -1 : roadAt(at.x, at.y, 10);
-      const building = cross || k >= 0 ? null : buildingAt(at.x, at.y);
-      let works: ReturnType<typeof crossingWorksAt> = null, src: ReturnType<typeof sourceAt> = null;
-      if (cross) {
-        cursor = 'pointer'; key = `x${cross.roadId}`;
-        if (key !== mapHoverKey) { view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); profile.setHover(cross.s, true); }
-      } else if (k >= 0) {
-        cursor = 'grab'; key = `r${k}`;
-        if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, bendLabel()); profile.setHover(r.s[k], true); }
-      } else if (routeAt(at.x, at.y, 10)) { cursor = 'pointer'; key = 'other-route'; }
-      else if ((works = crossingWorksAt(at.x, at.y))) {
-        const c = works.crossing, link = works.link !== undefined && shapeable(lastFull, store.design, c.roadId!);
-        cursor = link ? 'grab' : 'pointer'; key = `x${c.roadId}${link ? 'l' : ''}`;
-        if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${link ? ' · drag to reshape' : ''}`); profile.setHover(c.s, true); }
-      } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
-      else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
-      else if ((src = sourceAt(at.x, at.y))) {
-        // a drag there rebuilds the road or railway (one that cannot be changed: a click says why)
-        const grab = src.kind === 'source' && canRebuild(src.hit.sourceId);
-        cursor = grab ? 'grab' : 'pointer'; key = grab ? 'grab-source' : 'source';
-        if (grab && key !== mapHoverKey) { const g = view.pick(at.x, at.y); if (g) view.setHover({ x: g.x, y: g.y, z: view.drape(g.x, g.y) }, 'drag to change its line'); }
-      }
-    }
-    // before the road links are loaded (fetched when idle, parsed on first need): the first hover starts
-    // them, and a mapped road already shows that it can be grabbed
-    if (at && !buildTool.active && !transportGraph && pack.transportMeta) {
-      void ensureTransport();
-      const g = !cursor ? view.pick(at.x, at.y) : null;
-      if (g && mappedRoadNear(g.x, g.y)) cursor = 'grab';
-    }
-    if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
-    if (key === mapHoverKey) return;
-    if (!key.startsWith('x') && !key.startsWith('r') && key !== 'mapped' && key !== 'grab-source') { view.setHover(null); profile.setHover(null, true); }
-    mapHoverKey = key;
-  };
-  view.renderer.domElement.addEventListener('pointermove', (e) => {
-    lastClient.x = e.clientX; lastClient.y = e.clientY;
-    mapHoverAt = e.buttons ? null : { x: e.clientX, y: e.clientY }; // not while panning / rotating
-    if (!mapHoverFrame) mapHoverFrame = requestAnimationFrame(mapHoverTick);
-  });
-  view.renderer.domElement.addEventListener('pointerleave', () => { mapHoverAt = null; if (!mapHoverFrame) mapHoverFrame = requestAnimationFrame(mapHoverTick); });
 
   // map → profile: the part of the route the map shows (a light window), recomputed after camera moves
   let windowTimer = 0;
@@ -1428,46 +1254,11 @@ async function main() {
     profile.focus(v.s0, v.s1);
   };
 
-  // a drag (bend, height point, pin, radius grip) is applied without a history entry until it ends:
-  // Undo / Redo in the middle of one would be overwritten by its final commit
-  let pointerHeld = 0;
-  window.addEventListener('pointerdown', () => { pointerHeld++; }, { capture: true });
-  for (const t of ['pointerup', 'pointercancel'] as const) window.addEventListener(t, () => { pointerHeld = Math.max(0, pointerHeld - 1); }, { capture: true });
-  window.addEventListener('blur', () => { pointerHeld = 0; });
-  const undoRedo = (redo: boolean) => {
-    if (pointerHeld) return;
-    // a focused select / checkbox would keep the cards from redrawing with the restored design
-    (document.activeElement as HTMLElement | null)?.blur?.();
-    if (redo) store.redo(); else store.undo();
-  };
-  window.addEventListener('keydown', (e) => {
-    const t = e.target as HTMLElement;
-    // Escape closes the base-road card even from its typed fields (nothing was changed yet)
-    if (e.key === 'Escape' && (sourceEditor?.selected || buildTool.active)) { e.preventDefault(); buildTool.cancel(false); select(null); return; }
-    // Undo / Redo also right after choosing in a select or ticking a box; text fields keep their own undo
-    const typing = t.closest('textarea, [contenteditable="true"]') || (t.matches('input') && !t.matches('[type=checkbox], [type=radio], [type=range]'));
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod && !typing && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
-      e.preventDefault();
-      undoRedo(e.key.toLowerCase() === 'y' || e.shiftKey);
-      return;
-    }
-    if (t.closest('input, select, textarea, [contenteditable="true"]')) return;
-    if (!e.ctrlKey && !e.metaKey && !e.altKey && sel?.kind === 'stretch') {
-      const key = e.key.toLowerCase(), kinds: Record<string, StructureKind | null> = { a: null, b: 1, t: 2, e: 0 };
-      if (key in kinds) {
-        e.preventDefault();
-        if (!e.repeat) setStructure(kinds[key], sel.s0, sel.s1);
-        return;
-      }
-    }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && sel?.kind === 'bend') deletePi(sel.i);
-    else if (e.key === 'Escape') {
-      if (intro.visible) intro.hide();
-      else if (!keyBox.hidden) showKey(false);
-      else select(null);
-    }
-  }, { capture: true }); // stretch shortcuts take precedence over the map's view shortcuts
+  // ---- keyboard (ui/shortcuts.ts) ----
+  installShortcuts({
+    buildTool, intro, keyBox, showKey, select, setStructure, deletePi, undo: () => store.undo(), redo: () => store.redo(),
+    get sel() { return sel; }, get mappedRoadSelected() { return !!sourceEditor?.selected; },
+  });
 
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }
