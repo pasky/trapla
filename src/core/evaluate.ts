@@ -409,7 +409,13 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   return result;
 }
 
-function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
+type MustBridge = { s: number; g: number; need: number; what: string; below?: number };
+type CostClass = { ground: number; water: WaterCrossing[]; elevation: number; urban: number };
+type SideHits = ReturnType<ReturnType<typeof routeSetup>['sideHits']>;
+/** Stage 1 of evaluateRoute, before any road height is known: the stationed alignment (or the window of
+ * it), the ground and its classes under it, what the grade line must clear (rivers, railways, our own
+ * track, crossed roads, water crossings and their sizes) and the block layout of the grade solve. */
+function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const preview = !!opts.preview || !!opts.window;
   const t0 = performance.now();
   const timing: Record<string, number> = {};
@@ -478,7 +484,6 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   };
   const streamSamples: number[] = [];
   /** `below`: the crossing may instead pass this far below the crossed feature (motorways) */
-  type MustBridge = { s: number; g: number; need: number; what: string; below?: number };
   const mustBridge: MustBridge[] = [];
   const railTieIn = opts.railTieIn && win ? { ...opts.railTieIn, a: opts.railTieIn.a - win.s0, b: opts.railTieIn.b - (fullAlignment.length - win.s1) } : opts.railTieIn;
   const railOurs = railTrackOurs(st, terrain, al.length, railTieIn);
@@ -584,7 +589,6 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Ground classes, rural then built-up: on the axis in a built-up area the town rates, surcharge and land
   // (SPK CN urban rows, building land), as the bill charges them there; then the watercourses' own classes.
   const G = groundProfiles.length, builtUp = (x: number, y: number) => terrain.cover(x, y) & BUILTUP_BIT ? 1 : 0;
-  type CostClass = { ground: number; water: WaterCrossing[]; elevation: number; urban: number };
   const costClasses: CostClass[] = [0, 1].flatMap(urban => groundProfiles.map((_, ground) => ({ ground, water: [] as WaterCrossing[], elevation: 0, urban })));
   const profileCostClass = Uint16Array.from(groundIds, (g, i) => g + G * builtUp(st.x[i], st.y[i]));
   /** Blocks: each crossing priced where it is (its own class at its own chainage and ground). */
@@ -691,10 +695,25 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Raster crossings were collected before vector roads; elevations() requires station order.
   mustBridge.sort((a, b) => a.s - b.s);
   lap('stations');
+  return { preview, timing, lap, terrain, scenario, cat, norms, fullAlignment, win, al, maxGradient, st, n, ds,
+    manualStructures, heldDeck, crossingOverrides, ground, groundIds, groundProfiles, groundPackIds,
+    groundClasses, oobInput, w, clearance, onOld, blocks, settleEnds, clearanceS, atS, freeStation,
+    mustBridge, railOurs, retiredAt, ownTrack, clearRuns, snapTraced, water, waterAt, waterMin, waterBelow,
+    waterGround, G, builtUp, costClasses, profileCostClass, profilePoints, crossingCost, forceWater,
+    sideHits, stationSides, forceParallelWater, tunnelWater, endJunctions, rawRoadX, roadX, roadG };
+}
 
-  // --- per-metre costs for the auto-profile: on flat ground, rural or town rates, incl. the surcharge ---
-  // Markups by kind of work: SPK's rural/urban "other objects" surcharge (roads), or a price book's own
-  // per-profession markups (railway, data/categories.ts). Road expressions stay bit-identical.
+interface BalanceSamples {
+  n: number; w: number; S: Float64Array; X: Float64Array; Y: Float64Array; TX: Float64Array; TY: Float64Array; G: Float64Array;
+  urban: Uint8Array; must: Uint8Array; water: WaterCrossing[][]; overrides: Int8Array; sides: SideHits[];
+  roads: { k: number; j: number }[];
+}
+/** Stage 2: per-metre costs for the auto-profile on flat ground (rural or town rates, incl. the
+ * surcharge / markups), the profile's cost tables and the mass-balance sampler (`balanceOf`). */
+function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
+  const { cat, scenario, costClasses, water, waterGround, blocks, ds, terrain, groundPackIds, groundProfiles, al,
+    roadX, mustBridge, fullAlignment, sideHits, rawRoadX, crossingOverrides, norms, crossingCost, forceWater,
+    forceParallelWater, roadG, tunnelWater } = setup;
   const mk = cat.markup;
   const surE = (u: number) => mk ? mk.earth : surchargeRate(u), surB = (u: number) => mk ? mk.bridge : surchargeRate(u);
   const surT = (u: number) => mk ? mk.tunnel : surchargeRate(u);
@@ -822,11 +841,6 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // forced crossings, volumes), on samples every ≈ BALANCE_STRIDE stations placed evenly within the
   // stretch at their exact place on the line (so a block's samples do not move when the route
   // changes length elsewhere), with the built-up share taken at the centreline only.
-  interface BalanceSamples {
-    n: number; w: number; S: Float64Array; X: Float64Array; Y: Float64Array; TX: Float64Array; TY: Float64Array; G: Float64Array;
-    urban: Uint8Array; must: Uint8Array; water: WaterCrossing[][]; overrides: Int8Array; sides: SideHits[];
-    roads: { k: number; j: number }[];
-  }
   const balanceSamples = new Map<string, BalanceSamples>();
   const roadS = roadX.map((c) => c.s);
   const riversAndRails = mustBridge.filter(c => c.what !== 'watercourse').map(c => c.s);
@@ -898,8 +912,18 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     for (let k = 0; k < m; k++) if (kind[k] === KIND.earth) bal += (usable * sc.cut[k] - sc.fill[k]) * w;
     return bal;
   };
+  return { surE, surB, surT, baseRural, baseUrban, tunnelKm, bridge, b, topsoilPerM2, costFor, usable,
+    balanceTolerance, tpl, roadS, balanceOf };
+}
 
-  // --- vertical alignment ---
+/** Stage 3, the vertical alignment: Auto's grade line (the block solve, its material value and pins) or
+ * the player's height points. */
+function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>) {
+  const { ground, n, blocks, clearance, manualStructures, heldDeck, rawRoadX, crossingOverrides, terrain, ds,
+    clearanceS, waterMin, waterBelow, clearRuns, freeStation, cat, onOld, win, maxGradient, norms,
+    profileCostClass, costClasses, profilePoints, atS, groundClasses, G, builtUp, al, st, preview,
+    mustBridge, lap, roadX } = setup;
+  const { costFor, balanceOf } = prices;
   let vpis: VPI[];
   let profileFeasible = true;
   let autoOptions: AutoProfileOptions | undefined;
@@ -1136,6 +1160,14 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     const list = crossingWays.get(c.way) ?? [];
     list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
   }
+  return { profileFeasible, autoOptions, constrainedSolve, keepsExterior, pinViolations, materialValue, blockValues,
+    liftBlocks, blockDecision, autoVpis, crossingWays };
+}
+
+/** Stage 4: the memo tables (from `opts.passCache` on a retry) and per-station scratch arrays that the
+ * engineering passes share (`engineer`, below). */
+function routeCaches(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>) {
+  const { n, st, ds, timing } = setup;
   const pc = opts.passCache;
   const supportMemo = pc?.support ?? new Map<string, number>(), retainingMemo: RetainingFeatureCache = pc?.retaining ?? new Map();
   /** cells a bridge must span for a stream its end would otherwise bury (set by a retry below) */
@@ -1150,7 +1182,6 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const coverLeft = new Float64Array(n).fill(NaN), coverRight = new Float64Array(n).fill(NaN);
   const urbanEarth = new Float32Array(n), forestEarth = new Float32Array(n), urbanDeck = new Float32Array(n);
   const urbanCentre = new Uint8Array(n), oobEarth = new Uint8Array(n), oobDeck = new Uint8Array(n);
-  let deckCoverReady = false;
   /** per cell: buildings under the deck strip / the earthwork (at the widths it was found for) */
   const deckHits: number[][] = [], earthHits: number[][] = Array.from({ length: n }, () => []);
   const earthHitL = new Float64Array(n).fill(NaN), earthHitR = new Float64Array(n).fill(NaN);
@@ -1173,6 +1204,36 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     const o = normalizeBuildingOverrides(d.buildingOverrides, ctx.buildings!.n);
     return { index: ctx.buildings!, keep: new Set(o.filter(b => b.action === 'keep').map(b => b.j)), skip: new Set(o.filter(b => b.action === 'buy').map(b => b.j)) };
   })() : undefined;
+  return { supportMemo, retainingMemo, streamBridge, reroutes, sectionMemo, coverLeft, coverRight, urbanEarth,
+    forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck, deckHits, earthHits, earthHitL,
+    earthHitR, wideHits, wideHitL, wideHitR, hitsAt, deckBuildings, earthBuildings, work, wallable };
+}
+
+function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
+  const setup = routeSetup(ctx, d, opts);
+  const { preview, timing, lap, terrain, scenario, cat, norms, win, al, maxGradient, st, n, ds, manualStructures,
+    heldDeck, crossingOverrides, ground, groundIds, groundProfiles, oobInput, w, clearance, blocks,
+    settleEnds, freeStation, mustBridge, railOurs, retiredAt, ownTrack, snapTraced, water, waterAt,
+    waterGround, crossingCost, forceWater, stationSides, forceParallelWater, tunnelWater, endJunctions,
+    rawRoadX, roadX, roadG } = setup;
+
+  // --- per-metre costs for the auto-profile: on flat ground, rural or town rates, incl. the surcharge ---
+  // Markups by kind of work: SPK's rural/urban "other objects" surcharge (roads), or a price book's own
+  // per-profession markups (railway, data/categories.ts). Road expressions stay bit-identical.
+  const prices = routePrices(d, setup);
+  const { surE, surB, surT, baseRural, baseUrban, tunnelKm, bridge, b, topsoilPerM2, costFor, usable,
+    balanceTolerance, tpl, roadS } = prices;
+
+  // --- vertical alignment ---
+  const solved = routeGradeLine(ctx, d, opts, setup, prices);
+  const { profileFeasible, autoOptions, constrainedSolve, keepsExterior, pinViolations, materialValue, blockValues,
+    liftBlocks, blockDecision, autoVpis, crossingWays } = solved;
+  const caches = routeCaches(ctx, d, opts, setup);
+  const { supportMemo, retainingMemo, streamBridge, reroutes, sectionMemo, coverLeft, coverRight, urbanEarth,
+    forestEarth, urbanDeck, urbanCentre, oobEarth, oobDeck, deckHits, earthHits, earthHitL, earthHitR,
+    wideHits, wideHitL, wideHitR, hitsAt, deckBuildings, earthBuildings, work, wallable } = caches;
+  /** the deck-level cover arrays (urbanDeck, oobDeck) are sampled once, by the first engineering pass */
+  let deckCoverReady = false;
   const engineer = (candidate: VPI[], crossingWays: CrossingChainages, strict: ReadonlySet<number>) => {
   timing['count.engineer'] = (timing['count.engineer'] ?? 0) + 1;
   const engineeringStart = performance.now();
