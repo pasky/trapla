@@ -496,10 +496,25 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   // Only the mission road's own mission ports and free ends are evaluated as the legacy kernel does,
   // and a side road's end on an existing ground road whose junction it builds and bills (C1 a). A tie-in
   // to another designed road, a mission port or a rebuilt stretch's connections are not built yet.
+  // A rebuilt railway stretch continues its old track at its ends: checked by its kernel (no corner sharper
+  // than a turnout, heights tied to the old track's). A railway branching off it keeps its switch where the
+  // new line stays on the old track there (kept as it is); a branch the new line has left needs new switches.
+  const railJoin = (c: ProjectDesign['connections'][number]) => {
+    if (c.kind !== 'continuation' || !ctx.railPaths) return false;
+    const port = c.ports.find(p => p.kind === 'route'), route = port && design.routes.find(r => r.id === port.routeId);
+    const own = route && legacyOf.get(route.id);
+    if (!port || !route || route.kind !== 'railway' || !route.source || !own || c.ports.some(p => p.kind === 'route' && p.routeId !== route.id)) return false;
+    const ends = [route.endpoints.a.position, route.endpoints.b.position];
+    if (ends.some(e => Math.hypot(e.x - c.position.x, e.y - c.position.y) < 1e-6)) return true;
+    const kept = own.keptCells; if (!kept) return false;
+    const k = nearestStation(own, c.position.x, c.position.y);
+    return Math.hypot(own.x[k] - c.position.x, own.y[k] - c.position.y) <= own.ds && [k - 1, k, k + 1].every(q => kept[Math.max(0, Math.min(own.n - 1, q))]);
+  };
   for (const c of design.connections) {
     const routes = c.ports.flatMap(p => p.kind === 'route' ? [p.routeId] : []);
     // a rebuilt stretch's own continuations and side roads are its replacement works
     if (routes.length && routes.every(id => id === routes[0] && replacements.has(id))) continue;
+    if (railJoin(c)) continue;
     for (const id of routes.length ? routes : design.routes.map(r => r.id)) joined.add(id);
   }
   // Two changes claiming the same stretch of one old road cannot both replace it.
@@ -513,6 +528,8 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   for (const r of design.routes) for (const [end, e] of [['a', r.endpoints.a], ['b', r.endpoints.b]] as const) {
     if (e.anchor.kind === 'free' || (e.anchor.kind === 'mission' && r.role === 'mission')) continue;
     if (e.anchor.kind === 'source' && (builtJunctions.has(`${r.id}:${end}`) || replacements.has(r.id))) continue;
+    // (a rebuilt railway's end on its old track: checked as its continuation above)
+    if (e.anchor.kind === 'source' && r.kind === 'railway' && r.source && legacyOf.has(r.id) && ctx.railPaths) continue;
     if (e.anchor.kind === 'route' && builtJunctions.has(`${r.id}:${end}`)) continue;
     joined.add(r.id); if (e.anchor.kind === 'route') joined.add(e.anchor.routeId);
   }

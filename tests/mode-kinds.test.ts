@@ -10,13 +10,15 @@ import { buildInProject } from '../src/ui/route-kinds';
 import { MOTORWAY_BUILD, RAIL_BUILD, RAIL_LINE } from '../src/ui/mode-kinds';
 import { routeChoices } from '../src/ui/route-bar';
 
-// A 3 km mapped railway along y = 1000 (a gentle bend at x = 1500) with a yard track, and a road.
+// A 3 km mapped railway along y = 1000 (a gentle bend at x = 1500, where a spur branches off) with a yard
+// track, and a road.
 function fixture() {
   const xy = [0, 1000, 1500, 1060, 3000, 1000], stations = [0, Math.hypot(1500, 60), 2 * Math.hypot(1500, 60)];
   const graph: TransportGraphData = { version: 1, vectorData: 'vectors', renderFeatures: [], nodes: [
     { id: 'w', xy: [0, 1000] }, { id: 'm', xy: [1500, 1060] }, { id: 'e', xy: [3000, 1000] }, { id: 'y1', xy: [200, 1020] }, { id: 'y2', xy: [600, 1020] },
-    { id: 'r1', xy: [0, 400] }, { id: 'r2', xy: [3000, 400] }], sources: [
+    { id: 'r1', xy: [0, 400] }, { id: 'r2', xy: [3000, 400] }, { id: 's1', xy: [1900, 1300] }], sources: [
     { id: 'line', osmWayId: '1', kind: 'railway', nodes: ['w', 'm', 'e'], xy, stations, layer: 0, bridge: false, tunnel: false, elevation: 'terrain', tags: { railway: 'rail', ref: '043' }, render: [] },
+    { id: 'spur', osmWayId: '4', kind: 'railway', nodes: ['m', 's1'], xy: [1500, 1060, 1900, 1300], stations: [0, Math.hypot(400, 240)], layer: 0, bridge: false, tunnel: false, elevation: 'terrain', tags: { railway: 'rail' }, render: [] },
     { id: 'yard', osmWayId: '2', kind: 'railway', nodes: ['y1', 'y2'], xy: [200, 1020, 600, 1020], stations: [0, 400], layer: 0, bridge: false, tunnel: false, elevation: 'terrain', tags: { railway: 'rail', service: 'yard' }, render: [] },
     { id: 'road', osmWayId: '3', kind: 'road', nodes: ['r1', 'r2'], xy: [0, 400, 3000, 400], stations: [0, 3000], layer: 0, bridge: false, tunnel: false, elevation: 'terrain', tags: { highway: 'tertiary' }, render: [] }] };
   const terrain = syntheticTerrain(700, 400, 5, () => 300), H = terrain.ny * terrain.cell, lc = terrain.lc as Uint8Array;
@@ -96,10 +98,15 @@ describe('rebuilding a mapped railway (drag-to-rebuild with the railway kind)', 
     expect(Array.from(fresh.r.keptCells ?? []).every(Boolean)).toBe(true);
     expect(fresh.r.cost.total).toBe(0);
     expect(fresh.result.works.items.find(w => w.owner.id === 'route:rail' && /stay on the old track: kept as it is/.test(w.label ?? ''))).toBeDefined();
+    // it continues its old track at both ends and keeps the spur's switch: no junction is left to build
+    expect(command.connections.map(c => c.id.split(':')[3])).toEqual(['start', 'end', 'branch']);
+    expect(fresh.result.issues.map(i => i.code)).not.toContain('connection-pending');
     // its bend dragged 140 m off the old track: the middle is built anew, the ends stay on the old track; its
     // end straights now meet the old track at 5.3°, sharper than a turnout's 4.8°
     const bent = (y: number) => { const d = structuredClone(design), q = d.routes[0]; if (q.alignment.kind === 'pi') q.alignment.pis = [{ x: 1500, y, r: null }]; return d; };
-    const far = run(bent(1200)).r, kept = Array.from(far.keptCells!);
+    const moved = run(bent(1200)), far = moved.r, kept = Array.from(far.keptCells!);
+    // the spur's switch was on the old track the line has left: a new junction is needed there
+    expect(moved.result.issues.filter(i => i.code === 'connection-pending').map(i => i.scope.routeIds)).toEqual([['route:rail']]);
     expect(kept[0]).toBe(1); expect(kept[kept.length - 1]).toBe(1); expect(kept.some(k => !k)).toBe(true);
     expect(far.cost.total).toBeGreaterThan(0);
     const corners = far.violations.filter(v => v.kind === 'station');
