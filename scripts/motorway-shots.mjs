@@ -31,11 +31,12 @@ try {
     }));
     await page.waitForTimeout(700);
   };
-  const shot = async (name, doc) => {
+  /** `offset`: its number after --docs N (default: the next one) */
+  const shot = async (name, doc, offset) => {
     await settle();
     const path = `${out}/${String(++n).padStart(2, '0')}-${name}.png`;
     await page.screenshot({ path });
-    if (doc && docsAt !== null) docs.push([path, `docs/screenshots/${docsAt + docs.length}-${doc}.png`]);
+    if (doc && docsAt !== null) docs.push([path, `docs/screenshots/${docsAt + (offset ?? docs.length)}-${doc}.png`]);
     console.log('shot', path);
   };
   const state = () => page.evaluate(() => {
@@ -79,10 +80,10 @@ try {
   // that carriageway away from the other; only that stretch runs apart
   await page.keyboard.press('Escape');
   await settle();
-  await page.locator('.motorway-head [data-dir="reverse"]').click();
+  await page.locator('.motorway-head [data-dir="forward"]').click();
   await settle();
   console.log('picked', JSON.stringify(await state()));
-  const k = await page.evaluate(() => Math.floor(window.trapla.getDesign().pis.length / 2));
+  const k = 2; // between bends 3 and 4, over the hill north of the Sázava
   const s = await page.evaluate(k => {
     const d = window.trapla.getDesign(), p = d.pis[k], q = d.pis[k + 1], r = window.trapla.result();
     const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
@@ -93,9 +94,9 @@ try {
   }, k);
   await settle();
   const box = await page.locator('#view canvas').first().boundingBox();
-  // grab the reverse carriageway (left of A→B) and pull it 120 m further left
+  // grab the carriageway towards B (right of A→B) and pull it 120 m further right
   const [p, q] = await page.evaluate(s => {
-    const r = window.trapla.result(), i = Math.round(s / r.ds), z = r.grade[i] + 1.5, nx = -r.ty[i], ny = r.tx[i];
+    const r = window.trapla.result(), i = Math.round(s / r.ds), z = r.grade[i] + 1.5, nx = r.ty[i], ny = -r.tx[i];
     return [window.trapla.screenOf(r.x[i] + nx * 6.9, r.y[i] + ny * 6.9, z), window.trapla.screenOf(r.x[i] + nx * 127, r.y[i] + ny * 127, z)];
   }, s);
   await page.mouse.move(box.x + p.sx, box.y + p.sy); await page.mouse.down();
@@ -105,7 +106,7 @@ try {
   console.log('apart', JSON.stringify(await state()));
   await page.evaluate(s => { const r = window.trapla.result(), i = Math.round(s / r.ds); window.trapla.lookAt(r.x[i], r.y[i], 1300, 25, 50); }, s);
   await page.keyboard.press('Escape');
-  await shot('one-direction', 'motorway-one-direction');
+  await shot('one-direction', 'motorway-one-direction', 10); // 140 (135 was the old whole-route split)
   const join = page.locator('.motorway-head .apart-row button').first();
   if (await join.count()) await join.click();
   await settle();

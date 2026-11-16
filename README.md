@@ -214,13 +214,17 @@ Two motorway places on the start screen ([picker](docs/screenshots/130-motorway-
 are designed together as one D 27.5 corridor ([D3 overview](docs/screenshots/131-motorway-overview.png)),
 drawn as [two carriageways with a grass median and barrier](docs/screenshots/132-motorway-carriageways.png),
 [twin bridge decks on their own piers](docs/screenshots/133-motorway-twin-bridge.png) and
-[one portal per tunnel tube](docs/screenshots/134-motorway-twin-tunnel.png). "Edit: Towards …" (in the
-Motorway card) splits the directions; [one direction bent on its own](docs/screenshots/135-motorway-split.png)
-keeps its height points on their ground and runs as one body with the other wherever they still meet.
-"Both directions" joins them again. On a motorway designed for 130 km/h the Motorway card offers "Speed limit:
+[one portal per tunnel tube](docs/screenshots/134-motorway-twin-tunnel.png). The motorway's own card (click
+it, or nothing selected) says what a drag bends: "Both directions", or "Towards …" one of them. Choosing changes
+nothing; the first drag of that direction makes it run on its own only over the stretch it changes, from a join
+on a straight before the change to one after it ([one direction through its own tunnel](docs/screenshots/140-motorway-one-direction.png));
+elsewhere both stay one road body with one bill. Inside, each direction keeps the shared heights while the two
+run side by side and gets Auto heights where they are apart. The card lists where the directions run apart,
+each with "Join". On a motorway designed for 130 km/h the Motorway card offers "Speed limit:
 150 km/h (pilot)", like the ministry's D3 pilot (research/41): cars' travel time at 150, their noise at +20 km/h
 (an extrapolation, marked PROVISIONAL), the variable signs priced (about 1.2 M CZK per km, ŘSD's D3 contract);
-curves and slopes stay those of 130. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130`.
+curves and slopes stay those of 130. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130` (its
+one-direction shot is 140); `node scripts/stretch-play.mjs --gpu` plays choose, drag, join.
 
 ### Railway (cost model 21)
 
