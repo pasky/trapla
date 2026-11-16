@@ -1804,9 +1804,15 @@ export class View {
       const up = (ev: PointerEvent) => {
         stop();
         if (i !== null) { this.dragging = null; this.ev.onPiDragEnd?.(i); return; }
-        // released while still held: a click where it was pressed
-        const cx = waiting ? x0 : ev.clientX, cy = waiting ? y0 : ev.clientY, p = this.pick(cx, cy);
-        if (p) this.ev.onPickTerrain?.(p.x, p.y, cx, cy); else this.ev.onPickNothing?.();
+        // released while still held: a click on the ground point it pressed, where that is on the screen
+        // now (a camera flight may have moved on meanwhile)
+        if (waiting && g0) {
+          const q = this.project(g0.x, g0.y, this.drape(g0.x, g0.y)), box = this.container.getBoundingClientRect();
+          if (q.vis) this.ev.onPickTerrain?.(g0.x, g0.y, box.left + q.sx, box.top + q.sy); else this.ev.onPickNothing?.();
+          return;
+        }
+        const p = this.pick(ev.clientX, ev.clientY);
+        if (p) this.ev.onPickTerrain?.(p.x, p.y, ev.clientX, ev.clientY); else this.ev.onPickNothing?.();
       };
       canvas.addEventListener('pointermove', move);
       canvas.addEventListener('pointerup', up);

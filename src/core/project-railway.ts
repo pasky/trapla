@@ -15,6 +15,9 @@ import type { ConnectionDesign, EndpointPair, ProjectDesign, RouteDesign, Source
 import type { ProjectTransportIndex } from './project-network';
 import type { ProjectCommand } from '../project-store-contract';
 import type { PI } from './horizontal';
+import { applyKept, plannedKept } from './project-kept';
+import type { ReplacementWork } from './project-replacement';
+import { CATEGORIES } from './data/categories';
 
 export const RAILWAY_POLICY = 'conventional-new';
 /** PROVISIONAL game prior: freight trains run at 100 km/h, never faster than the line. */
@@ -111,9 +114,10 @@ export function railInterval(paths: RailPaths, sourceId: string, s0: number, s1:
 
 /** A mapped railway stretch as an editable railway (Mapped line → rebuild): the exact source claim, ends on
  * the old line, continuations to the rest of it and to railways branching off, its line converted once into
- * bends that follow the old track (`bends`). Single track, 120 km/h: the slowest the game has rules for. */
+ * bends that follow the old track (`bends`: where the old track is tighter than the rules, its own curve,
+ * kept as it is; ui/road-edit.ts fitRoad). Single track at the line's own speed (rebuildSpeed). */
 export function promoteGroundRailway(base: ProjectTransportIndex, input: { routeId: string; acousticSourceId: string; interval: SourceInterval; name: string },
-  bends: (path: readonly { x: number; y: number; s: number }[], speed: number) => PI[], keep?: RailwayRoute): Extract<ProjectCommand, { type: 'promote' }> {
+  bends: (path: readonly { x: number; y: number; s: number }[], speed: number, category: 'R1' | 'R2') => PI[], keep?: RailwayRoute): Extract<ProjectCommand, { type: 'promote' }> {
   base.checkInterval(input.interval);
   const source = base.source(input.interval.sourceId)!;
   if (source.kind !== 'railway' || source.elevation !== 'terrain') throw new Error('Promotion needs a ground railway');
@@ -126,7 +130,7 @@ export function promoteGroundRailway(base: ProjectTransportIndex, input: { route
   const route: RailwayRoute = { ...fresh, acousticSourceId: input.acousticSourceId,
     ...(keep ? { specification: structuredClone(keep.specification), name: keep.name } : {}),
     source: { binding: 'resolved', intervals: [{ ...input.interval }], transferredWorkIds: [] },
-    alignment: { kind: 'pi', pis: fittingBends(path[0], path[path.length - 1], bends(path.map(p => ({ x: p.x, y: p.y, s: p.s })), speed), category, speed),
+    alignment: { kind: 'pi', pis: bends(path.map(p => ({ x: p.x, y: p.y, s: p.s })), speed, category),
       controls: {}, vertical: { kind: 'auto', pins: [] } } };
   if (steep > RAIL_MAX_GRADIENT) route.specification = { ...route.specification, maxGradient: steep };
   else delete route.specification.maxGradient;
@@ -159,8 +163,7 @@ export function oldLineGrade(base: ProjectTransportIndex, sourceId: string, inte
   return Math.ceil(Math.abs(b.z - a.z) / (interval.s1 - interval.s0) * 2000) / 2000;
 }
 /** The old line's bends that track curves fit between: a bend whose curve would not fit (too close to an
- * end or to its neighbour at this speed) is left out, so a fresh rebuild starts without a geometry
- * violation the player did not make. */
+ * end or to its neighbour at this speed) is left out. */
 export function fittingBends(a: { x: number; y: number }, b: { x: number; y: number }, pis: PI[], category: 'R1' | 'R2', speed: number): PI[] {
   const out = [...pis];
   for (let guard = 0; guard <= pis.length && out.length; guard++) {
@@ -187,7 +190,9 @@ export function stationAxis(terrain: Terrain, p: { x: number; y: number }): { x:
   return { x: dm.cos(t), y: dm.sin(t) };
 }
 
-export type RailwayEvaluation = { status: 'evaluated'; result: Result; unpriced?: 'track-removal-unpriced'[] } | { status: 'incomplete'; reason: 'unsupported-policy'
+export type RailwayEvaluation = { status: 'evaluated'; result: Result; unpriced?: 'track-removal-unpriced'[];
+  /** A rebuilt stretch: what the kernel billed where the old track is kept as it is (a credit; project-kept.ts). */
+  keptWork?: ReplacementWork } | { status: 'incomplete'; reason: 'unsupported-policy'
   | 'unsupported-alignment' | 'unresolved-binding' | 'unimplemented-tangent' | 'source-needs-network' | 'mission-needs-network' | 'unsupported-crossing' };
 export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign, routeId: string, objectData: string,
   options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> & { railPaths?: RailPaths } = {}): RailwayEvaluation {
@@ -234,23 +239,42 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   // An end on an existing railway joins it there (a station): its first metres share that track's space.
   const onRail = (p: typeof a) => [-1, 0, 1].some(i => [-1, 0, 1].some(j => ctx.terrain.crossing(p.x + i * ctx.terrain.cell, p.y + j * ctx.terrain.cell) === 2));
+  const design = railwayDesign(project, route);
+  // Where a rebuilt stretch's line stays on its old track, the old track is kept as it is (project-kept.ts):
+  // nothing is built there, so the kernel neither lifts it for a new structure nor meets the old line's own
+  // level crossings, culverts and neighbours there; the new parts are tied to the old track's heights.
+  const planned = retired && plannedKept(a, b, design, retired), kept = planned && planned.kept.some(Boolean) ? planned.kept : undefined;
   // ... and leaves that track no more steeply than a turnout: a mapped line's own direction there, or a
-  // mission station's tracks (their axis on the map)
-  const trackEnd = (e: typeof route.endpoints.a): TrackEnd | undefined => {
-    // (a rebuilt stretch's own ends lie on the old line it replaces: not a branch, not checked here)
-    if (e.anchor.kind === 'source' && railPaths && !route.source) {
+  // mission station's tracks (their axis on the map). A rebuilt stretch's own ends continue its old track:
+  // no corner sharper than a turnout either, unless its end straight stays on the old track (kept as it is:
+  // no corner is built there).
+  const endStraightKept = (end: 'a' | 'b') => {
+    if (!planned) return false;
+    const p = end === 'a' ? a : b, q = design.pis.length ? design.pis[end === 'a' ? 0 : design.pis.length - 1] : end === 'a' ? b : a;
+    const reach = Math.hypot(q.x - p.x, q.y - p.y), { st } = planned, length = st.s[st.n - 1];
+    for (let i = 0; i < st.n; i++) if ((end === 'a' ? st.s[i] <= reach : length - st.s[i] <= reach) && !planned.kept[i]) return false;
+    return true;
+  };
+  const trackEnd = (e: typeof route.endpoints.a, end: 'a' | 'b'): TrackEnd | undefined => {
+    if (e.anchor.kind === 'source' && railPaths) {
+      if (route.source && endStraightKept(end)) return undefined;
       const dir = trackDirection(railPaths, e.anchor.location.sourceId, e.anchor.location.s);
-      return dir && { dir };
+      return dir && { dir, ...(route.source ? { continues: true } : {}) };
     }
     const dir = e.anchor.kind === 'mission' && onRail(e.position) ? stationAxis(ctx.terrain, e.position) : undefined;
     return dir && { dir };
   };
-  const ends = { a: trackEnd(route.endpoints.a), b: trackEnd(route.endpoints.b) };
+  const ends = { a: trackEnd(route.endpoints.a, 'a'), b: trackEnd(route.endpoints.b, 'b') };
   const tieIn = { a: onRail(a) ? RAIL_TIE_IN_M : 0, b: onRail(b) ? RAIL_TIE_IN_M : 0,
     ...(ends.a || ends.b ? { ends: { ...(ends.a ? { a: ends.a } : {}), ...(ends.b ? { b: ends.b } : {}) } } : {}) };
-  return { status: 'evaluated', ...(retired ? { unpriced: ['track-removal-unpriced' as const] } : {}),
-    result: evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } },
-    railwayDesign(project, route), { ...evalOptions, ...(retired ? { railRetired: retired } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, railTraffic: railTraffic(route), ...(tieIn.a || tieIn.b ? { railTieIn: tieIn } : {}),
-      goals: { time: goal?.maxTravelMin !== undefined, capacity: false } }) };
+  const result = evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } },
+    design, { ...evalOptions, ...(retired ? { railRetired: retired } : {}), ...(kept ? { oldRoad: kept } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, railTraffic: railTraffic(route), ...(tieIn.a || tieIn.b ? { railTieIn: tieIn } : {}),
+      goals: { time: goal?.maxTravelMin !== undefined, capacity: false } });
+  let keptWork: ReplacementWork | null = null;
+  if (kept && retired) {
+    if (kept.length !== result.n) throw new Error('Kept cells do not match the railway’s stations');
+    keptWork = applyKept(result, kept, CATEGORIES[design.category].crownWidth / 2, { paths: retired, heightAt: (x, y) => ctx.terrain.heightAt(x, y) }, 'railway');
+  }
+  return { status: 'evaluated', ...(retired ? { unpriced: ['track-removal-unpriced' as const] } : {}), result, ...(keptWork ? { keptWork } : {}) };
 }
 

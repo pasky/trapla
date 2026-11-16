@@ -2,6 +2,7 @@
 // caller dispatches the returned commands as one undoable step.
 import { buildAlignment, station, type PI, type Vec2 } from '../core/horizontal';
 import { horizontalViolations } from '../core/checks';
+import { acos } from '../core/detmath';
 import { horizontalRules } from '../core/data/norms';
 import { CATEGORIES, type CategoryId, type LegalClass } from '../core/data/categories';
 import { KEPT_TOLERANCE } from '../core/project-kept';
@@ -207,7 +208,7 @@ export function bendAt(a: Vec2, b: Vec2, pis: PI[], speed: number, category: Cat
  * each bend's curve strays) and `tighten` (bend i keeps the old road's own, tighter curve where a norm-sized
  * one would leave the old road by more than REPAIR_TOLERANCE: the largest radius within FIT_TOLERANCE). */
 function onOldRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: number }[], speed: number, category: CategoryId) {
-  const rules = horizontalRules(speed, category), far = distanceTo(path);
+  const rules = horizontalRules(speed, category), far = distanceTo(path), rail = CATEGORIES[category].mode === 'railway';
   const measure = (pis: PI[]) => {
     const al = buildAlignment(a, b, pis, rules), st = station(al, 5);
     const off = new Float64Array(st.n); let stray = 0;
@@ -220,7 +221,8 @@ function onOldRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: n
     };
     // (without the design: no fix suggestions are worked out, only what is wrong and at which bends)
     let problems: ReturnType<typeof horizontalViolations> | null = null;
-    return { get problems() { return problems ??= horizontalViolations(al, speed); }, stray, bend, radius: (i: number) => al.curves[i]?.r ?? 0 };
+    // (a railway's line is checked by the track rules)
+    return { get problems() { return problems ??= horizontalViolations(al, speed, rail ? { a, b, pis, category } : undefined); }, stray, bend, radius: (i: number) => al.curves[i]?.r ?? 0, st, off };
   };
   type Measure = ReturnType<typeof measure>;
   const tighten = (pis: PI[], now: Measure, i: number): { pis: PI[]; now: Measure } => {
@@ -244,9 +246,10 @@ function onOldRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: n
  *    further than REPAIR_TOLERANCE from the old road.
  * What still misses the norm lies on the old road and is kept as it is (core/project-kept.ts): the
  * conversion itself builds nothing anew. */
-export function fitRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: number }[], speed: number, category: CategoryId): PI[] {
+export function fitRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: number }[], speed: number, category: CategoryId,
+  fit: { tolerance: number; gap: number; repair?: boolean } = { tolerance: FIT_TOLERANCE, gap: MIN_BEND_GAP }): PI[] {
   const { rules, far, measure, tighten } = onOldRoad(a, b, path, speed, category);
-  let pis = fitBends(path), now = measure(pis);
+  let pis = fitBends(path, fit.tolerance, fit.gap), now = measure(pis);
   for (let i = 0; i < pis.length; i++) ({ pis, now } = tighten(pis, now, i));
   // Where the line still leaves the old road (close corners merged into one bend, an S of a village street),
   // the old road's corner furthest from the line there becomes a bend of its own, with its own curve.
@@ -271,7 +274,7 @@ export function fitRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number;
     ({ pis, now } = next);
   }
   // bounded: the bends of the first problem only, eight rounds
-  for (let round = 0; round < 8 && now.problems.length; round++) {
+  for (let round = 0; fit.repair !== false && round < 8 && now.problems.length; round++) {
     let best: { pis: PI[]; m: ReturnType<typeof measure> } | null = null;
     const limit = Math.max(REPAIR_TOLERANCE, now.stray), first = now.problems.find(v => v.pis?.length || v.pi !== undefined);
     for (const i of first?.pis ?? (first?.pi !== undefined ? [first.pi] : [])) {
@@ -292,6 +295,32 @@ export function fitRoad(a: Vec2, b: Vec2, path: readonly { x: number; y: number;
     pis = best.pis; now = best.m;
   }
   return pis;
+}
+/** What a line between a and b (`pis`) builds anew off the old line `path`: its 5 m cells further than
+ * KEPT_TOLERANCE from it (`cells`), and its problems there (`problems`; a problem wholly on the old line is
+ * the old line's own, kept as it is: core/project-kept.ts). With `turnout` (a railway, rad): an end whose
+ * first straight leaves the old line at a sharper angle than that counts as a problem too. */
+export function builtAnew(a: Vec2, b: Vec2, path: readonly { x: number; y: number; s: number }[], pis: PI[], speed: number, category: CategoryId,
+  turnout?: number): { problems: number; cells: number } {
+  const m = onOldRoad(a, b, path, speed, category).measure(pis), { st, off } = m;
+  const anew = (s0: number, s1: number) => { for (let k = 0; k < st.n; k++) if (st.s[k] >= s0 - 2.5 && st.s[k] <= s1 + 2.5 && off[k] > KEPT_TOLERANCE) return true; return false; };
+  let cells = 0; for (let k = 0; k < st.n; k++) if (off[k] > KEPT_TOLERANCE) cells++;
+  let problems = m.problems.filter(v => anew(v.s0, v.s1)).length;
+  const length = st.s[st.n - 1];
+  if (turnout !== undefined && path.length > 1) for (const end of ['a', 'b'] as const) {
+    const p = end === 'a' ? a : b, q = pis.length ? pis[end === 'a' ? 0 : pis.length - 1] : end === 'a' ? b : a;
+    const along = pointAlong(path, end === 'a' ? Math.min(path[path.length - 1].s, path[0].s + 30) : Math.max(path[0].s, path[path.length - 1].s - 30));
+    const tx = along.x - p.x, ty = along.y - p.y, vx = q.x - p.x, vy = q.y - p.y, l = Math.hypot(tx, ty) * Math.hypot(vx, vy);
+    if (!(l > 0) || acos(Math.min(1, Math.abs(tx * vx + ty * vy) / l)) <= turnout) continue;
+    const reach = Math.hypot(vx, vy);
+    if (end === 'a' ? anew(0, reach) : anew(length - reach, length)) problems++;
+  }
+  return { problems, cells };
+}
+function pointAlong(path: readonly { x: number; y: number; s: number }[], s: number): Vec2 {
+  let i = 1; while (i < path.length - 1 && path[i].s < s) i++;
+  const p = path[i - 1], q = path[i], t = Math.max(0, Math.min(1, (s - p.s) / ((q.s - p.s) || 1)));
+  return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
 }
 /** Station of the point of a polyline nearest to p. */
 function nearestOn(path: readonly { x: number; y: number; s: number }[], p: { x: number; y: number }): number {

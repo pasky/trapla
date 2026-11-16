@@ -78,4 +78,28 @@ describe('rebuilding a mapped railway (drag-to-rebuild with the railway kind)', 
     assertProjectDesign(moved);
     expect(moved.routes[0].source!.intervals[0].s0).toBe(300);
   });
+  it('keeps the old track where its line stays on it, and joins the old track it continues without a sharp corner', () => {
+    const { base, project, ctx, stations } = fixture();
+    const interval = { transportData: 'transport', sourceId: 'line', s0: 0, s1: stations[2] };
+    const command = RAIL_LINE.rebuild(base, interval, { routeId: 'route:rail', acousticSourceId: 'acoustic:rail' });
+    const design = { ...project, routes: command.routes, connections: command.connections };
+    const run = (d: ProjectDesign) => { const result = evaluateProject(ctx, { epoch: 'e', revision: 1, design: d }); return { result, r: result.routes['route:rail'].legacy! }; };
+    // untouched: all of it stays on the old track, kept as it is, nothing built or billed
+    const fresh = run(design);
+    expect(Array.from(fresh.r.keptCells ?? []).every(Boolean)).toBe(true);
+    expect(fresh.r.cost.total).toBe(0);
+    expect(fresh.result.works.items.find(w => w.owner.id === 'route:rail' && /stay on the old track: kept as it is/.test(w.label ?? ''))).toBeDefined();
+    // its bend dragged 140 m off the old track: the middle is built anew, the ends stay on the old track; its
+    // end straights now meet the old track at 5.3°, sharper than a turnout's 4.8°
+    const bent = (y: number) => { const d = structuredClone(design), q = d.routes[0]; if (q.alignment.kind === 'pi') q.alignment.pis = [{ x: 1500, y, r: null }]; return d; };
+    const far = run(bent(1200)).r, kept = Array.from(far.keptCells!);
+    expect(kept[0]).toBe(1); expect(kept[kept.length - 1]).toBe(1); expect(kept.some(k => !k)).toBe(true);
+    expect(far.cost.total).toBeGreaterThan(0);
+    const corners = far.violations.filter(v => v.kind === 'station');
+    expect(corners.map(v => [v.s0 === 0 || v.s1 === far.length, v.basis, v.title])).toEqual([
+      [true, 'game', 'This railway meets the old track at a sharp angle'], [true, 'game', 'This railway meets the old track at a sharp angle']]);
+    expect(corners[0].fix).toMatch(/^Move bend 1 about \d+ m onto the line of the old track$/);
+    // 40 m off: the corner is gentler than a turnout's
+    expect(run(bent(1100)).r.violations.filter(v => v.kind === 'station')).toEqual([]);
+  });
 });

@@ -76,6 +76,8 @@ type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength'
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
   : text.replace(/\bour road\b/g, `our ${line}`).replace(/\bOur road\b/g, `Our ${line}`).replace(/\bthe new road\b/g, `the new ${line}`);
+/** What a rebuilt stretch replaces, in the player's words: "old road", "old track". */
+export const oldLineWords = (line: OurLine = 'road') => line === 'railway' ? 'old track' : 'old road';
 export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, line: OurLine = 'road'): OutcomeText {
   const words = (o: OutcomeText) => ({ ...o, label: ourWords(o.label, line), explain: ourWords(o.explain, line) });
   if (c.shared) {

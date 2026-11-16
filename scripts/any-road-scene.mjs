@@ -107,6 +107,26 @@ try {
     assert(rebuiltCold?.source.intervals[0].sourceId === road.id, 'the first drag rebuilds the road');
     console.log(`cold start: grab cursor, card on the first click, the first drag rebuilt ${road.name}${cold ? ' (pressed before the links were in)' : ''}`);
     await c.close();
+    // a drag let go before the links are in, after the camera moved on meanwhile: a click on the road it
+    // pressed (its ground point, wherever that is on the screen now), not on what is now under that pixel
+    ({ c, p, at } = await fresh());
+    let open; const gate = new Promise(resolve => { open = resolve; });
+    await c.route('**/traffic.json', async r => { await gate; await r.continue(); });
+    const p1 = await page.evaluate(([id, s]) => window.trapla.sourcePoint(id, s), [road.id, mid + 10]);
+    const along = Math.hypot(p1.x - p0.x, p1.y - p0.y), nx = -(p1.y - p0.y) / along, ny = (p1.x - p0.x) / along;
+    await p.mouse.move(at.x, at.y); await p.mouse.down();
+    await p.mouse.move(at.x + 30, at.y - 30, { steps: 12 });
+    await p.evaluate(([x, y]) => window.trapla.lookAt(x, y, 900, 0, 55), [p0.x + 250 * nx, p0.y + 250 * ny]); await p.waitForTimeout(300);
+    const pressedNow = await p.evaluate(() => window.trapla.transportLoaded());
+    const under = await p.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [p0.x, p0.y]);
+    assert(under?.vis && Math.hypot(box.x + under.sx - at.x, box.y + under.sy - at.y) > 100, 'the camera moved the pressed road away from the pressed pixel');
+    await p.mouse.up(); open();
+    await p.locator('#inspector.k-source').waitFor({ timeout: 20000 });
+    assert.equal(pressedNow, false, 'the press was let go before the links were in');
+    assert.equal((await p.evaluate(() => window.trapla.sourceSelection()))?.interval.sourceId, road.id, 'let go early, the press is a click on the road it pressed');
+    assert.equal((await p.evaluate(() => window.trapla.getProject())).routes.filter(r => r.source).length, 0, 'and rebuilds nothing');
+    console.log('cold start: a drag let go before the links are in, after the camera moved, opens the card of the road it pressed');
+    await c.close();
   }
 
   // 1. click: its card and highlighted stretch, no edit; Escape closes it

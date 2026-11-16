@@ -131,7 +131,7 @@ function routeProposal(ctx: ProjectEvalContext, snapshot: ProjectSnapshot, route
     junctionEnds: road?.junctionEnds ?? [],
     ...(road?.replacement ? { replacement: road.replacement } : {}),
     ...(road?.ringWorks ? { ringWorks: road.ringWorks } : {}),
-    ...(road?.keptWork ? { keptWork: road.keptWork } : {}),
+    ...(road?.keptWork ? { keptWork: road.keptWork } : evaluated.status === 'evaluated' && 'keptWork' in evaluated && evaluated.keptWork ? { keptWork: evaluated.keptWork } : {}),
     issues: evaluated.status === 'incomplete' ? [issue(route.id, evaluated.reason)]
       : (road?.unpriced ?? ('unpriced' in evaluated && corridor?.children.reverse !== route.id ? evaluated.unpriced ?? [] : [])).map(code => ({ code, scope: { routeIds: [route.id] }, locations: [], blocking: 'incomplete' as const, ...UNPRICED[code] })) };
 }

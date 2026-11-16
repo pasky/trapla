@@ -3,10 +3,19 @@
 // relocations and rebuilds of the earth body (research/30 §1; the 2004 text, not verified in the 2018 one),
 // while a repair keeps the road's line and heights (Decree 104/1997 §9). The norm applies exactly where
 // the player builds anew: a bend moved off the old road is a new road's bend.
-import type { Result } from './evaluate';
+// The same for a rebuilt railway stretch and its old track (project-railway.ts): a line kept on its old
+// track is maintained, not built (ČSN 73 6360-1 is the design norm of new and rebuilt track geometry).
+import { STEP, type Design, type Result } from './evaluate';
 import type { ReplacementWork } from './project-replacement';
 import { PART_KEYS, sumParts, type CostParts } from './cost';
 import { KIND } from './structures';
+import { buildAlignment, station } from './horizontal';
+import { horizontalRules } from './data/norms';
+import { oldLineWords, type OurLine } from './terms';
+
+type Pt = { x: number; y: number };
+/** An old line: its centreline as one or more polylines (a stretch may claim several pieces of old line). */
+export type OldPaths = readonly (readonly Pt[])[];
 
 /** PROVISIONAL game tolerance, m: the new line counts as "on the old road" within this of its centreline.
  * The old line is drawn as bends that stray up to 8 m from it (ui/road-edit.ts FIT_TOLERANCE) plus the
@@ -18,13 +27,12 @@ export const KEPT_MIN_RUN = 50;
 const GEOMETRY: ReadonlySet<string> = new Set(['radius', 'transition', 'arcShort', 'compound', 'gradient', 'crest', 'sag', 'vcOverlap']);
 
 /** Station cells of `r` that lie on the old road (1) or are built anew (0). */
-export function keptCells(r: Pick<Result, 'n' | 'x' | 'y' | 'ds'>, old: readonly { x: number; y: number }[],
+export function keptCells(r: Pick<Result, 'n' | 'x' | 'y' | 'ds'>, olds: OldPaths,
   tolerance = KEPT_TOLERANCE, minRun = KEPT_MIN_RUN): Uint8Array {
   const kept = new Uint8Array(r.n);
-  if (old.length < 2) return kept;
   for (let i = 0; i < r.n; i++) {
     let best = Infinity;
-    for (let k = 1; k < old.length && best > tolerance; k++) {
+    for (const old of olds) for (let k = 1; k < old.length && best > tolerance; k++) {
       const a = old[k - 1], b = old[k], dx = b.x - a.x, dy = b.y - a.y;
       const t = Math.max(0, Math.min(1, ((r.x[i] - a.x) * dx + (r.y[i] - a.y) * dy) / (dx * dx + dy * dy || 1)));
       best = Math.min(best, Math.hypot(r.x[i] - a.x - t * dx, r.y[i] - a.y - t * dy));
@@ -45,12 +53,12 @@ export function keptCells(r: Pick<Result, 'n' | 'x' | 'y' | 'ds'>, old: readonly
  * road's surface over this length of old road (drawn only; the old road there is still not billed). */
 export const TIE_LENGTH = 50;
 
-/** The old road where it is drawn: its centreline (`path`) and the ground (`heightAt`). */
-export interface OldRoad { path: readonly { x: number; y: number }[]; heightAt: (x: number, y: number) => number }
-/** The point of a polyline nearest to (x, y). */
-function nearestPoint(path: readonly { x: number; y: number }[], x: number, y: number) {
+/** The old road where it is drawn: its centreline (`paths`) and the ground (`heightAt`). */
+export interface OldRoad { paths: OldPaths; heightAt: (x: number, y: number) => number }
+/** The point of the polylines nearest to (x, y). */
+function nearestPoint(paths: OldPaths, x: number, y: number) {
   let best = Infinity, px = x, py = y;
-  for (let k = 1; k < path.length; k++) {
+  for (const path of paths) for (let k = 1; k < path.length; k++) {
     const a = path[k - 1], b = path[k], dx = b.x - a.x, dy = b.y - a.y;
     const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
     const qx = a.x + t * dx, qy = a.y + t * dy, d = (qx - x) ** 2 + (qy - y) ** 2;
@@ -66,12 +74,12 @@ function layOnGround(r: Result, kept: Uint8Array, crownHalf: number, old?: OldRo
   const far = new Float64Array(r.n).fill(Infinity);
   for (let i = 0, d = Infinity; i < r.n; i++) { d = kept[i] ? d + r.ds : 0; far[i] = d; }
   for (let i = r.n - 1, d = Infinity; i >= 0; i--) { d = kept[i] ? d + r.ds : 0; far[i] = Math.min(far[i], d); }
-  if (old && old.path.length > 1) {
+  if (old && old.paths.some(p => p.length > 1)) {
     const x = r.x.slice(), y = r.y.slice(), tx = r.tx.slice(), ty = r.ty.slice(), ground = r.ground.slice();
     let moved = false;
     for (let i = 0; i < r.n; i++) {
       if (!kept[i]) continue;
-      const w = Math.max(0, 1 - far[i] / TIE_LENGTH), p = nearestPoint(old.path, r.x[i], r.y[i]);
+      const w = Math.max(0, 1 - far[i] / TIE_LENGTH), p = nearestPoint(old.paths, r.x[i], r.y[i]);
       x[i] = p.x + w * (r.x[i] - p.x); y[i] = p.y + w * (r.y[i] - p.y);
       if (x[i] !== r.x[i] || y[i] !== r.y[i]) { moved = true; ground[i] = old.heightAt(x[i], y[i]); }
     }
@@ -120,11 +128,19 @@ export function releaseHeld(kept: Uint8Array, s: ArrayLike<number>, ground: (i: 
   }
 }
 
+/** Where a rebuilt stretch's planned line (between `a` and `b`, as `design` bends it) stays on its old line
+ * (`old`): known before the kernel runs (it depends on the line only), so the kernel builds nothing there
+ * (EvalOptions.oldRoad). Null: none of it does. */
+export function plannedKept(a: Pt, b: Pt, design: Pick<Design, 'pis' | 'speed' | 'category'>, old: OldPaths) {
+  const st = station(buildAlignment(a, b, design.pis, horizontalRules(design.speed, design.category)), STEP);
+  return { kept: keptCells(st, old), st };
+}
+
 /** Applies "kept as the old road" to a rebuilt stretch's own result: what the norm would ask there becomes
  * a note (`inherited`), houses there are untouched, nothing is billed there (the bill and its per-cell
  * parts cover the new parts only) and the road is drawn on the ground there (`crownHalf`: half its paved
  * width, m). Returns the line that says so in the road's works (no amount; null: nothing kept). */
-export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?: OldRoad): ReplacementWork | null {
+export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?: OldRoad, line: OurLine = 'road'): ReplacementWork | null {
   let cells = 0, first = -1;
   for (let i = 0; i < r.n; i++) if (kept[i]) { cells++; if (first < 0) first = i; }
   if (!cells) return null;
@@ -167,5 +183,5 @@ export function applyKept(r: Result, kept: Uint8Array, crownHalf?: number, old?:
   let length = 0;
   for (let i = 0; i < r.n; i++) if (kept[i]) length += i === 0 || i === r.n - 1 ? r.ds / 2 : r.ds;
   return { kind: 'kept', s: r.s[first], x: r.x[first], y: r.y[first], length, cost: 0,
-    label: `${Math.round(length)} m stay on the old road: kept as it is, not built anew` };
+    label: `${Math.round(length)} m stay on the ${oldLineWords(line)}: kept as it is, not built anew` };
 }

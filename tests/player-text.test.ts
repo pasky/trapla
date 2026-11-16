@@ -114,7 +114,9 @@ describe('player-facing text', () => {
       crossingViolation(500, 'motorway', -2, 7.5, 6), oobViolation(0, 50, 50), profileViolation(1000, 0.06),
       categoryViolation(1000, 'S7.5', 20000, 'S9.5'), timeViolation(20000, 80, 15.4, 14.5),
       ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [{ x: 1000, y: 800, r: null }], 3200, { a: { dir: { x: 1, y: 0 } } }, 0.08, 300, 740),
-      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [], 3000, { b: { dir: { x: 0, y: 1 } } }, 0.08, 300, 740)]) checkViolation(v, 'checks');
+      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [], 3000, { b: { dir: { x: 0, y: 1 } } }, 0.08, 300, 740),
+      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [{ x: 1000, y: 800, r: null }], 3200, { a: { dir: { x: 1, y: 0 }, continues: true } }, 0.08, 300, 740),
+      ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [], 3000, { b: { dir: { x: 0, y: 1 }, continues: true } }, 0.08, 300, 740)]) checkViolation(v, 'checks');
     if (regressionPackAvailable()) {
       const ctx = regressionContext(false);
       const design = (file: string): Design => JSON.parse(readFileSync(file, 'utf8')).design;

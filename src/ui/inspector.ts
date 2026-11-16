@@ -6,7 +6,7 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, oldLineWords, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
@@ -256,11 +256,13 @@ export class Inspector {
       + (rest > 0 ? `<div class="sub">+${rest} more in Violations</div>` : '');
   }
 
+  /** what a rebuilt stretch replaces: "old road", "old track" */
+  private get oldLine() { return oldLineWords(this.d ? CATEGORIES[this.d.category].mode as OurLine : 'road'); }
   // ---- nothing selected: where the money goes ----
   private money(r: Result) {
     const top = topPieces(r, 5);
     // a rebuilt stretch still wholly on its old road builds nothing
-    if (!top.length && r.keptCells) return '<div class="sub hint">Nothing is built yet: every metre stays on the old road. Drag it to change its line.</div>';
+    if (!top.length && r.keptCells) return `<div class="sub hint">Nothing is built yet: every metre stays on the ${this.oldLine}. Drag it to change its line.</div>`;
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${kmr(p.s0, p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
       <div class="sub hint">Drag the ${this.d ? CATEGORIES[this.d.category].mode : 'road'} to bend it. Click anything to inspect it.</div>`;
@@ -274,8 +276,8 @@ export class Inspector {
     const cost = cellsCost(r, i0, i1), len = s1 - s0, depth = pieceDepth(r, i0, i1);
     // a rebuilt stretch, where it stays on the old road: nothing is built, so there is nothing to choose
     if (r.keptCells && Array.from({ length: i1 - i0 + 1 }, (_, k) => r.keptCells![i0 + k]).every(Boolean))
-      return `${this.head('Old road', `km ${km(s0)}–${km(s1)}`)}
-      <div class="ctx-state"><b>${m0(len)} · kept as it is</b><div class="why">Nothing is built here. Drag it off the old road to build a new road there.</div></div>`;
+      return `${this.head(this.oldLine.replace(/^o/, 'O'), `km ${km(s0)}–${km(s1)}`)}
+      <div class="ctx-state"><b>${m0(len)} · kept as it is</b><div class="why">Nothing is built here. Drag it off the ${this.oldLine} to build a new ${this.d ? CATEGORIES[this.d.category].mode : 'road'} there.</div></div>`;
     const active = activeStructure({ s0, s1 }, d.structureOverrides);
     const mine = active !== 'clear' && active !== null;
     let title = 'Stretch', status = `${m0(len)} · ${czk(cost)}`, why = '';
@@ -516,7 +518,7 @@ export class Inspector {
     else if (rec) {
       state = rec.status === 'wall' ? (rec.wall > 0 ? `Stays · behind a ${rec.wall} m wall` : 'Stays · behind walls') : rec.status === 'cut' ? 'Stays · shielded by a cut' : 'Stays · quiet enough';
       why = `${(limit + rec.mitigated).toFixed(1)} dB ${period} on the ${rec.storeys === 1 ? 'only' : rec.floor === rec.storeys - 1 ? 'top' : 'loudest'} floor (limit ${limit}).`;
-    } else if (r.besideOldRoad?.includes(j)) { state = 'Stays'; why = 'The old road is kept as it is here: nothing changes for this house.'; }
+    } else if (r.besideOldRoad?.includes(j)) { state = 'Stays'; why = `The ${this.oldLine} is kept as it is here: nothing changes for this house.`; }
     else state = 'Stays · far from the road';
     // kept clear of our works by a retaining wall instead of demolished (Auto's price comparison, or the player keeps it)
     const walled = !removed && !bought ? r.walledOff?.find((p) => p.j === j) : undefined;

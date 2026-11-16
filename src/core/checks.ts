@@ -158,8 +158,23 @@ export function trackEndViolations(a: Vec2, b: Vec2, pis: readonly PI[], length:
     if (L < 1e-6) continue;
     const dot = (vx * t.dir.x + vy * t.dir.y) / L, angle = acos(Math.min(1, Math.abs(dot)));
     if (angle <= maxAngle + 1e-9) continue;
-    const deg = (angle * 180) / Math.PI, s0 = end === 'a' ? 0 : Math.max(0, length - zone), s1 = end === 'a' ? Math.min(zone, length) : length;
-    const out1 = Math.round((zone + minRadius * tan(angle / 2)) / 50) * 50, max = fmt((maxAngle * 180) / Math.PI, 1), move = 2 * L * sin(angle / 2);
+    const deg = (angle * 180) / Math.PI, max = fmt((maxAngle * 180) / Math.PI, 1), move = 2 * L * sin(angle / 2);
+    if (t.continues) {
+      // a rebuilt stretch continuing the old track: its end straight (to the first bend) is the joint
+      const reach = Math.min(L, length), s0 = end === 'a' ? 0 : length - reach, s1 = end === 'a' ? reach : length;
+      // without a bend: one on the old track's line, a minimum curve's tangent length out (at least 50 m)
+      const out1 = Math.max(50, Math.round(minRadius * tan(angle / 2) / 50) * 50);
+      out.push({ kind: 'station', basis: 'game', s0, s1, size: move,
+        title: 'Our railway meets the old track at a sharp angle',
+        fix: pis.length ? `Move ${bend(k)} about ${fmt(move)} m onto the line of the old track`
+          : `Add a bend about ${fmt(out1)} m out along the old track`,
+        detail: `It turns by ${fmt(deg)}° where it joins the old track. A track turns only in a curve, not at a point; the game allows a corner no sharper than a turnout's ${max}°.`,
+        rule: `Game rule: a rebuilt stretch continues the old track; no corner sharper than a standard turnout J60-1:12-500 (${max}°)`,
+        ...(pis.length ? { pi: k, pis: [k] } : {}) });
+      continue;
+    }
+    const s0 = end === 'a' ? 0 : Math.max(0, length - zone), s1 = end === 'a' ? Math.min(zone, length) : length;
+    const out1 = Math.round((zone + minRadius * tan(angle / 2)) / 50) * 50;
     out.push({ kind: 'station', basis: 'norm', s0, s1, size: move,
       title: 'Our railway leaves the existing tracks at a sharp angle',
       fix: pis.length ? `Move ${bend(k)} about ${fmt(move)} m onto the line of the existing tracks`
@@ -170,8 +185,9 @@ export function trackEndViolations(a: Vec2, b: Vec2, pis: readonly PI[], length:
   }
   return out;
 }
-/** an existing track at a railway's end: its direction (unit, either way) */
-export interface TrackEnd { dir: Vec2 }
+/** an existing track at a railway's end: its direction (unit, either way); `continues`: the old track a
+ * rebuilt stretch continues (no turnout there: the line goes straight on) */
+export interface TrackEnd { dir: Vec2; continues?: boolean }
 
 // ---- horizontal (roads) --------------------------------------------------------------------------
 

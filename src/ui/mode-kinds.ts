@@ -2,19 +2,29 @@
 // Build → Railway, and a mapped railway rebuilt by dragging it. Registered after the road kinds.
 import { MOTORWAY_TRAFFIC } from '../core/data/scenario';
 import { addMotorwayCorridor, MOTORWAY_CATEGORY } from '../core/project-motorway';
-import { createRailwayRoute, promoteGroundRailway, type RailwayRoute } from '../core/project-railway';
+import { createRailwayRoute, fittingBends, promoteGroundRailway, type RailwayRoute } from '../core/project-railway';
+import { TURNOUT_ANGLE_RAD } from '../core/data/railway';
 import type { EndpointConstraint, ProjectDesign, RouteDesign, SourceInterval } from '../core/project';
 import type { ProjectTransportIndex } from '../core/project-network';
 import { KIND } from '../core/structures';
-import { fitBends, MIN_STRETCH, moveStretchEnds, type PlacedEnd } from './road-edit';
+import { builtAnew, fitBends, fitRoad, MIN_STRETCH, moveStretchEnds, type PlacedEnd } from './road-edit';
 import { registerBuildKind, registerMappedLineKind, type BuildKind, type MappedLineKind } from './route-kinds';
 
 /** A rebuilt railway's old line becomes bends where it strays more than this from a chord, and bends
  * closer than the gap are merged: track curves at 120 km/h are ≥ 740 m in radius, so the old line's every
  * wiggle cannot be a bend; a line rebuilt at its own lower speed follows it closer. Display/edit choices,
- * not design rules (m). */
+ * not design rules (m). What stays on the old track is kept as it is (core/project-kept.ts). */
 const railFit = (speed: number) => speed >= 120 ? { tolerance: 25, gap: 300 } : speed >= 100 ? { tolerance: 15, gap: 220 } : { tolerance: 8, gap: 150 };
-const railBends = (path: readonly { x: number; y: number; s: number }[], speed: number) => { const f = railFit(speed); return fitBends(path, f.tolerance, f.gap); };
+const railBends = (path: readonly { x: number; y: number; s: number }[], speed: number, category: 'R1' | 'R2') => {
+  const fit = railFit(speed), a = path[0], b = path[path.length - 1];
+  // two conversions: the old track's bends where track curves fit (one left out where its curve would
+  // not), or the old track followed as a road is (its tighter curves kept); the one that builds less anew
+  // with fewer problems there wins
+  const options = [fitRoad(a, b, path, speed, category, { ...fit, repair: false }), fittingBends(a, b, fitBends(path, fit.tolerance, fit.gap), category, speed)]
+    .map(pis => ({ pis, anew: builtAnew(a, b, path, pis, speed, category, TURNOUT_ANGLE_RAD) }));
+  options.sort((p, q) => p.anew.cells - q.anew.cells || p.anew.problems - q.anew.problems);
+  return options[0].pis;
+};
 /** A rebuilt railway stretch ends this far from a level crossing beyond it (the shared stretch stops
  * 5 m short, a road's width): a railway formation with its slopes needs more room, m. PROVISIONAL. */
 const RAIL_CROSSING_CLEAR = 20;
