@@ -401,6 +401,10 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   exaggeration. The aerial photo is streamed from ČÚZK's view service (needs a connection; see README).
 
 ### Next steps
+- Editing aid (future, not planned now): a drag on a long straight puts in one bend, so the whole line turns
+  about its neighbouring bends (on the D11 straight start, about A and B: 10 px ≈ 230 m moves 15 km of road).
+  A drag could instead keep the rest of the line in place (two holding bends), so a small drag is a local edit
+  and a local price. Accepted for now (research/39 "Second pass").
 
 1. Auto-profile: price ordinary-road crossings, buildings and urban rates beyond clearance requirements.
    Player-marked structures and high-earthwork reserves are implemented (research/15); replace provisional

@@ -16,12 +16,14 @@
  * rebuilds it where it runs along it; railway ends leave the tracks they join at a turnout's angle; rebuilt
  * railway stretches at their line's own speed and grade; a paired motorway's noise as its two directional
  * sources, a double track's per track; road bills unchanged (eval-regression identical).
- * 24: local grade solve (research/39 "Local edits"): the Auto grade line in blocks between long straights
- * (a straight over 4 km: at lines across the A–B axis every 3 km), each with its own mass balance
+ * 25: local grade solve (research/39 "Local edits"): the Auto grade line in blocks between long straights
+ * (a straight over 4 km, and any block over 5 km: at lines across the A–B axis every 4 km), each with its own
+ * mass balance
  * (boundaries from the route within 5 km), nothing placed by the stations, the full gradient outside the
  * last block; separation and strict retries judged per stretch, support lifts within their block (pins
  * kept where the line had them); grade-separated routes retry once to clear crossed roads where no
- * crossing could be built, and deepen a cutting a sag filled in under a bridge over us. */
+ * crossing could be built, and deepen a cutting a sag filled in under a bridge over us; retries judged
+ * without noise problems. */
 export const COST_MODEL_VERSION = 24;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

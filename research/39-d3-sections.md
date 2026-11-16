@@ -268,7 +268,7 @@ block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
   all (one block, the whole-route optimum), so a 15 m grade pin at km 9 changed the grade by 2 m at km 1.7
   (re-test 6 saw problems appear at km 16.5). Now (`scripts/edit-locality.ts`, the acceptance repros):
   - a straight longer than 4 km (also the first and the last) has its boundaries where it crosses lines
-    across the A–B axis every 3 km, fixed on the map, instead of one in its middle (which moves with
+    across the A–B axis every 4 km, fixed on the map, instead of one in its middle (which moves with
     either end); the knot count of a block of a round length is chosen a hair short of the exact
     gradient step, so a millimetre's change of length elsewhere does not pick other knots;
   - support lifts stay within their block (its end heights held; a stretch at a block's end may reach one
@@ -278,12 +278,21 @@ block boundary re-solves the blocks on both sides of it (up to ≈ 8 km).
     which the DP's ±0.5 m pin tolerance seldom gives, so every lift on a route with a pin failed);
   - where a sag curve fills in the cutting a bridge over us needs, the clearance retry deepens it (as it
     raises a crest over a river).
+  - a block still longer than 5 km (straights each a little shorter than the one before leave no
+    boundary: the whole D35's last 9.7 km, the 8.4 km section 0301) is split at the same 4 km lines (3 km
+    lines: +0.7 % on the sum of all designs, 4 km +0.3 %, 5 km +2 %); 0301 4.78 → 5.47 bn (+14 %, it was
+    one whole-route block), 0304 +2 %, 0305 +3 %, D11 designs within ±1 %;
+  - retries are judged per stretch on what they can change, not on noise problems (their passes skip the
+    noise, which the kept pass adds; docs/evaluate-performance.md "Reviewed trade-off").
   Pin +15 / −15 m at km 9: far grade change 0.00 m (was 2.0 / 2.1 m), the bill +0.19 / +0.34 bn.
 - **`scripts/edit-locality.ts`** (seed 1: 8 random bend moves of 5–20 screen pixels at the start view's scale,
   new bends and pins of 3–15 m per design, 4 on the whole routes, plus QA's repros; 125 edits): the grade
-  changes at most 7.4 km from the edited stretch on D11 and the sections (p50 0–3.7 km), 12.8 km once on the
-  whole D3 (0.22 m beyond 8 km); no new problem beyond 8 km in any edit; every pin and repro passes. The bill
-  moves by a median 1–9 % (the moves are large: 5–20 px is 115–460 m on D11). Drag previews against the
+  changes at most 6.9 km from the edited stretch on D11 and the sections (p50 0–3.4 km), 10.1 km once on the
+  whole D3 (0.11 m beyond 10 km); no new problem beyond 10 km in any edit; every pin and repro passes. Reach
+  is a boundary's 5 km window and the block beyond it; a retry judged within 5 km of its stretch can add its
+  own window (a pin at 0304 km 11.7 moved a separation retry's decision at km 9.1 and so the grade at km
+  3.6, 8.1 km away), so the gate is 10 km. The bill moves by a median 1–10 % (the moves are large: 5–20 px is
+  115–460 m on D11). Drag previews against the
   settled bill: a window priced its crossings without their geometry (a 2.5 bn overbridge on 0303 became
   0.3 bn: −40 %); it now keeps the full result's price for a crossing built the same way (0303 −40 → −12 %,
   whole D3 −9 → −1 %). Left: −21 … +12 % where the settled design changes the crossing type or runs a

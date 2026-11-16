@@ -3,7 +3,8 @@
 ## Local grade solve (cost model 24, 2026-11-16)
 
 The Auto grade line is now solved in blocks (research/39 "Local edits"): one corridor pass per boundary
-window (5 km either side since model 24's recapture, coarse grid only; measured with the earlier 1.5 km) on top of the blocks' own corridor and mass-balance passes, which together
+window (5 km either side, coarse grid only; the timings in this paragraph were measured with 1.5 km windows,
+see "Reviewed trade-off" below) on top of the blocks' own corridor and mass-balance passes, which together
 cover the route once as before. Inputs are placed from the block ends (≈ 1 even cost sample per 20 m with
 its ground and geology looked up at its own place, a traced line every ≈ 10 m for crossings, raster
 samples every 2.5 m). Interleaved A/B against main 93f849d (Node, warm, 10 evaluations, two rounds, host
@@ -11,6 +12,32 @@ load ≈ 8–9), min / median ms: D11 best 91 / 112 and 86 / 97 → 92 / 109 and
 and 119 / 150 → 134 / 152 and 130 / 151 (within noise). D3 0303 11 km motorway 97–105 / 101–133. A design
 whose separation retry splits into kept and dropped stretches pays a third evaluation of the route
 (rare: none of the starters).
+
+### Reviewed trade-off: 5 km boundary windows (2026-11-16)
+
+Locality and the bill want each boundary's heights from 5 km either side (1.5 km windows cost ≈ 2 % on the
+sum of all designs and miss valleys); that window pass is the solve's extra work: +15–25 ms per D11 full
+evaluation at first. Offsetting savings, each checked bit for bit against the evaluation without it
+(bills, grade lines, problems and crossings identical) unless marked:
+- **One evaluation, one set of caches.** The passes of a design's evaluation (the separation and narrowing
+  retries, the clearance, support-lift and strict retries) share Auto's window and block solves (keyed by
+  every input they read: an unchanged block is not solved again, so a retry re-solves only the blocks
+  its constraints reach), cross-sections, retaining screens, support obstacles and reroutes.
+- **Noise once.** Retry passes leave out the noise (walls, buy-outs, noise problems; not what a retry
+  changes, so retries are now judged without noise problems: a reviewed model change) and only the kept
+  pass is completed with it.
+- **Cheaper windows.** A boundary's window searches ±15 m around the ground envelope (not ±25; the full
+  band where that finds nothing; not railways) and prices every other 20 m cost sample (the corridor only:
+  sum of all saved designs and starters within 0.1 %).
+- Typed cost samples and one multiply-add per height-table position in the DP's inner loop (same bills).
+
+Interleaved A/B against main a8d8de5 (Node, warm, 10 evaluations, two rounds, exclusive lock), min ms:
+best 88–109 → 116–118, demo 105–111 → 95, direct-80 102–104 → 120–121, direct-90 105 → 125–127,
+town-centre 127–132 → 158–170, D35 first section 87–109 → 85–88: on average ≈ +15 ms per D11 design.
+What is left is design-specific: best's line buries a road that the strict pass must keep (main's line
+did not; demo is the reverse), town-centre's repaired line takes five engineering passes of support lifts.
+The whole D3 settles in 1.4–1.5 s (was 4.2–4.3 s: four full passes, now one with noise and three
+re-solving only their blocks).
 
 ## Long routes: windowed previews, a preview worker (2026-11-16)
 
