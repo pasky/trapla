@@ -8,10 +8,15 @@ import { buildProfile, elevations, type VPI } from './vertical';
 
 export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s: number; z: number }[],
   speed: number, maxGradient: number, pins: readonly { s: number; z: number }[] = [], diagnostic?: (message: string) => void,
-  category?: CategoryId): VPI[] | undefined {
+  category?: CategoryId, range?: readonly [number, number], free?: readonly [number, number]): VPI[] | undefined {
   if (!requirements.length || vpis.length < 3) return;
   const targets = [...requirements].sort((a, b) => a.s - b.s), norms = speedNorms(speed, category);
-  const locked = vpis.map((p, i) => i === 0 || i === vpis.length - 1 || pins.some(pin => Math.abs(pin.s - p.s) < 0.1));
+  // `free`: only the line between these chainages may move (a block of the grade solve): a vertex is put
+  // at each of its ends and held there with everything beyond it
+  if (free) vpis = withVertices(vpis, free);
+  const locked = vpis.map((p, i) => i === 0 || i === vpis.length - 1 || pins.some(pin => Math.abs(pin.s - p.s) < 0.1)
+    || (!!free && (p.s <= free[0] + 0.5 || p.s >= free[1] - 0.5)));
+  const pinZ0 = elevations(buildProfile([...vpis], norms.minCrestRadius, norms.minSagRadius), [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
   for (const radius of [600, 1200, 2400]) {
     const candidate = vpis.map(p => ({ ...p }));
     let impossible = false;
@@ -20,8 +25,10 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
       const deficits = targets.map((p, i) => Math.max(0, p.z + 0.15 - z[i]));
       if (deficits.every(d => d <= 0.01)) {
         const pinZ = elevations(profile, [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
-        const issues = ROAD_CHECKS.vertical(profile, norms, maxGradient);
-        if (issues.length === 0 && [...pins].sort((a, b) => a.s - b.s).every((p, i) => Math.abs(pinZ[i] - p.z) <= 0.05)) return candidate;
+        // With a range (one stretch of several lifted separately): only issues there count.
+        const issues = ROAD_CHECKS.vertical(profile, norms, maxGradient).filter(v => !range || (v.s1 >= range[0] && v.s0 <= range[1]));
+        // a pin keeps the height the line had there (the DP meets a pin within its tolerance, not exactly)
+        if (issues.length === 0 && pinZ.every((z, i) => Math.abs(z - pinZ0[i]) <= 0.05)) return free ? straightened(candidate) : candidate;
         diagnostic?.(`radius ${radius}: ${issues.map(v => `${v.title}@${v.s0.toFixed(0)}`).join(', ') || 'grade pin moved'}`);
         break;
       }
@@ -46,4 +53,21 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
       if (impossible) break;
     }
   }
+}
+
+/** The polyline with a vertex at each of the given chainages (on the line: the profile is unchanged). */
+function withVertices(vpis: readonly VPI[], at: readonly number[]): VPI[] {
+  const out = vpis.map(p => ({ ...p }));
+  for (const s of at) {
+    const k = out.findIndex(p => p.s >= s - 0.5);
+    if (k <= 0 || Math.abs(out[k].s - s) <= 0.5) continue;
+    const a = out[k - 1], b = out[k];
+    out.splice(k, 0, { s, z: a.z + (b.z - a.z) * (s - a.s) / (b.s - a.s), r: null });
+  }
+  return out;
+}
+/** Without the vertices that no longer turn the line (those put in at a free stretch's ends). */
+function straightened(vpis: VPI[]): VPI[] {
+  return vpis.filter((p, i) => i === 0 || i === vpis.length - 1
+    || Math.abs((vpis[i + 1].z - p.z) / (vpis[i + 1].s - p.s) - (p.z - vpis[i - 1].z) / (p.s - vpis[i - 1].s)) > 1e-9);
 }

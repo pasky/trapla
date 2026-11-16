@@ -7,6 +7,8 @@ export class Declutter {
   private boxes: number[] = [];
   private size = new WeakMap<HTMLElement, { w: number; h: number; dx: number; dy: number }>();
 
+  /** measure `el` again (its text or parts changed) */
+  forget(el: HTMLElement) { this.size.delete(el); }
   /** a new frame: nothing placed yet */
   reset() { this.boxes.length = 0; }
   /** room no label may take (the map's buttons, legends) */
@@ -20,6 +22,16 @@ export class Declutter {
       el.style.display = '';
       const style = getComputedStyle(el);
       s = { w: el.offsetWidth, h: el.offsetHeight, dx: parseFloat(style.marginLeft) || 0, dy: parseFloat(style.marginTop) || 0 };
+      if (!s.w || !s.h) {
+        // a point whose parts are placed around it (an end's badge and name, a tag): their union
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const c of el.children) {
+          if (!(c instanceof HTMLElement) || c.offsetParent === null || !c.offsetWidth) continue;
+          x0 = Math.min(x0, c.offsetLeft); y0 = Math.min(y0, c.offsetTop);
+          x1 = Math.max(x1, c.offsetLeft + c.offsetWidth); y1 = Math.max(y1, c.offsetTop + c.offsetHeight);
+        }
+        if (x1 > x0) s = { w: x1 - x0, h: y1 - y0, dx: s.dx + x0, dy: s.dy + y0 };
+      }
       if (s.w > 0) this.size.set(el, s);
     }
     const x0 = sx + s.dx - PAD, y0 = sy + s.dy - PAD, x1 = x0 + s.w + 2 * PAD, y1 = y0 + s.h + 2 * PAD;

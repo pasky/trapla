@@ -1,0 +1,53 @@
+{
+  "scenario": "d3-0304",
+  "purpose": "Motorway near the mapped reference, not the official motorway design or surveyed profile",
+  "design": {
+    "category": "D27.5",
+    "speed": 130,
+    "pis": [
+      {
+        "x": 7708,
+        "y": 15854.6,
+        "r": null
+      },
+      {
+        "x": 7693.5,
+        "y": 14248.4,
+        "r": null
+      },
+      {
+        "x": 6926.6,
+        "y": 12878.5,
+        "r": null
+      },
+      {
+        "x": 6068.5,
+        "y": 11225,
+        "r": null
+      },
+      {
+        "x": 4811.2,
+        "y": 9789.9,
+        "r": null
+      },
+      {
+        "x": 4040.4,
+        "y": 8430.7,
+        "r": null
+      },
+      {
+        "x": 3547.5,
+        "y": 6886.3,
+        "r": null
+      },
+      {
+        "x": 3014.6,
+        "y": 4999.1,
+        "r": null
+      }
+    ],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

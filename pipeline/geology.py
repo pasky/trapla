@@ -144,6 +144,8 @@ def classify(a):
                 return "hard"
             if "břidlice" in rock:
                 return "phyllite"
+            if rock.startswith(("granit", "granodiorit")):  # Variscan intrusions dated to these periods
+                return "igneous"
             return "unknown"
         first = material.group()
         fine = first in ("aleuropelit", "aleoropelit", "jílovc", "prachovc", "slínovc")
@@ -173,6 +175,24 @@ def classify(a):
     if rock.startswith(("serpentinit", "arkózovité pískovce", "střídání slepenců", "valounové droby")):
         return "hard"
     if rock.startswith(("břidlice, prachovce", "jílovité a prachovité břidlice", "metaprachovce")):
+        return "phyllite"
+    # Moldanubian descriptions of the southern D3 sections (paragneiss, migmatite, dyke rocks).
+    if "pararul" in rock or "migmatit" in rock:
+        return "gneiss"
+    if rock.startswith("porfyr"):
+        return "igneous"
+    if rock.startswith("žilný křemen"):
+        return "hard"
+    if "pyroxenit" in rock:
+        return "igneous"
+    if rock.startswith("leptynit"):
+        return "hard"
+    if rock.startswith(("vápenec", "krystalické vápence")):
+        return "carbonate"
+    # Barrandian descriptions at the Prague end (0301).
+    if rock.startswith(("křemenný pískovec", "střídání drob")):
+        return "hard"
+    if "jílovité břidlice" in rock:
         return "phyllite"
     return "unknown"
 

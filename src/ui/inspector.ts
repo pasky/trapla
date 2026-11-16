@@ -5,7 +5,7 @@
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type OurLine } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
 import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
@@ -27,7 +27,9 @@ export type Sel =
   | { kind: 'pin'; s: number }
   | { kind: 'vpi'; i: number }
   | { kind: 'crossing'; roadId: number }
-  | { kind: 'building'; j: number };
+  | { kind: 'building'; j: number }
+  /** a mission end that meets an interchange or a road (scenario data) */
+  | { kind: 'end'; end: 'a' | 'b' };
 
 export interface InspectorEvents {
   close?: () => void;
@@ -186,13 +188,13 @@ export class Inspector {
   host(): HTMLElement {
     const a = document.activeElement as HTMLElement | null;
     if (a && this.el.contains(a)) a.blur();
-    this.hosted = true; this.sel = null; this.pending = false; return this.el;
+    this.hosted = true; this.sel = null; this.pending = false; this.el.hidden = false; return this.el;
   }
   get isHosting() { return this.hosted; }
   clear(message = 'Choose a road to inspect.') {
     this.hosted = false;
     this.r = null; this.d = null; this.sel = null;
-    this.el.replaceChildren(); this.el.className = 'card ctx inspector idle';
+    this.el.replaceChildren(); this.el.className = 'card ctx inspector idle'; this.el.hidden = false;
     const text = document.createElement('p'); text.textContent = message; this.el.append(text);
   }
 
@@ -203,6 +205,8 @@ export class Inspector {
     if (!force && document.activeElement && this.el.contains(document.activeElement) && document.activeElement.matches('input[type=number], input[type=range]')) { this.pending = true; return; }
     this.pending = false;
     const r = this.r, d = this.d, sel = this.sel;
+    // nothing to show yet (the first result is still being worked out): no empty card outline
+    this.el.hidden = !r || !d;
     if (!r || !d) { this.el.innerHTML = ''; return; }
     let html = '';
     if (sel?.kind === 'stretch') html = this.stretch(r, d, sel);
@@ -211,6 +215,7 @@ export class Inspector {
     else if (sel?.kind === 'vpi') html = this.vpi(r, sel.i);
     else if (sel?.kind === 'crossing') html = this.crossing(r, d, sel.roadId);
     else if (sel?.kind === 'building') html = this.building(r, d, sel.j);
+    else if (sel?.kind === 'end') html = this.end(r, sel.end);
     const shown = html ? sel : null;
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
@@ -398,6 +403,17 @@ export class Inspector {
       <div class="ctx-row"><label>Height <input id="pin-z" type="number" step="0.1" value="${p.z.toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${s}">Set</button><button type="button" id="pin-clear" data-s="${s}">Unpin</button></div>`;
   }
 
+  // ---- a mission end (an interchange, a road it joins) ----
+  /** what the mission's ends meet and their names (set by the app; reversed directions swap them) */
+  ends: { a?: EndConnection; b?: EndConnection; names: { a: string; b: string } } | null = null;
+  private end(r: Result, end: 'a' | 'b') {
+    const info = this.ends?.[end];
+    if (!info) return '';
+    const card = endCard(info, end);
+    return `${this.head(esc(card.title), `${end.toUpperCase()} · ${esc(this.ends!.names[end])} · km ${km(end === 'a' ? 0 : r.length)}`)}
+      <div class="ctx-state">${card.lines.map(l => esc(l)).join('<br>')}</div>`;
+  }
+
   // ---- height point (By hand) ----
   private vpi(r: Result, i: number) {
     if (i <= 0 || i >= r.vpis.length - 1) return '';
@@ -423,8 +439,10 @@ export class Inspector {
     const roads = crossedRoads(r), k = roads.findIndex((x) => x.roadId === roadId);
     const nav = `<button type="button" class="nav" data-nav="-1" title="Previous crossed road" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button>`;
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
+    // against the crossed road as it is today (an overbridge lifts it; "below it" read like the clearance under it)
     const line = CATEGORIES[d.category].mode;
-    const rel = `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c, line);
+    const rel = Math.abs(c.h) < 0.5 ? `our ${line} at the crossed road’s level today`
+      : `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} the crossed road’s level today`, outcome = crossingOutcome(c, line);
     // a new road of the project is bridged, carried over us or met, never cut and rerouted
     const options = crossingOptions(CATEGORIES[d.category].gradeSeparated ? line : 'road', !!CATEGORIES[d.category].minor).filter(([v]) => !c.designed || v !== 'reconnection');
     const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our ${line} ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';

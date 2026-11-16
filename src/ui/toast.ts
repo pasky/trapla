@@ -23,5 +23,6 @@ export function toast(text: string, action?: string, onAction?: () => void, ms =
 
 function hide() { if (el) el.hidden = true; clearTimeout(timer); }
 
-/** take the toast (and its action) away, e.g. once another edit makes its Undo mean something else */
-export function hideToast() { hide(); }
+/** take the toast (and its action) away, e.g. once another edit makes its Undo mean something else;
+ * with `text`, only if that is what it says (a note about something just turned off) */
+export function hideToast(text?: string) { if (text === undefined || el?.querySelector('span')?.textContent === text) hide(); }

@@ -3,7 +3,8 @@
 
 import { BuildingIndex, type BuildingInfo } from './core/buildings';
 import type { ScenarioParams } from './core/data/scenario';
-import { evaluate, type Design, type EndpointJunction, type EvalContext } from './core/evaluate';
+import { evaluate, type Design, type EndpointJunction, type EvalContext, type Result } from './core/evaluate';
+import { adoptFull, previewBase } from './core/preview-window';
 import { RoadNet, type RoadNetData } from './core/roadnet';
 import type { WaterData } from './core/watercourses';
 import type { GroundData } from './core/ground';
@@ -17,7 +18,9 @@ export type WorkerIn =
   | { type: 'init'; nx: number; ny: number; cell: number; base: number; scale: number; q: Uint16Array; lc: Uint8Array;
       a: { x: number; y: number }; b: { x: number; y: number }; buildings: [number, number, number][];
       binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData; scenario: ScenarioParams; watercourses?: WaterData;
-      projectEnvironment?: ProjectEnvironment; junctions?: EndpointJunction[] }
+      projectEnvironment?: ProjectEnvironment; junctions?: EndpointJunction[];
+      /** 'full' passes each full result on `port` to the 'preview' worker (base of its windowed previews). */
+      role?: 'full' | 'preview'; port?: MessagePort }
   | { type: 'eval'; id: number; design: Design; preview?: boolean; materialValue?: number }
   /** Legacy road-net way of each mapped source, whenever the pack's road links are loaded. */
   | { type: 'source-ways'; ways: [string, number][]; rails?: [string, number[], number[]][] }
@@ -30,8 +33,22 @@ let band: Extract<WorkerIn, { type: 'noise-band' }> | null = null;
 let scheduled = false;
 let projectEnvironment: ProjectEnvironment | null = null;
 let lastProject: ProjectResult | null = null;
+/** full worker: where full results go for the preview worker */
+let basePort: MessagePort | null = null;
 let sourceWays: Map<string, number> | undefined;
 let railPaths: Map<string, { xy: number[]; stations: number[] }> | undefined;
+
+/** A preview's own per-station arrays move to the main thread instead of being copied (a long route's
+ * preview is ≈ 1.7 MB). Never the full result's (`quantities` may be shared with a windowed preview's base). */
+function previewBuffers(r: Result): ArrayBuffer[] {
+  const buffers = new Set<ArrayBuffer>();
+  const add = (v: unknown) => { if (ArrayBuffer.isView(v) && v.buffer instanceof ArrayBuffer) buffers.add(v.buffer); };
+  for (const k of ['s', 'x', 'y', 'tx', 'ty', 'ground', 'grade', 'kind', 'cut', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'oob', 'wallSurfaceL', 'wallSurfaceR'] as const) add(r[k]);
+  for (const v of Object.values(r.parts)) add(v);
+  for (const v of Object.values(r.cell)) add(v);
+  add(r.geology.ids);
+  return [...buffers];
+}
 
 function runBand() {
   const job = band!;
@@ -56,6 +73,7 @@ function run() {
     if (job.type === 'eval') {
       const result = evaluate(ctx, job.design, { preview: job.preview, materialValue: job.materialValue });
       (self as unknown as Worker).postMessage({ type: 'result', id: job.id, result });
+      if (!job.preview) basePort?.postMessage([previewBase(result)]);
     } else {
       if (!projectEnvironment) throw new Error('Project environment missing from worker init');
       const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays, ...(railPaths ? { railPaths } : {}) };
@@ -63,7 +81,7 @@ function run() {
         const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, { materialValue: job.materialValue, structureValue: job.structureValue }, lastProject);
         (self as unknown as Worker).postMessage({ type: 'project-preview', id: job.id,
           identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, routeId: job.routeId, routeRevision: result.revision, result,
-          ...(job.gesture ? { gesture: job.gesture } : {}) });
+          ...(job.gesture ? { gesture: job.gesture } : {}) }, result.legacy ? previewBuffers(result.legacy) : []);
       } else {
         const result = evaluateProject(projectContext, job.snapshot);
         const known = lastProject && job.displayedResult?.epoch === lastProject.epoch && job.displayedResult.revision === lastProject.revision ? lastProject : null;
@@ -71,6 +89,7 @@ function run() {
         const changedRouteIds = Object.keys(result.routes).filter(id => result.routes[id].engineeringRevision !== known?.routes[id]?.engineeringRevision);
         const removedRouteIds = known ? Object.keys(known.routes).filter(id => !Object.prototype.hasOwnProperty.call(result.routes, id)) : [];
         lastProject = result; // One result only; never retain a history of typed arrays.
+        basePort?.postMessage(Object.values(result.routes).flatMap(r => r.legacy ? [previewBase(r.legacy)] : []));
         (self as unknown as Worker).postMessage({ type: 'project-result', id: job.id, result, baseIdentity,
           changedRouteIds, removedRouteIds, dependentRouteIds: [] });
       }
@@ -88,6 +107,10 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
   const m = ev.data;
   if (m.type === 'init') {
     pending = null; band = null; lastProject = null; sourceWays = undefined; railPaths = undefined; projectEnvironment = m.projectEnvironment ?? null;
+    basePort = m.role === 'full' ? m.port ?? null : null;
+    if (m.role === 'preview' && m.port) m.port.onmessage = (e: MessageEvent<Result[]>) => {
+      if (ctx) for (const r of e.data) adoptFull(ctx.terrain, r);
+    };
     const terrain = new Terrain({ nx: m.nx, ny: m.ny, cell: m.cell, base: m.base, scale: m.scale, q: m.q, lc: m.lc, ground: m.ground, watercourses: m.watercourses });
     ctx = {
       terrain, scenario: m.scenario, a: m.a, b: m.b, buildings: new BuildingIndex(m.buildings, m.binfo),

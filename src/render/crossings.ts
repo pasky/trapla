@@ -175,7 +175,11 @@ export class CrossingRenderer {
     // dropped). Its key covers all of these.
     const headKey = new SurfaceKey();
     for (const head of allHeads) { headKey.num(head.center.x); headKey.num(head.center.y); headKey.num(head.radius); }
-    const own = surfaces.map(surfaceKey), neighbourKeys = neighbours.map(surfaceKey);
+    // Keys hash every collar point: computed once per surface (neighbours include the own ones) and
+    // a few surfaces per slice (a long route has hundreds).
+    const keys = new Map<CrossingSurface, string>();
+    for (const s of [...surfaces, ...neighbours]) if (!keys.has(s)) { keys.set(s, surfaceKey(s)); if (keys.size % 16 === 0) yield; }
+    const own = surfaces.map(s => keys.get(s)!), neighbourKeys = neighbours.map(s => keys.get(s)!);
     const sample = surfaces.map(s => {
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const q of s.sections) for (const p of [q.outer[0], q.outer[1], q.toe[0], q.toe[1], q.p]) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }

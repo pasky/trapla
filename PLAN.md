@@ -453,6 +453,10 @@ Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes on
   exaggeration. The aerial photo is streamed from ČÚZK's view service (needs a connection; see README).
 
 ### Next steps
+- Editing aid (future, not planned now): a drag on a long straight puts in one bend, so the whole line turns
+  about its neighbouring bends (on the D11 straight start, about A and B: 10 px ≈ 230 m moves 15 km of road).
+  A drag could instead keep the rest of the line in place (two holding bends), so a small drag is a local edit
+  and a local price. Accepted for now (research/39 "Second pass").
 
 1. Auto-profile: price ordinary-road crossings, buildings and urban rates beyond clearance requirements.
    Player-marked structures and high-earthwork reserves are implemented (research/15); replace provisional
@@ -1068,3 +1072,18 @@ the bill change: **research/36**.
 - Performance (open): the noise step is +2–3 ms on best / demo, +4–6 ms on direct-80/90 and ≈ +12 ms on
   town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
   unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.
+
+## Local edits: the grade line in blocks (cost model 25, 2026-11-16)
+
+Playtest (whole D3 / D35): a small nudge redesigned the grade and broke crossings 9–24 km away. Same design,
+same bill stays the rule (no edit history), so the solve itself became local (research/39 "Local edits"):
+blocks between long straights (from the plan only), each boundary's heights from the 5 km around it, each
+block with its own mass balance, every input placed from the block ends rather than the stations; the
+separation and strict retries and the support lifts act and are judged per stretch. Whole D3, 16 bend moves:
+far grade change 14.8 → 2.4 m, far violations changed 2 → 0. Price: each block balances its own earth
+(with 5 km boundary windows the sum of all saved designs equals a whole-route solve; single designs ±5–10 %);
+five designs and starters needed 8–90 m bend repairs.
+Known issues: far changes left (whole D3 4 of 16 moves, whole D35 1 of 10) come from the station-based
+engineering on a shifted station grid (support lifts, overbridge ramp checks, reroutes, culverts); a chain of
+straights each a little shorter than the last leaves one long block (the whole D35's last 9.7 km), which an edit
+anywhere in it re-solves to B; interchange ramps are not modelled (the ends say so on their card).

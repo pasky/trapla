@@ -276,3 +276,24 @@ export function togetherHouseText(rec: ProjectReceiver, name: (routeId: string) 
   if (t.over !== undefined && t.over > 0) return { state: `Stays · ${level.toFixed(1)} dB ${period} (limit ${limit})`, why: heard };
   return { state: 'Stays · quiet enough', why: heard };
 }
+
+/** What a mission end meets (scenario data), for the card shown when the end is clicked. */
+export interface EndConnection {
+  /** 'interchange': an interchange with a road, its ramps not built here; 'joins': the motorway carries on
+   * as an open road here; 'continues': the planned road goes on as another section; 'roundabout': our road
+   * gets its own arm into an existing roundabout */
+  kind: 'interchange' | 'joins' | 'continues' | 'roundabout';
+  /** the road(s) met, in player words: 'road I/18', 'the D0 and road II/101', 'the open D3' */
+  with: string;
+  /** a section end: the section the motorway goes on as (at B) or comes from (at A) */
+  section?: string;
+}
+/** The end's card: a title and short lines, plain words. */
+export function endCard(info: EndConnection, end: 'a' | 'b'): { title: string; lines: string[] } {
+  if (info.kind === 'continues') return { title: `Goes on as ${info.with}`, lines: ['That part is not in this job.'] };
+  if (info.kind === 'roundabout') return { title: `Joins the roundabout on ${info.with}`,
+    lines: ['Our road gets its own arm into it here, with a splitter island, priced as a junction; the roundabout itself stays as it is.'] };
+  if (info.kind === 'joins') return { title: `Joins ${info.with}`, lines: [`Our motorway carries on as ${info.with} here; that road is not part of this job.`] };
+  return { title: `Interchange with ${info.with}`, lines: ['Its ramps are not part of this job.',
+    ...(info.section ? [end === 'b' ? `The motorway goes on as ${info.section}.` : `The motorway comes from ${info.section}.`] : [])] };
+}
