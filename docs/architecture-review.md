@@ -33,7 +33,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
 | 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done in part: 1,840 → 958 lines, 12 modules out; rest planned (§ main.ts) |
-| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | prepared, not applied: `scripts/dev/split-evaluate.sh` (§ Core) |
+| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | first four stages done (750 lines, a +74 −13 diff); the closures next (§ Core) |
 | 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
@@ -134,26 +134,24 @@ possible, not the end state.
   `buildCrossingGeometryOnce` is 840 lines, `project-evaluate.ts` `evaluateProject` 443.
   Why it matters: every engine feature lands in these functions; three agents edit them at once; a stage
   cannot be tested or timed alone.
-  **Prepared, not applied** (the parent sequences it): `scripts/dev/stage.mjs` turns a contiguous run of
-  a function's top-level statements into a named module-level function *in the same file*, without
-  touching a statement: the stage returns the locals later code reads and the original place becomes
+  **How it is being split:** `scripts/dev/stage.mjs` turns a contiguous run of a function's top-level
+  statements into a named module-level function *in the same file*, without touching a statement: the
+  stage returns the locals later code reads and the original place becomes
   `const setup = routeSetup(ctx, d, opts); const { st, n, ds, … } = setup;`, so the rest still works on
   plain locals (nothing changes in the hot loops) and statement order is untouched (bit-identical sums).
   It analyses scopes lexically and refuses what a verbatim move would break (a `let` shared between a
   stage's closures and later code, forward references, a top-level `return`). Because the statements stay
-  where they are in the file, **the diff is only the wrappers**: `scripts/dev/split-evaluate.sh` makes
-  the first four stages (`routeSetup` 279 lines, `routePrices` 198, `routeGradeLine` 236, `routeCaches`
-  37) as a diff of +68 −12 lines, anchored on statements, not line numbers, so it can run on whatever
-  `evaluate.ts` looks like that day and barely conflicts with open work. Dry run on `6fb4a7b`: tsc clean,
-  177 / 177 results identical, interleaved time ratio 0.98 (min) / 0.91 (median) under load
-  (`scripts/dev/interleave.ts <base checkout> <this checkout>`).
+  where they are in the file, **the diff is only the wrappers**, so it barely conflicts with open work.
+  Done: `routeSetup` (279 lines), `routePrices` (198), `routeGradeLine` (236), `routeCaches` (37) as a diff
+  of +74 −13 lines; tsc clean, 177 / 177 results identical, interleaved timing against main unchanged
+  within the noise of a loaded host (`scripts/dev/interleave.ts <base checkout> <this checkout>`: six runs,
+  median ratio 0.91–1.04, CPU time ratio 0.99–1.01).
   Then, each again by the tool:
   1. the closures as factories: `const { engineer } = routeEngineer(ctx, opts, setup, prices, solved,
      caches)` (250 lines), then `liftStop` + `liftProfile` + `finish` together (560 lines, containing
-     `complete`; `liftStop` is assigned by `liftProfile` and read by `finish`, so they share a stage). One
-     hand step first, which the tool asks for: `let deckCoverReady` (declared among the caches, assigned
-     only in `engineer`) moves down next to `engineer`. The retry logic (≈ 45 lines) is then what is left
-     of `evaluateRoute`;
+     `complete`; `liftStop` is assigned by `liftProfile` and read by `finish`, so they share a stage).
+     `let deckCoverReady` (assigned only in `engineer`) already sits next to it and goes into its stage. The
+     retry logic (≈ 45 lines) is then what is left of `evaluateRoute`;
   2. inside `finish`: quantities / buildings / crossings / footprint as stages, `complete()` (noise,
      violations, the `Result`) as its own function;
   3. only then move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports,
