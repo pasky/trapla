@@ -294,6 +294,11 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 4. Browser gates from a clean checkout of the commit (`scripts/gates.sh full --only smoke,playtest,drag-bend,…`),
    and the scene script that plays what was touched.
 5. A move is a *move*: no rewording, no reordering of floating-point sums, no "while I'm here".
+6. tsc proves the identifiers of a mechanical rename, not the strings. After moving UI code, compare the
+   string literals of the old and new files (`scripts/dev/strings.mjs`, a sorted `comm -23`), and the
+   transcripts of the scene scripts that play the flow against the base checkout. (A rename here turned
+   "Undo the last change" into "Undo the session.last change" for two commits; neither tsc nor the unit
+   tests could see it, the transcript of `lazy-transport-check.mjs` did.)
 
 ## Merge batches
 
