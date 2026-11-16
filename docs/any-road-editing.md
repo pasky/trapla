@@ -672,3 +672,48 @@ since touches it): convert 6, tail 1, head 0 of 433, unchanged.
   class; the held deck should be the owner's structure, not a "your bridge" override.
 - A minor road crossing another minor road inside a rebuilt stretch is resolved as before (reroute), not as a
   crossroads; minor-road traffic is the class III average (no sourced count).
+
+## 16. Held decks, minor crossroads, the house card together (2026-11-16, fifth pass)
+
+**A road on a higher-ranking road's bridge over it (`f903e69`).** The held deck (`holds[].bridge`) is still a bridge
+in the held road's structure overrides, but it is the owner's: `evaluate.ts` passes a `heldDeck` mask, so no
+4 m rule (`minH`, `flagRanges`), no length check and no support/span checks (`remedyBridgeSupports` skips runs made
+only of held cells). The held road is held at the deck's middle and at both deck ends (`holdAt` returns
+`deckEnds` from the crossing's own `geometry.road`/`deck`; `heldBands`), and `heldChecks` reports the worst miss
+once. D11 Nový Rokytník street (`osm:way:275065891`) rebuilt as M 7.5: valid, rides the deck (≤ 0.4 m off its
+middle and ends; it used to be lifted 4 m and then miss the deck). Forced to S 7.5 / III / 70 km/h it still misses
+the deck by 2.2 m, for another reason: the kept old street is up to 9.4 % steep, class III allows 6 %, so the
+auto-profile's kept-road band is infeasible and the fallback line ignores every band (open below).
+Test: edited-network "over our cutting it rides our deck at ground level from end to end…" (fails on the old
+code); any-road-scene asserts the credit and no deck violation on the street.
+
+**Minor crossroads (`fc146bd`).** A local road or track (category `minor`) meets the minor roads it crosses
+(`unclassified`, `residential`, `living_street`, `service`, `track`) in a junction, never cuts and reroutes them
+(`resolveCrossings(…, minor)`, `minorCrossroads`). Price, research/43 (new, research subagent, reviewed; the MMR/ÚÚR
+2025 unit prices spot-checked in the PDF): two local roads 1 M CZK (extra paved area and edges, PROVISIONAL, low
+confidence), two tracks 0.25 M (KoPÚ budgets, very low), a track with a local road the 0.5 M access (research/13).
+A side street's junction on a rebuilt street is the same crossroads (`sideJunctionCost(cls, minor)`; it was 7 M).
+Auto holds a minor road at the crossed road's level there (±`MINOR_CROSSROADS_BAND` 0.5 m) with height points
+`MINOR_KNOTS` = 60 m apart (125/250 m could not place the band between knots). Crossing card texts for minor roads
+(`MINOR_CROSSING_TEXT`: no 1.5 km spacing); the S-bend overlap rule on minor roads names their own norm (game
+geometry). D11 town batch (92 street rebuilds with a 30 m bend, `_minor-x2`): violations 95 → 56, no "No place to
+reconnect"; 9 "cannot be brought to this road's height for the junction" remain where the crossed way ends a few
+metres away or runs along our earthworks. D11 single-road bills bit-exact. any-road-scene: Topolová bent 30 m
+across a street → a 1 M crossroads 0.3 m from its level (it was a 30 M reroute and a 13 M bridge).
+
+**The house card, decided together (`6370a82`).** `ProjectReceiver.together` (prevailing road, decision, deciding
+storey, the wall or buyout); contributions carry each road's storeys (as built, with the project's walls). The card
+(`togetherHouseText`): "41.2 dB at night on the top floor, both roads together (limit 50): our road 41.0 dB, Street
+27.6 dB." plus the wall ("A 3 m wall, 120 m long, along …: 4.1 M CZK.") or the buyout. any-road-scene checks a
+Nový Rokytník house after the street is rebuilt on the plain D11 project.
+
+**Gates on `6370a82`** (2026-11-16 10:00–10:40): tsc, vitest 658, build, eval-regression (11 PASS, bit-identical),
+bench (5 VALID), outcome-audit (exit 0), land-screen-check (6 OK), smoke, any-road-scene D11 and D3, owner-d3-scene,
+playtest (`PORT=5246`, load 7.6): PASS. drag-perf deferred to the QA fixes below.
+
+**QA re-test 2 of 80168c3 (playtest-qa, worktree-0005, /tmp/trapla-qa/ar2/), to fix before merge:** cold start
+(first click/drag before the road links load; no hover cursor), a drag next to a crossing pans instead of
+rebuilding, the street off its deck (fixed above, re-check), a player's edit of a track an automatic reroute uses
+("Two roads change the same old road"), rebuilding III/1057 makes the motorway 38 M cheaper unexplained, I/37
+45 px drag "Two roads take the same house" ×5 (decide jointly), P2 minor-road traffic prior and a ~5 px pick
+offset. main a8d8de5 (motorway-rail, model 23) must be merged first; ours becomes model 24.
