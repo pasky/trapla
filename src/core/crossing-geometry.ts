@@ -1324,7 +1324,19 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   let changed = false;
   // The dearest treatments are reconsidered first: a crossing others are then rerouted to keeps carrying them.
   // (`stale`: its present treatment no longer works, e.g. a reroute whose crossing no longer carries traffic)
+  // (when each crossing was last weighed, began to carry traffic, or was led to its present target: the
+  // consolidation pass below tries only what those looks could not see)
+  let step = 0;
+  const lookedAt = new Map<CrossingResult, number>(), carrierSince = new Map<CrossingResult, number>(), ledSince = new Map<CrossingResult, number>();
   const reconsider = (c: CrossingResult, stale = false) => {
+    const wasCarrier = carries(c), wasTarget = c.targetS;
+    // (a feasible reroute is weighed against structures only, not against other targets)
+    lookedAt.set(c, (c.type === 'reconnection' || c.type === 'diversion') && feasible(c) && !stale ? -2 : step++);
+    reconsiderOnce(c, stale);
+    if (!wasCarrier && carries(c)) carrierSince.set(c, step++);
+    if (c.targetS !== wasTarget) ledSince.set(c, step++);
+  };
+  const reconsiderOnce = (c: CrossingResult, stale: boolean) => {
     // An automatic junction is reconsidered only when its own works cannot be built (crossing-works.ts).
     const worksFail = c.type === 'junction' && !!c.geometry?.diagnostics?.some(m => m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG || m === WORKS_TIE_SHARED);
     // The player's underpass or bridge over us on a skewed crossing: Auto still decides whether to
@@ -1465,6 +1477,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     let target: CrossingResult | undefined;
     for (const t of crossings) if (t !== c && carries(t) && !t.moved && !along.includes(t) && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
       && along.every(x => x.cls === 'track' || x.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
+      && (carrierSince.get(t) ?? -1) > ((reroute ? ledSince.get(c) ?? -2 : lookedAt.get(c)) ?? -1)
       && Math.abs(t.s - c.s) < reach - 1e-6 && !dependsOn(t, c) && (!target || Math.abs(t.s - c.s) < Math.abs(target.s - c.s))) target = t;
     if (!target || (reroute && !stranded && target.s === c.targetS && target.roadId === c.targetRoadId)) return;
     // (a join already tried between the same two treatments is not built again in a later round)
@@ -1488,7 +1501,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       spent += link.cost; links.push(link);
       if (spent >= before) return;
     }
-    [c, ...along].forEach((x, k) => { for (const key of FIELDS) delete x[key]; Object.assign(x, links[k]); });
+    [c, ...along].forEach((x, k) => { for (const key of FIELDS) delete x[key]; Object.assign(x, links[k]); ledSince.set(x, step++); });
     changed = true;
   };
   // (until nothing changes, at most JOIN_ROUNDS times: a crossing that starts carrying traffic in one
