@@ -9,6 +9,7 @@ import { crossingWorks, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG }
 import { LOWERING_RULES, RETAINING_RULES, retainingAssembly, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { KIND } from './structures';
 import { acos, atan2, cos, sin, tan } from './detmath';
+import { INDEPENDENCE_SCREEN } from './project-ledger';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
 /** Diagnostic when a raised approach cannot reach the old road's ground within the class gradient. */
@@ -169,7 +170,7 @@ const JOIN_SHORTER = 0.8;
 const SHAPED_LINK: Record<LinkProblem, string> = {
   steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
   railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
-  river: 'Shaped link crosses a river', far: LINK_TOO_FAR,
+  river: 'Shaped link crosses a river', far: LINK_TOO_FAR, works: 'Shaped link runs into another road of the project',
 };
 const linkMessage = (problem: LinkProblem, _shaped: true) => SHAPED_LINK[problem];
 
@@ -196,6 +197,7 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
       footprint: 'there is no room for it beside our earthworks', motorway: 'it would have to cross a motorway on the ground',
       railway: 'it would have to cross a railway on the ground', water: 'it would have to run through a pond or river',
       river: 'it would have to cross a river too big for a culvert', building: 'it would have to run through a house you keep', far: 'it would be too long',
+      works: 'another road you build is in the way',
     } as Record<string, string>)[problem] ?? problem);
     const reason = reasons.join('; ');
     // the nearest structure: our bridge over it (raise our road) or its bridge over a deeper cutting
@@ -211,6 +213,10 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Drag its bend points so that it stays on this side of the river, or choose "Automatic path" on the crossing card',
     detail: `The river is too big for a culvert under a ${what}.`, basis: 'game',
     rule: 'Game rule (research/17): a new road crosses streams on culverts; rivers need a bridge, which reroutes do not get' };
+  if (message === SHAPED_LINK.works) return { title: `Your path for the new ${what} runs into another road you build`,
+    fix: 'Drag its bend points clear of that road, or choose "Automatic path" on the crossing card',
+    detail: `The new piece of ${what} would come closer than ${INDEPENDENCE_SCREEN.clearance} m to that road's works.`, basis: 'engine',
+    rule: `Engine limit: two roads' works are kept ${INDEPENDENCE_SCREEN.clearance} m apart, except where they meet` };
   if (message === LINK_TOO_FAR) return { title: `Your path for the new ${what} goes too far`,
     fix: 'Drag its bend points closer to our road, or choose "Automatic path" on the crossing card',
     detail: `A new piece of ${what} may run at most about ${(4 * MAX_REACH / 1000).toFixed(0)} km.`, basis: 'engine',

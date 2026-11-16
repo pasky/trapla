@@ -33,7 +33,7 @@ export type { SourceWays } from './project-roadnet';
 const legalClassFits = (spec: RoadSpec) => spec.crossSection !== 'existing' && !!CATEGORIES[spec.crossSection].legalClasses?.includes(spec.legalClass);
 
 export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, routeId: string,
-  objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue'> & { sourceWays?: SourceWays;
+  objectData: string, options: Pick<EvalOptions, 'preview' | 'materialValue' | 'structureValue' | 'keepClear'> & { sourceWays?: SourceWays;
     /** Heights where a higher-ranking road's crossing holds this road (EvalOptions.holds). */
     holds?: EvalOptions['holds'];
     /** Ends on another designed road follow that road's CURRENT line (its nearest point and height). */

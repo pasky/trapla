@@ -47,6 +47,7 @@ import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { carryCrossingPrices, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
+import { capsuleTest, type KeepClear } from './keep-clear';
 import { barrelLength, culvertEnvelope, barrelContains, culvertCost, waterOpening, waterSize, waterSizer, waterCoverFits, type WaterCrossing, type WaterResult } from './watercourses';
 
 export interface Design {
@@ -272,6 +273,9 @@ export interface EvalOptions {
   railTieIn?: { a: number; b: number; ends?: { a?: TrackEnd; b?: TrackEnd } };
   /** Railway rebuilding mapped stretches: their old track (polylines) is taken up, no obstacle. */
   railRetired?: readonly (readonly { x: number; y: number }[])[];
+  /** Land and works of other roads of the project that Auto's reroutes keep clear of (the player's road
+   * takes over: project-evaluate.ts plans them again where they came too close). */
+  keepClear?: KeepClear;
 }
 
 interface PassCache {
@@ -666,7 +670,9 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Billing may merge carriageways / omit tie-in-area objects; safety must see every raw crossing.
   // Only actual endpoint connections are outside this project's crossing scope. The old
   // 150 m billing margin is not proof that nearby roads can be buried without engineering.
-  const roadX = mergeCrossings(rawRoadX, al.length, { ...CROSSING_RULES, endMargin: CROSSING_RULES.endpointTolerance + 1e-6 }, new Set(crossingOverrides.map((o) => o.roadId)));
+  // (a designed road of the project keeps its own crossing: it follows that crossing's height, project-evaluate.ts)
+  const roadX = mergeCrossings(rawRoadX, al.length, { ...CROSSING_RULES, endMargin: CROSSING_RULES.endpointTolerance + 1e-6 },
+    new Set([...crossingOverrides.map((o) => o.roadId), ...ctx.roads?.designedWays ? rawRoadX.filter(c => ctx.roads!.isDesigned(c.way)).map(c => c.way) : []]));
   manualStructures = crossingBridgeMask(st.s, rawRoadX, crossingOverrides, manualStructures);
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
@@ -1665,13 +1671,16 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * (joinedRight ? sec.dayL[i] : sec.dayR[i]) : v) : width;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
     ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor);
-  // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed).
+  // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed,
+  // other roads' works it is kept clear of).
+  const clearOf = opts.keepClear?.length ? capsuleTest(opts.keepClear) : undefined;
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const len = Math.hypot(q.x - p.x, q.y - p.y);
     if (!(len > 0)) return null;
     const tx = (q.x - p.x) / len, ty = (q.y - p.y) / len, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
-    let hit: 'railway' | 'water' | 'building' | null = null;
+    let hit: 'railway' | 'water' | 'building' | 'works' | null = null;
     protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half }, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
+    if (!hit && clearOf?.(p, q, half)) hit = 'works';
     // a house you keep is never demolished for a reroute
     if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
     return hit;
