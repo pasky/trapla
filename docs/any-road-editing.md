@@ -571,3 +571,9 @@ such junctions; D11 bills bit-identical, D3 motorway and road presets unchanged.
 `tests/endpoint-junction.test.ts` "the joined road met again inside the junction is the junction". any-road-scene
 asserts no crossing within 5 m of a side road's start and that a side road's crossing card never says "our road"
 (D11: "Track · km 0.31 · Rerouted to the nearest crossing… · this road 0 m below it").
+
+**Gates on `bd299a7`** (2026-11-16 ~05:20): tsc, vitest 623, build, eval-regression (11 D11 bills
+bit-identical), smoke, playtest (`PORT=5246`), bench (5 saved designs VALID), outcome-audit (`--straight …
+--random 24`, exit 0), land-screen-check (6 OK), any-road-scene D11 and D3, owner-d3-scene: PASS; drag-perf
+`--gpu --check` bend, road, radius, pin, vpi, link: all OK (load 7–13; `/tmp/gate-perf-<mode>.log`).
+Still waiting: QA's re-test of this tree (item 2) and noise-walls-seams in main (G).
