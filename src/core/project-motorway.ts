@@ -3,6 +3,7 @@
 // the spine owns the alignment, profile and structure controls (C0 corridor contract).
 import type { Design, EvalContext, EvalOptions, Result } from './evaluate';
 import type { VPI } from './vertical';
+import { GRADE_PIN_TOLERANCE, type GradePin } from './grade-pins';
 import { evaluate } from './evaluate';
 import { CATEGORIES } from './data/categories';
 import { designSpeeds } from './data/norms';
@@ -652,10 +653,15 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
   // joins: the last allowed station at or before each stretch, the first at or after it; stretches whose
   // joins meet are one
   const groups: { i0: number; i1: number; members: SeparateStretch[] }[] = [];
+  // a stretch's pieces carry every spine bend it replaces whole (its unchanged boundary copies too): the
+  // joins lie on the straights beyond them, with room for their easing
+  const room = JOIN_RULES.margin + JOIN_RULES.curve + rules.transition / 2;
   for (const t of stretches) {
-    let i0 = Math.min(spine.n - 1, Math.floor(t.a / spine.ds)), i1 = Math.max(0, Math.ceil(t.b / spine.ds));
+    const a = Math.min(t.a, t.k0 < t.k1 ? spineAl.curves[t.k0].sStart - room : t.a), b = Math.max(t.b, t.k0 < t.k1 ? spineAl.curves[t.k1 - 1].sEnd + room : t.b);
+    let i0 = Math.max(0, Math.min(spine.n - 1, Math.floor(a / spine.ds + 1e-9))), i1 = Math.max(0, Math.min(spine.n - 1, Math.ceil(b / spine.ds - 1e-9)));
     while (i0 > 0 && !ok[i0]) i0--;
     while (i1 < spine.n - 1 && !ok[i1]) i1++;
+    if (i1 <= i0) { if (i1 < spine.n - 1) i1 = i0 + 1; else i0 = i1 - 1; }
     const last = groups[groups.length - 1];
     if (last && i0 <= last.i1) { last.i1 = Math.max(last.i1, i1); last.members.push(t); } else groups.push({ i0, i1, members: [t] });
   }
@@ -672,12 +678,14 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
       const comp = compositePis(sd.pis, stretches, dir), shownAl = buildAlignment(A, B, comp.pis, rules);
       const c0 = compositeStart(comp.segs, k0, comp.pis.length), c1 = compositeStart(comp.segs, k1, comp.pis.length);
       // the shown line's own arcs, fixed: the piece runs exactly on it
-      const pis = comp.pis.slice(c0, c1).map((p, j) => { const c = shownAl.curves[c0 + j];
+      const shownPis = comp.pis.slice(c0, c1), pis = shownPis.map((p, j) => { const c = shownAl.curves[c0 + j];
         return { x: p.x, y: p.y, r: c && c.unit >= 0 && !c.ignored && !c.tooSharp ? c.rEff : p.r }; });
       const vAl = buildAlignment(J0, J1, pis, rules), offset = dir === 'forward' ? -W : W;
       const bends = offsetBends(J0, J1, pis, vAl, offset);
+      // an automatic radius stays automatic for the carriageway (never below what its own norm and easing
+      // need); the player's radius is kept exactly, offset (its checks then say what is wrong)
       const auto = buildAlignment(bends.a, bends.b, bends.pis.map(p => ({ ...p, r: null })), horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY));
-      bends.pis.forEach((p, i) => { if (p.r !== null) p.r = Math.max(minR, auto.curves[i]?.rEff ?? 0, Math.round(p.r * 100) / 100); });
+      bends.pis.forEach((p, i) => { if (p.r !== null && shownPis[i].r === null) p.r = Math.max(minR, auto.curves[i]?.rEff ?? 0, Math.round(p.r * 100) / 100); });
       const al = buildAlignment(bends.a, bends.b, bends.pis, horizontalRules(sd.speed, CARRIAGEWAY_CATEGORY));
       return [dir, { bends, al, vAl, offset, bend0: c0, line: station(al, 10), own: g.members.some(t => t[dir]) }];
     })) as Record<Direction, { bends: ReturnType<typeof offsetBends>; al: Alignment; vAl: Alignment; offset: number; bend0: number; line: ReturnType<typeof station>; own: boolean }>;
@@ -713,7 +721,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
       const Lp = al.length, toPiece = (s: number) => (s - s0) / (s1 - s0) * Lp;
       const inside = (x0: number, x1 = x0) => x1 > s0 && x0 < s1;
       const shown = directionDesign(project, corridor.children[dir]);
-      let vertical: Pick<Design, 'profileMode' | 'vpis' | 'gradePins'>, fixedProfile: EvalOptions['fixedProfile'];
+      let vertical: Pick<Design, 'profileMode' | 'vpis' | 'gradePins'>, fixedProfile: EvalOptions['fixedProfile'], sideBySidePins: GradePin[] = [];
       if (own) {
         // Where the two directions run side by side (closer than SIDE_BY_SIDE between the crowns) they keep
         // the shared heights; Auto between. The curve where Auto takes over reaches at most half a knot
@@ -748,8 +756,11 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
         const [a0, slack0] = take(x0, true), [a1, slack1] = take(x1, false);
         x0 = a0; x1 = a1;
         const pins = (shown.gradePins ?? []).filter(q => inside(q.s)).map(q => ({ s: toPiece(q.s), z: q.z }));
-        if (x1 - x0 >= MIN_OWN_HEIGHTS) { vertical = { profileMode: 'auto', vpis: [], gradePins: pins }; fixedProfile = { x0, x1, vpis: shared, slack: [slack0, slack1] }; }
-        else vertical = { profileMode: 'manual', vpis: shared, gradePins: pins };
+        const auto = x1 - x0 >= MIN_OWN_HEIGHTS;
+        // pins where the two run side by side cannot move this direction alone: checked, reported
+        sideBySidePins = pins.filter(q => !auto || q.s <= x0 || q.s >= x1);
+        if (auto) { vertical = { profileMode: 'auto', vpis: [], gradePins: pins.filter(q => q.s > x0 && q.s < x1) }; fixedProfile = { x0, x1, vpis: shared, slack: [slack0, slack1] }; }
+        else vertical = { profileMode: 'manual', vpis: shared, gradePins: [] };
       } else {
         // the shared heights, mapped onto this carriageway's own chainage
         const path = offsetCurvePath({ elements: vAl.elements, length: vAl.length }, offset, 1);
@@ -762,8 +773,8 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
         .map(o => ({ ...o, s0: toPiece(Math.max(s0, o.s0)), s1: toPiece(Math.min(s1, o.s1)) }));
       const design: Design = { ...sd, category: CARRIAGEWAY_CATEGORY, pis: bends.pis, ...vertical,
         structureOverrides: clip(shown.structureOverrides), wallOverrides: clip(shown.wallOverrides) };
-      return [dir, { design, fixedProfile, a: { ...bends.a, z: spine.grade[g.i0] }, b: { ...bends.b, z: spine.grade[g.i1] }, bend0, line }];
-    })) as Record<Direction, { design: Design; fixedProfile: EvalOptions['fixedProfile']; a: XYZ; b: XYZ; bend0: number; line: ReturnType<typeof station> }>;
+      return [dir, { design, fixedProfile, sideBySidePins, a: { ...bends.a, z: spine.grade[g.i0] }, b: { ...bends.b, z: spine.grade[g.i1] }, bend0, line }];
+    })) as Record<Direction, { design: Design; fixedProfile: EvalOptions['fixedProfile']; sideBySidePins: GradePin[]; a: XYZ; b: XYZ; bend0: number; line: ReturnType<typeof station> }>;
   });
   const runPiece = (g: number, dir: Direction, from?: Result) => {
     const p = designs[g][dir], other = designs[g][dir === 'forward' ? 'reverse' : 'forward'], side = dir === 'forward' ? 'L' as const : 'R' as const;
@@ -773,6 +784,16 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
         leftJoined: joinedRanges(p.line, other.line, side, true), joinedSide: side,
         ...(dir === 'forward' ? { sharedCrossings: { own: true } } : from ? { sharedCrossings: { own: false, from: from.crossings } } : {}),
         goals: { time: false, capacity: false } });
+    for (const q of p.sideBySidePins) {
+      const i = Math.max(0, Math.min(result.n - 2, Math.floor(q.s / result.ds))), t = (q.s - result.s[i]) / result.ds;
+      const z = result.grade[i] + (result.grade[i + 1] - result.grade[i]) * t;
+      if (Math.abs(z - q.z) <= GRADE_PIN_TOLERANCE + 1e-9) continue;
+      result.violations.push({ kind: 'profile', basis: 'game', s0: q.s, s1: q.s, title: 'Height pin where both directions keep one height',
+        fix: 'Pin it where this direction runs apart from the other, or remove it',
+        detail: `Here the two directions run side by side, less than ${SIDE_BY_SIDE} m apart, and keep the shared height (${z.toFixed(1)} m, not ${q.z.toFixed(1)} m).`,
+        rule: `Game rule: twin carriageways closer than ${SIDE_BY_SIDE} m keep one height (their slopes would meet).` });
+      result.valid = false;
+    }
     pieces[dir].push({ result, bend0: p.bend0, line: p.line });
     return result;
   };

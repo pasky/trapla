@@ -21,6 +21,8 @@ export interface StitchPiece {
   bend0: number;
 }
 
+/** cost parts of indivisible things (a house, a noise buy-out) */
+const WHOLE = new Set<string>(['buildings', 'noiseBuyouts']);
 const lerp = (a: ArrayLike<number>, t: number) => {
   const k = Math.max(0, Math.min(a.length - 2, Math.floor(t))), f = Math.max(0, Math.min(1, t - k));
   return a.length === 1 ? a[0] : a[k] + (a[k + 1] - a[k]) * f;
@@ -55,6 +57,8 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
     for (const k of PART_KEYS) {
       const a = out.parts[k];
       for (let i = p.i0 + 1; i < p.i1; i++) a[i] = 0;
+      // houses are bought whole: a join cell keeps the spine's (the composed list keeps them too)
+      if (WHOLE.has(k)) { if (p.i0 === 0) a[p.i0] = 0; if (p.i1 === n - 1) a[p.i1] = 0; continue; }
       if (p.i0 > 0) a[p.i0] *= 0.5; else a[p.i0] = 0;
       if (p.i1 < n - 1) a[p.i1] *= 0.5; else a[p.i1] = 0;
     }

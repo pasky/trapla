@@ -178,6 +178,20 @@ describe('one direction on its own (separate stretches)', () => {
     expect(joined).toEqual(snapshot.design);
     expect(evaluateProject(ctx, { ...snapshot, revision: 3, design: joined }).cost.total).toBe(paired.cost.total);
   });
+  it('takes edits at the route ends and says when a pin asks one direction to leave the shared height', () => {
+    const { ctx, snapshot, r } = bent();
+    const shown = legacyDesignForRoute(snapshot.design, r.id, { oneDirection: true });
+    // the last bend gone in one direction: its line runs on its own to B
+    const tail = replaceRouteFromLegacy(snapshot.design, r.id, { ...shown, pis: [shown.pis[0]] }, { oneDirection: true });
+    const ended = evaluateProject(ctx, { ...snapshot, revision: 2, design: tail });
+    expect(ended.complete).toBe(true);
+    expect(Number.isFinite(ended.cost.total!)).toBe(true);
+    // a 10 m pin right after the join, where both still run side by side
+    const t = (tail.corridors[0] as { stretches: { a: number }[] }).stretches[0];
+    const pinned = replaceRouteFromLegacy(tail, r.id, { ...legacyDesignForRoute(tail, r.id, { oneDirection: true }), gradePins: [{ s: t.a + 60, z: 130 }] }, { oneDirection: true });
+    const result = evaluateProject(ctx, { ...snapshot, revision: 3, design: pinned });
+    expect(result.issues.map(i => i.violation.title)).toContain('Height pin where both directions keep one height');
+  });
   it('a change of both directions keeps stretches away from it and drops those it touches', () => {
     const { snapshot, r } = bent();
     const shown = legacyDesignForRoute(snapshot.design, r.id, { oneDirection: true });

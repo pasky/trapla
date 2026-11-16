@@ -614,6 +614,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   let vpis: VPI[];
   let profileFeasible = true;
   let autoOptions: AutoProfileOptions | undefined;
+  /** a fixed exterior (EvalOptions.fixedProfile): Auto re-solves go through it, repairs keep it */
+  let constrainedSolve: ((o: AutoProfileOptions) => ReturnType<typeof autoProfile>) | null = null;
+  let keepsExterior = (_v: VPI[]) => true;
   let pinViolations: Violation[] = [];
   let materialValue = MATERIAL_VALUE.start;
   const zA = opts.endpointElevations?.a ?? ground[0], zB = opts.endpointElevations?.b ?? ground[n - 1];
@@ -671,6 +674,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
           ...(o.balance ? { balance: { ...o.balance, balanceOf: (v: VPI[], mv: number) => o.balance!.balanceOf(splice(v), mv) } } : {}) });
         return { ...r, vpis: splice(r.vpis), pinViolations: r.pinViolations?.map(v => ({ ...v, s0: v.s0 + sa, s1: v.s1 + sa })) };
       };
+      constrainedSolve = solveAuto;
+      const outside = Array.from(st.s).filter(x => x < sa - 1e-6 || x > sb + 1e-6), fixedZ = elevations(fixedProf, outside);
+      keepsExterior = (v) => { const z = elevations(buildProfile(v, norms.minCrestRadius, norms.minSagRadius), outside); return z.every((q, k) => Math.abs(q - fixedZ[k]) < 0.01); };
     }
     // a preview always solves once, at the given (else the starting) material value
     const fixed = preview ? opts.materialValue ?? MATERIAL_VALUE.start : undefined;
@@ -889,7 +895,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], q.z - ground[i] + 0.25);
       }
       const retryStart = performance.now();
-      const retry = autoProfile(st.s, ground, { ...autoOptions, minH, costPerM: costFor(materialValue), balance: undefined });
+      const retryOptions = { ...autoOptions, minH, costPerM: costFor(materialValue), balance: undefined };
+      const retry = constrainedSolve ? constrainedSolve(retryOptions) : autoProfile(st.s, ground, retryOptions);
       work('retryDP', retryStart);
       timing['count.retryDP'] = (timing['count.retryDP'] ?? 0) + 1;
       usedProfileRetry = true;
@@ -898,7 +905,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         lifted = targets.every((q, i) => z[i] >= q.z - 0.01) ? retry.vpis : liftProfile(retry.vpis, targets);
       }
     }
-    if (!lifted) break;
+    // the shared heights outside a separate stretch's own part are not ours to lift
+    if (!lifted || !keepsExterior(lifted)) break;
     vpis = lifted;
     engineering = engineer(vpis, relaxed, strict);
   }

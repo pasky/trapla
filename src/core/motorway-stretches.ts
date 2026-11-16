@@ -133,7 +133,7 @@ export function pairStations(a: Line, b: Line): { d: Float64Array; sb: Float64Ar
     for (const k of [j - 1, j]) {
       if (k < 0 || k + 1 >= b.n) continue;
       const u0 = (b.x[k] - a.x[i]) * a.tx[i] + (b.y[k] - a.y[i]) * a.ty[i], u1 = (b.x[k + 1] - a.x[i]) * a.tx[i] + (b.y[k + 1] - a.y[i]) * a.ty[i];
-      if ((u0 > 0) === (u1 > 0) && u0 !== 0) continue;
+      if (u0 * u1 > 0) continue; // (an end of the segment on the normal counts)
       const t = u0 / (u0 - u1 || 1e-12), px = b.x[k] + (b.x[k + 1] - b.x[k]) * t, py = b.y[k] + (b.y[k + 1] - b.y[k]) * t;
       d[i] = (px - a.x[i]) * nx + (py - a.y[i]) * ny; sb[i] = b.s[k] + (b.s[k + 1] - b.s[k]) * t;
       dot[i] = a.tx[i] * b.tx[k] + a.ty[i] * b.ty[k];

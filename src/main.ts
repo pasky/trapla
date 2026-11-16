@@ -744,7 +744,12 @@ async function main() {
         const parts = (m.result.drawn ?? []).filter(p => store.oneDirection ? p.direction && corridor?.children[p.direction] === m.routeId : !p.direction)
           .filter(p => routeScene.has(p.id));
         if (parts.length) for (const p of parts) routeScene.preview(p.id, p.result.preview ? p.result : { ...p.result, preview: true });
-        else routeScene.preview(corridor?.mode === 'paired' ? corridor.children.forward : m.routeId, shown);
+        else {
+          // the drawn parts changed (a stretch appears, merges or goes): the moved line on what is drawn now
+          const drawnNow = corridor ? (projectFull?.routes[corridor.children.forward]?.drawn ?? []).map(p => p.id) : [];
+          const on = [corridor?.mode === 'paired' ? corridor.children.forward : m.routeId, ...drawnNow].find(id => routeScene.has(id));
+          if (on) routeScene.preview(on, shown);
+        }
         took('view');
         profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
