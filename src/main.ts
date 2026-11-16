@@ -2,10 +2,8 @@ import './style.css';
 import { CATEGORIES, type CategoryId } from './core/data/categories';
 import { speedNorms } from './core/data/norms';
 import { scenarioParams } from './core/data/scenario';
-import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
+import { MIN_VPI_GAP, type Design, type Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
-import { paintOverride, type StructureKind } from './core/overrides';
-import { cellsInRange } from './core/range';
 import { missionProject } from './core/project-mission';
 import { routeCrownWidth } from './core/route-section';
 import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinCorridor, rejoinStretch } from './core/project-motorway';
@@ -18,7 +16,6 @@ import { footprintHit } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
-import type { LinkVia } from './core/crossings';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
 import type { TransportGraphData } from './core/project-transport';
@@ -32,7 +29,6 @@ import { fitPlacedBend } from './core/bend-fit';
 import { RoadNet } from './core/roadnet';
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
-import { paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { DecisionList } from './ui/build-tools';
 import { buildingInfo, Inspector, type Sel } from './ui/inspector';
 import { pieceAt } from './ui/pieces';
@@ -61,6 +57,7 @@ import { provisionalProfile } from './ui/provisional';
 import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
 import { bendStations } from './ui/bend-stations';
+import { createDesignEdits } from './ui/design-edits';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
 import { installProfileBar } from './ui/profile-bar';
@@ -440,80 +437,12 @@ async function main() {
     if (sel.kind === 'stretch' && sel.piece) { sel = { ...sel, piece: pieceAt(r, (sel.s0 + sel.s1) / 2).kind }; inspector.sel = sel; }
   };
 
-  // ---- edits ----
-  const cellsRange = (s0: number, s1: number) => {
-    if (!last) return null;
-    const [i0, i1] = cellsInRange(last, Math.max(0, s0), Math.min(s1, last.length));
-    return { s0: Math.max(0, (i0 - 0.5) * last.ds), s1: Math.min(last.length, (i1 + 0.5) * last.ds) };
-  };
-  const setStructure = (kind: StructureKind | null, a: number, b: number) => {
-    const range = cellsRange(a, b);
-    if (!range) return;
-    const previous = store.design.structureOverrides ?? [];
-    const next = paintOverride(previous, range.s0, range.s1, kind);
-    if (JSON.stringify(previous) !== JSON.stringify(next)) store.update((d) => { d.structureOverrides = next; });
-  };
-  const setWall = (sides: ('L' | 'R')[], height: number | null, a: number, b: number) => {
-    const range = cellsRange(a, b);
-    if (!range) return;
-    const previous = store.design.wallOverrides ?? [];
-    const next = sides.reduce((o, side) => paintWallOverride(o, range.s0, range.s1, side, height), previous);
-    if (JSON.stringify(previous) !== JSON.stringify(next)) store.update((d) => { d.wallOverrides = next; });
-  };
-  const setPin = (s: number, z: number | null, commit = true) => store.update((d) => {
-    d.gradePins = (d.gradePins ?? []).filter((p) => Math.abs(p.s - s) >= 0.1);
-    if (z !== null) d.gradePins.push({ s, z });
-    d.gradePins.sort((a, b) => a.s - b.s);
-  }, commit);
-  /** a field half-typed in the card applies to what it belongs to before indices shift */
-  const commitFields = () => { const a = document.activeElement as HTMLElement | null; if (a && document.getElementById('inspector')?.contains(a)) a.blur(); };
-  const deletePi = (i: number) => { commitFields(); store.update((d) => { d.pis.splice(i, 1); }); select(null); };
-  const takeProfile = (d: Design) => {
-    if (d.profileMode === 'auto' && last) d.vpis = last.vpis.map((v) => ({ ...v }));
-    d.profileMode = 'manual';
-    // keep the stored list identical to what the evaluator uses, so panel indices match the design
-    if (last) d.vpis = normalizeVpis(d.vpis, last.length, last.vpis[0].z, last.vpis[last.vpis.length - 1].z);
-  };
-  /** Auto: pin the road's current height at station s; By hand: add a height point */
-  const addHeightAt = (s: number) => {
-    if (!last) return;
-    const i = Math.max(0, Math.min(last.n - 2, Math.floor(s / last.ds))), t = (s - last.s[i]) / last.ds;
-    const z = Math.round((last.grade[i] + t * (last.grade[i + 1] - last.grade[i])) * 10) / 10;
-    if (store.design.profileMode === 'manual') { profile.ev.onVpiAdd?.(s, z); return; }
-    if (!store.design.gradePins?.some((p) => Math.abs(p.s - s) < 0.1)) setPin(s, z);
-    select({ kind: 'pin', s });
-  };
-  inspector.ev = {
-    close: () => select(null),
-    select: (t) => select(t, true),
-    structure: setStructure,
-    wall: setWall,
-    pin: (s, z) => setPin(s, z),
-    crossing: (roadId, type) => store.update((d) => {
-      // a reroute keeps the player's shape while it stays a reroute
-      const kept = type === 'reconnection' ? d.crossingOverrides?.find((o) => o.roadId === roadId && o.via) : undefined;
-      d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}) });
-    }),
-    crossingPathAuto: (roadId) => setVia(roadId, null, true),
-    crossingSquare: (roadId, type, square) => store.update((d) => {
-      d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      d.crossingOverrides.push({ roadId, type, square });
-    }),
-    building: (js, action) => store.editProject(d => { for (const j of js) d.buildingOverrides = setBuildingOverride(d.buildingOverrides, j, action); }),
-    unpin: (s0, s1) => store.update((d) => { d.gradePins = (d.gradePins ?? []).filter((p) => p.s < s0 || p.s > s1); }),
-    heightAt: (s) => addHeightAt(s),
-    commit: () => store.commit(),
-    radius: (i, r, commit = true) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
-    deletePi,
-    bendHeight: (i) => { const b = last && bendStations(last, store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
-    vpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
-    deleteVpi: (i) => { commitFields(); store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
-  };
-  decisions.ev = {
-    select: (t) => select(t.kind === 'stretch' && last ? { ...t } : t, true),
-    forget: (roadId) => store.update((d) => { d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId); }),
-  };
+  // ---- edits (ui/design-edits.ts) ----
+  const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, inspectorEvents, decisionEvents } = createDesignEdits({
+    store, profile, get last() { return last; }, select: (next, fly) => select(next, fly),
+  });
+  inspector.ev = inspectorEvents;
+  decisions.ev = decisionEvents;
   annotations.onPin = (s) => select({ kind: 'pin', s });
   annotations.onBuilding = (j) => select({ kind: 'building', j });
   annotations.onCulvert = (s) => selectPiece(s);
@@ -818,13 +747,6 @@ async function main() {
       places: route.role === 'mission' ? { forward: scenario.labels.b, reverse: scenario.labels.a } : { forward: 'its end', reverse: 'its start' },
       apart: corridor.mode === 'paired' ? (corridor.stretches ?? []).map(t => ({ id: t.id, s0: t.a, s1: t.b, following: !apart.has(t.id) })) : [] };
   };
-  /** a reroute's shape (null: its automatic path again); shaping a crossing makes it a reroute */
-  const setVia = (roadId: number, via: LinkVia | null, commit: boolean, to?: number) => store.update((d) => {
-    const list = d.crossingOverrides ??= [];
-    let o = list.find((x) => x.roadId === roadId);
-    if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
-    if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
-  }, commit);
   works = new CrossingHighlight(view, document.getElementById('overlay')!, {
     selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull,
   });
