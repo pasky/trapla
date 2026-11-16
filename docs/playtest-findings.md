@@ -4,6 +4,37 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Re-test — noise-walls-seams @ a903bda (2026-11-16, SwiftShader 1440×900, D11 straight start)
+
+Tested on a detached snapshot of a903bda (the live worktree hot-reloaded under me while its owner edited
+`noise-field.ts`; one camera "reset" seen there was that reload, not a bug). Screenshots `/tmp/trapla-qa/nws/`
+(numbering restarts after the snapshot switch; the files named below are from the snapshot run unless noted).
+
+| item | verdict | evidence |
+|---|---|---|
+| S1 #5 / S2 #1 demolished visuals | **PASS** | km 5.4 Poříčí halls are hatched cleared plots with dashed edges, no roof slabs, no floating squares; the embankment covers its part (first run `000`/`002`). Far zoom: small outlined markers at ground level. |
+| "what takes the house" | **PASS** | cards read "Under our embankment, km 5.40" / "In the 3 m working strip beside our embankment, km 5.44". |
+| bought-out visibility | **PASS** | km 15.55 house fully magenta with a dashed ring, visible from ~1 km (`001`, `007`); badge reads BOUGHT OUT. |
+| house cards, noise per floor | **PASS** | 2-floor house: 49.7 / 49.3 dB per floor, "was 53.8", wall in the section, "69 % … where no wall stands" (`015`); hover tooltip in noise view gives level, limit, wall (`010`, `014`). |
+| walls in cuts (S2 #3) | **PASS** | cut km 8.89–9.53 now Auto: none both sides; None changes nothing. |
+| wall choice beyond the piece (S2 #4) | **PASS** | Left None on cut km 6.48–7.49 → violation km 6.49–6.61, inside the piece (`004`). |
+| kept house + Auto walls | **PASS** | Keep the km 15.55 house: Auto raises the left wall to 5 m over km 14.97–15.68; the remaining 5.1 dB is explained ("87 % … through the gap where the side road joins") with Buy out / Stop keeping, road tinted red there (`008`). |
+| noise view | **PASS** (P2 below) | limit line follows the field now, houses in their own colour, kept house orange inside the line (`011`, `013`). |
+
+New / remaining:
+
+- **P1 — removing walls makes the walls dearer.** Cut km 6.48–7.49, Left → None: total +16 M CZK, *Noise walls*
+  79 → 95 M CZK (Cost section before/after), while the piece itself gets 5 M cheaper (`004`). The player removes
+  walls and pays more for walls somewhere else, without being told where. Either Auto re-walls a neighbour (then
+  say so in the card) or it is a seam bug.
+- P2 — legend still shows "■ demolished" (a dark square) while the map draws hatched plots.
+- P2 — wall heights: house card offers 2 m, the piece card offers 3–6 m only.
+- P2 — bought-out house card no longer states the limit ("Too loud even behind a 5 m wall", 57.8 dB, no "limit 50");
+  the plan strip at the top of house cards is ~40 px tall, its labels hard to read (`003`).
+- P2 — the noise-view hover tooltip covers the noise legend at the bottom left (`010`).
+- Not this branch: zoom-in floor ~150 m above the road at Voletiny (wheel-in ignored, wheel-out works); a pan toward a
+  point behind the camera can leave the view on empty sky with no way back but reload (`012`).
+
 ## Session 2 — 2026-11-16, main @ 217cfa4 (SwiftShader, 1440×900 then 1280×720, fresh localStorage)
 
 Flows: Continue / Start over across D3 road ↔ D3 motorway, Nová Paka (drag, town, houses), D11 houses and walls
