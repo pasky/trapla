@@ -311,3 +311,50 @@ Owner's case (D3 III/1057): right after the first drag the card showed "R 69 m: 
 - Tests: `tests/road-edit.test.ts` "a rebuilt stretch inherits no violations from its old road" (conversion of a
   sharp corner; untouched = valid, note, nothing billed, house stays; moved bend = violation, billed), and the
   pricing test (kept credit equals the kernel's parts on kept cells).
+
+## 8. Handoff (2026-11-16, HEAD after a145b9c)
+
+Committed green (tsc, vitest 611, eval-regression 11 D11 bills bit-identical; D3 any-road-scene PASS after each of
+the last two): `8776749` rest of the edited-network review (item 0), `30972c8` a side road's settings above every
+card of that road (B), `a17f2fd` not priced never hides demolitions (owner's urgent D3 bug), `a145b9c` kept as the
+old road / built anew (D, §7).
+
+**Not verified yet**: drag-perf on item 0 (overlay network, previews with holds); the look of the road card (B),
+of the kept note and the house cards (D, urgent fix) in screenshots; D11 any-road-scene after D (its printed
+totals change: kept credit); the urgent fix on the D3 MOTORWAY preset in a browser (Node: 44 demolitions listed
+while unpriced; the scene ran the D3 road preset: 23 houses stay hidden, card says Demolished).
+
+**Browser protocol** (`/tmp/trapla-browser-protocol.txt`, no more asking the parent): timed runs
+`flock -x /tmp/trapla-browser.lock node scripts/drag-perf.mjs --gpu --mode bend --check`; untimed
+`flock -s /tmp/trapla-browser.lock nice -n 10 node scripts/any-road-scene.mjs`; check afterwards that no chromium
+with this cwd is left (`readlink /proc/$pid/cwd`).
+
+**Next, in the parent's order:**
+
+- **E (urgent) traffic default.** `uv run --with requests python pipeline/fetch_census.py` (rewrites
+  `pipeline/cache/csd/sections-*.json` with `lines`), ship a per-pack sidecar through the pipeline (local metres =
+  EPSG:5514 − `meta.json` origin; verify on a known road), match a mapped way by `ref` + nearest section, heavy
+  share TV/SV; else a class-based GAME PRIOR labelled in the card (also Build → Road). Remove "Traffic not set"
+  entirely: `UNPRICED['traffic-unknown']` (`project-evaluate.ts`), the `unpriced` list in `project-road.ts`,
+  `unknownTraffic` (`ui/road-edit.ts`), `trafficUnknown` (`project.ts`, `project-validation.ts`; old saves must
+  still load), the two fields in `main.ts` `inspector.routeHead`, `scripts/any-road-scene.mjs` (asserts
+  `traffic-unknown` twice: after the first drag and after typing traffic; the "unpriced project" house check sits
+  right after the first one and needs another way to be unpriced, e.g. the later Build → Road free end),
+  `tests/road-edit.test.ts` (two expectations). Names the Czech way: `groundRoadSourceInfo` builds
+  `${row.label} ${ref}` ("class III road 1057") → "road III/1057" (I/…, II/…, III/… by class) or its mapped name;
+  same in `main.ts` `routeHead` `end()` and `route-kinds.ts` `roadName`.
+- **F flat cut**: reproduce the D11 Jičínská stretch in Node (as `scripts/_d3-drag.ts` does for D3) and print
+  grade vs ground; with §7 the kept cells are not billed, but the drawn body there is still the kernel's Auto
+  profile, so "hug the old road" now mostly means: on kept cells draw/hold the ground (try `EvalOptions.holds`
+  bands around the ground on kept runs; vertical-curve minima may make narrow bands infeasible — check
+  `profileFeasible`), and find why the built-anew part sat flat in a 6 m cut.
+- **G** combined noise: still waits for noise-walls-seams in main.
+- Then all gates (§5), the owner's exact D3 steps with a real mouse (rebuild III/1057 near our bridge at km ~11.8;
+  traffic is then pre-filled), a first-time-player pass (hidden inputs, internal labels, violations the player
+  cannot act on, edits not reflected in checks; include the house cards of the urgent fix), screenshots 106–109,
+  and playtest-qa on the integrated tree before merge. Merge main into the branch first, then fast-forward main.
+
+Scratch (untracked, do not commit): `scripts/_d3-1057.ts` (D3 motorway project + context), `_d3-step2/3.ts`,
+`_d3-drag.ts` (conversion + a first drag at several places: violations, notes, works, kept metres),
+`_d3-houses.ts`, `_d3-fit.ts`, `_fit-time.ts` (all D3 stretches: problems before/after the repair, ms), `_parts.ts`,
+`_net-time.ts`, `_syn.ts`, `_fit-prof*.ts`, `_fit-worst.ts`.
