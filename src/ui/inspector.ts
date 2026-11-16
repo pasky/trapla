@@ -392,10 +392,11 @@ export class Inspector {
 
   // ---- crossed road ----
   private crossing(r: Result, d: Design, roadId: number) {
-    const c = r.crossings.find((x) => x.roadId === roadId);
+    const all = r.crossings.filter((x) => x.roadId === roadId);
+    // (a road crossing ours more than once: the card describes the crossing the player shaped, if any)
+    const c = all.find((x) => x.via) ?? all[0];
     if (!c) return '';
     const choice = crossingChoice(roadId, d.crossingOverrides ?? []) ?? '';
-    const all = r.crossings.filter((x) => x.roadId === roadId);
     const cost = all.reduce((a, x) => a + x.cost, 0);
     const roads = crossedRoads(r), k = roads.findIndex((x) => x.roadId === roadId);
     const nav = `<button type="button" class="nav" data-nav="-1" title="Previous crossed road" ${k <= 0 ? 'disabled' : ''}>‹</button><button type="button" class="nav" data-nav="1" title="Next crossed road" ${k >= roads.length - 1 ? 'disabled' : ''}>›</button>`;
@@ -403,8 +404,9 @@ export class Inspector {
     // against the crossed road as it is today (an overbridge lifts it; "below it" read like the clearance under it)
     const rel = Math.abs(c.h) < 0.5 ? 'our road at the crossed road’s level today'
       : `our road ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} the crossed road’s level today`, outcome = crossingOutcome(c);
-    return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}${all.length > 1 ? ` · crossed ${all.length}×` : ''}`, nav)}
-      <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div><div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
+    const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our road ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';
+    return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}`, nav)}
+      <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}<div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
       ${this.linkPath(c, d)}
       ${this.choices('crossing-choice', 'data-crossing', CATEGORIES[d.category].gradeSeparated ? MOTORWAY_CROSSING_OPTIONS : CROSSING_OPTIONS, choice)}`;
@@ -433,7 +435,8 @@ export class Inspector {
     if (removed) {
       state = `Demolished · ${czk(removed.cost)}`;
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
-      why = removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
+      why = removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
+        : removed.strip ? `In the ${BUILDING_RULES.clearance} m working strip beside ${ours}, km ${km(r.s[removed.i])}.`
         : `${removed.in === 'cut' ? 'In' : 'Under'} ${ours}, km ${km(r.s[removed.i])}.`;
     }
     else if (bought) {

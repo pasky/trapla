@@ -5,6 +5,7 @@
 // Everything comes from Result.noise (computed in the worker by the cost model's own calculator);
 // the main thread only draws. Hover over a noise wall works with the view off too.
 
+import { Declutter } from './declutter';
 import * as THREE from 'three';
 import { buildingLevels } from '../core/buildings';
 import { BUILDING_KINDS, NOISE } from '../core/data/urban';
@@ -46,6 +47,7 @@ export class NoiseLayer {
   private built = false;
   private legend: HTMLElement;
   private tip: HTMLElement;
+  private labelRoom = new Declutter();
   private labels: { el: HTMLElement; x: number; y: number; z: number }[] = [];
   private pending: { x: number; y: number } | null = null;
   private terrain: Terrain;
@@ -64,7 +66,7 @@ export class NoiseLayer {
     this.tip.style.display = 'none';
     document.body.appendChild(this.tip);
     const prev = view.onRender;
-    view.onRender = () => { prev?.(); this.placeLabels(); };
+    view.onRender = () => { prev?.(); this.placeLabels(); this.tipMoved(); };
     const canvas = view.renderer.domElement;
     canvas.addEventListener('pointermove', (e) => {
       if (e.buttons) { this.hideTip(); return; }
@@ -93,7 +95,8 @@ export class NoiseLayer {
   }
 
   setResult(r: Result, crownWidth: number) {
-    if (r !== this.r) this.fp = null;
+    // (a new design: whatever the tip described may be gone)
+    if (r !== this.r) { this.fp = null; this.hideTip(); }
     this.r = r;
     this.crown = crownWidth;
     this.built = false;
@@ -212,13 +215,20 @@ export class NoiseLayer {
     const r = this.r;
     if (!this.on || !this.available || !r) return;
     const src = r.noise?.source;
+    // walls of one height on both sides of the same stretch: one label over the road
+    const paired = new Set<typeof r.walls[number]>();
     for (const w of r.walls) {
-      const i = Math.round((w.i0 + w.i1) / 2), sgn = w.side === 'L' ? 1 : -1;
+      if (paired.has(w)) continue;
+      paired.add(w);
+      const twin = r.walls.find(o => o.side !== w.side && !paired.has(o) && o.height === w.height
+        && Math.min(o.i1, w.i1) - Math.max(o.i0, w.i0) >= 0.5 * Math.max(o.i1 - o.i0, w.i1 - w.i0));
+      if (twin) paired.add(twin);
+      const i = Math.round((w.i0 + w.i1) / 2), sgn = twin ? 0 : w.side === 'L' ? 1 : -1;
       const side = src ? (w.side === 'L' ? src.L : src.R) : null;
       const off = side ? side.wallOff[i] : this.crown / 2 + NOISE.wallEdgeOffset, foot = side ? side.wallFoot[i] : 0;
       const el = document.createElement('div');
       el.className = 'wall-label';
-      el.textContent = `${w.height} m`;
+      el.textContent = twin ? `${w.height} m both sides` : `${w.height} m`;
       this.overlay.appendChild(el);
       this.labels.push({ el, x: r.x[i] - r.ty[i] * off * sgn, y: r.y[i] + r.tx[i] * off * sgn, z: r.grade[i] + foot + w.height });
     }
@@ -226,15 +236,25 @@ export class NoiseLayer {
   }
 
   private placeLabels() {
+    // (walls on both sides of one stretch, seen from afar, would print over each other: one label shows)
+    this.labelRoom.reset();
     for (const l of this.labels) {
       const s = this.view.project(l.x, l.y, l.z);
-      l.el.style.display = s.vis && s.dist < 9000 ? '' : 'none';
-      if (s.vis) l.el.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px)`;
+      const show = s.vis && s.dist < 9000 && this.labelRoom.fit(l.el, s.sx, s.sy);
+      l.el.style.display = show ? '' : 'none';
+      if (show) l.el.style.transform = `translate(${s.sx.toFixed(1)}px, ${s.sy.toFixed(1)}px)`;
     }
   }
 
   // ---- hover -------------------------------------------------------------------------------
-  private hideTip() { this.tip.style.display = 'none'; }
+  private hideTip() { this.tip.style.display = 'none'; this.tipAt = null; }
+  /** The view a shown tip was shown in: it goes as soon as the view moves (a wheel, a pan, a turn, a
+   * flight); the next pointer move shows what is under the pointer then. */
+  private tipAt: { x: number; y: number; d: number } | null = null;
+  private tipMoved() {
+    const t = this.tipAt, now = this.view.target;
+    if (t && (Math.abs(now.x - t.x) > 0.01 || Math.abs(now.y - t.y) > 0.01 || Math.abs(this.view.cameraDistance - t.d) > 0.01)) this.hideTip();
+  }
 
   private hover() {
     const p = this.pending;
@@ -254,6 +274,7 @@ export class NoiseLayer {
     const [left, top] = spots.find(clear) ?? spots[0];
     this.tip.style.left = `${left}px`;
     this.tip.style.top = `${top}px`;
+    this.tipAt = { ...this.view.target, d: this.view.cameraDistance };
   }
 
   private wallTip(w: WallStretch | null): string | null {

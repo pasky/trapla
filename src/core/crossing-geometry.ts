@@ -4,8 +4,9 @@ import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { smoothLink } from './crossing-link';
+import { engineerLink, LINK_CORRIDOR, LINK_MAX_SUPPORT, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
 import { crossingWorks, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
-import { RETAINING_RULES, retainingAssembly, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
+import { LOWERING_RULES, RETAINING_RULES, retainingAssembly, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { KIND } from './structures';
 
 const MAX_POINTS = 500, MAX_REACH = CROSSING_RULES.linkHardReach, STEP = 10, SETBACK = 3;
@@ -15,6 +16,24 @@ export const RAMP_TOO_LONG = 'Approach ramp cannot get back down to the old road
 export const MAX_RAMP_LENGTH = 250;
 export const RAMP_TOO_HIGH = 'Approach earthwork exceeds';
 const CLEARANCE = 4.8, DEPTH = CROSSING_RULES.underDepth - CLEARANCE;
+/** Reroute work kept across evaluate()'s engineering passes (its strict retry), for one design on fixed
+ * terrain and roads: the crossed ways' traced lines, and smoothed lines / engineered reroutes, each
+ * reused only while our footprint within PERSIST_REACH of its stations is exactly unchanged. */
+export interface CrossingCache {
+  paths: Map<string, CachedPath>;
+  links: Map<string, { i0: number; left: Float64Array; right: Float64Array; value: unknown }>;
+}
+export const crossingCache = (): CrossingCache => ({ paths: new Map(), links: new Map() });
+/** Beyond the chainages a reroute's computation consulted, our footprint decides which houses under it are
+ * already demolished (a house is taken by the sections of our road beside it), m. */
+const PERSIST_PAD = 50;
+/** How far beyond a kept crossed way's rebuilt stretch Auto looks for it running back under our
+ * earthworks, m (engine screen, the reroute search corridor). */
+const RUN_BACK = LINK_CORRIDOR;
+/** Internal: an Auto reroute candidate that could not be worth building (never shown). */
+const OVER_BUDGET = 'Reroute candidate over budget';
+/** The box does not fit even with the crossed way lowered as far as it may be. */
+const UNDERPASS_TOO_LOW = 'Embankment is too low over the underpass box';
 type XY = { x: number; y: number };
 type WayPoint = XY & { d: number };
 type CachedPath = { path: readonly Readonly<WayPoint>[]; diagnostics: readonly string[] };
@@ -30,25 +49,31 @@ const byDistance = (path: readonly Readonly<WayPoint>[]) => {
 const deckPrice = (c: CrossingResult, span: number) => bridgeModel(ROAD_CLASSES[c.cls]).total(span, 0, { span, pierDensity: 0 });
 
 /** Lowest grade-minus-floor along a box under the crown band, on the final way samples plus
- * their interior quarter points (terrain between samples is not assumed linear). */
+ * their interior quarter points (terrain between samples is not assumed linear; a lowered floor
+ * is drawn straight between its samples). */
 function underpassLowest(road: readonly CrossingPoint[], start: number, end: number, crown: number,
   project: (q: XY) => { z: number; lateral: number }, heightAt: (x: number, y: number) => number): number {
   let lowest = Infinity;
-  const probe = (x: number, y: number) => {
+  const probe = (x: number, y: number, floor: number) => {
     const p = project({ x, y });
-    if (Math.abs(p.lateral) <= crown) lowest = Math.min(lowest, p.z - heightAt(x, y));
+    if (Math.abs(p.lateral) <= crown) lowest = Math.min(lowest, p.z - floor);
   };
   for (let i = start; i <= end; i++) {
-    probe(road[i].x, road[i].y);
-    if (i < end) for (const t of [0.25, 0.5, 0.75]) probe(road[i].x + (road[i + 1].x - road[i].x) * t, road[i].y + (road[i + 1].y - road[i].y) * t);
+    const a = road[i], b = road[i + 1];
+    probe(a.x, a.y, a.surface === 'terrain' ? heightAt(a.x, a.y) : a.z);
+    if (i < end) for (const t of [0.25, 0.5, 0.75]) {
+      const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+      probe(x, y, a.surface === 'terrain' && b.surface === 'terrain' ? heightAt(x, y) : a.z + (b.z - a.z) * t);
+    }
   }
   return lowest;
 }
 
-/** Auto may use an underpass: eligible class, enough fill and a box no longer than the limit. */
+/** Auto may use an underpass: eligible class, enough fill (the crossed way lowered into a cut by at
+ * most LOWERING_RULES.maxDepth where there is too little) and a box no longer than the limit. */
 export function underpassFits(c: Pick<CrossingResult, 'cls' | 'h'>, length: number): boolean {
   const size = ROAD_CLASSES[c.cls].underpass;
-  return !!size && c.h >= underpassAssembly(size, 0).minHeight && length <= UNDERPASS_RULES.maxLength;
+  return !!size && c.h >= underpassAssembly(size, 0).minHeight - LOWERING_RULES.maxDepth && length <= UNDERPASS_RULES.maxLength;
 }
 
 /** Steepest straight ramp allowed from height `z` at a deck/junction edge (old ground `g0` there)
@@ -63,22 +88,16 @@ export function rampLimit(cls: string, z: number, g0: number, g: number, run: nu
 
 /** Diagnostics of a reroute the player shaped (crossing override `via`). */
 /** Issues this geometry pass raises (rebuilt from scratch on every build). */
-const built = (v: CrossingIssue) => v.crossing.code === 'geometry' || v.crossing.code === 'shape';
+const built = (v: CrossingIssue) => v.crossing.code === 'geometry' || v.crossing.code === 'shape' || v.crossing.code === 'reroute';
 /** Every diagnostic of a player's reroute shape starts so (issue code 'shape'). */
 const SHAPED = 'Shaped link';
-/** A shape following the automatic path with straight legs between its bends reads up to about a
- * percentage point steeper on the same ground; that alone is not a steeper road. */
-const SHAPE_SLACK = 0.01;
+
 export const LINK_OVER_OUR_ROAD = 'Shaped link enters our earthworks';
 export const LINK_TOO_STEEP = 'Shaped link is steeper than its class allows';
 export const LINK_TOO_FAR = 'Shaped link runs too far';
 export const LINK_CROSSES_MOTORWAY = 'Shaped link crosses a motorway at grade';
 /** + 'railway' | 'water' | 'building' */
 export const LINK_BLOCKED = 'Shaped link runs through a ';
-const segmentsCross = (a: XY, b: XY, c: XY, d: XY) => {
-  const cross = (o: XY, p: XY, q: XY) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
-  return cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0;
-};
 /** Steepest grade of a draped path over stretches of at least 20 m, m/m. PROVISIONAL: the 20 m averaging
  * length is a game allowance for small bumps a road's own formation would smooth out; the path itself
  * stays draped (and is priced as ordinary road), it is not engineered. */
@@ -93,6 +112,15 @@ export function linkSteepest(path: readonly { x: number; y: number; z: number }[
   }
   return steepest;
 }
+
+/** Diagnostics of an automatic reroute that cannot be built (the treatment is then infeasible). */
+const REROUTE = 'Reroute ', REROUTE_FAILS = 'Reroute cannot be built: ';
+const SHAPED_LINK: Record<LinkProblem, string> = {
+  steep: LINK_TOO_STEEP, footprint: LINK_OVER_OUR_ROAD, motorway: LINK_CROSSES_MOTORWAY,
+  railway: `${LINK_BLOCKED}railway`, water: `${LINK_BLOCKED}water`, building: `${LINK_BLOCKED}building`,
+  river: 'Shaped link crosses a river', far: LINK_TOO_FAR,
+};
+const linkMessage = (problem: LinkProblem, _shaped: true) => SHAPED_LINK[problem];
 
 /** Plain-language violation text for a geometry diagnostic (the diagnostic string stays internal). */
 function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue, 'title' | 'fix' | 'detail' | 'basis' | 'rule'> {
@@ -110,6 +138,28 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
     fix: 'Drag its bend points clear of our road\'s slopes, or choose "Automatic path" on the crossing card',
     detail: `The new piece of ${what} must run outside our earthworks to reach the next crossing.`, basis: 'game',
     rule: 'Game rule: a reroute runs on the ground outside our earthworks' };
+  if (message.startsWith(REROUTE_FAILS)) {
+    const row = ROAD_CLASSES[c.cls];
+    const reasons = message.slice(REROUTE_FAILS.length).split(',').map(problem => ({
+      steep: `the ground beside our road is too steep for a ${what} (at most ${Math.round(row.rampGradient * 100)} %, ${Math.round(row.rampSteepest * 100)} % where the ground leaves no choice, with earthworks up to ${LINK_MAX_SUPPORT} m deep) and no gentler line was found within ${LINK_CORRIDOR} m of our road`,
+      footprint: 'there is no room for it beside our earthworks', motorway: 'it would have to cross a motorway on the ground',
+      railway: 'it would have to cross a railway on the ground', water: 'it would have to run through a pond or river',
+      river: 'it would have to cross a river too big for a culvert', building: 'it would have to run through a house you keep', far: 'it would be too long',
+    } as Record<string, string>)[problem] ?? problem);
+    const reason = reasons.join('; ');
+    // the nearest structure: our bridge over it (raise our road) or its bridge over a deeper cutting
+    const fix = c.h >= 0
+      ? `Raise our road here by ${Math.max(0.1, CROSSING_RULES.overHeight - c.h).toFixed(1)} m and put it on a bridge over the ${what}, or choose "Its bridge over us" or an underpass`
+      : `Lower our road here by ${Math.max(0.1, CROSSING_RULES.underDepth + c.h).toFixed(1)} m so that the ${what} can cross over it on a bridge, or choose an underpass`;
+    return { title: `No buildable reroute for the ${what}`,
+      fix,
+      detail: `A new piece of ${what} cannot reach the next crossing: ${reason}.`, basis: 'game',
+      rule: `Game rule: a new road is no steeper than its class allows (research/20, ordinary / where unavoidable: track 10 / 15 %, service road and street 9 or 8 / 12 %, class III 7 / 9 %, class I/II 6 / 7 %) with earthworks at most ${LINK_MAX_SUPPORT} m deep; it crosses streams on culverts (research/17), buys out houses in its way and never runs on the ground across motorways, railways, ponds or rivers` };
+  }
+  if (message === SHAPED_LINK.river) return { title: `Your path for the new ${what} crosses a river`,
+    fix: 'Drag its bend points so that it stays on this side of the river, or choose "Automatic path" on the crossing card',
+    detail: `The river is too big for a culvert under a ${what}.`, basis: 'game',
+    rule: 'Game rule (research/17): a new road crosses streams on culverts; rivers need a bridge, which reroutes do not get' };
   if (message === LINK_TOO_FAR) return { title: `Your path for the new ${what} goes too far`,
     fix: 'Drag its bend points closer to our road, or choose "Automatic path" on the crossing card',
     detail: `A new piece of ${what} may run at most about ${(4 * MAX_REACH / 1000).toFixed(0)} km.`, basis: 'engine',
@@ -123,23 +173,31 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   }
   if (message === LINK_TOO_STEEP) return { title: `Your path for the new ${what} is too steep in places`,
     fix: 'Drag its bend points so that it runs more along the slope, or choose "Automatic path" on the crossing card',
-    detail: `It follows the ground where you drew it, which is steeper than a ${what} may be.`, basis: 'game',
-    rule: `Research/20: a ${what} is at most ${Math.round(ROAD_CLASSES[c.cls].rampSteepest * 100)} % steep, measured over 20 m stretches of the ground it follows (a provisional allowance for small bumps). Engine limit: the automatic path is not yet held to this, so your shape may be as steep as the automatic path is` };
+    detail: `Even with earthworks up to ${LINK_MAX_SUPPORT} m deep it would be steeper than a ${what} may be.`, basis: 'game',
+    rule: `Research/20: a ${what} is at most ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} % steep, ${Math.round(ROAD_CLASSES[c.cls].rampSteepest * 100)} % where the ground leaves no choice; its earthworks are at most ${LINK_MAX_SUPPORT} m deep (PROVISIONAL, as for every rebuilt road)` };
   if (message === WORKS_COVER_ROAD || message === WORKS_TIE_TOO_LONG || message === WORKS_TIE_SHARED) {
-    const junction = c.type === 'junction', raised = junction ? 'raised or lowered for the junction' : 'raised onto the bridge over our road';
+    const junction = c.type === 'junction', under = c.type === 'underpass';
+    const raised = junction ? 'raised or lowered for the junction' : under ? 'lowered to pass under our road' : 'raised onto the bridge over our road';
     const others = junction ? 'choose "Our bridge over it", an underpass or "Cut and reroute", or move the junction'
+      : under ? 'raise our road here, or choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"'
       : 'choose "Our bridge over it", an underpass or "Cut and reroute"';
+    const ramps = junction ? "junction's approach" : under ? 'ramps down to the underpass' : 'ramps to the bridge over our road';
     if (message === WORKS_TIE_SHARED) return { title: 'Two crossings would raise or lower the same side road',
       fix: `For one of them, ${others}`, basis: 'engine',
       detail: `A road joining the ${what} where it is ${raised} also joins another crossing's raised or lowered road; the game cannot regrade one road to meet both.`,
       rule: 'Engine limit: a side road is regraded to meet one crossing only' };
-    return { title: junction ? `The junction's approach runs over another road` : `The ramps to the bridge over our road run over another road`,
+    return { title: message === WORKS_TIE_TOO_LONG ? `A road joining the ${ramps} cannot be raised or lowered to meet it`
+      : `The ${ramps} run${junction ? 's' : ''} over another road`,
       fix: `${others.charAt(0).toUpperCase()}${others.slice(1)}`, basis: 'game',
       detail: message === WORKS_COVER_ROAD
         ? `Where the ${what} is ${raised}, its earth slopes would cover or cut into a road beside it, and a retaining wall cannot stand between them.`
         : `A road joining the ${what} where it is ${raised} would have to be regraded for more than ${MAX_RAMP_LENGTH} m to meet it.`,
       rule: `Game rule: earthworks of a crossing may not cover other roads. A road joining it is regraded to meet it (no steeper than its class allows, at most ${MAX_RAMP_LENGTH} m); a road beside it is kept clear by a retaining wall up to ${RETAINING_RULES.maxHeight} m high (research/18, research/20)` };
   }
+  if (message === RAMP_TOO_LONG && c.type === 'underpass') return { title: `Ramps down to the underpass would be longer than ${MAX_RAMP_LENGTH} m`,
+    fix: 'Raise our road here (a higher embankment needs less lowering), or choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"',
+    detail: `The ${what} itself falls (or climbs) towards our road, so a ramp within the allowed slope gets back to it only far away, if at all.`, basis: 'game',
+    rule: `Game rule (research/20): ramps no steeper than ${Math.round(ROAD_CLASSES[c.cls].rampGradient * 100)} % for a ${what}, at most ${MAX_RAMP_LENGTH} m long on each side` };
   if (message === RAMP_TOO_LONG) return { title: `Ramps up to the bridge over our road would be longer than ${MAX_RAMP_LENGTH} m`, ...ramps,
     detail: `The ${what} itself runs downhill (or uphill) away from the bridge, so a ramp within the allowed slope meets it again only far away, if at all.`, basis: 'game',
     rule: `${ramps.rule}, at most ${MAX_RAMP_LENGTH} m long on each side` };
@@ -151,9 +209,10 @@ function diagnosticText(message: string, c: CrossingResult): Pick<CrossingIssue,
   if (message.startsWith('Underpass would exceed')) return { title: `Underpass would be longer than ${UNDERPASS_RULES.maxLength} m`,
     fix: 'Choose "Our bridge over it", or make our embankment here lower and narrower', detail: 'Our embankment is too wide here for a short concrete box.',
     basis: 'game', rule: `Game estimate (research/19): an underpass box is at most ${UNDERPASS_RULES.maxLength} m long` };
-  if (message === 'Embankment is too low over the underpass box') return { title: 'Embankment too low for an underpass',
-    fix: 'Raise our road here, or choose another crossing', detail: 'Somewhere under our road the box would stick out of the embankment: it needs room for its height, roof and earth cover.',
-    basis: 'game', rule: 'Game estimate (research/19): an underpass needs its inside height plus roof and 0.5 m of earth below our road' };
+  if (message === UNDERPASS_TOO_LOW) return { title: 'Embankment too low for an underpass',
+    fix: 'Raise our road here, or choose another crossing',
+    detail: `Somewhere under our road the box would stick out of the embankment${c.lowered === undefined ? '' : `, even with the ${what} lowered as far as it may be (${LOWERING_RULES.maxDepth} m)`}: it needs room for its height, roof and earth cover.`,
+    basis: 'game', rule: `Game estimate (research/19, 37): an underpass needs its inside height plus roof and 0.5 m of earth below our road; the crossed road may be lowered by at most ${LOWERING_RULES.maxDepth} m` };
   if (message === 'This road class cannot pass in a small underpass') return { title: `A ${what} cannot pass through a small underpass`,
     fix: 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"', detail: 'Underpass boxes are sized for tracks, service roads and local roads only.',
     basis: 'game', rule: 'Game estimate (research/19): underpass boxes for tracks, service roads and local roads' };
@@ -183,7 +242,11 @@ function lerpAt(v: ArrayLike<number>, lo: number, hi: number, t: number): number
 
 function routeGeometry(route: CrossingRoute) {
   const n = route.s.length;
+  // Chainages consulted while `reads.on` (a reroute reused across evaluation passes depends on them).
+  const reads = { on: false, lo: Infinity, hi: -Infinity };
+  const note = (s: number) => { if (s < reads.lo) reads.lo = s; if (s > reads.hi) reads.hi = s; };
   const at = (s: number) => {
+    if (reads.on) note(s);
     let lo = 0, hi = n - 1;
     while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (route.s[m] <= s) lo = m; else hi = m; }
     const t = Math.max(0, Math.min(1, (s - route.s[lo]) / (route.s[hi] - route.s[lo] || 1)));
@@ -306,7 +369,7 @@ function routeGeometry(route: CrossingRoute) {
   const project = (q: XY, cache = true) => {
     let column = cache ? projected.get(q.x) : undefined;
     const cached = column?.get(q.y);
-    if (cached) return cached;
+    if (cached) { if (reads.on) note(cached.s); return cached; }
     nearest(q);
     const p = at(station), result = { s: p.s, x: p.x, y: p.y, tx: p.tx, ty: p.ty, z: p.z,
       left: p.left, right: p.right, lateral: (q.x - p.x) * -p.ty + (q.y - p.y) * p.tx };
@@ -324,6 +387,7 @@ function routeGeometry(route: CrossingRoute) {
   /** One-off probe (e.g. link chord clearance): project/at arithmetic without allocating. */
   const marginOnce = (q: XY, extra: number) => {
     nearest(q);
+    if (reads.on) note(station);
     let lo = 0, hi = n - 1;
     while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (route.s[m] <= station) lo = m; else hi = m; }
     const t = Math.max(0, Math.min(1, (station - route.s[lo]) / (route.s[hi] - route.s[lo] || 1)));
@@ -334,7 +398,7 @@ function routeGeometry(route: CrossingRoute) {
       : route.right ? lerpAt(route.right, lo, hi, t) : lerpAt(route.width, lo, hi, t) / 2;
     return Math.abs(lateral) - edge - extra;
   };
-  return { at, project, margin };
+  return { at, project, margin, reads };
 }
 
 function along(path: readonly Readonly<WayPoint>[], d: number): WayPoint {
@@ -370,9 +434,10 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
 
 function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingRoute,
   heightAt: (x: number, y: number) => number, roads: RoadNet | undefined,
-  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>,
-  sidesOf = new Map<string, [boolean, boolean]>()): CrossingIssue[] {
-  const { at, project, margin } = spatial;
+  spatial: ReturnType<typeof routeGeometry>, paths: Map<string, CachedPath>, smoothed: Map<string, CrossingPoint[]>, routed: Map<string, LinkPlan>,
+  linkMemo: NonNullable<LinkEnv['memo']>,
+  sidesOf = new Map<string, [boolean, boolean]>(), budget = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>): CrossingIssue[] {
+  const { at, project, margin, reads } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => !built(v));
   // Works are remeasured on every build (Auto tries candidates, then rebuilds the network).
   for (const c of crossings) {
@@ -387,8 +452,9 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       : { x: q.x, y: q.y, z: ground, ground, surface: 'terrain' };
   };
   const diagnose = (g: CrossingGeometry, message: string) => {
-    // A flawed player shape is the player's to fix; the crossing itself still stands (and owns its road).
-    if (!message.startsWith(SHAPED)) g.clipped = true;
+    // A flawed reroute (the player's shape or the automatic line) leaves the crossing itself standing:
+    // the crossed road is still cut and owned here; only its new piece of road is in question.
+    if (!message.startsWith(SHAPED) && !message.startsWith(REROUTE)) g.clipped = true;
     if (!g.diagnostics?.includes(message)) (g.diagnostics ??= []).push(message);
   };
   // Terrain-only source samples need elevations only at the selected anchors, not along the
@@ -432,7 +498,26 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     survivingSides.set(c, sides); sidesOf.set(`${c.roadId}:${c.x},${c.y}`, sides);
     const isRaised = c.type === 'overbridge', adjusted = isRaised || c.type === 'junction';
-    let road: CrossingPoint[] = [];
+    let road: CrossingPoint[] = [], lowered = false;
+    // Where a ramp from height z at the way's chainage `edge` (going `direction` along it) meets the
+    // old road's ground within its class gradient (rampLimit). Ramps are tied to actual terrain: the
+    // linear engineered ramp may need fill or cut, never silently max(terrain, ramp).
+    const foot = (edge: number, direction: number, z: number, quiet = false) => {
+      const endpoint = direction < 0 ? path[0] : path[path.length - 1];
+      if (c.type === 'junction' && Math.abs(edge - endpoint.d) < 1e-6 && margin(endpoint, 0) <= 0) return edge;
+      const e = along(path, edge), g0 = heightAt(e.x, e.y);
+      // already at the old road's level there (a deck on the ground at the edge of a cutting): no ramp
+      if (Math.abs(z - g0) <= 0.05) return edge;
+      for (let k = direction < 0 ? path.length - 1 : 0; k >= 0 && k < path.length; k -= direction < 0 ? 1 : -1) {
+        const q = path[k];
+        if (direction * (q.d - edge) <= 1e-4) continue;
+        const ground = heightAt(q.x, q.y), run = Math.abs(q.d - edge);
+        if (Math.abs(ground - z) <= run * rampLimit(c.cls, z, g0, ground, run) + 1e-8) return q.d;
+      }
+      if (quiet) return NaN;
+      diagnose(g, RAMP_TOO_LONG);
+      return direction < 0 ? path[0].d : path[path.length - 1].d;
+    };
     if (adjusted) {
       // Find the connected interval of the *whole road ribbon* over the actual earthwork footprint.
       // This handles skew, bends and varying/asymmetric widths, unlike width/sin(angle) alone.
@@ -458,32 +543,34 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         }
       }
       const core = [along(path, d0), ...path.filter(q => q.d > d0 && q.d < d1), along(path, d1)];
-      let deckZ = -Infinity;
+      // What the deck must clear at points along the way: our road (crown stations and the ribbon
+      // edges included), and the ground where its abutments stand (between them our earthworks
+      // replace the natural ground: a cutting is dug away beneath it).
+      const clear: { d: number; z: number }[] = [];
       let minS = Infinity, maxS = -Infinity;
-      for (const q of core) {
+      core.forEach((q, k) => {
         const p = project(q); minS = Math.min(minS, p.s); maxS = Math.max(maxS, p.s);
-        deckZ = Math.max(deckZ, p.z + CROSSING_RULES.underDepth, heightAt(q.x, q.y));
+        clear.push({ d: q.d, z: k === 0 || k === core.length - 1 ? Math.max(p.z + CROSSING_RULES.underDepth, heightAt(q.x, q.y)) : p.z + CROSSING_RULES.underDepth });
+      });
+      for (let i = firstAbove(route.s, minS - g.width / 2, true); i < route.s.length && route.s[i] <= maxS + g.width / 2; i++) {
+        let d = core[0].d, best = Infinity;
+        for (const q of core) { const gap = (q.x - route.x[i]) ** 2 + (q.y - route.y[i]) ** 2; if (gap < best) { best = gap; d = q.d; } }
+        clear.push({ d, z: route.grade[i] + CROSSING_RULES.underDepth });
       }
-      // Include intervening crown stations and the ribbon edges, not just sampled road centreline.
-      for (let i = firstAbove(route.s, minS - g.width / 2, true); i < route.s.length && route.s[i] <= maxS + g.width / 2; i++)
-        deckZ = Math.max(deckZ, route.grade[i] + CROSSING_RULES.underDepth);
-      const edgeZ = (d: number) => isRaised ? deckZ : project(along(path, d)).z;
-      // Tie to actual terrain on each side. The linear engineered approach may require fill or cut;
-      // neither is silently replaced by max(terrain,ramp), which creates uncontrolled gradients.
-      const foot = (edge: number, direction: number) => {
-        const endpoint = direction < 0 ? path[0] : path[path.length - 1];
-        if (c.type === 'junction' && Math.abs(edge - endpoint.d) < 1e-6 && margin(endpoint, 0) <= 0) return edge;
-        const candidates = path.filter(q => direction * (q.d - edge) > 1e-4);
-        if (direction < 0) candidates.reverse();
-        const z = edgeZ(edge), e = along(path, edge), g0 = heightAt(e.x, e.y);
-        for (const q of candidates) {
-          const ground = heightAt(q.x, q.y), run = Math.abs(q.d - edge);
-          if (Math.abs(ground - z) <= run * rampLimit(c.cls, z, g0, ground, run) + 1e-8) return q.d;
-        }
-        diagnose(g, RAMP_TOO_LONG);
-        return direction < 0 ? path[0].d : path[path.length - 1].d;
-      };
-      const f0 = foot(d0, -1), f1 = foot(d1, 1);
+      // The deck may slope like the road it carries (its class gradient, research/20): on a valley side
+      // a level deck would leave one end high above the ground and its ramp far too long.
+      const ground0 = heightAt(along(path, d0).x, along(path, d0).y), ground1 = heightAt(along(path, d1).x, along(path, d1).y);
+      let deck = { base: -Infinity, slope: 0 }, deckCost = Infinity;
+      // (or as steep as the old road across the cutting: it is not rebuilt gentler than it was)
+      const steepest = Math.max(ROAD_CLASSES[c.cls].rampGradient, Math.abs(ground1 - ground0) / Math.max(1, d1 - d0));
+      for (let k = -20; k <= 20; k++) {
+        const slope = steepest * k / 20, base = Math.max(...clear.map(q => q.z - slope * q.d));
+        const cost = Math.abs(base + slope * d0 - ground0) + Math.abs(base + slope * d1 - ground1) + (k === 0 ? 0 : 1e-6);
+        if (cost < deckCost) { deckCost = cost; deck = { base, slope }; }
+      }
+      const deckAt = (d: number) => deck.base + deck.slope * d;
+      const edgeZ = (d: number) => isRaised ? deckAt(d) : project(along(path, d)).z;
+      const f0 = foot(d0, -1, edgeZ(d0)), f1 = foot(d1, 1, edgeZ(d1));
       // A crossing whose ramps would run on for hundreds of metres is not a sensible bridge over us.
       if (isRaised && Math.max(d0 - f0, f1 - d1) > MAX_RAMP_LENGTH) diagnose(g, RAMP_TOO_LONG);
       // Short terrain tails make the actual joins visible; tails are maintenance, not new approaches.
@@ -495,7 +582,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
           q.z = edgeZ(d0) + (heightAt(along(path, f0).x, along(path, f0).y) - edgeZ(d0)) * (d0 - d) / (d0 - f0);
         } else if (d > d1 && d < f1) {
           q.z = edgeZ(d1) + (heightAt(along(path, f1).x, along(path, f1).y) - edgeZ(d1)) * (d - d1) / (f1 - d1);
-        } else if (d >= d0 && d <= d1) q.z = isRaised ? deckZ : project(q).z;
+        } else if (d >= d0 && d <= d1) q.z = isRaised ? deckAt(d) : project(q).z;
         if (isRaised && d >= d0 && d <= d1) q.surface = 'deck';
         else if (Math.abs(q.z - q.ground) > 1e-7) { q.surface = 'ramp'; q.support = q.z >= q.ground ? 'embankment' : 'retaining'; }
         return q;
@@ -545,7 +632,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       road = path.slice(Math.max(0, lo - 1), Math.min(path.length, hi + 2)).map(terrainPoint);
     } else if (c.type === 'underpass') {
       // The way keeps its own terrain level through a closed box spanning the earthwork
-      // footprint toe to toe along the way (skew and bends included).
+      // footprint toe to toe along the way (skew and bends included); under a low embankment it is
+      // lowered into a cut on ramps at its class gradient (research/37), its low point drained.
       const row = ROAD_CLASSES[c.cls], box = row.underpass ? underpassAssembly(row.underpass, (c.roadPerKm ?? row.roadPerKm[0]) / 1000) : undefined;
       let centre = 0;
       for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;
@@ -564,22 +652,95 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         if (length > UNDERPASS_RULES.maxLength) diagnose(g, `Underpass would exceed the ${UNDERPASS_RULES.maxLength} m box limit`);
         // Under the carriageway the box needs its clear height + roof + cover below our grade.
         const crown = (route.crownWidth ?? 0) / 2 + g.width / 2;
-        let lowest = Infinity;
-        for (const q of [along(path, d0), ...path.filter(q => q.d > d0 && q.d < d1), along(path, d1)]) {
-          const p = project(q);
-          if (Math.abs(p.lateral) <= crown) lowest = Math.min(lowest, p.z - heightAt(q.x, q.y));
+        const inside = [along(path, d0), ...path.filter(q => q.d > d0 && q.d < d1), along(path, d1)];
+        // (the way's samples and their quarter points, as the final check on the drawn way probes them)
+        const probes: { d: number; z: number; ground: number }[] = [];
+        for (let k = 0; k < inside.length; k++) for (const t of k + 1 < inside.length ? [0, 0.25, 0.5, 0.75] : [0]) {
+          const a = inside[k], b = inside[Math.min(inside.length - 1, k + 1)], q = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, p = project(q);
+          if (Math.abs(p.lateral) <= crown) probes.push({ d: a.d + (b.d - a.d) * t, z: p.z - box.minHeight, ground: heightAt(q.x, q.y) });
         }
-        if (lowest < box.minHeight - 1e-6) diagnose(g, 'Embankment is too low over the underpass box');
-        const a = Math.max(path[0].d, d0 - 2 * STEP), b = Math.min(path[path.length - 1].d, d1 + 2 * STEP);
-        const distances = [...new Set([a, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, b])].sort((p, q) => p - q);
-        road = distances.map(d => terrainPoint(along(path, d)));
-        g.underpass = { start: distances.indexOf(d0), end: distances.indexOf(d1), width: box.width, height: box.height, roof: box.roof, wall: box.wall };
+        const lowest = Math.min(Infinity, ...probes.map(q => q.z + box.minHeight - q.ground));
+        delete c.lowered; delete c.drainage; delete c.drainCost; delete c.approachLength;
+        const rate = (c.roadPerKm ?? row.roadPerKm[0]) / 1000;
+        if (lowest < box.minHeight - 1e-6) {
+          // A straight floor through the box, as high as leaves the box room under our road everywhere
+          // under the crown band. Its fall (at most the class gradient, or the old road's own fall across
+          // the box where that is steeper, like a sloped deck) is chosen for the shortest ramps: on a
+          // hillside a level floor would leave the uphill ramp running on in a deep cut.
+          const g0 = heightAt(inside[0].x, inside[0].y), g1 = heightAt(inside[inside.length - 1].x, inside[inside.length - 1].y);
+          const steepest = Math.max(row.rampGradient, Math.abs(g1 - g0) / Math.max(1, length));
+          const ground = inside.map(q => heightAt(q.x, q.y));
+          const old = (g1 - g0) / Math.max(1, length), slopes = [old, Math.max(-row.rampGradient, Math.min(row.rampGradient, old))];
+          for (let k = -8; k <= 8; k++) slopes.push(steepest * k / 8);
+          // (within the lowering limit first, then ramps that end within reach, the shortest, the least lowering)
+          const rank = (depth: number, f0: number, f1: number) => [depth > LOWERING_RULES.maxDepth + 1e-6 ? 1 : 0,
+            Number.isNaN(f0 + f1) || Math.max(d0 - f0, f1 - d1) > MAX_RAMP_LENGTH ? 1 : 0, Number.isNaN(f0 + f1) ? 0 : f1 - f0, depth];
+          let best = { base: Infinity, slope: 0, depth: Infinity, rank: [2, 2, 0, 0] };
+          for (const slope of slopes) {
+            const base = Math.min(...probes.map(q => q.z - slope * q.d));
+            const depth = Math.max(0, ...inside.map((q, i) => ground[i] - base - slope * q.d), ...probes.map(q => q.ground - base - slope * q.d));
+            const mine = rank(depth, foot(d0, -1, base + slope * d0, true), foot(d1, 1, base + slope * d1, true));
+            const i = mine.findIndex((v, j) => Math.abs(v - best.rank[j]) > 1e-6);
+            if (i >= 0 && mine[i] < best.rank[i]) best = { base, slope, depth, rank: mine };
+          }
+          const { base, slope, depth } = best, floor = (d: number) => base + slope * d;
+          if (depth > LOWERING_RULES.maxDepth + 1e-6) diagnose(g, UNDERPASS_TOO_LOW);
+          const f0 = foot(d0, -1, floor(d0)), f1 = foot(d1, 1, floor(d1));
+          if (Math.max(d0 - f0, f1 - d1) > MAX_RAMP_LENGTH) diagnose(g, RAMP_TOO_LONG);
+          const a = Math.max(path[0].d, f0 - STEP), b = Math.min(path[path.length - 1].d, f1 + STEP);
+          const distances = [...new Set([a, f0, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, f1, b])].sort((p, q) => p - q);
+          const groundAt = (d: number) => { const q = along(path, d); return heightAt(q.x, q.y); };
+          road = distances.map(d => {
+            const q = terrainPoint(along(path, d));
+            if (d > f0 && d < d0) q.z = floor(d0) + (groundAt(f0) - floor(d0)) * (d0 - d) / (d0 - f0);
+            else if (d >= d0 && d <= d1) q.z = floor(d);
+            else if (d > d1 && d < f1) q.z = floor(d1) + (groundAt(f1) - floor(d1)) * (d - d1) / (f1 - d1);
+            if (Math.abs(q.z - q.ground) > 1e-7) { q.surface = 'ramp'; q.support = q.z >= q.ground ? 'embankment' : 'retaining'; }
+            return q;
+          });
+          if (road.some(q => q.surface === 'ramp' && Math.abs(q.z - q.ground) > LINK_MAX_SUPPORT)) diagnose(g, UNDERPASS_TOO_LOW);
+          g.approaches = [{ start: distances.indexOf(f0), end: distances.indexOf(d0) }, { start: distances.indexOf(d1), end: distances.indexOf(f1) }];
+          // The low point drains by gravity where a pipe at its fall reaches lower ground along the way
+          // within reach (TP 83 §6.1), else into a pumped sump with a rising main to where a ramp ends.
+          const low = floor(d0) <= floor(d1) ? d0 : d1, invert = floor(low) - LOWERING_RULES.drainDepth;
+          let outfall: number | undefined;
+          for (const q of path) {
+            const run = Math.abs(q.d - low);
+            if (run <= LOWERING_RULES.maxOutfall && (outfall === undefined || run < outfall)
+              && heightAt(q.x, q.y) <= invert - LOWERING_RULES.drainFall * run) outfall = run;
+          }
+          const drain = sagDrainage(outfall, Math.min(low - f0, f1 - low));
+          lowered = true; c.lowered = depth; c.approachLength = d0 - f0 + f1 - d1; c.drainage = drain.kind; c.drainCost = drain.cost;
+        } else {
+          const a = Math.max(path[0].d, d0 - 2 * STEP), b = Math.min(path[path.length - 1].d, d1 + 2 * STEP);
+          const distances = [...new Set([a, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, b])].sort((p, q) => p - q);
+          road = distances.map(d => terrainPoint(along(path, d)));
+        }
+        g.underpass = { start: road.findIndex(q => q.d === d0), end: road.findIndex(q => q.d === d1), width: box.width, height: box.height, roof: box.roof, wall: box.wall };
         c.underpassLength = length;
-        c.cost = length * box.perM + 2 * box.head;
+        c.cost = length * box.perM + 2 * box.head + (c.approachLength ?? 0) * rate + (c.drainCost ?? 0);
       }
     }
-    rawPaths.set(c, adjusted ? road : path);
+    // (a raised or lowered way's anchors lie on the ground beyond its ramps, on its old line further out)
+    rawPaths.set(c, (adjusted || lowered) && road.length ? [...path.filter(q => q.d < road[0].d!), ...road, ...path.filter(q => q.d > road[road.length - 1].d!)] : path);
     if (['bridge', 'overbridge', 'tunnel', 'junction', 'underpass'].includes(c.type)) g.road = road;
+    // A box or a bridge over us that delivers the way straight back under our earthworks (it runs along
+    // our slope on one side, not across our road again) leaves that stretch to be walled or moved:
+    // Auto prefers a treatment that does not (a reroute takes that stretch with it).
+    if (c.type === 'underpass' && road.length && !c.requestedType) {
+      const crown = (route.crownWidth ?? 0) / 2, d0 = road[0].d!, d1 = road[road.length - 1].d!;
+      for (const direction of [-1, 1]) {
+        let inside = false, across = false;
+        const settle = () => { if (inside && !across) g.runsBack = true; inside = across = false; };
+        for (let k = direction < 0 ? path.length - 1 : 0; k >= 0 && k < path.length && !g.runsBack; k -= direction < 0 ? 1 : -1) {
+          const q = path[k], beyond = direction < 0 ? d0 - q.d : q.d - d1;
+          if (beyond <= 0) continue;
+          if (beyond > RUN_BACK) break;
+          if (margin(q, g.width / 2) <= 0) { inside = true; if (Math.abs(project(q).lateral) <= crown) across = true; } else settle();
+        }
+        if (!g.runsBack) settle();
+      }
+    }
   }
 
   // A ground anchor must actually lie on the crossed alignment, beyond every engineered approach
@@ -614,12 +775,18 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     }
     return out;
   };
-  for (const c of crossings) if (rawPaths.has(c)) anchors.set(c, groundAnchors(rawPaths.get(c)!, maxLinkWidth(c)));
+  // (only the crossings a link starts or ends at need their anchors)
+  const anchorOf = (c: CrossingResult) => {
+    if (!anchors.has(c) && rawPaths.has(c)) anchors.set(c, groundAnchors(rawPaths.get(c)!, maxLinkWidth(c)));
+    return anchors.get(c);
+  };
   const endAnchors = new Map<string, [CrossingPoint | undefined, CrossingPoint | undefined]>();
+  const linkEnv: LinkEnv = { heightAt, margin: (q, extra) => margin(q, extra, false), roads, obstacle: route.obstacle, streams: route.streams,
+    houses: route.houses, houseCost: route.houseCost, memo: linkMemo };
   for (const c of crossings) if (c.targetS !== undefined && (c.type === 'reconnection' || c.type === 'diversion')) {
     const g = c.geometry!;
     const target = crossings.find(t => t !== c && t.s === c.targetS && t.roadId === c.targetRoadId && !t.issues?.length && !ROAD_CLASSES[t.cls].noAtGrade);
-    let finish = target ? anchors.get(target) : undefined;
+    let finish = target ? anchorOf(target) : undefined;
     if (!target) {
       const key = `${c.targetS}:${g.width}`, p = at(c.targetS);
       if (!endAnchors.has(key)) {
@@ -628,7 +795,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       }
       finish = endAnchors.get(key);
     }
-    const start = anchors.get(c);
+    const start = anchorOf(c);
     const required = survivingSides.get(c) ?? [true, true];
     if (required.some((needed, k) => needed && (!start?.[k] || !finish?.[k])))
       diagnose(g, 'No real ground-level anchor exists for a surviving road branch');
@@ -636,9 +803,19 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       const p = at(s), offset = (side > 0 ? p.left : p.right) + g.width / 2 + SETBACK;
       return terrainPoint({ x: p.x - p.ty * offset * side, y: p.y + p.tx * offset * side });
     };
+    // An Auto candidate dearer than `budget` is discarded unbuilt: a reroute never costs less than its
+    // straight lines between the anchors (plus a service road's access).
+    // (and once one side is built, its measured price stands in for its straight line; a candidate
+    // whose first side cannot be built is not built further)
+    const straight = [0, 1].map(k => required[k] && start?.[k] && finish?.[k] ? Math.hypot(finish[k]!.x - start[k]!.x, finish[k]!.y - start[k]!.y) : 0);
+    const linkRate = (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000, access = c.cls === 'service' && straight[0] + straight[1] > 0 ? ACCESS : 0;
+    if ((straight[0] + straight[1]) * linkRate + access >= budget) { diagnose(g, OVER_BUDGET); continue; }
     const links: CrossingPoint[][] = [];
+    let culverts = 0, culvertCost = 0, steepest = 0, spent = 0, abandon = false;
+    const houses = new Set<number>();
     for (const side of [-1, 1]) {
       const k = side < 0 ? 0 : 1, a = start?.[k], b = finish?.[k];
+      if (k === 1 && anchorOnly && (g.diagnostics?.length || spent + straight[1] * linkRate + access >= budget)) { abandon = true; break; }
       if (!required[k] || !a || !b) { links.push([]); continue; }
       const s0 = project(a).s, s1 = project(b).s, lo = Math.min(s0, s1), hi = Math.max(s0, s1);
       const stations = [lo];
@@ -657,65 +834,94 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       // route and terrain are immutable, so reuse the smoothed controls (copied, never shared).
       const key = `${a.x},${a.y},${b.x},${b.y},${side},${g.width},${stations.length}`;
       const shape = c.via?.[k];
+      // Across evaluate()'s engineering passes a line is reused only where our footprint is exactly
+      // unchanged at every chainage its computation consulted (and PERSIST_PAD beyond).
+      const remember = <T>(name: string, compute: () => T): T => {
+        if (!persist) return compute();
+        const left: ArrayLike<number> = route.left ?? Float64Array.from(route.width, w => w / 2), right: ArrayLike<number> = route.right ?? left;
+        const hit = persist.links.get(name);
+        if (hit && hit.left.every((v, i) => v === left[hit.i0 + i]) && hit.right.every((v, i) => v === right[hit.i0 + i])) return hit.value as T;
+        const outer = { ...reads };
+        Object.assign(reads, { on: true, lo, hi }); // (its stations, the side points it starts from)
+        try {
+          const value = compute();
+          const i0 = firstAbove(route.s, reads.lo - PERSIST_PAD, true), i1 = Math.max(i0, firstAbove(route.s, reads.hi + PERSIST_PAD, false));
+          persist.links.set(name, { i0, left: Float64Array.from({ length: i1 - i0 }, (_, i) => left[i0 + i]), right: Float64Array.from({ length: i1 - i0 }, (_, i) => right[i0 + i]), value });
+          return value;
+        } finally { Object.assign(reads, outer); }
+      };
       let cached = smoothed.get(key);
       if (!cached) {
-        cached = smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
+        cached = remember(`s|${key}`, () => smoothLink([a, ...stations.map(s => sidePoint(s, side)), b],
           // One-off chord probes must not evict reusable anchor/bisection projections.
-          q => margin(q, g.width / 2, false), terrainPoint, SETBACK - 1e-5);
+          q => margin(q, g.width / 2, false), terrainPoint, SETBACK - 1e-5));
         smoothed.set(key, cached);
       }
       // The player's shape: straight legs through their bend points between the same real anchors.
-      const controls = shape?.length ? [a, ...shape.map(p => terrainPoint(p)), b]
-        : cached.map((p, i) => i === 0 ? a : i === cached.length - 1 ? b : { ...p });
-      if (shape?.length) {
-        // Automatic reroutes are draped on the ground unchecked for steepness (an engine gap): a shape is
-        // held to its class's limit, or to what the automatic path itself reaches when that is steeper.
-        // (both measured alike: ground every 2.5 m along their legs)
-        const steepest = (legs: readonly XY[]) => {
-          const pts: (XY & { z: number })[] = [];
-          for (let i = 1; i < legs.length; i++) {
-            const p = legs[i - 1], q = legs[i], count = Math.min(4000, Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 2.5)));
-            for (let j = i === 1 ? 0 : 1; j <= count; j++) { const x = p.x + (q.x - p.x) * j / count, y = p.y + (q.y - p.y) * j / count; pts.push({ x, y, z: heightAt(x, y) }); }
-          }
-          return linkSteepest(pts);
-        };
-        const legs = [a, ...shape, b];
-        if (crossingPlanLength(legs) <= 4 * MAX_REACH && steepest(legs) > Math.max(ROAD_CLASSES[c.cls].rampSteepest, steepest(cached) + SHAPE_SLACK)) diagnose(g, LINK_TOO_STEEP);
+      const controls: XY[] = shape?.length ? [a, ...shape, b] : cached.map((p, i) => i === 0 ? a : i === cached.length - 1 ? b : { ...p });
+      let link: CrossingPoint[];
+      if (shape?.length && crossingPlanLength(controls) > 4 * MAX_REACH) {
         // Bounded work: a shape reaching beyond the crossed road's traced reach is rejected outright.
-        const span = crossingPlanLength(controls);
-        if (span > 4 * MAX_REACH) diagnose(g, LINK_TOO_FAR);
-        else {
-          // Off our earthworks (2.5 m probes), clear of motorways, railways, water and buildings.
-          for (let i = 1; i < controls.length; i++) {
-            const p = controls[i - 1], q = controls[i], count = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 2.5));
-            for (let j = 0; j <= count; j++) if (margin({ x: p.x + (q.x - p.x) * j / count, y: p.y + (q.y - p.y) * j / count }, g.width / 2, false) < 0) {
-              diagnose(g, LINK_OVER_OUR_ROAD); break;
-            }
-            roads?.nearSegments([Math.min(p.x, q.x), Math.min(p.y, q.y), Math.max(p.x, q.x), Math.max(p.y, q.y)], seg => {
-              if (ROAD_CLASSES[seg.cls]?.noAtGrade && segmentsCross(p, q, { x: seg.ax, y: seg.ay }, { x: seg.bx, y: seg.by })) diagnose(g, LINK_CROSSES_MOTORWAY);
-            });
-            const blocked = route.obstacle?.(p, q, g.width / 2);
-            if (blocked) diagnose(g, `${LINK_BLOCKED}${blocked}`);
+        diagnose(g, LINK_TOO_FAR);
+        link = controls.map((p, i) => i === 0 ? a : i === controls.length - 1 ? b : terrainPoint(p));
+      } else {
+        // Built as a designer would (link-route.ts): a profile within the class gradient, culverts,
+        // nothing it may not cross; an automatic line that cannot is searched for a gentler one.
+        const routeKey = `${key}|${c.cls}|${shape?.length ? JSON.stringify(shape) : ''}`;
+        let plan = routed.get(routeKey);
+        const rate = (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
+        if (!plan) plan = remember(`r|${routeKey}|${rate}`, () => {
+          let plan: LinkPlan;
+          const price = (p: LinkPlan) => crossingPlanLength(p.points) * rate + p.culvertCost + p.houseCost;
+          const better = (p: LinkPlan, q: LinkPlan) => p.problems.length < q.problems.length || (!p.problems.length && !q.problems.length && price(p) < price(q));
+          // A designer keeps to the class's ordinary gradient where the ground allows, and uses its
+          // justified-case maximum (research/20) where it does not; only a line that still cannot be
+          // built (or runs through houses) sends them looking for a gentler or clearer one nearby.
+          const row = ROAD_CLASSES[c.cls];
+          const survey = surveyLink(controls, g.width, linkEnv);
+          plan = profileLink(survey, row.rampGradient, linkEnv);
+          if (plan.problems.includes('steep') && row.rampSteepest > row.rampGradient) {
+            const steeper = profileLink(survey, row.rampSteepest, linkEnv);
+            if (better(steeper, plan)) plan = steeper;
           }
-        }
-      }
-      const link: CrossingPoint[] = [a];
-      const length = crossingPlanLength(controls), budget = Math.max(0, MAX_POINTS - controls.length);
-      for (let i = 1; i < controls.length; i++) {
-        const p = controls[i - 1], q = controls[i], len = Math.hypot(q.x - p.x, q.y - p.y);
-        if (len < 1e-7) continue;
-        const count = Math.min(Math.max(1, Math.ceil(len / STEP)), 1 + Math.floor(budget * len / (length || 1)));
-        for (let j = 1; j <= count; j++) {
-          const t = j / count;
-          link.push(j === count ? q : terrainPoint({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }));
-        }
+          // (a river or a motorway between its ends cannot be gone around beside our road, nor,
+          // practically, a railway the straight line between its ends crosses as well)
+          const around = !plan.problems.some(p => p === 'river' || p === 'motorway')
+            && !(plan.problems.includes('railway') && route.obstacle?.(a, b, g.width / 2) === 'railway');
+          // (houses alone: only when buying them out is a sizeable part of the reroute's price)
+          if (!shape?.length && around && (plan.problems.length || plan.houseCost > 0.25 * crossingPlanLength(plan.points) * rate)) {
+            const grade = plan.grade;
+            const place = (s: number, offset: number) => {
+              const p = at(s), o = (side > 0 ? p.left : p.right) + offset;
+              return { x: p.x - p.ty * o * side, y: p.y + p.tx * o * side };
+            };
+            const line = routeAlong(a, b, s0, s1, place, g.width, linkEnv, SETBACK, grade, rate);
+            const other = line && engineerLink(line, g.width, linkEnv, grade);
+            if (other && better(other, plan)) plan = other;
+          }
+          return plan;
+        });
+        routed.set(routeKey, plan);
+        // the player's shape: one problem each (each has its own fix); an automatic line: one, with every reason
+        if (shape?.length) for (const problem of plan.problems) diagnose(g, linkMessage(problem, true));
+        else if (plan.problems.length) diagnose(g, `${REROUTE_FAILS}${[...plan.problems].sort().join(',')}`);
+        link = plan.points.map((p, i) => i === 0 ? a : i === plan!.points.length - 1 ? b : { ...p });
+        culverts += plan.culverts.length; culvertCost += plan.culvertCost;
+        for (const j of plan.houses) houses.add(j);
+        if (plan.grade > ROAD_CLASSES[c.cls].rampGradient && !plan.problems.includes('steep')) steepest = Math.max(steepest, plan.grade);
       }
       links.push(link);
+      spent += crossingPlanLength(link) * linkRate + (k === 0 ? culvertCost : 0);
     }
+    if (abandon) { if (!g.diagnostics?.length) diagnose(g, OVER_BUDGET); continue; }
     g.links = links as [CrossingPoint[], CrossingPoint[]];
     g.turnarounds = links.filter(path => path.length > 0).map(path => path[0]);
     c.linkLength = links.reduce((sum, path) => sum + crossingPlanLength(path), 0);
-    c.cost = c.linkLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.cls === 'service' && c.linkLength > 0 ? ACCESS : 0);
+    const houseCost = [...houses].reduce((a, j) => a + (route.houseCost?.(j) ?? 0), 0);
+    c.cost = c.linkLength * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.cls === 'service' && c.linkLength > 0 ? ACCESS : 0) + culvertCost + houseCost;
+    if (culverts) { c.culverts = culverts; c.culvertCost = culvertCost; } else { delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade; }
+    if (houses.size) { c.houses = [...houses]; c.houseCost = houseCost; } else { delete c.houses; delete c.houseCost; delete c.linkGrade; }
+    if (steepest) c.linkGrade = steepest; else delete c.linkGrade;
   }
   // Refine terrain-only spans against interior elevations, not just their endpoints. This prevents
   // a nominally draped 10 m chord from floating over a sharp gully between its stored samples.
@@ -744,6 +950,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   };
   for (const c of crossings) {
     const g = c.geometry!;
+    // (a crossing built only to anchor a candidate reroute: its anchors are already taken)
+    if (anchorOnly?.has(c)) continue;
     if (g.road) {
       const old = g.road, road = refineTerrain(old, g);
       if (g.deck) { g.deck.start = road.indexOf(old[g.deck.start]); g.deck.end = road.indexOf(old[g.deck.end]); }
@@ -753,7 +961,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         // Recheck on the refined way: a ridge between the first samples must not hide in the roof.
         const size = ROAD_CLASSES[c.cls].underpass;
         if (size && underpassLowest(road, g.underpass.start, g.underpass.end, (route.crownWidth ?? 0) / 2 + g.width / 2,
-          q => project(q, false), heightAt) < underpassAssembly(size, 0).minHeight - 1e-6) diagnose(g, 'Embankment is too low over the underpass box');
+          q => project(q, false), heightAt) < underpassAssembly(size, 0).minHeight - 1e-6) diagnose(g, UNDERPASS_TOO_LOW);
       }
       g.road = road;
     }
@@ -764,7 +972,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   const claimed: XY[][] = [];
   for (const c of crossings) {
     const g = c.geometry!;
-    if (!roads || !g.road || (c.type !== 'junction' && c.type !== 'overbridge') || g.diagnostics?.length) continue;
+    if (!roads || !g.road || anchorOnly?.has(c) || (c.type !== 'junction' && c.type !== 'overbridge' && !(c.type === 'underpass' && c.lowered)) || g.diagnostics?.length) continue;
     const works = crossingWorks(g.road, g.width, getPath(c.roadId, c.x, c.y, g), {
       roads, heightAt, ours: (q, pad) => margin(q, pad) <= 0, rampLimit, maxTie: MAX_RAMP_LENGTH, urban: (route.urban?.[c.i] ?? 0) >= 0.5 ? 1 : 0, claimed });
     for (const message of works.problems) diagnose(g, message);
@@ -779,7 +987,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     const text = diagnosticText(message, c);
     const issue: CrossingIssue = { kind: 'crossing', s0: c.s, s1: c.s, ...text,
       crossing: { roadId: c.roadId, requested: c.requestedType ?? (c.type === 'diversion' ? 'reconnection' : c.type === 'tunnel' || c.type === 'atGrade' ? 'bridge' : c.type),
-        code: message.startsWith(SHAPED) ? 'shape' : 'geometry' } };
+        code: message.startsWith(SHAPED) ? 'shape' : message.startsWith(REROUTE) ? 'reroute' : 'geometry' } };
     (c.issues ??= []).push(issue); issues.push(issue);
   }
   return issues;
@@ -790,18 +998,21 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
  * One final rebuild anchors every dependent link to the treatment actually selected, and remeasures
  * its bill. This is a local feasibility/economic pass, not an unrestricted network optimizer. */
 export function buildCrossingGeometry(crossings: CrossingResult[], route: CrossingRoute,
-  heightAt: (x: number, y: number) => number, roads?: RoadNet): CrossingIssue[] {
+  heightAt: (x: number, y: number) => number, roads?: RoadNet, persist?: CrossingCache): CrossingIssue[] {
   if (route.s.length < 2) return [];
   const spatial = routeGeometry(route);
   // Candidate treatments and the final rebuild use the same immutable OSM alignment. Share only
   // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
-  const paths = new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>(), sidesOf = new Map<string, [boolean, boolean]>();
-  const build = (items: CrossingResult[]) => buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, sidesOf);
+  const paths = persist?.paths ?? new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>(), sidesOf = new Map<string, [boolean, boolean]>();
+  // Engineered reroutes between the same anchors are the same within one call (terrain and route fixed).
+  const routed = new Map<string, LinkPlan>(), linkMemo = { free: new Map<number, number>() };
+  const build = (items: CrossingResult[], budget = Infinity, anchorOnly?: ReadonlySet<CrossingResult>) =>
+    buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, routed, linkMemo, sidesOf, budget, persist, anchorOnly);
   build(crossings);
   const clone = (c: CrossingResult): CrossingResult => {
     const copy: CrossingResult = { ...c, geometry: undefined, cost: c.cost - (c.worksCost ?? 0),
       issues: c.issues?.filter(v => !built(v)) };
-    delete copy.worksCost; delete copy.tieLength; delete copy.wallLength;
+    delete copy.worksCost; delete copy.tieLength; delete copy.wallLength; delete copy.culverts; delete copy.culvertCost; delete copy.houses; delete copy.houseCost; delete copy.linkGrade; delete copy.lowered; delete copy.drainage; delete copy.drainCost;
     return copy;
   };
   const feasible = (c: CrossingResult) => !c.issues?.length && !c.geometry?.diagnostics?.length;
@@ -818,48 +1029,59 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     return !!next;
   };
   let changed = false;
-  for (const c of crossings) {
+  // The dearest treatments are reconsidered first: a crossing others are then rerouted to keeps carrying them.
+  const reconsider = (c: CrossingResult) => {
     // An automatic junction is reconsidered only when its own works cannot be built (crossing-works.ts).
     const worksFail = c.type === 'junction' && !!c.geometry?.diagnostics?.some(m => m === WORKS_COVER_ROAD || m === WORKS_TIE_TOO_LONG || m === WORKS_TIE_SHARED);
-    if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !(worksFail || ['overbridge', 'reconnection', 'diversion', 'underpass'].includes(c.type))) continue;
-    let best = c;
-    const originalFeasible = feasible(c);
+    if (c.requestedType || ROAD_CLASSES[c.cls].noAtGrade || !(worksFail || ['overbridge', 'reconnection', 'diversion', 'underpass'].includes(c.type))) return;
+    // A box or bridge over us whose way runs back under our earthworks (geometry.runsBack) is kept only
+    // when nothing else can be built: the stretch under our slope would still have to be walled or moved.
+    const ok = (x: CrossingResult) => feasible(x) && !x.geometry?.runsBack;
+    let best = c, fallback: CrossingResult | undefined;
+    const originalFeasible = ok(c);
+    const consider = (x: CrossingResult) => {
+      if (ok(x)) { if (!ok(best) || x.cost < best.cost) best = x; }
+      else if (feasible(x) && (!fallback || x.cost < fallback.cost)) fallback = x;
+    };
     // A measured box through our embankment, when the class, the fill and the structure allow it.
     if (c.type !== 'underpass' && route.kind?.[c.i] === KIND.earth && underpassFits(c, 0)) {
       const box = clone(c); box.type = 'underpass';
       delete box.targetS; delete box.targetRoadId; delete box.linkLength; delete box.span; delete box.approachLength;
       build([box]);
-      if (feasible(box) && (!feasible(best) || box.cost < best.cost)) best = box;
+      consider(box);
     }
     if (c.type !== 'overbridge' && (!originalFeasible || c.cost > deckPrice(c, route.width[c.i]))) {
       const over = clone(c); over.type = 'overbridge'; delete over.targetS; delete over.targetRoadId; delete over.linkLength; delete over.underpassLength;
       build([over]);
-      if (feasible(over) && (!feasible(best) || over.cost < best.cost)) best = over;
+      consider(over);
     }
     // A feasible link keeps its place unless cheaper above; a measured box (estimated from the
     // footprint width) still competes with the bounded link shortlist below.
     if (c.type !== 'overbridge' && c.type !== 'underpass' && originalFeasible) {
       if (best !== c) {
         delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
-        delete c.worksCost; delete c.tieLength; delete c.wallLength;
+        delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
         Object.assign(c, best); changed = true;
       }
-      continue;
+      return;
     }
     // Long detours are a feasibility fallback, not a way to shave a tiny amount off an already
     // workable structure: beyond the 750 m shortlist a link must cost at most half of it (a 150 m
     // track overbridge over a deep cutting is not worth keeping a 760 m reroute away).
-    const targets = crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && !ROAD_CLASSES[t.cls].noAtGrade
+    // (a reroute leads to a crossing that carries traffic over or under us, not to another cut road; and a
+    // crossing others lead to keeps carrying it)
+    const ledTo = crossings.some(x => x !== c && x.targetS === c.s && x.targetRoadId === c.roadId);
+    const targets = ledTo ? [] : crossings.filter(t => t !== c && feasible(t) && t.type !== 'atGrade' && t.type !== 'reconnection' && t.type !== 'diversion' && !ROAD_CLASSES[t.cls].noAtGrade
       && (c.cls === 'track' || c.cls === 'service' || (t.cls !== 'track' && t.cls !== 'service'))
       && Math.abs(t.s - c.s) <= CROSSING_RULES.linkHardReach && !dependsOn(t, c))
       .sort((a, b) => Math.abs(a.s - c.s) - Math.abs(b.s - c.s) || a.s - b.s);
-    const worth = (link: CrossingResult, target: CrossingResult) => !feasible(best)
+    const worth = (link: CrossingResult, target: CrossingResult) => !ok(best)
       || link.cost < best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1);
     // Surviving road sides each need a link running about as far along our road as the target
     // (less up to 250 m where a skewed way leaves our corridor further along): skip a long link that
     // cannot cost half a feasible structure.
     const sides = (sidesOf.get(`${c.roadId}:${c.x},${c.y}`) ?? [true, true]).filter(Boolean).length;
-    const cannotPay = (target: CrossingResult) => feasible(best) && Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach
+    const cannotPay = (target: CrossingResult) => ok(best) && Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach
       && sides * Math.max(0, Math.abs(target.s - c.s) - 250) * Math.min(...ROAD_CLASSES[c.cls].roadPerKm) / 1000 >= best.cost * 0.5;
     for (const target of targets.slice(0, originalFeasible ? 1 : 3)) {
       if (cannotPay(target)) break;
@@ -870,22 +1092,26 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       // A resolved diversion's source is a real ground-level road node; its downstream link need
       // not be rebuilt to evaluate a new branch arriving at that source.
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
-      build([anchor, link]);
+      build([anchor, link], ok(best) ? best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1) : Infinity, new Set([anchor]));
       if (feasible(link) && worth(link, target)) { best = link; break; }
     }
+    if (!ok(best) && fallback && (!feasible(c) || fallback.cost < c.cost)) best = fallback;
     if (best !== c) {
       delete c.span; delete c.approachLength; delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
-      delete c.worksCost; delete c.tieLength; delete c.wallLength;
+      delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;
       Object.assign(c, best); changed = true;
     }
-  }
+  };
+  for (const c of [...crossings].sort((a, b) => b.cost - a.cost || a.s - b.s)) reconsider(c);
+  // (one that found no target while another still led to it looks again)
+  for (const c of crossings) if (!feasible(c)) reconsider(c);
   if (!changed) return crossings.flatMap(c => c.issues?.filter(built) ?? []);
   const issues = build(crossings);
   // A new target treatment can move the ground anchor of a dependent link. Do not buy a cheaper
   // local option by breaking a previously feasible connection elsewhere in the network.
   if (crossings.some((c,i) => baseline[i].feasible && !feasible(c))) {
     crossings.forEach((c,i) => {
-      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength'] as const) delete c[key];
+      for (const key of ['geometry','issues','span','approachLength','linkLength','targetS','targetRoadId','underpassLength','worksCost','tieLength','wallLength','culverts','culvertCost','houses','houseCost','linkGrade','lowered','drainage','drainCost'] as const) delete c[key];
       Object.assign(c, baseline[i].state);
     });
     return build(crossings);
@@ -982,7 +1208,7 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
           if (Math.abs(b.z - a.z) > step * limit + 0.01 && !g.diagnostics?.includes(RAMP_TOO_LONG)) report('Undiagnosed excessive approach gradient');
         }
       }
-      if (c.type === 'overbridge' && Math.abs(length - (c.approachLength ?? 0)) > 0.01) report('Approach quantity differs from geometry');
+      if ((c.type === 'overbridge' || c.type === 'underpass') && Math.abs(length - (c.approachLength ?? 0)) > 0.01) report('Approach quantity differs from geometry');
     }
     if (g.links) {
       for (const path of g.links) {
@@ -992,23 +1218,25 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       }
       if (Math.abs(g.links.reduce((sum, path) => sum + crossingPlanLength(path), 0) - (c.linkLength ?? 0)) > 0.01) report('Link quantity differs from geometry');
       const price = (c.linkLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000
-        + (c.cls === 'service' && (c.linkLength ?? 0) > 0 ? ACCESS : 0);
+        + (c.cls === 'service' && (c.linkLength ?? 0) > 0 ? ACCESS : 0) + (c.culvertCost ?? 0) + (c.houseCost ?? 0);
       if (Math.abs(price - c.cost) > 0.01) report('Link bill differs from measured quantities');
     }
+    // Side-road regrades and walls, remeasured from the drawn geometry (rural or urban rate).
+    const works = ([0, 1] as const).map(u => auditWorks(g, heightAt, u));
     if (c.type === 'underpass' && g.underpass && g.road) {
       const { start, end } = g.underpass, size = ROAD_CLASSES[c.cls].underpass;
       if (start < 0 || end <= start || end >= g.road.length || !size) report('Invalid underpass bounds');
       else {
         const box = underpassAssembly(size, (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000);
         if (Math.abs(crossingPlanLength(g.road.slice(start, end + 1)) - (c.underpassLength ?? 0)) > 0.01) report('Underpass quantity differs from geometry');
-        if (Math.abs((c.underpassLength ?? 0) * box.perM + 2 * box.head - c.cost) > 0.01) report('Underpass bill differs from measured quantities');
-        if (g.road.some(q => q.surface !== 'terrain')) report('Underpass way leaves its terrain level');
+        const price = (c.underpassLength ?? 0) * box.perM + 2 * box.head + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.drainCost ?? 0);
+        if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Underpass bill differs from measured quantities');
+        if (!c.lowered && g.road.some(q => q.surface !== 'terrain')) report('Underpass way leaves its terrain level');
+        if (c.lowered !== undefined && (!g.approaches || c.lowered > LOWERING_RULES.maxDepth + 1e-6) && !g.diagnostics?.length) report('Lowered underpass way is not engineered');
         if (!g.diagnostics?.length && underpassLowest(g.road, start, end, (route.crownWidth ?? 0) / 2 + g.width / 2, q => project(q), heightAt)
           < box.minHeight - 1e-6) report('Underpass roof does not clear the carriageway');
       }
     }
-    // Side-road regrades and walls, remeasured from the drawn geometry (rural or urban rate).
-    const works = ([0, 1] as const).map(u => auditWorks(g, heightAt, u));
     if (c.type === 'overbridge') {
       const price = deckPrice(c, c.span ?? 0) + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
       if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Overbridge bill differs from measured quantities');

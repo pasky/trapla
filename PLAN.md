@@ -248,6 +248,53 @@ What exists (details and commands in `README.md`):
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
   ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
 
+### Buildable automatic reroutes, lowered underpasses (cost model 22, 2026-11-16)
+
+- Automatic reroutes are engineered and checked like any road: a profile within the class gradient (its
+  justified maximum where the ground leaves no choice), earthworks ≤ 10 m, culverts for streams, houses in the
+  way bought out, never on the ground across railways, ponds/rivers or motorways; where the line beside our
+  earthworks fails, a gentler line is searched within 100 m of our road. One that still cannot be built is a
+  violation with its reasons and a computed fix, and Auto picks another treatment. Before: 730 of 871 automatic
+  reroutes on the audit designs were silently unbuildable; now 7, all reported.
+- Lowered underpass (research/37): under a low embankment the crossed track or road is lowered into a cut (at
+  most 6 m, PROVISIONAL) on class-gradient ramps, its low point drained by a gravity pipe or a pumped sump
+  (TP 83). The D11 straight start line and town-centre are VALID on their own (local road 2244 lowered 3.3 m,
+  service road 5162 lowered 2.9 m). A bridge over us may slope like its road.
+- A reroute leads only to a crossing that carries traffic over or under us, never to another cut road
+  (playtest-qa P1 #13; 152 such chains on main's audit designs, none now). A selected crossing outlines all
+  its works on the map. Auto avoids boxes whose kept road runs straight back under our slope.
+- Published designs: straight +33.5 M, best −45.8 M, demo −43.8 M, direct-80 −8.0 M, direct-90 +48.7 M,
+  town-centre +91.5 M (cheap unbuildable reroutes replaced by honest ones or structures; lowered boxes save
+  elsewhere), all VALID. Full evaluation ≈ +1 % on the saved designs, within noise (sum 569 → 568 ms before the
+  review fixes, +6 ms for their finer reroute survey; candidate reroutes that cannot be worth it are not built,
+  reroutes reused by the strict retry). Details: `docs/footprint-conflicts.md` § Model 22.
+- Not modelled: groundwater and utilities under a lowered road; the pump station's installation and power
+  connection (no installed price found).
+- Future improvement: a crossed road meeting ours very obliquely gets a box as long as its skewed path under
+  our embankment (town-centre km 15.98: a 57 m box sticking out of the slope). A designer would square the
+  crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); the
+  engine keeps every crossed road on its own line.
+### Map camera and labels (playtest-qa S1 #15, #17, #19, 2026-11-16)
+
+- The orbit target goes back onto the ground under the screen centre after every pan, turn and zoom (the view
+  does not move), and stays over the map. A pan used to keep it at one height: over hills it ended under or
+  above the ground, so the wheel stopped ≈ 150 m above the road (Voletiny), pans ran kilometres and a turn
+  swung the subject off the screen. The wheel zooms about the ground under the cursor; the view looks at most
+  ≈ 76° from straight down (was ≈ 85°, skimming the horizon); a click in the profile or a card from a low view
+  flies there looking down at 40°. *Whole route* (map button, <kbd>W</kbd>) frames the active road from
+  anywhere, e.g. after panning off the map's edge.
+- Picking something away from the map (a click in the profile or a list) frames it: `frameSelection(sel)` in
+  `src/main.ts` flies to it when it is off the screen, seen from a low view, or too small to make out (a piece
+  shorter than a sixth of the view, a single place from further than 6 m per pixel); from the whole-route
+  overview a profile click used to select a piece without showing it (QA re-test P1).
+- A selected bend's guide is its two straights, solid, up to 600 m out from the bend; the dashed guide along the
+  whole road read as the dashed official line. The legend's official-line symbol is drawn as on the map.
+- Labels never print over each other nor under the map's buttons, bars and legends: A, B and the official
+  line's label keep their room, place names follow
+  by rank (towns first); names further than 6 camera distances are left out (none pile up on the horizon). Noise
+  walls of one height on both sides of a stretch get one label ("3 m both sides").
+- `node scripts/camera-check.mjs` plays these with real mouse input (screenshots 157–159).
+
 ### Travel-time target X and traffic Y
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.
@@ -939,7 +986,7 @@ the bill change: **research/36**.
   town-centre against a903bda (27.5 against 15.0 ms, main 7.1; 48 of its 367 houses cell by cell); drags are
   unaffected (they skip the noise step). Numbers and what is left: docs/evaluate-performance.md.
 
-## Local edits: the grade line in blocks (cost model 22, 2026-11-16)
+## Local edits: the grade line in blocks (cost model 23, 2026-11-16)
 
 Playtest (whole D3 / D35): a small nudge redesigned the grade and broke crossings 9–24 km away. Same design,
 same bill stays the rule (no edit history), so the solve itself became local (research/39 "Local edits"):

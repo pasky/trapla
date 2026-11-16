@@ -84,11 +84,11 @@ export const D3_SCENARIO: ScenarioParams = {
   id: 'd3', presetId: 'd3-road', title: 'Jílové → Václavice (earlier map)', retired: true, group: 'Středočeská D3',
   // Editable starter near the reference, validated on this pack; no hidden structure overrides.
   // Three bends moved <12 m by the existing bounded repair tool to resolve a track conflict; under the local
-  // grade solve (model 22) the last one 60 m more for another track.
+  // grade solve (model 23) the last one 60 + 25 m more for another track and an underpass approach.
   initial: { category: 'S9.5', speed: 90, pis: [
     { x: 3872.4, y: 14182.6, r: null }, { x: 3608.6, y: 12643.7, r: null },
     { x: 4588.5, y: 9743.4, r: null }, { x: 4849.5, y: 8185.1, r: null },
-    { x: 5549, y: 6639, r: null }, { x: 7079, y: 5914, r: null }, { x: 8475, y: 4241.3, r: null },
+    { x: 5549, y: 6639, r: null }, { x: 7079, y: 5914, r: null }, { x: 8487.7, y: 4262.8, r: null },
   ] },
   picker: { kind: 'Class I road · 90 km/h', goal: 'Cross the Sázava and find a way through the hills.',
     note: 'Earlier map: most of sections 0302 and 0303.' },
@@ -103,9 +103,10 @@ export const D35_SCENARIO: ScenarioParams = {
   // Superseded by the motorway missions (the two-lane road exercise in a motorway corridor); kept loadable.
   id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město (two-lane road)', retired: true, group: 'D35',
   // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
-  // bend 7 by 7.6 m to clear a track (research/27). No junction: B is the section boundary.
+  // bend 7 by 7.6 m to clear a track (research/27); under model 23 bend 2 by 25 m (a track with no buildable
+  // reroute at km 6.99). No junction: B is the section boundary.
   initial: { category: 'S9.5', speed: 90, pis: [
-    { x: 3911.6, y: 4138.6, r: null }, { x: 5364.7, y: 4523.8, r: null }, { x: 7643.7, y: 4336.4, r: null },
+    { x: 3911.6, y: 4138.6, r: null }, { x: 5364.7, y: 4523.8, r: null }, { x: 7639.4, y: 4311.8, r: null },
     { x: 9356.7, y: 4036.3, r: null }, { x: 11092.7, y: 3524, r: null }, { x: 12724.6, y: 3498.3, r: null },
     { x: 14565.1, y: 3794.8, r: null }, { x: 16198, y: 3345, r: null }, { x: 17709.9, y: 2719.1, r: null },
   ] },
@@ -141,8 +142,8 @@ const MOTORWAY_TRAFFIC = { traffic: 30_700, heavyShare: 0.2256 };
 export const D3_MOTORWAY: ScenarioParams = {
   ...D3_SCENARIO, presetId: 'd3-motorway', mode: 'motorway', title: 'Motorway D3: Jílové → Václavice (earlier map)',
   // The real 0302/0303 sections are D 27.5/120 (research/25). Starter = the road exercise's bends with
-  // the last bend moved 30 m (bounded validity-first search) so the wider body clears a track, and (model 22)
-  // the one before it 12 m for another track; not optimised.
+  // the last bend moved 30 m (bounded validity-first search) so the wider body clears a track, and (model 23)
+  // the one before it 12 m for another track (model 23); not optimised.
   initial: { category: 'D27.5', speed: 120, pis: [
     { x: 3872.4, y: 14182.6, r: null }, { x: 3608.6, y: 12643.7, r: null },
     { x: 4588.5, y: 9743.4, r: null }, { x: 4849.5, y: 8185.1, r: null },
@@ -229,11 +230,12 @@ export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospo
 // mapped line to where it starts to merge with I/35 (declared merge, PROVISIONAL) is 33.3 km. Built as
 // D 27.5 (the project is D 26.0/130, no SPK row). Time target: reference + 10 % at 130 km/h. Starter:
 // mapped-line bends every ~1.5 km, the last (400 m before B) dropped, four moved 12–100 m (and under the local grade
-// solve, model 22, bends 16/17 another 60/12 m for a stream before B and a class I road) by a bounded
+// solve, model 23, bends 16/17 another 60/12 m for a stream before B and a class I road, bend 2 12 m for a track
+// with no buildable reroute) by a bounded
 // greedy search (research/39); B at 33.35 km on the mapped line, where it starts to merge with I/35.
 export const D35_FULL: ScenarioParams = {
   ...D35_MOTORWAY, id: 'd35-full', presetId: 'd35-full-motorway', title: 'Opatovec → Mohelnice', group: 'D35',
-  initial: { category: 'D27.5', speed: 130, pis: P([[3918, 9114.4], [5364.7, 9523.8], [7643.7, 9336.4], [9356.7, 9036.3], [11092.7, 8524], [12724.6, 8498.3], [14565.1, 8794.8], [16196.1, 8337.6], [17709.9, 7719.1], [19116.3, 6932.6], [20631.4, 6960.7], [22517.6, 7547.6], [23954.1, 8069.3], [25909.9, 8135.3], [27602.4, 7468.2], [29118.3, 6704.6], [30545.1, 5529.8], [31157.8, 4161.2]]) },
+  initial: { category: 'D27.5', speed: 130, pis: P([[3918, 9114.4], [5364.7, 9523.8], [7645.8, 9348.2], [9356.7, 9036.3], [11092.7, 8524], [12724.6, 8498.3], [14565.1, 8794.8], [16196.1, 8337.6], [17709.9, 7719.1], [19116.3, 6932.6], [20631.4, 6960.7], [22517.6, 7547.6], [23954.1, 8069.3], [25909.9, 8135.3], [27602.4, 7468.2], [29118.3, 6704.6], [30545.1, 5529.8], [31157.8, 4161.2]]) },
   picker: { kind: 'Motorway · 130 km/h', goal: 'Over the ridge and through the Maletín hills to the D35 at Mohelnice.',
     note: 'The whole link, both project sections. Built 27.5 m wide, our usual motorway; the planned road is 26 m wide.' },
   maxTravelMin: 17, // 36.6 km at 130 (reference 33.3 km)

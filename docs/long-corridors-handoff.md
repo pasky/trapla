@@ -1,7 +1,7 @@
 # Long corridors: continuation notes (handoff, 2026-11-16)
 
-Branch `side-agent/long-corridors` (worktree-0002), merged with main 93f849d (model 21); this branch is
-cost model 22 (the local grade solve). Background: research/39 (sections, ends, starters, whole corridors,
+Branch `side-agent/long-corridors` (worktree-0002), merged with main 2decf53 (model 22); this branch is
+cost model 23 (the local grade solve). Background: research/39 (sections, ends, starters, whole corridors,
 "Local edits"), docs/evaluate-performance.md (top two sections), PLAN.md "Local edits".
 
 ## What exists

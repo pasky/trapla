@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { auditCrossingGeometry, buildCrossingGeometry, crossingPlanLength, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
+import { auditCrossingGeometry, buildCrossingGeometry, crossingCache, crossingPlanLength, crossingBridgeMask, normalizeCrossingOverrides, resolveCrossings,
   type CrossingOverride, type CrossingResult, type CrossingRoute } from '../src/core/crossings';
 import { RoadNet, mergeCrossings, type RoadCrossing } from '../src/core/roadnet';
 import { bridgeModel } from '../src/core/bridge';
 import { ROAD_CLASSES } from '../src/core/data/urban';
-import { underpassAssembly } from '../src/core/data/remedies';
+import { LOWERING_RULES, underpassAssembly } from '../src/core/data/remedies';
 import { chooseStructures, KIND } from '../src/core/structures';
 import { CrossingRenderer } from '../src/render/crossings';
 import type { View } from '../src/render/view';
@@ -170,6 +170,25 @@ describe('crossing geometry and map overlay', () => {
     expect(net.connectedCrossingPath(0, 0, -10, 60)).toEqual(expected);
   });
 
+  it('reuses a reroute across evaluation passes only where our footprint it consulted is unchanged', () => {
+    // a shaped reroute bulging out to x = 4500, well beyond its anchors' chainages (3000–3800)
+    const net = new RoadNet({ cls: ['primary', 'residential'], ways: [[0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 300]] });
+    const via: CrossingOverride['via'] = [[{ x: 4500, y: -30 }], []];
+    const run = (r: CrossingRoute, cache: ReturnType<typeof crossingCache>) => {
+      const cs = [cross(0, 3000), cross(1, 3800, 'residential')];
+      resolveCrossings(cs, 9000, new Uint8Array(s.length), r.width, new Float64Array(s.length), undefined,
+        [{ roadId: 0, type: 'junction' }, { roadId: 1, type: 'reconnection', via, to: 0 }]);
+      buildCrossingGeometry(cs, r, () => 400, net, cache);
+      return cs[1].issues?.map(v => v.title) ?? [];
+    };
+    const cache = crossingCache();
+    expect(run(route, cache)).toEqual([]);
+    // our earthworks widen under the bulge in the second pass: the reroute is rebuilt and now runs onto them
+    const wide = { ...route, width: Float64Array.from(route.width, (w, i) => i >= 420 && i < 460 ? 100 : w) };
+    expect(run(wide, cache)).toEqual(run(wide, crossingCache()));
+    expect(run(wide, cache).length).toBeGreaterThan(0);
+  });
+
   it('shares candidate alignments within a build but refreshes mutable route and terrain inputs on the next build', () => {
     const net = new RoadNet({ cls: ['primary', 'residential'], ways: [
       [0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 2],
@@ -222,10 +241,24 @@ describe('crossing geometry and map overlay', () => {
     expect(g.road!.every(p => p.z === 393 && p.surface === 'terrain')).toBe(true); // the way keeps its level
     expect(c.cost).toBeCloseTo(c.underpassLength! * box.perM + 2 * box.head, 6);
     expect(auditCrossingGeometry(high, route, () => 393, roads)).toEqual([]);
+    // A low embankment: the track is lowered into a cut on ramps at its class gradient, its low point drained.
     const low = [cross(2, 3200, 'track', 4)];
-    expect(resolve(low, [{ roadId: 2, type: 'underpass' }])[0].crossing).toMatchObject({ code: 'underpass', actual: 4, required: box.minHeight });
+    expect(resolve(low, [{ roadId: 2, type: 'underpass' }])).toEqual([]);
     buildCrossingGeometry(low, route, () => 396, roads);
-    expect(low[0].geometry!.diagnostics).toContain('Embankment is too low over the underpass box');
+    const l = low[0], lg = l.geometry!;
+    expect(lg.diagnostics).toBeUndefined();
+    expect(l.lowered).toBeCloseTo(box.minHeight - 4, 6);
+    const ideal = 2 * l.lowered! / ROAD_CLASSES.track.rampGradient;
+    expect(l.approachLength).toBeGreaterThanOrEqual(ideal - 1e-6); expect(l.approachLength).toBeLessThanOrEqual(ideal + 20); // feet on 10 m way samples
+    expect(lg.road!.slice(lg.underpass!.start, lg.underpass!.end + 1).every(p => Math.abs(p.z - (396 - l.lowered!)) < 1e-6)).toBe(true);
+    expect(l.drainage).toBe('pump'); // flat ground: no lower ground for a gravity pipe
+    expect(l.cost).toBeCloseTo(l.underpassLength! * box.perM + 2 * box.head + l.approachLength! * ROAD_CLASSES.track.roadPerKm[0] / 1000 + l.drainCost!, 6);
+    expect(auditCrossingGeometry(low, route, () => 396, roads)).toEqual([]);
+    // Lower than the deepest allowed lowering: the box does not fit.
+    const lowest = box.minHeight - LOWERING_RULES.maxDepth, tooLow = [cross(2, 3200, 'track', lowest - 1)];
+    expect(resolve(tooLow, [{ roadId: 2, type: 'underpass' }])[0].crossing).toMatchObject({ code: 'underpass', actual: lowest - 1, required: lowest });
+    buildCrossingGeometry(tooLow, route, () => 401 - lowest, roads);
+    expect(tooLow[0].geometry!.diagnostics).toContain('Embankment is too low over the underpass box');
     const primary = [cross(0, 3000, 'primary', 9)];
     expect(resolve(primary, [{ roadId: 0, type: 'underpass' }])[0].crossing.code).toBe('underpass');
     // Drawn as a concrete box between the portals over the terrain-level way, with a dark opening.
@@ -244,7 +277,7 @@ describe('crossing geometry and map overlay', () => {
     resolve(auto, [], [KIND.bridge]); expect(auto[0].type).toBe('bridge');
   });
 
-  it('rechecks the box under the crown on refined terrain and lets a measured skewed box lose to a link', () => {
+  it('probes the box under the crown between the way samples (a ridge there lowers the track) and lets a measured skewed box lose to a link', () => {
     const t = Float64Array.from({ length: 301 }, (_, i) => i * 10), kind = new Uint8Array(t.length); kind[100] = KIND.bridge;
     const flat: CrossingRoute = { s: t, x: t, y: new Float64Array(t.length), tx: new Float64Array(t.length).fill(1), ty: new Float64Array(t.length),
       grade: new Float64Array(t.length).fill(7), width: new Float64Array(t.length).fill(40), crownWidth: 9.5, kind };
@@ -254,7 +287,10 @@ describe('crossing geometry and map overlay', () => {
     resolveCrossings(ridge, 3000, kind, flat.width, new Uint8Array(t.length), undefined, [{ roadId: 0, type: 'underpass' }]);
     const bump = (_x: number, y: number) => Math.max(0, 3 * (1 - Math.abs(y - 3) / 2.5));
     buildCrossingGeometry(ridge, flat, bump, net);
-    expect(ridge[0].geometry!.diagnostics).toContain('Embankment is too low over the underpass box');
+    // (seen between the samples, the ridge leaves 4 m of fill: the track is lowered under the box)
+    expect(ridge[0].geometry!.diagnostics).toBeUndefined();
+    expect(ridge[0].lowered).toBeGreaterThan(0.5); expect(ridge[0].lowered).toBeLessThan(2);
+    expect(auditCrossingGeometry(ridge, flat, bump, net)).toEqual([]);
     // A 30° track: the 40 m footprint is an 80 m box, dearer than its measured link to a junction.
     const skew = new RoadNet({ cls: ['primary', 'track'], ways: [[0, 1000, -300, 1000, 300], [1, 1500 - 300 * Math.sqrt(3), -300, 1500 + 300 * Math.sqrt(3), 300]] });
     const cs = [cross(0, 1000, 'primary', 7, 100), cross(1, 1500, 'track', 7, 150)];
@@ -266,7 +302,7 @@ describe('crossing geometry and map overlay', () => {
     expect(cs[1].cost).toBeLessThan(80 * box.perM + 2 * box.head);
   });
 
-  it('draws two opposite side links to the resolved real-road anchors, including chained diversions', () => {
+  it('draws two opposite side links to the resolved real-road anchors, every reroute to a crossing that carries it', () => {
     const cs = [cross(0, 3000), cross(1, 3100, 'residential'), cross(2, 3200, 'track')];
     resolve(cs); buildCrossingGeometry(cs, route, () => 400, roads);
     const links = cs[1].geometry!.links!;
@@ -277,9 +313,10 @@ describe('crossing geometry and map overlay', () => {
     expect(end.x - 3000).toBeCloseTo(end.y, 6); // actual bent target way, not an invented normal
     expect(end.y).toBeGreaterThanOrEqual(10 + ROAD_CLASSES.residential.width / 2 + 3);
     expect(cs[1].linkLength).toBeCloseTo(links.reduce((sum, path) => sum + crossingPlanLength(path), 0), 6);
-    expect(cs[2].targetS).toBe(3100);
-    expect(cs[2].geometry!.links![0].at(-1)).toEqual(links[0][0]);
-    expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1][0]);
+    // the track beside it leads to the same junction, not to the cut street
+    expect(cs[2].targetS).toBe(3000);
+    expect(cs[2].geometry!.links![0].at(-1)).toEqual(links[0].at(-1));
+    expect(cs[2].geometry!.links![1].at(-1)).toEqual(links[1].at(-1));
   });
 
   it('clears the crown across a skewed footprint, grades approaches to sloping terrain and anchors links at their feet', () => {
@@ -370,14 +407,15 @@ describe('crossing geometry and map overlay', () => {
     const net = new RoadNet({ cls: ['primary', 'residential'], ways: [
       [0, 3000, -300, 3000, 300], [1, 3800, -300, 3800, 2],
     ] });
-    const cs = [cross(0, 3000), cross(1, 3800, 'residential')];
+    // (our road 1 m below the street: too deep for a box even with the street lowered by 6 m)
+    const cs = [cross(0, 3000), cross(1, 3800, 'residential', -1)];
     resolve(cs); expect(cs[1].type).toBe('overbridge');
     expect(buildCrossingGeometry(cs, route, () => 400, net)).toEqual([]);
     const c = cs[1]; expect(c.type).toBe('reconnection'); expect(c.targetRoadId).toBe(0);
     expect(c.geometry!.links![0].length).toBeGreaterThan(1); expect(c.geometry!.links![1]).toEqual([]);
     expect(c.cost).toBeCloseTo(crossingPlanLength(c.geometry!.links![0]) * c.roadPerKm! / 1000, 6);
     expect(auditCrossingGeometry(cs, route, () => 400, net)).toEqual([]);
-    const manual = [cross(0, 3000), cross(1, 3800, 'residential')];
+    const manual = [cross(0, 3000), cross(1, 3800, 'residential', -1)];
     expect(resolve(manual, [{ roadId: 1, type: 'reconnection' }])).toEqual([]);
     expect(buildCrossingGeometry(manual, route, () => 400, net)).toEqual([]);
     expect(manual[1].cost).toBeCloseTo(c.cost, 6); // choosing the same >750 m link explicitly stays valid
@@ -388,7 +426,7 @@ describe('crossing geometry and map overlay', () => {
       [0,3000,-600,3000,600], [1,3800,-600,3800,600],
     ] });
     const build = (width: number, overrides: CrossingOverride[] = []) => {
-      const cs = [cross(0,3000), cross(1,3800,'residential')];
+      const cs = [cross(0,3000), cross(1,3800,'residential',-1)];
       resolve(cs, overrides); expect(buildCrossingGeometry(cs, { ...route, width: new Float64Array(s.length).fill(width) }, ()=>400, net)).toEqual([]);
       return cs[1];
     };

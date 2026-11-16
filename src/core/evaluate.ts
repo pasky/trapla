@@ -17,7 +17,7 @@ import {
   type CostBreakdown, type CostParts,
 } from './cost';
 import { RAMP_TOO_HIGH, RAMP_TOO_LONG } from './crossing-geometry';
-import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
@@ -126,7 +126,8 @@ export interface Result {
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
   /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
    * construction working strip beside one of them (`strip`) */
-  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut'; strip: boolean }[];
+  /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
@@ -209,6 +210,9 @@ export interface EvalOptions {
   separate?: readonly { s: number; g: number }[];
   /** With `separate`: stretches where the first grade passed too low over a river or railway. */
   separateWater?: readonly { s0: number; s1: number }[];
+  /** Stretches where our earthworks buried a road: the grade at most (`fill`) or at least `z` there
+   * (set by evaluate's retry, not by callers). */
+  narrow?: readonly { s0: number; s1: number; fill: boolean; z: number }[];
 }
 
 interface GeometryRow { width: number; area: number; bridge: number; engineering: number; cuts: [number, number, number][] }
@@ -267,6 +271,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     if (windowed) return windowed;
   }
   let result = evaluateRoute(ctx, d, opts);
+  /** the options the kept result was evaluated with (a separation retry adds its targets) */
+  let used: EvalOptions = opts;
+  const sep = (gs: { road?: { s: number; g: number }; water?: { s0: number; s1: number } }[][]): EvalOptions => ({ ...opts,
+    separate: gs.flat().flatMap(t => t.road ? [t.road] : []), separateWater: gs.flat().flatMap(t => t.water ? [t.water] : []) });
   // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
   // room to pass under us nor a buildable bridge over us, a designer moves the grade line: once more
   // with Auto asked to clear those roads (kept only if it resolves more than it breaks).
@@ -281,13 +289,33 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     if (items.length) {
       // Each stretch is kept where it resolves more than it breaks, judged on its own.
       const groups = clusterBy(items, t => t.at, REGION);
-      const run = (gs: typeof groups) => evaluateRoute(ctx, d, { ...opts, separate: gs.flat().flatMap(t => t.road ? [t.road] : []),
-        separateWater: gs.flat().flatMap(t => t.water ? [t.water] : []) });
+      const run = (gs: typeof groups) => evaluateRoute(ctx, d, sep(gs));
       const retry = run(groups);
       retry.timing['count.separationRetry'] = 1;
       const keep = groups.filter(g => regionCount(retry, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
+      if (keep.length === groups.length) { result = retry; used = sep(groups); }
+      else if (keep.length) { result = run(keep); used = sep(keep); result.timing['count.separationRetry'] = 2; }
+    }
+  }
+  // Where our earthworks bury a road that could neither be rebuilt beside them nor kept behind a wall, a
+  // designer lowers the grade there (or raises it out of a cutting) so the slope stays off the road: once
+  // more with Auto asked for NARROW_STEP less embankment (cutting) there, kept per stretch where it
+  // resolves more than it breaks.
+  if (!opts.preview && !opts.window && d.profileMode === 'auto') {
+    const r0 = result;
+    const buried = r0.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && r0.kind[f.i] === KIND.earth);
+    if (buried.length) {
+      const items = buried.map(f => {
+        const h = r0.grade[f.i] - r0.ground[f.i];
+        return { at: (f.s0 + f.s1) / 2, s0: f.s0 - NARROW_REACH, s1: f.s1 + NARROW_REACH, fill: h >= 0, z: r0.grade[f.i] + (h >= 0 ? -NARROW_STEP : NARROW_STEP) };
+      });
+      const groups = clusterBy(items, t => t.at, REGION);
+      const run = (gs: typeof groups) => evaluateRoute(ctx, d, { ...used, narrow: gs.flat().map(({ s0, s1, fill, z }) => ({ s0, s1, fill, z })) });
+      const retry = run(groups);
+      retry.timing["count.narrowRetry"] = 1;
+      const keep = groups.filter(g => regionCount(retry, g.map(t => t.at)) < regionCount(result, g.map(t => t.at)));
       if (keep.length === groups.length) result = retry;
-      else if (keep.length) { result = run(keep); result.timing['count.separationRetry'] = 2; }
+      else if (keep.length) { result = run(keep); result.timing['count.narrowRetry'] = 2; }
     }
   }
   if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
@@ -755,6 +783,12 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     if (penaltyAt) for (const r of opts.separateWater ?? []) {
       for (let i = Math.max(0, Math.floor((r.s0 - SEPARATION_REACH) / ds)); i <= Math.min(n - 1, Math.ceil((r.s1 + SEPARATION_REACH) / ds)); i++) penaltyAt[i] = SEPARATION_PENALTY;
     }
+    for (const r of opts.narrow ?? []) {
+      for (let i = Math.max(0, Math.ceil(r.s0 / ds)); i <= Math.min(n - 1, Math.floor(r.s1 / ds)); i++) {
+        if (r.fill) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], r.z - ground[i]);
+        else minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], r.z - ground[i]);
+      }
+    }
     const separation = (above: Float64Array, below: Float64Array) => {
       for (const c of opts.separate ?? []) {
         const i0 = Math.min(n - 2, Math.floor(c.s / ds));
@@ -850,6 +884,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
   }
   const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
+  // Reroutes traced and engineered by the first pass, reused by the strict retry where our footprint is unchanged.
+  const reroutes = crossingCache();
   const sectionMemo: SectionCache = [];
   // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
   // or daylight changes the two widths; deck/centre cover never changes within this evaluation.
@@ -1015,6 +1051,13 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       const last = clusters[clusters.length - 1];
       if (last && q.s - last[last.length - 1].s <= LIFT_CLUSTER) last.push(q); else clusters.push([q]);
     }
+    // a lift must not undo a narrowing (opts.narrow): there the DP places the knots instead
+    const narrowAt = (opts.narrow ?? []).flatMap(r => [r.s0, (r.s0 + r.s1) / 2, r.s1].map(x => ({ x, r })));
+    const keepsNarrow = (v: VPI[]) => {
+      if (!narrowAt.length) return true;
+      const z = elevations(buildProfile(v, norms.minCrestRadius, norms.minSagRadius), narrowAt.map(p => p.x));
+      return narrowAt.every(({ r }, k) => r.fill ? z[k] <= r.z + 0.05 : z[k] >= r.z - 0.05);
+    };
     const liftAll = (from: VPI[]) => {
       let out = from;
       const failed: { s: number; z: number }[][] = [];
@@ -1023,7 +1066,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
         const z = elevations(buildProfile(out, norms.minCrestRadius, norms.minSagRadius), c.map(q => q.s));
         if (c.every((q, i) => z[i] >= q.z - 0.01)) continue;
         const lifted = liftProfile(out, c, range);
-        if (lifted) out = lifted; else failed.push(c);
+        if (lifted && keepsNarrow(lifted)) out = lifted; else failed.push(c);
       }
       return { out, failed };
     };
@@ -1168,13 +1211,23 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     const tx = (q.x - p.x) / len, ty = (q.y - p.y) / len, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
     let hit: 'railway' | 'water' | 'building' | null = null;
     protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half }, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
-    if (!hit && bld) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && !gone[j] && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
+    // a house you keep is never demolished for a reroute
+    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
     return hit;
   };
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
+  /** Houses still standing under a new road (a reroute): bought out and demolished with it. */
+  const linkHouses = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
+    const out: number[] = [];
+    if (!bld) return out;
+    const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
+    bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
+    return out;
+  };
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0,
+    streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
     left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
-  }, (x, y) => terrain.heightAt(x, y), ctx.roads));
+  }, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes));
   const shared = opts.sharedCrossings;
   if (shared && !shared.own) {
     const SHAREABLE = new Set(['overbridge', 'underpass', 'reconnection', 'diversion']);
@@ -1192,10 +1245,15 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
     const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
     crossingLump[c.i] += lump;
-    crossingStructure[c.i] += c.cost - lump;
+    // houses a reroute runs through are bought out like those under our road (buildings, not works)
+    // (a crossing built with the other direction is billed there, its houses included)
+    const houses = c.shared ? [] : (c.houses ?? []).filter(j => !gone[j]);
+    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j], in: 'reroute', strip: false }); }
+    crossingStructure[c.i] += c.cost - lump - (c.shared ? 0 : c.houseCost ?? 0);
     if (c.cost > 0) crossingsPaid++;
   }
 
+  demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const endJunctions = (ctx.junctions ?? []).flatMap(j => {
     const end = Math.hypot(j.x - ctx.a.x, j.y - ctx.a.y) < 1e-6 ? 'a' as const : Math.hypot(j.x - ctx.b.x, j.y - ctx.b.y) < 1e-6 ? 'b' as const : null;
@@ -1456,6 +1514,9 @@ function regionCount(r: Result, at: readonly number[]): number {
 const REGION = 5000;
 /** CZK per unmet clearance station in the separation retry (the default 1e8 is a 70 m motorway bridge). */
 const SEPARATION_PENALTY = 1e11;
+/** A narrowing retry asks for this much less embankment (cutting) where our earthworks buried a road, m,
+ * this far either side of it */
+const NARROW_STEP = 2, NARROW_REACH = 30;
 /** …and at the clearance stations this close to a river or railway it failed to clear, m */
 const SEPARATION_REACH = 50;
 /** Support targets this close together are lifted as one stretch; a lift reaches this far, m. */
