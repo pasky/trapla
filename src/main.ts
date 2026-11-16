@@ -1,12 +1,12 @@
 import './style.css';
-import { CATEGORIES, type CategoryId } from './core/data/categories';
+import { CATEGORIES } from './core/data/categories';
 import { speedNorms } from './core/data/norms';
 import { scenarioParams } from './core/data/scenario';
 import type { Design, Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
 import { missionProject } from './core/project-mission';
 import { routeCrownWidth } from './core/route-section';
-import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinCorridor, rejoinStretch } from './core/project-motorway';
+import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinStretch } from './core/project-motorway';
 import { DIRECTIONS_TEXT } from './core/terms';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
@@ -59,6 +59,7 @@ import { EditBar } from './ui/editbar';
 import { bendStations } from './ui/bend-stations';
 import { createDesignEdits } from './ui/design-edits';
 import { profileEvents } from './ui/profile-events';
+import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
 import { installProfileBar } from './ui/profile-bar';
@@ -1054,87 +1055,11 @@ async function main() {
   const prevRender = view.onRender;
   view.onRender = () => { prevRender?.(); if (!windowTimer) windowTimer = window.setTimeout(updateMapWindow, 120); };
 
-  // ---- HUD ----
-  hud.ev = {
-    onCategory: (c) => store.update((d) => { d.category = c as CategoryId; }),
-    onSpeed: (s) => store.update((d) => { d.speed = s; }),
-    onProfileMode: (mode) => {
-      // heights by hand are one setting of the whole motorway: back to both directions for it
-      const corridor = store.route && corridorOfRoute(projectStore.snapshot.design, store.route.id);
-      if (store.oneDirection && corridor?.mode === 'paired') {
-        switchRoute(corridor.children.forward, false, false); toast('Heights by hand or Auto: set for both directions together.');
-      }
-      if (mode === store.design.profileMode || (mode === 'manual' && (!last || !settled()))) return;
-      store.update((d) => { if (mode === 'manual') takeProfile(d); else d.profileMode = 'auto'; });
-    },
-    onReset: () => {
-      select(null);
-      store.reset(); view.resetCamera(); profile.fit();
-      toast('Back to the starting road.', 'Undo', () => store.undo());
-    },
-    onIntro: () => intro.show(),
-    onJoinStretch: (id) => joinStretch(id),
-    onDirection: (which) => {
-      const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;
-      if (!corridor || projectStore.inTransaction) return;
-      if (which === 'both') {
-        if (corridor.mode !== 'independent') { select(null); switchRoute(corridor.children.forward, false, false); return; }
-        select(null);
-        store.editProject(d => { Object.assign(d, rejoinCorridor(d, corridor.id)); });
-        switchRoute(corridor.children.forward);
-        toast(DIRECTIONS_TEXT.join, 'Undo', () => store.undo());
-        return;
-      }
-      // choosing a direction only chooses what a drag moves: the design changes with the first edit
-      select(null);
-      switchRoute(corridor.children[which], false, corridor.mode === 'paired');
-    },
-    onLoadBest: () => { if (store.best) { store.loadBest(); toast('Loaded your best design.', 'Undo', () => store.undo()); } },
-    onViolation: (k) => {
-      // the list shows the last full result's violations (previews do not replace it)
-      if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }
-      const issue = hud.listedIssue(k), owner = issue?.scope.routeIds[0];
-      if (!issue) return;
-      // not checked yet (e.g. where two new roads meet): show the place; there is nothing to select or fix there
-      if (issue.check === 'not-checked') {
-        if (issue.at) view.flyTo(issue.at.x, issue.at.y, 1200);
-        const here = issue.locations.find(l => l.routeId === store.activeRouteId);
-        if (here && last) profile.focus(Math.max(0, here.s0 - 150), Math.min(last.length, here.s1 + 150));
-        if (!issue.at && !here) hud.reveal('viol');
-        return;
-      }
-      if (owner && owner !== store.activeRouteId) switchRoute(owner);
-      if (issue.scope.buildingIndex !== undefined) { select({ kind: 'building', j: issue.scope.buildingIndex }, true); return; }
-      // A road's own check: core lists each road's kernel violations in order, route-qualified. Its
-      // ordinal among that road's 'invalid' issues identifies the kernel violation (never its title).
-      const own = projectFull.issues.filter(i => i.blocking === 'invalid' && i.scope.routeIds.length === 1 && i.scope.routeIds[0] === store.activeRouteId);
-      const n = own.indexOf(issue), v = n >= 0 && lastFull && own.length === lastFull.violations.length ? lastFull.violations[n] : undefined;
-      if (v && v.title === issue.violation.title) { showViolation(v); return; }
-      const at = issue.locations.find(l => l.routeId === store.activeRouteId), d = store.read();
-      if (!at) { hud.reveal('viol'); return; }
-      if (at.pi !== undefined && d?.pis[at.pi]) select({ kind: 'bend', i: at.pi }, true);
-      else if (at.vpi !== undefined && d?.profileMode === 'manual' && lastFull && at.vpi > 0 && at.vpi < lastFull.vpis.length - 1) select({ kind: 'vpi', i: at.vpi }, true);
-      else select({ kind: 'stretch', s0: at.s0, s1: at.s1 }, true);
-    },
-  };
-  const showViolation = (v: Result['violations'][number] | undefined) => {
-    const r = lastFull;
-    if (!v || !r) return;
-    const roadId = (v as { crossing?: { roadId?: number } }).crossing?.roadId;
-    const pin = v.kind === 'profile' ? store.design.gradePins?.find((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1) : undefined;
-    const t: Sel | null = v.target?.buildings?.length ? { kind: 'building', j: v.target.buildings[0] }
-      : roadId !== undefined ? { kind: 'crossing', roadId }
-        : v.pi !== undefined ? { kind: 'bend', i: v.pi } : v.pis?.length ? { kind: 'bend', i: v.pis[0] }
-          : v.vpi !== undefined && store.design.profileMode === 'manual' && v.vpi > 0 && v.vpi < r.vpis.length - 1 ? { kind: 'vpi', i: v.vpi }
-          : pin ? { kind: 'pin', s: pin.s } : v.goal ? null
-            : v.s1 - v.s0 < 60 ? (() => { const p = pieceAt(r, (v.s0 + v.s1) / 2); return { kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind } as Sel; })()
-              : { kind: 'stretch', s0: v.s0, s1: v.s1 };
-    if (!t) { hud.reveal('viol'); return; }
-    select(t);
-    const i = Math.max(0, Math.min(r.n - 1, Math.round((v.s0 + v.s1) / 2 / r.ds)));
-    view.lookAt(r.x[i], r.y[i], Math.max(1200, (v.s1 - v.s0) * 1.5), 20, 45);
-    profile.focus(v.s0, v.s1);
-  };
+  // ---- HUD (ui/hud-events.ts) ----
+  hud.ev = hudEvents({
+    store, projectStore, view, profile, hud, intro, settled, legacyFacade, takeProfile, select, switchRoute, joinStretch,
+    get last() { return last; }, get lastFull() { return lastFull; }, get projectFull() { return projectFull; },
+  });
 
   // ---- keyboard (ui/shortcuts.ts) ----
   installShortcuts({
