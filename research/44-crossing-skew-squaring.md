@@ -29,7 +29,7 @@ carry uneven reactions.
 | Local road, 20 / 30 / 40 km/h | **11 / 27 / 50** | ČSN 73 6110 tab. 10 at 2.5 % crossfall (range 10–12, 25–28, 45–50 m for 6–2 %); without superelevation 30 km/h 250 m, 40 km/h 450 m (tab. 11). | [ČSN 73 6110, ÚNMZ copy](https://unmz.gov.cz/files/normalizace/%C4%8CSN%2073%206110/74506.pdf); **high** |
 | Class III road (indicative), 40 / 50 / 60 km/h | **50 / 90 / 130** | ČSN 73 6101 revision table: smallest radius at the highest superelevation (8 % / 7 % / 8 %); without superelevation 230 / 360 / 515 m. | [FAST VUT, ČSN 73 6101 revision](https://konference-projektovani.cz/wp-content/uploads/2022/03/9.pdf); **medium** |
 
-## Adopted in the game (cost model 26)
+## Adopted in the game (cost model 28)
 
 - Auto weighs straightening a crossed road that meets ours at **less than 70°** (`SQUARE_BELOW`, the ŘSD
   R 111 non-standard threshold; a game rule, not a Czech minimum bridge angle) and keeps the cheaper

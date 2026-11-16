@@ -248,11 +248,8 @@ nothing; the first drag of that direction makes it run on its own only over the 
 on a straight before the change to one after it ([one direction through its own tunnel](docs/screenshots/135-motorway-one-direction.png));
 elsewhere both stay one road body with one bill. Inside, each direction keeps the shared heights while the two
 run side by side and gets Auto heights where they are apart. The card lists where the directions run apart,
-each with "Join". On a motorway designed for 130 km/h the Motorway card offers "Speed limit:
-150 km/h (pilot)", like the ministry's D3 pilot (research/41): cars' travel time at 150 for the 39 % of the time
-the D3 signs showed it (130 otherwise), their noise at +20 km/h
-(an extrapolation, marked PROVISIONAL), the variable signs priced (about 1.2 M CZK per km, ŘSD's D3 contract);
-curves and slopes stay those of 130. Its noise comes from two directional sources, half the traffic each on the
+each with "Join". The Motorway card's one speed control is the design speed (130, 120 or 110 km/h) with the curves and slopes
+it demands; the motorway is signed at it. Its noise comes from two directional sources, half the traffic each on the
 lane axes 6 m either side of the middle (a direction on its own: all of it on its own lane axis, an upper bound). The direction
 towards A reads from its own start: its profile, kilometres and bend numbers count from B. Reproduce with `node scripts/motorway-shots.mjs d3 --docs 130` (its
 one-direction shot is 135); `node scripts/stretch-play.mjs --gpu` plays choose, drag, join.
@@ -281,17 +278,23 @@ single-track railway at the old line's own speed (its mapped limit) and steepnes
 ### Editing any road
 
 Any mapped road behaves like our road: click it (its stretch between junctions is highlighted), then drag it
-to rebuild that stretch, bent under the pointer, with its profile and price. **Build → Road** places a new
-road from a click to a click; an end on a road joins it with a junction (Auto: a T, or a roundabout).
-See [docs/any-road-editing.md](docs/any-road-editing.md).
+to rebuild that stretch, bent under the pointer, with its profile and price. Where the new line stays on the
+old road, the old road is kept as it is (drawn on the ground, not billed, no norm); where it leaves it, a new
+road is built and the old one removed. Its traffic is filled in from the ŘSD traffic census 2025 (or the
+average of its class, labelled). **Build → Road** places a new road from a click to a click; an end on a road
+joins it with a junction (Auto: a T, or a roundabout). See [docs/any-road-editing.md](docs/any-road-editing.md).
 
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|
 | ![Mapped road selected](docs/screenshots/100-mapped-road-selected.png) | ![Mapped road rebuilt](docs/screenshots/101-mapped-road-rebuilt.png) |
-| Priced: old road removed, its land not bought again, side roads reconnected | A side road joining our road at a roundabout |
-| ![Rebuilt road priced](docs/screenshots/104-rebuilt-road-priced.png) | ![Side road joins ours](docs/screenshots/105-side-road-joins-ours.png) |
+| D3: road III/1057 moved under our motorway bridge; the rest stays on the old road | A side road joining our road at a roundabout |
+| ![Road III/1057 rebuilt](docs/screenshots/107-d3-road-1057-rebuilt.png) | ![Side road joins ours](docs/screenshots/105-side-road-joins-ours.png) |
 
-Also: [a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
+Also: [road III/1057 selected](docs/screenshots/106-d3-road-1057-selected.png), [its card with a bend
+selected](docs/screenshots/108-d3-road-1057-card.png), [Build → Road: where a click would put the end, and how
+long the road would be](docs/screenshots/109-build-road-placing.png) (`node scripts/owner-d3-scene.mjs --docs`),
+[D11: Jičínská after a small drag and a longer stretch, still on its old road: drawn on the ground, nothing
+built or billed](docs/screenshots/104-rebuilt-road-priced.png), [a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
 roads](docs/screenshots/103-photo-mapped-roads.png); the earlier foundation views 79–83 are in `docs/multi-road-ux.md`.
 
 ### Physical crossings
@@ -355,7 +358,7 @@ Core play polish (model 24): [By hand from Auto's heights: the same bill, handle
 [the player's bridge over km 5.09–5.50: its piers clear the roads (a crossed track's reroute is still reported)](docs/screenshots/167-player-bridge-piers-clear.png),
 [a bought-out house drawn behind the 5 m wall Auto tried: one story](docs/screenshots/168-bought-out-one-story.png),
 [Nová Paka km 1.97: the tower inside the demolished hall goes with it](docs/screenshots/169-nova-paka-tower-with-hall.png).
-Crossing remedies as designers choose them (model 26, `node scripts/crossing-economy-shots.mjs`):
+Crossing remedies as designers choose them (model 28, `node scripts/crossing-economy-shots.mjs`):
 [D3 motorway: a class III road running along it moved beside it (was a 704 m bridge)](docs/screenshots/170-d3-motorway-road-moved-beside.png),
 [a skewed track straightened through a 50 m box](docs/screenshots/171-d3-motorway-track-straightened-box.png),
 [the player keeps its line](docs/screenshots/172-d3-motorway-track-kept-line.png),

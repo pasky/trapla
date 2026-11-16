@@ -31,13 +31,21 @@
  * kept where the line had them); grade-separated routes retry once to clear crossed roads where no
  * crossing could be built, and deepen a cutting a sag filled in under a bridge over us; retries judged
  * without noise problems.
- * 26: crossing remedies as designers choose them: a crossed road meeting ours at under 70° may be laid
+ * 26: any mapped road can be rebuilt: a rebuilt stretch keeps its old road where its line stays on it
+ * (nothing built or billed there), every road is checked against the network as the player edited it
+ * (designed roads crossed by the same crossing engine, the lower-ranking road held on the other's deck
+ * and credited once), a house two roads take is billed once; single-road bills unchanged.
+ * 27: the grade search prices a built-up stretch at town rates (SPK CN urban road, bridge and tunnel rows,
+ * the urban other-objects surcharge, building land), as the bill does; a retaining wall too high where the
+ * feature begins stands nearer the road where it is low enough; a bank over water no wall can hold back
+ * gets a short bridge.
+ * 28: crossing remedies as designers choose them: a crossed road meeting ours at under 70° may be laid
  * on a new line square across it (research/44); a road that runs into our earthworks and back out on
  * the same side is moved beside them (and crossings of one way inside our earthworks are one); neighbouring
  * tracks and service roads are joined to one crossing (research/45), reroutes join the target's road where
  * it comes nearest; a reroute's earth slopes take the houses they reach; a dead-end stub left with no room
  * to turn is removed; an automatic crossing with nothing buildable under a high embankment lengthens our bridge. */
-export const COST_MODEL_VERSION = 26;
+export const COST_MODEL_VERSION = 28;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
@@ -93,7 +101,10 @@ export const MATERIAL_VALUE = {
 /** Earthworks the SFDI road norm already includes per km (research/00 §3.1) */
 export const NORM_EARTHWORK_ALLOWANCE = {
   // One direction of a split motorway: 60 % of the motorway allowance, like its 60 % norm (SPK p. 7).
-  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000 } as Record<string, number>,
+  // Field tracks: 6,000 m³/km (SPK 2026 report p. 7, "polní cesty"). Local roads: the report states no volume,
+  // only "běžné zemní práce … bez výrazných výkopů či násypů"; PROVISIONAL the field-track 6,000, the smallest
+  // volume it gives for any road (research/42).
+  cutPerKm: { motorway: 70_000, 'motorway-carriageway': 0.6 * 70_000, I: 40_000, II: 20_000, local: 6_000, track: 6_000 } as Record<string, number>,
   fillShareOfCut: 0.85,
   /** share of cut that is unsuitable: hauled to a tip ≤ 10 km and replaced from a borrow pit (norm
    * assumption; applied identically to the allowance and to the player's design) */

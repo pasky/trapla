@@ -1,7 +1,7 @@
 # Evaluate performance regression
 
 
-## Crossing remedies, cost model 26 (2026-11-16)
+## Crossing remedies, cost model 28 (2026-11-16)
 
 Straightened crossings, the consolidation pass, moving roads beside ours and reroutes joining their target's
 road where it comes nearest build more candidate geometry (best: ≈ 17 candidate reroute sides per evaluation

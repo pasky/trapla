@@ -205,4 +205,25 @@ describe('automatic slope retention', () => {
     expect(result.forcedBridge.some(Boolean)).toBe(false);
     expect(result.walls).toEqual([]);
   });
+  it('a bank above a pond in a ravine: the wall stands nearer the road where it is low enough, else a short bridge', () => {
+    // ground falls away beside the road towards a pond 17.5–22.5 m to its left; the road runs just above ground
+    const ravine = (edge: number, drop: number) => {
+      const terrain = syntheticTerrain(200, 40, 5, (_x, y) => (y <= 100 + edge ? 100 : 100 - (y - 100 - edge) * drop));
+      for (const row of [15, 16]) for (let col = 60; col < 120; col++) terrain.lc[row * terrain.nx + col] = LC.water;
+      const n = 81, arr = (v: number) => new Float64Array(n).fill(v);
+      const st = { n, ds: 10, s: Float64Array.from({ length: n }, (_, i) => i * 10), x: Float64Array.from({ length: n }, (_, i) => 100 + i * 10),
+        y: arr(100), tx: arr(1), ty: arr(0), grade: arr(100.5), crownWidth: 10 };
+      const route = { ...st, ...computeSections(terrain, n, st.x, st.y, st.tx, st.ty, st.grade, { crownWidth: 10, ...DEFAULT_SLOPES }) };
+      return { terrain, route, plan: planRetainingWalls(route, terrain) };
+    };
+    const near = ravine(6, 4);
+    expect(near.plan.walls.some(w => w.feature === 'water' && w.i === 40)).toBe(true);
+    expect(near.plan.walls.every(w => w.height <= 15)).toBe(true);
+    expect(near.plan.forcedBridge[40]).toBe(0);
+    expect(footprintConflicts({ ...near.route, kind: new Uint8Array(near.route.n), runs: [] }, near.terrain, undefined, [], []).violations).toEqual([]);
+    // falling at once from the crown's edge: no wall fits anywhere, the road is carried past on a bridge
+    const sheer = ravine(5, 12);
+    expect(sheer.plan.forcedBridge[40]).toBe(1);
+  });
 });
+

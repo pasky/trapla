@@ -1452,7 +1452,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     if (!originalFeasible || c.cost > deckPrice(c, across)) variants('overbridge', deckPrice(c, across) + rampsLeast);
     // A feasible link keeps its place unless cheaper above; a measured box (estimated from the
     // footprint width) still competes with the bounded link shortlist below.
-    if (c.type !== 'overbridge' && c.type !== 'underpass' && originalFeasible) {
+    // A designed road of the project is never cut and rerouted (resolveCrossings): bridge or box only.
+    if (c.designed || (c.type !== 'overbridge' && c.type !== 'underpass' && originalFeasible)) {
       if (best !== c) {
         delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.underpassLength;
         delete c.worksCost; delete c.tieLength; delete c.wallLength; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade; delete c.lowered; delete c.drainage; delete c.drainCost;

@@ -9,6 +9,7 @@ import type { Result } from './evaluate';
 import type { RouteId, TransportSurface } from './project';
 import { hardGroundLoss, noiseSource } from './road-noise';
 import * as dm from './detmath';
+import { KIND } from './structures';
 
 /** PROVISIONAL screening constants: game rules, not norms. Larger values only leave MORE projects
  * unpriced; none of them can make an interacting project priced. */
@@ -30,15 +31,16 @@ export const INDEPENDENCE_SCREEN = {
 export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; speed: number; heavyShare: number;
   /** Source profile (motorway lane tables); default class I road. */ profile?: 'class-I' | 'motorway';
   /** Built half-width at least (crown), also where a bridge/tunnel takes no land. */ halfWidth: number;
-  /** Existing roads this road changes beyond its own result (a rebuilt stretch's old road). */
-  extraRoads?: number[];
   /** Works beyond its own result (side-road links), each a centreline with half-width. */
   extraLines?: { ax: number; ay: number; bx: number; by: number; r: number }[];
   /** Junctions with another designed road: within r of (x, y) the two roads' works ARE the junction
    * (owned by this road), not shared land. */
   junctions?: { routeId: RouteId; x: number; y: number; r: number }[] }
 export type InteractionReason = 'too-many-roads' | 'shared-land' | 'shared-building' | 'shared-noise' | 'shared-road';
-export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number }
+export interface RouteInteraction { routeIds: RouteId[]; reason: InteractionReason; buildingIndex?: number;
+  /** shared land: where the two roads' land and works come closest, and how many metres further apart
+   * they would have to be there (overlap plus the clearance) */
+  at?: { x: number; y: number }; need?: number }
 export interface IndependenceScreen {
   independent: boolean; interactions: RouteInteraction[];
   /** Upper bound on neglected linear energy at a house from roads other than its own one. */
@@ -78,23 +80,35 @@ function segmentSegment(a: Capsule, b: Capsule): number {
     pointSegment(b.ax, b.ay, a.ax, a.ay, a.bx, a.by), pointSegment(b.bx, b.by, a.ax, a.ay, a.bx, a.by));
 }
 const boxGap = (a: Chunk, b: Chunk) => Math.max(0, a.minX - b.maxX, b.minX - a.maxX, a.minY - b.maxY, b.minY - a.maxY);
-function touches(a: Chunk[], b: Chunk[]): boolean {
+/** Do two roads' envelopes touch? Where they are deepest into each other (on the narrower piece, i.e. the
+ * smaller road), and by how much; null: they keep the clearance everywhere. */
+function touches(a: Chunk[], b: Chunk[]): { at?: { x: number; y: number }; need?: number } | null {
+  let found = false, worst = -Infinity, at: { x: number; y: number } | undefined;
   for (const p of a) for (const q of b) if (boxGap(p, q) <= 0) for (const s of p.items) for (const t of q.items) {
-    const r = s.r + t.r;
-    if (!(segmentSegment(s, t) >= r)) return true; // NaN/Infinity fail closed
+    const r = s.r + t.r, d = segmentSegment(s, t);
+    if (d >= r) continue; // NaN/Infinity fail closed
+    found = true;
+    const need = r - d, narrow = s.r <= t.r ? s : t;
+    if (Number.isFinite(need) && need > worst) { worst = need; at = { x: (narrow.ax + narrow.bx) / 2, y: (narrow.ay + narrow.by) / 2 }; }
   }
-  return false;
+  return found ? (at ? { at, need: worst } : {}) : null;
 }
 
 /** Land take, works and removed old roads of one evaluated road, each padded by half the clearance. */
 function envelope(result: Result, halfWidth: number): Capsule[] {
   const pad = INDEPENDENCE_SCREEN.clearance / 2, out: Capsule[] = [];
+  // How far the road's land reaches from its centreline. On earthworks: to the further slope edge (the
+  // land take there is exactly dayL + dayR wide, which is cell.width). On a bridge or in a tunnel the slope
+  // edges are those of earthworks that are not built: the deck's whole width is taken as the reach instead
+  // (too much rather than too little; 0 in a tunnel). Never less than half the crown; unknown fails closed.
   const reach = (i: number) => {
-    let r = Math.max(result.cell.width[i], halfWidth);
-    for (const v of [result.dayL[i], result.dayR[i]]) if (Number.isFinite(v)) r = Math.max(r, Math.abs(v));
-    return r;
+    const l = Math.abs(result.dayL[i]), r = Math.abs(result.dayR[i]);
+    if (result.kind[i] !== KIND.earth) return Math.max(halfWidth, result.cell.width[i]);
+    return Number.isFinite(l) && Number.isFinite(r) ? Math.max(halfWidth, l, r) : Infinity;
   };
-  for (let i = 1; i < result.n; i++) out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i],
+  // (where a rebuilt stretch keeps its old road nothing is built: no land, no works; project-kept.ts)
+  const kept = result.keptCells;
+  for (let i = 1; i < result.n; i++) if (!(kept?.[i - 1] && kept[i])) out.push({ ax: result.x[i - 1], ay: result.y[i - 1], bx: result.x[i], by: result.y[i],
     r: Math.max(reach(i - 1), reach(i)) + pad });
   if (result.n === 1) out.push({ ax: result.x[0], ay: result.y[0], bx: result.x[0], by: result.y[0], r: reach(0) + pad });
   const line = (points: readonly CrossingPoint[] | undefined, width: number, extra = 0) => {
@@ -110,7 +124,8 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
     line(g.road, g.width); line(g.links?.[0], g.width); line(g.links?.[1], g.width);
     line(g.turnarounds, g.width, g.turnaroundRadius ?? 0);
   };
-  for (const c of result.crossings) geometry(c.geometry);
+  // a designed road under/over our crossing is its own road (its own envelope), not ours
+  for (const c of result.crossings) if (!c.designed) geometry(c.geometry);
   for (const f of result.footprintConflicts) {
     geometry(f.geometry);
     for (const old of [f.original, ...(f.originals ?? [])]) line(old, f.geometry?.width ?? 0);
@@ -119,13 +134,15 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
 }
 
 /** Roads a route crosses, relocates or closes. A closure relies on a detour over unspecified roads. */
-function touchedRoads(result: Result): { roads: Set<number>; closes: boolean } {
-  const roads = new Set<number>();
-  for (const c of result.crossings) for (const id of [c.roadId, c.targetRoadId]) if (id !== undefined) roads.add(id);
+function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number }[]>; closes: boolean } {
+  const roads = new Map<number, { x: number; y: number }[]>();
+  const add = (id: number | undefined, x: number, y: number) => { if (id === undefined) return; const list = roads.get(id); if (list) list.push({ x, y }); else roads.set(id, [{ x, y }]); };
+  for (const c of result.crossings) { add(c.roadId, c.x, c.y); if (c.targetRoadId !== undefined) add(c.targetRoadId, c.x, c.y); }
   let closes = false;
   for (const f of result.footprintConflicts) {
-    if (f.roadId !== undefined) roads.add(f.roadId);
-    for (const interval of f.sourceIntervals ?? []) roads.add(interval.way); // every removed old way
+    // (a rebuilt stretch going on into its own old road changes nothing there)
+    if (!f.continuation) add(f.roadId, f.x, f.y);
+    for (const interval of f.sourceIntervals ?? []) add(interval.way, f.x, f.y); // every removed old way
     if (f.closed) closes = true;
   }
   return { roads, closes };
@@ -133,8 +150,10 @@ function touchedRoads(result: Result): { roads: Set<number>; closes: boolean } {
 
 interface NoiseRoute { chunks: Chunk[]; excess: number; reach: number; minX: number; minY: number; maxX: number; maxY: number;
   receivers: Map<number, { removed: boolean; level: number }> }
-const noiseLine = (result: Result) => chunks(Array.from({ length: Math.max(0, result.n - 1) }, (_, k) =>
-  ({ ax: result.x[k], ay: result.y[k], bx: result.x[k + 1], by: result.y[k + 1], r: 0 })));
+// (a part kept as the old road is the existing road with its existing traffic, not a new source)
+const noiseLine = (result: Result) => chunks(Array.from({ length: Math.max(0, result.n - 1) }, (_, k) => k)
+  .filter(k => !(result.keptCells?.[k] && result.keptCells[k + 1]))
+  .map(k => ({ ax: result.x[k], ay: result.y[k], bx: result.x[k + 1], by: result.y[k + 1], r: 0 })));
 /** Is any part of the road line closer than `reach`? Early exit: the decision, not the distance. */
 function withinReach(route: NoiseRoute, x: number, y: number, reach: number): boolean {
   if (!(reach > 0)) return false;
@@ -163,7 +182,10 @@ function noiseRoute(route: ScreenRoute, margin: number): NoiseRoute {
     r.reach = high;
   } else if (!Number.isFinite(excess) && excess > 0) r.reach = Infinity;
   if (Number.isNaN(excess)) r.reach = NaN; // unknown source: counts at every house
+  const kept = route.result.keptCells;
   for (let i = 0; i < route.result.n; i++) {
+    // (a cell with kept cells on both sides is no source: an all-kept stretch reaches no house)
+    if (kept?.[i] && kept[Math.max(0, i - 1)] && kept[Math.min(route.result.n - 1, i + 1)]) continue;
     r.minX = Math.min(r.minX, route.result.x[i]); r.maxX = Math.max(r.maxX, route.result.x[i]);
     r.minY = Math.min(r.minY, route.result.y[i]); r.maxY = Math.max(r.maxY, route.result.y[i]);
   }
@@ -191,14 +213,20 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     const at = [...(routes[a].junctions ?? []).filter(j => j.routeId === routes[b].routeId), ...(routes[b].junctions ?? []).filter(j => j.routeId === routes[a].routeId)];
     const away = (list: Capsule[]) => chunks(list.filter(c => !at.some(j => pointSegment(j.x, j.y, c.ax, c.ay, c.bx, c.by) < j.r)));
     const [ea, eb] = at.length ? [away(raw[a]), away(raw[b])] : [envelopes[a], envelopes[b]];
-    if (touches(ea, eb)) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land' });
+    const touch = touches(ea, eb);
+    if (touch) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land', ...touch });
   }
   // Existing roads: two roads changing one way, or a closure relying on a detour while another road changes any road.
-  const touched = routes.map(r => { const t = touchedRoads(r.result); for (const id of r.extraRoads ?? []) t.roads.add(id); return t; });
+  const touched = routes.map(r => touchedRoads(r.result));
   for (let a = 0; a < routes.length; a++) for (let b = a + 1; b < routes.length; b++) {
     const ta = touched[a], tb = touched[b];
-    if ([...ta.roads].some(id => tb.roads.has(id)) || (ta.closes && tb.roads.size) || (tb.closes && ta.roads.size))
-      interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-road' });
+    // where: the first road's change of the shared road nearest to the second's
+    let at: { x: number; y: number } | undefined, best = Infinity;
+    for (const [id, here] of ta.roads) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
+      const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < best) { best = d; at = p; }
+    }
+    if (at || (ta.closes && tb.roads.size) || (tb.closes && ta.roads.size))
+      interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-road', ...(at ? { at } : {}) });
   }
   // Buildings demolished, bought or kept-in-the-way by more than one road.
   const users = new Map<number, Set<number>>();
@@ -217,11 +245,12 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
   for (let j = 0; j < buildings.n; j++) {
     if (!buildings.dwelling[j]) continue;
     const [x, y] = buildings.items[j], radius = buildings.extent(j);
+    // a house a road takes (demolished, bought out) is gone: no other road's noise reaches anyone there
+    // (two roads taking it are reported above)
+    if (noise.some(n => n.receivers.get(j)?.removed)) continue;
     const contributors: number[] = [];
-    let removed = false;
     for (let k = 0; k < noise.length; k++) {
       const n = noise[k], known = n.receivers.get(j), reach = n.reach + radius;
-      if (known?.removed) { removed = true; contributors.push(k); continue; }
       // A house in a road's own noise list (it could reach the limit there) is that road's house, even
       // when its walls made it quiet. Otherwise the road counts where its all-height bound exceeds
       // limit − margin, i.e. within its reach (bound is monotone in distance). NaN reach fails closed.
@@ -230,7 +259,7 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
       if (known || inReach) contributors.push(k);
     }
     if (contributors.length > 1) {
-      interactions.push({ routeIds: contributors.map(k => routes[k].routeId), reason: removed ? 'shared-building' : 'shared-noise', buildingIndex: j });
+      interactions.push({ routeIds: contributors.map(k => routes[k].routeId), reason: 'shared-noise', buildingIndex: j });
       continue;
     }
     // One road per house. The others, each ≥ margin below the limit there, add ≤ 1 % of one limit

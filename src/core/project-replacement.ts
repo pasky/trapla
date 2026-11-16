@@ -3,10 +3,13 @@
 // old stretch, project-road.ts); here: removing the old pavement where the new road leaves it, and
 // keeping every side road that joined the old stretch connected (never dropped).
 import type { Violation } from './checks';
-import { ACCESS, ENDPOINT_JUNCTIONS, JUNCTION, ROAD_CLASSES } from './data/urban';
+import { ACCESS, ENDPOINT_JUNCTIONS, JUNCTION, minorCrossroads, ROAD_CLASSES } from './data/urban';
+import { CATEGORIES, type CategoryId } from './data/categories';
 import type { Result } from './evaluate';
 import type { ConnectionDesign, RouteDesign } from './project';
 import type { RoadNet } from './roadnet';
+
+const km = (s: number) => (s / 1000).toFixed(2), cap = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** OTSKP 2026 rows (research/30 §2), CZK. Layer thicknesses are a PROVISIONAL game assumption for an
  * ordinary asphalt road (no road-specific pavement data): 0.10 m asphalt-bound cover, 0.20 m
@@ -24,7 +27,8 @@ export const REMOVAL = {
 const UNDER = 1;
 
 export interface ReplacementWork {
-  kind: 'removal' | 'reconnection' | 'junction' | 'land' | 'noise-wall' | 'buyout';
+  /** `kept`: where the old road stays as it is, what the road's own bill charged there (a credit) */
+  kind: 'removal' | 'reconnection' | 'junction' | 'land' | 'noise-wall' | 'buyout' | 'kept';
   /** where along the new road, for display */
   s: number; x: number; y: number;
   /** removed old road length, or link length (0: the side road meets the new road where it is), m */
@@ -32,24 +36,38 @@ export interface ReplacementWork {
   cost: number;
   label: string;
   cls?: string;
+  /** buildings this work removes (a roundabout's ring) */
+  removes?: number[];
 }
-export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number }
+export interface Replacement { works: ReplacementWork[]; violations: Violation[]; total: number;
+  /** the old road where it is removed (pieces of its centreline) and its width, m: this road's works too,
+   * so no other road may be priced as if that ground were free (project-ledger.ts) */
+  removed: { ax: number; ay: number; bx: number; by: number }[]; removedWidth: number }
 
+/** A way of the stretch's class leaving one of its ends within 45° of the old road's heading is
+ * that road going on (OSM splits a road into many ways). Game geometry tolerances: the branch within 2 m of
+ * the end, headings over 20 m, 45° (PROVISIONAL). */
+const CONTINUES_AT = 2, CONTINUES_LOOK = 20, CONTINUES_COS = Math.SQRT1_2; // cos 45°
 const nearest = (r: Result, x: number, y: number) => {
   let best = Infinity, i = 0;
   for (let k = 0; k < r.n; k++) { const d = Math.hypot(r.x[k] - x, r.y[k] - y); if (d < best) { best = d; i = k; } }
   return { i, d: best };
 };
 /** Junction of a side road onto the rebuilt road: an access for tracks and service roads (research/13),
- * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). */
-export function sideJunctionCost(cls: string): number {
-  return cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost;
+ * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). On a
+ * rebuilt local road or track (`minor`) a minor side road's junction is a crossroads of two minor roads
+ * (research/43). */
+export function sideJunctionCost(cls: string, minor?: 'local' | 'track'): number {
+  return minorCrossroads(minor, cls)
+    ?? (cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost);
 }
 
 /** `base` is the network WITH the old stretch (the cut network has lost it); `way` the old stretch's
  * legacy way; `branchWays` the legacy way of every side road at the stretch's branch connections. */
 export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, way: number,
-  connections: readonly ConnectionDesign[], branchWay: (sourceId: string) => number | undefined): Replacement {
+  connections: readonly ConnectionDesign[], branchWay: (sourceId: string) => number | undefined,
+  /** station cells where the old road is kept as it is (project-kept.ts): no works, already credited whole */
+  kept?: Uint8Array): Replacement {
   const works: ReplacementWork[] = [], violations: Violation[] = [];
   const a = route.endpoints.a.position, b = route.endpoints.b.position;
   const da = base.wayStation(way, a.x, a.y), db = base.wayStation(way, b.x, b.y);
@@ -60,12 +78,17 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
   // research/30 §3). Its cadastral width is unknown, so only the old pavement's width is credited (the
   // least it certainly owns; the class's study width), at the price the new road paid for land there.
   let removed = 0, at: { x: number; y: number } | null = null, owned = 0, ownedLength = 0;
-  const credited = new Float64Array(r.n);
+  const credited = new Float64Array(r.n), removedLines: Replacement['removed'] = [];
   for (let k = 1; k < old.length; k++) {
     const p = old[k - 1], q = old[k], len = Math.hypot(q.x - p.x, q.y - p.y), steps = Math.max(1, Math.ceil(len / 5));
     for (let j = 0; j < steps; j++) {
       const t = (j + 0.5) / steps, x = p.x + t * (q.x - p.x), y = p.y + t * (q.y - p.y), n = nearest(r, x, y);
-      if (n.d > r.cell.width[n.i] / 2 + UNDER) { removed += len / steps; at ??= { x, y }; continue; }
+      if (kept?.[n.i]) continue; // the old road stays as it is here
+      if (n.d > r.cell.width[n.i] / 2 + UNDER) {
+        removed += len / steps; at ??= { x, y };
+        removedLines.push({ ax: p.x + (j / steps) * (q.x - p.x), ay: p.y + (j / steps) * (q.y - p.y), bx: p.x + ((j + 1) / steps) * (q.x - p.x), by: p.y + ((j + 1) / steps) * (q.y - p.y) });
+        continue;
+      }
       // land credit: this piece of old road inside the new road's land take, at that station's land price
       const area = (len / steps) * Math.min(width, r.cell.width[n.i]), rate = r.cell.width[n.i] > 0 ? r.parts.land[n.i] / (r.cell.width[n.i] * r.ds) : 0;
       const credit = Math.min(area * rate, Math.max(0, r.parts.land[n.i] - credited[n.i]));
@@ -79,22 +102,41 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
       label: `Old road removed and its ground restored: ${Math.round(removed)} m` });
   }
   if (owned > 0) works.push({ kind: 'land', s: r.s[0], x: old[0].x, y: old[0].y, length: ownedLength, cost: -owned,
-    label: `Land under the old road, already the road's: not bought again (${Math.round(ownedLength)} m)` });
+    label: `No land bought where the new road lies on the old one: ${Math.round(ownedLength)} m` });
   // Every side road that joined the old stretch stays connected.
   const crossed = new Set<number>();
   // (a free at-grade meeting right at the stretch's end is that end's old junction: reconnected below)
   for (const c of r.crossings) if (c.roadId !== undefined && (c.cost > 0 || (c.s > 1 && c.s < r.length - 1))) crossed.add(c.roadId);
   // (a continuation's joint at the stretch end builds no junction: side roads there are reconnected below)
   for (const f of r.footprintConflicts) if (f.roadId !== undefined && f.action !== 'blocked' && !f.continuation) crossed.add(f.roadId);
+  // At a stretch end the old road goes on, often as another mapped way of the same class: that is the
+  // road itself continuing (the end is its joint), never a junction with "the class I road".
+  const heading = (p: { x: number; y: number }, q: { x: number; y: number }) => { const l = Math.hypot(q.x - p.x, q.y - p.y) || 1; return { x: (q.x - p.x) / l, y: (q.y - p.y) / l }; };
+  const continues = (side: number, at: { x: number; y: number }) => {
+    if (base.wayClass(side) !== cls) return false;
+    const end = [{ e: a, d: da }, { e: b, d: db }].find(({ e }) => Math.hypot(e.x - at.x, e.y - at.y) <= CONTINUES_AT);
+    if (!end) return false;
+    const inward = end.d === Math.min(da, db) ? end.d + CONTINUES_LOOK : end.d - CONTINUES_LOOK;
+    const into = base.wayPath(way, Math.min(end.d, inward), Math.max(end.d, inward));
+    const outward = heading(end.d === Math.min(da, db) ? into.at(-1)! : into[0], end.e);
+    const ds = base.wayStation(side, end.e.x, end.e.y), near = base.wayPath(side, ds - CONTINUES_LOOK, ds + CONTINUES_LOOK);
+    if (near.length < 2) return false;
+    const far = [near[0], near.at(-1)!].reduce((p, q) => Math.hypot(q.x - end.e.x, q.y - end.e.y) > Math.hypot(p.x - end.e.x, p.y - end.e.y) ? q : p);
+    const on = heading(end.e, far);
+    return outward.x * on.x + outward.y * on.y >= CONTINUES_COS;
+  };
   for (const c of connections) {
     if (!c.id.includes(':branch:') || !c.ports.some(p => p.kind === 'route' && p.routeId === route.id)) continue;
     const port = c.ports.find(p => p.kind === 'source');
     if (!port || port.kind !== 'source') continue;
     const side = branchWay(port.location.sourceId);
+    if (side !== undefined && continues(side, c.position)) continue;
     // A side road the new road crosses or rebuilds beside it is the kernel's crossing work already.
     if (side !== undefined && crossed.has(side)) continue;
     const sideCls = side !== undefined ? base.wayClass(side) : 'unclassified', row = ROAD_CLASSES[sideCls] ?? ROAD_CLASSES.unclassified;
     const n = nearest(r, c.position.x, c.position.y), gap = Math.max(0, n.d - r.cell.width[n.i] / 2);
+    // where the old road is kept, its junction with this side road stays as it is
+    if (kept?.[n.i]) continue;
     const urban = r.cell.urban[n.i] >= 0.5 ? 1 : 0, link = gap * row.roadPerKm[urban] / 1000;
     const what = row.label;
     if (gap > 2000) {
@@ -104,8 +146,9 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
       continue;
     }
     works.push({ kind: 'reconnection', s: r.s[n.i], x: c.position.x, y: c.position.y, length: gap, cls: sideCls,
-      cost: link + sideJunctionCost(sideCls),
-      label: gap > 1 ? `The ${what} reconnected: ${Math.round(gap)} m of new road and its junction` : `The ${what} joins the new road` });
+      cost: link + sideJunctionCost(sideCls, route.specification.kind === 'road' ? CATEGORIES[route.specification.crossSection as CategoryId]?.minor : undefined),
+      // which one: where along the rebuilt road (the card's line also flies there)
+      label: gap > 1 ? `${cap(what)} at km ${km(r.s[n.i])} reconnected: ${Math.round(gap)} m of new road and a junction` : `Junction with the ${what} at km ${km(r.s[n.i])}` });
   }
-  return { works, violations, total: works.reduce((t, w) => t + w.cost, 0) };
+  return { works, violations, total: works.reduce((t, w) => t + w.cost, 0), removed: removedLines, removedWidth: width };
 }

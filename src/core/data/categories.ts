@@ -5,7 +5,9 @@ import { RAIL_MAX_GRADIENT, RAILWAY_EVIDENCE, railEverywherePerKm, railRouteBase
 // Sources: SFDI SPK CN 2026 (research/data/spk-cn-2026-oceneni.csv), "defined standard" column, CZK
 // excl. VAT, 2026 price level. ČSN 73 6101 (2018) design speeds per research/00 §4.1.
 
-export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'D27.5' | 'D27.5-1' | 'R1' | 'R2';
+export type CategoryId = 'S7.5' | 'S9.5' | 'S11.5' | 'M7.5' | 'P4' | 'D27.5' | 'D27.5-1' | 'R1' | 'R2';
+/** Legal class of a road (who owns it; the cross-section is chosen separately). */
+export type LegalClass = 'I' | 'II' | 'III' | 'local' | 'service' | 'track';
 export type TerrainClass = 'hilly' | 'mountainous';
 
 /**
@@ -42,7 +44,13 @@ export interface Category {
   /** design speeds the player may pick, km/h (base speed lowered by 10 or 20 where justified) */
   speeds: number[];
   /** road class used for the earthworks allowance included in the norm */
-  roadClass: 'I' | 'II' | 'motorway' | 'motorway-carriageway' | 'rail';
+  roadClass: 'I' | 'II' | 'motorway' | 'motorway-carriageway' | 'rail' | 'local' | 'track';
+  /** Built under the local-road norm ČSN 73 6110 ('local') or the field-track norm ČSN 73 6109 ('track')
+   * instead of ČSN 73 6101: own speed rows (data/norms.ts), no junction spacing (research/42). */
+  minor?: 'local' | 'track';
+  /** Single-carriageway roads: the legal classes this cross-section may carry, the first when a road is
+   * switched to it (S 7.5: class II/III, S 9.5: I/II, S 11.5: I; research/42 for the minor rows). */
+  legalClasses?: LegalClass[];
   /** SPK CN road price per km, CZK. 'hilly' = flat+hilly rows (…NER), 'mountainous' = …NEH */
   normPerKm: Record<TerrainClass, number>;
   normCodes: Record<TerrainClass, string>;
@@ -75,7 +83,7 @@ export interface Category {
 export const CATEGORIES: Record<CategoryId, Category> = {
   'S7.5': {
     id: 'S7.5', mode: 'road', label: 'S 7.5 (class II road)', enabled: true, crownWidth: 7.5,
-    speeds: [90, 80, 70], roadClass: 'II',
+    speeds: [90, 80, 70], roadClass: 'II', legalClasses: ['II', 'III'],
     normPerKm: { hilly: 36_142_000, mountainous: 41_448_000 },
     normCodes: { hilly: 'A.1.S2.7,5.NER', mountainous: 'A.1.S2.7,5.NEH' },
     bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', tunnelTubes: 1,
@@ -83,7 +91,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   },
   'S9.5': {
     id: 'S9.5', mode: 'road', label: 'S 9.5 (class I road)', enabled: true, crownWidth: 9.5,
-    speeds: [90, 80, 70], roadClass: 'I',
+    speeds: [90, 80, 70], roadClass: 'I', legalClasses: ['I', 'II'],
     normPerKm: { hilly: 56_912_000, mountainous: 67_982_000 },
     normCodes: { hilly: 'A.1.S1.9,5.NER', mountainous: 'A.1.S1.9,5.NEH' },
     bridgePerKm: 579_911_000, bridgeCode: 'A.2.S.9,5.N', tunnelTubes: 1,
@@ -91,11 +99,38 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   },
   'S11.5': {
     id: 'S11.5', mode: 'road', label: 'S 11.5 (class I road)', enabled: true, crownWidth: 11.5,
-    speeds: [90, 80, 70], roadClass: 'I',
+    speeds: [90, 80, 70], roadClass: 'I', legalClasses: ['I'],
     normPerKm: { hilly: 68_894_000, mountainous: 82_163_000 },
     normCodes: { hilly: 'A.1.S1.11,5.NER', mountainous: 'A.1.S1.11,5.NEH' },
     bridgePerKm: 692_398_000, bridgeCode: 'A.2.S.11,5.N', tunnelTubes: 1,
     section: { lane: 3.5, hardShoulder: 1.75, edgeLine: 0.25, centreLine: 0.125, dash: 3, gap: 6 },
+  },
+  // Two-lane local road (ČSN 73 6110 functional group C, research/42): SPK 2026 local-road rows, outside
+  // built-up areas M 7,5/7,5 (main traffic space 7.5 m); inside them M 11,5/7,5 (data/urban.ts, its two
+  // pavements are priced but not drawn). Bridge: the S 7.5 deck row (no local-road bridge row; same deck
+  // width). Lanes: PROVISIONAL 3.0 m (§8.2.2 allows 2.75–3.50 m) with the S 7.5 strips, so 7.5 m in all.
+  'M7.5': {
+    id: 'M7.5', mode: 'road', label: 'M 7.5 (local road)', enabled: true, crownWidth: 7.5, minor: 'local',
+    speeds: [50, 40, 30], roadClass: 'local', legalClasses: ['local', 'service'],
+    // ČSN 73 6110 tab. 12, group C: 9 % ordinary; 12 % in justified cases (mountainous terrain taken as one)
+    maxGradient: { hilly: 0.09, mountainous: 0.12 },
+    normPerKm: { hilly: 24_133_000, mountainous: 32_079_000 },
+    normCodes: { hilly: 'A.1.M.7,5.NER', mountainous: 'A.1.M.7,5.NEH' },
+    bridgePerKm: 481_621_000, bridgeCode: 'A.2.S.7,5.N', tunnelTubes: 1,
+    section: { lane: 3.0, hardShoulder: 0.25, edgeLine: 0.125, centreLine: 0.125, dash: 3, gap: 6 },
+  },
+  // One-lane paved track, ČSN 73 6109 category P 4,0/30 (main) or P 4,0/20 (secondary), free width 4.0 m
+  // including 2 × 0.5 m verges (research/42). SPK 2026 A.1.P4.NE everywhere (no mountainous or built-up
+  // row) and the P 4 bridge row. One 3 m lane, no markings.
+  'P4': {
+    id: 'P4', mode: 'road', label: 'P 4.0 (one-lane track)', enabled: true, crownWidth: 4, minor: 'track',
+    speeds: [30, 20], roadClass: 'track', legalClasses: ['track', 'service'],
+    // ČSN 73 6109 tab. 3: paved 15 % at 30 km/h (18 % at 20 km/h, not used: one value per road)
+    maxGradient: { hilly: 0.15, mountainous: 0.15 },
+    normPerKm: { hilly: 13_985_684.5, mountainous: 13_985_684.5 },
+    normCodes: { hilly: 'A.1.P4.NE', mountainous: 'A.1.P4.NE' },
+    bridgePerKm: 304_735_878.7401868, bridgeCode: 'A.2.P.4.N', tunnelTubes: 1,
+    section: { lane: 1.5, hardShoulder: 0, edgeLine: 0, centreLine: 0, dash: 3, gap: 6 },
   },
   // Paired motorway corridor: VL 1 sheet 11-02 widths (data/motorway.ts), whole-category SPK norm
   // (both carriageways, earth-built interchange branches at 1 per 7 km included, research/33 §3),
@@ -149,5 +184,7 @@ export const CATEGORIES: Record<CategoryId, Category> = {
   },
 };
 
+/** Single-carriageway road cross-sections a road (RoadSpec.crossSection) may have. */
+export const ROAD_CROSS_SECTIONS = (Object.keys(CATEGORIES) as CategoryId[]).filter((k) => CATEGORIES[k].legalClasses);
 export const PLAYABLE_CATEGORIES: CategoryId[] = (Object.keys(CATEGORIES) as CategoryId[])
   .filter((k) => CATEGORIES[k].enabled);

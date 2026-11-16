@@ -5,6 +5,7 @@ import { assertProjectDesign } from './core/project-validation';
 import { cloneProjectValue, projectValueKey } from './core/project-value';
 import { readLegacyBytes } from './legacy-storage';
 import { projectStorageKeys, type ProjectBest, type ProjectLoadResult, type ProjectSave, type ProjectSaveNamespace, type ProjectStorage } from './project-store-contract';
+import { classTraffic } from './core/traffic-census';
 
 export interface ProjectLoadOptions {
   storage: ProjectStorage; namespace: ProjectSaveNamespace;
@@ -59,6 +60,17 @@ function bindingRepairs(design: ProjectDesign, options: ProjectLoadOptions): str
 export function projectBindingsCurrent(design: ProjectDesign, options: ProjectLoadOptions): boolean {
   return bindingRepairs(cloneProjectValue(design), options).length === 0;
 }
+/** Saves from before traffic was pre-filled hold roads with "traffic not set" (aadt 0): each gets the
+ * average road of its class, as a road rebuilt today without a census count does (the card labels it). */
+function settleTraffic(design: ProjectDesign): boolean {
+  let changed = false;
+  for (const route of design.routes) if (route.kind === 'road' && route.specification.operations.trafficUnknown) {
+    const { trafficUnknown: _old, ...rest } = route.specification.operations, t = classTraffic(route.specification.legalClass);
+    route.specification.operations = { ...rest, aadt: t.aadt, heavyShare: t.heavyShare };
+    changed = true;
+  }
+  return changed;
+}
 /** Pure read/migration. Never writes, never constructs legacy Store, never replaces bad bytes. */
 export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult {
   const raw = options.storage.getItem(projectStorageKeys(options.namespace).project);
@@ -70,12 +82,14 @@ export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult 
       assertProjectDesign(save.design, true);
       if (save.design.scenarioId !== options.namespace.scenarioId || save.design.presetId !== options.namespace.presetId) throw new Error('Save namespace mismatch');
       let originalProject: string | undefined;
+      if (settleTraffic(save.design)) originalProject = raw;
       // Whatever the loader drops or rewrites (malformed/stale/newer best, repaired bindings) keeps the
       // exact original envelope in project recovery before the slot is ever written again.
       if (save.best) {
         try {
           // Best is optional: malformed best bytes must not block valid current work.
           assertProjectDesign(save.best.design, true);
+          settleTraffic(save.best.design);
           if (!compatibleProjectBest(save.best, options)) { originalProject = raw; save.best = null; }
         } catch { originalProject = raw; save.best = null; }
       } else save.best = null;

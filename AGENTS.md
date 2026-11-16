@@ -68,7 +68,7 @@ broken visuals and jargon before.
 - Full evaluation still takes ≈ 90–150 ms after a drag (auto-profile ≈ 23 ms, retaining-wall engineering,
   crossings built twice, strict re-runs); the 3D road body only catches up when the drag pauses.
 - Automatic reroutes are engineered and checked (model 22); skewed crossings are straightened, roads running
-  along ours moved beside it, neighbouring minor roads joined to one crossing (model 26); a crossed way whose cut
+  along ours moved beside it, neighbouring minor roads joined to one crossing (model 28); a crossed way whose cut
   ends stay connected over other roads is still rerouted instead of closed; merged crossings of different ways
   within 30 m keep one remedy for the group. Lowered underpasses ignore groundwater; pier placement near
   the Polish border can fail (engine limit).

@@ -141,6 +141,10 @@ source-segment provenance: overlay clipping splits self-crossing ways at the cro
 matched to exactly one forward walk along its source, or the build fails. Different cache snapshots can contain conflicting node/way geometry: such source
 bindings need explicit unresolved handling, never invented connectivity or snapping the frozen map.
 
+Traffic of the mapped roads: `uv run --with requests python pipeline/fetch_census.py` (ŘSD census sections of every
+scenario's area), then `uv run python pipeline/build_traffic.py <id>` writes the pack's `traffic.json`; without it
+rebuilt roads start with class averages (research/40, research/41).
+
 ### Ends that join a retained road
 
 An end may declare the retained road it joins: `"B": {..., "junction": {"kind": "roundabout-arm" | "merge",

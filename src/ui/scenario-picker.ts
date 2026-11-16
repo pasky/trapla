@@ -128,14 +128,14 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
   });
 }
 
-/** Picker cards in PRESETS order; consecutive presets of one corridor share a heading. A retired mission
- * only appears to continue an existing save. */
+/** Picker cards in PRESETS order; the presets of one corridor share a heading (where its first one is). A
+ * retired mission only appears to continue an existing save. */
 export function pickerGroups(presets: readonly ScenarioParams[], isSaved: (scenario: ScenarioParams) => boolean) {
   const groups: { group?: string; presets: ScenarioParams[] }[] = [];
   for (const scenario of presets) {
     if (scenario.retired && !isSaved(scenario)) continue;
-    const last = groups[groups.length - 1];
-    if (last && last.group === scenario.group) last.presets.push(scenario);
+    const same = scenario.group === undefined ? groups[groups.length - 1] : groups.find(g => g.group === scenario.group);
+    if (same && same.group === scenario.group) same.presets.push(scenario);
     else groups.push({ group: scenario.group, presets: [scenario] });
   }
   return groups;

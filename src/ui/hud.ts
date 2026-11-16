@@ -7,16 +7,15 @@ import type { Violation } from '../core/checks';
 import type { CostBreakdown } from '../core/cost';
 import type { Design, Result } from '../core/evaluate';
 import type { ProjectResult, RouteId } from '../core/project';
-import { listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
+import { aloneText, listProjectIssues, projectBadge, unpricedText, type ListedIssue } from './project-issues';
 import { trainsPerDay } from '../core/project-railway';
 import { CATEGORIES, PLAYABLE_CATEGORIES, type CategoryId } from '../core/data/categories';
 import { designSpeeds, speedNorms } from '../core/data/norms';
-import { DIRECTIONS_TEXT, SPEED_LIMIT_TEXT } from '../core/terms';
+import { DIRECTIONS_TEXT } from '../core/terms';
 import { LAND, PRICES, STRUCTURE_RULES } from '../core/data/prices';
 import { minCategoryForTraffic, type ScenarioParams } from '../core/data/scenario';
 import { ACCESS, BUILDING_KINDS, BUILDING_RULES, CROSSING_RULES, JUNCTION, NOISE, URBAN_LAND, URBAN_RATES } from '../core/data/urban';
 import { rangeSummary } from '../core/range';
-import { MOTORWAY_150_PILOT } from '../core/data/motorway';
 import type { Best, StationRange } from '../state';
 import { COST_GROUPS, czk, groupLabel } from './costgroups';
 import { RAILWAY_EVIDENCE, SPOZES } from '../core/data/railway';
@@ -43,8 +42,6 @@ export interface HudEvents {
   onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
   /** motorway: both directions on one line again over a stretch where they run apart */
   onJoinStretch?: (id: string) => void;
-  /** motorway designed for 130: the 150 km/h speed-limit pilot on / off */
-  onSpeedLimit?: (pilot: boolean) => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
   /** show the first-run introduction again */
@@ -111,8 +108,8 @@ export class Hud {
   private last: { r: Result; d: Design } | null = null;
   private projectIssuesFor: ProjectResult | null | undefined;
   private issuesActive: RouteId | undefined;
-  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>;
-    ownPrice: { total: number; approx: boolean; label: string } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId;
+  private project: { result: ProjectResult | null; pending: boolean; best: Pick<Best, 'cost'> | null; missionRouteId?: RouteId; ours: ReadonlySet<RouteId>; groups?: Record<RouteId, string>;
+    ownPrice: { total: number; approx: boolean; label: string; routeId?: RouteId } | null; names: Record<RouteId, string>; lengths: Record<RouteId, number>; activeRouteId?: RouteId;
     liveTotal: number | null; dragging: boolean } | null = null;
   setRouteState(editable: boolean, hasResult: boolean) {
     this.$('sec-design').hidden = !editable;
@@ -124,14 +121,16 @@ export class Hud {
   setProject(result: ProjectResult | null, pending: boolean, best: Pick<Best, 'cost'> | null, opts: { missionRouteId?: RouteId; ours?: ReadonlySet<RouteId>; groups?: Record<RouteId, string>; legacy?: boolean;
     /** one road's own bill against the unchanged network (core `cost.alone`, a live ≈ during its drag);
      * shown only while there is no project total, never added up */
-    ownPrice?: { total: number; approx: boolean; label: string } | null;
+    ownPrice?: { total: number; approx: boolean; label: string; routeId?: RouteId } | null;
     /** the project total while a road is dragged (≈: the last full total with that road's live price) */
     liveTotal?: number | null;
     /** a drag is under way (its checks wait for a pause); otherwise a pending result is just being checked */
     dragging?: boolean;
     /** road names, to say which road an issue belongs to when it is not the active one */
     names?: Record<RouteId, string>; activeRouteId?: RouteId; lengths?: Record<RouteId, number> } = {}) {
-    const { missionRouteId, ours, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
+    const { missionRouteId, groups, legacy = false, ownPrice = null, names = {}, activeRouteId, lengths = {}, liveTotal = null, dragging = false } = opts;
+    // every road that is "our road" (a motorway's two directions); default: the mission road
+    const ours = opts.ours ?? new Set(missionRouteId ? [missionRouteId] : []);
     if (legacy) {
       const was = this.project; this.project = null; this.projectIssuesFor = undefined;
       this.$('best').style.display = '';
@@ -155,7 +154,10 @@ export class Hud {
       : ownPrice ? `${ownPrice.approx || pending ? '≈ ' : ''}${czk(ownPrice.total)}` : pending ? '…' : '—';
     this.$('total').classList.toggle('invalid', priced && !pending && !result?.valid);
     this.$('score').classList.toggle('preview', pending);
-    this.$('perkm').textContent = !priced && unpriced ? unpricedText(result!.cost.unpriced, ours ?? missionRouteId, names, groups) : this.goalText;
+    // no total: say which change holds it back, and keep what IS priced in view (each road alone, never added up)
+    const others = !priced && unpriced ? aloneText(result!.cost.alone, ownPrice?.routeId, ours, names, czk, `our ${this.sc.mode === 'railway' ? 'railway' : this.sc.mode === 'motorway' ? 'motorway' : 'road'}`, groups) : '';
+    this.$('perkm').textContent = !priced && unpriced ? `${unpricedText(result!.cost.unpriced, ours, names, groups)}${others ? `. ${others}` : ''}` : this.goalText;
+    this.$('perkm').title = others ? 'Each road priced as if it were the only change. Not added up: roads that affect each other can cost more or less together.' : '';
     const time = missionRouteId ? result?.routes[missionRouteId]?.legacy?.travelMin : undefined;
     this.$('chip-time').hidden = time === undefined;
     if (time !== undefined) {
@@ -251,13 +253,6 @@ export class Hud {
           <p id="dir-explain" class="mode-explain"></p>
           <div id="dir-apart" class="dir-apart"></div>
         </div>
-        <div class="mode" id="speed-limit" hidden>
-          <div class="mode-h"><b>${SPEED_LIMIT_TEXT.heading}</b></div>
-          <div class="seg" role="radiogroup" aria-label="${SPEED_LIMIT_TEXT.heading}">
-            <button type="button" id="limit-normal" role="radio" title="${SPEED_LIMIT_TEXT.normalTitle}">${SPEED_LIMIT_TEXT.normal}</button><button type="button" id="limit-pilot" role="radio" title="${SPEED_LIMIT_TEXT.pilotTitle}">${SPEED_LIMIT_TEXT.pilot}</button>
-          </div>
-          <p id="limit-explain" class="mode-explain"></p>
-        </div>
         <div class="mode">
           <div class="mode-h"><b id="height-h">Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
@@ -298,8 +293,6 @@ export class Hud {
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();
-    this.$('limit-normal').onclick = () => this.ev.onSpeedLimit?.(false);
-    this.$('limit-pilot').onclick = () => this.ev.onSpeedLimit?.(true);
     this.$('show-intro').onclick = () => this.ev.onIntro?.();
     // the first listed item (project mode: the first real violation, else the first not-checked item)
     this.$('chip-viol').onclick = () => {
@@ -385,9 +378,14 @@ export class Hud {
     if (cat.mode === 'railway') {
       norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${Math.round(grade * 10000) / 10} ‰</b>`;
       norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; vertical rounding radius ≥ ${num(n.minCrestRadius)} m.`;
+    } else if (cat.minor) {
+      norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
+      norms.title = `${n.norm} at ${d.speed} km/h: smallest curve radius ${num(n.minRadius)} m${cat.minor === 'local' ? ` (with 6 % banking; from ${num(n.noSuperelevationRadius)} m no banking is needed)` : ''}; no easement curves are needed; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags)${n.verticalNorm ? ` (${n.verticalNorm})` : ''}.`;
     } else {
       norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
-      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+      // motorways: radii from the 2018 edition (research/33 §7); its slope and vertical radii are not public, the older edition's stand in
+      const older = cat.mode === 'motorway' ? ' The slope and the rounding radii are the older edition\'s: the 2018 values are not public.' : '';
+      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).${older}`;
     }
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
@@ -400,17 +398,6 @@ export class Hud {
       : 'Drag the ◆ points in the profile; double-click the line adds one.';
     this.$('mode-help').title = auto ? AUTO_LONG : MANUAL_LONG;
     this.$('design-note').textContent = ` ${CATEGORIES[d.category].label.split(' (')[0]} · ${d.speed} km/h · ${auto ? 'Auto height' : 'height by hand'}`;
-  }
-
-  /** The 150 km/h pilot switch; null hides it (anything but a motorway designed for 130 km/h). */
-  setSpeedLimit(state: { pilot: boolean; signsPerKm: string } | null) {
-    const box = this.$('speed-limit');
-    box.hidden = !state;
-    if (!state) return;
-    for (const [id, on] of [['limit-normal', !state.pilot], ['limit-pilot', state.pilot]] as const) {
-      const b = this.$(id); b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
-    }
-    this.$('limit-explain').textContent = state.pilot ? SPEED_LIMIT_TEXT.explainPilot(state.signsPerKm, MOTORWAY_150_PILOT.share) : SPEED_LIMIT_TEXT.explainNormal;
   }
 
   /** Motorway direction switch; null hides it (roads). `places`: where each direction leads. */

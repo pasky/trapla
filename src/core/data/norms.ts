@@ -13,6 +13,10 @@ export interface SpeedNorms {
   minCrestRadius: number;
   /** PROVISIONAL: older-edition minimum sag vertical radius, m (100 km/h value used for 90) */
   minSagRadius: number;
+  /** where these values come from, as a rule's source names it (absent: ČSN 73 6101, see the rows) */
+  norm?: string;
+  /** the same for the crest and dip radii where they come from another source */
+  verticalNorm?: string;
 }
 
 export const SPEED_NORMS: Record<number, SpeedNorms> = {
@@ -60,9 +64,34 @@ const RAIL_RMIN = 190;
  * maxspeed): the same cant envelope, ramps and roundings (2,000 m, Plášek's desired value below 80 km/h). */
 export const RAIL_SPEED_NORMS: Record<number, SpeedNorms> = Object.fromEntries([160, 140, 120, 100, 80, 60].map(v => [v, railNorms(v)]));
 
-/** Norm table for a category: motorway and railway rows are separate (never borrowed from road rows). */
+export const LOCAL_NORM = 'ČSN 73 6110 (local roads)';
+export const TRACK_NORM = 'ČSN 73 6109 (field tracks, as reproduced by Vébr 2022)';
+const TRACK_VERTICAL = 'ČSN 73 6108 final draft (paved forest roads; the field-track values were not found, provisional)';
+/** Local roads, ČSN 73 6110:2006 functional group C, design speeds 50 / 40 / 30 km/h (tab. 2; research/42):
+ * - smallest radius at 6 % superelevation, tab. 10 (85 / 45 / 25 m), the same banking the road rows use;
+ * - no superelevation needed from tab. 11 (700 / 450 / 250 m), information only;
+ * - transition curves are not required (§9.4.3 restricts plain circular curves on groups A and B only): 0;
+ * - crest / sag radii for stopping sight, tabs. 13–14 (1,000 / 450 / 200 and 700 / 350 / 180 m). */
+export const LOCAL_SPEED_NORMS: Record<number, SpeedNorms> = {
+  50: { speed: 50, minRadius: 85, noSuperelevationRadius: 700, minTransition: 0, minCrestRadius: 1000, minSagRadius: 700, norm: LOCAL_NORM },
+  40: { speed: 40, minRadius: 45, noSuperelevationRadius: 450, minTransition: 0, minCrestRadius: 450, minSagRadius: 350, norm: LOCAL_NORM },
+  30: { speed: 30, minRadius: 25, noSuperelevationRadius: 250, minTransition: 0, minCrestRadius: 200, minSagRadius: 180, norm: LOCAL_NORM },
+};
+/** Paved field tracks, ČSN 73 6109:2013 as reproduced by Vébr 2022 (research/42): smallest radius tab. 2
+ * (25 m at 30 km/h, 12.5 m at 20 km/h), plain circular curves (transitions only in justified cases on main
+ * tracks), no superelevation threshold given (Infinity: information only). Vertical radii: the field-track
+ * tab. 4 values were not recovered; PROVISIONAL the sealed forest-road values of the ČSN 73 6108 final draft
+ * tab. 7 (200 m at 30 km/h, 80 m at 20 km/h, crest and sag), the sibling norm with the same speeds. */
+export const TRACK_SPEED_NORMS: Record<number, SpeedNorms> = {
+  30: { speed: 30, minRadius: 25, noSuperelevationRadius: Infinity, minTransition: 0, minCrestRadius: 200, minSagRadius: 200, norm: TRACK_NORM, verticalNorm: TRACK_VERTICAL },
+  20: { speed: 20, minRadius: 12.5, noSuperelevationRadius: Infinity, minTransition: 0, minCrestRadius: 80, minSagRadius: 80, norm: TRACK_NORM, verticalNorm: TRACK_VERTICAL },
+};
+
+/** Norm table for a category: motorway, railway, local-road and track rows are separate (never borrowed). */
 function normTable(category?: CategoryId): Record<number, SpeedNorms> {
-  const mode = category ? CATEGORIES[category].mode : 'road';
+  const c = category ? CATEGORIES[category] : undefined;
+  if (c?.minor) return c.minor === 'local' ? LOCAL_SPEED_NORMS : TRACK_SPEED_NORMS;
+  const mode = c?.mode ?? 'road';
   return mode === 'motorway' ? MOTORWAY_SPEED_NORMS : mode === 'railway' ? RAIL_SPEED_NORMS : SPEED_NORMS;
 }
 export function speedNorms(speed: number, category?: CategoryId): SpeedNorms {
@@ -108,6 +137,11 @@ export function horizontalRules(speed: number, category?: CategoryId): Horizonta
   // Track: every curve gets its cant ramp (no omission threshold); compound ratio as for roads (PROVISIONAL).
   if (category && CATEGORIES[category].mode === 'railway')
     return { minRadius: n.minRadius, transition: n.minTransition, plainRadius: Infinity, compoundRatio: 2, reverseStraight: 0 };
+  // Local roads and tracks: plain circular curves, no straight required between opposite curves (ČSN 73
+  // 6110 §9.3.1 only recommends room for the change of crossfall; ČSN 73 6109 gives none); compound ratio
+  // as for roads (PROVISIONAL, research/42).
+  if (category && CATEGORIES[category].minor)
+    return { minRadius: n.minRadius, transition: 0, plainRadius: 0, compoundRatio: 2, reverseStraight: 0 };
   const h = HORIZONTAL_NORMS[speed];
   if (!h) throw new Error(`no horizontal rules for design speed ${speed}`);
   return {

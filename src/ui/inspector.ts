@@ -6,7 +6,8 @@ import type { Violation } from '../core/checks';
 import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, type EndConnection, type OurLine } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, endCard, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, ourWords, RAILWAY_AUTOMATIC, thisRoadWords, togetherHouseText, type EndConnection, type OurLine } from '../core/terms';
+import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -72,7 +73,10 @@ const MORE_KEY = 'trapla.more';
 /** the crossing card's choices: the shared vocabulary (core/terms.ts) */
 const CROSSING_OPTIONS = CROSSING_CHOICE_TEXT as unknown as [string, string, string][];
 /** A motorway has no level junctions: Automatic never offers one, and neither does the card. */
-const crossingOptions = (line: OurLine): [string, string, string][] => line === 'road' ? CROSSING_OPTIONS
+/** A local road or track meets every road it may at its level, without junction spacing. */
+const MINOR_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.map(([v, label, why]) =>
+  [v, label, v === '' ? MINOR_CROSSING_TEXT.automatic : v === 'junction' ? MINOR_CROSSING_TEXT.junction : why]);
+const crossingOptions = (line: OurLine, minor = false): [string, string, string][] => line === 'road' ? (minor ? MINOR_CROSSING_OPTIONS : CROSSING_OPTIONS)
   : CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => [v, label, v === '' ? (line === 'railway' ? RAILWAY_AUTOMATIC : MOTORWAY_AUTOMATIC) : ourWords(why, line)]);
 const STRUCTURE_OPTIONS: [string, string, string][] = [
   ['clear', 'Auto', 'Let the game choose (key A)'], ['1', 'Bridge', 'Bridge the whole stretch (key B)'],
@@ -89,15 +93,22 @@ export class Inspector {
   private r: Result | null = null;
   private d: Design | null = null;
   private networkPending = false;
-  /** The active road's own header when nothing is selected (null: none, e.g. our road). */
-  /** a header from the active road's owner, given what the card shows (null: nothing selected) */
+  /** The active road's own header (null: none, e.g. our road), given what the card shows (null: nothing
+   * selected): a side road's settings on top of whatever is selected on it; one with `data-place="below"`
+   * (a motorway's directions) below a selected piece's card. */
   routeHead?: (shown: Sel['kind'] | null) => HTMLElement | null;
+  /** The active road is not ours (a rebuilt or new side road): its crossing card says "this road" where
+   * the shared vocabulary says "our road" (core/terms.ts thisRoadWords). */
+  isSideRoad?: () => boolean;
   setNetworkPending(pending: boolean) { this.networkPending = pending; this.render(); }
   private pending = false;
 
   constructor(private el: HTMLElement, private ctx: {
     building: (j: number) => { kind: string; levels: number; dwelling: boolean; rect?: HouseRect };
     maxRadius: (i: number) => number | null;
+    /** a house heard by two or more roads and decided once for the project: its project receiver and the
+     * roads' names (null: decided by one road alone, or the project is not priced) */
+    together?: (j: number) => { receiver: ProjectReceiver; name: (routeId: string) => string } | null;
   }) {
     try { this.more = localStorage.getItem(MORE_KEY) === '1'; } catch { /* private mode */ }
     el.addEventListener('click', (e) => this.click(e));
@@ -212,9 +223,10 @@ export class Inspector {
     if (!html) html = this.money(r);
     this.el.innerHTML = html;
     this.el.className = `card ctx inspector${shown ? ` k-${shown.kind}` : ' idle'}${this.more ? ' more' : ''}`;
-    // nothing selected on a side road: what this road is, its traffic and how to remove it, above the money
+    // a side road's own settings (what it is, traffic, junctions, works, how to remove it) stay on top of
+    // whatever is selected on it, as our road's type and speed stay in the score card
     const head = this.routeHead?.(shown?.kind ?? null);
-    if (head && !shown) this.el.prepend(head); else if (head) this.el.append(head);
+    if (head && shown && head.dataset.place === 'below') this.el.append(head); else if (head) this.el.prepend(head);
   }
 
   // ---- shared pieces of a card ----
@@ -247,6 +259,8 @@ export class Inspector {
   // ---- nothing selected: where the money goes ----
   private money(r: Result) {
     const top = topPieces(r, 5);
+    // a rebuilt stretch still wholly on its old road builds nothing
+    if (!top.length && r.keptCells) return '<div class="sub hint">Nothing is built yet: every metre stays on the old road. Drag it to change its line.</div>';
     return `<div class="ctx-h"><b>Where ${this.oneDirection ? 'this direction’s' : 'the'} money goes</b></div>
       <ol class="money">${top.map((p) => `<li><button type="button" class="link" data-piece="${p.s0},${p.s1},${p.kind}"><i class="pk-${p.kind}"></i>${PIECE_NAME[p.kind]} <small>km ${kmr(p.s0, p.s1)}</small><span>${czk(p.cost)}</span></button></li>`).join('')}</ol>
       <div class="sub hint">Drag the ${this.d ? CATEGORIES[this.d.category].mode : 'road'} to bend it. Click anything to inspect it.</div>`;
@@ -258,6 +272,10 @@ export class Inspector {
     if (s1 <= s0) return '';
     const i0 = Math.max(0, Math.round(s0 / r.ds)), i1 = Math.min(r.n - 1, Math.max(i0, Math.round(s1 / r.ds) - (s1 >= r.length ? 0 : 1)));
     const cost = cellsCost(r, i0, i1), len = s1 - s0, depth = pieceDepth(r, i0, i1);
+    // a rebuilt stretch, where it stays on the old road: nothing is built, so there is nothing to choose
+    if (r.keptCells && Array.from({ length: i1 - i0 + 1 }, (_, k) => r.keptCells![i0 + k]).every(Boolean))
+      return `${this.head('Old road', `km ${km(s0)}–${km(s1)}`)}
+      <div class="ctx-state"><b>${m0(len)} · kept as it is</b><div class="why">Nothing is built here. Drag it off the old road to build a new road there.</div></div>`;
     const active = activeStructure({ s0, s1 }, d.structureOverrides);
     const mine = active !== 'clear' && active !== null;
     let title = 'Stretch', status = `${m0(len)} · ${czk(cost)}`, why = '';
@@ -346,7 +364,9 @@ export class Inspector {
     // a flawed reroute shape: back to its automatic path (the choice to reroute stays)
     if (roadId !== undefined && (v as Violation & { crossing?: { code?: string } }).crossing?.code === 'shape') btn(`data-fix-crossing-path="${roadId}"`, 'Automatic path');
     else if (roadId !== undefined && d.crossingOverrides?.some((o) => o.roadId === roadId)) btn(`data-fix-crossing="${roadId}"`, 'Back to Auto');
-    if (v.kind === 'footprint' && !t) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
+    // (not where our road already is on a bridge: a pier or a bridge end on something asks for a longer bridge)
+    const onBridge = !!this.r && this.r.kind[Math.max(0, Math.min(this.r.n - 1, Math.round(v.s0 / this.r.ds)))] === KIND.bridge;
+    if (v.kind === 'footprint' && !t && !onBridge) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
     return b.join('');
@@ -428,13 +448,16 @@ export class Inspector {
     const line = CATEGORIES[d.category].mode;
     const rel = Math.abs(c.h) < 0.5 ? `our ${line} at the crossed road’s level today`
       : `our ${line} ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} the crossed road’s level today`, outcome = crossingOutcome(c, line);
+    // a new road of the project is bridged, carried over us or met, never cut and rerouted
+    const options = crossingOptions(CATEGORIES[d.category].gradeSeparated ? line : 'road', !!CATEGORIES[d.category].minor).filter(([v]) => !c.designed || v !== 'reconnection');
     const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our ${line} ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';
-    return `${this.head(cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}`, nav)}
+    const body = `
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}<div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>
       ${this.issues(vio)}
       ${this.linkPath(c, d)}
       ${this.squareLine(c, d, line)}
-      ${this.choices('crossing-choice', 'data-crossing', crossingOptions(CATEGORIES[d.category].gradeSeparated ? line : 'road'), choice)}`;
+      ${this.choices('crossing-choice', 'data-crossing', options, choice)}`;
+    return `${this.head(c.crossedRoute ? esc(c.crossedRoute.name) : cap(ROAD_CLASSES[c.cls].label), `km ${km(c.s)}`, nav)}${this.isSideRoad?.() ? thisRoadWords(body, line) : body}`;
   }
   /** a skewed underpass or bridge over us: straightened to cross ours at a right angle, or on its own line */
   private squareLine(c: Result['crossings'][number], d: Design, line: OurLine) {
@@ -464,14 +487,14 @@ export class Inspector {
   private building(r: Result, d: Design, j: number) {
     const info = this.ctx.building(j);
     const action = d.buildingOverrides?.find((o) => o.j === j)?.action ?? '';
-    if (this.networkPending) return `${this.head(cap(info.kind), `${info.levels} floors`)}
-      <div class="ctx-state">Project noise check not finished</div>
-      ${this.choices('building-choice', 'data-building', [['', 'Auto', 'Let the game choose'], ['buy', 'Buy out', 'Buy and demolish it'], ['keep', 'Keep', 'Keep this building']], action)}`;
     const removed = r.demolished.find((p) => p.j === j), bought = r.boughtOut.find((p) => p.j === j);
     const kept = r.kept.find((p) => p.j === j), rec = r.noise.receivers.find((p) => p.j === j);
     const limit = r.noise.limit, period = r.noise.controlling === 'night' ? 'at night' : 'by day';
     let state: string, why = '';
-    if (removed) {
+    // heard by two or more roads: their noise added together decides it (wall, buyout), once for the project
+    const tog = removed ? null : this.ctx.together?.(j), together = tog ? togetherHouseText(tog.receiver, tog.name, czk) : null;
+    if (together) ({ state, why } = together);
+    else if (removed) {
       state = `Demolished · ${czk(removed.cost)}`;
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
       const host = removed.host !== undefined ? this.ctx.building(removed.host).kind : '';
@@ -493,16 +516,21 @@ export class Inspector {
     else if (rec) {
       state = rec.status === 'wall' ? (rec.wall > 0 ? `Stays · behind a ${rec.wall} m wall` : 'Stays · behind walls') : rec.status === 'cut' ? 'Stays · shielded by a cut' : 'Stays · quiet enough';
       why = `${(limit + rec.mitigated).toFixed(1)} dB ${period} on the ${rec.storeys === 1 ? 'only' : rec.floor === rec.storeys - 1 ? 'top' : 'loudest'} floor (limit ${limit}).`;
-    } else state = 'Stays · far from the road';
+    } else if (r.besideOldRoad?.includes(j)) { state = 'Stays'; why = 'The old road is kept as it is here: nothing changes for this house.'; }
+    else state = 'Stays · far from the road';
     // kept clear of our works by a retaining wall instead of demolished (Auto's price comparison, or the player keeps it)
     const walled = !removed && !bought ? r.walledOff?.find((p) => p.j === j) : undefined;
     if (walled) {
-      if (!rec) state = 'Stays · a wall keeps our works clear';
+      if (!rec && !together) state = 'Stays · a wall keeps our works clear';
       const wall = `a ${walled.height.toFixed(1)} m retaining wall along our road, km ${kmr(walled.s0, walled.s1)},`;
       why = (why ? `${why} ` : '') + (walled.kept ? `You keep it: ${wall} keeps the works clear of it (${czk(walled.wall)}).`
         : `Auto: ${wall} keeps the works clear of it for ${czk(walled.wall)}; demolishing it would cost ${czk(walled.demolition)}.`);
     }
-    if (action === 'keep' && !kept?.hit && !rec?.unresolved && !walled) why = (why ? `${why} ` : '') + 'You keep it.';
+    if (action === 'keep' && !kept?.hit && (together || !rec?.unresolved) && !walled) why = (why ? `${why} ` : '') + 'You keep it.';
+    // What this road does on its own always stands (a house in its way is gone, priced or not); only the
+    // noise of the project's other roads may still be missing here, and the card says so.
+    const pending = this.networkPending && !removed && !bought
+      ? '<div class="ctx-state pending">Not checked yet: the noise of the project’s other roads here.</div>' : '';
     const vio = r.violations.filter((v) => v.target?.buildings?.includes(j)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     let section = '', walls = '';
     this.restWall = null;
@@ -534,7 +562,9 @@ export class Inspector {
         : built.length ? `Auto: ${heights(built)}` : 'Auto: none';
       // the walls Auto builds beside the player's choice for the stretch this house hears (as the piece card says)
       const around = mine ? (r.wallsAroundChoices ?? []).filter((x) => x.side === side && x.i1 >= rec.window[0] && x.i0 <= rec.window[1]) : [];
-      const adds = around.map((x) => `<div class="sub around">Auto adds ${m0(x.s1 - x.s0)} of ${x.height} m wall at km ${kmr(x.s0, x.s1)} ${mine?.height ? 'as well' : 'instead'} <button type="button" class="link" data-stretch="${x.s0},${x.s1}">Show</button></div>`).join('');
+      const adds = around.length ? around.map((x) => `<div class="sub around">Auto adds ${m0(x.s1 - x.s0)} of ${x.height} m wall at km ${kmr(x.s0, x.s1)} ${mine?.height ? 'as well' : 'instead'} <button type="button" class="link" data-stretch="${x.s0},${x.s1}">Show</button></div>`).join('')
+        // Auto's walls beside the player's own stretch: where they stand
+        : beside.length ? `<div class="sub around">Auto's ${heights(beside)} wall beside it, km ${kmr(Math.min(...beside.map((x) => x.s0)), Math.max(...beside.map((x) => x.s1)))} <button type="button" class="link" data-stretch="${Math.min(...beside.map((x) => x.s0))},${Math.max(...beside.map((x) => x.s1))}">Show</button></div>` : '';
       walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[shownSide(side)]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>${now} · km ${kmr(s0, s1)}</small></div>${adds}`;
       // the wall it stays behind is Auto's beside the player's choice, not the choice itself
       if (mine && rec.status === 'wall' && around.length && !(mine.height && mine.height >= rec.wall)) {
@@ -546,7 +576,7 @@ export class Inspector {
       ? [['', 'Demolish', 'It is in our road\'s way: bought and demolished'], ['keep', 'Keep', 'Never demolish it: our road must miss it']]
       : [['', 'Auto', 'Demolish if in the way; buy out if no wall helps'], ['buy', 'Buy out', 'Buy and demolish it, plot included'], ['keep', 'Keep', 'Never demolish or buy it']];
     return `${this.head(cap(info.kind), `${info.levels} floor${info.levels === 1 ? '' : 's'}`)}
-      <div class="ctx-state"><b>${state}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
+      <div class="ctx-state"><b>${state}</b>${why ? `<div class="why">${why}</div>` : ''}</div>${pending}
       ${this.issues(vio)}
       ${section}${walls}
       ${this.choices('building-choice', 'data-building', opt, action)}`;

@@ -17,7 +17,9 @@ import type { ProjectTransportIndex } from '../core/project-network';
 import type { ProjectCommand } from '../project-store-contract';
 import { ROAD_CLASSES } from '../core/data/urban';
 import { KIND } from '../core/structures';
+import { CATEGORIES } from '../core/data/categories';
 import { moveStretchEnds, newRoad, rebuildable, rebuildCommand, type PlacedEnd } from './road-edit';
+import { mappedRoadName } from '../core/terms';
 
 export interface RouteIds { routeId: string; acousticSourceId: string }
 export type Verdict<T> = ({ ok: true } & T) | { ok: false; why: string };
@@ -74,17 +76,16 @@ export function mappedLineKindFor(base: ProjectTransportIndex, sourceId: string)
 /** The mapped-line kind that owns a rebuilt route (for moving its ends). */
 export const mappedLineKindOf = (route: RouteDesign) => mappedKinds.find(k => k.kind === route.kind) ?? null;
 
-const roadName = (base: ProjectTransportIndex, sourceId: string) => {
-  const t = base.source(sourceId)?.tags;
-  return t?.name || [ROAD_CLASSES[t?.highway ?? '']?.label ?? 'road', t?.ref].filter(Boolean).join(' ');
-};
+const roadName = (base: ProjectTransportIndex, sourceId: string) => mappedRoadName(base.source(sourceId)?.tags);
 
 export const ROAD_LINE: MappedLineKind = {
   kind: 'road',
   rebuildable(base, sourceId) {
     if (base.source(sourceId)?.kind !== 'road') return null;
     const what = rebuildable(base, sourceId);
-    return what.ok ? { ok: true, becomes: what.spec.crossSection === 'S9.5' ? 'class I road (S 9.5)' : `class ${what.spec.legalClass} road (S 7.5)` } : what;
+    if (!what.ok) return what;
+    const { crossSection, legalClass } = what.spec, label = CATEGORIES[crossSection].label, [code, kind] = [label.split(' (')[0], label.split(' (')[1]?.slice(0, -1)];
+    return { ok: true, becomes: CATEGORIES[crossSection].minor ? `${kind} (${code})` : `class ${legalClass} road (${code})` };
   },
   rebuild: (base, interval, ids) => rebuildCommand(base, interval, ids),
   moveEnds: (base, project, routeId, s0, s1) => moveStretchEnds(base, project, routeId, s0, s1),
@@ -102,7 +103,9 @@ export const ROAD_BUILD: BuildKind = {
   },
   onRoute(route, result, s) {
     const r = result.legacy;
-    if (route.kind !== 'road' || !r) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
+    if (route.kind === 'motorway') return { ok: false, why: 'A motorway can only be joined at an interchange; those are not in the game yet.' };
+    if (route.kind !== 'road') return { ok: false, why: 'A road cannot end on a railway.' };
+    if (!r) return { ok: false, why: 'This road is not checked yet, so nothing can join it.' };
     const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
     if (r.kind[i] !== KIND.earth) return { ok: false, why: 'A road cannot join on a bridge or in a tunnel.' };
     return { ok: true, label: route.role === 'mission' ? 'joins our road' : `joins ${route.name}`, end: { position: { x: r.x[i], y: r.y[i], z: r.grade[i] }, anchor: { kind: 'route', routeId: route.id, s: r.s[i] } } };

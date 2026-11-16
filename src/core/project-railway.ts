@@ -1,6 +1,7 @@
 // Railway routes (M1): a new conventional electrified line through the route kernel with the railway
 // policy rows (data/categories.ts R1/R2: track geometry, 12.5 ‰ grade, SPOŽES prices, no level crossings)
 // and CNOSSOS-EU train noise (rail-noise.ts) against the new-line limits 60 / 55 dB.
+import { crossingOverridesOf, crossingTargetsOf } from './project-roadnet';
 import { evaluate, type Design, type EvalContext, type EvalOptions, type Result } from './evaluate';
 import { FREIGHT_TRAIN, PASSENGER_EMU, RAIL_TRAFFIC_PRIOR, type RailTrafficGroup } from './rail-noise';
 import { modeCapability } from './mode-policy';
@@ -26,10 +27,7 @@ export function railwayDesign(project: ProjectDesign, route: RouteDesign): Desig
   const a = route.alignment, v = a.vertical;
   if (v.kind !== 'auto' && v.kind !== 'manual') throw new Error('Unsupported vertical authority');
   const { crossings, ...controls } = a.controls;
-  const crossingOverrides = crossings?.map(c => {
-    if (c.target.kind !== 'legacy-way' || c.target.objectData !== project.objectData) throw new Error('Crossing binding needs repair');
-    return { roadId: c.target.roadId, type: c.choice, ...(c.square !== undefined ? { square: c.square } : {}) };
-  });
+  const crossingOverrides = crossings && crossingOverridesOf(project, crossings);
   return structuredClone({ ...controls, category: categoryOf(route), speed: route.specification.designSpeed, pis: a.pis,
     profileMode: v.kind, vpis: v.kind === 'manual' ? v.vpis : v.manualVpis ?? [], gradePins: v.kind === 'auto' ? v.pins : v.autoPins,
     crossingOverrides, buildingOverrides: project.buildingOverrides, objectData: project.objectData,
@@ -42,7 +40,7 @@ export function replaceRailwayFromDesign(project: ProjectDesign, routeId: string
   if ((d.category !== 'R1' && d.category !== 'R2') || !designSpeeds(d.category).includes(d.speed)) throw new Error('Wrong category for a railway');
   const { category, speed, pis, profileMode, vpis, gradePins, crossingOverrides, buildingOverrides, objectData: _o, maxGradient: _g, ...controls } = structuredClone(d);
   route.alignment = { kind: 'pi', pis, controls: { ...controls, ...(crossingOverrides === undefined ? {}
-    : { crossings: crossingOverrides.map(c => ({ choice: c.type, target: { kind: 'legacy-way' as const, objectData: project.objectData, roadId: c.roadId }, ...(c.square !== undefined ? { square: c.square } : {}) })) }) },
+    : { crossings: crossingTargetsOf(project, crossingOverrides) }) },
     vertical: profileMode === 'auto' ? { kind: 'auto', pins: gradePins ?? [], manualVpis: vpis }
       : { kind: 'manual', vpis, ...(gradePins === undefined ? {} : { autoPins: gradePins }) } };
   route.specification = { ...route.specification, tracks: category === 'R1' ? 1 : 2, designSpeed: speed,
@@ -216,8 +214,8 @@ export function evaluateProjectRailway(ctx: EvalContext, project: ProjectDesign,
     }
   }
   for (const c of route.alignment.controls.crossings ?? []) {
-    if (c.target.kind !== 'legacy-way') return { status: 'incomplete', reason: 'unsupported-crossing' };
-    if (c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
+    if (c.target.kind !== 'legacy-way' && c.target.kind !== 'route') return { status: 'incomplete', reason: 'unsupported-crossing' };
+    if (c.target.kind === 'legacy-way' && c.target.objectData !== project.objectData) return { status: 'incomplete', reason: 'unresolved-binding' };
   }
   // A mission railway must be what the mission asks for, between its ports (as the road kernel checks).
   const goal = route.role === 'mission' ? project.mission.connections[0] : undefined;

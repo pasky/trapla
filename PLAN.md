@@ -248,10 +248,12 @@ What exists (details and commands in `README.md`):
   line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
   RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
   crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
-- 150 km/h speed-limit pilot (research/41) for motorways designed for 130: a posted limit (Act 361/2000
-  §18(7)), never a design speed; travel time at 150, light-vehicle lane speeds +20 km/h in the motorway noise
-  source (PROVISIONAL extrapolation, all-day upper bound), variable signs 54.4 M CZK / 47 km (ŘSD). D35 motorway:
-  7.6 → 6.6 min, +40 M CZK (signs and the louder noise).
+- The 150 km/h speed-limit pilot option was removed (2026-11-16, owner): a posted limit is traffic policy, not
+  design, and it only added cost (no goal rewarded it). A motorway is signed at its design speed; a save that had
+  it on loads as 130 (its operating speed is ignored). research/41 stays as background: it could return only as
+  a mission design goal (a time target that needs it). The Motorway card has one "Design speed" control with the
+  norm line it implies: curves ≥ 840 / 690 / 560 m at 130 / 120 / 110 km/h are the 2018 edition's (research/33
+  §7); the 4 % slope and the vertical radii remain the older edition's (the 2018 values are not public).
 - Build → Motorway / Railway and drag-to-rebuild of mapped railways (`ui/mode-kinds.ts`). A Build motorway is
   unpriced (no interchanges); a rebuilt railway stretch is unpriced until taking up the old track is priced.
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
@@ -275,8 +277,7 @@ What exists (details and commands in `README.md`):
   merging main's valid reroutes (Královec starter re-fitted, 10.4 bn). A double track's noise on its two tracks, a single track's on its axis.
   Railway ends on a track leave it at no more than a turnout's angle (4.76°, research/38 §5): the Královec
   starter now leaves Trutnov hl.n. along its tracks (VALID 10.4 bn). Rebuilt railway stretches keep their line's
-  speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. The 150 km/h
-  pilot's travel time uses the 39 % share of time at 150 (MD evaluation, research/41). A mapped railway is
+  speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. A mapped railway is
   dragged without selecting it first; the direction towards A numbers its bends from its own start.
 
 ### Buildable automatic reroutes, lowered underpasses (cost model 22, 2026-11-16)
@@ -304,9 +305,9 @@ What exists (details and commands in `README.md`):
 - Future improvement: a crossed road meeting ours very obliquely gets a box as long as its skewed path under
   our embankment (town-centre km 15.98: a 57 m box sticking out of the slope). A designer would square the
   crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); done in
-  model 26.
+  model 28.
 
-### Crossing remedies as designers choose them (cost model 26, 2026-11-16)
+### Crossing remedies as designers choose them (cost model 28, 2026-11-16)
 
 - A road running along ours (crossing it and back without leaving our earthworks) is one crossing and is moved
   beside our earthworks as an accompanying road where that is cheaper than keeping a crossing for it (D3 motorway
@@ -324,7 +325,7 @@ What exists (details and commands in `README.md`):
 - Against model 25 all published designs stay VALID and get cheaper (straight −187 M, best −40 M, demo −37 M,
   direct-80 −74 M, direct-90 −47 M, town-centre −146 M); D3 motorway starter 17.41 → 14.03 bn, whole D3
   40.89 → 37.32 bn (its 698 m bridge along the motorway gone), whole D35 34.26 → 33.74 bn; Nová Paka 2.77 → 2.57 bn,
-  its km 3.3 drags 10/24 → 0/24 invalid. Details, audits and timing: `docs/footprint-conflicts.md` § Model 26.
+  its km 3.3 drags 10/24 → 0/24 invalid. Details, audits and timing: `docs/footprint-conflicts.md` § Model 28.
 
 ### Map camera and labels (playtest-qa S1 #15, #17, #19, 2026-11-16)
 
@@ -385,7 +386,64 @@ What exists (details and commands in `README.md`):
   violations 144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch
   fails); the walls for buildings alone: no design dearer by more than 1 M, four random ones 34–59 M cheaper.
 
-### Travel-time target X and traffic Y
+### Town rates in the grade search; walls and short bridges by water (cost model 27, 2026-11-16)
+
+- The block-wise grade search now prices a stretch whose axis lies in a built-up area at town rates, as the bill
+  does there: SPK CN's urban road row, bridges and tunnels with the urban "other objects" surcharge (49.3 % vs
+  30.6 %), the urban tunnel row and building land (1,500 CZK/m² × 1.5) instead of farmland. Each ground class has a
+  rural and a town variant (`classAt` returns the town class where the centreline is built-up, chainage-anchored as
+  research/39 requires). Poříčí (D11 straight km 4.9–5.9): Auto's own design now bills within 0.5 M CZK of the
+  player's raised bridge over km 5.09–5.50 (it was ≈ 80 M dearer under model 23, ≈ 1.5 M under model 25).
+- Tried and left out, measured on the 10 Auto fixtures + 24 random D11 designs against main (bill sums): town
+  rates alone −1,459 M (16 cheaper, 14 dearer, validity 11 → 11); adding crossed-road remedies as priced points
+  (junction / reroute / its bridge over us / underpass by height, our short bridge with its abutments) −931 M and
+  +50 % evaluate time; adding buildings each earthwork / deck would take −1,254 M and validity 11 → 8. The full
+  evaluation's structure choice does not share those signals (it bridges a crossed road only where it is forced, and
+  keeps buildings behind walls the search cannot see), so the search raised the line for savings the bill never
+  made (demo km 6.5–7.2: −69 M of buildings for +205 M of bridge). Parked: `/tmp/w7/dp-signals-wip.patch`.
+- A retaining wall too high where the protected feature begins (ground falling away beside a bank) now stands
+  nearer the road, where it is lower, wherever it fits (`retaining.ts`). A bank over water that no wall can hold
+  back is carried past on a short bridge, also where the axis is only just above ground; water still left under
+  earthworks gets one more engineering pass with a bridge over it (as a stream beyond a bridge's end did; its
+  conflict id check never matched before). QA's D11 drag at km 9.0 (+65 m: "Our earthworks cover a pond or river
+  at km 8.55") is VALID; a sweep of 30 single-bend drags at km 9.0 (±40…120 m): VALID 7 → 14.
+- Fixtures against model 26 (M CZK): straight −135.5, best +9.2, best-drag +10.6, best-pin +13.1, best-structures
+  +10.6, best-manual +9.2 (walls), demo −37.9, direct-80 +26.7, direct-90 −137.4, town-centre / town-controls
+  +24.5; validity as before. The small rises are 1–2 m shifts of the grade in blocks that are not built-up, through
+  the mass balance; edit-locality (all suites): no change beyond 10 km, no new far problems, QA repros PASS.
+  outcome-audit (5 designs + straight + 24 random): −1,578 M in sum, VALID 8 → 8, violations 106 → 124 (random-11,
+  an S 7.5 design already invalid: a long town bridge whose piers cannot miss the roads below, an engine limit).
+  Evaluate time, sum of per-design minima over 35 designs, interleaved in one process: +1.0 % (noise).
+- Known engine limits seen in the km 9.0 drag sweep (not fixed): (1) on D11 drags that move the line left at
+  km 9.0, a long bridge at km 15.0–15.6 cannot place its piers clear of the railway running alongside below it
+  ("A bridge pier stands on a railway" ×10–15) — the support layout only moves piers along the bridge, it cannot
+  span a parallel track; (2) a skewed stream crossing (D11 km 7.84 at +55 m, sine 0.27, 127 m of span along our
+  road) misses its required span by ≈ 1 m where the ground rises above the grade at the bridge's end: forced bridge
+  cells stop where the grade meets the ground, so Auto would need to raise the line there.
+
+### One drag, no curve-room problem (2026-11-16)
+
+- A drag that starts on the road within an easement's length (the speed's minimum transition, e.g. 90 m at
+  90 km/h) of a bend's curve moves that bend (a new bend there would crowd it); elsewhere it adds a bend, which on
+  release is moved along the line (≤ 150 m, `core/bend-fit.ts`, as the rebuilding drag's bend already was) to where
+  no curve lacks room ("too close for an S-bend", "too close to the end"). Measured on 200 random drags each on the
+  best and demo designs (curve-room problems from the drag alone): 41 / 51 → 0 / 1.
+
+### Any mapped road can be rebuilt (cost model 25, 2026-11-16)
+
+- Any mapped road, street or track (and, from model 23, a railway along its own line) is dragged directly to
+  rebuild a stretch of it; see `docs/any-road-editing.md`. A rebuilt stretch keeps its old road where its line
+  stays on it (nothing built or billed there); every road is checked against the network as the player edited
+  it (designed roads crossed by the same crossing engine; the lower-ranking road held on the other's deck and
+  credited once); a house two roads take is billed once, houses heard by several roads are decided on their
+  combined noise.
+- Single-road bills unchanged: the D11 fixtures are identical to model 24 (re-stamped, version only);
+  outcome-audit as model 24 (violations 118, VALID 8). Multi-road totals changed, hence the bump.
+- Known (main's settled fill value): the structure choice of a whole road shares one fill value, so a change at
+  one place can tip a marginal bridge / embankment cell kilometres away. D3: rebuilding III/1057 under our
+  bridge at km 11.8 makes that bridge 10 m longer (+24.5 M around it) but shortens the 1.45 km viaduct at km 4.0
+  by one 17 m-high cell (−25.5 M): the motorway's whole bill −32 M.
+
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.
   Since research/14 the thresholds come from TP 188 (2018): the highest AADT at which a rural two-lane

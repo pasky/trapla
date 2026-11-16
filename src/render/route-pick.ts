@@ -37,3 +37,18 @@ export function pickRoute(routes: readonly PickRoute[], x: number, y: number, pi
   }
   return hit;
 }
+
+/** The route whose drawn ground footprint (carriageway, earthworks to the slope edges) covers plan point
+ * (x, y): a road end placed there is on that road, never on "open ground" (its slope). Nearest station
+ * first; null outside every footprint. */
+export function footprintHit(routes: readonly { id: string; result: Pick<Result, 'n' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'dayL' | 'dayR' | 'ds'> }[], x: number, y: number): { routeId: string; s: number } | null {
+  let hit: { routeId: string; s: number } | null = null, best = Infinity;
+  for (const { id, result: r } of routes) for (let i = 0; i < r.n; i++) {
+    const dx = x - r.x[i], dy = y - r.y[i], along = dx * r.tx[i] + dy * r.ty[i];
+    if (Math.abs(along) > r.ds) continue;
+    const across = -dx * r.ty[i] + dy * r.tx[i], reach = across >= 0 ? r.dayL[i] : r.dayR[i];
+    const d = Math.hypot(dx, dy);
+    if (Math.abs(across) <= reach && d < best) { best = d; hit = { routeId: id, s: r.s[i] }; }
+  }
+  return hit;
+}

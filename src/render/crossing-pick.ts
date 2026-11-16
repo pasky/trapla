@@ -17,7 +17,8 @@ function owned(c: CrossingResult): { paths: { points: CrossingPoint[]; half: (i:
   const g = c.geometry, paths: ReturnType<typeof owned>['paths'] = [], disks: ReturnType<typeof owned>['disks'] = [];
   if (!g) return { paths, disks };
   const half = g.width / 2;
-  if (g.road && g.road.length >= 2) {
+  // a designed road of the project draws (and is picked as) its own body, not this crossing's copy of it
+  if (g.road && g.road.length >= 2 && !c.designed) {
     const box = g.underpass, outer = box ? box.width / 2 + box.wall : 0;
     paths.push({ points: g.road, half: i => box && i >= box.start && i < box.end ? Math.max(half, outer) : half });
   }

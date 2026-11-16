@@ -26,7 +26,7 @@ export const TRAFFIC_THRESHOLDS: { maxAadt: number; category: CategoryId }[] = [
   { maxAadt: Infinity, category: 'D27.5' },
 ];
 
-export const CATEGORY_RANK: Record<CategoryId, number> = { 'S7.5': 0, 'S9.5': 1, 'S11.5': 2, 'D27.5': 3, 'D27.5-1': 3, R1: 0, R2: 0 };
+export const CATEGORY_RANK: Record<CategoryId, number> = { P4: -2, 'M7.5': -1, 'S7.5': 0, 'S9.5': 1, 'S11.5': 2, 'D27.5': 3, 'D27.5-1': 3, R1: 0, R2: 0 };
 
 export function minCategoryForTraffic(aadt: number): CategoryId {
   for (const t of TRAFFIC_THRESHOLDS) if (aadt <= t.maxAadt) return t.category;
@@ -72,7 +72,7 @@ export interface ScenarioParams {
 
 export const D11_SCENARIO: ScenarioParams = {
   id: 'd11',
-  title: 'Trutnov → Polish border',
+  title: 'Trutnov → Polish border', group: 'Trutnov',
   traffic: 9_000,
   maxTravelMin: 14.5,
   terrainClass: 'hilly',

@@ -1,6 +1,7 @@
 // Persistence boundary validation. Invalid/newer saves are preserved, never normalised into defaults.
 import { CROSSING_CHOICES, MAX_LINK_COORD, MAX_LINK_VIA } from './crossings';
 import type { AlignmentDesign, ProjectDesign } from './project';
+import { ROAD_CROSS_SECTIONS } from './data/categories';
 
 type Obj = Record<string, unknown>;
 const object = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -42,7 +43,8 @@ function controls(v: unknown): boolean {
     // straightened or kept on its line: an underpass or a bridge over us only
     if (c.square !== undefined && (typeof c.square !== 'boolean' || (c.choice !== 'underpass' && c.choice !== 'overbridge'))) return false;
     const t = c.target;
-    return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId)
+    if (c.toRef !== undefined && (c.to === undefined || !object(c.toRef) || !['route', 'after'].includes(c.toRef.kind as string) || !text(c.toRef.routeId))) return false;
+    return t.kind === 'legacy-way' ? text(t.objectData) && integer(t.roadId) && (t.after === undefined || text(t.after))
       : t.kind === 'source' ? interval(t.interval)
       : t.kind === 'route' && text(t.routeId) && number(t.s0) && t.s0 >= 0 && number(t.s1) && t.s1 >= t.s0;
   }))) return false;
@@ -91,7 +93,7 @@ function spec(v: unknown, kind: unknown): boolean {
       || o.speedPolicy !== undefined && !choice(o.speedPolicy, ['design', 'independent'])
       || o.trafficUnknown !== undefined && (o.trafficUnknown !== true || o.aadt !== 0)) return false;
     return kind === 'motorway' ? text(v.crossSection) : choice(v.legalClass, ['I', 'II', 'III', 'local', 'service', 'track'])
-      && choice(v.crossSection, ['S7.5', 'S9.5', 'S11.5', 'existing'])
+      && choice(v.crossSection, [...ROAD_CROSS_SECTIONS, 'existing'])
       && (v.crossSection !== 'existing' || number(v.existingWidth) && v.existingWidth > 0);
   }
   return kind === 'railway' && (v.gaugeMm === null || number(v.gaugeMm) && v.gaugeMm > 0) && choice(v.tracks, [1, 2])

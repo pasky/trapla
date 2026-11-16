@@ -4,6 +4,7 @@ import type { Bounds, ProjectDesign, SourceInterval, SourceLocation, TransportSu
 import type { TransportGraphData, TransportRenderInterval, TransportSource, TransportSurfaceQuery } from './project-transport';
 import { validateTransportGraph } from './project-transport-validation';
 import { cloneProjectValue, freezeProjectValue } from './project-value';
+import { defaultTraffic, type TrafficCensus, type TrafficDefault } from './traffic-census';
 
 export interface SourceSegment {
   sourceId: string; s0: number; s1: number; a: { x: number; y: number }; b: { x: number; y: number };
@@ -69,7 +70,9 @@ export class ProjectTransportIndex implements TransportSurfaceQuery {
   private readonly nodeUses = new Map<string, SourceLocation[]>();
   private readonly grid: SegmentGrid<SourceSegment>;
   constructor(graph: TransportGraphData, readonly transportData: string, vectorData: string,
-    private readonly ground: ProjectGround) {
+    private readonly ground: ProjectGround,
+    /** the pack's traffic census, when it ships one (the map's `traffic.json`) */
+    readonly census: TrafficCensus | null = null) {
     const errors = validateTransportGraph(graph, vectorData);
     if (errors.length) throw new Error(errors.join('\n'));
     this.graph = freezeProjectValue(cloneProjectValue(graph));
@@ -106,6 +109,12 @@ export class ProjectTransportIndex implements TransportSurfaceQuery {
     const p = this.sample(source, s); if (!p) return null;
     const z = source.elevation === 'terrain' ? (this.ground.isOob(p.x, p.y) ? NaN : this.ground.heightAt(p.x, p.y)) : lerp(source.z[p.i], source.z[p.i + 1], p.t);
     return Number.isFinite(z) ? { x: p.x, y: p.y, z } : null;
+  }
+  /** What a stretch of a mapped road carries today: the census count of its section at the stretch's
+   * middle, else the average road of its class (labelled as an estimate by the caller). */
+  traffic(interval: SourceInterval, legalClass: string): TrafficDefault {
+    const source = this.sources.get(interval.sourceId), p = source && this.sample(source, (interval.s0 + interval.s1) / 2);
+    return defaultTraffic(legalClass, this.census, source?.tags.ref, p ?? undefined);
   }
   checkInterval(interval: SourceInterval): void {
     const s = this.sources.get(interval.sourceId);
