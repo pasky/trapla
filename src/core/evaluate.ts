@@ -843,7 +843,6 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
   const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
   const balanceTolerance = MATERIAL_VALUE.tolerancePerM * al.length;
   const tpl = { crownWidth: b };
-  const widen = hairpinWidening(al, d.pis, d.category, st.s);
   // Mass balance of a candidate grade line over a stretch [r0, r1] (a block of the grade solve, or
   // the whole route): the same steps as the bill below (cross-sections, structure choice incl.
   // forced crossings, volumes), on samples every ≈ BALANCE_STRIDE stations placed evenly within the
@@ -1231,6 +1230,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const prices = routePrices(d, setup);
   const { surE, surB, surT, baseRural, baseUrban, tunnelKm, bridge, b, topsoilPerM2, costFor, usable,
     balanceTolerance, tpl, roadS } = prices;
+  const widen = hairpinWidening(al, d.pis, d.category, st.s); // a hairpin's widened lanes
 
   // --- vertical alignment ---
   const solved = routeGradeLine(ctx, d, opts, setup, prices);
