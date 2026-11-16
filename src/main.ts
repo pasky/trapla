@@ -35,6 +35,7 @@ import { View } from './render/view';
 import { loadPack, packIdentities } from './scenario';
 import { startEvalWorkers } from './eval-workers';
 import { EvalClient, type EvalRequest } from './eval-client';
+import { newSession } from './session';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext } from './core/project-legacy';
@@ -45,7 +46,7 @@ import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
 import { StorageGuard, showStorageNotice } from './ui/storage-guard';
 import { RouteBar } from './ui/route-bar';
-import { activeSelection, qualifySelection, type RouteSelection } from './ui/route-selection';
+import { activeSelection, qualifySelection } from './ui/route-selection';
 import { CurveEditor } from './ui/curve-edit';
 import { Hud, type DirectionsState } from './ui/hud';
 import { noLinksCard, proposalCard, routeHeadCard, type RouteCardDeps } from './ui/route-cards';
@@ -120,6 +121,8 @@ async function main() {
   storage.onProblem = () => { console.warn('Saving stopped', storage.problem); storageNotice(); };
   if (storage.problem !== null) storageNotice();
   const store = new ActiveRouteStore(projectStore, initialProject);
+  /** what is on screen: the results shown and the selection (session.ts) */
+  const session = newSession();
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
   // full evaluations and drag previews, each in its own worker (eval-workers.ts)
   const { worker, previewWorker } = startEvalWorkers(pack, scenario, A, B,
@@ -164,16 +167,12 @@ async function main() {
   }, noise, () => frameRoute());
   /** the active route as built (else its ends and bends) in view */
   /** `r`: the road to frame (default: the last result shown; right after a switch that is still the old road's) */
-  const frameRoute = (r: Result | null = last) => {
+  const frameRoute = (r: Result | null = session.last) => {
     const d = store.read() ? store.design : null;
     view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
       : d ? [A, ...d.pis, B] : []);
   };
 
-  let last: Result | null = null;
-  let projectFull: ProjectResult | null = null;
-  let displayedProject: ProjectResult | null = null;
-  let qualifiedSelection: RouteSelection | null = null;
   const missionRouteId = () => projectStore.snapshot.design.routes.find(r => r.role === 'mission')?.id;
   /** exactly the one legacy road: the unchanged single-road score/verdict applies (core's facade) */
   const legacyFacade = () => {
@@ -181,8 +180,6 @@ async function main() {
     return d.routes.length === 1 && !d.corridors.length && !d.connections.length && only.role === 'mission' && !only.source
       && store.activeRouteId === only.id && store.read() !== null;
   };
-  /** the active road's live drag price (≈), until the next full result */
-  let activePreviewPrice: number | null = null;
   /** player names of the routes; a motorway's two directions are one motorway (its forward name) */
   const routeNames = () => {
     const d = projectStore.snapshot.design, names = Object.fromEntries(d.routes.map(r => [r.id, r.name]));
@@ -190,12 +187,12 @@ async function main() {
     return names;
   };
   const projectScore = (pending: boolean) => {
-    const mission = missionRouteId(), active = store.activeRouteId, alone = projectFull?.cost.alone ?? {};
+    const mission = missionRouteId(), active = store.activeRouteId, alone = session.projectFull?.cost.alone ?? {};
     // While a road is dragged the project total follows its live price: the last full total with this road's
     // own bill replaced by the preview's (≈).
-    const total = projectFull?.cost.total;
-    const live = activePreviewPrice !== null && total !== null && total !== undefined && active && active in alone
-      ? total - alone[active] + activePreviewPrice : null;
+    const total = session.projectFull?.cost.total;
+    const live = session.activePreviewPrice !== null && total !== null && total !== undefined && active && active in alone
+      ? total - alone[active] + session.activePreviewPrice : null;
     // our road: the mission's route, and a motorway mission's other direction
     const missionCorridor = mission ? corridorOfRoute(projectStore.snapshot.design, mission) : undefined;
     const ours = new Set([mission, missionCorridor?.children.forward, missionCorridor?.children.reverse].filter((id): id is RouteId => !!id));
@@ -203,13 +200,13 @@ async function main() {
     // "Our road only" / "This railway only": what the price shown is for, in the active line's own word
     const word = (id: RouteId | null | undefined) => { const k = projectStore.snapshot.design.routes.find(r => r.id === id)?.kind; return k === 'railway' ? 'railway' : k === 'motorway' ? 'motorway' : 'road'; };
     const only = (id: RouteId | null | undefined) => `${id && ours.has(id) ? 'Our' : 'This'} ${word(id)} only`;
-    const own = activePreviewPrice !== null ? { total: activePreviewPrice, approx: true, label: only(active), routeId: active ?? undefined }
+    const own = session.activePreviewPrice !== null ? { total: session.activePreviewPrice, approx: true, label: only(active), routeId: active ?? undefined }
       : active && active in alone ? { total: alone[active], approx: false, label: only(active), routeId: active }
         : mission && mission in alone ? { total: alone[mission], approx: false, label: only(mission), routeId: mission } : null;
-    hud.setProject(projectFull, pending, projectStore.best, { missionRouteId: mission, ours, groups, legacy: legacyFacade(), ownPrice: own,
-      liveTotal: live, dragging: activePreviewPrice !== null && projectStore.inTransaction,
+    hud.setProject(session.projectFull, pending, projectStore.best, { missionRouteId: mission, ours, groups, legacy: legacyFacade(), ownPrice: own,
+      liveTotal: live, dragging: session.activePreviewPrice !== null && projectStore.inTransaction,
       activeRouteId: active ?? undefined, names: routeNames(),
-      lengths: Object.fromEntries(Object.values(projectFull?.routes ?? {}).flatMap(r => {
+      lengths: Object.fromEntries(Object.values(session.projectFull?.routes ?? {}).flatMap(r => {
         const length = r.legacy?.length ?? r.surface?.points.at(-1)?.s; return length === undefined ? [] : [[r.routeId, length]];
       })) });
   };
@@ -218,14 +215,13 @@ async function main() {
   let idleWaiters: (() => void)[] = [];
 
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
-  let sel: Sel | null = null;
   /** shaping reroutes on the map (constructed once the store hooks exist) */
   let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined;
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
     together: (j) => {
-      const receiver = projectFull?.complete ? projectFull.receivers.find(r => r.buildingIndex === j && r.together) : undefined;
+      const receiver = session.projectFull?.complete ? session.projectFull.receivers.find(r => r.buildingIndex === j && r.together) : undefined;
       if (!receiver) return null;
       const routes = projectStore.snapshot.design.routes;
       return { receiver, name: (id) => { const r = routes.find(q => q.id === id); return !r || r.role === 'mission' ? 'our road' : r.name; } };
@@ -259,7 +255,7 @@ async function main() {
     transportGraph = graph;
     // where other roads' earthworks cover a mapped road it is gone: a rebuilt stretch stops short of them
     const covered = (sourceId: string) => coveredStretches(transportIndex!, sourceId, projectStore.snapshot.design.routes.flatMap(r => {
-      const built = projectFull?.routes[r.id]?.legacy;
+      const built = session.projectFull?.routes[r.id]?.legacy;
       return built && !r.source?.intervals.some(i => i.sourceId === sourceId) ? [{ ...built, name: r.role === 'mission' ? 'our road' : r.name }] : [];
     }));
     const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, view, transportIndex, claimedSources, covered);
@@ -297,7 +293,7 @@ async function main() {
   // a rebuilt stretch's ends carry their own drag handles (labelled), so the tick stays unlabelled
   /** a side road's end on another road follows that road: its drawn end is where it was built */
   const endAt = (end: 'a' | 'b') => {
-    const route = store.route, r = route && projectFull?.routes[route.id]?.legacy;
+    const route = store.route, r = route && session.projectFull?.routes[route.id]?.legacy;
     // a paired motorway's directions are shown on its shared line (A→B): its ends are the motorway's
     const paired = route && corridorOfRoute(projectStore.snapshot.design, route.id);
     if (paired?.mode === 'paired') return paired.endpoints[end].position;
@@ -313,16 +309,16 @@ async function main() {
     b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', sign: endInfo('b')?.kind },
     plain: !!store.route && store.route.role !== 'mission',
   });
-  const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);
+  const selectedPi = () => (session.sel?.kind === 'bend' ? session.sel.i : null);
   const stationNear = (x: number, y: number) => {
-    if (!last) return 0;
+    if (!session.last) return 0;
     let bd = Infinity, s = 0;
-    for (let k = 0; k < last.n; k += 2) { const d = (last.x[k] - x) ** 2 + (last.y[k] - y) ** 2; if (d < bd) { bd = d; s = last.s[k]; } }
+    for (let k = 0; k < session.last.n; k += 2) { const d = (session.last.x[k] - x) ** 2 + (session.last.y[k] - y) ** 2; if (d < bd) { bd = d; s = session.last.s[k]; } }
     return s;
   };
   /** where the selection is: map point and station range */
   const placeOf = (t: Sel): { x: number; y: number; s0: number; s1: number } | null => {
-    const r = last;
+    const r = session.last;
     if (!r) return null;
     const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return { x: r.x[i], y: r.y[i] }; };
     switch (t.kind) {
@@ -350,16 +346,16 @@ async function main() {
     if (sourceEditor?.selected) sourceEditor.clear();
     if (buildTool.active) buildTool.cancel(false);
     // a house a road removes (under its works, or bought out by it): its card is that road's, priced or not
-    const remover = next?.kind === 'building' ? projectFull?.buildings.find(b => b.buildingIndex === next.j && b.action !== 'retain')?.routeId : undefined;
+    const remover = next?.kind === 'building' ? session.projectFull?.buildings.find(b => b.buildingIndex === next.j && b.action !== 'retain')?.routeId : undefined;
     if (remover && remover !== store.activeRouteId && projectStore.snapshot.design.routes.some(r => r.id === remover)) switchRoute(remover);
     // a house belongs to the project: its card shows the road whose noise reaches it most
-    else if (next?.kind === 'building' && projectFull?.complete && Object.keys(projectFull.routes).length > 1) {
-      const contributions = projectFull.receivers.find(r => r.buildingIndex === next.j)?.contributions ?? [];
+    else if (next?.kind === 'building' && session.projectFull?.complete && Object.keys(session.projectFull.routes).length > 1) {
+      const contributions = session.projectFull.receivers.find(r => r.buildingIndex === next.j)?.contributions ?? [];
       const owner = contributions.reduce<(typeof contributions)[number] | null>((a, c) => (!a || c.dayEnergy > a.dayEnergy ? c : a), null)?.routeId;
       if (owner && owner !== store.activeRouteId) switchRoute(owner);
     }
-    qualifiedSelection = store.activeRouteId ? qualifySelection(store.activeRouteId, next) : null;
-    sel = activeSelection(store.activeRouteId, qualifiedSelection);
+    session.qualifiedSelection = store.activeRouteId ? qualifySelection(store.activeRouteId, next) : null;
+    session.sel = activeSelection(store.activeRouteId, session.qualifiedSelection);
     if (next) intro.hide();
     const range = next?.kind === 'stretch' ? { s0: next.s0, s1: next.s1 } : null;
     profile.setSelection(range); extras.setRange(range); hud.setRange(range);
@@ -396,7 +392,7 @@ async function main() {
     const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y));
     const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40 || view.lowView;
     let small = view.metresPerPixel > FRAME_MPP;
-    const r = last;
+    const r = session.last;
     if (p.s1 - p.s0 > 1 && r) {
       const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return view.project(r.x[i], r.y[i], r.grade[i]); };
       const a = at(p.s0), b = at(p.s1);
@@ -410,7 +406,7 @@ async function main() {
   inspector.isSideRoad = () => !!store.route && store.route.role !== 'mission';
   /** what the whole-road cards (ui/route-cards.ts) read and may do */
   const routeCards: RouteCardDeps = {
-    route: () => store.route, result: () => last, project: () => projectFull, design: () => projectStore.snapshot.design,
+    route: () => store.route, result: () => session.last, project: () => session.projectFull, design: () => projectStore.snapshot.design,
     transport: () => transportIndex, editable: () => store.read() !== null, directions: () => directionsState(),
     onDirection: w => hud.ev.onDirection?.(w), joinStretch: id => joinStretch(id),
     editProject: edit => store.editProject(edit), inTransaction: () => projectStore.inTransaction,
@@ -428,23 +424,23 @@ async function main() {
   const showNoLinks = () => { select(null); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
 
   const selectPiece = (s: number, fly = false) => {
-    if (!last) return;
-    const p = pieceAt(last, s);
+    if (!session.last) return;
+    const p = pieceAt(session.last, s);
     select({ kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind }, fly);
   };
   /** after a recompute: drop a selection that no longer exists, refresh a piece's kind */
   const revalidate = (r: Result, d: Design) => {
-    if (!sel) return;
-    if ((sel.kind === 'bend' && !d.pis[sel.i]) || (sel.kind === 'pin' && !d.gradePins?.some((p) => Math.abs(p.s - (sel as { s: number }).s) < 0.1))
-      || (sel.kind === 'crossing' && !r.crossings.some((c) => c.roadId === (sel as { roadId: number }).roadId))
-      || (sel.kind === 'vpi' && (d.profileMode !== 'manual' || sel.i >= r.vpis.length - 1))
-      || (sel.kind === 'stretch' && sel.s0 >= r.length)) { select(null); return; }
-    if (sel.kind === 'stretch' && sel.piece) { sel = { ...sel, piece: pieceAt(r, (sel.s0 + sel.s1) / 2).kind }; inspector.sel = sel; }
+    if (!session.sel) return;
+    if ((session.sel.kind === 'bend' && !d.pis[session.sel.i]) || (session.sel.kind === 'pin' && !d.gradePins?.some((p) => Math.abs(p.s - (session.sel as { s: number }).s) < 0.1))
+      || (session.sel.kind === 'crossing' && !r.crossings.some((c) => c.roadId === (session.sel as { roadId: number }).roadId))
+      || (session.sel.kind === 'vpi' && (d.profileMode !== 'manual' || session.sel.i >= r.vpis.length - 1))
+      || (session.sel.kind === 'stretch' && session.sel.s0 >= r.length)) { select(null); return; }
+    if (session.sel.kind === 'stretch' && session.sel.piece) { session.sel = { ...session.sel, piece: pieceAt(r, (session.sel.s0 + session.sel.s1) / 2).kind }; inspector.sel = session.sel; }
   };
 
   // ---- edits (ui/design-edits.ts) ----
   const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, inspectorEvents, decisionEvents } = createDesignEdits({
-    store, profile, get last() { return last; }, select: (next, fly) => select(next, fly),
+    store, profile, get last() { return session.last; }, select: (next, fly) => select(next, fly),
   });
   inspector.ev = inspectorEvents;
   decisions.ev = decisionEvents;
@@ -457,14 +453,12 @@ async function main() {
   // route's ground with the previous heights at once, at most once per frame. Display only.
   let previewFrame = 0;
   const schedulePreview = () => {
-    if (previewFrame || evals.received >= evals.posted - 1 || !last) return;
+    if (previewFrame || evals.received >= evals.posted - 1 || !session.last) return;
     previewFrame = requestAnimationFrame(() => {
       previewFrame = 0;
-      if (evals.received < evals.posted && last && store.read()) profile.setPreview(provisionalProfile(A, B, store.design, last, (x, y) => pack.terrain.heightAt(x, y)));
+      if (evals.received < evals.posted && session.last && store.read()) profile.setPreview(provisionalProfile(A, B, store.design, session.last, (x, y) => pack.terrain.heightAt(x, y)));
     });
   };
-  /** last full result: the preview's single auto-profile solve is priced at its material value */
-  let lastFull: Result | null = null;
   /** the newest request is a full one and its result is in (the 3D rebuild may still run) */
   const settled = () => evals.settled;
   /** …and its 3D scene is up (whenIdle) */
@@ -475,17 +469,17 @@ async function main() {
   // What is asked of the workers and which replies count: eval-client.ts. Here: what to do with them.
   const evals: EvalClient = new EvalClient(worker, previewWorker, {
     snapshot: () => projectStore.snapshot, design: () => store.read(), activeRouteId: () => store.activeRouteId,
-    previewPrices: () => ({ materialValue: lastFull?.quantities.materialValue, structureValue: lastFull?.quantities.structureValue }),
-    displayed: () => displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision },
+    previewPrices: () => ({ materialValue: session.lastFull?.quantities.materialValue, structureValue: session.lastFull?.quantities.structureValue }),
+    displayed: () => session.displayedProject && { epoch: session.displayedProject.epoch, revision: session.displayedProject.revision },
     willPost: () => {
       heavy?.cancel(); heavy = null; // a rebuild for an older design would only be thrown away
       hud.setProfileBusy(true);
     },
     didPost: () => { projectScore(true); schedulePreview(); },
-    error: message => { console.error('worker error', message); setStatus('This design could not be computed. Undo the last change.'); settle(); },
+    error: message => { console.error('worker error', message); setStatus('This design could not be computed. Undo the session.last change.'); settle(); },
     band: m => {
-      const r = projectFull?.routes[m.routeId]?.legacy;
-      if (r && projectFull!.epoch === m.identity.epoch && projectFull!.revision === m.identity.revision
+      const r = session.projectFull?.routes[m.routeId]?.legacy;
+      if (r && session.projectFull!.epoch === m.identity.epoch && session.projectFull!.revision === m.identity.revision
         && m.routeId === store.activeRouteId) noise.setBand(r, m.footprint);
     },
     preview: (m, request) => showPreview(m, request),
@@ -539,7 +533,7 @@ async function main() {
    * direction's own heights (composed on the same stations), not the shared line's. */
   const syncApart = (shown: Result) => {
     const design = projectStore.snapshot.design, corridor = store.route && corridorOfRoute(design, store.route.id);
-    const fr = corridor && projectFull?.routes[corridor.children.forward], f = fr?.legacy, r = corridor && projectFull?.routes[corridor.children.reverse]?.legacy;
+    const fr = corridor && session.projectFull?.routes[corridor.children.forward], f = fr?.legacy, r = corridor && session.projectFull?.routes[corridor.children.reverse]?.legacy;
     const state = directionsState();
     if (!corridor || store.oneDirection || !fr?.apart?.length || !f || !r || !state || f.n !== shown.n || r.n !== shown.n) { profile.setApart([]); return; }
     profile.setApart(fr.apart.map(a => ({ ...a, lines: [
@@ -554,9 +548,9 @@ async function main() {
     setLineFrame(length, shown && readsBackwards(), design?.pis.length ?? 0);
   view.bendsReversed = readsBackwards;
   const showActiveResult = () => {
-    const rd = store.read(), r = store.activeRouteId ? activeLegacy(projectFull?.routes[store.activeRouteId]) : undefined;
+    const rd = store.read(), r = store.activeRouteId ? activeLegacy(session.projectFull?.routes[store.activeRouteId]) : undefined;
     frameLine(r?.length ?? 0, !!r);
-    last = lastFull = r ?? null;
+    session.last = session.lastFull = r ?? null;
     hud.setRouteState(!!rd, !!r && !!rd);
     const together = !!store.route && !store.oneDirection && projectStore.snapshot.design.corridors.some(c => c.mode === 'paired' && c.children.forward === store.route!.id);
     document.querySelector<HTMLElement>('.profile-bar > b')!.textContent = store.route ? `Profile · ${together ? `${store.route.kind === 'motorway' ? 'Motorway' : store.route.name}, ${DIRECTIONS_TEXT.both.toLowerCase()}` : store.route.name}` : 'Profile';
@@ -572,7 +566,7 @@ async function main() {
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
-    inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
+    inspector.setNetworkPending(!(session.projectFull?.complete && session.projectFull.acousticScreen.complete));
     const ends = activeEndpoints();
     inspector.ends = { a: endInfo('a'), b: endInfo('b'), names: { a: ends.a.label, b: ends.b.label } };
     inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
@@ -580,7 +574,7 @@ async function main() {
 
   // the noise view's band: asked from the worker for the displayed result when the view needs it
   noise.requestBand = () => {
-    const full = projectFull, routeId = store.activeRouteId, d = store.read();
+    const full = session.projectFull, routeId = store.activeRouteId, d = store.read();
     if (!full || !routeId || !d) return;
     evals.requestBand({ epoch: full.epoch, revision: full.revision }, routeId, CATEGORIES[d.category].crownWidth);
   };
@@ -591,7 +585,7 @@ async function main() {
     for (const k in handlerTiming) delete handlerTiming[k];
     const r = activeLegacy(m.result), rd = request?.design;
     if (r && rd) {
-      const shown = r.preview ? r : { ...r, preview: true }; last = shown;
+      const shown = r.preview ? r : { ...r, preview: true }; session.last = shown;
       frameLine(shown.length, true, rd);
       // a paired motorway is drawn once, under its forward direction; with separate stretches, each
       // drawn part of the moved line (the shared body where both move)
@@ -601,7 +595,7 @@ async function main() {
       if (parts.length) for (const p of parts) routeScene.preview(p.id, p.result.preview ? p.result : { ...p.result, preview: true });
       else {
         // the drawn parts changed (a stretch appears, merges or goes): the moved line on what is drawn now
-        const drawnNow = corridor ? (projectFull?.routes[corridor.children.forward]?.drawn ?? []).map(p => p.id) : [];
+        const drawnNow = corridor ? (session.projectFull?.routes[corridor.children.forward]?.drawn ?? []).map(p => p.id) : [];
         const on = [corridor?.mode === 'paired' ? corridor.children.forward : m.routeId, ...drawnNow].find(id => routeScene.has(id));
         if (on) routeScene.preview(on, shown);
       }
@@ -610,7 +604,7 @@ async function main() {
       syncApart(shown);
       profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
       profile.setBends(bendStations(shown, rd)); took('profile');
-      if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
+      if (m.routeId === store.activeRouteId) session.activePreviewPrice = shown.cost.total;
       hud.setResult(shown, rd, store.best); projectScore(true); took('hud');
       curveEdit.refresh(); took('curveEdit');
     }
@@ -621,7 +615,7 @@ async function main() {
     let lap = performance.now();
     const took = (k: string) => { const now = performance.now(); handlerTiming[k] = now - lap; lap = now; };
     for (const k in handlerTiming) delete handlerTiming[k];
-    projectFull = m.result; activePreviewPrice = null;
+    session.projectFull = m.result; session.activePreviewPrice = null;
     // Accepted rebuilt stretches leave the map: their drawn features follow from the road links here.
     if (!m.result.acceptedRenderReplacements.length && m.result.acceptedReplacements.length && transportIndex) {
       const base = transportIndex;
@@ -665,7 +659,7 @@ async function main() {
       const t0 = performance.now(); geometry.commit(); const t1 = performance.now(); sources?.commit(); const t2 = performance.now();
       sourcePicker?.setAccepted(result.acceptedRenderReplacements);
       syncDecorations(result);
-      displayedProject = result; heavy = null;
+      session.displayedProject = result; heavy = null;
       projectStore.offerBest(result); projectScore(false);
       const t3 = performance.now();
       heavyStats = { ...stats, wall: t3 - started, commit: t3 - t0, commitView: t1 - t0, commitCrossings: t2 - t1, overlays: t3 - t2 };
@@ -680,14 +674,14 @@ async function main() {
 
   // on-map radius handles for the selected bend (grips, + / −)
   const curveEdit = new CurveEditor(view, document.getElementById('overlay')!, pack.terrain, {
-    get a() { return A; }, get b() { return B; }, design: () => store.design, selected: () => selectedPi(), result: () => last,
+    get a() { return A; }, get b() { return B; }, design: () => store.design, selected: () => selectedPi(), result: () => session.last,
     setRadius: (i, r, commit) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
     commit: () => store.commit(),
   });
 
   /** the motorway direction switch follows the active route */
   const syncDirections = () => {
-    { const r = store.activeRouteId ? activeLegacy(projectFull?.routes[store.activeRouteId]) : undefined; frameLine(r?.length ?? 0, !!r); }
+    { const r = store.activeRouteId ? activeLegacy(session.projectFull?.routes[store.activeRouteId]) : undefined; frameLine(r?.length ?? 0, !!r); }
     const design = projectStore.snapshot.design, route = store.route, corridor = route ? corridorOfRoute(design, route.id) : undefined;
     inspector.oneDirection = corridor?.mode === 'independent';
     document.getElementById('profile')!.classList.toggle('one-direction', !!corridor && store.oneDirection);
@@ -728,11 +722,11 @@ async function main() {
       apart: corridor.mode === 'paired' ? (corridor.stretches ?? []).map(t => ({ id: t.id, s0: t.a, s1: t.b, following: !apart.has(t.id) })) : [] };
   };
   works = new CrossingHighlight(view, document.getElementById('overlay')!, {
-    selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull,
+    selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull,
   });
   linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
-    selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull, design: () => store.design,
-    select: (roadId) => { if (sel?.kind !== 'crossing' || sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
+    selected: () => (session.sel?.kind === 'crossing' ? session.sel.roadId : null), result: () => session.lastFull, design: () => store.design,
+    select: (roadId) => { if (session.sel?.kind !== 'crossing' || session.sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
     setVia, commit: () => store.commit(), heightAt: (x, y) => pack.terrain.heightAt(x, y),
   });
 
@@ -750,17 +744,17 @@ async function main() {
     const shown = store.activeRouteId, shownOne = store.oneDirection;
     if (!store.switchRoute(id, created, one)) return false;
     syncDirections();
-    evals.endGesture(); activePreviewPrice = null;
+    evals.endGesture(); session.activePreviewPrice = null;
     frameEnds();
-    sel = activeSelection(id, qualifiedSelection); qualifiedSelection = qualifySelection(id, sel);
+    session.sel = activeSelection(id, session.qualifiedSelection); session.qualifiedSelection = qualifySelection(id, session.sel);
     view.setHover(null); extras.setRange(null);
     // another line: its whole profile. The line the profile already shows (a click on our own road): the
     // profile keeps its zoom, and the selection that follows scrolls it only if the place is out of view
     if (store.activeRouteId !== shown || store.oneDirection !== shownOne) profile.fit();
     showActiveResult();
     if (!store.read()) curveEdit.hide();
-    select(sel);
-    if (projectFull) syncDecorations(projectFull);
+    select(session.sel);
+    if (session.projectFull) syncDecorations(session.projectFull);
     routeBar.set(projectStore.snapshot.design, id, projectStore.inTransaction);
     syncEnds();
     projectScore(!sceneIdle());
@@ -796,15 +790,15 @@ async function main() {
     // A railway or motorway joins only lines of its own kind: a road picked near the click (at an overview, one
     // is near every click) is not where it ends; it ends on the ground there (roads are crossed, not joined).
     const joins = (kind: string | undefined) => building.kind === 'road' || kind === building.kind;
-    const hit = routeAt(clientX, clientY, 10), rr = hit && projectFull?.routes[hit.routeId];
+    const hit = routeAt(clientX, clientY, 10), rr = hit && session.projectFull?.routes[hit.routeId];
     const route = hit && projectStore.snapshot.design.routes.find(r => r.id === hit.routeId);
     if (hit && rr && route && joins(route.kind)) return building.onRoute(route, rr, hit.s);
     // on a road's carriageway or earthworks beside its centreline: that road, never "open ground"
-    const under = footprintHit(Object.values(projectFull?.routes ?? {}).flatMap(r => {
-      const legacy = r.routeId === store.activeRouteId && last ? last : r.legacy;
+    const under = footprintHit(Object.values(session.projectFull?.routes ?? {}).flatMap(r => {
+      const legacy = r.routeId === store.activeRouteId && session.last ? session.last : r.legacy;
       return legacy ? [{ id: r.routeId, result: legacy }] : [];
     }), x, y);
-    const underRoute = under && projectStore.snapshot.design.routes.find(r => r.id === under.routeId), ur = under && projectFull?.routes[under.routeId];
+    const underRoute = under && projectStore.snapshot.design.routes.find(r => r.id === under.routeId), ur = under && session.projectFull?.routes[under.routeId];
     if (under && underRoute && ur && joins(underRoute.kind)) return building.onRoute(underRoute, ur, under.s);
     const source = sourceAt(clientX, clientY);
     if (source?.kind === 'route-hit' && joins(projectStore.snapshot.design.routes.find(r => r.id === source.routeId)?.kind)) return { ok: false, why: 'This stretch is being rebuilt: join the new road instead.' };
@@ -816,7 +810,7 @@ async function main() {
   // a road chosen in the list comes into view when none of it is on screen
   routeBar.onSelect = id => {
     if (!switchRoute(id)) return;
-    const route = store.route, r = projectFull?.routes[id]?.legacy;
+    const route = store.route, r = session.projectFull?.routes[id]?.legacy;
     if (!route) return;
     const a = route.endpoints.a.position, b = route.endpoints.b.position;
     const mid = r ? { x: r.x[r.n >> 1], y: r.y[r.n >> 1] } : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -837,9 +831,9 @@ async function main() {
       stretchIds = ids; historyStep = false;
     }
     frameEnds(); frameLine(lineFrame.length, true, d);
-    sel = activeSelection(store.activeRouteId, qualifiedSelection);
+    session.sel = activeSelection(store.activeRouteId, session.qualifiedSelection);
     if (d) {
-      if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
+      if (session.sel?.kind === 'bend' && session.sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
       profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
@@ -848,7 +842,7 @@ async function main() {
     syncEnds();
     syncDirections();
     // a borrowed card (a proposal's) may belong to a road undo just removed: restore the right card
-    if (committed && inspector.isHosting && !sourceEditor?.selected) { if (d) inspector.set(sel); else routeCard(); }
+    if (committed && inspector.isHosting && !sourceEditor?.selected) { if (d) inspector.set(session.sel); else routeCard(); }
     requestEval(!committed);
   });
 
@@ -856,7 +850,7 @@ async function main() {
   // what is under the pointer (ui/map-picks.ts)
   const { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt } = createMapPicks({
     view, pack, extras, buildingPicker, transportData,
-    get projectFull() { return projectFull; }, get last() { return last; }, get activeRouteId() { return store.activeRouteId; },
+    get projectFull() { return session.projectFull; }, get last() { return session.last; }, get activeRouteId() { return store.activeRouteId; },
     get editable() { return store.read() !== null; }, get routes() { return projectStore.snapshot.design.routes; },
     get sourcePicker() { return sourcePicker; }, get sourceEditor() { return sourceEditor; },
   });
@@ -874,7 +868,7 @@ async function main() {
   // ---- profile: the same verbs (ui/profile-events.ts) ----
   profile.ev = profileEvents({
     store, view, select, selectPiece, takeProfile, commitFields, addHeightAt, setPin,
-    get last() { return last; }, get sel() { return sel; },
+    get last() { return session.last; }, get sel() { return session.sel; },
     updateZoomButtons: () => updateZoomButtons(), highlightBend: i => highlightBend(i),
   });
 
@@ -884,7 +878,7 @@ async function main() {
   // ---- hover links between the map and the profile, the map's cursor (ui/map-hover.ts) ----
   const { highlightBend } = installMapHover({
     view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt,
-    get last() { return last; }, get lastFull() { return lastFull; }, get design() { return store.design; },
+    get last() { return session.last; }, get lastFull() { return session.lastFull; }, get design() { return store.design; },
     get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
     ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
   });
@@ -893,7 +887,7 @@ async function main() {
   let windowTimer = 0;
   const updateMapWindow = () => {
     windowTimer = 0;
-    const r = last;
+    const r = session.last;
     if (!r) return;
     const box = canvasBox();
     let lo = Infinity, hi = -Infinity, seen = 0, total = 0;
@@ -911,13 +905,13 @@ async function main() {
   // ---- HUD (ui/hud-events.ts) ----
   hud.ev = hudEvents({
     store, projectStore, view, profile, hud, intro, settled, legacyFacade, takeProfile, select, switchRoute, joinStretch,
-    get last() { return last; }, get lastFull() { return lastFull; }, get projectFull() { return projectFull; },
+    get last() { return session.last; }, get lastFull() { return session.lastFull; }, get projectFull() { return session.projectFull; },
   });
 
   // ---- keyboard (ui/shortcuts.ts) ----
   installShortcuts({
     buildTool, intro, keyBox, showKey, select, setStructure, deletePi, undo: () => store.undo(), redo: () => store.redo(),
-    get sel() { return sel; }, get mappedRoadSelected() { return !!sourceEditor?.selected; },
+    get sel() { return session.sel; }, get mappedRoadSelected() { return !!sourceEditor?.selected; },
   });
 
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
@@ -930,9 +924,9 @@ async function main() {
   // ---- debug / automation API (src/automation.ts) ----
   installAutomation({
     store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A, B, handlerTiming,
-    get last() { return last; }, get projectFull() { return projectFull; },
+    get last() { return session.last; }, get projectFull() { return session.projectFull; },
     get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; }, get sourceEditor() { return sourceEditor; },
-    get sel() { return sel; }, get qualifiedSelection() { return qualifiedSelection; },
+    get sel() { return session.sel; }, get qualifiedSelection() { return session.qualifiedSelection; },
     get received() { return evals.received; }, get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
     sceneIdle, missionRouteId, switchRoute, select, selectPiece, placeAt, ensureTransport,
     releaseGrab,
