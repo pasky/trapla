@@ -480,6 +480,7 @@ function along(path: readonly Readonly<WayPoint>[], d: number): WayPoint {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, d: Math.max(path[0].d, Math.min(path[path.length - 1].d, d)) };
 }
 
+const DENSE_CROPPED = 'OSM detail exceeds the bounded point budget';
 /** Retain ALL source bends. A dense way is cropped near the crossing, never straightened. */
 function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] {
   let path = input;
@@ -487,7 +488,7 @@ function denseWay(input: WayPoint[], diagnose: (s: string) => void): WayPoint[] 
     let centre = 0;
     for (let i = 1; i < path.length; i++) if (Math.abs(path[i].d) < Math.abs(path[centre].d)) centre = i;
     const start = Math.max(0, Math.min(path.length - MAX_POINTS + 16, centre - Math.floor((MAX_POINTS - 16) / 2)));
-    path = path.slice(start, start + MAX_POINTS - 16); diagnose('OSM detail exceeds the bounded point budget');
+    path = path.slice(start, start + MAX_POINTS - 16); diagnose(DENSE_CROPPED);
   }
   if (path.length < 2) return path;
   const out: WayPoint[] = [], total = path[path.length - 1].d - path[0].d;
@@ -555,7 +556,9 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       cached = { path: denseWay(roads.connectedCrossingPath(roadId, x, y, MAX_REACH), message => diagnostics.push(message)), diagnostics };
       paths.set(key, cached);
     }
-    for (const message of cached.diagnostics) diagnose(g, message);
+    // (a designed road of the project is drawn and checked by itself: its line, sampled every few metres,
+    // is only cropped around the crossing here)
+    for (const message of cached.diagnostics) if (!roads.isDesigned(roadId) || message !== DENSE_CROPPED) diagnose(g, message);
     return cached.path;
   };
 
@@ -1326,6 +1329,12 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     if (works.tieLength > 0) c.tieLength = works.tieLength;
     if (works.wallLength > 0) c.wallLength = works.wallLength;
   }
+  // A designed road of the project raised onto a bridge over us builds its own approaches (its own grade,
+  // held at the deck: project-evaluate.ts heldChecks); a class's ramp limits are not this crossing's.
+  for (const c of crossings) if (c.designed && c.geometry?.diagnostics) {
+    const left = c.geometry.diagnostics.filter(m => m !== RAMP_TOO_LONG && !m.startsWith(RAMP_TOO_HIGH));
+    if (left.length) c.geometry.diagnostics = left; else { delete c.geometry.diagnostics; delete c.geometry.clipped; }
+  }
   const issues: CrossingIssue[] = [];
   for (const c of crossings) for (const message of c.geometry?.diagnostics ?? []) {
     const text = diagnosticText(message, c);
@@ -1714,7 +1723,7 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
         const limit = rampLimit(c.cls, edge.z, edge.ground, foot.ground, run);
         for (let i = start + 1; i <= end; i++) {
           const a = g.road[i - 1], b = g.road[i], step = Math.hypot(b.x - a.x, b.y - a.y);
-          if (Math.abs(b.z - a.z) > step * limit + 0.01 && !g.diagnostics?.includes(RAMP_TOO_LONG)) report('Undiagnosed excessive approach gradient');
+          if (Math.abs(b.z - a.z) > step * limit + 0.01 && !c.designed && !g.diagnostics?.includes(RAMP_TOO_LONG)) report('Undiagnosed excessive approach gradient');
         }
       }
       if ((c.type === 'overbridge' || c.type === 'underpass') && Math.abs(length - (c.approachLength ?? 0)) > 0.01) report('Approach quantity differs from geometry');
