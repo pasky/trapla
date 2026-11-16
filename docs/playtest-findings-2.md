@@ -42,7 +42,7 @@ What worked:
      (`s3a/020`).
 3. **Auto rejects a cheaper bridge because of its own pier placement.**
    - D11 straight, embankment km 5.09–5.50 (Poříčí halls), card: "Auto: cheaper here than a bridge".
-   - Choosing Bridge makes the project **107 M cheaper** (9.90 bn; fewer demolished halls) but NOT VALID: 9 × "A
+   - Choosing Bridge makes the project **107 M cheaper** (9.90 bn; presumably fewer halls demolished under a bridge) but NOT VALID: 9 × "A
      bridge pier stands on a service road / class I road · Move the route … or make our bridge longer"
      (`s3a/014`). The bridge card repeats "A bridge pier stands on a service road" twice.
    - Expected: Auto moves the piers (span lengths) off the roads, which is what designers do, and then picks the
