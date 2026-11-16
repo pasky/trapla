@@ -1159,7 +1159,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     ...crossingIssues,
     ...footprintCheck.violations,
     ...buildingViolations,
-    ...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
+    // A window (drag preview) is part of a longer plan: preview-window.ts checks the whole plan once.
+    ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category })),
     ...ROAD_CHECKS.vertical(prof, norms, maxGradient, cat.mode === 'railway'),
   ];
   const waterCrossings: WaterResult[] = water.map((c, k) => {

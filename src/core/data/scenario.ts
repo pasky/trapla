@@ -163,7 +163,7 @@ const P = (pts: [number, number][]): PI[] => pts.map(([x, y]) => ({ x, y, r: nul
 export const D3_0301 = d3Section('d3-0301', '0301 Praha → Jílové', 120,
   P([[5301.3, 9003.8], [3984.8, 7437.6], [2801.8, 6262.9], [3017.2, 4757.5], [2872.4, 3182.6]]), 4.8, // 9.58 km at 120 (reference 8.71 km)
   { a: 'D0 Praha', b: 'Jílové (on to 0302)', official: 'planned D3', brief: '<b>Prague ring</b> to <b>Jílové</b>, section 0301 of the D3' },
-  'Leave the Prague ring and get through the hills to Jílové.', 'Starts at the D0 interchange. Continues as section 0302.');
+  'Leave the Prague ring and get through the hills to Jílové.', 'Starts in the D0 interchange; its ramps are not part of the job. Continues as section 0302.');
 // Starter: mapped-line bends every ~1.5 km, valid as sampled.
 export const D3_0302 = d3Section('d3-0302', '0302 Jílové → Hostěradice', 120, P([[2608.6, 6143.7], [3588.5, 3243.4]]), 2.5, // 4.97 km at 120 (reference 4.52 km)
   { a: 'Jílové (from 0301)', b: 'Hostěradice (on to 0303)', official: 'planned D3', brief: '<b>Jílové</b> to <b>Hostěradice</b>, across the Sázava' },
@@ -210,7 +210,7 @@ export const D11_RAILWAY: ScenarioParams = {
 export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospoda', 120,
   P([[4301.3, 48003.8], [2984.8, 46437.6], [1801.8, 45262.9], [2017.2, 43757.5], [1860.6, 42184.6], [1608.6, 40643.7], [2588.5, 37743.4], [2849.5, 36185.1], [3544.1, 34644.6], [5073.2, 33920.3], [6490.3, 32261.7], [8308.2, 31162.2], [9401.1, 30118.3], [8708, 28354.6], [8693.5, 26748.4], [7926.6, 25378.5], [7068.5, 23725], [5811.2, 22289.9], [5040.4, 20930.7], [4547.5, 19386.3], [4014.6, 17499.1], [3522.9, 16083.9], [3518.9, 14108.2], [3062.2, 12483.7], [3347, 10675.1], [4206.9, 9000.3], [5088.5, 7638.8], [5554.1, 5964.2], [6981.5, 5188.7], [8479.2, 4463.5], [9711.5, 3014.4]]), 31.6, // 63.2 km at 120 (reference 57.4 km)
   { a: 'D0 Praha', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Prague ring</b> to <b>Nová Hospoda</b>, the whole Středočeská D3' },
-  'Take the D3 from the Prague ring across the Sázava to where it is already open.', 'All five sections in one go, 57 km.');
+  'Take the D3 from the Prague ring across the Sázava to where it is already open.', 'All five sections in one go, 57 km. The D0 interchange ramps are not part of the job.');
 
 // The whole D35 Opatovec → Mohelnice link (research/26–28): both project sections, 34.83 km published; the
 // mapped line to where it starts to merge with I/35 (declared merge, PROVISIONAL) is 33.3 km. Built as

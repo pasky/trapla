@@ -72,7 +72,8 @@ Mapped section lengths: 0301 8.70 km (from its declared start, below), 0302 4.52
   909/1107 m) and the SPK A.4.N interchange (76.7 M CZK) is restricted to class I roads below S 20.75.
   The kind therefore reuses the PROVISIONAL junction allowance (25 M CZK) and 90 m zone of the merge
   (research/28) for the roads it rebuilds at our end; the D0 widening and the ramp bridges are not in the
-  game's bill. Engine limit, disclosed in the picker note.
+  game's bill. Engine limit, disclosed in the picker notes of 0301 and the whole D3 (“its ramps are not part of
+  the job”).
 - **0305/I B, operating D3.** B is node 248183130 (49.54341 N, 14.6652862 E), where the motorway ways of
   the operating D3 end and I/3 continues; the mapped new line meets I/3 ≈ 250 m north of it. Declared
   `merge` (research/28) onto the motorway ways 807875702 / 807875701 and the I/3 ways 1545424303 /

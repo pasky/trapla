@@ -14,7 +14,8 @@ import { buildAlignment, station, type CurveInfo, type Stationing } from './hori
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
-import type { Design, EvalContext, EvalOptions, Result } from './evaluate';
+import { normalizeVpis, type Design, type EvalContext, type EvalOptions, type Result } from './evaluate';
+import { ROAD_CHECKS } from './checks';
 
 /** re-solved beyond the changed stretch on each side, m (the auto-profile knots are 250 m apart) */
 export const WINDOW_MARGIN = 1500;
@@ -24,6 +25,8 @@ const WINDOW_MAX_SHARE = 0.6;
  * station step on a 500 m curve: 2.5 cm) */
 const SAME_PLAN = 0.2;
 const STEP = 10;
+/** violation kinds of ROAD_CHECKS.horizontal (checks.ts horizontalViolations) */
+const PLAN_KINDS = new Set<string>(['radius', 'arcShort', 'transition', 'compound']);
 let enabled = true;
 /** Benchmarks and tests: compare against the whole-route preview. */
 export function setPreviewWindows(on: boolean): void { enabled = on; }
@@ -110,7 +113,14 @@ function changedRange(base: FullEntry, d: Design, st: Stationing, length: number
   };
   const planStart = a;
   if (d.profileMode === 'auto') changed(d.gradePins ?? [], base.design.gradePins ?? []);
-  else changed(d.vpis.slice(1, -1), base.design.vpis.slice(1, -1));
+  else {
+    changed(d.vpis.slice(1, -1), base.design.vpis.slice(1, -1));
+    // A moved height point tilts both tangents to its neighbours: the stretch reaches them.
+    if (a <= b) {
+      const before = d.vpis.filter(v => v.s < a), after = d.vpis.filter(v => v.s > b);
+      a = before.length ? before[before.length - 1].s : 0; b = after.length ? after[0].s : length;
+    }
+  }
   // An edited bend whose plan moved by less than the tolerance (a large radius changed a little): its
   // own curve and its neighbours' are the stretch to re-solve.
   const before = base.design.pis;
@@ -142,15 +152,28 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   // Heights and grades of the full result's line where the window meets it (the route ends keep theirs).
   const z = elevations(baseProfile, [s0, s0 + 1, old1 - 1, old1]);
   const startsAtA = i0 === 0, endsAtB = i1 === n - 1;
-  const endpointElevations = {
+  const endpointElevations: { a?: number; b?: number } = {
     ...(startsAtA ? opts.endpointElevations?.a === undefined ? {} : { a: opts.endpointElevations.a } : { a: z[0] }),
     ...(endsAtB ? opts.endpointElevations?.b === undefined ? {} : { b: opts.endpointElevations.b } : { b: z[3] }),
   };
   const grades = { ...(startsAtA ? {} : { a: z[1] - z[0] }), ...(endsAtB ? {} : { b: z[3] - z[2] }) };
-  // By hand: the player's height points inside the window, in its own chainage.
-  const local: Design = d.profileMode === 'auto'
-    ? { ...d, gradePins: (d.gradePins ?? []).filter(p => p.s >= s0 && p.s <= s1).map(p => ({ ...p, s: p.s - s0 })) }
-    : { ...d, vpis: [{ s: 0, z: 0, r: null }, ...d.vpis.slice(1, -1).filter(p => p.s > s0 && p.s < s1).map(p => ({ ...p, s: p.s - s0 })), { s: s1 - s0, z: 0, r: null }] };
+  // By hand: the design's own line throughout (its window ends included), only engineered in the window.
+  const zA = opts.endpointElevations?.a ?? ctx.terrain.heightAt(st.x[0], st.y[0]), zB = opts.endpointElevations?.b ?? ctx.terrain.heightAt(st.x[n - 1], st.y[n - 1]);
+  const manual = d.profileMode === 'auto' ? null : buildProfile(normalizeVpis(d.vpis, L, zA, zB), norms.minCrestRadius, norms.minSagRadius);
+  if (manual) {
+    const zm = elevations(manual, [s0, s1]);
+    if (!startsAtA) endpointElevations.a = zm[0];
+    if (!endsAtB) endpointElevations.b = zm[1];
+  }
+  // Controls in absolute chainage, in the window's own (clipped to it).
+  const clip = <T extends { s0: number; s1: number }>(list: readonly T[] | undefined) => list?.flatMap(o => o.s1 > s0 && o.s0 < s1
+    ? [{ ...o, s0: Math.max(0, o.s0 - s0), s1: Math.min(s1, o.s1) - s0 }] : []);
+  const local: Design = { ...d,
+    ...(d.structureOverrides ? { structureOverrides: clip(d.structureOverrides) } : {}),
+    ...(d.wallOverrides ? { wallOverrides: clip(d.wallOverrides) } : {}),
+    ...(d.profileMode === 'auto'
+      ? { gradePins: (d.gradePins ?? []).filter(p => p.s >= s0 && p.s <= s1).map(p => ({ ...p, s: p.s - s0 })) }
+      : { vpis: [{ s: 0, z: 0, r: null }, ...d.vpis.slice(1, -1).filter(p => p.s > s0 && p.s < s1).map(p => ({ ...p, s: p.s - s0 })), { s: s1 - s0, z: 0, r: null }] }) };
   const tWindow = performance.now();
   const w = evaluateRoute(ctx, local, { ...opts, preview: true, endpointElevations, window: { s0, s1, grades } });
 
@@ -158,7 +181,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   // --- stitch: window stations from w, the rest from the full result (downstream shifted) ---
   const oldS = (s: number) => s <= s0 ? s : s - shift;
   const inWindow = (i: number) => i >= i0 && i <= i1;
-  const vpis: VPI[] = [
+  const vpis: VPI[] = manual ? normalizeVpis(d.vpis, L, zA, zB) : [
     ...r.vpis.filter(v => v.s < s0 - 1e-6),
     ...w.vpis.map(v => ({ ...v, s: v.s + s0 })),
     ...r.vpis.filter(v => v.s > old1 + 1e-6).map(v => ({ ...v, s: v.s + shift })),
@@ -195,8 +218,11 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const geologyIds = stitch(u8, w.geology.ids, Uint8Array.from(r.geology.ids, v => v + w.geology.profiles.length));
   // Lists in the full result's chainage: before the window unchanged, after it shifted.
   const shiftS = <T extends { s0: number; s1: number }>(v: T, by: number): T => ({ ...v, s0: v.s0 + by, s1: v.s1 + by });
-  const violations = [...r.violations.filter(v => v.s1 < s0), ...w.violations.map(v => shiftS(v, s0)),
-    ...r.violations.filter(v => v.s0 > old1).map(v => shiftS(v, shift))];
+  // Plan checks belong to the whole alignment (the window run skips them): once, on the new plan.
+  const local1 = (v: Result['violations'][number]) => !PLAN_KINDS.has(v.kind);
+  const violations = [...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
+    ...r.violations.filter(v => local1(v) && v.s1 < s0), ...w.violations.filter(local1).map(v => shiftS(v, s0)),
+    ...r.violations.filter(v => local1(v) && v.s0 > old1).map(v => shiftS(v, shift))];
   // Without their measured geometry, like a whole-route preview's (a long route's would dominate the
   // message to the main thread).
   const lean = (c: Result['crossings'][number]) => { const { geometry: _g, ...rest } = c; return rest; };

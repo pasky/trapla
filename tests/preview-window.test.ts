@@ -69,3 +69,39 @@ describe('auto-profile end grades', () => {
     expect(Math.abs(p.grades[p.grades.length - 1] - 0.03)).toBeLessThanOrEqual(D / 5_000 + 2 / D);
   });
 });
+
+describe('windowed preview keeps the design’s own controls (review repros)', () => {
+  const flat = syntheticTerrain(2500, 160, 10, () => 300);
+  const fctx = { terrain: flat, scenario: { ...D11_SCENARIO, maxTravelMin: 60 }, a: { x: 200, y: 750 }, b: { x: 24_600, y: 750 } };
+  it('By hand: the preview’s height points are the design’s, its line the whole-route preview’s', () => {
+    const manual: Design = { category: 'S9.5', speed: 90, profileMode: 'manual', pis: [],
+      vpis: [{ s: 0, z: 300, r: null }, { s: 12_000, z: 300, r: null }, { s: 24_400, z: 300, r: null }] };
+    evaluate(fctx, manual);
+    const edited = { ...manual, vpis: manual.vpis.map((p, i) => i === 1 ? { ...p, z: 320 } : p) };
+    const preview = evaluate(fctx, edited, { preview: true });
+    setPreviewWindows(false); const plain = evaluate(fctx, edited, { preview: true }); setPreviewWindows(true);
+    expect(preview.vpis.map(v => v.s)).toEqual(plain.vpis.map(v => v.s));
+    for (const i of [300, 600, 1200, 1800]) expect(preview.grade[i]).toBeCloseTo(plain.grade[i], 6);
+  });
+  it('a painted structure keeps its chainage in the window', () => {
+    const painted: Design = { category: 'S9.5', speed: 90, profileMode: 'auto', vpis: [],
+      pis: [3000, 6000, 9000, 12000, 15000, 18000, 21000].map((x, k) => ({ x, y: k % 2 ? 900 : 600, r: null })),
+      structureOverrides: [{ s0: 11_800, s1: 12_200, kind: 1 }] };
+    evaluate(fctx, painted);
+    const pinned = { ...painted, gradePins: [{ s: 12_000, z: 310 }] };
+    const preview = evaluate(fctx, pinned, { preview: true });
+    expect(preview.timing['window.length']).toBeGreaterThan(0);
+    setPreviewWindows(false); const plain = evaluate(fctx, pinned, { preview: true }); setPreviewWindows(true);
+    const bridgeAt = (r: typeof plain) => r.runs.filter(run => run.kind === 1).map(run => [Math.round(run.s0 / 50), Math.round(run.s1 / 50)]);
+    expect(bridgeAt(preview)).toEqual(bridgeAt(plain));
+  });
+  it('a plan problem is reported once, where it is', () => {
+    const tight: Design = { category: 'S9.5', speed: 90, profileMode: 'auto', vpis: [],
+      pis: [3000, 6000, 9000, 12000, 15000, 18000, 21000].map((x, k) => ({ x, y: k % 2 ? 900 : 600, r: k === 0 ? 50 : null })) };
+    const full = evaluate(fctx, tight);
+    const preview = evaluate(fctx, { ...tight, gradePins: [{ s: 12_000, z: 310 }] }, { preview: true });
+    expect(preview.timing['window.length']).toBeGreaterThan(0);
+    const radius = (r: typeof full) => r.violations.filter(v => v.kind === 'radius').map(v => Math.round(v.s0));
+    expect(radius(preview)).toEqual(radius(full));
+  });
+});

@@ -35,7 +35,11 @@ export function runSliced<T>(job: Generator<void, T>, onDone: (value: T) => void
         const r = job.next();
         // The swap-in runs as its own task, not on top of the last slice.
         // (`discard` disposes a finished build that is cancelled before it is handed over.)
-        if (r.done) { record(t0); built = true; value = r.value; nextTask(() => { if (!cancelled) { done = true; onDone(value); } }); return; }
+        if (r.done) {
+          record(t0); built = true; value = r.value;
+          nextTask(() => { if (cancelled) return; done = true; try { onDone(value); } catch (e) { onError(e); } });
+          return;
+        }
         if (performance.now() - t0 >= budgetMs) break;
       }
     } catch (e) { done = true; onError(e); return; }
