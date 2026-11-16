@@ -131,6 +131,10 @@ export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
  * next to it (the forest guide's ≈ 20 m straights "may be dropped where cramped"). */
 export const HAIRPIN = {
   radius: 17.5, banking: 0.075,
+  /** "Točka je směrový oblouk o velkém středovém úhlu a malém poloměru; v točce se směr trasy obrací téměř o
+   * 180°" (MZe TD 2020 §7.7 p. 82, after Makovník 1973): a bend turning less is no hairpin. 150° is the game's
+   * reading of "almost 180°" (PROVISIONAL); the neck curves either side turn the rest. */
+  minTurn: (150 * Math.PI) / 180,
   /** Steepest grade in a hairpin: the resultant of grade and banking √(s² + p²) at most 10 % where icing is
    * frequent (ČSN 73 6101:2018 §8.10.1, Radimský slides 12–14; mountain passes), with p = 7.5 %: s ≤ 6.6 % */
   maxGrade: Math.sqrt(0.1 ** 2 - 0.075 ** 2),

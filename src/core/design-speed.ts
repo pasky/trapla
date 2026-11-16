@@ -63,7 +63,12 @@ export function hairpinViolations(al: Pick<Alignment, 'curves'>, pis: readonly P
     if (!pis[c.index]?.hairpin || CATEGORIES[category].minor) continue;
     const where = { s0: c.sStart, s1: Math.max(c.sEnd, c.sStart), pi: c.index, pis: [c.index] };
     const speed = bendSpeed(pis[c.index], roadSpeed, category);
-    if (terrainClassAt(terrain, c.x, c.y) !== 'mountainous')
+    if (c.delta < HAIRPIN.minTurn)
+      out.push({ kind: 'radius', ...where, basis: 'norm', rule: `MZe Technická doporučení 2020 §7.7: in a hairpin the road turns almost back on itself (game: at least ${Math.round(HAIRPIN.minTurn * 180 / Math.PI)}°)`,
+        title: `Bend ${c.index + 1} turns too little for a hairpin`,
+        fix: `Make bend ${c.index + 1} an ordinary curve${speed > lowest ? `; for a tighter one set its stretch to ${lowest} km/h` : ''}`,
+        detail: `It turns ${Math.round(c.delta * 180 / Math.PI)}°. A hairpin turns the road almost back on itself to climb a steep slope.` });
+    else if (terrainClassAt(terrain, c.x, c.y) !== 'mountainous')
       out.push({ kind: 'radius', ...where, basis: 'norm', rule, title: `Hairpin at bend ${c.index + 1} outside the mountains`,
         fix: `Make bend ${c.index + 1} an ordinary curve`,
         detail: 'Hairpins are allowed only where the ground is too steep for ordinary curves: slopes steeper than 15 % around them.' });

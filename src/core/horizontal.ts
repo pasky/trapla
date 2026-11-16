@@ -32,6 +32,9 @@ export type Element =
 
 /** deflections sharper than this (near U-turns) get no arc: a kink that the checks reject */
 export const MAX_DEFLECTION = (170 * Math.PI) / 180;
+/** a hairpin turns the road almost back on itself (research/47 §3): its arc is built up to this */
+export const HAIRPIN_MAX_DEFLECTION = (179 * Math.PI) / 180;
+const maxDeflection = (r: HorizontalRules) => r.hairpin ? HAIRPIN_MAX_DEFLECTION : MAX_DEFLECTION;
 
 export interface HorizontalRules {
   /** smallest radius for the design speed, m */
@@ -576,7 +579,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       const dot = U[i].x * U[i + 1].x + U[i].y * U[i + 1].y;
       const rw = Math.abs(dm.atan2(cross, dot));
       raw.push(rw);
-      d.push(rw > MAX_DEFLECTION ? 0 : rw); // near-reversal: no arc (geometry stays continuous)
+      d.push(rw > maxDeflection(ru(i)) ? 0 : rw); // near-reversal: no arc (geometry stays continuous)
       dir.push(cross >= 0 ? 1 : -1);
       tau.push(dm.tan(d[i] / 2));
       const r = pis[keep[i]].r;
@@ -878,7 +881,7 @@ export function buildAlignment(a: Vec2, b: Vec2, pis: PI[], rulesOrMin: Horizont
       const c: CurveInfo = {
         index: k, x: P(i).x, y: P(i).y, delta: raw[i], dir: dir[i], r: Rv[i], rEff, t,
         tTransition: t + (d[i] > 0 && Rv[i] < plainOf(i) - 1e-9 ? transitionExtra(Rv[i], d[i], ltOf(i)) : 0),
-        arcLen: s - s0, sStart: s0, sEnd: s, auto: manual[i] === null, tooSharp: raw[i] > MAX_DEFLECTION,
+        arcLen: s - s0, sStart: s0, sEnd: s, auto: manual[i] === null, tooSharp: raw[i] > maxDeflection(rulesAt[k]),
         unit: d[i] > 0 ? unitInfo.length : -1, ignored: false, offset: 0,
       };
       curveOf[k] = c;
