@@ -432,6 +432,8 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
   }
   costStart[nK] = costS.length;
+  // typed copies for the DP's inner loop
+  const cS = Float64Array.from(costS), cG = Float64Array.from(costG), cW = Float64Array.from(costWeight), cO = Int32Array.from(costOffset);
   const clrX: number[] = [];
   const hasClearance = (i: number) => (opt.minH && opt.minH[i] > -Infinity) || (opt.maxH && opt.maxH[i] < Infinity) || opt.eitherH?.above[i]! > -Infinity;
   if (anchored && opt.clearanceS) {
@@ -863,11 +865,12 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
         seg.fill(Infinity);
         for (let d2 = d2lo; d2 <= d2hi; d2++) seg[d2] = 0;
         for (let q = c0; q < c1; q += step) {
-          const dsq = costS[q] - sk, gi = costG[q] - cIn - cSlope * dsq, weight = step === 1 || q + 1 >= c1 ? costWeight[q] : costWeight[q] + costWeight[q + 1];
-          const values = lut[costOffset[q]];
+          const dsq = cS[q] - sk, gi = cG[q] - cIn - cSlope * dsq, weight = step === 1 || q + 1 >= c1 ? cW[q] : cW[q] + cW[q + 1];
+          const values = lut[cO[q]];
+          // the LUT position at grade d2: one multiply-add from the sample's base
+          const x0 = (zm - gi + H_MAX) / H_STEP, inc = (u * dsq) / (d * H_STEP);
           for (let d2 = d2lo; d2 <= d2hi; d2++) {
-            const h = zm + slopes[d2] * dsq - gi;
-            let x = (h + H_MAX) / H_STEP;
+            let x = x0 + (d2 - dzMax) * inc;
             if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
             const j = x | 0;
             seg[d2] += (j >= lutMax ? values[lutMax] : values[j] + (values[j + 1] - values[j]) * (x - j)) * weight;
