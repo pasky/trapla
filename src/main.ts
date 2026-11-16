@@ -2,7 +2,7 @@ import './style.css';
 import { CATEGORIES, type CategoryId } from './core/data/categories';
 import { speedNorms } from './core/data/norms';
 import { scenarioParams } from './core/data/scenario';
-import { MIN_VPI_GAP, type Design, type Result } from './core/evaluate';
+import type { Design, Result } from './core/evaluate';
 import { nearestLeg } from './core/horizontal';
 import { missionProject } from './core/project-mission';
 import { routeCrownWidth } from './core/route-section';
@@ -58,6 +58,7 @@ import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
 import { bendStations } from './ui/bend-stations';
 import { createDesignEdits } from './ui/design-edits';
+import { profileEvents } from './ui/profile-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
 import { installProfileBar } from './ui/profile-bar';
@@ -1016,53 +1017,12 @@ async function main() {
     },
   };
   const lastClient = { x: 0, y: 0 };
-  /** the height points as they were when a By hand drag began */
-  let vpiDragBase: Design['vpis'] | null = null;
-
-  // ---- profile: the same verbs ----
-  profile.ev = {
-    onStationSelect: (s) => select({ kind: 'pin', s }, true),
-    onCrossingSelect: (roadId) => select({ kind: 'crossing', roadId }, true),
-    onPick: (s) => selectPiece(s, true),
-    onVpiDrag: (i, s, z, a, b) => store.update((d) => {
-      takeProfile(d);
-      const base = vpiDragBase ??= d.vpis.map((v) => ({ ...v }));
-      if (!d.vpis[i] || !base[a] || !base[b]) return;
-      d.vpis[i].s = s; d.vpis[i].z = z;
-      // the height points hidden between it and its shown neighbours keep their shape and follow
-      // in proportion, so the line bends only at the points the player sees
-      const dz = z - base[i].z;
-      for (let j = a + 1; j < b; j++) if (j !== i) {
-        const t = j < i ? (base[j].s - base[a].s) / Math.max(1e-6, s - base[a].s) : (base[b].s - base[j].s) / Math.max(1e-6, base[b].s - s);
-        d.vpis[j].z = Math.round((base[j].z + dz * Math.max(0, Math.min(1, t))) * 100) / 100;
-      }
-    }, false),
-    onVpiDragEnd: () => { vpiDragBase = null; store.commit(); },
-    onVpiAdd: (s, z) => {
-      const vp = store.design.profileMode === 'auto' && last ? last.vpis : store.design.vpis;
-      if (vp.some((v) => Math.abs(v.s - s) < MIN_VPI_GAP)) return;
-      store.update((d) => {
-        takeProfile(d);
-        const k = d.vpis.findIndex((v) => v.s > s);
-        d.vpis.splice(k < 0 ? d.vpis.length - 1 : k, 0, { s, z, r: null });
-      });
-    },
-    onVpiDelete: (i) => { commitFields(); store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
-    onVpiSelect: (i) => { if (i !== null) select({ kind: 'vpi', i }); else if (sel?.kind === 'vpi') select(null); },
-    onSelect: (range) => select(range ? { kind: 'stretch', s0: range.s0, s1: range.s1 } : null),
-    onHover: (s, label) => {
-      if (s === null || !last) { view.setHover(null); return; }
-      const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
-      view.setHover({ x: last.x[i], y: last.y[i], z: last.grade[i] }, label);
-    },
-    onView: () => updateZoomButtons(),
-    onBendHover: (i) => highlightBend(i),
-    onBendSelect: (i) => select({ kind: 'bend', i }, true),
-    onPinAdd: (s) => addHeightAt(s),
-    onLineDrag: (s, z) => setPin(s, z, false),
-    onPinDrag: (s, z) => store.update((d) => { const p = d.gradePins?.find((p) => Math.abs(p.s - s) < 0.1); if (p) p.z = z; }, false),
-    onPinDragEnd: () => store.commit(),
-  };
+  // ---- profile: the same verbs (ui/profile-events.ts) ----
+  profile.ev = profileEvents({
+    store, view, select, selectPiece, takeProfile, commitFields, addHeightAt, setPin,
+    get last() { return last; }, get sel() { return sel; },
+    updateZoomButtons: () => updateZoomButtons(), highlightBend: i => highlightBend(i),
+  });
 
   // ---- the profile's key (legend) and zoom buttons (ui/profile-bar.ts) ----
   const { keyBox, showKey, updateZoomButtons } = installProfileBar(profile);
