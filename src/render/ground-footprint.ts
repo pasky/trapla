@@ -9,11 +9,7 @@ export interface GroundFootprint {
   x0: number; y0: number; x1: number; y1: number;
   key: string;
 }
-export function mainRoadFootprints(roads: readonly Result[]): GroundFootprint[] {
-  const run = mainRoadFootprintsSliced(roads);
-  for (let step = run.next(); ; step = run.next()) if (step.done) return step.value;
-}
-/** The same, yielding every few hundred stations (a long route's 3D rebuild runs in slices). */
+/** Yields every few hundred stations (a long route's 3D rebuild runs in slices). */
 export function* mainRoadFootprintsSliced(roads: readonly Result[]): Generator<void, GroundFootprint[]> {
   const polygons: GroundFootprint[] = [];
   for (const r of roads) for (let i = 0; i + 1 < r.n; i++) {

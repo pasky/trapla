@@ -77,7 +77,6 @@ export interface ViolationTarget {
 /** one-line form for logs and scripts */
 export const violationText = (v: Violation) => `${v.title} — ${v.fix}`;
 
-export const BASIS_LABEL: Record<ViolationBasis, string> = { norm: 'norm', game: 'game rule', engine: 'engine limit' };
 
 /** the inputs of the alignment, so that fixes (e.g. the largest radius that fits) can be computed */
 export interface HorizontalInput { a: Vec2; b: Vec2; pis: PI[]; category?: CategoryId }
