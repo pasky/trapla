@@ -20,7 +20,8 @@ import type { StationRange } from '../state';
 import { COST_GROUPS, perM } from './costgroups';
 
 export interface ProfileEvents {
-  onVpiDrag?: (i: number, s: number, z: number) => void;
+  /** `a`, `b`: the nearest height points shown on either side; the hidden ones between follow the drag */
+  onVpiDrag?: (i: number, s: number, z: number, a: number, b: number) => void;
   onVpiDragEnd?: () => void;
   onVpiAdd?: (s: number, z: number) => void;
   onVpiDelete?: (i: number) => void;
@@ -66,6 +67,10 @@ const BEND_Y = 12;
 /** the cost strip never averages over less than this, so lump sums (buildings, junctions) stay readable, m */
 const MIN_WINDOW = 50;
 const BAND_H = 11, STRIP_H = 54, GAP_CHART = 6, GAP_BAND = 3;
+/** By hand, shown height points are at least this far apart, px */
+const SHOWN_GAP = 28;
+/** a drag moves a height or pin by at most this much per px (finer when zoomed in), m */
+const DRAG_M_PER_PX = 0.5;
 
 interface Element { s0: number; s1: number; curve: boolean; label: string }
 
@@ -97,6 +102,8 @@ export class ProfilePanel {
   private under: Under = { kind: 'none' };
   /** a height point or pin is being dragged */
   private dragging = false;
+  /** live readout of a height drag: the height and how far it moved */
+  private dragLabel: { s: number; z: number; dz: number } | null = null;
   private flash: { s0: number; s1: number } | null = null;
   private sel: StationRange | null = null;
   /** the part of the route the map shows (light window), null when it shows all of it */
@@ -191,6 +198,32 @@ export class ProfilePanel {
       this.setUnder(this.hit(this.hoverClient.x - b.left, this.hoverClient.y - b.top));
     } else if (!this.hoverClient) this.setUnder({ kind: 'none' });
     this.updateTip();
+  }
+
+  /** By hand, the height points with a handle at this zoom: the sharpest changes of grade first,
+   * at least SHOWN_GAP px apart (the selected / dragged one always); the ends always. The others stay
+   * part of the line and follow a drag of their shown neighbours. */
+  private shownVpis(): boolean[] {
+    const v = this.vpis, shown = v.map((_, k) => k === 0 || k === v.length - 1);
+    if (this.mode !== 'manual') return shown;
+    const grade = (k: number) => (v[k + 1].z - v[k].z) / Math.max(1e-6, v[k + 1].s - v[k].s);
+    const order = v.map((_, k) => k).filter((k) => k > 0 && k < v.length - 1)
+      .sort((a, b) => (b === this.selected ? 1 : 0) - (a === this.selected ? 1 : 0) || Math.abs(grade(b) - grade(b - 1)) - Math.abs(grade(a) - grade(a - 1)) || a - b);
+    const xs: number[] = [];
+    for (const k of order) {
+      const x = this.X(v[k].s);
+      if (k !== this.selected && xs.some((q) => Math.abs(q - x) < SHOWN_GAP)) continue;
+      shown[k] = true; xs.push(x);
+    }
+    return shown;
+  }
+  /** the nearest shown height points on either side of k */
+  private shownAround(k: number): [number, number] {
+    const shown = this.shownVpis();
+    let a = k - 1, b = k + 1;
+    while (a > 0 && !shown[a]) a--;
+    while (b < this.vpis.length - 1 && !shown[b]) b++;
+    return [a, b];
   }
 
   select(i: number | null) { this.selected = i; this.draw(); }
@@ -546,11 +579,11 @@ export class ProfilePanel {
       g.beginPath(); g.moveTo(x, y); g.lineTo(x, y - 9); g.stroke();
       g.beginPath(); g.arc(x, y - 9 - hr, hr, 0, 2 * Math.PI); g.fill(); g.stroke();
       g.beginPath(); g.arc(x, y, 2.5, 0, 2 * Math.PI); g.fillStyle = '#864000'; g.fill();
-      g.fillStyle = '#864000';
-      // the label above the head, or beside it near the top of the chart
-      if (y - 14 - 2 * hr < T + 10) { g.textAlign = 'left'; g.fillText(`pinned ${pin.z.toFixed(1)} m`, x + hr + 4, y - 9 - hr + 4); g.textAlign = 'center'; }
-      else g.fillText(`pinned ${pin.z.toFixed(1)} m`, x, y - 12 - 2 * hr);
+      if (this.dragLabel && Math.abs(this.dragLabel.s - pin.s) < 0.1) continue;
+      // the label beside the head, on a white halo so the lines under it do not run through the text
+      haloText(g, `pinned ${pin.z.toFixed(1)} m`, x + hr + 4, y - 9 - hr + 4, '#864000', 'left');
     }
+
     if (this.pinStation !== null) {
       g.strokeStyle = '#b45800'; g.setLineDash([3, 4]);
       const x = this.X(this.pinStation);
@@ -559,9 +592,10 @@ export class ProfilePanel {
     // height points (VPIs) are handles only By hand; in Automatic they are the game's and not drawn
     // (the player's handles there are the pins). The hovered / selected one grows.
     const hovK = this.under.kind === 'vpi' ? this.under.k : -1;
+    const shown = this.shownVpis();
     if (this.mode === 'manual') this.vpis.forEach((v, k) => {
       const x = this.X(v.s), y = this.Y(v.z);
-      if (x < L - 8 || x > R + 8) return;
+      if (x < L - 8 || x > R + 8 || !shown[k]) return;
       const end = k === 0 || k === this.vpis.length - 1;
       const rad = k === this.selected || k === hovK ? 6.5 : 5;
       g.beginPath();
@@ -847,7 +881,9 @@ export class ProfilePanel {
     const v = r.violations.find((x) => !x.goal && x.s0 <= r.s[b] + r.ds && x.s1 >= r.s[a] - r.ds);
     const e = (t: string) => t.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
     const compact = this.under.kind === 'bend' || this.under.kind === 'vpi' || this.under.kind === 'pin';
-    if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
+    // a height drag: the height it is set to and how far it moved
+    if (this.dragLabel) this.tip.innerHTML = `<div><b>${this.dragLabel.z.toFixed(1)} m</b> · ${this.dragLabel.dz >= 0 ? 'raised' : 'lowered'} ${Math.abs(this.dragLabel.dz).toFixed(1)} m</div>`;
+    else if (compact) this.tip.innerHTML = `<div class="tip-hint first">${this.hint()}</div>`;
     else this.tip.innerHTML = `<div><b>km ${(r.s[i] / 1000).toFixed(2)}</b> · ${how}</div>
       <div class="tip-sub"><b>${perM(total)} CZK/m</b> · ${groups.map(([gr, v]) => `<i style="background:${gr.color}"></i>${gr.short} ${perM(v)}`).join(' ')}</div>
       ${v ? `<div class="tip-bad">⚠ ${e(v.title)}</div>` : facts.length ? `<div class="tip-fact">${e(facts[0])}${facts.length > 1 ? ` +${facts.length - 1}` : ''}</div>` : ''}`;
@@ -891,8 +927,9 @@ export class ProfilePanel {
       return { kind: 'strip' };
     }
     let k: number | null = null, bd = 10;
+    const shown = this.shownVpis();
     if (this.mode === 'manual') this.vpis.forEach((v, j) => {
-      if (j === 0 || j === this.vpis.length - 1) return;
+      if (j === 0 || j === this.vpis.length - 1 || !shown[j]) return;
       const d = Math.hypot(this.X(v.s) - px, this.Y(v.z) - py);
       if (d < bd) { bd = d; k = j; }
     });
@@ -936,12 +973,16 @@ export class ProfilePanel {
     const cursor = (u: Under) => u.kind === 'vpi' || (u.kind === 'pin' && this.mode === 'auto') || (u.kind === 'line' && this.mode === 'auto') ? 'ns-resize'
       : u.kind === 'line' ? 'copy' : u.kind === 'none' ? 'default' : 'pointer';
     // 'press': a left button down on the chart / band / strip — a click if it does not move, else a range drag
-    let drag: { mode: 'vpi' | 'pin' | 'pan' | 'press' | 'select' | 'line'; under: Under; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean; y0: number; dy: number } | null = null;
+    let drag: { mode: 'vpi' | 'pin' | 'pan' | 'press' | 'select' | 'line'; under: Under; i: number; x0: number; v0: number; v1: number; s0: number; moved: boolean; y0: number;
+      /** height at the start of a height drag, and the shown neighbours of a dragged height point */
+      z0?: number; a?: number; b?: number } | null = null;
+    /** height under a vertical drag: at most DRAG_M_PER_PX per px, finer when the chart is zoomed in */
+    const dragZ = (z0: number, y0: number, y: number) => Math.round((z0 + (y0 - y) * Math.min(DRAG_M_PER_PX, Math.abs(this.Z(0) - this.Z(1)))) * 10) / 10;
     c.addEventListener('pointerdown', (e) => {
       if (!this.r) return;
       const p = rel(e);
       const u = this.hit(p.x, p.y);
-      const base = { under: u, i: -1, x0: p.x, y0: p.y, dy: 0, v0: this.v0, v1: this.v1, s0: this.S(p.x), moved: false };
+      const base = { under: u, i: -1, x0: p.x, y0: p.y, v0: this.v0, v1: this.v1, s0: this.S(p.x), moved: false };
       if (e.button === 2 && u.kind === 'vpi') { this.ev.onVpiDelete?.(u.k); return; }
       if (e.button === 1 || e.button === 2) {
         e.preventDefault();
@@ -958,9 +999,10 @@ export class ProfilePanel {
       if (u.kind === 'pin') {
         // keep the grab offset: the pin's point follows the mouse at the distance it was grabbed
         const pin = this.pins.find((q) => Math.abs(q.s - u.s) < 0.1)!;
-        drag = { ...base, mode: 'pin', s0: u.s, dy: p.y - this.Y(pin.z) };
+        drag = { ...base, mode: 'pin', s0: u.s, z0: pin.z };
       } else if (u.kind === 'vpi') {
-        drag = { ...base, mode: 'vpi', i: u.k };
+        const [a, b] = this.shownAround(u.k);
+        drag = { ...base, mode: 'vpi', i: u.k, z0: this.vpis[u.k].z, a, b };
         this.selected = u.k;
         this.ev.onVpiSelect?.(u.k);
         c.style.cursor = 'grabbing';
@@ -976,17 +1018,21 @@ export class ProfilePanel {
         this.dragging = true;
         const prev = this.vpis[drag.i - 1].s, next = this.vpis[drag.i + 1].s;
         const s = Math.max(prev + 20, Math.min(next - 20, this.S(p.x)));
-        const z = Math.round(this.Z(p.y) * 10) / 10;
-        this.ev.onVpiDrag?.(drag.i, s, z);
+        const z = dragZ(drag.z0!, drag.y0, p.y);
+        this.dragLabel = { s, z, dz: z - drag.z0! };
+        this.hoverClient = { x: e.clientX, y: e.clientY }; this.updateTip();
+        this.ev.onVpiDrag?.(drag.i, s, z, drag.a!, drag.b!);
         return;
       }
       if (drag?.mode === 'pin') {
         if (!drag.moved && Math.abs(p.y - drag.y0) < 3) return;
         drag.moved = true;
         this.dragging = true;
-        const z = Math.round(this.Z(p.y - drag.dy) * 10) / 10, s0 = drag.s0;
+        const z = dragZ(drag.z0!, drag.y0, p.y), s0 = drag.s0;
         this.pins = this.pins.map((q) => (Math.abs(q.s - s0) < 0.1 ? { s: q.s, z } : q)); // at once, before the recompute
+        this.dragLabel = { s: s0, z, dz: z - drag.z0! };
         this.draw();
+        this.hoverClient = { x: e.clientX, y: e.clientY }; this.updateTip();
         this.ev.onPinDrag?.(s0, z);
         return;
       }
@@ -1005,14 +1051,16 @@ export class ProfilePanel {
       if (drag?.mode === 'press' && drag.under.kind === 'line' && this.mode === 'auto' && Math.abs(p.y - drag.y0) > 3 && Math.abs(p.y - drag.y0) > Math.abs(p.x - drag.x0)) {
         drag.mode = 'line';
         drag.s0 = Math.round(drag.under.s);
-        drag.dy = drag.y0 - this.Y(this.gradeAt(drag.s0));
+        drag.z0 = this.gradeAt(drag.s0);
       }
       if (drag?.mode === 'line') {
         drag.moved = true;
         this.dragging = true;
-        const z = Math.round(this.Z(p.y - drag.dy) * 10) / 10, s0 = drag.s0;
+        const z = dragZ(drag.z0!, drag.y0, p.y), s0 = drag.s0;
         this.pins = [...this.pins.filter((q) => Math.abs(q.s - s0) >= 0.1), { s: s0, z }];
+        this.dragLabel = { s: s0, z, dz: z - drag.z0! };
         this.draw();
+        this.hoverClient = { x: e.clientX, y: e.clientY }; this.updateTip();
         this.ev.onLineDrag?.(s0, z);
         c.style.cursor = 'ns-resize';
         return;
@@ -1030,7 +1078,7 @@ export class ProfilePanel {
       this.hoverFromMap = false;
       this.hoverClient = { x: e.clientX, y: e.clientY };
       const u = this.under;
-      if (u.kind === 'vpi') this.ev.onHover?.(this.vpis[u.k].s, `◆ height point ${u.k} · ${this.vpis[u.k].z.toFixed(1)} m`);
+      if (u.kind === 'vpi') this.ev.onHover?.(this.vpis[u.k].s, `◆ height point · ${this.vpis[u.k].z.toFixed(1)} m`);
       else this.ev.onHover?.(this.hoverS);
       this.draw();
       this.updateTip();
@@ -1039,6 +1087,7 @@ export class ProfilePanel {
       const d = drag;
       drag = null;
       this.dragging = false;
+      if (this.dragLabel) { this.dragLabel = null; this.draw(); this.updateTip(); }
       if (!d || !this.r) return;
       if (d.mode === 'vpi' && d.moved) this.ev.onVpiDragEnd?.();
       if (d.mode === 'pin') { if (d.moved) this.ev.onPinDragEnd?.(); else this.ev.onStationSelect?.(d.s0); }
@@ -1104,4 +1153,12 @@ function niceStep(x: number): number {
   const p = Math.pow(10, Math.floor(Math.log10(x)));
   const m = x / p;
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
+}
+
+/** text on a white halo, readable over the lines of the chart */
+function haloText(g: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, align: CanvasTextAlign) {
+  g.save();
+  g.textAlign = align; g.lineJoin = 'round'; g.lineWidth = 4; g.strokeStyle = 'rgba(255,255,255,0.92)';
+  g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
+  g.restore();
 }

@@ -151,7 +151,6 @@ async function main() {
   const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0), pack.overlays.buildings[j]); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  // after the HUD: it syncs the HUD's exaggeration select
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
   }, noise);
@@ -601,6 +600,7 @@ async function main() {
     if (preview && !previewGesture) previewGesture = { id: crypto.randomUUID(), sequence: 0, lastDisplayedSequence: -1 };
     const message: ProjectWorkerIn = preview && store.activeRouteId
       ? { type: 'project-preview', id: posted, snapshot, routeId: store.activeRouteId, materialValue: lastFull?.quantities.materialValue,
+          structureValue: lastFull?.quantities.structureValue,
           gesture: { id: previewGesture!.id, sequence: ++previewGesture!.sequence } }
       : { type: 'project-eval', id: posted, snapshot, displayedResult: displayedProject && { epoch: displayedProject.epoch, revision: displayedProject.revision } };
     worker.postMessage(message);
@@ -662,7 +662,7 @@ async function main() {
     revalidate(r, rd);
     const cat = CATEGORIES[rd.category];
     profile.setGradeRule({ max: cat.maxGradient?.[scenario.terrainClass] ?? scenario.maxGradient, perMille: cat.mode === 'railway' });
-    profile.setResult(r, r.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+    profile.setResult(r, r.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
     profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
@@ -706,7 +706,7 @@ async function main() {
         // a paired motorway is drawn once, under its forward direction
         const drawn = projectStore.snapshot.design.corridors.find(c => c.mode === 'paired' && c.children.reverse === m.routeId)?.children.forward ?? m.routeId;
         routeScene.preview(drawn, shown); took('view');
-        profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.gradePins, rd.wallOverrides);
+        profile.setResult(shown, shown.vpis, rd.structureOverrides, rd.profileMode === 'auto' ? rd.gradePins : [], rd.wallOverrides);
         profile.setMode(rd.profileMode); document.getElementById('profile')!.classList.toggle('manual', rd.profileMode === 'manual');
         profile.setBends(bendStations(shown, rd)); took('profile');
         if (m.routeId === store.activeRouteId) activePreviewPrice = shown.cost.total;
@@ -1034,14 +1034,28 @@ async function main() {
     },
   };
   const lastClient = { x: 0, y: 0 };
+  /** the height points as they were when a By hand drag began */
+  let vpiDragBase: Design['vpis'] | null = null;
 
   // ---- profile: the same verbs ----
   profile.ev = {
     onStationSelect: (s) => select({ kind: 'pin', s }, true),
     onCrossingSelect: (roadId) => select({ kind: 'crossing', roadId }, true),
     onPick: (s) => selectPiece(s, true),
-    onVpiDrag: (i, s, z) => store.update((d) => { takeProfile(d); if (d.vpis[i]) { d.vpis[i].s = s; d.vpis[i].z = z; } }, false),
-    onVpiDragEnd: () => store.commit(),
+    onVpiDrag: (i, s, z, a, b) => store.update((d) => {
+      takeProfile(d);
+      const base = vpiDragBase ??= d.vpis.map((v) => ({ ...v }));
+      if (!d.vpis[i] || !base[a] || !base[b]) return;
+      d.vpis[i].s = s; d.vpis[i].z = z;
+      // the height points hidden between it and its shown neighbours keep their shape and follow
+      // in proportion, so the line bends only at the points the player sees
+      const dz = z - base[i].z;
+      for (let j = a + 1; j < b; j++) if (j !== i) {
+        const t = j < i ? (base[j].s - base[a].s) / Math.max(1e-6, s - base[a].s) : (base[b].s - base[j].s) / Math.max(1e-6, base[b].s - s);
+        d.vpis[j].z = Math.round((base[j].z + dz * Math.max(0, Math.min(1, t))) * 100) / 100;
+      }
+    }, false),
+    onVpiDragEnd: () => { vpiDragBase = null; store.commit(); },
     onVpiAdd: (s, z) => {
       const vp = store.design.profileMode === 'auto' && last ? last.vpis : store.design.vpis;
       if (vp.some((v) => Math.abs(v.s - s) < MIN_VPI_GAP)) return;
@@ -1190,7 +1204,6 @@ async function main() {
       switchRoute(corridor.children[which]);
     },
     onLoadBest: () => { if (store.best) { store.loadBest(); toast('Loaded your best design.', 'Undo', () => store.undo()); } },
-    onExaggeration: (e) => viewBar.set({ exag: e }),
     onViolation: (k) => {
       // the list shows the last full result's violations (previews do not replace it)
       if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }

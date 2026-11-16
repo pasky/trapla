@@ -40,7 +40,6 @@ export interface HudEvents {
   onDirection?: (which: 'both' | 'forward' | 'reverse') => void;
   onLoadBest?: () => void;
   onViolation?: (k: number) => void;
-  onExaggeration?: (e: number) => void;
   /** show the first-run introduction again */
   onIntro?: () => void;
 }
@@ -240,8 +239,7 @@ export class Hud {
           <li><b>Keys:</b> <kbd>Esc</kbd> deselect, <kbd>Del</kbd> delete a bend, <kbd>Ctrl+Z</kbd> undo; on a stretch <kbd>A</kbd> <kbd>B</kbd> <kbd>T</kbd> <kbd>E</kbd> = Auto / Bridge / Tunnel / Earthwork.</li>
           <li><b>The model:</b> real terrain, Czech prices and norms; noise and some crossings are rough estimates.</li>
         </ul>
-        <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>
-        <label class="exag">Relief <select id="exag"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></label>`)}`;
+        <div class="btns"><button type="button" id="show-intro">Show the intro</button></div>`)}`;
     this.goalText = sc.mode === 'motorway'
       ? `Goal: cheapest valid motorway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(sc.traffic)} veh/day`
       : sc.mode === 'railway' ? `Goal: cheapest valid railway · ≤ ${sc.maxTravelMin.toFixed(1)} min · ${num(RAIL_TRAINS_PER_DAY)} trains a day`
@@ -258,7 +256,6 @@ export class Hud {
     }
     this.$<HTMLSelectElement>('cat').onchange = (e) => this.ev.onCategory?.((e.target as HTMLSelectElement).value);
     this.$<HTMLSelectElement>('speed').onchange = (e) => this.ev.onSpeed?.(Number((e.target as HTMLSelectElement).value));
-    this.$<HTMLSelectElement>('exag').onchange = (e) => this.ev.onExaggeration?.(Number((e.target as HTMLSelectElement).value));
     this.$('grade-auto').onclick = () => this.ev.onProfileMode?.('auto');
     this.$('grade-manual').onclick = () => this.ev.onProfileMode?.('manual');
     this.$('reset').onclick = () => this.ev.onReset?.();

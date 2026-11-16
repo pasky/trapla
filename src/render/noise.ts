@@ -301,9 +301,11 @@ export class NoiseLayer {
     const kind = BUILDING_KINDS[f ? f[2] : 0]?.label ?? 'building', levels = buildingLevels(f ? f[1] : 0, f ? f[2] : 0);
     const head = `<b>${kind[0].toUpperCase()}${kind.slice(1)}</b> <span class="tip-sub">${levels} floor${levels > 1 ? 's' : ''}</span>`;
     if (r.demolished.some((p) => p.j === j)) return `${head} · demolished`;
-    if (r.boughtOut.some((p) => p.j === j)) return `${head} · bought out`;
+    const limit = r.noise?.limit ?? NOISE.limitNightDb, bought = r.boughtOut.find((p) => p.j === j);
+    if (bought) return `${head} · bought out${bought.reason === 'manual' ? ' · your choice' : rec
+      ? `<div><b class="tip-bad">${fmt(limit + rec.mitigated)} dB</b> on the loudest floor even behind a ${NOISE.wallHeights[NOISE.wallHeights.length - 1]} m wall (limit ${limit})</div>` : ''}`;
     if (!rec) return head;
-    const limit = r.noise?.limit ?? NOISE.limitNightDb, level = limit + rec.mitigated;
+    const level = limit + rec.mitigated;
     return `${head}<div><b class="${rec.mitigated > 1e-6 ? 'tip-bad' : ''}">${fmt(level)} dB</b> on the loudest floor (limit ${limit})${rec.status === 'wall' ? ` · behind a ${rec.wall} m wall` : rec.status === 'cut' ? ' · shielded by a cut' : ''}</div><div class="tip-sub">click for the cross-section</div>`;
   }
 }
