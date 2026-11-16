@@ -30,6 +30,8 @@ describe('building status colours', () => {
     expect(roofOf(b, 0)).toEqual(BOUGHT);
     b.tint(new Map([[1, 0x18b0b0]]), true); // the noise view tints another house and mutes the rest
     expect(roofOf(b, 0)).toEqual(BOUGHT);
+    b.tint(new Map([[0, 0x6fb34f]]), true); // a view colouring the same house (another road's noise view)
+    expect(roofOf(b, 0)).toEqual(BOUGHT);
     b.setMarked(new Map());
     b.tint(new Map(), false);
     expect(roofOf(b, 0)).not.toEqual(BOUGHT);

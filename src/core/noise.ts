@@ -511,8 +511,12 @@ export function noiseOutcome(src: AcousticSource, model: NoiseModel, buildings: 
   /** The lowest 2–6 m single stretch that would resolve a retained dwelling on top of the built walls. */
   const sufficientWall = (c: Candidate, wl: Float64Array, wr: Float64Array) => {
     // the fix replaces the player's own choice there: every cell on its side may carry it
-    const own = data.get(c.j)!, d: Decision = { ...own, cells: cellOptions(field, c.x, c.y, c.z, own.w0, own.w1, heights,
-      c.left ? undefined : manL, c.left ? manR : undefined) };
+    const own = data.get(c.j)!, cells = cellOptions(field, c.x, c.y, c.z, own.w0, own.w1, heights,
+      c.left ? undefined : manL, c.left ? manR : undefined);
+    // F0 belongs to the cells it was summed from: rebuilt over these (without the player's walls there)
+    const H = c.z.length, F0 = Float64Array.from(own.F), e0 = cells.opt(0);
+    for (let q = 0, m = own.w1 - own.w0 + 1; q < m; q++) for (let k = 0; k < H; k++) F0[k] += e0[q * H + k];
+    const d: Decision = { ...own, cells, F0 };
     for (let o = 1; o <= heights.length; o++) {
       const g = grow(c, d, Float64Array.from(c.left ? wl : wr), c.left ? wr : wl, o, false);
       if (!g.ok || g.lo < 0) continue;

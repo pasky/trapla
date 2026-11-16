@@ -20,7 +20,8 @@ against 5 / 5 / 5 / 5 / 7 ms on main. The performance pass:
 - **Candidates**: stamped scratch grids reused across calls, the nearest station by descent from the
   house's projection onto the tangent (squared façade distances), one visited-set per building index.
 - Accuracy against the cell-by-cell sum on every storey of 7 saved designs: within 3 dB of the limit
-  ≤ 0.083 dB (was 0.078); bills moved by ≤ 0.5 M CZK (demo, direct-80, town fixtures; research/36 §3).
+  ≤ 0.100 dB over, 0.082 under (was 0.078; far walls now take a share of what passes the edges, never more,
+  and segments must be straight); bills moved by ≤ 0.5 M CZK (demo, direct-80, town fixtures; research/36 §3).
 
 Interleaved A/B in one process (both evaluate bundles loaded, alternating, warm, 20 rounds, host load
 ≈ 6), min / median ms:

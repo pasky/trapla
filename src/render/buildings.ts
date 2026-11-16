@@ -156,10 +156,10 @@ export class Buildings {
     return best;
   }
 
-  /** standing colours (bought-out houses): under every tint, in every view */
+  /** standing colours (bought-out houses): over every tint, in every view */
   private marked = new Map<number, number>();
   private lastTint: { colors: Map<number, number>; mute: boolean } = { colors: new Map(), mute: false };
-  /** Colour these buildings in every view (render index → 0xRRGGBB); a view's own tint goes over them. */
+  /** Colour these buildings in every view (render index → 0xRRGGBB), over a view's own tint. */
   setMarked(colors: Map<number, number>) {
     this.marked = colors;
     this.tint(this.lastTint.colors, this.lastTint.mute);
@@ -169,7 +169,8 @@ export class Buildings {
    * light grey (so that the red roofs do not read as a status); otherwise they keep their own colours. */
   tint(given: Map<number, number>, mute = false) {
     this.lastTint = { colors: given, mute };
-    const colors = this.marked.size ? new Map([...this.marked, ...given]) : given;
+    // what the project takes (bought out) stays shown over any view's own colours
+    const colors = this.marked.size ? new Map([...given, ...this.marked]) : given;
     const dirty = new Set<number>();
     const base = (chunk: Buildings['chunks'][number]) => {
       if (!mute) return chunk.colors;

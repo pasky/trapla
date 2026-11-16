@@ -7,7 +7,7 @@ import { KIND } from '../src/core/structures';
 import {
   crossSectionScreens, dwellingLevels, noiseOutcome, sourceExcess, wallLineLengths, type AcousticSource,
 } from '../src/core/noise';
-import { emptyScreen, lineTransfer, noiseField, pointTransfer, transferBuffers } from '../src/core/noise-field';
+import { emptyScreen, lineTransfer, noiseField, openTransfer, pointTransfer, transferBuffers } from '../src/core/noise-field';
 import { createNoiseModel, noiseLevels } from '../src/core/road-noise';
 import { noiseControlViolations } from '../src/core/noise-control-violations';
 import { createRailNoiseModel, PASSENGER_EMU } from '../src/core/rail-noise';
@@ -118,6 +118,29 @@ describe('finite-segment sum', () => {
 });
 
 describe('far cells grouped for speed', () => {
+  it('a road curled far away is summed as the road, not as its short chord', () => {
+    // a 270° arc of radius 500 m, cells of ≈ 10 m, seen from far outside it
+    const n = 236, R = 500, a = (i: number) => (i + 0.5) / n * 1.5 * Math.PI;
+    const base = road(n, 0);
+    const arc: AcousticSource = { ...base, x: Float64Array.from({ length: n }, (_, i) => R * Math.cos(a(i))), y: Float64Array.from({ length: n }, (_, i) => R * Math.sin(a(i))),
+      tx: Float64Array.from({ length: n }, (_, i) => -Math.sin(a(i))), ty: Float64Array.from({ length: n }, (_, i) => Math.cos(a(i))),
+      len: new Float64Array(n).fill(1.5 * Math.PI * R / n) };
+    const f = noiseField(arc), t1 = transferBuffers(1), t2 = transferBuffers(1), open = new Float64Array(1);
+    for (const p of [[-4000, 0], [-2000, 0]]) {
+      pointTransfer(f, p[0], p[1], [1.5], null, null, t1);
+      pointTransfer(f, p[0], p[1], [1.5], null, null, t2, 0, n - 1);
+      expect(Math.abs(10 * Math.log10(t1.raw[0] / t2.raw[0]))).toBeLessThan(0.3);
+      openTransfer(f, p[0], p[1], [1.5], open);
+      expect(Math.abs(10 * Math.log10(open[0] / t2.raw[0]))).toBeLessThan(0.5);
+    }
+  });
+  it('walls behind cut edges never take more than passes the edges', () => {
+    const n = 4, cut = road(n, 0, { dayL: () => 9, zDayL: (i) => (i % 2 ? 8 : 0) });
+    const f = noiseField(cut), t = transferBuffers(1), walls = Float64Array.from({ length: n }, (_, i) => (i % 2 ? 0 : 5));
+    pointTransfer(f, 15, 250, [1.5], walls, null, t);
+    expect(t.screened[0]).toBeGreaterThan(0);
+  });
+
   // research/36 §2: ≤ 0.1 dB on every storey of the saved designs; this adversarial curve (2 % grade, cut /
   // fill and walls alternating every 200 m) reaches 0.11 dB
   it('stay within 0.15 dB of the cell-by-cell sum on a curving road with cuts, fills and walls', () => {
@@ -199,6 +222,15 @@ describe('automatic walls and buyouts', () => {
     const [v] = noiseControlViolations(o.receivers, ss);
     expect(v.kind).toBe('noise');
     expect(v.target?.buildings).toEqual([0]);
+  });
+  it('the computed fix for a kept house behind a low wall of the player\'s, applied, resolves it', () => {
+    const own = Float64Array.from(ss, (x) => (Math.abs(x - 2000) < 150 ? 2 : NaN));
+    const o = noiseOutcome(src, model, house(0, 25), [0], () => 0, ss, { keptBuildingIds: new Set([0]), wallL: own });
+    const fix = o.unresolved[0]?.fix;
+    expect(fix).toBeDefined();
+    const fixed = Float64Array.from(ss, (x, i) => (x >= fix!.s0 - 1e-6 && x <= fix!.s1 + 1e-6 ? fix!.height : own[i]));
+    const after = noiseOutcome(src, model, house(0, 25), [0], () => 0, ss, { keptBuildingIds: new Set([0]), wallL: fixed });
+    expect(after.unresolved).toEqual([]);
   });
   it('a manual 6 m wall saves an upper floor that 5 m cannot; removing a wall stops the buyout', () => {
     const b = house(0, 16, 3);

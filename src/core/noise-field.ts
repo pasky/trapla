@@ -170,6 +170,10 @@ function transferSlow(slant: number, dv: number, ground: Propagation, lin: { tab
 /** the most storeys a dwelling can have (buildingLevels caps tags): every per-storey buffer holds this many */
 export const MAX_STOREYS = Math.max(...BUILDING_KINDS.map(k => k.maxLevels));
 const CHUNK = 4, NEAR = 160, THETA = 0.32, THETA_OPEN = 1;
+/** a segment is taken as one only while its cells' length is within this factor of its chord (a bend of
+ * ≈ 28° at most): a curled-up stretch is not a short straight line */
+const STRAIGHT = 1.01;
+const straight = (S: Segments, c: number) => S.len[c] <= STRAIGHT * 2 * S.half[c];
 export const NOISE_REACH = 3000;
 
 interface Segments { n: number; i0: Int32Array; i1: Int32Array; cx: Float64Array; cy: Float64Array; ux: Float64Array; uy: Float64Array; half: Float64Array; radius: Float64Array; z: Float64Array;
@@ -427,8 +431,9 @@ export function pointTransfer(f: NoiseField, px: number, py: number, z: ArrayLik
     const c = st[--sp], k = st[--sp], S = T[k], i0 = S.i0[c], i1 = S.i1[c];
     if (!(w1 >= i0 && w0 <= i1)) {
       const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
-      if (gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) { farOpen(f, S, c, z, out); continue; }
-      const fits = k === 0 || 2 * S.radius[c] <= THETA * gap;
+      const line = straight(S, c);
+      if (line && gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) { farOpen(f, S, c, z, out); continue; }
+      const fits = line && (k === 0 || 2 * S.radius[c] <= THETA * gap);
       if (fits && gap > NEAR && !visit) { far(f, S, c, z, wallL, wallR, out); continue; }
     }
     if (k > 0) {
@@ -476,8 +481,9 @@ export function transferDelta(f: NoiseField, px: number, py: number, z: ArrayLik
     const S = T[k], i0 = S.i0[c], i1 = S.i1[c];
     if (!(w1 >= i0 && w0 <= i1)) {
       const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
-      if (gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) continue; // counted unscreened: walls change nothing
-      const fits = k === 0 || 2 * S.radius[c] <= THETA * gap;
+      const line = straight(S, c);
+      if (line && gap > NOISE_REACH && (k === 0 || 2 * S.radius[c] <= THETA_OPEN * gap)) continue; // counted unscreened: walls change nothing
+      const fits = line && (k === 0 || 2 * S.radius[c] <= THETA * gap);
       if (fits && gap > NEAR) { farDelta(f, S, c, z, oldL, oldR, newL, newR, screened); continue; }
     }
     if (k > 0) {
@@ -519,22 +525,15 @@ export function segmentFlags(f: NoiseField, flag: ArrayLike<number>): Uint8Array
 /** per storey: the far segment's sampled edge sums (length-weighted), lengths seen, whether to sample */
 const FS = new Float64Array(MAX_STOREYS), FW = new Float64Array(MAX_STOREYS), FN = new Uint8Array(MAX_STOREYS);
 
-/** A far straight segment as one for its geometry (angle, distance, U), each cell with its own screening
- * seen along that geometry. Edges: the whole segment at once when none can rise above any cell's
- * sightline, else at every `step`-th cell (two samples per segment); then the walls' gain over the edges
- * (farWalls, the same terms as transferDelta's farDelta). */
-function far(f: NoiseField, S: Segments, c: number, z: ArrayLike<number>,
-  wallL: ArrayLike<number> | null, wallR: ArrayLike<number> | null, out: Transfer) {
-  const src = f.src, H = z.length, hs = src.sourceHeight;
-  nodeGeometry(S, c);
-  const left = GEO[G_LEFT] === 1;
-  const s = left ? src.L : src.R, walls = left ? wallL : wallR;
-  const i0 = S.i0[c], i1 = S.i1[c];
-  const e = S.edges, eb = (c * 2 + (left ? 0 : 1)) * 8;
-  const total = e[eb], open = e[eb + 1];
-  if (!(total > 0) || !(open > 0)) return;
+/** per storey: a far segment's mean edge transmission over its open length (sampled), and its walls' share
+ * term (farWalls) */
+const TEO = new Float64Array(MAX_STOREYS), WG = new Float64Array(MAX_STOREYS);
+
+/** TEO[k] = segment c's edge transmission per open metre along the current geometry: 1 when no edge can
+ * rise above any cell's sightline, else the length-weighted mean at every `step`-th cell (two samples). */
+function farEdges(src: AcousticSource, s: SideScreen, S: Segments, c: number, eb: number, z: ArrayLike<number>) {
+  const H = z.length, hs = src.sourceHeight, e = S.edges, d = GEO[G_D], step = S.step, i0 = S.i0[c], i1 = S.i1[c];
   const maxRel = e[eb + 2], minOff = e[eb + 3], maxGrade = e[eb + 4], maxOff = e[eb + 5];
-  const step = S.step, d = GEO[G_D];
   // every cell's sightline at its nearest edge clears the highest edge top: nothing screens
   // ((z − g − hs)·o/d ≥ clear·o/d ≥ clear·(minOff or, below the source, maxOff)/d for every cell)
   let sample = false;
@@ -542,42 +541,53 @@ function far(f: NoiseField, S: Segments, c: number, z: ArrayLike<number>,
     const clear = z[k] - maxGrade - hs;
     FN[k] = maxRel === -Infinity || maxRel <= clear * (clear >= 0 ? minOff : maxOff) / d ? 0 : 1;
     if (FN[k]) sample = true;
-    FS[k] = 0; FW[k] = 0;
+    FS[k] = 0; TEO[k] = 1;
   }
-  if (sample) {
-    let seen = 0;
-    for (let i = i0 + (step >> 1); i <= i1; i += step) {
-      if (s.shield[i]) continue;
-      const l = src.len[i];
-      seen += l;
-      edgeScreens(src, s, i, z);
-      for (let k = 0; k < H; k++) FS[k] += l * TE[k];
-    }
-    if (!(seen > 0)) for (let i = i0; i <= i1; i++) if (!s.shield[i]) {
-      const l = src.len[i];
-      seen += l;
-      edgeScreens(src, s, i, z);
-      for (let k = 0; k < H; k++) FS[k] += l * TE[k];
-    }
-    for (let k = 0; k < H; k++) FW[k] = seen;
+  if (!sample) return;
+  let seen = 0;
+  for (let i = i0 + (step >> 1); i <= i1; i += step) {
+    if (s.shield[i]) continue;
+    const l = src.len[i];
+    seen += l;
+    edgeScreens(src, s, i, z);
+    for (let k = 0; k < H; k++) FS[k] += l * TE[k];
   }
-  if (walls) farWalls(src, s, walls, i0, i1, step, z);
+  if (!(seen > 0)) for (let i = i0; i <= i1; i++) if (!s.shield[i]) {
+    const l = src.len[i];
+    seen += l;
+    edgeScreens(src, s, i, z);
+    for (let k = 0; k < H; k++) FS[k] += l * TE[k];
+  }
+  for (let k = 0; k < H; k++) if (FN[k]) TEO[k] = FS[k] / seen;
+}
+
+/** A far straight segment as one for its geometry (angle, distance, U), each cell with its own screening
+ * seen along that geometry: the edges sampled (farEdges), the walls as the share of what passes the edges
+ * that they take away (farWalls; the same terms as transferDelta's farDelta). Never below zero. */
+function far(f: NoiseField, S: Segments, c: number, z: ArrayLike<number>,
+  wallL: ArrayLike<number> | null, wallR: ArrayLike<number> | null, out: Transfer) {
+  const src = f.src, H = z.length;
+  nodeGeometry(S, c);
+  const left = GEO[G_LEFT] === 1;
+  const s = left ? src.L : src.R, walls = left ? wallL : wallR;
+  const e = S.edges, eb = (c * 2 + (left ? 0 : 1)) * 8;
+  const total = e[eb], open = e[eb + 1];
+  if (!(total > 0) || !(open > 0)) return;
+  farEdges(src, s, S, c, eb, z);
+  if (walls) farWalls(src, s, walls, S.i0[c], S.i1[c], S.step, z);
   nodeEnergies(f, z, S, c, false);
   const wc = S.w[c];
   for (let k = 0; k < H; k++) {
-    const base = EN[k] * wc / total;
-    const te = FN[k] ? FS[k] * open / FW[k] : open;
-    const ts = walls ? te + WG[k] : te;
+    const base = EN[k] * wc / total, te = TEO[k] * open;
+    const ts = walls ? te + TEO[k] * WG[k] : te;
     out.raw[k] += base * open; out.earth[k] += base * te; out.screened[k] += base * ts;
   }
 }
 
-/** per storey: the walls' gain over the edges of a far segment (farWalls) */
-const WG = new Float64Array(MAX_STOREYS);
-
-/** The walls of a far segment: WG[k] = their gain over the edges (≤ 0), Σ l·(t_wall − t_edge), along the
- * segment's ray. Each block of `step` cells (the edge samples' blocks: two per segment) counts each
- * wall height in it once, at its cell nearest the block's middle, times the length of its cells there. */
+/** The walls of a far segment: WG[k] = Σ l·(t_wall / t_edge − 1) over its walled length (between −that
+ * length and 0, so what passes never goes below zero), along the segment's ray. Each block of `step` cells
+ * (the edge samples' blocks: two per segment) counts each wall height in it once, at its cell nearest the
+ * block's middle, times the length of its cells there. */
 function farWalls(src: AcousticSource, s: SideScreen, walls: ArrayLike<number>, i0: number, i1: number, step: number,
   z: ArrayLike<number>) {
   const H = z.length;
@@ -598,7 +608,7 @@ function farWalls(src: AcousticSource, s: SideScreen, walls: ArrayLike<number>, 
       }
       edgeScreens(src, s, rep, z);
       wallScreens(src, s, rep, h, z);
-      for (let k = 0; k < H; k++) WG[k] += len * (TS[k] - TE[k]);
+      for (let k = 0; k < H; k++) WG[k] += len * (TS[k] / TE[k] - 1);
     }
   }
 }
@@ -616,13 +626,14 @@ function farDelta(f: NoiseField, S: Segments, c: number, z: ArrayLike<number>,
   let changed = false;
   for (let i = i0; i <= i1 && !changed; i++) if (wo[i] !== wn[i] && !s.shield[i]) changed = true;
   if (!changed) return;
+  farEdges(src, s, S, c, eb, z);
   farWalls(src, s, wn, i0, i1, S.step, z);
-  for (let k = 0; k < H; k++) FS[k] = WG[k];
+  for (let k = 0; k < H; k++) FW[k] = WG[k];
   farWalls(src, s, wo, i0, i1, S.step, z);
   nodeEnergies(f, z, S, c, false);
   const wc = S.w[c];
   for (let k = 0; k < H; k++) {
-    const dts = FS[k] - WG[k];
+    const dts = TEO[k] * FW[k] - TEO[k] * WG[k];
     if (dts !== 0) screened[k] += EN[k] * wc / total * dts;
   }
 }
@@ -641,7 +652,7 @@ export function openTransfer(f: NoiseField, px: number, py: number, z: ArrayLike
     const c = st[--sp], k = st[--sp], S = T[k];
     const dx = px - S.cx[c], dy = py - S.cy[c], gap = Math.sqrt(dx * dx + dy * dy) - S.radius[c];
     // unscreened, only the geometry is grouped: segments ≥ 1.5 lengths away, 40 m chunks ≥ 60 m away
-    if (k === 0 ? gap > 60 : gap > 3 * S.half[c]) {
+    if (straight(S, c) && (k === 0 ? gap > 60 : gap > 3 * S.half[c])) {
       nodeGeometry(S, c);
       const e = S.edges, eb = (c * 2 + (GEO[G_LEFT] === 1 ? 0 : 1)) * 8, total = e[eb], open = e[eb + 1];
       if (!(total > 0) || !(open > 0)) continue;

@@ -942,7 +942,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
       gone[j] = 1;
       buildingCost[p.i] += bld.cost[j];
-      demolished.push({ j, i: p.i, cost: bld.cost[j], in: kind[p.i] === KIND.bridge ? 'bridge' : h[p.i] >= 0 ? 'embankment' : 'cut', strip: !p.core });
+      // which earthwork: the one on the building's side of the road (a cross slope may cut one side, fill the other)
+      const k = p.i, leftSide = (items[j][0] - st.x[k]) * -st.ty[k] + (items[j][1] - st.y[k]) * st.tx[k] >= 0;
+      const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
+      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : cutSide ? 'cut' : 'embankment', strip: !p.core });
     }
     for (const o of buildingOverrides) {
       if (gone[o.j]) continue; // footprint acquisition already pays the building once
