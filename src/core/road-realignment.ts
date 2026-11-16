@@ -58,6 +58,9 @@ const STEP = 5, SETBACK = 3, MAX_POINTS = 1600, MAX_SUPPORT = 10;
 const MAX_CLOSURE = 400;
 /** PROVISIONAL height difference a new junction mouth or turning area may regrade, m. */
 const MOUTH_TOLERANCE = 1;
+/** A junction this close to the end a removed stub joins is that end's own junction, m (pack ways are
+ * simplified by 1 m and rounded to metres: roadnet.ts JUNCTION_UNCERTAINTY). */
+const JUNCTION_TOLERANCE = 2;
 const distance = (a: Point2, b: Point2) => Math.hypot(b.x - a.x, b.y - a.y);
 const mix = (a: WayPoint, b: WayPoint, t: number): WayPoint => ({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), d: a.d + t * (b.d - a.d) });
 function along(path: readonly WayPoint[], d: number): WayPoint {
@@ -281,7 +284,14 @@ export function planRoadRealignment(input: RoadRealignmentInput, junctionRetry =
   // (so is one whose part left outside them is shorter than the turning area its cut end would need)
   const under = (p: Point2) => grid.near(p).some(c => !c.structure && insideFootprint(p, c));
   const samples = dense(source), outside = samples.filter(p => !under(p)).length * STEP;
-  if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1])))) {
+  // (only where no other road joins it on the way: those keep their connection)
+  const joined = () => {
+    const live = dead[0] ? source[source.length - 1] : source[0];
+    for (let i = 1; i < source.length; i++) for (const j of roads.junctions(source[i - 1], source[i]))
+      if (Math.hypot(j.x - live.x, j.y - live.y) > JUNCTION_TOLERANCE) return true;
+    return false;
+  };
+  if ((dead[0] || dead[1]) && (outside === 0 || (outside < 2 * row.width * 1.5 && !(dead[0] && dead[1]))) && !joined()) {
     const intervals: RoadSourceInterval[] = [];
     for (const span of spans) {
       const start = Math.max(lo, span.lo), end = Math.min(hi, span.hi);

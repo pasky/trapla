@@ -674,7 +674,6 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       const survey = surveyLink(part, g.width, linkEnv);
       for (const p of survey.problems) if (p !== 'footprint') problems.add(p);
       if (survey.houses.length) problems.add('building');
-      if (profileLink(survey, row.rampSteepest, linkEnv, true).problems.includes('steep')) problems.add('steep');
       culvertCost += survey.culverts.reduce((a, w) => a + w.cost, 0);
     }
     if (problems.size) return { problem: [...problems].sort().join(',') };
@@ -691,7 +690,8 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       if (!i || d > out[out.length - 1].d + 1e-6) out.push({ x: q.x, y: q.y, d });
     });
     for (const q of out) q.d -= centre;
-    return { path: denseWay(out, message => diagnose(g, message)), p0: start - centre, p1: end - centre, culvertCost, removed: [a.d, b.d] as [number, number] };
+    const notes: string[] = [];
+    return { path: denseWay(out, message => notes.push(message)), notes, p0: start - centre, p1: end - centre, culvertCost, removed: [a.d, b.d] as [number, number] };
   };
   for (const c of crossings) {
     const anchorKey = anchorOnly?.has(c) ? `${c.roadId}:${c.x},${c.y}:${c.cls}:${c.type}:${c.square ? 1 : 0}:${maxLinkWidth(c)}` : undefined;
@@ -719,6 +719,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
       squares.set(squareKey, squared);
       if ('path' in squared && squared.path) {
         path = squared.path; squaredPaths.set(c, path); keep = squared;
+        for (const message of squared.notes) diagnose(g, message);
         c.squared = cut!.angle; g.removed = squared.removed;
       } else diagnose(g, `${SQUARE_FAILS}${squared.problem}`);
     }
@@ -967,6 +968,15 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         : g.underpass ? [road[g.underpass.start]?.d, road[g.underpass.end]?.d] : [undefined, undefined];
       const lo = ends[0] ?? 0, hi = ends[1] ?? 0, rate = (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
       c.realignLength = Math.max(0, keep.p1 - keep.p0 - Math.max(0, Math.min(hi, keep.p1) - Math.max(lo, keep.p0)));
+      // (the new road beyond them lies on the ground as drawn: no steeper there than its class allows where
+      // the ground leaves no choice, over 20 m as for a shaped reroute)
+      const ground = (d0: number, d1: number) => {
+        const out: { x: number; y: number; z: number }[] = [];
+        for (let d = d0; d < d1 + 2.5; d += 5) { const q = along(path, Math.min(d, d1)); out.push({ x: q.x, y: q.y, z: heightAt(q.x, q.y) }); }
+        return out;
+      };
+      const pieces = [ground(keep.p0, Math.min(lo, keep.p1)), ground(Math.max(hi, keep.p0), keep.p1)].filter(p => p.length > 1);
+      if (pieces.some(p => linkSteepest(p) > ROAD_CLASSES[c.cls].rampSteepest + 1e-9)) diagnose(g, `${SQUARE_FAILS}steep`);
       c.realignCost = c.realignLength * rate + keep.culvertCost;
       c.cost += c.realignCost;
     }
@@ -1428,10 +1438,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       }
       // (nor when the cheapest buildable treatment so far already costs less than its least price)
       const squareLeast = least + (g?.skewRun ?? 0) * rate;
-      // (search economy: a bridge whose ramps cannot reach the ground, or a box with too little
-      // embankment over it, fails square too: the same ground and the same height)
-      const hopeless = !!plain && !ok(plain) && (plain.geometry?.diagnostics ?? []).every(m => m === RAMP_TOO_LONG || m === UNDERPASS_TOO_LOW || m.startsWith('Approach earthwork exceeds'));
-      if (skewed && !hopeless && !(c.type === type && c.square) && (!plain || !ok(plain) || plain.cost > squareLeast) && !(ok(best) && best.cost <= squareLeast)) {
+      if (skewed && !(c.type === type && c.square) && (!plain || !ok(plain) || plain.cost > squareLeast) && !(ok(best) && best.cost <= squareLeast)) {
         const squared = clone(c); squared.type = type; squared.square = true;
         delete squared.targetS; delete squared.targetRoadId; delete squared.linkLength; delete squared.span; delete squared.approachLength; delete squared.underpassLength;
         build([squared]);
@@ -1479,7 +1486,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       const link = clone(c); link.type = c.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
       link.targetS = target.s; link.targetRoadId = target.roadId;
-      const anchor = clone(target);
+      const anchor = clone(target); anchor.square = target.square;
       // A resolved diversion's source is a real ground-level road node; its downstream link need
       // not be rebuilt to evaluate a new branch arriving at that source.
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
@@ -1544,7 +1551,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       const link = clone(x); link.type = x.cls === 'track' ? 'diversion' : 'reconnection';
       delete link.span; delete link.approachLength; delete link.underpassLength;
       link.targetS = target.s; link.targetRoadId = target.roadId;
-      const anchor = clone(target);
+      const anchor = clone(target); anchor.square = target.square;
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], before - spent, new Set([anchor]));
       if (!feasible(link)) return;
@@ -1582,7 +1589,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       const t = nearestCarrier(x, [c, ...followers]);
       if (!t) { total = Infinity; break; }
       const link = clone(x); link.targetS = t.s; link.targetRoadId = t.roadId;
-      const anchor = clone(t);
+      const anchor = clone(t); anchor.square = t.square;
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], before - total, new Set([anchor]));
       if (!feasible(link)) { total = Infinity; break; }

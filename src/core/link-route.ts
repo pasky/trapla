@@ -208,7 +208,13 @@ export function profileLink(survey: LinkSurvey, grade: number, env: LinkEnv, ope
     // (one query per raised or lowered piece of at most PIECE m)
     let deepest = Math.max(lift(i - 1), lift(i));
     j = i + 1;
-    while (j < n && points[j].d! - points[i - 1].d! <= PIECE && lift(j) > SLOPE_FLAT) { deepest = Math.max(deepest, lift(j)); j++; }
+    // (and straight: a chord across a bend would miss what stands under the bend's slopes)
+    const ux = points[i].x - points[i - 1].x, uy = points[i].y - points[i - 1].y, ul = Math.hypot(ux, uy) || 1;
+    const straight = (k: number) => {
+      const vx = points[k].x - points[k - 1].x, vy = points[k].y - points[k - 1].y, vl = Math.hypot(vx, vy) || 1;
+      return Math.abs(ux * vy - uy * vx) / (ul * vl) < 0.05 && ux * vx + uy * vy > 0;
+    };
+    while (j < n && points[j].d! - points[i - 1].d! <= PIECE && lift(j) > SLOPE_FLAT && straight(j)) { deepest = Math.max(deepest, lift(j)); j++; }
     // (reach rounded up to whole metres: the same piece is profiled at several gradients, and memoised)
     const a = points[i - 1], b = points[j - 1], reach = Math.ceil(survey.half + deepest * SLOPE);
     if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-9) continue;
