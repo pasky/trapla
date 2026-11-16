@@ -129,7 +129,28 @@ export const HORIZONTAL_NORMS: Record<number, HorizontalNormRow> = {
  * Červenohorské sedlo, S 9.5/60, built under an approved departure from ČSN 73 6101; the forest-road floor is
  * 15 m), a plain circular arc (no transitions: Swiss SN 640 198a; the forest-road guide), no straight required
  * next to it (the forest guide's ≈ 20 m straights "may be dropped where cramped"). */
-export const HAIRPIN = { radius: 17.5, banking: 0.075 };
+export const HAIRPIN = {
+  radius: 17.5, banking: 0.075,
+  /** Lane width a 16.5 m articulated lorry sweeps turning through 90° on a lane of radius R (VUT/HBH, Metodika
+   * pro rozšíření jízdních pruhů ve směrových obloucích, 2015, tab. 5 p. 11), [R, m] */
+  sweptLane: [[15, 5.3], [20, 4.7], [25, 4.3], [30, 4.0], [40, 3.6], [50, 3.4]] as [number, number][],
+  /** safety margin added to it: class I 0.75 m, class II / III 0.50 m (ibid. tab. 2–3) */
+  marginClassI: 0.75, marginOther: 0.5,
+  /** pavement of the widening, CZK/m²: OTSKP 2026 layers of a class I (≈ 2,000) and a class III (≈ 1,300)
+   * structure (research/46 §3; class II PROVISIONAL at the class III price) */
+  pavementClassI: 2000, pavementOther: 1300,
+};
+
+/** Extra width of each lane of a hairpin of radius r on the axis, m (0 if the lane is wide enough) */
+export function hairpinLaneWidening(r: number, category: CategoryId): number {
+  const c = CATEGORIES[category], lane = c.section?.lane ?? 3.5;
+  const t = HAIRPIN.sweptLane;
+  let swept = t[0][1];
+  if (r >= t[t.length - 1][0]) swept = t[t.length - 1][1];
+  else for (let k = 1; k < t.length; k++) if (r <= t[k][0]) { swept = t[k - 1][1] + (t[k][1] - t[k - 1][1]) * Math.max(0, r - t[k - 1][0]) / (t[k][0] - t[k - 1][0]); break; }
+  const margin = c.roadClass === 'I' ? HAIRPIN.marginClassI : HAIRPIN.marginOther;
+  return Math.max(0, swept + margin - lane);
+}
 export const HAIRPIN_RULES: HorizontalRules = { minRadius: HAIRPIN.radius, transition: 0, plainRadius: 0, compoundRatio: 2, reverseStraight: 0, hairpin: true };
 
 /** A bend's own rules where its stretch has another design speed or it is a hairpin (undefined: the road's).

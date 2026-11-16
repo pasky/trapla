@@ -891,14 +891,15 @@ export class View {
       const gp = r.geology.profiles[r.geology.ids[i]];
       const geoAt = (depth: number) => (gp.normMix ? [-3, -3, r.s[i]] : [depth - gp.classIto, depth - gp.classIIto, r.s[i]]);
       const kL = fillL ? EW_KIND.fill : EW_KIND.cut, kR = fillR ? EW_KIND.fill : EW_KIND.cut;
-      const xel = x + nx * w, yel = y + ny * w, xer = x - nx * w, yer = y - ny * w;
+      const wi = w + (r.widen?.[i] ?? 0); // a hairpin's widened lanes
+      const xel = x + nx * wi, yel = y + ny * wi, xer = x - nx * wi, yer = y - ny * wi;
       sv.push({
         dl: push(xl, yl, natural(xl, yl) + groundLift, fillL ? fillC : cutC, r.zDayL[i], slopeInk, kL, geoAt(0)),
         wl: Number.isFinite(r.wallSurfaceL?.[i]) ? push(xl, yl, r.wallSurfaceL[i]+groundLift, fillL ? fillC : cutC, r.wallSurfaceL[i], slopeInk, kL, geoAt(natural(xl,yl)-r.wallSurfaceL[i])) : undefined,
         el: push(xel, yel, z + lift, fillL ? fillC : cutC, z, slopeInk, kL, geoAt(this.terrain.heightAt(xel, yel) - z)),
         // the carriageway: lanes, markings and verges come from the shader (offset, bridge, station)
-        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
-        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * w, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cl: push(xel, yel, z + lift, crown, z, crownInk, EW_KIND.road, [side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
+        cr: push(xer, yer, z + lift, crown, z, crownInk, EW_KIND.road, [-side * wi, 2 * section + (r.kind[i] === KIND.bridge ? 1 : 0), r.s[i]]),
         er: push(xer, yer, z + lift, fillR ? fillC : cutC, z, slopeInk, kR, geoAt(this.terrain.heightAt(xer, yer) - z)),
         dr: push(xr, yr, natural(xr, yr) + groundLift, fillR ? fillC : cutC, r.zDayR[i], slopeInk, kR, geoAt(0)),
         wr: Number.isFinite(r.wallSurfaceR?.[i]) ? push(xr, yr, r.wallSurfaceR[i]+groundLift, fillR ? fillC : cutC, r.wallSurfaceR[i], slopeInk, kR, geoAt(natural(xr,yr)-r.wallSurfaceR[i])) : undefined,

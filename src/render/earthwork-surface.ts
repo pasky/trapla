@@ -9,6 +9,8 @@ export const GROUND_COLLAR = 20;
 export const COLLAR_OVERLAP = 5;
 export type EarthworkRoute = Pick<Result, 'n' | 'x' | 'y' | 'tx' | 'ty' | 'grade' | 'kind' | 'dayL' | 'dayR'> & {
   wallSurfaceL?: Float64Array; wallSurfaceR?: Float64Array;
+  /** a hairpin's widened lanes, extra crown on each side (Result.widen) */
+  widen?: Float32Array;
 };
 export function daylightPoint(r: EarthworkRoute, i: number, side: number, extra = 0) {
   const off = ((side > 0 ? r.dayL[i] : r.dayR[i]) + extra) * side;
@@ -45,6 +47,7 @@ export function groundStations(r: EarthworkRoute, natural: (x: number, y: number
 export function slopeKnee(r: EarthworkRoute & Pick<Result, 'zDayL' | 'zDayR' | 'geology'>, i: number, side: number,
   halfWidth: number): { u: number; dz: number } | null {
   if (Number.isFinite((side > 0 ? r.wallSurfaceL : r.wallSurfaceR)?.[i])) return null;
+  halfWidth += r.widen?.[i] ?? 0;
   const z = r.grade[i], day = side > 0 ? r.dayL[i] : r.dayR[i], zDay = side > 0 ? r.zDayL[i] : r.zDayR[i];
   const run = day - halfWidth, height = zDay - z;
   if (run <= 0.5) return null;
@@ -72,7 +75,7 @@ export function daylightSections(r: EarthworkRoute, i: number, side: number, hal
   if (i + 1 >= r.n || (ground ? !ground[i] || !ground[i + 1] : r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth)) return [];
   const a = daylightPoint(r, i, side), b = daylightPoint(r, i + 1, side);
   const ao = daylightPoint(r, i, side, GROUND_COLLAR), bo = daylightPoint(r, i + 1, side, GROUND_COLLAR);
-  const edge = (j: number) => ({ x: r.x[j] - r.ty[j] * halfWidth * side, y: r.y[j] + r.tx[j] * halfWidth * side, z: r.grade[j] });
+  const edge = (j: number) => { const h = halfWidth + (r.widen?.[j] ?? 0); return { x: r.x[j] - r.ty[j] * h * side, y: r.y[j] + r.tx[j] * h * side, z: r.grade[j] }; };
   const ae = edge(i), be = edge(i + 1);
   const wall = side > 0 ? r.wallSurfaceL : r.wallSurfaceR;
   const wallA = Number.isFinite(wall?.[i]), wallB = Number.isFinite(wall?.[i+1]);

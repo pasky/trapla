@@ -11,7 +11,7 @@
 import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
 import { CATEGORIES } from './data/categories';
 import { bendRules, roadNorms, horizontalRules } from './data/norms';
-import { speedStretches, travelMinutes } from './design-speed';
+import { hairpinViolations, speedStretches, travelMinutes } from './design-speed';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
@@ -251,6 +251,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   // Plan checks belong to the whole alignment (the window run skips them): once, on the new plan.
   const local1 = (v: Result['violations'][number]) => !PLAN_KINDS.has(v.kind);
   const violations = [...ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category }),
+    ...(d.pis.some(p => p.hairpin) ? hairpinViolations(al, d.pis, d.speed, d.category, ctx.terrain) : []),
     ...r.violations.filter(v => local1(v) && v.s1 < s0), ...w.violations.filter(local1).map(v => shiftS(v, s0)),
     ...r.violations.filter(v => local1(v) && v.s0 > old1).map(v => shiftS(v, shift))];
   // Without their measured geometry, like a whole-route preview's (a long route's would dominate the
@@ -283,6 +284,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     zDayL: stitch(f64, w.zDayL, r.zDayL, true), zDayR: stitch(f64, w.zDayR, r.zDayR, true),
     oob: stitch(u8, w.oob, r.oob),
     wallSurfaceL: stitch(f64, w.wallSurfaceL, r.wallSurfaceL), wallSurfaceR: stitch(f64, w.wallSurfaceR, r.wallSurfaceR),
+    widen: w.widen || r.widen ? stitch(f32, w.widen ?? new Float32Array(w.n), r.widen ?? new Float32Array(r.n)) : undefined,
     vpis, vcurves: profile.curves.map(c => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: profile.grades,
     curves: al.curves.map(c => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations: violations.filter(v => !v.goal).length, cost, parts,

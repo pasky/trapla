@@ -21,7 +21,7 @@ import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoic
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, roadNorms } from './data/norms';
-import { speedStretches, travelMinutes } from './design-speed';
+import { hairpinPavementPerM2, hairpinViolations, hairpinWidening, speedStretches, travelMinutes } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
@@ -104,6 +104,8 @@ export interface Result {
   kind: Uint8Array;
   cut: Float64Array; fill: Float64Array;
   dayL: Float64Array; dayR: Float64Array; zDayL: Float64Array; zDayR: Float64Array;
+  /** a hairpin's widened lanes: extra crown width on each side per station, m (absent: none anywhere) */
+  widen?: Float32Array;
   oob: Uint8Array;
   runs: Run[];
   vpis: VPI[];
@@ -822,6 +824,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   const usable = 1 - NORM_EARTHWORK_ALLOWANCE.unsuitableShare;
   const balanceTolerance = MATERIAL_VALUE.tolerancePerM * al.length;
   const tpl = { crownWidth: b };
+  const widen = hairpinWidening(al, d.pis, d.category, st.s);
   // Mass balance of a candidate grade line over a stretch [r0, r1] (a block of the grade solve, or
   // the whole route): the same steps as the bill below (cross-sections, structure choice incl.
   // forced crossings, volumes), on samples every ≈ BALANCE_STRIDE stations placed evenly within the
@@ -1188,7 +1191,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
 
   // --- cross-sections ---
   const sectionsStart = performance.now();
-  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo);
+  const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo, widen);
   work('sections', sectionsStart);
   if (ctx.buildings) for (let i = 0; i < n; i++) if (wideHitL[i] !== sec.dayL[i] || wideHitR[i] !== sec.dayR[i]) {
     wideHits[i] = hitsAt(i, sec.dayL[i], sec.dayR[i]); wideHitL[i] = sec.dayL[i]; wideHitR[i] = sec.dayR[i];
@@ -1812,6 +1815,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     cutI: sec.cutI, cutII: sec.cutII, cutIII: sec.cutIII, fill: sec.fill, usable,
     haul: { moment: mh.moment, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit },
     width, forest, runs, geotechnicalPerM, culverts, buildings: buildingCost, noiseBuyouts, crossingLump, crossingStructure, wallArea, additionalLand: remedyLand,
+    ...(widen ? { extraRoadPerM: Float64Array.from(widen, v => 2 * v * hairpinPavementPerM2(d.category)) } : {}),
   });
   const cost = sumParts(parts);
   lap('cost');
@@ -1825,6 +1829,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
     ...buildingViolations,
     // A window (drag preview) is part of a longer plan: preview-window.ts checks the whole plan once.
     ...(win ? [] : ROAD_CHECKS.horizontal(al, norms, { a: ctx.a, b: ctx.b, pis: d.pis, category: d.category })),
+    ...(win || !d.pis.some(p => p.hairpin) ? [] : hairpinViolations(al, d.pis, d.speed, d.category, terrain)),
     ...ROAD_CHECKS.vertical(prof, norms, maxGradient, cat.mode === 'railway'),
     ...(opts.railTieIn?.ends ? trackEndViolations(ctx.a, ctx.b, d.pis, al.length, opts.railTieIn.ends, TURNOUT_ANGLE_RAD, RAIL_TIE_IN_M, norms.minRadius) : []),
   ];
@@ -1939,7 +1944,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       return !gone[b.j] && own.some(w => st.s[w.i] > b.s0 && st.s[w.i] < b.s1)
         ? [{ ...b, s0: Math.min(...own.map(w => w.s0)), s1: Math.max(...own.map(w => w.s1)), height: Math.max(...own.map(w => w.height)), wall: own.reduce((a, w) => a + w.cost, 0) }] : [];
     }),
-    wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
+    wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR, ...(widen ? { widen } : {}),
     noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
       limit: noiseModel.controlling === 'night' ? noiseModel.limits?.nightDb ?? NOISE.limitNightDb : noiseModel.limits?.dayDb ?? NOISE.limitDayDb },
     quantities: {

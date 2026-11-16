@@ -164,6 +164,8 @@ export interface StationCostInput {
   crossingStructure?: ArrayLike<number>;
   /** noise wall surface in each cell (both sides added), m² */
   wallArea?: ArrayLike<number>;
+  /** extra road per metre beyond the norm's crown, CZK/m (a hairpin's widened lanes), earthwork cells */
+  extraRoadPerM?: ArrayLike<number>;
 }
 
 /**
@@ -217,7 +219,7 @@ export function costParts(inp: StationCostInput): CostParts {
     const k = inp.kind[i];
     let construction = 0;
     if (k === KIND.earth) {
-      parts.roadBase[i] = len * (baseRural + (baseUrban - baseRural) * u);
+      parts.roadBase[i] = len * (baseRural + (baseUrban - baseRural) * u + (inp.extraRoadPerM?.[i] ?? 0));
       parts.excavation[i] = len * (inp.cutI[i] * EXCAVATION_BY_CLASS.I + inp.cutII[i] * EXCAVATION_BY_CLASS.II
         + inp.cutIII[i] * EXCAVATION_BY_CLASS.III);
       parts.fillPlacing[i] = fillV[i] * placingPerFill;

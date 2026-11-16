@@ -279,7 +279,15 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
     const easeNeed = (u.transitions * lt) / 2;
     if (u.first === u.last) {
       const c = al.curves[u.first];
-      if (c.r < RR.minRadius - tol) {
+      if (RR.hairpin && c.r < RR.minRadius - tol) {
+        out.push({
+          kind: 'radius', ...where,
+          title: `Hairpin at ${bend(c.index)} is too tight`,
+          fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto`,
+          detail: `Its radius is ${R(c.r)}; ${R(RR.minRadius)} is the tightest hairpin on a Czech main road (I/44 Červenohorské sedlo).`,
+          basis: 'norm', rule: 'Departure from ČSN 73 6101 approved for I/44 Červenohorské sedlo: hairpins of 17.5 m (research/47 §3)',
+        });
+      } else if (c.r < RR.minRadius - tol) {
         out.push({
           kind: 'radius', ...where,
           title: `${cap(bend(c.index))} is too sharp for ${speed} km/h`,

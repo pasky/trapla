@@ -174,7 +174,7 @@ export function transitionExtra(r: number, delta: number, lt: number): number {
  * two transitions (R·Δ ≥ lt) or large enough to need none (plainRadius).
  */
 export function autoRadius(delta: number, rules: HorizontalRules): number {
-  if (delta < 1e-9) return rules.minRadius;
+  if (delta < 1e-9 || rules.hairpin) return rules.minRadius;
   const r = Math.max(rules.minRadius, Math.min(rules.transition / delta, rules.plainRadius));
   return Math.ceil(r / 5 - 1e-9) * 5;
 }

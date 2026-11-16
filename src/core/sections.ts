@@ -179,18 +179,19 @@ export type SectionCache = { z: number; left: SideResult; right: SideResult }[];
 
 /** compute sections at all stations; normal = left of travel direction */
 export function computeSections(terrain: Terrain, n: number, x: ArrayLike<number>, y: ArrayLike<number>,
-  tx: ArrayLike<number>, ty: ArrayLike<number>, z: ArrayLike<number>, tpl: SectionTemplate, keepSides = false, cache?: SectionCache): Sections {
+  tx: ArrayLike<number>, ty: ArrayLike<number>, z: ArrayLike<number>, tpl: SectionTemplate, keepSides = false, cache?: SectionCache,
+  widen?: ArrayLike<number>): Sections {
   const out: Sections = {
     cut: new Float64Array(n), cutI: new Float64Array(n), cutII: new Float64Array(n), cutIII: new Float64Array(n),
     fill: new Float64Array(n), dayL: new Float64Array(n), dayR: new Float64Array(n),
     zDayL: new Float64Array(n), zDayR: new Float64Array(n), open: new Uint8Array(n), rockFace: new Float64Array(n), subgrade: new Float64Array(n),
     ...(keepSides ? { sideL: new Array<SideResult>(n), sideR: new Array<SideResult>(n) } : {}),
   };
-  const w = tpl.crownWidth / 2;
+  const w0 = tpl.crownWidth / 2;
   for (let i = 0; i < n; i++) {
     const nx = -ty[i], ny = tx[i];
-    const cx = x[i], cy = y[i];
-    const previous = cache?.[i], reuse = previous?.z === z[i];
+    const cx = x[i], cy = y[i], w = w0 + (widen?.[i] ?? 0); // a hairpin's widened lanes
+    const previous = cache?.[i], reuse = previous?.z === z[i] && !widen?.[i];
     const L = reuse ? previous.left : sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx + nx * o, cy + ny * o),
       (o) => terrain.groundAt(cx + nx * o, cy + ny * o));
     const R = reuse ? previous.right : sideSection(z[i], w, tpl, (o) => terrain.heightAt(cx - nx * o, cy - ny * o),
