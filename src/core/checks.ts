@@ -284,7 +284,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
           kind: 'radius', ...where,
           title: `Hairpin at ${bend(c.index)} is too tight`,
           fix: `Set ${bend(c.index)} to at least ${R(RR.minRadius)}, or back to auto`,
-          detail: `Its radius is ${R(c.r)}; ${R(RR.minRadius)} is the tightest hairpin on a Czech main road (I/44 Červenohorské sedlo).`,
+          detail: `Its radius is ${R(c.r)}; ${R(RR.minRadius)} is the tightest hairpin on a Czech class I road (I/44 Červenohorské sedlo).`,
           basis: 'norm', rule: 'Departure from ČSN 73 6101 approved for I/44 Červenohorské sedlo: hairpins of 17.5 m (research/47 §3)',
         });
       } else if (c.r < RR.minRadius - tol) {
