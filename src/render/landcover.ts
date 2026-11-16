@@ -80,8 +80,6 @@ const PLOT_LAYERS = ['plots', 'plot-edges', 'buyout-rings'];
 const RING_OFFSET = 3;
 /** plots changes are redrawn in boxes of the buildings within cells of this size, m */
 const REPAINT_CELL = 250;
-/** boxes redrawn per frame */
-const REPAINT_PER_FRAME = 3;
 /** Physical crossing roads use the exact same class palette as the rasterised base map. */
 export function existingRoadColor(cls: string): number {
   const layer = cls === 'trunk' ? 'motorway' : ['residential', 'unclassified', 'living_street'].includes(cls) ? 'minor' : cls;
@@ -811,7 +809,7 @@ export class LandCover {
       this.plots = { demolished: dKey, bought: bKey };
       this.demolishedSet = new Set(demolished); this.boughtSet = new Set(bought);
       // only where something changed (the footprints, their rings and line widths around them), in boxes of
-      // nearby buildings, redrawn a few per frame by update() rather than all at once here
+      // nearby buildings, redrawn by the next update() (one mipmap pass per texture) rather than in the commit
       const boxes = new Map<number, BBox>();
       for (const i of changed) {
         const key = buildingChunk(b, REPAINT_CELL, i);
@@ -827,33 +825,43 @@ export class LandCover {
     } };
   }
   private boughtSet: ReadonlySet<number> = new Set();
-  /** map areas still to redraw after a plots change (local metres), a few per frame */
+  /** map areas still to redraw after a plots change (local metres), on the next update */
   private dirty: BBox[] = [];
 
-  /** Redraw the map inside `box` (local metres, grown by `pad` m and a few texels) in the base and every
-   * level, keeping everything else (the photo is not the map: nothing to redraw there). */
-  private repaint(box: BBox, pad: number) {
+  /** Redraw the map inside `boxes` (local metres, each grown by `pad` m and a few texels) in the base and
+   * every level, keeping everything else; mipmaps once per texture (the photo is not the map: nothing to
+   * redraw there). */
+  private repaint(boxes: readonly BBox[], pad: number) {
     if (this.showPhoto) return;
     const S = this.size;
     if (this.baseDone && !this.basePhoto) {
       const bw = this.base.width, bh = this.base.height, rx = this.width / bw, ry = this.height / bh;
-      const x0 = Math.max(0, Math.floor((box[0] - pad) / rx) - 4), y0 = Math.max(0, Math.floor((box[1] - pad) / ry) - 4);
-      const x1 = Math.min(bw, Math.ceil((box[2] + pad) / rx) + 4), y1 = Math.min(bh, Math.ceil((box[3] + pad) / ry) + 4);
-      for (let ty = y0; ty < y1; ty += S) for (let tx = x0; tx < x1; tx += S) {
-        const w = Math.min(S, x1 - tx), h = Math.min(S, y1 - ty);
-        this.drawVectors(tx * rx, ty * ry, w * rx, h * ry, w, h);
-        this.blit(this.base, 0, 0, tx, ty, w, h, true);
+      for (const box of boxes) {
+        const x0 = Math.max(0, Math.floor((box[0] - pad) / rx) - 4), y0 = Math.max(0, Math.floor((box[1] - pad) / ry) - 4);
+        const x1 = Math.min(bw, Math.ceil((box[2] + pad) / rx) + 4), y1 = Math.min(bh, Math.ceil((box[3] + pad) / ry) + 4);
+        for (let ty = y0; ty < y1; ty += S) for (let tx = x0; tx < x1; tx += S) {
+          const w = Math.min(S, x1 - tx), h = Math.min(S, y1 - ty);
+          this.drawVectors(tx * rx, ty * ry, w * rx, h * ry, w, h);
+          this.blit(this.base, 0, 0, tx, ty, w, h, false);
+        }
       }
       this.base.viewport.set(0, 0, bw, bh);
+      this.base.texture.mipmapsAutoUpdate = true;
+      this.renderer.setRenderTarget(this.base);
+      this.renderer.autoClear = false;
+      this.renderer.render(this.emptyScene, this.cam);
     }
     for (const sl of this.slots) {
       if (sl.k < 0) continue;
       const t = R0 * 2 ** sl.k;
-      const x0 = Math.floor((box[0] - pad) / t) - 4, y0 = Math.floor((box[1] - pad) / t) - 4;
-      const r: Rect = [x0, y0, Math.ceil((box[2] + pad) / t) + 4 - x0, Math.ceil((box[3] + pad) / t) + 4 - y0];
-      if (!clip(r, [sl.ix, sl.iy, S, S])) continue;
-      this.paint(sl, r, 'map');
-      this.finish(sl);
+      let drawn = false;
+      for (const box of boxes) {
+        const x0 = Math.floor((box[0] - pad) / t) - 4, y0 = Math.floor((box[1] - pad) / t) - 4;
+        const r: Rect = [x0, y0, Math.ceil((box[2] + pad) / t) + 4 - x0, Math.ceil((box[3] + pad) / t) + 4 - y0];
+        if (!clip(r, [sl.ix, sl.iy, S, S])) continue;
+        this.paint(sl, r, 'map'); drawn = true;
+      }
+      if (drawn) this.finish(sl);
     }
     this.publish();
   }
@@ -1015,9 +1023,8 @@ export class LandCover {
   update(fx: number, fy: number, mPerPx: number): boolean {
     if (!this.baseDone) { this.dirty = []; this.drawBase(); this.pump(); return true; }
     if (this.dirty.length) {
-      const boxes = this.dirty.splice(0, REPAINT_PER_FRAME);
-      this.withState(() => { for (const box of boxes) this.repaint(box, RING_OFFSET * 2 + 2); });
-      return true;
+      const boxes = this.dirty; this.dirty = [];
+      this.withState(() => this.repaint(boxes, RING_OFFSET * 2 + 2));
     }
     this.fx = fx; this.fy = fy;
     const want = Math.log2(Math.max(1e-3, mPerPx) / R0), k0 = this.k0, S = this.size;
