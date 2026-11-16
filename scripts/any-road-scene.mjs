@@ -167,6 +167,19 @@ try {
   assert.equal(await page.evaluate(() => window.trapla.profileHasRoad()), true, 'it has a profile');
   assert.equal(await page.locator('#cost-scope').textContent(), result.cost.total === null ? 'This road only' : 'Total cost', 'a priced project shows its total, an unpriced one this road\'s own price');
   assert.equal(await page.locator('#active-route').isVisible(), true, 'two roads: the road list appears');
+  // the road list brings a road chosen there into view when none of it is on screen, whole (QA f9f5d9d: the
+  // rebuilt road framed with its start cut off: the frame was the previous road's)
+  {
+    await page.locator('#active-route').selectOption(mission); await idle();
+    await page.evaluate(([x, y]) => window.trapla.lookAt(x + 3000, y + 3000, 600, 0, 55), [route.endpoints.a.position.x, route.endpoints.a.position.y]); await idle();
+    await page.locator('#active-route').selectOption(rebuilt); await idle();
+    const top = (await page.locator('.route-bar').boundingBox()).y + (await page.locator('.route-bar').boundingBox()).height;
+    for (const e of [route.endpoints.a.position, route.endpoints.b.position]) {
+      const q = await page.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [e.x, e.y]);
+      assert(q.vis && box.y + q.sy > top && q.sy < box.height && q.sx > 0 && q.sx < box.width, `the road list frames the whole chosen road (${JSON.stringify(q)})`);
+    }
+    console.log('road list: a road chosen there off screen is framed whole');
+  }
   await page.evaluate(() => window.trapla.select(null));
   await page.screenshot({ path: shot(first + 1, 'mapped-road-rebuilt') });
 

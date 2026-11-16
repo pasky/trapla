@@ -8,6 +8,7 @@ import { assertProjectDesign } from '../src/core/project-validation';
 import { RAIL_CROSSING_BIT, syntheticTerrain } from '../src/core/terrain';
 import { buildInProject } from '../src/ui/route-kinds';
 import { MOTORWAY_BUILD, RAIL_BUILD, RAIL_LINE } from '../src/ui/mode-kinds';
+import { routeChoices } from '../src/ui/route-bar';
 
 // A 3 km mapped railway along y = 1000 (a gentle bend at x = 1500) with a yard track, and a road.
 function fixture() {
@@ -46,6 +47,12 @@ describe('Build → Motorway / Railway', () => {
     expect(result.routes[made.activeRouteId].legacy?.length).toBeGreaterThan(2000);
     expect(result.cost.unpriced.map(u => u.reason)).toContain('motorway-needs-interchange');
     expect(MOTORWAY_BUILD.onSource(fixture().base, 'road', 100).ok).toBe(false);
+    // the road list: each motorway one entry under its own name (QA: two entries both called "Motorway")
+    const two = buildInProject(MOTORWAY_BUILD, made.project, free(300, 2200), free(2700, 2200), newId).project;
+    expect(routeChoices(two).options.map(o => o.name)).toEqual(['New motorway', 'New motorway 2']);
+    const mission = structuredClone(two); mission.routes[0].role = 'mission'; mission.routes[1].role = 'mission';
+    for (const r of mission.routes.slice(2)) r.name = 'Motorway';
+    expect(routeChoices(mission).options.map(o => o.name)).toEqual(['Motorway', 'Motorway 2']);
   });
   it('a railway ends on a mapped railway or open ground, never on a road', () => {
     const { base, project } = fixture();

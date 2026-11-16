@@ -185,8 +185,9 @@ async function main() {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
   }, noise, () => frameRoute());
   /** the active route as built (else its ends and bends) in view */
-  const frameRoute = () => {
-    const r = last, d = store.read() ? store.design : null;
+  /** `r`: the road to frame (default: the last result shown; right after a switch that is still the old road's) */
+  const frameRoute = (r: Result | null = last) => {
+    const d = store.read() ? store.design : null;
     view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
       : d ? [A, ...d.pis, B] : []);
   };
@@ -1111,7 +1112,7 @@ async function main() {
     const mid = r ? { x: r.x[r.n >> 1], y: r.y[r.n >> 1] } : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const box = view.renderer.domElement.getBoundingClientRect();
     const seen = [a, b, mid].some(p => { const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y)); return q.vis && q.sx > 0 && q.sy > 0 && q.sx < box.width && q.sy < box.height; });
-    if (!seen) frameRoute();
+    if (!seen) frameRoute(r ?? null);
   };
   routeBar.set(projectStore.snapshot.design, store.activeRouteId);
   syncEnds();
