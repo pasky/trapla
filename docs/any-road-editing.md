@@ -948,12 +948,36 @@ Still open:
   Accept-and-repeat adds another 1–7 ms in the reviewer's small adjacent-edit probe.
 - Minor wording: a followed stretch's Reset still says the directions run together again, and the hover
   label says “only” although Auto may bring the peer alongside. The direction card explains Auto correctly.
-- Rebuilt railway `routeHead` is null: no works list or “Keep the old track” button on its own card.
-- Rebuilt railway continuations can still be `connection-pending`; some fresh rebuild ends meet tight old
-  track too sharply (e.g. D11 osm:way:35609502).
-- The screen still flags a bent rebuilt track beside reroute links at D11 km 4.1, fraction 0.25 / offset 60 m.
+- Some fresh railway rebuilds still meet tight old track too sharply (D11 4 of 86 rebuildable lines; e.g.
+  osm:way:35609502, 74°): see “Last scoped pass” below. Needs railway curves kept as the old track draws them.
 - Stretch controls are still station-based; length changes can shift their physical positions (the general
   station-grid issue). `pairStations` may return NaN on widely divergent paths whose normal meets a segment
   beyond the nearest two; inward detection here sees the sign change near the departure before that gap.
 - Review raised broad bridge/continuation screen zones as a follow-up: bridge supports are checked by the
   engineering kernel against the edited network, but the land screen itself does not certify pier clearance.
+
+**Last scoped pass (model 28, fixtures bit-exact).**
+- *D11 km 4.1, a quarter along / 60 m (`0499cca`).* Bent 60 m away from our road, the rebuilt track crosses
+  another track at a junction. The land screen counted that junction's whole drawn line as works, including
+  its terrain tails beyond the ramps' feet, which are the crossed track as it is (crossing-geometry.ts). Those
+  tails ran 16 m beside our automatic reroute link. Now only the tails are left out, for junctions and the
+  crossed road's bridge over us. Reroute links stay screened in full (they are new track). Bent 60 m towards
+  our road, the track runs 7 m from our embankment: a real conflict, “Move one of them about 6 m away here”;
+  50 m towards it is priced. The original QA case (bent at its start) passed already. Real-pack test in
+  edited-network.test.ts.
+- *Railway continuations (`f204461`).* A rebuilt railway's ends continue its old track: the kernel checks
+  them (turnout-angle rule, heights tied to the old track), so they are no longer pending junctions. A
+  railway branching off keeps its switch where the new line stays on the old track there (kept cells). A
+  branch the new line has left still needs new switches and stays “Junctions are not priced yet”. A sharp end
+  stays a violation (invalid, not unpriced). Fixture: a spur at the bend (mode-kinds.test.ts).
+- *Railway card (`3b54b42`).* A rebuilt or new railway gets its own card: what it is, how far from the old
+  track, its works (the kept old track), and “Keep the old track” / “Remove railway” with Undo. It has no
+  traffic or junction controls. mode-play checks the card, removal, toast and Undo (screenshot inspected).
+- *Tight fresh ends, not fixed.* D11 osm:way:35609502 ends inside a tight old curve (about 255 m radius) at
+  80 km/h: railway transition curves at that speed cannot follow it. The old track's raw bends would leave a
+  bend too close to the end and a low bridge; the fitted line cuts the loop (74°, “Move bend 2 …”). At
+  60 km/h the corner goes, but a stream crossing (two violations, 483 M) appears. Not a sound automatic choice:
+  left as an honest violation. The engine needs railway curves kept as the old track draws them.
+
+Gates: tsc; 83 files / 704 tests; build; 11 frozen bills bit-exact; any-road-scene D11 (km 4.1 track
+9.863 bn) and D3; owner-d3-scene; mode-play (railway card) PASS.
