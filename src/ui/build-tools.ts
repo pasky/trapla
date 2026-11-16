@@ -4,7 +4,7 @@
 import './build-tools.css';
 import type { Design, Result } from '../core/evaluate';
 import { CROSSING_CHOICE_TEXT } from '../core/terms';
-import { BUILDING_KINDS, ROAD_CLASSES } from '../core/data/urban';
+import { ROAD_CLASSES } from '../core/data/urban';
 import { crossedRoads, type Sel } from './inspector';
 import { shownRange, shownS } from './chainage';
 
@@ -60,10 +60,4 @@ export class DecisionList {
       <label class="all-crossings">Crossed roads <select id="crossing-select"><option value="">all ${roads.length}…</option>${roads.map((c) => `<option value="${c.roadId}">km ${km(c.s)} · ${esc(ROAD_CLASSES[c.cls].label)}</option>`).join('')}</select></label>`;
     this.onCount?.(items.length);
   }
-}
-
-/** short name of a building's kind, e.g. "house · 2 storeys" (binfo: [?, levels, kind, …]) */
-export function buildingKind(info: ArrayLike<number> | undefined, levels: number): string {
-  const kind = BUILDING_KINDS[info ? info[2] : 0]?.label ?? 'building';
-  return `${kind} · ${levels} storey${levels === 1 ? '' : 's'}`;
 }

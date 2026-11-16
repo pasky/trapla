@@ -5,8 +5,13 @@ import { BuildingIndex } from '../src/core/buildings';
 import { DEFAULT_SCENARIO, scenarioParams } from '../src/core/data/scenario';
 import { RoadNet } from '../src/core/roadnet';
 import { decodeHeights, Terrain } from '../src/core/terrain';
-import { endpointJunctions } from '../src/scenario';
+import { endpointJunctions, packIdentities } from '../src/scenario';
 import type { TrafficCensus } from '../src/core/traffic-census';
+import type { EvalContext } from '../src/core/evaluate';
+import type { ScenarioParams } from '../src/core/data/scenario';
+import type { ProjectEvalContext } from '../src/core/project-evaluate';
+import { makeLegacyProjectContext } from '../src/core/project-legacy';
+import { missionEnds, missionProject } from '../src/core/project-mission';
 
 /** SCENARIO=<id> selects public/scenarios/<id> (default d11); `scenario` = its game parameters */
 export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAULT_SCENARIO}`) {
@@ -27,4 +32,25 @@ export function loadPack(dir = `public/scenarios/${process.env.SCENARIO ?? DEFAU
     /** Declared end connections (none for D11); spread into every EvalContext built from this pack. */
     junctions: endpointJunctions(meta),
   };
+}
+
+export type NodePack = ReturnType<typeof loadPack>;
+
+/** The single-road evaluator's context of a pack, as the app builds it: the mission's ends (a preset's own
+ * ports, else the pack's A and B) and the pack's declared end junctions (none at a preset's own ports). */
+export function evalContext(pack: NodePack, scenario: ScenarioParams = pack.scenario): EvalContext {
+  const { terrain, buildings, roads } = pack;
+  return { terrain, scenario, buildings, roads, ...missionEnds(scenario, pack.meta), junctions: scenario.ports ? [] : pack.junctions };
+}
+
+/** The project evaluator's context and the mission's starting project for a preset, with the same data
+ * identities as src/main.ts (so a Node bill is the browser's). `dir`: the pack's folder (transport-meta.json). */
+export function projectContext(pack: NodePack, scenario: ScenarioParams = pack.scenario, dir = `public/scenarios/${pack.meta.id}`) {
+  const { meta, overlays } = pack, legacy = evalContext(pack, scenario), presetId = scenario.presetId ?? scenario.id;
+  const sidecar = `${dir}/transport-meta.json`;
+  const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, overlays,
+    meta.transport ?? (existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) : null));
+  const context = makeLegacyProjectContext(legacy, { presetId, packId: meta.id, objectData, transportData });
+  const ctx: ProjectEvalContext = { legacy, environment: { objectData, transportData, pricingData, waterData, terrainData, terrainClass: scenario.terrainClass } };
+  return { ctx, context, ...missionProject(scenario, context) };
 }

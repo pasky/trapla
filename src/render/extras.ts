@@ -1,5 +1,5 @@
 // Route overlays driven by the cost model, kept apart from view.ts: the highlighted station range
-// picked for the cost breakdown (state.RangeSelection) and the noise walls (Result.walls) with their
+// picked for the cost breakdown (main.ts select()) and the noise walls (Result.walls) with their
 // far-zoom symbols and hover targets.
 // Uses only the public surface of View: `world`, `local()`, `requestRender()` and `retire()`.
 

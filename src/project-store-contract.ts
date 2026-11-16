@@ -1,5 +1,5 @@
 // Public command/persistence contract. Implementation follows the C0 API checkpoint.
-import type { CorridorDesign, ProjectDesign, ProjectIdentity, ProjectResult, ProjectSnapshot,
+import type { CorridorDesign, ProjectDesign, ProjectResult, ProjectSnapshot,
   RouteDesign, RouteId, ConnectionDesign, ProjectSelection } from './core/project';
 
 export type ProjectCommand =
@@ -26,8 +26,8 @@ export type ProjectLoadResult =
   | { status: 'needs-repair'; save: ProjectSave; original: LegacyBytes | null; originalProject?: string; reasons: string[] }
   | { status: 'unsupported'; raw: string; reason: string }
   | { status: 'empty' };
-/** Read these BEFORE constructing legacy Store (its constructor persists immediately).
- * Preserve exact bytes in a recovery key before writing the separate project-v1 key. */
+/** An old single-road save's exact bytes: preserved in a recovery key before the separate project-v1
+ * key is written. */
 export interface LegacyBytes { design: string | null; best: string | null }
 export interface ProjectStorage {
   getItem(key: string): string | null;
@@ -96,7 +96,4 @@ export function repairProjectEditor(state: ProjectEditorState, design: ProjectDe
   if (selection?.kind === 'building' && selection.objectData !== design.objectData) selection = null;
   if (selection?.kind === 'source' && selection.interval.transportData !== design.transportData) selection = null;
   return { activeRouteId, selection };
-}
-export function sameProjectIdentity(a: ProjectIdentity, b: ProjectIdentity): boolean {
-  return a.epoch === b.epoch && a.revision === b.revision;
 }

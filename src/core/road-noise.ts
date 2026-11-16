@@ -141,11 +141,6 @@ export function noiseLevels(distance: number, height: number, model: NoiseModel)
     excessDb: model.excessDb - loss, controlling: model.controlling };
 }
 
-/** Geometry hot path needs only the controlling excess, not a per-pair result object. */
-export function noiseExcess(slant: number, height: number, model: NoiseModel): number {
-  return model.excessDb - model.loss(slant, effectiveHeight(height));
-}
-
 export function createNoiseModel(traffic: number, speed: number, options: NoiseOptions = {}): NoiseModel {
   const source = noiseSource(traffic, speed, options);
   const ground = options.ground ?? NOISE.ground;

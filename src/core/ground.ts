@@ -27,7 +27,3 @@ export const UNKNOWN_GROUND: GroundProfile = {
 export const NORM_CAP_I = EXCAVATION_MIX.I;
 export const NORM_CAP_II = EXCAVATION_MIX.I + EXCAVATION_MIX.II;
 
-export function groundDescription(g: GroundProfile): string {
-  return g.normMix ? `${g.name} (I/II/III 75/20/5 %)`
-    : `${g.name} · loose/decomposed to ~${g.classIto} m, weathered/rippable to ~${g.classIIto} m (estimated)`;
-}

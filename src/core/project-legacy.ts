@@ -30,7 +30,7 @@ export function makeLegacyProjectContext(ctx: EvalContext, identity: {
     operations: { aadt: ctx.scenario.traffic, heavyShare: ctx.scenario.heavyShare ?? NOISE.heavyShare, speed: 90 } };
 }
 
-/** The caller reads exact legacy bytes before ever constructing Store. Unknown shapes are not defaults. */
+/** The caller reads the exact legacy bytes first (legacy-storage.ts). Unknown shapes are not defaults. */
 export function projectFromLegacyDesign(value: unknown, context: LegacyProjectContext): ProjectDesign {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid legacy design');
   const d = value as Design & { schemaVersion?: unknown; naive?: unknown };

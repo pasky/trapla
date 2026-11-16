@@ -1,59 +1,44 @@
 import './style.css';
-import { CATEGORIES, type CategoryId } from './core/data/categories';
-import { speedNorms } from './core/data/norms';
+import { CATEGORIES } from './core/data/categories';
 import { scenarioParams } from './core/data/scenario';
-import { MIN_VPI_GAP, normalizeVpis, type Design, type Result } from './core/evaluate';
-import { nearestLeg } from './core/horizontal';
-import { paintOverride, type StructureKind } from './core/overrides';
-import { cellsInRange } from './core/range';
-import { KIND } from './core/structures';
-import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
-import { ROUNDABOUT_HOSTS } from './core/tie-in';
-import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
-import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, rejoinStretch } from './core/project-motorway';
-import { DIRECTIONS_TEXT, mappedRoadName, placeName } from './core/terms';
-import { classTraffic } from './core/traffic-census';
-import { UNCOUNTED_TRAFFIC } from './core/data/traffic';
+import type { Design, Result } from './core/evaluate';
+import { missionProject } from './core/project-mission';
+import { routeCrownWidth } from './core/route-section';
+import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinStretch } from './core/project-motorway';
+import { DIRECTIONS_TEXT, placeName } from './core/terms';
 import { RouteExtras } from './render/extras';
 import { runSliced, type SlicedJob, type Staged } from './render/slices';
 import { BuildAnnotations } from './render/build-tools';
 import { RouteScene } from './render/route-scene';
-import { footprintHit, pickRoute, type PickRoute } from './render/route-pick';
+import { footprintHit } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
-import { CrossingPicker } from './render/crossing-pick';
 import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
-import { shapeable } from './ui/link-shape';
-import type { LinkVia } from './core/crossings';
 import { lineHalfWidth } from './render/landcover';
 import { ProjectTransportIndex } from './core/project-network';
 import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { bendAt, coveredStretches, DEFAULT_SPEED, isTraffic, startSpeed, strayDistance } from './ui/road-edit';
-import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
-import './ui/mode-kinds';
-import { fitPlacedBend } from './core/bend-fit';
-import { routeIndicationHeight } from './render/route-indication'; // Build → Motorway / Railway, rebuilding mapped railways
+import { coveredStretches } from './ui/road-edit';
+import { buildInProject, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
+import './ui/mode-kinds'; // Build → Motorway / Railway, rebuilding mapped railways
 import { RoadNet } from './core/roadnet';
-import { groundRoadSourceInfo } from './core/project-promotion';
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
-import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/build-controls';
 import { DecisionList } from './ui/build-tools';
 import { buildingInfo, Inspector, type Sel } from './ui/inspector';
 import { pieceAt } from './ui/pieces';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
-import { endpointJunctions, loadPack } from './scenario';
-import { startDesign } from './state';
+import { loadPack, packIdentities } from './scenario';
+import { startEvalWorkers } from './eval-workers';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
-import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
-import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
-import { acceptsProjectMessage, type NoiseBandOut, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
+import { makeLegacyProjectContext } from './core/project-legacy';
+import type { ProjectResult, ProjectSnapshot, RouteId, RouteResult } from './core/project';
+import { acceptsProjectMessage, type ProjectWorkerIn } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -61,19 +46,28 @@ import { StorageGuard, showStorageNotice } from './ui/storage-guard';
 import { RouteBar } from './ui/route-bar';
 import { activeSelection, qualifySelection, type RouteSelection } from './ui/route-selection';
 import { CurveEditor } from './ui/curve-edit';
-import { fillDirections, Hud, type DirectionsState } from './ui/hud';
+import { Hud, type DirectionsState } from './ui/hud';
+import { noLinksCard, proposalCard, routeHeadCard, type RouteCardDeps } from './ui/route-cards';
 import { lineFrame, setLineFrame } from './ui/chainage';
 import { ProfilePanel } from './ui/profile';
 import { provisionalProfile } from './ui/provisional';
-import { ViewBar, type ViewPrefs } from './ui/viewbar';
+import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
-import type { WorkerIn } from './worker';
+import { bendStations } from './ui/bend-stations';
+import { createDesignEdits } from './ui/design-edits';
+import { profileEvents } from './ui/profile-events';
+import { createMapGestures } from './ui/map-gestures';
+import { hudEvents } from './ui/hud-events';
+import { createMapPicks } from './ui/map-picks';
+import { installMapHover } from './ui/map-hover';
+import { installProfileBar } from './ui/profile-bar';
+import { installShortcuts } from './ui/shortcuts';
+import { installAutomation } from './automation';
+import type { WorkerIn, WorkerOut } from './worker-protocol';
 import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
 const status = document.getElementById('status')!;
-/** a mapped road is hit on its drawn width plus this many pixels (a near miss on empty ground still deselects) */
-const SOURCE_PICK_SLACK_PX = 3;
 const setStatus = (s: string) => { status.textContent = s; status.style.display = s ? '' : 'none'; };
 
 async function main() {
@@ -97,28 +91,18 @@ async function main() {
   document.getElementById('legend-official')!.parentElement!.hidden = meta.official.xy.length < 2;
 
   const presetId = scenario.presetId ?? scenario.id;
-  const objectData = objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net);
+  const { objectData, transportData, pricingData, waterData, terrainData } = packIdentities(meta, pack.overlays, pack.transportMeta);
   // crossing choices on designed roads are stored on those roads; the editor maps them like the worker
   if (pack.overlays.net) registerNet(objectData, pack.overlays.net.ways.length);
-  const transportData = pack.transportMeta?.fingerprint ?? null;
-  const pricingData = [meta.ground?.fingerprint ?? (meta.ground ? JSON.stringify(meta.ground) : 'unmapped'), meta.watercourses?.sha256 ?? 'raster-water'].join(':');
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },
     { presetId, packId: meta.id, objectData, transportData });
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
-  // One deep-cloned scenario factory for first start AND Start over; existing saves never receive defaults.
-  const initialRoad = (): Design => ({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) });
-  const motorwayMission = scenario.mode === 'motorway', railwayMission = scenario.mode === 'railway';
-  // The mission ports come from the same legacy context; the corridor / railway then owns the alignment.
-  const roadBase = () => projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, legacyContext);
-  const initialProject = () => motorwayMission
-    ? createMotorwayProject(roadBase(), initialRoad(), { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
-    : railwayMission ? createRailwayProject(roadBase(), initialRoad(), scenario.railTraffic)
-    : projectFromLegacyDesign(initialRoad(), legacyContext);
+  // One scenario factory for first start AND Start over (core/project-mission.ts, shared with the Node scripts).
+  const { initial: initialProject, mission } = missionProject(scenario, legacyContext);
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
-    objectData, transportData, pricingData, initial: initialProject,
-    mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : railwayMission ? railwayMissionOf(legacyContext.mission, scenario.railTraffic) : legacyContext.mission,
+    objectData, transportData, pricingData, initial: initialProject, mission,
     // Old single-road saves belong to the road exercise only, never to a motorway or railway mission.
-    ...(motorwayMission || railwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
+    ...(scenario.mode === 'motorway' || scenario.mode === 'railway' ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });
   let opened: ReturnType<typeof openStore>;
   try { opened = openStore(); }
@@ -136,22 +120,9 @@ async function main() {
   if (storage.problem !== null) storageNotice();
   const store = new ActiveRouteStore(projectStore, initialProject);
   if (store.route) { A = store.route.endpoints.a.position; B = store.route.endpoints.b.position; }
-  // Full evaluations and drag previews run in separate workers, so that a preview never waits behind a
-  // full evaluation (hundreds of ms on long routes). The full worker hands each full result to the
-  // preview worker directly (MessageChannel): the base its windowed previews re-solve locally.
-  const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-  const previewWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-  const bases = new MessageChannel();
-  const init: WorkerIn = {
-    type: 'init', nx: meta.nx, ny: meta.ny, cell: meta.cell, base: meta.heights.base, scale: meta.heights.scale,
-    q: pack.q.slice(), lc: pack.lc.slice(), ground: pack.terrain.ground, watercourses: pack.terrain.watercourses?.data, a: A, b: B, buildings: pack.overlays.buildings,
-    binfo: pack.overlays.binfo, net: pack.overlays.net, scenario, junctions: endpointJunctions(meta),
-    projectEnvironment: { objectData, transportData, pricingData, waterData: meta.watercourses?.sha256 ?? 'raster-water',
-      terrainData: JSON.stringify([meta.id, meta.nx, meta.ny, meta.cell, meta.heights]), terrainClass: scenario.terrainClass },
-  };
-  const previewInit: WorkerIn = { ...init, q: pack.q.slice(), lc: pack.lc.slice(), role: 'preview', port: bases.port2 };
-  worker.postMessage({ ...init, role: 'full', port: bases.port1 }, [init.q.buffer, init.lc.buffer, bases.port1]);
-  previewWorker.postMessage(previewInit, [previewInit.q.buffer, previewInit.lc.buffer, bases.port2]);
+  // full evaluations and drag previews, each in its own worker (eval-workers.ts)
+  const { worker, previewWorker } = startEvalWorkers(pack, scenario, A, B,
+    { objectData, transportData, pricingData, waterData, terrainData, terrainClass: scenario.terrainClass });
 
   setStatus('building terrain…');
   const view = new View(document.getElementById('view')!, document.getElementById('overlay')!, pack, scenario.labels);
@@ -434,208 +405,28 @@ async function main() {
     if (off || small) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
   };
   /** the active route's card when the road widgets cannot edit it: a proposed change on map geometry */
-  const routeCard = () => {
-    const route = store.route, result = route ? projectFull?.routes[route.id] : undefined;
-    if (!route || store.read()) { inspector.clear(route ? 'This road has not been checked yet.' : 'Choose a road to inspect.'); return; }
-    const root = inspector.host(), h = document.createElement('div'), title = document.createElement('b'), close = document.createElement('button');
-    root.replaceChildren(); root.className = 'card ctx inspector k-proposal';
-    h.className = 'ctx-h'; title.textContent = route.name; close.className = 'x'; close.textContent = '✕'; close.title = 'Close';
-    close.onclick = () => { const mission = missionRouteId(); if (mission) switchRoute(mission); };
-    h.append(title, close);
-    const state = document.createElement('div'); state.className = 'ctx-state'; state.textContent = 'Proposed change · not checked yet';
-    const note = document.createElement('p'); note.textContent = 'The old road stays until this change is checked.';
-    const length = route.alignment.kind === 'reference' ? route.alignment.path[route.alignment.path.length - 1].s : result?.surface?.points.at(-1)?.s;
-    const size = document.createElement('div'); size.className = 'sub'; size.textContent = length ? `${Math.round(length)} m` : '';
-    const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route'; remove.textContent = 'Remove change';
-    remove.onclick = () => {
-      if (!projectStore.snapshot.design.routes.some(r => r.id === route.id) || projectStore.inTransaction) return;
-      const mission = missionRouteId(); projectStore.dispatch({ type: 'delete-route', routeId: route.id });
-      if (mission && mission !== route.id) switchRoute(mission);
-    };
-    root.append(h, state, note, size, remove);
-  };
-  /** A side road's own settings, above whatever is selected on it: what it is, its traffic, its junctions
-   * and works, and how to undo it. */
-  let strayKey = '', stray = 0;
+  const routeCard = () => proposalCard(routeCards);
+
   inspector.isSideRoad = () => !!store.route && store.route.role !== 'mission';
-  inspector.routeHead = (shown) => {
-    const route = store.route, r = last;
-    // a motorway's own card: what a drag bends (both directions or one), where they run apart
-    const directions = directionsState();
-    if (route?.kind === 'motorway' && directions && (shown === null || shown === 'stretch')) {
-      // below a selected stretch's card; alone when nothing is selected
-      const box = document.createElement('div'); box.className = 'route-head motorway-head'; box.dataset.place = 'below';
-      box.innerHTML = `<div class="mode-h"><b>${DIRECTIONS_TEXT.heading}</b></div>
-        <div class="seg" role="radiogroup" aria-label="Directions"><button type="button" data-dir="both" role="radio">${DIRECTIONS_TEXT.both}</button><button type="button" data-dir="forward" role="radio"></button><button type="button" data-dir="reverse" role="radio"></button></div>
-        <p data-dir="explain" class="mode-explain"></p><div data-dir="apart" class="dir-apart"></div>`;
-      fillDirections(box, directions, { onDirection: w => hud.ev.onDirection?.(w), onJoin: joinStretch });
-      return box;
-    }
-    if (!route || route.role === 'mission' || (route.kind !== 'road' && route.kind !== 'railway') || !r) return null;
-    // a railway's card: what it is, its own works and removing it (no traffic or junction choices)
-    const rail = route.kind === 'railway', old = rail ? 'old track' : 'old road';
-    const head = document.createElement('div'); head.className = 'route-head';
-    const h = document.createElement('div'); h.className = 'ctx-h';
-    const title = document.createElement('b'); title.textContent = route.name;
-    const sub = document.createElement('small'); sub.textContent = `${(r.length / 1000).toFixed(2)} km`;
-    h.append(title, sub);
-    const what = document.createElement('div'); what.className = 'sub';
-    const interval = route.source?.intervals[0];
-    if (interval && transportIndex) {
-      const key = `${route.id}:${route.revision}:${r.n}:${r.x[r.n >> 1]}`;
-      if (key !== strayKey) {
-        strayKey = key;
-        try {
-          const old = transportIndex.path(interval), line = Array.from({ length: Math.ceil(r.n / 2) }, (_, k) => ({ x: r.x[2 * k], y: r.y[2 * k] }));
-          stray = strayDistance(line, old);
-        } catch { stray = NaN; }
-      }
-      const accepted = rail ? !!projectFull?.routes[route.id]?.legacy
-        : projectFull?.acceptedReplacements.some(i => i.sourceId === interval.sourceId && i.s0 === interval.s0 && i.s1 === interval.s1);
-      if (route.kind === 'railway') what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old track` : ''}. ${accepted
-        ? `On the old track it is kept as it is. Off it, a new track is built for ${route.specification.designSpeed} km/h.` : 'Checking the change…'}`;
-      else {
-      // why this design speed: the lowest the norm allows for a new road; the map's limit is for noise and time
-      const signed = (() => { try { return groundRoadSourceInfo(transportIndex, interval.sourceId).taggedSpeed; } catch { return null; } })();
-      const lowest = route.specification.crossSection === 'existing' ? DEFAULT_SPEED : startSpeed(route.specification.crossSection);
-      const speed = route.specification.designSpeed === lowest
-        ? ` for ${lowest} km/h (the lowest the norm allows${signed && signed !== lowest ? `; signed ${signed}` : ''})` : '';
-      what.textContent = `Rebuilt stretch${Number.isFinite(stray) ? `, up to ${Math.round(stray)} m from the old road` : ''}. ${accepted
-        ? `On the old road it is kept as it is. Off it, a new road is built${speed} and the old one removed.` : 'Checking the change…'}`;
-      }
-    } else {
-      const end = (e: typeof route.endpoints.a) => e.anchor.kind === 'free' ? 'open ground'
-        : e.anchor.kind === 'route' ? (() => { const host = projectStore.snapshot.design.routes.find(q => q.id === (e.anchor as { routeId: string }).routeId);
-          return !host ? 'a road' : host.role === 'mission' ? 'our road' : host.name; })()
-        : e.anchor.kind === 'source' ? (rail ? (() => { const t = transportIndex?.source(e.anchor.location.sourceId)?.tags; return t?.name || (t?.ref ? `railway ${t.ref}` : 'a railway'); })()
-          : mappedRoadName(transportIndex?.source(e.anchor.location.sourceId)?.tags, 'a road')) : 'a scenario end';
-      what.textContent = `New ${rail ? 'railway' : 'road'} from ${end(route.endpoints.a)} to ${end(route.endpoints.b)}.`;
-    }
-    const form = document.createElement('form'); form.className = 'source-operations route-traffic';
-    const fields: HTMLInputElement[] = [];
-    if (route.kind === 'road') { const op = route.specification.operations;
-    for (const [key, label, unit, value] of [
-      ['traffic', 'Traffic', 'a day,', String(op.aadt)],
-      ['heavy', 'heavy', '%', String(Math.round(op.heavyShare * 1000) / 10)],
-    ] as const) {
-      const row = document.createElement('label'); row.textContent = label;
-      const input = document.createElement('input'); input.type = 'number'; input.required = true; input.min = '0';
-      input.max = key === 'traffic' ? '100000' : '100'; input.step = key === 'traffic' ? '1' : 'any'; input.name = key; input.value = value;
-      const small = document.createElement('small'); small.textContent = unit;
-      input.setAttribute('aria-label', key === 'traffic' ? 'Traffic, vehicles a day' : 'Heavy vehicles, percent');
-      row.append(input, small); form.append(row); fields.push(input);
-    }
-    const apply = () => {
-      const [traffic, heavy] = fields.map(f => f.value === '' ? NaN : Number(f.value));
-      if (!(traffic >= 0 && traffic <= 100000 && heavy >= 0 && heavy <= 100)) return;
-      const id = route.id;
-      store.editProject(d => {
-        const q = d.routes.find(x => x.id === id); if (!q || q.kind !== 'road') return;
-        q.specification.operations = { ...q.specification.operations, aadt: Math.round(traffic), heavyShare: heavy / 100 };
-      });
-      // the card is not redrawn under a focused field: the player's own number carries no "counted" label
-      if (!filled || Math.round(traffic) !== filled.aadt || Math.abs(heavy / 100 - filled.heavyShare) > 1e-9) basis.remove();
-    };
-    // where the numbers come from, while they are still the ones the game filled in
-    const cls = route.specification.legalClass, averaged = ['I', 'II', 'III'].includes(cls) ? cls : 'III';
-    const uncounted = UNCOUNTED_TRAFFIC[cls as keyof typeof UNCOUNTED_TRAFFIC];
-    const filled = interval ? transportIndex?.traffic(interval, cls) : route.source ? undefined : classTraffic(cls);
-    const basis = document.createElement('small'); basis.className = 'traffic-basis';
-    if (filled && isTraffic(op, filled)) {
-      basis.textContent = filled.basis === 'census' ? `Counted in the ${filled.year} traffic census.`
-        : uncounted ? `Not counted: a guess for ${uncounted.what}. Change it to what you expect.`
-        : interval ? `Not counted in the traffic census: the average class ${averaged} road is assumed.` : `A new road: the average class ${averaged} road is assumed.`;
-      basis.title = filled.basis === 'census' ? `ŘSD traffic census ${filled.year}, section ${filled.section}. Change it if you expect otherwise.`
-        : averaged === cls ? 'Average of all roads of this class in the 2025 traffic census (ŘSD). Change it to what you expect.'
-        : `The traffic census (ŘSD) counts class I–III roads only. For ${uncounted?.what ?? 'this road'} the game guesses low (a residential zone is recommended up to 500 vehicles a day, TP 132). Change it to what you expect.`;
-      form.append(basis);
-    }
-    for (const f of fields) f.onchange = apply;
-    form.onsubmit = e => { e.preventDefault(); apply(); };
-    }
-    const remove = document.createElement('button'); remove.type = 'button'; remove.id = 'remove-route';
-    remove.textContent = route.source ? `Keep the ${old}` : rail ? 'Remove railway' : 'Remove road';
-    remove.onclick = () => {
-      if (projectStore.inTransaction) return;
-      const mission = missionRouteId();
-      try { projectStore.dispatch({ type: 'delete-route', routeId: route.id }); }
-      catch { toast(rail ? 'Another railway joins this one: remove that railway first.' : 'Another road joins this one: remove that road first.'); return; }
-      if (mission) switchRoute(mission);
-      toast(route.source ? `The ${old} is kept.` : rail ? 'Railway removed.' : 'Road removed.', 'Undo', () => store.undo());
-    };
-    // what replacing the old stretch adds to this road's own price (C1 b)
-    // (a line that rounds to 0.0 M stays in the bill, not on the card)
-    const works = projectFull?.works.items.filter(w => w.owner.kind === 'route' && w.owner.id === route.id && w.label && (Math.abs(w.cost) >= 5e4 || w.id.includes(':kept:'))) ?? [];
-    const list = document.createElement('ul'); list.className = 'route-works';
-    for (const w of works) {
-      const li = document.createElement('li'), label = document.createElement('span'), cost = document.createElement('b');
-      // (what stays on the old road costs nothing: no amount)
-      label.textContent = w.label!; cost.textContent = w.cost ? `${(w.cost / 1e6).toFixed(w.cost < 1e7 ? 1 : 0)} M CZK` : '';
-      li.append(label, cost);
-      if (w.at) li.onclick = () => { view.flyTo(w.at!.x, w.at!.y, 700); };
-      list.append(li);
-    }
-    // each end that joins a road: its junction, Auto (a priority T) or a roundabout — plain choices
-    const junctions = document.createElement('div'); junctions.className = 'route-junctions';
-    if (!rail && !route.source && route.alignment.kind === 'pi') for (const end of ['a', 'b'] as const) {
-      const anchor: Anchor = route.endpoints[end].anchor;
-      const cls: string | undefined = anchor.kind === 'source' ? transportIndex?.source(anchor.location.sourceId)?.tags.highway : anchor.kind === 'route' ? 'designed' : undefined;
-      if (!cls || ROAD_CLASSES[cls]?.noAtGrade) continue;
-      const row = document.createElement('div'); row.className = 'ctx-row';
-      const label = document.createElement('span'); label.textContent = end === 'a' ? 'Start junction' : 'End junction';
-      const choice = document.createElement('div'); choice.className = 'seg choice';
-      const current = route.alignment.controls.junctionForms?.[end];
-      const options: [string, 'roundabout' | undefined, string][] = [['Auto', undefined, 'A priority T junction (research/29)']];
-      if (cls === 'designed' || ROUNDABOUT_HOSTS.includes(cls)) options.push(['Roundabout', 'roundabout', `A roundabout, ${Math.round(ENDPOINT_JUNCTIONS.roundabout.cost / 1e6)} M CZK plus its ring's land (ŘSD awards, research/08)`]);
-      if (options.length < 2) continue;
-      for (const [text, value, title] of options) {
-        const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.title = title; b.dataset.end = end;
-        b.className = current === value ? 'on' : ''; b.setAttribute('aria-pressed', String(current === value));
-        b.onclick = () => {
-          if (current === value) return;
-          const id = route.id;
-          store.editProject(d => {
-            const q = d.routes.find(x => x.id === id); if (!q || q.alignment.kind !== 'pi') return;
-            const forms = { ...q.alignment.controls.junctionForms };
-            if (value) forms[end] = value; else delete forms[end];
-            if (Object.keys(forms).length) q.alignment.controls.junctionForms = forms; else delete q.alignment.controls.junctionForms;
-          });
-        };
-        choice.append(b);
-      }
-      row.append(label, choice); junctions.append(row);
-    }
-    // where the line stays on the old road, the old road is kept although a new road could not be built so
-    const notes = document.createElement('div'); notes.className = 'route-kept';
-    const bends = [...new Set((r.inherited ?? []).flatMap(v => v.pis ?? (v.pi !== undefined ? [v.pi] : [])))].sort((p, q) => p - q);
-    if (r.inherited?.length) {
-      const text = document.createElement('span');
-      text.textContent = `The ${old} is tighter than the norm ${bends.length ? `at bend${bends.length > 1 ? 's' : ''} ` : 'here'}`;
-      notes.append(text);
-      bends.forEach((i, k) => {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = String(i + 1);
-        b.title = r.inherited!.filter(v => v.pi === i || v.pis?.includes(i)).map(v => v.title).join('; ');
-        b.onclick = () => select({ kind: 'bend', i }, true);
-        notes.append(b, k + 1 < bends.length ? ', ' : '');
-      });
-      notes.append(`: kept as it is. Move it off the ${old} and it must meet the norm.`);
-    }
-    head.append(h, what, ...(notes.childElementCount ? [notes] : []), ...(junctions.childElementCount ? [junctions] : []), ...(works.length ? [list] : []), ...(rail ? [] : [form]), remove);
-    return head;
+  /** what the whole-road cards (ui/route-cards.ts) read and may do */
+  const routeCards: RouteCardDeps = {
+    route: () => store.route, result: () => last, project: () => projectFull, design: () => projectStore.snapshot.design,
+    transport: () => transportIndex, editable: () => store.read() !== null, directions: () => directionsState(),
+    onDirection: w => hud.ev.onDirection?.(w), joinStretch: id => joinStretch(id),
+    editProject: edit => store.editProject(edit), inTransaction: () => projectStore.inTransaction,
+    deleteRoute: id => projectStore.dispatch({ type: 'delete-route', routeId: id }),
+    missionRouteId: () => missionRouteId(), switchRoute: id => { switchRoute(id); }, undo: () => store.undo(),
+    flyTo: (x, y, dist) => { view.flyTo(x, y, dist); }, selectBend: i => select({ kind: 'bend', i }, true),
+    host: () => inspector.host(), clear: message => inspector.clear(message),
   };
+  inspector.routeHead = routeHeadCard(routeCards);
+
   const showSource = (hit: SourceHit) => {
     if (!sourceEditor) return;
     select(null); inspector.host(); sourceEditor.show(hit); hud.revealContext('inspector');
   };
-  const showNoLinks = () => {
-    select(null);
-    const root = inspector.host(), h = document.createElement('div'), title = document.createElement('b'), close = document.createElement('button');
-    root.replaceChildren(); root.className = 'card ctx inspector k-source';
-    h.className = 'ctx-h'; title.textContent = 'Road'; close.className = 'x'; close.textContent = '✕'; close.title = 'Close (Esc)'; close.type = 'button';
-    close.onclick = () => select(null); h.append(title, close);
-    const p = document.createElement('p'); p.textContent = 'This map’s roads cannot be changed yet: its road links are missing.';
-    root.append(h, p); hud.revealContext('inspector');
-  };
+  const showNoLinks = () => { select(null); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
+
   const selectPiece = (s: number, fly = false) => {
     if (!last) return;
     const p = pieceAt(last, s);
@@ -651,80 +442,12 @@ async function main() {
     if (sel.kind === 'stretch' && sel.piece) { sel = { ...sel, piece: pieceAt(r, (sel.s0 + sel.s1) / 2).kind }; inspector.sel = sel; }
   };
 
-  // ---- edits ----
-  const cellsRange = (s0: number, s1: number) => {
-    if (!last) return null;
-    const [i0, i1] = cellsInRange(last, Math.max(0, s0), Math.min(s1, last.length));
-    return { s0: Math.max(0, (i0 - 0.5) * last.ds), s1: Math.min(last.length, (i1 + 0.5) * last.ds) };
-  };
-  const setStructure = (kind: StructureKind | null, a: number, b: number) => {
-    const range = cellsRange(a, b);
-    if (!range) return;
-    const previous = store.design.structureOverrides ?? [];
-    const next = paintOverride(previous, range.s0, range.s1, kind);
-    if (JSON.stringify(previous) !== JSON.stringify(next)) store.update((d) => { d.structureOverrides = next; });
-  };
-  const setWall = (sides: ('L' | 'R')[], height: number | null, a: number, b: number) => {
-    const range = cellsRange(a, b);
-    if (!range) return;
-    const previous = store.design.wallOverrides ?? [];
-    const next = sides.reduce((o, side) => paintWallOverride(o, range.s0, range.s1, side, height), previous);
-    if (JSON.stringify(previous) !== JSON.stringify(next)) store.update((d) => { d.wallOverrides = next; });
-  };
-  const setPin = (s: number, z: number | null, commit = true) => store.update((d) => {
-    d.gradePins = (d.gradePins ?? []).filter((p) => Math.abs(p.s - s) >= 0.1);
-    if (z !== null) d.gradePins.push({ s, z });
-    d.gradePins.sort((a, b) => a.s - b.s);
-  }, commit);
-  /** a field half-typed in the card applies to what it belongs to before indices shift */
-  const commitFields = () => { const a = document.activeElement as HTMLElement | null; if (a && document.getElementById('inspector')?.contains(a)) a.blur(); };
-  const deletePi = (i: number) => { commitFields(); store.update((d) => { d.pis.splice(i, 1); }); select(null); };
-  const takeProfile = (d: Design) => {
-    if (d.profileMode === 'auto' && last) d.vpis = last.vpis.map((v) => ({ ...v }));
-    d.profileMode = 'manual';
-    // keep the stored list identical to what the evaluator uses, so panel indices match the design
-    if (last) d.vpis = normalizeVpis(d.vpis, last.length, last.vpis[0].z, last.vpis[last.vpis.length - 1].z);
-  };
-  /** Auto: pin the road's current height at station s; By hand: add a height point */
-  const addHeightAt = (s: number) => {
-    if (!last) return;
-    const i = Math.max(0, Math.min(last.n - 2, Math.floor(s / last.ds))), t = (s - last.s[i]) / last.ds;
-    const z = Math.round((last.grade[i] + t * (last.grade[i + 1] - last.grade[i])) * 10) / 10;
-    if (store.design.profileMode === 'manual') { profile.ev.onVpiAdd?.(s, z); return; }
-    if (!store.design.gradePins?.some((p) => Math.abs(p.s - s) < 0.1)) setPin(s, z);
-    select({ kind: 'pin', s });
-  };
-  inspector.ev = {
-    close: () => select(null),
-    select: (t) => select(t, true),
-    structure: setStructure,
-    wall: setWall,
-    pin: (s, z) => setPin(s, z),
-    crossing: (roadId, type) => store.update((d) => {
-      // a reroute keeps the player's shape while it stays a reroute
-      const kept = type === 'reconnection' ? d.crossingOverrides?.find((o) => o.roadId === roadId && o.via) : undefined;
-      d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      if (type !== null) d.crossingOverrides.push({ roadId, type, ...(kept ? { via: kept.via, ...(kept.to !== undefined ? { to: kept.to } : {}) } : {}) });
-    }),
-    crossingPathAuto: (roadId) => setVia(roadId, null, true),
-    crossingSquare: (roadId, type, square) => store.update((d) => {
-      d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId);
-      d.crossingOverrides.push({ roadId, type, square });
-    }),
-    building: (js, action) => store.editProject(d => { for (const j of js) d.buildingOverrides = setBuildingOverride(d.buildingOverrides, j, action); }),
-    unpin: (s0, s1) => store.update((d) => { d.gradePins = (d.gradePins ?? []).filter((p) => p.s < s0 || p.s > s1); }),
-    heightAt: (s) => addHeightAt(s),
-    commit: () => store.commit(),
-    radius: (i, r, commit = true) => store.update((d) => { if (d.pis[i]) d.pis[i].r = r; }, commit),
-    deletePi,
-    bendHeight: (i) => { const b = last && bendStations(last, store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
-    vpiRadius: (i, r) => store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
-    deleteVpi: (i) => { commitFields(); store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
-  };
-  decisions.ev = {
-    select: (t) => select(t.kind === 'stretch' && last ? { ...t } : t, true),
-    forget: (roadId) => store.update((d) => { d.crossingOverrides = (d.crossingOverrides ?? []).filter((o) => o.roadId !== roadId); }),
-  };
+  // ---- edits (ui/design-edits.ts) ----
+  const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, inspectorEvents, decisionEvents } = createDesignEdits({
+    store, profile, get last() { return last; }, select: (next, fly) => select(next, fly),
+  });
+  inspector.ev = inspectorEvents;
+  decisions.ev = decisionEvents;
   annotations.onPin = (s) => select({ kind: 'pin', s });
   annotations.onBuilding = (j) => select({ kind: 'building', j });
   annotations.onCulvert = (s) => selectPiece(s);
@@ -806,9 +529,7 @@ async function main() {
       const r = result.routes[route.id]?.legacy;
       const splitDirection = route.kind === 'motorway' && route.alignment.kind === 'pi';
       if (!r || (route.kind !== 'road' && route.kind !== 'railway' && !splitDirection)) continue;
-      const crown = route.kind === 'railway' ? CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth
-        : route.kind !== 'road' ? CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth
-        : route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
+      const crown = routeCrownWidth(route);
       const controls = route.alignment.kind === 'corridor' ? {} : route.alignment.controls;
       const entry = otherExtras.get(route.id);
       if (route.id === store.activeRouteId) { entry?.overlay.setVisible(false); continue; }
@@ -876,7 +597,7 @@ async function main() {
     worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
       crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
   };
-  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
+  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<WorkerOut>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
     if (m.type === 'noise-band') {
@@ -938,7 +659,7 @@ async function main() {
     const inputs = projectStore.snapshot.design.routes.flatMap(route => {
       const legacy = result.routes[route.id]?.legacy;
       if (!legacy) return [];
-      if (route.kind === 'railway') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth }];
+      if (route.kind === 'railway') return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
       // A paired motorway is ONE body drawn once (its forward direction carries the shared result).
       if (route.kind === 'motorway') {
         // separate stretches: the shared body's parts and each direction's own carriageway
@@ -946,13 +667,12 @@ async function main() {
         if (parts) return parts.map(p => ({ id: p.id, result: p.result, crownWidth: CATEGORIES[p.section === 'paired' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth,
           buildingMarkers: result.complete, ...(p.mirrored ? { mirrored: true } : {}) }));
         // split: each direction is its own body
-        if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth }];
+        if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
         const corridor = projectStore.snapshot.design.corridors.find(c => c.children.forward === route.id);
         return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth }] : [];
       }
       if (route.kind !== 'road') return [];
-      const crownWidth = route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
-      return [{ id: route.id, result: legacy, crownWidth }];
+      return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
     });
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {
@@ -1032,13 +752,6 @@ async function main() {
       places: route.role === 'mission' ? { forward: placeName(scenario.labels.b), reverse: placeName(scenario.labels.a) } : { forward: 'its end', reverse: 'its start' },
       apart: corridor.mode === 'paired' ? (corridor.stretches ?? []).map(t => ({ id: t.id, s0: t.a, s1: t.b, following: !apart.has(t.id) })) : [] };
   };
-  /** a reroute's shape (null: its automatic path again); shaping a crossing makes it a reroute */
-  const setVia = (roadId: number, via: LinkVia | null, commit: boolean, to?: number) => store.update((d) => {
-    const list = d.crossingOverrides ??= [];
-    let o = list.find((x) => x.roadId === roadId);
-    if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
-    if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
-  }, commit);
   works = new CrossingHighlight(view, document.getElementById('overlay')!, {
     selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull,
   });
@@ -1161,369 +874,41 @@ async function main() {
   });
 
   // ---- map: click inspects, dragging the road bends it, empty ground deselects ----
-  // buildings are pickable once they are a few pixels big
-  const buildingsPickable = () => view.metresPerPixel < 3;
-  // crossed roads are clickable once they are drawn big enough; from afar a click on the road picks its piece
-  const crossingPickPx = () => (view.metresPerPixel < 4 ? 12 : view.metresPerPixel < 10 ? 6 : 0);
-  const canvasBox = () => view.renderer.domElement.getBoundingClientRect();
-  const surfacePicks = new Map<RouteId, { key: string; result: PickRoute['result'] }>();
-  /** an unaccepted proposal is picked on the reference line it is drawn on */
-  const surfacePick = (route: RouteResult): PickRoute['result'] | null => {
-    const p = route.surface?.points; if (!p || p.length < 2) return null;
-    const cached = surfacePicks.get(route.routeId); if (cached?.key === route.engineeringRevision) return cached.result;
-    const z = p.map(q => q.z);
-    const result = { n: p.length, s: p.map(q => q.s), x: p.map(q => q.x), y: p.map(q => q.y), grade: z, ground: z, kind: p.map(() => 0) };
-    surfacePicks.set(route.routeId, { key: route.engineeringRevision, result: result as unknown as PickRoute['result'] });
-    return surfacePicks.get(route.routeId)!.result;
-  };
-  const routeAt = (clientX: number, clientY: number, px: number) => {
-    const box = canvasBox();
-    const routes = Object.values(projectFull?.routes ?? {}).flatMap(route => {
-      const r = route.routeId === store.activeRouteId && last ? last : route.legacy ?? surfacePick(route);
-      return r ? [{ id: route.routeId, result: r }] : [];
-    });
-    return pickRoute(routes, clientX - box.left, clientY - box.top, px,
-      (x, y, z) => view.project(x, y, z), (x, y) => view.drape(x, y), store.activeRouteId ?? undefined);
-  };
-  const roadAt = (clientX: number, clientY: number, px: number) => {
-    const hit = routeAt(clientX, clientY, px);
-    return hit?.routeId === store.activeRouteId && store.read() ? hit.index : -1;
-  };
-  const crossingAt = (clientX: number, clientY: number) => {
-    const r = last;
-    if (!r) return null;
-    const box = canvasBox();
-    let best = crossingPickPx(), hit: Result['crossings'][number] | null = null;
-    for (const c of r.crossings) {
-      if (c.roadId === undefined) continue;
-      const p = view.project(c.x, c.y, Math.max(r.grade[c.i], r.grade[c.i] - c.h) + 2);
-      const gap = Math.hypot(p.sx - (clientX - box.left), p.sy - (clientY - box.top));
-      if (p.vis && gap < best) { best = gap; hit = c; }
-    }
-    return hit;
-  };
-  /** any drawn geometry a crossing owns (its rebuilt road stretch, reroute links, turning heads,
-   * underpass box), on the drawn width plus the same slack as a mapped road */
-  const crossingPicker = new CrossingPicker();
-  const crossingWorksAt = (clientX: number, clientY: number) => {
-    const r = last;
-    if (!r || !crossingPickPx()) return null;
-    const g = view.pick(clientX, clientY); if (!g) return null;
-    crossingPicker.set(r.crossings);
-    const box = canvasBox();
-    return crossingPicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * view.metresPerPixel), SOURCE_PICK_SLACK_PX,
-      (x, y, z) => view.project(x, y, z));
-  };
-  const buildingAt = (clientX: number, clientY: number) => {
-    if (!buildingsPickable()) return null;
-    const g = view.pick(clientX, clientY);
-    return g ? buildingPicker.at(clientX, clientY, { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) }) : null;
-  };
-  /** a mapped base road under the cursor; a stretch a project road already claims selects that road */
-  const sourceAt = (clientX: number, clientY: number): { kind: 'source'; hit: SourceHit } | { kind: 'route-hit'; routeId: RouteId; s: number } | null => {
-    if (!sourcePicker || !sourceEditor) return null;
-    const g = view.pick(clientX, clientY); if (!g) return null;
-    const box = canvasBox(), slack = SOURCE_PICK_SLACK_PX;
-    const hit = sourcePicker.at(clientX - box.left, clientY - box.top, g.x, g.y, Math.max(40, 30 * view.metresPerPixel), slack,
-      (x, y) => view.project(x, y, view.drape(x, y)));
-    if (!hit) return null;
-    for (const route of projectStore.snapshot.design.routes) for (const c of route.source?.intervals ?? [])
-      if (c.sourceId === hit.sourceId && c.transportData === transportData && hit.s >= c.s0 && hit.s <= c.s1) return { kind: 'route-hit', routeId: route.id, s: hit.s - c.s0 };
-    return { kind: 'source', hit };
-  };
-  /** what a click at a client point means */
-  const thingAt = (clientX: number, clientY: number): Sel | { kind: 'route-hit'; routeId: RouteId; s: number } | { kind: 'source'; hit: SourceHit } | null => {
-    const c = crossingAt(clientX, clientY);
-    if (c) return { kind: 'crossing', roadId: c.roadId! };
-    const hit = routeAt(clientX, clientY, 10);
-    if (hit) return { kind: 'route-hit', routeId: hit.routeId, s: hit.s };
-    // a crossing's own works before the rest of the mapped road (whose card is the base road's)
-    const works = crossingWorksAt(clientX, clientY);
-    if (works) return { kind: 'crossing', roadId: works.crossing.roadId! };
-    const b = buildingAt(clientX, clientY);
-    if (b !== null) return { kind: 'building', j: b };
-    const w = extras.wallAt(clientX, clientY);
-    if (w) return { kind: 'stretch', s0: w.s0, s1: w.s1 };
-    return sourceAt(clientX, clientY);
-  };
-  /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
-  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
-  /** a press on a mapped road before the road links are loaded (client point; `ready` once they are) */
-  type EarlyGrab = { x: number; y: number; ready: boolean };
-  let grabbedEarly = null as EarlyGrab | null;
-  const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
-    const interval = sourceEditor?.interval; if (!interval) return null;
-    const g = view.pick(clientX, clientY);
-    return g && sourceEditor!.covers(g.x, g.y, Math.max(6, 8 * view.metresPerPixel)) ? { ...interval } : null;
-  };
-  /** The first drag of a mapped road: its stretch becomes a project road (line converted to bends that
-   * follow the old road) and the drag bends it, all ONE undo step (committed when the drag ends). */
-  const rebuildByDrag = (interval: SourceInterval, x: number, y: number): number | null => {
-    const lineKind = sourceEditor?.lineKind;
-    if (!transportIndex || !lineKind) return null;
-    let command;
-    try { command = lineKind.rebuild(transportIndex, interval, { routeId: `route:${crypto.randomUUID()}`, acousticSourceId: `acoustic:${crypto.randomUUID()}` }); }
-    catch (error) { console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
-    const id = command.routes[0].id;
-    intro.hide(); sourceEditor?.clear();
-    if (projectStore.inTransaction) projectStore.commit();
-    projectStore.begin();
-    try { projectStore.dispatch(command); }
-    catch (error) { projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
-    switchRoute(id, true);
-    const k = bendByDrag(x, y);
-    // (a new bend, not one the old line's own curve already had, is fitted where its curve has room on release)
-    return k;
-  };
-  /** A drag that starts on the road: on a straight it adds a bend there, which is fitted on release where
-   * its curve has room (no curve-room problem from one drag, core/bend-fit.ts); on the curve of a bend, or
-   * within an easement's length of it (a new bend there would crowd it), it moves that bend, which keeps its
-   * distance from the pointer for the rest of the drag. */
-  let grabOffset: { i: number; dx: number; dy: number } | null = null;
-  const bendByDrag = (x: number, y: number): number => {
-    const d = store.design, near = speedNorms(d.speed, d.category).minTransition;
-    const on = bendAt(A, B, d.pis, d.speed, d.category, { x, y }, 15, near);
-    if (on !== null) { grabOffset = { i: on, dx: d.pis[on].x - x, dy: d.pis[on].y - y }; select({ kind: 'bend', i: on }); return on; }
-    grabOffset = null;
-    const k = insertBend(x, y, false); select({ kind: 'bend', i: k });
-    if (store.activeRouteId) placedByDrag = { routeId: store.activeRouteId, i: k };
-    return k;
-  };
-  /** the new bend a drag placed (also the one a rebuilding drag adds): on release it is fitted where its curve
-   * has room (core/bend-fit.ts) */
-  let placedByDrag: { routeId: RouteId; i: number } | null = null;
-  const insertBend = (x: number, y: number, commit: boolean) => {
-    const k = nearestLeg(A, B, store.design.pis, { x, y });
-    store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); }, commit);
-    return k;
-  };
-  view.ev = {
-    onPickTerrain: (_x, _y, clientX, clientY) => {
-      intro.hide();
-      if (buildTool.active) { buildTool.place(placeAt(clientX, clientY, _x, _y)); return; }
-      const t = thingAt(clientX, clientY);
-      // First click on a base road before the graph is parsed: parse it, then pick the road at the
-      // clicked ground point (wherever the camera is by then), unless something else was selected meanwhile.
-      const ground = !t && !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
-      if (t?.kind === 'route-hit') { if (switchRoute(t.routeId) && store.read()) selectPiece(t.s); }
-      else if (t?.kind === 'source') showSource(t.hit);
-      else if (!t && legacyRoadAt(_x, _y)) showNoLinks();
-      else select(t);
-      if (ground) {
-        const generation = selectGeneration;
-        void ensureTransport().then(() => {
-          if (generation !== selectGeneration) return;
-          const p = view.project(ground.x, ground.y, view.drape(ground.x, ground.y)), box = canvasBox();
-          const late = p.vis ? sourceAt(box.left + p.sx, box.top + p.sy) : null;
-          if (late?.kind === 'source') showSource(late.hit);
-        });
-      }
-    },
-    // placing a new line: a click beside the map says so (never nothing at all)
-    onPickNothing: () => { if (buildTool.active) buildTool.place({ ok: false, why: 'That is beside the map: click on the map itself.' }); },
-    onDoublePick: (x, y) => { if (!store.read() || routeAt(lastClient.x, lastClient.y, 10)) return; select({ kind: 'bend', i: insertBend(x, y, true) }); },
-    // a drag from the road always bends it (a click there still inspects the nearest thing); so does a
-    // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch
-    hitRoad: (clientX, clientY) => {
-      grabbing = null; grabbedSource = null; grabbedEarly = null;
-      if (buildTool.active) return false;
-      if (roadAt(clientX, clientY, 9) >= 0) return true;
-      grabbing = mappedGrab(clientX, clientY);
-      if (grabbing) return true;
-      // another designed road drawn there comes first (a click there picks it, as the hover says)
-      const other = routeAt(clientX, clientY, 10);
-      const corridorOf = (id: RouteId | null | undefined) => id ? corridorOfRoute(projectStore.snapshot.design, id)?.id ?? id : undefined;
-      if (other && corridorOf(other.routeId) !== corridorOf(store.activeRouteId)) return false;
-      // a drag that starts on any other mapped road never pans the map: it rebuilds the stretch there, or
-      // its card says why it cannot be changed
-      const s = sourceAt(clientX, clientY);
-      if (s?.kind === 'source') { grabbedSource = s.hit; return true; }
-      // before the road links are loaded: a mapped road there is held (no pan); a drag waits for the links
-      // and then rebuilds it (a click opens its card once they are loaded)
-      const g = !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
-      if (g && mappedRoadNear(g.x, g.y)) {
-        const early: EarlyGrab = { x: g.x, y: g.y, ready: false }; grabbedEarly = early;
-        void ensureTransport().then(() => { early.ready = true; if (grabbedEarly === early) view.resumeRoadDrag(); });
-        return true;
-      }
-      return false;
-    },
-    onRoadDrag: (x, y) => {
-      if (grabbedEarly) {
-        if (!grabbedEarly.ready) return 'wait';
-        // the pressed ground point, where it is on the screen now (a camera flight may have moved on)
-        const g = grabbedEarly, at = view.project(g.x, g.y, view.drape(g.x, g.y)), box = canvasBox(); grabbedEarly = null;
-        const s = at.vis ? sourceAt(box.left + at.sx, box.top + at.sy) : null;
-        if (s?.kind !== 'source') return null;
-        grabbedSource = s.hit;
-      }
-      if (grabbedSource) {
-        showSource(grabbedSource); grabbedSource = null;
-        const interval = sourceEditor?.interval;
-        return interval ? rebuildByDrag({ ...interval }, x, y) : null;
-      }
-      if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
-      if (!store.read()) return null; intro.hide(); return bendByDrag(x, y);
-    },
-    onPiSelect: (i) => { grabOffset = null; placedByDrag = null; select(i === null ? null : { kind: 'bend', i }); },
-    onPiDrag: (i, x, y) => { const o = grabOffset?.i === i ? grabOffset : null; store.update((d) => { d.pis[i].x = x + (o?.dx ?? 0); d.pis[i].y = y + (o?.dy ?? 0); }, false); },
-    onPiDragEnd: () => {
-      grabOffset = null;
-      const placed = placedByDrag; placedByDrag = null;
-      const d = store.read(), ends = store.route?.endpoints;
-      if (placed && d && ends && placed.routeId === store.activeRouteId) {
-        const fitted = fitPlacedBend(ends.a.position, ends.b.position, d.pis, placed.i, d.category, d.speed);
-        if (fitted) store.update(draft => { draft.pis = fitted; }, false);
-      }
-      store.commit();
-    },
-    onPiDelete: (i) => deletePi(i),
-    // a reroute link: dragging it shapes it (adds a bend point there)
-    grab: (clientX, clientY) => {
-      if (!store.read() || buildTool.active) return null;
-      const w = crossingWorksAt(clientX, clientY);
-      return w?.link !== undefined && linkEdit ? linkEdit.grab(w) : null;
-    },
-  };
+  // what is under the pointer (ui/map-picks.ts)
+  const { canvasBox, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt, thingAt } = createMapPicks({
+    view, pack, extras, buildingPicker, transportData,
+    get projectFull() { return projectFull; }, get last() { return last; }, get activeRouteId() { return store.activeRouteId; },
+    get editable() { return store.read() !== null; }, get routes() { return projectStore.snapshot.design.routes; },
+    get sourcePicker() { return sourcePicker; }, get sourceEditor() { return sourceEditor; },
+  });
+  // ---- map gestures: click, drag to bend / rebuild / shape, double click (ui/map-gestures.ts) ----
   const lastClient = { x: 0, y: 0 };
-  /** the height points as they were when a By hand drag began */
-  let vpiDragBase: Design['vpis'] | null = null;
-
-  // ---- profile: the same verbs ----
-  profile.ev = {
-    onStationSelect: (s) => select({ kind: 'pin', s }, true),
-    onCrossingSelect: (roadId) => select({ kind: 'crossing', roadId }, true),
-    onPick: (s) => selectPiece(s, true),
-    onVpiDrag: (i, s, z, a, b) => store.update((d) => {
-      takeProfile(d);
-      const base = vpiDragBase ??= d.vpis.map((v) => ({ ...v }));
-      if (!d.vpis[i] || !base[a] || !base[b]) return;
-      d.vpis[i].s = s; d.vpis[i].z = z;
-      // the height points hidden between it and its shown neighbours keep their shape and follow
-      // in proportion, so the line bends only at the points the player sees
-      const dz = z - base[i].z;
-      for (let j = a + 1; j < b; j++) if (j !== i) {
-        const t = j < i ? (base[j].s - base[a].s) / Math.max(1e-6, s - base[a].s) : (base[b].s - base[j].s) / Math.max(1e-6, base[b].s - s);
-        d.vpis[j].z = Math.round((base[j].z + dz * Math.max(0, Math.min(1, t))) * 100) / 100;
-      }
-    }, false),
-    onVpiDragEnd: () => { vpiDragBase = null; store.commit(); },
-    onVpiAdd: (s, z) => {
-      const vp = store.design.profileMode === 'auto' && last ? last.vpis : store.design.vpis;
-      if (vp.some((v) => Math.abs(v.s - s) < MIN_VPI_GAP)) return;
-      store.update((d) => {
-        takeProfile(d);
-        const k = d.vpis.findIndex((v) => v.s > s);
-        d.vpis.splice(k < 0 ? d.vpis.length - 1 : k, 0, { s, z, r: null });
-      });
-    },
-    onVpiDelete: (i) => { commitFields(); store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); select(null); },
-    onVpiSelect: (i) => { if (i !== null) select({ kind: 'vpi', i }); else if (sel?.kind === 'vpi') select(null); },
-    onSelect: (range) => select(range ? { kind: 'stretch', s0: range.s0, s1: range.s1 } : null),
-    onHover: (s, label) => {
-      if (s === null || !last) { view.setHover(null); return; }
-      const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds)));
-      view.setHover({ x: last.x[i], y: last.y[i], z: last.grade[i] }, label);
-    },
-    onView: () => updateZoomButtons(),
-    onBendHover: (i) => highlightBend(i),
-    onBendSelect: (i) => select({ kind: 'bend', i }, true),
-    onPinAdd: (s) => addHeightAt(s),
-    onLineDrag: (s, z) => setPin(s, z, false),
-    onPinDrag: (s, z) => store.update((d) => { const p = d.gradePins?.find((p) => Math.abs(p.s - s) < 0.1); if (p) p.z = z; }, false),
-    onPinDragEnd: () => store.commit(),
-  };
-
-  // ---- the profile's key (legend) ----
-  const keyB = document.getElementById('key-toggle')!, keyBox = document.getElementById('profile-key')!;
-  const showKey = (on: boolean) => { keyBox.hidden = !on; keyB.setAttribute('aria-expanded', String(on)); keyB.classList.toggle('on', on); };
-  keyB.onclick = () => showKey(!keyB.classList.contains('on'));
-  document.addEventListener('pointerdown', (e) => { if (!keyBox.hidden && !keyBox.contains(e.target as Node) && e.target !== keyB) showKey(false); });
-
-  // ---- profile zoom buttons ----
-  const zoomOut = document.getElementById('zoom-out') as HTMLButtonElement;
-  const fitB = document.getElementById('fit') as HTMLButtonElement;
-  const updateZoomButtons = () => { zoomOut.disabled = profile.isWhole; fitB.hidden = profile.isWhole; };
-  document.getElementById('zoom-in')!.onclick = () => profile.zoom(2);
-  zoomOut.onclick = () => profile.zoom(0.5);
-  fitB.onclick = () => profile.fit();
-  updateZoomButtons();
-
-  // ---- hover links between the map and the profile ----
-  // the bend markers: profile → map
-  const highlightBend = (i: number | null) => {
-    for (const el of document.querySelectorAll<HTMLElement>('.pi.hl')) el.classList.remove('hl');
-    if (i !== null) document.querySelector<HTMLElement>(`.pi[data-i="${i}"]`)?.classList.add('hl');
-  };
-  // map → profile: a bend marker, or the road under the mouse
-  const overlayEl = document.getElementById('overlay')!;
-  overlayEl.addEventListener('pointerover', (e) => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>('.pi');
-    if (el) profile.setBendHover(Number(el.dataset.i));
+  const { events: mapEvents, mappedGrab, releaseGrab } = createMapGestures({
+    store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingWorksAt, sourceAt, thingAt,
+    get A() { return A; }, get B() { return B; },
+    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
+    get sourceEditor() { return sourceEditor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selectGeneration; },
+    ensureTransport, select, selectPiece, switchRoute, showSource, showNoLinks, deletePi, placeAt, mappedRoadNear, legacyRoadAt,
   });
-  overlayEl.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('.pi')) profile.setBendHover(null); });
-  let mapHoverAt: { x: number; y: number } | null = null, mapHoverFrame = 0, mapHoverKey = '';
-  const rebuildableSources = new Map<string, boolean>();
-  const canRebuild = (sourceId: string) => {
-    let ok = rebuildableSources.get(sourceId);
-    if (ok === undefined && transportIndex) rebuildableSources.set(sourceId, ok = mappedLineKindFor(transportIndex, sourceId).verdict.ok);
-    return ok ?? false;
-  };
-  const mapHoverTick = () => {
-    mapHoverFrame = 0;
-    const at = mapHoverAt, r = last, canvas = view.renderer.domElement;
-    let cursor = '', key = '';
-    // Build → Road: where a click would put the end, what it would join, how long the road would be
-    if (buildTool.active) {
-      const g = at && view.pick(at.x, at.y);
-      buildTool.hover(at && g ? placeAt(at.x, at.y, g.x, g.y) : null, g ? { x: g.x, y: g.y, z: pack.terrain.heightAt(g.x, g.y) } : null);
-      key = 'placing';
-    } else if (at && mappedGrab(at.x, at.y) && !(r && roadAt(at.x, at.y, 10) >= 0)) {
-      cursor = 'grab'; key = 'mapped';
-      if (key !== mapHoverKey) { const g = view.pick(at.x, at.y); if (g) view.setHover({ x: g.x, y: g.y, z: view.drape(g.x, g.y) }, 'drag to change'); }
-    } else if (at && r && !buildTool.active) {
-      const cross = crossingAt(at.x, at.y);
-      const k = cross ? -1 : roadAt(at.x, at.y, 10);
-      const building = cross || k >= 0 ? null : buildingAt(at.x, at.y);
-      let works: ReturnType<typeof crossingWorksAt> = null, src: ReturnType<typeof sourceAt> = null;
-      if (cross) {
-        cursor = 'pointer'; key = `x${cross.roadId}`;
-        if (key !== mapHoverKey) { view.setHover({ x: cross.x, y: cross.y, z: r.grade[cross.i] }, ROAD_CLASSES[cross.cls].label); profile.setHover(cross.s, true); }
-      } else if (k >= 0) {
-        cursor = 'grab'; key = `r${k}`;
-        if (key !== mapHoverKey) { view.setHover({ x: r.x[k], y: r.y[k], z: r.kind[k] === KIND.tunnel ? r.ground[k] : r.grade[k] }, bendLabel()); profile.setHover(r.s[k], true); }
-      } else if (routeAt(at.x, at.y, 10)) { cursor = 'pointer'; key = 'other-route'; }
-      else if ((works = crossingWorksAt(at.x, at.y))) {
-        const c = works.crossing, link = works.link !== undefined && shapeable(lastFull, store.design, c.roadId!);
-        cursor = link ? 'grab' : 'pointer'; key = `x${c.roadId}${link ? 'l' : ''}`;
-        if (key !== mapHoverKey) { view.setHover({ x: works.x, y: works.y, z: works.z }, `${ROAD_CLASSES[c.cls].label}${link ? ' · drag to reshape' : ''}`); profile.setHover(c.s, true); }
-      } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
-      else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
-      else if ((src = sourceAt(at.x, at.y))) {
-        // a drag there rebuilds the road or railway (one that cannot be changed: a click says why)
-        const grab = src.kind === 'source' && canRebuild(src.hit.sourceId);
-        cursor = grab ? 'grab' : 'pointer'; key = grab ? 'grab-source' : 'source';
-        if (grab && key !== mapHoverKey) { const g = view.pick(at.x, at.y); if (g) view.setHover({ x: g.x, y: g.y, z: view.drape(g.x, g.y) }, 'drag to change its line'); }
-      }
-    }
-    // before the road links are loaded (fetched when idle, parsed on first need): the first hover starts
-    // them, and a mapped road already shows that it can be grabbed
-    if (at && !buildTool.active && !transportGraph && pack.transportMeta) {
-      void ensureTransport();
-      const g = !cursor ? view.pick(at.x, at.y) : null;
-      if (g && mappedRoadNear(g.x, g.y)) cursor = 'grab';
-    }
-    if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
-    if (key === mapHoverKey) return;
-    if (!key.startsWith('x') && !key.startsWith('r') && key !== 'mapped' && key !== 'grab-source') { view.setHover(null); profile.setHover(null, true); }
-    mapHoverKey = key;
-  };
-  view.renderer.domElement.addEventListener('pointermove', (e) => {
-    lastClient.x = e.clientX; lastClient.y = e.clientY;
-    mapHoverAt = e.buttons ? null : { x: e.clientX, y: e.clientY }; // not while panning / rotating
-    if (!mapHoverFrame) mapHoverFrame = requestAnimationFrame(mapHoverTick);
+  view.ev = mapEvents;
+
+  // ---- profile: the same verbs (ui/profile-events.ts) ----
+  profile.ev = profileEvents({
+    store, view, select, selectPiece, takeProfile, commitFields, addHeightAt, setPin,
+    get last() { return last; }, get sel() { return sel; },
+    updateZoomButtons: () => updateZoomButtons(), highlightBend: i => highlightBend(i),
   });
-  view.renderer.domElement.addEventListener('pointerleave', () => { mapHoverAt = null; if (!mapHoverFrame) mapHoverFrame = requestAnimationFrame(mapHoverTick); });
+
+  // ---- the profile's key (legend) and zoom buttons (ui/profile-bar.ts) ----
+  const { keyBox, showKey, updateZoomButtons } = installProfileBar(profile);
+
+  // ---- hover links between the map and the profile, the map's cursor (ui/map-hover.ts) ----
+  const { highlightBend } = installMapHover({
+    view, pack, profile, extras, buildTool, lastClient, routeAt, roadAt, crossingAt, crossingWorksAt, buildingAt, sourceAt,
+    get last() { return last; }, get lastFull() { return lastFull; }, get design() { return store.design; },
+    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
+    ensureTransport, placeAt, mappedGrab, mappedRoadNear, bendLabel,
+  });
 
   // map → profile: the part of the route the map shows (a light window), recomputed after camera moves
   let windowTimer = 0;
@@ -1544,128 +929,17 @@ async function main() {
   const prevRender = view.onRender;
   view.onRender = () => { prevRender?.(); if (!windowTimer) windowTimer = window.setTimeout(updateMapWindow, 120); };
 
-  // ---- HUD ----
-  hud.ev = {
-    onCategory: (c) => store.update((d) => { d.category = c as CategoryId; }),
-    onSpeed: (s) => store.update((d) => { d.speed = s; }),
-    onProfileMode: (mode) => {
-      // heights by hand are one setting of the whole motorway: back to both directions for it
-      const corridor = store.route && corridorOfRoute(projectStore.snapshot.design, store.route.id);
-      if (store.oneDirection && corridor?.mode === 'paired') {
-        switchRoute(corridor.children.forward, false, false); toast('Heights by hand or Auto: set for both directions together.');
-      }
-      if (mode === store.design.profileMode || (mode === 'manual' && (!last || !settled()))) return;
-      store.update((d) => { if (mode === 'manual') takeProfile(d); else d.profileMode = 'auto'; });
-    },
-    onReset: () => {
-      select(null);
-      store.reset(); view.resetCamera(); profile.fit();
-      toast('Back to the starting road.', 'Undo', () => store.undo());
-    },
-    onIntro: () => intro.show(),
-    onJoinStretch: (id) => joinStretch(id),
-    onDirection: (which) => {
-      const route = store.route, corridor = route ? corridorOfRoute(projectStore.snapshot.design, route.id) : undefined;
-      if (!corridor || projectStore.inTransaction) return;
-      if (which === 'both') {
-        if (corridor.mode !== 'independent') { select(null); switchRoute(corridor.children.forward, false, false); return; }
-        select(null);
-        store.editProject(d => { Object.assign(d, rejoinCorridor(d, corridor.id)); });
-        switchRoute(corridor.children.forward);
-        toast(DIRECTIONS_TEXT.join, 'Undo', () => store.undo());
-        return;
-      }
-      // choosing a direction only chooses what a drag moves: the design changes with the first edit
-      select(null);
-      switchRoute(corridor.children[which], false, corridor.mode === 'paired');
-    },
-    onLoadBest: () => { if (store.best) { store.loadBest(); toast('Loaded your best design.', 'Undo', () => store.undo()); } },
-    onViolation: (k) => {
-      // the list shows the last full result's violations (previews do not replace it)
-      if (legacyFacade() || !projectFull) { showViolation(lastFull?.violations[k]); return; }
-      const issue = hud.listedIssue(k), owner = issue?.scope.routeIds[0];
-      if (!issue) return;
-      // not checked yet (e.g. where two new roads meet): show the place; there is nothing to select or fix there
-      if (issue.check === 'not-checked') {
-        if (issue.at) view.flyTo(issue.at.x, issue.at.y, 1200);
-        const here = issue.locations.find(l => l.routeId === store.activeRouteId);
-        if (here && last) profile.focus(Math.max(0, here.s0 - 150), Math.min(last.length, here.s1 + 150));
-        if (!issue.at && !here) hud.reveal('viol');
-        return;
-      }
-      if (owner && owner !== store.activeRouteId) switchRoute(owner);
-      if (issue.scope.buildingIndex !== undefined) { select({ kind: 'building', j: issue.scope.buildingIndex }, true); return; }
-      // A road's own check: core lists each road's kernel violations in order, route-qualified. Its
-      // ordinal among that road's 'invalid' issues identifies the kernel violation (never its title).
-      const own = projectFull.issues.filter(i => i.blocking === 'invalid' && i.scope.routeIds.length === 1 && i.scope.routeIds[0] === store.activeRouteId);
-      const n = own.indexOf(issue), v = n >= 0 && lastFull && own.length === lastFull.violations.length ? lastFull.violations[n] : undefined;
-      if (v && v.title === issue.violation.title) { showViolation(v); return; }
-      const at = issue.locations.find(l => l.routeId === store.activeRouteId), d = store.read();
-      if (!at) { hud.reveal('viol'); return; }
-      if (at.pi !== undefined && d?.pis[at.pi]) select({ kind: 'bend', i: at.pi }, true);
-      else if (at.vpi !== undefined && d?.profileMode === 'manual' && lastFull && at.vpi > 0 && at.vpi < lastFull.vpis.length - 1) select({ kind: 'vpi', i: at.vpi }, true);
-      else select({ kind: 'stretch', s0: at.s0, s1: at.s1 }, true);
-    },
-  };
-  const showViolation = (v: Result['violations'][number] | undefined) => {
-    const r = lastFull;
-    if (!v || !r) return;
-    const roadId = (v as { crossing?: { roadId?: number } }).crossing?.roadId;
-    const pin = v.kind === 'profile' ? store.design.gradePins?.find((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1) : undefined;
-    const t: Sel | null = v.target?.buildings?.length ? { kind: 'building', j: v.target.buildings[0] }
-      : roadId !== undefined ? { kind: 'crossing', roadId }
-        : v.pi !== undefined ? { kind: 'bend', i: v.pi } : v.pis?.length ? { kind: 'bend', i: v.pis[0] }
-          : v.vpi !== undefined && store.design.profileMode === 'manual' && v.vpi > 0 && v.vpi < r.vpis.length - 1 ? { kind: 'vpi', i: v.vpi }
-          : pin ? { kind: 'pin', s: pin.s } : v.goal ? null
-            : v.s1 - v.s0 < 60 ? (() => { const p = pieceAt(r, (v.s0 + v.s1) / 2); return { kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind } as Sel; })()
-              : { kind: 'stretch', s0: v.s0, s1: v.s1 };
-    if (!t) { hud.reveal('viol'); return; }
-    select(t);
-    const i = Math.max(0, Math.min(r.n - 1, Math.round((v.s0 + v.s1) / 2 / r.ds)));
-    view.lookAt(r.x[i], r.y[i], Math.max(1200, (v.s1 - v.s0) * 1.5), 20, 45);
-    profile.focus(v.s0, v.s1);
-  };
+  // ---- HUD (ui/hud-events.ts) ----
+  hud.ev = hudEvents({
+    store, projectStore, view, profile, hud, intro, settled, legacyFacade, takeProfile, select, switchRoute, joinStretch,
+    get last() { return last; }, get lastFull() { return lastFull; }, get projectFull() { return projectFull; },
+  });
 
-  // a drag (bend, height point, pin, radius grip) is applied without a history entry until it ends:
-  // Undo / Redo in the middle of one would be overwritten by its final commit
-  let pointerHeld = 0;
-  window.addEventListener('pointerdown', () => { pointerHeld++; }, { capture: true });
-  for (const t of ['pointerup', 'pointercancel'] as const) window.addEventListener(t, () => { pointerHeld = Math.max(0, pointerHeld - 1); }, { capture: true });
-  window.addEventListener('blur', () => { pointerHeld = 0; });
-  const undoRedo = (redo: boolean) => {
-    if (pointerHeld) return;
-    // a focused select / checkbox would keep the cards from redrawing with the restored design
-    (document.activeElement as HTMLElement | null)?.blur?.();
-    if (redo) store.redo(); else store.undo();
-  };
-  window.addEventListener('keydown', (e) => {
-    const t = e.target as HTMLElement;
-    // Escape closes the base-road card even from its typed fields (nothing was changed yet)
-    if (e.key === 'Escape' && (sourceEditor?.selected || buildTool.active)) { e.preventDefault(); buildTool.cancel(false); select(null); return; }
-    // Undo / Redo also right after choosing in a select or ticking a box; text fields keep their own undo
-    const typing = t.closest('textarea, [contenteditable="true"]') || (t.matches('input') && !t.matches('[type=checkbox], [type=radio], [type=range]'));
-    const mod = e.ctrlKey || e.metaKey;
-    if (mod && !typing && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
-      e.preventDefault();
-      undoRedo(e.key.toLowerCase() === 'y' || e.shiftKey);
-      return;
-    }
-    if (t.closest('input, select, textarea, [contenteditable="true"]')) return;
-    if (!e.ctrlKey && !e.metaKey && !e.altKey && sel?.kind === 'stretch') {
-      const key = e.key.toLowerCase(), kinds: Record<string, StructureKind | null> = { a: null, b: 1, t: 2, e: 0 };
-      if (key in kinds) {
-        e.preventDefault();
-        if (!e.repeat) setStructure(kinds[key], sel.s0, sel.s1);
-        return;
-      }
-    }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && sel?.kind === 'bend') deletePi(sel.i);
-    else if (e.key === 'Escape') {
-      if (intro.visible) intro.hide();
-      else if (!keyBox.hidden) showKey(false);
-      else select(null);
-    }
-  }, { capture: true }); // stretch shortcuts take precedence over the map's view shortcuts
+  // ---- keyboard (ui/shortcuts.ts) ----
+  installShortcuts({
+    buildTool, intro, keyBox, showKey, select, setStructure, deletePi, undo: () => store.undo(), redo: () => store.redo(),
+    get sel() { return sel; }, get mappedRoadSelected() { return !!sourceEditor?.selected; },
+  });
 
   if (store.read()) { view.setDesign(store.design, null, activeEndpoints()); hud.setDesign(store.design); }
   else { view.clearDesign(activeEndpoints()); curveEdit.hide(); }
@@ -1674,171 +948,15 @@ async function main() {
   setStatus('computing…');
   requestEval();
 
-  // ---- debug / automation API ----
-  (window as unknown as { trapla: unknown }).trapla = {
-    getDesign: () => structuredClone(store.design),
-    setDesign: (d: Design) => {
-      const id = missionRouteId() ?? store.activeRouteId; if (!id) return; switchRoute(id);
-      store.editProject(draft => {
-        Object.assign(draft, replaceRouteFromLegacy(draft, id, d));
-        const route = draft.routes.find(r => r.id === id)!;
-        // Explicit legacy automation semantics: its one speed also governed traffic emissions.
-        if (route.kind === 'road' && route.specification.operations.speedPolicy !== 'independent') route.specification.operations.speed = d.speed;
-      });
-    },
-    getProject: () => structuredClone(projectStore.snapshot.design),
-    projectSnapshot: () => structuredClone(projectStore.snapshot),
-    projectResult: () => projectFull,
-    /** a road's works around station s: its bridge there (m), retaining walls within 150 m (count, length), billed parts within `reach` m */
-    localWorks: (r: Result, s: number, reach = 300) => {
-      const run = r.runs.find(x => x.kind === KIND.bridge && x.s0 <= s && x.s1 >= s);
-      let cost = 0;
-      for (const part of Object.values(r.parts)) for (let i = 0; i < r.n; i++) if (Math.abs(r.s[i] - s) <= reach) cost += part[i];
-      const walls = r.retainingWalls.filter(w => w.s1 >= s - 150 && w.s0 <= s + 150);
-      return { bridge: run ? run.s1 - run.s0 : 0, walls: walls.length, wallLength: walls.reduce((t, w) => t + w.s1 - w.s0, 0), cost };
-    },
-    activeRoute: () => store.activeRouteId,
-    routeEndpoints: () => structuredClone(store.route?.endpoints ?? null),
-    renderRoutes: () => view.routeGeometryStats(),
-    groundHeight: (x: number, y: number) => pack.terrain.heightAt(x, y),
-    routeScreen: (id: RouteId, s: number) => {
-      const route = projectFull?.routes[id], r = route?.legacy;
-      if (!r) { // an unaccepted proposal: its drawn reference line
-        const p = route?.surface?.points; if (!p?.length) return null;
-        const q = p.reduce((a, b) => (Math.abs(b.s - s) < Math.abs(a.s - s) ? b : a));
-        return view.project(q.x, q.y, view.drape(q.x, q.y) + 2.5);
-      }
-      const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds)));
-      return view.project(r.x[i], r.y[i], r.kind[i] === KIND.tunnel ? view.drape(r.x[i], r.y[i]) + 2 : r.grade[i] + 1.5);
-    },
-    handledRequest: () => received,
-    /** promotable ground base roads at least minLength long, with their distance from the routes (m) */
-    baseRoads: (minLength = 600) => {
-      if (!transportIndex) return [];
-      const routes = Object.values(projectFull?.routes ?? {}).flatMap(r => r.legacy ? [r.legacy] : []);
-      return transportIndex.graph.sources.flatMap(source => {
-        const length = source.stations[source.stations.length - 1];
-        if (source.kind !== 'road' || length < minLength) return [];
-        let info; try { info = groundRoadSourceInfo(transportIndex!, source.id); } catch { return []; }
-        let clear = Infinity;
-        for (let i = 0; i < source.xy.length; i += 2) for (const r of routes) for (let k = 0; k < r.n; k += 10)
-          clear = Math.min(clear, Math.hypot(r.x[k] - source.xy[i], r.y[k] - source.xy[i + 1]));
-        const mid = transportIndex!.branches({ transportData: transportIndex!.transportData, sourceId: source.id, s0: 0, s1: length })
-          .filter(b => b.s > 50 && b.s < length - 50).map(b => b.s);
-        return [{ id: source.id, name: info.name, legalClass: info.legalClass, length, clear, branches: mid, rebuildable: mappedLineKindFor(transportIndex!, source.id).verdict.ok }];
-      });
-    },
-    /** mapped ways tagged highway=`highway` ('railway': railway lines), at least minLength long (ids, longest first) */
-    sourceIds: (highway: string, minLength = 0) => (transportIndex?.graph.sources ?? []).filter(q => (highway === 'railway' ? q.kind === 'railway' : q.tags.highway === highway)
-      && q.stations[q.stations.length - 1] >= minLength)
-      .sort((p, q) => q.stations[q.stations.length - 1] - p.stations[p.stations.length - 1]).map(q => q.id),
-    sourceScreen: (id: string, s: number) => { const p = transportIndex?.position(id, s); return p ? view.project(p.x, p.y, view.drape(p.x, p.y)) : null; },
-    sourceSelection: () => sourceEditor?.selection ?? null,
-    /** the road links are loaded and parsed (they load on first need) */
-    transportLoaded: () => !!transportGraph,
-    /** the screen point (px inside the view) of the drawn ground at x, y */
-    groundScreen: (x: number, y: number) => view.project(x, y, view.drape(x, y)),
-    /** would a press at this client point drag something (bend our road, rebuild a mapped road) instead of panning? */
-    grabsAt: (clientX: number, clientY: number) => { const on = view.ev.hitRoad?.(clientX, clientY) ?? false; grabbing = null; grabbedSource = null; grabbedEarly = null; return on; },
-    sourcePoint: (id: string, s: number) => transportIndex?.position(id, s) ?? null,
-    buildHover: () => buildTool.hoverText,
-    building: () => buildTool.active,
-    /** what a Build click at this client point would place (no change) */
-    placementAt: (clientX: number, clientY: number) => { const g = view.pick(clientX, clientY); return g ? placeAt(clientX, clientY, g.x, g.y) : null; },
-    /** a point on a drawn road away from ours (for checking the no-road-links card) */
-    legacyRoadPoint: () => {
-      const net = pack.overlays.net, r = last; if (!net || !r) return null;
-      for (const w of net.ways) {
-        if (!['tertiary', 'secondary', 'residential', 'unclassified'].includes(net.cls[w[0]]) || w.length < 5) continue;
-        const x = (w[1] + w[3]) / 2, y = (w[2] + w[4]) / 2;
-        let near = Infinity; for (let i = 0; i < r.n; i += 5) near = Math.min(near, Math.hypot(r.x[i] - x, r.y[i] - y));
-        if (near > 400 && near < 3000 && !pack.terrain.isOob(x, y) && Math.hypot(w[3] - w[1], w[4] - w[2]) > 30) return { x, y };
-      }
-      return null;
-    },
-    lookAtSource: (id: string, s: number, dist = 900) => { const p = transportIndex?.position(id, s); if (p) view.lookAt(p.x, p.y, dist, 0, 55); },
-    proposalLines: () => view.proposalCount,
-    photoWithNetwork: () => view.photoWithNetwork,
-    setActiveRoute: switchRoute,
-    projectSelection: () => structuredClone(qualifiedSelection),
-    setProject: (design: ProjectDesign) => {
-      select(null);
-      if (projectStore.inTransaction) projectStore.cancel();
-      projectStore.begin(); projectStore.update(draft => Object.assign(draft, structuredClone(design))); projectStore.commit();
-    },
-    result: () => last,
-    summary: () => last && {
-      length: last.length, travelMin: last.travelMin, valid: last.valid, cost: last.cost, violations: last.violations,
-      quantities: { ...last.quantities, massHaul: undefined, hitBuildings: last.quantities.hitBuildings.length },
-      runs: last.runs, timing: last.timing, vpis: last.vpis.length, crossings: last.crossings, walls: last.walls,
-    },
-    whenIdle: () => new Promise<void>((res) => { if (sceneIdle()) res(); else idleWaiters.push(res); }),
-    /** parse the lazily loaded transport graph now (base-road hooks below need it) */
-    whenTransport: () => ensureTransport().then(() => !!transportGraph),
-    lookAt: (x: number, y: number, dist?: number, bearing?: number, elev?: number) => view.lookAt(x, y, dist, bearing, elev),
-    screenOf: (x: number, y: number, z: number) => view.project(x, y, z),
-    resetCamera: () => view.resetCamera(),
-    /** select something (as a click would): a bend, pin, crossing, building, stretch or piece at a station */
-    select: (t: Sel | null) => select(t),
-    selectPiece: (s: number) => selectPiece(s),
-    selection: () => sel && JSON.parse(JSON.stringify(sel)),
-    selectPi: (i: number | null) => select(i === null ? null : { kind: 'bend', i }),
-    selectStation: (s: number) => select({ kind: 'pin', s }),
-    selectCrossing: (roadId: number) => select({ kind: 'crossing', roadId }, true),
-    selectBuilding: (j: number) => select({ kind: 'building', j }),
-    maxRadius: (i: number) => curveEdit.maxRadius(i),
-    pick: (clientX: number, clientY: number) => view.pick(clientX, clientY),
-    project: (x: number, y: number, z: number) => view.project(x, y, z),
-    /** screen position (px inside the view) of building j's centroid, `up` metres above its ground */
-    /** building j is drawn in 3D (false: removed as demolished, or no mesh) */
-    buildingShown: (j: number) => { const k = view.buildingMesh(j); return k >= 0 && !view.buildingMeshes?.isHidden(k); },
-    buildingScreen: (j: number, up = 2) => {
-      const b = pack.overlays.buildings[j];
-      return b && view.project(b[0], b[1], pack.terrain.heightAt(b[0], b[1]) + up);
-    },
-    profileFocus: (s0: number, s1: number) => profile.focus(s0, s1),
-    profileFit: () => profile.fit(),
-    profileView: () => profile.view,
-    profileHasRoad: () => profile.hasRoad,
-    /** By hand: the height points with a handle at the profile's zoom */
-    profileShownPoints: () => profile.shownPoints,
-    profileHover: () => profile.hover,
-    profilePoint: (s: number, z?: number, band?: boolean) => profile.toClient(s, z, band),
-    bendStations: () => last && bendStations(last, store.design),
-    cameraTarget: () => view.target,
-    cameraDistance: () => view.cameraDistance,
-    cameraPose: () => view.pose,
-    undoLabels: () => ({ undo: store.undoLabel(), redo: store.redoLabel() }),
-    selectRange: (s0: number | null, s1?: number) => select(s0 === null || s1 === undefined ? null : { kind: 'stretch', s0, s1 }),
-    range: () => (sel?.kind === 'stretch' ? { s0: sel.s0, s1: sel.s1 } : null),
-    /** the road's screen point (px inside the view) at station s */
-    // where the road is drawn to grab: a tunnel at its ground-level indication, as picking uses
-    roadScreen: (s: number) => { if (!last) return null; const i = Math.max(0, Math.min(last.n - 1, Math.round(s / last.ds))); return view.project(last.x[i], last.y[i], routeIndicationHeight(last, i, (x, y) => view.drape(x, y))); },
-    mapWindow: () => (profile as unknown as { mapWindow: unknown }).mapWindow,
-    setExaggeration: (e: number) => viewBar.set({ exag: e }),
-    setView: (p: Partial<ViewPrefs>) => viewBar.set(p),
-    viewBusy: () => view.busy,
-    handlerTiming: () => ({ ...handlerTiming }),
-    /** the last full result's sliced 3D rebuild: slices, busy / longest-slice / wall / commit ms */
-    rebuildStats: () => ({ ...heavyStats }),
-    /** live shader programs (a growing / changing list during edits means recompiles) */
-    programs: () => (view.renderer.info.programs ?? []).map((p) => `${p.id}:${p.cacheKey.slice(0, 40)}`),
-    /** debugging only: the 3D view */
-    debugView: () => view,
-    meta,
-    official: meta.official.xy,
-    A, B,
-  };
-}
-
-/** the plan's bends at their stations along the route: the middle of the bend's arc, or the nearest station */
-function bendStations(r: Result, d: Design): { i: number; s: number }[] {
-  return d.pis.map((p, i) => {
-    const c = r.curves.find((c) => c.index === i);
-    if (c && c.sEnd > c.sStart + 1) return { i, s: (c.sStart + c.sEnd) / 2 };
-    let bd = Infinity, s = 0;
-    for (let k = 0; k < r.n; k++) { const dd = (r.x[k] - p.x) ** 2 + (r.y[k] - p.y) ** 2; if (dd < bd) { bd = dd; s = r.s[k]; } }
-    return { i, s };
+  // ---- debug / automation API (src/automation.ts) ----
+  installAutomation({
+    store, projectStore, view, pack, profile, viewBar, curveEdit, buildTool, meta, A, B, handlerTiming,
+    get last() { return last; }, get projectFull() { return projectFull; },
+    get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; }, get sourceEditor() { return sourceEditor; },
+    get sel() { return sel; }, get qualifiedSelection() { return qualifiedSelection; },
+    get received() { return received; }, get heavyStats() { return heavyStats; }, get idleWaiters() { return idleWaiters; },
+    sceneIdle, missionRouteId, switchRoute, select, selectPiece, placeAt, ensureTransport,
+    releaseGrab,
   });
 }
 

@@ -1,30 +1,24 @@
 // Recompute worker: holds its own copy of the terrain, evaluates only the latest request.
-// `preview` requests (while a drag is in progress) run the fast approximate evaluation.
+// `project-preview` requests (while a drag is in progress) run the fast approximate evaluation of the
+// dragged route. Messages: worker-protocol.ts.
 
-import { BuildingIndex, type BuildingInfo } from './core/buildings';
-import type { ScenarioParams } from './core/data/scenario';
-import { evaluate, type Design, type EndpointJunction, type EvalContext, type Result } from './core/evaluate';
+import { BuildingIndex } from './core/buildings';
+import type { EvalContext, Result } from './core/evaluate';
 import { adoptFull, previewBase } from './core/preview-window';
-import { RoadNet, type RoadNetData } from './core/roadnet';
-import type { WaterData } from './core/watercourses';
-import type { GroundData } from './core/ground';
+import { RoadNet } from './core/roadnet';
 import { Terrain } from './core/terrain';
 import type { ProjectEnvironment, ProjectResult } from './core/project';
 import { evaluateProject, previewProjectRoute } from './core/project-evaluate';
-import type { NoiseBandOut, ProjectWorkerIn } from './core/project-protocol';
+import type { NoiseBandOut } from './core/project-protocol';
 import { noiseBand } from './core/noise';
+import type { WorkerIn, WorkerOut } from './worker-protocol';
+export type { WorkerIn, WorkerOut } from './worker-protocol';
 
-export type WorkerIn =
-  | { type: 'init'; nx: number; ny: number; cell: number; base: number; scale: number; q: Uint16Array; lc: Uint8Array;
-      a: { x: number; y: number }; b: { x: number; y: number }; buildings: [number, number, number][];
-      binfo?: (BuildingInfo | null)[]; net?: RoadNetData; ground?: GroundData; scenario: ScenarioParams; watercourses?: WaterData;
-      projectEnvironment?: ProjectEnvironment; junctions?: EndpointJunction[];
-      /** 'full' passes each full result on `port` to the 'preview' worker (base of its windowed previews). */
-      role?: 'full' | 'preview'; port?: MessagePort }
-  | { type: 'eval'; id: number; design: Design; preview?: boolean; materialValue?: number }
-  /** Legacy road-net way of each mapped source, whenever the pack's road links are loaded. */
-  | { type: 'source-ways'; ways: [string, number][]; rails?: [string, number[], number[]][] }
-  | ProjectWorkerIn;
+/** the one place a reply leaves the worker (typed: worker-protocol.ts) */
+const post = (message: WorkerOut, transfer?: Transferable[]) => {
+  const scope = self as unknown as Worker;
+  if (transfer) scope.postMessage(message, transfer); else scope.postMessage(message);
+};
 
 let ctx: EvalContext | null = null;
 let pending: Exclude<WorkerIn, { type: 'init' | 'source-ways' | 'noise-band' }> | null = null;
@@ -60,7 +54,7 @@ function runBand() {
   try { footprint = route ? noiseBand(route, (x, y) => terrain.heightAt(x, y), job.crownWidth) : null; }
   catch (e) { console.error('noise band', e); }
   const out: NoiseBandOut = { type: 'noise-band', id: job.id, identity: job.identity, routeId: job.routeId, footprint };
-  (self as unknown as Worker).postMessage(out);
+  post(out);
 }
 
 function run() {
@@ -70,34 +64,27 @@ function run() {
   const job = pending;
   pending = null;
   try {
-    if (job.type === 'eval') {
-      const result = evaluate(ctx, job.design, { preview: job.preview, materialValue: job.materialValue });
-      (self as unknown as Worker).postMessage({ type: 'result', id: job.id, result });
-      if (!job.preview) basePort?.postMessage([previewBase(result)]);
+    if (!projectEnvironment) throw new Error('Project environment missing from worker init');
+    const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays, ...(railPaths ? { railPaths } : {}) };
+    if (job.type === 'project-preview') {
+      const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, { materialValue: job.materialValue, structureValue: job.structureValue }, lastProject);
+      post({ type: 'project-preview', id: job.id,
+        identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, routeId: job.routeId, routeRevision: result.revision, result,
+        ...(job.gesture ? { gesture: job.gesture } : {}) }, result.legacy ? previewBuffers(result.legacy) : []);
     } else {
-      if (!projectEnvironment) throw new Error('Project environment missing from worker init');
-      const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays, ...(railPaths ? { railPaths } : {}) };
-      if (job.type === 'project-preview') {
-        const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, { materialValue: job.materialValue, structureValue: job.structureValue }, lastProject);
-        (self as unknown as Worker).postMessage({ type: 'project-preview', id: job.id,
-          identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, routeId: job.routeId, routeRevision: result.revision, result,
-          ...(job.gesture ? { gesture: job.gesture } : {}) }, result.legacy ? previewBuffers(result.legacy) : []);
-      } else {
-        const result = evaluateProject(projectContext, job.snapshot);
-        const known = lastProject && job.displayedResult?.epoch === lastProject.epoch && job.displayedResult.revision === lastProject.revision ? lastProject : null;
-        const baseIdentity = known ? { epoch: known.epoch, revision: known.revision } : null;
-        const changedRouteIds = Object.keys(result.routes).filter(id => result.routes[id].engineeringRevision !== known?.routes[id]?.engineeringRevision);
-        const removedRouteIds = known ? Object.keys(known.routes).filter(id => !Object.prototype.hasOwnProperty.call(result.routes, id)) : [];
-        lastProject = result; // One result only; never retain a history of typed arrays.
-        basePort?.postMessage(Object.values(result.routes).flatMap(r => r.legacy ? [previewBase(r.legacy)] : []));
-        (self as unknown as Worker).postMessage({ type: 'project-result', id: job.id, result, baseIdentity,
-          changedRouteIds, removedRouteIds, dependentRouteIds: [] });
-      }
+      const result = evaluateProject(projectContext, job.snapshot);
+      const known = lastProject && job.displayedResult?.epoch === lastProject.epoch && job.displayedResult.revision === lastProject.revision ? lastProject : null;
+      const baseIdentity = known ? { epoch: known.epoch, revision: known.revision } : null;
+      const changedRouteIds = Object.keys(result.routes).filter(id => result.routes[id].engineeringRevision !== known?.routes[id]?.engineeringRevision);
+      const removedRouteIds = known ? Object.keys(known.routes).filter(id => !Object.prototype.hasOwnProperty.call(result.routes, id)) : [];
+      lastProject = result; // One result only; never retain a history of typed arrays.
+      basePort?.postMessage(Object.values(result.routes).flatMap(r => r.legacy ? [previewBase(r.legacy)] : []));
+      post({ type: 'project-result', id: job.id, result, baseIdentity,
+        changedRouteIds, removedRouteIds, dependentRouteIds: [] });
     }
   } catch (e) {
     const message = String((e as Error)?.stack ?? e);
-    (self as unknown as Worker).postMessage(job.type === 'eval' ? { type: 'error', id: job.id, message }
-      : { type: 'project-error', id: job.id, identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, message });
+    post({ type: 'project-error', id: job.id, identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, message });
   } finally {
     if (band && !scheduled) { scheduled = true; setTimeout(run, 0); }
   }
@@ -116,7 +103,7 @@ self.onmessage = (ev: MessageEvent<WorkerIn>) => {
       terrain, scenario: m.scenario, a: m.a, b: m.b, buildings: new BuildingIndex(m.buildings, m.binfo),
       roads: m.net ? new RoadNet(m.net) : undefined, ...(m.junctions?.length ? { junctions: m.junctions } : {}),
     };
-    (self as unknown as Worker).postMessage({ type: 'ready' });
+    post({ type: 'ready' });
   } else if (m.type === 'source-ways') {
     sourceWays = new Map(m.ways);
     railPaths = m.rails ? new Map(m.rails.map(([id, xy, stations]) => [id, { xy, stations }])) : undefined;

@@ -3,7 +3,7 @@ import type { NoiseFootprint } from './noise';
 
 export interface PreviewGesture { id: string; sequence: number }
 export interface PreviewWindow { id: string; lastDisplayedSequence: number }
-/** Additive worker messages; legacy init/eval/result remain unchanged. */
+/** The evaluation requests (the whole worker protocol with init and replies: src/worker-protocol.ts). */
 export type ProjectWorkerIn =
   | { type: 'project-eval'; id: number; snapshot: ProjectSnapshot; displayedResult: ProjectIdentity | null }
   | { type: 'project-preview'; id: number; snapshot: ProjectSnapshot; routeId: RouteId; materialValue?: number; structureValue?: number; gesture?: PreviewGesture }
