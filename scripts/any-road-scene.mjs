@@ -307,6 +307,11 @@ try {
       assert(own, 'it is engineered');
       const rules = own.violations.filter(v => v.basis === 'norm').map(v => v.rule);
       assert(rules.every(t => !/6101/.test(t)), `its norm is its own, never ČSN 73 6101 (${rules.join(' | ')})`);
+      // the street crosses our road's cutting on our bridge: it rides that deck, which is not its own bridge
+      if (cls === 'local') {
+        assert(pr.works.items.some(w => w.owner.id === r.id && /built with that bridge/.test(w.label)), 'the street rides our bridge over our road');
+        assert(!own.violations.some(v => /Your bridge|on its bridge over/.test(v.title)), `on our bridge it is neither its own bridge nor off the deck (${own.violations.map(v => v.title).join('; ')})`);
+      }
       assert.match(await page.locator('#norms').getAttribute('title'), cs === 'P4' ? /ČSN 73 6109/ : /ČSN 73 6110/);
       assert.match(await page.locator('#cat option:checked').textContent(), words);
       console.log(`${cls} ${r.name} rebuilt as ${cs} at ${r.specification.designSpeed} km/h: ${Math.round(own.length)} m, ${(own.cost.total / 1e6).toFixed(1)} M CZK alone, ${own.violations.length} problems${own.violations.length ? ` (${own.violations.map(v => v.title).join('; ')})` : ''}`);

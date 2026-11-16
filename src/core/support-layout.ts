@@ -78,7 +78,10 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
   /** Minor (non-separable) roads under an automatic abutment/portal are relocated by the
    * footprint screen instead of lengthening the structure, except `strictWays` (a failed
    * relocation retried strictly) and every road when this is undefined. */
-  strictWays?: ReadonlySet<number>): {
+  strictWays?: ReadonlySet<number>,
+  /** 1 = a higher-ranking road's deck this road rides (built, supported and checked with that road's
+   * crossing): a run made only of such cells is left as it is. */
+  held?: ArrayLike<number>): {
   kind: Uint8Array; runs: Run[]; diagnostics: SupportDiagnostic[]; violations: Violation[];
   /** Only failing cells, deduplicated at shared spans. Caller may lift AUTO profiles; this
    * routine never changes grade, profile controls, or any explicitly requested structure. */
@@ -105,7 +108,13 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
     return height;
   };
   const blocked = (s: number, pier = false) => obstacle(cellAt(r, s, pier ? 1.2 : 3, pier ? r.crownWidth * 0.55 / 2 : r.crownWidth / 2 + 2), pier ? undefined : strictWays) > -Infinity;
+  const heldRun = (run: { i0: number; i1: number }) => {
+    if (!held) return false;
+    for (let i = run.i0; i <= run.i1; i++) if (!held[i]) return false;
+    return true;
+  };
   for (const run of r.runs) {
+    if (heldRun(run)) continue;
     if (run.kind === KIND.tunnel) {
       let i0 = run.i0, i1 = run.i1;
       for (const direction of [-1, 1]) {
@@ -198,7 +207,7 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
       forced: r.runs.some(run => run.forced && run.i0 <= part.i1 && run.i1 >= part.i0) };
   });
   for (const run of runs) {
-    if (run.kind !== KIND.bridge) continue;
+    if (run.kind !== KIND.bridge || heldRun(run)) continue;
     const isManual = manual.subarray(run.i0, run.i1 + 1).some(Boolean);
     const ordinary = bridgeLayout(run.length), spans = Math.max(1, Math.round(run.length / ordinary.span));
     const originalPiers = run.pierStations ?? Array.from({ length: spans - 1 }, (_, k) => run.s0 + (k + 1) * ordinary.span);

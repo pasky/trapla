@@ -141,7 +141,7 @@ export function previewProjectRoute(ctx: ProjectEvalContext, snapshot: ProjectSn
       if (hold) holds.push(hold);
     }
   }
-  return routeProposal(ctx, snapshot, route, true, materialValue, undefined, ends, holds.map(h => placedHold(h, line)),
+  return routeProposal(ctx, snapshot, route, true, materialValue, undefined, ends, holds.flatMap(h => heldBands(placedHold(h, line))),
     r => lineEnds(design, r, legacyOf)).route;
 }
 /** Ends on another designed road: its nearest point and height now. */
@@ -325,8 +325,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const ends = route.kind === 'road' ? followEnds(route, evaluated) : undefined;
     const line = holdsOf.has(route.id) ? planLine(route, ends) : [];
     const holds = (holdsOf.get(route.id) ?? []).map(h => ({ ...h, ...placedHold(h, line) }));
-    const proposal = routeProposal(ctx, snapshot, route, false, undefined, corridorCache, ends,
-      holds.map(({ s, min, max, bridge }) => ({ s, min, max, ...(bridge ? { bridge } : {}) })), endsOf);
+    const proposal = routeProposal(ctx, snapshot, route, false, undefined, corridorCache, ends, holds.flatMap(heldBands), endsOf);
     if (proposal.route.legacy) legacyOf.set(route.id, proposal.route.legacy);
     const own = proposal.route.legacy;
     if (own && holds.length) {
@@ -669,12 +668,19 @@ function replacementWork(route: RouteDesign, k: number, w: Replacement['works'][
 /** Where a higher-ranking road's crossing holds a designed road: a grade band at that point of its line. */
 interface Hold { x: number; y: number; min: number; max: number; owner: RouteDesign; crossing: CrossingResult;
   /** on its bridge over the owner: half the deck's length along the held road */
-  deck?: number }
-/** A hold on the line the held road is built on: its station there (and its deck's span). */
-const placedHold = (h: Hold, line: readonly number[]): { s: number; min: number; max: number; bridge?: [number, number] } => {
+  deck?: number;
+  /** on its bridge over the owner: the deck's two ends, held at the deck's own height there */
+  deckEnds?: { x: number; y: number; z: number }[] }
+type HeldBand = { s: number; min: number; max: number };
+/** A hold on the line the held road is built on: its station there (its deck's span and ends). */
+const placedHold = (h: Hold, line: readonly number[]): HeldBand & { bridge?: [number, number]; ends?: HeldBand[] } => {
   const s = lineStation(line, h.x, h.y);
-  return { s, min: h.min, max: h.max, ...(h.deck !== undefined ? { bridge: [Math.max(0, s - h.deck), s + h.deck] as [number, number] } : {}) };
+  return { s, min: h.min, max: h.max, ...(h.deck !== undefined ? { bridge: [Math.max(0, s - h.deck), s + h.deck] as [number, number] } : {}),
+    ...(h.deckEnds ? { ends: h.deckEnds.map(e => ({ s: lineStation(line, e.x, e.y), min: e.z - HOLD_TOLERANCE, max: e.z + HOLD_TOLERANCE })) } : {}) };
 };
+/** EvalOptions.holds of one placed hold: the crossing itself (with its deck's span), then its deck's ends. */
+const heldBands = ({ s, min, max, bridge, ends }: ReturnType<typeof placedHold>): NonNullable<EvalOptions['holds']>[number][] =>
+  [{ s, min, max, ...(bridge ? { bridge } : {}) }, ...ends ?? []];
 /** Along the owner, how far around a crossing its earthworks belong to that crossing, m (MODELLING ASSUMPTION:
  * the 150 m crossing billing margin, CROSSING_RULES.endMargin). */
 const ZONE_ALONG = 150;
@@ -701,9 +707,14 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readon
     case 'overbridge': {
       // on its bridge over us: the deck's height where it crosses our centreline
       const road = c.geometry?.road; if (!road?.length) return null;
-      const deck = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p).z + z - own.grade[c.i];
+      const lift = z - own.grade[c.i], deck = road.reduce((p, q) => Math.abs(q.d ?? Infinity) < Math.abs(p.d ?? Infinity) ? q : p).z + lift;
+      // the deck is the owner's: the held road is on it from end to end (where the crossing moved since the
+      // owner built it, a preview, its deck moves with it)
+      const span = c.geometry?.deck, dx = at.x - c.x, dy = at.y - c.y;
+      const ends = span && road[span.start] && road[span.end]
+        ? [road[span.start], road[span.end]].map(p => ({ x: p.x + dx, y: p.y + dy, z: p.z + lift })) : undefined;
       // its own deck over our road: the span is measured along the crossed road already
-      return { ...band(deck - HOLD_TOLERANCE, deck + HOLD_TOLERANCE), deck: (c.span ?? 0) / 2 };
+      return { ...band(deck - HOLD_TOLERANCE, deck + HOLD_TOLERANCE), deck: (c.span ?? 0) / 2, ...(ends ? { deckEnds: ends } : {}) };
     }
     case 'junction': case 'atGrade': return band(z - HOLD_TOLERANCE, z + HOLD_TOLERANCE);
     default: return null; // over our tunnel: free
@@ -712,14 +723,20 @@ function holdAt(owner: RouteDesign, own: Result, c: CrossingResult, line: readon
 const ownerName = (r: RouteDesign) => r.role === 'mission' ? 'our road' : r.name;
 /** A held road that misses its crossing's height (By hand), and the part of it the owner's bridge over
  * the owner already builds (its deck and ramps are billed with that crossing). */
-function heldChecks(r: Result, holds: readonly (Hold & { s: number })[]): { violations: Result['violations']; credits: ReplacementWork[] } {
+function heldChecks(r: Result, holds: readonly (Hold & ReturnType<typeof placedHold>)[]): { violations: Result['violations']; credits: ReplacementWork[] } {
   const violations: Result['violations'] = [], credits: ReplacementWork[] = [], credited = new Uint8Array(r.n);
+  /** how far the road misses a band (0: within it), m */
+  const miss = (b: HeldBand) => {
+    if (!(b.s >= 0 && b.s <= r.length)) return 0;
+    const k = Math.min(r.n - 2, Math.floor(b.s / r.ds)), t = (b.s - r.s[k]) / r.ds, z = r.grade[k] + (r.grade[k + 1] - r.grade[k]) * t;
+    // Auto aims at the band; its vertical curves may round a crest/sag by up to HOLD_SLACK more
+    return z > b.max + HOLD_SLACK ? z - b.max : z < b.min - HOLD_SLACK ? z - b.min : 0;
+  };
   for (const h of holds) {
     if (!(h.s >= 0 && h.s <= r.length)) continue;
-    const k = Math.min(r.n - 2, Math.floor(h.s / r.ds)), t = (h.s - r.s[k]) / r.ds, z = r.grade[k] + (r.grade[k + 1] - r.grade[k]) * t;
     const name = ownerName(h.owner), type = h.crossing.type;
-    // Auto aims at the band; its vertical curves may round a crest/sag by up to HOLD_SLACK more
-    const off = z > h.max + HOLD_SLACK ? z - h.max : z < h.min - HOLD_SLACK ? z - h.min : 0;
+    // on the owner's deck: the worst of its middle and its two ends
+    const off = [h, ...h.ends ?? []].map(miss).reduce((a, b) => Math.abs(b) > Math.abs(a) ? b : a, 0);
     if (off) violations.push({ kind: 'crossing', s0: h.s, s1: h.s, basis: 'game',
       title: type === 'bridge' ? `Too high under ${name}’s bridge` : type === 'overbridge' ? `Not on its bridge over ${name}` : `Not level with ${name} where they cross`,
       fix: `${off > 0 ? 'Lower' : 'Raise'} this road here by ${Math.abs(off).toFixed(1)} m`,

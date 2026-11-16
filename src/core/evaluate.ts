@@ -292,6 +292,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const st = station(al, STEP);
   const n = st.n, ds = st.ds;
   let manualStructures = overrideMask(st.s, d.structureOverrides);
+  // On a higher-ranking road's bridge over it (holds' `bridge`): that road's deck, built and billed with
+  // that road's crossing; never judged as this road's own bridge (project-road.ts makes it a bridge here).
+  const heldBridges = (opts.holds ?? []).flatMap(h => h.bridge ? [{ s0: h.bridge[0], s1: h.bridge[1], kind: KIND.bridge }] : []);
+  const heldDeck = heldBridges.length ? Uint8Array.from(overrideMask(st.s, heldBridges), v => v === KIND.bridge ? 1 : 0) : undefined;
   const crossingOverrides = normalizeCrossingOverrides(d.crossingOverrides);
   const ground = new Float64Array(n);
   const groundIds = new Uint8Array(n), groundProfiles: GroundProfile[] = [], groundPackIds: number[] = [];
@@ -655,7 +659,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const minH = clearance.slice();
     const maxH = new Float64Array(n).fill(NaN);
     for (let i = 0; i < n; i++) {
-      if (manualStructures[i] === KIND.bridge) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
+      if (manualStructures[i] === KIND.bridge && !heldDeck?.[i]) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
       if (manualStructures[i] === KIND.tunnel) maxH[i] = -STRUCTURE_RULES.tunnelMinDepth;
     }
     for (const c of rawRoadX) {
@@ -868,7 +872,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   }
   const forcedTunnel = tunnelWater(st.s, grade);
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
-  const structureInput = { ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel, overrides: manualStructures,
+  const structureInput = { ds, h, earthPerM, bridgePerM, tunnelPerM: tunnelPerMAt, forced, forcedTunnel, overrides: manualStructures, ...(heldDeck ? { held: heldDeck } : {}),
     bridgeRunCost: bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i])) };
   let selection = chooseStructures(structureInput);
   // An economical bridge still needs its abutments outside the channel/banks, even if a culvert
@@ -877,7 +881,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   selection = chooseStructures(structureInput);
   work('selection', selectionStart);
   const supportStart = performance.now();
-  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict);
+  const supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck);
   work('support', supportStart);
   const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];

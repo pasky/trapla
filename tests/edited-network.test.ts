@@ -63,6 +63,28 @@ describe('a new road crossing ours goes through the crossing engine', () => {
     const credit = r.works.items.find(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))!;
     expect(credit.cost).toBeLessThan(0);
   });
+  // D11 Nový Rokytník: a street over our road's cutting rides the owner's deck at ground level. That deck is
+  // our road's bridge: not the player's own bridge (no 4 m rule, no span checks) and the street is held on it
+  // from end to end (it used to be lifted 4 m and then missed the deck by 5 m).
+  it('over our cutting it rides our deck at ground level from end to end, which is not its own bridge', () => {
+    const ridge = (x: number) => 100 + 15 * Math.exp(-(((x - 600) / 150) ** 2));
+    const { ctx, project, mission } = fixture();
+    ctx.legacy = { ...ctx.legacy, terrain: syntheticTerrain(260, 120, 5, x => ridge(x)) };
+    for (const e of Object.values(project.routes[1].endpoints)) e.position.z = ridge(600);
+    const r = evaluateProject(ctx, { epoch: 'e', revision: 1, design: project });
+    const own = r.routes[mission].legacy!, [c] = own.crossings, side = r.routes.side.legacy!;
+    expect(c.type).toBe('overbridge');
+    expect(own.ground[c.i] - own.grade[c.i]).toBeGreaterThan(6); // our road in a cutting
+    const road = c.geometry!.road!, deck = c.geometry!.deck!;
+    for (const p of [road[deck.start], road.reduce((p, q) => Math.abs(q.d!) < Math.abs(p.d!) ? q : p), road[deck.end]]) {
+      const k = Math.round((p.y - side.y[0]) / side.ds);
+      expect(Math.abs(side.grade[k] - p.z)).toBeLessThanOrEqual(1);
+      expect(p.z - p.ground).toBeLessThan(1); // the deck lies at ground level
+    }
+    expect(side.kind[Math.round((250 - side.y[0]) / side.ds)]).toBe(1);
+    expect(side.violations).toEqual([]);
+    expect(r.works.items.some(w => w.owner.id === 'side' && /built with that bridge/.test(w.label!))).toBe(true);
+  });
   it('a crossing choice on it is stored on that road and our bridge keeps it low enough under us', () => {
     const { ctx, project, mission } = fixture();
     evaluateProject(ctx, { epoch: 'e', revision: 1, design: project }); // learns the map's size
