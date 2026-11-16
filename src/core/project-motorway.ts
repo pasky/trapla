@@ -605,15 +605,16 @@ const SIDE_BY_SIDE = 30;
 const KNOT = 250, MIN_OWN_HEIGHTS = 2 * KNOT;
 /** The last full spine evaluation per terrain: one direction's edits leave the shared line unchanged,
  * so its evaluation (heights at the joins, the shared body's bill) is reused, never redone. */
-const spineMemo = new WeakMap<object, { key: string; result: Result }>();
+const spineMemo = new WeakMap<object, { key: string; roads: EvalContext['roads']; result: Result }>();
 function memoSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, kids: MotorwayRoute[], goal: Goal,
   options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
   const key = JSON.stringify([corridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), kids.map(speedLimit150), goal, ctx.a, ctx.b]);
   const hit = spineMemo.get(ctx.terrain);
-  if (hit?.key === key) return hit.result;
+  // (the network it is checked against too: the project's other roads as edited, project-roadnet.ts)
+  if (hit?.key === key && hit.roads === ctx.roads) return hit.result;
   if (options.preview) return evaluateSpine(ctx, project, corridor, kids, goal, options);
   const result = evaluateSpine(ctx, project, corridor, kids, goal, { materialValue: options.materialValue });
-  spineMemo.set(ctx.terrain, { key, result });
+  spineMemo.set(ctx.terrain, { key, roads: ctx.roads, result });
   return result;
 }
 

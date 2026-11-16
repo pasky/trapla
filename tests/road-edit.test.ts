@@ -113,6 +113,9 @@ describe('rebuilding a mapped road', () => {
     const crossing = (type: string) => [{ ...ours, crossings: [{ x: 1250, y: 1030 - 30 * 250 / 550, roadId: 0, type }] }];
     expect(coveredStretches(base, 'main', crossing('overbridge'))).toEqual([]);
     expect(coveredStretches(base, 'main', crossing('diversion'))).toEqual(covered);
+    // another road's bridge there does not uncover what our earthworks bury
+    const other = { ...ours, name: 'other road', x: Array(n).fill(5000), crossings: crossing('overbridge')[0].crossings };
+    expect(coveredStretches(base, 'main', [ours, other])).toEqual(covered);
     expect(coveredText('our road')).toBe('Our road covers it here: pick it further away.');
   });
 

@@ -1307,6 +1307,10 @@ async function main() {
       if (roadAt(clientX, clientY, 9) >= 0) return true;
       grabbing = mappedGrab(clientX, clientY);
       if (grabbing) return true;
+      // another designed road drawn there comes first (a click there picks it, as the hover says)
+      const other = routeAt(clientX, clientY, 10);
+      const corridorOf = (id: RouteId | null | undefined) => id ? corridorOfRoute(projectStore.snapshot.design, id)?.id ?? id : undefined;
+      if (other && corridorOf(other.routeId) !== corridorOf(store.activeRouteId)) return false;
       // a drag that starts on any other mapped road never pans the map: it rebuilds the stretch there, or
       // its card says why it cannot be changed
       const s = sourceAt(clientX, clientY);
@@ -1668,12 +1672,13 @@ async function main() {
     getProject: () => structuredClone(projectStore.snapshot.design),
     projectSnapshot: () => structuredClone(projectStore.snapshot),
     projectResult: () => projectFull,
-    /** a road's works around station s: its bridge there (m), retaining walls within 150 m, billed parts within `reach` m */
+    /** a road's works around station s: its bridge there (m), retaining walls within 150 m (count, length), billed parts within `reach` m */
     localWorks: (r: Result, s: number, reach = 300) => {
       const run = r.runs.find(x => x.kind === KIND.bridge && x.s0 <= s && x.s1 >= s);
       let cost = 0;
       for (const part of Object.values(r.parts)) for (let i = 0; i < r.n; i++) if (Math.abs(r.s[i] - s) <= reach) cost += part[i];
-      return { bridge: run ? run.s1 - run.s0 : 0, walls: r.retainingWalls.filter(w => w.s1 >= s - 150 && w.s0 <= s + 150).length, cost };
+      const walls = r.retainingWalls.filter(w => w.s1 >= s - 150 && w.s0 <= s + 150);
+      return { bridge: run ? run.s1 - run.s0 : 0, walls: walls.length, wallLength: walls.reduce((t, w) => t + w.s1 - w.s0, 0), cost };
     },
     activeRoute: () => store.activeRouteId,
     routeEndpoints: () => structuredClone(store.route?.endpoints ?? null),

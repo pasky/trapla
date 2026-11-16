@@ -158,8 +158,9 @@ try {
   const local = await page.evaluate(([id, s]) => window.trapla.localWorks(window.trapla.projectResult().routes[id].legacy, s), [start.ours[0], start.crossings[0].s]);
   assert(local.bridge >= start.local.bridge - 0.5, `our bridge over it is no shorter (${start.local.bridge.toFixed(0)} → ${local.bridge.toFixed(0)} m)`);
   assert(local.walls >= start.local.walls, `our walls beside it stay (${start.local.walls} → ${local.walls})`);
+  assert(local.wallLength >= start.local.wallLength - 10, `our walls beside it stay as long (${start.local.wallLength.toFixed(0)} → ${local.wallLength.toFixed(0)} m)`);
   assert(local.cost - start.local.cost > -2e6, `our works around it do not get cheaper (${((local.cost - start.local.cost) / 1e6).toFixed(1)} M CZK)`);
-  console.log(`our motorway around the crossing: bridge ${start.local.bridge.toFixed(0)} → ${local.bridge.toFixed(0)} m, walls ${start.local.walls} → ${local.walls}, ${((local.cost - start.local.cost) / 1e6).toFixed(2)} M CZK; its whole bill moved ${(moved / 1e6).toFixed(2)} M CZK`);
+  console.log(`our motorway around the crossing: bridge ${start.local.bridge.toFixed(0)} → ${local.bridge.toFixed(0)} m, walls ${start.local.walls} → ${local.walls} (${start.local.wallLength.toFixed(0)} → ${local.wallLength.toFixed(0)} m), ${((local.cost - start.local.cost) / 1e6).toFixed(2)} M CZK; its whole bill moved ${(moved / 1e6).toFixed(2)} M CZK`);
 
   // 5. the score: a total, or which change holds it back and what is priced
   // houses that hear both roads are decided together (combined noise): never what holds the total back

@@ -5,7 +5,7 @@ import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { D11_SCENARIO, D3_MOTORWAY } from '../src/core/data/scenario';
 import { evaluateProject, previewProjectRoute, type ProjectEvalContext } from '../src/core/project-evaluate';
-import { crossingOverridesOf, crossingTargetsOf } from '../src/core/project-roadnet';
+import { crossingOverridesOf, crossingTargetsOf, editedNetwork } from '../src/core/project-roadnet';
 import { legacyDesignForRoute, makeLegacyProjectContext, projectFromLegacyDesign, replaceRouteFromLegacy } from '../src/core/project-legacy';
 import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
@@ -29,6 +29,14 @@ it('an edited network cuts every rebuilt stretch (several on one way) and adds d
   // earthworks and relocations see the network without designed roads
   expect(net.ground.intersections(2, [0, 90], [300, 300], [10, 100]).map(h => h.way)).toEqual([]);
   expect(net.intersections(2, [0, 90], [300, 300], [10, 100]).map(h => h.way)).toEqual([2]);
+});
+
+it('a rebuilt railway is checked against the edited network too (its old track is taken up by the railway kernel)', () => {
+  const base = new RoadNet({ cls: ['tertiary'], ways: [[0, 0, 0, 1000, 0]] });
+  const rail = { id: 'rail', kind: 'railway', role: 'auxiliary', source: { intervals: [{ transportData: 't', sourceId: 'osm:way:1', s0: 0, s1: 500 }] },
+    alignment: { kind: 'pi', pis: [] }, endpoints: { a: { position: { x: 0, y: 0, z: 0 } }, b: { position: { x: 500, y: 0, z: 0 } } } } as unknown as RouteDesign;
+  const design = { routes: [rail], corridors: [], connections: [] } as unknown as Parameters<typeof editedNetwork>[1];
+  expect(editedNetwork(base, design, [rail], new Map())?.roads).toBe(base);
 });
 
 describe('a new road crossing ours goes through the crossing engine', () => {

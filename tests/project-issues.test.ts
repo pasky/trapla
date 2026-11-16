@@ -59,5 +59,9 @@ describe('project issue list', () => {
     // the other direction of our motorway is active: our road is not listed against itself
     expect(aloneText({ road: 15000, side: 27 }, 'back', ours, names, money)).toBe('Valley road alone: 27 M');
     expect(aloneText({ road: 15000 }, 'road', ours, names, money)).toBe('');
+    // a motorway's two directions (ours or another) are one line, priced once
+    const mw = { fwd: 'Motorway D3', rev: 'Motorway D3', side: 'Valley road', nf: 'New motorway', nr: 'New motorway' };
+    expect(aloneText({ fwd: 524, rev: 524, side: 27, nf: 9, nr: 9 }, 'side', new Set(['fwd', 'rev']), mw, money, 'our motorway', { nf: 'c', nr: 'c' }))
+      .toBe('Alone: our motorway 524 M, New motorway 9 M');
   });
 });

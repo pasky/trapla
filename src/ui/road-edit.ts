@@ -103,7 +103,7 @@ const COVER_STEP = 2;
  * over it, its bridge over us, an underpass, a junction). `by`: the name of the road that covers it. */
 export function coveredStretches(base: ProjectTransportIndex, sourceId: string, roads: readonly BuiltRoad[], clearance = 10): (SourceInterval & { by: string })[] {
   const source = base.source(sourceId); if (!source) return [];
-  const length = source.stations[source.stations.length - 1], out: (SourceInterval & { by: string })[] = [];
+  const length = source.stations[source.stations.length - 1], out: (SourceInterval & { by: string })[] = [], owner: BuiltRoad[] = [];
   for (const road of roads) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, reach = 0;
     for (let i = 0; i < road.n; i++) {
@@ -112,7 +112,7 @@ export function coveredStretches(base: ProjectTransportIndex, sourceId: string, 
     }
     reach += clearance;
     let open: number | null = null;
-    const close = (s1: number) => { if (open !== null) out.push({ transportData: base.transportData, sourceId, s0: open, s1, by: road.name }); open = null; };
+    const close = (s1: number) => { if (open !== null) { out.push({ transportData: base.transportData, sourceId, s0: open, s1, by: road.name }); owner.push(road); } open = null; };
     for (let s = 0; s <= length + COVER_STEP / 2; s += COVER_STEP) {
       const at = Math.min(s, length), p = base.position(sourceId, at);
       let covered = false;
@@ -132,10 +132,11 @@ export function coveredStretches(base: ProjectTransportIndex, sourceId: string, 
     close(length);
   }
   // where that road carries the old road over or under it, or meets it, the old road is not gone: a
-  // covered part around such a crossing (the road on its bridge over our cutting) is no cover
-  const way = source.legacyNetIndex, carried = roads.flatMap(r => (r.crossings ?? [])
-    .filter(c => way !== undefined && c.roadId === way && c.type !== 'diversion' && c.type !== 'reconnection'));
-  return out.filter(c => !carried.some(x => {
+  // covered part around such a crossing (the road on its bridge over our cutting) is no cover (only the
+  // covering road's own crossings: another road's bridge there does not uncover it)
+  const way = source.legacyNetIndex, carried = (r: BuiltRoad) => (r.crossings ?? [])
+    .filter(c => way !== undefined && c.roadId === way && c.type !== 'diversion' && c.type !== 'reconnection');
+  return out.filter((c, k) => !carried(owner[k]).some(x => {
     for (let s = c.s0; s <= c.s1 + COVER_STEP / 2; s += COVER_STEP) {
       const p = base.position(sourceId, Math.min(s, c.s1));
       if (p && Math.hypot(p.x - x.x, p.y - x.y) <= COVER_STEP + 5) return true;

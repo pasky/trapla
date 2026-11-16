@@ -163,7 +163,9 @@ export function editedNetwork(roads: RoadNet, design: ProjectDesign, owners: rea
     const db = roads.wayStation(way, r.endpoints.b.position.x, r.endpoints.b.position.y);
     cuts.push({ way, d0: Math.min(da, db), d1: Math.max(da, db), slot });
   });
-  if (owners.some(r => r.source?.intervals.length && !cuts.some(c => c.slot === rebuiltSlots(design).indexOf(r)))) return null;
+  // a rebuilt road must leave its old road out of its own network (a rebuilt railway's old track is taken up
+  // by the railway kernel itself: EvalOptions.railRetired)
+  if (owners.some(r => r.kind === 'road' && r.source?.intervals.length && !cuts.some(c => c.slot === rebuiltSlots(design).indexOf(r)))) return null;
   const slots = designedSlots(design);
   const drawn = slots.map(r => owners.length > 0 && owners.every(o => o !== r && draws(design, o, r)));
   if (!cuts.length && !drawn.some(Boolean)) return { roads, designed: new Map(), lines: new Map() };
