@@ -175,11 +175,12 @@ export const D11_RAIL_KRALOVEC: ScenarioParams = {
     a: { xy: [6640.8, 7782.0], latlon: [50.5652, 15.91106], note: 'Trutnov hlavní nádraží, on the mapped line' },
     b: { xy: [12204.8, 19202.5], latlon: [50.67296, 15.97042], note: 'Královec station, on the mapped line before the border' },
   },
-  // Starter: three bends, east of the town centre and at Bernartice, a smoothed 120 km/h version of the
-  // old line's way north; the first bend placed by hand to clear a stream at km 0.8. VALID (9.9 bn CZK),
-  // not optimised (scripts/rail-starter.ts).
+  // Starter: four bends. It leaves Trutnov hl.n. north-west along the station tracks (a turnout's angle,
+  // research/38 §5) and curves north under the hill west of the town in a tunnel, past Bernartice, and enters
+  // Královec along its tracks. VALID (10.2 bn CZK), not optimised (scripts/rail-starter.ts). The first starter
+  // left the station across its tracks through a street of houses (playtest re-test 2).
   initial: { category: 'R1', speed: 120, pis: [
-    { x: 7300, y: 8300, r: null }, { x: 10065, y: 9045, r: null }, { x: 11046, y: 16435, r: null },
+    { x: 6012, y: 8426, r: null }, { x: 7983, y: 11510, r: null }, { x: 11000, y: 16400, r: null }, { x: 11560, y: 18613, r: null },
   ] },
   railTraffic: { passengerDay: 32, passengerNight: 4, freightDay: 0, freightNight: 0 },
   picker: { kind: 'Railway · 120 km/h', goal: 'A faster electric line from Trutnov to the border station at Královec.',

@@ -244,7 +244,7 @@ What exists (details and commands in `README.md`):
 - Railway mission `d11-rail-kralovec` (cost model 21, research/38): Trutnov hl.n. → Královec on the mapped
   line (owner: a railway mission must start and end on the rail network). A game proposal (no announced
   upgrade); trains a labelled prior (an hourly passenger train each way, 36 a day; 2022 ran 4 each way);
-  9 min target a mission choice. Starter VALID at 9.9 bn CZK. A railway between two points of an existing
+  9 min target a mission choice. Starter VALID at 10.2 bn CZK (leaves the station along its tracks, research/38 §5). A railway between two points of an existing
   line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
   RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
   crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
