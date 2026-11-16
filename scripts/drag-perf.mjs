@@ -85,7 +85,9 @@ await page.evaluate((d) => window.trapla.setDesign(d), design);
 await page.evaluate(() => window.trapla.whenIdle());
 if (split) {
   await page.evaluate(() => { const b = document.querySelector('#sec-design .fold-h button'); if (b?.getAttribute('aria-expanded') === 'false') b.click(); });
-  await page.click(`#dir-${split}`);
+  // the switch is on the motorway's own card (the Motorway section's copy steps aside while it is shown)
+  const own = page.locator(`.motorway-head [data-dir="${split}"]`);
+  await ((await own.count()) && await own.first().isVisible() ? own.first() : page.locator(`#dir-${split}`)).click();
   await page.evaluate(() => window.trapla.whenIdle());
 }
 const pi = (await page.evaluate(() => window.trapla.getDesign())).pis[bend]; // the live design (a split direction has its own bends)

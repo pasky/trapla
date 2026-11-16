@@ -118,6 +118,8 @@ export function cellLength(i: number, n: number, ds: number): number {
 }
 
 export interface StationCostInput {
+  /** The 150 km/h pilot's variable signs, CZK per metre of route (a priced contract: no surcharge). */
+  signsPerM?: number;
   category: CategoryId;
   terrainClass: TerrainClass;
   n: number;
@@ -241,6 +243,7 @@ export function costParts(inp: StationCostInput): CostParts {
     parts.surcharge[i] = !mk ? (construction + structure) * surchargeRate(u)
       : k === KIND.earth ? parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * mk.earth + structure * mk.bridge
         : parts.roadBase[i] * mk.base + (construction - parts.roadBase[i]) * (k === KIND.bridge ? mk.bridge : mk.tunnel) + structure * mk.bridge;
+    if (inp.signsPerM) parts.roadBase[i] += len * inp.signsPerM;
     parts.land[i] = len * inp.width[i] * landPerM2(u) + (inp.additionalLand?.[i] ?? 0);
     parts.buildings[i] = inp.buildings ? inp.buildings[i] : 0;
     parts.noiseBuyouts[i] = inp.noiseBuyouts ? inp.noiseBuyouts[i] : 0;

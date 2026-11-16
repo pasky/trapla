@@ -241,12 +241,43 @@ What exists (details and commands in `README.md`):
   height point and made both directions clash downstream); motorway bests are kept (the store was keyed by the
   road mission). Drag budget holds on D3 motorway, paired and split (`drag-perf --scenario d3 --preset
   d3-motorway [--split forward]`).
-- Railway mission (preset `d11-railway`, screenshots 136–139): the D11 ports joined by an R1/R2 railway, an
-  honest exercise (OSM: today's line is tracks=1, electrified=no); trains = the PROVISIONAL prior (128 a day);
-  time target 9 min is a mission choice. Straight starter VALID at 27.9 bn CZK; perf design
-  `scripts/scenarios/d11/d11-railway.json` 25.4 bn CZK. Drag budget holds in all five modes.
+- Railway mission `d11-rail-kralovec` (cost model 21, research/38): Trutnov hl.n. → Královec on the mapped
+  line (owner: a railway mission must start and end on the rail network). A game proposal (no announced
+  upgrade); trains a labelled prior (an hourly passenger train each way, 36 a day; 2022 ran 4 each way);
+  9 min target a mission choice. Starter VALID at 10.4 bn CZK (leaves the station along its tracks, research/38 §5). A railway between two points of an existing
+  line joins its track in a 300 m station area and rebuilds it where it runs along it (PROVISIONAL
+  RAIL_TIE_IN_M / RAIL_TURNOUT_M); railway grade lines search a 0.5 m grid (12.5 ‰ could not rise over
+  crossings on the 2 m / 1 m grids). The `d11-railway` card is retired (saves load).
+- 150 km/h speed-limit pilot (research/41) for motorways designed for 130: a posted limit (Act 361/2000
+  §18(7)), never a design speed; travel time at 150, light-vehicle lane speeds +20 km/h in the motorway noise
+  source (PROVISIONAL extrapolation, all-day upper bound), variable signs 54.4 M CZK / 47 km (ŘSD). D35 motorway:
+  7.6 → 6.6 min, +40 M CZK (signs and the louder noise).
+- Build → Motorway / Railway and drag-to-rebuild of mapped railways (`ui/mode-kinds.ts`). A Build motorway is
+  unpriced (no interchanges); a rebuilt railway stretch is unpriced until taking up the old track is priced.
 - "By hand" seeds every grade break of the automatic profile; on roads and motorways that is a point every
   ≈ 250 m, each a real break (≥ 0.25 % on D11 best and the D3 motorway), so nothing is thinned.
+- Playtest session 1 (motorway-rail findings): choosing one motorway direction no longer changes the design
+  (P0 #3). Its first drag makes it run on its own only over a *separate stretch* (`core/motorway-stretches.ts`):
+  from a join on a straight of the shared line (clear of arcs and their easing, structures, crossings and
+  vertical curves) before the change to one after it. Outside, both directions stay the ONE paired D 27.5
+  evaluation (reused while only one direction is edited); inside, each direction is its own D 27.5-1 carriageway,
+  keeping the shared heights while the two run within 30 m of each other (PROVISIONAL) and Auto heights between
+  (the search starts and ends on the shared line's grade: `autoprofile` start/end grade, `evaluate`
+  `fixedProfile`). The bill: the shared body's cost parts outside, both carriageways inside, what they share
+  once (`splitLedger`). D3, one direction 50–300 m off between bends 3 and 4: +0.3–1.6 bn CZK, VALID, no
+  problems outside the stretch; Join restores the paired price exactly. The Edit switch is on the motorway's
+  own card (P1 #11). Mapped lines are picked on the ground under them in 20 m pieces (P1 #14), crossing cards
+  name "our railway" / "our motorway" (P1 #10).
+- Cost model 22–23 (playtest re-test 2, merged with main's finite-segment noise; D11 bills identical): a
+  paired motorway's noise is its two directional sources (half the traffic each on the lane-pair axes ±6.0 m;
+  a direction on its own keeps the whole traffic on its own lane axis, an upper bound, until houses heard by
+  two sources are decided jointly): D3 motorway noise walls +12.5 M CZK, D35 +2.7 M. Cost model 23 after
+  merging main's valid reroutes (Královec starter re-fitted, 10.4 bn). A double track's noise on its two tracks, a single track's on its axis.
+  Railway ends on a track leave it at no more than a turnout's angle (4.76°, research/38 §5): the Královec
+  starter now leaves Trutnov hl.n. along its tracks (VALID 10.4 bn). Rebuilt railway stretches keep their line's
+  speed (OSM maxspeed; 100/80/60 km/h rows, Rmin 190 m) and may be as steep as the old line. The 150 km/h
+  pilot's travel time uses the 39 % share of time at 150 (MD evaluation, research/41). A mapped railway is
+  dragged without selecting it first; the direction towards A numbers its bends from its own start.
 
 ### Buildable automatic reroutes, lowered underpasses (cost model 22, 2026-11-16)
 

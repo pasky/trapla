@@ -64,6 +64,7 @@ tr.bad td { color: #d7301f; font-weight: 600; } tr.warn td { color: #b35a00; }
 #viol li:last-child { border-bottom: 0; }
 #viol li:hover { background: #fff2ef; }
 #viol .vt { color: #9b1c12; font-weight: 600; }
+#viol .vroad { color: #667; font-size: 11px; }
 #viol li.goal .vt { color: #7a4a00; }
 #viol .vfix { color: #223; margin-top: 1px; }
 #viol .vmeta { margin-top: 1px; font-size: 11px; color: #99a; }
@@ -484,3 +485,5 @@ canvas.placing { cursor: crosshair !important; }
 #viol li.not-checked-h:hover { background: none; }
 #viol li.not-checked .vt { color: #4a5260; font-weight: 600; }
 #viol li.not-checked:hover { background: #f0f2f5; }
+/* the motorway's own card carries the direction switch: the Motorway section's copy steps aside meanwhile */
+#hud:has(.motorway-head) #directions { display: none; }

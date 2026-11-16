@@ -70,13 +70,18 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
   | 'culverts' | 'houses' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved'>;
-export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>): OutcomeText {
+/** What our line is, in the player's words: "our road", "our railway", "our motorway". */
+export type OurLine = 'road' | 'railway' | 'motorway';
+export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
+  : text.replace(/\bour road\b/g, `our ${line}`).replace(/\bOur road\b/g, `Our ${line}`).replace(/\bthe new road\b/g, `the new ${line}`);
+export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, line: OurLine = 'road'): OutcomeText {
+  const words = (o: OutcomeText) => ({ ...o, label: ourWords(o.label, line), explain: ourWords(o.explain, line) });
   if (c.shared) {
     const o = ownOutcome({ ...c, targetS: undefined });
-    return { ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
-      explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` };
+    return words({ ...o, label: `${o.label.replace(/ at km [0-9.]+/, '')}, built with the other direction`,
+      explain: `${o.explain} Both directions of the motorway cross it here together; the other direction's bill carries it.` });
   }
-  return ownOutcome(c);
+  return words(ownOutcome(c));
 }
 function ownOutcome(c: OutcomeOf): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
@@ -131,15 +136,35 @@ export const DIRECTIONS_TEXT = {
   heading: 'Edit',
   both: 'Both directions',
   towards: (place: string) => `Towards ${place}`,
-  together: 'Both directions follow one line and share one embankment, bridges side by side and twin tunnels.',
+  together: 'Dragging bends both directions: one road body, bridges side by side, twin tunnels.',
+  one: (place: string) => `Dragging bends only the direction towards ${place}. It runs on its own just where you change it; elsewhere both stay one road body.`,
   separate: 'Each direction now has its own bends and heights. Where they run side by side at the same height they share one embankment and are priced as one.',
   join: 'Both directions joined on their shared line again. Undo brings back the separate changes.',
   bothTitle: 'Bend and raise both directions together',
-  oneTitle: (place: string) => `Bend and raise only the direction towards ${place}; the other stays where it is`,
+  oneTitle: (place: string) => `Bend only the direction towards ${place}; the other stays where it is`,
+  apart: 'The directions run apart',
+  stretch: (km0: string, km1: string) => `km ${km0}–${km1}`,
+  joinHere: 'Join',
+  joinTitle: 'Both directions on one line here again (Undo brings this direction’s changes back)',
+  joined: 'Both directions run together here again.',
+  togetherAgain: 'Both directions moved together: where one ran on its own next to this change, they run together again.',
+} as const;
+
+/** The 150 km/h speed-limit pilot on a motorway designed for 130 (data/motorway.ts, research/41). */
+export const SPEED_LIMIT_TEXT = {
+  heading: 'Speed limit',
+  normal: '130 km/h',
+  pilot: '150 km/h (pilot)',
+  normalTitle: 'The normal motorway limit',
+  pilotTitle: 'Like the ministry’s pilot on the D3 since October 2025: variable signs allow 150 km/h when the road is dry, clear and not busy',
+  explainNormal: 'Cars may drive 130 km/h.',
+  explainPilot: (signs: string, share: number) => `Variable signs allow 150 km/h when it is dry, clear and not busy (on the D3 ${Math.round(share * 100)} % of the time in its first winter half-year); trucks stay at 80. Travel time counts that; a little more noise; curves and slopes stay those of 130. The signs cost about ${signs} per km.`,
 } as const;
 
 /** Automatic on a motorway: no junction anywhere along it. */
 export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
+/** Automatic on a railway: no level crossing anywhere along it (game rule, M1). */
+export const RAILWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the railway, an underpass through a high enough embankment or a reroute to a nearby crossing. A new railway has no level crossings.';
 
 /** The player's choices on the crossing card: [value, button label, what gets built]. */
 export const CROSSING_CHOICE_TEXT: readonly ['' | 'junction' | 'bridge' | 'overbridge' | 'reconnection' | 'underpass', string, string][] = [

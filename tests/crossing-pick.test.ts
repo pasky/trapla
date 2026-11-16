@@ -56,4 +56,16 @@ describe('crossing picking on the geometry it owns', () => {
     expect(click(60)).toBe('crossing');
     expect(click(150)).toBe('base road');
   });
+  it('a long mapped segment is picked where it is drawn, draped over the ground under it, not on its straight chord', () => {
+    // a 400 m railway segment over a 6 m high spur: in an oblique view the drawn line bulges 30 px up
+    const graph: TransportGraphData = { version: 1, vectorData: 'fixture', nodes: [], sources: [{ id: 'rail', osmWayId: '2', kind: 'railway',
+      nodes: ['a', 'b'], xy: [0, 0, 400, 0], stations: [0, 400], layer: 0, bridge: false, tunnel: false, tags: {}, elevation: 'terrain',
+      render: [{ sourceId: 'rail', featureId: 'r', s0: 0, s1: 400, width: 3, correspondence: [{ sourceS: 0, renderS: 0 }, { sourceS: 400, renderS: 400 }] }] }],
+      renderFeatures: [{ id: 'r', layer: 'rail', polylineIndex: 0 }] } as unknown as TransportGraphData;
+    const sources = new SourcePicker(graph, { chunk: 2500, polys: [], lines: [{ name: 'rail', verts: Float32Array.of(0, 0, 400, 0), starts: Uint32Array.of(0, 2) }], buildings: null });
+    const ground = (x: number) => 6 * Math.sin(Math.PI * x / 400);
+    const view = (x: number, y: number) => ({ sx: x, sy: -y - 5 * ground(x), vis: true });
+    expect(sources.at(200, -30, 200, 0, 40, 3, view)?.sourceId).toBe('rail');
+    expect(sources.at(200, 0, 200, 0, 40, 3, view)).toBeNull();
+  });
 });

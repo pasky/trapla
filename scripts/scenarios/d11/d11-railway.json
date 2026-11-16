@@ -1,1 +1,0 @@
-{"scenario": "d11", "preset": "d11-railway", "purpose": "Railway preset perf design (three bends, not optimised)", "design": {"category": "R2", "speed": 160, "pis": [{"x": 8169.8, "y": 7762.7, "r": null}, {"x": 10139.8, "y": 12000.6, "r": null}, {"x": 11163.0, "y": 16560.5, "r": null}], "profileMode": "auto", "vpis": []}}
