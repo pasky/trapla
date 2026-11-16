@@ -17,6 +17,7 @@ import type { Design, Result } from '../core/evaluate';
 import type { StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
 import { KIND } from '../core/structures';
+import { TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
 import { cellsCost, pieceDepth, PIECE_NAME, topPieces, type PieceKind } from './pieces';
@@ -36,8 +37,8 @@ export type Sel =
 export interface InspectorEvents {
   close?: () => void;
   select?: (sel: Sel) => void;
-  /** bridge / tunnel / earthwork / Auto (null) on a station range */
-  structure?: (kind: StructureKind | null, s0: number, s1: number) => void;
+  /** bridge / tunnel / earthwork / Auto (null) on a station range; a tunnel's method ('cut': cut and cover) */
+  structure?: (kind: StructureKind | null, s0: number, s1: number, method?: 'cut') => void;
   /** walls on these sides of a station range: height in m, 0 = none, null = Auto */
   wall?: (sides: ('L' | 'R')[], height: number | null, s0: number, s1: number) => void;
   pin?: (s: number, z: number | null) => void;
@@ -83,6 +84,11 @@ const MINOR_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.map(
   [v, label, v === '' ? MINOR_CROSSING_TEXT.automatic : v === 'junction' ? MINOR_CROSSING_TEXT.junction : why]);
 const crossingOptions = (line: OurLine, minor = false): [string, string, string][] => line === 'road' ? (minor ? MINOR_CROSSING_OPTIONS : CROSSING_OPTIONS)
   : CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => [v, label, v === '' ? (line === 'railway' ? RAILWAY_AUTOMATIC : MOTORWAY_AUTOMATIC) : ourWords(why, line)]);
+/** a tunnel's method: the tunnel card's choice */
+const TUNNEL_METHODS: [string, string, string][] = [
+  ['mined', 'Mined', 'Dug underground; built from a pit and covered again near its ends, where the ground is thin'],
+  ['cut', 'Cut and cover', `Built in a pit that is filled in again over it: at most ${TUNNEL_RULES.cutCoverMaxCover} m of ground over the tunnel`],
+];
 const STRUCTURE_OPTIONS: [string, string, string][] = [
   ['clear', 'Auto', 'Let the game choose (key A)'], ['1', 'Bridge', 'Bridge the whole stretch (key B)'],
   ['2', 'Tunnel', 'Tunnel the whole stretch (key T)'], ['0', 'Earthwork', 'Only cuts and embankments (key E)'],
@@ -323,12 +329,22 @@ export class Inspector {
       return `<div class="wall-row"><span class="lbl">${cap(SIDE[shownSide(side)])}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, st.active)}<small>${st.now}</small></div>${adds}`;
     };
     const vio = r.violations.filter((v) => !v.goal && v.s1 >= s0 && v.s0 <= s1).map((v) => ({ v, fixes: this.fixes(v, d) }));
+    // a tunnel: how it is built, and its method as a choice
+    const tunnel = sel.piece === 'tunnel' ? r.runs.find((q) => q.kind === KIND.tunnel && q.s1 > s0 && q.s0 < s1) : undefined;
+    let method = '';
+    if (tunnel) {
+      const cc = tunnel.cutCoverM ?? 0, mined = Math.max(0, tunnel.length - cc);
+      const how = [mined > 0 ? `mined ${m0(mined)}` : '', cc > 0 ? `cut and cover ${m0(cc)}${mined > 0 ? ' at its ends' : ''}` : '',
+        (tunnel.tubes ?? 1) >= 2 ? 'two tubes (heavy traffic)' : (tunnel.tubes ?? 1) > 1 ? 'with an escape tunnel beside it' : ''].filter(Boolean).join(' · ');
+      method = `<div class="sub">${cap(how)}</div><div class="ctx-lbl">Method</div>${this.choices('tunnel-method', 'data-method', TUNNEL_METHODS, tunnel.method === 'cut' ? 'cut' : 'mined')}`;
+    }
     const pinAt = sel.piece ? (s0 + s1) / 2 : s0;
     const gi = Math.max(0, Math.min(r.n - 1, Math.round(pinAt / r.ds)));
     return `${this.head(title, `km ${kmr(s0, s1)}`)}
       <div class="ctx-state"><b>${status}</b>${why ? `<div class="why">${why}</div>` : ''}</div>
       ${this.issues(vio)}
       ${this.choices('structure-choice', 'data-structure', STRUCTURE_OPTIONS, active)}
+      ${method}
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
         ${near ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
@@ -632,6 +648,8 @@ export class Inspector {
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }
+      // Mined on Auto's tunnel is what it is: nothing to paint
+      if (b.dataset.method !== undefined && !b.classList.contains('on')) { this.ev.structure?.(KIND.tunnel, sel.s0, sel.s1, b.dataset.method === 'cut' ? 'cut' : undefined); return; }
     }
     for (const side of ['L', 'R'] as const) {
       const v = b.dataset[`wall${side}`];
