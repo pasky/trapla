@@ -257,11 +257,14 @@ async function main() {
   const buildTool = new BuildRoadTool(() => inspector.host(), document.getElementById('overlay')!, view);
   /** Without road links (an older map pack) mapped roads are still recognised, to say why they cannot change. */
   let legacyNet: RoadNet | null = null;
-  const legacyRoadAt = (x: number, y: number) => {
-    if (transportData || !pack.overlays.net) return false;
+  /** a drawn mapped road near this ground point (the pack's road overlay; no road links needed) */
+  const mappedRoadNear = (x: number, y: number, px = 8, min = 6) => {
+    if (!pack.overlays.net) return false;
     legacyNet ??= new RoadNet(pack.overlays.net);
-    return legacyNet.nearestWay(x, y, Math.max(4, 4 * view.metresPerPixel)) !== undefined;
+    return legacyNet.nearestWay(x, y, Math.max(min, px * view.metresPerPixel)) !== undefined;
   };
+  /** a mapped road in a pack without road links (its card says it cannot be changed here) */
+  const legacyRoadAt = (x: number, y: number) => !transportData && mappedRoadNear(x, y, 4, 4);
   // a rebuilt stretch's ends carry their own drag handles (labelled), so the tick stays unlabelled
   /** a side road's end on another road follows that road: its drawn end is where it was built */
   const endAt = (end: 'a' | 'b') => {
@@ -1129,7 +1132,7 @@ async function main() {
       if (s?.kind === 'source') { grabbedSource = s.hit; return true; }
       // before the road links are loaded: a mapped road there is held (no pan) and its card opens once they are
       const g = !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
-      if (g && legacyRoadAt(g.x, g.y)) { grabbedEarly = g; return true; }
+      if (g && mappedRoadNear(g.x, g.y)) { grabbedEarly = g; void ensureTransport(); return true; }
       return false;
     },
     onRoadDrag: (x, y) => {
@@ -1257,6 +1260,13 @@ async function main() {
       } else if (building !== null) { cursor = 'pointer'; key = `b${building}`; }
       else if (extras.wallAt(at.x, at.y)) { cursor = 'pointer'; key = 'w'; }
       else if (sourceAt(at.x, at.y)) { cursor = 'pointer'; key = 'source'; }
+    }
+    // before the road links are loaded (fetched when idle, parsed on first need): the first hover starts
+    // them, and a mapped road already shows that it can be grabbed
+    if (at && !buildTool.active && !transportGraph && pack.transportMeta) {
+      void ensureTransport();
+      const g = !cursor ? view.pick(at.x, at.y) : null;
+      if (g && mappedRoadNear(g.x, g.y)) cursor = 'grab';
     }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
     if (key === mapHoverKey) return;
