@@ -183,7 +183,7 @@ if (mode === 'prune') {
     if (kept.length === names.length) continue;
     dropped += names.length - kept.length;
     const indent = code.slice(lineStarts[lineOf(s.start) - 1], s.start);
-    text = text.slice(0, s.start) + (kept.length ? `${s.kind} { ${wrap(kept, `${indent}  `)} } = ${d.init.name};` : `void ${d.init.name};`) + text.slice(s.end);
+    text = text.slice(0, s.start) + (kept.length ? `${s.kind} { ${wrap(kept, `${indent}  `)} } = ${d.init.name};` : `// (${d.init.name}: read by later stages only)`) + text.slice(s.end);
   }
   writeFileSync(file, text);
   console.log(`pruned ${dropped} unused names from stage-record destructurings`);
