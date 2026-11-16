@@ -4,6 +4,8 @@
 //
 //   node scripts/dev/stage.mjs analyse src/core/evaluate.ts evaluateRoute 413 700
 //   node scripts/dev/stage.mjs extract src/core/evaluate.ts evaluateRoute 413 700 routeSetup setup
+//   node scripts/dev/stage.mjs prune   src/core/evaluate.ts evaluateRoute     (after each extract: names of
+//        earlier records that only the new stage read are dropped from the function's destructurings)
 //
 // The statements of lines L0…L1 move verbatim into `function routeSetup(<params it reads>, <earlier stage
 // records it reads>)`, which returns the locals later code reads; the original place becomes
@@ -26,7 +28,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { parseAst } from 'rolldown/parseAst';
 
 const [mode, file, fnName, l0s, l1s, stageName, recordName] = process.argv.slice(2);
-if (!['analyse', 'extract'].includes(mode) || !file || !fnName || !l1s || (mode === 'extract' && !recordName)) {
+if (!['analyse', 'extract', 'prune'].includes(mode) || !file || !fnName || (mode !== 'prune' && !l1s) || (mode === 'extract' && !recordName)) {
   console.error('usage: stage.mjs analyse|extract <file.ts> <function> <firstLine> <lastLine> [<stageFunction> <recordName>]'); process.exit(2);
 }
 const L0 = Number(l0s), L1 = Number(l1s);
@@ -83,6 +85,7 @@ function freeReferences(root) {
       for (const k of Object.keys(t)) if (k !== 'type' && typeof t[k] === 'object') typeSide(t[k]);
     };
     if (node.type.startsWith('TS') && !EXPRESSION_WRAPPERS.has(node.type)) { typeSide(node); return; }
+    if (EXPRESSION_WRAPPERS.has(node.type)) { typeSide(node.typeAnnotation); typeSide(node.typeArguments); visit(node.expression, scopes, nested, node, 'expression'); return; }
     switch (node.type) {
       case 'Identifier':
         if (parent?.type === 'MemberExpression' && key === 'property' && !parent.computed) return;
@@ -166,6 +169,26 @@ statements.forEach((s, index) => {
   } else if (s.type === 'FunctionDeclaration') top.set(s.id.name, { index, kind: 'function' });
   else if (TYPE_DECLS.has(s.type)) top.set(s.id.name, { index, kind: 'type' });
 });
+const wrap = (names, indent) => { const out = []; let line = ''; for (const n of names) { if (line && (line + n).length > 104) { out.push(line.trimEnd()); line = ''; } line += `${n}, `; } if (line) out.push(line.trimEnd()); return out.join(`\n${indent}`).replace(/,$/, ''); };
+if (mode === 'prune') {
+  // names destructured from a stage record that nothing in the function reads any more (a later stage took
+  // over their only readers): drop them from the destructuring
+  const used = new Set(statements.flatMap(s => TYPE_DECLS.has(s.type) ? [] : freeReferences(s)).map(r => r.name));
+  let text = code, dropped = 0;
+  for (const s of [...statements].reverse()) {
+    if (s.type !== 'VariableDeclaration' || s.declarations.length !== 1) continue;
+    const d = s.declarations[0];
+    if (d.id.type !== 'ObjectPattern' || d.init?.type !== 'Identifier' || !records.has(d.init.name)) continue;
+    const names = patternNames(d.id), kept = names.filter(n => used.has(n));
+    if (kept.length === names.length) continue;
+    dropped += names.length - kept.length;
+    const indent = code.slice(lineStarts[lineOf(s.start) - 1], s.start);
+    text = text.slice(0, s.start) + (kept.length ? `${s.kind} { ${wrap(kept, `${indent}  `)} } = ${d.init.name};` : `void ${d.init.name};`) + text.slice(s.end);
+  }
+  writeFileSync(file, text);
+  console.log(`pruned ${dropped} unused names from stage-record destructurings`);
+  process.exit(0);
+}
 const first = statements.findIndex(s => lineOf(s.start) >= L0), last = statements.findLastIndex(s => lineOf(s.end - 1) <= L1);
 if (first < 0 || last < first) fail('no whole statements in that line range');
 if (lineOf(statements[first].start) < L0 || (statements[last + 1] && lineOf(statements[last + 1].start) <= L1)) fail('the range cuts a statement');
@@ -207,7 +230,26 @@ for (const [name, v] of inputs) {
   if (v.kind === 'let' && v.nested && writesAfter.has(name)) problems.push(`${name}: a let from before the stage, read by a closure of the stage and reassigned later`);
   if (!v.record) problems.push(`${name}: read by the stage but neither a parameter nor from an earlier stage's record (line ${lineOf(statements[top.get(name).index].start)})`);
 }
-const typesInRange = statements.slice(first, last + 1).filter(s => TYPE_DECLS.has(s.type));
+// A type declared in the range moves to module level (later code may name it), unless it is built from a
+// local value (`typeof someLocal`): that one stays inside the stage and later code must not name it.
+const localTyped = (t) => freeReferences({ type: 'ExpressionStatement', expression: { type: 'TSAsExpression', expression: { type: 'Literal', value: 0 }, typeAnnotation: t.typeAnnotation ?? t.body } })
+  .some(r => top.has(r.name) || params.has(r.name));
+const afterText = code.slice(statements[last].end, fn.end);
+const typesInRange = statements.slice(first, last + 1).filter(s => TYPE_DECLS.has(s.type) && !localTyped(s));
+/** types built from a local value that later code names: they stay in the stage, and a module-level alias of
+ * the same name reads the value's type off the stage's result (`typeof x` → `ReturnType<typeof stage>['x']`) */
+const aliased = [];
+for (const t of statements.slice(first, last + 1).filter(s => TYPE_DECLS.has(s.type) && localTyped(s))) {
+  if (!new RegExp(`\\b${t.id.name}\\b`).test(afterText)) continue;
+  let text = code.slice(t.start, t.end), ok = t.type === 'TSTypeAliasDeclaration';
+  text = text.replace(/\btypeof (\w+)\b/g, (_m, name) => {
+    const local = top.get(name);
+    if (!local || !inRange(local.index)) { ok = false; return _m; }
+    if (!outputs.has(name)) outputs.set(name, { kind: 'const' });
+    return `ReturnType<typeof ${stageName}>['${name}']`;
+  });
+  if (!ok) problems.push(`type ${t.id.name}: built from a local value and named after the stage`); else aliased.push(text);
+}
 
 const usedParams = [...params.keys()].filter(p => inputs.has(p));
 const usedRecords = [...new Set([...inputs.values()].filter(v => v.record).map(v => v.record))];
@@ -218,6 +260,7 @@ const loose = [...inputs].filter(([, v]) => !v.param && !v.record).map(([n]) => 
 if (loose.length) console.log(`  reads other locals: ${loose.join(', ')}`);
 console.log(`  returns (${outputs.size}): ${[...outputs].map(([n, v]) => v.kind === 'let' ? `let ${n}` : n).join(', ')}`);
 if (typesInRange.length) console.log(`  types hoisted: ${typesInRange.map(t => t.id.name).join(', ')}`);
+if (aliased.length) console.log(`  types aliased at module level: ${aliased.length}`);
 console.log(`  module-level names used: ${[...moduleNames].sort().join(', ')}`);
 if (problems.length) { for (const p of new Set(problems)) console.log(`  PROBLEM ${p}`); if (mode === 'extract') fail('fix the problems above (move the boundary, or handle that variable by hand first)'); }
 if (mode === 'analyse') process.exit(problems.length ? 1 : 0);
@@ -234,11 +277,10 @@ for (const t of typesInRange) {
   hoisted.push(...lines.slice(a - 1, b).map(l => l.replace(/^ {2}/, '')));
   for (let k = a; k <= b; k++) body[k - start] = null;
 }
-const wrap = (names, indent) => { const out = []; let line = ''; for (const n of names) { if (line && (line + n).length > 104) { out.push(line.trimEnd()); line = ''; } line += `${n}, `; } if (line) out.push(line.trimEnd()); return out.join(`\n${indent}`).replace(/,$/, ''); };
 const signature = [...usedParams.map(p => `${p}: ${params.get(p)}`), ...usedRecords.map(r => `${r}: ReturnType<typeof ${records.get(r)}>`)].join(', ');
 const constOut = [...outputs].filter(([, v]) => v.kind === 'const').map(([n]) => n), letOut = [...outputs].filter(([, v]) => v.kind === 'let').map(([n]) => n);
 const stage = [
-  ...hoisted,
+  ...hoisted, ...aliased,
   `/** A stage of ${fnName} (its statements, moved verbatim by scripts/dev/stage.mjs). */`,
   `function ${stageName}(${signature}) {`,
   ...usedRecords.map(r => `  const { ${wrap([...inputs].filter(([, v]) => v.record === r).map(([n]) => n), '    ')} } = ${r};`),
