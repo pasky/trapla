@@ -177,13 +177,13 @@ export const D3_0303 = d3Section('d3-0303', '0303 Hostěradice → Václavice', 
 // Starter: mapped-line bends every ~1.5 km, valid as sampled.
 export const D3_0304 = d3Section('d3-0304', '0304 Václavice → Voračice', 130,
   P([[7708, 15854.6], [7693.5, 14248.4], [6926.6, 12878.5], [6068.5, 11225], [4811.2, 9789.9], [4040.4, 8430.7], [3547.5, 6886.3], [3014.6, 4999.1], [2522.9, 3583.9]]), 8.1, // 17.40 km at 130 (reference 15.82 km)
-  { a: 'Václavice (from 0303)', b: 'Voračice', official: 'planned D3', brief: '<b>Václavice</b> to <b>Voračice</b>, section 0304 of the D3' },
+  { a: 'Václavice (from 0303)', b: 'Voračice (on to 0305/I)', official: 'planned D3', brief: '<b>Václavice</b> to <b>Voračice</b>, section 0304 of the D3' },
   'Get past the ridge at Prostřední vrch and over the valleys.', 'Follows section 0303. Continues as section 0305/I.');
 // Starter: mapped-line bends every ~1.5 km; bend 3 moved 12 m to the left (bounded search) so that a
 // class II road at km 7.56 gets a buildable crossing.
 export const D3_0305 = d3Section('d3-0305', '0305/I Voračice → Nová Hospoda', 130,
   P([[3018.9, 15108.2], [2562.2, 13483.7], [2847, 11675.1], [3706.9, 10000.3], [4588.5, 8638.8], [5054.1, 6964.2], [6481.5, 6188.7], [7979.2, 5463.5], [9211.5, 4014.4]]), 8.7, // 18.72 km at 130 (reference 17.02 km)
-  { a: 'Voračice', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Voračice</b> to <b>Nová Hospoda</b>, where the D3 already runs' },
+  { a: 'Voračice (from 0304)', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Voračice</b> to <b>Nová Hospoda</b>, where the D3 already runs' },
   'Bridge the Mastník valley and join the D3 that is already open.', 'Follows section 0304. Ends on the open D3.');
 export const D35_MOTORWAY: ScenarioParams = {
   ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Opatovec → Staré Město (first section)', retired: undefined,
