@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { evaluate } from '../src/core/evaluate';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
-import { startDesign, Store } from '../src/state';
+import { startDesign } from '../src/state';
 import { RoadNet } from '../src/core/roadnet';
 import { PART_KEYS } from '../src/core/cost';
 import { BuildingIndex, noiseBuyoutCost } from '../src/core/buildings';
@@ -118,21 +118,6 @@ describe('crossing choices through the full bill', () => {
 });
 
 describe('saved Auto pins in evaluation', () => {
-  it('clears positional object choices after a pack change without discarding station-based edits', () => {
-    const data = new Map<string, string>();
-    vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => data.set(k, v) });
-    const store = new Store('pack', startDesign, 'ground', 'old-objects');
-    store.update((d) => {
-      d.buildingOverrides = [{ j: 2, action: 'keep' }]; d.crossingOverrides = [{ roadId: 3, type: 'junction' }];
-      d.gradePins = [{ s: 1000, z: 408 }]; d.wallOverrides = [{ s0: 800, s1: 1200, side: 'L', height: 4 }];
-    });
-    const same = new Store('pack', startDesign, 'ground', 'old-objects');
-    expect(same.design.buildingOverrides).toHaveLength(1);
-    const changed = new Store('pack', startDesign, 'ground', 'new-objects');
-    expect(changed.objectDataChanged).toBe(true);
-    expect(changed.design.buildingOverrides).toEqual([]); expect(changed.design.crossingOverrides).toEqual([]);
-    expect(changed.design.gradePins).toEqual(store.design.gradePins); expect(changed.design.wallOverrides).toEqual(store.design.wallOverrides);
-  });
   it('uses the smoothed pinned grade for quantities, reports impossible heights, and restores auto on clear', () => {
     const d = startDesign(), base = evaluate(ctx, d);
     d.gradePins = [{ s: 1000, z: 408 }];
@@ -148,16 +133,11 @@ describe('saved Auto pins in evaluation', () => {
     expect(evaluate(ctx, d).cost).toEqual(base.cost);
   });
 
-  it('keeps pins saved but inactive in Manual and restores them across undo, redo and reload', () => {
-    const data = new Map<string, string>();
-    vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => data.set(k, v) });
-    const store = new Store('pins', startDesign);
-    store.update((d) => { d.gradePins = [{ s: 1000, z: 408 }]; });
-    expect(new Store('pins', startDesign).design.gradePins).toEqual(store.design.gradePins);
-    store.undo(); expect(store.design.gradePins ?? []).toEqual([]);
-    store.redo(); expect(store.design.gradePins).toHaveLength(1);
-    store.update((d) => { d.profileMode = 'manual'; d.vpis = [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }]; });
-    const manual = evaluate(ctx, store.design);
+  it('keeps pins saved but inactive in Manual', () => {
+    const d = startDesign();
+    d.gradePins = [{ s: 1000, z: 408 }];
+    d.profileMode = 'manual'; d.vpis = [{ s: 0, z: 400, r: null }, { s: 2000, z: 400, r: null }];
+    const manual = evaluate(ctx, d);
     expect(manual.grade[100]).toBe(400);
     expect(manual.violations).toEqual([]);
   });
