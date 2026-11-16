@@ -57,7 +57,6 @@
  * also where it stopped short of that road's works (its old road beyond the end, or what is left of it, under
  * them); a closure's detour interacts only with changes within its reach; roads one above the other are
  * compared point by point. reroute-takeover-audit (D11): unpriced 47 → 13 of 292. Single-road bills unchanged.
-
  * 31: design realism (research/46–54): side slopes as built (VL 1 2022 fills, cuts by ground: sound rock 4:1
  * netted), no unsourced high-earthworks reserve, the "other objects" surcharge without B.6 technology on
  * two-lane roads (29.4 / 48.1 %), ČSN 73 6101:2018 vertical radii and gradients by category; a route ending on
