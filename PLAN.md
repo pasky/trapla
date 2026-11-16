@@ -275,6 +275,32 @@ What exists (details and commands in `README.md`):
   crossing by realigning the crossed road near it (a shorter box, a short rebuilt stretch each side); the
   engine keeps every crossed road on its own line.
 
+### Structure choice at the real prices; By hand keeps the bill (cost model 23, 2026-11-16)
+
+- Playtest S3 #1: switching to By hand changed the bill (D11 straight −29 M, with a pin −143 M) although the
+  heights were the same. The bridge / embankment choice priced fill at the value the profile search had found
+  before the support lifts, on only four tries; the final designs were far from balanced (town-centre priced
+  as surplus while 455k m³ short; By hand fell back to the starting value). Now the choice settles the value on
+  the final grade line (regula falsi, ≤ 6 tries of the selection only, the same in both modes): By hand from
+  Auto's heights bills identically (checked on every fixture in `tests/evaluate-costs.test.ts`), and Auto no
+  longer leaves that money on the table.
+- S3 #3: the choice now weighs the buildings each option demolishes (slopes vs deck strip plus the working
+  strip, each building's price shared over the cells reaching it). The piers of a bridge the player chooses
+  still move off roads, rails and water (the player picks the bridge, not its piers); an automatic bridge whose
+  piers cannot all stand clear within the span limit is not chosen there. Poříčí halls (D11 straight km
+  4.9–5.9) are now bridged by Auto on its own heights.
+- Remaining gap (not fixed here): the auto-profile's per-metre costs are rural (no buildings, no urban land), so
+  Auto does not raise the line to bridge a town. On D11 straight, painting a bridge over km 5.09–5.50 makes Auto
+  re-plan the heights (cut through the hill at km 4.7 instead of a tunnel, a 33 m viaduct) and the project
+  ≈ 80 M cheaper than Auto's own design. The piece card therefore says "Auto: at this height cheaper than a
+  bridge", and "Your choice; Auto set the road height for it" when the player's choice re-planned the heights.
+- A chimney, silo or shed (≤ 200 m², ≤ 1/4 of the other) wholly within a demolished building's outline goes
+  with it (Nová Paka km 1.97); a stream left under the earthwork just beyond a bridge's end with too little
+  cover is spanned by one more engineering pass.
+- Fixtures against model 22: straight −34.0, best −23.1, demo −47.4, direct-80 −120.2, direct-90 −119.4,
+  town-centre −421.5 M CZK, all VALID as before; outcome-audit (5 designs + straight + 24 random): violations
+  144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch fails).
+
 ### Travel-time target X and traffic Y
 
 - Y = 9,000 vehicles/day is the design-year (20th year) AADT. It requires **S 9.5** as the minimum category.

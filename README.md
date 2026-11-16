@@ -112,9 +112,11 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   the road on the map marks the spot here; when the map is zoomed in, a light blue window shows which part of
   the route it is looking at. **Key ▾** explains every mark.
 - **Road height: Auto | By hand** (the *Road* section): Auto sets the cheapest legal heights and redoes them after
-  every change (an approximate search); pins steer it. By hand starts from the current heights as **◆ points**:
-  drag one, double-click the line to add one, right-click to delete. Back to Auto replaces them (Undo brings them
-  back).
+  every change (an approximate search); pins steer it. By hand starts from exactly the current heights (the same
+  bill) as **◆ points**; at each zoom only the points that shape the line have a handle (zoom in for more), and
+  the hidden ones between follow a drag in proportion. Drag one, double-click the line to add one, right-click to
+  delete. Back to Auto replaces them (Undo brings them back). Height drags (pins, points) move at most 0.5 m per
+  pixel, finer when the profile is zoomed in; the tip shows the height and how far it moved.
 - **Map:** left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms about the cursor. View buttons
   (remembered): **Contours** <kbd>C</kbd> (interval follows the zoom), **Slope** <kbd>S</kbd> (yellow 8 %, orange
   15 %, red 25 %, purple 40 %), **Relief** <kbd>R</kbd> (1–3× vertical exaggeration), **Photo** <kbd>O</kbd> (aerial

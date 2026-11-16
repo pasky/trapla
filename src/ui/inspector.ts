@@ -243,8 +243,10 @@ export class Inspector {
       const what = sel.piece === 'bridge' ? 'high' : sel.piece === 'tunnel' ? 'under ground' : sel.piece === 'cut' ? 'deep' : 'high';
       status = `${m0(len)} · up to ${depth.toFixed(0)} m ${what} · ${czk(cost)}`;
       const water = r.waterCrossings.find((c) => c.s >= s0 && c.s <= s1 && sel.piece === 'bridge' && c.structure === 'bridge');
-      why = mine ? 'Your choice.' : water ? `Auto: bridges the ${esc(water.waterKind)}.`
-        : { bridge: 'Auto: cheaper here than an embankment.', tunnel: 'Auto: cheaper here than a cut.', fill: 'Auto: cheaper here than a bridge.', cut: 'Auto: cheaper here than a tunnel.' }[sel.piece];
+      // Auto compares the options at the road's present height, buildings and land included; a choice
+      // of the player's lets Auto set the height again for it (so its figures may differ from before)
+      why = mine ? (d.profileMode === 'auto' ? 'Your choice; Auto set the road height for it.' : 'Your choice.') : water ? `Auto: bridges the ${esc(water.waterKind)}.`
+        : { bridge: 'Auto: at this height cheaper than an embankment.', tunnel: 'Auto: at this depth cheaper than a cut.', fill: 'Auto: at this height cheaper than a bridge.', cut: 'Auto: at this depth cheaper than a tunnel.' }[sel.piece];
     } else {
       let b = 0, t = 0;
       for (let i = i0; i <= i1; i++) { if (r.kind[i] === KIND.bridge) b++; else if (r.kind[i] === KIND.tunnel) t++; }
