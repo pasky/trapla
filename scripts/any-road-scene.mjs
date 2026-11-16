@@ -392,6 +392,21 @@ try {
       console.log(`house ${both.buildingIndex} heard by both roads (${both.together.decision}): "…${card.slice(Math.max(0, k - 50), k + 110)}…"`);
       await page.screenshot({ path: `${out}/house-together.png` });
     }
+    // The km 4.1 track our road runs over (and reroutes to the bridge at km 4.01): a drag on it north of us
+    // rebuilds it from where our earthworks end; our reroute of what is left stays ours: one total
+    {
+      await page.evaluate(d => window.trapla.setProject(d), initial); await idle();
+      const id = 'osm:way:1315656940', s = 405;
+      await dragOn(id, s, 25, -25);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(r.source?.intervals[0].sourceId, id, 'the track is rebuilt');
+      assert(r.source.intervals[0].s0 > 270, `it starts where our earthworks end (${Math.round(r.source.intervals[0].s0)} m)`);
+      const pr = await page.evaluate(() => window.trapla.projectResult());
+      if (process.env.DUMP_TRACK) console.log(JSON.stringify({ route: r, issues: pr.issues }));
+      assert.deepEqual(pr.issues.filter(i => i.check === 'not-checked').map(i => i.violation.title), [], 'nothing keeps the project from its total');
+      assert(pr.cost.total !== null, 'priced together');
+      console.log(`the km 4.1 track rebuilt from ${Math.round(r.source.intervals[0].s0)} m (beyond our earthworks): total ${(pr.cost.total / 1e9).toFixed(3)} bn CZK`);
+    }
     let motorway = null;
     for (const id of await page.evaluate(() => ['motorway', 'trunk', 'railway'].flatMap(h => window.trapla.sourceIds(h, 400)))) {
       await page.evaluate(id => window.trapla.lookAtSource(id, 200, 500), id); await idle();

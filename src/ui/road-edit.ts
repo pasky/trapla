@@ -89,6 +89,61 @@ export function derivedStretch(base: ProjectTransportIndex, sourceId: string, s:
   return hi - lo >= MIN_STRETCH ? { transportData: base.transportData, sourceId, s0: lo, s1: hi } : null;
 }
 
+/** A project road as built, for `coveredStretches` (a legacy Result's per-station arrays). */
+export interface BuiltRoad { name: string; n: number; x: ArrayLike<number>; y: ArrayLike<number>; tx: ArrayLike<number>; ty: ArrayLike<number>;
+  kind: ArrayLike<number>; dayL: ArrayLike<number>; dayR: ArrayLike<number>; keptCells?: ArrayLike<number>;
+  crossings?: readonly { x: number; y: number; roadId?: number; type: string }[] }
+/** Sampling step along the mapped road for `coveredStretches`, m. */
+const COVER_STEP = 2;
+/** The parts of a mapped road that another project road's earthworks cover, with INDEPENDENCE_SCREEN's
+ * 10 m working strip beside them: the old road is gone there (that road cuts it and reroutes or closes
+ * it), so a stretch the player rebuilds stops short of them and joins what is left of the old road.
+ * Bridges and tunnels cover nothing (the old road stays under or over them); a rebuilt road's kept old
+ * road is the old road itself, and so is a road it carries over or under it (its crossings: our bridge
+ * over it, its bridge over us, an underpass, a junction). `by`: the name of the road that covers it. */
+export function coveredStretches(base: ProjectTransportIndex, sourceId: string, roads: readonly BuiltRoad[], clearance = 10): (SourceInterval & { by: string })[] {
+  const source = base.source(sourceId); if (!source) return [];
+  const length = source.stations[source.stations.length - 1], out: (SourceInterval & { by: string })[] = [];
+  for (const road of roads) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, reach = 0;
+    for (let i = 0; i < road.n; i++) {
+      minX = Math.min(minX, road.x[i]); maxX = Math.max(maxX, road.x[i]); minY = Math.min(minY, road.y[i]); maxY = Math.max(maxY, road.y[i]);
+      if (road.kind[i] === 0) reach = Math.max(reach, Math.abs(road.dayL[i]), Math.abs(road.dayR[i]));
+    }
+    reach += clearance;
+    let open: number | null = null;
+    const close = (s1: number) => { if (open !== null) out.push({ transportData: base.transportData, sourceId, s0: open, s1, by: road.name }); open = null; };
+    for (let s = 0; s <= length + COVER_STEP / 2; s += COVER_STEP) {
+      const at = Math.min(s, length), p = base.position(sourceId, at);
+      let covered = false;
+      if (p && p.x >= minX - reach && p.x <= maxX + reach && p.y >= minY - reach && p.y <= maxY + reach) {
+        let best = Infinity, k = -1;
+        for (let i = 0; i < road.n; i++) { const d = (road.x[i] - p.x) ** 2 + (road.y[i] - p.y) ** 2; if (d < best) { best = d; k = i; } }
+        // (beyond the road's ends nothing is covered)
+        const along = k >= 0 ? Math.abs((p.x - road.x[k]) * road.tx[k] + (p.y - road.y[k]) * road.ty[k]) : Infinity;
+        if (along <= 2 * COVER_STEP + 5 && road.kind[k] === 0 && !road.keptCells?.[k]) {
+          const side = (p.x - road.x[k]) * -road.ty[k] + (p.y - road.y[k]) * road.tx[k];
+          covered = Math.abs(side) <= Math.abs(side > 0 ? road.dayL[k] : road.dayR[k]) + clearance;
+        }
+      }
+      if (covered && open === null) open = Math.max(0, at - COVER_STEP / 2);
+      else if (!covered) close(Math.min(length, at - COVER_STEP / 2));
+    }
+    close(length);
+  }
+  // where that road carries the old road over or under it, or meets it, the old road is not gone: a
+  // covered part around such a crossing (the road on its bridge over our cutting) is no cover
+  const way = source.legacyNetIndex, carried = roads.flatMap(r => (r.crossings ?? [])
+    .filter(c => way !== undefined && c.roadId === way && c.type !== 'diversion' && c.type !== 'reconnection'));
+  return out.filter(c => !carried.some(x => {
+    for (let s = c.s0; s <= c.s1 + COVER_STEP / 2; s += COVER_STEP) {
+      const p = base.position(sourceId, Math.min(s, c.s1));
+      if (p && Math.hypot(p.x - x.x, p.y - x.y) <= COVER_STEP + 5) return true;
+    }
+    return false;
+  }));
+}
+
 /** Douglas–Peucker bends of a polyline (interior points only), then bends too close together merged. */
 export function fitBends(path: readonly { x: number; y: number; s: number }[], tolerance = FIT_TOLERANCE, gap = MIN_BEND_GAP): PI[] {
   const keep = new Uint8Array(path.length); keep[0] = keep[path.length - 1] = 1;

@@ -31,8 +31,6 @@ export const INDEPENDENCE_SCREEN = {
 export interface ScreenRoute { routeId: RouteId; result: Result; aadt: number; speed: number; heavyShare: number;
   /** Source profile (motorway lane tables); default class I road. */ profile?: 'class-I' | 'motorway';
   /** Built half-width at least (crown), also where a bridge/tunnel takes no land. */ halfWidth: number;
-  /** Existing roads this road changes beyond its own result (a rebuilt stretch's old road). */
-  extraRoads?: number[];
   /** Works beyond its own result (side-road links), each a centreline with half-width. */
   extraLines?: { ax: number; ay: number; bx: number; by: number; r: number }[];
   /** Junctions with another designed road: within r of (x, y) the two roads' works ARE the junction
@@ -136,13 +134,15 @@ function envelope(result: Result, halfWidth: number): Capsule[] {
 }
 
 /** Roads a route crosses, relocates or closes. A closure relies on a detour over unspecified roads. */
-function touchedRoads(result: Result): { roads: Set<number>; closes: boolean } {
-  const roads = new Set<number>();
-  for (const c of result.crossings) for (const id of [c.roadId, c.targetRoadId]) if (id !== undefined) roads.add(id);
+function touchedRoads(result: Result): { roads: Map<number, { x: number; y: number }[]>; closes: boolean } {
+  const roads = new Map<number, { x: number; y: number }[]>();
+  const add = (id: number | undefined, x: number, y: number) => { if (id === undefined) return; const list = roads.get(id); if (list) list.push({ x, y }); else roads.set(id, [{ x, y }]); };
+  for (const c of result.crossings) { add(c.roadId, c.x, c.y); if (c.targetRoadId !== undefined) add(c.targetRoadId, c.x, c.y); }
   let closes = false;
   for (const f of result.footprintConflicts) {
-    if (f.roadId !== undefined) roads.add(f.roadId);
-    for (const interval of f.sourceIntervals ?? []) roads.add(interval.way); // every removed old way
+    // (a rebuilt stretch going on into its own old road changes nothing there)
+    if (!f.continuation) add(f.roadId, f.x, f.y);
+    for (const interval of f.sourceIntervals ?? []) add(interval.way, f.x, f.y); // every removed old way
     if (f.closed) closes = true;
   }
   return { roads, closes };
@@ -217,11 +217,16 @@ export function screenIndependence(routes: readonly ScreenRoute[], buildings: Bu
     if (touch) interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-land', ...touch });
   }
   // Existing roads: two roads changing one way, or a closure relying on a detour while another road changes any road.
-  const touched = routes.map(r => { const t = touchedRoads(r.result); for (const id of r.extraRoads ?? []) t.roads.add(id); return t; });
+  const touched = routes.map(r => touchedRoads(r.result));
   for (let a = 0; a < routes.length; a++) for (let b = a + 1; b < routes.length; b++) {
     const ta = touched[a], tb = touched[b];
-    if ([...ta.roads].some(id => tb.roads.has(id)) || (ta.closes && tb.roads.size) || (tb.closes && ta.roads.size))
-      interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-road' });
+    // where: the first road's change of the shared road nearest to the second's
+    let at: { x: number; y: number } | undefined, best = Infinity;
+    for (const [id, here] of ta.roads) for (const p of here) for (const q of tb.roads.get(id) ?? []) {
+      const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < best) { best = d; at = p; }
+    }
+    if (at || (ta.closes && tb.roads.size) || (tb.closes && ta.roads.size))
+      interactions.push({ routeIds: [routes[a].routeId, routes[b].routeId], reason: 'shared-road', ...(at ? { at } : {}) });
   }
   // Buildings demolished, bought or kept-in-the-way by more than one road.
   const users = new Map<number, Set<number>>();

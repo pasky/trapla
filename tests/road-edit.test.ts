@@ -8,11 +8,11 @@ import { assertProjectDesign } from '../src/core/project-validation';
 import { BuildingIndex } from '../src/core/buildings';
 import { RoadNet } from '../src/core/roadnet';
 import { syntheticTerrain } from '../src/core/terrain';
-import { bendAt, derivedStretch, fitBends, isTraffic, moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
+import { bendAt, coveredStretches, derivedStretch, fitBends, isTraffic, moveStretchEnds, newRoad, rebuildable, rebuildCommand, strayDistance } from '../src/ui/road-edit';
 import { CLASS_TRAFFIC } from '../src/core/data/traffic';
 import { basePerKm } from '../src/core/cost';
 import type { TrafficCensus } from '../src/core/traffic-census';
-import { mappedRoadName } from '../src/core/terms';
+import { coveredText, mappedRoadName } from '../src/core/terms';
 import { evaluate, MINOR_CROSSROADS_BAND } from '../src/core/evaluate';
 import { MINOR_CROSSROADS } from '../src/core/data/urban';
 import { startDesign } from '../src/state';
@@ -92,6 +92,28 @@ describe('rebuilding a mapped road', () => {
     // never into another project road's stretch
     const claim = { transportData: 'transport', sourceId: 'main', s0: 0, s1: 800 };
     expect(derivedStretch(base, 'main', 900, [claim])).toMatchObject({ s0: 800, s1: stations[3] });
+  });
+
+  it('stops short of where another road\'s earthworks cover the old road; a grab there says so', () => {
+    const { base, stations } = fixture();
+    // our road crosses the class III road at x = 1250 on earthworks 12 m to either side (a bridge covers nothing)
+    const n = 81, ours = { name: 'our road', n, x: Array.from({ length: n }, () => 1250), y: Array.from({ length: n }, (_, i) => 800 + 5 * i),
+      tx: Array(n).fill(0), ty: Array(n).fill(1), kind: Array(n).fill(0), dayL: Array(n).fill(12), dayR: Array(n).fill(-12) };
+    const covered = coveredStretches(base, 'main', [ours]);
+    expect(covered).toHaveLength(1);
+    const at = stations[2] + Math.hypot(550, 30) * 250 / 550; // where the old road meets x = 1250
+    const reach = (12 + 10) * Math.hypot(550, 30) / 550; // earthworks + 10 m clearance, measured along the oblique road
+    expect(covered[0].s0).toBeCloseTo(at - reach, -1); expect(covered[0].s1).toBeCloseTo(at + reach, -1);
+    expect(covered[0].by).toBe('our road');
+    // the stretch around x = 900 ends before them; one grabbed on them does not exist
+    expect(derivedStretch(base, 'main', 900, covered)).toMatchObject({ s0: stations[1], s1: covered[0].s0 });
+    expect(derivedStretch(base, 'main', at, covered)).toBeNull();
+    expect(coveredStretches(base, 'main', [{ ...ours, kind: Array(n).fill(1) }])).toEqual([]);
+    // carried over our cutting on a bridge, it is not gone; cut and rerouted, it is
+    const crossing = (type: string) => [{ ...ours, crossings: [{ x: 1250, y: 1030 - 30 * 250 / 550, roadId: 0, type }] }];
+    expect(coveredStretches(base, 'main', crossing('overbridge'))).toEqual([]);
+    expect(coveredStretches(base, 'main', crossing('diversion'))).toEqual(covered);
+    expect(coveredText('our road')).toBe('Our road covers it here: pick it further away.');
   });
 
   it('converts the old line once into bends that follow it, and says how far it strays', () => {

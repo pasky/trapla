@@ -8,7 +8,7 @@ import type { SourceHit } from '../render/source-pick';
 import type { View } from '../render/view';
 import { derivedStretch } from './road-edit';
 import { mappedLineKindFor, type MappedLineKind } from './route-kinds';
-import { mappedRoadName, namedByNumber } from '../core/terms';
+import { coveredText, mappedRoadName, namedByNumber } from '../core/terms';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
   const node = document.createElement(tag); node.textContent = text; return node;
@@ -24,7 +24,9 @@ export class MappedRoadCard {
   lineKind: MappedLineKind | null = null;
   onClose?: () => void;
   constructor(private root: () => HTMLElement, private view: View, private base: ProjectTransportIndex,
-    private claimed: () => readonly SourceInterval[]) {}
+    private claimed: () => readonly SourceInterval[],
+    /** the parts of a mapped road other project roads' earthworks cover (road-edit.ts coveredStretches) */
+    private covered: (sourceId: string) => readonly (SourceInterval & { by: string })[] = () => []) {}
   get selected() { return this.hit; }
   get selection() { return this.interval && { kind: 'source' as const, interval: { ...this.interval } }; }
   clear() {
@@ -37,7 +39,8 @@ export class MappedRoadCard {
     if (!source) return;
     const { kind, verdict: what } = mappedLineKindFor(this.base, source.id);
     this.lineKind = what.ok ? kind : null;
-    this.interval = what.ok ? derivedStretch(this.base, source.id, hit.s, this.claimed()) : null;
+    const covered = what.ok ? this.covered(source.id) : [], under = covered.find(c => hit.s >= c.s0 && hit.s <= c.s1);
+    this.interval = what.ok && !under ? derivedStretch(this.base, source.id, hit.s, [...this.claimed(), ...covered]) : null;
     if (this.interval) {
       try { this.path = this.base.path(this.interval); this.view.setSourceSelection(this.path); } catch { this.interval = null; this.path = []; }
     }
@@ -53,6 +56,7 @@ export class MappedRoadCard {
     header.append(el('b', cap(name)), ...(namedByNumber(source.tags) || name === label ? [] : [el('small', cap(label))]), close);
     root.append(header);
     if (!what.ok) { root.append(el('p', what.why)); return; }
+    if (under) { root.append(el('p', coveredText(under.by))); return; }
     if (!this.interval) { root.append(el('p', 'Too short to change here: pick it further from its junctions or from the map edge.')); return; }
     const how = el('p', 'Drag it to change its line.'); how.className = 'mapped-how';
     const stretch = el('div', `The highlighted ${Math.round(this.interval.s1 - this.interval.s0)} m, between its junctions, would be rebuilt as a ${what.becomes}.`);

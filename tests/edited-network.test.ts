@@ -237,6 +237,51 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
   }, 120_000);
 });
 
+// D11 km 4.1: our road runs 270 m over a track and reroutes it to the bridge at km 4.01. The player drags
+// the rest of the track north of us: the stretch stops where our earthworks end (the track is gone under
+// them), joins what is left of it, and our reroute of that remnant stays ours: one total, no "two roads".
+const D11 = 'public/scenarios/d11';
+describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16.gz'].every(f => existsSync(`${D11}/${f}`)))('D11: a track our road covers, rebuilt beyond it', () => {
+  it('stops short of our earthworks and is priced with our reroute of what is left', async () => {
+    const { loadPack } = await import('../scripts/loadpack');
+    const { objectDataKey } = await import('../src/core/build-controls');
+    const { ProjectTransportIndex } = await import('../src/core/project-network');
+    const { startDesign } = await import('../src/state');
+    const { coveredStretches, derivedStretch, rebuildCommand } = await import('../src/ui/road-edit');
+    const pack = loadPack(D11), scenario = D11_SCENARIO;
+    const graph = JSON.parse(gunzipSync(readFileSync(`${D11}/transport.json.gz`)).toString());
+    const fingerprint = JSON.parse(readFileSync(`${D11}/transport-meta.json`, 'utf8')).fingerprint;
+    const objectData = objectDataKey(pack.overlays.buildings, pack.overlays.binfo, pack.overlays.net);
+    const A = { x: pack.meta.A.xy[0], y: pack.meta.A.xy[1] }, B = { x: pack.meta.B.xy[0], y: pack.meta.B.xy[1] };
+    const lc = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B }, { presetId: 'd11', packId: pack.meta.id, objectData, transportData: fingerprint });
+    const design = projectFromLegacyDesign({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) }, lc);
+    const index = new ProjectTransportIndex(graph, fingerprint, graph.vectorData, pack.terrain, pack.census);
+    const ctx: ProjectEvalContext = { legacy: { terrain: pack.terrain, scenario, a: A, b: B, buildings: pack.buildings, roads: pack.roads },
+      environment: { objectData, transportData: fingerprint, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' },
+      sourceWays: new Map(graph.sources.flatMap((s: { id: string; legacyNetIndex?: number }) => s.legacyNetIndex === undefined ? [] : [[s.id, s.legacyNetIndex]])) };
+    const track = graph.sources.find((s: { id: string }) => s.id === 'osm:way:1315656940');
+    const before = evaluateProject(ctx, { epoch: 'e', revision: 1, design }), ours = before.routes[design.routes[0].id].legacy!;
+    const reroute = ours.crossings.find(c => c.roadId === track.legacyNetIndex)!;
+    expect(reroute).toMatchObject({ cls: 'track', type: 'diversion' });
+    const covered = coveredStretches(index, track.id, [{ ...ours, name: 'our road' }]);
+    const grab = 0.85 * track.stations.at(-1);
+    // without our earthworks the stretch would run 190 m along and under our road
+    expect(derivedStretch(index, track.id, grab, [])!.s0).toBeLessThan(100);
+    const interval = derivedStretch(index, track.id, grab, covered)!;
+    expect(interval.s0).toBeGreaterThan(270);
+    expect(derivedStretch(index, track.id, 150, covered)).toBeNull(); // under our road: nothing to rebuild there
+    const command = rebuildCommand(index, interval, { routeId: 'route:r1', acousticSourceId: 'acoustic:r1' });
+    const edited = structuredClone(design); edited.routes.push(...command.routes); edited.connections.push(...command.connections);
+    const r1 = edited.routes[1]; if (r1.alignment.kind !== 'pi') throw new Error('converted');
+    const p = index.position(track.id, grab)!; r1.alignment.pis.push({ x: p.x + 20, y: p.y, r: null });
+    r1.alignment.pis.sort((a, b) => Math.hypot(a.x - r1.endpoints.a.position.x, a.y - r1.endpoints.a.position.y) - Math.hypot(b.x - r1.endpoints.a.position.x, b.y - r1.endpoints.a.position.y));
+    const after = evaluateProject(ctx, { epoch: 'e', revision: 2, design: edited });
+    expect(after.issues.map(i => i.code)).toEqual([]);
+    expect(after.cost.total).not.toBeNull();
+    expect(after.routes[design.routes[0].id].legacy!.crossings.find(c => c.roadId === track.legacyNetIndex)?.type).toBe('diversion');
+  }, 120_000);
+});
+
 it('a side road\'s problems name its start and end, never the mission\'s A and B (card and map)', () => {
   const legacy = { terrain: syntheticTerrain(260, 120, 5, () => 100), scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 1100, y: 250 } };
   const context = makeLegacyProjectContext(legacy, { presetId: 'legacy-road', packId: 'd11', objectData: 'objects', transportData: null });

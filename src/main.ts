@@ -29,7 +29,7 @@ import type { TransportGraphData } from './core/project-transport';
 import { MappedRoadCard } from './ui/mapped-road';
 import { StretchEnds } from './ui/stretch-ends';
 import { BuildRoadTool, type Placement } from './ui/build-road';
-import { bendAt, DEFAULT_SPEED, isTraffic, startSpeed, strayDistance } from './ui/road-edit';
+import { bendAt, coveredStretches, DEFAULT_SPEED, isTraffic, startSpeed, strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
@@ -236,7 +236,12 @@ async function main() {
       sourcePicker = new SourcePicker(graph, pack.vectors, (layer, res) => lineHalfWidth(layer, res, view.photoWithNetwork));
     } catch (error) { console.warn('Road map links are unavailable', error); transportIndex = null; sourcePicker = null; return; }
     transportGraph = graph;
-    const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, view, transportIndex, claimedSources);
+    // where other roads' earthworks cover a mapped road it is gone: a rebuilt stretch stops short of them
+    const covered = (sourceId: string) => coveredStretches(transportIndex!, sourceId, projectStore.snapshot.design.routes.flatMap(r => {
+      const built = projectFull?.routes[r.id]?.legacy;
+      return built && !r.source?.intervals.some(i => i.sourceId === sourceId) ? [{ ...built, name: r.role === 'mission' ? 'our road' : r.name }] : [];
+    }));
+    const editor = sourceEditor = new MappedRoadCard(() => inspectorEl, view, transportIndex, claimedSources, covered);
     editor.onClose = () => select(null);
     const ends = stretchEnds = new StretchEnds(document.getElementById('overlay')!, view, transportIndex,
       () => projectStore.snapshot.design.routes.flatMap(r => (r.source?.intervals ?? []).map(interval => ({ routeId: r.id, interval }))));

@@ -133,6 +133,9 @@ export const DIRECTIONS_TEXT = {
 /** Automatic on a motorway: no junction anywhere along it. */
 export const MOTORWAY_AUTOMATIC = 'The game decides: existing bridges stay; every other road gets the cheapest of a bridge over the motorway, an underpass through a high enough embankment or a reroute to a nearby crossing. A motorway has no junctions with the roads it crosses.';
 
+/** A mapped road's card where another road's earthworks cover it (ui/mapped-road.ts): `by` is "our road" or a road's name. */
+export const coveredText = (by: string) => `${by.charAt(0).toUpperCase()}${by.slice(1)} covers it here: pick it further away.`;
+
 /** Automatic and Junction on a local road or track (no junction spacing; research/42, 43). */
 export const MINOR_CROSSING_TEXT = {
   automatic: 'The game decides: existing bridges stay; every road but a motorway or expressway meets ours at its level in a junction; those get the cheapest of a bridge over our road, an underpass or a reroute to a nearby crossing.',

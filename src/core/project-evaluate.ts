@@ -230,7 +230,7 @@ const INTERACTION: Record<InteractionReason, (i: RouteInteraction, houses: numbe
   'shared-noise': (_i, n) => ({ title: n > 1 ? `${n} houses hear both roads` : 'A house hears both roads',
     fix: 'Their noise together is not checked yet, so the project has no total' }),
   'shared-building': () => ({ title: 'Two roads take the same house', fix: 'Move one of them off it' }),
-  'shared-road': () => ({ title: 'Two roads change the same old road', fix: 'Change it with one of them only' }),
+  'shared-road': () => ({ title: 'Two roads change the same old road', fix: 'Keep the two changes of that road apart, or change it with one road only' }),
   'too-many-roads': () => ({ title: `More than ${INDEPENDENCE_SCREEN.maxRoutes} roads`, fix: 'Remove a road change to get a total' }),
 };
 const interactionIssue = (i: RouteInteraction, at: { x: number; y: number } | undefined, locations: ProjectIssue['locations'], houses = 1): ProjectIssue => ({
@@ -527,11 +527,10 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const spec = route.specification, corridor = corridorOfRoute(design, route.id);
     const op = corridor ? corridorOperations(design, corridor) : spec.kind === 'road' ? spec.operations : { aadt: Infinity, speed: Infinity, heavyShare: 1 };
     const halfWidth = corridor || (spec.kind === 'road' && spec.crossSection !== 'existing') ? crownOf(route) / 2 : Infinity;
-    // a rebuilt stretch changes its old road too, wherever another road might touch it
-    const way = route.source?.intervals[0] && ctx.sourceWays?.get(route.source.intervals[0].sourceId);
+    // (a rebuilt stretch's old road is cut out of every other road's network: what is left of it is
+    // another road, which a road crossing it changes on its own)
     return { routeId: route.id, result: legacy, aadt: op.aadt, speed: op.speed, heavyShare: op.heavyShare, halfWidth,
       ...(corridor ? { profile: 'motorway' as const } : {}),
-      ...(way !== undefined ? { extraRoads: [way] } : {}),
       ...(designedJunctions.has(route.id) ? { junctions: designedJunctions.get(route.id) } : {}),
       // its other works on the ground: the links that reconnect side roads, the old road where it is removed
       ...(replacements.has(route.id) ? { extraLines: [
