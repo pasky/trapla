@@ -5,6 +5,36 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 only to frame a camera on A / B and to read state for exact repros. Screenshots under `/tmp/trapla-qa2/` (not
 committed). Newest session on top. Severity: **P0** broken / untruthful, **P1** confusing, **P2** polish.
 
+## Re-test 3 — motorway-rail @ 1c967bb (2026-11-16)
+
+Detached snapshot with that worktree's packs, SwiftShader 1440×900, two chunks (`r3`, `r3b`, the second cut short
+for a queued timed run). Verdicts on Re-test 2 items:
+
+| item | verdict | evidence |
+|---|---|---|
+| P1 2 drag an unselected railway | **PASS** | D3 km 4.6: hovering the Posázavský pacifik shows "drag to change its line"; a drag rebuilds it, the camera does not move (`r3/007`–`009`). |
+| P1 3 rebuild at D3 km 4.6: no U-turn | **PASS** | bend 1 turns 16° (R 330 m). |
+| P1 3 rebuild: structures heighted | **FAIL** | the same 40 px drag: 7 violations: "A long bridge span is too low … raise by 4.1 m / 6.1 m", "Embankment too low for an underpass", "Ramps down to the underpass would be longer than 250 m", "Our earthworks cover 47 m of a track / block a stream / cover a pond or river". The profile shows **−71.3 ‰** and **31.0 ‰** grades on a single-track railway (60 km/h), with no "too steep" problem. A large grey slab is drawn at the stretch's far end (`r3/009`). |
+| P1 4 counting | **PASS** | one Build → Motorway: "New motorway not priced yet" (was "2 road changes"). Still open: the header becomes "THIS MOTORWAY ONLY 40 M CZK" and hides the project total; the motorway built under the D3 viaduct still gets "Roads cross here" ×4 (the same two problems listed twice) (`r3/011`). |
+| P1 5 railway mission starter | **PASS** (P2 below) | VALID 10.43 bn; leaves Trutnov hl. n. along the track field into a short cut and a tunnel from km 0.65; no street demolished (one small marker at the cut) (`r3/001`, `003`, `004`). Streets at km 0.75 / 1.81 / 4.62 pass over the tunnel, over a new street bridge, or under our bridge. The tracks at km 0.52 / 0.65 are rerouted to the crossings at km 0.95 / 0.75, which are themselves built (over the tunnel), not cut. |
+| P2 6 violation location wrap | **PASS** | the location is its own small line above the title ("Motorway towards Václavice") (`r3/017`). |
+| P2 8 150 pilot | **PASS** | "on the D3 39 % of the time in its first winter half-year … Travel time counts that"; D35 7.6 → 7.2 min, +46 M CZK. (It still only costs money while the goal is met at 130.) |
+| P2 9 railway wording | **PASS** | Build → Railway: "A click on a railway joins it there." |
+| P2 10 Edit shown twice | **PASS** | the direction choice appears once: in the card, or in the Motorway section while a build card replaces it. |
+| P2 11 profile end labels | **PASS** | A / B sit at the ends of the bend row; towards Opatovec reads B → A (`r3/014`). |
+
+New / still open:
+- **P1** — Build → Railway at the overview zoom: clicks on the terrain (D35, 1440×900) do not place the start; the
+  card stays at "Click where it starts." with no reason given (`r3/016`). At a closer zoom (D3, earlier session) it
+  worked.
+- P2 — Railway mission: the track at km 0.52 is rerouted with +1,034 m of new track to cross at km 0.95 (130 m
+  before the tunnel portal); the one at km 0.65 buys out a house for its 282 m reroute. A short underpass or
+  continuing the tunnel would be the obvious alternatives.
+- P2 — One-direction overlap still reports "Raise the bridge at km 6.00 by at least 0.1 m" (Re-test 2 P2 7).
+- Motorway noise (D35 km 1.0, 9.5, 12.5, noise view): the band peaks on each carriageway and fades smoothly; no
+  walls needed in these open stretches; nothing odd seen (`r3b/000`–`003`). Walls next to houses were not reached
+  in the shortened chunk.
+
 ## Session 4 — main @ 93f849d, noise work (2026-11-16, short)
 
 D11 road preset, fresh localStorage, SwiftShader 1440×900, one chunk. Screenshots `/tmp/trapla-qa2/s4/`.
