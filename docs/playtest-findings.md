@@ -45,6 +45,20 @@ New:
   bend-near-end violations from one 45 px pull (chunk 2 `003`).
 - P2 — a street and a track get "Not counted in the traffic census: the average class III road is assumed" (736/day).
 
+### Re-test 2, addendum — the two untested items (80168c3, one 5 min chunk, `/tmp/trapla-qa/ar3/`)
+
+| item | verdict | evidence |
+|---|---|---|
+| dropdown framing | **PASS** | from a view at km 1, choosing "Road III/1057" frames the whole rebuilt road (900 m view, Start/End/bends in sight, `001`); choosing "Motorway" frames the whole motorway (6 km view, `000`, `002`). |
+| kept house / walls on the right road (two roads) | **PASS** (P1 below) | the only house heard by both roads after the owner's 1057 drag (night 59 dB from the motorway, 22 dB from 1057): card "Stays · behind a 2 m wall · 49.9 dB (limit 50)", the wall is on "our road, km 11.47" (the motorway), nothing billed to 1057. Keep → "You keep it", still VALID, not bought. |
+
+- **P1 — after "Wall right: None" the house card still says "behind a 2 m wall".** Same kept house: None is shown selected,
+  the total goes +3.6 M CZK and the card reads "Stays · behind a 2 m wall", the plan shows 2 m walls, the wall span changes
+  to km 11.31–11.73 (`005`). Auto evidently re-walls the neighbouring stretch, but unlike the piece card ("Auto adds … instead
+  · Show") the house card does not say so; to the player the choice looks ignored and dearer.
+- (Tooling note: my wait-for-exclusive check matched other agents' shell lines containing the text "flock -x" and idled an
+  hour; fixed to `pgrep -f "^flock -x"`.)
+
 ## Session 3 — Nová Paka and D35 motorway, first-time player (main 93f849d, 2026-11-16, one 10 min chunk)
 
 Fresh localStorage, picker → Nová Paka, then D35 motorway. Screenshots `/tmp/trapla-qa/s3/`.
