@@ -41,14 +41,15 @@ type CutOf = { d0: number; d1: number; open: boolean; sides: [number, number]; a
 /** Work shared by the builds of one buildCrossingGeometry call (our road and the terrain are fixed):
  * each way's stretch through our earthworks, its straightened line, and the geometry of a crossing
  * built only to anchor candidate reroutes (the same for every candidate led to it). */
-type BuildMemo = { cuts: Map<string, CutOf | undefined>; squares: Map<string, unknown>;
+type BuildMemo = { cuts: Map<string, CutOf | undefined>; squares: Map<string, unknown>; crossingWays: Set<number | undefined>;
   anchorBuilds: Map<string, { g: CrossingGeometry; raw: () => readonly (Readonly<WayPoint> | CrossingPoint)[]; sides: [boolean, boolean] }>;
   anchorMemo: Map<object, Map<number, [CrossingPoint | undefined, CrossingPoint | undefined]>> };
-const buildMemo = (): BuildMemo => ({ cuts: new Map(), squares: new Map(), anchorBuilds: new Map(), anchorMemo: new Map() });
+const buildMemo = (ways: readonly (number | undefined)[] = []): BuildMemo => ({ cuts: new Map(), squares: new Map(), crossingWays: new Set(ways), anchorBuilds: new Map(), anchorMemo: new Map() });
 type WayPoint = XY & { d: number };
 type CachedPath = { path: readonly Readonly<WayPoint>[]; diagnostics: readonly string[] };
 /** Immutable shared way paths, stably ordered by distance from their crossing. */
-const pathJunctions = new WeakMap<readonly Readonly<WayPoint>[], Map<number, WayPoint[]>>();
+type Junction = WayPoint & { ways: number[] };
+const pathJunctions = new WeakMap<readonly Readonly<WayPoint>[], Map<number, Junction[]>>();
 const sortedPaths = new WeakMap<readonly Readonly<WayPoint>[], readonly Readonly<WayPoint>[]>();
 const byDistance = (path: readonly Readonly<WayPoint>[]) => {
   let sorted = sortedPaths.get(path);
@@ -503,7 +504,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
   linkMemo: NonNullable<LinkEnv['memo']>,
   sidesOf = new Map<string, [boolean, boolean]>(), budget = Infinity, persist?: CrossingCache, anchorOnly?: ReadonlySet<CrossingResult>,
   memo: BuildMemo = buildMemo()): CrossingIssue[] {
-  const { cuts, squares, anchorBuilds, anchorMemo } = memo;
+  const { cuts, squares, anchorBuilds, anchorMemo, crossingWays } = memo;
   const { at, project, margin, reads } = spatial;
   for (const c of crossings) if (c.issues) c.issues = c.issues.filter(v => !built(v));
   // Works are remeasured on every build (Auto tries candidates, then rebuilds the network).
@@ -586,10 +587,10 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
    * old stretch in between (under our earthworks, or cut off by the new line) is removed. */
   /** Junctions with other roads along a (shared, immutable) way path between chainages lo and hi, at
    * its chainages (per segment, memoised for the path). */
-  const junctionsIn = (path: readonly Readonly<WayPoint>[], lo: number, hi: number): WayPoint[] => {
+  const junctionsIn = (path: readonly Readonly<WayPoint>[], lo: number, hi: number): Junction[] => {
     let memo = pathJunctions.get(path);
     if (!memo) pathJunctions.set(path, memo = new Map());
-    const out: WayPoint[] = [];
+    const out: Junction[] = [];
     for (let k = 1; roads && k < path.length; k++) {
       const a = path[k - 1], b = path[k];
       if (b.d < lo || a.d > hi) continue;
@@ -598,7 +599,7 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
         memo.set(k, list = roads.junctions(a, b).map(j => {
           const t = Math.max(0, Math.min(1, ((j.x - a.x) * (b.x - a.x) + (j.y - a.y) * (b.y - a.y)) / (len * len)));
-          return { x: j.x, y: j.y, d: a.d + t * (b.d - a.d) };
+          return { x: j.x, y: j.y, d: a.d + t * (b.d - a.d), ways: [...new Set(j.connections.map(r => r.way))] };
         }));
       }
       for (const j of list) if (j.d >= lo && j.d <= hi) out.push(j);
@@ -660,7 +661,10 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
     if (!a || !b) return { problem: 'room' as const };
     // Other roads joining the stretch it gives up would be cut off (also under our earthworks: their
     // own rebuilt stretch beside them joins the crossed road's kept line).
-    if (junctionsIn(path, a.d + 1e-6, b.d - 1e-6).length) return { problem: 'junction' as const };
+    // (one under our earthworks is no loss where every road meeting there crosses ours and has a remedy of
+    // its own for its stretch there)
+    if (junctionsIn(path, a.d + 1e-6, b.d - 1e-6).some(j => !(margin(j, 0) < 0 && j.ways.every(w => w === c.roadId || crossingWays.has(w)))))
+      return { problem: 'junction' as const };
     const legA = a.points, legB = [...b.points].reverse();
     // what the new pieces run across, as for a reroute (link-route.ts): its line, not its ramps
     const problems = new Set<string>();
@@ -1329,7 +1333,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // its dense XY samples, not mutable terrain/engineered points or treatment-dependent anchors.
   const paths = persist?.paths ?? new Map<string, CachedPath>(), smoothed = new Map<string, CrossingPoint[]>(), sidesOf = new Map<string, [boolean, boolean]>();
   // Engineered reroutes between the same anchors are the same within one call (terrain and route fixed).
-  const routed = new Map<string, LinkPlan>(), linkMemo = { free: new Map<number, number>() }, memo = buildMemo();
+  const routed = new Map<string, LinkPlan>(), linkMemo = { free: new Map<number, number>() }, memo = buildMemo(crossings.map(c => c.roadId));
   const build = (items: CrossingResult[], budget = Infinity, anchorOnly?: ReadonlySet<CrossingResult>) =>
     buildCrossingGeometryOnce(items, route, heightAt, roads, spatial, paths, smoothed, routed, linkMemo, sidesOf, budget, persist, anchorOnly, memo);
   build(crossings);
