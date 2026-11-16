@@ -231,17 +231,22 @@ Reproduce with `node scripts/railway-shots.mjs --docs 136`.
 ### Editing any road
 
 Any mapped road behaves like our road: click it (its stretch between junctions is highlighted), then drag it
-to rebuild that stretch, bent under the pointer, with its profile and price. **Build → Road** places a new
-road from a click to a click; an end on a road joins it with a junction (Auto: a T, or a roundabout).
-See [docs/any-road-editing.md](docs/any-road-editing.md).
+to rebuild that stretch, bent under the pointer, with its profile and price. Where the new line stays on the
+old road, the old road is kept as it is (drawn on the ground, not billed, no norm); where it leaves it, a new
+road is built and the old one removed. Its traffic is filled in from the ŘSD traffic census 2025 (or the
+average of its class, labelled). **Build → Road** places a new road from a click to a click; an end on a road
+joins it with a junction (Auto: a T, or a roundabout). See [docs/any-road-editing.md](docs/any-road-editing.md).
 
 | A mapped road selected: drag it to change its line | The stretch rebuilt: its bends follow the old road |
 |---|---|
 | ![Mapped road selected](docs/screenshots/100-mapped-road-selected.png) | ![Mapped road rebuilt](docs/screenshots/101-mapped-road-rebuilt.png) |
-| Priced: old road removed, its land not bought again, side roads reconnected | A side road joining our road at a roundabout |
-| ![Rebuilt road priced](docs/screenshots/104-rebuilt-road-priced.png) | ![Side road joins ours](docs/screenshots/105-side-road-joins-ours.png) |
+| D3: road III/1057 moved under our motorway bridge; the rest stays on the old road | A side road joining our road at a roundabout |
+| ![Road III/1057 rebuilt](docs/screenshots/107-d3-road-1057-rebuilt.png) | ![Side road joins ours](docs/screenshots/105-side-road-joins-ours.png) |
 
-Also: [a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
+Also: [road III/1057 selected](docs/screenshots/106-d3-road-1057-selected.png), [its card with a bend
+selected](docs/screenshots/108-d3-road-1057-card.png), [Build → Road: where a click would put the end, and how
+long the road would be](docs/screenshots/109-build-road-placing.png) (`node scripts/owner-d3-scene.mjs --docs`),
+[a new road with a free end](docs/screenshots/102-new-road-built.png), [the photo with the mapped
 roads](docs/screenshots/103-photo-mapped-roads.png); the earlier foundation views 79–83 are in `docs/multi-road-ux.md`.
 
 ### Physical crossings
