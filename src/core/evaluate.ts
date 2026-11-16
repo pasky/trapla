@@ -1503,9 +1503,9 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   let liftStop: number | null = null;
   const liftProfile = (candidate: VPI[], targets: { s: number; z: number }[], range?: readonly [number, number], free?: readonly [number, number]) => {
     const start = performance.now();
-    const lifted = liftAutoProfile(candidate, targets, d.speed, maxGradient, d.gradePins, (m) => {
+    const lifted = liftAutoProfile(candidate, targets, d.speed, vlim.gradeAt ?? maxGradient, d.gradePins, (m) => {
       const k = /fixed km (\d+(?:\.\d+)?)/.exec(m); if (k) liftStop = Number(k[1]) * 1000;
-    }, d.category, range, free);
+    }, d.category, range, free, vlim);
     work('lift', start);
     timing['count.lift'] = (timing['count.lift'] ?? 0) + 1;
     return lifted;
