@@ -1319,6 +1319,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       && Math.abs(t.s - x.s) <= CROSSING_RULES.linkHardReach && !dependsOn(t, x) && (!target || Math.abs(t.s - x.s) < Math.abs(target.s - x.s))) target = t;
     return target;
   };
+  // Reroutes already built and weighed (a crossing to the treatment of another), not built again.
+  const tried = new Set<string>(), attempt = (c: CrossingResult, t: CrossingResult) => `${c.s}:${c.roadId}>${t.s}:${t.roadId}:${t.type}:${t.square ? 1 : 0}`;
   let changed = false;
   // The dearest treatments are reconsidered first: a crossing others are then rerouted to keeps carrying them.
   // (`stale`: its present treatment no longer works, e.g. a reroute whose crossing no longer carries traffic)
@@ -1428,6 +1430,7 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       // not be rebuilt to evaluate a new branch arriving at that source.
       if (anchor.type === 'reconnection' || anchor.type === 'diversion') anchor.type = 'bridge';
       build([anchor, link], ok(best) ? best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1) : Infinity, new Set([anchor]));
+      tried.add(attempt(c, target));
       if (feasible(link) && worth(link, target)) { best = link; break; }
     }
     if (!ok(best) && fallback && (stale || !feasible(c) || fallback.cost < c.cost)) best = fallback;
@@ -1445,7 +1448,6 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   // onto one crossing, research/45): a track's or service road's own structure is joined by a short new
   // road to a neighbour within 750 m that now carries traffic, and a reroute is led to a nearer crossing
   // that now carries traffic, wherever that is cheaper. Dearest structures first, then the reroutes.
-  const tried = new Set<string>();
   const join = (c: CrossingResult) => {
     if (c.requestedType || c.moved || ROAD_CLASSES[c.cls].noAtGrade || c.geometry?.runsBack) return;
     const reroute = c.type === 'reconnection' || c.type === 'diversion';
@@ -1470,9 +1472,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // is away, less up to 250 m where a skewed way leaves our corridor further along, on each side)
     const sides = (sidesOf.get(`${c.roadId}:${c.x},${c.y}`) ?? [true, true]).filter(Boolean).length;
     if (!stranded && sides * Math.max(0, Math.abs(target.s - c.s) - 250) * Math.min(...ROAD_CLASSES[c.cls].roadPerKm) / 1000 >= c.cost) return;
-    const attempt = `${c.s}:${c.roadId}:${c.type}:${c.cost}>${target.s}:${target.roadId}:${target.type}`;
-    if (tried.has(attempt)) return;
-    tried.add(attempt);
+    if (tried.has(attempt(c, target))) return;
+    tried.add(attempt(c, target));
     const before = stranded ? Infinity : c.cost + along.reduce((sum, x) => sum + x.cost, 0);
     const links: CrossingResult[] = [];
     let spent = 0;
