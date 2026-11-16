@@ -1,7 +1,7 @@
 import './style.css';
 import { CATEGORIES } from './core/data/categories';
 import { scenarioParams } from './core/data/scenario';
-import type { Design, Result } from './core/evaluate';
+import type { Result } from './core/evaluate';
 import { missionProject } from './core/project-mission';
 import { routeCrownWidth } from './core/route-section';
 import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinStretch } from './core/project-motorway';
@@ -27,8 +27,7 @@ import { RoadNet } from './core/roadnet';
 import { BuildingPicker } from './render/building-pick';
 import { registerNet } from './core/project-roadnet';
 import { DecisionList } from './ui/build-tools';
-import { buildingInfo, Inspector, type Sel } from './ui/inspector';
-import { pieceAt } from './ui/pieces';
+import { buildingInfo, Inspector } from './ui/inspector';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -57,6 +56,7 @@ import { ViewBar } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
 import { bendStations } from './ui/bend-stations';
 import { createDesignEdits } from './ui/design-edits';
+import { createSelection } from './ui/selection';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
 import { hudEvents } from './ui/hud-events';
@@ -309,97 +309,15 @@ async function main() {
     b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', sign: endInfo('b')?.kind },
     plain: !!store.route && store.route.role !== 'mission',
   });
-  const selectedPi = () => (session.sel?.kind === 'bend' ? session.sel.i : null);
-  const stationNear = (x: number, y: number) => {
-    if (!session.last) return 0;
-    let bd = Infinity, s = 0;
-    for (let k = 0; k < session.last.n; k += 2) { const d = (session.last.x[k] - x) ** 2 + (session.last.y[k] - y) ** 2; if (d < bd) { bd = d; s = session.last.s[k]; } }
-    return s;
-  };
-  /** where the selection is: map point and station range */
-  const placeOf = (t: Sel): { x: number; y: number; s0: number; s1: number } | null => {
-    const r = session.last;
-    if (!r) return null;
-    const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return { x: r.x[i], y: r.y[i] }; };
-    switch (t.kind) {
-      case 'stretch': return { ...at((t.s0 + t.s1) / 2), s0: t.s0, s1: t.s1 };
-      case 'pin': return { ...at(t.s), s0: t.s, s1: t.s };
-      case 'vpi': { const v = r.vpis[t.i]; return v ? { ...at(v.s), s0: v.s, s1: v.s } : null; }
-      case 'bend': { const p = store.design.pis[t.i], b = bendStations(r, store.design)[t.i]; return p && b ? { x: p.x, y: p.y, s0: b.s, s1: b.s } : null; }
-      case 'crossing': { const c = r.crossings.find((c) => c.roadId === t.roadId); return c ? { x: c.x, y: c.y, s0: c.s, s1: c.s } : null; }
-      case 'building': {
-        const b = pack.overlays.buildings[t.j];
-        if (!b) return null;
-        const s = stationNear(b[0], b[1]);
-        return { x: b[0], y: b[1], s0: s, s1: s };
-      }
-      case 'end': { const i = t.end === 'a' ? 0 : r.n - 1; return { x: r.x[i], y: r.y[i], s0: r.s[i], s1: r.s[i] }; }
-    }
-  };
+  // ---- the selection (ui/selection.ts) ----
+  const selection = createSelection({
+    session, store, projectStore, pack, view, profile, extras, hud, inspector, annotations, intro, buildTool, activeEndpoints,
+    get curveEdit() { return curveEdit; }, get linkEdit() { return linkEdit; }, get works() { return works; },
+    get sourceEditor() { return sourceEditor; },
+    switchRoute: id => switchRoute(id), routeCard: () => routeCard(),
+  });
+  const { selectedPi, select, selectPiece, revalidate } = selection;
   view.onEndClick = (end) => select({ kind: 'end', end });
-  /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
-  let selectGeneration = 0; // a deferred base-road pick yields to any later selection
-  /** A single selected place seen from further than this (m per pixel) is too small to make out: framing flies in. */
-  const FRAME_MPP = 6;
-  const select = (next: Sel | null, fly = false) => {
-    selectGeneration++;
-    if (sourceEditor?.selected) sourceEditor.clear();
-    if (buildTool.active) buildTool.cancel(false);
-    // a house a road removes (under its works, or bought out by it): its card is that road's, priced or not
-    const remover = next?.kind === 'building' ? session.projectFull?.buildings.find(b => b.buildingIndex === next.j && b.action !== 'retain')?.routeId : undefined;
-    if (remover && remover !== store.activeRouteId && projectStore.snapshot.design.routes.some(r => r.id === remover)) switchRoute(remover);
-    // a house belongs to the project: its card shows the road whose noise reaches it most
-    else if (next?.kind === 'building' && session.projectFull?.complete && Object.keys(session.projectFull.routes).length > 1) {
-      const contributions = session.projectFull.receivers.find(r => r.buildingIndex === next.j)?.contributions ?? [];
-      const owner = contributions.reduce<(typeof contributions)[number] | null>((a, c) => (!a || c.dayEnergy > a.dayEnergy ? c : a), null)?.routeId;
-      if (owner && owner !== store.activeRouteId) switchRoute(owner);
-    }
-    session.qualifiedSelection = store.activeRouteId ? qualifySelection(store.activeRouteId, next) : null;
-    session.sel = activeSelection(store.activeRouteId, session.qualifiedSelection);
-    if (next) intro.hide();
-    const range = next?.kind === 'stretch' ? { s0: next.s0, s1: next.s1 } : null;
-    profile.setSelection(range); extras.setRange(range); hud.setRange(range);
-    if (store.read()) view.setDesign(store.design, selectedPi(), activeEndpoints());
-    else view.clearDesign(activeEndpoints());
-    profile.selectBend(selectedPi()); if (store.read()) curveEdit.refresh();
-    linkEdit?.refresh(); works?.refresh();
-    const road = next?.kind === 'crossing' ? next.roadId : null;
-    profile.selectCrossing(road); annotations.selectCrossing(road);
-    annotations.selectBuilding(next?.kind === 'building' ? next.j : null);
-    profile.selectStation(next?.kind === 'pin' ? next.s : null);
-    profile.select(next?.kind === 'vpi' ? next.i : null);
-    inspector.set(next);
-    if (!next && !store.read()) routeCard();
-    if (next) {
-      const p = placeOf(next);
-      if (p) {
-        profile.reveal(p.s0, p.s1);
-        if (fly) frameSelection(next);
-      }
-      hud.revealContext('inspector');
-    }
-  };
-  /**
-   * Show the player what they picked away from the map (a click in the profile or in a list): fly to it when it
-   * is off the screen, seen from low over the horizon (it would sit on the horizon), or too small to make out
-   * there (a piece shorter than a sixth of the view, a single place from further than FRAME_MPP m per pixel); a
-   * long piece is framed whole. A selection already well in view stays put.
-   */
-  const frameSelection = (t: Sel) => {
-    const p = placeOf(t);
-    if (!p) return;
-    const box = view.renderer.domElement.getBoundingClientRect();
-    const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y));
-    const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40 || view.lowView;
-    let small = view.metresPerPixel > FRAME_MPP;
-    const r = session.last;
-    if (p.s1 - p.s0 > 1 && r) {
-      const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return view.project(r.x[i], r.y[i], r.grade[i]); };
-      const a = at(p.s0), b = at(p.s1);
-      small = !a.vis || !b.vis || Math.hypot(a.sx - b.sx, a.sy - b.sy) < Math.min(box.width, box.height) / 6;
-    }
-    if (off || small) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
-  };
   /** the active route's card when the road widgets cannot edit it: a proposed change on map geometry */
   const routeCard = () => proposalCard(routeCards);
 
@@ -422,21 +340,6 @@ async function main() {
     select(null); inspector.host(); sourceEditor.show(hit); hud.revealContext('inspector');
   };
   const showNoLinks = () => { select(null); noLinksCard(() => inspector.host(), () => select(null)); hud.revealContext('inspector'); };
-
-  const selectPiece = (s: number, fly = false) => {
-    if (!session.last) return;
-    const p = pieceAt(session.last, s);
-    select({ kind: 'stretch', s0: p.s0, s1: p.s1, piece: p.kind }, fly);
-  };
-  /** after a recompute: drop a selection that no longer exists, refresh a piece's kind */
-  const revalidate = (r: Result, d: Design) => {
-    if (!session.sel) return;
-    if ((session.sel.kind === 'bend' && !d.pis[session.sel.i]) || (session.sel.kind === 'pin' && !d.gradePins?.some((p) => Math.abs(p.s - (session.sel as { s: number }).s) < 0.1))
-      || (session.sel.kind === 'crossing' && !r.crossings.some((c) => c.roadId === (session.sel as { roadId: number }).roadId))
-      || (session.sel.kind === 'vpi' && (d.profileMode !== 'manual' || session.sel.i >= r.vpis.length - 1))
-      || (session.sel.kind === 'stretch' && session.sel.s0 >= r.length)) { select(null); return; }
-    if (session.sel.kind === 'stretch' && session.sel.piece) { session.sel = { ...session.sel, piece: pieceAt(r, (session.sel.s0 + session.sel.s1) / 2).kind }; inspector.sel = session.sel; }
-  };
 
   // ---- edits (ui/design-edits.ts) ----
   const { setStructure, setPin, commitFields, deletePi, takeProfile, addHeightAt, setVia, inspectorEvents, decisionEvents } = createDesignEdits({
@@ -860,7 +763,7 @@ async function main() {
     store, projectStore, view, pack, buildTool, intro, lastClient, canvasBox, routeAt, roadAt, crossingWorksAt, sourceAt, thingAt,
     get A() { return A; }, get B() { return B; },
     get transportIndex() { return transportIndex; }, get transportGraph() { return transportGraph; },
-    get sourceEditor() { return sourceEditor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selectGeneration; },
+    get sourceEditor() { return sourceEditor; }, get linkEdit() { return linkEdit; }, get selectGeneration() { return selection.generation; },
     ensureTransport, select, selectPiece, switchRoute, showSource, showNoLinks, deletePi, placeAt, mappedRoadNear, legacyRoadAt,
   });
   view.ev = mapEvents;
