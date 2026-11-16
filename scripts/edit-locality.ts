@@ -12,7 +12,8 @@
 // env: N (random edits per design, default 8; 4 on the 30+ km routes), SEED, REACH (m, default 10000: a
 //      boundary's 5 km window and the block beyond it, or a retry judged within 5 km and its window),
 //      MPP (metres per screen pixel; default the A–B distance / 800, about the start view)
-// Exit 1 if a QA repro or a grade-pin edit changes anything beyond REACH (a pin leaves the plan alone).
+// Exit 1 if a QA repro or a grade-pin edit changes anything beyond REACH (a pin leaves the plan alone), or a
+// repro marked so is not valid.
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +32,8 @@ const SUITES: Record<string, { scenario: string; designs: string[]; n?: number; 
   'd35-full': { scenario: 'd35-full', designs: ['scripts/scenarios/d35-full/d35-full-motorway.json'], n: 4 },
   ...Object.fromEntries(['d3-0301', 'd3-0302', 'd3-0303', 'd3-0304', 'd3-0305'].map(id => [id, { scenario: id, designs: [`scripts/scenarios/${id}/${id}-motorway.json`] }])),
 };
-type Edit = { kind: 'bend' | 'insert' | 'pin'; at: number; amount: number; bend?: number; qa?: string; xy?: { x: number; y: number } };
+/** `valid`: the repro must also leave a valid design (its problems were Auto's own, not far ones) */
+type Edit = { kind: 'bend' | 'insert' | 'pin'; at: number; amount: number; bend?: number; qa?: string; xy?: { x: number; y: number }; valid?: boolean };
 /** QA's repros: chainage (m), metres sideways (insert: a new bend; at the start view 10 px ≈ 230 m on D11) */
 const QA: Record<string, Edit[]> = {
   straight: [
@@ -44,7 +46,7 @@ const QA: Record<string, Edit[]> = {
   ],
   'scripts/scenarios/d3-full/d3-full-motorway.json': [24500, 29500, 18900, 40000, 50500].map(at => ({ kind: 'insert' as const, at, amount: 300, qa: `re-test 4: drag at km ${at / 1000}` })),
   // the bend the QA's 50 px drag put in (tests/fixtures/qa-final/rail-kralovec-drag.json)
-  'tests/fixtures/qa-final/rail-kralovec.json': [{ kind: 'insert', at: 6000, amount: 23, xy: { x: 8877.519500403168, y: 12943.53983494432 }, qa: 'final sweep: 50 px drag at km 6' }],
+  'tests/fixtures/qa-final/rail-kralovec.json': [{ kind: 'insert', at: 6000, amount: 23, xy: { x: 8877.519500403168, y: 12943.53983494432 }, qa: 'final sweep: 50 px drag at km 6', valid: true }],
 };
 
 const here = fileURLToPath(import.meta.url);
@@ -167,7 +169,7 @@ for (const file of suite.designs) {
     rows.push({ far: planEverywhere ? NaN : far, reach: planEverywhere ? NaN : reach, farViol: newFar.length, dBill, drift, kind: e.kind });
     let verdict = '';
     if (e.kind === 'pin' || e.qa) {
-      const ok = (planEverywhere || far <= 0.5) && !newFar.length;
+      const ok = (planEverywhere || far <= 0.5) && !newFar.length && (!e.valid || r.valid);
       verdict = ok ? 'PASS ' : 'FAIL ';
       if (!ok) failed++;
     }
