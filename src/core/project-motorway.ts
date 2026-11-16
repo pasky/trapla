@@ -191,7 +191,7 @@ function evaluateSpine(ctx: EvalContext, project: ProjectDesign, corridor: Corri
   const ops = corridorOperations(project, corridor), a = corridor.endpoints.a.position, b = corridor.endpoints.b.position;
   const explicitZ = (p: typeof a) => p.z === ctx.terrain.heightAt(p.x, p.y) ? undefined : p.z;
   return evaluate({ ...ctx, a, b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare,
-    maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, corridorDesign(project, corridor),
+    maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, rawCorridorDesign(project, corridor),
   { ...options, endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: ops.speed,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: goal?.maxTravelMin !== undefined, capacity: goal?.demand !== undefined } });
@@ -519,6 +519,10 @@ export function autoFollowingCorridor(project: ProjectDesign, saved: CorridorDes
     const stretches = corridor.stretches ?? [], t = stretches.find(t => t.id === id);
     if (!t || !!t.forward === !!t.reverse) continue;
     const dir: Direction = t.forward ? 'forward' : 'reverse', own = t[dir]!;
+    const controls = corridor.spine.controls;
+    // Explicit shared heights/works constrain the untouched peer: Auto must not discard them.
+    if (corridor.spine.vertical.pins.some(p => p.s >= t.a && p.s <= t.b)
+      || [...controls.structureOverrides ?? [], ...controls.wallOverrides ?? []].some(o => o.s1 >= t.a && o.s0 <= t.b)) continue;
     const pis = corridor.spine.pis, nextPis = compositePis(pis, [t], dir).pis;
     const carried = carryStretches(pis, nextPis, stretches.filter(s => s.id !== id));
     if (carried.dropped) continue; // following must not erase another player-edited stretch
@@ -527,7 +531,6 @@ export function autoFollowingCorridor(project: ProjectDesign, saved: CorridorDes
     if (!p.d.some(d => dir === 'forward' ? d < -JOIN_RULES.deviation : d > JOIN_RULES.deviation)) continue;
     const outside = <T extends { s0: number; s1: number }>(xs: T[] | undefined) =>
       (xs ?? []).filter(x => x.s1 < t.a || x.s0 > t.b);
-    const controls = corridor.spine.controls;
     const structures = [...outside(controls.structureOverrides), ...own.structureOverrides ?? []];
     const walls = [...outside(controls.wallOverrides), ...own.wallOverrides ?? []];
     carried.kept.forEach((s, j) => { if (carried.after[j]) shiftStretch(s, nextAl.length - al.length); });
@@ -565,14 +568,36 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   const corridor = corridorOfRoute(project, routeId);
   if (!corridor || corridor.mode !== 'paired') throw new Error('Not a direction of a paired motorway');
   const dir = directionOf(corridor, routeId), shown = directionDesign(project, routeId), spine = rawCorridorDesign(project, corridor);
-  if (JSON.stringify(d) === JSON.stringify(shown)) return structuredClone(project);
   // one design speed for the motorway: a new one changes the shared line (both directions)
   if (d.speed !== shown.speed) return replaceCorridorFromDesign(project, corridor.id, { ...spine, speed: d.speed });
   const rules = horizontalRules(spine.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
   let stretches = structuredClone(corridor.stretches ?? []);
-  const edited = editStretches(spine.pis, stretches, dir, d.pis, newId);
+  const followed = autoFollowingCorridor(project, corridor);
+  const remaining = new Set(followed.mode === 'paired' ? followed.stretches?.map(t => t.id) : []);
+  const follows = new Set(stretches.filter(t => !remaining.has(t.id)).map(t => t.id));
+  // The peer's widgets show its Auto-followed bends, not saved player choices. Strip those copies
+  // outside the changed bends and their neighbours before comparing with the saved composite.
+  const displayed = compositePis(spine.pis, stretches.map(t => follows.has(t.id) && !t[dir]
+    ? { ...t, [dir]: t.forward ?? t.reverse } : t), dir);
+  const same = (p: PI, q: PI) => p.x === q.x && p.y === q.y && p.r === q.r;
+  let prefix = 0, suffix = 0;
+  while (prefix < shown.pis.length && prefix < d.pis.length && same(shown.pis[prefix], d.pis[prefix])) prefix++;
+  while (suffix < shown.pis.length - prefix && suffix < d.pis.length - prefix
+    && same(shown.pis[shown.pis.length - 1 - suffix], d.pis[d.pis.length - 1 - suffix])) suffix++;
+  const unchanged = prefix === shown.pis.length && prefix === d.pis.length;
+  const savedPis = d.pis.map(p => ({ ...p }));
+  for (const seg of [...displayed.segs].reverse()) {
+    const t = seg.stretch === null ? undefined : stretches[seg.stretch];
+    if (!t || t[dir] || !follows.has(t.id)) continue;
+    if (unchanged || seg.c1 < prefix || seg.c0 > shown.pis.length - suffix) {
+      const shift = unchanged || seg.c1 <= prefix ? 0 : d.pis.length - shown.pis.length;
+      savedPis.splice(seg.c0 + shift, seg.c1 - seg.c0, ...spine.pis.slice(t.k0, t.k1));
+    }
+  }
+  const edited = editStretches(spine.pis, stretches, dir, savedPis, newId);
   if (edited) stretches = locateStretches(A, B, spine.pis, edited, rules);
-  const own = (s0: number, s1 = s0) => stretches.find(t => t[dir] && s1 >= t.a && s0 <= t.b);
+  const lineOf = (t: SeparateStretch) => t[dir] ?? (follows.has(t.id) ? t.forward ?? t.reverse : undefined);
+  const own = (s0: number, s1 = s0) => stretches.find(t => lineOf(t) && s1 >= t.a && s0 <= t.b);
   const changes = <T>(before: readonly T[], after: readonly T[]) => {
     const key = (x: T) => JSON.stringify(x);
     return { added: after.filter(x => !before.some(y => key(y) === key(x))), removed: before.filter(x => !after.some(y => key(y) === key(x))).map(key) };
@@ -581,15 +606,15 @@ export function replaceDirectionFromDesign(project: ProjectDesign, routeId: stri
   const so = changes(shown.structureOverrides ?? [], d.structureOverrides ?? []), wo = changes(shown.wallOverrides ?? [], d.wallOverrides ?? []);
   const drop = <T>(list: readonly T[] | undefined, removed: string[]) => (list ?? []).filter(x => !removed.includes(JSON.stringify(x)));
   for (const t of stretches) {
-    const line = t[dir];
+    const line = lineOf(t);
     if (!line) continue;
     line.pins = drop(line.pins, pins.removed);
     line.structureOverrides = drop(line.structureOverrides, so.removed); line.wallOverrides = drop(line.wallOverrides, wo.removed);
   }
   let spinePins = drop(spine.gradePins, pins.removed), spineSo = drop(spine.structureOverrides, so.removed), spineWo = drop(spine.wallOverrides, wo.removed);
-  for (const p of pins.added) { const t = own(p.s); if (t) t[dir]!.pins.push(p); else spinePins = [...spinePins, p]; }
-  for (const o of so.added) { const t = own(o.s0, o.s1); if (t) (t[dir]!.structureOverrides ??= []).push(o); else spineSo = [...spineSo, o]; }
-  for (const o of wo.added) { const t = own(o.s0, o.s1); if (t) (t[dir]!.wallOverrides ??= []).push(o); else spineWo = [...spineWo, o]; }
+  for (const p of pins.added) { const t = own(p.s); if (t) lineOf(t)!.pins.push(p); else spinePins = [...spinePins, p]; }
+  for (const o of so.added) { const t = own(o.s0, o.s1); if (t) (lineOf(t)!.structureOverrides ??= []).push(o); else spineSo = [...spineSo, o]; }
+  for (const o of wo.added) { const t = own(o.s0, o.s1); if (t) (lineOf(t)!.wallOverrides ??= []).push(o); else spineWo = [...spineWo, o]; }
   for (const t of stretches) for (const line of [t.forward, t.reverse]) {
     if (!line) continue;
     if (!line.structureOverrides?.length) delete line.structureOverrides;
@@ -628,7 +653,7 @@ const KNOT = 250, MIN_OWN_HEIGHTS = 2 * KNOT;
 const spineMemo = new WeakMap<object, { key: string; roads: EvalContext['roads']; result: Result }>();
 function memoSpine(ctx: EvalContext, project: ProjectDesign, corridor: CorridorDesign, goal: Goal,
   options: Pick<EvalOptions, 'preview' | 'materialValue'>): Result {
-  const key = JSON.stringify([corridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), goal, ctx.a, ctx.b]);
+  const key = JSON.stringify([rawCorridorDesign(project, corridor), corridor.endpoints, corridorOperations(project, corridor), goal, ctx.a, ctx.b]);
   const hit = spineMemo.get(ctx.terrain);
   // (the network it is checked against too: the project's other roads as edited, project-roadnet.ts)
   if (hit?.key === key && hit.roads === ctx.roads) return hit.result;
@@ -663,7 +688,7 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
   options: Pick<EvalOptions, 'preview' | 'materialValue'> & { only?: string }): Extract<CorridorEvaluation, { status: 'split' }> {
   if (corridor.mode !== 'paired') throw new Error('Paired corridor needed');
   const spine = memoSpine(ctx, project, corridor, goal, options);
-  const sd = corridorDesign(project, corridor), stretches = corridor.stretches ?? [];
+  const sd = rawCorridorDesign(project, corridor), stretches = corridor.stretches ?? [];
   const rules = horizontalRules(sd.speed, MOTORWAY_CATEGORY), A = corridor.endpoints.a.position, B = corridor.endpoints.b.position;
   const spineAl = buildAlignment(A, B, sd.pis, rules), ok = joinStations(spine, spineAl, rules);
   // joins: the last allowed station at or before each stretch, the first at or after it; stretches whose

@@ -13,9 +13,9 @@ import { KIND } from '../src/core/structures';
 import { syntheticTerrain } from '../src/core/terrain';
 
 const motorway: Design = { category: 'D27.5', speed: 130, pis: [], profileMode: 'auto', vpis: [] };
-function fixture(aadt = 30000) {
-  const legacy = { terrain: syntheticTerrain(500, 120, 5, (x) => 100 + x * 0.01), scenario: D11_SCENARIO,
-    a: { x: 100, y: 250 }, b: { x: 2300, y: 250 } };
+function fixture(aadt = 30000, length = 2200) {
+  const legacy = { terrain: syntheticTerrain((length + 300) / 5, 120, 5, (x) => 100 + x * 0.01), scenario: D11_SCENARIO,
+    a: { x: 100, y: 250 }, b: { x: 100 + length, y: 250 } };
   const context = makeLegacyProjectContext(legacy, { presetId: 'motorway', packId: 'd11', objectData: 'objects', transportData: null });
   const road = projectFromLegacyDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }, context);
   const design = createMotorwayProject(road, motorway, { aadt, heavyShare: 0.2256 });
@@ -212,6 +212,41 @@ describe('one direction on its own (separate stretches)', () => {
     expect(legacyDesignForRoute(explicit, peer, { oneDirection: true }).pis[1].y).toBe(250);
     const separate = evaluateProject(ctx, { ...snapshot, revision: 4, design: explicit });
     expect(separate.routes[f.id].legacy).not.toBe(separate.routes[r.id].legacy);
+  });
+  it('keeps an Auto follow when its peer gets a pin or a bend far away, without splitting the road between', () => {
+    const { ctx, snapshot } = fixture(30000, 4700), [f, r] = snapshot.design.routes;
+    const base = replaceRouteFromLegacy(snapshot.design, f.id, { ...legacyDesignForRoute(snapshot.design, f.id),
+      pis: Array.from({ length: 5 }, (_, i) => ({ x: 800 + i * 800, y: i % 2 ? 220 : 280, r: null })) });
+    const before = legacyDesignForRoute(base, f.id, { oneDirection: true });
+    const inward = replaceRouteFromLegacy(base, f.id, { ...before,
+      pis: before.pis.map((p, i) => i === 0 ? { ...p, y: 300 } : p) }, { oneDirection: true });
+    const peer = legacyDesignForRoute(inward, r.id, { oneDirection: true });
+    const pinned = replaceRouteFromLegacy(inward, r.id, { ...peer, gradePins: [{ s: 4500, z: 146 }] }, { oneDirection: true });
+    expect(pinned.corridors[0].mode === 'paired' && pinned.corridors[0].stretches).toEqual(inward.corridors[0].mode === 'paired' && inward.corridors[0].stretches);
+    const pr = evaluateProject(ctx, { ...snapshot, revision: 2, design: pinned });
+    expect(pr.routes[f.id].legacy).toBe(pr.routes[r.id].legacy);
+    const bentPeer = replaceRouteFromLegacy(inward, r.id, { ...peer,
+      pis: peer.pis.map((p, i) => i === 4 ? { ...p, y: 300 } : p) }, { oneDirection: true });
+    const c = bentPeer.corridors[0];
+    if (c.mode !== 'paired') throw new Error('paired corridor');
+    expect(c.stretches).toHaveLength(2);
+    expect(c.stretches![0].reverse).toBeUndefined();
+    expect(c.stretches![1].forward).toBeUndefined();
+    expect(c.stretches![0].k1).toBeLessThan(c.stretches![1].k0);
+    expect(legacyDesignForRoute(bentPeer, r.id, { oneDirection: true }).pis[0]).toEqual(peer.pis[0]);
+    const result = evaluateProject(ctx, { ...snapshot, revision: 3, design: bentPeer });
+    expect(result.routes[f.id].apart).toHaveLength(1);
+    expect(result.routes[f.id].apart![0].s0).toBeGreaterThan(2500);
+    // A pin on the followed body belongs to that body, without freezing the Auto peer's bends.
+    const local = replaceRouteFromLegacy(inward, r.id, { ...peer, gradePins: [{ s: 500, z: 106 }] }, { oneDirection: true });
+    expect(local.corridors[0].mode === 'paired' && local.corridors[0].stretches![0].reverse).toBeUndefined();
+    expect(legacyDesignForRoute(local, f.id, { oneDirection: true }).gradePins).toContainEqual({ s: 500, z: 106 });
+    expect(legacyDesignForRoute(local, r.id, { oneDirection: true }).gradePins).toContainEqual({ s: 500, z: 106 });
+    // Explicit shared controls pre-dating the pull constrain the peer; never discard them to follow.
+    const constrained = replaceRouteFromLegacy(base, f.id, { ...legacyDesignForRoute(base, f.id), gradePins: [{ s: 500, z: 106 }] });
+    const constrainedPull = replaceRouteFromLegacy(constrained, f.id, { ...legacyDesignForRoute(constrained, f.id, { oneDirection: true }),
+      pis: before.pis.map((p, i) => i === 0 ? { ...p, y: 300 } : p) }, { oneDirection: true });
+    expect(legacyDesignForRoute(constrainedPull, r.id, { oneDirection: true }).pis).toEqual(before.pis);
   });
   it('takes edits at the route ends and says when a pin asks one direction to leave the shared height', () => {
     const { ctx, snapshot, r } = bent();
