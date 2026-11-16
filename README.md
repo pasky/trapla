@@ -326,6 +326,14 @@ Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-unde
 Map camera and labels (`node scripts/camera-check.mjs`): [*Whole route* after panning off the map](docs/screenshots/157-camera-whole-route.png),
 [a low view: no names piled up on the horizon or printed over each other](docs/screenshots/158-camera-low-view-labels.png),
 [noise walls on both sides labelled once](docs/screenshots/159-camera-wall-labels.png).
+Crossing remedies as designers choose them (model 24, `node scripts/crossing-economy-shots.mjs`):
+[D3 motorway: a class III road running along it moved beside it (was a 704 m bridge)](docs/screenshots/170-d3-motorway-road-moved-beside.png),
+[a skewed track straightened through a 50 m box](docs/screenshots/171-d3-motorway-track-straightened-box.png),
+[the player keeps its line](docs/screenshots/172-d3-motorway-track-kept-line.png),
+[two neighbouring tracks led to one box](docs/screenshots/173-d3-motorway-neighbouring-tracks.png),
+[town-centre's skewed service road straightened (57 m box → 25 m)](docs/screenshots/174-town-centre-service-road-straightened.png),
+[best: a service road moved aside](docs/screenshots/175-best-service-road-moved-aside.png),
+[Nová Paka: a service road and a track joined to one box](docs/screenshots/176-nova-paka-roads-joined-to-one-box.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

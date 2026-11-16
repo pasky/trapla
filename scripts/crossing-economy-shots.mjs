@@ -57,6 +57,7 @@ try {
   await page.click('[data-crossing-square="1"]'); await idle();
   text = await card(); console.log('CARD 7.94 again', text.slice(0, 300));
   assert.match(text, /straightened/);
+  await page.click('#crossing-choice [data-crossing=""]'); await idle(); // back to Automatic
   const pair = await crossingNear(3630, undefined);
   console.log('3.63', pair.type, pair.targetS, pair.linkLength);
   await show(pair, 900, 160, 50, 600);
