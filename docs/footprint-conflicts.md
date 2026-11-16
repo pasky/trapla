@@ -354,10 +354,11 @@ road whose box ramps were too long kept that infeasible box although a track's b
 - **A skewed crossing is straightened.** A crossed road meeting ours at less than 70° (`SQUARE_BELOW`: ŘSD R 111
   treats crossings under 70° as non-standard; no Czech norm gives a minimum bridge angle, research/44; the
   angle is that of the line from where the way enters our corridor to where it leaves it) may be laid on a new
-  line: a straight run square across our earthworks, joined on each side to the old way by one smooth bend no
-  sharper than the class's smallest radius (`minRadius`: track 25 m, service roads and streets 27 m, class I–III
-  90 m; research/44), as near our road as that allows, never past another road joining the old way (it would be
-  cut off). The bends must stay off our earthworks and are surveyed like a reroute (rivers, railways, motorways,
+  line: a straight run square across our earthworks, joined on each side to the old way by one smooth bend, or
+  an S of two circular bends where the old way and the square run meet inside our corridor, no sharper than the
+  class's smallest radius (`minRadius`: track 25 m, service roads and streets 27 m, class I–III
+  90 m; research/44), as near our road as that allows, never past another road joining the old way (it may rejoin it at that
+  junction). The bends must stay off our earthworks and are surveyed like a reroute (rivers, railways, motorways,
   ponds, houses, no steeper than the class's justified maximum). The box or bridge over us and its ramps are
   built on the new line; the new road beyond them is billed at the class's SPK rate per metre with its culverts
   (`realignCost`); the old stretch is removed. Auto builds the square variant of a box or a bridge over us only
@@ -394,11 +395,11 @@ road whose box ramps were too long kept that infeasible box although a track's b
 | demo | 4.669186 | 4.656154 | −13.0 M: km 2.48 track joined 14 m away (−8.5 M), km 8.81 shorter reroute. |
 | direct-80 | 4.816992 | 4.774720 | −42.3 M: km 13.50 class I road moved (−7.6 M), km 3.81 / 7.13 tracks joined 11–12 m away, km 5.65 box carries km 5.68's track, km 6.20 bridge straightened, km 12.26 service road rerouted instead of a bridge. |
 | direct-90 | 5.494864 | 5.465526 | −29.3 M: km 8.26 bridge over us straightened (83 → 50 m span, −15.8 M), shorter reroutes at km 2.56 / 3.82; km 9.80 a bridge over us (its reroute is now found to bury houses with its slopes, +2.1 M). |
-| town-centre | 11.388358 | 11.353089 | −35.3 M: km 10.11 bridge over the 31 m cutting straightened (148 → 125 m, −19.0 M), km 7.82 box straightened (68 → 52 m), km 15.98 service road straightened (57 m box → 25 m, the future improvement of model 22), km 4.90 street rerouted 97 m instead of a lowered box. |
-| D11 railway Královec | 14.691344 (1 violation) | 14.516896 (1) | −174 M: boxes straightened at km 10.48 (98 → 58 m), 19.49; km 9.50 track joined 12 m away; km 8.13 service road led to km 8.21's bridge. The violation (a stream at km 18.20) is not a crossing. |
+| town-centre | 11.388358 | 11.349346 | −39.0 M: km 10.11 bridge over the 31 m cutting straightened (148 → 125 m, −19.0 M), km 7.82 box straightened (68 → 52 m), km 15.98 service road straightened through a 25 m box with an S of two 27 m bends (the 57 m box of model 22, −3.3 M), km 4.90 street rerouted 97 m instead of a lowered box. |
+| D11 railway Královec | 14.691344 (1 violation) | 14.504696 (1) | −187 M: boxes straightened at km 10.48 (98 → 58 m) and 19.49; km 9.50 track joined 12 m away; km 8.21 bridge over us straightened and km 8.13's service road led to it. The violation (a stream at km 18.20) is not a crossing. |
 | D3 road (default/reference) | 4.708147 | 4.643470 | −64.7 M (road sections). |
 | D35 road / motorway | 5.967781 / 19.322088 | 5.965575 / 19.322088 | −2.2 M / 0. |
-| Nová Paka (default/reference) | 2.693238 | 2.502167 | −191 M: the tracks and service road at km 3.4–3.6 share the km 3.41 box; shorter joins at km 1.92, 1.56 (moved). |
+| Nová Paka (default/reference) | 2.693238 | 2.496951 | −196 M: the tracks and service road at km 3.4–3.6 share the km 3.41 box; shorter joins at km 1.92, km 1.56 moved aside. |
 
 Nová Paka bend 2 (km 3.3), 24 seeded drags up to 25 m (`scripts/small-drag-audit.ts`): invalid 10 → 1 (the one
 left: 1 m of a service road beside our slope that its relocation cannot clear: footprint walls, core-play-polish).
@@ -408,7 +409,7 @@ a track: no reroute, bridge or box fits; the same track on the d11-railway prese
 
 Frozen fixtures recaptured (`eval-regression.ts --capture=current --reviewed-model-change`): the six above;
 best-drag −32.3 M, best-pin −29.2 M, best-structures −29.1 M and best-manual −29.1 M move with best (the same
-joined tracks, the moved service road; best-manual stays invalid by its manual grade), town-controls −34.6 M with
+joined tracks, the moved service road; best-manual stays invalid by its manual grade), town-controls −39.0 M with
 town-centre (stays invalid by its player overrides).
 
 Audits (straight + five published + 24 random designs): `outcome-audit` violations 124 → 112 (invalid designs
@@ -424,8 +425,8 @@ see, allocation-free deck and box-floor searches, lazy anchor lines, and slope q
 table in `docs/evaluate-performance.md` § Model 24.
 
 **Known remaining.** The straightened line is draped on the ground beyond its ramps (its profile is checked, not
-drawn engineered). A bend's radius is that of a cubic curve, at least the class minimum, not a circular arc with
-transitions. Squaring keeps the crossing at its station; a designer might also move it along our road to a lower
+drawn engineered). Bends are circular arcs or a cubic curve no sharper than the class minimum, without transition curves; an S
+can take a long new line where the old way runs far along our road (town-centre km 15.98: 219 m). Squaring keeps the crossing at its station; a designer might also move it along our road to a lower
 embankment. A crossed road already meeting ours at 70° or more is not straightened. Merged crossings of different
 ways within 30 m keep one remedy for the group; a member's own stretch is rebuilt beside our earthworks, closed or
 removed by the footprint pass (model 16), not given a crossing of its own.

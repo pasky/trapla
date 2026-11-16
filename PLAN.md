@@ -322,7 +322,7 @@ What exists (details and commands in `README.md`):
   (almost) whole is removed. An automatic crossing with nothing buildable under a ≥ 6 m embankment lengthens our
   bridge over it.
 - All published designs stay VALID and get cheaper (best −29 M, demo −13 M, direct-80 −42 M, direct-90 −29 M,
-  town-centre −35 M); D3 motorway starter 18.34 → 14.90 bn; Nová Paka 2.69 → 2.50 bn, its km 3.3 drags 10/24 →
+  town-centre −39 M); D3 motorway starter 18.34 → 14.90 bn; Nová Paka 2.69 → 2.50 bn, its km 3.3 drags 10/24 →
   1/24 invalid. Details, audits and timing: `docs/footprint-conflicts.md` § Model 24.
 
 ### Map camera and labels (playtest-qa S1 #15, #17, #19, 2026-11-16)
