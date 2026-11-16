@@ -10,9 +10,12 @@ import { buildAlignment } from '../core/horizontal';
 
 export class ActiveRouteStore {
   activeRouteId: RouteId | null;
+  /** A motorway's direction is edited on its own (its bends, then, change only it). Selection only:
+   * choosing it never changes the project. */
+  oneDirection = false;
   onHistory?: () => void;
   private atomic = false;
-  private cached: { project: ProjectDesign; id: RouteId; design: Design | null } | null = null;
+  private cached: { project: ProjectDesign; id: RouteId; one: boolean; design: Design | null } | null = null;
   constructor(readonly project: ProjectStoreApi, private initialProject: () => ProjectDesign) {
     this.activeRouteId = project.snapshot.design.routes[0]?.id ?? null;
   }
@@ -20,10 +23,11 @@ export class ActiveRouteStore {
   read(): Design | null {
     const project = this.project.snapshot.design, id = this.activeRouteId;
     if (!id) return null;
-    if (this.cached?.project === project && this.cached.id === id) return this.cached.design;
+    const one = this.directionEdit(id);
+    if (this.cached?.project === project && this.cached.id === id && this.cached.one === one) return this.cached.design;
     let design: Design | null = null;
-    try { design = legacyDesignForRoute(project, id); } catch { /* A different editor/kernel is required. */ }
-    this.cached = { project, id, design };
+    try { design = legacyDesignForRoute(project, id, { oneDirection: one }); } catch { /* A different editor/kernel is required. */ }
+    this.cached = { project, id, one, design };
     return design;
   }
   get design(): Design {
@@ -34,15 +38,23 @@ export class ActiveRouteStore {
   get best() { return this.project.best; }
   /** Changed bindings remain in project state for repair; never clear choices to rebind indices. */
   get objectDataChanged() { return false; }
-  /** A paired motorway is edited as its forward direction (A→B), the orientation of its shared line. */
+  /** A paired motorway is edited as its forward direction (A→B), the orientation of its shared line,
+   * unless one direction alone is edited. */
   private togetherAs(id: RouteId | null): RouteId | null {
+    if (this.oneDirection) return id;
     const corridor = this.project.snapshot.design.corridors.find(c => c.mode === 'paired' && c.children.reverse === id);
     return corridor ? corridor.children.forward : id;
   }
-  /** `created`: a road this open transaction just created (e.g. by the first drag of a mapped road). */
-  switchRoute(id: RouteId, created = false): boolean {
+  /** the active route is a direction of a paired motorway edited on its own */
+  private directionEdit(id: RouteId) {
+    return this.oneDirection && this.project.snapshot.design.corridors.some(c => c.mode === 'paired' && (c.children.forward === id || c.children.reverse === id));
+  }
+  /** `created`: a road this open transaction just created (e.g. by the first drag of a mapped road).
+   * `oneDirection`: a motorway direction alone (anything else: the whole road). */
+  switchRoute(id: RouteId, created = false, oneDirection = false): boolean {
     if (!this.project.snapshot.design.routes.some(r => r.id === id)) return false;
     if (this.project.inTransaction && !created) return false;
+    this.oneDirection = oneDirection;
     this.activeRouteId = this.togetherAs(id);
     return true;
   }
@@ -63,7 +75,8 @@ export class ActiveRouteStore {
     if (own) this.project.begin();
     this.atomic = committed;
     try {
-      this.project.update(draft => Object.assign(draft, replaceRouteFromLegacy(draft, id, design)));
+      const one = this.directionEdit(id);
+      this.project.update(draft => Object.assign(draft, replaceRouteFromLegacy(draft, id, design, { oneDirection: one })));
       if (committed) this.project.commit();
     } catch (error) { if (own) this.project.cancel(); throw error; }
     finally { this.atomic = false; }

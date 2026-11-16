@@ -56,7 +56,8 @@ export class BuildRoadTool {
     close.onclick = () => this.cancel();
     header.append(el('b', `New ${this.label.toLowerCase()}`), close);
     const step = el('p', this.start ? 'Click where it ends.' : 'Click where it starts.'); step.className = 'build-step';
-    const hint = el('div', 'A click on a road joins it there.'); hint.className = 'sub';
+    const hint = el('div', this.label === 'Railway' ? 'A click on a railway joins it there.'
+      : this.label === 'Motorway' ? 'Its ends go on open ground: interchanges are not in the game yet.' : 'A click on a road joins it there.'); hint.className = 'sub';
     root.append(header, step);
     if (this.start) root.append(el('div', `Start: ${this.start.label}`));
     root.append(hint);

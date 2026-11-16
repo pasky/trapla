@@ -1,5 +1,5 @@
 // Serialized GPU/browser slot required. Motorway mode end to end: picker, paired D3 motorway (two
-// carriageways, twin decks, twin tunnels), split one direction, bend it, join again.
+// carriageways, twin decks, twin tunnels), one direction on its own over a stretch, joined again.
 // node scripts/motorway-shots.mjs [d3|d35] [--docs N]   (--docs N: save to docs/screenshots from number N)
 import { mkdirSync, copyFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
@@ -31,18 +31,20 @@ try {
     }));
     await page.waitForTimeout(700);
   };
-  const shot = async (name, doc) => {
+  /** `offset`: its number after --docs N (default: the next one) */
+  const shot = async (name, doc, offset) => {
     await settle();
     const path = `${out}/${String(++n).padStart(2, '0')}-${name}.png`;
     await page.screenshot({ path });
-    if (doc && docsAt !== null) docs.push([path, `docs/screenshots/${docsAt + docs.length}-${doc}.png`]);
+    if (doc && docsAt !== null) docs.push([path, `docs/screenshots/${docsAt + (offset ?? docs.length)}-${doc}.png`]);
     console.log('shot', path);
   };
   const state = () => page.evaluate(() => {
     const p = window.trapla.projectResult();
     return { total: p?.cost.total, valid: p?.valid, complete: p?.complete, unpriced: p?.cost.unpriced,
       issues: p?.issues.map(i => `${i.locations[0]?.routeId ?? ''} ${Math.round(i.locations[0]?.s0 ?? 0)} ${i.violation.title} | ${i.violation.fix}`),
-      score: document.querySelector('#score')?.textContent?.replace(/\s+/g, ' ').trim(), active: window.trapla.activeRoute() };
+      score: document.querySelector('#score')?.textContent?.replace(/\s+/g, ' ').trim(), active: window.trapla.activeRoute(),
+      apart: window.trapla.getProject().corridors[0]?.stretches?.map(t => `${Math.round(t.a)}–${Math.round(t.b)}`) ?? [] };
   });
 
   await page.goto('http://localhost:5293/');
@@ -74,30 +76,39 @@ try {
   if (bridge) { await look(bridge.s0 + Math.min(250, (bridge.s1 - bridge.s0) / 3), 450, 40, 60); await shot('twin-bridge', 'motorway-twin-bridge'); }
   const tunnel = longest(2);
   if (tunnel) { await look(Math.max(0, tunnel.s0 - 15), 160, 30, 160); await shot('twin-tunnel', 'motorway-twin-tunnel'); }
-  // the direction switch sits with the road settings
-  await page.evaluate(() => { const b = document.querySelector('#sec-design .fold-h button'); if (b?.getAttribute('aria-expanded') === 'false') b.click(); });
-  // Split: edit only the direction towards B, then bend it
-  await page.click('#dir-forward');
+  // one direction on its own: choose it on the motorway's own card (nothing changes yet), then drag
+  // that carriageway away from the other; only that stretch runs apart
+  await page.keyboard.press('Escape');
   await settle();
-  console.log('split', JSON.stringify(await state()));
-  await page.evaluate(() => window.trapla.resetCamera());
-  await shot('split');
-  // bend it the way a player does: drag the middle bend's handle on the map
-  const k = await page.evaluate(() => Math.floor(window.trapla.getDesign().pis.length / 2));
-  const moved = await page.evaluate(k => window.trapla.getDesign().pis[k], k);
-  await page.evaluate(m => window.trapla.lookAt(m.x, m.y, 2500, 20, 50), moved);
-  await page.evaluate(k => window.trapla.selectPi(k), k);
+  await page.locator('.motorway-head [data-dir="forward"]').click();
   await settle();
-  const box = await page.locator(`.pi[data-i="${k}"]`).filter({ visible: true }).first().boundingBox();
-  const x0 = box.x + box.width / 2, y0 = box.y + box.height / 2;
-  await page.mouse.move(x0, y0); await page.mouse.down();
-  for (let j = 1; j <= 20; j++) { await page.mouse.move(x0 - 4 * j, y0 + 1.5 * j); await page.waitForTimeout(30); }
+  console.log('picked', JSON.stringify(await state()));
+  const k = 2; // between bends 3 and 4, over the hill north of the Sázava
+  const s = await page.evaluate(k => {
+    const d = window.trapla.getDesign(), p = d.pis[k], q = d.pis[k + 1], r = window.trapla.result();
+    const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < r.n; i++) { const dd = (r.x[i] - mx) ** 2 + (r.y[i] - my) ** 2; if (dd < bd) { bd = dd; best = i; } }
+    window.trapla.lookAt(r.x[best], r.y[best], 1500, 20, 60);
+    return r.s[best];
+  }, k);
+  await settle();
+  const box = await page.locator('#view canvas').first().boundingBox();
+  // grab the carriageway towards B (right of A→B) and pull it 120 m further right
+  const [p, q] = await page.evaluate(s => {
+    const r = window.trapla.result(), i = Math.round(s / r.ds), z = r.grade[i] + 1.5, nx = r.ty[i], ny = -r.tx[i];
+    return [window.trapla.screenOf(r.x[i] + nx * 6.9, r.y[i] + ny * 6.9, z), window.trapla.screenOf(r.x[i] + nx * 127, r.y[i] + ny * 127, z)];
+  }, s);
+  await page.mouse.move(box.x + p.sx, box.y + p.sy); await page.mouse.down();
+  for (let j = 1; j <= 20; j++) { await page.mouse.move(box.x + p.sx + (q.sx - p.sx) * j / 20, box.y + p.sy + (q.sy - p.sy) * j / 20); await page.waitForTimeout(30); }
   await page.mouse.up();
   await settle();
-  console.log('bent', JSON.stringify(await state()));
-  await page.evaluate(m => window.trapla.lookAt(m.x, m.y, 1400, 20, 50), moved); // around the moved bend
-  await shot('split-bent', 'motorway-split');
-  await page.click('#dir-both');
+  console.log('apart', JSON.stringify(await state()));
+  await page.evaluate(s => { const r = window.trapla.result(), i = Math.round(s / r.ds); window.trapla.lookAt(r.x[i], r.y[i], 1300, 25, 50); }, s);
+  await page.keyboard.press('Escape');
+  await shot('one-direction', 'motorway-one-direction', 5); // 135
+  const join = page.locator('.motorway-head .apart-row button').first();
+  if (await join.count()) await join.click();
   await settle();
   console.log('joined', JSON.stringify(await state()));
   await shot('joined');

@@ -75,7 +75,7 @@ export async function pickScenario(options: ScenarioPickerOptions = {}): Promise
   heading.tabIndex = -1;
   heading.focus();
   return new Promise((resolve) => {
-    for (const scenario of PRESETS) {
+    for (const scenario of PRESETS.filter(p => !p.retired)) {
       const card = element('article', '', 'scenario-picker-card');
       const details = scenario.picker;
       card.append(element('p', details?.kind ?? 'Class I road', 'scenario-picker-kind'),

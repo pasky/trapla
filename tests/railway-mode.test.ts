@@ -8,7 +8,8 @@ import { projectBindingsCurrent, type ProjectLoadOptions } from '../src/project-
 import { assertProjectDesign } from '../src/core/project-validation';
 import { railEverywherePerKm, railRouteBasePerKm } from '../src/core/data/railway';
 import { speedNorms } from '../src/core/data/norms';
-import { syntheticTerrain } from '../src/core/terrain';
+import { RAIL_CROSSING_BIT, syntheticTerrain } from '../src/core/terrain';
+import { KIND } from '../src/core/structures';
 import { evaluate } from '../src/core/evaluate';
 import { BuildingIndex } from '../src/core/buildings';
 import { BUILDING_KIND } from '../src/core/data/urban';
@@ -103,5 +104,28 @@ describe('railway mission', () => {
     expect(isScorableProject(result)).toBe(result.valid);
     const options = { objectData: 'objects', transportData: null, mission: railwayMission(context.mission) } as ProjectLoadOptions;
     expect(projectBindingsCurrent(design, options)).toBe(true);
+  });
+});
+
+describe('a railway between two points of an existing line', () => {
+  it('joins and rebuilds the mapped track it runs along, but still bridges a railway it crosses', () => {
+    const { base } = fixture();
+    const terrain = syntheticTerrain(500, 160, 5, () => 100), lc = terrain.lc as Uint8Array, H = terrain.ny * terrain.cell;
+    const paint = (x: number, y: number) => { const c = Math.floor(x / terrain.cell), r = Math.floor((H - y) / terrain.cell); if (c >= 0 && c < terrain.nx && r >= 0 && r < terrain.ny) lc[r * terrain.nx + c] |= RAIL_CROSSING_BIT; };
+    // the line we join at A, run along beyond the 300 m station area, then leave where it turns away
+    for (let x = 0; x < 900; x += 2) paint(x, 250);
+    for (let t = 0; t < 400; t += 2) paint(900 + t * 0.87, 250 + t * 0.5);
+    for (let x = 2200; x < 2500; x += 2) paint(x, 250); // and the station at B
+    for (let y = 0; y < H; y += 2) paint(1250, y); // another line crossing ours
+    const legacy = { terrain, scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 2300, y: 250 } };
+    const ctx: ProjectEvalContext = { legacy, environment: { objectData: 'objects', transportData: null, terrainData: 't', pricingData: 'p', waterData: 'w', terrainClass: 'hilly' } };
+    const design = createRailwayProject({ ...base, routes: base.routes.map(r => ({ ...r, endpoints: { a: { ...r.endpoints.a, position: { ...r.endpoints.a.position, z: 100 } },
+      b: { ...r.endpoints.b, position: { ...r.endpoints.b.position, z: 100 } } } })),
+      mission: { ...base.mission, ports: base.mission.ports.map(p => ({ ...p, position: { ...p.position, z: 100 } })) } },
+      { category: 'R1', speed: 120, pis: [], profileMode: 'auto', vpis: [] });
+    const r = evaluateProject(ctx, { epoch: 'e', revision: 1, design }).routes['route:railway'].legacy!;
+    expect(r.violations.map(v => [Math.round(v.s0), v.title])).toEqual([]);
+    expect(r.kind[Math.round(1150 / r.ds)]).toBe(KIND.bridge); // over the crossing line
+    expect(r.runs.filter(q => q.kind === KIND.bridge).every(q => q.s0 < 1150 && q.s1 > 1150)).toBe(true);
   });
 });
