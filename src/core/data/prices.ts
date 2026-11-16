@@ -52,8 +52,12 @@
  * merged into another's crossing that our earthworks bury is a crossing of its own; an embankment whose slope
  * never meets the hillside is a bridge; railways: a band line missing a clearance is weighed against the
  * wide band's, streams in a cutting and failed reroutes join the separation retry (research/57). Single-road
- * D11 bills unchanged; the Královec railway starter 10.5506 → 10.5857 bn. */
-export const COST_MODEL_VERSION = 29;
+ * D11 bills unchanged; the Královec railway starter 10.5506 → 10.5857 bn.
+ * 30: more projects of several roads are priced: a rebuilt stretch's end meets another road as at a junction
+ * also where it stopped short of that road's works (its old road beyond the end, or what is left of it, under
+ * them); a closure's detour interacts only with changes within its reach; roads one above the other are
+ * compared point by point. reroute-takeover-audit (D11): unpriced 47 → 13 of 292. Single-road bills unchanged. */
+export const COST_MODEL_VERSION = 30;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
