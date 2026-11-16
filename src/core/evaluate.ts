@@ -22,7 +22,7 @@ import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
+import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
@@ -261,10 +261,17 @@ export const OLD_ROAD_TIE = 0.5;
 /** PROVISIONAL, m: how far Auto's smooth line may be from the surveyed surface of an old road it keeps
  * (the surface model along a road is rough: verges, ditches, 5 m cells; D11 Jičínská ±1.5 m). */
 export const OLD_ROAD_BAND = 1;
+/** PROVISIONAL, m: how far from a crossed minor road's ground Auto keeps a local road or track where they meet
+ * in a crossroads (the same slack as a crossing hold). */
+export const MINOR_CROSSROADS_BAND = 0.5;
 /** PROVISIONAL, m: Auto's height points on a rebuilt stretch are this far apart (250 m on a new road): its
  * new parts are a few hundred metres long and must meet the old road's height at both ends. Still at
  * least one vertical curve of the 70 km/h minimum (crest 2 500 m, sag 1 500 m) per point. */
 export const OLD_ROAD_KNOTS = 125;
+/** PROVISIONAL, m: the same on a local road or track, which meets the roads it crosses at their level
+ * (MINOR_CROSSROADS_BAND) and follows the ground closely. Still one vertical curve of its largest minimum
+ * radius (crest 1 000 m at 50 km/h, ČSN 73 6110) for a 6 % change of grade per point. */
+export const MINOR_KNOTS = 60;
 /** the auto-profile's mass-balance search measures candidates on every n-th station's cross-section */
 const BALANCE_STRIDE = 2;
 
@@ -676,6 +683,17 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         } else if (ROAD_CLASSES[c.cls].noAtGrade) maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g - CROSSING_RULES.underDepth - ground[i]);
       }
     }
+    // A local road or track meets the minor roads it crosses in a crossroads (resolveCrossings): Auto keeps
+    // it at their level there, so that they need no ramps (±MINOR_CROSSROADS_BAND, as a crossing hold).
+    if (cat.minor) for (const c of rawRoadX) {
+      const choice = crossingChoice(c.way, crossingOverrides);
+      if (choice && choice !== 'junction' || minorCrossroads(cat.minor, c.cls) === undefined || ctx.roads?.isDesigned(c.way)) continue;
+      const g = terrain.heightAt(c.x, c.y), i0 = Math.max(0, Math.min(n - 2, Math.floor(c.s / ds)));
+      for (const i of [i0, i0 + 1]) {
+        minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], g - MINOR_CROSSROADS_BAND - CLEARANCE_MARGIN - ground[i]);
+        maxH[i] = Math.min(Number.isNaN(maxH[i]) ? Infinity : maxH[i], g + MINOR_CROSSROADS_BAND + CLEARANCE_MARGIN - ground[i]);
+      }
+    }
     // A rebuilt stretch, where it keeps its old road: Auto stays on the old road's surface (within
     // OLD_ROAD_BAND; the line is smooth, the surveyed surface is not), so that it neither digs the kept road
     // out nor heaps the new part's spoil onto it. The last cell on the old road beside each new part is held
@@ -701,7 +719,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: { above: waterMin.slice(), below: waterBelow }, structureKind: manualStructures, pins: d.gradePins,
       costClass: profileCostClass, costClassCount: costClasses.length,
-      ...(onOld ? { knotSpacing: OLD_ROAD_KNOTS } : {}),
+      ...(cat.minor ? { knotSpacing: MINOR_KNOTS } : onOld ? { knotSpacing: OLD_ROAD_KNOTS } : {}),
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
         tolerance: MATERIAL_VALUE.tolerancePerM * al.length,
@@ -1050,7 +1068,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Union of both bodies, the other mirrored: from our right toe to its right toe (axes one crown apart).
   const crossWidth = opts.sharedCrossings?.own ? Float64Array.from(width, (v, i) => kind[i] === KIND.earth && joinedAt(i) ? b + 2 * sec.dayR[i] : v) : width;
   const crossingIssues = resolveCrossings(crossings, al.length, kind, crossWidth, urbanCentre, urban, crossingOverrides, cat.gradeSeparated ? (cat.mode === 'railway' ? 'railway' : 'motorway') : false,
-    ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing);
+    ctx.roads?.designedWays ? (way: number) => ctx.roads!.isDesigned(way) : undefined, cat.minor ? 0 : CROSSING_RULES.junctionSpacing, cat.minor);
   // What a player's reroute shape may not cross on the ground (protected raster, buildings not removed).
   const linkObstacle = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
     const len = Math.hypot(q.x - p.x, q.y - p.y);

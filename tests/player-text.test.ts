@@ -7,7 +7,7 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, footprintOutcome, jargonIn } from '../src/core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, footprintOutcome, jargonIn, MINOR_CROSSING_TEXT } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate, type Design, type Result } from '../src/core/evaluate';
@@ -60,6 +60,7 @@ describe('player-facing text', () => {
     check('closure', footprintOutcome({ feature: 'road', action: 'relocation', cls: 'service', length: 0, closed: { length: 60, detour: 140 } }).label);
     expect(CROSSING_CHOICE_TEXT.map(([v]) => v).filter(Boolean).sort()).toEqual([...CROSSING_CHOICES].sort());
     for (const [, label, title] of CROSSING_CHOICE_TEXT) { check('choice label', label); check('choice tooltip', title); }
+    for (const text of Object.values(MINOR_CROSSING_TEXT)) check('minor road choice tooltip', text);
     for (const g of COST_GROUPS) check('bill line', g.label);
     const terrain = syntheticTerrain(500, 80, 5, () => 400);
     const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 200 }, b: { x: 2100, y: 200 } }, startDesign());

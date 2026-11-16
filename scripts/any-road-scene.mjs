@@ -318,6 +318,27 @@ try {
       await page.evaluate(() => window.trapla.select(null));
       await page.screenshot({ path: `${out}/rebuilt-${cls}.png` });
     }
+    // A street bent 30 m off its old line across another street (D11 Hořice, osm:way:227688877): a crossroads at
+    // that street's level, never a cut and a reroute (it used to be cut and rerouted for millions).
+    {
+      const id = 'osm:way:227688877', s = 122; // Topolová, 244 m
+      await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 500), [id, s]); await idle();
+      const [g, g2] = await page.evaluate(([id, s]) => [window.trapla.sourcePoint(id, s), window.trapla.sourcePoint(id, s + 5)], [id, s]);
+      const l = Math.hypot(g2.x - g.x, g2.y - g.y), to = await page.evaluate(([x, y, z]) => window.trapla.project(x, y, z),
+        [g.x - (g2.y - g.y) / l * 30, g.y + (g2.x - g.x) / l * 30, g.z]);
+      const from = await screen('sourceScreen', id, s), n0 = (await routes()).length;
+      await dragOn(id, s, box.x + to.sx - from.x, box.y + to.sy - from.y);
+      const p = await page.evaluate(() => window.trapla.getProject()), r = p.routes.at(-1);
+      assert.equal(p.routes.length, n0 + 1, 'the street is rebuilt');
+      const own = (await page.evaluate(() => window.trapla.projectResult())).routes[r.id].legacy;
+      const minor = own.crossings.filter(c => ['residential', 'unclassified', 'living_street', 'service', 'track'].includes(c.cls));
+      assert(minor.length, 'its new line crosses another street');
+      assert(minor.every(c => c.type === 'junction' && c.cost <= 1e6), `it meets them in crossroads (${minor.map(c => `${c.cls} ${c.type} ${(c.cost / 1e6).toFixed(2)} M`).join('; ')})`);
+      await page.evaluate(([x, y]) => window.trapla.lookAt(x, y, 350), [minor[0].x, minor[0].y]); await idle();
+      console.log(`a street bent 30 m across another street: ${minor.map(c => `${c.cls} ${c.type} ${(c.cost / 1e6).toFixed(2)} M CZK, ${c.h.toFixed(1)} m from its level`).join('; ')}`);
+      await page.evaluate(() => window.trapla.select(null));
+      await page.screenshot({ path: `${out}/rebuilt-crossroads.png` });
+    }
     let motorway = null;
     for (const id of await page.evaluate(() => ['motorway', 'trunk', 'railway'].flatMap(h => window.trapla.sourceIds(h, 400)))) {
       await page.evaluate(id => window.trapla.lookAtSource(id, 200, 500), id); await idle();

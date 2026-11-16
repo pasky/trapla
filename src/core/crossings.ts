@@ -1,7 +1,7 @@
 // Study-stage network resolution with terrain profiles on the actual OSM alignment.
 import { surchargeRate } from './cost';
 import { bridgeModel } from './bridge';
-import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
+import { ACCESS, CROSSING_RULES, JUNCTION, minorCrossroads, ROAD_CLASSES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
 import { LOWERING_RULES, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { underpassFits } from './crossing-geometry';
@@ -225,8 +225,13 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
   designed: (roadId: number) => boolean = () => false,
   /** Junctions this far apart along our road, m: ČSN 73 6101's 1.5 km; none for a local road or track, whose
    * norms (ČSN 73 6110 group C, ČSN 73 6109) set no such spacing in the parts read (research/42). */
-  junctionSpacing: number = CROSSING_RULES.junctionSpacing): CrossingIssue[] {
+  junctionSpacing: number = CROSSING_RULES.junctionSpacing,
+  /** Our road is a local road or a track (its category's `minor`): where it meets another minor road at the
+   * same level, Auto builds a crossroads (minorCrossroads), as for class I–III roads. */
+  minor?: 'local' | 'track'): CrossingIssue[] {
   const issues: CrossingIssue[] = [];
+  /** what a junction with the crossed way costs; undefined: Auto does not meet it at a junction */
+  const junctionCost = (c: CrossingResult) => minorCrossroads(minor, c.cls) ?? (ROAD_CLASSES[c.cls].junction ? JUNCTION : undefined);
   const issue = (c: CrossingResult, code: CrossingIssue['crossing']['code'], title: string, fix: string,
     actual?: number, required?: number, targetS?: number) => {
     const v: CrossingIssue = { kind: 'crossing', s0: c.s, s1: c.s, title, fix, basis: 'game',
@@ -293,7 +298,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       if (row.noAtGrade && c.h > -CROSSING_RULES.underDepth + 1e-6) issue(c, 'depth', 'A bridge over our road needs a deeper cutting here',
         `Lower our road here by ${(c.h + CROSSING_RULES.underDepth).toFixed(1)} m, to ${CROSSING_RULES.underDepth} m below the crossed road`, -c.h, CROSSING_RULES.underDepth);
     } else if (choice === 'junction') {
-      c.cost = JUNCTION;
+      c.cost = junctionCost(c) ?? JUNCTION;
       const near = junctions.reduce((a, s) => Math.abs(c.s - s) < Math.abs(c.s - a) ? s : a, junctions[0]);
       const gap = Math.abs(c.s - near);
       if (gap < junctionSpacing) issue(c, 'spacing', 'Junctions are too close',
@@ -327,9 +332,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     if (!row.noAtGrade) anchors.push(c);
   }
   for (const c of priority) {
-    if (gradeSeparated || c.requestedType || c.type !== 'atGrade' || !ROAD_CLASSES[c.cls].junction || c.h <= -CROSSING_RULES.underDepth) continue;
+    const cost = junctionCost(c);
+    if (gradeSeparated || c.requestedType || c.type !== 'atGrade' || cost === undefined || c.h <= -CROSSING_RULES.underDepth) continue;
     if (junctions.every(s => Math.abs(c.s - s) >= junctionSpacing)) {
-      c.type = 'junction'; c.cost = JUNCTION;
+      c.type = 'junction'; c.cost = cost;
       junctions.push(c.s); anchors.push(c);
     }
   }

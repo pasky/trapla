@@ -3,7 +3,8 @@
 // old stretch, project-road.ts); here: removing the old pavement where the new road leaves it, and
 // keeping every side road that joined the old stretch connected (never dropped).
 import type { Violation } from './checks';
-import { ACCESS, ENDPOINT_JUNCTIONS, JUNCTION, ROAD_CLASSES } from './data/urban';
+import { ACCESS, ENDPOINT_JUNCTIONS, JUNCTION, minorCrossroads, ROAD_CLASSES } from './data/urban';
+import { CATEGORIES, type CategoryId } from './data/categories';
 import type { Result } from './evaluate';
 import type { ConnectionDesign, RouteDesign } from './project';
 import type { RoadNet } from './roadnet';
@@ -53,9 +54,12 @@ const nearest = (r: Result, x: number, y: number) => {
   return { i, d: best };
 };
 /** Junction of a side road onto the rebuilt road: an access for tracks and service roads (research/13),
- * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). */
-export function sideJunctionCost(cls: string): number {
-  return cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost;
+ * a simple T for minor roads, the all-in junction for class I/II roads (research/08, /29; PROVISIONAL). On a
+ * rebuilt local road or track (`minor`) a minor side road's junction is a crossroads of two minor roads
+ * (research/43). */
+export function sideJunctionCost(cls: string, minor?: 'local' | 'track'): number {
+  return minorCrossroads(minor, cls)
+    ?? (cls === 'track' || cls === 'service' ? ACCESS : cls === 'primary' || cls === 'secondary' ? JUNCTION : ENDPOINT_JUNCTIONS['tie-in-minor'].cost);
 }
 
 /** `base` is the network WITH the old stretch (the cut network has lost it); `way` the old stretch's
@@ -142,7 +146,7 @@ export function replacementWorks(route: RouteDesign, r: Result, base: RoadNet, w
       continue;
     }
     works.push({ kind: 'reconnection', s: r.s[n.i], x: c.position.x, y: c.position.y, length: gap, cls: sideCls,
-      cost: link + sideJunctionCost(sideCls),
+      cost: link + sideJunctionCost(sideCls, route.specification.kind === 'road' ? CATEGORIES[route.specification.crossSection as CategoryId]?.minor : undefined),
       // which one: where along the rebuilt road (the card's line also flies there)
       label: gap > 1 ? `${cap(what)} at km ${km(r.s[n.i])} reconnected: ${Math.round(gap)} m of new road and a junction` : `Junction with the ${what} at km ${km(r.s[n.i])}` });
   }

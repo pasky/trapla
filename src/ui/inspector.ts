@@ -5,7 +5,7 @@
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, MOTORWAY_AUTOMATIC, thisRoadWords } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, thisRoadWords } from '../core/terms';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -66,6 +66,9 @@ const CROSSING_OPTIONS = CROSSING_CHOICE_TEXT as unknown as [string, string, str
 /** A motorway has no level junctions: Automatic never offers one, and neither does the card. */
 const MOTORWAY_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.filter(([v]) => v !== 'junction').map(([v, label, why]) => v === ''
   ? [v, label, MOTORWAY_AUTOMATIC] : [v, label, why]);
+/** A local road or track meets every road it may at its level, without junction spacing. */
+const MINOR_CROSSING_OPTIONS: [string, string, string][] = CROSSING_OPTIONS.map(([v, label, why]) =>
+  [v, label, v === '' ? MINOR_CROSSING_TEXT.automatic : v === 'junction' ? MINOR_CROSSING_TEXT.junction : why]);
 const STRUCTURE_OPTIONS: [string, string, string][] = [
   ['clear', 'Auto', 'Let the game choose (key A)'], ['1', 'Bridge', 'Bridge the whole stretch (key B)'],
   ['2', 'Tunnel', 'Tunnel the whole stretch (key T)'], ['0', 'Earthwork', 'Only cuts and embankments (key E)'],
@@ -397,7 +400,7 @@ export class Inspector {
     const vio = (c.issues ?? []).map((v) => ({ v, fixes: this.fixes(v, d) }));
     const rel = `our road ${Math.abs(c.h).toFixed(0)} m ${c.h >= 0 ? 'above' : 'below'} it`, outcome = crossingOutcome(c);
     // a new road of the project is bridged, carried over us or met, never cut and rerouted
-    const options = (CATEGORIES[d.category].gradeSeparated ? MOTORWAY_CROSSING_OPTIONS : CROSSING_OPTIONS).filter(([v]) => !c.designed || v !== 'reconnection');
+    const options = (CATEGORIES[d.category].gradeSeparated ? MOTORWAY_CROSSING_OPTIONS : CATEGORIES[d.category].minor ? MINOR_CROSSING_OPTIONS : CROSSING_OPTIONS).filter(([v]) => !c.designed || v !== 'reconnection');
     const many = all.length > 1 ? `<div class="why">This ${ROAD_CLASSES[c.cls].label} crosses our road ${all.length} times (km ${all.map((x) => km(x.s)).join(', ')})${choice ? '; your choice applies at each' : ''}. The price is for all of them${cost > c.cost ? ` (${czk(c.cost)} here)` : ''}.</div>` : '';
     const body = `
       <div class="ctx-state"><b>${esc(outcome.label)}${cost > 0 ? ` · ${czk(cost)}` : ''}</b><div class="why">${esc(outcome.explain)}</div>${many}<div class="why">${rel}${choice ? ' · your choice' : ''}</div></div>

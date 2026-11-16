@@ -13,6 +13,9 @@ import { CLASS_TRAFFIC } from '../src/core/data/traffic';
 import { basePerKm } from '../src/core/cost';
 import type { TrafficCensus } from '../src/core/traffic-census';
 import { mappedRoadName } from '../src/core/terms';
+import { evaluate, MINOR_CROSSROADS_BAND } from '../src/core/evaluate';
+import { MINOR_CROSSROADS } from '../src/core/data/urban';
+import { startDesign } from '../src/state';
 
 // A 2 km class III road along y = 1000 with a gentle kink at x = 1000, side roads joining at x = 500 and x = 1550.
 function fixture() {
@@ -69,6 +72,16 @@ describe('rebuilding a mapped road', () => {
     expect(perKm).toBeCloseTo(basePerKm('P4', 'hilly'), 0);
     expect(basePerKm('P4', 'hilly')).toBeGreaterThan(0.8 * 13_985_684.5);
     expect(basePerKm('P4', 'hilly')).toBeLessThan(13_985_684.5);
+  });
+
+  it('a local road meets a street it crosses in a crossroads at that street\'s level, not cut through the hump it lies on', () => {
+    const terrain = syntheticTerrain(260, 120, 5, x => 100 + 4 * Math.max(0, 1 - Math.abs(x - 600) / 40));
+    const roads = new RoadNet({ cls: ['residential'], ways: [[0, 600, 20, 600, 480]] });
+    const r = evaluate({ terrain, scenario: D11_SCENARIO, a: { x: 100, y: 250 }, b: { x: 1100, y: 250 }, roads }, { ...startDesign(), category: 'M7.5', speed: 30 });
+    const [c] = r.crossings;
+    expect(c).toMatchObject({ type: 'junction', cost: MINOR_CROSSROADS.local });
+    expect(Math.abs(c.h)).toBeLessThanOrEqual(MINOR_CROSSROADS_BAND + 0.5); // Auto alone cut 3.75 m into it
+    expect(c.issues ?? []).toEqual([]);
   });
 
   it('derives the stretch between the junctions around the grab point, passing a junction right next to it', () => {

@@ -162,7 +162,8 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
       : `${minor ? LOCAL_NORM : 'ČSN 73 6101'}: at ${speed} km/h a curve must have a radius of at least ${fmt(RR.minRadius)} m (with the road banked at 6 %)`,
     easing: rail ? `${RAIL_NORM}: every curve needs a linear cant ramp of 10·V per mm of cant, ${fmt(lt)} m at the full 150 mm; half lies on the straight, half on the curve`
       : `ČSN 73 6101:2018 (Radimský 2019, slide 15): minimum transition length is max(${fmt(lt)} m, superelevation runoff length); runoff is not modelled here. Game simplifications: from ${R(plain)} on a curve gets none (derived from ${fmt(lt)} m transitions, not a verified 2018 threshold), and half of each easing curve lies on the straight, half on the curve`,
-    reverse: `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
+    reverse: minor ? `Game geometry: two curves turning opposite ways may meet but not overlap; ${minor === 'track' ? TRACK_NORM : LOCAL_NORM} asks for no straight between them (research/42)`
+      : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): between two curves turning opposite ways their easing curves (≥ ${fmt(lt)} m each) may touch, but curves without easing curves (${R(plain)} and more) need a ${fmt(RR.reverseStraight)} m straight between them`,
     compound: minor ? `Game rule (provisional): curves turning the same way that meet as one curve may differ in radius at most ${fmt(RR.compoundRatio)}×`
       : `ČSN 73 6101 (as given in a pre-2018 VUT teaching text, not verified against the 2018 edition): the exceptional compound of same-direction arcs without an intermediate transition requires adjacent radius ratio ≤ ${fmt(RR.compoundRatio)}. The game freely uses this exception and also omits transitions between two transition-free arcs`,
     uturn: `Game limit: no curve is built for a turn sharper than ${deg(MAX_DEFLECTION)}°`,
@@ -345,7 +346,7 @@ export function horizontalViolations(al: Alignment, speed: number, input?: Horiz
         title: `${cap(pair(j.from, j.to))} are too close for an S-bend`,
         fix: red ? red.text : move,
         detail: `${need(j.plainFrom && j.plainTo ? 'The two curves and the straight they need between them' : 'The two curves and their easing curves')} ${red ? or(move) : 'Smaller radii or deleting one bend also help.'}`,
-        basis: 'norm', rule: j.plainFrom || j.plainTo ? rules.reverse : rules.easing,
+        basis: minor ? 'game' : 'norm', rule: j.plainFrom || j.plainTo || minor ? rules.reverse : rules.easing,
       });
     } else {
       // same direction, too close for a straight; normally such bends are joined into one curve
