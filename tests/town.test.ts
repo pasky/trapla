@@ -8,7 +8,7 @@ import { CATEGORIES } from '../src/core/data/categories';
 import { crossingPlanLength, resolveCrossings, type CrossingResult } from '../src/core/crossings';
 import { D11_SCENARIO } from '../src/core/data/scenario';
 import { LAND, STRUCTURE_RULES } from '../src/core/data/prices';
-import { underpassAssembly } from '../src/core/data/remedies';
+import { underpassAssembly, underpassOpenCost } from '../src/core/data/remedies';
 import { BUILDING_KIND, BUILDING_RULES, NOISE, ROAD_CLASSES, URBAN_LAND, URBAN_RATES } from '../src/core/data/urban';
 import { evaluate, type Design } from '../src/core/evaluate';
 import { noiseBand } from '../src/core/noise';
@@ -212,11 +212,15 @@ describe('evaluate on a synthetic town', () => {
     expect(c.type).toBe('underpass');
     expect(auto.kind[c.i]).toBe(KIND.earth);
     const g = c.geometry!, box = g.underpass!;
-    // Toe to toe along the (perpendicular) street: the built footprint width at that station.
-    expect(c.underpassLength).toBeCloseTo(crossingPlanLength(g.road!.slice(box.start, box.end + 1)), 6);
-    expect(Math.abs(c.underpassLength! - (auto.dayL[c.i] + auto.dayR[c.i]))).toBeLessThan(1);
+    // Toe to toe along the (perpendicular) street: the built footprint width at that station; the box
+    // between the portals where our slope comes down to its roof, wing walls from there to the toes.
+    const toes = crossingPlanLength(g.road!.slice(box.start, box.end + 1));
+    expect(Math.abs(toes - (auto.dayL[c.i] + auto.dayR[c.i]))).toBeLessThan(1);
+    expect(c.underpassLength).toBeCloseTo(box.portals![1] - box.portals![0], 6);
+    expect(c.underpassLength).toBeLessThan(toes - 10);
     const assembly = underpassAssembly('local', ROAD_CLASSES.residential.roadPerKm[0] / 1000);
-    expect(c.cost).toBeCloseTo(c.underpassLength! * assembly.perM + 2 * assembly.head, 3);
+    const open = box.wings!.reduce((sum, wing) => sum + underpassOpenCost(wing, ROAD_CLASSES.residential.roadPerKm[0] / 1000), 0);
+    expect(c.cost).toBeCloseTo(c.underpassLength! * assembly.perM + 2 * assembly.head + open, 3);
     expect(c.h).toBeGreaterThanOrEqual(assembly.minHeight);
     // The street survives through the box: neither removed nor reported under the fill.
     expect(g.removed).toBeUndefined();

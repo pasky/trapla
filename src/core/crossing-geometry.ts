@@ -1,12 +1,14 @@
 // Bounded study geometry on real OSM polylines. Quantities are measured from these same paths.
-import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, CrossingRoute } from './crossings';
+import type { CrossingGeometry, CrossingIssue, CrossingPoint, CrossingResult, CrossingRoute, UnderpassWing } from './crossings';
 import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
 import type { RoadNet } from './roadnet';
 import { bridgeModel } from './bridge';
 import { smoothLink } from './crossing-link';
 import { engineerLink, LINK_CORRIDOR, LINK_MAX_SUPPORT, profileLink, routeAlong, surveyLink, type LinkEnv, type LinkPlan, type LinkProblem } from './link-route';
 import { crossingWorks, WORKS_COVER_ROAD, WORKS_TIE_SHARED, WORKS_TIE_TOO_LONG } from './crossing-works';
-import { LOWERING_RULES, RETAINING_RULES, retainingAssembly, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
+import { LOWERING_RULES, RETAINING_RULES, retainingAssembly, sagDrainage, underpassAssembly, underpassOpenCost, UNDERPASS_RULES } from './data/remedies';
+import { slopeSurfaceAt } from './sections';
+import { UNKNOWN_GROUND } from './ground';
 import { KIND } from './structures';
 import { acos, atan2, cos, sin, tan } from './detmath';
 
@@ -901,6 +903,44 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         const lowest = Math.min(Infinity, ...probes.map(q => q.z + box.minHeight - q.ground));
         delete c.lowered; delete c.drainage; delete c.drainCost; delete c.approachLength;
         const rate = (c.roadPerKm ?? row.roadPerKm[0]) / 1000;
+        const groundAt = (d: number) => { const q = along(path, d); return heightAt(q.x, q.y); };
+        // The box ends where our fill's slope comes down to its roof, behind a headwall; from there to the
+        // toe the way runs in the open between wing walls holding up the slope beside it (research/19 §4:
+        // the head allowance covers headwall, foundations and modest wings; walls as high as the fill
+        // beside the open way are billed as retaining walls, the way's own road at its rate).
+        const half = (route.crownWidth ?? 0) / 2, roofTop = box.height + box.roof;
+        const slopeAt = (d: number) => {
+          const p = project(along(path, d), false), side = p.lateral >= 0 ? 1 : -1, nx = -p.ty * side, ny = p.tx * side;
+          return slopeSurfaceAt(p.z, half, o => heightAt(p.x + nx * o, p.y + ny * o), UNKNOWN_GROUND, Math.abs(p.lateral));
+        };
+        const portals = (floorAt: (d: number) => number) => {
+          // (and never short of the carriageway band the box is checked under)
+          const covered = (d: number) => Math.abs(project(along(path, d), false).lateral) <= crown || slopeAt(d) - floorAt(d) >= roofTop;
+          const mid = path[centre].d;
+          const end = (toe: number, inward: number) => {
+            if (covered(toe)) return toe;
+            let a = toe, b = NaN;
+            for (let d = toe + inward; inward > 0 ? d < mid : d > mid; d += inward) { if (covered(d)) { b = d; break; } a = d; }
+            if (Number.isNaN(b)) return toe;
+            for (let k = 0; k < 10; k++) { const m = (a + b) / 2; if (covered(m)) b = m; else a = m; }
+            return b;
+          };
+          const e0 = end(d0, 1), e1 = end(d1, -1);
+          if (!(e1 - e0 > 1)) return { e0: d0, e1: d1, wings: [[], []] as UnderpassWing[][], open: 0 };
+          let open = 0;
+          const wings = ([[d0, e0], [e1, d1]] as const).map(([from, to]) => {
+            const n = Math.ceil((to - from) / 2), out: UnderpassWing[] = [];
+            if (to - from < 1e-6) return out;
+            for (let k = 0; k <= n; k++) {
+              const d = from + (to - from) * k / n, floor = floorAt(d), h = Math.max(0, Math.min(roofTop, slopeAt(d) - floor));
+              out.push({ d, z: floor + h, h });
+            }
+            open += underpassOpenCost(out, rate);
+            return out;
+          });
+          return { e0, e1, wings, open };
+        };
+        let portal: ReturnType<typeof portals>;
         if (lowest < box.minHeight - 1e-6) {
           // A straight floor through the box, as high as leaves the box room under our road everywhere
           // under the crown band. Its fall (at most the class gradient, or the old road's own fall across
@@ -928,9 +968,9 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
           if (depth > LOWERING_RULES.maxDepth + 1e-6) diagnose(g, UNDERPASS_TOO_LOW);
           const f0 = foot(d0, -1, floor(d0)), f1 = foot(d1, 1, floor(d1));
           if (Math.max(d0 - f0, f1 - d1) > MAX_RAMP_LENGTH) diagnose(g, RAMP_TOO_LONG);
+          portal = portals(floor);
           const a = Math.max(path[0].d, Math.min(f0, keep?.p0 ?? Infinity) - STEP), b = Math.min(path[path.length - 1].d, Math.max(f1, keep?.p1 ?? -Infinity) + STEP);
           const distances = [...new Set([a, f0, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, f1, b])].sort((p, q) => p - q);
-          const groundAt = (d: number) => { const q = along(path, d); return heightAt(q.x, q.y); };
           road = distances.map(d => {
             const q = terrainPoint(along(path, d));
             if (d > f0 && d < d0) q.z = floor(d0) + (groundAt(f0) - floor(d0)) * (d0 - d) / (d0 - f0);
@@ -953,13 +993,16 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
           const drain = sagDrainage(outfall, Math.min(low - f0, f1 - low));
           lowered = true; c.lowered = depth; c.approachLength = d0 - f0 + f1 - d1; c.drainage = drain.kind; c.drainCost = drain.cost;
         } else {
+          portal = portals(groundAt);
           const a = Math.max(path[0].d, Math.min(d0 - STEP, keep?.p0 ?? Infinity) - STEP), b = Math.min(path[path.length - 1].d, Math.max(d1 + STEP, keep?.p1 ?? -Infinity) + STEP);
           const distances = [...new Set([a, d0, ...path.filter(q => q.d > a && q.d < b).map(q => q.d), d1, b])].sort((p, q) => p - q);
           road = distances.map(d => terrainPoint(along(path, d)));
         }
-        g.underpass = { start: road.findIndex(q => q.d === d0), end: road.findIndex(q => q.d === d1), width: box.width, height: box.height, roof: box.roof, wall: box.wall };
-        c.underpassLength = length;
-        c.cost = length * box.perM + 2 * box.head + (c.approachLength ?? 0) * rate + (c.drainCost ?? 0);
+        const { e0, e1, wings, open } = portal;
+        g.underpass = { start: road.findIndex(q => q.d === d0), end: road.findIndex(q => q.d === d1), width: box.width, height: box.height, roof: box.roof, wall: box.wall,
+          portals: [e0, e1], wings: wings as [UnderpassWing[], UnderpassWing[]] };
+        c.underpassLength = e1 - e0;
+        c.cost = (e1 - e0) * box.perM + 2 * box.head + open + (c.approachLength ?? 0) * rate + (c.drainCost ?? 0);
       }
     }
     if (keep && road.length) {
@@ -1732,8 +1775,11 @@ export function auditCrossingGeometry(crossings: readonly CrossingResult[], rout
       if (start < 0 || end <= start || end >= g.road.length || !size) report('Invalid underpass bounds');
       else {
         const box = underpassAssembly(size, (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000);
-        if (Math.abs(crossingPlanLength(g.road.slice(start, end + 1)) - (c.underpassLength ?? 0)) > 0.01) report('Underpass quantity differs from geometry');
-        const price = (c.underpassLength ?? 0) * box.perM + 2 * box.head + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.drainCost ?? 0) + (c.realignCost ?? 0);
+        const [e0, e1] = g.underpass.portals ?? [g.road[start].d!, g.road[end].d!];
+        if (Math.abs(crossingPlanLength(g.road.slice(start, end + 1)) - (g.road[end].d! - g.road[start].d!)) > 0.01 || !(e0 >= g.road[start].d! - 1e-6 && e1 <= g.road[end].d! + 1e-6)
+          || Math.abs(e1 - e0 - (c.underpassLength ?? 0)) > 0.01) report('Underpass quantity differs from geometry');
+        const open = (g.underpass.wings ?? []).reduce((sum, wing) => sum + underpassOpenCost(wing, (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000), 0);
+        const price = (c.underpassLength ?? 0) * box.perM + 2 * box.head + open + (c.approachLength ?? 0) * (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000 + (c.drainCost ?? 0) + (c.realignCost ?? 0);
         if (works.every(w => Math.abs(price + w - c.cost) > 0.01)) report('Underpass bill differs from measured quantities');
         if (!c.lowered && g.road.some(q => q.surface !== 'terrain')) report('Underpass way leaves its terrain level');
         if (c.lowered !== undefined && (!g.approaches || c.lowered > LOWERING_RULES.maxDepth + 1e-6) && !g.diagnostics?.length) report('Lowered underpass way is not engineered');

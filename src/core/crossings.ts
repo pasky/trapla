@@ -44,6 +44,7 @@ export interface CrossingPoint {
    * the [-normal, +normal] side (normal from the neighbouring samples), m. */
   wall?: [number | undefined, number | undefined];
 }
+export interface UnderpassWing { d: number; z: number; h: number }
 export interface CrossingGeometry {
   /** Existing road, continuous under our bridge or over our cut. */
   road?: CrossingPoint[];
@@ -54,9 +55,13 @@ export interface CrossingGeometry {
   deck?: { start: number; end: number; depth: number };
   /** Inclusive road-index ranges from each terrain tie-in to the adjusted footprint. */
   approaches?: [{ start: number; end: number }, { start: number; end: number }];
-  /** Underpass: inclusive road indices of the two portals (the way's footprint toe crossings);
-   * the way keeps its terrain level through a closed RC box of this clear opening. */
-  underpass?: { start: number; end: number; width: number; height: number; roof: number; wall: number };
+  /** Underpass: inclusive road indices of our footprint's toes along the way; the way keeps its terrain
+   * level through a closed RC box of this clear opening between `portals`. */
+  underpass?: { start: number; end: number; width: number; height: number; roof: number; wall: number;
+    /** way chainages of the box's portals (where our slope comes down to its roof); between a toe and
+     * its portal the way runs in the open between wing walls (`wings`: their tops `z` and heights `h`
+     * above the way, sampled at way chainages `d`) */
+    portals?: [number, number]; wings?: [UnderpassWing[], UnderpassWing[]] };
   /** Reconnection/diversion: signed way chainages where the severed way leaves the footprint. */
   removed?: [number, number];
   /** Side roads joining the rebuilt stretch, regraded from its new level down to their own ground. */
@@ -116,7 +121,7 @@ export interface CrossingResult {
   targetRoadId?: number;
   span?: number;
   approachLength?: number;
-  /** Underpass box length along the crossed way, toe to toe, m (measured from the geometry). */
+  /** Underpass box length along the crossed way, portal to portal, m (measured from the geometry). */
   underpassLength?: number;
   /** Underpass under a low embankment: the crossed way is lowered into a cut by up to this much, m,
    * on ramps (approachLength) at its class gradient; its low point drains by gravity or a pump. */

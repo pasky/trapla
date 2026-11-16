@@ -95,7 +95,9 @@ describe('earthworks of a raised crossing approach leave other roads usable', ()
     const long = { s: [0, 100, 200, 300, 400], x: [0, 100, 200, 300, 400], y: [0, 0, 0, 0, 0], tx: [1, 1, 1, 1, 1], ty: [0, 0, 0, 0, 0],
       grade: [106, 106, 106, 106, 106], width: [40, 40, 40, 40, 40], kind: [0, 0, 0, 1, 0] };
     buildCrossingGeometry([a, b], long, ground, roads);
-    expect(a.type).toBe('reconnection'); expect(a.targetS).toBe(300); expect(a.issues ?? []).toEqual([]);
+    // (an underpass whose box ends where our slope covers its roof is the cheaper one here; it used to be
+    // cut and reconnected to the street under our bridge at x = 300)
+    expect(a.type).toBe('underpass'); expect(a.issues ?? []).toEqual([]);
   });
 
   it('remeasures the works on every build without accumulating them', () => {

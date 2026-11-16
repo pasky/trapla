@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { CrossingPoint } from '../core/crossings';
 import type { Result } from '../core/evaluate';
 import type { FootprintConflict } from '../core/footprint';
-import { endCollars, groundSegment, hasCrossingPath, turnaroundSurfaces, type CrossingSurface } from './crossing-surface';
+import { endCollars, groundSegment, hasCrossingPath, turnaroundSurfaces, underpassOpenings, type CrossingSurface } from './crossing-surface';
 import { existingRoadColor } from './landcover';
 import type { View } from './view';
 import { EW_KIND } from './terrainMaterial';
@@ -130,6 +130,8 @@ class MeshBuilder {
 }
 type CrossingInput = Pick<Result, 'crossings' | 'grade' | 'ground'> & { footprintConflicts?: readonly FootprintConflict[] };
 
+/** Width of an underpass wing wall's coping beyond its face, m (display). */
+const COPING = 1.5;
 export class CrossingRenderer {
   private group = new THREE.Group();
   /** meshes of each crossing surface by its input key (see surfaceKey), reused while unchanged */
@@ -419,11 +421,22 @@ export class CrossingRenderer {
       }
     }
   }
-  /** Closed RC box under our embankment: shell along the crossed way between its two portals,
-   * headwall frames and splayed wings at the slope toes, and a dark opening. The track keeps its
+  /** Closed RC box under our embankment: shell along the crossed way between its two portals (where
+   * our slope comes down to its roof), headwall frames, wing walls along the open way to the slope toes
+   * (or splayed wings where the box reaches a toe), and a dark opening. The track keeps its
    * terrain-level surface through it; our embankment mesh hides the buried middle. */
-  private underpass(road: CrossingPoint[], box: NonNullable<NonNullable<Result['crossings'][number]['geometry']>['underpass']>, mesh: MeshBuilder) {
-    if (box.start < 0 || box.end <= box.start || box.end >= road.length) return;
+  private underpass(way: CrossingPoint[], geometry: NonNullable<NonNullable<Result['crossings'][number]['geometry']>['underpass']>, mesh: MeshBuilder) {
+    if (geometry.start < 0 || geometry.end <= geometry.start || geometry.end >= way.length) return;
+    // The shell runs between the portals (way chainages), on the way's samples between them.
+    const [e0, e1] = geometry.portals ?? [way[geometry.start].d!, way[geometry.end].d!];
+    const pick = (d: number): CrossingPoint => {
+      let k = geometry.start;
+      while (k + 1 < geometry.end && way[k + 1].d! < d) k++;
+      const a = way[k], b = way[k + 1], t = Math.max(0, Math.min(1, (d - a.d!) / ((b.d! - a.d!) || 1)));
+      return { ...a, x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, ground: a.ground + (b.ground - a.ground) * t, d };
+    };
+    const road = [pick(e0), ...way.slice(geometry.start, geometry.end + 1).filter(q => q.d! > e0 + 0.05 && q.d! < e1 - 0.05), pick(e1)];
+    const box = { ...geometry, start: 0, end: road.length - 1 };
     const concrete = 0xb7b4a9, shade = 0x8b8982, dark = 0x1f1f1d;
     const inner = box.width / 2, outer = inner + box.wall, top = box.height + box.roof;
     const normal = (i: number) => {
@@ -443,6 +456,20 @@ export class CrossingRenderer {
       mesh.quad(at(i, -outer, top), at(i, outer, top), at(i + 1, -outer, top), at(i + 1, outer, top), concrete, 0, 0);
       mesh.quad(at(i, -inner, box.height), at(i, inner, box.height), at(i + 1, -inner, box.height), at(i + 1, inner, box.height), dark, 0, 0);
     }
+    // Between a portal and our slope's toe the way runs in the open: wing walls up to the slope on both
+    // sides (a coping on top), the way's apron between them.
+    const open = underpassOpenings(way, geometry);
+    for (const wing of open) for (let k = 1; k < wing.length; k++) {
+      const p = wing[k - 1], q = wing[k], off = (o: typeof p, lateral: number, z: number): CrossingPoint =>
+        ({ x: o.x + o.nx * lateral, y: o.y + o.ny * lateral, z, ground: o.floor, surface: 'terrain' });
+      for (const side of [-1, 1]) {
+        mesh.quad(off(p, side * outer, p.floor - .3), off(p, side * outer, p.top + .15), off(q, side * outer, q.floor - .3), off(q, side * outer, q.top + .15), side < 0 ? concrete : shade, 0, 0);
+        // (the coping reaches over the edge of the cut-away slope, whose mask raster is coarse)
+        mesh.quad(off(p, side * (outer - .1), p.top + .15), off(p, side * (outer + COPING), p.top + .15), off(q, side * (outer - .1), q.top + .15), off(q, side * (outer + COPING), q.top + .15), concrete, 0, 0);
+        mesh.quad(off(p, side * (outer + COPING), p.top + .15), off(p, side * (outer + COPING), p.top - .6), off(q, side * (outer + COPING), q.top + .15), off(q, side * (outer + COPING), q.top - .6), shade, 0, 0);
+      }
+      mesh.quad(off(p, -outer, p.floor - .04), off(p, outer, p.floor - .04), off(q, -outer, q.floor - .04), off(q, outer, q.floor - .04), shade, 0, 0);
+    }
     for (const [i, outward] of [[box.start, -1], [box.end, 1]] as const) {
       // Headwall frame around the opening, then a dark plug just inside it: the slope surface
       // crossing the box interior near the toe must not show through the opening.
@@ -454,7 +481,8 @@ export class CrossingRenderer {
       for (const side of [-1, 1]) mesh.quad(head(side * inner, -.3, lip), head(side * inner, top + .2, lip), head(side * (outer + .3), -.3, lip), head(side * (outer + .3), top + .2, lip), concrete, 0, 0);
       mesh.quad(head(-inner, box.height, lip), head(inner, box.height, lip), head(-inner, top + .2, lip), head(inner, top + .2, lip), concrete, 0, 0);
       mesh.quad(head(-inner, 0, -plug), head(inner, 0, -plug), head(-inner, box.height, -plug), head(inner, box.height, -plug), dark, 0, 0);
-      // Splayed wing walls retaining the slope beside the portal, falling to the toe.
+      // Splayed wing walls retaining the slope beside the portal, falling to the toe (a box reaching the toe).
+      if (open.length) continue;
       for (const side of [-1, 1]) {
         const reach = top * .9, base = head(side * (outer + .3), 0, lip);
         const end = head(side * (outer + .3 + reach * .5), 0, lip + reach);
