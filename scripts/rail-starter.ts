@@ -35,7 +35,7 @@ console.log('start', JSON.stringify(show(result)));
 if (process.env.CROSSINGS) for (const c of result.crossings) console.log(`  ${Math.round(c.s)} ${c.cls} ${c.type}${c.targetS !== undefined ? ` → ${Math.round(c.targetS)}` : ''}${c.linkLength ? ` link ${Math.round(c.linkLength)} m` : ''} cost ${Math.round(c.cost / 1e6)} M`);
 if (process.env.AT) { const at = Number(process.env.AT), r = result;
   console.log('runs', r.runs.filter(u => u.s1 > at - 400 && u.s0 < at + 400).map(u => `${['earth', 'bridge', 'tunnel'][u.kind] ?? u.kind}:${Math.round(u.s0)}-${Math.round(u.s1)}`).join(' '));
-  console.log('crossings', r.crossings.filter(c => Math.abs(c.s - at) < 400).map(c => `${Math.round(c.s)} ${c.cls} ${c.what ?? ''}`).join('; '));
+  console.log('crossings', r.crossings.filter(c => Math.abs(c.s - at) < 400).map(c => `${Math.round(c.s)} ${c.cls} ${c.type}`).join('; '));
   console.log('water', r.waterCrossings.filter(c => Math.abs(c.s - at) < 400).map(c => `${Math.round(c.s)}`).join(' '));
   const i = Math.round(at / r.ds); console.log('xy', Math.round(r.x[i]), Math.round(r.y[i]), 'grade', r.grade[i].toFixed(1), 'ground', r.ground[i].toFixed(1)); }
 const budget = opt('budget', 0), original = structuredClone(initial);

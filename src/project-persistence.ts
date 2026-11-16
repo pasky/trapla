@@ -71,7 +71,7 @@ function settleTraffic(design: ProjectDesign): boolean {
   }
   return changed;
 }
-/** Pure read/migration. Never writes, never constructs legacy Store, never replaces bad bytes. */
+/** Pure read/migration. Never writes, never replaces bad bytes. */
 export function loadProjectSave(options: ProjectLoadOptions): ProjectLoadResult {
   const raw = options.storage.getItem(projectStorageKeys(options.namespace).project);
   if (raw !== null) {

@@ -8,7 +8,7 @@ import { normalizeOverrides, overrideMask, paintOverride } from '../src/core/ove
 import { chooseStructures } from '../src/core/structures';
 import { RIVER_CROSSING_BIT, syntheticTerrain } from '../src/core/terrain';
 import { buildProfile, elevations } from '../src/core/vertical';
-import { startDesign, Store } from '../src/state';
+import { startDesign } from '../src/state';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -28,22 +28,6 @@ describe('manual structure ranges', () => {
     const ranges = [{ s0: 10, s1: 30, kind: 0 as const }, { s0: 30, s1: 50, kind: 2 as const }];
     expect([...overrideMask([0, 10, 20, 30, 40, 50], ranges)]).toEqual([-1, 0, 0, 2, 2, 2]);
     expect([...overrideMask([0, 20, 40, 60], ranges)]).toEqual([-1, 0, 2, -1]);
-  });
-
-  it('persists, undoes, redoes and removes manual paint; older saves remain automatic', () => {
-    const data = new Map<string, string>();
-    vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => data.set(k, v) });
-    const old = startDesign(); delete old.structureOverrides;
-    data.set('test.design', JSON.stringify(old));
-    const store = new Store('test', startDesign);
-    expect(store.design.structureOverrides).toEqual([]);
-    store.update((d) => { d.structureOverrides = paintOverride([], 100, 300, 1); });
-    expect(new Store('test', startDesign).design.structureOverrides).toEqual(store.design.structureOverrides);
-    store.undo(); expect(store.design.structureOverrides).toEqual([]);
-    store.redo(); expect(store.design.structureOverrides).toHaveLength(1);
-    store.update((d) => { d.structureOverrides = paintOverride(d.structureOverrides!, 100, 300, null); });
-    expect(store.design.structureOverrides).toEqual([]);
-    store.undo(); expect(store.design.structureOverrides).toHaveLength(1);
   });
 });
 

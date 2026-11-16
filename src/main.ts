@@ -7,10 +7,11 @@ import { nearestLeg } from './core/horizontal';
 import { paintOverride, type StructureKind } from './core/overrides';
 import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
-import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
+import { ENDPOINT_JUNCTIONS, ROAD_CLASSES } from './core/data/urban';
 import { ROUNDABOUT_HOSTS } from './core/tie-in';
-import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
-import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, rejoinStretch } from './core/project-motorway';
+import { missionProject } from './core/project-mission';
+import { routeCrownWidth } from './core/route-section';
+import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, MOTORWAY_CATEGORY, rejoinCorridor, rejoinStretch } from './core/project-motorway';
 import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
 import { classTraffic } from './core/traffic-census';
 import { UNCOUNTED_TRAFFIC } from './core/data/traffic';
@@ -48,12 +49,11 @@ import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
 import { endpointJunctions, loadPack } from './scenario';
-import { startDesign } from './state';
 import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
-import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
+import { makeLegacyProjectContext, replaceRouteFromLegacy } from './core/project-legacy';
 import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
-import { acceptsProjectMessage, type NoiseBandOut, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
+import { acceptsProjectMessage, type ProjectWorkerIn } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -67,7 +67,7 @@ import { ProfilePanel } from './ui/profile';
 import { provisionalProfile } from './ui/provisional';
 import { ViewBar, type ViewPrefs } from './ui/viewbar';
 import { EditBar } from './ui/editbar';
-import type { WorkerIn } from './worker';
+import type { WorkerIn, WorkerOut } from './worker-protocol';
 import { hideToast, toast } from './ui/toast';
 import { Intro } from './ui/intro';
 
@@ -105,20 +105,12 @@ async function main() {
   const legacyContext = makeLegacyProjectContext({ terrain: pack.terrain, scenario, a: A, b: B },
     { presetId, packId: meta.id, objectData, transportData });
   const positionA = legacyContext.endpoints.a.position, positionB = legacyContext.endpoints.b.position;
-  // One deep-cloned scenario factory for first start AND Start over; existing saves never receive defaults.
-  const initialRoad = (): Design => ({ ...startDesign(), ...structuredClone(scenario.initial ?? {}) });
-  const motorwayMission = scenario.mode === 'motorway', railwayMission = scenario.mode === 'railway';
-  // The mission ports come from the same legacy context; the corridor / railway then owns the alignment.
-  const roadBase = () => projectFromLegacyDesign({ ...startDesign(), category: 'S9.5', speed: 90 }, legacyContext);
-  const initialProject = () => motorwayMission
-    ? createMotorwayProject(roadBase(), initialRoad(), { aadt: scenario.traffic, heavyShare: scenario.heavyShare ?? NOISE.heavyShare })
-    : railwayMission ? createRailwayProject(roadBase(), initialRoad(), scenario.railTraffic)
-    : projectFromLegacyDesign(initialRoad(), legacyContext);
+  // One scenario factory for first start AND Start over (core/project-mission.ts, shared with the Node scripts).
+  const { initial: initialProject, mission } = missionProject(scenario, legacyContext);
   const openStore = () => openProjectStore({ storage, namespace: { scenarioId: scenario.id, presetId },
-    objectData, transportData, pricingData, initial: initialProject,
-    mission: motorwayMission ? motorwayMissionOf(legacyContext.mission) : railwayMission ? railwayMissionOf(legacyContext.mission, scenario.railTraffic) : legacyContext.mission,
+    objectData, transportData, pricingData, initial: initialProject, mission,
     // Old single-road saves belong to the road exercise only, never to a motorway or railway mission.
-    ...(motorwayMission || railwayMission ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
+    ...(scenario.mode === 'motorway' || scenario.mode === 'railway' ? {} : { legacy: { key: `trapla.${scenario.id}`, context: legacyContext, compatibleSemantics: scenario.id === 'd11' && presetId === 'd11' } }),
   });
   let opened: ReturnType<typeof openStore>;
   try { opened = openStore(); }
@@ -801,9 +793,7 @@ async function main() {
       const r = result.routes[route.id]?.legacy;
       const splitDirection = route.kind === 'motorway' && route.alignment.kind === 'pi';
       if (!r || (route.kind !== 'road' && route.kind !== 'railway' && !splitDirection)) continue;
-      const crown = route.kind === 'railway' ? CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth
-        : route.kind !== 'road' ? CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth
-        : route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
+      const crown = routeCrownWidth(route);
       const controls = route.alignment.kind === 'corridor' ? {} : route.alignment.controls;
       const entry = otherExtras.get(route.id);
       if (route.id === store.activeRouteId) { entry?.overlay.setVisible(false); continue; }
@@ -871,7 +861,7 @@ async function main() {
     worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
       crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
   };
-  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
+  worker.onmessage = previewWorker.onmessage = (ev: MessageEvent<WorkerOut>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
     if (m.type === 'noise-band') {
@@ -933,7 +923,7 @@ async function main() {
     const inputs = projectStore.snapshot.design.routes.flatMap(route => {
       const legacy = result.routes[route.id]?.legacy;
       if (!legacy) return [];
-      if (route.kind === 'railway') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[route.specification.tracks === 1 ? 'R1' : 'R2'].crownWidth }];
+      if (route.kind === 'railway') return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
       // A paired motorway is ONE body drawn once (its forward direction carries the shared result).
       if (route.kind === 'motorway') {
         // separate stretches: the shared body's parts and each direction's own carriageway
@@ -941,13 +931,12 @@ async function main() {
         if (parts) return parts.map(p => ({ id: p.id, result: p.result, crownWidth: CATEGORIES[p.section === 'paired' ? MOTORWAY_CATEGORY : CARRIAGEWAY_CATEGORY].crownWidth,
           buildingMarkers: result.complete, ...(p.mirrored ? { mirrored: true } : {}) }));
         // split: each direction is its own body
-        if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: CATEGORIES[CARRIAGEWAY_CATEGORY].crownWidth }];
+        if (route.alignment.kind === 'pi') return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
         const corridor = projectStore.snapshot.design.corridors.find(c => c.children.forward === route.id);
         return corridor?.mode === 'paired' ? [{ id: route.id, result: legacy, crownWidth: CATEGORIES[MOTORWAY_CATEGORY].crownWidth }] : [];
       }
       if (route.kind !== 'road') return [];
-      const crownWidth = route.specification.crossSection === 'existing' ? route.specification.existingWidth! : CATEGORIES[route.specification.crossSection].crownWidth;
-      return [{ id: route.id, result: legacy, crownWidth }];
+      return [{ id: route.id, result: legacy, crownWidth: routeCrownWidth(route) }];
     });
     const started = performance.now(), stats = { slices: 0, busy: 0, maxSlice: 0 };
     heavy = runSliced((function* () {
