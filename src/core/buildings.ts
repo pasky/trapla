@@ -179,6 +179,32 @@ export class BuildingIndex {
     return true;
   }
 
+  /** Offsets across the line through (x, y) with unit direction (tx, ty) (positive to its left) that
+   * building j's footprint rectangle takes within `ha` along it either way: [nearest-right, farthest-left]
+   * as [min, max], or null where it stays clear of that band. */
+  across(j: number, x: number, y: number, tx: number, ty: number, ha: number): [number, number] | null {
+    let poly: [number, number][] = [];
+    for (const [p, q] of [[1, 1], [1, -1], [-1, -1], [-1, 1]]) {
+      const cx = this.ox[j] + this.ux[j] * this.hl[j] * p - this.uy[j] * this.hw[j] * q - x;
+      const cy = this.oy[j] + this.uy[j] * this.hl[j] * p + this.ux[j] * this.hw[j] * q - y;
+      poly.push([cx * tx + cy * ty, -cx * ty + cy * tx]);
+    }
+    // clip to -ha <= along <= ha (Sutherland–Hodgman on the two edges of the band)
+    for (const sign of [1, -1]) {
+      const out: [number, number][] = [];
+      for (let k = 0; k < poly.length; k++) {
+        const a = poly[k], b = poly[(k + 1) % poly.length], da = ha - sign * a[0], db = ha - sign * b[0];
+        if (da >= 0) out.push(a);
+        if ((da >= 0) !== (db >= 0)) { const t = da / (da - db); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+      }
+      poly = out;
+      if (!poly.length) return null;
+    }
+    let lo = Infinity, hi = -Infinity;
+    for (const p of poly) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+    return [lo, hi];
+  }
+
   /**
    * Does building j's footprint rectangle intersect the rectangle centred at (cx,cy) with unit axis
    * (tx,ty), half-length `ha` along it and half-width `hb` across it? (separating-axis test)

@@ -138,6 +138,9 @@ export interface Result {
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
   kept: { j: number; i: number; hit: boolean }[];
+  /** buildings a retaining wall keeps clear of our works (instead of their demolition): where, how high,
+   * the walls' estimated price and what demolition would have cost, CZK; `kept`: the player keeps it */
+  walledOff: RetainingPlan['walledBuildings'];
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
   /** `source`: the road as an acoustic line source (cells, wall lines, screening edges, junction openings);
    * `L` / `R`: built wall heights per station (manual included), m — the same the bill and 3D use */
@@ -785,8 +788,25 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   /** per cell: buildings under the deck strip / the earthwork (at the widths it was found for) */
   const deckHits: number[][] = [], earthHits: number[][] = Array.from({ length: n }, () => []);
   const earthHitL = new Float64Array(n).fill(NaN), earthHitR = new Float64Array(n).fill(NaN);
+  // the same before any retaining wall narrows a section (walls only narrow: the lists after them are subsets)
+  const wideHits: number[][] = Array.from({ length: n }, () => []);
+  const wideHitL = new Float64Array(n).fill(NaN), wideHitR = new Float64Array(n).fill(NaN);
+  /** buildings the slopes (width l left, r right) plus the working strip reach at station i */
+  const hitsAt = (i: number, l: number, r: number, from?: readonly number[]) => {
+    const bld = ctx.buildings!, x = st.x[i], y = st.y[i], tx = st.tx[i], ty = st.ty[i], list: number[] = [];
+    const off = (l - r) / 2, half = (l + r) / 2 + BUILDING_RULES.clearance, cx = x - ty * off, cy = y + tx * off;
+    const test = (j: number) => { if (bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) list.push(j); };
+    if (from) from.forEach(test); else bld.near(x, y, Math.max(l, r) + BUILDING_RULES.clearance + ds, test);
+    return list;
+  };
   const deckBuildings = new Float64Array(n), earthBuildings = new Float64Array(n);
   const work = (key: string, start: number) => { timing[`work.${key}`] = (timing[`work.${key}`] ?? 0) + performance.now() - start; };
+  // Buildings a retaining wall may keep clear of our works (the player's kept ones; Auto's where only the
+  // working strip reaches them and the wall is cheaper); bought ones are never walled for.
+  const wallable = ctx.buildings ? (() => {
+    const o = normalizeBuildingOverrides(d.buildingOverrides, ctx.buildings!.n);
+    return { index: ctx.buildings!, keep: new Set(o.filter(b => b.action === 'keep').map(b => b.j)), skip: new Set(o.filter(b => b.action === 'buy').map(b => b.j)) };
+  })() : undefined;
   const engineer = (candidate: VPI[], crossingWays: CrossingChainages, strict: ReadonlySet<number>) => {
   timing['count.engineer'] = (timing['count.engineer'] ?? 0) + 1;
   const engineeringStart = performance.now();
@@ -799,12 +819,15 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const sectionsStart = performance.now();
   const sec = computeSections(terrain, n, st.x, st.y, st.tx, st.ty, grade, tpl, true, sectionMemo);
   work('sections', sectionsStart);
+  if (ctx.buildings) for (let i = 0; i < n; i++) if (wideHitL[i] !== sec.dayL[i] || wideHitR[i] !== sec.dayR[i]) {
+    wideHits[i] = hitsAt(i, sec.dayL[i], sec.dayR[i]); wideHitL[i] = sec.dayL[i]; wideHitR[i] = sec.dayR[i];
+  }
   const retainingStart = performance.now();
   // A preview keeps natural slopes: no retaining walls, nor the bridges an impossible wall forces.
   const retention: RetainingPlan = preview ? {
     walls: [], perCell: new Float64Array(n), landPerCell: new Float64Array(n), forcedBridge: new Uint8Array(n), forcedTunnel: new Uint8Array(n),
-    wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [],
-  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays);
+    wallSurfaceL: new Float64Array(n).fill(NaN), wallSurfaceR: new Float64Array(n).fill(NaN), channelRelocations: [], clearanceRequirements: [], walledBuildings: [],
+  } : planRetainingWalls({ ...st, ...sec, grade, crownWidth: b }, terrain, ctx.roads, manualStructures, water, retainingMemo, waterElevation, crossingWays, wallable && { ...wallable, hits: wideHits });
   work('retaining', retainingStart);
   lap('sections');
 
@@ -842,12 +865,6 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // within an evaluation; a cell's earthwork hits are redone only where its widths changed.
   if (ctx.buildings) {
     const bld = ctx.buildings;
-    const hitsAt = (i: number, l: number, r: number) => {
-      const x = st.x[i], y = st.y[i], tx = st.tx[i], ty = st.ty[i], list: number[] = [];
-      const off = (l - r) / 2, half = (l + r) / 2 + BUILDING_RULES.clearance, cx = x - ty * off, cy = y + tx * off;
-      bld.near(x, y, Math.max(l, r) + BUILDING_RULES.clearance + ds, (j) => { if (bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) list.push(j); });
-      return list;
-    };
     const share = (hits: readonly (readonly number[])[], out: Float64Array) => {
       const count = new Map<number, number>();
       for (const list of hits) for (const j of list) count.set(j, (count.get(j) ?? 0) + 1);
@@ -860,7 +877,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     if (!deckHits.length) { for (let i = 0; i < n; i++) deckHits.push(hitsAt(i, w, w)); share(deckHits, deckBuildings); }
     let changed = false;
     for (let i = 0; i < n; i++) if (earthHitL[i] !== sec.dayL[i] || earthHitR[i] !== sec.dayR[i]) {
-      const list = hitsAt(i, sec.dayL[i], sec.dayR[i]);
+      const list = sec.dayL[i] === wideHitL[i] && sec.dayR[i] === wideHitR[i] ? wideHits[i] : hitsAt(i, sec.dayL[i], sec.dayR[i], wideHits[i]);
       if (!changed && (list.length !== earthHits[i].length || list.some((j, k) => j !== earthHits[i][k]))) changed = true;
       earthHits[i] = list; earthHitL[i] = sec.dayL[i]; earthHitR[i] = sec.dayR[i];
     }
@@ -1437,7 +1454,13 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
     violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, wallsAroundChoices, demolished, boughtOut, kept,
-    retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
+    retainingWalls, walledOff: retention.walledBuildings.flatMap(b => {
+      // the walls standing for it (its own cells and the one either side each wall reaches over)
+      const own = retainingWalls.filter(w => w.feature === 'building' && w.s1 > b.s0 - ds && w.s0 < b.s1 + ds);
+      return !gone[b.j] && own.some(w => st.s[w.i] > b.s0 && st.s[w.i] < b.s1)
+        ? [{ ...b, s0: Math.min(...own.map(w => w.s0)), s1: Math.max(...own.map(w => w.s1)), height: Math.max(...own.map(w => w.height)), wall: own.reduce((a, w) => a + w.cost, 0) }] : [];
+    }),
+    wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
     noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
       limit: noiseModel.controlling === 'night' ? noiseModel.limits?.nightDb ?? NOISE.limitNightDb : noiseModel.limits?.dayDb ?? NOISE.limitDayDb },
     quantities: {

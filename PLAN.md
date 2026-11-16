@@ -348,10 +348,21 @@ What exists (details and commands in `README.md`):
 - A chimney, silo or shed (≤ 200 m², ≤ 1/4 of the other) wholly within a demolished building's outline goes
   with it (Nová Paka km 1.97); a stream left under the earthwork just beyond a bridge's end with too little
   cover is spanned by one more engineering pass.
-- Fixtures against model 23 (motorway-rail, D11 road bills identical to model 22): straight −34.0, best −23.1,
-  best-drag −8.7, best-pin −36.7, best-structures −36.4, best-manual −17.3, demo −47.4, direct-80 −120.2,
-  direct-90 −119.4, town-centre / town-controls −421.5 M CZK, validity as before (the merge changes no bill); outcome-audit (5 designs + straight + 24 random): violations
-  144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch fails).
+- A building no one lives in that only the 3 m working strip beside our slopes reaches (not the slopes or deck
+  themselves) stays when a retaining wall ending the slope 3 m short of it costs less than buying and demolishing it
+  (the retaining-wall machinery and its research/18 OTSKP assembly; `retaining.ts` `wallBuildings`): Nová Paka km
+  1.91, a hall demolished for 322 M CZK, now stays behind a 0.6 m wall for ≈ 0.3 M. Auto keeps no dwelling this way:
+  a home metres from our slope's top needs noise walls or a buyout that the noise check decides only later (tried:
+  random D11 designs gained +170 M of noise walls for 40 M of houses). A building the player keeps is walled off
+  wherever a wall fits between our crown and it, whatever the slopes reach. The card says which wall keeps it and
+  what demolition would have cost. Limit: a wall planned at a cell that then becomes a bridge leaves its one-cell
+  extension beside the bridge end.
+- Fixtures against model 23 (motorway-rail, D11 road bills identical to model 22): straight −33.9, best −23.1,
+  best-drag −8.7, best-pin −36.7, best-structures −36.4, best-manual −17.3, demo −90.6, direct-80 −120.3,
+  direct-90 −119.3, town-centre / town-controls −421.5 M CZK, validity as before (the merge changes no bill; the
+  walls for buildings: demo −43.2, the others within ±0.1). outcome-audit (5 designs + straight + 24 random):
+  violations 144 → 118, VALID 8 → 8 (more in two random designs: a road relocation beside a now-unbridged stretch
+  fails); the walls for buildings alone: no design dearer by more than 1 M, four random ones 34–59 M cheaper.
 
 ### Travel-time target X and traffic Y
 

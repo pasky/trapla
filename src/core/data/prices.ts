@@ -19,7 +19,10 @@
  * 24: the structure choice prices the buildings each option demolishes and settles the fill value on
  * the final grade line (By hand from Auto's heights bills the same); piers of a chosen bridge miss
  * what lies below; an automatic bridge whose piers cannot is not chosen; a stream at a bridge's end
- * is spanned; a chimney / silo / shed standing within a demolished building goes with it. */
+ * is spanned; a chimney / silo / shed standing within a demolished building goes with it; a building no
+ * one lives in that only the working strip beside our slopes reaches stays behind a retaining wall (research/18 rates)
+ * where that wall costs less than buying and demolishing it, and a building the player keeps is walled
+ * off wherever a wall can stand. */
 export const COST_MODEL_VERSION = 24;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */

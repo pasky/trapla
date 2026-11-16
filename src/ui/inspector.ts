@@ -221,8 +221,19 @@ export class Inspector {
   /** violations about this thing: title, short fix, and fix buttons */
   private issues(list: { v: Violation; fixes: string }[]) {
     if (!list.length) return '';
-    return list.slice(0, 3).map(({ v, fixes }) => `<div class="ctx-issue"><b>⚠ ${esc(shownText(v.title))}</b>${fixes ? `<div class="fixes">${fixes}</div>` : `<div class="vfix">${esc(shownText(v.fix))}</div>`}</div>`).join('')
-      + (list.length > 3 ? `<div class="sub">+${list.length - 3} more in Violations</div>` : '');
+    // the same problem with the same fix at several places: once, with how many
+    // (the same buttons, for their places: one set over all of them)
+    const groups = new Map<string, { v: Violation; fixes: string; count: number }>();
+    for (const { v, fixes } of list) {
+      const key = `${v.kind}\n${shownText(v.title)}\n${fixes.replace(/data-[a-z-]+="[^"]*"/g, '') || shownText(v.fix)}`, g = groups.get(key);
+      if (!g) { groups.set(key, { v, fixes, count: 1 }); continue; }
+      g.count++;
+      g.v = { ...g.v, s0: Math.min(g.v.s0, v.s0), s1: Math.max(g.v.s1, v.s1) };
+      if (this.d && !g.v.target) g.fixes = this.fixes(g.v, this.d);
+    }
+    const shown = [...groups.values()].slice(0, 3), rest = list.length - shown.reduce((a, g) => a + g.count, 0);
+    return shown.map(({ v, fixes, count }) => `<div class="ctx-issue"><b>⚠ ${esc(shownText(v.title))}${count > 1 ? ` <small>(${count} places)</small>` : ''}</b>${fixes ? `<div class="fixes">${fixes}</div>` : `<div class="vfix">${esc(shownText(v.fix))}</div>`}</div>`).join('')
+      + (rest > 0 ? `<div class="sub">+${rest} more in Violations</div>` : '');
   }
 
   // ---- nothing selected: where the money goes ----
@@ -447,7 +458,15 @@ export class Inspector {
       state = rec.status === 'wall' ? (rec.wall > 0 ? `Stays · behind a ${rec.wall} m wall` : 'Stays · behind walls') : rec.status === 'cut' ? 'Stays · shielded by a cut' : 'Stays · quiet enough';
       why = `${(limit + rec.mitigated).toFixed(1)} dB ${period} on the ${rec.storeys === 1 ? 'only' : rec.floor === rec.storeys - 1 ? 'top' : 'loudest'} floor (limit ${limit}).`;
     } else state = 'Stays · far from the road';
-    if (action === 'keep' && !kept?.hit && !rec?.unresolved) why = (why ? `${why} ` : '') + 'You keep it.';
+    // kept clear of our works by a retaining wall instead of demolished (Auto's price comparison, or the player keeps it)
+    const walled = !removed && !bought ? r.walledOff?.find((p) => p.j === j) : undefined;
+    if (walled) {
+      if (!rec) state = 'Stays · a wall keeps our works clear';
+      const wall = `a ${walled.height.toFixed(1)} m retaining wall along our road, km ${kmr(walled.s0, walled.s1)},`;
+      why = (why ? `${why} ` : '') + (walled.kept ? `You keep it: ${wall} keeps the works clear of it (${czk(walled.wall)}).`
+        : `Auto: ${wall} keeps the works clear of it for ${czk(walled.wall)}; demolishing it would cost ${czk(walled.demolition)}.`);
+    }
+    if (action === 'keep' && !kept?.hit && !rec?.unresolved && !walled) why = (why ? `${why} ` : '') + 'You keep it.';
     const vio = r.violations.filter((v) => v.target?.buildings?.includes(j)).map((v) => ({ v, fixes: this.fixes(v, d) }));
     let section = '', walls = '';
     this.restWall = null;
@@ -470,8 +489,21 @@ export class Inspector {
       const active = mine ? String(mine.height) : 'auto';
       const opts: [string, string, string][] = [['auto', 'Auto', 'Walls where houses need them'], ['0', 'None', 'No wall'], ...NOISE.playerWallHeights.map((h): [string, string, string] => [String(h), `${h} m`, `${h} m wall`])];
       // what stands there now: the player's choice, or what Auto built (as piece cards say)
-      const now = mine ? (mine.height ? `${mine.height} m (yours)` : 'none (yours)') : w ? `Auto: ${w.height} m` : 'Auto: none';
-      walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[shownSide(side)]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>${now} · km ${kmr(s0, s1)}</small></div>`;
+      // (the walls standing along this stretch on that side, as the map draws them, not only at the house)
+      const built = r.walls.filter((x) => x.side === side && x.s1 > s0 && x.s0 < s1);
+      const heights = (list: typeof built) => [...new Set(list.map((x) => `${x.height} m`))].join(', ');
+      // beside the player's own stretch, Auto's walls on the rest of it
+      const beside = mine ? built.filter((x) => x.s0 < mine.s0 - 1 || x.s1 > mine.s1 + 1) : [];
+      const now = mine ? `${mine.height ? `${mine.height} m` : 'none'} (yours)${beside.length ? ` · Auto: ${heights(beside)} beside it` : ''}`
+        : built.length ? `Auto: ${heights(built)}` : 'Auto: none';
+      // the walls Auto builds beside the player's choice for the stretch this house hears (as the piece card says)
+      const around = mine ? (r.wallsAroundChoices ?? []).filter((x) => x.side === side && x.i1 >= rec.window[0] && x.i0 <= rec.window[1]) : [];
+      const adds = around.map((x) => `<div class="sub around">Auto adds ${m0(x.s1 - x.s0)} of ${x.height} m wall at km ${kmr(x.s0, x.s1)} ${mine?.height ? 'as well' : 'instead'} <button type="button" class="link" data-stretch="${x.s0},${x.s1}">Show</button></div>`).join('');
+      walls = `<div class="wall-row" data-range="${s0},${s1}"><span class="lbl">Wall ${SIDE[shownSide(side)]}</span>${this.choices(`wall-${side}`, `data-wall-${side}`, opts, active)}<small>${now} · km ${kmr(s0, s1)}</small></div>${adds}`;
+      // the wall it stays behind is Auto's beside the player's choice, not the choice itself
+      if (mine && rec.status === 'wall' && around.length && !(mine.height && mine.height >= rec.wall)) {
+        state = `Stays · behind Auto's ${rec.wall > 0 ? `${rec.wall} m ` : ''}wall beside your choice`;
+      }
     }
     // In the road's way it is demolished whatever else is chosen: no separate "buy out" next to that
     const opt: [string, string, string][] = removed && action !== 'buy'

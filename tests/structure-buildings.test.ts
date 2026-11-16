@@ -39,4 +39,32 @@ describe('buildings in the structure choice', () => {
     const beside = new BuildingIndex([[700, 240, 50], [760, 255, 3]], [[4800, 1, 3, 700, 240, 40, 35, 0], [9, 0, 4, 760, 255, 1.5, 1.5, 0]]);
     expect(evaluate({ ...ctx, buildings: beside }, flat).demolished.map(p => p.j)).toEqual([0]);
   });
+
+  it('a building only the working strip beside our cut reaches stays behind a retaining wall where that is cheaper', () => {
+    // a 2 m cut over km 0.3–0.9
+    const cut: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual',
+      vpis: [{ s: 0, z: 400, r: null }, { s: 200, z: 400, r: null }, { s: 300, z: 398, r: null }, { s: 900, z: 398, r: null }, { s: 1000, z: 400, r: null }, { s: 1200, z: 400, r: null }] };
+    const open = evaluate(ctx, cut), i = Math.round(600 / open.ds), edge = 200 + open.dayL[i] + 1.5;
+    // its near wall 1.5 m beyond the slope's top, within the 3 m working strip
+    const at = (hl: number, hw: number, kind: number, area: number) => new BuildingIndex([[700, edge + hw, Math.hypot(hl, hw)]], [[area, 1, kind, 700, edge + hw, hl, hw, 0]]);
+    const hall = at(20, 10, 3, 800), r = evaluate({ ...ctx, buildings: hall }, cut);
+    expect(r.demolished).toEqual([]);
+    expect(r.walledOff.map(b => [b.j, b.kept])).toEqual([[0, false]]);
+    expect(r.walledOff[0].wall).toBeLessThan(hall.cost[0]);
+    const walls = r.retainingWalls.filter(w => w.feature === 'building');
+    expect(walls.length).toBeGreaterThan(0);
+    // the slope ends at the wall, the working strip beside it keeps clear of the hall
+    for (const w of walls) expect(w.offset + 3).toBeLessThan(edge - 200);
+    // in a 4 m cut, a hall the slope itself reaches is demolished by Auto; kept by the player, a wall keeps the
+    // works clear of it
+    const deep: Design = { ...cut, vpis: cut.vpis.map(v => (v.z < 400 ? { ...v, z: 396 } : v)) };
+    const top = 200 + evaluate(ctx, deep).dayL[i] - 1;
+    const inSlope = new BuildingIndex([[700, top + 10, 22]], [[800, 1, 3, 700, top + 10, 20, 10, 0]]);
+    expect(evaluate({ ...ctx, buildings: inSlope }, deep).demolished.map(p => [p.j, p.strip])).toEqual([[0, false]]);
+    const keep = evaluate({ ...ctx, buildings: inSlope }, { ...deep, buildingOverrides: [{ j: 0, action: 'keep' }] });
+    expect([keep.demolished, keep.kept.filter(k => k.hit), keep.walledOff.map(b => b.kept)]).toEqual([[], [], [true]]);
+    // a shed is cheaper to demolish than to wall off
+    const shed = at(1.5, 1.5, 4, 9);
+    expect(evaluate({ ...ctx, buildings: shed }, cut).demolished.map(p => [p.j, p.strip])).toEqual([[0, true]]);
+  });
 });
