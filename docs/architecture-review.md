@@ -110,7 +110,7 @@ objects passed directly, `main()`'s variables as live getters, commands as funct
 Next steps, in this order (each its own commit, verified by tsc, the browser gates and the scene scripts
 that play the flow):
 
-1. Done: **`EvalClient`** (`src/eval-client.ts`, 97 lines): request ids, the in-flight map, the preview
+1. Done: **`EvalClient`** (`src/eval-client.ts`, 102 lines): request ids, the in-flight map, the preview
    gesture, "no repeat of a full request for the same design", the full-after-idle timer, the noise-band
    request and which replies count; `main.ts` keeps what to *do* with a result (`showPreview`,
    `showFull`). Not a verbatim move, so it has unit tests (`tests/eval-client.test.ts`, fake ports and
