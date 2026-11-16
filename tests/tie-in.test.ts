@@ -157,6 +157,25 @@ describe('a roundabout where the player chooses it', () => {
 });
 
 describe('houses heard by both roads', () => {
+  const loud = (y: number) => {
+    const f = fixture('tertiary', [], new BuildingIndex([[650, y, 5]])), side = f.snapshot.design.routes[1];
+    if (side.kind === 'road') side.specification.operations.aadt = 40000;
+    return f;
+  };
+  it('the player\'s wall choices and Keep stand: no project wall where the player said none, no buyout of a kept house', () => {
+    const walled = evaluateProject(loud(300).ctx, loud(300).snapshot);
+    expect(walled.works.items.filter(w => /both roads/.test(w.label ?? '')).map(w => w.kind)).toEqual(['noise']);
+    // no walls anywhere (the player's choice on both roads), and the house kept: left too loud, a violation
+    const none = loud(300);
+    for (const r of none.snapshot.design.routes) if (r.alignment.kind === 'pi')
+      (r.alignment.controls as { wallOverrides?: unknown }).wallOverrides = [{ s0: 0, s1: 1e6, side: 'L', height: 0 }, { s0: 0, s1: 1e6, side: 'R', height: 0 }];
+    none.snapshot.design.buildingOverrides = [{ j: 0, action: 'keep' }];
+    const p = evaluateProject(none.ctx, none.snapshot);
+    expect(p.works.items.filter(w => /both roads/.test(w.label ?? ''))).toEqual([]);
+    expect(p.buildings.filter(b => b.buildingIndex === 0 && b.action === 'buy')).toEqual([]);
+    expect(p.issues.filter(i => i.scope.buildingIndex === 0).map(i => i.violation.title)).toEqual(['Too loud with both roads together']);
+    expect(p.valid).toBe(false);
+  });
   const at = (routeId: string, db: number) => ({ routeId, sourceId: `physical-${routeId}`, dayLimit: 60, nightLimit: 50,
     storeys: [{ height: 1.5, rawDay: 10 ** (db / 10), rawNight: 10 ** ((db - 10) / 10), day: 10 ** (db / 10), night: 10 ** ((db - 10) / 10) }] });
   it('are decided once, from both roads\' own finite-segment noise (or a given calculator)', () => {
@@ -174,7 +193,7 @@ describe('houses heard by both roads', () => {
     expect(trial.area).toBeCloseTo(4 * trial.length, 6);
     trial.storeys.forEach((st, k) => { expect(st.day).toBeLessThan(open.storeys[k].day * 0.5); expect(st.rawDay).toBeCloseTo(open.storeys[k].rawDay, 6); });
     trial.commit();
-    expect(decider.walls().get('side')!.stretches).toEqual([expect.objectContaining({ side: expect.any(String), height: 4 })]);
+    expect(Math.max(...decider.walls().get('side')!.L, ...decider.walls().get('side')!.R)).toBe(4);
     expect(decider.sources(0).find(q => q.routeId === 'side')!.storeys[0].day).toBeCloseTo(trial.storeys[0].day, 3);
     const mission = snapshot.design.routes[0].id;
     const decided = evaluateProject({ ...ctx, combinedNoise: routes => {

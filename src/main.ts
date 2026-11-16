@@ -1048,7 +1048,7 @@ async function main() {
     return sourceAt(clientX, clientY);
   };
   /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
-  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
+  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null, grabbedEarly: { x: number; y: number } | null = null;
   const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
     const interval = sourceEditor?.interval; if (!interval) return null;
     const g = view.pick(clientX, clientY);
@@ -1112,7 +1112,7 @@ async function main() {
     // a drag from the road always bends it (a click there still inspects the nearest thing); so does a
     // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch
     hitRoad: (clientX, clientY) => {
-      grabbing = null; grabbedSource = null;
+      grabbing = null; grabbedSource = null; grabbedEarly = null;
       if (buildTool.active) return false;
       if (roadAt(clientX, clientY, 9) >= 0) return true;
       grabbing = mappedGrab(clientX, clientY);
@@ -1121,9 +1121,22 @@ async function main() {
       // its card says why it cannot be changed
       const s = sourceAt(clientX, clientY);
       if (s?.kind === 'source') { grabbedSource = s.hit; return true; }
+      // before the road links are loaded: a mapped road there is held (no pan) and its card opens once they are
+      const g = !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
+      if (g && legacyRoadAt(g.x, g.y)) { grabbedEarly = g; return true; }
       return false;
     },
     onRoadDrag: (x, y) => {
+      if (grabbedEarly) {
+        const g = grabbedEarly, generation = selectGeneration; grabbedEarly = null;
+        void ensureTransport().then(() => {
+          if (generation !== selectGeneration) return;
+          const p = view.project(g.x, g.y, view.drape(g.x, g.y)), box = canvasBox();
+          const late = p.vis ? sourceAt(box.left + p.sx, box.top + p.sy) : null;
+          if (late?.kind === 'source') showSource(late.hit);
+        });
+        return null;
+      }
       if (grabbedSource) {
         showSource(grabbedSource); grabbedSource = null;
         const interval = sourceEditor?.interval;

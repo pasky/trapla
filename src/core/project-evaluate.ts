@@ -19,6 +19,8 @@ import type { CrossingResult } from './crossings';
 import { CROSSING_RULES } from './data/urban';
 import { STEP, type EvalOptions } from './evaluate';
 import { thisRoadWords } from './terms';
+import { wallStretches } from './noise';
+import { legacyDesignForRoute } from './project-legacy';
 
 export interface ProjectEvalContext { legacy: EvalContext; environment: ProjectEnvironment; sourceWays?: SourceWays;
   /** Combined noise of several roads (C1 c): answers each road's per-storey energy at a house from its
@@ -390,7 +392,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     const i = end === 'a' ? 0 : legacy.n - 1, k = Math.max(0, Math.min(host.n - 1, Math.round(t.s / host.ds)));
     let list = ownWorks.get(route.id); if (!list) ownWorks.set(route.id, list = []);
     list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.cost, label: t.label });
-    if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost,
+    if (t.ring) list.push({ kind: 'junction', s: legacy.s[i], x: legacy.x[i], y: legacy.y[i], length: 0, cost: t.ring.cost, ...(t.ring.removed.length ? { removes: [...t.ring.removed] } : {}),
       label: `Roundabout's ring: ${Math.round(t.ring.area)} m² of land${t.ring.removed.length ? `, ${t.ring.removed.length} building${t.ring.removed.length > 1 ? 's' : ''} removed` : ''}` });
     // The side road's first metres lie inside the joined road's own earthworks: built (and bought) once.
     const inside = host.cell.width[k] / 2;
@@ -541,10 +543,12 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   }), ctx.legacy.buildings);
   // Houses heard by two or more roads are decided together from both roads' own sources; every other
   // interaction (shared land, roads, buildings) still keeps the project unpriced.
+  let valid = true;
   const heard = screen.interactions.filter(i => i.reason === 'shared-noise' && i.buildingIndex !== undefined);
   const heardRoutes = units.flatMap(u => u.parts).map(({ route, legacy }) => ({ route, result: legacy }));
   const builtIn = heard.length && ctx.legacy.buildings && !ctx.combinedNoise
-    ? finiteSegmentDecider(heardRoutes.map(({ route, result }) => ({ routeId: route.id, result })), ctx.legacy.buildings, (x, y) => ctx.legacy.terrain.heightAt(x, y)) : null;
+    ? finiteSegmentDecider(heardRoutes.map(({ route, result }) => ({ routeId: route.id, result, wallOverrides: wallChoices(design, route) })),
+      ctx.legacy.buildings, (x, y) => ctx.legacy.terrain.heightAt(x, y)) : null;
   const decider = heard.length && ctx.legacy.buildings ? builtIn ?? ctx.combinedNoise?.(heardRoutes) ?? null : null;
   const blocking = screen.interactions.filter(i => !(decider && heard.includes(i)));
   if (blocking.length) {
@@ -565,28 +569,47 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
     }
     return finish();
   }
+  // houses already gone: under a road, bought by it, or on a roundabout's ring; the player's Keep is never bought
   const together = decider ? combineNoise(heard.map(i => i.buildingIndex!), decider, ctx.legacy.buildings!,
     new Set([...priced.flatMap(({ legacy }) => [...legacy.demolished, ...legacy.boughtOut].map(b => b.j)),
-      ...[...ringsOf.values()].flatMap(ws => ws.flatMap(w => w.removes ?? []))])) : [];
+      ...[...ringsOf.values(), ...ownWorks.values()].flatMap(ws => ws.flatMap(w => w.removes ?? []))]),
+    new Set(design.buildingOverrides.filter(o => o.action === 'keep').map(o => o.j))) : [];
   for (const h of together) {
+    if (h.over !== undefined && h.over > 0) {
+      // a house the player keeps that no single wall brings within the limit: a violation of the road that prevails
+      const b = ctx.legacy.buildings!.items[h.buildingIndex], r = result.routes[h.prevailing]?.legacy, at = { x: b[0], y: b[1] };
+      const s = r ? r.s[nearestStation(r, b[0], b[1])] : 0;
+      result.issues.push({ code: 'noise', blocking: 'invalid', check: 'violation', scope: { routeIds: h.sources.map(q => q.routeId), buildingIndex: h.buildingIndex },
+        locations: r ? [{ routeId: h.prevailing, s0: s, s1: s }] : [], at,
+        violation: { kind: 'noise', basis: 'norm', title: 'Too loud with both roads together',
+          fix: 'Buy the house out, or build a higher or longer noise wall in front of it',
+          detail: `${(h.over).toFixed(1)} dB over the limit at its loudest floor, with the noise of both roads added together. You chose to keep it.`,
+          rule: 'NV 272/2011 annex 3: the noise of all roads at a protected house adds up; the limit of the road that prevails there applies (research/31)' } });
+      valid = false;
+      continue;
+    }
     const owner = h.wall?.routeId ?? h.buyout?.routeId; if (!owner) continue;
     const p = priced.find(q => q.route.id === owner)!, r = p.legacy, b = ctx.legacy.buildings!.items[h.buildingIndex];
     const k = nearestStation(r, b[0], b[1]);
     let list = ownWorks.get(owner); if (!list) ownWorks.set(owner, list = []);
     const work: ReplacementWork = h.wall
       ? { kind: 'noise-wall', s: r.s[k], x: b[0], y: b[1], length: h.wall.length, cost: h.wall.cost,
-        label: `Noise wall ${h.wall.height} m for a house both roads are heard at (${Math.round(h.wall.length)} m)` }
+        label: `Noise wall ${h.wall.height} m, ${Math.round(h.wall.length)} m long, for noise from both roads` }
       : { kind: 'buyout', s: r.s[k], x: b[0], y: b[1], length: 0, cost: h.buyout!.cost, label: 'House bought out: too loud with both roads together' };
     list.push(work);
     result.works.items.push({ ...replacementWork(p.route, list.length - 1, work), id: `${owner}:noise:${h.buildingIndex}` });
   }
-  // the project's walls are drawn with each road's own (a copy of its result: the kernel's stays as computed)
+  // the project's walls and buyouts are drawn and shown with each road's own (a copy of its result: the
+  // kernel's stays as computed); its walls are redrawn from the final heights
   for (const [routeId, w] of builtIn?.walls() ?? []) {
-    const rr = result.routes[routeId], r = rr?.legacy; if (!r || !w.stretches.length) continue;
-    rr.legacy = { ...r, noise: { ...r.noise, L: w.L, R: w.R },
-      walls: [...r.walls, ...w.stretches.map(t => ({ ...t, s0: r.s[t.i0], s1: r.s[t.i1] }))] };
+    const rr = result.routes[routeId], r = rr?.legacy; if (!r) continue;
+    rr.legacy = { ...r, noise: { ...r.noise, L: w.L, R: w.R }, walls: [...wallStretches(r.ds, r.length, w.L, 'L'), ...wallStretches(r.ds, r.length, w.R, 'R')] };
   }
-  let total = 0, valid = true;
+  for (const h of together) if (h.decision === 'buy') {
+    const rr = result.routes[h.buyout!.routeId], r = rr?.legacy, b = ctx.legacy.buildings!.items[h.buildingIndex]; if (!r) continue;
+    rr.legacy = { ...r, boughtOut: [...r.boughtOut, { j: h.buildingIndex, i: nearestStation(r, b[0], b[1]), cost: h.buyout!.cost }] };
+  }
+  let total = 0;
   const receivers: ProjectReceiver[] = [];
   for (const unit of units) {
     // its own bill plus its own works (junctions, a rebuilt stretch's removal and reconnections, …)
@@ -613,7 +636,7 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
           dayEnergy: top?.rawDay ?? 0, nightEnergy: top?.rawNight ?? 0, policy: 'combined' }; }),
       dayDb: h.dayDb, nightDb: h.nightDb, dayLimit: h.dayLimit, nightLimit: h.nightLimit, action: h.decision === 'buy' ? 'buy' : 'retain' };
     if (k >= 0) result.receivers[k] = decided; else result.receivers.push(decided);
-    if (h.decision === 'buy') result.buildings.push({ buildingIndex: h.buildingIndex, action: 'buy', cost: h.buyout!.cost });
+    if (h.decision === 'buy') result.buildings.push({ buildingIndex: h.buildingIndex, action: 'buy', cost: h.buyout!.cost, routeId: h.buyout!.routeId });
   }
   result.buildings = mergeBuildings(result.buildings);
   result.cost.total = total; result.complete = true; result.valid = valid;
@@ -622,6 +645,10 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   return result;
 }
 
+/** The player's wall choices on a road (its Design's), which the project's walls never change. */
+function wallChoices(design: ProjectDesign, route: RouteDesign) {
+  try { return legacyDesignForRoute(design, route.id).wallOverrides; } catch { return undefined; }
+}
 const nearestStation = (r: Result, x: number, y: number) => {
   let best = Infinity, i = 0;
   for (let k = 0; k < r.n; k++) { const d = Math.hypot(r.x[k] - x, r.y[k] - y); if (d < best) { best = d; i = k; } }
