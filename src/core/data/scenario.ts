@@ -62,6 +62,8 @@ export interface ScenarioParams {
   labels: { a: string; b: string; official: string; brief: string };
   /** What each end meets (an interchange whose ramps are not built here, a road it joins): its card. */
   ends?: { a?: EndConnection; b?: EndConnection };
+  /** Shown once when the aerial photo is first turned on: what it shows that the map does not. */
+  photoNote?: string;
 }
 
 export const D11_SCENARIO: ScenarioParams = {
@@ -119,6 +121,8 @@ export const D35_SCENARIO: ScenarioParams = {
 
 export const NOVA_PAKA_SCENARIO: ScenarioParams = {
   id: 'i16-nova-paka', presetId: 'i16-nova-paka-road', title: 'Nová Paka bypass', group: 'I/16',
+  ends: { b: { kind: 'roundabout', with: 'road I/16' } },
+  photoNote: 'The photo was taken while the real bypass was being built: the bare earth you see is its construction site, not our road.',
   // S11.5/70 is the actual project's category (OPD entry); 10,000/day is a GAME PRIOR,
   // not the project's forecast. Eight minutes permits 9.33 km at 70 km/h (reference 8.479 km).
   // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
@@ -204,6 +208,7 @@ export const D35_MOTORWAY: ScenarioParams = {
   initial: { ...D35_SCENARIO.initial!, category: 'D27.5', speed: 130 },
   picker: { kind: 'Motorway · 130 km/h', goal: 'Carry the motorway over the ridge to Staré Město.', note: 'Built 27.5 m wide, our usual motorway; the planned section is 26 m wide.' },
   ...MOTORWAY_TRAFFIC, maxTravelMin: 8.3, // 18 km at 130 (project section 16.6 km)
+  ends: { a: { kind: 'joins', with: 'the open D35' }, b: { kind: 'continues', with: 'the next section, to Mohelnice' } },
 };
 // Railway exercise in the D11 pass, between the road mission's ports (own saves). Not a planned project:
 // the line through the pass today is single-track and not electrified (OSM tags in the pack's transport

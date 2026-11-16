@@ -77,12 +77,20 @@ const LEGACY_ROUTE = 'legacy';
  * demolished one's far-zoom marker */
 export const BOUGHT_COLOR = 0xc43c9b, DEMOLISHED_COLOR = 0x3d434b;
 export interface StagedRoute extends Staged { context: RouteSurfaceContext }
-/** a small interchange symbol (two roads crossing with loop ramps) for an end's marker */
-const INTERCHANGE_SIGN = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 1v14M1 8h14" stroke="#1d232a" stroke-width="2.2"/>'
-  + '<path d="M8 5a3 3 0 1 1 3 3M8 11a3 3 0 1 1-3-3" fill="none" stroke="#1d232a" stroke-width="1.4"/></svg>';
+export type EndSign = 'interchange' | 'roundabout' | 'joins' | 'continues';
+/** small symbols for an end's marker: an interchange (two roads crossing with loop ramps), a roundabout
+ * with our arm, a road carrying on */
+const svg = (body: string) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${body}</svg>`;
+const END_SIGNS: Record<EndSign, string> = {
+  interchange: svg('<path d="M8 1v14M1 8h14" stroke="#1d232a" stroke-width="2.2"/><path d="M8 5a3 3 0 1 1 3 3M8 11a3 3 0 1 1-3-3" fill="none" stroke="#1d232a" stroke-width="1.4"/>'),
+  roundabout: svg('<circle cx="10" cy="7" r="4" fill="none" stroke="#1d232a" stroke-width="2"/><path d="M1 13l5.5-3.5" stroke="#1d232a" stroke-width="2.2"/><path d="M6 12.5l1.5-2.5" stroke="#1d232a" stroke-width="1"/>'),
+  joins: svg('<path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="#1d232a" stroke-width="2.2"/>'),
+  continues: svg('<path d="M2 8h3M7 8h3" stroke="#1d232a" stroke-width="2.2"/><path d="M11 4l4 4-4 4" fill="none" stroke="#1d232a" stroke-width="2"/>'),
+};
 export interface RenderEndpoints {
-  a: { x: number; y: number; z?: number; label?: string; interchange?: boolean };
-  b: { x: number; y: number; z?: number; label?: string; interchange?: boolean };
+  /** `sign`: what the end meets (an interchange, a roundabout, a road it joins): a symbol and a card */
+  a: { x: number; y: number; z?: number; label?: string; sign?: EndSign };
+  b: { x: number; y: number; z?: number; label?: string; sign?: EndSign };
   /** another road's ends (not the scenario's A / B): plain end markers without the A / B discs */
   plain?: boolean;
 }
@@ -664,7 +672,6 @@ export class View {
       const badge = document.createElement('b'); badge.textContent = letter;
       // an end at an interchange (or joining a road): a symbol by its name; the marker opens its card
       const sign = document.createElement('i'); sign.className = 'interchange-sign';
-      sign.innerHTML = INTERCHANGE_SIGN;
       el.append(badge, sign, document.createElement('span')); this.overlay.appendChild(el);
       el.addEventListener('pointerdown', (e) => { if (el.classList.contains('info')) e.stopPropagation(); });
       el.addEventListener('click', () => { if (el.classList.contains('info')) this.onEndClick?.(letter === 'A' ? 'a' : 'b'); });
@@ -691,7 +698,9 @@ export class View {
       marker.x = point.x; marker.y = point.y; marker.z = point.z ?? this.terrain.heightAt(point.x, point.y);
       marker.el.querySelector('span')!.textContent = point.label ?? '';
       marker.el.classList.toggle('plain', !!endpoints.plain);
-      marker.el.classList.toggle('info', !!point.interchange && !endpoints.plain);
+      marker.el.classList.toggle('info', !!point.sign && !endpoints.plain);
+      const sign = marker.el.querySelector('.interchange-sign')!;
+      if (point.sign && sign.getAttribute('data-sign') !== point.sign) { sign.innerHTML = END_SIGNS[point.sign]; sign.setAttribute('data-sign', point.sign); }
     }
     this.dirty = true;
   }

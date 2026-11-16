@@ -171,8 +171,11 @@ async function main() {
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
   // after the HUD: it syncs the HUD's exaggeration select
+  let photoNoted = false;
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
+    // what the photo shows that the map does not (e.g. the real road being built): said once
+    if (on && scenario.photoNote && !photoNoted) { photoNoted = true; toast(scenario.photoNote, undefined, undefined, 9000); }
   }, noise, () => {
     // the active route as built (else its ends and bends)
     const r = last, d = store.read() ? store.design : null;
@@ -286,8 +289,8 @@ async function main() {
   /** what the active road's ends meet (the mission's interchanges), in its own direction */
   const endInfo = (end: 'a' | 'b') => store.route?.role === 'mission' ? scenario.ends?.[reversed() ? (end === 'a' ? 'b' : 'a') : end] : undefined;
   const activeEndpoints = () => ({
-    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start', interchange: !!endInfo('a') },
-    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', interchange: !!endInfo('b') },
+    a: { ...(endAt('a') ?? positionA), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.b : scenario.labels.a) : store.route?.source ? '' : 'Start', sign: endInfo('a')?.kind },
+    b: { ...(endAt('b') ?? positionB), label: store.route?.role === 'mission' ? (reversed() ? scenario.labels.a : scenario.labels.b) : store.route?.source ? '' : 'End', sign: endInfo('b')?.kind },
     plain: !!store.route && store.route.role !== 'mission',
   });
   const selectedPi = () => (sel?.kind === 'bend' ? sel.i : null);

@@ -63,6 +63,7 @@ describe('player-facing text', () => {
     for (const g of COST_GROUPS) check('bill line', g.label);
     // the cards of the mission ends (interchanges, roads joined): every mission's, both ends
     let ends = 0;
+    for (const sc of PRESETS) check(`${sc.id} photo note`, sc.photoNote);
     for (const sc of PRESETS) for (const end of ['a', 'b'] as const) {
       const info = sc.ends?.[end];
       if (!info) continue;
