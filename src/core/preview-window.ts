@@ -58,6 +58,13 @@ export function rememberFull(ctx: EvalContext, d: Design, opts: EvalOptions, res
   adoptFull(ctx.terrain, result);
 }
 
+/** What a windowed preview takes from a full result: without crossing geometry, noise maps, remedies
+ * and building lists, which no preview shows (keeps the full worker → preview worker message small). */
+export function previewBase(r: Result): Result {
+  return { ...r, crossings: r.crossings.map(({ geometry: _g, ...c }) => c), waterCrossings: [], footprintConflicts: [], retainingWalls: [],
+    walls: [], demolished: [], boughtOut: [], kept: [], noise: { receivers: [], footprint: null } };
+}
+
 /** A full result evaluated elsewhere (the full worker) becomes a base for windowed previews here. */
 export function adoptFull(terrain: Terrain, result: Result): void {
   if (!result.lineage || result.preview) return;
@@ -136,8 +143,10 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const local: Design = d.profileMode === 'auto'
     ? { ...d, gradePins: (d.gradePins ?? []).filter(p => p.s >= s0 && p.s <= s1).map(p => ({ ...p, s: p.s - s0 })) }
     : { ...d, vpis: [{ s: 0, z: 0, r: null }, ...d.vpis.slice(1, -1).filter(p => p.s > s0 && p.s < s1).map(p => ({ ...p, s: p.s - s0 })), { s: s1 - s0, z: 0, r: null }] };
+  const tWindow = performance.now();
   const w = evaluateRoute(ctx, local, { ...opts, preview: true, endpointElevations, window: { s0, s1, grades } });
 
+  const tStitch = performance.now();
   // --- stitch: window stations from w, the rest from the full result (downstream shifted) ---
   const oldS = (s: number) => s <= s0 ? s : s - shift;
   const inWindow = (i: number) => i >= i0 && i <= i1;
@@ -180,8 +189,11 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const shiftS = <T extends { s0: number; s1: number }>(v: T, by: number): T => ({ ...v, s0: v.s0 + by, s1: v.s1 + by });
   const violations = [...r.violations.filter(v => v.s1 < s0), ...w.violations.map(v => shiftS(v, s0)),
     ...r.violations.filter(v => v.s0 > old1).map(v => shiftS(v, shift))];
-  const crossings = [...r.crossings.filter(c => c.s < s0), ...w.crossings.map(c => ({ ...c, s: c.s + s0, i: c.i + i0 })),
-    ...r.crossings.filter(c => c.s > old1).map(c => ({ ...c, s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];
+  // Without their measured geometry, like a whole-route preview's (a long route's would dominate the
+  // message to the main thread).
+  const lean = (c: Result['crossings'][number]) => { const { geometry: _g, ...rest } = c; return rest; };
+  const crossings = [...r.crossings.filter(c => c.s < s0).map(lean), ...w.crossings.map(c => ({ ...c, s: c.s + s0, i: c.i + i0 })),
+    ...r.crossings.filter(c => c.s > old1).map(c => ({ ...lean(c), s: c.s + shift, i: Math.min(n - 1, Math.round((c.s + shift) / ds)) }))];
   const travelMin = L / (d.speed / 3.6) / 60;
   const cost = sumParts(parts);
   return {
@@ -201,7 +213,8 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
     crossings, waterCrossings: [], footprintConflicts: [], retainingWalls: [], walls: [], demolished: [], boughtOut: [], kept: [],
     noise: { receivers: [], footprint: null },
     travelMin, valid: false, profileFeasible: w.profileFeasible,
-    timing: { ...w.timing, total: performance.now() - started, 'window.length': s1 - s0 },
+    timing: { ...w.timing, total: performance.now() - started, 'window.length': s1 - s0,
+      'w.setup': tWindow - started, 'w.window': tStitch - tWindow, 'w.stitch': performance.now() - tStitch },
     preview: true, lineage: undefined,
   };
 }

@@ -10,8 +10,14 @@ export interface GroundFootprint {
   key: string;
 }
 export function mainRoadFootprints(roads: readonly Result[]): GroundFootprint[] {
+  const run = mainRoadFootprintsSliced(roads);
+  for (let step = run.next(); ; step = run.next()) if (step.done) return step.value;
+}
+/** The same, yielding every few hundred stations (a long route's 3D rebuild runs in slices). */
+export function* mainRoadFootprintsSliced(roads: readonly Result[]): Generator<void, GroundFootprint[]> {
   const polygons: GroundFootprint[] = [];
   for (const r of roads) for (let i = 0; i + 1 < r.n; i++) {
+    if (i % 400 === 399) yield;
     if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
     const points = [daylightPoint(r, i, 1), daylightPoint(r, i, -1), daylightPoint(r, i + 1, -1), daylightPoint(r, i + 1, 1)];
     const xy = points.flatMap(p => [p.x, p.y]);

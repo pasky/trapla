@@ -1,0 +1,12 @@
+{
+  "scenario": "d35-full",
+  "purpose": "Fresh motorway mission (starter)",
+  "design": {
+    "category": "D27.5",
+    "speed": 130,
+    "pis": [],
+    "profileMode": "auto",
+    "vpis": [],
+    "structureOverrides": []
+  }
+}

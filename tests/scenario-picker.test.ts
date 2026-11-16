@@ -48,7 +48,7 @@ describe('picker cards', () => {
   it('groups the D3 sections in order and offers the earlier D3 map only to continue a save', () => {
     const titles = (saved: boolean) => pickerGroups(PRESETS, () => saved).map(g => [g.group, g.presets.map(p => p.presetId ?? p.id)]);
     const fresh = titles(false), d3 = fresh.find(([group]) => group === 'Středočeská D3')!;
-    expect(d3[1]).toEqual(['d3-0301-motorway', 'd3-0302-motorway', 'd3-0303-motorway', 'd3-0304-motorway', 'd3-0305-motorway']);
+    expect(d3[1]).toEqual(['d3-full-motorway', 'd3-0301-motorway', 'd3-0302-motorway', 'd3-0303-motorway', 'd3-0304-motorway', 'd3-0305-motorway']);
     expect(titles(true).find(([group]) => group === 'Středočeská D3')![1]).toContain('d3-motorway');
     expect(fresh.flatMap(([, ids]) => ids)).not.toContain('d3-road');
   });

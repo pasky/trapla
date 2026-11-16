@@ -95,7 +95,8 @@ export const D3_SCENARIO: ScenarioParams = {
 
 export const D35_SCENARIO: ScenarioParams = {
   // First stage only: the full 34 km corridor to Mohelnice missed the live-drag budget (research/27).
-  id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město',
+  // Superseded by the motorway missions (the two-lane road exercise in a motorway corridor); kept loadable.
+  id: 'd35', presetId: 'd35-stage1-road', title: 'Opatovec → Staré Město (two-lane road)', retired: true, group: 'D35',
   // Editable starter: mapped-reference bends at ~1.5 km, then bounded validity-first repair moved
   // bend 7 by 7.6 m to clear a track (research/27). No junction: B is the section boundary.
   initial: { category: 'S9.5', speed: 90, pis: [
@@ -185,7 +186,7 @@ export const D3_0305 = d3Section('d3-0305', '0305/I Voračice → Nová Hospoda'
   { a: 'Voračice', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Voračice</b> to <b>Nová Hospoda</b>, where the D3 already runs' },
   'Bridge the Mastník valley and join the D3 that is already open.', 'Follows section 0304. Ends on the open D3.');
 export const D35_MOTORWAY: ScenarioParams = {
-  ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Motorway D35: Opatovec → Staré Město',
+  ...D35_SCENARIO, presetId: 'd35-stage1-motorway', mode: 'motorway', title: 'Opatovec → Staré Město (first section)', retired: undefined,
   // The real section is D 26.0/130 (research/26), a category without an SPK 2026 row: built as D 27.5.
   initial: { ...D35_SCENARIO.initial!, category: 'D27.5', speed: 130 },
   picker: { kind: 'Motorway · 130 km/h', goal: 'Carry the motorway over the ridge to Staré Město.', note: 'Built as D 27.5; the planned section is D 26.0.' },
@@ -202,15 +203,36 @@ export const D11_RAILWAY: ScenarioParams = {
     note: 'An exercise, not a planned line. The line there today is single-track, without wires.' },
   maxTravelMin: 9,
 };
+// The whole Středočeská D3 in one mission (all five sections, 58.5 km published, 57.4 km mapped): from the D0
+// interchange to the operating D3 at Nová Hospoda. One design speed, 120 km/h (0301–0303; 0304–0305/I are
+// designed for 130). Starter: the five section starters' bends in sequence, bend 4 moved 12 m (a class III road
+// at km 8.78 where 0301 meets 0302). Time: reference + 10 % at 120.
+export const D3_FULL = d3Section('d3-full', 'The whole D3: Praha → Nová Hospoda', 120,
+  P([[4301.3, 48003.8], [2984.8, 46437.6], [1801.8, 45262.9], [2017.2, 43757.5], [1860.6, 42184.6], [1608.6, 40643.7], [2588.5, 37743.4], [2849.5, 36185.1], [3544.1, 34644.6], [5073.2, 33920.3], [6490.3, 32261.7], [8308.2, 31162.2], [9401.1, 30118.3], [8708, 28354.6], [8693.5, 26748.4], [7926.6, 25378.5], [7068.5, 23725], [5811.2, 22289.9], [5040.4, 20930.7], [4547.5, 19386.3], [4014.6, 17499.1], [3522.9, 16083.9], [3518.9, 14108.2], [3062.2, 12483.7], [3347, 10675.1], [4206.9, 9000.3], [5088.5, 7638.8], [5554.1, 5964.2], [6981.5, 5188.7], [8479.2, 4463.5], [9711.5, 3014.4]]), 31.6, // 63.2 km at 120 (reference 57.4 km)
+  { a: 'D0 Praha', b: 'Nová Hospoda', official: 'planned D3', brief: '<b>Prague ring</b> to <b>Nová Hospoda</b>, the whole Středočeská D3' },
+  'Take the D3 from the Prague ring across the Sázava to where it is already open.', 'All five sections in one go, 57 km.');
+
+// The whole D35 Opatovec → Mohelnice link (research/26–28): both project sections, 34.83 km published; the
+// mapped line to where it starts to merge with I/35 (declared merge, PROVISIONAL) is 33.3 km. Built as
+// D 27.5 (the project is D 26.0/130, no SPK row). Time target: reference + 10 % at 130 km/h.
+export const D35_FULL: ScenarioParams = {
+  ...D35_MOTORWAY, id: 'd35-full', presetId: 'd35-full-motorway', title: 'Opatovec → Mohelnice', group: 'D35',
+  initial: { category: 'D27.5', speed: 130, pis: P([]) },
+  picker: { kind: 'Motorway · 130 km/h', goal: 'Over the ridge and through the Maletín hills to the D35 at Mohelnice.',
+    note: 'The whole link, both project sections. Built as D 27.5; the planned road is D 26.0.' },
+  maxTravelMin: 17, // 36.6 km at 130 (reference 33.3 km)
+  labels: { a: 'Opatovec', b: 'Mohelnice', official: 'planned D35', brief: '<b>Opatovec</b> to <b>Mohelnice</b>, the whole D35 link' },
+};
+
 /** Every playable mission, in picker order. */
-export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D11_RAILWAY, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
-  D3_SCENARIO, D3_MOTORWAY, D35_SCENARIO, D35_MOTORWAY, NOVA_PAKA_SCENARIO];
+export const PRESETS: ScenarioParams[] = [D11_SCENARIO, D11_RAILWAY, D3_FULL, D3_0301, D3_0302, D3_0303, D3_0304, D3_0305,
+  D3_SCENARIO, D3_MOTORWAY, D35_FULL, D35_MOTORWAY, D35_SCENARIO, NOVA_PAKA_SCENARIO];
 
 /** Game parameters per scenario id (= terrain pack directory). Preset IDs scope new project saves.
  * D11 intentionally retains its exact legacy parameters and default. */
 export const SCENARIOS: Record<string, ScenarioParams> = {
   d11: D11_SCENARIO, d3: D3_SCENARIO, d35: D35_SCENARIO, 'i16-nova-paka': NOVA_PAKA_SCENARIO,
-  'd3-0301': D3_0301, 'd3-0302': D3_0302, 'd3-0303': D3_0303, 'd3-0304': D3_0304, 'd3-0305': D3_0305,
+  'd3-full': D3_FULL, 'd35-full': D35_FULL, 'd3-0301': D3_0301, 'd3-0302': D3_0302, 'd3-0303': D3_0303, 'd3-0304': D3_0304, 'd3-0305': D3_0305,
 };
 export const DEFAULT_SCENARIO = 'd11';
 

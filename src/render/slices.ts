@@ -25,15 +25,17 @@ export interface Staged { commit(): void; dispose(): void }
  * `stats` if given.
  */
 export function runSliced<T>(job: Generator<void, T>, onDone: (value: T) => void, onError: (e: unknown) => void,
-  budgetMs = 8, stats?: { slices: number; busy: number; maxSlice: number }): SlicedJob {
-  let cancelled = false, done = false;
+  budgetMs = 8, stats?: { slices: number; busy: number; maxSlice: number }, discard?: (value: T) => void): SlicedJob {
+  let cancelled = false, done = false, built = false, value: T;
   const step = () => {
     if (cancelled) return;
     const t0 = performance.now();
     try {
       for (;;) {
         const r = job.next();
-        if (r.done) { done = true; record(t0); onDone(r.value); return; }
+        // The swap-in runs as its own task, not on top of the last slice.
+        // (`discard` disposes a finished build that is cancelled before it is handed over.)
+        if (r.done) { record(t0); built = true; value = r.value; nextTask(() => { if (!cancelled) { done = true; onDone(value); } }); return; }
         if (performance.now() - t0 >= budgetMs) break;
       }
     } catch (e) { done = true; onError(e); return; }
@@ -47,7 +49,11 @@ export function runSliced<T>(job: Generator<void, T>, onDone: (value: T) => void
   };
   nextTask(step);
   return {
-    cancel() { if (!done && !cancelled) { cancelled = true; job.return(undefined as T); } },
+    cancel() {
+      if (done || cancelled) return;
+      cancelled = true;
+      if (built) discard?.(value); else job.return(undefined as T);
+    },
     get done() { return done; },
   };
 }

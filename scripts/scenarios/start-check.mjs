@@ -11,13 +11,24 @@ const browser = await chromium.launch({ executablePath: process.env.CHROME ?? '/
   ? ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=vulkan', '--enable-features=Vulkan']
   : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 try {
-  for (const [title, id] of [['Jílové', 'd3'], ['Opatovec', 'd35'], ['Nová Paka', 'i16-nova-paka']]) {
+  // The earlier Jílové → Václavice map is retired: no Start card without a save.
+  {
+    const page = await browser.newPage();
+    await page.goto(server.resolvedUrls.local[0]);
+    await page.locator('.scenario-picker-card').first().waitFor();
+    assert.equal(await page.locator('.scenario-picker-card', { hasText: 'earlier map' }).count(), 0, 'retired D3 map has no Start card');
+    assert.equal(await page.locator('.scenario-picker-group h2', { hasText: 'Středočeská D3' }).count(), 1, 'D3 sections under one heading');
+    await page.close();
+  }
+  const only = process.env.ONLY?.split(',');
+  for (const [title, id] of [['0301 Praha', 'd3-0301'], ['0302 Jílové', 'd3-0302'], ['0303 Hostěradice', 'd3-0303'], ['0304 Václavice', 'd3-0304'],
+    ['0305/I Voračice', 'd3-0305'], ['Opatovec', 'd35'], ['Nová Paka', 'i16-nova-paka']].filter(([, id]) => !only || only.includes(id))) {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
     await context.addInitScript(() => localStorage.setItem('trapla.intro.v2', '1'));
     const page = await context.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     const ready = async () => { await page.waitForFunction(() => !!window.trapla, null, { timeout: 180000 }); await page.evaluate(() => window.trapla.whenIdle()); };
-    const card = (label) => page.locator('.scenario-picker-card', { hasText: title }).getByRole('button', { name: label });
+    const card = (label) => page.locator('.scenario-picker-card', { hasText: title }).first().getByRole('button', { name: label });
     await page.goto(server.resolvedUrls.local[0]);
     await card('Start').click(); await ready();
     const start = await page.evaluate(() => ({ d: window.trapla.getDesign(), s: window.trapla.summary() }));

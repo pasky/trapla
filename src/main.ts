@@ -774,7 +774,7 @@ async function main() {
     }, error => {
       console.error('3D rebuild failed', error); setStatus('The 3D view could not be updated.');
       heavy = null; lastPost = null; settle();
-    }, 8, stats); took('view');
+    }, 8, stats, ([geometry, sources]) => { sources?.dispose(); geometry.dispose(); }); took('view');
     showActiveResult(); took('profile'); projectScore(true); took('hud');
     setStatus(''); settle();
   };

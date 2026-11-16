@@ -366,18 +366,19 @@ export class ProfilePanel {
     g.fillStyle = '#e3d6bb';
     g.fill();
     // cut / fill between grade and ground
+    // One path per colour (thousands of stations on a long route: a fill per station is too slow).
+    const fills: Record<string, Path2D> = {};
     for (let i = i0; i < i1; i++) {
       if (r.kind[i] !== KIND.earth || r.kind[i + 1] !== KIND.earth) continue;
       const h0 = r.grade[i] - r.ground[i], h1 = r.grade[i + 1] - r.ground[i + 1];
-      g.fillStyle = h0 + h1 > 0 ? 'rgba(110,160,60,0.55)' : 'rgba(215,140,50,0.6)';
-      g.beginPath();
-      g.moveTo(this.X(r.s[i]), this.Y(r.ground[i]));
-      g.lineTo(this.X(r.s[i + 1]), this.Y(r.ground[i + 1]));
-      g.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1]));
-      g.lineTo(this.X(r.s[i]), this.Y(r.grade[i]));
-      g.closePath();
-      g.fill();
+      const path = fills[h0 + h1 > 0 ? 'rgba(110,160,60,0.55)' : 'rgba(215,140,50,0.6)'] ??= new Path2D();
+      path.moveTo(this.X(r.s[i]), this.Y(r.ground[i]));
+      path.lineTo(this.X(r.s[i + 1]), this.Y(r.ground[i + 1]));
+      path.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1]));
+      path.lineTo(this.X(r.s[i]), this.Y(r.grade[i]));
+      path.closePath();
     }
+    for (const [style, path] of Object.entries(fills)) { g.fillStyle = style; g.fill(path); }
     g.strokeStyle = '#8a7148';
     g.lineWidth = 1.2;
     g.beginPath();
@@ -440,10 +441,17 @@ export class ProfilePanel {
     const bad = new Uint8Array(r.n);
     for (const v of r.violations) if (!v.goal) for (let i = Math.max(0, Math.floor(v.s0 / r.ds)); i <= Math.min(r.n - 1, Math.ceil(v.s1 / r.ds)); i++) bad[i] = 1;
     g.lineWidth = 2.5;
-    for (let i = i0; i < i1; i++) {
-      g.strokeStyle = bad[i] ? '#e01e1e' : r.kind[i] === KIND.bridge ? '#2f6fcf' : r.kind[i] === KIND.tunnel ? '#7a4fc0' : '#222';
-      if (r.kind[i] === KIND.tunnel) g.setLineDash([6, 4]); else g.setLineDash([]);
-      g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(r.grade[i])); g.lineTo(this.X(r.s[i + 1]), this.Y(r.grade[i + 1])); g.stroke();
+    // One stroke per run of stations drawn alike.
+    const gradeStyle = (i: number) => bad[i] ? '#e01e1e' : r.kind[i] === KIND.bridge ? '#2f6fcf' : r.kind[i] === KIND.tunnel ? '#7a4fc0' : '#222';
+    for (let i = i0; i < i1;) {
+      const style = gradeStyle(i), tunnel = r.kind[i] === KIND.tunnel;
+      g.strokeStyle = style;
+      g.setLineDash(tunnel ? [6, 4] : []);
+      g.beginPath(); g.moveTo(this.X(r.s[i]), this.Y(r.grade[i]));
+      let j = i;
+      while (j < i1 && gradeStyle(j) === style && (r.kind[j] === KIND.tunnel) === tunnel) { g.lineTo(this.X(r.s[j + 1]), this.Y(r.grade[j + 1])); j++; }
+      g.stroke();
+      i = j;
     }
     g.setLineDash([]);
     // Manual ranges are marked separately from the resulting structures (including invalid paint).

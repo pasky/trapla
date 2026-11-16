@@ -4,7 +4,7 @@
 import { BuildingIndex, type BuildingInfo } from './core/buildings';
 import type { ScenarioParams } from './core/data/scenario';
 import { evaluate, type Design, type EndpointJunction, type EvalContext, type Result } from './core/evaluate';
-import { adoptFull } from './core/preview-window';
+import { adoptFull, previewBase } from './core/preview-window';
 import { RoadNet, type RoadNetData } from './core/roadnet';
 import type { WaterData } from './core/watercourses';
 import type { GroundData } from './core/ground';
@@ -43,7 +43,7 @@ function run() {
     if (job.type === 'eval') {
       const result = evaluate(ctx, job.design, { preview: job.preview, materialValue: job.materialValue });
       (self as unknown as Worker).postMessage({ type: 'result', id: job.id, result });
-      if (!job.preview) basePort?.postMessage([result]);
+      if (!job.preview) basePort?.postMessage([previewBase(result)]);
     } else {
       if (!projectEnvironment) throw new Error('Project environment missing from worker init');
       const projectContext = { legacy: ctx, environment: projectEnvironment, sourceWays };
@@ -59,7 +59,7 @@ function run() {
         const changedRouteIds = Object.keys(result.routes).filter(id => result.routes[id].engineeringRevision !== known?.routes[id]?.engineeringRevision);
         const removedRouteIds = known ? Object.keys(known.routes).filter(id => !Object.prototype.hasOwnProperty.call(result.routes, id)) : [];
         lastProject = result; // One result only; never retain a history of typed arrays.
-        basePort?.postMessage(Object.values(result.routes).flatMap(r => r.legacy ? [r.legacy] : []));
+        basePort?.postMessage(Object.values(result.routes).flatMap(r => r.legacy ? [previewBase(r.legacy)] : []));
         (self as unknown as Worker).postMessage({ type: 'project-result', id: job.id, result, baseIdentity,
           changedRouteIds, removedRouteIds, dependentRouteIds: [] });
       }

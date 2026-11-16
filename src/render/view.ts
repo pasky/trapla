@@ -17,7 +17,7 @@ import { buildHeightLevels, buildHeightTexture } from './heightTexture';
 import { LandCover } from './landcover';
 import type { CrossingSurface } from './crossing-surface';
 import { routeMask, type RouteMaskInput } from './route-mask';
-import { buildRouteSurfaces, routeSurfaceContext, type RouteSurfaceContext } from './route-surfaces';
+import { buildRouteSurfaces, routeSurfaceContext, routeSurfaceContextSliced, type RouteSurfaceContext } from './route-surfaces';
 import { RouteGroups } from './route-groups';
 import { routeIndicationHeight } from './route-indication';
 import { finish, type Staged } from './slices';
@@ -100,6 +100,14 @@ function badStations(r: Result) {
     for (let i = 0; i < r.n; i++) if (r.s[i] >= v.s0 - r.ds && r.s[i] <= v.s1 + r.ds) bad[i] = 1;
   }
   return bad;
+}
+
+/** View.prepareRouteScene: what commitRouteScene would compute for these routes. */
+export interface PreparedScene {
+  inputs: readonly { result: Result; surfaces: readonly CrossingSurface[] }[];
+  crossingSurfaces: CrossingSurface[];
+  replacementHeight: (x: number, y: number) => number;
+  mask: ReturnType<typeof routeMask>;
 }
 
 export class View {
@@ -849,7 +857,9 @@ export class View {
       kinds.push(EW_KIND.structure); geo.push(...noGeo);
       return pos.length / 3 - 1;
     };
+    yield; // a long route's whole-route passes below are sliced too
     for (let i = 0; i < n; i++) {
+      if (i % 512 === 511) yield;
       if (!ground[i] || !((i > 0 && !ground[i-1]) || (i+1 < n && !ground[i+1]))) continue;
       const x = r.x[i], y = r.y[i], nx = -r.ty[i], ny = r.tx[i], z = r.grade[i];
       const zl = this.terrain.heightAt(x+nx*w, y+ny*w), zr = this.terrain.heightAt(x-nx*w, y-ny*w);
@@ -903,6 +913,7 @@ export class View {
     const strips: [number, number][] = section === CARRIAGEWAY_SECTION ? [[-w, w - gap]] : gap ? [[gap, w], [-w, -gap]] : [[-w, w]];
     const across = (p: { x: number; y: number; tx: number; ty: number }, o: number) => [p.x - p.ty * o, p.y + p.tx * o] as const;
     for (const run of r.runs) {
+      yield;
       if (run.kind === KIND.bridge) {
         const piers = supports.filter(p => p.structure === 'pier' && p.s > run.s0 && p.s < run.s1);
         const spans = bridgeDeckSpans(run.s0,run.s1,piers.map(p => p.s));
@@ -966,6 +977,7 @@ export class View {
         }
       }
     }
+    yield;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
@@ -978,6 +990,7 @@ export class View {
     ribbon.name = 'ribbon';
     out.push(ribbon); // owned (disposed on abort) before the next yield
     g.computeBoundingSphere();
+    yield;
     g.computeVertexNormals();
     yield;
 
@@ -1111,16 +1124,30 @@ export class View {
     this.dirty = true;
   }
 
+  /** The route-length part of commitRouteScene for the routes that will be shown, computed ahead in
+   * slices (a long route's mask and blend would otherwise be one long task at the swap). */
+  *prepareRouteScene(inputs: readonly { result: Result; surfaces: readonly CrossingSurface[] }[]): Generator<void, PreparedScene> {
+    const crossingSurfaces = inputs.flatMap(input => [...input.surfaces]);
+    const context = yield* routeSurfaceContextSliced(crossingSurfaces, crossingSurfaces, (x, y) => this.groundHeight(x, y), (x, y) => this.drape(x, y));
+    yield;
+    const mask = routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
+    yield;
+    return { inputs, crossingSurfaces, replacementHeight: context.replacementHeight, mask };
+  }
+
   /** Complete a staged scene swap once, after all route and crossing groups commit synchronously. */
-  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[]) {
+  commitRouteScene(ids: ReadonlySet<string>, globalDemolished?: readonly number[], prepared?: PreparedScene) {
     this.routeGroups.retain(ids);
     for (const id of this.routeInputs.keys()) if (!ids.has(id)) this.routeInputs.delete(id);
     this.maskSources = [...this.routeInputs.values()];
-    this.crossingSurfaces = this.maskSources.flatMap(input => [...input.surfaces]);
-    this.replacementHeight = routeSurfaceContext(this.crossingSurfaces, this.crossingSurfaces,
+    // Prepared for exactly these routes (any order): use it; otherwise compute now.
+    const ready = prepared && prepared.inputs.length === this.maskSources.length
+      && this.maskSources.every(m => prepared.inputs.some(p => p.result === m.result && p.surfaces === m.surfaces)) ? prepared : undefined;
+    this.crossingSurfaces = ready?.crossingSurfaces ?? this.maskSources.flatMap(input => [...input.surfaces]);
+    this.replacementHeight = ready?.replacementHeight ?? routeSurfaceContext(this.crossingSurfaces, this.crossingSurfaces,
       (x, y) => this.groundHeight(x, y), (x, y) => this.drape(x, y)).replacementHeight;
     this.contourLabels?.schedule(this.contourStep * 5);
-    this.drawMask(this.maskSources);
+    this.drawMask(this.maskSources, ready?.mask);
     const demolished = new Set<number>();
     const indices = globalDemolished ?? [...this.routeInputs.values()].flatMap(({ result }) => result.demolished.map(b => b.j));
     for (const j of indices) { const mesh = this.buildingMesh(j); if (mesh >= 0) demolished.add(mesh); }
@@ -1128,8 +1155,8 @@ export class View {
     this.dirty = true;
   }
 
-  private drawMask(inputs: readonly RouteMaskInput[]) {
-    const { terrain: pos, original, cuts, box: bounds } = routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
+  private drawMask(inputs: readonly RouteMaskInput[], prepared?: ReturnType<typeof routeMask>) {
+    const { terrain: pos, original, cuts, box: bounds } = prepared ?? routeMask(inputs, this.cx, this.cy, (x, y) => this.terrain.heightAt(x, y));
     if (!bounds) {
       this.maskUniforms.maskOn.value = this.originalMask.maskOn.value = this.crossingCut.maskOn.value = 0;
       return;

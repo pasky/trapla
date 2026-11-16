@@ -194,7 +194,8 @@ export interface EvalOptions {
   window?: { s0: number; s1: number; grades: { a?: number; b?: number } };
   /** Grade-separated routes: crossed roads whose bridge over us could not be built (ramps too long
    * or too high) at the first Auto grade. Auto then keeps clear of each: our bridge over it, or a
-   * cutting deep enough for its bridge at its own level (set by evaluate's retry, not by callers). */
+   * cutting deep enough for its bridge at its own level (set by evaluate's retry, not by callers).
+   * Present (even empty): unmet clearances cost more than any structure. */
   separate?: readonly { s: number; g: number }[];
 }
 
@@ -260,7 +261,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   if (!opts.preview && !opts.window && !opts.separate && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto') {
     const stuck = result.crossings.filter(c => c.type === 'overbridge' && !c.requestedType
       && c.geometry?.diagnostics?.some(m => m === RAMP_TOO_LONG || m.startsWith(RAMP_TOO_HIGH)));
-    if (stuck.length) {
+    // …and where it paid the clearance penalty over a river or railway instead of bridging it.
+    const missed = result.violations.some(v => v.kind === 'crossing' && v.title.startsWith('Road too low over the '));
+    if (stuck.length || missed) {
       const retry = evaluateRoute(ctx, d, { ...opts, separate: stuck.map(c => ({ s: c.s, g: ctx.terrain.heightAt(c.x, c.y) })) });
       retry.timing['count.separationRetry'] = 1;
       if (retry.violations.length < result.violations.length) result = retry;
@@ -667,8 +670,9 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
       endpointElevations: opts.endpointElevations, ...(win ? { endpointGrades: win.grades } : {}),
       maxGradient, minCrest: norms.minCrestRadius, minSag: norms.minSagRadius,
       costPerM: costFor(MATERIAL_VALUE.start), minH, maxH, eitherH: separation(waterMin.slice(), waterBelow.slice()), structureKind: manualStructures, pins: d.gradePins,
-      // A motorway structure costs far more than the default penalty: clear the roads rather than pay it.
-      ...(opts.separate?.length ? { clearancePenalty: SEPARATION_PENALTY } : {}),
+      // A motorway or railway structure costs far more than the default penalty (a 70 m motorway bridge):
+      // clear rivers, railways and roads rather than pay it.
+      ...(opts.separate ? { clearancePenalty: SEPARATION_PENALTY } : {}),
       costClass: profileCostClass, costClassCount: costClasses.length,
       balance: {
         costFor, balanceOf, start: MATERIAL_VALUE.start, lo: MATERIAL_VALUE.lo, hi: MATERIAL_VALUE.hi,
