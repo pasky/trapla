@@ -148,10 +148,12 @@ possible, not the end state.
   177 / 177 results identical, interleaved time ratio 0.98 (min) / 0.91 (median) under load
   (`scripts/dev/interleave.ts <base checkout> <this checkout>`).
   Then, each again by the tool:
-  1. the closures `engineer` (250 lines), `liftProfile` and `finish` (540, containing `complete`) as
-     factories (`const { engineer } = routeEngineer(ctx, d, opts, setup, prices, solved, caches)`). Two
-     hand steps first, each a one-line move the tool asks for: `let deckCoverReady` (declared among the
-     caches, assigned only in `engineer`) moves next to `engineer`; `let liftStop` likewise for `finish`;
+  1. the closures as factories: `const { engineer } = routeEngineer(ctx, opts, setup, prices, solved,
+     caches)` (250 lines), then `liftStop` + `liftProfile` + `finish` together (560 lines, containing
+     `complete`; `liftStop` is assigned by `liftProfile` and read by `finish`, so they share a stage). One
+     hand step first, which the tool asks for: `let deckCoverReady` (declared among the caches, assigned
+     only in `engineer`) moves down next to `engineer`. The retry logic (≈ 45 lines) is then what is left
+     of `evaluateRoute`;
   2. inside `finish`: quantities / buildings / crossings / footprint as stages, `complete()` (noise,
      violations, the `Result`) as its own function;
   3. only then move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports,
