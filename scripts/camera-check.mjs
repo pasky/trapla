@@ -19,6 +19,17 @@ const ok = (c, m) => { console.log(`${c ? 'PASS' : 'FAIL'} ${m}`); if (!c) faile
 const T = (f, a) => page.evaluate(f, a);
 const idle = async (ms = 300) => { await T(() => window.trapla.whenIdle()); await page.waitForTimeout(ms); };
 const pose = () => T(() => window.trapla.cameraPose());
+/** wait until the camera has stopped (a flight takes a few frames; software rendering on a busy host draws
+ * slowly, so a fixed pause measured it mid-flight) and a frame has been drawn since */
+const still = async () => {
+  let last = '', same = 0;
+  for (let k = 0; k < 150 && same < 3; k++) {
+    await page.waitForTimeout(150);
+    const now = JSON.stringify(await T(() => { const p = window.trapla.cameraPose(), t = window.trapla.cameraTarget(); return [p.distance, p.pitch, t.x, t.y].map(v => Math.round(v * 100)); }));
+    same = now === last ? same + 1 : 0; last = now;
+  }
+  await T(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+};
 let n = 0;
 const shot = async (name) => { if (shots) await page.screenshot({ path: `${shots}/${String(n++).padStart(2, '0')}-${name}.png` }); };
 try {
@@ -74,7 +85,7 @@ try {
   await page.mouse.click(at.x, at.y - 40);
   // (a flight takes a few frames; software rendering on a busy host draws slowly)
   await page.waitForFunction(() => window.trapla.cameraPose().pitch > 20, null, { timeout: 15000 }).catch(() => {});
-  await idle(900);
+  await idle(300); await still();
   p = await pose();
   ok(p.pitch >= 30, `a profile click from a low view looks down on the place (${p.pitch.toFixed(0)}°)`);
   const road = await T(() => { const r = window.trapla.range(); return r && window.trapla.roadScreen((r.s0 + r.s1) / 2); });
@@ -88,7 +99,7 @@ try {
   const at2 = await T(() => window.trapla.profilePoint(6000));
   await page.mouse.click(at2.x, at2.y - 40);
   await page.waitForFunction((d) => window.trapla.cameraPose().distance < d * 0.5, far0, { timeout: 15000 }).catch(() => {});
-  await idle(900);
+  await idle(300); await still();
   const piece = await T(() => { const r = window.trapla.range(); if (!r) return null; const a = window.trapla.roadScreen(r.s0), b = window.trapla.roadScreen(r.s1); return { a, b, len: r.s1 - r.s0 }; });
   const ext = piece ? Math.hypot(piece.a.sx - piece.b.sx, piece.a.sy - piece.b.sy) : 0;
   ok(!!piece && piece.a.vis && piece.b.vis && ext >= Math.min(box.width, box.height) / 6,
@@ -130,7 +141,9 @@ try {
   // noise view: wall heights from afar
   await page.keyboard.press('n'); await idle(800);
   await T(() => { const r = window.trapla.result(); const w = r.walls[Math.floor(r.walls.length / 2)]; const i = Math.round((w.i0 + w.i1) / 2); window.trapla.lookAt(r.x[i], r.y[i], 3500, 0, 60); });
-  await idle(600);
+  await idle(300); await still();
+  // (a label is hidden until a frame has placed it: wait for that frame, then they must not print over each other)
+  await page.waitForFunction(() => [...document.querySelectorAll('.wall-label')].some(e => e.style.display !== 'none'), null, { timeout: 15000 }).catch(() => {});
   const walls = await overlaps('.wall-label');
   ok(walls.shown > 0 && walls.overlaps === 0, `noise view from afar: ${walls.shown} wall labels, none overprinted (${walls.overlaps})`);
   await shot('wall-labels');
