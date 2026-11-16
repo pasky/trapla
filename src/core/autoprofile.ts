@@ -1069,14 +1069,17 @@ export function autoProfile(s: ArrayLike<number>, g: ArrayLike<number>, opt: Aut
     }
     zs[ka] = zlo[ka] + Math.floor(st % layerSize(ka) / ndAt(ka));
     // (a line found station by station: does it take a tunnel anywhere? Then the tunnel mode decides)
+    // (only where deeper than a portal: shallower, Auto takes no tunnel)
     let tunnel = false;
+    const xPortal = (H_MAX - (opt.portalDepth ?? 0)) / H_STEP + 1;
     if (!tunnelMode && opt.portalDepth !== undefined) for (let k = ka; k < kb && !tunnel; k++) {
       const sk = knotS[k], d = Dk(k), cIn = corrAt(k), cSlope = (corrAt(k + 1) - cIn) / d, zm = zA + zs[k] * u, dz = zs[k + 1] - zs[k];
       for (let q = costStart[k]; q < costStart[k + 1] && !tunnel; q += step) {
         if (!autoBlock(cO[q])) continue;
         const dsq = cS[q] - sk, gi = cG[q] - cIn - cSlope * dsq;
         let x = (zm - gi + H_MAX) / H_STEP + dz * (u * dsq) / (d * H_STEP);
-        if (x < 0) x = 0; else if (x > lutMax) x = lutMax;
+        if (x > xPortal) continue;
+        if (x < 0) x = 0;
         const j = x | 0, auto = lut[cO[q]], open = fill(cO[q] + PROFILE_KIND.open + 1, j, Math.min(lutMax, j + 1));
         if (auto[j] !== open[j] || (j < lutMax && auto[j + 1] !== open[j + 1])) tunnel = true;
       }
