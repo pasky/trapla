@@ -113,6 +113,9 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
     case 'underpass': {
       const box = row?.underpass ? underpassAssembly(row.underpass, 0) : undefined;
       const inside = box ? ` (${box.width} × ${box.height} m inside)` : '';
+      // (no box could be laid out: the way ends under our earthworks, or its class takes none)
+      if (!c.underpassLength) return { tag: 'underpass', label: `Underpass: no box fits here`,
+        explain: `The ${what} cannot be carried through our embankment in a box here; see the problem below.` };
       if (c.lowered) return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}, the ${what} lowered by ${c.lowered.toFixed(1)} m${square}`,
         explain: `Our embankment is too low for the box, so the ${what} is lowered into a cutting on ramps (${m(c.approachLength)} m) no steeper than ${pct(row?.rampGradient ?? 0.08)}${row && row.rampSteepest > row.rampGradient ? ` (up to ${pct(row.rampSteepest)} where the ${what} itself slopes the same way)` : ''} and passes through it in a concrete box. Rainwater from the lowest point ${c.drainage === 'pump' ? 'is pumped out' : 'runs off in a pipe to lower ground'}.${squareWhy}${works}` };
       return { tag: 'underpass', label: `Underpass: ${m(c.underpassLength)} m concrete box${inside}${square}`,
