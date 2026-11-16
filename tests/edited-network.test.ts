@@ -227,6 +227,9 @@ describe.skipIf(!['meta.json', 'transport.json.gz', 'overlays.json', 'height.i16
     expect(after.cost.total).not.toBeNull();
     expect(after.acceptedReplacements).toEqual([interval]);
     expect(motorway.crossings.some(c => c.roadId === 1515)).toBe(false);
+    // the same road in the same place: our abutments keep clear of it as they did of the old road (walls,
+    // bridge length); the motorway's bill does not move (it fell 15 M when they ignored it)
+    expect(Math.abs(motorway.cost.total - before.routes[forward].legacy!.cost.total)).toBeLessThan(1e6);
     expect(motorway.violations.map(v => v.title).filter(t => /pier|class III/i.test(t))).toEqual([]);
     // the rebuilt road is crossed by the motorway's crossing engine, not left as an unchecked crossing
     const crossing = motorway.crossings.find(c => c.crossedRoute?.id === 'route:r1')!;

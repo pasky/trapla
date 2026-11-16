@@ -48,7 +48,7 @@ try {
   const start = await page.evaluate(() => {
     const t = window.trapla, p = t.getProject(), r = t.projectResult(), ours = p.routes.filter(q => q.role === 'mission').map(q => q.id);
     const legacy = r.routes[ours[0]].legacy;
-    return { ours, total: r.cost.total, crossings: legacy.crossings.filter(c => c.cls === 'tertiary' && c.type === 'bridge' && c.s > 11000 && c.s < 12600)
+    return { ours, total: r.cost.total, alone: r.cost.alone[ours[0]] ?? r.routes[ours[0]].legacy.cost.total, crossings: legacy.crossings.filter(c => c.cls === 'tertiary' && c.type === 'bridge' && c.s > 11000 && c.s < 12600)
       .map(c => ({ s: c.s, x: c.x, y: c.y, roadId: c.roadId })) };
   });
   assert(start.total !== null, 'the motorway alone is priced');
@@ -82,18 +82,24 @@ try {
     await p.evaluate(() => window.trapla.whenIdle());
     await p.evaluate(roadId => window.trapla.selectCrossing(roadId), grab.roadId);
     await p.evaluate(([x, y]) => window.trapla.lookAt(x, y, 200, 0, 62), [grab.near.x, grab.near.y]);
-    await p.evaluate(() => window.trapla.whenIdle()); await p.waitForTimeout(300);
+    await p.evaluate(() => window.trapla.whenIdle());
+    await p.evaluate(() => new Promise(resolve => {
+      const frame = () => requestAnimationFrame(() => window.trapla.viewBusy() ? frame() : resolve());
+      requestAnimationFrame(() => requestAnimationFrame(frame));
+    }));
     assert.equal(await p.evaluate(() => window.trapla.transportLoaded()), false, 'a fresh page has not loaded the road links');
     const q = at(await p.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [grab.near.x, grab.near.y]));
     const pose = await p.evaluate(() => window.trapla.cameraTarget());
     await p.mouse.move(q.x, q.y); await p.mouse.down();
+    const cold = !(await p.evaluate(() => window.trapla.transportLoaded()));
     await p.mouse.move(q.x + 40, q.y, { steps: 10 });
     await p.waitForFunction(() => window.trapla.transportLoaded(), null, { timeout: 20000 });
     await p.mouse.move(q.x + 42, q.y); await p.mouse.up();
     await p.evaluate(() => window.trapla.whenIdle());
     const after = await p.evaluate(() => window.trapla.cameraTarget());
-    assert(Math.hypot(after.x - pose.x, after.y - pose.y) < 0.5, `a drag next to our bridge does not pan the map (${JSON.stringify([pose, after])})`);
     const rebuilt = (await p.evaluate(() => window.trapla.getProject())).routes.find(r => r.source);
+    if (!rebuilt) console.log('not rebuilt; card:', await p.locator('#inspector').textContent(), 'early:', cold);
+    assert(Math.hypot(after.x - pose.x, after.y - pose.y) < 0.5, `a drag next to our bridge does not pan the map (${JSON.stringify([pose, after])})`);
     assert.equal(rebuilt?.source.intervals[0].sourceId, grab.id, 'a drag next to our bridge rebuilds III/1057');
     console.log('fresh page, crossing card open: a drag on III/1057 25 m from our bridge rebuilt it, the map did not move');
     await c.close();
@@ -140,6 +146,13 @@ try {
   assert.equal(motorway.crossings.find(c => c.crossedRoute?.id === rebuilt.id)?.type, 'bridge', 'our bridge spans the rebuilt road');
   assert.deepEqual(after.acceptedReplacements.map(i => i.sourceId), [grab.id], 'the old stretch is gone from the map');
   assert(!after.issues.some(i => i.code === 'roads-cross'), 'no unchecked crossing');
+  // our motorway's own bill: the rebuilt road is still under our bridge and our abutments keep clear of it
+  // (walls, bridge length), so it never gets cheaper (QA re-test 2: it fell 38 M CZK when they ignored the
+  // rebuilt road); a new line beside an abutment may cost it more
+  const billOf = id => after.cost.alone[id] ?? after.routes[id].legacy.cost.total;
+  const moved = billOf(start.ours[0]) - start.alone;
+  assert(moved > -2e6, `our motorway's bill does not fall (${(moved / 1e6).toFixed(1)} M CZK)`);
+  console.log(`our motorway's own bill moved ${(moved / 1e6).toFixed(2)} M CZK`);
 
   // 5. the score: a total, or which change holds it back and what is priced
   // houses that hear both roads are decided together (combined noise): never what holds the total back

@@ -1064,7 +1064,7 @@ async function main() {
   /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
   let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
   /** a press on a mapped road before the road links are loaded (client point; `ready` once they are) */
-  type EarlyGrab = { clientX: number; clientY: number; ready: boolean };
+  type EarlyGrab = { x: number; y: number; ready: boolean };
   let grabbedEarly = null as EarlyGrab | null;
   const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
     const interval = sourceEditor?.interval; if (!interval) return null;
@@ -1142,7 +1142,7 @@ async function main() {
       // and then rebuilds it (a click opens its card once they are loaded)
       const g = !transportGraph && pack.transportMeta ? view.pick(clientX, clientY) : null;
       if (g && mappedRoadNear(g.x, g.y)) {
-        const early: EarlyGrab = { clientX, clientY, ready: false }; grabbedEarly = early;
+        const early: EarlyGrab = { x: g.x, y: g.y, ready: false }; grabbedEarly = early;
         void ensureTransport().then(() => { early.ready = true; if (grabbedEarly === early) view.resumeRoadDrag(); });
         return true;
       }
@@ -1151,8 +1151,9 @@ async function main() {
     onRoadDrag: (x, y) => {
       if (grabbedEarly) {
         if (!grabbedEarly.ready) return 'wait';
-        // the map has not moved while the press was held: the same client point is the same road
-        const s = sourceAt(grabbedEarly.clientX, grabbedEarly.clientY); grabbedEarly = null;
+        // the pressed ground point, where it is on the screen now (a camera flight may have moved on)
+        const g = grabbedEarly, at = view.project(g.x, g.y, view.drape(g.x, g.y)), box = canvasBox(); grabbedEarly = null;
+        const s = at.vis ? sourceAt(box.left + at.sx, box.top + at.sy) : null;
         if (s?.kind !== 'source') return null;
         grabbedSource = s.hit;
       }
