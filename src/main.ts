@@ -32,6 +32,7 @@ import { BuildRoadTool, type Placement } from './ui/build-road';
 import { strayDistance } from './ui/road-edit';
 import { buildInProject, mappedLineKindFor, mappedLineKindOf, registeredBuildKinds, type BuildKind } from './ui/route-kinds';
 import './ui/mode-kinds';
+import { fitPlacedBend } from './core/bend-fit';
 import { routeIndicationHeight } from './render/route-indication'; // Build → Motorway / Railway, rebuilding mapped railways
 import { RoadNet } from './core/roadnet';
 import { groundRoadSourceInfo } from './core/project-promotion';
@@ -1001,8 +1002,11 @@ async function main() {
     catch (error) { projectStore.cancel(); console.warn('This road could not be rebuilt', error); toast('This road cannot be changed here.'); return null; }
     switchRoute(id, true);
     const k = insertBend(x, y, false); select({ kind: 'bend', i: k });
+    placedByRebuild = { routeId: id, i: k };
     return k;
   };
+  /** the bend the rebuilding drag placed: on release it is fitted where its curve has room (core/bend-fit.ts) */
+  let placedByRebuild: { routeId: RouteId; i: number } | null = null;
   const insertBend = (x: number, y: number, commit: boolean) => {
     const k = nearestLeg(A, B, store.design.pis, { x, y });
     store.update((d) => { d.pis.splice(k, 0, { x, y, r: null }); }, commit);
@@ -1046,7 +1050,15 @@ async function main() {
     },
     onPiSelect: (i) => select(i === null ? null : { kind: 'bend', i }),
     onPiDrag: (i, x, y) => store.update((d) => { d.pis[i].x = x; d.pis[i].y = y; }, false),
-    onPiDragEnd: () => store.commit(),
+    onPiDragEnd: () => {
+      const placed = placedByRebuild; placedByRebuild = null;
+      const d = store.read(), ends = store.route?.endpoints;
+      if (placed && d && ends && placed.routeId === store.activeRouteId) {
+        const fitted = fitPlacedBend(ends.a.position, ends.b.position, d.pis, placed.i, d.category, d.speed);
+        if (fitted) store.update(draft => { draft.pis = fitted; }, false);
+      }
+      store.commit();
+    },
     onPiDelete: (i) => deletePi(i),
     // a reroute link: dragging it shapes it (adds a bend point there)
     grab: (clientX, clientY) => {

@@ -3,10 +3,10 @@
 import { MOTORWAY_TRAFFIC } from '../core/data/scenario';
 import { addMotorwayCorridor, MOTORWAY_CATEGORY } from '../core/project-motorway';
 import { createRailwayRoute, promoteGroundRailway, type RailwayRoute } from '../core/project-railway';
-import type { EndpointConstraint, ProjectDesign, RouteDesign } from '../core/project';
+import type { EndpointConstraint, ProjectDesign, RouteDesign, SourceInterval } from '../core/project';
 import type { ProjectTransportIndex } from '../core/project-network';
 import { KIND } from '../core/structures';
-import { fitBends, moveStretchEnds, type PlacedEnd } from './road-edit';
+import { fitBends, MIN_STRETCH, moveStretchEnds, type PlacedEnd } from './road-edit';
 import { registerBuildKind, registerMappedLineKind, type BuildKind, type MappedLineKind } from './route-kinds';
 
 /** A rebuilt railway's old line becomes bends where it strays more than this from a chord, and bends
@@ -14,6 +14,19 @@ import { registerBuildKind, registerMappedLineKind, type BuildKind, type MappedL
  * line's every wiggle cannot be a bend. Display/edit choices, not design rules (m). */
 const RAIL_FIT_TOLERANCE = 25, RAIL_BEND_GAP = 300;
 const railBends = (path: readonly { x: number; y: number; s: number }[]) => fitBends(path, RAIL_FIT_TOLERANCE, RAIL_BEND_GAP);
+/** A rebuilt railway stretch ends this far from a level crossing beyond it (the shared stretch stops
+ * 5 m short, a road's width): a railway formation with its slopes needs more room, m. PROVISIONAL. */
+const RAIL_CROSSING_CLEAR = 20;
+const clearOfLevelCrossings = (base: ProjectTransportIndex, interval: SourceInterval): SourceInterval => {
+  const source = base.source(interval.sourceId)!;
+  const all = base.branches({ ...interval, s0: 0, s1: source.stations[source.stations.length - 1] });
+  let { s0, s1 } = interval;
+  for (const b of all) if (b.other.some(o => base.source(o.sourceId)?.kind !== 'railway')) {
+    if (b.s <= interval.s0 && b.s + RAIL_CROSSING_CLEAR > s0) s0 = b.s + RAIL_CROSSING_CLEAR;
+    if (b.s >= interval.s1 && b.s - RAIL_CROSSING_CLEAR < s1) s1 = b.s - RAIL_CROSSING_CLEAR;
+  }
+  return s1 - s0 >= MIN_STRETCH ? { ...interval, s0, s1 } : interval;
+};
 
 const unique = (project: ProjectDesign, base: string) => {
   const used = new Set(project.routes.map(r => r.name));
@@ -40,7 +53,7 @@ export const RAIL_LINE: MappedLineKind = {
     if (source.tags.service) return { ok: false, why: 'Sidings and yards cannot be rebuilt: only running lines.' };
     return { ok: true, becomes: 'single-track electric railway (120 km/h)' };
   },
-  rebuild: (base, interval, ids) => promoteGroundRailway(base, { ...ids, interval, name: railName(base, interval.sourceId) }, railBends),
+  rebuild: (base, interval, ids) => promoteGroundRailway(base, { ...ids, interval: clearOfLevelCrossings(base, interval), name: railName(base, interval.sourceId) }, railBends),
   moveEnds: (base, project, routeId, s0, s1) => moveStretchEnds(base, project, routeId, s0, s1, (interval, route) =>
     promoteGroundRailway(base, { routeId: route.id, acousticSourceId: route.acousticSourceId, interval, name: route.name }, railBends,
       route.kind === 'railway' ? route as RailwayRoute : undefined)),
