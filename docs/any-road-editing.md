@@ -803,3 +803,26 @@ re-stamp); bench 5 VALID; outcome-audit exit 0 (violations 118, VALID 8 — as m
 smoke PASS; playtest PASS; any-road-scene D11 and SCENARIO=d3 PASS; owner-d3-scene PASS; drag-perf `--gpu
 --check` bend / road / radius / pin / vpi / link all OK (load 10 → 4; max result gap 57–114 ms, no long tasks).
 
+**Merged main `3d01d57` (`fcedaff`, long-corridors: block-wise local grade solve, model 25 → ours 26).** 7 files:
+the junction an end joins stays no crossing (on main's block-traced line), our held-deck / minor / old-road knots
+beside the block solve, main's live drag total with our "Our railway / motorway" own-price labels, the crossing
+card's "level today" wording with this road's options. D11 fixtures identical to model 25 (re-stamped). The
+worktree needed main's new scenario packs (d3-0301…0305, d3-full, d35-full) for `edit-locality`.
+
+**Self-review fixes (`3d3057d`).** A separate motorway stretch's memoised spine is keyed by the edited network
+too (another road's change re-engineers it); a rebuilt railway is checked against the edited network (only a
+rebuilt road needs its own old road cut; `editedNetwork` returned null for a railway owner); another road's
+crossing no longer uncovers what a road's earthworks bury (`coveredStretches` per covering road); a drag on
+another designed road drawn over a mapped road selects that road, not a rebuild (as a click does); each other
+line "alone" is listed once (a motorway's two directions); separate stretches compose and slice `walledOff`;
+owner-d3-scene also checks the walls' length beside the crossing. Earlier (`9b96442`): a new or rebuilt
+railway's own problems read "this railway", our railway's / motorway's price "Our railway alone".
+Not fixed (next, with the kind-generic `project-kept.ts`): a rebuilt railway's ends are not checked for
+direction against the track they continue; a press released before the links load is a click at its screen
+point, not re-projected after a camera flight.
+
+Gates on `3d3057d`: tsc; vitest 684; eval-regression 11 PASS (bit-exact vs model 25 before the re-stamp);
+bench 5 VALID; land-screen-check 6 OK; outcome-audit exit 0 (violations 106, VALID 8); edit-locality exit 0
+(d3-full: one edit 0.11 m beyond 10 km, within its rule); smoke, playtest, mode-play, stretch-play PASS;
+any-road-scene D11 and D3, owner-d3-scene PASS (around the rebuilt crossing: bridge 230 → 230 m, walls 1 → 1,
++2.3 M); drag-perf `--gpu --check` all six modes OK (max result gap 49–84 ms).
