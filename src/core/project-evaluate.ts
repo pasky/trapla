@@ -630,10 +630,13 @@ export function evaluateProject(ctx: ProjectEvalContext, snapshot: ProjectSnapsh
   for (const h of together) {
     const k = result.receivers.findIndex(r => r.buildingIndex === h.buildingIndex), seen = result.receivers[k];
     const decided: ProjectReceiver = { buildingIndex: h.buildingIndex, height: seen?.height ?? NOISE.receiverHeight,
-      contributions: h.sources.map(s => { const top = s.storeys[s.storeys.length - 1];
-        return { sourceId: s.sourceId, routeId: s.routeId, buildingIndex: h.buildingIndex, height: top?.height ?? NOISE.receiverHeight,
-          dayEnergy: top?.rawDay ?? 0, nightEnergy: top?.rawNight ?? 0, policy: 'combined' }; }),
-      dayDb: h.dayDb, nightDb: h.nightDb, dayLimit: h.dayLimit, nightLimit: h.nightLimit, action: h.decision === 'buy' ? 'buy' : 'retain' };
+      contributions: h.sources.map(s => { const at = s.storeys[h.storey];
+        return { sourceId: s.sourceId, routeId: s.routeId, buildingIndex: h.buildingIndex, height: at?.height ?? NOISE.receiverHeight,
+          dayEnergy: at?.rawDay ?? 0, nightEnergy: at?.rawNight ?? 0, policy: 'combined', storeys: s.storeys.map(q => ({ ...q })) }; }),
+      dayDb: h.dayDb, nightDb: h.nightDb, dayLimit: h.dayLimit, nightLimit: h.nightLimit, action: h.decision === 'buy' ? 'buy' : 'retain',
+      together: { prevailing: h.prevailing, decision: h.decision, storey: h.storey,
+        ...(h.wall ? { wall: { routeId: h.wall.routeId, height: h.wall.height, length: h.wall.length, cost: h.wall.cost } } : {}),
+        ...(h.buyout ? { buyout: { ...h.buyout } } : {}), ...(h.over !== undefined ? { over: h.over } : {}) } };
     if (k >= 0) result.receivers[k] = decided; else result.receivers.push(decided);
     if (h.decision === 'buy') result.buildings.push({ buildingIndex: h.buildingIndex, action: 'buy', cost: h.buyout!.cost, routeId: h.buyout!.routeId });
   }

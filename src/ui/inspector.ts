@@ -5,7 +5,8 @@
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingVia, type CrossingChoice } from '../core/crossings';
 import { shapeable } from './link-shape';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, thisRoadWords } from '../core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, MINOR_CROSSING_TEXT, MOTORWAY_AUTOMATIC, thisRoadWords, togetherHouseText } from '../core/terms';
+import type { ProjectReceiver } from '../core/project';
 import { CATEGORIES } from '../core/data/categories';
 import { speedNorms } from '../core/data/norms';
 import { BUILDING_KINDS, BUILDING_RULES, NOISE, ROAD_CLASSES } from '../core/data/urban';
@@ -95,6 +96,9 @@ export class Inspector {
   constructor(private el: HTMLElement, private ctx: {
     building: (j: number) => { kind: string; levels: number; dwelling: boolean; rect?: HouseRect };
     maxRadius: (i: number) => number | null;
+    /** a house heard by two or more roads and decided once for the project: its project receiver and the
+     * roads' names (null: decided by one road alone, or the project is not priced) */
+    together?: (j: number) => { receiver: ProjectReceiver; name: (routeId: string) => string } | null;
   }) {
     try { this.more = localStorage.getItem(MORE_KEY) === '1'; } catch { /* private mode */ }
     el.addEventListener('click', (e) => this.click(e));
@@ -427,7 +431,10 @@ export class Inspector {
     const kept = r.kept.find((p) => p.j === j), rec = r.noise.receivers.find((p) => p.j === j);
     const limit = r.noise.limit, period = r.noise.controlling === 'night' ? 'at night' : 'by day';
     let state: string, why = '';
-    if (removed) {
+    // heard by two or more roads: their noise added together decides it (wall, buyout), once for the project
+    const tog = removed ? null : this.ctx.together?.(j), together = tog ? togetherHouseText(tog.receiver, tog.name, czk) : null;
+    if (together) ({ state, why } = together);
+    else if (removed) {
       state = `Demolished · ${czk(removed.cost)}`;
       const ours = removed.in === 'bridge' ? 'our bridge' : removed.in === 'embankment' ? 'our embankment' : 'our cut';
       why = removed.in === 'reroute' ? `In the way of the new road that reconnects a road we cut at km ${km(r.s[removed.i])}.`
@@ -449,7 +456,7 @@ export class Inspector {
       why = `${(limit + rec.mitigated).toFixed(1)} dB ${period} on the ${rec.storeys === 1 ? 'only' : rec.floor === rec.storeys - 1 ? 'top' : 'loudest'} floor (limit ${limit}).`;
     } else if (r.besideOldRoad?.includes(j)) { state = 'Stays'; why = 'The old road is kept as it is here: nothing changes for this house.'; }
     else state = 'Stays · far from the road';
-    if (action === 'keep' && !kept?.hit && !rec?.unresolved) why = (why ? `${why} ` : '') + 'You keep it.';
+    if (action === 'keep' && !kept?.hit && (together || !rec?.unresolved)) why = (why ? `${why} ` : '') + 'You keep it.';
     // What this road does on its own always stands (a house in its way is gone, priced or not); only the
     // noise of the project's other roads may still be missing here, and the card says so.
     const pending = this.networkPending && !removed && !bought

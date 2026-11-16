@@ -44,6 +44,8 @@ export interface HouseNoise {
   buildingIndex: number;
   /** combined level at the loudest storey (as built, after the project's decision), dB */
   dayDb: number; nightDb: number; dayLimit: number; nightLimit: number;
+  /** that loudest storey (index into each source's `storeys`) */
+  storey: number;
   /** the road whose noise prevails there */
   prevailing: string;
   decision: 'none' | 'wall' | 'buy';
@@ -88,7 +90,7 @@ export function combineNoise(candidates: readonly number[], decider: NoiseDecide
     const sources = decider.sources(j);
     if (sources.length < 2) continue;
     const c = combined(sources);
-    const base: HouseNoise = { buildingIndex: j, dayDb: c.dayDb, nightDb: c.nightDb, dayLimit: c.dayLimit, nightLimit: c.nightLimit,
+    const base: HouseNoise = { buildingIndex: j, dayDb: c.dayDb, nightDb: c.nightDb, dayLimit: c.dayLimit, nightLimit: c.nightLimit, storey: c.storey,
       prevailing: c.prevailing, decision: 'none', sources };
     if (c.over <= TOLERANCE_DB) { out.push(base); continue; }
     // the cheapest single wall on the prevailing road that brings every storey within the limit
@@ -102,7 +104,7 @@ export function combineNoise(candidates: readonly number[], decider: NoiseDecide
     if (best) {
       best.commit();
       const now = sources.map(s => s.routeId === c.prevailing ? { ...s, storeys: best!.storeys } : s), d = combined(now);
-      out.push({ ...base, sources: now, dayDb: d.dayDb, nightDb: d.nightDb, decision: 'wall',
+      out.push({ ...base, sources: now, dayDb: d.dayDb, nightDb: d.nightDb, storey: d.storey, decision: 'wall',
         wall: { routeId: c.prevailing, height: best.height, area: best.area, length: best.length, cost: best.area * NOISE.wallPerM2 } });
       continue;
     }

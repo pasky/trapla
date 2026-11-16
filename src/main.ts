@@ -203,6 +203,12 @@ async function main() {
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
+    together: (j) => {
+      const receiver = projectFull?.complete ? projectFull.receivers.find(r => r.buildingIndex === j && r.together) : undefined;
+      if (!receiver) return null;
+      const routes = projectStore.snapshot.design.routes;
+      return { receiver, name: (id) => { const r = routes.find(q => q.id === id); return !r || r.role === 'mission' ? 'our road' : r.name; } };
+    },
   });
   // ---- base roads: any mapped road can be inspected and offered for change (one inspector card) ----
   // The transport graph is not part of startup: its bytes are fetched when idle after the first frame

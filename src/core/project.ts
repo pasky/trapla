@@ -241,6 +241,14 @@ export interface ProjectReceiver {
   buildingIndex: number; height: number; contributions: AcousticContribution[];
   dayDb: number; nightDb: number; dayLimit: number; nightLimit: number;
   action: 'retain' | 'demolish' | 'buy';
+  /** A house heard by two or more roads, decided once for the project (project-noise.ts): the road whose noise
+   * prevails there, what was decided, and the deciding storey (index into each contribution's `storeys`, which
+   * are then as built with the project's walls). dayDb / nightDb are the roads' noise added together there. */
+  together?: { prevailing: RouteId; decision: 'none' | 'wall' | 'buy'; storey: number;
+    wall?: { routeId: RouteId; height: number; length: number; cost: number };
+    buyout?: { routeId: RouteId; cost: number };
+    /** a house the player keeps that stays over the limit: by how much, dB */
+    over?: number };
 }
 export interface AcousticScreen {
   bounds: Bounds[];

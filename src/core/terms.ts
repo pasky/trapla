@@ -16,6 +16,8 @@
 import type { CrossingResult } from './crossings';
 import type { FootprintConflict } from './footprint';
 import type { RoadRealignmentPlan } from './road-realignment';
+import type { ProjectReceiver } from './project';
+import * as dm from './detmath';
 import { ROAD_CLASSES } from './data/urban';
 import { LOWERING_RULES, underpassAssembly } from './data/remedies';
 
@@ -220,4 +222,28 @@ export function thisRoadWords(text: string): string {
   return text.replace(/\bOur road\b/g, 'This road').replace(/\bour road\b/g, 'this road').replace(/\bours\b/g, 'this road')
     .replace(/\b(over|under|above|below|beside|across|to|from) us\b/g, '$1 this road')
     .replace(/\bOur (?=\w)/g, 'This road’s ').replace(/\bour (?=\w)/g, 'this road’s ');
+}
+
+/** The house card of a house heard by two or more roads, decided once for the project (ProjectReceiver.together):
+ * the roads' noise added together at its loudest floor, each road's share there (as built, with the project's
+ * walls) and what was decided. `name`: a road's name in player words; `money`: the card's price format. */
+export function togetherHouseText(rec: ProjectReceiver, name: (routeId: string) => string, money: (v: number) => string): { state: string; why: string } | null {
+  const t = rec.together; if (!t) return null;
+  const night = rec.nightDb - rec.nightLimit > rec.dayDb - rec.dayLimit, period = night ? 'at night' : 'by day';
+  const level = night ? rec.nightDb : rec.dayDb, limit = night ? rec.nightLimit : rec.dayLimit;
+  const floors = Math.max(1, ...rec.contributions.map(c => c.storeys?.length ?? 1));
+  const floor = floors === 1 ? 'only' : t.storey === floors - 1 ? 'top' : 'loudest';
+  const shares = rec.contributions.flatMap(c => {
+    const e = c.storeys?.[t.storey]; if (!e) return [];
+    const v = night ? e.night : e.day;
+    return [`${name(c.routeId)} ${v > 0 ? (10 * dm.log10(v)).toFixed(1) : '—'} dB`];
+  });
+  const roads = rec.contributions.length === 2 ? 'both roads' : `all ${rec.contributions.length} roads`;
+  const heard = `${level.toFixed(1)} dB ${period} on the ${floor} floor, ${roads} together (limit ${limit}): ${shares.join(', ')}.`;
+  if (t.decision === 'wall' && t.wall) return { state: `Stays · behind a ${t.wall.height} m wall`,
+    why: `${heard} A ${t.wall.height} m wall, ${Math.round(t.wall.length)} m long, along ${name(t.wall.routeId)}: ${money(t.wall.cost)}.` };
+  if (t.decision === 'buy' && t.buyout) return { state: `Bought out · ${money(t.buyout.cost)}`,
+    why: `${heard} No single wall along ${name(t.buyout.routeId)} brings it within the limit; that road buys it.` };
+  if (t.over !== undefined && t.over > 0) return { state: `Stays · ${level.toFixed(1)} dB ${period} (limit ${limit})`, why: heard };
+  return { state: 'Stays · quiet enough', why: heard };
 }

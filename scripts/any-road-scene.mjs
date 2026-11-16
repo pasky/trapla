@@ -53,6 +53,7 @@ try {
   };
   const revision = () => page.evaluate(() => window.trapla.projectSnapshot().revision);
   const routes = () => page.evaluate(() => window.trapla.getProject().routes.map(r => r.id));
+  const initial = await page.evaluate(() => window.trapla.getProject());
 
   // 0. one road: no road list, a Build button
   assert.equal(await page.locator('#active-route').isVisible(), false, 'no road list with a single road');
@@ -338,6 +339,22 @@ try {
       console.log(`a street bent 30 m across another street: ${minor.map(c => `${c.cls} ${c.type} ${(c.cost / 1e6).toFixed(2)} M CZK, ${c.h.toFixed(1)} m from its level`).join('; ')}`);
       await page.evaluate(() => window.trapla.select(null));
       await page.screenshot({ path: `${out}/rebuilt-crossroads.png` });
+    }
+    // A house heard by our road and a rebuilt street (Nový Rokytník, over our cutting), decided once for the
+    // project: its card gives both roads' noise added together, each road's share and what was decided.
+    {
+      await page.evaluate(d => window.trapla.setProject(d), initial); await idle();
+      await dragOn('osm:way:275065891', 1150, 25, -25);
+      const pr = await page.evaluate(() => window.trapla.projectResult());
+      assert(pr.complete, 'our road and the rebuilt street are priced together');
+      const both = pr.receivers.find(q => q.together && q.contributions.length > 1);
+      assert(both, 'a house hears both roads');
+      await page.evaluate(j => window.trapla.selectBuilding(j), both.buildingIndex); await idle();
+      const card = await page.locator('#inspector').textContent();
+      assert.match(card, /both roads together \(limit \d+\): (our road|Street) [\d.]+ dB, (our road|Street) [\d.]+ dB\./, 'the house card gives both roads’ noise added together');
+      const k = card.indexOf('roads together');
+      console.log(`house ${both.buildingIndex} heard by both roads (${both.together.decision}): "…${card.slice(Math.max(0, k - 50), k + 110)}…"`);
+      await page.screenshot({ path: `${out}/house-together.png` });
     }
     let motorway = null;
     for (const id of await page.evaluate(() => ['motorway', 'trunk', 'railway'].flatMap(h => window.trapla.sourceIds(h, 400)))) {

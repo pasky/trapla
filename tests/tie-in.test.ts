@@ -7,7 +7,7 @@ import { evaluateProject, type ProjectEvalContext } from '../src/core/project-ev
 import { makeLegacyProjectContext, projectFromLegacyDesign } from '../src/core/project-legacy';
 import { isScorableProject } from '../src/core/project-protocol';
 import { RoadNet, type RoadNetData } from '../src/core/roadnet';
-import { footprintOutcome, jargonIn } from '../src/core/terms';
+import { footprintOutcome, jargonIn, togetherHouseText } from '../src/core/terms';
 import { syntheticTerrain } from '../src/core/terrain';
 import { newRoad } from '../src/ui/road-edit';
 
@@ -165,6 +165,14 @@ describe('houses heard by both roads', () => {
   it('the player\'s wall choices and Keep stand: no project wall where the player said none, no buyout of a kept house', () => {
     const walled = evaluateProject(loud(300).ctx, loud(300).snapshot);
     expect(walled.works.items.filter(w => /both roads/.test(w.label ?? '')).map(w => w.kind)).toEqual(['noise']);
+    // its card: the level of both roads added together after the project's wall, each road's share, the wall
+    const rec = walled.receivers.find(r => r.buildingIndex === 0)!, t = rec.together!;
+    expect(t).toMatchObject({ decision: 'wall', wall: { routeId: t.prevailing } });
+    const shares = rec.contributions.map(c => c.storeys![t.storey].day);
+    expect(10 * Math.log10(shares[0] + shares[1])).toBeCloseTo(rec.dayDb, 6);
+    const text = togetherHouseText(rec, id => id === 'side' ? 'Road III/123' : 'our road', v => `${(v / 1e6).toFixed(1)} M CZK`)!;
+    expect(text.state).toBe(`Stays · behind a ${t.wall!.height} m wall`);
+    expect(text.why).toMatch(new RegExp(`^(${rec.dayDb.toFixed(1)} dB by day|${rec.nightDb.toFixed(1)} dB at night) on the (only|top|loudest) floor, both roads together \\(limit (60|50)\\): (our road|Road III/123) [\\d.]+ dB, (our road|Road III/123) [\\d.]+ dB\\. A ${t.wall!.height} m wall, \\d+ m long, along (our road|Road III/123): [\\d.]+ M CZK\\.$`));
     // no walls anywhere (the player's choice on both roads), and the house kept: left too loud, a violation
     const none = loud(300);
     for (const r of none.snapshot.design.routes) if (r.alignment.kind === 'pi')
@@ -206,6 +214,7 @@ describe('houses heard by both roads', () => {
     expect(decided.cost.total).toBeCloseTo(decided.cost.routes[mission] + decided.cost.routes.side, 3);
     expect(decided.cost.routes[mission]).toBeCloseTo(decided.cost.alone[mission] + buy.cost, 3);
     expect(decided.receivers.find(r => r.buildingIndex === 0)).toMatchObject({ action: 'buy', dayLimit: 60 });
+    expect(togetherHouseText(decided.receivers.find(r => r.buildingIndex === 0)!, () => 'our road', v => `${v}`)!.state).toBe(`Bought out · ${buy.cost}`);
     expect(decided.buildings.filter(b => b.buildingIndex === 0 && b.action === 'buy')).toHaveLength(1);
   });
 });
