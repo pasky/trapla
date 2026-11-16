@@ -385,37 +385,40 @@ road whose box ramps were too long kept that infeasible box although a track's b
   (≥ 6 m): such an automatic crossing's way is retried with ordinary rules, which put our road on a bridge over it.
 - "Underpass: no box fits here" replaces "Underpass: 0 m concrete box" (QA-2 re-test 4).
 
-**Results** (bn CZK, main a8d8de5 (model 23) → model 24; all VALID unless noted):
+**Results** (bn CZK, main 3d01d57 (model 25: long-corridors' block-wise grade solve) → model 26; all VALID
+unless noted; the same comparison against model 23 before that rebase gave the same picture):
 
-| Design | Model 23 | Model 24 | Main reasons |
+| Design | Model 25 | Model 26 | Main reasons |
 |---|---:|---:|---|
-| straight (D11) | 9.844321 | 9.838031 | −6.3 M: km 18.24 box straightened (36 → 17 m), shorter reroutes at km 2.14 and 11.92; km 5.41 service road's cut ends already lie on km 5.38's road ("Joined to the crossing at km 5.38 (no new road needed)"). |
-| D3 motorway starter | 18.337155 | 14.902841 | −3.43 bn: km 14.18 class III road moved beside the motorway (700 m, 18.6 M) instead of a 704 m bridge (2.49 bn), its second crossing at 14.52 one with it; km 7.94 track straightened through a 50 m box (17.8 M), no strict retry, so km 7.67–7.77 and 7.90–7.95 stay earthworks; km 7.69 track joined to it; km 3.63 track joined to km 3.71's bridge (237 m, 3.3 M; its 2 km reroute was 28.2 M); km 3.84 box straightened 95 → 42 m. |
-| best | 4.129413 | 4.100085 | −29.3 M: tracks at km 2.51 and 9.04 joined to the next crossing's road 14 / 12 m away (−17.8 M), km 6.97 service road moved beside us (−3.7 M), km 19.65 bridge over us straightened. |
-| demo | 4.669186 | 4.656154 | −13.0 M: km 2.48 track joined 14 m away (−8.5 M), km 8.81 shorter reroute. |
-| direct-80 | 4.816992 | 4.774720 | −42.3 M: km 13.50 class I road moved (−7.6 M), km 3.81 / 7.13 tracks joined 11–12 m away, km 5.65 box carries km 5.68's track, km 6.20 bridge straightened, km 12.26 service road rerouted instead of a bridge. |
-| direct-90 | 5.494864 | 5.465526 | −29.3 M: km 8.26 bridge over us straightened (83 → 50 m span, −15.8 M), shorter reroutes at km 2.56 / 3.82; km 9.80 a bridge over us (its reroute is now found to bury houses with its slopes, +2.1 M). |
-| town-centre | 11.388358 | 11.349346 | −39.0 M: km 10.11 bridge over the 31 m cutting straightened (148 → 125 m, −19.0 M), km 7.82 box straightened (68 → 52 m), km 15.98 service road straightened through a 25 m box with an S of two 27 m bends (the 57 m box of model 22, −3.3 M), km 4.90 street rerouted 97 m instead of a lowered box. |
-| D11 railway Královec | 14.691344 (1 violation) | 14.504696 (1) | −187 M: boxes straightened at km 10.48 (98 → 58 m) and 19.49; km 9.50 track joined 12 m away; km 8.21 bridge over us straightened and km 8.13's service road led to it. The violation (a stream at km 18.20) is not a crossing. |
-| D3 road (default/reference) | 4.708147 | 4.643470 | −64.7 M (road sections). |
-| D35 road / motorway | 5.967781 / 19.322088 | 5.965575 / 19.322088 | −2.2 M / 0. |
-| Nová Paka (default/reference) | 2.693238 | 2.496951 | −196 M: the tracks and service road at km 3.4–3.6 share the km 3.41 box; shorter joins at km 1.92, km 1.56 moved aside. |
+| straight (D11) | 10.013317 | 9.825989 | −187 M: km 16.58 local road 2244 led to km 17.05's crossing (539 m, 17.7 M) instead of our bridge running 320 m further over it (km 16.52–16.84, −194 M of bridge); boxes / bridges over us straightened at km 9.43 and 18.24; shorter reroutes at km 2.14, 11.92. |
+| best | 4.151968 | 4.112416 | −39.6 M: tracks at km 2.51 and 9.04 joined to the next crossing's road 6 / 13 m away; km 6.97 service road moved beside us; km 19.65 bridge over us straightened. |
+| demo | 4.920398 | 4.883292 | −37.1 M: km 2.48 track joined 9 m away, km 6.94 service road 11 m, km 8.81 shorter reroute. |
+| direct-80 | 4.784780 | 4.710864 | −73.9 M: km 6.73 street that runs into our earthworks and back out moved beside them (94 m, 3.1 M; was a 742 m reroute, 35.6 M), km 6.83 street led on to km 6.61; km 3.81 / 7.13 tracks joined 7–12 m away; km 13.50 class I road shorter; bridges over us straightened at km 6.20 and 18.88. |
+| direct-90 | 5.438453 | 5.391931 | −46.5 M: bridges over us straightened at km 8.26 and 16.18, box at km 10.41; shorter reroutes at km 2.56 / 3.82. |
+| town-centre | 11.000964 | 10.855391 | −145.6 M: km 10.05 bridge over the cutting straightened (175 → 111 m, −59 M), km 6.01 / 6.09 / 6.28 tracks joined to km 5.85 (−10 M), km 7.76 box straightened (67 → 53 m), km 11.82 service road led 93 m to km 11.65; 28 M less of our bridge. |
+| D11 railway Královec | 15.607463 (2 violations) | 15.503356 (2) | −104 M: boxes straightened, tracks joined. Both violations (service roads under our earthworks at km 3.77 / 3.81) are footprint ones, as on main. |
+| D3 motorway starter | 17.414286 | 14.025661 | −3.39 bn: km 14.18 class III road moved beside the motorway (700 m, 18.6 M) instead of a 704 m bridge (2.49 bn), its second crossing at 14.52 one with it; km 7.94 track straightened through a 50 m box (no strict retry, so 150 m less of motorway bridge); km 3.84 box straightened 95 → 42 m. |
+| D3 road (default/reference) | 4.822189 | 4.744555 | −77.6 M. |
+| D35 road / stage-1 motorway | 5.827863 / 20.328617 | 5.825536 / 20.328617 | −2.3 M / 0. |
+| Nová Paka (default/reference) | 2.769883 | 2.566722 | −203 M: the tracks and service road at km 3.4–3.6 share the km 3.41 box; shorter joins at km 1.92; km 1.56 moved aside. |
+| whole D3 (d3-full motorway) | 40.886149 | 37.319865 | −3.57 bn: km 20.89 class III road along the motorway moved beside it (695 m, 18.5 M) instead of a 698 m bridge (2.45 bn, QA-2 re-test 4); field tracks consolidated (km 13.89–15.29: two boxes, one straightened, carry four tracks), km 26–34 reroutes and boxes. |
+| whole D35 (d35-full motorway) | 34.258856 | 33.744359 | −514 M: km 25.96 track along the motorway moved beside it (5 M) instead of a 343 m bridge (401 M); km 24.91–25.26 three tracks share one bridge; but km 22.08: a track crossing at 22° whose 1.5 km reroute now meets a river (the grade line moved) gets a 226 m bridge (187 M): straightening it would give up a junction with a road that continues outside our earthworks. |
 
-Nová Paka bend 2 (km 3.3), 24 seeded drags up to 25 m (`scripts/small-drag-audit.ts`): invalid 10 → 1 (the one
-left: 1 m of a service road beside our slope that its relocation cannot clear: footprint walls, core-play-polish).
-D11 drags of every bend (2 each): demo 9 → 8, direct-80 15 → 14, direct-90 8 → 8 invalid (all left are footprint
-or stream conflicts, and track 4843 at km 9.8, in a shallow cutting 90 m before a viaduct on ground too steep for
-a track: no reroute, bridge or box fits; the same track on the d11-railway preset, km 9.44).
+Nová Paka bend 2 (km 3.3), 24 seeded drags up to 25 m (`scripts/small-drag-audit.ts`): invalid 10 → 0.
+D11 drags of every bend (2 each, before the rebase): demo 9 → 8, direct-80 15 → 14, direct-90 8 → 8 invalid (all left
+are footprint or stream conflicts, and track 4843 at km 9.8, in a shallow cutting 90 m before a viaduct on ground
+too steep for a track: no reroute, bridge or box fits; the same track on the d11-railway preset, km 9.44).
+`scripts/edit-locality.ts` (all suites, 108 edits): invalid results 35 → 33, QA repros 52/52 pass on both, whole D3
+grade change beyond 10 km 0.11 m → 0.00 m, no new far problems on either.
 
 Frozen fixtures recaptured (`eval-regression.ts --capture=current --reviewed-model-change`): the six above;
-best-drag −32.3 M, best-pin −29.2 M, best-structures −29.1 M and best-manual −29.1 M move with best (the same
-joined tracks, the moved service road; best-manual stays invalid by its manual grade), town-controls −39.0 M with
-town-centre (stays invalid by its player overrides).
+best-drag −40.8 M, best-pin, best-structures and best-manual −39.6 M move with best (best-manual stays invalid
+by its manual grade), town-controls −145.6 M with town-centre (stays invalid by its player overrides).
 
-Audits (straight + five published + 24 random designs): `outcome-audit` violations 124 → 112 (invalid designs
-22 → 22); `reroute-audit` links 511 → 558, with a problem 7 → 1, railway crossings 2 → 0, steeper than allowed
-3 → 1, earthworks over 10 m 3 → 1; chained reroutes 0 → 0; `crossing-audit` 0 geometry errors;
-`crossing-footprint-audit` overlaps of crossing works with other roads 238 → 201.
+Audits (straight + five published + 24 random designs, model 25 → 26): `outcome-audit` violations 85 → 78
+(invalid designs 22 → 22); `reroute-audit` links 469 → 527, with a problem 4 → 1, across a railway 2 → 1,
+steeper than allowed 1 → 0, earthworks over 10 m 2 → 0; `crossing-audit` the same two pre-existing endpoint
+errors (way 2136); `crossing-footprint-audit` overlaps of crossing works with other roads 232 → 187.
 
 **Performance.** The square variants, the consolidation pass and the joined lines build more candidate reroutes
 (best: 6 → ≈ 17 per evaluation on top of the first and final builds). Offsets: a build memo per evaluation
