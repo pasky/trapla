@@ -97,6 +97,11 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   const thing = c.type === 'underpass' ? 'box' : 'bridge';
   const squareWhy = c.squared !== undefined ? ` It met our road at ${Math.round(c.squared)}°; near our road it is laid on a new line that crosses at a right angle, so the ${thing} is short (${m(c.realignLength)} m of new ${what} beyond the ${thing} and its ramps).` : '';
   const joinedTo = c.targetRoadId === undefined ? 'the road our road joins at its end' : `the road that crosses at km ${km(c.targetS ?? 0)}`;
+  const crossesAt = c.targetRoadId === undefined ? 'the road at our road\'s end' : `the crossing at km ${km(c.targetS ?? 0)}`;
+  // (its cut ends lie on the road that crosses there: nothing new to build)
+  if ((c.type === 'reconnection' || c.type === 'diversion') && !c.moved && !Math.round(c.linkLength ?? 0)) return { tag: c.type === 'diversion' ? 'rerouted' : 'reconnected',
+    label: `Joined to ${crossesAt} (no new road needed)`,
+    explain: `The ${what} is cut by the new road; what is left of it already joins the road that crosses there.${link}` };
   if (c.moved && (c.type === 'reconnection' || c.type === 'diversion')) return { tag: 'moved aside',
     label: `Moved beside our road (+${m(c.linkLength)} m of new ${c.type === 'diversion' ? 'track' : 'road'})`,
     explain: `The ${what} runs into our earthworks and comes back out on the same side, so it does not need to cross our road: that stretch is rebuilt beside the earthworks.${link}` };

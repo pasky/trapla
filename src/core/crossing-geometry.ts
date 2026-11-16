@@ -1403,14 +1403,6 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
     // height, both sides; the deck may slope and ramps steepen, hence only part of that estimate)
     const rampsLeast = 2 * Math.max(0, CROSSING_RULES.underDepth + c.h) / row.rampSteepest * rate;
     if (!originalFeasible || c.cost > deckPrice(c, across)) variants('overbridge', deckPrice(c, across) + rampsLeast);
-    // (a way that comes back out of our earthworks on the side it went in: moved beside them when
-    // nothing else is buildable; otherwise weighed with the roads led to it, below)
-    if (g?.sameSide && !c.moved && !ok(best)) {
-      const move = clone(c); move.type = c.cls === 'track' ? 'diversion' : 'reconnection'; move.moved = true;
-      delete move.targetS; delete move.targetRoadId; delete move.span; delete move.approachLength; delete move.underpassLength;
-      build([move]);
-      consider(move);
-    }
     // A feasible link keeps its place unless cheaper above; a measured box (estimated from the
     // footprint width) still competes with the bounded link shortlist below.
     if (c.type !== 'overbridge' && c.type !== 'underpass' && originalFeasible) {
@@ -1454,6 +1446,14 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
       build([anchor, link], ok(best) ? best.cost * (Math.abs(target.s - c.s) > CROSSING_RULES.linkMaxReach ? 0.5 : 1) : Infinity, new Set([anchor]));
       tried.add(attempt(c, target));
       if (feasible(link) && worth(link, target)) { best = link; break; }
+    }
+    // (a way that comes back out of our earthworks on the side it went in: moved beside them when
+    // nothing else is buildable; otherwise weighed with the roads led to it, below)
+    if (g?.sameSide && !c.moved && !ok(best)) {
+      const move = clone(c); move.type = c.cls === 'track' ? 'diversion' : 'reconnection'; move.moved = true;
+      delete move.targetS; delete move.targetRoadId; delete move.span; delete move.approachLength; delete move.underpassLength;
+      build([move]);
+      consider(move);
     }
     if (!ok(best) && fallback && (stale || !feasible(c) || fallback.cost < c.cost)) best = fallback;
     if (best !== c) {
