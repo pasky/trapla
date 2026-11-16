@@ -278,6 +278,14 @@ letters A / B for motorways; 150 pilot travel time from its sourced share; paire
 directional sources, railway noise per track (above). Merged main 2decf53 (valid reroutes): cost model 23. `scripts/rail-rebuild-check.ts` rebuilds a D3 railway
 stretch in Node.
 
+Handoff (2026-11-16, head 9b496b9, cost model 23, all gates green on 1c967bb; tsc / 636 tests / eval-regression /
+mode-play on 9b496b9): merge to main waits for playtest-qa-2's re-test of 1c967bb + 9b496b9 (parent forwards it;
+fix its P0/P1s first). After any-road-editing merges, extend its kept-old-road model (project-kept.ts) to rebuilt
+railways (pending 1). The D3 motorway starter's +3.4 bn after main's valid reroutes is one 704 m skew overbridge at
+km 14.18 plus track remedies at km 3.6–3.7, 7.7–7.9: routed by the parent to a crossing-economy agent. Tools:
+`scripts/rail-starter.ts` (CROSSINGS=1, FIX=1, DETAIL=1, AT=s, PINS=…), `scripts/rail-rebuild-check.ts` (D3 rebuild
+in Node), `scripts/stretch-check.ts`, `scripts/stretch-play.mjs`.
+
 Pending / limits found (2026-11-16):
 1. A rebuilt railway stretch is evaluated as new everywhere: in a narrow valley the old line's own neighbours
    (river, roads, tracks) become conflicts, and a short drag can leave long-span bridges Auto cannot lift
