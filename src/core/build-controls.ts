@@ -1,4 +1,5 @@
 // Persisted manual building/wall decisions. Chainage ranges survive station resampling.
+import { NOISE } from './data/urban';
 /** Non-cryptographic pack identity: prevents persisted positional object IDs from silently referring
  * to different buildings/roads after a data rebuild. Computed once at load, never in evaluate(). */
 export function objectDataKey(buildings: unknown, info: unknown, roads: unknown): string {
@@ -30,7 +31,8 @@ export function setBuildingOverride(ranges: readonly BuildingOverride[], j: numb
   return normalizeBuildingOverrides([...ranges.filter(r => r.j !== j), ...(action === null ? [] : [{ j, action }])]);
 }
 
-const wallHeight = (height: number) => Number.isFinite(height) && (height === 0 || (height >= 2 && height <= 6));
+const WALL_MIN = Math.min(...NOISE.playerWallHeights), WALL_MAX = Math.max(...NOISE.playerWallHeights);
+const wallHeight = (height: number) => Number.isFinite(height) && (height === 0 || (height >= WALL_MIN && height <= WALL_MAX));
 
 /** Paint a half-open range on ONE side, preserving unaffected fragments. Height 0 explicitly
  * removes automatic walls; null restores automatic design, not an explicit zero-height wall. */

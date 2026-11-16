@@ -204,6 +204,10 @@ uniform float shadeAmt;
 uniform sampler2D maskTex;
 uniform vec4 maskBox;
 uniform float maskOn;
+// discard where the filtered mask exceeds this: 0.5 = its edge (the terrain under a footprint); a
+// replacement collar uses ≈ 1 (only where every surrounding texel is inside) so the rasterised edge
+// never eats the collar's own first metre along the daylight line it shares with the slope
+uniform float maskCut;
 #include <common>
 #include <fog_pars_fragment>
 
@@ -224,7 +228,7 @@ ${RELIEF_GLSL}
 void main() {
   if (maskOn > 0.5) {
     vec2 muv = (vWorld.xz - maskBox.xy) / maskBox.zw;
-    if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0 && texture2D(maskTex, muv).r > 0.5) discard;
+    if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0 && texture2D(maskTex, muv).r > maskCut) discard;
   }
   // local metres: x east, y north
   vec2 loc = vec2(vWorld.x + 0.5 * areaSize.x, 0.5 * areaSize.y - vWorld.z);
@@ -500,7 +504,7 @@ export function makeEarthworkMaterial(u: TerrainUniforms, params: THREE.MeshLamb
 
 export function makeTerrainMaterial(uniforms: TerrainUniforms, maskUniforms: Record<string, THREE.IUniform>): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
-    uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...uniforms, ...maskUniforms },
+    uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), maskCut: { value: 0.5 }, ...uniforms, ...maskUniforms },
     vertexShader: VERT,
     fragmentShader: FRAG,
     fog: true,

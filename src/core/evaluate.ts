@@ -16,7 +16,7 @@ import {
   basePerKm, basePerKmUrban, categoryTunnelPerKm, cellLength, costParts, decisionPrices, landPerM2, sumParts, surchargeRate,
   type CostBreakdown, type CostParts,
 } from './cost';
-import { buildCrossingGeometry, crossingBridgeMask, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
+import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoice, normalizeCrossingOverrides, resolveCrossings, underpassFits, underpassPrice, type CrossingOverride, type CrossingResult } from './crossings';
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { horizontalRules, speedNorms } from './data/norms';
@@ -27,8 +27,8 @@ import { massHaul, volumes } from './earthworks';
 import { earthEngineeringPerM, flatEarthGeometry } from './earthengineering';
 import { buildAlignment, station, type PI, type Vec2 } from './horizontal';
 import {
-  dwellingExposure, noiseBarrier, noiseFootprint, resolveNoiseWalls,
-  type EarthEdges, type NoiseFootprint, type NoiseReceiver, type WallStretch,
+  crossSectionScreens, noiseOutcome, wallLineLengths,
+  type AcousticSource, type NoiseReceiver, type WallStretch,
 } from './noise';
 import { createNoiseModel } from './road-noise';
 import { createRailNoiseModel, type RailTrafficGroup } from './rail-noise';
@@ -109,7 +109,8 @@ export interface Result {
   parts: CostParts;
   /** per station cell: land-take width (m), built-up and forest share of it (0…1), noise walls
    * (bit 0 = left of travel, bit 1 = right) */
-  cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array };
+  /** `wallLength` / `wallArea`: noise walls billed in the cell, along their own lines (m, m²) */
+  cell: { width: Float64Array; urban: Float32Array; forest: Float32Array; wall: Uint8Array; wallLength: Float64Array; wallArea: Float64Array };
   crossings: CrossingResult[];
   waterCrossings: WaterResult[];
   /** Footprint conflicts beyond the handled centreline crossings; costs already in the bill. */
@@ -118,8 +119,13 @@ export interface Result {
   /** Engineering surface at a retained slope edge; NaN means natural daylight. */
   wallSurfaceL: Float64Array; wallSurfaceR: Float64Array;
   walls: WallStretch[];
+  /** walls Auto adds for houses beside the player's wall choices (part of `walls`): the card of that choice says so */
+  wallsAroundChoices: WallStretch[];
   /** demolished buildings: index into the pack's building list, station cell it is billed to, CZK */
-  demolished: { j: number; i: number; cost: number }[];
+  /** `in`: what of ours takes it (at station i): the bridge deck, the embankment or the cut, or only the
+   * construction working strip beside one of them (`strip`) */
+  /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
+  demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
   boughtOut: { j: number; i: number; cost: number; reason?: 'manual' }[];
   /** Kept buildings remain present; hit means footprint/working-strip conflict. */
@@ -133,8 +139,11 @@ export interface Result {
    * there (`cost` and `parts` cover the new parts only) and the road is drawn on the ground. */
   keptCells?: Uint8Array;
   /** noise view: dwellings within the search radius with their status, and the ground-floor map */
-  /** `gaps`: junction openings in the wall lines, per station (1 = no wall can stand there) */
-  noise: { receivers: NoiseReceiver[]; footprint: NoiseFootprint | null; gaps?: { L: Uint8Array; R: Uint8Array } };
+  /** `source`: the road as an acoustic line source (cells, wall lines, screening edges, junction openings);
+   * `L` / `R`: built wall heights per station (manual included), m — the same the bill and 3D use */
+  noise: { receivers: NoiseReceiver[]; source: AcousticSource | null; L: Float64Array; R: Float64Array;
+    /** the period that decides (one road: fixed by its traffic) and its limit, dB */
+    controlling: 'day' | 'night'; limit: number };
   quantities: {
     cut: number; fill: number; reused: number; surplus: number; deficit: number; avgHaul: number;
     /** cut volume by local geology + estimated weathering class I / II / III, m³ */
@@ -182,6 +191,8 @@ export interface EvalOptions {
   /** Material value to price the preview's single solve at (the last full result's; default the
    * mass-balance search's starting value). */
   materialValue?: number;
+  /** Stable physical acoustic source id of this carriageway (project `acousticSourceId`). */
+  acousticSourceId?: string;
   /** One direction of a split motorway: station ranges where the other direction runs alongside on the
    * left (one common formation). Houses on that side belong to the other direction's noise check and
    * no wall can stand in the median there. */
@@ -749,6 +760,8 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     list.push(ctx.roads.wayStation(c.way, c.x, c.y)); crossingWays.set(c.way, list);
   }
   const supportMemo = new Map<string, number>(), retainingMemo: RetainingFeatureCache = new Map();
+  // Reroutes traced and engineered by the first pass, reused by the strict retry where our footprint is unchanged.
+  const reroutes = crossingCache();
   const sectionMemo: SectionCache = [];
   // Grade repairs keep the horizontal strips fixed. Earth cover changes only where retaining
   // or daylight changes the two widths; deck/centre cover never changes within this evaluation.
@@ -972,7 +985,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   const buildingViolations: Violation[] = [], noiseViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
-    const best = new Map<number, { i: number; along: number }>();
+    const best = new Map<number, { i: number; along: number; core: boolean }>();
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel) continue;
       const left = kind[i] === KIND.earth ? sec.dayL[i] : w, right = kind[i] === KIND.earth ? sec.dayR[i] : w;
@@ -982,8 +995,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       bld.near(x, y, Math.max(left, right) + BUILDING_RULES.clearance + ds, (j) => {
         if (!bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) return;
         const along = Math.abs((items[j][0] - x) * tx + (items[j][1] - y) * ty);
+        // the slopes / deck themselves, not only the working strip beside them (what the card names)
+        const core = bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half - BUILDING_RULES.clearance);
         const p = best.get(j);
-        if (!p) best.set(j, { i, along }); else if (along < p.along) { p.i = i; p.along = along; }
+        if (!p) best.set(j, { i, along, core }); else if ((core && !p.core) || (core === p.core && along < p.along)) { p.i = i; p.along = along; p.core = core; }
       });
     }
     for (const [j, p] of best) {
@@ -998,7 +1013,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       }
       gone[j] = 1;
       buildingCost[p.i] += bld.cost[j];
-      demolished.push({ j, i: p.i, cost: bld.cost[j] });
+      // which earthwork: the one on the building's side of the road (a cross slope may cut one side, fill the other)
+      const k = p.i, leftSide = (items[j][0] - st.x[k]) * -st.ty[k] + (items[j][1] - st.y[k]) * st.tx[k] >= 0;
+      const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
+      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : cutSide ? 'cut' : 'embankment', strip: !p.core });
     }
     for (const o of buildingOverrides) {
       if (gone[o.j]) continue; // footprint acquisition already pays the building once
@@ -1036,13 +1054,23 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     const tx = (q.x - p.x) / len, ty = (q.y - p.y) / len, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
     let hit: 'railway' | 'water' | 'building' | null = null;
     protectedRasterCells(terrain, { i: 0, s: 0, x, y, tx, ty, along: len / 2, left: half, right: half }, f => { if (!hit && f.feature !== 'stream') hit = f.feature; });
-    if (!hit && bld) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && !gone[j] && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
+    // a house you keep is never demolished for a reroute
+    if (!hit && bld && keptIds.size) bld.near(x, y, len / 2 + half + 5, (j) => { if (!hit && keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) hit = 'building'; });
     return hit;
   };
-  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle,
+  /** Houses still standing under a new road (a reroute): bought out and demolished with it. */
+  const linkHouses = (p: { x: number; y: number }, q: { x: number; y: number }, half: number) => {
+    const out: number[] = [];
+    if (!bld) return out;
+    const len = Math.hypot(q.x - p.x, q.y - p.y), tx = len ? (q.x - p.x) / len : 1, ty = len ? (q.y - p.y) / len : 0, x = (p.x + q.x) / 2, y = (p.y + q.y) / 2;
+    bld.near(x, y, len / 2 + half + 5, (j) => { if (!gone[j] && !keptIds.has(j) && bld.hits(j, x, y, tx, ty, len / 2, half)) out.push(j); });
+    return out;
+  };
+  if (!preview) crossingIssues.push(...buildCrossingGeometry(crossings, { ...st, grade, width: crossWidth, crownWidth: b, kind, urban: urbanCentre, obstacle: linkObstacle, houses: linkHouses, houseCost: (j: number) => bld?.cost[j] ?? 0,
+    streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
     left: Float64Array.from(kind, (k, i) => (k === KIND.earth ? sec.dayL[i] : width[i] / 2) + (crossWidth === width ? 0 : crossWidth[i] - width[i])),
     right: Float64Array.from(kind, (k, i) => k === KIND.earth ? sec.dayR[i] : width[i] / 2),
-  }, (x, y) => terrain.heightAt(x, y), ctx.roads));
+  }, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes));
   const shared = opts.sharedCrossings;
   if (shared && !shared.own) {
     const SHAREABLE = new Set(['overbridge', 'underpass', 'reconnection', 'diversion']);
@@ -1060,10 +1088,15 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     // A junction's side-road regrades and walls (worksCost) are SPK/OTSKP construction, not the lump.
     const lump = c.type === 'junction' ? c.cost - (c.worksCost ?? 0) : c.type === 'reconnection' && c.cls === 'service' && c.cost > 0 ? ACCESS : 0;
     crossingLump[c.i] += lump;
-    crossingStructure[c.i] += c.cost - lump;
+    // houses a reroute runs through are bought out like those under our road (buildings, not works)
+    // (a crossing built with the other direction is billed there, its houses included)
+    const houses = c.shared ? [] : (c.houses ?? []).filter(j => !gone[j]);
+    for (const j of houses) { gone[j] = 1; buildingCost[c.i] += bld!.cost[j]; demolished.push({ j, i: c.i, cost: bld!.cost[j], in: 'reroute', strip: false }); }
+    crossingStructure[c.i] += c.cost - lump - (c.shared ? 0 : c.houseCost ?? 0);
     if (c.cost > 0) crossingsPaid++;
   }
 
+  demolished.sort((p, q) => p.i - q.i);
   lap('crossings');
   const footprintCheck = preview ? { conflicts: [] as FootprintConflict[], violations: [] as Violation[] } : footprintConflicts({ ...st, kind, grade, ...sec, crownWidth: b, runs, channelRelocations, featureCache: retainingMemo, strictWays: strict,
     ...(endJunctions.length ? { junctions: endJunctions } : {}) }, terrain, ctx.roads?.ground, crossings, water,
@@ -1095,8 +1128,9 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // --- noise walls ---
   const wall = new Uint8Array(n), wallLength = new Float64Array(n), wallArea = new Float64Array(n);
   const noiseBuyouts = new Float64Array(n);
-  let walls: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
-  let receivers: NoiseReceiver[] = [], footprintMap: NoiseFootprint | null = null;
+  let walls: WallStretch[] = [], wallsAroundChoices: WallStretch[] = [], boughtOut: Result['boughtOut'] = [];
+  let receivers: NoiseReceiver[] = [];
+  let acoustic: Result["noise"]["source"] = null, builtL: Float64Array = new Float64Array(0), builtR: Float64Array = new Float64Array(0);
   // Railway: CNOSSOS-EU train source and line propagation (rail-noise.ts) against the new-line limits.
   const noiseModel = cat.mode === 'railway' ? createRailNoiseModel(opts.railTraffic ?? [])
     : createNoiseModel(scenario.traffic, opts.operatingSpeed ?? d.speed, { heavyShare: scenario.heavyShare, ...(cat.mode === 'motorway' ? { profile: 'motorway' as const } : {}) });
@@ -1108,44 +1142,32 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // Explicit walls are construction even when there are no nearby buildings (or no building layer).
   const noiseBuildings = bld ?? (wallOverrides.length ? new BuildingIndex([]) : undefined);
   if (noiseBuildings && !preview) {
-    const shieldL = new Uint8Array(n), shieldR = new Uint8Array(n);
-    const edges: EarthEdges = { L: new Array(n), R: new Array(n) };
-    for (let i = 0; i < n; i++) {
-      if (kind[i] === KIND.tunnel) { shieldL[i] = shieldR[i] = 1; continue; }
-      if (joinedLeft[i]) shieldL[i] = 1;
-      if (kind[i] !== KIND.earth) continue;
-      // Positive cut edges only; no terrain shield under a bridge or at an embankment toe.
-      if (sec.zDayL[i] > grade[i]) edges.L[i] = { offset: sec.dayL[i], height: sec.zDayL[i] - grade[i] };
-      if (sec.zDayR[i] > grade[i]) edges.R[i] = { offset: sec.dayR[i], height: sec.zDayR[i] - grade[i] };
-    }
-    const barrier = noiseBarrier(cat.crownWidth);
-    const ex = dwellingExposure(n, st.x, st.y, st.tx, st.ty, noiseBuildings, noiseModel, gone,
-      grade, (x, y) => terrain.heightAt(x, y), shieldL, shieldR, barrier, edges,
-      { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R, gapL: wallGaps.L, gapR: wallGaps.R });
-    const resolved = resolveNoiseWalls(ex, ds, al.length, shieldL, shieldR, barrier, edges);
-    boughtOut = [...manualBuys, ...resolved.boughtOut].sort((a, b) => a.i - b.i);
+    // walls and screening edges where the cross-section puts them (cut top, crown / deck edge)
+    const screens = crossSectionScreens(n, kind, grade, cat.crownWidth, sec.dayL, sec.dayR, sec.zDayL, sec.zDayR,
+      (i, left, o) => terrain.heightAt(st.x[i] - st.ty[i] * o * (left ? 1 : -1), st.y[i] + st.tx[i] * o * (left ? 1 : -1)), wallGaps);
+    // split motorway: where the other direction runs alongside on the left, that side is its check
+    for (let i = 0; i < n; i++) if (joinedLeft[i]) screens.L.shield[i] = 1;
+    const rail = cat.mode === 'railway';
+    acoustic = { id: opts.acousticSourceId ?? (rail ? 'acoustic:rail' : 'acoustic:road'), mode: rail ? 'rail' : 'road', laneOffset: NOISE.sourceOffset,
+      sourceHeight: NOISE.barrierSourceHeight, n, x: st.x, y: st.y, tx: st.tx, ty: st.ty, grade,
+      len: Float64Array.from({ length: n }, (_, i) => cellLength(i, n, ds)), dayDb: noiseModel.dayDb, nightDb: noiseModel.nightDb,
+      ...(noiseModel.limits ? { limits: noiseModel.limits } : {}), ...screens };
+    const outcome = noiseOutcome(acoustic, noiseModel, noiseBuildings, gone, (x, y) => terrain.heightAt(x, y), st.s,
+      { keptBuildingIds: keptIds, wallL: wallMasks.L, wallR: wallMasks.R });
+    boughtOut = [...manualBuys, ...outcome.boughtOut].sort((a, b) => a.i - b.i);
     for (const p of boughtOut) noiseBuyouts[p.i] += p.cost;
-    const fl = resolved.L, fr = resolved.R;
+    const fl = builtL = outcome.L, fr = builtR = outcome.R;
+    // billed as drawn: the wall line's own length beside the axis, the height above its foot
+    const lineL = wallLineLengths(n, st.x, st.y, st.tx, st.ty, screens.L.wallOff, true);
+    const lineR = wallLineLengths(n, st.x, st.y, st.tx, st.ty, screens.R.wallOff, false);
     for (let i = 0; i < n; i++) {
       wall[i] = (fl[i] ? 1 : 0) | (fr[i] ? 2 : 0);
-      wallLength[i] = ((fl[i] ? 1 : 0) + (fr[i] ? 1 : 0)) * cellLength(i, n, ds);
-      wallArea[i] = (fl[i] + fr[i]) * cellLength(i, n, ds);
+      wallLength[i] = (fl[i] ? lineL[i] : 0) + (fr[i] ? lineR[i] : 0);
+      wallArea[i] = fl[i] * lineL[i] + fr[i] * lineR[i];
     }
-    walls = resolved.walls;
-    receivers = resolved.receivers;
-    noiseViolations.push(...noiseControlViolations(receivers, ex.scratch, st.s, cat.crownWidth));
-    // the band shows the height that decides: the top floor of the tallest dwelling beside each station
-    // (within ±40 m along the road, on that side; bought-out ones are gone)
-    const topL = new Float32Array(n).fill(NOISE.receiverHeight), topR = new Float32Array(n).fill(NOISE.receiverHeight);
-    const reach = Math.round(40 / ds);
-    for (const p of receivers) {
-      if (p.status === 'bought') continue;
-      const up = NOISE.receiverHeight + (noiseBuildings.levels[p.j] - 1) * NOISE.storeyHeight, top = p.side === 'L' ? topL : topR;
-      for (let k = Math.max(0, p.i - reach); k <= Math.min(n - 1, p.i + reach); k++) if (up > top[k]) top[k] = up;
-    }
-    footprintMap = noiseFootprint(n, st.x, st.y, st.tx, st.ty, grade, (x, y) => terrain.heightAt(x, y), noiseModel,
-      shieldL, shieldR, fl, fr, (i, left) => (kind[i] === KIND.earth ? (left ? sec.dayL[i] : sec.dayR[i]) : w), barrier, edges,
-      undefined, undefined, undefined, (i, left) => (left ? topL : topR)[i]);
+    walls = outcome.walls; wallsAroundChoices = outcome.aroundChoices;
+    receivers = outcome.receivers;
+    noiseViolations.push(...noiseControlViolations(receivers, st.s));
   }
   lap('town');
 
@@ -1269,9 +1291,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     cut: sec.cut, fill: sec.fill, dayL: sec.dayL, dayR: sec.dayR, zDayL: sec.zDayL, zDayR: sec.zDayR, oob, runs,
     vpis, vcurves: prof.curves.map((c) => ({ s: c.s, z: c.z, len: c.lenEff, r: c.r, type: c.type })), grades: prof.grades,
     curves: al.curves.map((c) => ({ index: c.index, x: c.x, y: c.y, r: c.r, rEff: c.rEff, delta: c.delta, auto: c.auto, sStart: c.sStart, sEnd: c.sEnd, t: c.t, unit: c.unit })),
-    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, demolished, boughtOut, kept,
+    violations, geomViolations, cost, parts, cell: { width, urban, forest, wall, wallLength, wallArea }, crossings, waterCrossings, footprintConflicts: footprintCheck.conflicts, walls, wallsAroundChoices, demolished, boughtOut, kept,
     retainingWalls, wallSurfaceL: retention.wallSurfaceL, wallSurfaceR: retention.wallSurfaceR,
-    noise: { receivers, footprint: footprintMap, ...(receivers.length ? { gaps: wallGaps } : {}) },
+    noise: { receivers, source: acoustic, L: builtL, R: builtR, controlling: noiseModel.controlling,
+      limit: noiseModel.controlling === 'night' ? noiseModel.limits?.nightDb ?? NOISE.limitNightDb : noiseModel.limits?.dayDb ?? NOISE.limitDayDb },
     quantities: {
       cut: vol.cut, fill: vol.fill, reused: mh.reused, surplus: mh.surplus, deficit: mh.deficit, avgHaul: mh.avgHaul,
       cutByClass, footprint, forestArea, buildingsHit: demolished.length, hitBuildings: demolished.map((p) => p.j),

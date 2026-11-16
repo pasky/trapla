@@ -15,6 +15,10 @@ export interface RouteMask {
   box: { minX: number; minZ: number; maxX: number; maxZ: number } | null;
 }
 
+/** how far short of an embankment's end face at a structure the terrain mask stops, m (≥ the mask
+ * raster's bleed: half a ≈ 2.5 m texel plus rasterisation) */
+const MASK_END_INSET = 3;
+
 /** Coordinates match View.local's horizontal axes. Empty scenes have no mask, not infinite bounds. */
 export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: number,
   natural: (x: number, y: number) => number): RouteMask {
@@ -43,10 +47,23 @@ export function routeMask(inputs: readonly RouteMaskInput[], cx: number, cy: num
       P.push(a, b); bounds(a[0], a[1]); bounds(b[0], b[1]);
     }
     const ground = groundStations(r, natural);
+    // Where an embankment ends at a structure (an abutment) nothing covers the ground beyond its end face:
+    // there the terrain mask stops MASK_END_INSET short of the face, so the raster's bleed (≈ a texel)
+    // cannot open a sky-coloured wedge in front of it; the ground it keeps lies inside the embankment.
+    // In a cut the mask must reach the face (the ground stands above the road there).
+    const fill = (i: number, side: number) => { const p = daylightPoint(r, i, side); return natural(p.x, p.y) <= r.grade[i] + 0.05; };
+    const toward = (p: [number, number], q: [number, number]) => {
+      const len = Math.hypot(q[0] - p[0], q[1] - p[1]), t = len > 0 ? Math.min(0.45, MASK_END_INSET / len) : 0;
+      return [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t] as [number, number];
+    };
     for (let i = 0; i < r.n - 1; i++) {
       if (!ground[i] || !ground[i + 1]) continue;
       for (const [points, out] of [[P, terrain], [exact, original]] as const) {
-        const a0 = points[2 * i], b0 = points[2 * i + 1], a1 = points[2 * i + 2], b1 = points[2 * i + 3];
+        let a0 = points[2 * i], b0 = points[2 * i + 1], a1 = points[2 * i + 2], b1 = points[2 * i + 3];
+        if (points === P) {
+          if (i > 0 && !ground[i - 1]) { if (fill(i, 1)) a0 = toward(a0, a1); if (fill(i, -1)) b0 = toward(b0, b1); }
+          if (i + 2 < r.n && !ground[i + 2]) { if (fill(i + 1, 1)) a1 = toward(a1, a0); if (fill(i + 1, -1)) b1 = toward(b1, b0); }
+        }
         for (const p of [a0, b0, a1, b0, b1, a1]) out.push(p[0], 0, p[1]);
       }
     }

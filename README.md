@@ -46,6 +46,8 @@ Other commands:
 | `node scripts/crossing-shots.mjs` | oblique views of all five crossing outcomes and an overbridge detail; writes screenshots 42–48 (`--before` writes to `/tmp/trapla-crossings-before`) |
 | `node scripts/crossing-works-shots.mjs [--before]` | a crossing's own works close up (side roads regraded to meet a junction approach / bridge ramp, a retaining wall) and picking a reroute; screenshots 110–116 |
 | `node scripts/link-shape-shots.mjs` | shaping a reroute with the mouse; screenshots 117–119 |
+| `node scripts/lowered-underpass-shots.mjs` | player pass over lowered underpasses and engineered reroutes (real clicks, card text checked); screenshots 150–156 |
+| `node scripts/camera-check.mjs [--shots dir]` | the map camera with real mouse input (low views, Voletiny zoom, pans off the map, *Whole route*, overprinted labels); screenshots 157–159 |
 | `npx tsx scripts/crossing-footprint-audit.ts [--straight] [--random N] [designs…]` | rough independent screen: crossing earthworks still lying over other mapped roads |
 | `npx tsx scripts/outcome-audit.ts [--straight] [--random N --seed S] [--quiet] [designs…]` | every crossing / footprint outcome with ramp, link and box lengths and costs, every violation; flags ramps > 250 m, links > 1 km and footprint / crossing violations |
 | `node scripts/crossing-sanity-shots.mjs [--out dir]` | the owner-reported service-road bridge (km 8.47 fixtures) and four typical crossings with their cards open; writes `docs/screenshots/crossing-sanity/` |
@@ -114,15 +116,21 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   every change (an approximate search); pins steer it. By hand starts from the current heights as **◆ points**:
   drag one, double-click the line to add one, right-click to delete. Back to Auto replaces them (Undo brings them
   back).
-- **Map:** left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms about the cursor. View buttons
+- **Map:** left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms about the ground under the
+  cursor. The view always turns and zooms about the ground at its centre, never looks out flat along the horizon,
+  and stays over the map; a click in the profile or a list brings what it picks into view (looking down on it
+  from a low view). **Whole route**
+  <kbd>W</kbd> brings the whole road back into view from anywhere. View buttons
   (remembered): **Contours** <kbd>C</kbd> (interval follows the zoom), **Slope** <kbd>S</kbd> (yellow 8 %, orange
   15 %, red 25 %, purple 40 %), **Relief** <kbd>R</kbd> (1–3× vertical exaggeration), **Photo** <kbd>O</kbd> (aerial
   photo, needs a network connection), **Noise** <kbd>N</kbd>. Keys are accelerators only; every action has a button.
 - **First run:** three steps at the top left of the map (drag the road, click anything, the cost counts once
   valid); *Got it*, <kbd>Esc</kbd> or the first click dismiss it; *Help → Show the intro* brings it back.
 - **Colours** are the same on the map, in the profile and in the cards: road orange, bridge blue, tunnel purple,
-  noise wall teal, problems red, demolished buildings dark grey squares, bought-out magenta diamonds, kept
-  green. On the map these are symbols for the zoomed-out view (from 2.5 m per pixel, where the road is a few
+  noise wall teal, problems red, kept green. A demolished building's plot is drawn on the ground in its own
+  shape as cleared (pale, hatched, dashed edge); a bought-out house stands magenta in every view with a dashed
+  magenta ring on the ground; where a house is only a few pixels across they are a dark grey square and a
+  magenta diamond with a white outline. On the map these are symbols for the zoomed-out view (from 2.5 m per pixel, where the road is a few
   pixels wide) and for a road being dragged; closer, the road is drawn as built: asphalt with white Czech
   markings, noise walls as panels between posts, tunnels as a purple dashed trace on the ground, problem
   stretches tinted red. The tangent lines of a bend show only while it is dragged, hovered or selected. The
@@ -171,11 +179,12 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
 - **Walls:** player walls keep their exact extent (no automatic end margins); tunnels suppress walls. Teal walls
   show the actual height, dotted marks your choice, pink dashes removals. **Any wall decision of yours at an
   exposed house stops its automatic buyout**: remaining noise becomes a violation with a sufficient wall height
-  and extent (a fix button) or a buyout. Clearing the decisions restores automatic 3/4/5 m walls and the
-  fallback buyout; **Keep** still forbids acquisition.
-- Noise is a **provisional feasibility model**, not an acoustic assessment: façade distance and top occupied
-  floor feed a geometric source–wall–receiver diffraction check. Distant upper floors can be shadowed; floors
-  with a clear sightline over the wall get no benefit. Assumptions and limitations are in `PLAN.md`.
+  and extent (a fix button) or a buyout. Clearing the decisions restores the automatic walls (the cheapest of
+  2 / 3 / 4 / 5 m, on the crown or deck edge, or on a cut's top edge) and the fallback buyout; **Keep** still
+  forbids acquisition.
+- Noise is a **provisional feasibility model**, not an acoustic assessment: every 10 m of road is a piece of
+  the Czech manual's calculation (its angle of view, distance, the wall, cut edge or road edge in the way),
+  added up at every floor of each house. Assumptions and limitations: `research/36`, `PLAN.md`.
 
 ### Playtest gallery
 
@@ -276,10 +285,31 @@ raised to meet it instead of being buried under its slope:
 [a click on a reroute far from the crossing opens its card](docs/screenshots/116-crossing-pick-link.png).
 (`node scripts/crossing-works-shots.mjs`, `--before` on the older code.)
 
+Noise model 21 and what the route takes (`node scripts/noise-shots.mjs`, `ROOT=` an older checkout for the
+before): the deep cut at km 10.1, [walls inside the slope before](docs/screenshots/120-noise-cut-km10-before.png),
+[on the cut's top edge now](docs/screenshots/121-noise-cut-km10-after.png); [the house beside a junction
+opening, walled instead of bought out](docs/screenshots/122-noise-gap-house-card.png); [a card with the wall on
+the cut](docs/screenshots/123-noise-wall-on-cut-card.png); demolished buildings under a viaduct, [roof patches
+and floating squares before](docs/screenshots/124-demolished-before.png), [cleared plots now](docs/screenshots/125-demolished-after.png);
+[a bought-out house with its ring](docs/screenshots/126-bought-out-after.png); [far away: outlined markers on
+the ground](docs/screenshots/127-demolished-far-markers.png); the ground beside an abutment, [sky-coloured
+slivers before](docs/screenshots/128-seam-abutment-before.png), [closed now](docs/screenshots/129-seam-abutment-after.png).
+
 Shaping a reroute by dragging it (`node scripts/link-shape-shots.mjs`):
 [the drag](docs/screenshots/117-link-shape-drag.png) (the first drag starts from the automatic path's own bends),
 [the rebuilt road with its bend points and "Automatic path"](docs/screenshots/118-link-shape-built.png),
 [a bend point dragged onto our earthworks: the problem, with the way back](docs/screenshots/119-link-shape-rejected.png).
+Buildable reroutes and lowered underpasses (model 21, `node scripts/lowered-underpass-shots.mjs`):
+[the straight start line opens valid](docs/screenshots/150-straight-start-valid.png),
+[a local road lowered 3.3 m under its box, clicked on the map](docs/screenshots/151-lowered-local-road-card.png),
+[its portal](docs/screenshots/152-lowered-local-road-portal.png),
+[a track lowered under a low embankment](docs/screenshots/153-lowered-track-oblique.png),
+[the player's reroute that cannot be built (a railway in the way), its works outlined](docs/screenshots/154-player-reroute-unbuildable.png),
+[town-centre's service road lowered 2.9 m](docs/screenshots/155-town-centre-lowered-service-road.png),
+[an engineered track reroute at its class's steepest grade](docs/screenshots/156-engineered-reroute-best.png).
+Map camera and labels (`node scripts/camera-check.mjs`): [*Whole route* after panning off the map](docs/screenshots/157-camera-whole-route.png),
+[a low view: no names piled up on the horizon or printed over each other](docs/screenshots/158-camera-low-view-labels.png),
+[noise walls on both sides labelled once](docs/screenshots/159-camera-wall-labels.png).
 Model-18 crossing sanity pass (plain-words card, class-gradient ramps): [service road carried over our road,
 km 8.46](docs/screenshots/crossing-sanity/km846-service-loop.png), [track bridge, best km 3.69 (ramps 382 → 124 m)](docs/screenshots/crossing-sanity/best-km369-track-overbridge.png),
 [street bridge, direct-80 km 15.97 (421 → 170 m)](docs/screenshots/crossing-sanity/direct80-km1597-street-overbridge.png),

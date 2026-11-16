@@ -30,7 +30,7 @@ export class RouteScene {
   private previews = new Set<string>();
   constructor(private view: View) {}
 
-  *build(inputs: readonly RenderRoute[], globalDemolished?: readonly number[]): Generator<void, Staged> {
+  *build(inputs: readonly RenderRoute[], globalDemolished?: readonly number[], globalBought?: readonly number[]): Generator<void, Staged> {
     if (new Set(inputs.map(i => i.id)).size !== inputs.length) throw new Error('Duplicate render route');
     const generation = ++this.generation, next = new Map<string, Entry>(), stages: Staged[] = [], fresh: CrossingRenderer[] = [];
     let handedOver = false, settled = false;
@@ -64,6 +64,10 @@ export class RouteScene {
         stages.push(yield* this.view.buildResult(entry.input.result, entry.input.crownWidth, entry.input.id, context, true, entry.input.buildingMarkers));
         stages.push(yield* entry.crossings.build(entry.input.result, context));
       }
+      // the map's cleared plots and buyout rings, for exactly what the houses' 3D state will be
+      const shown = inputs.filter(i => i.buildingMarkers !== false);
+      stages.push(yield* this.view.buildPlots(globalDemolished ?? inputs.flatMap(i => i.result.demolished.map(b => b.j)),
+        globalBought ?? shown.flatMap(i => i.result.boughtOut.map(b => b.j))));
       handedOver = true;
       return {
         commit: () => {
@@ -78,7 +82,7 @@ export class RouteScene {
             const entry = next.get(id); if (entry) this.view.setPreview(entry.input.result, id);
           }
           this.previews.clear();
-          this.view.commitRouteScene(new Set(next.keys()), globalDemolished);
+          this.view.commitRouteScene(new Set(next.keys()), globalDemolished, globalBought ?? shown.flatMap(i => i.result.boughtOut.map(b => b.j)));
           settled = true;
         },
         dispose,

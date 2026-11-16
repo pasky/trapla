@@ -8,10 +8,8 @@ import { cellsInRange } from './core/range';
 import { KIND } from './core/structures';
 import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
 import { ROUNDABOUT_HOSTS } from './core/tie-in';
-import { createRailNoiseModel } from './core/rail-noise';
-import { railTraffic } from './core/project-railway';
 import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
-import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
+import { CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, splitCorridor } from './core/project-motorway';
 import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
 import { classTraffic } from './core/traffic-census';
 import { RouteExtras } from './render/extras';
@@ -21,6 +19,7 @@ import { RouteScene } from './render/route-scene';
 import { footprintHit, pickRoute, type PickRoute } from './render/route-pick';
 import { SourcePicker, type SourceHit } from './render/source-pick';
 import { CrossingPicker } from './render/crossing-pick';
+import { CrossingHighlight } from './ui/crossing-highlight';
 import { LinkEditor } from './ui/link-edit';
 import { shapeable } from './ui/link-shape';
 import type { LinkVia } from './core/crossings';
@@ -40,7 +39,6 @@ import { objectDataKey, paintWallOverride, setBuildingOverride } from './core/bu
 import { DecisionList } from './ui/build-tools';
 import { buildingInfo, Inspector, type Sel } from './ui/inspector';
 import { pieceAt } from './ui/pieces';
-import { createNoiseModel } from './core/road-noise';
 import { buildingLevels } from './core/buildings';
 import { NoiseLayer } from './render/noise';
 import { View } from './render/view';
@@ -50,7 +48,7 @@ import { openProjectStore } from './project-store';
 import { hasProjectSave } from './project-store-contract';
 import { makeLegacyProjectContext, replaceRouteFromLegacy, projectFromLegacyDesign } from './core/project-legacy';
 import type { Anchor, ProjectDesign, ProjectResult, ProjectSnapshot, RouteId, RouteResult, SourceInterval } from './core/project';
-import { acceptsProjectMessage, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
+import { acceptsProjectMessage, type NoiseBandOut, type ProjectWorkerIn, type ProjectWorkerOut } from './core/project-protocol';
 import { ActiveRouteStore } from './ui/active-route-store';
 import { pickScenario, addScenariosButton } from './ui/scenario-picker';
 import { showSaveRecovery } from './ui/save-recovery';
@@ -161,7 +159,12 @@ async function main() {
   // after the HUD: it syncs the HUD's exaggeration select
   const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
-  }, noise);
+  }, noise, () => {
+    // the active route as built (else its ends and bends)
+    const r = last, d = store.read() ? store.design : null;
+    view.frame(r ? Array.from({ length: Math.ceil(r.n / 20) + 1 }, (_, k) => { const i = Math.min(r.n - 1, k * 20); return { x: r.x[i], y: r.y[i] }; })
+      : d ? [A, ...d.pis, B] : []);
+  });
 
   let last: Result | null = null;
   let projectFull: ProjectResult | null = null;
@@ -196,21 +199,8 @@ async function main() {
   // ---- the selection: one thing at a time, shown in the inspector, on the map and in the profile ----
   let sel: Sel | null = null;
   /** shaping reroutes on the map (constructed once the store hooks exist) */
-  let linkEdit: LinkEditor | undefined;
-  let models: { key: string; model: ReturnType<typeof createNoiseModel> } | null = null;
+  let linkEdit: LinkEditor | undefined, works: CrossingHighlight | undefined;
   const inspector = new Inspector(document.getElementById('inspector')!, {
-    noiseModel: (d) => {
-      // the active route's own acoustic inputs, as its evaluation used them (road, motorway, railway)
-      const route = store.route, design = projectStore.snapshot.design;
-      const corridor = route?.kind === 'motorway' ? corridorOfRoute(design, route.id) : undefined;
-      const ops = corridor ? corridorOperations(design, corridor) : route?.kind === 'road' ? route.specification.operations : null;
-      const key = route?.kind === 'railway' ? `rail:${JSON.stringify(route.specification.operations)}`
-        : `${d.category}:${d.speed}:${ops?.aadt ?? scenario.traffic}:${ops?.heavyShare ?? scenario.heavyShare}`;
-      if (!models || models.key !== key) models = { key, model: route?.kind === 'railway' ? createRailNoiseModel(railTraffic(route))
-        : createNoiseModel(ops?.aadt ?? scenario.traffic, d.speed, { heavyShare: ops?.heavyShare ?? scenario.heavyShare,
-          ...(corridor ? { profile: 'motorway' as const } : {}) }) };
-      return models.model;
-    },
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
   });
@@ -308,6 +298,8 @@ async function main() {
   };
   /** select `next` everywhere; `fly`: bring it into view on the map (if off screen) and in the profile */
   let selectGeneration = 0; // a deferred base-road pick yields to any later selection
+  /** A single selected place seen from further than this (m per pixel) is too small to make out: framing flies in. */
+  const FRAME_MPP = 6;
   const select = (next: Sel | null, fly = false) => {
     selectGeneration++;
     if (sourceEditor?.selected) sourceEditor.clear();
@@ -329,7 +321,7 @@ async function main() {
     if (store.read()) view.setDesign(store.design, selectedPi(), activeEndpoints());
     else view.clearDesign(activeEndpoints());
     profile.selectBend(selectedPi()); if (store.read()) curveEdit.refresh();
-    linkEdit?.refresh();
+    linkEdit?.refresh(); works?.refresh();
     const road = next?.kind === 'crossing' ? next.roadId : null;
     profile.selectCrossing(road); annotations.selectCrossing(road);
     annotations.selectBuilding(next?.kind === 'building' ? next.j : null);
@@ -341,15 +333,31 @@ async function main() {
       const p = placeOf(next);
       if (p) {
         profile.reveal(p.s0, p.s1);
-        if (fly) {
-          const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y));
-          const box = view.renderer.domElement.getBoundingClientRect();
-          const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40;
-          if (off) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
-        }
+        if (fly) frameSelection(next);
       }
       hud.revealContext('inspector');
     }
+  };
+  /**
+   * Show the player what they picked away from the map (a click in the profile or in a list): fly to it when it
+   * is off the screen, seen from low over the horizon (it would sit on the horizon), or too small to make out
+   * there (a piece shorter than a sixth of the view, a single place from further than FRAME_MPP m per pixel); a
+   * long piece is framed whole. A selection already well in view stays put.
+   */
+  const frameSelection = (t: Sel) => {
+    const p = placeOf(t);
+    if (!p) return;
+    const box = view.renderer.domElement.getBoundingClientRect();
+    const q = view.project(p.x, p.y, pack.terrain.heightAt(p.x, p.y));
+    const off = !q.vis || q.sx < 40 || q.sy < 40 || q.sx > box.width - 40 || q.sy > box.height - 40 || view.lowView;
+    let small = view.metresPerPixel > FRAME_MPP;
+    const r = last;
+    if (p.s1 - p.s0 > 1 && r) {
+      const at = (s: number) => { const i = Math.max(0, Math.min(r.n - 1, Math.round(s / r.ds))); return view.project(r.x[i], r.y[i], r.grade[i]); };
+      const a = at(p.s0), b = at(p.s1);
+      small = !a.vis || !b.vis || Math.hypot(a.sx - b.sx, a.sy - b.sy) < Math.min(box.width, box.height) / 6;
+    }
+    if (off || small) view.flyTo(p.x, p.y, Math.max(900, Math.min(6000, (p.s1 - p.s0) * 1.6)));
   };
   /** the active route's card when the road widgets cannot edit it: a proposed change on map geometry */
   const routeCard = () => {
@@ -730,12 +738,26 @@ async function main() {
     profile.setBends(bendStations(r, rd));
     decisions.setResult(r, rd, j => binfo(j).kind);
     inspector.setNetworkPending(!(projectFull?.complete && projectFull.acousticScreen.complete));
-    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh();
+    inspector.setResult(r, rd); hud.setDesign(rd); hud.setResult(r, rd, store.best); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
   };
 
-  worker.onmessage = (ev: MessageEvent<ProjectWorkerOut | { type: 'ready' }>) => {
+  // the noise view's band: asked from the worker for the displayed result when the view needs it
+  let bandAsked = 0;
+  noise.requestBand = () => {
+    const full = projectFull, routeId = store.activeRouteId, d = store.read();
+    if (!full || !routeId || !d) return;
+    worker.postMessage({ type: 'noise-band', id: ++bandAsked, identity: { epoch: full.epoch, revision: full.revision }, routeId,
+      crownWidth: CATEGORIES[d.category].crownWidth } satisfies ProjectWorkerIn);
+  };
+  worker.onmessage = (ev: MessageEvent<ProjectWorkerOut | NoiseBandOut | { type: 'ready' }>) => {
     const m = ev.data;
     if (m.type === 'ready') return;
+    if (m.type === 'noise-band') {
+      const r = projectFull?.routes[m.routeId]?.legacy;
+      if (m.id === bandAsked && r && projectFull!.epoch === m.identity.epoch && projectFull!.revision === m.identity.revision
+        && m.routeId === store.activeRouteId) noise.setBand(r, m.footprint);
+      return;
+    }
     const request = inflight.get(m.id);
     for (const k of inflight.keys()) if (k <= m.id) inflight.delete(k);
     if (m.id < received || !acceptsProjectMessage(projectStore.snapshot, m, store.activeRouteId ?? undefined, previewGesture ?? undefined)) return;
@@ -793,7 +815,8 @@ async function main() {
     heavy = runSliced((function* () {
       let geometry: Staged | undefined, sources: Staged | undefined, handedOver = false;
       try {
-        geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex));
+        geometry = yield* routeScene.build(inputs, result.buildings.filter(b => b.action === 'demolish').map(b => b.buildingIndex),
+          result.buildings.filter(b => b.action === 'buy').map(b => b.buildingIndex));
         const graph = transportGraph;
         // A project with rebuilt mapped roads (e.g. after undo/reload) whose graph is not parsed yet.
         if (!graph && result.acceptedRenderReplacements.length) void ensureTransport().then(() => { if (transportGraph) requestEval(false); });
@@ -839,6 +862,9 @@ async function main() {
     if (!o) { if (!via) return; list.push(o = { roadId, type: 'reconnection' }); }
     if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
   }, commit);
+  works = new CrossingHighlight(view, document.getElementById('overlay')!, {
+    selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull,
+  });
   linkEdit = new LinkEditor(view, document.getElementById('overlay')!, {
     selected: () => (sel?.kind === 'crossing' ? sel.roadId : null), result: () => lastFull, design: () => store.design,
     select: (roadId) => { if (sel?.kind !== 'crossing' || sel.roadId !== roadId) select({ kind: 'crossing', roadId }); },
@@ -924,7 +950,7 @@ async function main() {
     if (d) {
       if (sel?.kind === 'bend' && sel.i >= d.pis.length) select(null);
       view.setDesign(d, selectedPi(), activeEndpoints()); hud.setDesign(d);
-      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh();
+      profile.selectBend(selectedPi()); curveEdit.refresh(); linkEdit?.refresh(); works?.refresh();
     } else { view.clearDesign(activeEndpoints()); profile.clear(); if (!sourceEditor?.selected) routeCard(); curveEdit.hide(); }
     editBar.set(store.undoLabel(), store.redoLabel());
     routeBar.set(projectStore.snapshot.design, store.activeRouteId, projectStore.inTransaction);
@@ -1490,6 +1516,7 @@ async function main() {
     bendStations: () => last && bendStations(last, store.design),
     cameraTarget: () => view.target,
     cameraDistance: () => view.cameraDistance,
+    cameraPose: () => view.pose,
     undoLabels: () => ({ undo: store.undoLabel(), redo: store.redoLabel() }),
     selectRange: (s0: number | null, s1?: number) => select(s0 === null || s1 === undefined ? null : { kind: 'stretch', s0, s1 }),
     range: () => (sel?.kind === 'stretch' ? { s0: sel.s0, s1: sel.s1 } : null),

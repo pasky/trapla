@@ -1,4 +1,4 @@
-# Automatic footprint engineering (cost models 16–18)
+# Automatic footprint engineering (cost models 16–22)
 
 The evaluator now **builds and prices remedies**, rather than simply invalidating every design
 whose slopes or foundations touch an existing feature. Straight-line Automatic and all five
@@ -187,6 +187,147 @@ slopes; a stub between the crossed road and our earthworks whose arm is left to 
 Manual grades are not lifted, pins remain constraints, and manual structure ranges are not
 silently moved. Retaining walls can protect a manually specified earthwork without changing its
 specified grade or structure kind. Infeasible overrides remain visibly invalid.
+
+### Model 22: buildable automatic reroutes, lowered underpasses
+
+(Developed as "model 20" on its branch; main took 20 for motorway and railway scoring and 21 for finite-segment noise.)
+
+**Problem.** The outcome audit of model 19/20 road designs (`scripts/reroute-audit.ts`, straight + five
+published + 24 random designs) found 730 of 871 automatic reroutes silently unbuildable: 658 steeper than
+their class allows (22–29 % over 20 m along steep slope toes on published designs), 140 through houses, 35
+across railways, 19 through ponds or rivers, and 215 stream crossings without a culvert. Auto chose them
+because they were cheap, and nothing checked them.
+
+**Reroutes are engineered** (`src/core/link-route.ts`), automatic or shaped by the player alike:
+
+- Surveyed every 5 m, and more finely wherever the ground departs from a straight line between samples by
+  more than 0.2 m (as drawn terrain is refined), so that the profile sees every hump the drawn road follows.
+- A profile as close to the ground as the class gradient allows (research/20; `rampGradient`, and the
+  justified-case `rampSteepest` where the ordinary value cannot be met), cut or fill at most 10 m
+  (`LINK_MAX_SUPPORT`, PROVISIONAL: the same limit as rebuilt roads and bridge-over-us ramps), ending on the
+  ground at the roads it joins. Profile samples every 5 m (≤ 450 per line).
+- Streams crossed get a culvert sized like ours (`waterSize`, research/17), one per crossing, with its cover
+  built up in the profile exactly where it crosses (a stream at a tie-in itself cannot be covered there); a river too big for a culvert is a problem. Houses in its way are bought out and demolished like
+  those under our road (`evaluate.ts` books them as buildings); a house the player keeps blocks it. Railways,
+  ponds/rivers (raster) and motorways (anywhere under the new road's width) are never crossed on the ground.
+- Where the line beside our earthworks cannot be built (or buying houses out is over a quarter of its price),
+  `routeAlong` searches a gentler or clearer line beside our road: a dynamic programme over ≤ 60 stations ×
+  11 offsets of 10 m, up to 100 m out (`LINK_CORRIDOR`, PROVISIONAL), with a soft penalty of 50 m of road per
+  metre of rise beyond the gradient (a search heuristic only: the line found is engineered and checked like
+  any other). Not tried past rivers or motorways, or across a railway the straight line between the ends
+  also crosses.
+- An automatic reroute that still cannot be built is one violation, "No buildable reroute for the …", with
+  every reason in plain words and a computed fix (raise our road onto a bridge over it, or lower it so the
+  crossed road can bridge over us); the crossing keeps owning its road (no knock-on footprint violations).
+  Auto then prefers any buildable treatment; a shaped reroute reports each problem separately.
+- The crossing card says what the new road needed (culverts, houses, the steepest grade where the class's
+  justified maximum was used).
+
+**Lowered underpass** (research/37). Under an embankment too low for a box (5.5 m for the track box, 5.65 m
+for the local-road box: clear height, roof and cover, research/19), the crossed way is lowered into a cut:
+
+- A straight floor through the box, as high as leaves the box its room under our road everywhere under the
+  crown band; its fall (at most the class gradient, or the old road's own fall across the box where steeper,
+  as for a sloped deck) is chosen for the shortest ramps. Ramps back to the old road at the class gradient
+  (`rampLimit`, research/20), at most 250 m each (`MAX_RAMP_LENGTH`).
+- Deepest lowering 6 m (`LOWERING_RULES.maxDepth`, PROVISIONAL: no norm gives one; level-crossing
+  replacement underpasses drop the road by the whole clearance plus structure, e.g. Studénka ≈ 4.67 m road to
+  structure top plus an unreported track build-up, research/37 §7). Rebuilt-railway-bridge lowerings in the sample were only 0.65–1.40 m, but
+  they needed only that much.
+- Drainage of the low point (TP 83 §6.1: by gravity where the fall allows, else pumped): two street gullies
+  (OTSKP 89712) and either a DN 300 concrete pipe (9183A1) at 0.5 % fall (PROVISIONAL: TP 83's ditch minimum)
+  from 1 m below the low point (PROVISIONAL: no sourced pipe-cover rule) to ground along the crossed way within
+  500 m, with an outlet head (89516); or a concrete wet well (894146), a duplex packaged pump chamber
+  (74,355 CZK, equipment only: installation and the power connection are not included, PROVISIONAL, no
+  installed price was found) and a rising main to where a ramp ends (DN 300 plastic pipe 9183A3 as a proxy).
+  The gravity check is a terrain screen (ground lower than the pipe's invert), not the recipient water level
+  and invert check research/37 asks for. Groundwater is not modelled.
+- The cut ramps are priced per metre at the crossed road's SPK rate, like bridge-over-us ramps; side roads
+  joining them are regraded or walled exactly as for model 19's ramps (`crossing-works.ts`).
+- A player may choose an underpass down to 6 m below the box's height; Auto uses it wherever it is cheapest
+  (`underpassFits`, `underpassPrice`'s estimate, then the measured geometry).
+
+**Other rules.**
+
+- A bridge over us may slope like the road it carries (class gradient, or the old road's own slope across
+  the deck): it clears our road under the whole deck but the ground only at its abutments. A level deck on a
+  valley side left one end high in the air and its ramp far too long.
+- **A reroute leads to a crossing that carries traffic over or under us** (a bridge, tunnel, junction, box or
+  bridge over us) or to a route end, never to another cut road (playtest-qa P1 #13: a track "rerouted to the
+  nearest crossing at km 9.47", where the track at 9.47 was itself cut and rerouted on to km 9.83). Main had
+  152 such chains on the audit designs (`reroute-audit.ts` now counts them), this model none. Auto
+  reconsiders the dearest treatments first, so that a crossing others are then rerouted to keeps carrying
+  them, and looks once more at those that found no target while another crossing still led to them. A
+  bridge over us or a junction anchors reroutes on its old line beyond its ramps (it could not before when
+  the ramps reached the end of their short rebuilt stretch).
+- A selected crossing outlines all its works on the map (rebuilt stretch, new roads of a reroute, regraded
+  side roads), and its mark stands on our road where the crossed road is cut (it floated at the removed
+  road's old level above a cutting).
+- Auto prefers a treatment other than a box whose kept way runs straight back under our earthworks within
+  100 m beyond its rebuilt stretch (along our slope on one side, not across our road again): that stretch
+  would still have to be walled or moved, while a reroute takes it with it. Such a box is kept only when
+  nothing else can be built. (Applied to bridges over us too, it rerouted one leg of a class I road that
+  winds across ours four times on direct-80, leaving its next crossing a 178 M bridge: boxes only.)
+- A first drag of a reroute starts from the automatic path's own bends simplified to within 2 m
+  (`SHAPE_TOLERANCE`; median 6 bend points per crossing).
+- Auto reroute candidates that cannot be worth it are not built: a reroute never costs less than the
+  straight lines between its anchors, and once one side is built its measured price stands in for it.
+
+**Results** (bn CZK, model 21 → 22; all published designs VALID on their own, also the straight start line):
+
+| Design | Model 21 | Model 22 | Main reasons |
+|---|---:|---:|---|
+| straight | 9.810834 | 9.844321 | +33.5 M. Was VALID only because reroutes were unchecked; km 16.58 local road 2244: a silently unbuildable reroute (a railway between it and the next crossing) becomes a 75 m box with the road lowered 3.3 m (89 m of ramps, gravity drain), 33.6 M. Steep track reroutes become boxes or bridges over us (km 4.55 +11.8 M, km 4.64 +8.0 M, km 6.56 street +9.0 M); lowered boxes save at km 18.24 (−11.2 M) and km 6.32. |
+| best | 4.175179 | 4.129413 | −45.8 M: lowered boxes replace bridges over us or reroutes at km 3.69 (track lowered 5.8 m under our road at grade), 6.31, 8.19, 17.64, 18.98 (−29 M); km 9.93 track reroute 13.0 → 0.3 M (its own crossing's neighbour now carries it). |
+| demo | 4.712958 | 4.669186 | −43.8 M: km 7.96 service road 41.7 M reroute → box with the road lowered 0.7 m (17.6 M); lowered boxes at km 4.44 and 19.29; a 22.3 M track bridge over us → 12.3 M reroute at km 4.00; chains broken at km 2.60 and 6.89 (+8.1 M). |
+| direct-80 | 4.824952 | 4.816992 | −8.0 M: lowered boxes save 35 M (km 1.24, 2.15, 6.73, 15.29); unbuildable steep reroutes become bridges over us or boxes (km 6.55 +16.6 M, 4.62 +14.1 M, 5.68 +11.5 M); km 14.34 street reroute engineered (+8.4 M). |
+| direct-90 | 5.446206 | 5.494864 | +48.7 M: track diversions on ground steeper than a track may be become bridges over us or boxes (km 8.26 +27.7 M, 5.71 +10.3 M, 8.93 +6.7 M) or engineered longer lines (km 9.80 +12.9 M); a lowered box saves 17.5 M at km 1.25; km 5.67 −7.7 M. |
+| town-centre | 11.296878 | 11.388358 | +91.5 M: km 10.11 track 3637: the 1.5 km reroute (21.5 M) runs on ground far steeper than a track may be; a 148 m bridge over the cutting (89.5 M). Km 15.98 service road 5162: 43.0 M reroute → box with the road lowered 2.9 m (17.0 M). Km 4.90/4.98 street reroutes (one too steep to build, the other 43 M once engineered) → boxes with the streets lowered 1.7 m (+12.1 M). Km 6.29 track no longer chained (+11.5 M). |
+
+Frozen fixtures recaptured (`eval-regression.ts --capture=current --reviewed-model-change`): the six above;
+best-drag −67.4 M, best-pin −44.3 M, best-structures −51.2 M and best-manual −45.8 M move with best (the same
+lowered boxes; best-manual stays invalid by its manual grade), town-controls +91.5 M with town-centre (stays
+invalid by its player overrides). `tests/fixtures/service-loop-design.json` is now VALID: the service road is
+lowered 4.4 m under a box and the class III road joining its ramp is regraded (41 m); the model 19 engine
+gap (closing a loop chord instead of rerouting it) remains in general. Service-overbridge fixture: the service
+road is lowered 3.9 m under a box instead of a bridge over us with 180 m of ramps.
+
+Audits (same 30 designs): `outcome-audit` violations 120 → 144 (invalid designs 21 → 22, all random ones;
+the new violations are reported unbuildable reroutes that used to pass silently); `reroute-audit` 730
+unbuildable of 871 → 7, all reported, of 511; chained reroutes 152 → 0.
+
+**Performance.** The engineered reroutes and the search cost crossing-step time; offset by: reroute
+candidates that cannot be worth it are not built (lower bound: the straight lines between anchors, then the
+measured first side), a candidate whose first side cannot be built is not built further, the anchor of a
+candidate is not refined or given works, only link ends compute anchors, the crossed road's line in
+`crossing-works.ts` is bucketed on a grid (it was scanned per nearby segment), a reroute's survey is shared by
+its two gradients, and smoothed lines / engineered reroutes are reused by the strict retry pass where our
+footprint within 200 m of them is unchanged (`CrossingCache`). Auto's preference against boxes whose way runs
+back under our slope also removes best's new strict retry. A/B interleaved against main 217cfa4 (`scripts/` designs, min of 12, under the exclusive browser lock;
+host load ≈ 20): sums over the six saved designs 569 → 568 ms and 582 → 580 ms in two runs. Per design,
+demo is ≈ 15 ms faster and best ≈ 4 ms faster (the strict retry pass now reuses reroutes), straight and
+direct-90 ≈ 4–7 ms slower (their crossing step does more engineering, ≈ +7 ms). The review fixes below (finer
+ground survey of reroutes, reuse tracked per consulted chainage) add ≈ 6 ms over the six designs (548 → 554 ms
+against the tree before them, load ≈ 6; ≈ 5 ms of it the finer survey): net ≈ +1 % against main, within
+run-to-run noise.
+
+Review fixes (deep review of this model): a reroute reused across passes is now invalidated by any change of
+our footprint at the chainages its computation consulted (it compared only a window around its anchors: a
+shaped bulge or a hairpin could reuse a stale plan); the ground between survey samples is profiled (a 1 m hump
+between samples drew a 40 % piece); culvert cover sits at the stream crossing (not the nearest sample) and a
+stream is billed once where two survey pieces meet; motorways met exactly at a piece boundary are caught; the
+box decision probes the same points as its final check (a ridge between samples rejected a box a 0.7 m
+lowering fits); Studénka's derived depth corrected to 4.67 m plus track build-up (research/37 §7); the
+lowered-box card states the steeper ramp allowance; the works outline breaks where it leaves the view.
+
+**Known remaining.** A very skewed crossing gets a box as long as its oblique path under our embankment
+(town-centre km 15.98, 57 m); a designer would square it by realigning the crossed road near our road (future
+improvement). Groundwater, flood levels and utilities under a lowered road are not modelled; the pump
+station is priced as equipment plus catalogue items without installation and power connection; cut ramps and
+their slopes are priced per metre of road like bridge-over-us ramps, without their earth volume. A shaped
+first drag can still start with a footprint violation when the player's override changes our road's
+structure choice (1 of 12 sampled). Reroutes are not checked against buildings' gardens or other roads they
+run along.
 
 ## Physical and financial rules
 

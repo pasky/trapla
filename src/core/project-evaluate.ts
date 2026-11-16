@@ -10,9 +10,7 @@ import type { Replacement, ReplacementWork } from './project-replacement';
 import { designedTieIn } from './tie-in';
 import { combineNoise, type NoiseDecider } from './project-noise';
 import { assertProjectDesign } from './project-validation';
-import { noiseSource } from './road-noise';
-import { evaluateProjectRailway, railTraffic, type RailwayEvaluation } from './project-railway';
-import { createRailNoiseModel } from './rail-noise';
+import { evaluateProjectRailway, type RailwayEvaluation } from './project-railway';
 import { CARRIAGEWAY_CATEGORY, corridorOfRoute, corridorOperations, evaluateProjectCorridor, MOTORWAY_CATEGORY, type CorridorEvaluation } from './project-motorway';
 import type { ProjectDesign } from './project';
 import * as dm from './detmath';
@@ -198,24 +196,20 @@ const routeIssues = (route: RouteDesign, r: Result): ProjectIssue[] => r.violati
   locations: [{ routeId: route.id, s0: v.s0, s1: v.s1, ...(v.pi === undefined ? {} : { pi: v.pi }), ...(v.vpi === undefined ? {} : { vpi: v.vpi }) }],
   violation: { kind: v.kind, title: endWords(route, v.title), fix: endWords(route, v.fix), basis: v.basis, rule: v.rule, ...(v.detail ? { detail: endWords(route, v.detail) } : {}) } }));
 
-function routeOutcome(ctx: ProjectEvalContext, design: ProjectDesign, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
+function routeOutcome(_ctx: ProjectEvalContext, _design: ProjectDesign, route: RouteDesign, r: Result): { buildings: ProjectBuildingOutcome[]; receivers: ProjectReceiver[] } {
   const buildings = ownBuildings(route, r);
-  // Road periods share propagation/attenuation; recover their absolute levels from the legacy
-  // controlling excess and fixed source offset. No multi-source inference is made from excess.
-  const corridor = route.kind === 'motorway' ? corridorOfRoute(design, route.id) : undefined;
-  const op = corridor ? corridorOperations(design, corridor) : route.specification.kind === 'road' ? route.specification.operations : null;
-  const rail = route.kind === 'railway' ? createRailNoiseModel(railTraffic(route)) : null;
-  const source = rail ?? (op ? noiseSource(op.aadt, op.speed, { heavyShare: op.heavyShare, ...(corridor ? { profile: 'motorway' as const } : {}) }) : null);
-  const limits = rail?.limits ?? { dayDb: NOISE.limitDayDb, nightDb: NOISE.limitNightDb };
-  const levels = (excess: number) => source && Number.isFinite(source.excessDb) ? {
-    day: source.dayDb - source.excessDb + excess, night: source.nightDb - source.excessDb + excess,
-  } : { day: -Infinity, night: -Infinity };
+  // Energies per storey come from the route's own finite-segment sum (day and night separately).
+  const limits = r.noise.source?.limits ?? { dayDb: NOISE.limitDayDb, nightDb: NOISE.limitNightDb };
+  const policy = route.kind === 'railway' ? 'cnossos-rail' as const : 'legacy-road' as const;
   const receivers = r.noise.receivers.map(receiver => {
-    const raw = levels(receiver.raw), built = levels(receiver.mitigated);
-    const height = NOISE.receiverHeight + ((ctx.legacy.buildings?.levels[receiver.j] ?? 1) - 1) * NOISE.storeyHeight;
+    const e = receiver.energy, k = receiver.floor;
+    const height = NOISE.receiverHeight + k * NOISE.storeyHeight;
+    const db = (v: number) => (v > 0 ? 10 * dm.log10(v) : -Infinity);
     return { buildingIndex: receiver.j, height, contributions: [{ sourceId: route.acousticSourceId, routeId: route.id,
-      buildingIndex: receiver.j, height, dayEnergy: dm.pow(10, raw.day / 10), nightEnergy: dm.pow(10, raw.night / 10), policy: rail ? 'cnossos-rail' : 'legacy-road' }],
-      dayDb: built.day, nightDb: built.night, dayLimit: limits.dayDb, nightLimit: limits.nightDb,
+      buildingIndex: receiver.j, height, dayEnergy: e.rawDay[k], nightEnergy: e.rawNight[k], policy,
+      position: { x: receiver.x, y: receiver.y, z: receiver.ground },
+      storeys: Array.from(e.day, (_, q) => ({ height: NOISE.receiverHeight + q * NOISE.storeyHeight, rawDay: e.rawDay[q], rawNight: e.rawNight[q], day: e.day[q], night: e.night[q] })) }],
+      dayDb: db(e.day[k]), nightDb: db(e.night[k]), dayLimit: limits.dayDb, nightLimit: limits.nightDb,
       action: receiver.status === 'bought' ? 'buy' as const : 'retain' as const };
   });
   return { buildings, receivers };

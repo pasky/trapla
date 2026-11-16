@@ -43,14 +43,16 @@ export class BuildAnnotations {
         `Culvert ${c.opening}, ${c.length.toFixed(0)} m`, () => this.onCulvert?.(c.s));
     }
     const xing = this.selectedCrossing === null ? undefined : r.crossings.find((c) => c.roadId === this.selectedCrossing);
-    if (xing) this.add(xing.x, xing.y, Math.max(r.grade[xing.i], r.grade[xing.i] - xing.h) + 2, '', 'selected-crossing', 'Selected', () => {});
+    // (a cut and rerouted road is gone at the crossing: the mark stands on our road, not in the air above a cutting)
+    const removed = xing && (xing.type === 'reconnection' || xing.type === 'diversion');
+    if (xing) this.add(xing.x, xing.y, (removed ? r.grade[xing.i] : Math.max(r.grade[xing.i], r.grade[xing.i] - xing.h)) + 2, '', 'selected-crossing', 'Selected', () => {});
     const buildings = new Map<number, 'buy' | 'keep' | undefined>((d.buildingOverrides ?? []).map((o) => [o.j, o.action]));
     if (this.selectedBuilding !== null && !buildings.has(this.selectedBuilding)) buildings.set(this.selectedBuilding, undefined);
     for (const [j, action] of buildings) {
       const b = this.pack.overlays.buildings[j];
       if (!b) continue;
       this.add(b[0], b[1], this.pack.terrain.heightAt(b[0], b[1]) + 12,
-        action === 'keep' ? 'KEEP' : action === 'buy' ? 'BUY' : '',
+        action === 'keep' ? 'KEEP' : action === 'buy' ? 'BOUGHT OUT' : '',
         action === 'keep' ? 'kept-building' : action === 'buy' ? 'bought-building' : 'selected-building',
         action === 'keep' ? 'You keep it' : action === 'buy' ? 'You buy it out' : 'Selected', () => this.onBuilding?.(j));
     }

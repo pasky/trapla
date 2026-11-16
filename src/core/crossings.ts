@@ -3,7 +3,7 @@ import { surchargeRate } from './cost';
 import { bridgeModel } from './bridge';
 import { ACCESS, CROSSING_RULES, JUNCTION, ROAD_CLASSES } from './data/urban';
 import { STRUCTURE_RULES } from './data/prices';
-import { underpassAssembly, UNDERPASS_RULES } from './data/remedies';
+import { LOWERING_RULES, sagDrainage, underpassAssembly, UNDERPASS_RULES } from './data/remedies';
 import { underpassFits } from './crossing-geometry';
 import { crossingOutcome } from './terms';
 import { KIND } from './structures';
@@ -64,11 +64,13 @@ export interface CrossingGeometry {
   schematic: false;
   /** Incomplete source topology / bounded geometry, never silently invented extensions. */
   clipped?: boolean;
+  /** (Auto) the kept way runs back under our earthworks right beyond its rebuilt stretch. */
+  runsBack?: boolean;
   diagnostics?: string[];
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
-    code: 'spacing' | 'class' | 'ours' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape';
+    code: 'spacing' | 'class' | 'ours' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape' | 'reroute';
     actual?: number; required?: number; targetS?: number };
 }
 export interface CrossingResult {
@@ -104,8 +106,22 @@ export interface CrossingResult {
   approachLength?: number;
   /** Underpass box length along the crossed way, toe to toe, m (measured from the geometry). */
   underpassLength?: number;
+  /** Underpass under a low embankment: the crossed way is lowered into a cut by up to this much, m,
+   * on ramps (approachLength) at its class gradient; its low point drains by gravity or a pump. */
+  lowered?: number;
+  drainage?: 'gravity' | 'pump';
+  /** Pre-surcharge CZK of that drainage, included in cost. */
+  drainCost?: number;
   roadCode?: string;
   roadPerKm?: number;
+  /** Culverts carrying streams under a reroute (count, and their pre-surcharge CZK, included in cost). */
+  culverts?: number;
+  culvertCost?: number;
+  /** Houses a reroute runs through, bought out and demolished (their price included in cost). */
+  houses?: number[];
+  houseCost?: number;
+  /** A reroute that needed its class's justified-case steepest grade (research/20) somewhere. */
+  linkGrade?: number;
   /** Side roads regraded to meet the rebuilt stretch, m (measured along them). */
   tieLength?: number;
   /** Retaining walls holding its slopes off roads beside it, m. */
@@ -182,11 +198,15 @@ export function reconnectionPrice(c: CrossingResult, gap: number, urban: number)
 
 /** Small RC box carrying the crossed way through our embankment, or undefined when its class
  * has no underpass size. `length` is the box length along the crossed way. */
-export function underpassPrice(c: Pick<CrossingResult, 'cls'>, length: number, urban: number) {
+export function underpassPrice(c: Pick<CrossingResult, 'cls'> & { h?: number }, length: number, urban: number) {
   const row = ROAD_CLASSES[c.cls], u = urban >= 0.5 ? 1 : 0;
   if (!row.underpass) return undefined;
   const box = underpassAssembly(row.underpass, row.roadPerKm[u] / 1000);
-  return { underpassLength: length, roadCode: row.roadCodes[u], roadPerKm: row.roadPerKm[u], cost: length * box.perM + 2 * box.head,
+  // Under a low embankment (estimate; the geometry pass measures it): the way lowered on ramps at its
+  // class gradient, its low point pumped up to where a ramp meets the ground (the dearer drainage).
+  const lowered = c.h === undefined ? 0 : Math.max(0, box.minHeight - c.h), ramp = lowered / row.rampGradient;
+  const extra = lowered > 0 ? 2 * ramp * row.roadPerKm[u] / 1000 + sagDrainage(undefined, ramp).cost : 0;
+  return { underpassLength: length, roadCode: row.roadCodes[u], roadPerKm: row.roadPerKm[u], cost: length * box.perM + 2 * box.head + extra,
     minHeight: box.minHeight, box };
 }
 const priced = (p: NonNullable<ReturnType<typeof underpassPrice>>) => ({ underpassLength: p.underpassLength, roadCode: p.roadCode, roadPerKm: p.roadPerKm, cost: p.cost });
@@ -220,8 +240,9 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         structure: 'Game rule: the crossing choice and what our road does there (bridge, tunnel, earthworks) must agree',
         reach: `Game limit: a reroute reaches at most ${CROSSING_RULES.linkHardReach} m along our road to the next crossing`,
         geometry: 'Game rule: crossed roads keep their real line and meet the ground at both ends',
-        underpass: `Game estimate (research/19): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road, and is at most ${UNDERPASS_RULES.maxLength} m long`,
+        underpass: `Game estimate (research/19, 37): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road (the crossed road may be lowered by up to ${LOWERING_RULES.maxDepth} m to make it), and is at most ${UNDERPASS_RULES.maxLength} m long`,
         shape: 'Game rule: a reroute the player shaped must be buildable where it is drawn',
+        reroute: 'Game rule: a reroute must be buildable',
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
@@ -236,7 +257,8 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
-    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade;
+    delete c.lowered; delete c.drainage; delete c.drainCost;
     c.requestedType = crossingChoice(c.roadId, overrides);
   }
   // A shape is absolute: it belongs to the one crossing of its way nearest to its bend points.
@@ -286,8 +308,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
       if (!box) issue(c, 'underpass', `A ${row.label} cannot pass through a small underpass`, 'Choose "Our bridge over it", "Its bridge over us" or "Cut and reroute"');
       else {
         Object.assign(c, priced(box));
-        if (c.h < box.minHeight - 1e-6) issue(c, 'underpass', 'Embankment too low for an underpass',
-          `Raise our road here by ${(box.minHeight - c.h).toFixed(1)} m, to at least ${box.minHeight.toFixed(2)} m above the crossed road (${box.box.height} m inside the box, plus its roof and earth cover)`, c.h, box.minHeight);
+        // (lower than the box needs, the way is lowered into a cut, by at most LOWERING_RULES.maxDepth)
+        const lowest = box.minHeight - LOWERING_RULES.maxDepth;
+        if (c.h < lowest - 1e-6) issue(c, 'underpass', 'Embankment too low for an underpass',
+          `Raise our road here by ${(lowest - c.h).toFixed(1)} m, to at least ${lowest.toFixed(2)} m above the crossed road: the box needs ${box.minHeight.toFixed(2)} m (${box.box.height} m inside, plus its roof and earth cover), and the ${row.label} can be lowered by at most ${LOWERING_RULES.maxDepth} m`, c.h, lowest);
       }
     }
     if (choice !== 'reconnection' && !row.noAtGrade && !c.issues?.length) anchors.push(c);
@@ -360,7 +384,10 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     } else {
       c.type = 'overbridge'; Object.assign(c, over);
     }
-    for (const p of nearest) if (!p.fixed && !c.issues?.length && !ROAD_CLASSES[c.cls].noAtGrade && (compatible(p.c, c.cls) || kept(p.c, c))) {
+    // A reroute leads to a crossing that carries traffic over or under us (or to a route end), never to
+    // another cut road (a shaped one keeps leading where the player led it).
+    const carries = c.type !== 'reconnection' && c.type !== 'diversion';
+    for (const p of nearest) if (!p.fixed && !c.issues?.length && !ROAD_CLASSES[c.cls].noAtGrade && ((carries && compatible(p.c, c.cls)) || kept(p.c, c))) {
       const d = Math.abs(p.c.s - c.s);
       // a shaped reroute keeps leading where it led when the player shaped it
       if (kept(p.c, c)) { p.gap = d; p.target = c; p.fixed = true; }
@@ -389,10 +416,15 @@ export interface CrossingRoute {
   crownWidth?: number;
   /** Built structure kind per station; Auto considers an underpass only under earthwork. */
   kind?: ArrayLike<number>;
+  /** Streams (watercourse lines) a new road from a to b crosses: each needs a culvert. */
+  streams?: (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: number; y: number; crossing: import('./watercourses').WaterCrossing })[];
   /** Urban share per station (≥ 0.5: urban SPK price rows for side-road regrades). */
   urban?: ArrayLike<number>;
   /** What blocks a new road of this half-width from a to b on the ground (a player's reroute shape). */
   obstacle?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => 'railway' | 'water' | 'building' | null;
+  /** Houses still standing under a new road from a to b, and what buying one out costs. */
+  houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
+  houseCost?: (j: number) => number;
 }
 
-export { buildCrossingGeometry, crossingPlanLength, auditCrossingGeometry, underpassFits } from './crossing-geometry';
+export { buildCrossingGeometry, crossingCache, crossingPlanLength, auditCrossingGeometry, underpassFits, type CrossingCache } from './crossing-geometry';

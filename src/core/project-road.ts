@@ -110,7 +110,7 @@ export function evaluateProjectRoad(ctx: EvalContext, project: ProjectDesign, ro
   const result = evaluate({ ...ctx, roads, ...junctions, a, b, scenario: { ...ctx.scenario,
     traffic: spec.operations.aadt, heavyShare: spec.operations.heavyShare,
     maxTravelMin: goal?.maxTravelMin ?? ctx.scenario.maxTravelMin } }, design,
-  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed,
+  { ...options, ...(kept?.some(Boolean) ? { oldRoad: kept } : {}), endpointElevations: { a: explicitZ(a), b: explicitZ(b) }, operatingSpeed: spec.operations.speed, acousticSourceId: route.acousticSourceId,
     capacityTraffic: goal?.demand?.kind === 'road' ? goal.demand.aadt : undefined,
     goals: { time: mission && goal?.maxTravelMin !== undefined, capacity: mission && goal?.demand !== undefined } });
   if (ties.length && roads && !options.preview) {

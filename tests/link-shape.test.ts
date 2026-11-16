@@ -43,8 +43,9 @@ describe('a reroute the player shaped', () => {
     expect(over.issues?.map(v => v.title)).toContain("Your path for the new street runs onto our road's earthworks");
     // the player's shape to fix: the crossing still stands and owns its road (no knock-on violations)
     expect(over.issues?.every(v => v.crossing.code === 'shape')).toBe(true); expect(over.geometry!.clipped).toBeFalsy();
-    // a 50 % slope beyond y = -40: the automatic path stays on the flat, the shaped one climbs it
-    const slope = (_x: number, y: number) => 400 + Math.max(0, -40 - y) * .5;
+    // a 100 % slope beyond y = -40: the automatic path stays on the flat, the shaped one climbs it
+    // (110 m up and down again over some 420 m: beyond 12 % even with 10 m of earthworks)
+    const slope = (_x: number, y: number) => 400 + Math.max(0, -40 - y);
     expect(build([{ roadId: 1, type: 'reconnection' }], slope).issues ?? []).toEqual([]);
     const steep = build([{ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -150 }], []] }], slope);
     expect(steep.issues?.map(v => v.title)).toContain('Your path for the new street is too steep in places');
@@ -74,7 +75,8 @@ describe('a reroute the player shaped', () => {
     const rail = build([{ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -200 }], []] }], undefined,
       (a, b) => (Math.min(a.x, b.x) < 3500 && Math.max(a.x, b.x) > 3500 ? 'railway' : null));
     expect(rail.issues?.map(v => v.title)).toContain('Your path for the new street runs across a railway');
-    expect(build([{ roadId: 1, type: 'reconnection' }], undefined, () => 'railway').issues ?? []).toEqual([]); // the automatic path is not shaped
+    // the automatic path is held to the same rules: no reroute can be built there
+    expect(build([{ roadId: 1, type: 'reconnection' }], undefined, () => 'railway').issues?.map(v => v.title)).toEqual(['No buildable reroute for the street']);
     expect(normalizeCrossingOverrides([{ roadId: 1, type: 'reconnection', via: [[{ x: 1e12, y: 0 }], []] }])).toEqual([{ roadId: 1, type: 'reconnection' }]);
     const far = build([{ roadId: 1, type: 'reconnection', via: [[{ x: 3400, y: -20000 }], []] }]);
     expect(far.issues?.map(v => v.title)).toContain('Your path for the new street goes too far');
@@ -95,8 +97,9 @@ describe('a reroute the player shaped', () => {
     expect(legacyDesignForRoute(project, project.routes[0].id).crossingOverrides).toEqual(design.crossingOverrides);
   });
   it('starting from the automatic path\'s own bends gives back the same road, with no new problems', () => {
-    const slope = (x: number, y: number) => 400 + Math.sin(x / 90) * 6 + Math.max(0, -30 - y) * .2;
+    const slope = (x: number, y: number) => 400 + Math.sin(x / 90) * 4 + Math.max(0, -30 - y) * .05;
     const auto = build([{ roadId: 1, type: 'reconnection' }], slope);
+    expect(auto.issues ?? []).toEqual([]);
     const via = auto.geometry!.links!.map(l => simplifyLink(l)) as [{ x: number; y: number }[], { x: number; y: number }[]];
     expect(via.every(v => v.length <= 20)).toBe(true);
     const seeded = build([{ roadId: 1, type: 'reconnection', via, to: 0 }], slope);
