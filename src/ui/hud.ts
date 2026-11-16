@@ -376,8 +376,8 @@ export class Hud {
     } else {
       norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
       // motorways: radii from the 2018 edition (research/33 §7); its slope and vertical radii are not public, the older edition's stand in
-      const older = cat.mode === 'motorway' ? ' (older edition: the 2018 value is not public)' : '';
-      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %${older}; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags)${older}.`;
+      const older = cat.mode === 'motorway' ? ' The slope and the rounding radii are the older edition\'s: the 2018 values are not public.' : '';
+      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).${older}`;
     }
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
