@@ -48,6 +48,7 @@ export const JARGON: readonly [RegExp, string][] = [
   [/\bdwellings?\b/i, '"dwelling" (say "house")'],
   [/#\d/, 'object ID'],
   [/\bstation\b/i, '"station" (say "km")'],
+  [/polygon/i, '"polygon" (say "the straights between bends")'],
 ];
 /** Source names: allowed only in a violation's `rule` line and pricing tooltips. */
 export const SOURCE_NAMES: readonly [RegExp, string][] = [
@@ -141,17 +142,20 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   }
 }
 
+/** A mission end's place name without its note in brackets ("Hostěradice (on to 0303)" → "Hostěradice"):
+ * what a motorway direction leads towards. */
+export const placeName = (label: string) => label.replace(/\s*\([^()]*\)\s*$/, '');
 /** The motorway's two directions: edited together, or each on its own (split) and joined again. */
 export const DIRECTIONS_TEXT = {
   heading: 'Edit',
   both: 'Both directions',
   towards: (place: string) => `Towards ${place}`,
   together: 'Dragging bends both directions: one road body, bridges side by side, twin tunnels.',
-  one: (place: string) => `Drag this direction (${place}). Where it would cross the other, Auto brings them together if your other choices allow it.`,
+  one: (place: string) => `Drag the direction towards ${place}. Where it would cross the other, Auto brings them together if your other choices allow it.`,
   separate: 'Each direction now has its own bends and heights. Where they run side by side at the same height they share one embankment and are priced as one.',
   join: 'Both directions joined on their shared line again. Undo brings back the separate changes.',
   bothTitle: 'Bend and raise both directions together',
-  oneTitle: (place: string) => `Bend this direction (${place}); Auto may move the other alongside it`,
+  oneTitle: (place: string) => `Bend the direction towards ${place}; Auto may move the other alongside it`,
   apart: 'Changed stretches',
   following: 'Both follow this bend',
   resetFollow: 'Reset',

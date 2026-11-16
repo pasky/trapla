@@ -1,6 +1,7 @@
 // What the project score says about issues: real violations versus checks the game has not done yet.
 // Pure (no DOM) so the wording and counting are testable.
 import type { ProjectIssue, ProjectResult, RouteId } from '../core/project';
+import { COST_GROUPS } from './costgroups';
 
 /** An engine limit ("not checked yet"), not a fault of the design: never counted or shown as a violation. */
 export function notCheckedYet(issue: ProjectIssue): boolean { return issue.check === 'not-checked'; }
@@ -82,4 +83,48 @@ export function aloneText(alone: Readonly<Record<RouteId, number>>, activeRouteI
   if (others.length === 1) { const l = label(others[0]); return `${l.charAt(0).toUpperCase()}${l.slice(1)} alone: ${money(alone[others[0]])}`; }
   const shown = others.slice(0, 3).map(id => `${label(id)} ${money(alone[id])}`);
   return `Alone: ${shown.join(', ')}${others.length > 3 ? ` and ${others.length - 3} more` : ''}`;
+}
+
+/** One physical line's bill (our road / a motorway's two directions once): its total (core `cost.alone`,
+ * own works included) and its bill groups (costgroups.ts ids). */
+export interface LineBill { label: string; total: number; groups: Record<string, number> }
+/** Each line's bill in a priced project, keyed by line (`groups`: a motorway's corridor; ours: "ours"). */
+export function lineBills(result: ProjectResult, ours: ReadonlySet<RouteId>, names: Readonly<Record<RouteId, string>>,
+  ourWord: string, groups: Readonly<Record<RouteId, string>> = {}): Map<string, LineBill> {
+  const out = new Map<string, LineBill>(), counted = new Set<object>();
+  for (const [id, total] of Object.entries(result.cost.alone)) {
+    const unit = ours.has(id) ? 'ours' : groups[id] ?? id;
+    if (!out.has(unit)) out.set(unit, { label: ours.has(id) ? ourWord : names[id] ?? 'a road', total, groups: {} });
+  }
+  // the groups: every evaluated part of the line once (a paired motorway's two directions share one result)
+  for (const [id, rr] of Object.entries(result.routes)) {
+    const line = out.get(ours.has(id) ? 'ours' : groups[id] ?? id), r = rr.legacy;
+    if (!line || !r || counted.has(r)) continue;
+    counted.add(r);
+    for (const g of COST_GROUPS) line.groups[g.id] = (line.groups[g.id] ?? 0) + g.of(r.cost);
+  }
+  return out;
+}
+
+/** Which lines' bills the last edit changed, when it changed more than one: "Road III/1057 +9.8 M ·
+ * our motorway −24 M (bridges −35 M)" — a new line with its whole bill, a changed one with the bill line
+ * that moved the most where that is most of its change. '' when one line or none changed. */
+export function billChangeText(before: ReadonlyMap<string, LineBill>, after: ReadonlyMap<string, LineBill>, money: (v: number) => string): string {
+  const MIN = 5e5;
+  const signed = (v: number) => `${v < 0 ? '−' : '+'}${money(Math.abs(v))}`;
+  const parts: { text: string; size: number }[] = [];
+  for (const [unit, now] of after) {
+    const was = before.get(unit), change = now.total - (was?.total ?? 0);
+    if (Math.abs(change) < MIN) continue;
+    let why = '';
+    if (was) {
+      const top = COST_GROUPS.map(g => ({ g, d: (now.groups[g.id] ?? 0) - (was.groups[g.id] ?? 0) })).sort((x, y) => Math.abs(y.d) - Math.abs(x.d))[0];
+      if (top && Math.abs(top.d) >= MIN && Math.abs(top.d) >= 0.5 * Math.abs(change)) why = ` (${top.g.label.toLowerCase()} ${signed(top.d)})`;
+    }
+    parts.push({ text: `${now.label} ${signed(change)}${why}`, size: Math.abs(change) });
+  }
+  for (const [unit, was] of before) if (!after.has(unit) && Math.abs(was.total) >= MIN) parts.push({ text: `${was.label} ${signed(-was.total)}`, size: Math.abs(was.total) });
+  if (parts.length < 2) return '';
+  const text = parts.sort((x, y) => y.size - x.size).map(p => p.text).join(' · ');
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

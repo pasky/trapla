@@ -11,7 +11,7 @@ import { ENDPOINT_JUNCTIONS, NOISE, ROAD_CLASSES } from './core/data/urban';
 import { ROUNDABOUT_HOSTS } from './core/tie-in';
 import { createRailwayProject, railwayMission as railwayMissionOf } from './core/project-railway';
 import { autoFollowingCorridor, CARRIAGEWAY_CATEGORY, corridorOfRoute, createMotorwayProject, MOTORWAY_CATEGORY, motorwayMission as motorwayMissionOf, rejoinCorridor, rejoinStretch } from './core/project-motorway';
-import { DIRECTIONS_TEXT, mappedRoadName } from './core/terms';
+import { DIRECTIONS_TEXT, mappedRoadName, placeName } from './core/terms';
 import { classTraffic } from './core/traffic-census';
 import { UNCOUNTED_TRAFFIC } from './core/data/traffic';
 import { RouteExtras } from './render/extras';
@@ -182,8 +182,13 @@ async function main() {
   const binfo = (j: number) => { const f = pack.overlays.binfo?.[j]; return buildingInfo(f ?? undefined, buildingLevels(f ? f[1] : 0, f ? f[2] : 0), pack.overlays.buildings[j]); };
   const annotations = new BuildAnnotations(view, document.getElementById('overlay')!, pack);
   const buildingPicker = new BuildingPicker(view, pack);
-  const viewBar = new ViewBar(document.getElementById('viewbar')!, view, meta.orthophoto?.attribution, (on) => {
+  // what the aerial photo shows that is not our road (Nová Paka: the real bypass under construction), on the map
+  // while the photo is on
+  const photoNote = scenario.photoNote ? document.createElement('div') : null;
+  if (photoNote) { photoNote.id = 'photo-note'; photoNote.textContent = scenario.photoNote!; photoNote.hidden = true; document.getElementById('view')!.appendChild(photoNote); }
+  const viewBar = new ViewBar(document.getElementById('viewbar')!, view, scenario.photoNote, (on) => {
     document.getElementById('attrib')!.innerHTML = [...meta.attribution, ...(on && meta.orthophoto ? [meta.orthophoto.attribution] : [])].join(' · ');
+    if (photoNote) photoNote.hidden = !on;
   }, noise, () => frameRoute());
   /** the active route as built (else its ends and bends) in view */
   /** `r`: the road to frame (default: the last result shown; right after a switch that is still the old road's) */
@@ -1024,7 +1029,7 @@ async function main() {
     const apart = new Set(engineered.mode === 'paired' ? engineered.stretches?.map(t => t.id) : []);
     // the mission's motorway runs between the scenario's places; any other between its own start and end
     return { split, active: split || store.oneDirection ? which : 'both',
-      places: route.role === 'mission' ? { forward: scenario.labels.b, reverse: scenario.labels.a } : { forward: 'its end', reverse: 'its start' },
+      places: route.role === 'mission' ? { forward: placeName(scenario.labels.b), reverse: placeName(scenario.labels.a) } : { forward: 'its end', reverse: 'its start' },
       apart: corridor.mode === 'paired' ? (corridor.stretches ?? []).map(t => ({ id: t.id, s0: t.a, s1: t.b, following: !apart.has(t.id) })) : [] };
   };
   /** a reroute's shape (null: its automatic path again); shaping a crossing makes it a reroute */
