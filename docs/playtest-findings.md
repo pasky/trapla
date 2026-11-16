@@ -4,6 +4,19 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Verification — core-play-polish merged, main 27aeda6 (2026-11-16, one 10 min chunk)
+
+Screenshots `/tmp/trapla-qa/cpp/`.
+
+| item | verdict | evidence |
+|---|---|---|
+| Nová Paka km 1.91 hall kept behind a retaining wall | **PASS** | "Industrial / commercial · 3 floors · Stays · a wall keeps our works clear · Auto: a 0.6 m retaining wall along our road, km 1.89–1.92, keeps the works clear of it for 0.3 M CZK; demolishing it would cost 322 M CZK." The hall stands beside the cut (`001`). |
+| kept house + Wall right None → house card names Auto's wall, with Show | **PARTLY** | D11 km 5.12 two-floor house, Keep then None: "none (yours) · Auto: 5 m beside it · km 4.96–5.27", plus "⚠ House 5.6 dB too loud · 2 m wall right km 5.05–5.18 · Buy out · Stop keeping" (`003`). The wall is named, but there is **no Show button** on the house card. |
+| piece card: repeated problems once with a count | **PASS** | D3 road pond bridge km 13.30–13.85: "⚠ A bridge pier stands on a pond or river (15 places) · Bridge it" (`007`). The Violations panel still lists all 18 one by one, and "Bridge it" on a piece that already *is* a bridge reads oddly. S2 #2 itself (piers in a fishpond can't be valid) is unchanged. |
+| By hand switch identical | **PASS** | D3 road 4.70 bn → By hand → 4.70 bn, VALID, ◆ points appear (`011`). |
+| pin / height-point drag readout | **PASS** | dragging a ◆ shows "373.1 m · raised 12.0 m" by the cursor and "≈ 4.57 bn · checked when you pause" (`014`). P2: the Height point card still says 370.1 m during the drag. |
+| small windows | **not tested** | ran out of the 15 min budget. |
+
 ## Re-test 2 — any-road-editing @ 80168c3 (2026-11-16, two chunks of 13 and 5 min)
 
 Detached snapshot with the worktree's packs (traffic.json present for d11 and d3). Screenshots `/tmp/trapla-qa/ar2/`
