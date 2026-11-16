@@ -56,7 +56,8 @@ with `drag-perf.mjs --profile`):
 - **Preview messages.** A stitched preview first carried the full result's crossing geometry (hundreds of
   crossings): deserialising it cost most of the handler. Previews now carry crossings without geometry, like
   whole-route previews; the full worker sends the preview worker a slim base (`previewBase`). A 56 km
-  preview is ≈ 1.7 MB (19 per-cell cost arrays are half of it).
+  preview is ≈ 1.7 MB (19 per-cell cost arrays are half of it): its own typed arrays are transferred to the
+  main thread, not copied (main-thread time per preview on the whole D3: p95 25–28 → 15 ms).
 - **Profile painting** drew one fill and one stroke per station (5,600 on the whole D3): now one area per run
   of embankment / cutting, one stroke per run of the grade line, and at most ≈ 2 points per pixel.
 - **Long tasks after release.** The 3D rebuild's indivisible steps grew with the route: the shared mask and

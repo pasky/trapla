@@ -34,6 +34,18 @@ let lastProject: ProjectResult | null = null;
 let basePort: MessagePort | null = null;
 let sourceWays: Map<string, number> | undefined;
 
+/** A preview's own per-station arrays move to the main thread instead of being copied (a long route's
+ * preview is ≈ 1.7 MB). Never the full result's (`quantities` may be shared with a windowed preview's base). */
+function previewBuffers(r: Result): ArrayBuffer[] {
+  const buffers = new Set<ArrayBuffer>();
+  const add = (v: unknown) => { if (ArrayBuffer.isView(v) && v.buffer instanceof ArrayBuffer) buffers.add(v.buffer); };
+  for (const k of ['s', 'x', 'y', 'tx', 'ty', 'ground', 'grade', 'kind', 'cut', 'fill', 'dayL', 'dayR', 'zDayL', 'zDayR', 'oob', 'wallSurfaceL', 'wallSurfaceR'] as const) add(r[k]);
+  for (const v of Object.values(r.parts)) add(v);
+  for (const v of Object.values(r.cell)) add(v);
+  add(r.geology.ids);
+  return [...buffers];
+}
+
 function run() {
   scheduled = false;
   if (!pending || !ctx) return;
@@ -51,7 +63,7 @@ function run() {
         const result = previewProjectRoute(projectContext, job.snapshot, job.routeId, job.materialValue);
         (self as unknown as Worker).postMessage({ type: 'project-preview', id: job.id,
           identity: { epoch: job.snapshot.epoch, revision: job.snapshot.revision }, routeId: job.routeId, routeRevision: result.revision, result,
-          ...(job.gesture ? { gesture: job.gesture } : {}) });
+          ...(job.gesture ? { gesture: job.gesture } : {}) }, result.legacy ? previewBuffers(result.legacy) : []);
       } else {
         const result = evaluateProject(projectContext, job.snapshot);
         const known = lastProject && job.displayedResult?.epoch === lastProject.epoch && job.displayedResult.revision === lastProject.revision ? lastProject : null;
