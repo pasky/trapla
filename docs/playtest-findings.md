@@ -4,6 +4,46 @@ Played like a first-time player in headless Chromium with real mouse / keyboard 
 screenshots under `/tmp/trapla-qa/` (not committed). Newest session on top. Severity: **P0** broken /
 untruthful, **P1** confusing, **P2** polish.
 
+## Session 3 — Nová Paka and D35 motorway, first-time player (main 93f849d, 2026-11-16, one 10 min chunk)
+
+Fresh localStorage, picker → Nová Paka, then D35 motorway. Screenshots `/tmp/trapla-qa/s3/`.
+There is only one D35 motorway on main ("Motorway D35: Opatovec → Staré Město" = preset `d35-stage1-motorway`); a
+whole-D35 entry is not in the picker, so "whole" was not testable.
+
+### P1 — confusing
+
+1. **Auto leaves a street under our embankment and calls it cheaper.** Nová Paka: one ~45 px drag of the road at km 3.3
+   (from the 3.6 km view) → NOT VALID: "Our earthworks cover 33 m of a street — put our road on a bridge km 3.10–3.17",
+   and the embankment card says "Auto: cheaper here than a bridge" next to the ⚠ and a *Bridge it* button (`009`, `010`).
+   An ordinary conflict the automatic design should resolve itself. Area: crossing-links / any-road.
+2. **One drag makes an S-bend violation.** Same drag inserts bend 3 about 30 m from bend 2: "Bends 2 and 3 are too close
+   for an S-bend · move them 28 m apart" (`009`). The player only pulled the road once. Area: core play.
+3. **The photo view's construction is unexplained in the game.** The picker card says "Ground includes the real
+   bypass's cuts. Photo shows construction.", but once playing, Photo (O) shows bare earth works around A and along the
+   bypass reference with no note (tooltip: "Aerial photo (O) — © ČÚZK…") (`005`, `020`). A player who skipped the picker
+   text sees a building site and our road beside it. Say it once when Photo is turned on.
+4. **D35 motorway still ends in fields at B** (S2 #6, unchanged): the 4-lane road stops at "B Staré Město" in a meadow;
+   at A it starts on a field track crossing (`012`, `013`). Area: long-corridors.
+5. (Re-seen) Profile clicks from the overview select but do not zoom, on both scenarios (`015`: card for Tunnel km
+   4.27–7.03 while the camera stays at 23.7 km).
+
+### P2 — polish
+
+6. Nová Paka opens with the route tiny in the middle; the intro says "Drag the orange road" when it is ~3 px wide and
+   hidden under labels; labels overprint ("Vidochov Vidochov", "Čistá u Horek / Horka u Staré Paky") (`001`).
+   camera-polish (not merged yet) has a Whole route button and label declutter.
+7. At B the "drag to bend" tip covers "Vidochov"; the roundabout (road I/16) card reads "Class I road 16 · Too short to
+   change here", fine, but our road meets it at its rim without an entry arm (`002`, `003`).
+8. Near A at Kumburský Újezd, translucent blue/white shards float in a line across our road (`004`).
+9. In the photo view demolished plots are no longer marked: the real factory roofs show where our cut demolishes them
+   (`019` vs `020`). The jagged white edge along the cut beside them (`019`) is the sawtooth seen in camera-polish.
+
+### What worked
+
+D35 motorway: a single drag of bend 3 south of the ridge kept it VALID and saved 1.01 bn CZK (tunnel shorter) —
+satisfying and live (`018`). Contours with labelled heights read well; the tunnel is drawn as a dashed line over the
+hill. Nová Paka: B joins the existing roundabout; starting values VALID, costs plausible, undo restored the best.
+
 ## Re-test — crossing-links camera-polish @ 6358d41 (2026-11-16, one 9 min chunk)
 
 Detached snapshot (rebased on main 93f849d). Screenshots `/tmp/trapla-qa/cam/`.
