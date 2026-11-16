@@ -32,9 +32,9 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 |---|---|---|---|---|
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
-| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done in part: 1,840 → 1,282 lines, 8 modules out; rest planned (§ main.ts) |
-| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | high | sequence (§ Core) |
-| 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | sequence: two-line hunks (§ Core) |
+| 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done in part: 1,840 → 958 lines, 12 modules out; rest planned (§ main.ts) |
+| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | prepared, not applied: `scripts/dev/split-evaluate.sh` (§ Core) |
+| 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
 | 8 | The mission bootstrap, pack identities and a route's crown width each derived in 2–4 places | medium | low | done: `core/project-mission.ts`, `packIdentities()`, `core/route-section.ts` |
@@ -102,6 +102,9 @@ objects passed directly, `main()`'s variables as live getters, commands as funct
 | `src/ui/map-hover.ts` | hover links map ↔ profile, the cursor | 111 |
 | `src/ui/shortcuts.ts`, `src/ui/profile-bar.ts`, `src/ui/bend-stations.ts` | keyboard; the profile's key and zoom buttons | 96 |
 | `src/eval-workers.ts` | the two workers and their init message | 26 |
+| `src/ui/design-edits.ts` | the edit commands (structures, walls, pins, bends, height points, crossings, reroute shapes) and the inspector's / decision list's events | 100 |
+| `src/ui/map-gestures.ts` | click, drag to bend / rebuild a mapped road / shape a reroute, double click; what a gesture grabbed is its own state | 194 |
+| `src/ui/profile-events.ts`, `src/ui/hud-events.ts` | what the profile's gestures and the HUD's controls do; where a listed problem leads | 73 / 115 |
 | `src/core/project-mission.ts` | scenario → starting project (also used by Node scripts) | 42 |
 
 Next steps, in this order (each its own commit, verified by tsc, the browser gates and the scene scripts
@@ -109,13 +112,14 @@ that play the flow):
 
 1. **`EvalClient`** (`src/eval-client.ts`): `requestEval`, the in-flight map, preview gestures, `settle`,
    idle waiters and the message handler's acceptance, emitting `preview(result, design)`,
-   `full(result)` and `error`. `main.ts` keeps what to *do* with a result. This is the drag path:
-   measure `drag-perf` (all modes) before and after on a quiet host.
-2. **`SelectionController`** (`select`, `placeOf`, `frameSelection`, `revalidate`, `showViolation`).
-3. **Road links** (`ensureTransport`, the source picker / mapped-road card / stretch ends it creates).
-4. **Map gestures** (`view.ev`: click, double click, the three drag kinds: bend, rebuild a mapped road,
-   shape a reroute) and **Build** (`placeAt`, `buildTool` wiring).
-5. What remains is the composition root: construct, connect, start (target ≈ 300 lines).
+   `full(result)` and `error`. `main.ts` keeps what to *do* with a result. This is the drag path and not
+   a verbatim move: measure `drag-perf` (all modes) before and after on a quiet host.
+2. **Showing a result** (`showActiveResult`, `syncDecorations`, the preview branch of the message
+   handler, the sliced 3D rebuild): ≈ 200 lines, the largest piece left.
+3. **`SelectionController`** (`select`, `placeOf`, `frameSelection`, `revalidate`).
+4. **Road links** (`ensureTransport`, the source picker / mapped-road card / stretch ends it creates).
+5. **Routes** (`switchRoute`, the motorway's directions, Build: `placeAt`, `buildTool` wiring).
+6. What remains is the composition root: construct, connect, start (target ≈ 300 lines).
 
 After 1–2 the shared state should become an explicit `Session` object (active result, last full result,
 selection) instead of getters over closure variables: the getters are the bridge that made verbatim moves
@@ -130,21 +134,37 @@ possible, not the end state.
   `buildCrossingGeometryOnce` is 840 lines, `project-evaluate.ts` `evaluateProject` 443.
   Why it matters: every engine feature lands in these functions; three agents edit them at once; a stage
   cannot be tested or timed alone.
-  Plan (each step verified by `exact.ts` identical + interleaved timing per `docs/evaluate-performance.md`):
-  1. `evaluate-setup.ts`: stationing, ground / out-of-bounds sampling, must-bridge discovery, water
-     tables (lines ≈ 413–700): pure functions of `(ctx, design, opts)` returning one `RouteSetup` object.
-  2. `evaluate-prices.ts`: surcharges, per-metre bases, `costFor`, the profile cost tables (≈ 698–900).
-  3. `complete()` → `evaluate-noise.ts` + `evaluate-violations.ts`: it only reads the finished geometry.
-  4. `engineer` / `finish` last, as a class or explicit state record: they are the numerically sensitive
-     order (floating-point sums), so statements must keep their order.
-  Do it in a week when no other agent has open work in `evaluate.ts`; each step is a pure move.
+  **Prepared, not applied** (the parent sequences it): `scripts/dev/stage.mjs` turns a contiguous run of
+  a function's top-level statements into a named module-level function *in the same file*, without
+  touching a statement: the stage returns the locals later code reads and the original place becomes
+  `const setup = routeSetup(ctx, d, opts); const { st, n, ds, … } = setup;`, so the rest still works on
+  plain locals (nothing changes in the hot loops) and statement order is untouched (bit-identical sums).
+  It analyses scopes lexically and refuses what a verbatim move would break (a `let` shared between a
+  stage's closures and later code, forward references, a top-level `return`). Because the statements stay
+  where they are in the file, **the diff is only the wrappers**: `scripts/dev/split-evaluate.sh` makes
+  the first four stages (`routeSetup` 279 lines, `routePrices` 198, `routeGradeLine` 236, `routeCaches`
+  37) as a diff of +68 −12 lines, anchored on statements, not line numbers, so it can run on whatever
+  `evaluate.ts` looks like that day and barely conflicts with open work. Dry run on `6fb4a7b`: tsc clean,
+  177 / 177 results identical, interleaved time ratio 0.98 (min) / 0.91 (median) under load
+  (`scripts/dev/interleave.ts <base checkout> <this checkout>`).
+  Then, each again by the tool:
+  1. the closures `engineer` (250 lines), `liftProfile` and `finish` (540, containing `complete`) as
+     factories (`const { engineer } = routeEngineer(ctx, d, opts, setup, prices, solved, caches)`). Two
+     hand steps first, each a one-line move the tool asks for: `let deckCoverReady` (declared among the
+     caches, assigned only in `engineer`) moves next to `engineer`; `let liftStop` likewise for `finish`;
+  2. inside `finish`: quantities / buildings / crossings / footprint as stages, `complete()` (noise,
+     violations, the `Result`) as its own function;
+  3. only then move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports,
+     since they no longer share a scope. The same tool applies to `buildCrossingGeometryOnce` and
+     `evaluateProject`.
 - **Engine logic keyed on player text.** `evaluate.ts:1548` (`v.title.startsWith('A long bridge span is too
   low')`, set in `support-layout.ts:283`) and `:1905` (`'Road too low'`, set in `checks.ts:549`) decide
   lifts and railway wording from a *title*; `crossing-geometry.ts` passes diagnostics as message strings
   (`RAMP_TOO_LONG`, `REROUTE_FAILS` …) matched with `===` / `startsWith` at 15 sites, two of them in
   `evaluate.ts:369`. A copy edit (which happens often and is encouraged) can silently change engineering.
-  Fix: a `code` field on `Violation` and on crossing diagnostics, titles derived from the code. The two
-  title matches can be fixed today with shared constants (two-line hunks in three files).
+  Done for the two titles: `SPAN_TOO_LOW` (support-layout.ts) and `ROAD_TOO_LOW` (checks.ts) are shared
+  constants used by both the wording and the logic. Still open: a `code` field on `Violation` and on
+  crossing diagnostics, titles derived from the code.
 - `Result` (evaluate.ts 94–197) is one interface for geometry arrays, the bill, per-station parts, noise,
   crossings and UI conveniences. Split into `geometry / bill / noise / crossings` views when #4 happens.
 
@@ -274,8 +294,12 @@ bend fitting, previews, checks). Path that keeps today's results bit-identical u
 
 ## Merge batches
 
-1. Tooling, typed worker protocol, mission bootstrap, dead code (no `main.ts` behaviour, no core maths).
-2. `main.ts` leaf modules (route cards, automation, picks, hover, shortcuts, profile bar, workers).
-3. `EvalClient`, selection controller, road links (the drag path: with drag-perf before / after).
-4. Core, only as sequenced by the parent: violation codes (#5), kernel registry (#10), then the
-   `evaluateRoute` stages (#4).
+1. Merged (`6fb4a7b`): tooling, typed worker protocol, mission bootstrap, dead code.
+2. `main.ts` leaf modules (cards, automation, picks, hover, gestures, edits, profile / HUD events,
+   shortcuts, workers), the two title constants, this document, the stage tool.
+3. `EvalClient`, showing a result, selection, road links (the drag path: with drag-perf before / after).
+4. Core, as sequenced by the parent: the `evaluateRoute` stages (#4, prepared), the kernel registry (#10).
+
+Found on the way, not fixed (they fail the same on main `8ac09c5`): `scripts/layout.mjs` (its `setDesign`
+passes a design the project validation refuses) and `scripts/camera-check.mjs` (2 of 18: wall labels
+overprinted in the far noise view).
