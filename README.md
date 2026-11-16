@@ -118,7 +118,8 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
   back).
 - **Map:** left-drag pans, right-drag rotates, the wheel or a trackpad pinch zooms about the ground under the
   cursor. The view always turns and zooms about the ground at its centre, never looks out flat along the horizon,
-  and stays over the map; a click in the profile from a low view looks down on the place. **Whole route**
+  and stays over the map; a click in the profile or a list brings what it picks into view (looking down on it
+  from a low view). **Whole route**
   <kbd>W</kbd> brings the whole road back into view from anywhere. View buttons
   (remembered): **Contours** <kbd>C</kbd> (interval follows the zoom), **Slope** <kbd>S</kbd> (yellow 8 %, orange
   15 %, red 25 %, purple 40 %), **Relief** <kbd>R</kbd> (1–3× vertical exaggeration), **Photo** <kbd>O</kbd> (aerial

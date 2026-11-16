@@ -587,6 +587,24 @@ export class View {
   }
 
   /** the official line's label rides along it: at its point nearest the middle of the view */
+  /** Where the map's own buttons, bars and legends sit over it (view coordinates): labels keep clear of them.
+   * Re-read at most twice a second (they move only when the window or a bar changes). */
+  private uiBoxes: number[] = [];
+  private uiRead = -Infinity;
+  private uiRoom(): number[] {
+    const now = performance.now();
+    if (now - this.uiRead < 500) return this.uiBoxes;
+    this.uiRead = now;
+    const c = this.container.getBoundingClientRect(), out: number[] = [];
+    const ui = [...this.container.children, ...document.querySelectorAll('.scenario-picker-return')]
+      .filter((e): e is HTMLElement => e instanceof HTMLElement && e !== this.overlay && e !== this.renderer.domElement && e.offsetParent !== null);
+    for (const e of ui) {
+      const r = e.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) out.push(r.left - c.left, r.top - c.top, r.right - c.left, r.bottom - c.top);
+    }
+    return this.uiBoxes = out;
+  }
+
   private placeOfficialLabel(): { sx: number; sy: number } | null {
     const el = this.officialLabel;
     if (!el) return null;
@@ -1487,6 +1505,8 @@ export class View {
     // overlap a name already placed is left out, and so is one far beyond what the view looks at
     // (low over the horizon, names piled up along it)
     this.labelRoom.reset();
+    const ui = this.uiRoom();
+    for (let k = 0; k < ui.length; k += 4) this.labelRoom.reserve(ui[k], ui[k + 1], ui[k + 2], ui[k + 3]);
     for (const m of this.endpointMarkers) {
       place(m.el, m.x, m.y, m.z);
       const s = this.screenOf(m.x, m.y, m.z);

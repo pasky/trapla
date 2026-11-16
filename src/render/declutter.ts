@@ -9,6 +9,8 @@ export class Declutter {
 
   /** a new frame: nothing placed yet */
   reset() { this.boxes.length = 0; }
+  /** room no label may take (the map's buttons, legends) */
+  reserve(x0: number, y0: number, x1: number, y1: number) { this.boxes.push(x0, y0, x1, y1); }
 
   /** Show `el` at screen (sx, sy) unless it overlaps a label placed before it (`always`: shown anyway,
    * and its room kept). Returns whether it is shown; the caller has set its position. */

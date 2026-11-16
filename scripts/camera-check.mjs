@@ -81,6 +81,20 @@ try {
   ok(road && road.vis && road.sy > box.height * 0.2 && road.sy < box.height * 0.8, `the clicked place is mid-screen (${road?.sy.toFixed(0)} px of ${box.height})`);
   await shot('profile-fly');
 
+  // 3b. from the whole-route overview: a click in the profile frames the piece picked (it was too small to see)
+  await page.getByRole('button', { name: /Whole route/ }).click(); await idle(600);
+  const far0 = (await pose()).distance;
+  await T(() => window.trapla.profileFit()); await page.waitForTimeout(100);
+  const at2 = await T(() => window.trapla.profilePoint(6000));
+  await page.mouse.click(at2.x, at2.y - 40);
+  await page.waitForFunction((d) => window.trapla.cameraPose().distance < d * 0.5, far0, { timeout: 15000 }).catch(() => {});
+  await idle(900);
+  const piece = await T(() => { const r = window.trapla.range(); if (!r) return null; const a = window.trapla.roadScreen(r.s0), b = window.trapla.roadScreen(r.s1); return { a, b, len: r.s1 - r.s0 }; });
+  const ext = piece ? Math.hypot(piece.a.sx - piece.b.sx, piece.a.sy - piece.b.sy) : 0;
+  ok(!!piece && piece.a.vis && piece.b.vis && ext >= Math.min(box.width, box.height) / 6,
+    `from the overview a profile click frames the piece picked (${piece?.len.toFixed(0)} m long, ${ext.toFixed(0)} px on screen; view ${far0.toFixed(0)} → ${(await pose()).distance.toFixed(0)} m)`);
+  await shot('overview-profile-fly');
+
   // 4. pan away past the map's edge (and towards what is behind the camera): the view stays on the map
   await T(() => window.trapla.lookAt(9500, 11000, 3000, 0, 20)); await idle();
   for (let k = 0; k < 12; k++) await drag(0, 400, 'left', offRoad.x, box.y + box.height * 0.3);
@@ -99,10 +113,18 @@ try {
       if (r[i].left < r[j].right - 1 && r[j].left < r[i].right - 1 && r[i].top < r[j].bottom - 1 && r[j].top < r[i].bottom - 1) k++;
     return { shown: r.length, overlaps: k };
   }, sel);
+  // (and none under the map's own buttons and legends)
+  const underUi = () => T(() => {
+    const ui = [...document.querySelectorAll('#view > *:not(#overlay):not(canvas), .scenario-picker-return')].filter(e => e.offsetParent !== null).map(e => e.getBoundingClientRect());
+    return [...document.querySelectorAll('.place, .official-label')].filter(e => e.style.display !== 'none' && e.offsetParent !== null)
+      .map(e => e.getBoundingClientRect()).filter(r => ui.some(u => r.left < u.right && u.left < r.right && r.top < u.bottom && u.top < r.bottom)).length;
+  });
+  ok(await underUi() === 0, 'whole route: no place name or official-line label under the map\'s buttons or legend');
   let places = await overlaps('.place, .official-label, .endpoint');
   ok(places.shown > 3 && places.overlaps === 0, `whole route: ${places.shown} place names, none overprinted (${places.overlaps})`);
   await T(() => window.trapla.lookAt(9500, 11000, 1500, 200, 8)); await idle();
   places = await overlaps('.place, .official-label, .endpoint');
+  ok(await underUi() === 0, 'low view: no place name or official-line label under the map\'s buttons or legend');
   ok(places.overlaps === 0, `low view: ${places.shown} place names, none overprinted (${places.overlaps})`);
   await shot('low-labels');
   // noise view: wall heights from afar

@@ -283,9 +283,14 @@ What exists (details and commands in `README.md`):
   ≈ 76° from straight down (was ≈ 85°, skimming the horizon); a click in the profile or a card from a low view
   flies there looking down at 40°. *Whole route* (map button, <kbd>W</kbd>) frames the active road from
   anywhere, e.g. after panning off the map's edge.
+- Picking something away from the map (a click in the profile or a list) frames it: `frameSelection(sel)` in
+  `src/main.ts` flies to it when it is off the screen, seen from a low view, or too small to make out (a piece
+  shorter than a sixth of the view, a single place from further than 6 m per pixel); from the whole-route
+  overview a profile click used to select a piece without showing it (QA re-test P1).
 - A selected bend's guide is its two straights, solid, up to 600 m out from the bend; the dashed guide along the
   whole road read as the dashed official line. The legend's official-line symbol is drawn as on the map.
-- Labels never print over each other: A, B and the official line's label keep their room, place names follow
+- Labels never print over each other nor under the map's buttons, bars and legends: A, B and the official
+  line's label keep their room, place names follow
   by rank (towns first); names further than 6 camera distances are left out (none pile up on the horizon). Noise
   walls of one height on both sides of a stretch get one label ("3 m both sides").
 - `node scripts/camera-check.mjs` plays these with real mouse input (screenshots 157–159).
