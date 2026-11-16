@@ -4,6 +4,8 @@ import { sourceReplacementCuts, type LineCuts } from './source-intervals';
 import { perspectiveFraction } from './route-pick';
 
 type Projection = (x: number, y: number) => { sx: number; sy: number; vis: boolean; depth?: number };
+/** a picked line is projected in pieces this long (m), each on the ground under it */
+const PICK_PIECE = 20;
 export interface SourceHit { sourceId: string; s: number; x: number; y: number; distance: number }
 type Segment = { ax: number; ay: number; bx: number; by: number; d: number; length: number; feature: Feature };
 type Feature = { id: string; layer: string; index: number; owners: TransportRenderInterval[] };
@@ -67,11 +69,25 @@ export class SourcePicker {
     // ranked by distance from the drawn road's edge (centreline distance minus drawn half-width)
     let hit: SourceHit | null = null, best = Infinity;
     for (const i of candidates) {
-      const seg = this.segments[i], a = project(seg.ax, seg.ay), b = project(seg.bx, seg.by);
-      if (!a.vis || !b.vis) continue;
-      const dx = b.sx - a.sx, dy = b.sy - a.sy, length2 = dx * dx + dy * dy;
-      const t = length2 ? Math.max(0, Math.min(1, ((screenX - a.sx) * dx + (screenY - a.sy) * dy) / length2)) : 0;
-      const distance = Math.hypot(screenX - a.sx - t * dx, screenY - a.sy - t * dy);
+      const seg = this.segments[i];
+      // The line is drawn draped on the ground: a long segment's straight chord between its ends' heights
+      // would stand off the drawn line in an oblique view (a valley under it, a hill). Project it in
+      // short pieces, each on the ground under it.
+      const pieces = Math.max(1, Math.ceil(seg.length / PICK_PIECE));
+      let found: { distance: number; along: number; length2: number } | null = null;
+      let a = project(seg.ax, seg.ay);
+      for (let k = 1; k <= pieces; k++) {
+        const f = k / pieces, b = project(seg.ax + (seg.bx - seg.ax) * f, seg.ay + (seg.by - seg.ay) * f);
+        if (a.vis && b.vis) {
+          const dx = b.sx - a.sx, dy = b.sy - a.sy, length2 = dx * dx + dy * dy;
+          const t = length2 ? Math.max(0, Math.min(1, ((screenX - a.sx) * dx + (screenY - a.sy) * dy) / length2)) : 0;
+          const distance = Math.hypot(screenX - a.sx - t * dx, screenY - a.sy - t * dy);
+          if (!found || distance < found.distance) found = { distance, along: (k - 1 + perspectiveFraction(t, a.depth, b.depth)) / pieces, length2: length2 * pieces * pieces };
+        }
+        a = b;
+      }
+      if (!found) continue;
+      const { distance, length2 } = found;
       let half = 0;
       if (this.halfWidth) {
         const pxPerMetre = Math.sqrt(length2) / seg.length;
@@ -81,7 +97,7 @@ export class SourcePicker {
       }
       const edge = distance - half;
       if (edge > pixels || edge >= best) continue;
-      const along = perspectiveFraction(t, a.depth, b.depth), renderS = seg.d + along * seg.length;
+      const along = found.along, renderS = seg.d + along * seg.length;
       if (this.cuts.get(seg.feature.layer)?.get(seg.feature.index)?.some(([a, b]) => renderS > a && renderS < b)) continue;
       for (const owner of seg.feature.owners) {
         if (onlySource && owner.sourceId !== onlySource) continue;
