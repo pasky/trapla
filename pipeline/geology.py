@@ -187,7 +187,7 @@ def classify(a):
         return "igneous"
     if rock.startswith("leptynit"):
         return "hard"
-    if rock.startswith("vápenec"):
+    if rock.startswith(("vápenec", "krystalické vápence")):
         return "carbonate"
     # Barrandian descriptions at the Prague end (0301).
     if rock.startswith(("křemenný pískovec", "střídání drob")):

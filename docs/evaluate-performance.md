@@ -1,5 +1,52 @@
 # Evaluate performance regression
 
+## Long routes: windowed previews, a preview worker (2026-11-16)
+
+Goal: complete corridors (Středočeská D3 58.5 km, D35 Opatovec → Mohelnice 34 km) with unchanged drag
+budgets. Everything in `evaluate()` is linear in route length (the auto-profile DP is knots × heights ×
+grades; sections, structures, crossings, noise per station), so a long route is not a complexity problem
+but a constant-factor one: at ≈ 2 ms/km for a road preview and ≈ 11 ms/km for a full motorway evaluation,
+60 km means ≈ 120–140 ms per preview and ≈ 0.65–1 s per full evaluation. Two things break the budget:
+
+1. **Preview cost grows with the route, not with the edit.** Measured (Node, this host, median of 12 drag
+   steps, `PREVIEW=1 scripts/bench-drag.ts`): D3 15.7 km motorway 33 ms, D3 road 30–35 ms, D11 18–20 km
+   24–37 ms; full motorway evaluation of a 11–17 km D3 section 150–260 ms (phases: engineering passes incl.
+   retaining 65 ms, crossings 21, profile 19, noise 7, footprint 6 for 11 km).
+2. **A preview waits behind a full evaluation.** One worker ran both; a pause in a drag starts a full
+   evaluation that cannot be interrupted, so every later preview waits up to its whole duration (the D35
+   34 km pin-mode failure, p50 69 ms > 60).
+
+What changed (full evaluations and bills are untouched: `eval-regression` passes both paths):
+
+- **Windowed preview** (`core/preview-window.ts`). Each full result is remembered per lineage (same ends,
+  category, speed, profile mode, overrides). A preview finds where the new design differs from it: the plan
+  (stations compared with the full result's at the same chainage upstream and at chainage − ΔL
+  downstream; 0.2 m tolerance) and the grade inputs (pins in Auto, height points By hand). It evaluates only
+  that stretch ± 1.5 km as its own route (`EvalOptions.window`: the whole route's stationing sliced, heights
+  and grades of the full line at both window ends; the auto-profile DP continues those grades within one
+  vertical curve, `endpointGrades`), and stitches: grade line = full VPIs before + window VPIs + full VPIs
+  after (shifted by ΔL); per-station arrays and per-cell costs from the window inside, from the full result
+  (mapped by chainage) outside. A window over more than 60 % of the route, a changed override or no full
+  result yet falls back to the whole-route preview. The preview is shown as before (`≈`, provisional).
+- **Preview worker.** Previews run in a second worker; the full worker posts each full result to it over a
+  `MessageChannel` (structured clone in the workers, not on the main thread) as the base of its windows.
+  A preview never waits for a full evaluation any more.
+
+Measured, Node, previews of bend drags (`STEPS=12 PREVIEW=1 [WINDOW=0] scripts/bench-drag.ts`), whole-route
+→ windowed, median ms: D11 best 30 → 17, demo 24 → 9, direct-80 34 → 10, direct-90 37 → 13, town-centre
+26 → 33 (window over 60 %: whole-route); D3 15.7 km motorway 33 → 17, road 30 → 21. Windows are
+6.3–7.6 km here, so the gain grows with route length.
+
+Accuracy against the full evaluation of the same design (6 bend moves of 20 / 80 m on two D3 designs): bill
+−8.0 … +10.0 % windowed vs −12.2 … −3.9 % whole-route; grade line within 2–9 m of the full one in both
+(the full Auto line itself jumps by metres between neighbouring designs). The window carries the full
+result's retaining walls, remedies and noise outside the edit, so it is usually closer; it misses changes
+the edit causes far away (a mass-balance material value, a strict retry).
+
+Also for long motorways: where Auto's grade leaves a crossed road with neither our bridge nor a buildable
+bridge over us (ramps > 250 m or > 10 m), a grade-separated route retries once with Auto asked to clear it
+(research/39). That is a second full evaluation only on such (otherwise invalid) designs.
+
 ## New scenarios: route length sets the cost (2026-11-15)
 
 Evaluation time grows with route length. Node, warm, median of 10 full evaluations on the same host:

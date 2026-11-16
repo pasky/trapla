@@ -1,0 +1,99 @@
+{
+  "id": "d35-full",
+  "name": "D35 Opatovec → Mohelnice",
+  "bbox5514": [
+    -601500,
+    -1102000,
+    -567500,
+    -1090500
+  ],
+  "cell": 5,
+  "requireComplete": true,
+  "coherentTransport": true,
+  "official": {
+    "strategy": "strict",
+    "query": "way[\"ref\"=\"D35\"];",
+    "ref": "D35",
+    "highway": "motorway",
+    "wayIds": [
+      1012218276,
+      1012218277,
+      911292616,
+      80415867,
+      80415880,
+      1012218272,
+      80415866,
+      1156589474,
+      1156589473,
+      22768453
+    ],
+    "startNode": 938396772,
+    "lengthRangeM": [
+      33700,
+      34100
+    ],
+    "publishedProjectLengthM": 34830
+  },
+  "A": {
+    "alongOfficial": 0,
+    "note": "Opatovec: western end of mapped proposed D35, at the temporary service-road continuation"
+  },
+  "B": {
+    "alongOfficial": 33300,
+    "note": "Mohelnice: 33.3 km along the mapped proposed D35, where it starts to merge with the existing I/35 (59 m away); the last 0.6 km of the mapped line rebuilds the existing road, which the game cannot model yet",
+    "junction": {
+      "kind": "merge",
+      "osmWayIds": [
+        815005702,
+        815005703,
+        4256394
+      ],
+      "about": "I/35 carriageway ways within the merge zone of B. The merge onto I/35 is priced as one junction; the onward reconstruction of I/35 into D35 is outside this exercise."
+    }
+  },
+  "groundProfileOverrides": {
+    "perm_sand": {
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "perm_congl": {
+      "classIto": 1.5,
+      "classIIto": 4
+    },
+    "perm_fine": {
+      "classIto": 3,
+      "classIIto": 9
+    },
+    "carb_sand": {
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "carb_mixed": {
+      "classIto": 2.5,
+      "classIIto": 7
+    },
+    "phyllite": {
+      "name": "Shale / phyllite — uncalibrated regional prior",
+      "classIto": 2,
+      "classIIto": 6
+    },
+    "hard": {
+      "name": "Greywacke / conglomerate / quartzite — uncalibrated regional prior",
+      "classIto": 1,
+      "classIIto": 3
+    },
+    "carbonate": {
+      "name": "Limestone / dolomite — uncalibrated regional prior",
+      "classIto": 1,
+      "classIIto": 3
+    }
+  },
+  "baselineNote": "The whole D35 Opatovec → Mohelnice link, both project sections (Opatovec–Staré Město 16.6 km, Staré Město–Mohelnice 18.23 km incl. 1.33 km rebuilt existing D35; ŘSD leaflets 09/2025), as one motorway mission (built as D 27.5; the project is D 26.0/130). It ends where the mapped line starts to merge with the existing I/35 (declared merge, PROVISIONAL price, research/27–28); the last 0.6 km rebuilds the existing road and is not modelled. OSM proposed line is context, not surveyed design geometry. Ground profiles are uncalibrated regional priors.",
+  "sources": [
+    "https://apdos.roadmedia.cz/Upload/Stavby/53/infoletak_d35-opatovec-st_mesto.pdf",
+    "https://apdos.roadmedia.cz/Upload/Stavby/54/infoletak_d35-stare-mesto-mohelnice.pdf",
+    "https://www.openstreetmap.org/way/1012218276",
+    "https://www.openstreetmap.org/way/22768453",
+    "https://www.openstreetmap.org/way/80415880"
+  ]
+}

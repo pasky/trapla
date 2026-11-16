@@ -44,6 +44,7 @@ class GeologyTests(unittest.TestCase):
             ({"hor_karto": "amf.-flogopitový ortopyroxenit"}, "igneous"),
             ({"hor_karto": "leptynit"}, "hard"),
             ({"hor_karto": "vápenec,dolomit"}, "carbonate"),
+            ({"hor_karto": "krystalické vápence, erlany"}, "carbonate"),
             ({"utvar": "KARBON", "hor_karto": "granit"}, "igneous"),
             ({"hor_karto": "křemenný pískovec"}, "hard"),
             ({"hor_karto": "střídání drob, pískovců, prachovců a jílovitých břidlic"}, "hard"),
