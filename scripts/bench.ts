@@ -1,6 +1,7 @@
 // Bench + realism numbers. Usage:
 //   npx tsx scripts/bench.ts                    straight line, the reference design, an official-line-like design
 //   npx tsx scripts/bench.ts a.json [b.json…]   the given designs ({design: …} files)
+//   --check: exit 1 unless every design is VALID and its component arrays sum to its bill (the merge gate)
 import { readFileSync } from 'node:fs';
 import { PART_KEYS } from '../src/core/cost';
 import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
@@ -10,6 +11,7 @@ import { describe } from './report';
 const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
 const a = { x: meta.A.xy[0], y: meta.A.xy[1] }, b = { x: meta.B.xy[0], y: meta.B.xy[1] };
 const ctx: EvalContext = { terrain, scenario, a, b, buildings, roads, junctions };
+const check = process.argv.includes('--check'), failures: string[] = [];
 function report(name: string, d: Design) {
   let r = evaluate(ctx, d);
   for (let i = 1; i < Number(process.env.BENCH_WARMUP ?? 1); i++) r = evaluate(ctx, d);
@@ -28,14 +30,17 @@ function report(name: string, d: Design) {
   // every component array must sum to its line of the bill
   let sum = 0;
   for (const k of PART_KEYS) for (let i = 0; i < r.n; i++) sum += r.parts[k][i];
-  if (Math.abs(sum - r.cost.total) > 1) console.log(`  !! parts sum ${sum} ≠ total ${r.cost.total}`);
+  if (Math.abs(sum - r.cost.total) > 1) { console.log(`  !! parts sum ${sum} ≠ total ${r.cost.total}`); failures.push(`${name}: parts sum`); }
+  if (!r.valid) failures.push(`${name}: not VALID`);
   if (r.violations.length) console.log('  violations:', r.violations.slice(0, 6).map((v) => `${v.title} — ${v.fix}`));
   return r;
 }
 
-if (process.argv.length > 2) {
-  for (const f of process.argv.slice(2)) report(f, JSON.parse(readFileSync(f, 'utf8')).design);
-  process.exit(0);
+const files = process.argv.slice(2).filter(a => a !== '--check');
+if (files.length) {
+  for (const f of files) report(f, JSON.parse(readFileSync(f, 'utf8')).design);
+  if (check && failures.length) console.log(`\nFAIL: ${failures.join('; ')}`);
+  process.exit(check && failures.length ? 1 : 0);
 }
 report('straight (auto profile)', { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] });
 // D11 coordinates: other scenarios pass their own designs as arguments
