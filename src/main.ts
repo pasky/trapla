@@ -300,6 +300,7 @@ async function main() {
   // ---- keyboard (ui/shortcuts.ts) ----
   installShortcuts({
     buildTool, intro, keyBox, showKey, select, setStructure, deletePi, undo: () => store.undo(), redo: () => store.redo(),
+    cancelDrag: () => { store.cancelStep(); view.cancelDrag(); }, releaseDrag: () => store.release(),
     get sel() { return session.sel; }, get mappedRoadSelected() { return !!links.editor?.selected; },
   });
 

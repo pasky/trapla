@@ -14,20 +14,23 @@ export interface ShortcutContext {
   readonly keyBox: HTMLElement;
   showKey(on: boolean): void;
   undo(): void; redo(): void;
+  /** Undo during a drag: take the drag back, ignore the rest of the gesture; and when the pointer is let go */
+  cancelDrag(): void; releaseDrag(): void;
   select(next: Sel | null): void;
   setStructure(kind: StructureKind | null, s0: number, s1: number): void;
   deletePi(i: number): void;
 }
 
 export function installShortcuts(app: ShortcutContext): void {
-  // a drag (bend, height point, pin, radius grip) is applied without a history entry until it ends:
-  // Undo / Redo in the middle of one would be overwritten by its final commit
+  // a drag (bend, height point, pin, radius grip) is applied without a history entry until it ends: Undo in
+  // the middle of one takes back that drag only (the rest of the gesture changes nothing); Redo waits
   let pointerHeld = 0;
-  window.addEventListener('pointerdown', () => { pointerHeld++; }, { capture: true });
-  for (const t of ['pointerup', 'pointercancel'] as const) window.addEventListener(t, () => { pointerHeld = Math.max(0, pointerHeld - 1); }, { capture: true });
-  window.addEventListener('blur', () => { pointerHeld = 0; });
+  window.addEventListener('pointerdown', () => { if (!pointerHeld) app.releaseDrag(); pointerHeld++; }, { capture: true });
+  // (the gesture's own handlers of this event run first: its end commits nothing)
+  for (const t of ['pointerup', 'pointercancel'] as const) window.addEventListener(t, () => { pointerHeld = Math.max(0, pointerHeld - 1); if (!pointerHeld) setTimeout(() => app.releaseDrag()); }, { capture: true });
+  window.addEventListener('blur', () => { pointerHeld = 0; app.releaseDrag(); });
   const undoRedo = (redo: boolean) => {
-    if (pointerHeld) return;
+    if (pointerHeld) { if (!redo) app.cancelDrag(); return; }
     // a focused select / checkbox would keep the cards from redrawing with the restored design
     (document.activeElement as HTMLElement | null)?.blur?.();
     if (redo) app.redo(); else app.undo();

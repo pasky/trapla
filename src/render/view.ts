@@ -763,6 +763,8 @@ export class View {
     this.selected = null; this.dirty = true;
   }
 
+  /** Undo during a bend drag: the marker stops following the pointer (the design is restored by the store). */
+  cancelDrag() { if (this.dragging !== null) { this.dragging = null; this.dirty = true; } }
   setDesign(d: Design, selected: number | null, endpoints = this.endpoints) {
     this.setEndpoints(endpoints);
     this.designPts = [endpoints.a, ...d.pis, endpoints.b].map((p) => ({ x: p.x, y: p.y }));
@@ -1795,7 +1797,7 @@ export class View {
           this.ev.onPiDragStart?.(i);
         }
         const p = this.pick(ev.clientX, ev.clientY);
-        if (!p) return;
+        if (!p || this.dragging !== i) return; // (taken back with Undo: the rest of the gesture moves nothing)
         const m = this.piMarkers[i];
         if (m) { m.x = p.x; m.y = p.y; m.z = this.terrain.heightAt(p.x, p.y); }
         this.dirty = true;

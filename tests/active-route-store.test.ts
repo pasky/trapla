@@ -60,6 +60,22 @@ describe('active road widgets on project history', () => {
     adapter.undo(); expect(adapter.design.pis[0].x).toBe(50); expect(project.canUndo()).toBe(false);
   });
 
+  it('Undo during a drag takes back the drag only; the rest of the gesture changes nothing (one undo, one thing)', () => {
+    const { adapter, project } = setup();
+    adapter.update(d => { d.pis[0].x = 60; });
+    adapter.update(d => { d.pis[0].x = 70; }, false);
+    adapter.cancelStep(); expect(adapter.design.pis[0].x).toBe(60); expect(project.canUndo()).toBe(true);
+    adapter.update(d => { d.pis[0].x = 80; }, false); adapter.commit(); // the held pointer moves on and lets go
+    adapter.release();
+    expect(adapter.design.pis[0].x).toBe(60); expect(project.inTransaction).toBe(false);
+    adapter.undo(); expect(adapter.design.pis[0].x).toBe(50);
+    // an undo while a step is open without the pointer (a burst of + steps) takes back that step only
+    adapter.update(d => { d.pis[0].x = 60; });
+    adapter.update(d => { d.pis[0].r = 300; }, false);
+    adapter.undo(); expect(adapter.design.pis[0]).toEqual({ x: 60, y: 5, r: null }); expect(project.canUndo()).toBe(true);
+    adapter.undo(); expect(adapter.design.pis[0].x).toBe(50);
+  });
+
   it('Start over restores the whole initial project in one undo step, even with a side road active', () => {
     const { adapter, project, seed } = setup();
     adapter.update(d => { d.pis[0].x = 70; d.gradePins = [{ s: 30, z: 102 }]; d.buildingOverrides = [{ j: 3, action: 'keep' }]; });

@@ -67,8 +67,13 @@ export class ActiveRouteStore {
       listener(this.read(), committed);
     });
   }
+  /** A step taken back while the pointer still holds it (Ctrl+Z during a drag): the rest of that gesture
+   * changes nothing, its end commits nothing, until the pointer is let go (`release`). */
+  private cancelled = false;
+  cancelStep() { if (this.project.inTransaction) this.project.cancel(); this.cancelled = true; }
+  release() { this.cancelled = false; }
   update(edit: (design: Design) => void, committed = true) {
-    if (!this.activeRouteId || !this.read()) return;
+    if (this.cancelled || !this.activeRouteId || !this.read()) return;
     const id = this.activeRouteId, before = this.design, design = structuredClone(before);
     edit(design);
     this.carryHeights(before, design);
@@ -98,7 +103,7 @@ export class ActiveRouteStore {
     catch (error) { if (own) this.project.cancel(); throw error; }
     finally { this.atomic = false; }
   }
-  commit() { if (this.project.inTransaction) this.project.commit(); }
+  commit() { if (!this.cancelled && this.project.inTransaction) this.project.commit(); }
   replace(design: Design) {
     this.update(draft => {
       for (const key of Object.keys(draft)) delete (draft as unknown as Record<string, unknown>)[key];
