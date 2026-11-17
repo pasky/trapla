@@ -320,6 +320,21 @@ The same at h_a = 30 m:
   half, out to 0.87 of its reach either side), no clear end within the abutment search's reach, and the player's
   bridge: a closed abutment (going on for the flanks too had made a bridge whose spans no style reaches). D11 best: the end at km 6.99 over a service road is a wall; the 21 m fill at
   km 11.40 runs on 20 m past a 0.5 m stream (+32 M of bridge).
+- **One rule (cost model 42, 2026-11-17, owner's review):** the end-closing check had counted any way under the
+  cone's flanks, field tracks included, and never looked at the 10 m limit, while the search that lengthens Auto's
+  bridge looked at the axis only and spared minor ways: the Královec railway closed ends with walls of 16–28 m beside a
+  field track 23–31 m from the abutment (and a memo shared one key between "every road" and "the strict ways" screens).
+  Now one test serves both: what the cone would cover anywhere on its ground (rows from the abutment out to where its
+  surface meets the ground, a cross slope included; the two rectangles of the first fix missed a track 1 m under a cone's
+  toe on a cross slope) that nothing moves aside
+  (railways, water, roads of a class; a minor way the footprint screen may move aside is screened under the cone as
+  under an abutment, and moved; a way whose move fails is counted on the retry). A covered end is closed only on a fill
+  of at most 10 m, billed as the wall it is: a cantilever retaining wall across the fill's end section (crest at full
+  height, the side slopes' triangles falling to nothing), priced per metre at its height (data/remedies.ts
+  `retainingAssembly`, OTSKP April 2026, research/18; the shape **PROVISIONAL**, Derived from §1.4); on a 9.5 m crest
+  a 10 m wall ≈ 4.2 M CZK (245 m², ≈ 17,000 CZK/m²). Above 10 m Auto's bridge goes on to an end that is clear or low enough for a wall; where none
+  is within reach (or the player's bridge), the cone stands and what it covers is a problem. A fill between two
+  bridges closed off by a wall at an end is bridged where its deck costs less than the fill, its walls and cones.
 - **Cross slopes:** the cone's fill is summed row by row out to where it meets the ground on either side (the grid
   had been bounded by the ground on the axis: on a 30 % cross slope a 20 m cone stopped 9 m above the ground on its
   low side, unbilled and undrawn); the drawn mesh uses the same extents.

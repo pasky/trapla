@@ -1797,7 +1797,13 @@ export class View {
       }
       down = null;
     });
+    // (a press the road's drag takes never reaches the canvas: noted on the way down; a double click whose second
+    // press was dragged is not one: a click, then a drag of the road, came quickly after each other)
+    let press = { x: 0, y: 0, moved: false };
+    this.container.addEventListener('pointerdown', (e) => { press = { x: e.clientX, y: e.clientY, moved: false }; }, { capture: true });
+    this.container.addEventListener('pointermove', (e) => { if (e.buttons && Math.hypot(e.clientX - press.x, e.clientY - press.y) >= 5) press.moved = true; }, { capture: true });
     canvas.addEventListener('dblclick', (e) => {
+      if (press.moved || Math.hypot(e.clientX - press.x, e.clientY - press.y) >= 5) return;
       const p = this.pick(e.clientX, e.clientY);
       if (p) this.ev.onDoublePick?.(p.x, p.y);
     });

@@ -117,17 +117,26 @@
  * (research/67); bridge ends in fills on cones, billed and weighed (research/68); a cone never covers what lies under
  * the bridge (a wall, or Auto's bridge goes on). D11 frozen +15 … +745 M (PLAN.md "Playtest sweep 3"), D3 0302
  * 4,935 → 7,045 M.
- * 42: other ways' works (owner's Královec review): a crossed way's ramps, junction approach, side-road regrades and
+ * 42: bridge ends, one rule (owner's review of the Královec railway: walls up to 28 m): what a cone would cover that
+ * nothing moves aside, anywhere on its ground, closes the end with a wall only on a fill up to 10 m, billed as the wall it
+ * is (abutment-cone.ts closedEndWall); above it Auto's bridge goes on, else the cone stands and what it covers is a
+ * problem; a minor way under a cone is moved aside by the footprint screen; a fill between two bridges closed off by a
+ * wall is bridged where the deck costs less. D11 frozen −78 … +49 M (PLAN.md "Bridge ends: one rule").
+ * 43: Auto never squeezes two of its own changes of slope into each other: a support lift whose widened block end
+ * would (profile-remedies.ts) fails and the grade solve places its points there instead. Some drags change bill and
+ * validity (the owner's Královec drag: NOT VALID → VALID, 9.15 bn); frozen bills, saved designs unchanged
+ * (scripts/vc-overlap-audit.ts).
+ * 44: other ways' works (owner's Královec review): a crossed way's ramps, junction approach, side-road regrades and
  * reroutes keep their slopes off houses (walled, else bought out), mapped railways and (bridges over us, reroutes)
  * our own body, behind walls where they can stand; a bridge over us spans the station tracks its way crosses beside
  * us; a cut way is judged piece by piece (way-pieces.ts): a piece still reaching the road network just ends, only a
  * piece cut off is led to a crossing, a track or service road right beside our bridge may be led under it, a public
  * road is closed only where it goes round at most 500 m further (game rule, research/45), its ends get billed
- * turning areas; no reroute joins its own way's line. D11 frozen vs model 41: straight +5 M, best −60, demo −51,
+ * turning areas; no reroute joins its own way's line. D11 frozen vs model 43: straight +17 M, best −59, demo −51,
  * direct-80 −25, direct-90 −125, town-centre −100 (tracks whose parts still reach the network closed instead of
  * rerouted, tracks beside a bridge led under it; the straight design's junction approach over the Trutnov level
  * crossing cleared by the grade). */
-export const COST_MODEL_VERSION = 42;
+export const COST_MODEL_VERSION = 44;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

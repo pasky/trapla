@@ -1,14 +1,15 @@
-// The map's gestures: a click inspects what is under it, a drag from our road bends it (a new bend on a
-// straight, the bend itself on its curve), a drag on a mapped road rebuilds its stretch as a project road
-// in one undo step, a drag on a reroute shapes it, a double click adds a bend. Moved out of main.ts
-// verbatim; what a gesture has grabbed is this module's own state.
+// The map's gestures: a click inspects (selects) what is under it, a drag from the selected road bends it (a
+// new bend on a straight, the bend itself on its curve), a drag on a selected mapped road's highlighted
+// stretch rebuilds it as a project road in one undo step, a drag on a selected crossing's reroute shapes it, a
+// double click adds a bend. A drag that starts on a road not selected moves the map like one on open ground:
+// a click selects it first (the owner's review: random presses while panning bent the road). What a gesture
+// has grabbed is this module's own state.
 import { fitPlacedBend } from '../core/bend-fit';
 import { fitSetRadii } from '../core/fit-radii';
 import { speedNorms } from '../core/data/norms';
 import { nearestLeg } from '../core/horizontal';
 import type { RouteId, SourceInterval } from '../core/project';
 import type { ProjectTransportIndex } from '../core/project-network';
-import { corridorOfRoute } from '../core/project-motorway';
 import type { TransportGraphData } from '../core/project-transport';
 import type { ProjectStore } from '../project-store';
 import type { SourceHit } from '../render/source-pick';
@@ -36,24 +37,27 @@ export interface MapGestureContext extends Pick<MapPicks, 'canvasBox' | 'routeAt
   readonly selectGeneration: number;
   /** the last pointer position over the map (client px) */
   readonly lastClient: { x: number; y: number };
+  /** the active road is selected (a drag on it bends it); the selection */
+  readonly roadSelected: boolean; readonly sel: Sel | null;
   ensureTransport(): Promise<void>;
   select(next: Sel | null, fly?: boolean): void;
   selectPiece(s: number, fly?: boolean): void;
+  /** nothing selected, the road included; the road itself selected */
+  deselect(): void; selectRoad(): void;
   switchRoute(id: RouteId, created?: boolean, oneDirection?: boolean): boolean;
   showSource(hit: SourceHit): void;
   showNoLinks(): void;
   deletePi(i: number): void;
   placeAt(clientX: number, clientY: number, x: number, y: number): Placement;
-  mappedRoadNear(x: number, y: number): boolean;
   legacyRoadAt(x: number, y: number): boolean;
 }
 
 export function createMapGestures(app: MapGestureContext) {
   /** the selected mapped road's stretch under the pointer, if a drag there would rebuild it */
-  let grabbing: SourceInterval | null = null, grabbedSource: SourceHit | null = null;
-  /** a press on a mapped road before the road links are loaded (client point; `ready` once they are) */
-  type EarlyGrab = { x: number; y: number; ready: boolean };
-  let grabbedEarly = null as EarlyGrab | null;
+  let grabbing: SourceInterval | null = null;
+  /** when a click on the map last left the road unselected (a double click's first click must not stop its
+   *  second from adding a bend) */
+  let deselectedAt = -Infinity;
   const mappedGrab = (clientX: number, clientY: number): SourceInterval | null => {
     const interval = app.sourceEditor?.interval; if (!interval) return null;
     const g = app.view.pick(clientX, clientY);
@@ -115,7 +119,8 @@ export function createMapGestures(app: MapGestureContext) {
       if (t?.kind === 'route-hit') { if (app.switchRoute(t.routeId) && app.store.read()) app.selectPiece(t.s); }
       else if (t?.kind === 'source') app.showSource(t.hit);
       else if (!t && app.legacyRoadAt(_x, _y)) app.showNoLinks();
-      else app.select(t);
+      else if (t) app.select(t);
+      else { if (app.roadSelected) deselectedAt = performance.now(); app.deselect(); }
       if (ground) {
         const generation = app.selectGeneration;
         void app.ensureTransport().then(() => {
@@ -126,51 +131,35 @@ export function createMapGestures(app: MapGestureContext) {
         });
       }
     },
-    // placing a new line: a click beside the map says so (never nothing at all)
-    onPickNothing: () => { if (app.buildTool.active) app.buildTool.place({ ok: false, why: 'That is beside the map: click on the map itself.' }); },
-    onDoublePick: (x, y) => { if (!app.store.read() || app.routeAt(app.lastClient.x, app.lastClient.y, 10)) return; app.select({ kind: 'bend', i: insertBend(x, y, true) }); },
-    // a drag from the road always bends it (a click there still inspects the nearest thing); so does a
-    // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch
+    // placing a new line: a click beside the map says so (never nothing at all); else it lets go of what
+    // is selected, as one on open ground
+    onPickNothing: () => {
+      if (app.buildTool.active) { app.buildTool.place({ ok: false, why: 'That is beside the map: click on the map itself.' }); return; }
+      if (app.roadSelected) deselectedAt = performance.now();
+      app.deselect();
+    },
+    // (on the selected road only; the first click of the double click, on open ground, may have let go of it)
+    onDoublePick: (x, y) => {
+      if (app.buildTool.active || !app.store.read() || app.routeAt(app.lastClient.x, app.lastClient.y, 10)) return;
+      if (!app.roadSelected && performance.now() - deselectedAt > 800) return;
+      app.selectRoad(); app.select({ kind: 'bend', i: insertBend(x, y, true) });
+    },
+    // a drag from the selected road bends it (a click there still inspects the nearest thing); so does a
+    // drag on a selected mapped road's highlighted stretch, which rebuilds that stretch. Any other press
+    // (a road not selected, a mapped road whose card is not open) is the map's: a drag moves the map.
     hitRoad: (clientX, clientY) => {
-      grabbing = null; grabbedSource = null; grabbedEarly = null;
+      grabbing = null;
       if (app.buildTool.active) return false;
-      if (app.roadAt(clientX, clientY, 9) >= 0) return true;
+      if (app.roadSelected && app.roadAt(clientX, clientY, 9) >= 0) return true;
+      // a designed road drawn there comes first (a click there picks it, as the hover says)
+      if (app.routeAt(clientX, clientY, 10)) return false;
       grabbing = mappedGrab(clientX, clientY);
-      if (grabbing) return true;
-      // another designed road drawn there comes first (a click there picks it, as the hover says)
-      const other = app.routeAt(clientX, clientY, 10);
-      const corridorOf = (id: RouteId | null | undefined) => id ? corridorOfRoute(app.projectStore.snapshot.design, id)?.id ?? id : undefined;
-      if (other && corridorOf(other.routeId) !== corridorOf(app.store.activeRouteId)) return false;
-      // a drag that starts on any other mapped road never pans the map: it rebuilds the stretch there, or
-      // its card says why it cannot be changed
-      const s = app.sourceAt(clientX, clientY);
-      if (s?.kind === 'source') { grabbedSource = s.hit; return true; }
-      // before the road links are loaded: a mapped road there is held (no pan); a drag waits for the links
-      // and then rebuilds it (a click opens its card once they are loaded)
-      const g = !app.transportGraph && app.pack.transportMeta ? app.view.pick(clientX, clientY) : null;
-      if (g && app.mappedRoadNear(g.x, g.y)) {
-        const early: EarlyGrab = { x: g.x, y: g.y, ready: false }; grabbedEarly = early;
-        void app.ensureTransport().then(() => { early.ready = true; if (grabbedEarly === early) app.view.resumeRoadDrag(); });
-        return true;
-      }
-      return false;
+      return !!grabbing;
     },
     onRoadDrag: (x, y) => {
-      if (grabbedEarly) {
-        if (!grabbedEarly.ready) return 'wait';
-        // the pressed ground point, where it is on the screen now (a camera flight may have moved on)
-        const g = grabbedEarly, at = app.view.project(g.x, g.y, app.view.drape(g.x, g.y)), box = app.canvasBox(); grabbedEarly = null;
-        const s = at.vis ? app.sourceAt(box.left + at.sx, box.top + at.sy) : null;
-        if (s?.kind !== 'source') return null;
-        grabbedSource = s.hit;
-      }
-      if (grabbedSource) {
-        app.showSource(grabbedSource); grabbedSource = null;
-        const interval = app.sourceEditor?.interval;
-        return interval ? rebuildByDrag({ ...interval }, x, y) : null;
-      }
       if (grabbing) { const k = rebuildByDrag(grabbing, x, y); grabbing = null; return k; }
-      if (!app.store.read()) return null; app.intro.hide(); return bendByDrag(x, y);
+      // (let go of between the press and the first move, e.g. Esc: the drag is the map's no more, nor the road's)
+      if (!app.store.read() || !app.roadSelected) return null; app.intro.hide(); return bendByDrag(x, y);
     },
     onPiSelect: (i) => { grabOffset = null; placedByDrag = null; app.select(i === null ? null : { kind: 'bend', i }); },
     onPiDrag: (i, x, y) => {
@@ -197,16 +186,16 @@ export function createMapGestures(app: MapGestureContext) {
       app.store.commit();
     },
     onPiDelete: (i) => app.deletePi(i),
-    // a reroute link: dragging it shapes it (adds a bend point there)
+    // a selected crossing's reroute link: dragging it shapes it (adds a bend point there)
     grab: (clientX, clientY) => {
-      if (!app.store.read() || app.buildTool.active) return null;
+      if (!app.store.read() || app.buildTool.active || app.sel?.kind !== 'crossing') return null;
       const w = app.crossingWorksAt(clientX, clientY);
-      return w?.link !== undefined && app.linkEdit ? app.linkEdit.grab(w) : null;
+      return w?.link !== undefined && w.crossing.roadId === app.sel.roadId && app.linkEdit ? app.linkEdit.grab(w) : null;
     },
   };
   return {
     events, mappedGrab,
     /** forget what a hitRoad probe grabbed (automation) */
-    releaseGrab: () => { grabbing = null; grabbedSource = null; grabbedEarly = null; },
+    releaseGrab: () => { grabbing = null; },
   };
 }

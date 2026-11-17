@@ -131,7 +131,8 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 - **`scripts/gates.sh quick | full`** runs the AGENTS.md gates with the lock protocol (timed runs under
   the exclusive lock and once more when a budget is missed under load; untimed browser runs wait for
   queued timed runs, then share the lock under `nice`), logs per gate, a PASS / FAIL summary, exit 1 on any
-  failure. `--no-browser`, `--only`, `--skip`, `--exact before.json`, `list`. Full Node gates: 3.5 min.
+  failure. `--no-browser`, `--only`, `--skip`, `--exact before.json`, `list`. Full Node gates: 3.5 min (serial;
+  since 2026-11-17 in parallel, `--jobs`).
 - `bench.ts --check` exits 1 on a design that is not VALID or whose parts do not sum to its bill (it
   only printed `!!`). The outcome audit still only prints its flags (116 on the gate's inputs today, from
   the random designs): the runner shows the count; someone should decide which flags are failures.

@@ -91,7 +91,7 @@ export function gradePinViolations(pins: readonly GradePin[], profile: Profile, 
         : outside ? 'Pinned height out of reach: too steep' : 'Pinned height: no legal road found',
       fix: suggested ? `Set it to ${suggested.z.toFixed(2)} m, or unpin`
         : 'Unpin it',
-      detail: bound ? `You asked for ${p.z.toFixed(2)} m; the road is at ${actualZ!.toFixed(2)} m. Slopes alone allow ${bound.min.toFixed(2)}–${bound.max.toFixed(2)} m here (counting your other pins, but not the room the roundings need). ${outside ? 'Pins that conflict may need changing together.' : 'Automatic tries a limited set of heights; a legal one may still exist. The suggested height is where the road is now.'}` : 'A pin stays at its km position when you move the route; it is never moved for you.',
+      detail: bound ? `You asked for ${p.z.toFixed(2)} m; the road is at ${actualZ!.toFixed(2)} m. Slopes alone allow ${bound.min.toFixed(2)}–${bound.max.toFixed(2)} m here (counting your other pins, but not the room a change of slope needs). ${outside ? 'Pins that conflict may need changing together.' : 'Automatic tries a limited set of heights; a legal one may still exist. The suggested height is where the road is now.'}` : 'A pin stays at its km position when you move the route; it is never moved for you.',
       rule: `The finished road must pass within ±${tol} m of each pinned height; the heights at A and B are fixed.`,
       size: actualZ !== null ? Math.abs(actualZ - p.z) : undefined,
       pin: { index, requested: { ...p }, actualZ, tolerance: tol, reason, reachable: bound, suggested },

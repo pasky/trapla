@@ -625,6 +625,9 @@ Czech quotes in `research/42-notes/`):
   why not ("Railways cannot be changed yet.", "Motorways and expressways…", "Slip roads…", "Bridges and tunnels…");
   it never pans the map. any-road-scene D11 step 7b: a street in Nový Rokytník (M 7.5, 30 km/h) and a track near
   Lampertice (P 4.0, 20 km/h) rebuilt by an unselected drag; a railway drag: no pan, the card says so.
+  **Superseded (2026-11-17, owner's review: random presses while panning bent roads):** a drag that starts on any
+  road not selected — our road, another project road, a mapped road — moves the map like one on open ground; a
+  click selects it first (`ui/map-gestures.ts` hitRoad, `ui/selection.ts` roadSelected).
 
 **Merge of main 2decf53** (`a0ea710`; crossing links model 22, noise-walls-seams model 21, camera): conflicts in
 `project-evaluate.ts` (routeOutcome now main's per-storey energies with our per-road building owners),

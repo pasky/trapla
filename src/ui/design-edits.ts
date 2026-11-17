@@ -18,6 +18,8 @@ export interface DesignEditContext {
   /** the active road's shown result */
   readonly last: Result | null;
   select(next: Sel | null, fly?: boolean): void;
+  /** nothing selected, the road included (a card's ✕, as Esc) */
+  deselect(): void;
 }
 
 export function createDesignEdits(app: DesignEditContext) {
@@ -71,7 +73,7 @@ export function createDesignEdits(app: DesignEditContext) {
     if (via) { o.type = 'reconnection'; o.via = via; if (o.to === undefined && to !== undefined) o.to = to; } else { delete o.via; delete o.to; }
   }, commit);
   const inspectorEvents: InspectorEvents = {
-    close: () => app.select(null),
+    close: () => app.deselect(),
     select: (t) => app.select(t, true),
     structure: setStructure,
     wall: setWall,
@@ -103,6 +105,16 @@ export function createDesignEdits(app: DesignEditContext) {
     deletePi,
     bendHeight: (i) => { const b = app.last && bendStations(app.last, app.store.design)[i]; if (b) addHeightAt(Math.round(b.s)); },
     vpiRadius: (i, r) => app.store.update((d) => { takeProfile(d); if (d.vpis[i]) d.vpis[i].r = r; }),
+    pinAt: (at, change) => {
+      commitFields();
+      app.store.update((d) => {
+        takeProfile(d);
+        const i = d.vpis.findIndex((v, k) => k > 0 && k < d.vpis.length - 1 && Math.abs(v.s - at) < 0.01);
+        if (i < 0) return;
+        if (change) Object.assign(d.vpis[i], change); else d.vpis.splice(i, 1);
+      });
+      if (!change) app.select(null);
+    },
     deleteVpi: (i) => { commitFields(); app.store.update((d) => { takeProfile(d); d.vpis.splice(i, 1); }); app.select(null); },
   };
   const decisionEvents: DecisionEvents = {

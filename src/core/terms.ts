@@ -10,7 +10,8 @@
 // Glossary of player words (allowed): our road, crossed road, track, service road, street, local road,
 // class I–III road, motorway, junction, bridge, tunnel, cutting, embankment, slope, earthworks, ramp,
 // retaining wall, culvert, stream, underpass, rerouted, reconnected, moved aside, closed, turning area,
-// height point, bend, km, m, %. Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
+// height pin (By hand: a ◆ point the player drags; on Auto the points are the game's and never named), pin, bend,
+// km, m, %. Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
 // where a requirement or a price cites its source: a violation's `rule` line and the bill's pricing
 // tooltips.
 import type { CrossingResult } from './crossings';
@@ -51,6 +52,9 @@ export const JARGON: readonly [RegExp, string][] = [
   [/polygon/i, '"polygon" (say "the straights between bends")'],
   // (also in a rule line or a price source: the norm or price book is named, not our note on it)
   [/research\//, 'research note reference'],
+  // (the profile draws Auto's height points nowhere: a message about them names nothing the player can see)
+  [/\broundings?\b/i, '"rounding" (say "change of slope" or "radius")'],
+  [/height points?\b/i, '"height point" (By hand: "your height pin"; on Auto name only the place)'],
 ];
 /** Source names: allowed only in a violation's `rule` line and pricing tooltips. */
 export const SOURCE_NAMES: readonly [RegExp, string][] = [
@@ -173,6 +177,16 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
 /** A mission end's place name without its note in brackets ("Hostěradice (on to 0303)" → "Hostěradice"):
  * what a motorway direction leads towards. */
 export const placeName = (label: string) => label.replace(/\s*\([^()]*\)\s*$/, '');
+/** Selecting a road before dragging it (a drag on a road not selected moves the map): `line` is road / motorway / railway. */
+export const SELECT_TEXT = {
+  /** the map's hover label over a road a click would select */
+  hover: 'click to select',
+  /** how to bend the line: the first-run intro, the cards' hint, Help */
+  howTo: (line: string) => `Click the ${line}, then drag it to bend it.`,
+  /** …once it is selected */
+  selected: (line: string) => `Drag the ${line} to bend it.`,
+} as const;
+
 /** The motorway's two directions: edited together, or each on its own (split) and joined again. */
 export const DIRECTIONS_TEXT = {
   heading: 'Edit',

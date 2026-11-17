@@ -13,6 +13,8 @@ export interface ProfileEventContext {
   readonly last: Result | null; readonly sel: Sel | null;
   select(next: Sel | null, fly?: boolean): void;
   selectPiece(s: number, fly?: boolean): void;
+  /** the active road itself selected (ui/selection.ts) */
+  selectRoad(): void;
   /** By hand from here on: the design takes over Auto's height points */
   takeProfile(d: Design): void;
   commitFields(): void;
@@ -31,6 +33,7 @@ export function profileEvents(app: ProfileEventContext): ProfileEvents {
     onCrossingSelect: (roadId) => app.select({ kind: 'crossing', roadId }, true),
     onCulvertSelect: (id, s) => app.select({ kind: 'culvert', id, s }, true),
     onPick: (s) => app.selectPiece(s, true),
+    onPress: () => app.selectRoad(),
     onVpiDrag: (i, s, z, a, b) => app.store.update((d) => {
       app.takeProfile(d);
       const base = vpiDragBase ??= d.vpis.map((v) => ({ ...v }));

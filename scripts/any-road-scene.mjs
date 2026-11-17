@@ -89,43 +89,20 @@ try {
     };
     let { c, p, at } = await fresh();
     await p.mouse.move(at.x - 4, at.y); await p.mouse.move(at.x, at.y); await p.waitForTimeout(100);
-    assert.equal(await p.evaluate(() => document.querySelector('#view canvas').style.cursor), 'grab', 'a mapped road shows the grab cursor at once');
+    assert.equal(await p.evaluate(() => document.querySelector('#view canvas').style.cursor), 'pointer', 'a mapped road shows at once that a click picks it');
     await p.mouse.click(at.x, at.y);
     await p.locator('#inspector.k-source').waitFor({ timeout: 20000 });
     assert.match(await p.locator('#inspector').textContent(), /Drag it to change its line/, 'the first click opens its card');
     await c.close();
+    // a drag on a mapped road not selected moves the map like one on open ground (a click selects it first)
     ({ c, p, at } = await fresh());
     const pose = await p.evaluate(() => window.trapla.cameraTarget());
     await p.mouse.move(at.x, at.y); await p.mouse.down();
-    const cold = !(await p.evaluate(() => window.trapla.transportLoaded()));
-    await p.mouse.move(at.x + 30, at.y - 30, { steps: 12 });
-    await p.waitForFunction(() => window.trapla.transportLoaded(), null, { timeout: 20000 });
-    await p.mouse.move(at.x + 32, at.y - 30); await p.mouse.up(); await idle(p);
+    await p.mouse.move(at.x + 30, at.y - 30, { steps: 12 }); await p.mouse.up(); await idle(p);
     const after = await p.evaluate(() => window.trapla.cameraTarget());
-    assert(Math.hypot(after.x - pose.x, after.y - pose.y) < 0.5, `the first drag does not pan the map (${JSON.stringify([pose, after])})`);
-    const rebuiltCold = (await p.evaluate(() => window.trapla.getProject())).routes.find(r => r.source);
-    assert(rebuiltCold?.source.intervals[0].sourceId === road.id, 'the first drag rebuilds the road');
-    console.log(`cold start: grab cursor, card on the first click, the first drag rebuilt ${road.name}${cold ? ' (pressed before the links were in)' : ''}`);
-    await c.close();
-    // a drag let go before the links are in, after the camera moved on meanwhile: a click on the road it
-    // pressed (its ground point, wherever that is on the screen now), not on what is now under that pixel
-    ({ c, p, at } = await fresh());
-    let open; const gate = new Promise(resolve => { open = resolve; });
-    await c.route('**/traffic.json', async r => { await gate; await r.continue(); });
-    const p1 = await page.evaluate(([id, s]) => window.trapla.sourcePoint(id, s), [road.id, mid + 10]);
-    const along = Math.hypot(p1.x - p0.x, p1.y - p0.y), nx = -(p1.y - p0.y) / along, ny = (p1.x - p0.x) / along;
-    await p.mouse.move(at.x, at.y); await p.mouse.down();
-    await p.mouse.move(at.x + 30, at.y - 30, { steps: 12 });
-    await p.evaluate(([x, y]) => window.trapla.lookAt(x, y, 900, 0, 55), [p0.x + 250 * nx, p0.y + 250 * ny]); await p.waitForTimeout(300);
-    const pressedNow = await p.evaluate(() => window.trapla.transportLoaded());
-    const under = await p.evaluate(([x, y]) => window.trapla.groundScreen(x, y), [p0.x, p0.y]);
-    assert(under?.vis && Math.hypot(box.x + under.sx - at.x, box.y + under.sy - at.y) > 100, 'the camera moved the pressed road away from the pressed pixel');
-    await p.mouse.up(); open();
-    await p.locator('#inspector.k-source').waitFor({ timeout: 20000 });
-    assert.equal(pressedNow, false, 'the press was let go before the links were in');
-    assert.equal((await p.evaluate(() => window.trapla.sourceSelection()))?.interval.sourceId, road.id, 'let go early, the press is a click on the road it pressed');
+    assert(Math.hypot(after.x - pose.x, after.y - pose.y) > 0.5, `a drag on a mapped road not selected moves the map (${JSON.stringify([pose, after])})`);
     assert.equal((await p.evaluate(() => window.trapla.getProject())).routes.filter(r => r.source).length, 0, 'and rebuilds nothing');
-    console.log('cold start: a drag let go before the links are in, after the camera moved, opens the card of the road it pressed');
+    console.log('cold start: a click picks a mapped road, a drag on one not selected moves the map');
     await c.close();
   }
 
@@ -284,6 +261,7 @@ try {
   // bend it like our road
   const s3 = await page.evaluate(id => window.trapla.projectResult().routes[id].legacy.length / 2, fresh.id);
   point = await screen('routeScreen', fresh.id, s3);
+  await page.mouse.click(point.x, point.y); await idle(); // a click selects it first
   await page.mouse.move(point.x, point.y); await page.mouse.down();
   await page.mouse.move(point.x - 40, point.y + 30, { steps: 10 }); await page.mouse.up(); await idle();
   assert.equal((await page.evaluate(() => window.trapla.getProject())).routes[2].alignment.pis.length, 1, 'the new road bent');
@@ -363,6 +341,8 @@ try {
       await page.keyboard.press('Escape'); await page.evaluate(() => window.trapla.select(null));
       await page.evaluate(([id, s]) => window.trapla.lookAtSource(id, s, 500), [id, s]); await idle();
       const p = await screen('sourceScreen', id, s);
+      // a click selects it (its card), then the drag rebuilds it
+      await page.mouse.click(p.x, p.y); await page.locator('#inspector.k-source').waitFor({ timeout: 5000 });
       await page.mouse.move(p.x, p.y); await page.mouse.down();
       await page.mouse.move(p.x + dx, p.y + dy, { steps: 12 }); await page.mouse.up(); await idle();
       return p;
@@ -473,11 +453,12 @@ try {
       const n0 = (await routes()).length;
       const at = await dragOn(motorway, 200, 60, -40);
       assert.equal((await routes()).length, n0, 'a mapped motorway is not rebuilt');
-      const still = await screen('sourceScreen', motorway, 200);
-      assert(Math.hypot(still.x - at.x, still.y - at.y) < 2, 'a drag on it does not pan the map');
+      // selected, it has no stretch to rebuild: a drag on it moves the map, its card still says why
+      const moved = await screen('sourceScreen', motorway, 200);
+      assert(Math.hypot(moved.x - at.x, moved.y - at.y) > 2, 'a drag on it moves the map');
       const card = await page.locator('#inspector').textContent();
       assert.match(card, /Motorways and expressways cannot be changed yet/);
-      console.log(`a drag on a mapped motorway: no pan, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
+      console.log(`a drag on a mapped motorway: the map moves, its card says "${card.match(/[^.]*cannot be changed yet\./)[0]}"`);
     } else console.log('no mapped motorway on the map: refusal not checked');
     // a mapped railway is grabbed like any road (main: rebuilt along its own line, as a railway)
     await page.keyboard.press('Escape');

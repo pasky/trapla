@@ -371,6 +371,12 @@ describe('evaluate on a synthetic town', () => {
     }
     // (the paving of the cones in front of its abutments, core/abutment-cone.ts)
     for (const cone of r.cones ?? []) bridgeCost += conePavingCost(cone);
+    // (and the walls of closed ends where the fill beside stands: support-layout.ts, abutment-cone.ts closedEndWall)
+    let walls = 0;
+    for (const run of r.runs) for (const [k, beside] of [[0, run.i0 - 1], [1, run.i1 + 1]] as const)
+      if (run.closedEnds?.[k] && r.kind[beside] === KIND.earth) walls += run.endWalls![k].cost;
+    expect(walls).toBeGreaterThan(0);
+    bridgeCost += walls;
     expect(c.bridges).toBeCloseTo(bridgeCost, 0);
     // two halves of the route
     const whole = rangeSummary(r), a = rangeSummary(r, 0, 2995), b = rangeSummary(r, 3000, r.length);
