@@ -113,19 +113,13 @@ export const LINK_TOO_FAR = 'Shaped link runs too far';
 export const LINK_CROSSES_MOTORWAY = 'Shaped link crosses a motorway at grade';
 /** + 'railway' | 'water' | 'building' */
 export const LINK_BLOCKED = 'Shaped link runs through a ';
-/** Steepest grade of a draped path over stretches of at least 20 m, m/m. PROVISIONAL: the 20 m averaging
- * length is a game allowance for small bumps a road's own formation would smooth out; the path itself
- * stays draped (and is priced as ordinary road), it is not engineered. */
-export function linkSteepest(path: readonly { x: number; y: number; z: number }[]): number {
-  const d = [0];
-  for (let i = 1; i < path.length; i++) d.push(d[i - 1] + Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y));
-  let steepest = 0;
-  for (let i = 0, j = 0; i < path.length; i++) {
-    while (j < path.length && d[j] - d[i] < 20) j++;
-    if (j === path.length) break;
-    steepest = Math.max(steepest, Math.abs(path[j].z - path[i].z) / (d[j] - d[i]));
-  }
-  return steepest;
+
+/** The height of an engineered line (link-route.ts profileLink) at distance d along it. */
+function linkHeight(points: readonly CrossingPoint[], d: number): number {
+  let k = 1;
+  while (k < points.length - 1 && points[k].d! < d) k++;
+  const a = points[k - 1], b = points[k], t = Math.max(0, Math.min(1, (d - a.d!) / ((b.d! - a.d!) || 1)));
+  return a.z + (b.z - a.z) * t;
 }
 
 /** Diagnostics of an automatic reroute that cannot be built (the treatment is then infeasible). */
@@ -1039,15 +1033,22 @@ function buildCrossingGeometryOnce(crossings: CrossingResult[], route: CrossingR
         : g.underpass ? [road[g.underpass.start]?.d, road[g.underpass.end]?.d] : [undefined, undefined];
       const lo = ends[0] ?? 0, hi = ends[1] ?? 0, rate = (c.roadPerKm ?? ROAD_CLASSES[c.cls].roadPerKm[0]) / 1000;
       c.realignLength = Math.max(0, keep.p1 - keep.p0 - Math.max(0, Math.min(hi, keep.p1) - Math.max(lo, keep.p0)));
-      // (the new road beyond them lies on the ground as drawn: no steeper there than its class allows where
-      // the ground leaves no choice, over 20 m as for a shaped reroute)
-      const ground = (d0: number, d1: number) => {
-        const out: { x: number; y: number; z: number }[] = [];
-        for (let d = d0; d < d1 + 2.5; d += 5) { const q = along(path, Math.min(d, d1)); out.push({ x: q.x, y: q.y, z: heightAt(q.x, q.y) }); }
-        return out;
-      };
-      const pieces = [ground(keep.p0, Math.min(lo, keep.p1)), ground(Math.max(hi, keep.p0), keep.p1)].filter(p => p.length > 1);
-      if (pieces.some(p => linkSteepest(p) > ROAD_CLASSES[c.cls].rampSteepest + 1e-9)) diagnose(g, `${SQUARE_FAILS}steep`);
+      // (the new road beyond them is built like a reroute, link-route.ts: within its class's gradient, its
+      // steepest where the ground leaves no choice, with earthworks up to LINK_MAX_SUPPORT deep, from the old
+      // way's ground to where the structure's ramps meet the ground; drawn as built)
+      const row = ROAD_CLASSES[c.cls];
+      for (const [d0, d1] of [[keep.p0, Math.min(lo, keep.p1)], [Math.max(hi, keep.p0), keep.p1]]) {
+        if (!(d1 - d0 > 1)) continue;
+        const survey = surveyLink([along(path, d0), ...path.filter(q => q.d > d0 && q.d < d1), along(path, d1)], g.width, linkEnv);
+        let plan = profileLink(survey, row.rampGradient, linkEnv);
+        if (plan.problems.includes('steep') && row.rampSteepest > row.rampGradient) plan = profileLink(survey, row.rampSteepest, linkEnv);
+        const failed = plan.problems.filter(p => p === 'steep' || p === 'railway' || p === 'water' || p === 'building');
+        if (failed.length) { diagnose(g, `${SQUARE_FAILS}${failed.join(',')}`); continue; }
+        for (const q of road) if (q.d! > d0 + 1e-6 && q.d! < d1 - 1e-6) {
+          const z = linkHeight(plan.points, q.d! - d0);
+          if (Math.abs(z - q.ground) > 0.01) { q.z = z; q.surface = 'ramp'; q.support = z >= q.ground ? 'embankment' : 'retaining'; }
+        }
+      }
       c.realignCost = c.realignLength * rate + keep.culvertCost;
       c.cost += c.realignCost;
     }

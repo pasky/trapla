@@ -62,8 +62,14 @@
  * two-lane roads (29.4 / 48.1 %), ČSN 73 6101:2018 vertical radii and gradients by category; a route ending on
  * a motorway may meet its other carriageway in its end cell; deep culverts become buried bridges, soft ground
  * under fills is treated; design speed per bend and hairpins (ČSN 73 6101:2000 §8.5.7); grade limits by terrain
- * class; an underpass box ends where our slope covers its roof, wing walls beyond. */
-export const COST_MODEL_VERSION = 31;
+ * class; an underpass box ends where our slope covers its roof, wing walls beyond.
+ * 32: crossings (research/60): a straightened line's new pieces are built like a reroute (within the class
+ * gradient, earthworks up to 10 m) instead of lying on the ground; a reroute takes a home only where nothing
+ * else can be built; the player's underpass lets the way be lowered, keeps our road on earth over its box, and
+ * a player's choice that cannot be built (a straightening, a bridge over us) leaves the rest as Auto had it.
+ * D11 frozen bills: direct-90 −11.6 M (km 8.26 track straightened), town-centre −10.2 M (km 10.05 track
+ * straightened), direct-80 drawn heights of its straightened legs only. */
+export const COST_MODEL_VERSION = 32;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

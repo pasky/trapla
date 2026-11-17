@@ -56,9 +56,16 @@ with our bridge or tunnel here" for a box that would have been shorter. Three me
   too. The crossing under our bridge is now simply passed where the choice is met at another crossing of
   the way.
 
+- The straightened line's new pieces lay draped on the ground and failed where it was steeper than the class's
+  steepest grade over 20 m (9 of the 22 refusals below), while every reroute is engineered within its
+  gradient with earthworks up to 10 m (`LINK_MAX_SUPPORT`, research/20) — the rule text already said "built
+  like any new road". They are now profiled like a reroute (`profileLink`, the class gradient, its steepest
+  where the ground leaves no choice) and drawn as built (raised or cut where the profile leaves the ground).
+  Auto straightens two more D11 tracks for it (direct-90 km 8.26, town-centre km 10.05: −11.6 / −10.2 M).
+
 `scripts/straighten-audit.ts` (a gate) flips Auto's choice on all 27 skewed boxes / bridges over us of the D3
-motorway, D11 straight, best and town-centre: 5 done, 22 said, none with any other new problem or a grade
-change beyond 3 km. Why the 22 cannot be straightened: 9 the ground beside our road is too steep (the new
-pieces lie draped on the ground; reroutes are engineered with up to 10 m of earthworks, these are not — the
-next lever), 6 no room for the bends, 3 a junction on the given-up stretch, 2 a building, 1 a box too low
-(km 5.26: raised, its ramps then meet the class II road's reroute).
+motorway, D11 straight, best and town-centre: 9 done, 18 said, none with any other new problem or a grade
+change beyond 3 km (before: 0 done on the D3 motorway's four most skewed, two clashes). Why the 18 cannot be
+straightened: 6 no room for the bends beside our earthworks, 4 the ground too steep even with 10 m of
+earthworks, 3 another road joining the given-up stretch, 2 a house on the new line, 2 its ramps over another
+road, 1 a box too low on the new line (D3 km 5.26: raised, its ramps then meet the class II road's reroute).
