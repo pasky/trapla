@@ -1,47 +1,25 @@
 // Guard: player-facing text stays in plain words (src/core/terms.ts). Generates every violation kind
 // and every crossing / footprint outcome, and fails on internal terms or a missing title / fix / basis.
+// The designs on the real pack are in player-text-pack-*.test.ts (four shards that run side by side).
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildAlignment, type PI } from '../src/core/horizontal';
 import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
-  trackEndViolations, verticalViolations, VIOLATION_KINDS, type Violation } from '../src/core/checks';
+  trackEndViolations, verticalViolations, VIOLATION_KINDS } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, DIRECTIONS_TEXT, endCard, footprintOutcome, jargonIn, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
+import { CROSSING_CHOICE_TEXT, crossingOutcome, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
-import { evaluate, type Design, type Result } from '../src/core/evaluate';
+import { evaluate } from '../src/core/evaluate';
 import { COST_GROUPS } from '../src/ui/costgroups';
 import { ROW_HELP, rowHelp } from '../src/ui/hud';
-import { footprintConflictText, footprintConflictTitle } from '../src/ui/footprint';
 import { D11_SCENARIO, PRESETS } from '../src/core/data/scenario';
 import { syntheticTerrain } from '../src/core/terrain';
 import { startDesign } from '../src/state';
-import { regressionContext, regressionPackAvailable } from '../scripts/eval-regression';
+import { FORCED_CHOICES, PACK_SHARDS, textGuard } from './player-text-helpers';
 
-const problems: string[] = [];
-const check = (where: string, text: string | undefined, sources = true) => {
-  if (!text) return;
-  for (const why of jargonIn(text, sources)) problems.push(`${where}: ${why} in "${text}"`);
-};
-const seen = new Set<string>();
-function checkViolation(v: Violation, where: string) {
-  seen.add(v.kind);
-  for (const key of ['title', 'fix', 'basis', 'rule'] as const) if (!v[key]?.trim()) problems.push(`${where}: ${v.kind} violation without ${key}: ${v.title}`);
-  check(`${where} ${v.kind} title`, v.title); check(`${where} ${v.kind} fix`, v.fix); check(`${where} ${v.kind} detail`, v.detail);
-  check(`${where} ${v.kind} rule`, v.rule, false);
-}
-function checkResult(r: Result, where: string) {
-  for (const v of r.violations) checkViolation(v, where);
-  for (const c of r.crossings) {
-    const o = crossingOutcome(c);
-    check(`${where} crossing tag`, o.tag); check(`${where} crossing label`, o.label); check(`${where} crossing explanation`, o.explain);
-  }
-  for (const c of r.footprintConflicts) {
-    check(`${where} footprint text`, footprintConflictText(c));
-    check(`${where} footprint tooltip`, footprintConflictTitle(c), false);
-  }
-}
+const { problems, seen, check, checkViolation } = textGuard();
 
 describe('player-facing text', () => {
   it('outcome labels, card choices and bill lines use plain words', () => {
@@ -127,33 +105,13 @@ describe('player-facing text', () => {
       ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [], 3000, { b: { dir: { x: 0, y: 1 } } }, 0.08, 300, 740),
       ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [{ x: 1000, y: 800, r: null }], 3200, { a: { dir: { x: 1, y: 0 }, continues: true } }, 0.08, 300, 740),
       ...trackEndViolations({ x: 0, y: 0 }, { x: 3000, y: 0 }, [], 3000, { b: { dir: { x: 0, y: 1 }, continues: true } }, 0.08, 300, 740)]) checkViolation(v, 'checks');
-    if (regressionPackAvailable()) {
-      const ctx = regressionContext(false);
-      const design = (file: string): Design => JSON.parse(readFileSync(file, 'utf8')).design;
-      const best = design('scripts/best-design.json');
-      const base = evaluate(ctx, best);
-      const roads = [...new Set(base.crossings.map(c => c.roadId!))];
-      const designs: [string, Design][] = [
-        ['straight', { category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] }],
-        ...['best', 'demo', 'direct-80', 'direct-90', 'town-centre'].map(n => [n, design(`scripts/${n}-design.json`)] as [string, Design]),
-        ['service overbridge', design('tests/fixtures/service-overbridge-design.json')],
-        // Every crossing choice forced on every crossed road (crossing violations and geometry failures).
-        ...CROSSING_CHOICES.map(type => [`all ${type}`, { ...best, crossingOverrides: roads.map(roadId => ({ roadId, type })) }] as [string, Design]),
-        // A short bridge and tunnel painted by hand, a kept building in the way, no noise walls at all.
-        ['structures', { ...best, structureOverrides: [{ s0: 3000, s1: 3040, kind: 1 }, { s0: 5000, s1: 5060, kind: 2 }] }],
-        ['kept building', { ...best, buildingOverrides: base.demolished.slice(0, 2).map(p => ({ j: p.j, action: 'keep' as const })) }],
-        ['no walls', { ...best, wallOverrides: [{ s0: 0, s1: base.length, side: 'L', height: 0 }, { s0: 0, s1: base.length, side: 'R', height: 0 }] }],
-        ['pins', { ...best, gradePins: [{ s: 6000, z: 900 }, { s: 6100, z: 100 }] }],
-        // Wild bends: footprint conflicts, piers on roads, motorway contact near B.
-        ['wild', { category: 'S9.5', speed: 90, profileMode: 'auto', vpis: [], pis: [
-          { x: 7600, y: 7000, r: null }, { x: 9800, y: 11000, r: null }, { x: 11200, y: 15500, r: null }, { x: 12300, y: 20500, r: null }] }],
-        ['wild 2', { category: 'S7.5', speed: 80, profileMode: 'manual', vpis: [], pis: [{ x: 5000, y: 6000, r: 300 }, { x: 10500, y: 12000, r: null }] }],
-      ];
-      for (const [name, d] of designs) checkResult(evaluate(ctx, d), name);
-      for (const kind of VIOLATION_KINDS) expect(seen, `no generated ${kind} violation`).toContain(kind);
-    }
+    // The kinds only real ground produces (and every crossing choice forced on every crossed road) come from
+    // the real-pack shards, player-text-pack-*.test.ts, each of which fails without the kinds it answers for.
+    const fromPack = new Set(PACK_SHARDS.flatMap(shard => shard.kinds));
+    for (const kind of VIOLATION_KINDS) expect(seen.has(kind) || fromPack.has(kind), `no generated ${kind} violation`).toBe(true);
+    expect(FORCED_CHOICES.flat().sort()).toEqual([...CROSSING_CHOICES].sort());
     expect(problems).toEqual([]);
-  }, 120_000);
+  });
 });
 
 /** String and template-literal texts of a TypeScript source (template placeholders become "…"),

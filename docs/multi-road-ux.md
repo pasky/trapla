@@ -61,7 +61,8 @@ accounting, branch-preserving acceptance, paired/independent motorways or railwa
   Active-only noise bands and house safety claims are suppressed for an unchecked network.
 - Constructed legacy-road results feed `RouteScene`; all bodies and inactive-road wall overlays remain
   visible. Selection/picking and the route selector switch active endpoints, controls and profile without
-  design history. Global building choices use project transactions. History clears local index selections.
+  design history. Global building choices use project transactions. History clears local index selections; one the step left in place (the same bend where it was, the same line
+  under a stretch, a crossed road, a house) is selected again (`ui/routes.ts`).
 - Debug adapters retain `setDesign/result/project(x,y,z)`; new hooks are `getProject`, `setProject`,
   `projectSnapshot`, `projectResult`, `activeRoute`, `setActiveRoute`, `projectSelection`, `renderRoutes`,
   `routeEndpoints`, `routeScreen`, `groundHeight`, `handledRequest`.

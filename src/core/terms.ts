@@ -72,7 +72,7 @@ const label = (cls: string) => ROAD_CLASSES[cls]?.label ?? 'road';
 /** Crossing outcomes: a short tag, a label with the built quantities, a one-sentence explanation. */
 export interface OutcomeText { tag: string; label: string; explain: string }
 type OutcomeOf = Pick<CrossingResult, 'type' | 'above' | 'cls' | 'span' | 'approachLength' | 'linkLength' | 'targetS' | 'underpassLength' | 'tieLength' | 'wallLength'
-  | 'culverts' | 'houses' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId'>;
+  | 'culverts' | 'houses' | 'homes' | 'linkGrade' | 'lowered' | 'drainage' | 'squared' | 'realignLength' | 'moved' | 'targetRoadId'>;
 /** What our line is, in the player's words: "our road", "our railway", "our motorway". */
 export type OurLine = 'road' | 'railway' | 'motorway';
 export const ourWords = (text: string, line: OurLine = 'road') => line === 'road' ? text
@@ -88,6 +88,13 @@ export function crossingOutcome(c: OutcomeOf & Pick<CrossingResult, 'shared'>, l
   }
   return words(ownOutcome(c));
 }
+/** "A house stands", "2 buildings stand", "3 houses and 3 other buildings stand" (homes, sheds / garages / barns …) */
+function standing(homes: number, others: number): string {
+  const house = homes === 1 ? 'a house' : homes ? `${homes} houses` : '';
+  const rest = !others ? '' : homes ? (others === 1 ? 'another building' : `${others} other buildings`) : (others === 1 ? 'a building' : `${others} buildings`);
+  const parts = [house, rest].filter(Boolean).join(' and ');
+  return `${parts.charAt(0).toUpperCase()}${parts.slice(1)} ${homes + others === 1 ? 'stands' : 'stand'}`;
+}
 function ownOutcome(c: OutcomeOf): OutcomeText {
   const row = ROAD_CLASSES[c.cls], what = label(c.cls);
   // what else its raised or lowered stretch takes (crossing-works.ts)
@@ -96,7 +103,7 @@ function ownOutcome(c: OutcomeOf): OutcomeText {
   // what its new piece of road needs (link-route.ts)
   const link = [c.linkGrade ? ` The ground is steep: it climbs up to ${pct(c.linkGrade)} in places, the most its class allows where there is no other way.` : '',
     c.culverts ? ` ${c.culverts === 1 ? 'A culvert carries a stream' : `${c.culverts} culverts carry streams`} under it.` : '',
-    c.houses?.length ? ` ${c.houses.length === 1 ? 'A house stands' : `${c.houses.length} houses stand`} in its way and ${c.houses.length === 1 ? 'is' : 'are'} bought out.` : ''].join('');
+    c.houses?.length ? ` ${standing(c.homes ?? 0, c.houses.length - (c.homes ?? 0))} in its way and ${c.houses.length === 1 ? 'is' : 'are'} bought out.` : ''].join('');
   // a skewed crossing laid on a new line at a right angle to ours (crossing-geometry.ts squarePath)
   const square = c.squared !== undefined ? `, the ${what} straightened to cross at a right angle` : '';
   const thing = c.type === 'underpass' ? 'box' : 'bridge';

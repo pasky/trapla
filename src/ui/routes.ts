@@ -134,7 +134,25 @@ export function createRoutes(app: RoutesContext) {
   let stretchIds = new Set<string>(), historyStep = false;
   const separateStretches = () => new Set(app.projectStore.snapshot.design.corridors.flatMap(c => c.mode === 'paired' ? (c.stretches ?? []).map(t => t.id) : []));
   stretchIds = separateStretches();
-  app.store.onHistory = () => { app.select(null); historyStep = true; };
+  // Undo / redo: the selection is by index or station, which a step may give to something else, so it is
+  // cleared; when the step left the selected thing itself in place (a bend where it was, the same line under
+  // a stretch: the step changed a radius, a structure, a wall) it is selected again, its card still open.
+  app.store.onHistory = () => {
+    const sel = app.session.sel, route = app.store.activeRouteId, before = sel && app.store.read() ? app.store.design : null;
+    app.select(null); historyStep = true;
+    if (!sel || !before) return;
+    return () => {
+      if (app.store.activeRouteId !== route || !app.store.read()) return;
+      const d = app.store.design, same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+      const at = (p?: { x: number; y: number }) => p && [p.x, p.y];
+      const still = sel.kind === 'bend' ? !!d.pis[sel.i] && same(at(d.pis[sel.i]), at(before.pis[sel.i]))
+        : sel.kind === 'stretch' ? same([d.pis, d.speed, d.category], [before.pis, before.speed, before.category])
+          : sel.kind === 'pin' ? !!d.gradePins?.some(p => Math.abs(p.s - sel.s) < 0.1)
+            : sel.kind === 'vpi' ? d.profileMode === 'manual' && !!d.vpis[sel.i] && d.vpis[sel.i].s === before.vpis[sel.i]?.s
+              : true; // a crossed road, a house, an end: named by what they are
+      if (still) app.select(sel);
+    };
+  };
   app.buildTool.onClose = () => app.select(null);
   app.buildTool.onDone = (a, b) => {
     if (app.projectStore.inTransaction) app.projectStore.commit();

@@ -87,7 +87,8 @@ export interface CrossingGeometry {
 }
 export interface CrossingIssue extends Violation {
   crossing: { roadId?: number; requested: CrossingChoice;
-    code: 'spacing' | 'class' | 'ours' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape' | 'reroute';
+    /** 'square': the player's straightening cannot be built; the way is built on its own line */
+    code: 'spacing' | 'class' | 'ours' | 'depth' | 'clearance' | 'structure' | 'reach' | 'geometry' | 'underpass' | 'shape' | 'reroute' | 'square';
     actual?: number; required?: number; targetS?: number };
 }
 export interface CrossingResult {
@@ -139,6 +140,8 @@ export interface CrossingResult {
   /** Houses a reroute runs through, bought out and demolished (their price included in cost). */
   houses?: number[];
   houseCost?: number;
+  /** How many of those are homes (the rest are sheds, garages, barns …). */
+  homes?: number;
   /** A reroute that needed its class's justified-case steepest grade (research/20) somewhere. */
   linkGrade?: number;
   /** Laid on a new line near our road so that it crosses square (research/44): requested (by Auto's
@@ -286,6 +289,7 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
         underpass: `Game estimate (research/19, 37): an underpass box takes only tracks, service roads and local roads, needs room for its height, roof and earth cover under our road (the crossed road may be lowered by up to ${LOWERING_RULES.maxDepth} m to make it), and is at most ${UNDERPASS_RULES.maxLength} m long`,
         shape: 'Game rule: a reroute the player shaped must be buildable where it is drawn',
         reroute: 'Game rule: a reroute must be buildable',
+        square: 'Game rule (research/44): a straightened crossing is built like any new road',
       }[code],
       detail: 'Your choice stays as you made it and is priced. Set it back to Automatic to let the game decide.',
       crossing: { roadId: c.roadId, requested: c.requestedType!, code, actual, required, targetS } };
@@ -300,12 +304,16 @@ export function resolveCrossings(crossings: CrossingResult[], length: number, ki
     c.type = 'atGrade'; c.cost = 0;
     delete c.linkLength; delete c.targetS; delete c.targetRoadId; delete c.span; delete c.approachLength; delete c.underpassLength;
     delete c.roadCode; delete c.roadPerKm; delete c.issues; delete c.geometry;
-    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.linkGrade;
+    delete c.tieLength; delete c.wallLength; delete c.worksCost; delete c.via; delete c.viaTo; delete c.culverts; delete c.culvertCost; delete c.houses; delete c.houseCost; delete c.homes; delete c.linkGrade;
     delete c.lowered; delete c.drainage; delete c.drainCost; delete c.squared; delete c.realignLength; delete c.realignCost; delete c.moved;
     c.requestedType = crossingChoice(c.roadId, overrides);
     const square = crossingSquare(c.roadId, overrides);
     if (square !== undefined) c.square = square; else delete c.square;
   }
+  // A choice is made for a way; where that way crosses us again under our bridge or in our tunnel, and the
+  // choice is met at another of its crossings, that one is simply passed (no clash).
+  for (const c of crossings) if (c.requestedType && c.requestedType !== 'bridge' && kind[c.i] !== KIND.earth
+    && crossings.some(o => o !== c && o.roadId === c.roadId && kind[o.i] === KIND.earth)) { delete c.requestedType; delete c.square; }
   // A shape is absolute: it belongs to the one crossing of its way nearest to its bend points.
   for (const o of overrides) if (o.type === 'reconnection' && o.via) {
     const points = [...o.via[0], ...o.via[1]], x = points.reduce((a, p) => a + p.x, 0) / points.length, y = points.reduce((a, p) => a + p.y, 0) / points.length;
@@ -471,6 +479,8 @@ export interface CrossingRoute {
   /** Houses still standing under a new road from a to b, and what buying one out costs. */
   houses?: (a: { x: number; y: number }, b: { x: number; y: number }, half: number) => number[];
   houseCost?: (j: number) => number;
+  /** A home (not a shed, garage or barn): a reroute takes one only where nothing else can be built (research/60). */
+  dwelling?: (j: number) => boolean;
 }
 
 export { buildCrossingGeometry, crossingCache, crossingPlanLength, auditCrossingGeometry, underpassFits, type CrossingCache } from './crossing-geometry';

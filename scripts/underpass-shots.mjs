@@ -22,7 +22,7 @@ try {
         window.trapla.lookAt(c.x, c.y, size, bearing, elev);
         window.trapla.profileFocus(c.s - 200, c.s + 200);
       }, { c, size, bearing, elev });
-      await idle(); await page.mouse.move(5, 5);
+      await idle(); await game.park();
       const path = `${out}/underpass-${c.cls}-${c.roadId}-${name}.png`;
       await page.screenshot({ path }); console.log(path, JSON.stringify(c));
     }

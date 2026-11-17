@@ -32,7 +32,7 @@ try {
       return { s: c.s, type: c.type, cost: c.cost, span: c.span, approach: c.approachLength, links: c.linkLength,
         violations: r.violations.filter(v => Math.abs(v.s0 - c.s) < 400).map(v => v.title) };
     }, { roadId, size, bearing, elev });
-    await idle(); await page.mouse.move(5, 5);
+    await idle(); await game.park();
     const path = `${out}/${name}.png`;
     await page.screenshot({ path }); console.log(path, JSON.stringify(info));
   }

@@ -41,6 +41,14 @@ describe('active road widgets on project history', () => {
     expect(adapter.activeRouteId).toBe(first.id); adapter.switchRoute('other'); expect(adapter.design.pis[0].y).toBe(105);
   });
 
+  it('tells its owner before an undo / redo, and again after it with the design as the step left it', () => {
+    const { adapter } = setup(); const seen: (number | string)[] = [];
+    adapter.update(d => { d.pis[0].r = 400; });
+    adapter.onHistory = () => { seen.push(`before ${adapter.design.pis[0].r}`); return () => seen.push(`after ${adapter.design.pis[0].r}`); };
+    adapter.undo(); adapter.redo();
+    expect(seen).toEqual(['before 400', 'after null', 'before null', 'after 400']);
+  });
+
   it('keeps drags atomic and refuses switching halfway through a transaction', () => {
     const { adapter, project } = setup(); const events: boolean[] = [];
     adapter.on((_d, committed) => events.push(committed));
@@ -50,6 +58,24 @@ describe('active road widgets on project history', () => {
     expect(project.canUndo()).toBe(false);
     adapter.commit(); expect(events).toEqual([false, false, true]);
     adapter.undo(); expect(adapter.design.pis[0].x).toBe(50); expect(project.canUndo()).toBe(false);
+  });
+
+  it('Undo during a drag takes back the drag only; the rest of the gesture changes nothing (one undo, one thing)', () => {
+    const { adapter, project } = setup();
+    adapter.update(d => { d.pis[0].x = 60; });
+    adapter.update(d => { d.pis[0].x = 70; }, false);
+    adapter.cancelStep(); expect(adapter.design.pis[0].x).toBe(60); expect(project.canUndo()).toBe(true);
+    adapter.update(d => { d.pis[0].x = 80; }, false); adapter.commit(); // the held pointer moves on and lets go
+    adapter.editProject(d => { d.buildingOverrides = [{ j: 1, action: 'keep' }]; }); // (a handle's release edits the project)
+    expect(project.snapshot.design.buildingOverrides).toEqual([]);
+    adapter.release();
+    expect(adapter.design.pis[0].x).toBe(60); expect(project.inTransaction).toBe(false);
+    adapter.undo(); expect(adapter.design.pis[0].x).toBe(50);
+    // an undo while a step is open without the pointer (a burst of + steps) takes back that step only
+    adapter.update(d => { d.pis[0].x = 60; });
+    adapter.update(d => { d.pis[0].r = 300; }, false);
+    adapter.undo(); expect(adapter.design.pis[0]).toEqual({ x: 60, y: 5, r: null }); expect(project.canUndo()).toBe(true);
+    adapter.undo(); expect(adapter.design.pis[0].x).toBe(50);
   });
 
   it('Start over restores the whole initial project in one undo step, even with a side road active', () => {

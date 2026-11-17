@@ -88,10 +88,11 @@ try {
     await page.mouse.click(p.x, p.y - 60);
   };
   await profileClick(16000);
-  const at = await station(16000);
+  // the click selects the piece under it (a cut, an embankment, a bridge) and the map frames that piece: its middle
+  const at = await T(() => { const r = window.trapla.result(), sel = window.trapla.selection(); if (sel?.kind !== 'stretch') return null; const i = Math.round((sel.s0 + sel.s1) / 2 / r.ds); return { x: r.x[i], y: r.y[i], s0: sel.s0, s1: sel.s1 }; });
   let t1 = await target();
-  for (let k = 0; k < 50 && Math.hypot(t1.x - at.x, t1.y - at.y) > 50; k++) { await page.waitForTimeout(100); t1 = await target(); }
-  ok(Math.hypot(t1.x - at.x, t1.y - at.y) < 50, 'a profile click glides the map there');
+  for (let k = 0; at && k < 50 && Math.hypot(t1.x - at.x, t1.y - at.y) > 50; k++) { await page.waitForTimeout(100); t1 = await target(); }
+  ok(at && at.s0 <= 16000 && at.s1 >= 16000 && Math.hypot(t1.x - at.x, t1.y - at.y) < 50, `a profile click selects the piece there and glides the map to it (km ${(at?.s0 / 1000).toFixed(2)}–${(at?.s1 / 1000).toFixed(2)})`);
   await sane('after a profile click', { x: centre.x - 250, y: centre.y + 120 });
 
   // the wheel lands in the same task as the click (software rendering may finish a timed glide before a

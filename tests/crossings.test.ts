@@ -332,6 +332,26 @@ describe('crossing geometry and map overlay', () => {
     expect(cs[1].cost).toBeLessThan(60 * box.perM + 2 * box.head);
   });
 
+  it('builds a straightened line like a reroute: up a slope too steep for a road on the ground, on its own earthworks', () => {
+    const t = Float64Array.from({ length: 301 }, (_, i) => i * 10), kind = new Uint8Array(t.length);
+    const route: CrossingRoute = { s: t, x: t, y: new Float64Array(t.length), tx: new Float64Array(t.length).fill(1), ty: new Float64Array(t.length),
+      grade: new Float64Array(t.length).fill(7), width: new Float64Array(t.length).fill(40), crownWidth: 9.5, kind };
+    // our road in a valley: 25–40 m out the ground climbs 6 m (40 %, steeper than a track's 15 %), then lies level
+    const valley = (_x: number, y: number) => 6 * Math.max(0, Math.min(1, (Math.abs(y) - 25) / 15));
+    const k = Math.tan(Math.PI * 20 / 180), net = new RoadNet({ cls: ['track'], ways: [[0, 1500 - 300 / k, -300, 1500 + 300 / k, 300]] });
+    const cs = [cross(0, 1500, 'track', 7, 150)];
+    resolveCrossings(cs, 3000, kind, route.width, new Uint8Array(t.length), undefined, [{ roadId: 0, type: 'underpass', square: true }]);
+    buildCrossingGeometry(cs, route, valley, net);
+    const c = cs[0], g = c.geometry!;
+    expect(c.squared).toBeCloseTo(20, 0); expect(g.diagnostics).toBeUndefined(); expect(c.issues ?? []).toEqual([]);
+    // beyond the box the new line is raised and cut where the ground is steep, no steeper than the class allows
+    const out = g.road!.filter((_q, i) => i < g.underpass!.start || i > g.underpass!.end);
+    expect(out.some(q => q.surface === 'ramp')).toBe(true);
+    for (let i = 1; i < out.length; i++) if (out[i].d! - out[i - 1].d! > 1)
+      expect(Math.abs(out[i].z - out[i - 1].z) / (out[i].d! - out[i - 1].d!)).toBeLessThanOrEqual(ROAD_CLASSES.track.rampSteepest + 1e-6);
+    expect(auditCrossingGeometry(cs, route, valley, net)).toEqual([]);
+  });
+
   it('straightens a skewed track whose box would be too long, and moves a track that comes back out on its own side', () => {
     const t = Float64Array.from({ length: 301 }, (_, i) => i * 10), kind = new Uint8Array(t.length);
     const flat: CrossingRoute = { s: t, x: t, y: new Float64Array(t.length), tx: new Float64Array(t.length).fill(1), ty: new Float64Array(t.length),

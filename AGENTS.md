@@ -93,4 +93,9 @@ findings and the refactoring plan: `docs/architecture-review.md`.
 - Edit locality: the Královec railway pin −9 m at km 2.7 moves the grade 2.76 m at km 12.7, an EXPECTED exception
   in scripts/edit-locality.ts (the old line's support lifts at km 9.8–10.2 go with the lowered line, and the
   boundary at km 11.21 sees that in its window; PLAN.md "Design realism").
+- A player's crossing choice (cost model 32, PLAN.md "Bug-fix sweep"): one that cannot be built is said and
+  leaves our road as Auto had it; but an underpass or bridge choice is a hard grade constraint (an underpass in a
+  deep cutting raises the motorway for kilometres, priced), and "Cut and reroute" is led to the nearest crossing
+  even where that pins a road Auto would move beside ours. `scripts/straighten-audit.ts` and
+  `scripts/toolbar-layout.mjs` are gates.
 - See PLAN.md "Next steps" and each section's "Known issues".

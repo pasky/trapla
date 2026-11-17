@@ -501,6 +501,9 @@ export class Inspector {
     if (c.squared !== undefined) return `<div class="ctx-row square-line"><span>Straightened to cross at a right angle${set ? ' (your choice)' : ''}</span>
         <button type="button" data-crossing-square="0" title="Keep the ${esc(what)} on its own line, meeting our road at ${Math.round(c.squared)}°">Keep its line</button></div>`;
     const skew = c.geometry?.skew;
+    // (your straightening that cannot be built: it stays on its own line, the problem says why)
+    if (set === true && skew !== undefined) return `<div class="ctx-row square-line"><span>Meets our road at ${Math.round(skew)}°: it cannot be straightened here</span>
+        <button type="button" data-crossing-square="0" title="Keep the ${esc(what)} on its own line, meeting our road at ${Math.round(skew)}°">Keep its line</button></div>`;
     if (skew !== undefined && skew < SQUARE_BELOW && !c.geometry?.sameSide) return `<div class="ctx-row square-line"><span>Meets our road at ${Math.round(skew)}°${set === false ? ' (your choice)' : ''}</span>
         <button type="button" data-crossing-square="1" title="Lay the ${esc(what)} on a new line near our road that crosses it at a right angle">Straighten it</button></div>`;
     return '';

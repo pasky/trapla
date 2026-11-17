@@ -13,7 +13,8 @@ export class ActiveRouteStore {
   /** A motorway's direction is edited on its own (its bends, then, change only it). Selection only:
    * choosing it never changes the project. */
   oneDirection = false;
-  onHistory?: () => void;
+  /** before an undo / redo (and before loading the best design); what it returns runs after the step */
+  onHistory?: () => (() => void) | void;
   private atomic = false;
   private cached: { project: ProjectDesign; id: RouteId; one: boolean; design: Design | null } | null = null;
   constructor(readonly project: ProjectStoreApi, private initialProject: () => ProjectDesign) {
@@ -66,8 +67,13 @@ export class ActiveRouteStore {
       listener(this.read(), committed);
     });
   }
+  /** A step taken back while the pointer still holds it (Ctrl+Z during a drag): the rest of that gesture
+   * changes nothing, its end commits nothing, until the pointer is let go (`release`). */
+  private cancelled = false;
+  cancelStep() { if (this.project.inTransaction) this.project.cancel(); this.cancelled = true; }
+  release() { this.cancelled = false; }
   update(edit: (design: Design) => void, committed = true) {
-    if (!this.activeRouteId || !this.read()) return;
+    if (this.cancelled || !this.activeRouteId || !this.read()) return;
     const id = this.activeRouteId, before = this.design, design = structuredClone(before);
     edit(design);
     this.carryHeights(before, design);
@@ -91,13 +97,14 @@ export class ActiveRouteStore {
       buildAlignment(a, b, after.pis, horizontalRules(after.speed, after.category), bendRules(after.pis, after.speed, after.category)), before.vpis);
   }
   editProject(edit: (project: ProjectDesign) => void) {
+    if (this.cancelled) return;
     const own = !this.project.inTransaction;
     if (own) this.project.begin(); this.atomic = true;
     try { this.project.update(edit); if (own) this.project.commit(); }
     catch (error) { if (own) this.project.cancel(); throw error; }
     finally { this.atomic = false; }
   }
-  commit() { if (this.project.inTransaction) this.project.commit(); }
+  commit() { if (!this.cancelled && this.project.inTransaction) this.project.commit(); }
   replace(design: Design) {
     this.update(draft => {
       for (const key of Object.keys(draft)) delete (draft as unknown as Record<string, unknown>)[key];
@@ -119,8 +126,8 @@ export class ActiveRouteStore {
     this.project.update(draft => Object.assign(draft, structuredClone(best.design)));
     this.project.commit();
   }
-  undo() { this.onHistory?.(); this.project.undo(); }
-  redo() { this.onHistory?.(); this.project.redo(); }
+  undo() { const after = this.onHistory?.(); this.project.undo(); after?.(); }
+  redo() { const after = this.onHistory?.(); this.project.redo(); after?.(); }
   undoLabel() { return this.project.canUndo() ? 'Undo edit' : ''; }
   redoLabel() { return this.project.canRedo() ? 'Redo edit' : ''; }
   offerBest(result: ProjectResult) { return this.project.offerBest(result); }

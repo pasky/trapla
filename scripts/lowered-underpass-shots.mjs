@@ -11,7 +11,7 @@ mkdirSync(out, { recursive: true });
 const game = await startGame();
 const { page, pageErrors: errors } = game;
 const idle = (ms = 600) => game.idle(ms);
-const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await page.mouse.move(5, 5); await page.screenshot({ path }); console.log('SHOT', path); };
+const shot = async (name) => { const path = `${out}/${number++}-${name}.png`; await game.park(); await page.screenshot({ path }); console.log('SHOT', path); };
 const card = () => page.evaluate(() => document.getElementById('inspector')?.innerText ?? '');
 const T = (f, a) => page.evaluate(f, a);
 try {
@@ -38,11 +38,13 @@ try {
   await shot('lowered-local-road-card');
   await T(c => { window.trapla.lookAt(c.x, c.y, 110, 125, 12); }, box); await idle();
   await shot('lowered-local-road-portal');
-  const track = start.lowered.find(c => c.cls === 'track');
-  if (track) {
-    await T(c => { window.trapla.selectCrossing(c.roadId); window.trapla.lookAt(c.x, c.y, 240, 210, 30); window.trapla.profileFocus(c.s - 250, c.s + 250); }, track); await idle();
-    await shot('lowered-track-oblique');
-  }
+  // another lowered way of the start line, seen from the side (a track, if it has one)
+  const other = start.lowered.find(c => c.cls === 'track') ?? start.lowered.find(c => c.roadId !== box.roadId);
+  if (other) {
+    await T(c => { window.trapla.selectCrossing(c.roadId); window.trapla.lookAt(c.x, c.y, 240, 210, 30); window.trapla.profileFocus(c.s - 250, c.s + 250); }, other); await idle();
+    console.log('OTHER LOWERED', other.roadId, other.cls, other.lowered);
+    await shot('lowered-way-oblique');
+  } else { console.log('SKIPPED: the start line lowers one way only'); number++; }
   // the player overrides: cut and reroute the local road (a railway lies between it and the next crossing)
   await T(c => window.trapla.selectCrossing(c.roadId), box); await idle();
   await page.click('#crossing-choice [data-crossing="reconnection"]'); await idle();
@@ -69,21 +71,30 @@ try {
     await shot(`engineered-reroute-${file}`);
     break;
   }
-  // a track crossed three times, rerouted and shaped by the player: the card describes the shaped crossing
-  // (its own new road), says the road crosses ours three times and that the price is for all of them
+  // a way our road crosses more than once (the first one the start line has), rerouted and shaped by the
+  // player: the card describes the shaped crossing (its own new road), says how many times the way crosses
+  // ours and that the price is for all of them
   await T(() => window.trapla.setDesign({ category: 'S9.5', speed: 90, pis: [], profileMode: 'auto', vpis: [] })); await idle();
   const shaped = await T(() => {
-    const r = window.trapla.result(), c = r.crossings.find(x => Math.abs(x.s - 4100) < 30), l = c.geometry.links.find(x => x.length > 2);
-    const k = c.geometry.links.indexOf(l), m = l[Math.floor(l.length / 2)], via = [[], []]; via[k] = [{ x: m.x + 60, y: m.y + 60 }];
-    return { roadId: c.roadId, via, to: c.targetRoadId };
+    const r = window.trapla.result(), times = (id) => r.crossings.filter(x => x.roadId === id).length;
+    const c = r.crossings.find(x => (x.type === 'reconnection' || x.type === 'diversion') && !x.moved && times(x.roadId) > 1 && x.geometry?.links?.some(l => l.length > 2));
+    if (!c) return null;
+    const l = c.geometry.links.find(x => x.length > 2), k = c.geometry.links.indexOf(l), m = l[Math.floor(l.length / 2)], via = [[], []];
+    // the bend point: 40 m further from our road than the middle of the automatic path
+    let near = 0; for (let i = 0; i < r.n; i++) if (Math.hypot(r.x[i] - m.x, r.y[i] - m.y) < Math.hypot(r.x[near] - m.x, r.y[near] - m.y)) near = i;
+    const off = Math.hypot(m.x - r.x[near], m.y - r.y[near]) || 1;
+    via[k] = [{ x: m.x + 40 * (m.x - r.x[near]) / off, y: m.y + 40 * (m.y - r.y[near]) / off }];
+    return { roadId: c.roadId, via, to: c.targetRoadId, times: times(c.roadId) };
   });
+  assert.ok(shaped, 'the start line crosses some way more than once and reroutes it');
   await T((o) => { const d = window.trapla.getDesign(); d.crossingOverrides = [{ roadId: o.roadId, type: 'reconnection', via: o.via, to: o.to }]; window.trapla.setDesign(d); }, shaped); await idle(1500);
   await T((o) => window.trapla.selectCrossing(o.roadId), shaped); await idle();
   const text3 = (await card()).replace(/\s+/g, ' ');
   const own = await T((o) => window.trapla.result().crossings.find(x => x.roadId === o.roadId && x.via), shaped);
   console.log('SHAPED CARD', text3.slice(0, 400));
   assert.ok(text3.includes(`+${Math.round(own.linkLength).toLocaleString('en-US')} m`), 'the card gives the shaped new road\'s own length');
-  assert.match(text3, /crosses our road 3 times .*The price is for all of them/, 'the card explains the three crossings');
+  assert.match(text3, new RegExp(`crosses our road ${shaped.times} times .*The price is for all of them`), `the card explains the ${shaped.times} crossings`);
+  assert.doesNotMatch(text3, /⚠/, 'the shaped path is buildable');
   // a hover tip goes when the view moves, and when the design changes
   await T(() => { const r = window.trapla.result(), w = r.walls[0], i = Math.round((w.i0 + w.i1) / 2); window.trapla.lookAt(r.x[i], r.y[i], 600, 0, 60); }); await idle();
   const wallAt = await T(() => { const r = window.trapla.result(), w = r.walls[0], i = Math.round((w.i0 + w.i1) / 2), sgn = w.side === 'L' ? 1 : -1, off = 9;

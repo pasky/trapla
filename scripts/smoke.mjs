@@ -140,6 +140,7 @@ await page.keyboard.press('Control+z');
 await idle();
 s = await st();
 ok(s.d.structureOverrides[0]?.kind === 0, 'Undo restores the cleared choice despite a repeated Auto');
+ok((await page.evaluate(() => window.trapla.selection()))?.kind === 'stretch' && await page.locator('#inspector.k-stretch').isVisible(), 'Undo keeps the stretch selected, its card open');
 await page.click('#grade-auto');
 await idle();
 s = await st();

@@ -160,7 +160,8 @@ kbd { border: 1px solid #bbb; border-radius: 3px; padding: 0 3px; font-size: 11p
 /* always-visible Undo / Redo over the map */
 #editbar { position: absolute; left: 132px; top: 8px; display: flex; gap: 6px; }
 #editbar button { background: rgba(255,255,255,0.95); border-color: rgba(0,0,0,0.25); box-shadow: 0 1px 4px rgba(0,0,0,0.3); font-weight: 600; padding: 4px 10px; }
-#editbar button:disabled { opacity: .55; }
+/* (faded, not see-through: the map's markers never show through the bar) */
+#editbar button:disabled { opacity: 1; color: rgba(29,35,42,.42); background: rgba(245,246,248,0.97); }
 #editbar .ico { font-size: 15px; line-height: 1; }
 #editbar kbd { font-weight: 400; font-size: 10px; opacity: .6; margin-left: 3px; border-color: currentColor; }
 
@@ -391,6 +392,12 @@ button.on:hover:not(:disabled), [data-structure].on:hover:not(:disabled), .choic
   #legend { bottom: 22px; font-size: 10px; }
   #attrib { font-size: 9px; max-width: 60%; }
 }
+/* the top row when its two bars would overlap (ui/toolbar-fit.ts): first without the key hints, then the view
+   buttons under Undo / Redo, as in a narrow window */
+#view.bars-compact #viewbar kbd, #view.bars-compact #editbar kbd { display: none; }
+#view.bars-stacked #viewbar { top: 44px; left: 12px; right: auto; flex-wrap: wrap; }
+#view.bars-stacked .route-bar { top: 78px; }
+#view.bars-stacked #intro, #view.bars-stacked #photo-note { top: 112px; }
 /* a small map: the key shrinks to its symbols (the words come back under the mouse), the noise key
    to one short ramp, so they leave the route and its ends in view */
 @container map (max-width: 760px) or (max-height: 480px) {

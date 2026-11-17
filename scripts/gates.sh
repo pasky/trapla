@@ -33,11 +33,13 @@ drag-bend|timed|quick|node scripts/drag-perf.mjs --gpu --check --mode bend
 build|node|full|npm run build
 bench|node|full|npx tsx scripts/bench.ts --check scripts/*.json
 edit-locality|node|full|npx tsx scripts/edit-locality.ts
+straighten|node|full|npx tsx scripts/straighten-audit.ts d3-motorway d11 d11-best d11-town-centre
 outcome-audit|node|full|npx tsx scripts/outcome-audit.ts --quiet --straight scripts/*-design.json --random 24
 $(for p in $PACKS; do echo "scenario-$p|node|full|env SCENARIO=$p node --max-old-space-size=2048 --import tsx scripts/scenarios/check.ts"; done)
 pipeline|node|full|uv run --with numpy --with shapely --with pillow python -m unittest discover -s pipeline -p 'test_*.py'
 smoke|browser|full|node scripts/smoke.mjs
 playtest|browser|full|node scripts/playtest.mjs
+toolbar|browser|full|node scripts/toolbar-layout.mjs
 $(for m in road radius pin vpi link; do echo "drag-$m|timed|full|node scripts/drag-perf.mjs --gpu --check --mode $m"; done)
 EOF
 }
