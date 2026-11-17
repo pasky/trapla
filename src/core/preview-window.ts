@@ -11,7 +11,7 @@
 import { sumParts, surchargeRate, PART_KEYS, type CostParts } from './cost';
 import { CATEGORIES } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
-import { hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
+import { geometryPis, hairpinViolations, speedStretches, stretchRadii, travelMinutes } from './design-speed';
 import { buildAlignment, station, type CurveInfo, type Stationing } from './horizontal';
 import type { Run } from './structures';
 import type { Terrain } from './terrain';
@@ -99,6 +99,12 @@ function quietNoise(r: Result): Result['noise'] {
   return { ...r.noise, receivers: [], source: null, L: new Float64Array(0), R: new Float64Array(0) };
 }
 
+/** The geometry speeds the lineage's last full result kept for its slowed bends (evaluate.ts), if any. */
+export function keptGeometry(ctx: EvalContext, d: Design, opts: EvalOptions): (number | null)[] | undefined {
+  const base = fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts))?.result;
+  return base?.geometrySpeeds && base.geometrySpeeds.length === d.pis.length ? base.geometrySpeeds : undefined;
+}
+
 /** A full result evaluated elsewhere (the full worker) becomes a base for windowed previews here. */
 export function adoptFull(terrain: Terrain, result: Result): void {
   if (!result.lineage || result.preview) return;
@@ -170,7 +176,8 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   const started = performance.now();
   const base = fullResults.get(ctx.terrain)?.find(e => e.key === lineageKey(ctx, d, opts));
   if (!base) return null;
-  const al = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
+  const gpis = geometryPis(d.pis, opts.geometrySpeeds);
+  const al = buildAlignment(ctx.a, ctx.b, gpis, horizontalRules(d.speed, d.category), bendRules(gpis, d.speed, d.category));
   const st = station(al, STEP), L = al.length, n = st.n, ds = st.ds;
   const range = changedRange(base, d, st, L, al.curves);
   if (!range) return null;
@@ -178,7 +185,7 @@ export function windowedPreview(ctx: EvalContext, d: Design, opts: EvalOptions,
   if ((i1 - i0) * ds > WINDOW_MAX_SHARE * L) return null;
   const s0 = st.s[i0], s1 = st.s[i1];
   const r = base.result, shift = L - r.length, old1 = s1 - shift;
-  const norms = speedNorms(d.speed, d.category), radii = stretchRadii(al, d.pis, d.speed, d.category);
+  const norms = speedNorms(d.speed, d.category), radii = stretchRadii(al, gpis, d.speed, d.category);
   const baseProfile = buildProfile(r.vpis, radii.crest, radii.sag);
   // Heights and grades of the full result's line where the window meets it (the route ends keep theirs).
   const z = elevations(baseProfile, [s0, s0 + 1, old1 - 1, old1]);

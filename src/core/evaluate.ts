@@ -23,7 +23,7 @@ import { buildCrossingGeometry, crossingBridgeMask, crossingCache, crossingChoic
 export type { CrossingResult } from './crossings';
 import { CATEGORIES, type CategoryId } from './data/categories';
 import { bendRules, horizontalRules, speedNorms } from './data/norms';
-import { hairpinPavementPerM2, hairpinViolations, hairpinWidening, speedStretches, travelMinutes, verticalLimits } from './design-speed';
+import { geometryPis, hairpinPavementPerM2, hairpinViolations, hairpinWidening, raisedBendSpeeds, slowedSteps, speedStretches, travelMinutes, verticalLimits } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
 import { ACCESS, BUILDING_KIND, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
@@ -48,7 +48,7 @@ import { allCut, chooseStructures, cutCoverMask, KIND, type Run } from './struct
 import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
-import { carryCrossingPrices, rememberFull, stationWindow, windowedPreview } from './preview-window';
+import { carryCrossingPrices, keptGeometry, rememberFull, stationWindow, windowedPreview } from './preview-window';
 import { CULVERT_RULES } from './data/culverts';
 import { LOWERING_RULES } from './data/remedies';
 import { capsuleTest, type KeepClear } from './keep-clear';
@@ -203,6 +203,11 @@ export interface Result {
   withNoise?: () => Result;
   /** Full results: what windowed drag previews need to start from this one (core/preview-window.ts). */
   lineage?: { key: string; design: Design };
+  /** Bends slowed below the road's design speed whose faster curves and heights Auto kept (cheaper on the bill;
+   * design-speed.ts raisedBendSpeeds): the speed the geometry is built for, per bend (null: its own), and what
+   * the slowed geometry would have cost more, CZK. */
+  geometrySpeeds?: (number | null)[];
+  geometrySaving?: number;
 }
 
 export interface EvalOptions {
@@ -296,6 +301,10 @@ export interface EvalOptions {
   /** Ways merged into another way's crossing that our earthworks buried: each a crossing of its own here
    * (set by evaluate's retry, not by callers). */
   splitWays?: readonly number[];
+  /** The speed each bend's geometry (radius, vertical curves) is built for where not its own (design-speed.ts
+   * raisedBendSpeeds; travel time and the goal stay at the bends' own speeds). Set by evaluate (Auto keeping a
+   * faster stretch's geometry), not by callers. */
+  geometrySpeeds?: readonly (number | null)[];
 }
 
 export interface PassCache {
@@ -382,6 +391,12 @@ export function normalizeVpis(v: VPI[], L: number, zA: number, zB: number): VPI[
 export const MIN_VPI_GAP = 20;
 
 export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Result {
+  const asked = opts;
+  // (a preview builds the geometry its lineage's full result kept: a slowed stretch's faster one)
+  if (opts.preview && !opts.window && !opts.geometrySpeeds) {
+    const kept = keptGeometry(ctx, d, opts);
+    if (kept) opts = { ...opts, geometrySpeeds: kept };
+  }
   if (opts.preview && !opts.window) {
     const windowed = windowedPreview(ctx, d, opts, evaluateRoute);
     if (windowed) return windowed;
@@ -391,7 +406,11 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     opts = { ...opts, trial: true, passCache: passCache() };
   }
   let result = evaluateRoute(ctx, d, opts);
-  if (opts.preview && !opts.window) { carryCrossingPrices(ctx, d, opts, result); return result; }
+  if (opts.preview && !opts.window) {
+    carryCrossingPrices(ctx, d, opts, result);
+    if (opts.geometrySpeeds) result.geometrySpeeds = [...opts.geometrySpeeds];
+    return result;
+  }
   /** the options the kept result was evaluated with (a separation retry adds its targets) */
   let used: EvalOptions = opts;
   // Our line raised for a crossing, where it leaves too little room: (a) a box or our bridge the player chose
@@ -565,6 +584,18 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     separation(used, true);
     if (result !== before && result.withNoise) result = result.withNoise();
   }
+  // A stretch slowed below the road's speed only relaxes its rules: Auto keeps a faster stretch's curves and
+  // heights where the bill finds them cheaper with no more problems (design-speed.ts raisedBendSpeeds).
+  if (!opts.preview && !opts.window && !asked.geometrySpeeds && d.profileMode === 'auto') {
+    const own = result;
+    for (let k = 1; k <= slowedSteps(d.pis, d.speed, d.category); k++) {
+      const speeds = raisedBendSpeeds(d.pis, d.speed, d.category, k);
+      if (!speeds) break;
+      const r = evaluate(ctx, d, { ...asked, geometrySpeeds: speeds });
+      if (r.cost.total < result.cost.total && r.violations.length <= own.violations.length) result = { ...r, geometrySpeeds: speeds };
+    }
+    if (result !== own) result.geometrySaving = own.cost.total - result.cost.total;
+  }
   if (!opts.preview && !opts.window) rememberFull(ctx, d, opts, result);
   return result;
 }
@@ -583,13 +614,15 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const { terrain, scenario } = ctx;
   const cat = CATEGORIES[d.category];
   const norms = speedNorms(d.speed, d.category);
-  const fullAlignment = buildAlignment(ctx.a, ctx.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
+  // (the bends as the geometry is built for them: a slowed stretch may keep a faster one's, evaluate)
+  const gpis = geometryPis(d.pis, opts.geometrySpeeds);
+  const fullAlignment = buildAlignment(ctx.a, ctx.b, gpis, horizontalRules(d.speed, d.category), bendRules(gpis, d.speed, d.category));
   const win = opts.window;
   const al = win ? { ...fullAlignment, length: win.s1 - win.s0 } : fullAlignment;
   // A category's own gradient limit (motorway) replaces the scenario's road value; roads unchanged.
   const stFull = station(fullAlignment, STEP), st = win ? stationWindow(stFull, win.s0, win.s1) : stFull;
   // the steepest grade by the ground's terrain class per station (less in hairpins), radii by stretch (M4-2)
-  const vlim = verticalLimits(st, fullAlignment, d.pis, d.speed, d.category, terrain,
+  const vlim = verticalLimits(st, fullAlignment, gpis, d.speed, d.category, terrain,
     d.maxGradient ?? (cat.maxGradient ? undefined : scenario.maxGradient), win?.s0 ?? 0, stFull);
   const maxGradient = vlim.maxGradient;
   const n = st.n, ds = st.ds;

@@ -5,13 +5,16 @@ import { buildAlignment, station, type Vec2 } from '../core/horizontal';
 import { bendRules, horizontalRules, speedNorms } from '../core/data/norms';
 import { buildProfile, elevations, type VPI } from '../core/vertical';
 import { normalizeVpis, type Design } from '../core/evaluate';
+import { geometryPis } from '../core/design-speed';
 
 export interface ProvisionalProfile { s: Float64Array; ground: Float64Array; grade: Float64Array; ds: number; length: number }
 
 /** `previous`: the last evaluated result (its length and final VPIs). Same 10 m stationing as evaluate. */
-export function provisionalProfile(a: Vec2, b: Vec2, d: Design, previous: { length: number; vpis: readonly VPI[] },
+export function provisionalProfile(a: Vec2, b: Vec2, d: Design, previous: { length: number; vpis: readonly VPI[]; geometrySpeeds?: readonly (number | null)[] },
   heightAt: (x: number, y: number) => number): ProvisionalProfile {
-  const al = buildAlignment(a, b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category)), st = station(al, 10);
+  // (as built: a slowed stretch may keep a faster one's curves, core/evaluate.ts)
+  const gpis = geometryPis(d.pis, previous.geometrySpeeds?.length === d.pis.length ? previous.geometrySpeeds : undefined);
+  const al = buildAlignment(a, b, gpis, horizontalRules(d.speed, d.category), bendRules(gpis, d.speed, d.category)), st = station(al, 10);
   const n = st.n, L = al.length, ground = new Float64Array(n);
   for (let i = 0; i < n; i++) ground[i] = heightAt(st.x[i], st.y[i]);
   const zA = ground[0], zB = ground[n - 1], scale = L / (previous.length || L);

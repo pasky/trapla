@@ -45,6 +45,49 @@ describe('design speed by stretch', () => {
   });
 });
 
+describe('a slowed stretch (playtest sweep 3, P1 #1)', () => {
+  it('is never faster than its road, and covers the straights halfway to its neighbours (all of a one-bend road)', async () => {
+    const { bendSpeed, bendSpeedChoices, bendStretch } = await import('../src/core/design-speed');
+    // a 120 km/h railway: no curve faster than the line (the 160 km/h pilot was withdrawn)
+    expect(bendSpeed({ x: 0, y: 0, r: null, speed: 160 }, 120, 'R1')).toBe(120);
+    expect(bendSpeedChoices(120, 'R1')).toEqual([120, 100, 80, 60]);
+    expect(bendSpeedChoices(90, 'S9.5')).toEqual([90, 80, 70]);
+    const p = pis(), al = build(p), c = al.curves;
+    expect(bendStretch(al, p, 1, 90)).toEqual({ s0: (c[0].sEnd + c[1].sStart) / 2, s1: (c[1].sEnd + c[2].sStart) / 2, speed: -1 });
+    const one: PI[] = [{ x: 3000, y: 300, r: null }], al1 = build(one);
+    expect(bendStretch(al1, one, 0, 90)).toMatchObject({ s0: 0, s1: al1.length });
+  });
+  it('may keep a faster stretch\'s geometry: each slowed bend raised by the same number of steps', async () => {
+    const { raisedBendSpeeds, slowedSteps } = await import('../src/core/design-speed');
+    const p: PI[] = [{ x: 0, y: 0, r: null, speed: 70 }, { x: 1, y: 0, r: null }, { x: 2, y: 0, r: null, speed: 80 }, { x: 3, y: 0, r: null, speed: 70, hairpin: true }];
+    expect(slowedSteps(p, 90, 'S9.5')).toBe(2);
+    expect(raisedBendSpeeds(p, 90, 'S9.5', 1)).toEqual([80, null, 90, null]);
+    expect(raisedBendSpeeds(p, 90, 'S9.5', 2)).toEqual([90, null, 90, null]);
+    expect(raisedBendSpeeds([{ x: 0, y: 0, r: null }], 90, 'S9.5', 1)).toBeNull();
+  });
+});
+
+// QA3 P1 #1: a stretch slowed only relaxes its rules, so Auto's road may not cost more for it (the grade search
+// prices an estimate; Auto keeps the faster geometry where the bill finds it cheaper).
+describe.skipIf(!existsSync('public/scenarios/d11/meta.json'))('slowing a stretch on D11', () => {
+  it('never makes Auto\'s road dearer: one 7° bend (the whole road) at 90 / 80 / 70 km/h', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { evaluate } = await import('../src/core/evaluate');
+    const { loadPack } = await import('../scripts/loadpack');
+    const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
+    const ctx = { terrain, scenario, a: { x: meta.A.xy[0], y: meta.A.xy[1] }, b: { x: meta.B.xy[0], y: meta.B.xy[1] }, buildings, roads, junctions };
+    const base = JSON.parse(readFileSync('qa3/designs/d11-one-bend-70.json', 'utf8'));
+    const at = (v: number) => evaluate(ctx, { ...base, pis: base.pis.map((p: PI) => ({ ...p, speed: v })) });
+    const [r90, r80, r70] = [at(90), at(80), at(70)];
+    expect(r80.cost.total).toBeLessThanOrEqual(r90.cost.total);
+    expect(r70.cost.total).toBeLessThanOrEqual(r80.cost.total);
+    // (at 70 the grade search's own line bridges 800 m at km 8.84–9.64: +284 M; Auto keeps a faster one)
+    expect(r70.geometrySpeeds?.[0]).toBeGreaterThan(70);
+    expect(r70.geometrySaving).toBeGreaterThan(200e6);
+    expect(r70.travelMin).toBeGreaterThan(r90.travelMin + 3);
+  }, 60_000);
+});
+
 describe('hairpins (research/47 §3)', () => {
   // up a slope and back: the bend turns 158°
   const zig: PI[] = [{ x: 1000, y: 200, r: null, hairpin: true }];

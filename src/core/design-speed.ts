@@ -12,13 +12,72 @@ import { stationIndex } from './range';
 
 export interface SpeedStretch { s0: number; s1: number; speed: number }
 
-/** a bend's design speed: its own where the category has that speed, else the road's */
+/** a bend's design speed: its own where the category has that speed and it is not above the road's, else the
+ * road's. A stretch is designed slower than its road, never faster: ČSN 73 6101:2018 lowers the design speed of a
+ * stretch in justified cases (research/47 §2), and a railway's line speed is its mission's (research/38, /66 §3):
+ * its trains run no faster on one curve built for more. */
 export function bendSpeed(p: PI | undefined, roadSpeed: number, category?: CategoryId): number {
-  return p?.speed !== undefined && (!category || designSpeeds(category).includes(p.speed)) ? p.speed : roadSpeed;
+  return p?.speed !== undefined && p.speed <= roadSpeed && (!category || designSpeeds(category).includes(p.speed)) ? p.speed : roadSpeed;
+}
+
+/** the design speeds a bend's stretch may be given: the category's, no faster than the road's */
+export function bendSpeedChoices(roadSpeed: number, category: CategoryId): number[] {
+  return designSpeeds(category).filter(v => v <= roadSpeed);
+}
+
+/** The stretch a bend's design speed covers (from the middle of the straight before its curve to the middle of
+ * the one after, or the road's end; with one bend the whole road), whatever speed it has now. */
+export function bendStretch(al: StretchPlan, pis: readonly PI[], k: number, roadSpeed: number): SpeedStretch | undefined {
+  const c = al.curves.find(x => x.index === k);
+  if (!c) return undefined;
+  // (the bend alone at a speed no other bend has)
+  const probe = pis.map((p, j) => j === k ? { ...p, speed: -1 } : { ...p, speed: 0 });
+  const all = speedStretches(al, probe, roadSpeed, undefined, false);
+  return all.find(x => x.speed === -1);
+}
+
+/** A stretch slowed below the road's design speed only relaxes its rules (smaller radii, curves and crests), so
+ * Auto's road there should cost no more than at the faster speed. The grade search prices an estimate (flat-ground
+ * sections, no ordinary-road crossings: research/66), so the looser rules can lead it to a line the bill finds
+ * dearer. A designer keeps the faster stretch's curves and heights then: Auto weighs the geometry of each faster
+ * speed up to the road's (every slowed bend raised the same number of the category's speed steps, hairpins
+ * keeping theirs) against the slowed one's at the bill (evaluate.ts). The speeds the geometry is built for, per
+ * bend (null: the bend's own); null when no bend is slowed or `k` steps reach none. */
+export function raisedBendSpeeds(pis: readonly PI[], roadSpeed: number, category: CategoryId, k: number): (number | null)[] | null {
+  const speeds = designSpeeds(category).filter(v => v <= roadSpeed).sort((a, b) => a - b);
+  let any = false;
+  const out = pis.map(p => {
+    const v = bendSpeed(p, roadSpeed, category);
+    if (p.hairpin || v >= roadSpeed) return null;
+    const at = speeds.indexOf(v);
+    if (at < 0) return null;
+    any = true;
+    return speeds[Math.min(speeds.length - 1, at + k)];
+  });
+  return any ? out : null;
+}
+
+/** how many speed steps the slowest slowed bend lies below the road's design speed (0: none slowed) */
+export function slowedSteps(pis: readonly PI[], roadSpeed: number, category: CategoryId): number {
+  const speeds = designSpeeds(category).filter(v => v <= roadSpeed).sort((a, b) => a - b);
+  let k = 0;
+  for (const p of pis) {
+    const v = bendSpeed(p, roadSpeed, category);
+    if (!p.hairpin && v < roadSpeed && speeds.includes(v)) k = Math.max(k, speeds.length - 1 - speeds.indexOf(v));
+  }
+  return k;
+}
+
+/** the bends as the geometry is built for them (`speeds`: raisedBendSpeeds; absent: as they are) */
+export function geometryPis(pis: readonly PI[], speeds?: readonly (number | null)[] | null): PI[] {
+  if (!speeds) return pis as PI[];
+  return pis.map((p, k) => speeds[k] == null ? p : { ...p, speed: speeds[k]! });
 }
 
 /** The road from 0 to its length in stretches of one design speed (one stretch where no bend has its own). */
-export function speedStretches(al: Pick<Alignment, 'curves' | 'length'>, pis: readonly PI[], roadSpeed: number, category?: CategoryId, hairpins = true): SpeedStretch[] {
+/** what of a plan the stretches read: its curves (by bend) and length */
+export type StretchPlan = { curves: readonly { index: number; sStart: number; sEnd: number; rEff: number }[]; length: number };
+export function speedStretches(al: StretchPlan, pis: readonly PI[], roadSpeed: number, category?: CategoryId, hairpins = true): SpeedStretch[] {
   const out: SpeedStretch[] = [];
   let speed = roadSpeed, s0 = 0, lastEnd = 0, first = true;
   for (const c of al.curves) {

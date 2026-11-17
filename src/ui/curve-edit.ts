@@ -7,6 +7,7 @@ import './curve-edit.css';
 import { bendRules, horizontalRules } from '../core/data/norms';
 import type { Design, Result } from '../core/evaluate';
 import { buildAlignment, pointAt, type Alignment, type Vec2 } from '../core/horizontal';
+import { geometryPis } from '../core/design-speed';
 import type { Terrain } from '../core/terrain';
 import type { View } from '../render/view';
 import { maxRadiusThatFits, snapRadius as snap } from './curve-fit';
@@ -121,7 +122,9 @@ export class CurveEditor {
       if (this.drag && now !== this.drag.design) this.drag.abort(false);
       else if (this.drag && i !== this.drag.i) this.drag.abort(true);
     }
-    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, d.pis, horizontalRules(d.speed, d.category), bendRules(d.pis, d.speed, d.category));
+    // (as built: a slowed stretch may keep a faster one's curves, core/evaluate.ts)
+    const gpis = geometryPis(d.pis, this.host.result()?.geometrySpeeds?.length === d.pis.length ? this.host.result()!.geometrySpeeds : undefined);
+    this.al = i === null ? null : buildAlignment(this.host.a, this.host.b, gpis, horizontalRules(d.speed, d.category), bendRules(gpis, d.speed, d.category));
     const info = i === null || !this.al ? undefined : this.al.curves[i];
     this.shown = !!info;
     if (!info || !this.al || i === null) { this.place(); return; }
