@@ -1,5 +1,34 @@
 # Evaluate performance regression
 
+## Bridge styles, cost model 35 (2026-11-17)
+
+Each bridge run now gets a plan per style in support-layout (short spans; long spans: up to three equal layouts, or
+the anchored long span with its side spans and two fillings; an arch: an O(cells³) scan on 180–700 m bridges), each
+placed, span-checked and priced. The structure choice prices a run as the cheaper of short and long equal spans.
+Two costs found and paid back with CPU profiles (`_prof1.ts` + `profinc.py`, 33 evaluations):
+- the structure choice went +25–40 ms an evaluation: a closure per station in the new "cut and cover too deep"
+  check for Auto's tunnels (esbuild's `__name` on each) and 4× the run pricing. Now the check runs only where some
+  method is chosen, long layouts are priced only where they may pay (short spans no dearer at the bridge's top →
+  no dearer anywhere: their extra piers make their price rise faster with height), and a run's price is memoised
+  per engineering pass (the fill-value settle asks for the same runs again and again): chooseStructures 255 →
+  232 ms on town-centre, 178 → 199 ms on direct-80 (33 evaluations);
+- support-layout: work.support 4.8 → 9.7 ms on town-centre (five passes × its 300–1,149 m bridges' plans), +1 ms on
+  direct-80. A drag preview weighs an arch only where asked or nothing else fits, and long spans only where they
+  may pay (its card is not shown).
+
+Interleaved against main 5ea8d7e (16 rounds, host load 5–8), min / median ms:
+
+| design | main | now |
+|---|---:|---:|
+| best | 118.8 / 162.4 | 116.3 / 158.7 |
+| demo | 110.9 / 137.1 | 112.2 / 131.2 |
+| direct-80 | 226.6 / 292.0 | 213.5 / 314.5 |
+| direct-90 | 141.5 / 169.7 | 143.2 / 169.9 |
+| town-centre | 225.0 / 283.4 | 237.1 / 279.8 |
+
+Sum of minima −0.1 %, of medians +0.9 %, CPU per round +0.9 %; phase timings on town-centre (`_tim.ts`, min of 8):
+total 239.8 → 239.4 ms.
+
 ## Tunnels as built, cost model 34 (2026-11-17)
 
 The grade search's tunnel mode (autoprofile.ts) costs nothing where the line takes no tunnel: the plain search
