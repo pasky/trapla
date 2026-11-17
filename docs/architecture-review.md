@@ -33,7 +33,7 @@ needs the parent to order it against the P1-fixes and design-realism agents), **
 | 1 | No check that a refactor leaves *whole results* identical: only 11 frozen D11 bills | high | none | done: `scripts/exact.ts` |
 | 2 | Gates are a hand-typed list with a lock protocol; `bench` and the outcome audit never fail | high | none | done: `scripts/gates.sh`, `bench --check` |
 | 3 | `main.ts`: one 1,760-line closure (`main()`) with ≈ 60 mutable variables | high | medium | done: 1,840 → 325 lines, 22 modules out, the shared state is a `Session`; what is left is construction and wiring (§ main.ts) |
-| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | `evaluateRoute` done: 14 named functions, itself 60 lines (three diffs of +74 −13, +50 −25 and +99 −29); the other two functions next (§ Core) |
+| 4 | `evaluateRoute` is one 1,590-line function of nested closures; `buildCrossingGeometryOnce` 840 lines; `evaluateProject` 443 | high | low with the tool | done: `evaluateRoute` is 14 named functions, itself 60 lines; `buildCrossingGeometryOnce` four stages; `evaluateProjectOnce` eight stages and 67 lines (§ Core). Next: the stages into files |
 | 5 | Engine control flow keyed on player text (violation titles, diagnostic messages) | high | low | titles done (shared constants); crossing diagnostics: sequence (§ Core) |
 | 6 | Scripts were not type-checked; three had rotted, one crashed on start | medium | none | done |
 | 7 | Worker protocol: types in two files, replies untyped, a dead legacy request | medium | low | done: `src/worker-protocol.ts` |
@@ -208,10 +208,18 @@ small modules beside it already do.
   begins instead of 150 lines earlier. `complete()`'s call of itself is `completeDesign(…same
   arguments…, true)`. 177 / 177 results identical; interleaved timing against main unchanged.
   The former 1,590-line closure is 14 functions, the largest 293 lines (`routeSetup`).
-  Next, each again by the tool:
-  1. move the stage functions to files (`evaluate-setup.ts` …): a cut and paste with imports, since they
-     no longer share a scope;
-  2. `buildCrossingGeometryOnce` (840 lines) and `evaluateProject` (443) with the same tool.
+  Then the other two long functions, the same way (2026-11-17, 177 / 177 identical):
+  `buildCrossingGeometryOnce` (840 lines) is `crossingTools` (what a build starts from: the crossed ways'
+  lines, their stretch through our earthworks, the squared line) → `crossingStructures` (each crossing's own
+  geometry: 362 lines, one loop, the next thing to cut by treatment) → `crossingReroutes` → `crossingFinish`
+  (+42 −7; hand step: the types of two defaulted parameters). `evaluateProjectOnce` (495 lines) is
+  `projectStart` → `projectRoutes` → `projectWorks` → `projectUnits` → `projectNetwork` → `projectScreen` →
+  `projectDecisions` → `projectTotals`, itself 67 lines: the three early returns and the last lines (hand
+  step: one `let` declared where it is first assigned). Each stage's inputs are its parameters now, which is
+  what a memo of a stage has to key on (docs/evaluate-performance.md "What a retry pass costs").
+  Next: move the stage functions to files (`evaluate-setup.ts` …), a cut and paste with imports since they no
+  longer share a scope. **Wait for bridge styles (M3) to land first**: its branch has open hunks inside
+  `routeSetup`, `routePrices` and `routeEngineer`, and git does not carry a hunk into a moved function.
 - **Engine logic keyed on player text.** `evaluate.ts:1548` (`v.title.startsWith('A long bridge span is too
   low')`, set in `support-layout.ts:283`) and `:1905` (`'Road too low'`, set in `checks.ts:549`) decide
   lifts and railway wording from a *title*; `crossing-geometry.ts` passes diagnostics as message strings
@@ -428,7 +436,10 @@ ends where it does: docs/evaluate-performance.md "What a retry pass costs".
    redone on the new code by the tool.
 9. Browser scripts: the gates and the 18 scripts with the retired intro key on `scripts/lib/browser.mjs`.
 10. `main.ts`: routes, the active line, the score, the map window (→ 325 lines).
-11. Next: the stage functions into files, the other two long functions.
+11. Merged (`5ea8d7e`): the citation guard, `scripts/dev/profile.mjs`, four footprint-screen savings.
+12. The passes of an evaluation share their setup; citations by file name; `stationIndex`; the stages of
+    `buildCrossingGeometryOnce` and `evaluateProjectOnce`.
+13. Next: the stage functions into files (after M3).
 
 Noticed, not changed: the playtest's "Start over → Undo" step clicks a toast that lasts 6 s; on a loaded host the script gets
 there after 4–7 s (`gates.sh` runs a failed untimed browser gate once more under load).
