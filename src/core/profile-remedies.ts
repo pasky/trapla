@@ -15,9 +15,12 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
   const crest = radii?.crest ?? norms.minCrestRadius, sag = radii?.sag ?? norms.minSagRadius;
   // `free`: only the line between these chainages may move (a block of the grade solve): a vertex is put
   // at each of its ends and held there with everything beyond it
+  const base = buildProfile([...vpis], crest, sag);
   if (free) vpis = withVertices(vpis, free);
   const locked = vpis.map((p, i) => i === 0 || i === vpis.length - 1 || pins.some(pin => Math.abs(pin.s - p.s) < 0.1)
     || (!!free && (p.s <= free[0] + 0.5 || p.s >= free[1] - 0.5)));
+  // (the issues the line had before, outside the range: not this lift's to answer for)
+  const had = range && new Set(ROAD_CHECKS.vertical(base, norms, maxGradient, false, radii?.stretch).map(v => issueKey(base.pts, v)));
   const pinZ0 = elevations(buildProfile([...vpis], crest, sag), [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
   for (const radius of [600, 1200, 2400]) {
     const candidate = vpis.map(p => ({ ...p }));
@@ -27,10 +30,14 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
       const deficits = targets.map((p, i) => Math.max(0, p.z + 0.15 - z[i]));
       if (deficits.every(d => d <= 0.01)) {
         const pinZ = elevations(profile, [...pins].sort((a, b) => a.s - b.s).map(p => p.s));
-        // With a range (one stretch of several lifted separately): only issues there count.
-        const issues = ROAD_CHECKS.vertical(profile, norms, maxGradient, false, radii?.stretch).filter(v => !range || (v.s1 >= range[0] && v.s0 <= range[1]));
+        // With a range (one stretch of several lifted separately): only issues there count, and any the line
+        // it returns has elsewhere that it had not (where it turns at a free stretch's end, beside a rounding).
+        const out = free ? straightened(candidate) : candidate, outProfile = range && buildProfile(out, crest, sag);
+        const issues = [...ROAD_CHECKS.vertical(profile, norms, maxGradient, false, radii?.stretch).filter(v => !range || (v.s1 >= range[0] && v.s0 <= range[1])),
+          ...(outProfile ? ROAD_CHECKS.vertical(outProfile, norms, maxGradient, false, radii?.stretch)
+            .filter(v => !(v.s1 >= range![0] && v.s0 <= range![1]) && !had!.has(issueKey(outProfile.pts, v))) : [])];
         // a pin keeps the height the line had there (the DP meets a pin within its tolerance, not exactly)
-        if (issues.length === 0 && pinZ.every((z, i) => Math.abs(z - pinZ0[i]) <= 0.05)) return free ? straightened(candidate) : candidate;
+        if (issues.length === 0 && pinZ.every((z, i) => Math.abs(z - pinZ0[i]) <= 0.05)) return out;
         diagnostic?.(`radius ${radius}: ${issues.map(v => `${v.title}@${v.s0.toFixed(0)}`).join(', ') || 'grade pin moved'}`);
         break;
       }
@@ -56,6 +63,10 @@ export function liftAutoProfile(vpis: readonly VPI[], requirements: readonly { s
     }
   }
 }
+
+/** an issue of a line, by what it is and the height point it names */
+const issueKey = (pts: readonly { s: number }[], v: { kind: string; vpi?: number; s0: number }) =>
+  `${v.kind}@${Math.round((v.vpi === undefined ? v.s0 : pts[v.vpi].s) * 10)}`;
 
 /** The polyline with a vertex at each of the given chainages (on the line: the profile is unchanged). */
 function withVertices(vpis: readonly VPI[], at: readonly number[]): VPI[] {

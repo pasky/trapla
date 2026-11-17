@@ -20,4 +20,12 @@ describe('local automatic bridge clearance refinement', () => {
     expect(liftAutoProfile(vpis, [{ s: 1000, z: 104 }], 80, 0.06, [{ s: 1000, z: 100 }])).toBeUndefined();
     expect(liftAutoProfile(vpis, [{ s: 50, z: 110 }], 80, 0.06)).toBeUndefined();
   });
+  it('never squeezes a rounding beside the end of the stretch it may move (owner: two height points 6 m apart)', () => {
+    // a dip 30 m before the free stretch: lifting inside it turns the line at its end, next to the dip
+    const line: VPI[] = [{ s: 0, z: 120 }, { s: 1970, z: 100.3 }, { s: 2300, z: 103.6 }, { s: 6000, z: 103.6 }].map(p => ({ ...p, r: null }));
+    const norms = speedNorms(80), squeezed = (v: VPI[]) => ROAD_CHECKS.vertical(buildProfile(v, norms.minCrestRadius, norms.minSagRadius), norms, 0.06).filter(x => x.kind === 'vcOverlap');
+    expect(squeezed(line)).toEqual([]);
+    const lifted = liftAutoProfile(line, [{ s: 2300, z: 106.6 }], 80, 0.06, [], undefined, undefined, [2200, 2400], [2000, 4000]);
+    if (lifted) expect(squeezed(lifted)).toEqual([]);
+  });
 });
