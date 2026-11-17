@@ -821,6 +821,36 @@ Research: research/65.
   exit 1 on any difference); any script under `--import ./scripts/dev/local-retry-check.ts` checks its own
   evaluations. `LOCAL_RETRY.local = false` is the reference.
 
+### Playtest sweep 3: slowed stretches, arches, hairpins (cost model 39, 2026-11-17)
+
+Findings: docs/playtest-findings.md "Sweep 3 — main 30d0ad8". Research: research/66 (design speed), /69 (P2s).
+Shots 290–297 (`scripts/qa3-fixes-shots.mjs`).
+- **A slowed stretch never makes Auto's road dearer.** The grade search is monotone in its own objective (D11, one
+  bend at 70: every block cheaper by its estimate, 4,398 → 4,171 M), but it prices no crossed roads: at 70 it took a
+  line 10 m higher at km 9, where a field track 17 m under the fill forced a bridge that joined the stream bridge
+  (800 m, +284 M on the bill). Every line built for a faster speed meets a slower stretch's rules, so Auto now also
+  evaluates the design with each slowed bend's curves and heights built for the faster speeds (every slowed bend
+  raised the same number of speed steps, up to the road's) and keeps the cheapest with no more problems
+  (`EvalOptions.geometrySpeeds`, `Result.geometrySpeeds / geometrySaving`; previews build what the last full result
+  kept). D11 one bend 90 / 80 / 70: 8,782 / 8,782 / 8,782 M (was 9,067 at 70); best design, 36 single-bend
+  slow-downs: none dearer (was 14). Price: one more evaluation per speed step a bend lies below the road (D11:
+  0.3 / 0.74 / 1.2 s at 90 / 80 / 70); designs without slowed bends unchanged. The bend card says which km its
+  stretch covers ("Its stretch is the whole road" with one bend) and what Auto kept.
+- **No bend faster than its road.** ČSN 73 6101:2018 lowers a stretch's design speed; a railway's line speed is its
+  mission's: the railway mission's bend card offers 120 · 100 · 80 · 60, "no faster than the whole line, 120 km/h".
+  A saved faster bend is evaluated at the road's speed. Recorded, not fixed: the Královec bend 3 at 160 billed
+  312 M less than at 120 (the same estimate gap; catching it would double every evaluation).
+- **Arches** (research/69): rise 1/10–1/3.5 of the span (Bridge Engineering Handbook ch. 17: "most" 1:4.5–1:6,
+  Cowlitz River 159 / 45 m), a bridge up to 3.3 × its arch (D3 Sázava 787 / 237 m); the rib's clearance over what
+  lies below is part of the search; an arch is Auto's only where it needs no lift (a first-pass arch with a smaller
+  lift steered the support lifts: random-2 / random-8 +257 / +569 M). The D3 0302 Sázava bridge can be an arch
+  (+648 M); a greyed Arch says why (`Run.archMiss`).
+- **Hairpins and the tunnel card**: a bend turning back on itself offers "Make it a hairpin" (one step, its stretch
+  at the lowest speed) where one may stand; the tunnel card says "Auto’s tunnel, built by cut and cover as you
+  chose." and offers no noise walls.
+- **Bills** (model 38 → 39): frozen D11 fixtures and all scenario starters identical (fixtures re-stamped: runs
+  carry arch prices / reasons); outcome audit random-3 7,794 → 7,763 M (its arch options), the rest identical.
+
 ### Historical reference numbers (model 10, S 9.5, 90 km/h, auto profile)
 
 Cost model 10: 20.81 km, 13.87 min, **4.144 bn CZK = 199 M CZK/km**; includes one noise buyout
