@@ -289,10 +289,10 @@ export class ProfilePanel {
 
   fit() { this.whole = true; if (this.r) { this.v0 = 0; this.v1 = this.r.length; } this.draw(); this.ev.onView?.(); }
 
-  focus(s0: number, s1: number) {
+  focus(s0: number, s1: number, minSpan = 1500) {
     if (!this.r) return;
     this.flash = { s0, s1 };
-    this.show((s0 + s1) / 2, Math.max(1500, (s1 - s0) * 3));
+    this.show((s0 + s1) / 2, Math.max(minSpan, (s1 - s0) * 3));
   }
 
   /** zoom by a factor (> 1 = in) around the middle of the view */
@@ -1192,7 +1192,7 @@ export class ProfilePanel {
       this.hoverFromMap = false;
       this.hoverClient = { x: e.clientX, y: e.clientY };
       const u = this.under;
-      if (u.kind === 'vpi') this.ev.onHover?.(this.vpis[u.k].s, `◆ height point · ${this.vpis[u.k].z.toFixed(1)} m`);
+      if (u.kind === 'vpi') this.ev.onHover?.(this.vpis[u.k].s, `◆ height pin · ${this.vpis[u.k].z.toFixed(1)} m`);
       else this.ev.onHover?.(this.hoverS);
       this.draw();
       this.updateTip();

@@ -106,7 +106,7 @@ const ESTIMATE = {
   long: 'While you drag, the price is a quick estimate: noise walls, retaining walls and rebuilt side roads are left out where the road moved, and what the change does further along the road (heights, bridges, tunnels) comes with the full count when you pause. On a long road that can be a few per cent.',
 };
 const AUTO_LONG = 'Auto: the cheapest legal heights, redone after every change. Drag the black line in the profile up or down to pin a height there; pins stay at their km.';
-const MANUAL_LONG = 'By hand: drag the ◆ height points in the profile; double-click the line adds one, right-click deletes. Back to Auto replaces them (Undo brings them back).';
+const MANUAL_LONG = 'By hand: drag the ◆ height pins in the profile; double-click the line adds one, right-click deletes. Back to Auto replaces them (Undo brings them back).';
 
 export class Hud {
   ev: HudEvents = {};
@@ -280,7 +280,7 @@ export class Hud {
         <div class="mode">
           <div class="mode-h"><b id="height-h">Road height</b><span class="q" id="mode-help" tabindex="0">?</span></div>
           <div class="seg" role="radiogroup" aria-label="Road height">
-            <button type="button" id="grade-auto" role="radio" title="The game picks the cheapest legal heights">Auto</button><button type="button" id="grade-manual" role="radio" title="Drag the height points yourself">By hand</button>
+            <button type="button" id="grade-auto" role="radio" title="The game picks the cheapest legal heights">Auto</button><button type="button" id="grade-manual" role="radio" title="Drag the height pins yourself">By hand</button>
           </div>
           <p id="mode-explain" class="mode-explain"></p>
         </div>
@@ -401,13 +401,13 @@ export class Hud {
     const norms = this.$('norms');
     if (cat.mode === 'railway') {
       norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${Math.round(grade * 10000) / 10} ‰</b>`;
-      norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; vertical rounding radius ≥ ${num(n.minCrestRadius)} m.`;
+      norms.title = `Track at ${d.speed} km/h (provisional teaching values for ČSN 73 6360-1): smallest curve radius ${num(n.minRadius)} m with 150 mm cant and 80 mm cant deficiency; every curve needs a cant ramp of ≥ ${num(n.minTransition)} m; steepest slope ${Math.round(grade * 10000) / 10} ‰ for passenger and freight trains; radius over hilltops and dips ≥ ${num(n.minCrestRadius)} m.`;
     } else if (cat.minor) {
       norms.innerHTML = `Curves ≥ <b>${num(n.minRadius)} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
-      norms.title = `${n.norm} at ${d.speed} km/h: smallest curve radius ${num(n.minRadius)} m${cat.minor === 'local' ? ` (with 6 % banking; from ${num(n.noSuperelevationRadius)} m no banking is needed)` : ''}; no easement curves are needed; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags)${n.verticalNorm ? ` (${n.verticalNorm})` : ''}.`;
+      norms.title = `${n.norm} at ${d.speed} km/h: smallest curve radius ${num(n.minRadius)} m${cat.minor === 'local' ? ` (with 6 % banking; from ${num(n.noSuperelevationRadius)} m no banking is needed)` : ''}; no easement curves are needed; steepest slope ${pct(grade)} %; radius over hilltops ≥ ${num(n.minCrestRadius)} m, in dips ≥ ${num(n.minSagRadius)} m${n.verticalNorm ? ` (${n.verticalNorm})` : ''}.`;
     } else {
       norms.innerHTML = `Curves ≥ <b>${n.minRadius} m</b> · slopes ≤ <b>${pct(grade)} %</b>`;
-      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; vertical rounding radius ≥ ${num(n.minCrestRadius)} m on hilltops (crests), ≥ ${num(n.minSagRadius)} m in dips (sags).`;
+      norms.title = `ČSN 73 6101 at ${d.speed} km/h: smallest curve radius ${n.minRadius} m (with 6 % banking); from ${n.noSuperelevationRadius} m no banking is needed; easement (transition) curves ≥ ${n.minTransition} m; steepest slope ${pct(grade)} %; radius over hilltops ≥ ${num(n.minCrestRadius)} m, in dips ≥ ${num(n.minSagRadius)} m.`;
     }
     for (const mode of ['auto', 'manual'] as const) {
       const b = this.$(`grade-${mode}`);
@@ -433,7 +433,7 @@ export class Hud {
   setProfileBusy(busy: boolean) {
     const manual = this.$<HTMLButtonElement>('grade-manual');
     manual.disabled = busy;
-    manual.title = busy ? 'One moment: still computing' : 'Drag the height points yourself';
+    manual.title = busy ? 'One moment: still computing' : 'Drag the height pins yourself';
     this.$('score').classList.toggle('busy', busy);
   }
 

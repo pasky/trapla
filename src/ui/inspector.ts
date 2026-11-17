@@ -2,6 +2,7 @@
 // a height point, a crossed road, a building — under the score. Same shape for all of them: what it is,
 // what the game decided (numbers first), its violations with the fix as a button where one exists, the
 // choices (Auto first), and "More" for the numbers. With nothing selected: where the money goes.
+import type { VPI } from '../core/vertical';
 import type { Violation } from '../core/checks';
 import { crossingChoice, crossingSquare, crossingVia, type CrossingChoice } from '../core/crossings';
 import { SQUARE_BELOW } from '../core/crossing-geometry';
@@ -75,6 +76,8 @@ export interface InspectorEvents {
   bendHeight?: (i: number) => void;
   vpiRadius?: (i: number, r: number | null) => void;
   deleteVpi?: (i: number) => void;
+  /** By hand: the height pin at station `at` changed (moved, its radius) or deleted (null) */
+  pinAt?: (at: number, change: Partial<VPI> | null) => void;
 }
 
 /** kilometres as the player reads them on the active line (ui/chainage.ts) */
@@ -395,8 +398,8 @@ export class Inspector {
       const cones = (r.cones ?? []).filter((c) => c.i >= bridge.i0 && c.i <= bridge.i1);
       const ends = cones.length ? `<div class="sub">${cones.length === 2 ? `Its ends stand on fills ${cones.map((c) => c.height.toFixed(0)).join(' and ')} m high` : `One end stands on a fill ${cones[0].height.toFixed(0)} m high`}, sloping on under the bridge: ${Math.round(cones.reduce((t, c) => t + c.volume, 0)).toLocaleString('en-US')} m³ of fill, ${czk(cones.reduce((t, c) => t + conePavingCost(c), 0))} of paving.</div>` : '';
       // an end whose fill would cover what lies below: a wall down to the ground there (support-layout.ts)
-      const closed = bridge.closedEnds?.filter(Boolean).length ?? 0;
-      const walls = closed ? `<div class="sub">${closed === 2 ? 'Both ends are walls' : 'One end is a wall'} down to the ground, so the fill does not cover what lies below.</div>` : '';
+      const walled = (bridge.endWalls ?? []).filter((w, k) => bridge.closedEnds?.[k] && w.height > 0);
+      const walls = walled.length ? `<div class="sub">${walled.length === 2 ? `Both ends are walls ${walled.map((w) => w.height.toFixed(0)).join(' and ')} m high` : `One end is a wall ${walled[0].height.toFixed(0)} m high`} down to the ground, so the fill does not cover what lies below: ${czk(walled.reduce((t, w) => t + w.cost, 0))}.</div>` : '';
       method = `${ends}${walls}<div class="ctx-lbl">Bridge style</div><div class="seg choice" id="bridge-style" role="group">${buttons}</div>
         ${bridge.archMiss && bridge.styles?.arch === undefined ? `<div class="sub">No arch: ${ARCH_MISS[bridge.archMiss].replace(/^./, (c) => c.toLowerCase())}</div>` : ''}
         <div class="sub">${bridge.styleChosen ? 'Your choice' : 'Auto: the cheapest that fits'}${arch ? ` · ${arch}` : bridge.style === 'long' || span > 45 ? ` · longest span ${m0(span)}` : ''}</div>`;
@@ -411,9 +414,9 @@ export class Inspector {
       ${near ? `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}` : ''}
       <div class="more-box">
         ${near || !open ? '' : `<div class="ctx-lbl">Noise walls</div>${wallRow(shownSide('L'))}${wallRow(shownSide('R'))}`}
-        <div class="ctx-lbl">Road height</div>
+        <div class="ctx-lbl">${CATEGORIES[d.category].mode === 'railway' ? 'Track' : 'Road'} height</div>
         ${d.profileMode === 'auto' ? `<div class="ctx-row"><label>km ${km(pinAt)} <input id="pin-z" type="number" step="0.1" value="${r.grade[gi].toFixed(1)}"> m</label><button type="button" id="pin-set" data-s="${Math.round(pinAt)}">Pin</button></div>`
-          : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height point here</button></div>`}
+          : `<div class="ctx-row"><span>km ${km(pinAt)} · ${r.grade[gi].toFixed(1)} m</span><button type="button" id="hp-add" data-s="${Math.round(pinAt)}">Height pin here</button></div>`}
         ${this.costLines(r, i0, i1)}
       </div>
       <div class="ctx-foot">${this.moreToggle()}</div>`;
@@ -459,6 +462,15 @@ export class Inspector {
     if (v.kind === 'footprint' && !t && !onBridge) btn(`data-fix-bridge="${Math.max(0, v.s0 - 40)},${v.s1 + 40}"`, 'Bridge it');
     if (v.kind === 'structure' && (d.structureOverrides ?? []).some((o) => o.s1 > v.s0 && o.s0 < v.s1 + 1)) btn(`data-fix-structure="${v.s0},${Math.max(v.s1, v.s0 + 1)}"`, 'Back to Auto');
     if (v.kind === 'profile' && (d.gradePins ?? []).some((p) => p.s >= v.s0 - 1 && p.s <= v.s1 + 1)) btn(`data-fix-unpin="${v.s0},${v.s1}"`, 'Unpin');
+    // By hand: the player's height pins it is about (the points of this result: the design's own)
+    if (d.profileMode === 'manual' && this.r) {
+      const pin = (k: number) => this.r!.vpis[k] && k > 0 && k < this.r!.vpis.length - 1;
+      // (each pin by its own station: the design may have moved on since this result)
+      const at = (k: number) => this.r!.vpis[k].s;
+      if (t?.movePin && pin(t.movePin.k)) btn(`data-fix-vpi-move="${at(t.movePin.k)},${t.movePin.s},${t.movePin.z}"`, `Move pin to km ${km(t.movePin.s)}`);
+      if (t?.smallest !== undefined && pin(t.smallest)) btn(`data-fix-vpi-smallest="${at(t.smallest)}"`, 'Smallest radius');
+      for (const k of t?.heightPins ?? []) if (pin(k)) btn(`data-fix-vpi-del="${at(k)}"`, `Delete pin <small>km ${km(at(k))}</small>`);
+    }
     return b.join('');
   }
 
@@ -501,7 +513,7 @@ export class Inspector {
         <input id="pi-slider" type="range" min="${Math.round(n.minRadius * 0.5)}" max="5000" step="5" value="${Math.round(rv)}" title="Or drag the ◇ grips on the map">
         ${cv ? `<div class="sub">curve starts ${m0(cv.t)} before the bend</div>` : ''}
       </div>
-      <div class="ctx-foot"><button type="button" id="pi-height">${d.profileMode === 'auto' ? 'Pin height here' : 'Height point here'}</button><button type="button" id="pi-del" class="danger" title="Del, or right-click the bend">Delete</button>${this.moreToggle()}</div>`;
+      <div class="ctx-foot"><button type="button" id="pi-height">${d.profileMode === 'auto' ? 'Pin height here' : 'Height pin here'}</button><button type="button" id="pi-del" class="danger" title="Del, or right-click the bend">Delete</button>${this.moreToggle()}</div>`;
   }
 
   // ---- pinned height (Auto) ----
@@ -547,11 +559,11 @@ export class Inspector {
     if (i <= 0 || i >= r.vpis.length - 1) return '';
     const vc = r.vcurves[i - 1], v = r.vpis[i];
     const what = vc?.type === 'crest' ? 'hilltop' : vc?.type === 'sag' ? 'dip' : '';
-    const vio = r.violations.filter((x) => x.vpi === i).map((x) => ({ v: x, fixes: '' }));
-    return `${this.head('Height point', `km ${km(v.s)}`)}
-      <div class="ctx-state"><b>${v.z.toFixed(1)} m</b>${what ? ` · ${what}` : ''} · rounding R ${m0(vc?.r ?? 0)}<div class="why">Drag it in the profile.</div></div>
+    const vio = r.violations.filter((x) => x.vpi === i || x.target?.heightPins?.includes(i)).map((x) => ({ v: x, fixes: this.d ? this.fixes(x, this.d) : '' }));
+    return `${this.head('Height pin', `km ${km(v.s)}`)}
+      <div class="ctx-state"><b>${v.z.toFixed(1)} m</b>${what ? ` · ${what}` : ''} · radius ${m0(vc?.r ?? 0)}<div class="why">Drag it in the profile.</div></div>
       ${this.issues(vio)}
-      <div class="ctx-row"><label>Rounding <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
+      <div class="ctx-row"><label>Radius <input id="vpi-r" type="number" min="100" step="100" value="${Math.round(vc?.r ?? 0)}" ${v.r === null ? 'disabled' : ''}> m</label>
         <label><input id="vpi-auto" type="checkbox" ${v.r === null ? 'checked' : ''}> smallest</label></div>
       <div class="ctx-foot"><button type="button" id="vpi-del" class="danger">Delete</button></div>`;
   }
@@ -747,6 +759,9 @@ export class Inspector {
     if (b.dataset.fixStructure) { const [s0, s1] = b.dataset.fixStructure.split(',').map(Number); this.ev.structure?.(null, s0, s1); return; }
     if (b.dataset.fixHairpin) { const [pi, speed] = b.dataset.fixHairpin.split(',').map(Number); this.ev.hairpin?.(pi, true, speed); return; }
     if (b.dataset.fixAuto) { const bends = b.dataset.fixAuto.split(',').map(Number); bends.forEach((i, k) => this.ev.radius?.(i, null, k === bends.length - 1)); return; }
+    if (b.dataset.fixVpiMove) { const [from, s, z] = b.dataset.fixVpiMove.split(',').map(Number); this.ev.pinAt?.(from, { s, z }); return; }
+    if (b.dataset.fixVpiSmallest) { this.ev.pinAt?.(Number(b.dataset.fixVpiSmallest), { r: null }); return; }
+    if (b.dataset.fixVpiDel) { this.ev.pinAt?.(Number(b.dataset.fixVpiDel), null); return; }
     if (b.dataset.fixUnpin) { const [s0, s1] = b.dataset.fixUnpin.split(',').map(Number); this.ev.unpin?.(s0 - 1, s1 + 1); return; }
     if (sel?.kind === 'stretch') {
       if (b.dataset.structure !== undefined) { this.ev.structure?.(b.dataset.structure === 'clear' ? null : Number(b.dataset.structure) as StructureKind, sel.s0, sel.s1); return; }

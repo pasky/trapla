@@ -104,7 +104,15 @@ describe('player-facing text', () => {
       const vpis: { s: number; z: number; r: number | null }[] = [{ s: 0, z: 400, r: null }];
       for (let s = 0; s < 3000;) { s += 40 + rand() * 600; vpis.push({ s, z: 400 + (rand() - 0.5) * 120, r: rand() < 0.5 ? Math.round(200 + rand() * 4000) : null }); }
       vpis.push({ s: 3600, z: 400, r: null as number | null });
-      for (const v of verticalViolations(buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius), norms, 0.06)) checkViolation(v, 'vertical');
+      // Auto's line and the player's pins (By hand), on a road and on a railway (its "track", never "road")
+      for (const rail of [false, true]) for (const byHand of [false, true]) {
+        for (const v of verticalViolations(buildProfile(vpis, norms.minCrestRadius, norms.minSagRadius), norms, 0.06, rail, undefined, byHand)) {
+          checkViolation(v, `vertical${rail ? ' (railway)' : ''}${byHand ? ' by hand' : ''}`);
+          if (rail) expect([v.title, v.fix, v.detail].join(' ')).not.toMatch(/\broads?\b/);
+          // On Auto the height points are the game's and not drawn: never named
+          if (!byHand) expect([v.title, v.fix, v.detail].join(' ')).not.toMatch(/your height pin at|height points?\b/);
+        }
+      }
     }
     for (const v of [slopeViolation(100, 200, 12, 0, 60), slopeViolation(100, 200, 0, 12, 60), crossingViolation(500, 'railway', 3, 7.5),
       crossingViolation(500, 'motorway', -2, 7.5, 6), oobViolation(0, 50, 50), profileViolation(1000, 0.06),

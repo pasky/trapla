@@ -1,6 +1,7 @@
 // Conflicts beyond centreline intersections. Network segments are queried through their existing
 // spatial grids; raster work visits only cells in the constructed footprint (never the whole map).
 import { bridgeLayout } from './bridge';
+import { bridgeEnd, coneGround } from './abutment-cone';
 import { planRoadRealignment, roadRealignmentCrossingIntervals, severedCrossingIntervals, type RoadSourceInterval, type RoadRealignmentPlan, type PreservedRoadConnection } from './road-realignment';
 import { RoadRemedyLedger } from './road-remedy-ledger';
 import type { Violation } from './checks';
@@ -134,6 +135,17 @@ export function footprintConflicts(r: FootprintRoute, terrain: Terrain, roads: R
       left: r.dayL[i], right: r.dayR[i] });
   }
   cells.push(...structureFootprints(r));
+  // the cones of fill in front of the abutments (abutment-cone.ts), screened as the abutments are: a minor way under
+  // one is moved aside, anything else the bridge's end could not clear (support-layout.ts) is a problem
+  for (const run of r.runs) if (run.kind === KIND.bridge && run.coneReach) for (const [k, s, into, beside] of [[0, run.s0, 1, run.i0 - 1], [1, run.s1, -1, run.i1 + 1]] as const) {
+    if (run.closedEnds?.[k] || r.kind[beside] !== KIND.earth) continue;
+    const e = bridgeEnd(terrain, r, s, into);
+    for (const row of coneGround(terrain, e, r.crownWidth / 2, run.length)) {
+      const u = (row.u0 + row.u1) / 2, sc = e.s + into * u;
+      cells.push({ i: Math.max(0, Math.min(r.n - 1, Math.round(sc / r.ds))), s: sc, x: e.x + e.tx * u, y: e.y + e.ty * u, tx: e.tx, ty: e.ty,
+        structure: 'abutment', along: (row.u1 - row.u0) / 2, left: row.left, right: row.right });
+    }
+  }
   const grid = new FootprintGrid(cells);
   const barrels = new Map(water.flatMap(c => {
     const i = Math.min(r.n - 1, Math.round(c.s / r.ds)), j = Math.max(0, Math.min(r.n - 2, Math.floor(c.s / r.ds)));

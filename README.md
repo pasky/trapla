@@ -104,7 +104,7 @@ Design notes, the playtest and the copy rules: [docs/interface-rethink.md](docs/
     its noise source, the wall or cut edge, the house floor by floor in its own noise colour with each floor's
     level (and what it was without the wall), the sightline and the wall's shadow. Hovering a wall height redraws
     both ([a house that hears the road through a junction's gap](docs/screenshots/72-house-noise-plan-junction-gap.png)).
-  - pinned height (Auto) / height point (By hand): its height, typed or dragged, *Unpin* / *Delete*.
+  - pinned height (Auto) / height pin (By hand): its height, typed or dragged, *Unpin* / *Delete*.
 - **The score** (top right, sticky): total cost (struck through while not valid), ✓ VALID / ✗ NOT VALID, **the
   change the last edit made** (a drag counts once), travel time against the goal, the violations chip (click:
   selects the first one), your best valid design (*Load*; a position half-way through a drag never counts) and
@@ -441,6 +441,11 @@ was 284 M dearer)](docs/screenshots/290-d11-one-bend-70-keeps-90-geometry.png),
 [D3-0302: no 62 m cut and no 41 / 47 m fills, one 1,678 m bridge](docs/screenshots/299-d3-0302-no-deep-cut-one-long-bridge.png),
 [a D11 line whose cut would be 67 m deep: Auto's tunnel, the open cut's price on its Earthwork button](docs/screenshots/300-d11-deep-cut-tunnel-open-cut-price.png),
 [a bridge end whose fill would cover the road below it: a wall down to the ground](docs/screenshots/301-d11-bridge-end-wall-beside-the-road-below.png).
+Bridge ends under one rule (cost model 42, `node scripts/abutment-ends-shots.mjs`): [the Královec railway at km 10.27, once
+a 28 m wall, under one bridge with the one before it](docs/screenshots/390-rail-kralovec-km-10-27-under-one-bridge.png), [its fill
+at km 5.61–5.70, once boxed in by walls of 25 and 16 m, part of one bridge](docs/screenshots/391-rail-kralovec-km-5-6-one-bridge-no-boxed-fill.png),
+[D11 km 2.42, once an 11.4 m wall beside road III/3012, on a cone](docs/screenshots/392-d11-km-2-42-end-on-a-cone-beside-the-road.png),
+[a closed end on an 8.5 m fill, its wall's height and price on the bridge card](docs/screenshots/393-d11-km-3-49-wall-within-10-m-billed.png).
 [The Nová Paka starter along the mapped bypass: its nine curves at their mapped radii, 1.22 bn
 VALID](docs/screenshots/232-nova-paka-starter-along-the-bypass.png).
 Cost model 37: [Nová Paka with bend 3 dragged 14 m: our road stays 6 m in the cutting the class III road crosses
@@ -473,7 +478,15 @@ demo|starter] [--only km,…]`.)
 [D3 5 × 3 m buried bridge](docs/screenshots/337-culvert-d3-buried-bridge-5x3.png),
 [D35 box](docs/screenshots/338-culvert-d35-box-end.png),
 [Královec railway buried bridge](docs/screenshots/339-culvert-kralovec-railway-buried-bridge.png).
-Reproduce with `node scripts/crossing-shots.mjs`. Geometry and terrain collars rebuild on evaluation,
+Reproduce with `node scripts/crossing-shots.mjs`.
+
+Grade line problems in the player's words (`node scripts/vc-text-shots.mjs`): on Auto the height points are
+the game's and never drawn, so no message names one, and Auto never squeezes two of its changes of slope into
+each other ([the owner's Královec drag, now valid](docs/screenshots/400-rail-owner-drag-auto-no-overlap.png);
+`scripts/vc-overlap-audit.ts`); By hand the ◆ points are your height pins:
+[two 30 m apart, named, both drawn, Move / Delete](docs/screenshots/401-rail-by-hand-two-pins-too-close.png),
+[moved as offered](docs/screenshots/402-rail-by-hand-pin-moved.png),
+[an Auto pin drawn in the profile](docs/screenshots/403-rail-auto-pin-drawn.png). Geometry and terrain collars rebuild on evaluation,
 not on animation frames; the collars connect the true-height road to the coarser overview terrain mesh.
 Junctions join the existing engineered formation without cutting through our carriageway; noise-wall
 openings use the same masks for rendering, billing and acoustic checks. The existing worst-station noise

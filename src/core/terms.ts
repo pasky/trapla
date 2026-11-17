@@ -10,7 +10,8 @@
 // Glossary of player words (allowed): our road, crossed road, track, service road, street, local road,
 // class I–III road, motorway, junction, bridge, tunnel, cutting, embankment, slope, earthworks, ramp,
 // retaining wall, culvert, stream, underpass, rerouted, reconnected, moved aside, closed, turning area,
-// height point, bend, km, m, %. Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
+// height pin (By hand: a ◆ point the player drags; on Auto the points are the game's and never named), pin, bend,
+// km, m, %. Source names (ČSN 73 …, SPK, OTSKP, research/NN, Act …) appear only
 // where a requirement or a price cites its source: a violation's `rule` line and the bill's pricing
 // tooltips.
 import type { CrossingResult } from './crossings';
@@ -51,6 +52,9 @@ export const JARGON: readonly [RegExp, string][] = [
   [/polygon/i, '"polygon" (say "the straights between bends")'],
   // (also in a rule line or a price source: the norm or price book is named, not our note on it)
   [/research\//, 'research note reference'],
+  // (the profile draws Auto's height points nowhere: a message about them names nothing the player can see)
+  [/\broundings?\b/i, '"rounding" (say "change of slope" or "radius")'],
+  [/height points?\b/i, '"height point" (By hand: "your height pin"; on Auto name only the place)'],
 ];
 /** Source names: allowed only in a violation's `rule` line and pricing tooltips. */
 export const SOURCE_NAMES: readonly [RegExp, string][] = [

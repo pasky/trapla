@@ -933,14 +933,16 @@ function evaluateSeparated(ctx: EvalContext, project: ProjectDesign, corridor: C
         .map(o => ({ ...o, s0: toPiece(Math.max(s0, o.s0)), s1: toPiece(Math.min(s1, o.s1)) }));
       const design: Design = { ...sd, category: CARRIAGEWAY_CATEGORY, pis: bends.pis, ...vertical,
         structureOverrides: clip(shown.structureOverrides), wallOverrides: clip(shown.wallOverrides) };
-      return [dir, { design, fixedProfile, sideBySidePins, a: { ...bends.a, z: spine.grade[g.i0] }, b: { ...bends.b, z: spine.grade[g.i1] }, bend0, line }];
-    })) as Record<Direction, { design: Design; fixedProfile: EvalOptions['fixedProfile']; sideBySidePins: GradePin[]; a: XYZ; b: XYZ; bend0: number; line: ReturnType<typeof station> }>;
+      // (heights taken from the shared line of an Auto direction are not the player's pins)
+      const heightsGiven = design.profileMode === 'manual' && shown.profileMode !== 'manual';
+      return [dir, { design, fixedProfile, heightsGiven, sideBySidePins, a: { ...bends.a, z: spine.grade[g.i0] }, b: { ...bends.b, z: spine.grade[g.i1] }, bend0, line }];
+    })) as Record<Direction, { design: Design; fixedProfile: EvalOptions['fixedProfile']; heightsGiven: boolean; sideBySidePins: GradePin[]; a: XYZ; b: XYZ; bend0: number; line: ReturnType<typeof station> }>;
   });
   const runPiece = (g: number, dir: Direction, from?: Result) => {
     const p = designs[g][dir], other = designs[g][dir === 'forward' ? 'reverse' : 'forward'], side = dir === 'forward' ? 'L' as const : 'R' as const;
     const result = evaluate({ ...ctx, a: p.a, b: p.b, scenario: { ...ctx.scenario, traffic: ops.aadt, heavyShare: ops.heavyShare } }, p.design,
       { ...evalOptions, endpointElevations: { a: p.a.z, b: p.b.z }, operatingSpeed: ops.speed,
-        ...(p.fixedProfile ? { fixedProfile: p.fixedProfile } : {}),
+        ...(p.fixedProfile ? { fixedProfile: p.fixedProfile } : {}), ...(p.heightsGiven ? { heightsGiven: true } : {}),
         leftJoined: joinedRanges(p.line, other.line, side, true), joinedSide: side,
         ...(dir === 'forward' ? { sharedCrossings: { own: true } } : from ? { sharedCrossings: { own: false, from: from.crossings } } : {}),
         goals: { time: false, capacity: false } });

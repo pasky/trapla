@@ -20,4 +20,17 @@ describe('local automatic bridge clearance refinement', () => {
     expect(liftAutoProfile(vpis, [{ s: 1000, z: 104 }], 80, 0.06, [{ s: 1000, z: 100 }])).toBeUndefined();
     expect(liftAutoProfile(vpis, [{ s: 50, z: 110 }], 80, 0.06)).toBeUndefined();
   });
+  it('never squeezes a rounding beside the end of the stretch it may move (owner: two height points 6 m apart)', () => {
+    // a dip 30 m before the free stretch: lifting inside it turns the line at its end, next to the dip
+    const line: VPI[] = [{ s: 0, z: 120 }, { s: 1970, z: 100.3 }, { s: 2300, z: 103.6 }, { s: 6000, z: 103.6 }].map(p => ({ ...p, r: null }));
+    const norms = speedNorms(80), squeezed = (v: VPI[]) => ROAD_CHECKS.vertical(buildProfile(v, norms.minCrestRadius, norms.minSagRadius), norms, 0.06).filter(x => x.kind === 'vcOverlap');
+    expect(squeezed(line)).toEqual([]);
+    const lifted = liftAutoProfile(line, [{ s: 2300, z: 106.6 }], 80, 0.06, [], undefined, undefined, [2200, 2400], [2000, 4000]);
+    if (lifted) expect(squeezed(lifted)).toEqual([]);
+    // review case: a vertex put in at the free end clips the curve beside it; the line returned (without it) must
+    // not squeeze that curve either
+    const line2: VPI[] = [[0, 0], [1000, 60], [1100, 60], [3450, 60.5], [8000, 58]].map(([s, z]) => ({ s, z, r: null }));
+    const lifted2 = liftAutoProfile(line2, [{ s: 3450, z: 72 }], 80, 0.06, [], undefined, undefined, [1050, 5850], [1010, 8000]);
+    if (lifted2) expect(squeezed(lifted2).filter(v => !squeezed(line2).some(w => w.s0 === v.s0 && w.s1 === v.s1 && (w.size ?? 0) >= (v.size ?? 0)))).toEqual([]);
+  });
 });
