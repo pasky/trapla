@@ -18,8 +18,8 @@ export const LOCAL_MAX_SHARE = 0.9;
 
 /** Which path a finish's crossing build takes: `local` false (the reference) builds the whole route in every
  * finish; `check` builds both ways in each later finish, reports what differs and goes on with the whole
- * route's (scripts/local-retry-report.ts). */
-export const LOCAL_RETRY: { local: boolean; check?: (report: LocalBuildReport) => void } = { local: false };
+ * route's (scripts/local-retry-report.ts, scripts/dev/local-retry-check.ts). */
+export const LOCAL_RETRY: { local: boolean; check?: (report: LocalBuildReport) => void } = { local: true };
 
 /** Our road as the crossing build reads it, per station (CrossingRoute). */
 export type CrossingInputs = Record<'grade' | 'kind' | 'width' | 'left' | 'right' | 'urban', ArrayLike<number> & { slice(): ArrayLike<number> }>;
@@ -99,7 +99,8 @@ export function buildCrossings(kept: KeptCrossings[] | undefined, frame: object,
   count: (path: LocalBuildReport['path']) => void = () => {}): CrossingIssue[] {
   const whole = (list: CrossingIssue[]) => [...list, ...build(crossings)];
   if (!kept || !(LOCAL_RETRY.local || LOCAL_RETRY.check)) return whole(issues);
-  const n = s.length, resolved = crossings.map(c => copy(c, v => v));
+  // (kept as copies: a result's crossings and their issues are written to later, e.g. what raising our road would cost)
+  const n = s.length, resolved = crossings.map(c => copy(c, v => ({ ...v }))), own = crossings.map(c => c.issues ? [...c.issues] : []);
   const keep = (was: boolean) => {
     kept.push({ frame, inputs: Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, v.slice()])) as CrossingInputs,
       goneAt, resolved, built: crossings.map(c => copy(c, v => ({ ...v }))), rolledBack: was });
@@ -134,7 +135,7 @@ export function buildCrossings(kept: KeptCrossings[] | undefined, frame: object,
     if (report.path === 'local') {
       crossings.forEach((c, k) => {
         if (core.has(c)) return;
-        const b = before.get(key(c))!, fresh = resolved[k].issues ?? [];
+        const b = before.get(key(c))!, fresh = own[k];
         let r = 0;
         for (const q of Object.keys(c)) delete (c as unknown as Record<string, unknown>)[q];
         Object.assign(c, copy(b, v => built(v) ? { ...v } : fresh[r++] ?? { ...v }));

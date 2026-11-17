@@ -7,7 +7,7 @@
 //
 // Prints: the cases whose result differs (bill lines, validity, crossings), how the finishes were built
 // (local / whole route and why), and each finish whose local build is not the whole route's. Exit 1 when a
-// result differs.
+// result or a local build differs (a gate: scripts/gates.sh full).
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -105,5 +105,5 @@ if (process.env.LOCAL_REPORT_PACK) {
     for (const x of r.differs ?? []) console.log(`    ${x.key} km ${(x.s / 1000).toFixed(2)}, ${Math.round(x.d)} m from a change${x.core ? ' (built again)' : ''}: whole route ${x.whole}; local ${x.local}`);
   }
   console.log(`${off.length} of ${finishes.filter(f => f.report.path === 'local').length} local builds differ from the whole route's`);
-  process.exit(differences ? 1 : 0);
+  process.exit(differences || off.length ? 1 : 0);
 }
