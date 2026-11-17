@@ -695,8 +695,9 @@ equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`styl
   (23.4 bn): the long tunnel's per-metre price is the suspect (≈ 1.0 M CZK per tube-m implied against SPK's 1.55 M),
   recorded, not changed.
 - **Known limits.** The structure choice weighs the buildings under the whole deck strip (cached per evaluation),
-  the bill only those that go. Side spans are a minimum, not designed; a cantilever's haunch is drawn as a constant
-  depth; the arch's rib depth (2 m) is drawn and checked, not priced. Long spans over obstacles stay within 180 m
+  the bill only those that go. Side spans are a minimum, not designed, and an end span next to an abutment is what is
+  left there (taken as anchored at the abutment; town-like layouts can leave 30 m beside a 90 m span); a
+  cantilever's haunch is drawn as a constant depth; the arch's rib depth (2 m) is drawn and checked, not priced. Long spans over obstacles stay within 180 m
   (the engine's limit, inside CTU's 80–250 m). Evaluate: work.support +5 ms on town-centre (5 passes × the styles'
   plans), the structure choice now memoises run prices (cheaper than before); a drag preview weighs an arch only
   where asked and long spans only where they may pay (docs/evaluate-performance.md).

@@ -374,6 +374,8 @@ export function remedyBridgeSupports(r: SupportRoute, terrain: Terrain, roads?: 
                 if (Math.abs(supports[j] - supports[at]) >= need - 1e-6 || isEnd(supports[j])) break;
                 keep[j] = false;
               }
+              // (reaching an abutment first, the end span is what is left: anchored at the abutment, not checked —
+              // Hačky's 60 m end span beside its 116 m one is 0.52 ×; PLAN.md "Bridge styles", known limits)
               // the side span just as long as it needs, where a pier can stand there (the next span not too short)
               const x = supports[at] + dir * need, next = supports[Math.max(0, Math.min(supports.length - 1, j))];
               if (!isEnd(next) && Math.abs(next - supports[at]) > need + MIN_PIER_GAP && !blocked(x, true)) added.push(x);

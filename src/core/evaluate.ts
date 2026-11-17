@@ -7,7 +7,7 @@ import { footprintConflicts, structureFootprints, type FootprintConflict } from 
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
 import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
-import { bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost, longMayPay, type BridgeLayout } from './bridge';
+import { ARCH_DECK_DEPTH, archRib, bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost, longMayPay, type BridgeLayout } from './bridge';
 import { BRIDGE_STYLES } from './data/bridges';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
@@ -1927,6 +1927,12 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
       while (k + 2 < supports.length && supports[k + 1] <= st.s[i]) k++;
       const span = run.pierStations ? supports[k + 1] - supports[k] : bridgeLayout(run.length).span;
       soffit[i] = grade[i] - Math.max(1.2, (run.arch && st.s[i] > run.arch.s0 && st.s[i] < run.arch.s1 ? BRIDGE_STYLES.arch.columnSpan : span) / 20);
+    }
+    // under an arch, its rib (as support-layout checked and the view draws it)
+    if (run.arch) {
+      const { s0: sa, s1: sb } = run.arch, at = (x: number) => { const j = Math.min(n - 2, Math.floor(x / ds)), t = x / ds - j; return grade[j] * (1 - t) + grade[j + 1] * t; };
+      const rib = archRib(sa, sb, setup.ground[Math.round(sa / ds)], setup.ground[Math.round(sb / ds)], at((sa + sb) / 2) - ARCH_DECK_DEPTH);
+      for (let i = run.i0; i <= run.i1; i++) if (st.s[i] > sa && st.s[i] < sb) soffit[i] = Math.min(soffit[i], rib(st.s[i]));
     }
   }
   const underDeck = (i: number, j: number) => {

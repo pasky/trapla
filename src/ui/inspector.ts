@@ -674,6 +674,7 @@ export class Inspector {
       if (choice !== undefined && !b.classList.contains('on')) {
         const run = this.r?.runs.find((q) => q.kind === choice && q.s1 > sel.s0 && q.s0 < sel.s1), s0 = run?.s0 ?? sel.s0, s1 = run?.s1 ?? sel.s1;
         const value = choice === KIND.tunnel ? (b.dataset.method === 'cut' ? 'cut' : undefined) : b.dataset.style as StructureChoice;
+        // (where the player painted this bridge or tunnel it stays theirs: overrides.ts paintOverride)
         this.ev.structure?.(choice, s0, s1, value, activeStructure({ s0, s1 }, this.d?.structureOverrides) !== String(choice));
         return;
       }

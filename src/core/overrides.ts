@@ -22,8 +22,17 @@ export function paintOverride(ranges: readonly StructureOverride[], s0: number, 
     }
   }
   const choice = kind === 2 && method === 'cut' ? { method } as const : kind === 1 && method && method !== 'cut' ? { style: method } : undefined;
-  // (only a choice about Auto's structure, and none: the stretch is simply Auto's again)
-  if (kind !== null && !(auto && !choice)) out.push({ s0, s1, kind, ...choice, ...(auto ? { auto: true as const } : {}) });
+  // A choice about Auto's structure: where the player painted that structure, it stays theirs (with the choice);
+  // elsewhere only the choice (and with none, the stretch is simply Auto's again).
+  const own = auto ? ranges.filter(r => !r.auto && r.kind === kind && r.s1 > s0 && r.s0 < s1).map(r => [Math.max(s0, r.s0), Math.min(s1, r.s1)] as const).sort((a, b) => a[0] - b[0]) : [];
+  if (kind !== null && auto) {
+    let at = s0;
+    for (const [a, b] of [...own, [s1, s1] as const]) {
+      if (a > at && choice) out.push({ s0: at, s1: a, kind, ...choice, auto: true });
+      if (b > a) out.push({ s0: a, s1: b, kind, ...choice });
+      at = Math.max(at, b);
+    }
+  } else if (kind !== null) out.push({ s0, s1, kind, ...choice });
   out.sort((a, b) => a.s0 - b.s0);
   const merged: StructureOverride[] = [];
   for (const r of out) {
