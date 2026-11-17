@@ -120,7 +120,7 @@
  * 42: protected nature areas (research/75): Auto keeps its works out of nature reserves, monuments, Natura 2000
  * sites, national parks and CHKO zones I–II (over them on a bridge with no supports inside, under them mined);
  * tunnels kept to 3 %, never steeper than 5 % (NV 264/2009, research/73). D11 frozen unchanged; d35 stage-1
- * 19,050 → 20,029 M (a 3.2 km tunnel under Pod skálou), d35 road 6,561 → 9,518, d35-full 32,380 → 34,216, D3
+ * 19,050 → 20,029 M (a 3.2 km tunnel under Pod skálou), d35 road 6,561 → 9,468, d35-full 32,380 → 34,177, D3
  * motorway 14,284 → 15,017 (the Sázava bridge's piers out of the Natura 2000 river), d3-full 37,865 → 36,378. */
 export const COST_MODEL_VERSION = 42;
 

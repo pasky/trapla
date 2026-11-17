@@ -998,15 +998,16 @@ Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Ac
   (owner's decision).
 - **Auto keeps out like a designer** (evaluate.ts): where an area lies under our crown the grade search must pass a
   bridge's height over it (only if the area is narrower along the road than the longest span, 180 m) or 14 m under it,
-  mined; beside it, within a dug tunnel end's reach, no tunnel end (the line at most a portal's depth in its cut, or
-  mined). These are hard clearances (a penalty no structure outweighs); the search does not take the narrow corridor or
-  the normal band where they are missed. Piers and bridge ends stand clear of areas (support-layout.ts); a wall keeps
+  mined. These are hard clearances (a penalty no structure outweighs); the search does not take the narrow corridor or
+  the normal band where they are missed. Beside it, within a dug tunnel end's reach (≈ 30 m), the line is asked to be
+  at most a portal's depth in its cut or mined (an ordinary clearance penalty: a wall may do instead). Piers and bridge ends stand clear of areas (support-layout.ts); a wall keeps
   our slope out of one beside us, else a bridge or tunnel (retaining.ts); rebuilt roads and reroutes go round.
-- **Tunnels at most 3 %** (NV 264/2009 annex 2.2, Hessen Mobil 2006; research/73 §3): in the grade search's tunnel
-  mode a line steeper than 3 % pays 1 M CZK per metre for each 0.1 % over (PROVISIONAL weight; no price exists), and
-  none is steeper than 5 %. The tunnel card says when a tunnel is steeper than 3 % ("needs extra safety measures after a
-  risk study"); the player's tunnel steeper than 5 % is a problem (basis law); Auto's only where its search found no
-  other way (the Act's own exception), said on its card. The search tries the wide band and the fine grid near a
+- **Tunnels at most 3 %** (NV 264/2009 annex 2.2 for tunnels over 500 m, Hessen Mobil 2006 for any; research/73 §3): in
+  the grade search's tunnel mode a line in a tunnel steeper than 3 % pays 1 M CZK per metre for each 0.1 % over
+  (PROVISIONAL weight; no price exists), and none wholly in a tunnel is steeper than 5 %. The card of a tunnel over
+  500 m says when it is steeper than 3 % ("needs extra safety measures after a risk study"); the player's tunnel over
+  500 m steeper than 5 % is a problem (basis law); Auto's only where its search found no other way (the Act's own
+  exception), said on its card. The search tries the wide band and the fine grid near a
   tunnel line (its coarse grade steps miss 3 % by a step).
 - **A stream under an embankment a bridge's height above it**, with no bridge near, gets a short bridge of its own
   (the D11 starter's tunnel, now 3 %, left a stream at its toe under 13 m of fill).
@@ -1014,8 +1015,8 @@ Research: research/73 (why the real D35 has a 4 km tunnel), /75 (data and the Ac
   out of the protected forest, and 740 m of bridges (real: 3,983 m, ≈ 700 m): 20,029 M. The real-portal line bills
   21,155 M (+6 %).
 - **Bills** (model 41 → 42): D11 frozen fixtures and the Královec railway unchanged; D11 starter (QA tests) 8,978 →
-  9,052 M; d35 stage-1 19,050 → 20,029, d35 road 6,561 → 9,518 (a 3.1 km tunnel and its escape tunnel where its line
-  ended in the monument), d35-full 32,380 → 34,216, D3 motorway 14,284 → 15,017 (the Sázava viaduct 820 → 929 m, its
+  9,052 M; d35 stage-1 19,050 → 20,029, d35 road 6,561 → 9,468 (a 3.1 km tunnel and its escape tunnel where its line
+  ended in the monument), d35-full 32,380 → 34,177, D3 motorway 14,284 → 15,017 (the Sázava viaduct 820 → 929 m, its
   piers out of the Natura 2000 river), d3-0302 7,045 → 7,026, d3-0304 10,133 → 10,112, d3-full 37,865 → 36,378 (its
   800 m tunnel at km 9.7 was 3.8 % steep; without it the line stays higher on a longer bridge, 1.5 bn cheaper by our
   prices), the rest unchanged. Outcome audit (24 random D11 lines): VALID and problem counts unchanged, flags 76 → 74,
