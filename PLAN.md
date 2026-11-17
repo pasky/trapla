@@ -734,13 +734,14 @@ equalSpanRunCost), `support-layout.ts` (a plan per style), `overrides.ts` (`styl
   separation, narrowing, regrade and split passes: 10 finishes on the whole D3), and each finish built every
   crossing of the route. Now a later finish compares what the crossing build reads of our road (grade, kind,
   widths, urban, demolished houses, each crossing's resolved treatment) with the earlier finishes', builds again
-  the crossings within 2 km (`linkHardReach`) of a changed station with those 2 km further out as context, and
-  takes the others as built before (`src/core/crossings-kept.ts`). The whole route is built when the engine's
-  rollback fired, when over 90 % would be built anyway, or when a kept and a rebuilt crossing are led to each
-  other and the target changed. Grade line, engineering, quantities, buildings and the footprint screen stay
-  whole-route.
+  the crossings within 2 km in plan (`linkHardReach`) of a changed station (and shaped reroutes, and kept
+  crossings whose works lie beside the change) with those 2 km further out and their carriers and followers as
+  context, and takes the others as built before (`src/core/crossings-kept.ts`). The whole route is built when
+  the engine's rollback fired, when over 90 % would be built anyway, when a context crossing in reach of a
+  rebuilt one came out other than kept, or when a kept crossing is led to a rebuilt one that changed. Grade
+  line, engineering, quantities, buildings and the footprint screen stay whole-route.
 - **Bills** (model 36 → 37): none moved. 177 / 177 whole results of `scripts/exact.ts` identical; outcome audit
-  output identical; ≈ 2,100 local builds checked against a whole-route build on the same inputs under the exact
+  output identical; 2,068 local builds checked against a whole-route build on the same inputs under the exact
   cases, 100 more random D11 designs, the outcome audit, edit-locality, choice and straighten audits, bench and
   the ten scenario checks: no crossing differs. A version all the same: it is not proven that a crossing 2 km
   from every change cannot come out differently, and a saved best is re-evaluated rather than trusted.

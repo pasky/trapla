@@ -2100,7 +2100,7 @@ function finishCrossings(ctx: EvalContext, opts: EvalOptions, strict: ReadonlySe
       streams: (p, q) => terrain.watercourses?.intersections(2, [0, Math.hypot(q.x - p.x, q.y - p.y)], [p.x, q.x], [p.y, q.y]).map(c => ({ x: c.x, y: c.y, crossing: c })) ?? [],
       left, right };
     // (a retry builds only the crossings near what it changed: crossings-kept.ts)
-    crossingIssues = buildCrossings(opts.window ? undefined : opts.passCache?.crossings, st, st.s, { grade, kind, width: crossWidth, left, right, urban: urbanCentre },
+    crossingIssues = buildCrossings(opts.window ? undefined : opts.passCache?.crossings, st, { grade, kind, width: crossWidth, left, right, urban: urbanCentre },
       new Map(demolished.map(p => [p.j, p.i])), crossings, crossingIssues, items => buildCrossingGeometry(items, route, (x, y) => terrain.heightAt(x, y), ctx.roads, reroutes),
       resolve, () => !!reroutes.rolledBack, path => { timing[`count.crossings.${path}`] = (timing[`count.crossings.${path}`] ?? 0) + 1; });
   }

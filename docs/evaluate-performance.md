@@ -24,16 +24,21 @@ within 2 km of a change are 33 % of the route on average (500 m: 15 %).
 left, right, urban), the houses our road had demolished, each crossing as `resolveCrossings` left it, and each
 crossing as built. A later finish of the same evaluation takes the kept finish that differs from it at the
 fewest stations (a resolved crossing that differs, is new or is gone counts at its station; a house at the
-station that took it), builds again the crossings within `LOCAL_CORE` = 2 km (`linkHardReach`: how far a reroute
-is led and a crossed way traced) of a changed station, together with those up to `LOCAL_CONTEXT` = 2 km further
-out (what the rebuilt ones may be led to and are weighed against), and takes every other crossing as the kept
-finish built it (copies, on this finish's own objects). `resolveCrossings` stays whole-route (0.4 ms). The
-whole route is built instead when
+station that took it). **Built again** are the crossings within `LOCAL_CORE` = 2 km (`linkHardReach`: how far a
+reroute is led and a crossed way traced) of a changed station, measured in plan so that the other leg of a
+hairpin counts; every reroute the player shaped (it may run 8 km); and a kept crossing any point of whose built
+geometry lies within `LOCAL_BESIDE` = 100 m (the corridor a reroute's line is sought in) of our earthworks at a
+changed station, wherever along the road its crossing is. **Built with them, results not taken**: the crossings
+up to `LOCAL_CONTEXT` = 2 km further out (from the change, and along the road from each crossing built again),
+and whatever any of these is led to or led from, in the kept build and as resolved now, so that none misses its
+carrier or its followers. Every other crossing is taken as the kept finish built it (copies, on this finish's
+own objects). `resolveCrossings` stays whole-route (0.4 ms). The whole route is built instead when
 
 - the kept finish's build rolled back, or the local one does (`CrossingCache.rolledBack`);
 - the crossings to build are over 90 % of all (`LOCAL_MAX_SHARE`);
-- a crossing built again is led to a context crossing that came out other than it was kept (a context
-  crossing at the outer edge has its own carriers outside the subset: its result is never taken);
+- a context crossing within reach (2 km along the road) of one built again came out other than it was kept:
+  the rebuilt ones were then led and weighed among neighbours the whole route would not have given them
+  (once in the 2,068 local builds below; a context crossing further out may differ, its carriers can lie outside);
 - a kept crossing is led to one built again that changed.
 
 The grade line, the engineering passes, quantities, buildings and the footprint screen of a retry are whole-route
@@ -49,12 +54,12 @@ treatments decides otherwise than one that sees them mid-pass (7 of 241 finishes
 
 | inputs | local builds | differ from the whole route's | results |
 |---|---|---|---|
-| `exact.ts`, 177 cases (every pack's straight, saved designs, starters, 12 random D11) | 220 of 241 later finishes (18 whole for the share, 3 for the rollback) | 0 | 177 / 177 identical to main `1ba513d` |
-| `local-retry-report.ts --only d11 --random 100 --seed 5` | 526 of 553 | 0 | 221 / 221 identical |
-| `outcome-audit.ts --straight scripts/*-design.json --random 24` | 128 of 136 | 0 | output identical to main's but for the times (32 bills, every flag) |
-| `edit-locality.ts` (random edits: D11, D3 sections, whole D3 / D35, the railway) | 335 of 356 | 0 | exit 0 |
-| `choice-audit.ts`, `straighten-audit.ts`, `bench.ts scripts/*.json`, `eval-regression.ts` | 87, 51, 12, 14 | 0 | exit 0 |
-| `scenarios/check.ts`, ten packs | 750 | 0 | exit 0 |
+| `exact.ts`, 177 cases (every pack's straight, saved designs, starters, 12 random D11) | 214 of 241 later finishes (24 whole for the share, 3 for the rollback) | 0 | 177 / 177 identical to main `1ba513d` |
+| `local-retry-report.ts --only d11 --random 100 --seed 5` | 522 of 553 (25 share, 5 rollback, 1 context) | 0 | 221 / 221 identical |
+| `outcome-audit.ts --straight scripts/*-design.json --random 24` | 126 of 136 | 0 | output identical to main's but for the times (32 bills, every flag) |
+| `edit-locality.ts` (random edits: D11, D3 sections, whole D3 / D35, the railway) | 324 of 356 | 0 | exit 0 |
+| `choice-audit.ts`, `straighten-audit.ts`, `bench.ts scripts/*.json`, `eval-regression.ts` | 85, 51, 12, 14 | 0 | exit 0 |
+| `scenarios/check.ts`, ten packs | 720 | 0 | exit 0 |
 
 No bill, validity or other field of any result moved. It is still a model change, not a refactor: nothing
 proves that a crossing 2 km from every change cannot come out differently (see the seams), so it carries a
@@ -79,15 +84,21 @@ which this leaves alone.
   else the build reads is the same in every pass of an evaluation (stationing, terrain, road network, the
   player's choices, kept buildings, other roads' works). A per-pass input added to `CrossingRoute` must be added
   to `CrossingInputs` (noted there); the gate sees an omission only where a case exercises it.
-- *Reach.* 2 km covers a reroute's target, the crossed way's traced line (2 km from the crossing) and ramps and
-  ties. It is not a proven bound on what a build reads of our road: a reroute's own path, or a way on a hairpin
-  of ours, can come nearer to a station further along. The study found no difference beyond 620 m.
+- *Reach.* 2 km in plan covers a reroute's target, the crossed way's traced line (2 km from the crossing) and
+  ramps and ties, also across a hairpin; a shaped reroute is always built again; a kept crossing's works that
+  lie beside a change are found from its geometry. What is left unproven: a remedy the kept build weighed and
+  rejected whose line would pass a change more than 2 km in plan from its crossing (an Auto reroute's line runs
+  between its crossing and a target ≤ 2 km along the road, within 100 m of our earthworks). The study found no
+  difference beyond 620 m. (The first version measured along the road only and checked only the target a rebuilt
+  crossing was led to; an independent review named the hairpin and a context crossing losing a follower outside
+  the subset, hence the plan distance, the geometry test, the links' closure and the rule on every context
+  crossing in reach.)
 - *Order.* The engine reconsiders the dearest crossings first, among the crossings it is given. The subset keeps
   that order; what a context crossing would have become on the whole route may differ at the subset's outer
-  edge, which is why context results are not taken and a target among them is checked.
+  edge, which is why context results are not taken and those in reach of a rebuilt crossing must equal the kept.
 - *A strict retry or a split triggered elsewhere* changes the engineering or the resolved crossings there: those
   stations count as changed. *A remedy weighed against a crossing outside the subset* cannot happen: targets
-  are within 2 km of a crossing built again, the subset reaches 4 km from the change.
+  are within 2 km along the road of a crossing built again, and all of those are in the subset.
 - *Structure runs, walls, `regionCount`*: nothing but crossings is spliced; the footprint screen and every check
   run on the complete crossing list of the finish.
 - *Later writes.* A result's crossings are written to after the build (`raised`, a split motorway's shared

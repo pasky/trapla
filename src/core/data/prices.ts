@@ -93,7 +93,7 @@
  * ≥ 0.92; the structure choice weighs the bill's tube rows by the tunnel's length (it took the ≤ 500 m row).
  * 37: a later finish of an evaluation (a retry) builds again only the crossings within 2 km of where its road
  * differs from an earlier finish's and takes the others as built there (crossings-kept.ts). No bill, validity
- * or other field moved on any checked design (exact.ts 177 / 177, the outcome audit, ≈ 2,100 local builds
+ * or other field moved on any checked design (exact.ts 177 / 177, the outcome audit, 2,068 local builds
  * against whole-route ones); a version because that is measured, not proven. */
 export const COST_MODEL_VERSION = 37;
 
