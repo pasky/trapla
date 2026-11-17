@@ -222,6 +222,8 @@ export const TUNNEL_RULES = {
    * within `autoMaxGrade`; above it a note, above `maxGrade` a problem. */
   autoMaxGrade: 0.03,
   maxGrade: 0.05,
+  /** NV 264/2009 is the act on tunnels longer than 500 m: the note and the problem are for those, m */
+  gradeFromLength: 500,
 };
 
 /**

@@ -61,7 +61,7 @@ describe('protected-area text', () => {
       const terrain = new Terrain({ nx: 10, ny: 10, cell: 10, base: 0, scale: 0.1, q: new Uint16Array(100), lc: new Uint8Array(100),
         protectedAreas: { version: 1, source: 't', sites: [{ kind, zone, of: kind === 'OP' ? 'PP' : undefined, name: 'Mon', rings: [square(0, 0, 100, 100)] }] } });
       for (const works of [['earth'], ['pier'], ['abutment', 'pier'], ['portal', 'pit'], ['pit', 'earth', 'portal']] as NatureWork[][]) {
-        const hits: NatureHit[] = works.map((work, k) => ({ site: 0, level: 'ban', work, i0: k, i1: k, s0: 100 * k, s1: 100 * k + 10, area: 25, x: 5, y: 5 }));
+        const hits: NatureHit[] = works.map((work, k) => ({ site: 0, level: 'ban', builtUp: false, work, i0: k, i1: k, s0: 100 * k, s1: 100 * k + 10, area: 25, x: 5, y: 5 }));
         for (const v of natureProblems(terrain, hits, true, 2000)) { checkViolation(v, `${kind} ${zone ?? ''} ${works}`); expect(v.basis).toBe('law'); }
         check(`${kind} note`, natureNote(terrain, hits.map(h => ({ ...h, level: 'consent' as const })), false));
       }

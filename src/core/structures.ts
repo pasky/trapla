@@ -95,6 +95,9 @@ export function cutCoverMask(kind: ArrayLike<number>, runs: readonly Run[], h: A
   return out;
 }
 
+/** The title of the problem of a tunnel steeper than the law allows (evaluate.ts; the tunnel card says nothing more
+ * where it stands) */
+export const TUNNEL_TOO_STEEP = `This tunnel is steeper than ${TUNNEL_RULES.maxGrade * 100} %`;
 /** the steepest grade in a tunnel run i0…i1, as a fraction */
 export function tunnelGrade(r: Pick<Run, 'i0' | 'i1'>, grade: ArrayLike<number>, ds: number): number {
   let g = 0;

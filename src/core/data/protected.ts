@@ -1,9 +1,10 @@
 // Nature protection areas (research/75; data: AOPK ČR open data, pipeline/fetch_protected.py and
 // build_protected.py, a pack's `protected.json`). What zákon 114/1992 Sb. forbids in each kind of area and
-// how the game treats works there: a `ban` or `consent` area takes no works of ours (cuts, fills, tunnel
-// ends and their pits, bridge supports, walls, rebuilt roads): Auto bridges over it with no supports inside,
-// takes the road under it in a mined tunnel, or the player moves the route; the player's works there are a
-// problem. An `info` area is only drawn and named.
+// how the game treats works there: a `ban` area takes no works of ours (cuts, fills, tunnel ends and their pits,
+// bridge supports, walls, rebuilt roads): Auto bridges over it with no supports inside, takes the road under it in
+// a mined tunnel, or the player moves the route; the player's works there are a problem. A `consent` area (a
+// protection zone) takes them with a note that they need the nature authority's consent; an `info` area (a bird
+// area, an outer zone of a landscape area) is drawn and named, with a note where works stand in it.
 
 /** AOPK category codes: national / nature reserve and monument, protection zone, Natura 2000 site of community
  * importance (EVL) and bird area (PO), national park, protected landscape area (CHKO). */
@@ -86,7 +87,12 @@ export function protectedLabel(site: Pick<ProtectedSiteData, 'kind' | 'zone' | '
   return KIND_LABEL[site.kind];
 }
 
-/** a site's name in a sentence: "the nature monument Pod skálou" */
+/** the label with its article in a title: "a nature monument", "zone II of a protected landscape area" */
+export function protectedLabelA(label: string): string {
+  return /^(zone|protection zone)\b/.test(label) ? label : `a ${label}`;
+}
+
+/** a site's name in a sentence: "Pod skálou (nature monument)" */
 export function protectedName(site: Pick<ProtectedSiteData, 'kind' | 'zone' | 'of' | 'name'>): string {
   if (site.kind === 'OP') return `the protection zone of ${site.name}`;
   return `${site.name} (${protectedLabel(site)})`;

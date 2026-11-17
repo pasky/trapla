@@ -19,7 +19,7 @@ import { wallOverrideMasks, type BuildingOverride } from '../core/build-controls
 import type { Design, Result } from '../core/evaluate';
 import type { StructureChoice, StructureKind } from '../core/overrides';
 import { noiseBreakdown, noiseField, type NoiseField, type NoiseReceiver } from '../core/noise';
-import { KIND, tunnelGrade } from '../core/structures';
+import { KIND, TUNNEL_TOO_STEEP, tunnelGrade } from '../core/structures';
 import { STRUCTURE_RULES, TUNNEL_RULES } from '../core/data/prices';
 import { czk } from './costgroups';
 import { floorLevels, noisePlan, noiseSectionSvg, type HouseRect } from './noise-section';
@@ -379,8 +379,8 @@ export class Inspector {
       const cc = tunnel.cutCoverM ?? 0, mined = Math.max(0, tunnel.length - cc);
       const how = [mined > 0 ? `mined ${m0(mined)}` : '', cc > 0 ? `cut and cover ${m0(cc)}${mined > 0 ? ' at its ends' : ''}` : '',
         (tunnel.tubes ?? 1) >= 2 ? 'two tubes (heavy traffic)' : (tunnel.tubes ?? 1) > 1 ? 'with an escape tunnel beside it' : ''].filter(Boolean).join(' · ');
-      const steep = tunnelGrade(tunnel, r.grade, r.ds);
-      const steepNote = steep > TUNNEL_RULES.maxGrade + 1e-6 && !r.violations.some((v) => v.s0 === tunnel.s0 && /^This tunnel is steeper/.test(v.title))
+      const steep = tunnel.length > TUNNEL_RULES.gradeFromLength ? tunnelGrade(tunnel, r.grade, r.ds) : 0;
+      const steepNote = steep > TUNNEL_RULES.maxGrade + 1e-6 && !r.violations.some((v) => v.s0 === tunnel.s0 && v.title === TUNNEL_TOO_STEEP)
         ? `<div class="sub">Up to ${(steep * 100).toFixed(1)} % steep: a tunnel steeper than ${TUNNEL_RULES.maxGrade * 100} % is allowed only where the ground leaves no other way, with extra safety measures.</div>`
         : steep > TUNNEL_RULES.autoMaxGrade + 1e-6 && steep <= TUNNEL_RULES.maxGrade + 1e-6
           ? `<div class="sub">Up to ${(steep * 100).toFixed(1)} % steep: a tunnel steeper than ${TUNNEL_RULES.autoMaxGrade * 100} % needs extra safety measures after a risk study.</div>` : '';

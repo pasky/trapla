@@ -52,7 +52,7 @@ export function protectedRasterCells(terrain: Terrain, c: FootprintCell,
 /** A cell of a nature protection area (protected-areas.ts) inside a footprint: the area that rules works there
  * (index into terrain.protectedAreas.sites) and whether it takes no works (`ban`), needs the nature authority's
  * consent (`consent`) or only a note (`info`). */
-export interface NatureCell { x: number; y: number; index: number; site: number; level: ProtectedLevel }
+export interface NatureCell { x: number; y: number; index: number; site: number; level: ProtectedLevel; builtUp: boolean }
 /** The protection-area cells inside a footprint, for a road of this kind (a motorway is barred from a whole
  * protected landscape area); a national park's ban stops at its built-up areas. */
 export function natureCells(terrain: Terrain, c: FootprintCell, motorway: boolean, visit: (cell: NatureCell) => void): void {
@@ -66,7 +66,7 @@ export function natureCells(terrain: Terrain, c: FootprintCell, motorway: boolea
       if (!insideFootprint({ x, y }, c, step / 2)) continue;
       const index = row * terrain.nx + col, builtUp = (terrain.lc[index] & BUILTUP_BIT) !== 0;
       const site = areas.rulingSite(combo, motorway, builtUp, true);
-      if (site >= 0) visit({ x, y, index, site, level: areas.rule(site, motorway, builtUp).level });
+      if (site >= 0) visit({ x, y, index, site, level: areas.rule(site, motorway, builtUp).level, builtUp });
     }
   }));
 }

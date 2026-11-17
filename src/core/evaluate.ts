@@ -46,7 +46,7 @@ import type { LinkObstacle } from './link-route';
 import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
-import { allCut, chooseStructures, cutCoverMask, KIND, tunnelGrade, type Run } from './structures';
+import { allCut, chooseStructures, cutCoverMask, KIND, TUNNEL_TOO_STEEP, tunnelGrade, type Run } from './structures';
 import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
@@ -1253,7 +1253,9 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     // more than any structure: elsewhere the grade line stays as it was.
     // A protected area that takes no works under our crown is the law, not a price: Auto pays any structure to
     // keep out of it (research/75).
-    const nature = natureCrown.some(Boolean) ? natureCrown : undefined;
+    // (the stations beside it, where only a dug tunnel end would reach it, keep the ordinary clearance penalty: a wall
+    // or a cut no deeper than a portal may do there)
+    const nature = natureCrown.some(v => v === 1) ? Uint8Array.from(natureCrown, v => v === 1 ? 1 : 0) : undefined;
     const penaltyAt = opts.separate || nature ? new Float64Array(n).fill(CLEARANCE_PENALTY) : undefined;
     if (nature) for (let i = 0; i < n; i++) if (nature[i]) penaltyAt![i] = SEPARATION_PENALTY;
     if (penaltyAt) for (const r of opts.separateWater ?? []) {
@@ -2665,7 +2667,8 @@ function evaluatePass(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Resu
   let spanned = false;
   for (const c of streams) {
     const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
-    // (or a stream with no bridge near, where our embankment stands a bridge's height over it: a short bridge of its own)
+    // (or a stream where our embankment stands a bridge's height over it: a short bridge of its own, also with no
+    // bridge near)
     const high = c.feature === 'stream' && elevations(buildProfile(first.vpis, setup.vlim.crest, setup.vlim.sag), setup.st.s.subarray(i0, i1 + 1))
       .every((z, k) => z - setup.ground[i0 + k] >= STRUCTURE_RULES.bridgeMinHeight);
     if (c.feature !== 'water' && !high && !first.kind.subarray(Math.max(0, i0 - 2), Math.min(n, i1 + 3)).some(k => k === KIND.bridge)) continue;
@@ -2833,13 +2836,16 @@ function tunnelGradeViolations(runs: readonly Run[], grade: ArrayLike<number>, d
    * search found no other way (the Act's own exception), said on the tunnel's card */
   manual?: ArrayLike<number>): Violation[] {
   const out: Violation[] = [];
-  for (const r of runs) if (r.kind === KIND.tunnel && (!manual || Array.prototype.some.call(manual, (v: number, i: number) => i >= r.i0 && i <= r.i1 && v === KIND.tunnel))) {
-    const g = tunnelGrade(r, grade, ds);
+  for (const r of runs) {
+    if (r.kind !== KIND.tunnel || r.length <= TUNNEL_RULES.gradeFromLength) continue;
+    let painted = !manual;
+    for (let i = r.i0; i <= r.i1 && !painted; i++) if (manual![i] === KIND.tunnel) painted = true;
+    const g = painted ? tunnelGrade(r, grade, ds) : 0;
     if (g <= TUNNEL_RULES.maxGrade + 1e-6) continue;
-    out.push({ kind: 'structure', basis: 'law', s0: r.s0, s1: r.s1, title: `This tunnel is steeper than ${TUNNEL_RULES.maxGrade * 100} %`,
+    out.push({ kind: 'structure', basis: 'law', s0: r.s0, s1: r.s1, title: TUNNEL_TOO_STEEP,
       fix: `Make the road at most ${TUNNEL_RULES.maxGrade * 100} % steep from km ${(r.s0 / 1000).toFixed(2)} to km ${(r.s1 / 1000).toFixed(2)} (now ${(g * 100).toFixed(1)} %), or end the tunnel where it steepens`,
       detail: 'A new road tunnel may not be steeper than this unless the ground leaves no other way; above 3 % it needs extra safety measures.',
-      rule: 'NV 264/2009 Sb. annex 2.2: no new tunnel steeper than 5 %, extra safety measures above 3 %' });
+      rule: 'NV 264/2009 Sb. (tunnels over 500 m) annex 2.2: no new tunnel steeper than 5 %, extra safety measures above 3 %' });
   }
   return out;
 }
