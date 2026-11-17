@@ -90,8 +90,12 @@
  * A house under a deck ≥ 15 m up and 3 m over its roof stays unless a pier stands on it (research/62). Our bridge
  * over a road the player chose is met through the regrade retry, its price said.
  * 36: a long mined tube costs less per metre (Hessen's length curve, research/64): × 0.957 at 1 km, 0.935 at 2 km,
- * ≥ 0.92; the structure choice weighs the bill's tube rows by the tunnel's length (it took the ≤ 500 m row). */
-export const COST_MODEL_VERSION = 36;
+ * ≥ 0.92; the structure choice weighs the bill's tube rows by the tunnel's length (it took the ≤ 500 m row).
+ * 37: a later finish of an evaluation (a retry) builds again only the crossings within 2 km of where its road
+ * differs from an earlier finish's and takes the others as built there (crossings-kept.ts). No bill, validity
+ * or other field moved on any checked design (exact.ts 177 / 177, the outcome audit, ≈ 2,100 local builds
+ * against whole-route ones); a version because that is measured, not proven. */
+export const COST_MODEL_VERSION = 37;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };
