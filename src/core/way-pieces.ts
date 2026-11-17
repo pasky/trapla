@@ -96,6 +96,8 @@ export interface PieceAccess {
   connected: [boolean, boolean];
   /** Over the network from one cut end round to the other, m (Infinity: not within the search). */
   round: number;
+  /** Per piece cut off: all it still reaches (its length over the network from the cut end, and its far end). */
+  stubs?: [{ length: number; far: XY } | undefined, { length: number; far: XY } | undefined];
 }
 
 /** The two pieces of `way` beyond its cut ends `ends` (on the way or a way continuing it, just outside the cut). */
@@ -133,11 +135,12 @@ export function pieceAccess(ctx: PieceContext, way: number, ends: [XY, XY]): Pie
       if (ctx.severed(p, q)) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y); dist.set(n, d); heap.push(d, n);
     }
-    let reached = false, round = Infinity;
+    let reached = false, round = Infinity, extent = 0, far = p, cut = false;
     while (heap.size) {
       const [d, u] = heap.pop();
       if (d > (dist.get(u) ?? Infinity)) continue;
-      if (d >= round || d > limit) break;
+      if (d >= round || d > limit) { cut = true; break; }
+      if (d > extent) { extent = d; far = { x: g.x[u], y: g.y[u] }; }
       for (const e of g.adj[u]) {
         if (e === goal && !ctx.severed({ x: g.x[u], y: g.y[u] }, ends[1])) round = Math.min(round, d + Math.hypot(g.x[u] - ends[1].x, g.y[u] - ends[1].y));
         if (e === start || !open(e)) continue;
@@ -149,12 +152,14 @@ export function pieceAccess(ctx: PieceContext, way: number, ends: [XY, XY]): Pie
       }
       if (reached && goal === undefined) break;
     }
-    return { reached, round };
+    // (a piece whose whole network was gone through without meeting a public road: how far it reaches, and its far end)
+    return { reached, round, stub: reached || cut ? undefined : { length: extent, far } };
   };
   const s0 = startOf(ends[0]), s1 = startOf(ends[1]);
-  const connected: [boolean, boolean] = [s0 >= 0 && search(s0, ends[0]).reached, s1 >= 0 && search(s1, ends[1]).reached];
+  const a = s0 >= 0 ? search(s0, ends[0]) : undefined, b = s1 >= 0 ? search(s1, ends[1]) : undefined;
+  const connected: [boolean, boolean] = [!!a?.reached, !!b?.reached];
   const round = ctx.round !== undefined && connected[0] && connected[1] && s0 >= 0 && s1 >= 0 && s0 !== s1 ? search(s0, ends[0], s1, ctx.round).round : Infinity;
-  return { connected, round };
+  return { connected, round, stubs: [a?.stub, b?.stub] };
 }
 
 class MinHeap {

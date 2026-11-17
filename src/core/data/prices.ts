@@ -135,8 +135,11 @@
  * turning areas; no reroute joins its own way's line. D11 frozen vs model 43: straight +17 M, best −59, demo −51,
  * direct-80 −25, direct-90 −125, town-centre −100 (tracks whose parts still reach the network closed instead of
  * rerouted, tracks beside a bridge led under it; the straight design's junction approach over the Trutnov level
- * crossing cleared by the grade). */
-export const COST_MODEL_VERSION = 44;
+ * crossing cleared by the grade).
+ * 45: a piece of a cut way that is only a short stub serving nothing (≤ 100 m over the network, no house within 30 m:
+ * PROVISIONAL) is left as it is instead of given a new road; fill faces drawn as billed (sections.ts face samples).
+ * D11 frozen −5 … +12 M (best +12: the grade solve takes another near-tie). */
+export const COST_MODEL_VERSION = 45;
 
 /** OTSKP 2026 excavation by class: 12273 (I) 183, 12283 (II) 391, 12293 (III) 653 CZK/m³ */
 export const EXCAVATION_BY_CLASS = { I: 183, II: 391, III: 653 };

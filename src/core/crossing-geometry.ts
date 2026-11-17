@@ -39,6 +39,9 @@ const TURNING_RADIUS = 1.5;
 /** How much of a kept piece's old road beyond its cut end stands for where it now ends (what a road rebuilt
  * beside our earthworks meets), m. Engine detail, not built. */
 const KEPT_END = 5;
+/** PROVISIONAL: a piece cut off that reaches no further than this over the network, with no house within
+ * STUB_HOUSE of it, serves nothing and is left unconnected, m. */
+const STUB_LENGTH = 100, STUB_HOUSE = 30;
 /** PROVISIONAL: a cut way is led under our bridge (Auto's candidate) where that bridge begins within this far along
  * our road, m; the new road passes this far inside the bridge's end (clear of the abutment, short of its first pier
  * at the ≤ 30 m spans of bridgeLayout), m. */
@@ -1454,15 +1457,23 @@ function crossingReroutes(crossings: CrossingResult[], route: CrossingRoute, roa
       const path = getPath(c.roadId, c.x, c.y, g), access = path.length > 1 ? piecesOf(c, path, g) : null;
       if (access) {
         const ends = [along(path, g.removed![0]), along(path, g.removed![1])], sideOf = (q: XY) => project(q).lateral < 0 ? 0 : 1;
-        const connected: [boolean, boolean] = [false, false];
+        const connected: [boolean, boolean] = [false, false], nothing: [boolean, boolean] = [false, false];
         ends.forEach((q, k) => { if (access.connected[k]) connected[sideOf(q)] = true; });
+        // A piece cut off that is only a short stub serving nothing (no house along it) leads nowhere: it is left as
+        // it is, unconnected, rather than given a new road (PROVISIONAL STUB_LENGTH; fields beyond it would be on a
+        // longer piece)
+        ends.forEach((q, k) => {
+          const stub = access.stubs?.[k];
+          if (!access.connected[k] && stub && stub.length <= STUB_LENGTH && !(route.houses?.(q, stub.far, g.width / 2 + STUB_HOUSE)?.length)) nothing[sideOf(q)] = true;
+        });
         const extra = access.round - Math.abs(g.removed![1] - g.removed![0]);
         const closable = !MINOR_WAYS.has(c.cls) ? connected[0] && connected[1] && extra <= CLOSURE_ROUND : true;
-        if (closable) for (const k of [0, 1] as const) if (connected[k]) required[k] = false;
-        if (closable && connected.some(Boolean)) {
+        if (closable) for (const k of [0, 1] as const) if (connected[k] || nothing[k]) required[k] = false;
+        if (closable && (connected.some(Boolean) || nothing.some(Boolean))) {
           // (which way each side lies, for the card: the compass point of our road's normal there)
           const p = at(c.s), compass = (vx: number, vy: number) => Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'east' : 'west') : (vy > 0 ? 'north' : 'south');
-          c.closure = { connected, sides: [compass(p.ty, -p.tx), compass(-p.ty, p.tx)], ...(Number.isFinite(extra) && connected[0] && connected[1] ? { extra } : {}) };
+          c.closure = { connected, sides: [compass(p.ty, -p.tx), compass(-p.ty, p.tx)], ...(Number.isFinite(extra) && connected[0] && connected[1] ? { extra } : {}),
+            ...(nothing.some(Boolean) ? { nothing } : {}) };
         }
       }
     }
