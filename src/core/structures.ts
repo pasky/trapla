@@ -3,7 +3,7 @@
 
 import { STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import type { Violation } from './checks';
-import type { BridgeLayout } from './bridge';
+import type { BridgeArch, BridgeLayout, BridgeStyle } from './bridge';
 
 export const KIND = { earth: 0, bridge: 1, tunnel: 2 } as const;
 
@@ -18,6 +18,9 @@ export interface Run {
   /** A tunnel: its tubes and escape provision against one tube (cost.ts tunnelTubeFactor), how much of it is
    * cut and cover, m, and 'cut' where the player chose cut and cover throughout (evaluate). */
   tubes?: number; cutCoverM?: number; method?: 'cut';
+  /** A bridge: how it is built (absent: short spans), its arch, the price of each style that fits it (as
+   * billed, for the card), and whether the player chose the style (support-layout). */
+  style?: Exclude<BridgeStyle, 'short'>; arch?: BridgeArch; styles?: Partial<Record<BridgeStyle, number>>; styleChosen?: BridgeStyle;
 }
 
 export interface StructureInput {
@@ -236,6 +239,21 @@ export function chooseStructures(inp: StructureInput, rules = STRUCTURE_RULES): 
     flagRanges((i) => !!inp.forced?.[i] && inp.overrides![i] >= 0 && kind[i] !== KIND.bridge,
       'A bridge is needed here', 'Set this stretch back to Automatic (or Bridge), or choose "Our bridge over it" for the crossed road',
       'Game rule: rivers, railways and roads that must be crossed at a different level cannot be buried under earthworks');
+  }
+  // cut and cover chosen for Auto's tunnel (overrides.ts `auto`): as deep as it can be dug, as for the player's own
+  const cut = inp.cutMethod;
+  if (cut && cut.length && Array.prototype.some.call(cut, (v: number) => v === 1)) {
+    const deepest = rules.portalDepth + TUNNEL_RULES.cutCoverMaxCover;
+    const bad = (j: number) => kind[j] === KIND.tunnel && !!cut[j] && !(inp.overrides && inp.overrides[j] >= 0) && -inp.h[j] > deepest + 1e-9;
+    for (let i = 0; i < n; i++) {
+      if (!bad(i)) continue;
+      let j = i;
+      while (j + 1 < n && bad(j + 1)) j++;
+      violations.push({ kind: 'structure', s0: i * inp.ds, s1: j * inp.ds, title: 'Too deep to dig from above', basis: 'game',
+        fix: `Choose Mined, or raise the road to at most ${deepest} m below ground`,
+        rule: `Cut and cover is dug from the surface, with at most ${TUNNEL_RULES.cutCoverMaxCover} m of ground over the tunnel` });
+      i = j;
+    }
   }
   return { kind, runs, violations };
 }

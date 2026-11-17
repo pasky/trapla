@@ -99,7 +99,8 @@ export function stitchResult(base: Result, pieces: readonly StitchPiece[], baseB
   // ---- lists: the spine's outside the pieces, each piece's mapped inside ----
   const mapS = (p: StitchPiece, s: number) => toS(p, s);
   const pieceRuns = list.flatMap(p => p.piece.runs.map(r => ({ ...r, i0: toI(p, r.i0), i1: toI(p, r.i1), s0: mapS(p, r.s0), s1: mapS(p, r.s1),
-    ...(r.pierStations ? { pierStations: r.pierStations.map(s => mapS(p, s)) } : {}) })));
+    ...(r.pierStations ? { pierStations: r.pierStations.map(s => mapS(p, s)) } : {}),
+    ...(r.arch ? { arch: { ...r.arch, s0: mapS(p, r.arch.s0), s1: mapS(p, r.arch.s1) } } : {}) })));
   out.runs = [...base.runs.filter(r => list.every(p => r.i1 <= p.i0 || r.i0 >= p.i1)), ...pieceRuns].sort((a, b) => a.i0 - b.i0);
   // heights: the spine's grade points outside, each piece's inside (its first and last on the joins)
   const vpiMap = new Map<string, number>();
@@ -256,7 +257,8 @@ export function sliceResult(r: Result, i0: number, i1: number): Result {
       wallLength: cut(r.cell.wallLength), wallArea: cut(r.cell.wallArea) },
     parts, cost: sumParts(parts),
     runs: r.runs.filter(x => inI(x.i0) && inI(x.i1)).map(x => ({ ...x, i0: at(x.i0), i1: at(x.i1), s0: sh(x.s0), s1: sh(x.s1),
-      ...(x.pierStations ? { pierStations: x.pierStations.map(sh) } : {}) })),
+      ...(x.pierStations ? { pierStations: x.pierStations.map(sh) } : {}),
+      ...(x.arch ? { arch: { ...x.arch, s0: sh(x.arch.s0), s1: sh(x.arch.s1) } } : {}) })),
     vpis: r.vpis.filter(v => inS(v.s)).map(v => ({ ...v, s: sh(v.s) })), vcurves: r.vcurves.filter(v => inS(v.s)).map(v => ({ ...v, s: sh(v.s) })),
     curves: r.curves.filter(c => inS(c.sStart) && inS(c.sEnd)).map(c => ({ ...c, sStart: sh(c.sStart), sEnd: sh(c.sEnd) })),
     violations: r.violations.filter(v => inS(v.s0) || inS(v.s1)).map(v => ({ ...v, s0: Math.max(0, sh(v.s0)), s1: Math.min(r.s[i1] - s0, sh(v.s1)) })),

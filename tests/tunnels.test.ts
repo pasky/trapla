@@ -99,6 +99,27 @@ describe("the player's tunnel method", () => {
     expect(Array.from(cutMethodMask(s, o).slice(9, 32))).toEqual([0, ...Array(20).fill(1), 0, 0]);
   });
 
+  it("chosen for Auto's tunnel (or a style for Auto's bridge), it leaves the stretch Auto's", () => {
+    const o = paintOverride([], 100, 300, KIND.tunnel, 'cut', true);
+    expect(o).toEqual([{ s0: 100, s1: 300, kind: 2, method: 'cut', auto: true }]);
+    const s = Float64Array.from({ length: 50 }, (_, i) => i * 10);
+    expect(Array.from(overrideMask(s, o)).every(k => k === -1)).toBe(true);
+    expect(cutMethodMask(s, o)[15]).toBe(1);
+    expect(normalizeOverrides(JSON.parse(JSON.stringify(o)))).toEqual(o);
+    // Mined again: back to Auto, nothing painted
+    expect(paintOverride(o, 100, 300, KIND.tunnel, undefined, true)).toEqual([]);
+    expect(paintOverride([], 100, 300, KIND.bridge, 'arch', true)).toEqual([{ s0: 100, s1: 300, kind: 1, style: 'arch', auto: true }]);
+    // where the player painted the bridge, it stays theirs (with the style); the rest of Auto's bridge only gets the style
+    expect(paintOverride([{ s0: 150, s1: 200, kind: KIND.bridge }], 100, 300, KIND.bridge, 'long', true)).toEqual([
+      { s0: 100, s1: 150, kind: 1, style: 'long', auto: true }, { s0: 150, s1: 200, kind: 1, style: 'long' }, { s0: 200, s1: 300, kind: 1, style: 'long', auto: true }]);
+    expect(paintOverride([{ s0: 150, s1: 200, kind: KIND.tunnel, method: 'cut' }], 100, 300, KIND.tunnel, undefined, true)).toEqual([{ s0: 150, s1: 200, kind: 2 }]);
+    // too deep to dig from above, Auto's tunnel as the player's
+    const n = 41, h = new Float64Array(n).fill(-25), ranges = paintOverride([], 95, 305, KIND.tunnel, 'cut', true);
+    const r = chooseStructures({ ds: 10, h, earthPerM: new Float64Array(n).fill(1e6), bridgePerM: 1e9, tunnelPerM: 100, cutMethod: cutMethodMask(s.subarray(0, n), ranges) });
+    expect(r.runs).toHaveLength(1);
+    expect(r.violations.map(v => v.title)).toEqual(['Too deep to dig from above']);
+  });
+
   it('cut and cover where chosen, and too deep to dig from above beyond 13 m of cover', () => {
     const n = 41, ds = 10, h = new Float64Array(n).fill(-25);
     const s = Float64Array.from({ length: n }, (_, i) => i * ds);

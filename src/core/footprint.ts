@@ -95,7 +95,7 @@ export function subtract(range: [number, number], covered: readonly [number, num
   }
   return pieces;
 }
-function at(r: FootprintRoute, s: number): { x: number; y: number; tx: number; ty: number; i: number } {
+function at(r: Pick<FootprintRoute, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty'>, s: number): { x: number; y: number; tx: number; ty: number; i: number } {
   const j = Math.max(0, Math.min(r.n - 2, Math.floor(s / r.ds))), t = Math.max(0, Math.min(1, (s - r.s[j]) / r.ds));
   const tx = r.tx[j] * (1 - t) + r.tx[j + 1] * t, ty = r.ty[j] * (1 - t) + r.ty[j + 1] * t, len = Math.hypot(tx, ty);
   return { x: r.x[j] * (1 - t) + r.x[j + 1] * t, y: r.y[j] * (1 - t) + r.y[j + 1] * t,
@@ -103,7 +103,7 @@ function at(r: FootprintRoute, s: number): { x: number; y: number; tx: number; t
 }
 /** Support screens follow the priced equal-span layout, not an assumed solid deck footprint.
  * Dimensions are explicit study-stage allowances, not foundation design. */
-export function structureFootprints(r: FootprintRoute): FootprintCell[] {
+export function structureFootprints(r: Pick<FootprintRoute, 'n' | 'ds' | 's' | 'x' | 'y' | 'tx' | 'ty' | 'crownWidth' | 'runs'>): FootprintCell[] {
   const out: FootprintCell[] = [], w = r.crownWidth / 2;
   const add = (s: number, structure: FootprintCell['structure'], along: number, width: number) =>
     out.push({ ...at(r, s), s, structure, along, left: width, right: width });

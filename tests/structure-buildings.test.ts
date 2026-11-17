@@ -42,6 +42,40 @@ describe('buildings in the structure choice', () => {
     expect(evaluate({ ...ctx, buildings: house }, tunnel()).demolished).toEqual([]);
   });
 
+  it('under a high deck a house stays unless a pier stands on it; under a low deck, or a garage, it goes', () => {
+    // 30 m up over km 0.35–0.85, a bridge painted over km 0.4–0.8 (BUILDING_RULES.underDeck*, research/62)
+    const high: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual',
+      vpis: [{ s: 0, z: 400, r: null }, { s: 150, z: 400, r: null }, { s: 350, z: 430, r: null }, { s: 850, z: 430, r: null }, { s: 1050, z: 400, r: null }, { s: 1200, z: 400, r: null }] };
+    const paint = { structureOverrides: [{ s0: 400, s1: 800, kind: KIND.bridge as 1 }] };
+    const bare = evaluate(ctx, { ...high, ...paint }), run = bare.runs.find(q => q.kind === KIND.bridge)!;
+    const supports = [run.s0, ...(run.pierStations ?? Array.from({ length: Math.round(run.length / 30) - 1 }, (_, k) => run.s0 + (k + 1) * run.length / Math.round(run.length / 30))), run.s1];
+    const mid = (supports[3] + supports[4]) / 2, pier = supports[5];
+    // a house mid-span, a house where a pier stands, a garage mid-span (x = 100 + s on this straight road)
+    const buildings = new BuildingIndex([[100 + mid, 200, 5], [100 + pier, 202, 5], [100 + (supports[6] + supports[7]) / 2, 200, 3]],
+      [[60, 2, 0, 100 + mid, 200, 4, 4, 0], [60, 2, 0, 100 + pier, 202, 4, 4, 0], [20, 1, 4, 100 + (supports[6] + supports[7]) / 2, 200, 2.5, 2, 0]]);
+    const r = evaluate({ ...ctx, buildings }, { ...high, ...paint });
+    expect(r.demolished.map(p => [p.j, p.in, !!p.pier]).sort()).toEqual([[1, 'bridge', true], [2, 'bridge', false]]);
+    // 9 m up, the deck is cast on falsework standing on the ground: the house goes as well
+    const low: Design = { ...high, vpis: high.vpis.map(v => ({ ...v, z: v.z === 430 ? 409 : v.z })) };
+    expect(evaluate({ ...ctx, buildings }, { ...low, ...paint }).demolished.map(p => p.j).sort()).toEqual([0, 1, 2]);
+  });
+
+  it('under an arch, the rib decides: a house near its springing goes, one under its crown stays', () => {
+    // a valley 40 m deep (its middle at km 0.6) under a road 2 m above its rims, the bridge an arch (research/62)
+    const valley = syntheticTerrain(500, 80, 5, (x) => { const t = (x - 700) / 150; return Math.abs(t) < 1 ? 120 + 40 * t * t : 160; });
+    const flat: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 162, r: null }, { s: 1200, z: 162, r: null }],
+      structureOverrides: [{ s0: 445, s1: 755, kind: KIND.bridge as 1, style: 'arch' }] };
+    const bare = evaluate({ ...ctx, terrain: valley }, flat), arch = bare.runs.find(q => q.kind === KIND.bridge)!.arch!;
+    expect(arch).toBeDefined();
+    // 5 storeys (15 m) beside the springing, and under the middle (clear of the columns on the rib: they stand on it)
+    const near = arch.s0 + 12, middle = (arch.s0 + arch.s1) / 2 + 7;
+    const buildings = new BuildingIndex([[100 + near, 200, 4], [100 + middle, 200, 4]],
+      [[50, 5, 0, 100 + near, 200, 3, 3, 0], [50, 5, 0, 100 + middle, 200, 3, 3, 0]]);
+    const r = evaluate({ ...ctx, terrain: valley, buildings }, flat);
+    expect(r.runs.find(q => q.kind === KIND.bridge)!.arch).toEqual(arch);
+    expect(r.demolished.map(p => p.j)).toEqual([0]);
+  });
+
   it('a chimney standing within a demolished hall goes with it, billed', () => {
     const flat: Design = { category: 'S9.5', speed: 80, pis: [], profileMode: 'manual', vpis: [{ s: 0, z: 400, r: null }, { s: 1200, z: 400, r: null }] };
     // the hall reaches the road (its south wall 5 m from the axis); the chimney stands 55 m off, inside it

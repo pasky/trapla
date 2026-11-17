@@ -64,7 +64,7 @@ export function childControls(controls: RouteControls, axis: OffsetPath): RouteC
     const a = childStationAt(axis, lo), b = childStationAt(axis, hi);
     return { s0: Math.min(a, b), s1: Math.max(a, b) };
   };
-  const structures = controls.structureOverrides?.flatMap(r => { const mapped = range(r.s0, r.s1); return mapped ? [{ ...mapped, kind: r.kind }] : []; });
+  const structures = controls.structureOverrides?.flatMap(r => { const mapped = range(r.s0, r.s1); return mapped ? [{ ...r, ...mapped }] : []; });
   const walls = controls.wallOverrides?.flatMap(w => {
     if (w.side !== (axis.direction === 1 ? 'R' : 'L')) return [];
     const mapped = range(w.s0, w.s1);

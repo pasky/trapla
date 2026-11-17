@@ -28,6 +28,7 @@ import { D275_SECTION, MOTORWAY_MARKINGS } from '../core/data/motorway';
 import { RAILWAY_EVIDENCE, TRACK_CENTRES_M } from '../core/data/railway';
 import { structureFootprints } from '../core/footprint';
 import { bridgeDeckSpans, bridgeDeckSegments, bridgePierTop } from './bridge-surface';
+import { ARCH_DECK_DEPTH, ARCH_RIB_DEPTH, archColumns, archRib } from '../core/bridge';
 import { CATEGORIES } from '../core/data/categories';
 
 export interface ViewEvents {
@@ -1056,7 +1057,9 @@ export class View {
       yield;
       if (run.kind === KIND.bridge) {
         const piers = supports.filter(p => p.structure === 'pier' && p.s > run.s0 && p.s < run.s1);
-        const spans = bridgeDeckSpans(run.s0,run.s1,piers.map(p => p.s));
+        // an arch's deck stands on columns on its rib as well
+        const columns = run.arch ? archColumns(run.arch) : [];
+        const spans = bridgeDeckSpans(run.s0,run.s1,[...piers.map(p => p.s), ...columns]);
         const at = (s: number) => {
           const i = Math.max(0,Math.min(n-2,Math.floor(s/r.ds))), t = Math.max(0,Math.min(1,(s-r.s[i])/(r.s[i+1]-r.s[i])));
           const value = (a: Float64Array) => a[i]+(a[i+1]-a[i])*t;
@@ -1106,6 +1109,29 @@ export class View {
           for (const [lo, hi] of gap || section === CARRIAGEWAY_SECTION ? strips : [[-p.left, p.left]]) {
             const [cx, cy] = across(p, (lo + hi) / 2);
             boxAt(cx, cy, p.tx, p.ty, this.terrain.heightAt(cx, cy) - 2, top, p.along, gap || section === CARRIAGEWAY_SECTION ? (hi - lo) / 2 * 0.55 : p.left, shade(concrete, 0.85));
+          }
+        }
+        // an arch: its rib from the springings (on the ground, as checked) up under the deck, and the columns on it
+        if (run.arch) {
+          const { s0: sa, s1: sb } = run.arch, ia = Math.round(sa / r.ds), ib = Math.round(sb / r.ds);
+          const rib = archRib(sa, sb, r.ground[ia], r.ground[ib], at((sa + sb) / 2).z - ARCH_DECK_DEPTH), c = shade(concrete, 0.8);
+          const steps = Math.max(12, Math.ceil((sb - sa) / 4));
+          for (const [lo, hi] of strips) {
+            const o = (lo + hi) / 2, half = (hi - lo) / 2 * 0.7;
+            for (let k = 0; k < steps; k++) {
+              const s0 = sa + (sb - sa) * k / steps, s1 = sa + (sb - sa) * (k + 1) / steps, a = at(s0), b = at(s1);
+              const z0 = rib(s0), z1 = rib(s1);
+              const [al, alY] = across(a, o - half), [ar, arY] = across(a, o + half), [bl, blY] = across(b, o - half), [br, brY] = across(b, o + half);
+              quad(push(al, alY, z0 + ARCH_RIB_DEPTH, c), push(bl, blY, z1 + ARCH_RIB_DEPTH, c), push(ar, arY, z0 + ARCH_RIB_DEPTH, c), push(br, brY, z1 + ARCH_RIB_DEPTH, c));
+              quad(push(al, alY, z0, c), push(ar, arY, z0, c), push(bl, blY, z1, c), push(br, brY, z1, c));
+              for (const [x0, y0, x1, y1] of [[al, alY, bl, blY], [ar, arY, br, brY]])
+                quad(push(x0, y0, z0 + ARCH_RIB_DEPTH, c), push(x1, y1, z1 + ARCH_RIB_DEPTH, c), push(x0, y0, z0, c), push(x1, y1, z1, c));
+            }
+            for (const x of columns) {
+              const p = at(x), top = bridgePierTop(spans, x - 0.6, x + 0.6, (u0, u1) => Math.max(at(u0).z, at(u1).z));
+              const [cx, cy] = across(p, o);
+              boxAt(cx, cy, p.tx, p.ty, rib(x) + ARCH_RIB_DEPTH - 0.2, top, 0.6, half * 0.8, shade(concrete, 0.85));
+            }
           }
         }
       } else if (run.kind === KIND.tunnel) {

@@ -56,6 +56,17 @@ export const BUILDING_RULES = {
   /** PROVISIONAL working strip: a building closer than this to the footprint (slope edge at grade,
    * deck edge under a bridge) has to go as well, m */
   clearance: 3,
+  /** Under a bridge, a building stays where the deck's underside is more than `underDeckFalsework` m above its
+   * ground and `underDeckGap` m above its roof (storeys × NOISE.storeyHeight), unless a pier stands on it with
+   * its working strip (research/62: Czech law keeps the land's owner under a bridge, z. 13/1997 § 9, 17 and
+   * vyhl. 104/1997 § 10; Nuselský most and D1 Vysočina have houses under the deck, demolished only where piers
+   * stand). A lower deck goes: it is cast on falsework standing on the ground, used to 10–15 m high
+   * (Suchánek, research/50 §2c). `underDeckGap` is PROVISIONAL: room to inspect the deck and keep a fire under
+   * it away (FHWA airspace guidance asks for clearance without a number). A garage or shed always goes:
+   * combustible buildings and storage under bridges are presumed not allowed (FHWA 2023, after the I-85 Atlanta
+   * fire; a fire under the I/23 bridge at Třebíč damaged its deck; no Czech rule found). */
+  underDeckFalsework: 15,
+  underDeckGap: 3,
   /** PROVISIONAL noise-buyout plot allowance: max(3 × footprint, 400 m²), separate from the building.
    * Additional land at building-land price × 1.5; no cadastral boundaries / parcel overlap model. */
   buyoutPlotMultiple: 3,

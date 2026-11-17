@@ -7,6 +7,7 @@
 // road line up / down = pin its height there (Auto), drag a height point (By hand), wheel = zoom,
 // right/middle-drag = scroll. Hovering shows what is there and the place on the map.
 
+import { BRIDGE_STYLE_TEXT } from '../core/terms';
 import { cellLength, PART_KEYS, type PartKey } from '../core/cost';
 import { ROAD_CLASSES } from '../core/data/urban';
 import type { Result } from '../core/evaluate';
@@ -555,7 +556,9 @@ export class ProfilePanel {
       g.lineWidth = 3; g.setLineDash([3, 3]);
       g.beginPath(); g.moveTo(a, y + 5); g.lineTo(a, y); g.lineTo(b, y); g.lineTo(b, y + 5); g.stroke();
       g.font = 'bold 10px system-ui'; g.textAlign = 'left';
-      if (b - a > 24) g.fillText(`your ${['earthwork', 'bridge', 'tunnel'][o.kind]}`, a + 3, y + 15, b - a - 5);
+      // (a style / method chosen for Auto's bridge or tunnel: that choice)
+      const what = o.auto ? (o.style ? BRIDGE_STYLE_TEXT.find(([v]) => v === o.style)![1].toLowerCase() : 'cut and cover') : ['earthwork', 'bridge', 'tunnel'][o.kind];
+      if (b - a > 24) g.fillText(`your ${what}`, a + 3, y + 15, b - a - 5);
     }
     for (const o of this.wallOverrides) {
       const xa = this.X(Math.max(this.v0, o.s0)), xb = this.X(Math.min(this.v1, r.length, o.s1)), a = Math.min(xa, xb), b = Math.max(xa, xb);

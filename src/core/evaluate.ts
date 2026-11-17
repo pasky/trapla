@@ -3,11 +3,12 @@
 // a Web Worker in the app.
 
 import { autoProfile, BLOCK_GRID, blockEnds, CLEARANCE_MARGIN, CLEARANCE_PENALTY, fillLongBlocks, profileBlocks, type PlanStraight, PROFILE_HEIGHT_MAX, PROFILE_HEIGHT_STEP, PROFILE_KIND, PROFILE_KINDS, type AutoProfileOptions, type SharedCostTable } from './autoprofile';
-import { footprintConflicts, type FootprintConflict } from './footprint';
+import { footprintConflicts, structureFootprints, type FootprintConflict } from './footprint';
 import { planRetainingWalls, retainingConflicts, type CrossingChainages, type RetainingPlan, type RetainingWall, type RetainingFeatureCache } from './retaining';
-import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS } from './support-layout';
+import { remedyBridgeSupports, SPAN_TOO_LOW, SUPPORT_LIMITS, type BridgePrice } from './support-layout';
 import { liftAutoProfile } from './profile-remedies';
-import { bridgeModel, bridgeRunCost } from './bridge';
+import { ARCH_DECK_DEPTH, archRib, bridgeLayout, bridgeModel, bridgeRunCost, equalSpanRunCost, longMayPay, type BridgeLayout } from './bridge';
+import { BRIDGE_STYLES } from './data/bridges';
 import { noiseBuyoutCost, BuildingIndex } from './buildings';
 import { normalizeBuildingOverrides, normalizeWallOverrides, wallOverrideMasks, type BuildingOverride, type WallOverride } from './build-controls';
 import { noiseControlViolations } from './noise-control-violations';
@@ -24,7 +25,7 @@ import { bendRules, horizontalRules, speedNorms } from './data/norms';
 import { hairpinPavementPerM2, hairpinViolations, hairpinWidening, speedStretches, travelMinutes, verticalLimits } from './design-speed';
 import { LAND, MATERIAL_VALUE, NORM_EARTHWORK_ALLOWANCE, PRICES, STRUCTURE_RULES, TUNNEL_RULES } from './data/prices';
 import { CATEGORY_RANK, minCategoryForTraffic, type ScenarioParams } from './data/scenario';
-import { ACCESS, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
+import { ACCESS, BUILDING_KIND, BUILDING_RULES, CROSSING_RULES, ENDPOINT_JUNCTIONS, minorCrossroads, NOISE, ROAD_CLASSES, type EndpointJunctionKind } from './data/urban';
 import { massHaul, volumes } from './earthworks';
 import { groundWorksPerM, treatedSubgrade } from './earthengineering';
 import { buildAlignment, pointAt, station, type Alignment, type PI, type PointOnAlignment, type Vec2 } from './horizontal';
@@ -43,7 +44,7 @@ import { mergeCrossings, type RoadCrossing, type RoadNet } from './roadnet';
 import type { GroundProfile } from './ground';
 import { computeSections, flatSection, type SectionCache } from './sections';
 import { allCut, chooseStructures, cutCoverMask, KIND, type Run } from './structures';
-import { cutMethodMask, overrideMask, type StructureOverride } from './overrides';
+import { cutMethodMask, overrideMask, styleMask, type StructureOverride } from './overrides';
 import { BUILTUP_BIT, CLASS_BITS, LC, OOB_BIT, type Terrain } from './terrain';
 import { buildProfile, elevations, type VPI } from './vertical';
 import { carryCrossingPrices, rememberFull, stationWindow, windowedPreview } from './preview-window';
@@ -139,6 +140,8 @@ export interface Result {
    * construction working strip beside one of them (`strip`) */
   /** `in`: what of ours takes it ('reroute': the new road of a crossed road we cut and reroute) */
   demolished: { j: number; i: number; cost: number; in: 'bridge' | 'embankment' | 'cut' | 'reroute'; strip: boolean;
+    /** under a high deck, where one of its piers stands */
+    pier?: true;
     /** a small structure standing within this demolished building, which goes with it */
     host?: number }[];
   /** Outside the footprint: noise fallback or explicit player acquisition + demolition, including plot allowance. */
@@ -403,7 +406,10 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     type Need = { s: number; z: number; roadId: number; asked: boolean };
     const needs: Need[] = result.crossings.flatMap(c => {
       if (c.roadId === undefined || result.kind[c.i] !== KIND.earth && !c.requestedType) return [];
-      const asked = (c.requestedType === 'underpass' || c.requestedType === 'bridge') && !!c.issues?.length;
+      // (our bridge over it: also where its spans need our road higher, support-layout's span check)
+      const deckShort = c.requestedType === 'bridge' && result.violations.some(v => v.kind === 'structure' && v.title.startsWith(SPAN_TOO_LOW)
+        && Math.abs(v.s0 - c.s) <= STRUCTURE_RULES.minBridgeLength);
+      const asked = (c.requestedType === 'underpass' || c.requestedType === 'bridge') && (!!c.issues?.length || deckShort);
       const home = !c.requestedType && !!c.homes && (c.type === 'reconnection' || c.type === 'diversion');
       if (!asked && !home) return [];
       const g = ctx.terrain.heightAt(c.x, c.y), box = c.requestedType === 'bridge' ? undefined : underpassPrice(c, 0, 0);
@@ -411,7 +417,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
       let z = box ? g + box.minHeight - LOWERING_RULES.maxDepth : g + (ROAD_CLASSES[c.cls].noAtGrade ? STRUCTURE_RULES.railClearance : CROSSING_RULES.overHeight);
       for (const v of c.issues ?? []) if (v.crossing.code === 'square' && v.crossing.actual !== undefined && v.crossing.required !== undefined)
         z = Math.max(z, result.grade[c.i] + v.crossing.actual - v.crossing.required);
-      return z > result.grade[c.i] - 0.01 ? [{ s: c.s, z: z + BOX_FLOOR_MARGIN, roadId: c.roadId, asked }] : [];
+      return z > result.grade[c.i] - 0.01 || deckShort ? [{ s: c.s, z: Math.max(z, result.grade[c.i]) + BOX_FLOOR_MARGIN, roadId: c.roadId, asked }] : [];
     });
     if (needs.length) {
       const at = needs.map(q => q.s), near = (c: CrossingResult) => needs.some(q => q.roadId === c.roadId && Math.abs(q.s - c.s) < 1);
@@ -424,15 +430,31 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
         ? c.cost + (c.requestedType === 'bridge' ? deck(r, c) : 0) : 0), 0);
       const meets = (r: Result) => (needs.some(q => q.asked) ? regionCount(r, at) < regionCount(result, at) : regionCount(r, at) <= regionCount(result, at))
         && (needs.every(q => q.asked) || homes(r) < homes(result));
-      let best: { r: Result; o: EvalOptions } | undefined;
+      let best: { r: Result; o: EvalOptions } | undefined, dearer = Infinity;
+      const bridgeAsked = needs.some(q => q.asked && result.crossings.some(c => c.roadId === q.roadId && c.requestedType === 'bridge'));
       // (the new solve first: where it works, the lift is not tried — evaluate time)
       for (const [k, o] of [{ ...used, choiceFloors: needs }, { ...used, choiceLifts: needs }].entries()) {
         if (best) break;
         const r = evaluateRoute(ctx, d, o);
         r.timing['count.regradeRetry'] = k + 1;
-        if (meets(r) && r.cost.total - result.cost.total <= price(result, false) + price(r, true)) best = { r, o };
+        // (our bridge over a road the player chose is met at its price, which its crossing then says: our road
+        // going up over the road is what was chosen)
+        if (meets(r) && (r.cost.total - result.cost.total <= price(result, false) + price(r, true) || bridgeAsked)) best = { r, o };
+        else if (meets(r)) dearer = Math.min(dearer, r.cost.total - result.cost.total);
       }
-      if (best) { result = best.r; used = best.o; }
+      if (best) {
+        if (bridgeAsked) for (const c of best.r.crossings) if (c.requestedType === 'bridge' && near(c)) {
+          let m = 0;
+          for (let i = 0; i < Math.min(best.r.n, result.n); i++) if (Math.abs(best.r.s[i] - c.s) <= REGION) m = Math.max(m, best.r.grade[i] - result.grade[i]);
+          c.raised = { m, cost: best.r.cost.total - result.cost.total };
+        }
+        result = best.r; used = best.o;
+      }
+      // not in proportion: the player's choice says what meeting it would cost (our bridge over a road in our cutting)
+      else if (Number.isFinite(dearer)) for (const c of result.crossings) if (near(c) && c.requestedType && c.issues?.length) {
+        const v = c.issues[0];
+        v.detail = `${v.detail ? `${v.detail} ` : ''}Raising our road for it would add about ${dearer >= 1e9 ? `${(dearer / 1e9).toFixed(1)} bn` : `${Math.round(dearer / 1e6)} M`} CZK to the bill, out of proportion to the crossing, so Auto does not.`;
+      }
     }
   }
   // A motorway / railway crosses every road at another level. Where Auto's grade left a road neither
@@ -568,7 +590,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   const maxGradient = vlim.maxGradient;
   const n = st.n, ds = st.ds;
   let manualStructures = overrideMask(st.s, d.structureOverrides);
-  const cutMethod = cutMethodMask(st.s, d.structureOverrides);
+  const cutMethod = cutMethodMask(st.s, d.structureOverrides), bridgeStyle = styleMask(st.s, d.structureOverrides);
   // On a higher-ranking road's bridge over it (holds' `bridge`): that road's deck, built and billed with
   // that road's crossing; never judged as this road's own bridge (project-road.ts makes it a bridge here).
   const heldBridges = (opts.holds ?? []).flatMap(h => h.bridge ? [{ s0: h.bridge[0], s1: h.bridge[1], kind: KIND.bridge }] : []);
@@ -812,7 +834,13 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   // (a designed road of the project keeps its own crossing: it follows that crossing's height, project-evaluate.ts)
   const roadX = mergeCrossings(rawRoadX, al.length, { ...CROSSING_RULES, endMargin: CROSSING_RULES.endpointTolerance + 1e-6 },
     new Set([...crossingOverrides.map((o) => o.roadId), ...ctx.roads?.designedWays ? rawRoadX.filter(c => ctx.roads!.isDesigned(c.way)).map(c => c.way) : []]));
+  const painted = manualStructures;
   manualStructures = crossingBridgeMask(st.s, rawRoadX, crossingOverrides, manualStructures);
+  // Our bridge over a road the player chose (and painted no bridge there): its height is met only in
+  // proportion, like the player's box (the retries in evaluate() with choiceFloors / choiceLifts); until then
+  // it neither floors the grade search nor lifts the line for its supports (`choiceDeckOf`). The passes share
+  // this setup (passSetup): the mask is the same in each; whether a pass lifts it is its options'.
+  const choiceDeck = Uint8Array.from(manualStructures, (k, i) => k === KIND.bridge && painted[i] < 0 ? 1 : 0);
   const roadG = roadX.map((c) => terrain.heightAt(c.x, c.y));
   // motorways / expressways are never crossed at grade: the grade clears them like a railway (the
   // auto-profile requests an overpass) or pass far enough below for an overbridge
@@ -838,7 +866,7 @@ function routeSetup(ctx: EvalContext, d: Design, opts: EvalOptions) {
   lap('stations');
   const widen = hairpinWidening(al, d.pis, d.category, st.s); // a hairpin's widened lanes
   return { preview, timing, lap, terrain, scenario, cat, norms, vlim, widen, fullAlignment, win, al, maxGradient, st, n, ds,
-    manualStructures, cutMethod, heldDeck, crossingOverrides, ground, groundIds, groundProfiles, groundPackIds,
+    manualStructures, cutMethod, bridgeStyle, heldDeck, choiceDeck, crossingOverrides, ground, groundIds, groundProfiles, groundPackIds,
     groundClasses, oobInput, w, clearance, onOld, blocks, settleEnds, clearanceS, atS, freeStation,
     mustBridge, railOurs, retiredAt, ownTrack, clearRuns, snapTraced, water, waterAt, waterMin, waterBelow,
     waterGround, G, builtUp, costClasses, profileCostClass, profilePoints, crossingCost, forceWater,
@@ -1042,7 +1070,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
         + sc.cutIII[k] * dp.cutPerM3.III + sc.fill[k] * dp.fillPerM3 + wd * topsoilPerM2
         + groundWorksPerM(sc.rockFace[k], sc.subgrade[k])
         + crossingCost(sw[k], wd, z[k]) / w) * su + wd * land;
-      bp[k] = bridge.perM(hh[k]) * (mk ? 1 + surB(u) : su) + b * land;
+      bp[k] = bridge.bestPerM(hh[k]) * (mk ? 1 + surB(u) : su) + b * land;
       tunnel[k] = (cat.tunnelTubes * tunnelKm(u) / 1000) * (mk ? 1 + surT(u) : su);
       cutCover[k] = (cat.tunnelTubes * tunnelKm(u, true) / 1000) * (mk ? 1 + surT(u) : su);
       pit[k] = cutCoverPitPerM(-hh[k], b) * (mk ? 1 + surT(u) : su);
@@ -1063,7 +1091,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
       });
     }
     const input = { ds: w, h: hh, earthPerM: earth, bridgePerM: bp, tunnelPerM: tunnel, cutCoverPerM: cutCover, cutCoverExtraPerM: pit, tunnelFactor, cutMethod, forced: must, forcedTunnel: tunnelWater(S, z), overrides,
-      bridgeRunCost: bridgeRunCost(bridge, hh, w, i => surB(urban[i]), i => landPerM2(urban[i])) };
+      bridgeRunCost: equalSpanRunCost(bridge, hh, bridgeRunCost(bridge, hh, w, i => surB(urban[i]), i => landPerM2(urban[i]))) };
     const firstChoice = chooseStructures(input);
     forceWater(must, S, hh, Float64Array.from(sc.dayL, (v, i) => v + sc.dayR[i]), firstChoice.kind);
     const { kind } = chooseStructures(input);
@@ -1078,7 +1106,7 @@ function routePrices(d: Design, setup: ReturnType<typeof routeSetup>) {
 /** Stage 3, the vertical alignment: Auto's grade line (the block solve, its material value and pins) or
  * the player's height points. */
 function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>) {
-  const { ground, n, blocks, clearance, manualStructures, cutMethod, heldDeck, rawRoadX, crossingOverrides, terrain, ds,
+  const { ground, n, blocks, clearance, manualStructures, cutMethod, heldDeck, choiceDeck, rawRoadX, crossingOverrides, terrain, ds,
     clearanceS, waterMin, waterBelow, clearRuns, freeStation, cat, onOld, win, maxGradient, vlim,
     profileCostClass, costClasses, profilePoints, atS, groundClasses, G, builtUp, al, st, preview,
     mustBridge, lap, roadX } = setup;
@@ -1105,7 +1133,7 @@ function routeGradeLine(ctx: EvalContext, d: Design, opts: EvalOptions, setup: R
     const minH = blocks ? new Float64Array(n).fill(NaN) : clearance.slice();
     const maxH = new Float64Array(n).fill(NaN);
     for (let i = 0; i < n; i++) {
-      if (manualStructures[i] === KIND.bridge && !heldDeck?.[i]) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
+      if (manualStructures[i] === KIND.bridge && !heldDeck?.[i] && !choiceDeckOf(opts, choiceDeck)?.[i]) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], STRUCTURE_RULES.bridgeMinHeight);
       // a mined tunnel the player chose: under enough cover to mine; cut and cover: as deep as it can be dug
       if (manualStructures[i] === KIND.tunnel) maxH[i] = cutMethod[i] ? -STRUCTURE_RULES.portalDepth : -STRUCTURE_RULES.tunnelMinDepth;
       if (manualStructures[i] === KIND.tunnel && cutMethod[i]) minH[i] = Math.max(Number.isNaN(minH[i]) ? -Infinity : minH[i], -(STRUCTURE_RULES.portalDepth + TUNNEL_RULES.cutCoverMaxCover));
@@ -1398,7 +1426,7 @@ function routeCaches(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
 function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<typeof routeSetup>, prices: ReturnType<typeof routePrices>, caches: ReturnType<typeof routeCaches>, solved: ReturnType<typeof routeGradeLine>) {
   const { timing, st, water, terrain, n, preview, manualStructures, lap, w, ds, ground, waterAt,
     crossingCost, cat, clearance, forceWater, forceParallelWater, stationSides, roadX, roadG,
-    crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack, vlim, widen, cutMethod } = setup;
+    crossingOverrides, tunnelWater, settleEnds, heldDeck, al, ownTrack, vlim, widen, cutMethod, bridgeStyle, choiceDeck } = setup;
   const { tpl, b, baseRural, baseUrban, topsoilPerM2, surE, bridge, surB, tunnelKm, tunnelFactor, surT, roadS, balanceTolerance,
     usable } = prices;
   const { sectionMemo, work, wideHitL, wideHitR, wideHits, hitsAt, retainingMemo, wallable, coverLeft, coverRight,
@@ -1502,7 +1530,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
       + geotechnicalPerM[i] + (culverts[i] + retention.perCell[i]) / cellLength(i, n, ds);
     earthMul[i] = 1 + surE(ue);
     earthLand[i] = wd * (landPerM2(ue) + forestEarth[i] * LAND.forestExtraPerM2) + retention.landPerCell[i] / cellLength(i, n, ds) + earthBuildings[i];
-    bridgePerM[i] = bridge.perM(h[i]) * (1 + surB(ud)) + b * landPerM2(ud) + deckBuildings[i];
+    bridgePerM[i] = bridge.bestPerM(h[i]) * (1 + surB(ud)) + b * landPerM2(ud) + deckBuildings[i];
     tunnelPerMAt[i] = (cat.tunnelTubes * tunnelKm(ut) / 1000) * (1 + surT(ut));
     cutCoverPerM[i] = (cat.tunnelTubes * tunnelKm(ut, true) / 1000) * (1 + surT(ut));
     // its pit, and the buildings over it (those over the cut it replaces: a slightly wider footprint)
@@ -1573,7 +1601,9 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   for (let i = 0; i < n; i++) if (retention.forcedTunnel[i]) forcedTunnel[i] = 1;
   // a cutting whose side slope never reaches the top of the hillside (sections.ts `open`) cannot be dug: a tunnel
   for (let i = 0; i < n; i++) if (sec.open[i] && -h[i] >= STRUCTURE_RULES.portalDepth) forcedTunnel[i] = 1;
-  const runCost = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width);
+  const priceRun = bridgeRunCost(bridge, h, ds, i => surB(urbanDeck[i]), i => landPerM2(urbanDeck[i]) + deckBuildings[i] / bridge.width), runCost = equalSpanRunCost(bridge, h, priceRun);
+  const styles = { asked: bridgeStyle, price: priceRun as BridgePrice, arch: !preview,
+    mayPay: (top: number, length: number, layout: BridgeLayout) => longMayPay(bridge, top, length, layout) };
   const widths = Float64Array.from(sec.dayL, (v, i) => v + sec.dayR[i]);
   // The plan's blocks (those of the Auto grade solve, also By hand) settle their own fill value (as they
   // balance their own earth), so the structures an edit re-prices are those of its own blocks; without
@@ -1646,7 +1676,7 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
   let settled = settle(), selection = settled.selection;
   work('selection', selectionStart);
   let supportStart = performance.now();
-  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack);
+  let supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
   work('support', supportStart);
   // A bridge Auto chose whose piers cannot all miss the roads, railways and water under it (no span
   // within the limit reaches past them) is no option there: choose again without it.
@@ -1661,10 +1691,11 @@ function routeEngineer(ctx: EvalContext, opts: EvalOptions, setup: ReturnType<ty
     settled = settle(); selection = settled.selection;
     work('selection', again);
     supportStart = performance.now();
-    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack);
+    supported = remedyBridgeSupports({ ...st, grade, ground, ...selection, crownWidth: b }, terrain, ctx.roads, manualStructures, supportMemo, strict, heldDeck, ownTrack, styles);
     work('support', supportStart);
   }
-  const supportHeights = [...supported.clearanceRequirements, ...retention.clearanceRequirements.filter(q =>
+  const unlifted = choiceDeckOf(opts, choiceDeck);
+  const supportHeights = [...supported.clearanceRequirements.filter(q => !unlifted?.[Math.round(q.s / ds)]), ...retention.clearanceRequirements.filter(q =>
     supported.kind[q.i] !== KIND.tunnel && manualStructures[q.i] !== KIND.earth && manualStructures[q.i] !== KIND.tunnel && q.z > grade[q.i] + 0.01)];
   // heights the player's box or bridge needs (evaluate's retry): a local lift where the line falls short
   for (const q of opts.choiceLifts ?? []) if (elevations(prof, [q.s])[0] < q.z - 0.01) supportHeights.push(q);
@@ -1844,6 +1875,8 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
   // a clearance Auto could not lift: why, in numbers (P2 7: never a bare "raise it" Auto could have done)
   if (d.profileMode === 'auto' && !preview) for (const v of structureViolations) {
     if (!v.title.startsWith(SPAN_TOO_LOW)) continue;
+    // (our bridge over a road the player chose: not lifted out of proportion, its crossing says what it would take)
+    if (setup.choiceDeck?.[Math.min(n - 1, Math.max(0, Math.round(v.s0 / ds)))]) { v.detail = `${v.detail ? `${v.detail} ` : ''}It is the bridge you chose over a road; see that crossing.`; continue; }
     const stop = lift.stop, grade = cat.mode === 'railway' ? `${(maxGradient * 1000).toFixed(1)} ‰` : `${(maxGradient * 100).toFixed(1)} %`;
     const at = stop === null ? '' : stop < ds ? 'its start' : stop > al.length - ds ? 'its end' : `the height pinned at km ${(stop / 1000).toFixed(2)}`;
     const why = liftShared ? 'Auto cannot raise it: the heights beyond this stretch are the ones both directions share.'
@@ -1890,8 +1923,31 @@ function finishQuantities(d: Design, lifted: ReturnType<typeof finishLift>, setu
  * demolitions and their cost, the player's Keep and Buy out choices. */
 function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof routeSetup>, quantities: ReturnType<typeof finishQuantities>) {
   const { n, w, st, ds } = setup;
-  const { kind, sec, grade, cutCover, h } = quantities;
+  const { kind, sec, grade, cutCover, h, runs } = quantities;
   const crown = CATEGORIES[d.category].crownWidth;
+  // Under a high deck a building stays (BUILDING_RULES.underDeck*), unless a pier stands on it: the deck's
+  // underside per cell (its local span's depth), and the piers of the bridges.
+  const soffit = new Float64Array(n).fill(NaN);
+  for (const run of runs) if (run.kind === KIND.bridge) {
+    const supports = [run.s0, ...(run.pierStations ?? []), run.s1];
+    for (let i = run.i0, k = 0; i <= run.i1; i++) {
+      while (k + 2 < supports.length && supports[k + 1] <= st.s[i]) k++;
+      const span = run.pierStations ? supports[k + 1] - supports[k] : bridgeLayout(run.length).span;
+      soffit[i] = grade[i] - Math.max(1.2, (run.arch && st.s[i] > run.arch.s0 && st.s[i] < run.arch.s1 ? BRIDGE_STYLES.arch.columnSpan : span) / 20);
+    }
+    // under an arch, its rib (as support-layout checked and the view draws it)
+    if (run.arch) {
+      const { s0: sa, s1: sb } = run.arch, at = (x: number) => { const j = Math.min(n - 2, Math.floor(x / ds)), t = x / ds - j; return grade[j] * (1 - t) + grade[j + 1] * t; };
+      const rib = archRib(sa, sb, setup.ground[Math.round(sa / ds)], setup.ground[Math.round(sb / ds)], at((sa + sb) / 2) - ARCH_DECK_DEPTH);
+      for (let i = run.i0; i <= run.i1; i++) if (st.s[i] > sa && st.s[i] < sb) soffit[i] = Math.min(soffit[i], rib(st.s[i]));
+    }
+  }
+  const underDeck = (i: number, j: number) => {
+    // (a garage or shed goes: storage under a bridge is a fire risk to it, BUILDING_RULES.underDeck*)
+    if (ctx.buildings!.kind[j] === BUILDING_KIND.minor) return false;
+    const items = ctx.buildings!.items, free = soffit[i] - ctx.terrain.heightAt(items[j][0], items[j][1]);
+    return free >= Math.max(BUILDING_RULES.underDeckFalsework, ctx.buildings!.levels[j] * NOISE.storeyHeight + BUILDING_RULES.underDeckGap);
+  };
   // --- buildings in the footprint (slope to slope at grade, the deck strip under bridges, the pit of a
   // cut-and-cover tunnel), plus a working strip on either side ---
   const buildingCost = new Float64Array(n);
@@ -1904,7 +1960,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
   const buildingViolations: Violation[] = [];
   if (bld) {
     const items = bld.items;
-    const best = new Map<number, { i: number; along: number; core: boolean }>();
+    const best = new Map<number, { i: number; along: number; core: boolean; pier?: true }>();
     for (let i = 0; i < n; i++) {
       if (kind[i] === KIND.tunnel && !cutCover[i]) continue;
       const pit = cutCover[i] ? cutCoverPitHalfWidth(-h[i], crown) : 0;
@@ -1914,11 +1970,21 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
       const cx = x - ty * off, cy = y + tx * off;
       bld.near(x, y, Math.max(left, right) + BUILDING_RULES.clearance + ds, (j) => {
         if (!bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half)) return;
+        if (kind[i] === KIND.bridge && underDeck(i, j)) return;
         const along = Math.abs((items[j][0] - x) * tx + (items[j][1] - y) * ty);
         // the slopes / deck themselves, not only the working strip beside them (what the card names)
         const core = bld.hits(j, cx, cy, tx, ty, ds / 2 + 0.5, half - BUILDING_RULES.clearance);
         const p = best.get(j);
         if (!p) best.set(j, { i, along, core }); else if ((core && !p.core) || (core === p.core && along < p.along)) { p.i = i; p.along = along; p.core = core; }
+      });
+    }
+    // the piers (and an arch's springings) under a high deck, with their working strip
+    for (const f of structureFootprints({ n, ds, s: st.s, x: st.x, y: st.y, tx: st.tx, ty: st.ty, runs, crownWidth: crown })) {
+      if (f.structure !== 'pier' || kind[f.i] !== KIND.bridge) continue;
+      bld.near(f.x, f.y, f.left + f.along + BUILDING_RULES.clearance, (j) => {
+        if (!underDeck(f.i, j) || !bld.hits(j, f.x, f.y, f.tx, f.ty, f.along + BUILDING_RULES.clearance, f.left + BUILDING_RULES.clearance)) return;
+        const p = best.get(j), along = Math.abs((items[j][0] - st.x[f.i]) * st.tx[f.i] + (items[j][1] - st.y[f.i]) * st.ty[f.i]);
+        if (!p) best.set(j, { i: f.i, along, core: true, pier: true }); else if (!p.core) { p.i = f.i; p.along = along; p.core = true; p.pier = true; }
       });
     }
     for (const [j, p] of best) {
@@ -1936,7 +2002,7 @@ function finishBuildings(ctx: EvalContext, d: Design, setup: ReturnType<typeof r
       // which earthwork: the one on the building's side of the road (a cross slope may cut one side, fill the other)
       const k = p.i, leftSide = (items[j][0] - st.x[k]) * -st.ty[k] + (items[j][1] - st.y[k]) * st.tx[k] >= 0;
       const cutSide = (leftSide ? sec.zDayL[k] : sec.zDayR[k]) > grade[k];
-      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : kind[k] === KIND.tunnel || cutSide ? 'cut' : 'embankment', strip: !p.core });
+      demolished.push({ j, i: k, cost: bld.cost[j], in: kind[k] === KIND.bridge ? 'bridge' : kind[k] === KIND.tunnel || cutSide ? 'cut' : 'embankment', strip: !p.core, ...(p.pier ? { pier: true as const } : {}) });
     }
     // a chimney, silo or tower standing within a demolished building's outline goes with it
     for (const p of demolished.slice()) bld.near(items[p.j][0], items[p.j][1], items[p.j][2], (k) => {
@@ -2333,6 +2399,12 @@ function routeFinish(ctx: EvalContext, d: Design, opts: EvalOptions, setup: Retu
   const lifting = routeLift(d, setup, caches);
   const finish = (relaxed: CrossingChainages, strict: ReadonlySet<number> = new Set(), start: VPI[] = autoVpis, from?: LiftState): { vpis: VPI[]; kind: Uint8Array; footprintConflicts: FootprintConflict[]; crossings: CrossingResult[]; lift: LiftState; complete: () => Result } => finishDesign(ctx, d, opts, solved, setup, engineerStage, lifting, prices, caches, relaxed, strict, start, from);
   return { finish };
+}
+
+/** our bridges over roads the player chose (setup's choiceDeck) that a pass neither floors nor lifts: the first
+ * pass's; a regrade retry (choiceFloors / choiceLifts) meets them */
+function choiceDeckOf(opts: EvalOptions, mask: Uint8Array): Uint8Array | undefined {
+  return opts.choiceFloors?.length || opts.choiceLifts?.length ? undefined : mask;
 }
 
 /** The setup of a pass. Nothing in `routeSetup` reads what a retry changes (its floors, lifts, clearances,

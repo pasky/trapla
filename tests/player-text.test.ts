@@ -8,7 +8,7 @@ import { horizontalRules, speedNorms } from '../src/core/data/norms';
 import { categoryViolation, crossingViolation, horizontalViolations, oobViolation, profileViolation, slopeViolation, timeViolation,
   trackEndViolations, verticalViolations, VIOLATION_KINDS } from '../src/core/checks';
 import { buildProfile } from '../src/core/vertical';
-import { CROSSING_CHOICE_TEXT, crossingOutcome, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
+import { BRIDGE_STYLE_TEXT, CROSSING_CHOICE_TEXT, crossingOutcome, DIRECTIONS_TEXT, endCard, footprintOutcome, MINOR_CROSSING_TEXT, placeName, togetherHouseText } from '../src/core/terms';
 import { CROSSING_CHOICES, type CrossingResult } from '../src/core/crossings';
 import { ROAD_CLASSES } from '../src/core/data/urban';
 import { evaluate } from '../src/core/evaluate';
@@ -39,6 +39,7 @@ describe('player-facing text', () => {
     expect(CROSSING_CHOICE_TEXT.map(([v]) => v).filter(Boolean).sort()).toEqual([...CROSSING_CHOICES].sort());
     for (const [, label, title] of CROSSING_CHOICE_TEXT) { check('choice label', label); check('choice tooltip', title); }
     for (const text of Object.values(MINOR_CROSSING_TEXT)) check('minor road choice tooltip', text);
+    for (const [, label, title] of BRIDGE_STYLE_TEXT) { check('bridge style label', label); check('bridge style tooltip', title); }
     const storeys = [{ height: 1.5, rawDay: 1e6, rawNight: 1e5, day: 1e6, night: 1e5 }];
     for (const together of [{ decision: 'wall', wall: { routeId: 'b', height: 3, length: 120, cost: 4e6 } }, { decision: 'buy', buyout: { routeId: 'a', cost: 5e6 } },
       { decision: 'none', over: 1.2 }, { decision: 'none' }] as const) {

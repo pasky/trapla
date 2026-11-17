@@ -97,6 +97,9 @@ export interface CrossingResult {
   /** Pack way index; optional only for legacy/synthetic callers. */
   roadId?: number;
   requestedType?: CrossingChoice;
+  /** "Our bridge over it" chosen where our road was lower: how much higher our road was built for it, m, and
+   * what that added to the bill (evaluate's regrade retry; the player's choice is met, its price said) */
+  raised?: { m: number; cost: number };
   /** Built once with the other direction of a split motorway (that direction owns, bills and draws it). */
   shared?: true;
   /** The crossed road is a designed road of the project (it draws and bills its own body; this crossing
