@@ -1685,7 +1685,8 @@ export function buildCrossingGeometry(crossings: CrossingResult[], route: Crossi
   for (const c of crossings.filter(c => c.geometry?.sameSide && !c.moved && !c.requestedType && !ROAD_CLASSES[c.cls].noAtGrade && c.type !== 'junction')
     .sort((a, b) => b.cost - a.cost || a.s - b.s)) {
     const followers = crossings.filter(x => leadsTo(x, c));
-    if (followers.some(x => x.requestedType || x.via !== undefined)) continue;
+    // (a follower the player shaped keeps its path; one the player only asked to cut and reroute is led on)
+    if (followers.some(x => x.via !== undefined || (x.requestedType && x.requestedType !== 'reconnection'))) continue;
     const before = (feasible(c) ? c.cost : Infinity) + followers.reduce((sum, x) => sum + x.cost, 0);
     const move = clone(c); move.type = c.cls === 'track' ? 'diversion' : 'reconnection'; move.moved = true;
     delete move.targetS; delete move.targetRoadId; delete move.span; delete move.approachLength; delete move.underpassLength;

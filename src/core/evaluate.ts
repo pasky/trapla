@@ -411,7 +411,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     // …and, last (`buriedToo`), where our earthworks still bury a road that could be neither rebuilt beside
     // them nor walled off nor kept off by a lower grade (e.g. a junction just beside our axis): a bridge or a
     // cutting at another level clears it.
-    const buried = buriedToo ? result.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && result.kind[f.i] === KIND.earth) : [];
+    const buried = buriedToo ? result.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && result.kind[f.i] === KIND.earth && notAsked(result)(f)) : [];
     const items: { at: number; road?: { s: number; g: number; above?: boolean }; water?: { s0: number; s1: number } }[] = [
       ...stuck.map(c => ({ at: c.s, road: { s: c.s, g: ctx.terrain.heightAt(c.x, c.y) } })),
       ...buried.map(f => ({ at: (f.s0 + f.s1) / 2, road: { s: (f.s0 + f.s1) / 2, g: ctx.terrain.heightAt(f.x, f.y) } })),
@@ -453,7 +453,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
   // resolves more than it breaks.
   if (!opts.preview && !opts.window && d.profileMode === 'auto') {
     const r0 = result;
-    const buried = r0.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && r0.kind[f.i] === KIND.earth);
+    const buried = r0.footprintConflicts.filter(f => f.feature === 'road' && f.action === 'blocked' && r0.kind[f.i] === KIND.earth && notAsked(r0)(f));
     if (buried.length) {
       const items = buried.map(f => {
         const h = r0.grade[f.i] - r0.ground[f.i];
@@ -490,7 +490,7 @@ export function evaluate(ctx: EvalContext, d: Design, opts: EvalOptions = {}): R
     }
   }
   if (!opts.preview && !opts.window && CATEGORIES[d.category].gradeSeparated && d.profileMode === 'auto'
-    && result.footprintConflicts.some(f => f.feature === 'road' && f.action === 'blocked' && result.kind[f.i] === KIND.earth)) {
+    && result.footprintConflicts.some(f => f.feature === 'road' && f.action === 'blocked' && result.kind[f.i] === KIND.earth && notAsked(result)(f))) {
     const before = result;
     separation(used, true);
     if (result !== before && result.withNoise) result = result.withNoise();
@@ -2275,7 +2275,8 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   // Water our earthworks would still cover (no culvert, no wall): a stream just beyond a bridge's end is
   // spanned by it; a pond or river beside us that no wall holds back gets a short bridge of its own.
   // (so is a road our bridge's end would bury where it runs askew under it: the end is set beyond it)
-  const streams = first.footprintConflicts.filter(c => (c.feature === 'stream' || c.feature === 'water' || c.feature === 'road') && c.action === 'blocked' && /:earth(:|$)/.test(c.id));
+  const asked = notAsked(first);
+  const streams = first.footprintConflicts.filter(c => (c.feature === 'stream' || c.feature === 'water' || c.feature === 'road') && c.action === 'blocked' && /:earth(:|$)/.test(c.id) && asked(c));
   let spanned = false;
   for (const c of streams) {
     const i0 = Math.max(1, Math.floor(c.s0 / ds)), i1 = Math.min(n - 2, Math.ceil(c.s1 / ds));
@@ -2285,7 +2286,7 @@ function evaluateRoute(ctx: EvalContext, d: Design, opts: EvalOptions = {}): Res
   if (spanned) { timing['count.streamRetry'] = 1; first = finish(crossingWays, new Set(), first.vpis); }
   // A relaxed road stretch that no remedy could absorb (a crossing way's residual or a minor road
   // at an abutment whose relocation failed) falls back to walls/structures (strict) nearby.
-  const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked');
+  const blocked = first.footprintConflicts.filter(c => c.feature === 'road' && c.action === 'blocked' && asked(c));
   // An automatic crossing with nothing buildable (no reroute, box or bridge over us) under an
   // embankment high enough for our bridge: our bridge is lengthened over it, as a designer would
   // (that way is retried with ordinary rules, which put our road on a bridge over it).
@@ -2367,6 +2368,12 @@ const SEPARATION_PENALTY = 1e11;
 /** A narrowing retry asks for this much less embankment (cutting) where our earthworks buried a road, m,
  * this far either side of it */
 const NARROW_STEP = 2, NARROW_REACH = 30;
+/** A way the player chose a crossing for: where that choice cannot be built its problem says so, and the
+ * retries do not move our road over its buried stretch (a request that cannot be met leaves the rest as it was). */
+const notAsked = (r: { crossings: readonly CrossingResult[] }) => {
+  const asked = new Set(r.crossings.filter(c => c.requestedType).map(c => c.roadId));
+  return (f: FootprintConflict) => f.feature !== 'road' || f.roadId === undefined || !asked.has(f.roadId);
+};
 /** A box-floor retry raises our grade this much more than the box lacked, m (engine margin: the deeper
  * embankment also widens the box's footprint a little). */
 const BOX_FLOOR_MARGIN = 0.25;
