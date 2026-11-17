@@ -1,8 +1,10 @@
 // Robustness of Auto's crossing treatments under small drags: move the bend nearest a chainage by a
 // few metres (seeded), evaluate, and count invalid results and their violations.
+// (as the editor drags: hand-set radii the drag leaves too large are lowered just enough, core/fit-radii.ts; --raw: not)
 // SCENARIO=i16-nova-paka npx tsx scripts/small-drag-audit.ts scripts/scenarios/i16-nova-paka/default.json --at 3300 --n 24 --radius 25
 import { readFileSync, writeFileSync } from 'node:fs';
 import { evaluate, type Design, type EvalContext } from '../src/core/evaluate';
+import { fitSetRadii } from '../src/core/fit-radii';
 import { loadPack } from './loadpack';
 
 const { meta, scenario, terrain, buildings, roads, junctions } = loadPack();
@@ -20,12 +22,16 @@ base.curves.forEach((c, k) => { const d = Math.abs((c.sStart + c.sEnd) / 2 - at)
 const bends = args.includes('--all') ? design.pis.map((_, j) => j) : [pi];
 let seed = 12345;
 const rand = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
-const titles = new Map<string, number>();
+const titles = new Map<string, number>(), lowered = new Map<number, number>(), raw = args.includes('--raw');
 let invalid = 0, total = 0, ms = 0;
 console.log(`${file}: base ${(base.cost.total / 1e9).toFixed(4)} bn ${base.valid ? 'VALID' : 'INVALID'}; dragging ${bends.length > 1 ? 'every bend' : `bend ${pi + 1} (km ${(at / 1000).toFixed(2)})`} by up to ${radius} m`);
 for (const pi of bends) for (let k = 0; k < count; k++) {
   const a = rand() * 2 * Math.PI, r = radius * Math.sqrt(rand());
-  const pis = design.pis.map((p, j) => j === pi ? { ...p, x: p.x + r * Math.cos(a), y: p.y + r * Math.sin(a) } : p);
+  const moved = design.pis.map((p, j) => j === pi ? { ...p, x: p.x + r * Math.cos(a), y: p.y + r * Math.sin(a) } : p);
+  // as the editor drags (--raw: without): set radii the drag leaves too large are lowered just enough
+  const fitted = raw ? null : fitSetRadii(ctx.a, ctx.b, moved, pi, design.pis.map(p => p.r), design.speed, design.category);
+  const pis = fitted?.pis ?? moved;
+  for (const l of fitted?.lowered ?? []) lowered.set(l.i, Math.max(lowered.get(l.i) ?? 0, l.from - l.to));
   // DUMP=dir: write each dragged design (for scripts/_near.ts etc.)
   if (process.env.DUMP) writeFileSync(`${process.env.DUMP}/drag-${pi + 1}-${k}.json`, JSON.stringify({ design: { ...design, pis } }));
   const t0 = performance.now();
@@ -37,4 +43,5 @@ for (const pi of bends) for (let k = 0; k < count; k++) {
   if (process.env.VERBOSE) console.log(`  bend ${pi + 1} #${k} ${(res.cost.total / 1e9).toFixed(4)} bn ${res.valid ? '' : res.violations.map(v => `[km ${(v.s0 / 1000).toFixed(2)}] ${v.title}`).join('; ')}`);
 }
 console.log(`invalid ${invalid}/${count * bends.length}, mean ${(total / count / bends.length / 1e9).toFixed(4)} bn, mean eval ${(ms / count / bends.length).toFixed(0)} ms`);
+if (lowered.size) console.log(`  radii lowered to fit (largest cut): ${[...lowered].map(([i, m]) => `bend ${i + 1} −${Math.round(m)} m`).join(', ')}`);
 for (const [t, n] of [...titles].sort((p, q) => q[1] - p[1])) console.log(`  ${n}× ${t}`);

@@ -45,6 +45,7 @@ import { createProjectScore } from './ui/project-score';
 import { installMapWindow } from './ui/map-window';
 import { profileEvents } from './ui/profile-events';
 import { createMapGestures } from './ui/map-gestures';
+import { radiusNotes } from './ui/radius-notes';
 import { hudEvents } from './ui/hud-events';
 import { createMapPicks } from './ui/map-picks';
 import { installMapHover } from './ui/map-hover';
@@ -162,6 +163,7 @@ async function main() {
   const inspector = new Inspector(document.getElementById('inspector')!, {
     building: binfo,
     maxRadius: (i) => curveEdit.maxRadius(i),
+    radiusNote: (i, r) => radiusNotes.get(store.activeRouteId, i, r),
     together: (j) => {
       const receiver = session.projectFull?.complete ? session.projectFull.receivers.find(r => r.buildingIndex === j && r.together) : undefined;
       if (!receiver) return null;
